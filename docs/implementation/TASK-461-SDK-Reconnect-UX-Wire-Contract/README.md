@@ -1,7 +1,8 @@
 # TASK-461 — SDK Reconnect UX + Transcript Wire Contract (C6-02 · C6-03 · C6-04 · C5-05)
 
-- **Status**: Pending
+- **Status**: Review
 - **Type**: bugfix (clinician-facing reliability UX + realtime data integrity)
+- **Branch (implemented)**: `fix/task-461-sdk-reconnect` (from `fix/2605-review` HEAD `87b33f57`)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · Wave 3 (P2)
 - **Findings**: C6-02 (Med, observability) · C6-03 (Med, reliability-durability) · C6-04 (Med, correctness) · C5-05 (Med, nlp-summary-quality) — all CONFIRMED — see [TASK-448 register](../TASK-448-Harness-Loop-Quality-Review/README.md)
 - **Branch (when scheduled)**: `fix/task-461-sdk-reconnect-wire-contract` (from the current `fix/2605-review` HEAD)
@@ -87,10 +88,52 @@ Adversarial review focus: (a) C6-02 — does the status correctly settle on `str
 
 ## Implementation Summary
 
-_Pending — not yet implemented._
+All four findings fixed via strict TDD (RED captured before each fix). Changes are confined to the 7 manifest files; TASK-464's store/provider path (`agenticStore` / `useArcaAudio` / `PluginManager` / `packages/stt`), the server emitters, and all barrels are untouched.
+
+### C6-02 — stuck on `reconnecting` after a successful auto-reconnect
+
+**Deviation from the scaffold's premise (verified against code).** The register assumed `onReconnect` "fires on a *successful* reconnect". It does not: `SttV2WebSocketClient.attemptReconnect()` fires `onReconnectCb` at attempt-**start** (during backoff, before `connect()` — the method's own doc-comment says "Called when a reconnection attempt **starts**"), and `onopen` fired **no** callback on a reconnect open. So there was no reconnect-**success** signal to key off. Keying `streaming` off `onReconnect` would flip a clinical surface to a false "live" during the whole backoff/attempt window (worse than a stuck spinner). Fix:
+
+- `SttV2WebSocketClient.ts` — added an additive, back-compatible reconnect-**success** callback: private `onReconnectedCb`, a public `onReconnected(cb)` registrar, and one firing site in `onopen` guarded by `wasReconnecting` (fires only on a reconnect open, never the initial connect). No change to `onReconnect`/`acknowledgeConnection`/reset logic.
+- `use-live-stt-session.ts` — added `onReconnected?` to the structural `SttStreamClient` view and registered a handler that sets `streaming`, guarded by the same `statusRef` check the `onDisconnect` handler uses (:300) so a `stopping`/`idle` in flight is never clobbered. `onReconnect` still sets `reconnecting` (attempt in progress); the redundant set is left as-is.
+
+### C6-03 — terminal reconnect failure leaked the mic + gateway session slot
+
+- `use-live-stt-session.ts` — `onReconnectFailed` now mirrors the handshake-fail cleanup (:335-341): `wsClientRef.current = null` → `releaseAudio()` → `void closeStreamSession(sessionIdRef.current)` (null-guarded, no double-close) + null the session ref → `setSession(null)` → `setError(GENERIC_AUTH_COPY)` → `setStatus('error')`. No hot mic, no held concurrency slot.
+
+### C6-04 — `normalizeTranscript` dropped the whole transcript on any missing/mistyped field; no shared wire type
+
+- `types/stt-v2.ts` — introduced the shared **wire-contract** type `WsTranscriptWirePayload`: the raw server→client transcript exactly as it arrives (all-optional, dual-cased `camelCase | snake_case`, `unknown`-typed values, index signature so a `JSON.parse` result stays assignable). Additive; no consumer recompiles.
+- `SttV2WebSocketClient.ts` — `normalizeTranscript` now takes `WsTranscriptWirePayload` (the type is **referenced by the parser**, not just declared) and degrades gracefully: only a payload with no string `text` (truly unusable) is dropped; absent `startTime`/`endTime` default to `0`; a new `coerceIsFinal()` helper accepts boolean, **numeric** `1`/`0`, and string `'1'`/`'0'`, defaulting to `false` (partial) — an absent/odd `is_final` never costs the caption. All existing dual-casing / `seq` / `stableChars` / `utteranceIndex` / `resultType` resume metadata handling is preserved unchanged.
+
+### C5-05 — browser auto-NER minted a fresh `crypto.randomUUID()` per extraction → dedup never matched
+
+- `KnowledgePipeline.ts` — `executeNER` now derives a **stable** id via a module-local `stableEntityId(entityType, text, startOffset, endOffset)` (FNV-1a 32-bit over the composite → `ner-xxxxxxxx`). A hash is used so the id carries **no PHI** (entity text can surface in logs). Re-extractions of the same entity keep one identity, so the store's id-keyed dedup (`agenticStore.addEntities`) collapses them; genuinely distinct entities still get distinct ids (no over-collapse).
+
+### Tests (RED → GREEN)
+
+| Finding | RED evidence (before fix) | Test(s) added/updated |
+|---|---|---|
+| C6-02 | client: `reconnectClient.onReconnected is not a function`; hook: `expected 'reconnecting' to be 'streaming'` | `SttV2WebSocketClient.test.ts` (fires `onReconnected` only on reconnect open, not initial connect); `use-live-stt-session.test.tsx` (recovered → `streaming`) + a guard test (late success never resurrects a stopped session) + `onReconnected` added to the test fake |
+| C6-03 | hook: `expected "vi.fn()" [micTrack.stop] to be called at least once` | `use-live-stt-session.test.tsx` (terminal failure → mic released, capture destroyed, session DELETEd, meta cleared) |
+| C6-04 | client: `expected null not to be null` (text-only + numeric `is_final` payloads dropped) | `SttV2WebSocketClient.test.ts` (missing timing/`isFinal` keeps the caption; numeric `is_final`; metadata rides through; no-text/non-string-text still rejected) |
+| C5-05 | pipeline: two different UUIDs (`34e4…` ≠ `8bca…`) | `KnowledgePipeline.test.ts` (stable id across re-extractions + one deduped row; distinct entities → distinct ids). Two pre-existing tests that asserted the old **UUID-format** id (the behaviour C5-05 removes) were updated to the stable-id contract (kept their distinctness assertions, added a determinism check). |
+
+### Verification gate (evidence)
+
+| Gate | Result |
+|---|---|
+| `pnpm --filter @arcaai/vox test` | **3516 passed** (198 files) |
+| `pnpm --filter @arcaai/vox build` | **success** (ESM/CJS/DTS) |
+| `pnpm --filter @arcaai/vox lint` | **0 errors** (71 pre-existing `prettier/prettier` warnings in untouched files; my 3 source files: 0 warnings — test files are excluded by the lint ignore pattern) |
+| `pnpm --filter @arcaai/vox typecheck` | **10 pre-existing errors, unchanged by this ticket** — proven by re-running `tsc --noEmit` with my changes stashed (identical error set). All are in unrelated test files (`bundle-externals.task364.test.ts`, `useHarnessAdmin.test.ts`, `promptMetrics.test.ts`, and an `Int16Array` cast at `SttV2WebSocketClient.test.ts:334`, far above my edits). My changes add **zero** new type errors; fixing those files is outside the manifest. |
+| `pnpm --filter @arcaai/admin-console test` | **843 passed** (111 files) |
+
+> Fresh-worktree prerequisites (per the ticket note): `pnpm install`, then `turbo run build` for the workspace deps (`@arcaai/ui`, `@arcaai/vox`, `@arcaai/stt`, …) so Vitest can resolve their `dist` entries — otherwise ~42 admin-console suites fail on `Failed to resolve entry for package "@arcaai/ui"` before any test runs.
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-07-10 | Ticket scaffolded from TASK-448 findings C6-02/03/04 + C5-05 as Wave 3 (P2). All four re-verified OPEN against the current `fix/2605-review` tree: C6-02 (`reconnecting` set at :310, `streaming` only at :374), C6-03 (`onReconnectFailed` :312-315 has no cleanup vs handshake path :336-337), C6-04 (drop guard at `normalizeTranscript` :629; `WsTranscriptResult` in `types/stt-v2.ts`), C5-05 (`crypto.randomUUID()` at KnowledgePipeline :453). 464↔461 file-disjoint parallelization + 454→461 rebase recorded. No implementation. |
+| 2026-07-10 | **Implemented all four findings via TDD** on `fix/task-461-sdk-reconnect` (from `fix/2605-review` HEAD `87b33f57`). C6-02: added an additive reconnect-**success** callback `onReconnected` to `SttV2WebSocketClient` (fired in `onopen` when `wasReconnecting`) and consumed it in the hook to reset to `streaming` (statusRef-guarded) — **deviation from the scaffold**, which wrongly assumed `onReconnect` was the success signal (code shows it fires at attempt-**start**, and `onopen` fired no success callback; keying `streaming` off it would falsely read "live" during backoff). C6-03: `onReconnectFailed` now mirrors the handshake-fail cleanup (`releaseAudio` + `closeStreamSession` + null refs). C6-04: introduced shared wire-contract type `WsTranscriptWirePayload` in `types/stt-v2.ts`, re-typed + made `normalizeTranscript` tolerant (text-required; timing defaults; numeric/`'1'`/`'0'` `is_final` coercion via `coerceIsFinal`), preserving all resume metadata. C5-05: stable FNV-1a `stableEntityId(type\|text\|offsets)` replaces `randomUUID()`; two pre-existing UUID-format tests updated to the stable-id contract. Gates: vox test 3516✓, build✓, lint 0-errors✓, admin-console test 843✓; vox typecheck has 10 **pre-existing** errors in unrelated test files (proven identical with changes stashed — zero added, all outside the manifest). Status → Review. |

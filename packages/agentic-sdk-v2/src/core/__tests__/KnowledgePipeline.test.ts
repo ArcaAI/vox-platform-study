@@ -221,6 +221,58 @@ describe('KnowledgePipeline', () => {
       expect(pipeline.state.status).toBe('ERROR');
       expect(errorHandler).toHaveBeenCalled();
     });
+
+    // TASK-461 C5-05 — auto-NER re-extracts over overlapping/rolling text. A
+    // random UUID per extraction means the store dedup (which keys on `id`)
+    // never matches, so the same clinical entity accumulates duplicate rows.
+    it('mints a STABLE content/offset-derived entity id so re-extractions dedup (C5-05)', async () => {
+      const pipeline = new KnowledgePipeline(
+        { ner: { enabled: true, location: 'browser', triggerMode: 'auto' } },
+        undefined,
+        mockLogger
+      );
+      await pipeline.init();
+
+      // The mock extractor is deterministic (one 'diabetes' CONDITION at [0,8]),
+      // so the SAME entity is emitted by both runs — as auto-NER does live.
+      const first = await pipeline.process({ text: 'Patient has diabetes' });
+      const second = await pipeline.process({ text: 'Patient has diabetes' });
+
+      const firstEntity = first.entities![0];
+      const secondEntity = second.entities![0];
+
+      // Identity survives re-extraction: same type|text|span → same id.
+      expect(secondEntity.id).toBe(firstEntity.id);
+
+      // The store dedups by `id` (agenticStore.addEntities keys on it); model
+      // that contract to prove a stable id collapses both runs to ONE row.
+      const dedupedIds = new Set([...first.entities!, ...second.entities!].map((e) => e.id));
+      expect(dedupedIds.size).toBe(1);
+    });
+
+    it('gives genuinely distinct entities distinct ids — no over-collapse (C5-05)', async () => {
+      const pipeline = new KnowledgePipeline(
+        { ner: { enabled: true, location: 'browser', triggerMode: 'auto' } },
+        undefined,
+        mockLogger
+      );
+      await pipeline.init();
+
+      // Two different entities in one extraction must NOT collapse to one id.
+      mockMedNERProcessor.extract.mockResolvedValueOnce({
+        text: 'Patient has diabetes and hypertension',
+        entities: [
+          { text: 'diabetes', type: 'CONDITION', score: 0.95, start: 12, end: 20 },
+          { text: 'hypertension', type: 'CONDITION', score: 0.9, start: 25, end: 37 },
+        ],
+        processingTime: 100,
+        timestamp: Date.now(),
+      });
+
+      const result = await pipeline.process({ text: 'Patient has diabetes and hypertension' });
+      const [a, b] = result.entities!;
+      expect(a.id).not.toBe(b.id);
+    });
   });
 
   describe('triggerNER', () => {
@@ -767,9 +819,12 @@ describe('KnowledgePipeline', () => {
 
       const ids = entities.map((e) => e.id);
       const uniqueIds = new Set(ids);
+      // Distinct entities (different text/type/span) keep distinct ids — no
+      // over-collapse (TASK-461 C5-05 replaced the random UUID with a stable,
+      // content/offset-derived id).
       expect(uniqueIds.size).toBe(3);
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-      ids.forEach((id) => expect(id).toMatch(uuidRegex));
+      const stableIdRegex = /^ner-[0-9a-f]{8}$/;
+      ids.forEach((id) => expect(id).toMatch(stableIdRegex));
     });
 
     it('should return empty array when browser NER finds no entities', async () => {
@@ -892,7 +947,7 @@ describe('KnowledgePipeline', () => {
   // =========================================================================
 
   describe('REFACTOR-06: entity ID generation', () => {
-    it('should generate entity IDs using UUID format for browser NER', async () => {
+    it('should generate stable, deterministic entity IDs for browser NER (TASK-461 C5-05)', async () => {
       const pipeline = new KnowledgePipeline(
         {
           ner: { enabled: true, location: 'browser', triggerMode: 'manual', model: 'test-model' },
@@ -910,13 +965,20 @@ describe('KnowledgePipeline', () => {
 
       (pipeline as any).nerProcessor = { extract: mockExtract };
 
-      const entities = await pipeline.triggerNER('aspirin for headache');
+      const first = await pipeline.triggerNER('aspirin for headache');
+      const second = await pipeline.triggerNER('aspirin for headache');
 
-      expect(entities).toHaveLength(2);
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-      for (const entity of entities) {
-        expect(entity.id).toMatch(uuidRegex);
+      expect(first).toHaveLength(2);
+      // Content/offset-derived ids (was a random UUID per run). Same input →
+      // same ids, so the store dedup collapses re-extractions instead of
+      // accumulating duplicates (C5-05).
+      const stableIdRegex = /^ner-[0-9a-f]{8}$/;
+      for (const entity of first) {
+        expect(entity.id).toMatch(stableIdRegex);
       }
+      expect(second.map((e) => e.id)).toEqual(first.map((e) => e.id));
+      // Distinct entities keep distinct ids — no over-collapse.
+      expect(new Set(first.map((e) => e.id)).size).toBe(2);
     });
   });
 });
