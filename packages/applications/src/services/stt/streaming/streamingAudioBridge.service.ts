@@ -12,6 +12,59 @@ import { StreamingTranscriptMessage } from './dto';
 export const RESULT_STREAM_BLOCK_MS = 500;
 
 /**
+ * TASK-457 C3-06 — SINGLE source of truth for the audio-stream bound. This
+ * bridge is the sole production writer of `stt:audio`, so this constant IS the
+ * bound (the STT-v2 `streaming_audio_stream_maxlen` setting is kept equal to
+ * it; that Python default only feeds the test-only `xadd_audio_frame`).
+ */
+export const AUDIO_STREAM_MAXLEN = 10000;
+
+/**
+ * TASK-457 C3-01/C3-02 — default consumer-group name for the `stt:result`
+ * reader. The result stream is per-session, so the group name only has to
+ * distinguish subscriber ROLES on it. The captions WS gateway passes a stable
+ * role name (so a reconnect resumes from the group's Redis-owned cursor rather
+ * than re-reading from `0-0`); other subscribers (e.g. LiveDocumentationService)
+ * default to a per-subscription unique group so every subscriber still receives
+ * EVERY result (fan-out preserved — a shared group would make them compete).
+ */
+export const RESULT_CONSUMER_GROUP_PREFIX = 'stt-bridge';
+
+/** Options for {@link StreamingAudioBridgeService.subscribeToResults}. */
+export interface SubscribeResultOptions {
+  /**
+   * Stable consumer-group name on `stt:result:{sessionId}`. Pass a role-stable
+   * value (e.g. `'captions'`) to resume from the persisted group cursor across
+   * a reconnect. Omit for a per-subscription unique group (read-all, fan-out).
+   */
+  consumerGroup?: string;
+  /** Consumer name within the group (default: generated per subscription). */
+  consumerName?: string;
+}
+
+/**
+ * TASK-457 — minimum idle (ms) before the result reader reclaims another
+ * consumer's pending entry via XAUTOCLAIM (dead-reader hand-off). The first
+ * reclaim on start uses idle 0 to recover this consumer's own unacked pending.
+ */
+const RESULT_CLAIM_MIN_IDLE_MS = 30_000;
+
+/** ioredis XAUTOCLAIM reply: `[nextCursor, [[id, fields], ...], [deletedIds]]`. */
+type XAutoClaimReply = [string, Array<[string, string[]]>, string[]?] | null;
+
+/**
+ * Per-subscriber controller. `reader` is the subscriber's dedicated ioredis
+ * connection — on unsubscribe we abort the loop AND immediately `disconnect()`
+ * that reader (TASK-457 C1) so a dead client's reader stops consuming/ACKing
+ * the shared consumer group at once, instead of draining it for the whole
+ * grace window (which cross-instance would split the live captions).
+ */
+interface ResultSubscriberCtrl {
+  abort: boolean;
+  reader?: Redis;
+}
+
+/**
  * StreamingAudioBridgeService
  *
  * Bridges WebSocket audio from the API Gateway to STT-V2 via Redis Streams:
@@ -51,6 +104,11 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
 
   private connected = false;
 
+  /** TASK-457 M3 — timestamp the writer first went unhealthy (null when healthy). */
+  private writerDegradedSince: number | null = null;
+  /** TASK-457 M3 — throttle writer-health logs to at most one per this window. */
+  private lastWriterHealthLogAt = 0;
+
   /**
    * Active result subscriptions, keyed by `sessionId` → a **set** of per-reader
    * abort flags. The captions WS gateway and `LiveDocumentationService` both
@@ -59,7 +117,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
    * tear down independently (TASK-340 P1-B). A `Set` (not a single value) is
    * what prevents the 2nd subscriber from clobbering the 1st.
    */
-  private readonly activeSubscriptions = new Map<string, Set<{ abort: boolean }>>();
+  private readonly activeSubscriptions = new Map<string, Set<ResultSubscriberCtrl>>();
 
   constructor(@Optional() @Inject(IConfigService) private readonly configService?: IConfigService) {}
 
@@ -89,8 +147,30 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       host: config.host,
       port: config.port,
       password: config.password,
-      maxRetriesPerRequest: 3,
+      // TASK-457 C3-02 — do NOT drop audio after 3 retries. `null` lets a
+      // transient Redis blip queue the XADD on ioredis's FIFO offline queue and
+      // flush IN ORDER on reconnect (order-preserving at-least-once), instead
+      // of rejecting clinical speech. A permanent outage fails the session via
+      // the reader path; the audio stream stays MAXLEN-bounded regardless.
+      maxRetriesPerRequest: null,
       lazyConnect: false,
+    });
+
+    // TASK-457 M3 — with `maxRetriesPerRequest: null` a Redis outage queues
+    // audio writes silently (offline queue grows). Surface it: log reconnect
+    // attempts + errors (throttled) so an outage is visible instead of a
+    // droppedAudioFrames-stays-0 blind spot. Never throws (a listener error
+    // must not affect the data path).
+    this.writerRedis.on('error', (err: Error) => this.logWriterHealth('error', err.message));
+    this.writerRedis.on('reconnecting', () => this.logWriterHealth('reconnecting'));
+    this.writerRedis.on('ready', () => {
+      if (this.writerDegradedSince != null) {
+        this.logger.warn({
+          message: 'Audio bridge writer recovered — offline-queued audio flushing in order',
+          degradedForMs: Date.now() - this.writerDegradedSince,
+        });
+        this.writerDegradedSince = null;
+      }
     });
 
     this.readerRedis = new Redis({
@@ -107,10 +187,10 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
   }
 
   async disconnect(): Promise<void> {
-    // Abort every active reader across all sessions.
+    // Abort every active reader across all sessions (and drop their sockets).
     for (const controllers of this.activeSubscriptions.values()) {
       for (const ctrl of controllers) {
-        ctrl.abort = true;
+        this.abortSubscriber(ctrl);
       }
     }
     this.activeSubscriptions.clear();
@@ -167,7 +247,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       streamKey,
       'MAXLEN',
       '~',
-      '10000', // Cap stream at ~10K entries
+      String(AUDIO_STREAM_MAXLEN), // TASK-457 C3-06 — single source of truth
       '*', // Auto-generate entry ID
       'seq',
       String(seq),
@@ -225,9 +305,9 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
    *
    * @param sessionId - Streaming session identifier
    */
-  subscribeToResults(sessionId: string): Observable<StreamingTranscriptMessage> {
+  subscribeToResults(sessionId: string, options?: SubscribeResultOptions): Observable<StreamingTranscriptMessage> {
     const subject = new Subject<StreamingTranscriptMessage>();
-    const ctrl = { abort: false };
+    const ctrl: ResultSubscriberCtrl = { abort: false };
 
     let controllers = this.activeSubscriptions.get(sessionId);
     if (!controllers) {
@@ -238,14 +318,23 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
 
     const streamKey = `stt:result:${sessionId}`;
 
+    // TASK-457 C3-01 — read through a Redis consumer group. A role-stable
+    // group (passed by the captions gateway) resumes from the group's
+    // Redis-owned cursor across a reconnect; an omitted group defaults to a
+    // per-subscription unique name so every subscriber still gets EVERY result
+    // (fan-out), reading from the start.
+    const group = options?.consumerGroup ?? `${RESULT_CONSUMER_GROUP_PREFIX}-${this.nextSubscriptionId()}`;
+    const consumer = options?.consumerName ?? `reader-${this.nextSubscriptionId()}`;
+
     // TASK-351 P1-3 (H5) — each subscriber reads on its OWN connection so
-    // concurrent sessions never serialize behind one blocked XREAD. When the
+    // concurrent sessions never serialize behind one blocked read. When the
     // bridge is not connected, no reader starts (the observable simply never
     // emits — same posture as before).
     const reader = this.createSubscriberReader();
     if (reader) {
+      ctrl.reader = reader;
       // Start reading in background
-      this.readResultStream(streamKey, subject, ctrl, reader).catch((error) => {
+      this.readResultStream(streamKey, subject, ctrl, reader, group, consumer).catch((error) => {
         this.logger.error({
           message: 'Result stream reader error',
           sessionId,
@@ -259,7 +348,9 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       finalize(() => {
         // Tear down ONLY this subscriber's reader; siblings on the same
         // sessionId keep running until their own unsubscribe / teardown.
-        ctrl.abort = true;
+        // TASK-457 C1 — disconnect the reader NOW so it stops consuming/ACKing
+        // the shared group immediately (not after the ≤500ms BLOCK window).
+        this.abortSubscriber(ctrl);
         const set = this.activeSubscriptions.get(sessionId);
         set?.delete(ctrl);
         if (set && set.size === 0) {
@@ -270,16 +361,33 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
   }
 
   /**
+   * TASK-457 C1 — abort a subscriber's read loop AND immediately drop its
+   * dedicated connection, interrupting any in-flight blocking XREADGROUP so a
+   * dead client's reader stops consuming/ACKing the shared consumer group at
+   * once. Best-effort; the read loop's own `finally` still quits the reader.
+   */
+  private abortSubscriber(ctrl: ResultSubscriberCtrl): void {
+    ctrl.abort = true;
+    try {
+      ctrl.reader?.disconnect();
+    } catch {
+      // best-effort — the read loop's finally quits it too
+    }
+  }
+
+  /**
    * Unsubscribe from results for a session — aborts EVERY reader bound to it.
-   * Used by the captions WS gateway on disconnect/close to fully end the STT
+   * Used by the captions WS gateway on FINALIZE/close to fully end the STT
    * session. (LiveDocumentationService no longer calls this; it relies on its
-   * own Observable unsubscribe so it never cross-aborts the captions reader.)
+   * own Observable unsubscribe so it never cross-aborts the captions reader.
+   * The gateway's grace-window path likewise unsubscribes only its OWN
+   * subscription on a transient disconnect, never this session-wide teardown.)
    */
   unsubscribeFromResults(sessionId: string): void {
     const controllers = this.activeSubscriptions.get(sessionId);
     if (controllers) {
       for (const ctrl of controllers) {
-        ctrl.abort = true;
+        this.abortSubscriber(ctrl);
       }
       this.activeSubscriptions.delete(sessionId);
     }
@@ -308,100 +416,100 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     return reader;
   }
 
-  private async readResultStream(streamKey: string, subject: Subject<StreamingTranscriptMessage>, ctrl: { abort: boolean }, reader: Redis): Promise<void> {
+  /** Monotonic per-process id for default (unique) consumer group/name. */
+  private subscriptionCounter = 0;
+
+  private nextSubscriptionId(): string {
+    return `${Date.now().toString(36)}-${(this.subscriptionCounter++).toString(36)}`;
+  }
+
+  private async readResultStream(
+    streamKey: string,
+    subject: Subject<StreamingTranscriptMessage>,
+    ctrl: ResultSubscriberCtrl,
+    reader: Redis,
+    group: string,
+    consumer: string,
+  ): Promise<void> {
     try {
-      let lastId = '0-0';
+      await this.ensureResultGroup(reader, streamKey, group);
+
+      // TASK-457 C3-01 — drain our own pending (PEL, id '0') first so a
+      // reconnect re-delivers unacked results at-least-once, THEN read new
+      // (id '>'). The group's Redis-owned cursor is the persisted seed: a
+      // re-subscription with the same group resumes here, never from '0-0'.
+      let pelDrained = false;
+      let reclaimedStale = false;
 
       while (!ctrl.abort) {
         try {
-          // Blocking XREAD on this subscriber's own connection. BLOCK is
-          // 500ms (TASK-351 P1-3) so the abort flag is honored ≤ 500ms.
-          const result = await reader.xread('COUNT', 100, 'BLOCK', RESULT_STREAM_BLOCK_MS, 'STREAMS', streamKey, lastId);
+          // Hand off a dead reader's in-flight once on start (XAUTOCLAIM).
+          if (!reclaimedStale) {
+            await this.reclaimResultPending(reader, streamKey, group, consumer, subject);
+            reclaimedStale = true;
+            if (ctrl.abort) break;
+          }
 
-          if (!result || ctrl.abort) continue;
+          const readId = pelDrained ? '>' : '0';
+          // BLOCK is 500ms (TASK-351 P1-3) so the abort flag is honored ≤ 500ms.
+          const result = (await reader.xreadgroup(
+            'GROUP',
+            group,
+            consumer,
+            'COUNT',
+            100,
+            'BLOCK',
+            RESULT_STREAM_BLOCK_MS,
+            'STREAMS',
+            streamKey,
+            readId,
+          )) as Array<[string, Array<[string, string[]]>]> | null;
 
+          if (ctrl.abort) break;
+          if (!result) {
+            // With id '0' an empty reply means the PEL is drained → go live.
+            if (!pelDrained) pelDrained = true;
+            // Yield a macrotask so an instantly-returning read (a mocked or
+            // BLOCK-0 read) can never busy-loop and starve the event loop.
+            await this.yieldEventLoop();
+            continue;
+          }
+
+          const ackIds: string[] = [];
+          let delivered = 0;
           for (const [, entries] of result) {
             for (const [entryId, fields] of entries) {
-              lastId = entryId;
-
-              // Parse fields array into key-value pairs
-              const data: Record<string, string> = {};
-              for (let i = 0; i < fields.length; i += 2) {
-                data[fields[i]] = fields[i + 1];
-              }
-
-              // Check if this is a status entry (session closed)
-              if (data.type === 'status') {
-                if (data.status === 'closed' || data.status === 'finalizing') {
-                  subject.complete();
-                  return;
+              ackIds.push(entryId);
+              delivered++;
+              const terminal = this.parseAndEmitResult(subject, fields);
+              if (terminal) {
+                // Ack what we saw, then complete on closed/finalizing.
+                if (ackIds.length > 0) {
+                  await reader.xack(streamKey, group, ...ackIds).catch(() => {});
                 }
-                continue;
+                subject.complete();
+                return;
               }
-
-              // Emit transcript segment
-              const speakerId = data.speaker_id || undefined;
-              const speakerConfidence = data.speaker_confidence ? parseFloat(data.speaker_confidence) : undefined;
-              const englishText = data.english_text || data.englishText || undefined;
-
-              // TASK-351 P1-1 — additive committed-prefix length on partials.
-              // Only relayed when present and a valid non-negative integer.
-              let stableChars: number | undefined;
-              if (data.stable_chars != null && data.stable_chars !== '') {
-                const parsedStable = Number.parseInt(data.stable_chars, 10);
-                if (Number.isFinite(parsedStable) && parsedStable >= 0) {
-                  stableChars = parsedStable;
-                }
-              }
-
-              // TASK-351 P1-1 follow-up — utterance ordinal on every segment
-              // result (gloss results reuse the translated final's index).
-              let utteranceIndex: number | undefined;
-              if (data.utterance_index != null && data.utterance_index !== '') {
-                const parsedUtterance = Number.parseInt(data.utterance_index, 10);
-                if (Number.isFinite(parsedUtterance) && parsedUtterance >= 0) {
-                  utteranceIndex = parsedUtterance;
-                }
-              }
-
-              // TASK-351 P1-1 follow-up — wire `type` is 'segment' (default,
-              // may be absent on old workers) or 'gloss'; anything else is
-              // ignored so unknown future kinds stay additive.
-              const resultType = data.type === 'segment' || data.type === 'gloss' ? data.type : undefined;
-
-              // Parse word-level timestamps from Redis JSON field
-              let wordTimestamps: StreamingTranscriptMessage['wordTimestamps'] | undefined;
-              if (data.word_timestamps_json) {
-                try {
-                  const parsed = JSON.parse(data.word_timestamps_json);
-                  if (Array.isArray(parsed) && parsed.length > 0) {
-                    wordTimestamps = parsed;
-                  }
-                } catch {
-                  // Malformed JSON -- skip wordTimestamps
-                }
-              }
-
-              subject.next({
-                type: 'transcript',
-                text: data.text || '',
-                startTime: parseFloat(data.start_time || '0'),
-                endTime: parseFloat(data.end_time || '0'),
-                isFinal: data.is_final === '1',
-                ...(stableChars != null ? { stableChars } : {}),
-                ...(utteranceIndex != null ? { utteranceIndex } : {}),
-                ...(resultType ? { resultType } : {}),
-                ...(englishText ? { englishText } : {}),
-                ...(speakerId ? { speakerId } : {}),
-                ...(speakerConfidence != null && !isNaN(speakerConfidence) ? { speakerConfidence } : {}),
-                ...(wordTimestamps ? { wordTimestamps } : {}),
-              });
             }
+          }
+          // At-least-once: ack only AFTER the results were emitted.
+          if (ackIds.length > 0) {
+            await reader.xack(streamKey, group, ...ackIds).catch(() => {});
+          }
+          // id '0' returned an empty batch for this stream → PEL drained.
+          if (delivered === 0) {
+            if (!pelDrained) pelDrained = true;
+            await this.yieldEventLoop();
           }
         } catch (error) {
           if (ctrl.abort) return;
+          if (this.isNoGroupError(error)) {
+            // Stream/group trimmed away — recreate and retry.
+            await this.ensureResultGroup(reader, streamKey, group);
+            continue;
+          }
           this.logger.warn({
-            message: 'XREAD error, retrying',
+            message: 'XREADGROUP error, retrying',
             streamKey,
             error: error instanceof Error ? error.message : String(error),
           });
@@ -416,5 +524,162 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       this.subscriberReaders.delete(reader);
       await reader.quit().catch(() => {});
     }
+  }
+
+  /** Create the result consumer group (idempotent; swallows BUSYGROUP). */
+  private async ensureResultGroup(reader: Redis, streamKey: string, group: string): Promise<void> {
+    try {
+      // Create at '0' (MKSTREAM) so the first reader sees every buffered
+      // result; an existing group keeps its Redis-owned cursor (BUSYGROUP).
+      await reader.xgroup('CREATE', streamKey, group, '0', 'MKSTREAM');
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (!msg.toUpperCase().includes('BUSYGROUP')) {
+        this.logger.warn({ message: 'XGROUP CREATE failed (continuing)', streamKey, group, error: msg });
+      }
+    }
+  }
+
+  /**
+   * TASK-457 — reclaim + emit a DEAD reader's idle pending results via
+   * XAUTOCLAIM (min-idle {@link RESULT_CLAIM_MIN_IDLE_MS}), then ack them. This
+   * consumer's OWN pending is recovered separately by the initial `0` (PEL)
+   * read in {@link readResultStream}, so this one-shot claim targets only
+   * another consumer's abandoned in-flight. Non-fatal.
+   */
+  private async reclaimResultPending(
+    reader: Redis,
+    streamKey: string,
+    group: string,
+    consumer: string,
+    subject: Subject<StreamingTranscriptMessage>,
+  ): Promise<void> {
+    try {
+      const res = (await reader.xautoclaim(streamKey, group, consumer, RESULT_CLAIM_MIN_IDLE_MS, '0-0', 'COUNT', 100)) as XAutoClaimReply;
+      const claimed = Array.isArray(res) && res.length >= 2 ? res[1] : [];
+      if (!claimed || claimed.length === 0) return;
+      const ackIds: string[] = [];
+      for (const [entryId, fields] of claimed) {
+        ackIds.push(entryId);
+        if (fields) this.parseAndEmitResult(subject, fields);
+      }
+      if (ackIds.length > 0) await reader.xack(streamKey, group, ...ackIds).catch(() => {});
+    } catch (error) {
+      if (this.isNoGroupError(error)) {
+        await this.ensureResultGroup(reader, streamKey, group);
+      } else {
+        this.logger.debug({
+          message: 'XAUTOCLAIM failed (non-fatal)',
+          streamKey,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+
+  private isNoGroupError(error: unknown): boolean {
+    const msg = error instanceof Error ? error.message : String(error);
+    return msg.toUpperCase().includes('NOGROUP');
+  }
+
+  /** Yield a macrotask so an idle (empty-read) loop never starves the event loop. */
+  private yieldEventLoop(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  /**
+   * TASK-457 M3 — surface writer-connection health (throttled) so a Redis
+   * outage, which silently grows the offline write queue under
+   * `maxRetriesPerRequest: null`, is observable rather than a
+   * droppedAudioFrames-stays-0 blind spot.
+   */
+  private logWriterHealth(kind: 'error' | 'reconnecting', detail?: string): void {
+    const now = Date.now();
+    if (this.writerDegradedSince == null) this.writerDegradedSince = now;
+    if (now - this.lastWriterHealthLogAt < 5_000) return; // throttle
+    this.lastWriterHealthLogAt = now;
+    this.logger.warn({
+      message: 'Audio bridge writer Redis degraded — audio writes are being offline-queued (TASK-457 M3)',
+      kind,
+      degradedForMs: now - this.writerDegradedSince,
+      ...(detail ? { detail } : {}),
+    });
+  }
+
+  /**
+   * Parse one result-stream entry's flat field array and emit it on `subject`.
+   * Returns `true` when the entry is a terminal status (closed/finalizing) so
+   * the caller completes the stream. (Parsing unchanged from the XREAD path.)
+   */
+  private parseAndEmitResult(subject: Subject<StreamingTranscriptMessage>, fields: string[]): boolean {
+    // Parse fields array into key-value pairs
+    const data: Record<string, string> = {};
+    for (let i = 0; i < fields.length; i += 2) {
+      data[fields[i]] = fields[i + 1];
+    }
+
+    // Check if this is a status entry (session closed)
+    if (data.type === 'status') {
+      return data.status === 'closed' || data.status === 'finalizing';
+    }
+
+    // Emit transcript segment
+    const speakerId = data.speaker_id || undefined;
+    const speakerConfidence = data.speaker_confidence ? parseFloat(data.speaker_confidence) : undefined;
+    const englishText = data.english_text || data.englishText || undefined;
+
+    // TASK-351 P1-1 — additive committed-prefix length on partials.
+    // Only relayed when present and a valid non-negative integer.
+    let stableChars: number | undefined;
+    if (data.stable_chars != null && data.stable_chars !== '') {
+      const parsedStable = Number.parseInt(data.stable_chars, 10);
+      if (Number.isFinite(parsedStable) && parsedStable >= 0) {
+        stableChars = parsedStable;
+      }
+    }
+
+    // TASK-351 P1-1 follow-up — utterance ordinal on every segment
+    // result (gloss results reuse the translated final's index).
+    let utteranceIndex: number | undefined;
+    if (data.utterance_index != null && data.utterance_index !== '') {
+      const parsedUtterance = Number.parseInt(data.utterance_index, 10);
+      if (Number.isFinite(parsedUtterance) && parsedUtterance >= 0) {
+        utteranceIndex = parsedUtterance;
+      }
+    }
+
+    // TASK-351 P1-1 follow-up — wire `type` is 'segment' (default,
+    // may be absent on old workers) or 'gloss'; anything else is
+    // ignored so unknown future kinds stay additive.
+    const resultType = data.type === 'segment' || data.type === 'gloss' ? data.type : undefined;
+
+    // Parse word-level timestamps from Redis JSON field
+    let wordTimestamps: StreamingTranscriptMessage['wordTimestamps'] | undefined;
+    if (data.word_timestamps_json) {
+      try {
+        const parsed = JSON.parse(data.word_timestamps_json);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          wordTimestamps = parsed;
+        }
+      } catch {
+        // Malformed JSON -- skip wordTimestamps
+      }
+    }
+
+    subject.next({
+      type: 'transcript',
+      text: data.text || '',
+      startTime: parseFloat(data.start_time || '0'),
+      endTime: parseFloat(data.end_time || '0'),
+      isFinal: data.is_final === '1',
+      ...(stableChars != null ? { stableChars } : {}),
+      ...(utteranceIndex != null ? { utteranceIndex } : {}),
+      ...(resultType ? { resultType } : {}),
+      ...(englishText ? { englishText } : {}),
+      ...(speakerId ? { speakerId } : {}),
+      ...(speakerConfidence != null && !isNaN(speakerConfidence) ? { speakerConfidence } : {}),
+      ...(wordTimestamps ? { wordTimestamps } : {}),
+    });
+    return false;
   }
 }

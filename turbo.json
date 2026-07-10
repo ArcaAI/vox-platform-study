@@ -95,6 +95,7 @@
         "PORT",
         "STT_V2_URL",
         "STT_WS_EGRESS_HIGH_WATERMARK_BYTES",
+        "STT_WS_RESUME_GRACE_MS",
         "LLM_URL",
         "NLP_URL",
         "NLP_SERVICE_URL",

@@ -594,12 +594,16 @@ class SessionManager:
             if commit_policy is not None:
                 self._commit_policies[session_id] = commit_policy
 
-            # Wire up Redis consumers and listeners
+            # Wire up Redis consumers and listeners. TASK-457 C3-02 — the audio
+            # consumer joins a per-session consumer group under this worker's id
+            # so a crash hands its in-flight (unacked) audio off to the
+            # recovering worker via XAUTOCLAIM instead of stranding it.
             consumer = IngestionConsumer(
                 redis=self._redis,
                 session_id=session_id,
                 on_frame=self._make_frame_handler(session, preprocessor),
                 on_batch=self._make_batch_handler(session),
+                consumer_name=self._worker_id,
             )
             control_listener = ControlListener(
                 redis=self._redis,
@@ -2696,11 +2700,13 @@ class SessionManager:
 
                     self._register_inference_runtime(session, inference_worker)
 
-                    # Wire up consumers — resume from the last processed
-                    # stream entry ID persisted in the session hash
-                    # (TASK-351 P1-3). Sessions created before this field
-                    # existed (or that never processed a batch) replay
-                    # from the beginning as before.
+                    # Wire up consumers — TASK-457 C3-02: the audio consumer
+                    # group persists its own cursor in Redis, so on recovery the
+                    # new consumer resumes via XREADGROUP ">" and reclaims the
+                    # dead consumer's unacked in-flight via XAUTOCLAIM. The
+                    # persisted last_stream_id (TASK-351 P1-3) is now only the
+                    # group-create seed used if the group itself was trimmed
+                    # away; an existing group keeps its Redis-owned cursor.
                     last_id = meta.last_stream_id or "0-0"
 
                     consumer = IngestionConsumer(
@@ -2711,6 +2717,7 @@ class SessionManager:
                         ),
                         on_batch=self._make_batch_handler(session),
                         last_id=last_id,
+                        consumer_name=self._worker_id,
                     )
                     control_listener = ControlListener(
                         redis=self._redis,
