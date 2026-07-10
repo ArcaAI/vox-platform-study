@@ -46,7 +46,15 @@ _FORCE_EMIT_LOOKBACK_MS = 1500
 _FORCE_EMIT_OVERLAP_MS = 500
 _SPLIT_ENERGY_RATIO = 0.3
 
-_PARTIAL_INTERVAL_S = 1.0
+# TASK-471 A1 — default minimum wall-clock interval between successive PARTIAL
+# emissions. Lowered from the legacy hardcoded 1.0 s so newly-spoken words
+# surface in near-real-time as a tentative tail; now a constructor default,
+# overridable via settings.streaming_partial_interval_s
+# (SessionManager._build_preprocessor_vad_kwargs). The commit policy stays
+# conservative — only the not-yet-committed tail's *visibility* changes.
+_PARTIAL_INTERVAL_S = 0.4
+# Minimum buffered speech (seconds) before ANY partial — the floor is unchanged
+# (only the cadence dropped): a partial still needs >= 0.5 s of audio.
 _PARTIAL_MIN_AUDIO_S = 0.5
 # TASK-351 P0-4 (C2) — tail window decoded for partials. Bounds per-partial
 # decode cost on long utterances; finals always carry the full buffer.
@@ -122,6 +130,7 @@ class StreamingPreprocessor:
         force_emit_lookback_ms: int = _FORCE_EMIT_LOOKBACK_MS,
         force_emit_overlap_ms: int = _FORCE_EMIT_OVERLAP_MS,
         partial_window_s: float = _DEFAULT_PARTIAL_WINDOW_S,
+        partial_interval_s: float = _PARTIAL_INTERVAL_S,
     ) -> None:
         self.session_id = session_id
         self.sample_rate = sample_rate
@@ -169,6 +178,8 @@ class StreamingPreprocessor:
         self._force_emit_lookback_ms = force_emit_lookback_ms
         self._force_emit_overlap_ms = force_emit_overlap_ms
         self._partial_window_s = partial_window_s
+        # TASK-471 A1 — configurable partial cadence (lowered default).
+        self._partial_interval_s = partial_interval_s
 
         # VAD session state (LSTM hidden state)
         self._vad_state = VADSessionState(
@@ -521,7 +532,7 @@ class StreamingPreprocessor:
             return None
 
         now = time.monotonic()
-        if now - state.last_partial_emitted_at < _PARTIAL_INTERVAL_S:
+        if now - state.last_partial_emitted_at < self._partial_interval_s:
             return None
 
         # Check minimum audio duration

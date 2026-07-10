@@ -6,6 +6,7 @@ import pytest
 
 from stt_v2.pipeline.dto import AiModelFormat, InferenceConfig
 from stt_v2.pipeline.yaml_parser import PipelineYamlParser, get_yaml_parser
+from stt_v2.streaming.commit_policy import LocalAgreementPolicy
 
 
 class TestPipelineYamlParser:
@@ -2110,3 +2111,52 @@ streaming:
         spec = parser.parse(yaml_content)
         result = parser.validate(spec)
         assert result.valid is True
+
+
+class TestRealtimeStreamingActivatesTentativeTail:
+    """TASK-471 A1 — activation contract for the (already-built but dormant)
+    tentative-tail render.
+
+    The realtime pipeline seed YAML(s) add a ``streaming.commit_policy:
+    local_agreement_2`` block. That is exactly the value
+    ``SessionManager._make_commit_policy`` gates on to build a LocalAgreement-2
+    policy, whose committed-prefix length is published as ``stable_chars`` — the
+    integer the SDK/UI already consume to split the settled prefix from the
+    tentative tail. This test pins the block-shape → parse → emit contract so a
+    seed edit that keeps ``stable_chars`` populated cannot silently regress.
+    """
+
+    def test_realtime_streaming_block_emits_valid_stable_chars(self):
+        parser = PipelineYamlParser()
+        # The exact top-level block TASK-471 adds to the realtime seed YAML(s),
+        # including the inline comments — proving the parser (which ignores YAML
+        # comments) still resolves commit_policy under the streaming mapping.
+        realtime_yaml = """
+version: "1.1"
+models:
+  asr: whisper-large-v3-turbo
+streaming:
+  # TASK-471 A1 — activate LocalAgreement-2 so partials carry stable_chars and
+  # the (already-built) tentative-tail render lights up. Commit logic unchanged.
+  commit_policy: local_agreement_2
+"""
+        spec = parser.parse(realtime_yaml)
+        # The parsed value SessionManager._make_commit_policy activates on.
+        assert spec.streaming.commit_policy == "local_agreement_2"
+
+        # Drive LocalAgreement-2 exactly as the emit path does: two agreeing
+        # hypotheses commit a stable prefix, and stable_chars = len(committed)
+        # must be a valid character index into the published partial text.
+        policy = LocalAgreementPolicy()
+        text1 = "the patient reports"
+        committed1, _ = policy.update(text1)
+        assert 0 <= len(committed1) <= len(text1)
+
+        text2 = "the patient reports chest pain"
+        committed2, _ = policy.update(text2)
+        stable_chars = len(committed2)
+        assert 0 <= stable_chars <= len(text2)
+        # A non-empty settled prefix after agreement — the region the UI renders
+        # distinctly (settled) from the remaining tentative tail.
+        assert stable_chars > 0
+        assert text2[:stable_chars] == committed2

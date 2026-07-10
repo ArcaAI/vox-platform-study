@@ -517,6 +517,19 @@ class Settings(BaseSettings):
             "(TASK-351 P0-4 / C2)."
         ),
     )
+    streaming_partial_interval_s: float = Field(
+        default=0.4,
+        description=(
+            "Minimum wall-clock interval (seconds) between successive PARTIAL "
+            "transcript emissions for a live utterance (TASK-471 A1). Lowered "
+            "from the legacy hardcoded 1.0 s so newly-spoken words surface in "
+            "near-real-time as a tentative tail; the LocalAgreement-2 commit "
+            "policy still governs when a word is *committed* (unchanged). The "
+            "streaming_partial_window_s tail bound and the 0.5 s minimum-"
+            "buffered-audio floor are unaffected. The Settings class has NO "
+            "env_prefix, so the env var is the bare STREAMING_PARTIAL_INTERVAL_S."
+        ),
+    )
     streaming_result_stream_expire_s: int = Field(
         default=3600,
         description="TTL (seconds) for Redis stream keys after session closes (1 hour).",
