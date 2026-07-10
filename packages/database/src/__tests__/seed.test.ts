@@ -1243,6 +1243,20 @@ describe('STT Seed Data', () => {
                 expect(production?.tags).toContain('recommended');
             });
 
+            // TASK-485 — the DEFAULT (isDefault) pipeline must also carry the
+            // LocalAgreement-2 streaming block (parity with best-practice-realtime /
+            // turbo, TASK-471), so the tentative-tail render is active on the default
+            // clinician streaming path, not only when an explicit realtime pipeline is
+            // selected. Streaming-only; batch use is unaffected.
+            it('should activate LocalAgreement-2 on the default (production) streaming pipeline (TASK-485)', () => {
+                const production = DEFAULT_ASR_PIPELINES.find((p) => p.slug === 'production-whisper-large-v3');
+                expect(production).toBeDefined();
+                expect(production?.configYaml).toContain('streaming:');
+                expect(production?.configYaml).toMatch(
+                    /streaming:[\s\S]*?commit_policy:\s*local_agreement_2/,
+                );
+            });
+
             it('should include turbo pipeline for streaming', () => {
                 const turbo = DEFAULT_ASR_PIPELINES.find((p) => p.slug === 'turbo-whisper-large-v3');
                 expect(turbo).toBeDefined();

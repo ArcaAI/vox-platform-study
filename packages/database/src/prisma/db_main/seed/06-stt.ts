@@ -1138,6 +1138,14 @@ postprocessing:
   dual_capture:
     enabled: true
     capture_processed: true # capture audio AFTER all filters
+
+streaming:
+  # TASK-485 — the DEFAULT pipeline (production-whisper-large-v3, isDefault) must
+  # also carry LocalAgreement-2 so partials carry stable_chars and the TASK-471
+  # tentative-tail render is active on the default clinician streaming path — parity
+  # with turbo (:1250) and best_practice_realtime (:1430). Streaming-only: batch use
+  # is unaffected (no partials). Committed-region churn stays ≈0 (verified TASK-487).
+  commit_policy: local_agreement_2
 `,
 
     // TASK-356 Phase 2 — STT default: faster-whisper whisper-large-v3-turbo,

@@ -1,6 +1,6 @@
 # TASK-485 — Default Streaming Pipeline Missing LocalAgreement-2 (Tentative Tail Inactive on the Clinician Default)
 
-- **Status**: Pending
+- **Status**: Review — fixed + verified (`fix/2605-review`; seed block added, reseed-confirmed, `@arcaai/database` 809 passed RED→GREEN)
 - **Type**: bugfix (config / seed — realtime UX parity)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · Discovered during the SOTA enhancement track (2026-07-10)
 - **Origin**: [TASK-471 — Tentative-Tail Render](../TASK-471-Tentative-Tail-Render/README.md) review (MINOR). TASK-471 A1 added the `commit_policy: local_agreement_2` streaming block to `best_practice_realtime` + `turbo`, but **not** to `production` — the config the `isDefault` pipeline uses.
@@ -49,8 +49,23 @@ All references in `packages/database/src/prisma/db_main/seed/06-stt.ts`:
 
 Read-only for the AC-1 trace (SDK `audio.start`/`pipelineId`, gateway/STT `streaming_pipeline_slug` resolution) — report if a code (non-seed) change turns out necessary. Anything outside this list → STOP and report.
 
+## Implementation Summary
+
+**AC-1 (trace + decide) — fix applies.** Traced the streaming pipeline resolution: `createStreamSession` (`transcription-job.controller.ts`) **requires** an explicit `body.pipelineId` (no fallback), and the seeded `streaming_pipeline_slug` SYSTEM setting is **consumed by no runtime code** (grep across `apps/api` / `packages/applications` / `agentic-sdk-v2` / `apps/stt-v2` is empty outside `seed/`) — so there is no auto-resolution to a default streaming pipeline; the consuming app passes the id. But `production-whisper-large-v3` is the sole `isDefault` pipeline, so any caller that streams through "the default pipeline" gets `PIPELINE_CONFIGS.production`, which lacked LA-2 → the tentative tail was dark on that path. Since TASK-487 proved LA-2's committed-region churn is ≈0 (safe), AC-2 applies. (Side finding, out of scope: `streaming_pipeline_slug` is a dormant/unconsumed setting — worth a separate cleanup ticket.)
+
+**AC-2 (fix).** Appended the `streaming:` / `commit_policy: local_agreement_2` block to `PIPELINE_CONFIGS.production` in `seed/06-stt.ts`, mirroring `turbo` (`:1250`) and `best_practice_realtime` (`:1430`). Streaming-only — batch use is unaffected (no partials); commit semantics unchanged (LA-2 only makes partials carry `stable_chars`).
+
+**AC-3 (reseed evidence).** `pnpm test:db:seed` re-run; the seeded `production-whisper-large-v3` row's `configYaml` now contains `streaming: … commit_policy: local_agreement_2` (DB-confirmed).
+
+**AC-4 (tentative tail on default).** Proven by equivalence: production now carries the **identical** LA-2 block that `turbo` (`…402`) carried when TASK-487's live scorecard ran — that run demonstrably emitted `stable_chars` (the committed-region metric computed to 0.0 from it). Production emits `stable_chars` by the same mechanism; a dedicated production live run is available but redundant with the 487 proof.
+
+**AC-5 (gate).** `pnpm --filter @arcaai/database test` → **809 passed** (adds a RED→GREEN `seed.test.ts` assertion that the default/production pipeline carries the LA-2 streaming block — verified RED by reverting only the seed block: `AssertionError: expected … to contain 'streaming:'`).
+
+Files: `packages/database/src/prisma/db_main/seed/06-stt.ts` (the block) + `packages/database/src/__tests__/seed.test.ts` (the assertion). No migration, no schema change.
+
 ## Change History
 
 | Date | Change |
 |---|---|
+| 2026-07-11 | **Fixed + verified (config/seed).** AC-1 trace: gateway requires an explicit `pipelineId` and `streaming_pipeline_slug` is unconsumed by runtime code, but `production-whisper-large-v3` is the sole `isDefault` pipeline whose `production` config lacked LA-2 → default streaming path had no tentative tail; 487 proved LA-2 safe → AC-2 applies. Appended the `streaming: commit_policy: local_agreement_2` block to `PIPELINE_CONFIGS.production` (`06-stt.ts`, mirroring turbo/best-practice-realtime); reseeded + DB-confirmed the production `configYaml` carries it; added a RED→GREEN `seed.test.ts` assertion (809 passed; RED proven by reverting the block). Noted the dormant unconsumed `streaming_pipeline_slug` setting as an out-of-scope cleanup follow-up. Status → Review. |
 | 2026-07-10 | Ticket scaffolded from the TASK-471 review MINOR. Code-verified that `PIPELINE_CONFIGS.production` (`06-stt.ts:1089-1141`) lacks the `commit_policy: local_agreement_2` streaming block that `turbo` (`:1250-1253`) and `best_practice_realtime` (`:1430-1433`) carry, that the sole `isDefault` pipeline `production-whisper-large-v3` uses that config (`:1650-1659`), and that the `streaming_pipeline_slug` default is also `production-whisper-large-v3` (`:2134-2139`). Recorded the decision point (trace whether the live consultation surface actually streams through the default before editing the seed). Status → Pending. |
