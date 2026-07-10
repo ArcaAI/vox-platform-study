@@ -13,7 +13,7 @@ import { AiInferenceClient } from '../ai-inference.client';
 const axiosPost = vi.fn();
 const httpService = { axiosRef: { post: axiosPost } };
 
-const upstreamError = (status: number) => {
+const upstreamError = (status: number, data: unknown = { detail: 'unsafe input' }) => {
   const headers = new AxiosHeaders();
   const config = { headers };
   return new AxiosError('upstream failed', 'ERR_BAD_RESPONSE', config as never, {}, {
@@ -21,7 +21,7 @@ const upstreamError = (status: number) => {
     statusText: 'ERR',
     headers,
     config: config as never,
-    data: { detail: 'unsafe input' },
+    data,
   });
 };
 
@@ -118,6 +118,20 @@ describe('AiInferenceClient — proxying + errors', () => {
     const failure = await client.analyzeGuardrail({ text: 'x' }).catch((e) => e);
     expect(failure).toBeInstanceOf(HttpException);
     expect((failure as HttpException).getStatus()).toBe(422);
+  });
+
+  it('does NOT forward the raw upstream error body (PHI) to the client — status preserved, generic message', async () => {
+    // Guardrail moderates clinical text and NLP runs NER over it, so an upstream
+    // 4xx body can echo the caller's PHI. It must NOT reach the console.
+    const phiBody = { detail: 'flagged content: patient John Doe, SSN 123-45-6789, DOB 1980-01-01' };
+    axiosPost.mockRejectedValue(upstreamError(422, phiBody));
+    const failure = (await client.classifyTokens({ text: 'x' }).catch((e) => e)) as HttpException;
+    expect(failure).toBeInstanceOf(HttpException);
+    expect(failure.getStatus()).toBe(422); // status still passes through
+    const serialized = JSON.stringify(failure.getResponse());
+    expect(serialized).not.toContain('123-45-6789');
+    expect(serialized).not.toContain('John Doe');
+    expect(serialized).not.toContain('flagged content');
   });
 
   it('maps a transport error (no response) to 503', async () => {

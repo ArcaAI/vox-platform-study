@@ -10,6 +10,12 @@ const DEFAULT_NLP_URL = 'http://localhost:8864';
 const GUARDRAIL_TIMEOUT_MS = 30_000;
 const NLP_TIMEOUT_MS = 15_000;
 
+// PHI hygiene: the Guardrail/NLP upstream error body can ECHO the caller's
+// clinical text (Guardrail moderates it; NLP runs NER over it), so it is NEVER
+// forwarded to the console — only the upstream status is preserved. Mirrors the
+// smr-proxy C4-05 posture (TASK-462).
+const UPSTREAM_ERROR_MESSAGE = 'The AI inference service returned an error.';
+
 /**
  * AiInferenceClient (TASK-446) — the OUTBOUND half of the user-plane
  * `/ai/*` inference proxy that backs the Agent Playground's Guardrails and NER
@@ -98,15 +104,17 @@ export class AiInferenceClient {
   }
 
   /**
-   * Surface the Python service's own status + body when it responded, else a
-   * 503 for transport errors (DNS/connect/timeout) — same contract as
-   * AiServiceProxyClient so console error handling stays uniform.
+   * Surface the Python service's own STATUS when it responded — the upstream
+   * body is REDACTED (it can echo caller PHI; see UPSTREAM_ERROR_MESSAGE), never
+   * forwarded to the console — else a 503 for transport errors
+   * (DNS/connect/timeout).
    */
   private toHttpError(error: unknown, action: string): HttpException {
     if (isAxiosError(error) && error.response) {
-      this.logger.warn({ message: 'AI inference upstream error', action, status: error.response.status });
-      const responseBody = error.response.data ?? { message: error.message };
-      return new HttpException(responseBody as string | Record<string, unknown>, error.response.status);
+      const status = error.response.status;
+      // Log status/action only — never the upstream body (potential PHI).
+      this.logger.warn({ message: 'AI inference upstream error (body redacted — may contain PHI)', action, status });
+      return new HttpException(UPSTREAM_ERROR_MESSAGE, status);
     }
     const message = error instanceof Error ? error.message : String(error);
     this.logger.error({ message: 'AI inference transport error', action, error: message });
