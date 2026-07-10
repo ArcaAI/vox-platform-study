@@ -205,14 +205,18 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     this.socketHeartbeat.unref?.();
   }
 
-  onModuleDestroy(): void {
+  async onModuleDestroy(): Promise<void> {
     if (this.socketHeartbeat) {
       clearInterval(this.socketHeartbeat);
       this.socketHeartbeat = undefined;
     }
-    // TASK-457 C3-01 — clear any in-flight grace-window + egress timers so they
-    // don't outlive the module (they are unref'd, but tidy shutdown regardless).
-    for (const session of this.sessionsById.values()) {
+    // TASK-457 I3 — on SIGTERM / rolling deploy, best-effort FINALIZE every
+    // live + in-grace session so the upstream STT-v2 sessions (and their
+    // capacity slots) are not orphaned until the STT-v2 reaper. Clear timers,
+    // unsubscribe, and DELETE the upstream session; bounded-await the removals
+    // so a deploy tidies up without hanging shutdown.
+    const removals: Array<Promise<unknown>> = [];
+    for (const session of [...this.sessionsById.values()]) {
       if (session.graceTimer) {
         clearTimeout(session.graceTimer);
         session.graceTimer = undefined;
@@ -221,6 +225,17 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
         clearInterval(session.egressFlushTimer);
         session.egressFlushTimer = undefined;
       }
+      if (session.finalizing) continue;
+      session.finalizing = true;
+      session.resultSubscription?.unsubscribe();
+      this.bridgeService.unsubscribeFromResults(session.sessionId);
+      removals.push(this.sessionService.removeSession(session.sessionId).catch(() => {}));
+    }
+    this.sessions.clear();
+    this.sessionsById.clear();
+    if (removals.length > 0) {
+      // Bounded so shutdown never hangs on a slow/unreachable STT-v2.
+      await Promise.race([Promise.allSettled(removals), new Promise((resolve) => setTimeout(resolve, 5_000))]);
     }
   }
 
@@ -399,17 +414,33 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     this.attachMessageHandler(client, sessionId);
 
     // TASK-298 D-1 — subscribe to results ONLY after the ticket gate passes.
-    // TASK-457 C3-01 — a STABLE consumer group so the bridge resumes from the
-    // group's persisted cursor on any re-subscription (never a 0-0 re-read).
-    // Every send path reads `session.client`, so a rebind redirects output.
-    const resultSub = this.bridgeService.subscribeToResults(sessionId, { consumerGroup: WS_RESULT_CONSUMER_GROUP }).subscribe({
+    this.subscribeSessionResults(session);
+
+    // TASK-457 I1 — the async auth/lookup awaits above mean a client that
+    // sends resume/audio the instant its socket opens would race registration
+    // (NO_SESSION → dropped resume → silent freeze). Emit an explicit readiness
+    // ack AFTER registration + subscription so the client gates its first
+    // resume/audio on it (a deterministic gate, not a timing guess).
+    this.sendReady(session);
+  }
+
+  /**
+   * TASK-457 C3-01 — (re)establish the result subscription for a session.
+   * Uses the STABLE `captions` consumer group so the bridge resumes from the
+   * group's persisted cursor (never a 0-0 re-read); every send path reads
+   * `session.client`, so a rebind redirects output to the reconnected socket.
+   * Any prior subscription is torn down first (exactly one live reader).
+   */
+  private subscribeSessionResults(session: SessionInfo): void {
+    session.resultSubscription?.unsubscribe();
+    session.resultSubscription = this.bridgeService.subscribeToResults(session.sessionId, { consumerGroup: WS_RESULT_CONSUMER_GROUP }).subscribe({
       next: (msg) => {
         this.relayResult(session.client, session, msg as unknown as { type: string; isFinal?: boolean; [key: string]: unknown });
       },
       error: (err) => {
         this.logger.warn({
           message: 'Result stream error',
-          sessionId,
+          sessionId: session.sessionId,
           error: err instanceof Error ? err.message : String(err),
         });
         this.sendError(session.client, 'STREAM_ERROR', 'Result stream encountered an error');
@@ -426,8 +457,11 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
         }
       },
     });
+  }
 
-    session.resultSubscription = resultSub;
+  /** TASK-457 I1 — explicit readiness ack the client gates its first send on. */
+  private sendReady(session: SessionInfo): void {
+    this.sendJson(session.client, { type: 'ready', sessionId: session.sessionId, fromSeq: session.resultSeq + 1 });
   }
 
   /**
@@ -452,8 +486,12 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   /**
    * TASK-457 C3-01 — rebind a grace-window session to a reconnecting socket.
    * The upstream STT-v2 session and the result subscription stayed alive, so
-   * the resume buffer + seq are intact; we only swap the socket and cancel the
-   * grace timer. The client drives replay via the D-17 resume handshake.
+   * the resume buffer + seq are intact; we swap the socket, cancel the grace
+   * timer, and RE-ESTABLISH the result subscription (the transient disconnect
+   * tore down the old reader so a cross-instance reconnect wouldn't split the
+   * shared caption group — TASK-457 C1). The re-established reader resumes from
+   * the group's persisted cursor; the client drives replay via the D-17
+   * resume handshake.
    */
   private rebindSession(session: SessionInfo, client: WebSocket, stored: { userId: string; tenantId: string | null }): void {
     if (session.graceTimer) {
@@ -476,6 +514,9 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     this.publishSocketCount();
 
     this.attachMessageHandler(client, session.sessionId);
+    // Re-establish the captions reader (stable group → resumes from the
+    // persisted cursor, no 0-0 flood). Redirects to the new socket.
+    this.subscribeSessionResults(session);
 
     this.logger.log({
       message: 'WebSocket client reconnected within grace window (TASK-457 C3-01)',
@@ -484,6 +525,9 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       bufferedForReplay: session.resumeBuffer.length,
       activeSessions: this.sessions.size,
     });
+
+    // TASK-457 I1 — readiness ack so the client gates its resume on it.
+    this.sendReady(session);
   }
 
   /**
@@ -682,11 +726,24 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       return;
     }
 
-    // TASK-457 C3-01 — a TRANSIENT disconnect must NOT unsubscribe or finalize
-    // the upstream. Keep the session (resume buffer + seq + live result
-    // subscription) alive for the grace window so the SAME session can
-    // reconnect and continue — no duplicate flood, no silent freeze. Only when
-    // the window expires with no reconnect do we finalize.
+    // TASK-457 C1 — STOP this session's captions reader immediately so a dead
+    // client's reader does NOT keep consuming/ACKing the shared `captions`
+    // group for the whole grace window. Cross-instance that would split the
+    // live captions (Redis load-balances new results between the dead reader
+    // and the reconnected client's reader on the same group); on ANY instance
+    // it wastes the group's cursor. Only THIS gateway subscription is dropped
+    // (via the bridge Observable's finalize, which disconnects the reader) —
+    // NOT `unsubscribeFromResults`, which is the session-wide teardown that
+    // would also abort LiveDocumentationService. The upstream STT-v2 session
+    // stays alive; a reconnect re-establishes the reader from the persisted
+    // group cursor.
+    session.resultSubscription?.unsubscribe();
+    session.resultSubscription = undefined;
+
+    // TASK-457 C3-01 — a TRANSIENT disconnect must NOT finalize the upstream.
+    // Keep the session (resume buffer + seq + upstream STT-v2 session) alive for
+    // the grace window so the SAME session can reconnect anywhere and continue.
+    // Only when the window expires with no reconnect do we finalize.
     if (session.graceTimer) {
       clearTimeout(session.graceTimer);
     }

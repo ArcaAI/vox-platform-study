@@ -121,12 +121,13 @@ test.describe('TASK-455 AC-2 — resume-after-drop (C3-01 baseline)', () => {
         });
         handshakeAccepted = second.raw.readyState === WsCtor.OPEN;
 
-        // Settle: the gateway registers the SessionInfo + subscribes to results
-        // AFTER the socket opens (ticket consume + tenant-binding + meta lookups
-        // are async), so a resume sent instantly races ahead of registration and
-        // draws a NO_SESSION error. Wait a beat — mirroring real reconnect timing
-        // — so we capture the true resume-handshake behavior, not a race artifact.
-        await sleep(600);
+        // TASK-457 I1 — the gateway registers the SessionInfo + subscribes to
+        // results AFTER async auth/lookup, then emits an explicit {type:'ready'}
+        // ack. Gate the resume on THAT ack (deterministic) instead of a timing
+        // guess, so a resume can never race registration into a NO_SESSION.
+        // Fall back to a short settle if the server predates the ready ack.
+        const readyAck = await second.waitForMessage((raw) => raw.type === 'ready', 5_000).catch(() => null);
+        if (!readyAck) await sleep(600);
 
         // D-17 resume handshake from the last seq we saw pre-drop.
         second.sendResume(session.sessionId, lastSeq);
@@ -235,10 +236,10 @@ test.describe('TASK-455 AC-2 — resume-after-drop (C3-01 baseline)', () => {
         sessionId: session.sessionId,
         ticket: refreshed.ticket!,
       });
-      // Mirror the baseline capture: let the new socket's async registration
-      // (ticket consume + tenant-binding + meta lookups) settle before resuming,
-      // else the resume frame races ahead of registration and draws NO_SESSION.
-      await sleep(600);
+      // TASK-457 I1 — gate the resume on the explicit {type:'ready'} ack so the
+      // resume can never race the new socket's async registration into a
+      // NO_SESSION. Deterministic — not a timing guess.
+      await second.waitForMessage((raw) => raw.type === 'ready', 10_000);
       second.sendResume(session.sessionId, lastSeq);
       const resumed = await second.waitForMessage((raw) => raw.type === 'resumed', 15_000);
 
