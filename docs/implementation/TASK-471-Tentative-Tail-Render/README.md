@@ -170,8 +170,9 @@ pnpm db:generate                        → Prisma Client generated OK; no .pris
 
 Like TASK-470's live scorecard, on a running stt-v2 + gateway + Redis with the **same clinical fixture, the `best-practice-realtime` pipeline (the harness default slug), and the same `frame_ms`** (`LATENCY_FRAME_MS`, default 80). Two runs, judged by TASK-470's `apps/stt-v2/tests/integration/streaming_thresholds.json` via `assert_no_regression`:
 
-1. **Before (baseline, 1.0 s cadence)** — capture the scorecard with `STREAMING_PARTIAL_INTERVAL_S=1.0` (the legacy value) so the pre-change baseline is measured on the *same* build.
-2. **After (0.4 s cadence)** — capture the scorecard with the shipped default `STREAMING_PARTIAL_INTERVAL_S=0.4` (unset = default).
+0. **RESEED FIRST (prerequisite — else the run proves nothing).** `commit_policy: local_agreement_2` is SEED data (`06-stt.ts`); an already-seeded DB still carries the OLD `best-practice-realtime` row (`commit_policy: none`), so the harness would run with LA-2 **off** — `stable_chars` never emitted, the tentative-tail activation silently unexercised, while the cadence-driven `first_partial_ms` win still shows (env-driven) → a green scorecard that proves nothing about the shipped config. Run `pnpm test:db:seed` (test DB) / `pnpm db:seed` (dev) so the `best-practice-realtime`/`turbo` rows pick up `commit_policy`, then (re)start stt-v2. Verify: query the pipeline row and confirm `commit_policy: local_agreement_2` before measuring.
+1. **Before (baseline, 1.0 s cadence)** — capture the scorecard with `STREAMING_PARTIAL_INTERVAL_S=1.0` (the legacy value) so the pre-change baseline is measured on the *same* build. NOTE `STREAMING_PARTIAL_INTERVAL_S` is read at `SessionManager` init in the **service** process → set it on the running stt-v2 and RESTART the service between the 1.0 and 0.4 runs (it is not per-request).
+2. **After (0.4 s cadence)** — capture the scorecard with the shipped default `STREAMING_PARTIAL_INTERVAL_S=0.4` (unset = default); restart stt-v2 before this run.
 
 Pass/fail the gate on:
 - **TARGET (must improve)** — tentative-visible latency `first_partial_ms` / `ttfw_ms` materially **lower** after vs before (the free win).
