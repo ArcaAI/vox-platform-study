@@ -83,6 +83,7 @@ TASK-463 is durable clinical-data corruption that TASK-448 did not catch; the pr
 | `workflows.py` | TASK-453 (optimistic path) | TASK-458 (Wave 2) | 453 merges first |
 | `use-live-stt-session.ts` / `SttV2WebSocketClient.ts` | TASK-454 | TASK-461 (Wave 3) | 454 merges first |
 | `session_manager.py` | — (Wave 1 does not touch it) | TASK-456 then TASK-457 (Wave 2) | 456 merges before 457's Python half |
+| `packages/agentic-sdk-v2` (file-disjoint) | — | TASK-461 ∥ TASK-464 (Wave 3 / backlog) | file-disjoint (461: `SttV2WebSocketClient`/`KnowledgePipeline`; 464: `agenticStore`/`useArcaAudio`/`PluginManager`) → parallelize, no ordering |
 
 ### Orchestration contract (applies to every child ticket)
 
@@ -166,6 +167,22 @@ TASK-455 (streaming e2e + loss/latency eval harness) landed first (`90bb993d`), 
 
 **Coordination note**: 457's WS-control (`isBinary`) fix overlapped the owner's in-flight **[TASK-467](../TASK-467-STT-WS-Control-Frame-Classification/README.md)** WIP on `fix/2605-review`. Per owner decision, the 3 overlapping TASK-467 files (gateway + gateway test + resume spec) were committed standalone (`45b3ae08`) for attribution ahead of the merge; 457's superset versions then won the merge. TASK-467's 2 non-overlapping files (backpressure-spec narrative, `vitest.config.ts` test-infra) + follow-up TASK-468 remain in the owner's WIP on `fix/2605-review` (untouched by the merge).
 
+### Wave 3 (P2) — scaffolded (2026-07-10, no implementation)
+
+The two Wave 3 cleanup tickets + the split-off SMR-idempotency ticket + the SOTA enhancement track are written with code-verified evidence against the current `fix/2605-review` tree (every finding re-confirmed **OPEN** before scaffolding):
+
+| Ticket | Findings | Size | Notes |
+|---|---|---|---|
+| [TASK-461](../TASK-461-SDK-Reconnect-UX-Wire-Contract/README.md) | C6-02/03/04, C5-05 | M | SDK reconnect UX (recovered-status, terminal-failure cleanup) + shared transcript wire-contract + stable browser-NER ids. File-disjoint from TASK-464 → parallelize |
+| [TASK-462](../TASK-462-Gateway-Backend-Hygiene/README.md) | C4-05, C2-04, C5-03 (interim) | S–M | SMR error-body sanitization + PAUSE/RESUME no-op + C5-03 **interim decision only** (annotate columns + groundedness guard; the real writer is SOTA Theme C). C2-04 flagged for a possible manifest-purity split (Python vs TS) |
+| [TASK-469](../TASK-469-SMR-Idempotency/README.md) | C1-04 (residual) | M | **Split off TASK-458** — the SMR idempotency-key closure (harness sender + SMR receiver). TASK-458 narrowed retries but left the worker-crash re-invoke open (documented at `activities.py:322-327`). Supersedes TASK-466 AC-3. Replay-safe (activity-body only) |
+
+**Already done — NOT scaffolded** (re-verified CLOSED against the tree): **C3-06** (single MAXLEN source of truth — closed by [TASK-457](../TASK-457-Redis-Consumer-Groups/README.md): `AUDIO_STREAM_MAXLEN = 10000` in `streamingAudioBridge.service.ts`) and **C1-06** (policy-fetch failure sets `reduced_assurance` — closed by [TASK-458](../TASK-458-Harness-Idempotency-Escalation/README.md): `workflows.py:259-279`). C1-05 (escalation notify) also shipped in TASK-458; its receiver half is [TASK-466](../TASK-466-Harness-Callback-Consumption/README.md).
+
+**[SOTA enhancement track](../SOTA-Track/README.md)** scaffolded: six themes (F streaming-eval gate · A streaming ASR · B diarization · C clinical NER+linker · D live guardrails · E harness lineage/eval) mapped to 14 candidate tickets (suggested TASK-470…483) with per-theme scope/size/value/risk/deps and a measurement-first sequencing (Theme F gates A/C; E1 after C lands). Theme C (TASK-476) is the real close of C5-03.
+
+**Suggested sequencing**: close Wave 3 (TASK-461/462/469) → SOTA Theme F (measurement gate) → parallel A1/C/D → gated A2·A3/B → Theme E.
+
 ## Change History
 
 | Date | Change |
@@ -176,3 +193,4 @@ TASK-455 (streaming e2e + loss/latency eval harness) landed first (`90bb993d`), 
 | 2026-07-09 | Wave 2 fully scaffolded (TASK-456/457/458/459/460) from 5 code-verified scouts; no implementation. Six register refinements recorded (dead configs, PHI-scope, false comment, asymmetric resume). Sequencing + replay-safety + cross-stream ordering documented. |
 | 2026-07-10 | Wave 2 Batch 1 executed + landed: TASK-456/458/459/460 (TDD, adversarial review — TASK-456 through a Critical rework + 2 re-reviews). Merged to `fix/2605-review` (`a786aa23`, 31 files; combined build 8/8). Discovered TASK-465 + TASK-466 (receiver halves). Batch 2 (TASK-455 → 457, live stack) pending a go/infra decision. |
 | 2026-07-10 | **Wave 2 Batch 2 executed + landed — Wave 2 complete.** TASK-455 eval harness landed (`90bb993d`, plain-XREAD baseline). TASK-457 consumer-groups migration (critical path) implemented in an isolated worktree, adversarially reviewed (Critical multi-replica caption-split + 3 Important + minors; all fixed except deferred I2 seq-dedup), and **live-validated** on a running stack (resume e2e TARGET green: `fromSeq=lastSeq+1`, ready-ack, no dup flood, no freeze). Merged to `fix/2605-review` (`b2645dc6`, `--no-ff`, 13 files). Overlapping WS-control fix committed standalone as TASK-467 (`45b3ae08`) for attribution before the merge; 457's superset won. Mid-run blocker resolved: the HF model-cache drive (`/Volumes/aillusion`, `HF_HOME`) detached and was re-attached by the owner, enabling the live validation. |
+| 2026-07-10 | **Wave 3 + SOTA scaffolded; C3-06/C1-06 confirmed already done; SMR idempotency split to TASK-469.** Wrote [TASK-461](../TASK-461-SDK-Reconnect-UX-Wire-Contract/README.md) (SDK reconnect UX + wire contract — C6-02/03/04, C5-05), [TASK-462](../TASK-462-Gateway-Backend-Hygiene/README.md) (gateway/backend hygiene — C4-05, C2-04, C5-03 interim), and the split-off [TASK-469](../TASK-469-SMR-Idempotency/README.md) (SMR idempotency-key closure of C1-04, supersedes TASK-466 AC-3) — all code-verified OPEN against `fix/2605-review`. C3-06 (closed by TASK-457) + C1-06 (closed by TASK-458) re-verified CLOSED → NOT scaffolded. [SOTA-Track](../SOTA-Track/README.md) scaffolded (6 themes → suggested TASK-470…483, measurement-gated). 464↔461 file-disjoint ledger row added. No implementation. |
