@@ -44,15 +44,7 @@ import { Controller, Get, RequestMethod, type DynamicModule, type INestApplicati
 import { Test } from '@nestjs/testing';
 import { ClsModule } from 'nestjs-cls';
 import request from 'supertest';
-import {
-  Authorize,
-  IApiKeyService,
-  PolicyEngine,
-  Public,
-  REQUIRED_PERMISSIONS_KEY,
-  SKIP_AUTH_KEY,
-  UnifiedAuthGuard,
-} from '@arcaai/applications';
+import { Authorize, IApiKeyService, PolicyEngine, Public, REQUIRED_PERMISSIONS_KEY, SKIP_AUTH_KEY, UnifiedAuthGuard } from '@arcaai/applications';
 import { AppModule } from '../../src/app.module';
 
 // Side-effect import — applies @Public() to third-party controllers.
@@ -85,7 +77,7 @@ function collectControllerClasses(rootModule: ModuleLike): ControllerClass[] {
   const out: ControllerClass[] = [];
 
   const visit = (mod: ModuleLike | unknown): void => {
-    if (!mod || typeof mod !== 'object' && typeof mod !== 'function') return;
+    if (!mod || (typeof mod !== 'object' && typeof mod !== 'function')) return;
     if (seen.has(mod)) return;
     seen.add(mod);
 

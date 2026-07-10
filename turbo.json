@@ -36,7 +36,7 @@
         "test": {
             "dependsOn": ["build"],
             "outputs": [],
-            "inputs": ["src/**/*.tsx", "src/**/*.ts", "__tests__/**/*.ts", "__tests__/**/*.tsx", "test/**/*.ts", "test/**/*.tsx"]
+            "inputs": ["src/**/*.tsx", "src/**/*.ts", "__tests__/**/*.ts", "__tests__/**/*.tsx", "test/**/*.ts", "test/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx"]
         },
         "test:watch": {
             "cache": false,

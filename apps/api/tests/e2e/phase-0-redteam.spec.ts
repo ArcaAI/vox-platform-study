@@ -30,9 +30,7 @@ test.describe('Phase 0 — Item 1+2: mass-assignment chain', () => {
     });
     expect(configs.status(), 'tenant config fetch failed').toBe(200);
     const body = await configs.json();
-    const unlocked = body.data.find(
-      (c: { locked?: boolean; version?: number }) => c.locked !== true,
-    );
+    const unlocked = body.data.find((c: { locked?: boolean; version?: number }) => c.locked !== true);
     expect(unlocked, 'no unlocked GlobalSetting found for doctor — test seed gap').toBeDefined();
     doctorTenantConfigId = unlocked.id;
     doctorTenantConfigVersion = unlocked.version;

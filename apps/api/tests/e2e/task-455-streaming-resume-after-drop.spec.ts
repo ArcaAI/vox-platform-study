@@ -131,10 +131,7 @@ test.describe('TASK-455 AC-2 — resume-after-drop (C3-01 baseline)', () => {
 
         // D-17 resume handshake from the last seq we saw pre-drop.
         second.sendResume(session.sessionId, lastSeq);
-        resumeReply = await second.waitForMessage(
-          (raw) => raw.type === 'resumed' || raw.type === 'resume_failed',
-          8_000,
-        );
+        resumeReply = await second.waitForMessage((raw) => raw.type === 'resumed' || raw.type === 'resume_failed', 8_000);
         noSessionErrorOnResume = second.errors.some((e) => e.code === 'NO_SESSION');
 
         // Anything replayed with seq <= lastSeq is a true resume replay.
@@ -160,15 +157,11 @@ test.describe('TASK-455 AC-2 — resume-after-drop (C3-01 baseline)', () => {
       baseline.transcriptsAfterResume = postResumeTranscripts.length;
       baseline.reconnectMessageTypesFromGateway = reconnectMessageTypes;
       baseline.resumeActuallyReplayedFromLastSeq =
-        resumeReply?.type === 'resumed' &&
-        typeof resumeReply.fromSeq === 'number' &&
-        (resumeReply.fromSeq as number) > lastSeq;
+        resumeReply?.type === 'resumed' && typeof resumeReply.fromSeq === 'number' && (resumeReply.fromSeq as number) > lastSeq;
       // C3-01 signatures, recorded for TASK-457 to diff against.
       baseline.c3_01_silent_freeze = postResumeTranscripts.length === 0;
       baseline.c3_01_no_replay = replayedPreDrop === 0;
-      baseline.c3_01_duplicate_flood =
-        postResumeTranscripts.some((t) => typeof t.seq === 'number' && (t.seq as number) <= lastSeq) &&
-        lastSeq > 0;
+      baseline.c3_01_duplicate_flood = postResumeTranscripts.some((t) => typeof t.seq === 'number' && (t.seq as number) <= lastSeq) && lastSeq > 0;
       // DISCOVERED DEFECT (surfaced by this gate): the gateway never answers the
       // D-17 resume handshake and never re-emits a control reply. The gateway
       // reads WS frames with `Buffer.isBuffer(rawData)` to split audio vs JSON,
@@ -178,9 +171,7 @@ test.describe('TASK-455 AC-2 — resume-after-drop (C3-01 baseline)', () => {
       // "recovery" seen on reconnect is purely the subscription re-reading the
       // result stream from offset 0 (the duplicate flood). Reported to TASK-457.
       baseline.finding_control_frames_ignored =
-        !reconnectMessageTypes.includes('resumed') &&
-        !reconnectMessageTypes.includes('resume_failed') &&
-        !noSessionErrorOnResume;
+        !reconnectMessageTypes.includes('resumed') && !reconnectMessageTypes.includes('resume_failed') && !noSessionErrorOnResume;
 
       await testInfo.attach('resume-after-drop-baseline', {
         body: JSON.stringify(baseline, null, 2),
@@ -206,60 +197,57 @@ test.describe('TASK-455 AC-2 — resume-after-drop (C3-01 baseline)', () => {
   // `.fixme` and this becomes the regression gate. Do not green-wash by
   // deleting it.
   // ---------------------------------------------------------------------------
-  test(
-    'TARGET (TASK-457): resumes from lastSeq with no duplicate flood and no silent freeze',
-    async ({ request }) => {
-      test.setTimeout(150_000);
-      const created = await createStreamSession(request, { token });
-      test.skip(!created.ok, `streaming session unavailable: ${created.ok ? '' : created.reason}`);
-      const session = (created as { ok: true; session: StreamSessionInfo }).session;
+  test('TARGET (TASK-457): resumes from lastSeq with no duplicate flood and no silent freeze', async ({ request }) => {
+    test.setTimeout(150_000);
+    const created = await createStreamSession(request, { token });
+    test.skip(!created.ok, `streaming session unavailable: ${created.ok ? '' : created.reason}`);
+    const session = (created as { ok: true; session: StreamSessionInfo }).session;
 
-      const pcm = loadPcm16(undefined, { maxSeconds: PRE_DROP_SECONDS + POST_RESUME_SECONDS });
-      const frameBytesPer = Math.floor((16000 * 80) / 1000) * 2;
-      const preDropFrames = Math.floor((PRE_DROP_SECONDS * 16000 * 2) / frameBytesPer);
+    const pcm = loadPcm16(undefined, { maxSeconds: PRE_DROP_SECONDS + POST_RESUME_SECONDS });
+    const frameBytesPer = Math.floor((16000 * 80) / 1000) * 2;
+    const preDropFrames = Math.floor((PRE_DROP_SECONDS * 16000 * 2) / frameBytesPer);
 
-      const first = await openStreamSocket(WsCtor, {
-        wsFullUrl: session.wsFullUrl,
-        sessionId: session.sessionId,
-        ticket: session.ticket,
-      });
-      await feedFramesRealtime(first, pcm.subarray(0, preDropFrames * frameBytesPer), { frameMs: 80 });
-      await first.waitForTranscripts(1, 25_000);
-      const lastSeq = first.lastSeq();
-      first.drop();
-      await sleep(500);
+    const first = await openStreamSocket(WsCtor, {
+      wsFullUrl: session.wsFullUrl,
+      sessionId: session.sessionId,
+      ticket: session.ticket,
+    });
+    await feedFramesRealtime(first, pcm.subarray(0, preDropFrames * frameBytesPer), { frameMs: 80 });
+    await first.waitForTranscripts(1, 25_000);
+    const lastSeq = first.lastSeq();
+    first.drop();
+    await sleep(500);
 
-      const refreshed = await refreshStreamTicket(request, token, session.sessionId);
-      expect(refreshed.status).toBe(200);
-      const second = await openStreamSocket(WsCtor, {
-        wsOrigin: session.wsOrigin,
-        sessionId: session.sessionId,
-        ticket: refreshed.ticket!,
-      });
-      // TASK-457 I1 — gate the resume on the explicit {type:'ready'} ack so the
-      // resume can never race the new socket's async registration into a
-      // NO_SESSION. Deterministic — not a timing guess.
-      await second.waitForMessage((raw) => raw.type === 'ready', 10_000);
-      second.sendResume(session.sessionId, lastSeq);
-      const resumed = await second.waitForMessage((raw) => raw.type === 'resumed', 15_000);
+    const refreshed = await refreshStreamTicket(request, token, session.sessionId);
+    expect(refreshed.status).toBe(200);
+    const second = await openStreamSocket(WsCtor, {
+      wsOrigin: session.wsOrigin,
+      sessionId: session.sessionId,
+      ticket: refreshed.ticket!,
+    });
+    // TASK-457 I1 — gate the resume on the explicit {type:'ready'} ack so the
+    // resume can never race the new socket's async registration into a
+    // NO_SESSION. Deterministic — not a timing guess.
+    await second.waitForMessage((raw) => raw.type === 'ready', 10_000);
+    second.sendResume(session.sessionId, lastSeq);
+    const resumed = await second.waitForMessage((raw) => raw.type === 'resumed', 15_000);
 
-      // (1) resume acknowledges continuation from the next unseen seq.
-      expect(resumed?.type).toBe('resumed');
-      expect(Number(resumed?.fromSeq)).toBe(lastSeq + 1);
+    // (1) resume acknowledges continuation from the next unseen seq.
+    expect(resumed?.type).toBe('resumed');
+    expect(Number(resumed?.fromSeq)).toBe(lastSeq + 1);
 
-      // (2) no duplicate flood: nothing with seq <= lastSeq is re-delivered.
-      const duplicates = second.transcripts.filter((t) => typeof t.seq === 'number' && t.seq <= lastSeq);
-      expect(duplicates, 'no transcript with seq <= lastSeq may be re-delivered').toHaveLength(0);
+    // (2) no duplicate flood: nothing with seq <= lastSeq is re-delivered.
+    const duplicates = second.transcripts.filter((t) => typeof t.seq === 'number' && t.seq <= lastSeq);
+    expect(duplicates, 'no transcript with seq <= lastSeq may be re-delivered').toHaveLength(0);
 
-      // (3) no silent freeze: new transcripts continue after resume.
-      await feedFramesRealtime(second, pcm.subarray(preDropFrames * frameBytesPer), { frameMs: 80 });
-      const flowed = await second.waitForTranscripts(1, 15_000);
-      expect(flowed, 'transcripts must continue flowing after resume (no freeze)').toBe(true);
+    // (3) no silent freeze: new transcripts continue after resume.
+    await feedFramesRealtime(second, pcm.subarray(preDropFrames * frameBytesPer), { frameMs: 80 });
+    const flowed = await second.waitForTranscripts(1, 15_000);
+    expect(flowed, 'transcripts must continue flowing after resume (no freeze)').toBe(true);
 
-      second.close();
-      await closeStreamSession(request, token, session.sessionId);
-    },
-  );
+    second.close();
+    await closeStreamSession(request, token, session.sessionId);
+  });
 });
 
 function sleep(ms: number): Promise<void> {

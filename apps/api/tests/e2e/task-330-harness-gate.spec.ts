@@ -108,9 +108,7 @@ test.describe('TASK-330 — the HITL signing gate is not bypassable', () => {
     // The clinician approve endpoint is the SINGLE path that writes a SIGNED_NOTE
     // + ATTEST + flips status → SIGNED. It is JWT-guarded, so a SIGNED_NOTE can
     // never be produced anonymously.
-    const response = await request.post(
-      '/api/v1/consultations/e2e-consult-1/summary/e2e-ctx-1/approve',
-    );
+    const response = await request.post('/api/v1/consultations/e2e-consult-1/summary/e2e-ctx-1/approve');
     expect(response.status(), 'approve must require authentication').toBe(401);
   });
 });
@@ -149,10 +147,7 @@ test.describe('TASK-330 — full harness loop (gate not bypassable + provenance 
     // review. The list endpoint is `:id/summary` (singular). (sensorScores /
     // citationsMap are persisted on SummaryMeta and asserted at the
     // unit/integration layer; this endpoint returns the draft context items.)
-    const summaries = await request.get(
-      `/api/v1/consultations/${consultationId}/summary`,
-      { headers: auth },
-    );
+    const summaries = await request.get(`/api/v1/consultations/${consultationId}/summary`, { headers: auth });
     expect(summaries.status()).toBe(200);
     const body = await summaries.json();
     const items = Array.isArray(body) ? body : (body.data ?? []);
@@ -165,10 +160,7 @@ test.describe('TASK-330 — full harness loop (gate not bypassable + provenance 
     const contextItemId = process.env.HARNESS_E2E_CONTEXT_ITEM_ID ?? '';
     expect(contextItemId, 'set HARNESS_E2E_CONTEXT_ITEM_ID to the draft ctx id').not.toBe('');
 
-    const approve = await request.post(
-      `/api/v1/consultations/${consultationId}/summary/${contextItemId}/approve`,
-      { headers: auth },
-    );
+    const approve = await request.post(`/api/v1/consultations/${consultationId}/summary/${contextItemId}/approve`, { headers: auth });
     expect(approve.status(), 'authenticated approve must succeed').toBe(201);
 
     const detail = await request.get(`/api/v1/consultations/${consultationId}`, { headers: auth });
@@ -211,28 +203,25 @@ test.describe('TASK-330 Phase 2 — a safety FLAG forces review (never auto-appr
     // 1) The harness persists a draft whose inferential safety screen FLAGGED it
     //    (gate decision FLAG + the safety guardrail-decision detail), over the
     //    service-token channel — the system-of-record write the loop performs.
-    const draftRes = await request.post(
-      `/api/v1/internal/harness/consultations/${FLAG_CONSULT_ID}/draft`,
-      {
-        headers: { 'X-Service-Token': SERVICE_TOKEN },
-        data: {
-          tenantId: FLAG_TENANT_ID,
-          content: '{"subjective":"s","objective":"o","assessment":"a","plan":"p"}',
-          gateDecision: 'FLAG',
-          guardrailDecisions: {
-            safety: {
-              decision: 'FLAG',
-              passed: false,
-              unsafe: true,
-              flaggedDimensions: ['violence'],
-              dimensions: { violence: true, harm: false },
-              model: 'granite-guardian-4.1-8b',
-            },
-            groundedness: { decision: 'PASS', passed: true },
+    const draftRes = await request.post(`/api/v1/internal/harness/consultations/${FLAG_CONSULT_ID}/draft`, {
+      headers: { 'X-Service-Token': SERVICE_TOKEN },
+      data: {
+        tenantId: FLAG_TENANT_ID,
+        content: '{"subjective":"s","objective":"o","assessment":"a","plan":"p"}',
+        gateDecision: 'FLAG',
+        guardrailDecisions: {
+          safety: {
+            decision: 'FLAG',
+            passed: false,
+            unsafe: true,
+            flaggedDimensions: ['violence'],
+            dimensions: { violence: true, harm: false },
+            model: 'granite-guardian-4.1-8b',
           },
+          groundedness: { decision: 'PASS', passed: true },
         },
       },
-    );
+    });
     expect(draftRes.status(), 'authenticated draft write must succeed').toBeLessThan(300);
 
     // 2) A FLAG must stop at the human gate — the note is forced into review and

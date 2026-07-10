@@ -37,11 +37,7 @@
  * before any progress data is consulted.
  */
 import { test, expect } from '@playwright/test';
-import {
-    DEFAULT_TENANT_KEY,
-    SEEDED_USERS,
-    loginUser,
-} from '../../../../tests/helpers';
+import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
 /**
  * Seeded `GEN_COMPLETED` consultation id from
@@ -58,78 +54,66 @@ const GEN_COMPLETED_CONSULTATION_ID = '90000000-0000-0000-0000-000000000001';
 const SYNTHETIC_CONSULTATION_ID = '018f0000-0000-7000-8000-000000000001';
 
 test.describe('TASK-348 TG-4 — harness-progress stream cross-tenant probes', () => {
-    let doctorToken: string;
-    let arcaaiSuperAdminToken: string;
+  let doctorToken: string;
+  let arcaaiSuperAdminToken: string;
 
-    test.beforeAll(async ({ request }) => {
-        const doctorLogin = await loginUser(
-            request,
-            SEEDED_USERS.doctor.username,
-            SEEDED_USERS.doctor.password,
-            DEFAULT_TENANT_KEY,
-        );
-        expect(doctorLogin, 'doctor login (__GLOBAL__) failed').toBeTruthy();
-        doctorToken = doctorLogin!.token;
+  test.beforeAll(async ({ request }) => {
+    const doctorLogin = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);
+    expect(doctorLogin, 'doctor login (__GLOBAL__) failed').toBeTruthy();
+    doctorToken = doctorLogin!.token;
 
-        // super_admin re-logged with tenantKey=ARCAAI binds the JWT to tenant
-        // ARCAAI — every guard read of `cls.get('tenantId')` sees the ARCAAI
-        // id, so probing a __GLOBAL__-owned consultation must 404.
-        const arcaaiLogin = await loginUser(
-            request,
-            SEEDED_USERS.superAdmin.username,
-            SEEDED_USERS.superAdmin.password,
-            'ARCAAI',
-        );
-        expect(arcaaiLogin, 'super_admin login (ARCAAI) failed').toBeTruthy();
-        arcaaiSuperAdminToken = arcaaiLogin!.token;
+    // super_admin re-logged with tenantKey=ARCAAI binds the JWT to tenant
+    // ARCAAI — every guard read of `cls.get('tenantId')` sees the ARCAAI
+    // id, so probing a __GLOBAL__-owned consultation must 404.
+    const arcaaiLogin = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');
+    expect(arcaaiLogin, 'super_admin login (ARCAAI) failed').toBeTruthy();
+    arcaaiSuperAdminToken = arcaaiLogin!.token;
+  });
+
+  test('creator (doctor in __GLOBAL__) can resolve the consultation — sanity for the cross-tenant assertion', async ({ request }) => {
+    const response = await request.get(`/api/v1/consultations/${GEN_COMPLETED_CONSULTATION_ID}`, {
+      headers: { Authorization: `Bearer ${doctorToken}` },
     });
+    expect(response.status()).toBe(200);
+  });
 
-    test('creator (doctor in __GLOBAL__) can resolve the consultation — sanity for the cross-tenant assertion', async ({ request }) => {
-        const response = await request.get(
-            `/api/v1/consultations/${GEN_COMPLETED_CONSULTATION_ID}`,
-            { headers: { Authorization: `Bearer ${doctorToken}` } },
-        );
-        expect(response.status()).toBe(200);
+  test('GET /consultations/:id/harness-progress/stream from tenant ARCAAI → not 200 (no SSE channel leak)', async ({ request }) => {
+    const response = await request.get(`/api/v1/consultations/${GEN_COMPLETED_CONSULTATION_ID}/harness-progress/stream`, {
+      headers: { Authorization: `Bearer ${arcaaiSuperAdminToken}` },
     });
+    // The SSE handler must reject before opening the stream. We accept
+    // 401 (stream-ticket path rejecting) or 404 (pre-stream guard) —
+    // either is the no-leak contract (mirrors the consultation-job spec).
+    expect([401, 404]).toContain(response.status());
+    const body = await response.json();
+    expect(String(body.message ?? '')).not.toMatch(/tenant/i);
+  });
 
-    test('GET /consultations/:id/harness-progress/stream from tenant ARCAAI → not 200 (no SSE channel leak)', async ({ request }) => {
-        const response = await request.get(
-            `/api/v1/consultations/${GEN_COMPLETED_CONSULTATION_ID}/harness-progress/stream`,
-            { headers: { Authorization: `Bearer ${arcaaiSuperAdminToken}` } },
-        );
-        // The SSE handler must reject before opening the stream. We accept
-        // 401 (stream-ticket path rejecting) or 404 (pre-stream guard) —
-        // either is the no-leak contract (mirrors the consultation-job spec).
-        expect([401, 404]).toContain(response.status());
-        const body = await response.json();
-        expect(String(body.message ?? '')).not.toMatch(/tenant/i);
+  test('POST /auth/stream-ticket for consultation_harness_progress:<id> from tenant ARCAAI → 404 (TASK-348 MIN-1 mint-time ownership)', async ({
+    request,
+  }) => {
+    const response = await request.post('/api/v1/auth/stream-ticket', {
+      headers: { Authorization: `Bearer ${arcaaiSuperAdminToken}` },
+      data: { scope: `consultation_harness_progress:${GEN_COMPLETED_CONSULTATION_ID}` },
     });
+    expect(response.status()).toBe(404);
+    const body = await response.json();
+    expect(String(body.message ?? '')).not.toMatch(/tenant/i);
+  });
 
-    test('POST /auth/stream-ticket for consultation_harness_progress:<id> from tenant ARCAAI → 404 (TASK-348 MIN-1 mint-time ownership)', async ({ request }) => {
-        const response = await request.post('/api/v1/auth/stream-ticket', {
-            headers: { Authorization: `Bearer ${arcaaiSuperAdminToken}` },
-            data: { scope: `consultation_harness_progress:${GEN_COMPLETED_CONSULTATION_ID}` },
-        });
-        expect(response.status()).toBe(404);
-        const body = await response.json();
-        expect(String(body.message ?? '')).not.toMatch(/tenant/i);
+  test('synthetic uuidv7 consultation id → 404 (DEF-C3: same shape as cross-tenant 404)', async ({ request }) => {
+    const response = await request.get(`/api/v1/consultations/${SYNTHETIC_CONSULTATION_ID}/harness-progress/stream`, {
+      headers: { Authorization: `Bearer ${doctorToken}` },
     });
+    expect(response.status()).toBe(404);
+    const body = await response.json();
+    expect(String(body.message ?? '')).not.toMatch(/tenant/i);
+  });
 
-    test('synthetic uuidv7 consultation id → 404 (DEF-C3: same shape as cross-tenant 404)', async ({ request }) => {
-        const response = await request.get(
-            `/api/v1/consultations/${SYNTHETIC_CONSULTATION_ID}/harness-progress/stream`,
-            { headers: { Authorization: `Bearer ${doctorToken}` } },
-        );
-        expect(response.status()).toBe(404);
-        const body = await response.json();
-        expect(String(body.message ?? '')).not.toMatch(/tenant/i);
+  test('after cross-tenant probes, the doctor in __GLOBAL__ still sees the consultation (no collateral damage)', async ({ request }) => {
+    const response = await request.get(`/api/v1/consultations/${GEN_COMPLETED_CONSULTATION_ID}`, {
+      headers: { Authorization: `Bearer ${doctorToken}` },
     });
-
-    test('after cross-tenant probes, the doctor in __GLOBAL__ still sees the consultation (no collateral damage)', async ({ request }) => {
-        const response = await request.get(
-            `/api/v1/consultations/${GEN_COMPLETED_CONSULTATION_ID}`,
-            { headers: { Authorization: `Bearer ${doctorToken}` } },
-        );
-        expect(response.status()).toBe(200);
-    });
+    expect(response.status()).toBe(200);
+  });
 });

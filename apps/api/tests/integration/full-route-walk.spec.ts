@@ -89,7 +89,7 @@ function mapRequestMethod(code: number): DiscoveredRoute['httpMethod'] | null {
   }
 }
 
-function readControllerPath(controllerClass: Function): string {
+function readControllerPath(controllerClass: object): string {
   const raw = Reflect.getMetadata(PATH_METADATA, controllerClass);
   if (typeof raw === 'string') return raw;
   if (Array.isArray(raw) && raw.length > 0 && typeof raw[0] === 'string') return raw[0];

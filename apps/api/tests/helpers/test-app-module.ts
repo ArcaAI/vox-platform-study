@@ -115,13 +115,7 @@ import { Test, type TestingModuleBuilder } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
 import type { ConnectionOptions } from 'bullmq';
 
-import {
-  IAppSettingsService,
-  IRedisCacheService,
-  IRedisService,
-  IServiceHealthMonitoringService,
-  SecretsService,
-} from '@arcaai/applications';
+import { IAppSettingsService, IRedisCacheService, IRedisService, IServiceHealthMonitoringService, SecretsService } from '@arcaai/applications';
 import { JobQueue } from '@arcaai/domains';
 import { AppModule } from '../../src/app.module';
 

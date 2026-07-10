@@ -53,12 +53,7 @@ test.describe('Auth Advanced Controller', () => {
     });
 
     test('should return new token pair for valid refresh token', async ({ request }) => {
-      const loginResult = await loginUser(
-        request,
-        SEEDED_USERS.admin.username,
-        SEEDED_USERS.admin.password,
-        '__GLOBAL__',
-      );
+      const loginResult = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, '__GLOBAL__');
       expect(loginResult, 'tenant_admin login failed').toBeTruthy();
 
       const response = await request.post('/api/v1/auth/refresh', {
@@ -76,12 +71,7 @@ test.describe('Auth Advanced Controller', () => {
     });
 
     test('should return a working JWT from refreshed token', async ({ request }) => {
-      const loginResult = await loginUser(
-        request,
-        SEEDED_USERS.admin.username,
-        SEEDED_USERS.admin.password,
-        '__GLOBAL__',
-      );
+      const loginResult = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, '__GLOBAL__');
       expect(loginResult, 'tenant_admin login failed').toBeTruthy();
 
       const refreshResponse = await request.post('/api/v1/auth/refresh', {
@@ -104,12 +94,7 @@ test.describe('Auth Advanced Controller', () => {
     });
 
     test('should generate different refresh tokens each time', async ({ request }) => {
-      const loginResult = await loginUser(
-        request,
-        SEEDED_USERS.admin.username,
-        SEEDED_USERS.admin.password,
-        '__GLOBAL__',
-      );
+      const loginResult = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, '__GLOBAL__');
       expect(loginResult, 'tenant_admin login failed').toBeTruthy();
 
       const firstRefresh = await request.post('/api/v1/auth/refresh', {
@@ -142,12 +127,7 @@ test.describe('Auth Advanced Controller', () => {
     });
 
     test('should reject non-admin users from impersonating', async ({ request }) => {
-      const doctorLogin = await loginUser(
-        request,
-        SEEDED_USERS.doctor.username,
-        SEEDED_USERS.doctor.password,
-        '__GLOBAL__',
-      );
+      const doctorLogin = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, '__GLOBAL__');
       expect(doctorLogin, 'doctor login failed').toBeTruthy();
 
       const response = await request.post('/api/v1/auth/impersonate', {
@@ -161,11 +141,7 @@ test.describe('Auth Advanced Controller', () => {
     });
 
     test('should allow super admin to impersonate a doctor', async ({ request }) => {
-      const superAdminLogin = await loginUser(
-        request,
-        SEEDED_USERS.superAdmin.username,
-        SEEDED_USERS.superAdmin.password,
-      );
+      const superAdminLogin = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
       expect(superAdminLogin, 'super_admin login failed').toBeTruthy();
 
       const response = await request.post('/api/v1/auth/impersonate', {
@@ -186,11 +162,7 @@ test.describe('Auth Advanced Controller', () => {
     });
 
     test('should reject impersonation of non-existent user', async ({ request }) => {
-      const superAdminLogin = await loginUser(
-        request,
-        SEEDED_USERS.superAdmin.username,
-        SEEDED_USERS.superAdmin.password,
-      );
+      const superAdminLogin = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
       expect(superAdminLogin, 'super_admin login failed').toBeTruthy();
 
       const nonExistentUserId = '99999999-9999-9999-9999-999999999999';
@@ -204,11 +176,7 @@ test.describe('Auth Advanced Controller', () => {
     });
 
     test('should return a working JWT for the impersonated user', async ({ request }) => {
-      const superAdminLogin = await loginUser(
-        request,
-        SEEDED_USERS.superAdmin.username,
-        SEEDED_USERS.superAdmin.password,
-      );
+      const superAdminLogin = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
       expect(superAdminLogin, 'super_admin login failed').toBeTruthy();
 
       const impersonateResponse = await request.post('/api/v1/auth/impersonate', {
@@ -231,11 +199,7 @@ test.describe('Auth Advanced Controller', () => {
     });
 
     test('should reject super admin impersonating another super admin', async ({ request }) => {
-      const superAdminLogin = await loginUser(
-        request,
-        SEEDED_USERS.superAdmin.username,
-        SEEDED_USERS.superAdmin.password,
-      );
+      const superAdminLogin = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
       expect(superAdminLogin, 'super_admin login failed').toBeTruthy();
 
       // TASK-410 fix — the seed has exactly ONE super admin, and TASK-401's
@@ -247,12 +211,7 @@ test.describe('Auth Advanced Controller', () => {
       // the rejection, then remove the grant + soft-delete the user via the
       // API. Fixture ops use a tenant-scoped super-admin session so the role
       // assignment lands with a concrete tenantId (mirrors task-401 harness).
-      const saGlobal = await loginUser(
-        request,
-        SEEDED_USERS.superAdmin.username,
-        SEEDED_USERS.superAdmin.password,
-        DEFAULT_TENANT_KEY,
-      );
+      const saGlobal = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, DEFAULT_TENANT_KEY);
       expect(saGlobal, 'tenant-scoped super_admin login failed').toBeTruthy();
       const fixtureHeaders = { Authorization: `Bearer ${saGlobal!.token}` };
 
@@ -300,9 +259,7 @@ test.describe('Auth Advanced Controller', () => {
         // grant first, then the throwaway user, restoring the single-super-
         // admin seed posture.
         if (assignmentId) {
-          await request
-            .delete(`/api/v1/admin/users/${targetId}/roles/${assignmentId}`, { headers: fixtureHeaders })
-            .catch(() => undefined);
+          await request.delete(`/api/v1/admin/users/${targetId}/roles/${assignmentId}`, { headers: fixtureHeaders }).catch(() => undefined);
         }
         await request.delete(`/api/v1/admin/users/${targetId}`, { headers: fixtureHeaders }).catch(() => undefined);
       }
@@ -323,12 +280,7 @@ test.describe('Auth Advanced Controller', () => {
       // Contract: revoke-impersonation is strict — a non-impersonation bearer
       // has no active impersonation to revoke, so the endpoint returns 400
       // ("Not currently impersonating") rather than a no-op success.
-      const loginResult = await loginUser(
-        request,
-        SEEDED_USERS.admin.username,
-        SEEDED_USERS.admin.password,
-        '__GLOBAL__',
-      );
+      const loginResult = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, '__GLOBAL__');
       expect(loginResult, 'tenant_admin login failed').toBeTruthy();
 
       const response = await request.post('/api/v1/auth/revoke-impersonation', {
@@ -341,11 +293,7 @@ test.describe('Auth Advanced Controller', () => {
     });
 
     test('should return success with impersonation token', async ({ request }) => {
-      const superAdminLogin = await loginUser(
-        request,
-        SEEDED_USERS.superAdmin.username,
-        SEEDED_USERS.superAdmin.password,
-      );
+      const superAdminLogin = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
       expect(superAdminLogin, 'super_admin login failed').toBeTruthy();
 
       const impersonateResponse = await request.post('/api/v1/auth/impersonate', {

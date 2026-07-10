@@ -56,31 +56,39 @@ interface PaginatedUsers {
   limit?: number;
 }
 
-interface DepartmentRow { id: string; name: string }
-interface RoleRow { id: string; name: string }
-interface UserDepartmentRow { id: string; departmentId: string; isPrimary: boolean; version: number }
-interface UserSettingRow { namespace?: string; key?: string; name?: string; value?: unknown }
+interface DepartmentRow {
+  id: string;
+  name: string;
+}
+interface RoleRow {
+  id: string;
+  name: string;
+}
+interface UserDepartmentRow {
+  id: string;
+  departmentId: string;
+  isPrimary: boolean;
+  version: number;
+}
+interface UserSettingRow {
+  namespace?: string;
+  key?: string;
+  name?: string;
+  value?: unknown;
+}
 
 function bearer(token: string) {
   return { Authorization: `Bearer ${token}` };
 }
 
-const authGet = (r: APIRequestContext, t: string, url: string) =>
-  r.get(url, { headers: bearer(t) });
+const authGet = (r: APIRequestContext, t: string, url: string) => r.get(url, { headers: bearer(t) });
 
-const authPost = (r: APIRequestContext, t: string, url: string, data: unknown) =>
-  r.post(url, { headers: bearer(t), data });
+const authPost = (r: APIRequestContext, t: string, url: string, data: unknown) => r.post(url, { headers: bearer(t), data });
 
-const authPatch = (
-  r: APIRequestContext,
-  t: string,
-  url: string,
-  data: unknown,
-  extra: Record<string, string> = {},
-) => r.patch(url, { headers: { ...bearer(t), ...extra }, data });
+const authPatch = (r: APIRequestContext, t: string, url: string, data: unknown, extra: Record<string, string> = {}) =>
+  r.patch(url, { headers: { ...bearer(t), ...extra }, data });
 
-const authDelete = (r: APIRequestContext, t: string, url: string) =>
-  r.delete(url, { headers: bearer(t) });
+const authDelete = (r: APIRequestContext, t: string, url: string) => r.delete(url, { headers: bearer(t) });
 
 function uniqueUsername(): string {
   const rand = Math.random().toString(36).slice(2, 7);
@@ -113,12 +121,7 @@ test.describe('TASK-381 — Users Management (backend contract)', () => {
     saToken = sa!.token;
     saUserId = sa!.user.id;
 
-    const saGlobal = await loginUser(
-      request,
-      SEEDED_USERS.superAdmin.username,
-      SEEDED_USERS.superAdmin.password,
-      DEFAULT_TENANT_KEY,
-    );
+    const saGlobal = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, DEFAULT_TENANT_KEY);
     expect(saGlobal, 'super_admin login into __GLOBAL__ failed').toBeTruthy();
     saGlobalToken = saGlobal!.token;
 
@@ -309,13 +312,7 @@ test.describe('TASK-381 — Users Management (backend contract)', () => {
       expect(stale.status(), 'stale If-Match must be 412').toBe(412);
 
       // (c) correct If-Match → 200 and the assignment becomes primary.
-      const ok = await authPatch(
-        request,
-        saGlobalToken,
-        url,
-        { isPrimary: true, expectedVersion: version },
-        { 'If-Match': `"${version}"` },
-      );
+      const ok = await authPatch(request, saGlobalToken, url, { isPrimary: true, expectedVersion: version }, { 'If-Match': `"${version}"` });
       expect(ok.status(), `setPrimary with correct version failed: ${await ok.text()}`).toBe(200);
       const updated = (await ok.json()) as UserDepartmentRow;
       expect(updated.isPrimary).toBe(true);
@@ -342,12 +339,10 @@ test.describe('TASK-381 — Users Management (backend contract)', () => {
       expect(before.status()).toBe(200);
       expect(Array.isArray(asArray(await before.json()))).toBe(true);
 
-      const patch = await authPatch(
-        request,
-        saGlobalToken,
-        `/api/v1/admin/users/${userId}/settings/ui.e2e/task-381`,
-        { value: 'on', name: 'task-381 marker' },
-      );
+      const patch = await authPatch(request, saGlobalToken, `/api/v1/admin/users/${userId}/settings/ui.e2e/task-381`, {
+        value: 'on',
+        name: 'task-381 marker',
+      });
       // Endpoint exists (matrix U8); accept 200/201. If the seed lacks the
       // namespace scaffolding it may 400 — surface that explicitly.
       expect([200, 201], `update setting unexpected: ${patch.status()} ${await patch.text()}`).toContain(patch.status());
@@ -355,9 +350,7 @@ test.describe('TASK-381 — Users Management (backend contract)', () => {
       const after = await authGet(request, saGlobalToken, `/api/v1/admin/users/${userId}/settings`);
       expect(after.status()).toBe(200);
       const settings = asArray<UserSettingRow>(await after.json());
-      const found = settings.some(
-        (s) => s.key === 'task-381' || s.name === 'task-381 marker' || s.value === 'on',
-      );
+      const found = settings.some((s) => s.key === 'task-381' || s.name === 'task-381 marker' || s.value === 'on');
       expect(found, 'written user setting not reflected in subsequent read').toBe(true);
     });
 
@@ -478,9 +471,7 @@ test.describe('TASK-381 — Users Management (backend contract)', () => {
       expect(set.status(), `bulk set failed: ${set.status()} ${await set.text()}`).toBe(200);
       expect(((await set.json()) as { id: string }).id, 'returns the updated user').toBe(uid);
 
-      const listed1 = asArray<UserDepartmentRow>(
-        await (await authGet(request, saGlobalToken, `/api/v1/admin/users/${uid}/departments`)).json(),
-      );
+      const listed1 = asArray<UserDepartmentRow>(await (await authGet(request, saGlobalToken, `/api/v1/admin/users/${uid}/departments`)).json());
       expect(listed1.map((r) => r.departmentId).sort()).toEqual([d1.id, d2.id].sort());
       expect(listed1.find((r) => r.isPrimary)?.departmentId, 'd1 is the single primary').toBe(d1.id);
 
@@ -491,10 +482,11 @@ test.describe('TASK-381 — Users Management (backend contract)', () => {
       });
       expect(shrink.status(), `bulk shrink failed: ${shrink.status()} ${await shrink.text()}`).toBe(200);
 
-      const listed2 = asArray<UserDepartmentRow>(
-        await (await authGet(request, saGlobalToken, `/api/v1/admin/users/${uid}/departments`)).json(),
-      );
-      expect(listed2.map((r) => r.departmentId), 'exactly the one remaining department').toEqual([d2.id]);
+      const listed2 = asArray<UserDepartmentRow>(await (await authGet(request, saGlobalToken, `/api/v1/admin/users/${uid}/departments`)).json());
+      expect(
+        listed2.map((r) => r.departmentId),
+        'exactly the one remaining department',
+      ).toEqual([d2.id]);
       expect(listed2[0]?.isPrimary, 'the surviving membership is primary').toBe(true);
     });
   });

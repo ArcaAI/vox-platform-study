@@ -42,11 +42,7 @@
  * is enqueued, so the probe sees a "pending" job that exists.
  */
 import { test, expect } from '@playwright/test';
-import {
-    DEFAULT_TENANT_KEY,
-    SEEDED_USERS,
-    loginUser,
-} from '../../../../tests/helpers';
+import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
 /**
  * Seeded `GEN_COMPLETED` consultation id from
@@ -64,115 +60,85 @@ const GEN_COMPLETED_CONSULTATION_ID = '90000000-0000-0000-0000-000000000001';
 const SYNTHETIC_JOB_ID = '018f0000-0000-7000-8000-000000000000';
 
 test.describe('TASK-309 AC-2/AC-3 — ConsultationJob ownership genuine probe (AC-10)', () => {
-    let doctorToken: string;
-    let arcaaiSuperAdminToken: string;
-    let jobId: string;
+  let doctorToken: string;
+  let arcaaiSuperAdminToken: string;
+  let jobId: string;
 
-    test.beforeAll(async ({ request }) => {
-        const doctorLogin = await loginUser(
-            request,
-            SEEDED_USERS.doctor.username,
-            SEEDED_USERS.doctor.password,
-            DEFAULT_TENANT_KEY,
-        );
-        expect(doctorLogin, 'doctor login (__GLOBAL__) failed').toBeTruthy();
-        doctorToken = doctorLogin!.token;
+  test.beforeAll(async ({ request }) => {
+    const doctorLogin = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);
+    expect(doctorLogin, 'doctor login (__GLOBAL__) failed').toBeTruthy();
+    doctorToken = doctorLogin!.token;
 
-        // super_admin re-logged with tenantKey=ARCAAI binds the JWT to
-        // tenant ARCAAI — every interceptor read of `cls.get('tenantId')`
-        // sees the ARCAAI id, so probing a __GLOBAL__-owned job must 404.
-        const arcaaiLogin = await loginUser(
-            request,
-            SEEDED_USERS.superAdmin.username,
-            SEEDED_USERS.superAdmin.password,
-            'ARCAAI',
-        );
-        expect(arcaaiLogin, 'super_admin login (ARCAAI) failed').toBeTruthy();
-        arcaaiSuperAdminToken = arcaaiLogin!.token;
+    // super_admin re-logged with tenantKey=ARCAAI binds the JWT to
+    // tenant ARCAAI — every interceptor read of `cls.get('tenantId')`
+    // sees the ARCAAI id, so probing a __GLOBAL__-owned job must 404.
+    const arcaaiLogin = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');
+    expect(arcaaiLogin, 'super_admin login (ARCAAI) failed').toBeTruthy();
+    arcaaiSuperAdminToken = arcaaiLogin!.token;
 
-        // Bootstrap a REAL job in tenant __GLOBAL__. The async pre-summary
-        // endpoint is the cheapest path to a persisted ConsultationJob
-        // status — only the metadata round-trip is mandatory; the SMR
-        // worker may or may not pick up the BullMQ job, which doesn't
-        // matter for the cross-tenant probe (the status row is written
-        // BEFORE enqueue per `consultation-job.service.ts`).
-        const createResp = await request.post(
-            `/api/v1/consultations/${GEN_COMPLETED_CONSULTATION_ID}/summary/pre-summary/async`,
-            {
-                headers: { Authorization: `Bearer ${doctorToken}` },
-                data: {},
-            },
-        );
-        expect(
-            createResp.status(),
-            `create async pre-summary job for GEN_COMPLETED — body: ${await createResp.text()}`,
-        ).toBeGreaterThanOrEqual(200);
-        expect(createResp.status()).toBeLessThan(300);
-
-        const created = (await createResp.json()) as { jobId: string };
-        expect(created.jobId, 'create async pre-summary returned jobId').toBeTruthy();
-        jobId = created.jobId;
+    // Bootstrap a REAL job in tenant __GLOBAL__. The async pre-summary
+    // endpoint is the cheapest path to a persisted ConsultationJob
+    // status — only the metadata round-trip is mandatory; the SMR
+    // worker may or may not pick up the BullMQ job, which doesn't
+    // matter for the cross-tenant probe (the status row is written
+    // BEFORE enqueue per `consultation-job.service.ts`).
+    const createResp = await request.post(`/api/v1/consultations/${GEN_COMPLETED_CONSULTATION_ID}/summary/pre-summary/async`, {
+      headers: { Authorization: `Bearer ${doctorToken}` },
+      data: {},
     });
+    expect(createResp.status(), `create async pre-summary job for GEN_COMPLETED — body: ${await createResp.text()}`).toBeGreaterThanOrEqual(200);
+    expect(createResp.status()).toBeLessThan(300);
 
-    test('creator (doctor in __GLOBAL__) can resolve the job — sanity for the cross-tenant assertion', async ({ request }) => {
-        const response = await request.get(
-            `/api/v1/consultations/jobs/${jobId}`,
-            { headers: { Authorization: `Bearer ${doctorToken}` } },
-        );
-        // 200 is the happy path. We tolerate 404 only if the job has
-        // already aged out of Redis (JOB_TTL) — but inside a single
-        // `beforeAll`-bootstrapped describe this should not happen.
-        // Forbid 401 (auth bypass) and 403 (the W3 fix is supposed to
-        // normalise to 404, not 403).
-        expect([200, 202]).toContain(response.status());
-    });
+    const created = (await createResp.json()) as { jobId: string };
+    expect(created.jobId, 'create async pre-summary returned jobId').toBeTruthy();
+    jobId = created.jobId;
+  });
 
-    test('GET /consultations/jobs/:jobId from tenant ARCAAI → 404 (no controller body leak)', async ({ request }) => {
-        const response = await request.get(
-            `/api/v1/consultations/jobs/${jobId}`,
-            { headers: { Authorization: `Bearer ${arcaaiSuperAdminToken}` } },
-        );
-        expect(response.status()).toBe(404);
-        const body = await response.json();
-        expect(String(body.message ?? '')).not.toMatch(/tenant/i);
-    });
+  test('creator (doctor in __GLOBAL__) can resolve the job — sanity for the cross-tenant assertion', async ({ request }) => {
+    const response = await request.get(`/api/v1/consultations/jobs/${jobId}`, { headers: { Authorization: `Bearer ${doctorToken}` } });
+    // 200 is the happy path. We tolerate 404 only if the job has
+    // already aged out of Redis (JOB_TTL) — but inside a single
+    // `beforeAll`-bootstrapped describe this should not happen.
+    // Forbid 401 (auth bypass) and 403 (the W3 fix is supposed to
+    // normalise to 404, not 403).
+    expect([200, 202]).toContain(response.status());
+  });
 
-    test('PATCH /consultations/jobs/:jobId/cancel from tenant ARCAAI → 404 (no cancel-by-id-leak)', async ({ request }) => {
-        const response = await request.patch(
-            `/api/v1/consultations/jobs/${jobId}/cancel`,
-            { headers: { Authorization: `Bearer ${arcaaiSuperAdminToken}` } },
-        );
-        expect(response.status()).toBe(404);
-    });
+  test('GET /consultations/jobs/:jobId from tenant ARCAAI → 404 (no controller body leak)', async ({ request }) => {
+    const response = await request.get(`/api/v1/consultations/jobs/${jobId}`, { headers: { Authorization: `Bearer ${arcaaiSuperAdminToken}` } });
+    expect(response.status()).toBe(404);
+    const body = await response.json();
+    expect(String(body.message ?? '')).not.toMatch(/tenant/i);
+  });
 
-    test('GET /consultations/jobs/:jobId/stream from tenant ARCAAI → not 200 (no SSE channel leak)', async ({ request }) => {
-        const response = await request.get(
-            `/api/v1/consultations/jobs/${jobId}/stream`,
-            { headers: { Authorization: `Bearer ${arcaaiSuperAdminToken}` } },
-        );
-        // The SSE handler must reject before opening the stream. We
-        // accept 401 (stream-ticket path rejecting) or 404 (interceptor
-        // rejecting before SSE) — either is the no-leak contract.
-        expect([401, 404]).toContain(response.status());
+  test('PATCH /consultations/jobs/:jobId/cancel from tenant ARCAAI → 404 (no cancel-by-id-leak)', async ({ request }) => {
+    const response = await request.patch(`/api/v1/consultations/jobs/${jobId}/cancel`, {
+      headers: { Authorization: `Bearer ${arcaaiSuperAdminToken}` },
     });
+    expect(response.status()).toBe(404);
+  });
 
-    test('after cross-tenant probes, the doctor in __GLOBAL__ still sees the job (no collateral damage)', async ({ request }) => {
-        const response = await request.get(
-            `/api/v1/consultations/jobs/${jobId}`,
-            { headers: { Authorization: `Bearer ${doctorToken}` } },
-        );
-        // The cross-tenant probes must NOT have deleted the row.
-        expect(response.status()).not.toBe(401);
-        expect([200, 202]).toContain(response.status());
+  test('GET /consultations/jobs/:jobId/stream from tenant ARCAAI → not 200 (no SSE channel leak)', async ({ request }) => {
+    const response = await request.get(`/api/v1/consultations/jobs/${jobId}/stream`, {
+      headers: { Authorization: `Bearer ${arcaaiSuperAdminToken}` },
     });
+    // The SSE handler must reject before opening the stream. We
+    // accept 401 (stream-ticket path rejecting) or 404 (interceptor
+    // rejecting before SSE) — either is the no-leak contract.
+    expect([401, 404]).toContain(response.status());
+  });
 
-    test('synthetic uuidv7 jobId → 404 (DEF-C3: same shape as cross-tenant 404)', async ({ request }) => {
-        const response = await request.get(
-            `/api/v1/consultations/jobs/${SYNTHETIC_JOB_ID}`,
-            { headers: { Authorization: `Bearer ${doctorToken}` } },
-        );
-        expect(response.status()).toBe(404);
-        const body = await response.json();
-        expect(String(body.message ?? '')).not.toMatch(/tenant/i);
-    });
+  test('after cross-tenant probes, the doctor in __GLOBAL__ still sees the job (no collateral damage)', async ({ request }) => {
+    const response = await request.get(`/api/v1/consultations/jobs/${jobId}`, { headers: { Authorization: `Bearer ${doctorToken}` } });
+    // The cross-tenant probes must NOT have deleted the row.
+    expect(response.status()).not.toBe(401);
+    expect([200, 202]).toContain(response.status());
+  });
+
+  test('synthetic uuidv7 jobId → 404 (DEF-C3: same shape as cross-tenant 404)', async ({ request }) => {
+    const response = await request.get(`/api/v1/consultations/jobs/${SYNTHETIC_JOB_ID}`, { headers: { Authorization: `Bearer ${doctorToken}` } });
+    expect(response.status()).toBe(404);
+    const body = await response.json();
+    expect(String(body.message ?? '')).not.toMatch(/tenant/i);
+  });
 });

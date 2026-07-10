@@ -96,7 +96,7 @@ test.describe.serial('TASK-390b — api-key owner-scope enforcement', () => {
     expect(del.status(), 'owner delete own key → 2xx').toBeLessThan(300);
   });
 
-  test('a same-tenant non-admin (doctor2) CANNOT fetch / rotate / revoke / delete another user\'s key → 404', async ({ request }) => {
+  test("a same-tenant non-admin (doctor2) CANNOT fetch / rotate / revoke / delete another user's key → 404", async ({ request }) => {
     // Owned by `doctor`; `doctor2` is a peer clinician in the SAME tenant.
     const victim = await createKey(request, doctorToken, `t390b victim ${UNIQUE}`);
 
@@ -119,21 +119,21 @@ test.describe.serial('TASK-390b — api-key owner-scope enforcement', () => {
     expect((await stillThere.json()).keyStatus, 'victim key not revoked').toBe('ACTIVE');
   });
 
-  test('a tenant-admin retains tenant-scope: can fetch + rotate another user\'s key in-tenant', async ({ request }) => {
+  test("a tenant-admin retains tenant-scope: can fetch + rotate another user's key in-tenant", async ({ request }) => {
     const target = await createKey(request, doctorToken, `t390b admin-scope ${UNIQUE}`);
 
     const get = await request.get(`/api/v1/admin/api-keys/${target.id}`, { headers: bearer(tenantAdminToken) });
-    expect(get.status(), 'tenant-admin fetch another user\'s key').toBe(200);
+    expect(get.status(), "tenant-admin fetch another user's key").toBe(200);
 
     const rotate = await request.post(`/api/v1/admin/api-keys/${target.id}/rotate`, { headers: bearer(tenantAdminToken) });
-    expect(rotate.status(), 'tenant-admin rotate another user\'s key → 2xx').toBeLessThan(300);
+    expect(rotate.status(), "tenant-admin rotate another user's key → 2xx").toBeLessThan(300);
     createdKeyIds.push(((await rotate.json()) as ApiKeyEnvelope).apiKey.id);
   });
 
-  test('a super-admin retains broad scope: can fetch another user\'s key', async ({ request }) => {
+  test("a super-admin retains broad scope: can fetch another user's key", async ({ request }) => {
     const target = await createKey(request, doctorToken, `t390b sa-scope ${UNIQUE}`);
     const get = await request.get(`/api/v1/admin/api-keys/${target.id}`, { headers: bearer(saGlobalToken) });
-    expect(get.status(), 'super-admin fetch another user\'s key').toBe(200);
+    expect(get.status(), "super-admin fetch another user's key").toBe(200);
   });
 
   test('an owner-only caller acting on an id not resolvable in scope is 404 (tenant boundary)', async ({ request }) => {

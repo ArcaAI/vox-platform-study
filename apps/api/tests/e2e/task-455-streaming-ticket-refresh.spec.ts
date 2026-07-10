@@ -93,16 +93,9 @@ test.describe('TASK-455 AC-4 — ticket-refresh mid-session', () => {
 
       // Drop the first socket and reconnect with the REFRESHED ticket.
       socket.drop();
-      const reconnectUrl = streamWsUrl(
-        wsOriginFromApiUrl(),
-        s.sessionId,
-        refreshed.ticket!,
-      );
+      const reconnectUrl = streamWsUrl(wsOriginFromApiUrl(), s.sessionId, refreshed.ticket!);
       const handshake = await probeStreamHandshake(WsCtor, reconnectUrl);
-      expect(
-        handshake.outcome,
-        `refreshed-ticket reconnect should be accepted, got ${JSON.stringify(handshake)}`,
-      ).toBe('accepted');
+      expect(handshake.outcome, `refreshed-ticket reconnect should be accepted, got ${JSON.stringify(handshake)}`).toBe('accepted');
     });
 
     test('the original one-shot ticket is rejected on a second open (generic 4401)', async ({ request }) => {

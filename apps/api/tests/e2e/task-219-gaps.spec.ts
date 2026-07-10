@@ -180,12 +180,7 @@ test.describe('TASK-219: Admin Panel Gaps', () => {
     let storageToken: string;
 
     test.beforeAll(async ({ request }) => {
-      const login = await loginUser(
-        request,
-        SEEDED_USERS.superAdmin.username,
-        SEEDED_USERS.superAdmin.password,
-        DEFAULT_TENANT_KEY,
-      );
+      const login = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, DEFAULT_TENANT_KEY);
       expect(login, 'tenant-scoped super_admin login failed').toBeTruthy();
       storageToken = login!.token;
 

@@ -46,11 +46,7 @@ function buildRealService(summaryMetaRepository: { findByContextItem: ReturnType
   );
 }
 
-function buildController(opts: {
-  summaryMetaRepository: { findByContextItem: ReturnType<typeof vi.fn> };
-  callerId?: string;
-  ownerId?: string;
-}) {
+function buildController(opts: { summaryMetaRepository: { findByContextItem: ReturnType<typeof vi.fn> }; callerId?: string; ownerId?: string }) {
   const { summaryMetaRepository, callerId = DOCTOR, ownerId = DOCTOR } = opts;
 
   const summaryService = buildRealService(summaryMetaRepository);
