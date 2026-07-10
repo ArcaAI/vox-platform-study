@@ -120,7 +120,7 @@ describe('useHarnessAdmin', () => {
         });
 
         it('surfaces the 503 (harness down) as a catchable error, not a crash', async () => {
-            mockGet.mockRejectedValue(new AgenticError('SERVICE_UNAVAILABLE', 'Harness ops request failed'));
+            mockGet.mockRejectedValue(new AgenticError('API_ERROR', 'Harness ops request failed'));
             const { result } = renderHook(() => useHarnessAdmin());
 
             let caught: unknown;
@@ -129,7 +129,7 @@ describe('useHarnessAdmin', () => {
             });
 
             expect(caught).toBeInstanceOf(AgenticError);
-            expect((caught as AgenticError).code).toBe('SERVICE_UNAVAILABLE');
+            expect((caught as AgenticError).code).toBe('API_ERROR');
             expect(result.current.error).not.toBeNull();
         });
     });

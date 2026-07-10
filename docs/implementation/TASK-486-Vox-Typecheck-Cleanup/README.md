@@ -1,6 +1,6 @@
 # TASK-486 — `@arcaai/vox` Typecheck Cleanup (Pre-existing Test-File Errors Redden the Quality Gate)
 
-- **Status**: Pending
+- **Status**: Review — fixed + verified (`fix/2605-review`; 4 test files, +15/−12; `typecheck` exit 0)
 - **Type**: bugfix (test-only type hygiene — restores a red quality gate to green)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · Discovered during the SOTA enhancement track (2026-07-10)
 - **Origin**: [TASK-464](../TASK-464-SDK-Provider-Drop-Surfacing/README.md) + [TASK-461](../TASK-461-SDK-Reconnect-UX-Wire-Contract/README.md) reviews — both touch `@arcaai/vox` and both hit the same pre-existing `typecheck` failure while verifying their `build lint test typecheck` gate.
@@ -64,8 +64,24 @@ Grouped by file (all under `packages/agentic-sdk-v2/`):
 
 Test files only. Any need to touch SDK `src` types → STOP and report to the orchestrator (it would make this more than a test-hygiene ticket).
 
+## Implementation Summary
+
+Fixed (test-only, surgical — 4 files, +15/−12; no `src`/runtime change):
+
+- **TS1470** `bundle-externals.task364.test.ts:32` — replaced `dirname(fileURLToPath(import.meta.url))` with `__dirname` (CommonJS-valid under `module: NodeNext`; matches sibling suites) and removed the now-orphaned `fileURLToPath`/`dirname` imports.
+- **TS2352** `SttV2WebSocketClient.test.ts:334` — `as Int16Array` → `as unknown as Int16Array` (mock `sent` is `string | ArrayBufferLike`; AC-2-sanctioned cast).
+- **TS2345** `useHarnessAdmin.test.ts:123,132` — `SERVICE_UNAVAILABLE` is genuinely NOT in the `AgenticErrorCode` union; the real contract (`classifyHttpError`, `errorUtils.ts:104`) maps 5xx → `API_ERROR`, so the constructed error + `.code` assertion were corrected to `API_ERROR`. The union was **not** widened (the test was wrong, not the type).
+- **TS2532 ×5 / TS18048 ×2** `promptMetrics.test.ts` — non-null assertions at the 7 sites; `toPromptTestMetricScores` only returns `undefined` for `null`/`undefined` input, and every call here passes a real object.
+
+No `any` / `@ts-ignore` / `@ts-expect-error`. SDK invariants preserved (no store-object exports, public accessors untouched, no entry-point/`"use client"` change).
+
+**Gates (verified in the main tree on merge, not just the worktree):** `pnpm --filter @arcaai/vox typecheck` → **exit 0, 0 errors** (AC-1). Agent-run in-worktree: `build` exit 0, `lint` exit 0 (0 errors; 71 pre-existing `prettier/prettier` warnings, none in the 4 touched files), `test` 198 files / 3517 passed (AC-3).
+
+**Out-of-scope observation (left untouched):** `src/hooks/useHarnessAdmin.ts:146` doc-comment still says "rejects with SERVICE_UNAVAILABLE when the harness is down" — stale vs the real `API_ERROR` contract, but a `src` edit is a non-goal; flagged for a possible follow-up doc tidy.
+
 ## Change History
 
 | Date | Change |
 |---|---|
+| 2026-07-10 | **Fixed + verified (test-only, surgical) on `fix/2605-review`.** All 10 errors across the 4 test files resolved per §Implementation Summary (TS1470 `import.meta`→`__dirname`; TS2352 `as unknown as Int16Array`; TS2345 `SERVICE_UNAVAILABLE`→`API_ERROR` faithful to the 5xx→`API_ERROR` contract, union untouched; TS2532/TS18048 non-null assertions). `pnpm --filter @arcaai/vox typecheck` exit 0 re-verified in the main tree at merge; build/lint/test green in-worktree (3517 tests). No `src` runtime change; SDK invariants preserved. Flagged the stale `useHarnessAdmin.ts:146` doc-comment as an out-of-scope follow-up. Status → Review. |
 | 2026-07-10 | Ticket scaffolded from the TASK-464 + TASK-461 reviews. Ran `pnpm --filter @arcaai/vox typecheck` on `fix/2605-review` and captured the exact 10 errors / 4 files / Exit status 2 (verbatim above): `bundle-externals.task364.test.ts:32` (TS1470 import.meta), `SttV2WebSocketClient.test.ts:334` (TS2352 Int16Array cast), `useHarnessAdmin.test.ts:123` (TS2345 `SERVICE_UNAVAILABLE` not an `AgenticErrorCode`), `promptMetrics.test.ts` (TS2532 ×5 + TS18048 ×2 at lines 31/32/34/38/39/44/45). Noted the errors are proven pre-existing (identical with SOTA changes stashed) and unrelated to any merged ticket, but leave the `@arcaai/vox` `typecheck` gate RED. Status → Pending. |

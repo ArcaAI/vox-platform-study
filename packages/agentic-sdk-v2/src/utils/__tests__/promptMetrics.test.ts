@@ -28,19 +28,19 @@ describe('toPromptTestMetricScores', () => {
   });
 
   it('includes jsonValidity ONLY when JSON is expected', () => {
-    expect(toPromptTestMetricScores({ ...base, jsonExpected: true, jsonValid: true }).jsonValidity).toBe(1);
-    expect(toPromptTestMetricScores({ ...base, jsonExpected: true, jsonValid: false }).jsonValidity).toBe(0);
+    expect(toPromptTestMetricScores({ ...base, jsonExpected: true, jsonValid: true })!.jsonValidity).toBe(1);
+    expect(toPromptTestMetricScores({ ...base, jsonExpected: true, jsonValid: false })!.jsonValidity).toBe(0);
     // not expected → omitted even if a stray jsonValid is present
-    expect(toPromptTestMetricScores({ ...base, jsonExpected: false, jsonValid: true }).jsonValidity).toBeUndefined();
+    expect(toPromptTestMetricScores({ ...base, jsonExpected: false, jsonValid: true })!.jsonValidity).toBeUndefined();
   });
 
   it('includes variableCoverage ONLY when the template declares variables', () => {
-    expect(toPromptTestMetricScores({ ...base, variablesDeclared: 2, variableCoverage: 0.5 }).variableCoverage).toBe(0.5);
-    expect(toPromptTestMetricScores({ ...base, variableCoverage: null }).variableCoverage).toBeUndefined();
+    expect(toPromptTestMetricScores({ ...base, variablesDeclared: 2, variableCoverage: 0.5 })!.variableCoverage).toBe(0.5);
+    expect(toPromptTestMetricScores({ ...base, variableCoverage: null })!.variableCoverage).toBeUndefined();
   });
 
   it('excludes the count dimensions (wordCount, variablesDeclared) from the display map', () => {
-    const scores = toPromptTestMetricScores({ ...base, wordCount: 999, variablesDeclared: 7, variableCoverage: 1 });
+    const scores = toPromptTestMetricScores({ ...base, wordCount: 999, variablesDeclared: 7, variableCoverage: 1 })!;
     expect(scores.wordCount).toBeUndefined();
     expect(scores.variablesDeclared).toBeUndefined();
   });

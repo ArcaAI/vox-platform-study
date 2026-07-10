@@ -331,7 +331,7 @@ describe('SttV2WebSocketClient', () => {
       // The exact view object reaches ws.send — no intermediate ArrayBuffer
       // slice/copy on the per-frame hot path.
       expect(lastMockWs!.sent[0]).toBe(pcmView);
-      expect((lastMockWs!.sent[0] as Int16Array).byteLength).toBe(pcmView.byteLength);
+      expect((lastMockWs!.sent[0] as unknown as Int16Array).byteLength).toBe(pcmView.byteLength);
     });
 
     it('should throw when not connected', () => {
