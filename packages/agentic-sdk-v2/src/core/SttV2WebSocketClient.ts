@@ -492,8 +492,12 @@ export class SttV2WebSocketClient {
   }
 
   /**
-   * Acknowledge that the connection is stable (e.g. after receiving first transcript).
-   * Resets the reconnect counter so future disconnects get a fresh set of attempts.
+   * Acknowledge that the connection is stable and end the current reconnect
+   * episode, resetting the reconnect counter so future disconnects get a fresh
+   * set of attempts. Invoked automatically on the first server message received
+   * after a reconnect (`handleMessage`, TASK-2605) — the signal that the
+   * reconnected session is genuinely alive rather than a brief flap — and also
+   * safe to call manually. Idempotent.
    */
   acknowledgeConnection(): void {
     this.isReconnecting = false;
@@ -809,6 +813,17 @@ export class SttV2WebSocketClient {
 
     try {
       const msg = JSON.parse(event.data) as Record<string, unknown>;
+
+      // TASK-2605 — the first server message after a reconnect proves the
+      // reconnected session is genuinely alive (not a socket that opened and
+      // immediately flapped shut). Acknowledge stability here so THIS disconnect
+      // episode's attempt budget resets to 0 and the next episode starts with a
+      // full budget instead of depleting it cumulatively across the session. A
+      // flap that closes before any message arrives never reaches this line, so
+      // repeated flapping still exhausts maxAttempts and gives up (BUG-04).
+      if (this.isReconnecting) {
+        this.acknowledgeConnection();
+      }
 
       switch (msg.type) {
         case 'transcript':
