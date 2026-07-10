@@ -73,6 +73,8 @@ interface SttStreamClient {
     onDisconnect(cb: () => void): void;
     onReconnect(cb: (attempt: number) => void): void;
     onReconnectFailed(cb: () => void): void;
+    /** Reconnect SUCCESS — the socket genuinely re-opened (TASK-461 C6-02). Optional so partial test fakes need not stub it; the real client always implements it. */
+    onReconnected?(cb: () => void): void;
     /** Optional in this structural view so partial test fakes need not stub it; the real client always implements it. */
     onBackpressureDrop?(cb: (reason: 'queue_full' | 'buffered_amount_high') => void): void;
 }
@@ -307,9 +309,30 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
                 // audioLostThisSession deliberately does NOT: the frames dropped
                 // before the disconnect are gone from the transcript for good.
                 setDroppedFrameCount(0);
+                // Attempt-START (during backoff) — the socket is not back yet, so
+                // stay 'reconnecting' until onReconnected fires.
                 setStatus('reconnecting');
             });
+            client.onReconnected?.(() => {
+                // C6-02 — a reconnect attempt genuinely re-opened the socket, so
+                // the stream is live again. Guard like onDisconnect (:300) so a
+                // stop()/idle already in flight is not clobbered back to 'live'.
+                if (statusRef.current !== 'stopping' && statusRef.current !== 'idle') {
+                    setStatus('streaming');
+                }
+            });
             client.onReconnectFailed(() => {
+                // C6-03 — reconnection is exhausted (terminal). Mirror the
+                // handshake-fail cleanup (:335-341): release the mic and DELETE
+                // the gateway session so a dead session leaks neither a hot mic
+                // (privacy) nor the tenant concurrency slot (held until it reaps).
+                wsClientRef.current = null;
+                releaseAudio();
+                if (sessionIdRef.current) {
+                    void closeStreamSession(sessionIdRef.current).catch(() => {});
+                    sessionIdRef.current = null;
+                }
+                setSession(null);
                 setError(GENERIC_AUTH_COPY);
                 setStatus('error');
             });

@@ -82,6 +82,9 @@ const { FakeSttWsClient, capture } = vi.hoisted(() => {
         onReconnectFailed(cb: Handler): void {
             this.handlers.reconnectFailed = cb;
         }
+        onReconnected(cb: Handler): void {
+            this.handlers.reconnected = cb;
+        }
         onBackpressureDrop(cb: Handler): void {
             this.handlers.backpressureDrop = cb;
         }
@@ -348,6 +351,66 @@ describe('useLiveSttSession', () => {
         act(() => ws.handlers.reconnectFailed?.());
         expect(hook.result.current.status).toBe('error');
         expect(hook.result.current.error).toMatch(/expired or unauthorized/i);
+
+        hook.unmount();
+    });
+
+    it('returns to streaming once a reconnect actually re-opens the socket (C6-02)', async () => {
+        const { hook } = await startedHook();
+        const ws = FakeSttWsClient.instances[0];
+        expect(hook.result.current.status).toBe('streaming');
+
+        // Socket drops → the client will attempt to reconnect.
+        act(() => ws.handlers.disconnect?.());
+        expect(hook.result.current.status).toBe('reconnecting');
+
+        // The client fires onReconnect at attempt-START (during backoff, before
+        // the socket is back) — surfacing the attempt number but STILL reconnecting.
+        act(() => ws.handlers.reconnect?.(1));
+        expect(hook.result.current.status).toBe('reconnecting');
+        expect(hook.result.current.reconnectAttempt).toBe(1);
+
+        // The attempt's socket re-opens — the stream is genuinely live again, so
+        // the hook must settle back on 'streaming' (previously it stayed stuck).
+        act(() => ws.handlers.reconnected?.());
+        expect(hook.result.current.status).toBe('streaming');
+
+        hook.unmount();
+    });
+
+    it('a late reconnect-success signal never resurrects a stopped session (C6-02 guard)', async () => {
+        const { hook } = await startedHook();
+        const ws = FakeSttWsClient.instances[0];
+
+        await act(async () => {
+            await hook.result.current.stop();
+        });
+        expect(hook.result.current.status).toBe('idle');
+
+        // A stray reconnect-success arriving after teardown must not flip the
+        // idle/stopping surface back to a live 'streaming' (mirrors the
+        // onDisconnect statusRef guard).
+        act(() => ws.handlers.reconnected?.());
+        expect(hook.result.current.status).toBe('idle');
+    });
+
+    it('releases the mic and closes the gateway session on terminal reconnect failure (C6-03)', async () => {
+        const { calls, hook } = await startedHook();
+        const ws = FakeSttWsClient.instances[0];
+
+        // Reconnection is exhausted mid-session. This must mirror the
+        // handshake-fail cleanup: no hot mic left on, no held concurrency slot.
+        act(() => ws.handlers.reconnectFailed?.());
+
+        expect(hook.result.current.status).toBe('error');
+        expect(hook.result.current.error).toMatch(/expired or unauthorized/i);
+        // Mic track stopped + capture destroyed (releaseAudio ran).
+        expect(micTrack.stop).toHaveBeenCalled();
+        expect(capture.destroy).toHaveBeenCalled();
+        // Gateway streaming session DELETEd — the slot is freed.
+        expect(calls.some((call) => call.method === 'DELETE' && call.url.endsWith('/stream/session/s-9d42'))).toBe(true);
+        // Session meta cleared so a fresh start can proceed.
+        expect(hook.result.current.session).toBeNull();
 
         hook.unmount();
     });
