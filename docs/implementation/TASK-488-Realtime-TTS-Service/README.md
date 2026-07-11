@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **In Progress** — Phase 0 local spike ✅ (Azure blocked on creds) · **Phase 1 scaffold ✅** (2026-07-11, 21/21 tests) · Phase 2 next |
+| **Status** | **Review** — all 6 phases implemented + locally verified (2026-07-11); remaining is infra/creds-gated (Docker/k3s live, Azure key, GPU, human audio-quality gate) |
 | **Classification** | `feature` — new Python microservice + gateway integration |
 | **Created** | 2026-07-10 |
 | **Requested by** | Tap Huynh |
@@ -273,7 +273,108 @@ GET /api/v1/docs          -> 200
 
 **Deferred (not blocking Phase 1):** `uv lock` was **not** re-run — adding the workspace member requires a lockfile refresh in a network-enabled env, and tts-v2's `[local]` extra (torch/transformers) may interact with the existing stt-v2 transformers-version conflict noted in the root `pyproject.toml`. Run `uv lock` and resolve any conflict during **Phase 6** (before the Docker/CI `uv sync --frozen` path). Local dev (conda `arcaenv` + uvicorn against `src`) does not need it.
 
-_(Phases 2–6 populated as implemented.)_
+### Phase 2 — Provider core, router, endpoints ✅ (2026-07-11)
+
+Built the provider-agnostic synthesis stack, all TDD against a `FakeEngine` (no real provider yet):
+
+- `providers/base.py` — `AudioFormat` (pcm/wav/mp3 + content-types), `SynthesisRequest`, `AudioChunk`, `TTSEngine` Protocol (`synthesize()`/`health()` + `native_streaming` flag), `ProviderRegistry`, `ProviderNotFoundError`.
+- `catalog/voices.py` — stable internal voice IDs (`en/ml × female/male`) → per-provider bindings; `VoiceCatalog`/`VoiceNotFoundError`.
+- `routing/chunking.py` — pysbd (English) + punctuation-fallback (Malayalam/code-switch) sentence segmentation; decimals (`8.2`), ratios (`140/90`), and `X-ray-യിൽ` agglutination never split; `chunk_text` hard-wraps over-long sentences.
+- `routing/{circuit_breaker,router}.py` — `TTSRouter`: voice→locale→ordered chain, per-provider circuit breakers, sentence-adapter for non-streaming engines, **failover only before first byte** (mid-stream failure surfaces as error, no audible voice-switch).
+- `core/metrics.py` — `tts_ttfa_seconds`, `tts_rtf`, `tts_active_streams`, `tts_requests_total`, `tts_failover_total`, `tts_provider_errors_total`.
+- `api/endpoints/speech.py` — OpenAI-compatible `POST /api/v1/audio/speech` (`input`/`voice`/`response_format`/`speed`/`stream_format`): batch, `stream_format=audio` (chunked bytes), `stream_format=sse` (`speech.audio.delta`+`speech.audio.done`); primes the stream so 404/503 surface before headers; `Cache-Control: no-store`, `X-Accel-Buffering: no`. `api/endpoints/voices.py` — `GET /api/v1/voices`.
+- `main.py` builds registry/catalog/router in `create_app`; readiness now gates on a healthy registered provider.
+
+**Evidence:**
+
+```
+pytest src/tts_v2/tests -q   → 58 passed (94% cov)   [21 Phase 1 + 37 Phase 2]
+ruff check apps/tts-v2/src   → All checks passed!
+uvicorn smoke (no providers enabled):
+  GET  /api/v1/voices        → 200  4 voices (en/ml × f/m) with provider bindings
+  POST /api/v1/audio/speech  → 503  (router AllProvidersUnavailable)
+  POST (unknown voice)       → 404
+  GET  /api/v1/health/ready  → 503  (no providers registered)
+```
+
+Router behaviors covered by tests: first-in-chain selection, ml binding/locale resolution, pre-first-byte failover, no-mid-stream-switch, open-breaker skip, all-unavailable → error, sentence-adapter per-sentence calls, and cancellation closing the engine generator.
+
+### Phase 3 — Azure Speech provider ✅ (2026-07-11)
+
+- `providers/azure_speech.py` — `AzureSpeechProvider` (`native_streaming=True`): streams via `start_speaking_*_async` + `AudioDataStream.read_data`, each blocking SDK call off-loaded with `asyncio.to_thread`. Format mapping (pcm→`Raw24Khz16BitMonoPcm`, wav→`Riff24Khz16BitMonoPcm`, mp3→`Audio24Khz48KBitRateMonoMp3`); voice = the router-resolved catalog binding; `speed != 1.0` → SSML `<prosody rate>`; a `Canceled` result → `AzureSynthesisError` (router fails over); `health()` reflects the credential; `prewarm()` opens a connection at startup. **SDK is lazily imported** so the module + hermetic tests load without the native `azure-cognitiveservices-speech` wheel — tests inject a fake SDK.
+- `main.py` lifespan registers `azure` gated by `TTS_AZURE_ENABLED` (+ best-effort prewarm; failures are logged, not fatal). `AzureSpeechConfig` gained `populate_by_name` so tests can construct it directly.
+- Live test `test_live_azure_en_and_ml` is marked `e2e` and gated behind `TTS_AZURE_LIVE_TEST=1` — real en+ml synthesis when a credential is present (doubles as the Azure half of the Phase 0 spike).
+
+**Evidence:**
+
+```
+pytest src/tts_v2/tests -q   → 68 passed, 1 deselected (live e2e)   93% cov
+ruff check apps/tts-v2/src   → All checks passed!
+```
+
+Covered: chunk emission, voice + format mapping (pcm/wav/mp3), SSML-for-speed vs plain-text, `Canceled`→error, `health()` true/false, `prewarm()` opens a connection, `TTSEngine` conformance, and an **end-to-end** `POST /api/v1/audio/speech` → router → Azure (fake SDK) → bytes with correct voice-binding resolution.
+
+### Phase 4 — Local engines (Kokoro + Indic Parler-TTS) ✅ (2026-07-11)
+
+- `core/audio.py` — `resample` (soxr), `float_to_pcm16`, `pcm16_to_wav`, `pcm16_to_mp3` (lazy lameenc). Implements the Phase 0 **44.1 kHz → 24 kHz resample** finding. numpy/soxr/lameenc live in the `[local]` extra and are imported only by local providers — a cloud-only install never loads them.
+- `providers/kokoro.py` — `KokoroProvider` (en, `native_streaming=True`): KPipeline segments → PCM chunks (24 kHz passthrough); WAV/MP3 buffered into a single container. `kokoro` imported lazily.
+- `providers/indic_parler.py` — `IndicParlerProvider` (ml, `native_streaming=True`): internal `chunk_text` sentence loop → per-sentence model call → 44.1 k→24 k resample → PCM chunks (WAV/MP3 single container). Per-language speaker description; torch/transformers/parler-tts lazy. **Deliberate deviation from the plan's StreamAdapter note**: an internal sentence loop (not the router adapter) so WAV/MP3 yield one correct container. Header flags the gated-weights Phase 0 finding.
+- `providers/registration.py` — `warm_and_register`: registers a local engine only after `warmup()` succeeds; a load failure logs and skips (degraded, not dead).
+- `main.py` lifespan registers kokoro/parler gated by `TTS_KOKORO_ENABLED`/`TTS_PARLER_ENABLED` via `warm_and_register`. `core/metrics.py` adds the `tts_model_loaded` gauge.
+
+**Evidence:**
+
+```
+pytest src/tts_v2/tests -q   → 88 passed, 1 deselected   89% cov
+ruff check apps/tts-v2/src   → All checks passed!
+
+degrade-not-die smoke (TTS_KOKORO_ENABLED=true TTS_PARLER_ENABLED=true, ML libs absent):
+  → server booted; logged local_provider_load_failed ("No module named 'kokoro' / 'torch'");
+    providers=[]; GET /api/v1/health/live → 200
+
+end-to-end (fake models through the endpoint):
+  POST /audio/speech en-female-1 → routes to Kokoro       → 4800 B PCM
+  POST /audio/speech ml-female-1 → routes to Indic Parler → ~4800 B PCM (44.1k→24k resample)
+```
+
+Covered: PCM streaming per segment, WAV single-container, 44.1 k→24 k resample, per-sentence model calls, ml speaker description, warm-or-skip registration, protocol conformance, audio utils (pcm16 clip/pack, WAV header, resample, mp3), and endpoint→router→local-engine routing for both languages. Real-model runs stay behind `TTS_LOCAL_LIVE_TEST=1`.
+
+### Phase 5 — Gateway integration ✅ (2026-07-11)
+
+- `packages/domains/src/interfaces/IAppConfig.ts` — added `TTS_PORT` + `TTS_URL`; `packages/applications/.../config.service.ts::loadBaseConfig()` wires the defaults (`http://localhost:8865`); updated the compile-time `IAppConfig` type test.
+- `apps/api/src/modules/speech/` — `SpeechProxyController` (`@Controller('speech')`): `POST /api/v1/speech/synthesize` streams the upstream audio/SSE bytes through with mirrored `Content-Type`, `Cache-Control: no-store, no-transform`, `X-Accel-Buffering: no`, `flushHeaders()`; connect-phase-only retry; a failure returns a generic status and **never forwards the upstream body** (PHI-safe). `GET /api/v1/speech/voices` proxies the catalog. Base URL via `IConfigService.getConfigValue('TTS_URL')`; `X-Service-Token` via `SecretsService.getSecretSync('TTS_SERVICE_TOKEN')`; every route `@Authorize()`. `SpeechModule` registered in `app.module`.
+- `turbo.json#globalEnv` gains `TTS_URL`/`TTS_PORT`.
+- Contracts: `tests/contracts/schemas.ts` adds `TtsSynthesizeRequestSchema` / `TtsVoicesResponseSchema`; `tests/contracts/tts.contract.test.ts` restores the coverage removed with the legacy service. E2E `apps/api/tests/e2e/task-488-speech.spec.ts` asserts 401 auth-gating on both routes (runs in the live e2e suite).
+
+**Evidence:**
+
+```
+pnpm build:api                          → 8/8 tasks (domains → applications → api compile clean)
+vitest speech-proxy + tts.contract      → 13 passed
+pnpm --filter @arcaai/domains test      → 1300 passed (incl. updated IAppConfig type test)
+config.service.test                     → 36 passed
+```
+
+Controller tests cover: verbatim body proxy, `X-Service-Token` injection (+ fail-open when absent), streaming headers/passthrough, generic-status error mapping that never echoes the upstream body (PHI), connect-phase-only retry, and no-retry once the upstream responded. Live boot + full-path streaming run in the e2e suite (needs the stack up).
+
+### Phase 6 — CI, Docker, k3s, docs, uv.lock ✅ (2026-07-11)
+
+- **CI**: `.gitlab/ci/rules.yml` `.rules-tts` anchor + `apps/tts-v2` added to `.rules-any-python`; `validate.yml` lint-python gains `ruff check apps/tts-v2/src/`; `test.yml` `test-tts` job (hermetic — no DB/Redis, `pip install .[test]`, `junit-tts.xml`, `.rules-tts`).
+- **Docker**: `apps/tts-v2/Dockerfile` (2-stage from `hope-python-base`, `uv sync --frozen --package tts-v2 --no-dev`, non-root, healthcheck on :8865 — base/cloud image; a `--extra local` GPU variant with git-installed parler-tts is a follow-up). Added `COPY apps/tts-v2/pyproject.toml` to the builder stage of all four other Python Dockerfiles (smr/guardrail/nlp/harness) for shared-lock resolution.
+- **k3s**: `deployment/k3s/base/tts-v2.yaml` (Deployment + Service `hope-tts`, probes on `/api/v1/health/live`, Azure reuses the shared secret, local engines off), registered in `kustomization.yaml`; `configmap.yaml` gains `TTS_PORT`/`TTS_URL`.
+- **Env / turbo**: `.env.dev` + `.env.example` TTS block; `turbo.json#globalEnv` += `TTS_SERVICE_TOKEN` / `TTS_AZURE_ENABLED` / `TTS_KOKORO_ENABLED` / `TTS_PARLER_ENABLED` (`TTS_URL`/`TTS_PORT` added in Phase 5).
+- **Docs**: `docs/architecture/overview.md` (service-table row + ports + Mermaid node), `.claude/rules/00` (monorepo map + ports line), `.claude/rules/06` (services table + `py:tts-v2:*` commands).
+- **`uv lock`** (the Phase-1 deferral): re-run — resolved **480 packages** incl. `tts-v2` + kokoro/pysbd/soxr/lameenc, **no conflict** with the stt-v2 transformers pins. The `[test]` extra also gained numpy/soxr/lameenc so the hermetic CI suite can import the audio utils.
+
+**Evidence:**
+
+```
+uv lock                    → Resolved 480 packages; Added tts-v2 v0.1.0 (+ kokoro/pysbd/soxr/lameenc); no conflicts
+YAML parse (k3s + CI)      → tts-v2.yaml / kustomization / configmap OK; rules/validate/test OK (!reference-aware)
+pytest src/tts_v2/tests    → 88 passed (unchanged after the [test] extra update)
+```
+
+**Definition-of-done status.** All six phases are implemented and verified to the extent runnable on this machine (Python suites 88/88, TS `build:api` 8/8 + 13 gateway/contract tests, `uv lock`, YAML parse). **Not exercised here** (needs infra/creds): Docker image build, k3s apply, live API e2e, real Azure synthesis (blocked on `AZURE_SPEECH_KEY`), real-model Kokoro/Parler on a GPU, and the **human audio-quality gate** from Phase 0. Follow-up tickets remain out of scope: SDK `useTtsPlayback`, WS duplex, and the Sarvam provider (§6).
 
 ## 10. Change History
 
@@ -282,3 +383,8 @@ _(Phases 2–6 populated as implemented.)_
 | 2026-07-10 | Ticket created; Phase 2 exploration + deep research completed (3 parallel research tracks: codebase archaeology/patterns, engine+licensing landscape, streaming architecture); full implementation plan written; status `Pending`, awaiting plan approval | Claude (Fable 5) + Tap Huynh |
 | 2026-07-11 | Plan approved. Decisions resolved (§8): dir `apps/tts-v2`/pkg `tts_v2`; k3s has GPU (dev MacBook does not); Azure stays `eastus`; Sarvam promoted to a day-1-designed provider after Azure; first use case = summary read-aloud → WS-duplex + SDK playback prioritized. Phase 0 spike: clinical test strings authored, Azure spike script written (blocked locally on placeholder credentials), local Malayalam (Indic Parler-TTS 8/8 incl. code-switch) + English (Kokoro) spike run on M3 Max CPU — findings + wavs recorded (§Phase 0 Results); 3 findings folded into plan (gated weights, 44.1kHz resample, MPS OOM) | Claude (Fable 5) + Tap Huynh |
 | 2026-07-11 | **Phase 1 scaffold complete** (§9): `apps/tts-v2`/`tts_v2` created (config + `ServiceAuthMiddleware` + health + `create_app`/lifespan), root wiring (uv workspace member, `package.json` scripts, `dev-service.sh`/`dev-stack.sh`). Evidence: 21/21 pytest, ruff clean, real uvicorn serves health/metrics/docs. `uv lock` deferred to Phase 6 | Claude (Fable 5) + Tap Huynh |
+| 2026-07-11 | **Phase 2 complete** (§9): provider `Protocol`+registry, voice catalog, sentence chunking (en pysbd / ml fallback), `TTSRouter` (fallback chains, circuit breakers, failover-only-before-first-byte, sentence adapter), Prometheus TTFA/RTF/failover metrics, OpenAI-compatible `POST /api/v1/audio/speech` (batch/audio/sse) + `GET /api/v1/voices`; readiness gates on providers. TDD against `FakeEngine`. Evidence: 58/58 pytest, ruff clean, uvicorn smoke (voices 200, synth 503 w/o providers, bad-voice 404) | Claude (Fable 5) + Tap Huynh |
+| 2026-07-11 | **Phase 3 complete** (§9): `AzureSpeechProvider` (streaming `AudioDataStream` reads via `asyncio.to_thread`, pcm/wav/mp3 format mapping, SSML speed, prewarm, `Canceled`→failover), lazy SDK import + injected fake for hermetic CI, lifespan registration gated by `TTS_AZURE_ENABLED`, live e2e gated by `TTS_AZURE_LIVE_TEST`. Evidence: 68/68 pytest (incl. endpoint→router→Azure e2e), ruff clean | Claude (Fable 5) + Tap Huynh |
+| 2026-07-11 | **Phase 4 complete** (§9): local engines — `core/audio.py` (soxr resample 44.1k→24k, pcm16/wav/mp3), `KokoroProvider` (en) + `IndicParlerProvider` (ml, internal sentence loop), `warm_and_register` (degrade-not-die), `tts_model_loaded` gauge, lifespan registration gated by `TTS_KOKORO_ENABLED`/`TTS_PARLER_ENABLED`; ML libs in `[local]` extra, lazily imported. Evidence: 88/88 pytest, ruff clean, degrade-not-die smoke (booted with providers=[] when libs absent), en→Kokoro / ml→Parler e2e | Claude (Fable 5) + Tap Huynh |
+| 2026-07-11 | **Phase 5 complete** (§9): NestJS gateway `SpeechProxyController` (`/api/v1/speech/synthesize` streaming + `/voices`; mirrors `SmrProxyController` — `IConfigService.getConfigValue('TTS_URL')`, `X-Service-Token`, connect-phase-only retry, PHI-safe generic errors, `@Authorize()`), `IAppConfig` + `config.service` `TTS_URL`/`TTS_PORT`, `turbo.json#globalEnv`, TTS contract schemas + test, e2e auth-gating spec. Evidence: `build:api` 8/8, 13 speech+contract vitest, domains 1300, config.service 36 | Claude (Fable 5) + Tap Huynh |
+| 2026-07-11 | **Phase 6 complete** (§9) → status **Review**: CI (`.rules-tts`, ruff lint, hermetic `test-tts`), `apps/tts-v2/Dockerfile` + cross-COPY into the 4 other Python Dockerfiles, k3s `tts-v2.yaml` + kustomization + configmap, `.env.dev`/`.env.example`/`turbo.json` vars, docs (overview + rules 00/06), and the deferred **`uv lock`** (480 pkgs, no conflict). Evidence: uv lock clean, k3s+CI YAML parse, 88/88 pytest. Infra/creds-gated items (Docker build, k3s apply, live e2e, Azure synth, GPU, human audio gate) remain | Claude (Fable 5) + Tap Huynh |

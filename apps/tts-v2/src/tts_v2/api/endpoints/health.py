@@ -14,7 +14,8 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 
 router = APIRouter(tags=["health"])
 
@@ -42,11 +43,22 @@ async def liveness() -> dict[str, str]:
     return {"status": "healthy"}
 
 
-@router.get("/health/ready")
-async def readiness() -> dict[str, str]:
-    """Kubernetes readiness probe.
-
-    Phase 1: process-up. Phase 2 will return 503 until >= 1 provider is
-    registered and at least one reports healthy.
-    """
-    return {"status": "healthy"}
+@router.get("/health/ready", response_model=None)
+async def readiness(request: Request) -> dict[str, str] | JSONResponse:
+    """Kubernetes readiness probe — 503 until >= 1 registered provider is healthy."""
+    registry = getattr(request.app.state, "provider_registry", None)
+    if registry is None or not registry.list_providers():
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "message": "no providers registered"},
+        )
+    for name in registry.list_providers():
+        try:
+            if await registry.get(name).health():
+                return {"status": "healthy"}
+        except Exception:
+            continue
+    return JSONResponse(
+        status_code=503,
+        content={"status": "unhealthy", "message": "no healthy providers"},
+    )

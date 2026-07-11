@@ -24,7 +24,9 @@ def _split_csv(value: Any) -> Any:
 class AzureSpeechConfig(BaseSettings):
     """Azure AI Speech TTS provider configuration (primary managed cloud path)."""
 
-    model_config = SettingsConfigDict(env_prefix="TTS_AZURE_")
+    # populate_by_name lets tests construct the config directly by field name
+    # (api_key=...) even though api_key/region carry env validation aliases.
+    model_config = SettingsConfigDict(env_prefix="TTS_AZURE_", populate_by_name=True)
 
     enabled: bool = False
     # Falls back to the shared Azure Speech credential already provisioned for stt-v2.

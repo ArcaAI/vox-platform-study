@@ -10,6 +10,7 @@ import { DEFAULT_TIMEOUT, isAdminPlanePath } from './constants';
 import type { ISDKLogger } from './logger';
 import { createTraceparent, generateSpanId } from './logger';
 import { classifyHttpError } from '../utils/errorUtils';
+import { SPEECH_ENDPOINTS } from './constants';
 
 /**
  * Module-level WeakMap holding the admin JWT during impersonation.
@@ -574,6 +575,99 @@ export class AgenticClient {
    * file download. A wildcard `Accept` header lets the server pick the
    * content-type from the `?format=` query.
    */
+  /**
+   * TASK-491 — POST text to the gateway TTS proxy (`/api/v1/speech/synthesize`)
+   * and return the raw streaming `Response` so the caller can pump audio chunks
+   * into the Web Audio ring buffer as they arrive (rather than buffering the
+   * whole body). Mirrors `getBlob`'s manual-fetch auth/timeout handling; no
+   * 401-refresh retry (a foreground action the caller can simply repeat).
+   */
+  async synthesizeSpeech(
+    input: string,
+    options: { voice: string; response_format?: 'pcm' | 'wav' | 'mp3'; speed?: number; stream_format?: 'audio' | 'sse' },
+    reqOptions?: { signal?: AbortSignal },
+  ): Promise<Response> {
+    this.checkRateLimit();
+
+    const requestId = `req_${++this.requestCount}_${Date.now()}`;
+    const endpoint = SPEECH_ENDPOINTS.SYNTHESIZE();
+    const url = `${this.baseUrl}${endpoint}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    if (reqOptions?.signal) {
+      if (reqOptions.signal.aborted) {
+        controller.abort();
+      } else {
+        reqOptions.signal.addEventListener('abort', () => controller.abort(), { once: true });
+      }
+    }
+
+    const headers: Record<string, string> = {
+      'X-Request-ID': requestId,
+      'Content-Type': 'application/json',
+      Accept: 'application/octet-stream, text/event-stream',
+    };
+    const authToken = this.resolveAuthToken(endpoint);
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    if (this.apiKey) {
+      headers['X-API-Key'] = this.apiKey;
+    }
+    if (this.tenantId) {
+      headers['X-Tenant-ID'] = this.tenantId;
+    }
+    const correlationId = this.logger?.getCorrelationId();
+    if (correlationId) {
+      headers['X-Correlation-ID'] = correlationId;
+    }
+
+    const body = JSON.stringify({
+      input,
+      voice: options.voice,
+      response_format: options.response_format ?? 'pcm',
+      speed: options.speed,
+      stream_format: options.stream_format ?? 'audio',
+    });
+
+    try {
+      const response = await fetch(url, { method: 'POST', headers, body, signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorCode = classifyHttpError(response.status);
+        throw new AgenticError(errorCode, `HTTP ${response.status}: ${response.statusText}`, {
+          context: { status: response.status, endpoint, requestId },
+        });
+      }
+
+      return response;
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error instanceof AgenticError) {
+        throw error;
+      }
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new AgenticError('NETWORK_ERROR', 'Request timeout', {
+          cause: error,
+          context: { timeout: this.timeout, endpoint, requestId },
+        });
+      }
+      if (error instanceof TypeError) {
+        throw new AgenticError('NETWORK_ERROR', 'Network error - check your connection', {
+          cause: error,
+          context: { endpoint, requestId },
+        });
+      }
+      throw new AgenticError('UNKNOWN_ERROR', 'An unexpected error occurred', {
+        cause: error as Error,
+        context: { endpoint, requestId },
+      });
+    }
+  }
+
   async getBlob(endpoint: string, options?: { signal?: AbortSignal }): Promise<Blob> {
     this.checkRateLimit();
 

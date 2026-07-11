@@ -23,6 +23,7 @@ data:
   NLP_PORT: "8864"
   SMR_PORT: "8862"
   STT_V2_PORT: "8861"
+  TTS_PORT: "8865"
 
   # -- Internal Service URLs --
   API_URL: "http://hope-api:8868"
@@ -32,6 +33,7 @@ data:
   NLP_URL: "http://hope-nlp:8864"
   SMR_URL: "http://hope-smr:8862"
   STT_V2_URL: "http://hope-stt-v2:8861"
+  TTS_URL: "http://hope-tts:8865"
 
   # -- Database --
   # PostgreSQL is provisioned EXTERNALLY — no Postgres manifest exists in this

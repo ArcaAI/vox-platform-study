@@ -146,6 +146,8 @@ export class ConfigService implements IConfigService, OnModuleInit {
       NLP_URL: process.env.NLP_URL || 'http://localhost:8864',
       GUARDRAIL_URL: process.env.GUARDRAIL_URL || 'http://localhost:8863',
       HARNESS_URL: process.env.HARNESS_URL || 'http://localhost:8866',
+      TTS_PORT: process.env.TTS_PORT || '8865',
+      TTS_URL: process.env.TTS_URL || 'http://localhost:8865',
 
       // MQTT
       // eslint-disable-next-line turbo/no-undeclared-env-vars

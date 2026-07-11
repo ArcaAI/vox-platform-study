@@ -56,6 +56,11 @@ export type { UseNoiseFilterOptions, UseNoiseFilterReturn } from '@arcaai/noise-
 // audio-free; core consumers use `useArca().audio`).
 export { useArcaAudio } from './hooks/useArcaAudio';
 
+// `useTtsPlayback` (TASK-491) — streamed TTS audio playback (summary read-aloud).
+// Lives in the plugins entry so Web Audio / room code stays out of `core`.
+export { useTtsPlayback } from './hooks/useTtsPlayback';
+export type { UseTtsPlayback, SpeakOptions } from './hooks/useTtsPlayback';
+
 // =============================================================================
 // Plugin Manager
 // =============================================================================

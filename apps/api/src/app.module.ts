@@ -70,6 +70,7 @@ import { ResourceSubscriptionModule } from './modules/resource-subscription/reso
 import { StorageAccessKeyModule } from './modules/storage-access-key/storage-access-key.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { StreamingModule } from './modules/streaming/streaming.module';
+import { SpeechModule } from './modules/speech/speech.module';
 import { TenantBucketModule } from './modules/tenant-bucket/tenant-bucket.module';
 import { TenantFrontendConfigModule } from './modules/tenant-frontend-config/tenant-frontend-config.module';
 import { TenantStorageConfigModule } from './modules/tenant-storage-config/tenant-storage-config.module';
@@ -286,6 +287,7 @@ const featureModules: any[] = [
   StorageModule,
   StorageAccessKeyModule,
   StreamingModule,
+  SpeechModule,
   PipelineModule,
   AiModelModule,
   TenantModule,

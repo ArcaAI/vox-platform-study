@@ -82,6 +82,13 @@ export const AUDIO_RECORDING_ENDPOINTS = {
 /**
  * Context endpoints
  */
+export const SPEECH_ENDPOINTS = {
+  /** OpenAI-compatible synthesis; streams audio (or SSE) — TASK-491 */
+  SYNTHESIZE: () => '/speech/synthesize',
+  /** List available voices */
+  VOICES: () => '/speech/voices',
+} as const;
+
 export const CONTEXT_ENDPOINTS = {
   /** Add context to consultation */
   ADD: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/context`,

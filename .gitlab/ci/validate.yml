@@ -119,6 +119,7 @@ lint-python:
     - ruff check apps/guardrail/src/ --output-format=gitlab || LINT_FAILED=1
     # TASK-414 — harness joins the gate (tests live in-package under src/).
     - ruff check apps/harness/src/ --output-format=gitlab || LINT_FAILED=1
+    - ruff check apps/tts-v2/src/ --output-format=gitlab || LINT_FAILED=1
     - |
       if [ "${LINT_FAILED:-0}" = "1" ]; then
         echo "Python lint errors found"

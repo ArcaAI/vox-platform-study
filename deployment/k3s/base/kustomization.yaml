@@ -15,6 +15,7 @@ resources:
   - smr.yaml
   - stt-v2.yaml
   - stt-v2-worker.yaml
+  - tts-v2.yaml
   - ui.yaml
   - admin-console.yaml
   - db-migrate.yaml
