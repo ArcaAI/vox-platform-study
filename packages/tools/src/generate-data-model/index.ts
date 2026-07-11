@@ -439,7 +439,12 @@ function composeScalarEnumFields(
         DateTime: 'Date',
         Json: 'JsonValue',
         // Prisma `Bytes` maps to `Uint8Array` in the Prisma 7 client types.
-        Bytes: 'Uint8Array'
+        Bytes: 'Uint8Array',
+        // Prisma `BigInt` maps to the native `bigint` in the Prisma 7 client types.
+        // Previously absent → fell back to `any`, which drifted vs the hand-corrected
+        // committed models (e.g. `TenantBucket.quotaBytes`). Mapping it here makes the
+        // generator emit `bigint` so the generated layer matches the schema.
+        BigInt: 'bigint'
     };
 
     const fieldsToOmit = baseModel ? BASE_MODEL_FIELDS[baseModel] || [] : [];
