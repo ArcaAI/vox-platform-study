@@ -24,6 +24,7 @@ from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from harness.core.config import Settings, get_runtime_judge_config, get_settings
+from harness.core.logging import get_logger
 from harness.eval.judge.base import JudgeClient
 from harness.eval.judge.providers import build_judge_client
 from harness.guards.phi import (
@@ -53,6 +54,7 @@ from harness.sensors.inferential import (
 )
 from harness.sensors.inferential.base import degraded_result
 from harness.sensors.inferential.groundedness import ClaimVerdictCallback
+from harness.sensors.inferential.minicheck_entailer import load_minicheck_entailer
 from harness.services.api_client import (
     ApiClient,
     ApiServiceError,
@@ -96,6 +98,8 @@ from harness.temporal.models import (
     RunInferentialSensorsInput,
     RunSensorsInput,
 )
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -193,14 +197,32 @@ def _granite_client(settings: Settings) -> GraniteGuardianClient:
 def _atomic_fact_entailer(settings: Settings) -> NliEntailer:
     """Build the atomic-fact verifier's NLI entailer (TASK-481 E2).
 
-    Returns the model-free, deterministic, hermetic :class:`DeterministicOverlapEntailer`
-    by default — no model, no network, no cloud egress of clinical text. This is the
-    swap point for a real self-hosted NLI model (MiniCheck / AlignScore / HHEM-class)
-    once one is provisioned: build it here behind the same :class:`NliEntailer` interface
-    (the ``JudgeClient`` is NEVER used — the verifier is judge-free by contract). Factored
-    out like the other client factories so the tests can monkeypatch it with a stub NLI.
+    Default = the model-free, deterministic, hermetic :class:`DeterministicOverlapEntailer`
+    (no model/network/cloud egress). When ``HARNESS_ATOMIC_FACT_MODEL_PATH`` names a staged
+    local ``.gguf`` (owner directive 2026-07-11), swaps in the self-hosted MiniCheck-Flan-T5
+    GGUF entailer behind the same :class:`NliEntailer` interface (the ``JudgeClient`` is NEVER
+    used — the verifier is judge-free by contract). A build/calibration failure is a config
+    error, NOT a runtime outage, so it falls back to the SAFE deterministic entailer (which
+    never auto-PASSes) with a loud warning rather than degrading the whole sensor. Factored
+    out like the other client factories so tests can monkeypatch it with a stub NLI.
     """
-    return DeterministicOverlapEntailer()
+    if not settings.atomic_fact_model_path:
+        return DeterministicOverlapEntailer()
+    try:
+        return load_minicheck_entailer(
+            model_path=settings.atomic_fact_model_path,
+            n_ctx=settings.atomic_fact_n_ctx,
+            n_threads=settings.atomic_fact_n_threads,
+            n_gpu_layers=settings.atomic_fact_n_gpu_layers,
+            threshold=settings.atomic_fact_entail_threshold,
+        )
+    except Exception as exc:  # noqa: BLE001 — misconfig/load/calibration failure => safe fallback
+        logger.warning(
+            "harness.atomic_fact.minicheck_unavailable_fallback",
+            model_id=settings.atomic_fact_model_id,
+            error=type(exc).__name__,
+        )
+        return DeterministicOverlapEntailer()
 
 
 def _phi_redactor() -> PhiRedactor:
