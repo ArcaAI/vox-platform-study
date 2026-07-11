@@ -205,6 +205,12 @@ case "$SERVICE" in
         CMD=(uvicorn harness.main:app --host "$HOST" --port "$HARNESS_PORT" --app-dir apps/harness/src)
         RELOAD_DIR="apps/harness/src"
         ;;
+    tts)
+        : "${TTS_PORT:=8865}"
+        ENV_REPORT+=("HOST=$HOST" "TTS_PORT=$TTS_PORT")
+        CMD=(uvicorn tts_v2.main:app --host "$HOST" --port "$TTS_PORT" --app-dir apps/tts-v2/src)
+        RELOAD_DIR="apps/tts-v2/src"
+        ;;
     worker)
         apply_harness_env
         CMD=(python -m harness.temporal.worker)

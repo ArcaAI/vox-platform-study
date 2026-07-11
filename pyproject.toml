@@ -23,6 +23,7 @@ members = [
     "apps/smr",
     "apps/harness",
     "apps/stt-v2",
+    "apps/tts-v2",
 ]
 
 # stt-v2's `nemo` extra pulls nemo-toolkit, which hard-requires transformers

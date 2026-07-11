@@ -50,7 +50,7 @@ STATE_DIR="${HOPE_DEV_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/hope-dev}
 LOG_DIR="${HOPE_DEV_LOG_DIR:-$STATE_DIR/logs}"
 PID_DIR="$STATE_DIR/pids"
 DEFAULT_SERVICES=(api stt smr guardrail nlp harness worker admin)
-ALL_SERVICES=(api stt smr nlp harness worker ui guardrail)
+ALL_SERVICES=(api stt smr nlp harness worker ui guardrail tts)
 
 port_for() {
     case "$1" in
@@ -61,6 +61,7 @@ port_for() {
         harness) echo "${HARNESS_PORT:-8866}" ;;
         admin) echo "${ADMIN_PORT:-5176}" ;;
         guardrail) echo "${GUARDRAIL_PORT:-8863}" ;;
+        tts) echo "${TTS_PORT:-8865}" ;;
         worker) echo "" ;;
     esac
 }
