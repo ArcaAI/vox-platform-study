@@ -1,6 +1,6 @@
 # TASK-460 — Gateway Auth Posture + Retry Hygiene (C4-02 · C4-03 · C4-04)
 
-- **Status**: Review — implemented, adversarially reviewed (+ I-2/I-3 fixes), merged to `fix/2605-review` (Wave 2 Batch 1)
+- **Status**: Completed — adversarial review APPROVE: C4-02 token always attached (fail-closed on empty), C4-03 SSE guard ends stream only on ownership-404, C4-04 post-send generation never re-invoked (single-delivery verified); PHI-safe error redaction; 86 tests green. Live smoke + Vault provisioning are ops/deploy steps (skip per owner). Only the owner's push/PR remains.
 - **Type**: bugfix (security posture + billing/correctness)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · Wave 2 (P1)
 - **Findings**: C4-02 (Med) · C4-03 (Med) · C4-04 (Med) — all CONFIRMED — see [TASK-448 register](../TASK-448-Harness-Loop-Quality-Review/README.md)
@@ -12,6 +12,7 @@
 
 | File | Change |
 |---|---|
+| 2026-07-11 | **Closed (Status → Completed).** Adversarial review = APPROVE (no Critical/Important): C4-02 `X-Service-Token` always attached (unresolved → `''` so a token-requiring receiver rejects, never silently omitted), C4-03 the 30s SSE re-check ends the stream ONLY on an ownership 404 (transient errors log-and-continue, I-2) so a valid multi-hour PHI stream isn't cut, C4-04 `isConnectPhaseFailure` gates retries so a post-send `/generate` is never re-invoked (single-delivery verified by POST count). PHI-safe upstream-error redaction. 86 tests green (re-run). Residuals are explicit non-goals (SMR hop fail-open; identity-side mid-stream revocation). Live smoke + Vault provisioning are ops/deploy steps. No external work remains — only the owner's push/PR. |
 | `apps/api/src/modules/ai-inference/ai-inference.client.ts` | Attach fail-closed `X-Service-Token` to NLP/Guardrail hops (C4-02) |
 | `apps/api/src/modules/ai-inference/__tests__/ai-inference.client.test.ts` | Invert the "never sends X-Service-Token" test |
 | `apps/api/src/common/tenant-owned-resource-sse.guard.ts` | Periodic / revocation re-check for long-lived SSE (C4-03) |
