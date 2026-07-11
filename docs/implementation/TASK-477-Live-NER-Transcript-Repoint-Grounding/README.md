@@ -1,6 +1,6 @@
 # TASK-477 — Live NER Transcript Re-point + Source-Grounding (Theme C2 · SOTA S2-04)
 
-- **Status**: Pending
+- **Status**: Review (implemented + committed `ada700564` on `fix/2605-review`; hermetic ACs 1–5 verified green — the on-stack AC-5 keyterm-recall confirmation is the shared TASK-470/476 live-stack step)
 - **Type**: bugfix / refactor (correctness + patient-safety on the live surface) — stops the live loop laundering summary hallucinations into first-class clinical entities
 - **Track**: [SOTA Enhancement Track](../SOTA-Track/README.md) · Theme **C2** (re-point live NER at the transcript + source-grounding)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · strategic SOTA track (post-Wave-3)
@@ -83,8 +83,28 @@ pnpm py:stt-v2:test:integration   # test_streaming_quality_scorecard
 
 Adversarial review focus: (a) is NER genuinely re-pointed to the **transcript delta** (not still the note) — proven by a RED that failed on the old source? (b) are note-only/unsupported entities actually flagged/dropped (no hallucination-laundering), and are real transcript-supported entities retained (no recall loss)? (c) do highlight offsets index the surface the panel renders — no cross-string offset bug? (d) is the ephemeral posture intact (zero new `NamedEntity` writes, durable authority unchanged)? (e) keyterm/keyphrase recall held vs TASK-470? (f) coordinated with TASK-476 on the shared NER wiring — no double rewrite; zero diff outside the manifest.
 
+## Implementation Summary (committed `ada700564`, 2026-07-11)
+
+Implemented via strict TDD on `fix/2605-review`, manifest held (4 files, live-documentation only):
+
+- **AC-1 (re-point, RED-first)** — NER now runs over the **raw transcript delta**, not the generated note: `live-documentation.service.ts` `nerSourceText = delta || transcript` → `extracted = callNlp(nerSourceText)` (was `callNlp(runningSummary)`). RED asserted the old note-source first.
+- **AC-2 (no hallucination laundering)** — a note-only token with no transcript support (the test drives a fabricated `metformin`/`hypertension`-style mention) is never surfaced: NER never sees the note, and the grounding step only re-locates **transcript-sourced** entities that also occur in the rendered note.
+- **AC-3 (offset contract)** — each transcript entity is **grounded — re-located into `runningSummary`** so `start`/`end` index the flat text the panel actually renders (documented in the `live-summary.dto.ts` contract); no offset points into a different string. A paraphrase (transcript "high blood pressure" → note "hypertension") that isn't literally in the note is not surfaced.
+- **AC-4 (ephemeral)** — no `NamedEntity` rows written; entities ride the SSE payload only; the durable snapshot still persists just `runningSummary` as a `PRE_SUMMARY` ContextItem. Asserted by test.
+- **AC-5 (recall + scoring)** — the running highlight set is preserved across flushes (NER sees only the delta each flush, so prior+new are merged then re-grounded) — asserted by test; the on-stack **TASK-470 keyterm-recall** confirmation is the shared live-stack step (same gate as TASK-476).
+- **AC-6 (gates)** — dedicated 230-line `__tests__/live-documentation.repoint-grounding.test.ts` (AC-1…AC-5) + `live-documentation.service.test.ts` updates; **full `@arcaai/applications` suite green (5983 passed)**, lint 0 new, build + `build:api` clean.
+
+### Files changed (ada700564)
+| File | Change |
+|---|---|
+| `…/live-documentation/live-documentation.service.ts` | NER source re-pointed to the transcript delta; transcript entities grounded/re-located into the rendered note (drop note-only/unsupported); prior+new merged for cross-flush recall. |
+| `…/live-documentation/dto/live-summary.dto.ts` | Offset contract documented (offsets index `runningSummary`, the rendered surface) + SPEER grounding note. |
+| `…/live-documentation/__tests__/live-documentation.repoint-grounding.test.ts` (new) | 230 lines — AC-1…AC-5. |
+| `…/live-documentation/__tests__/live-documentation.service.test.ts` | Updated for the transcript-source + grounding behavior. |
+
 ## Change History
 
 | Date | Change |
 |---|---|
+| 2026-07-11 | **Ticket synced to the landed implementation** (Status Pending → Review). The C2 re-point + source-grounding was implemented and committed as `ada700564` (title "re-point live NER to the transcript + source-ground to the note") but the README had not been updated off "Pending". Verified in the current tree: the dedicated `repoint-grounding.test.ts` (AC-1…AC-5) is present and the full `@arcaai/applications` suite passes (5983 passed). Added the Implementation Summary above. Remaining: the on-stack TASK-470 keyterm-recall confirmation (shared live-stack gate with TASK-476) before Completed. |
 | 2026-07-10 | Detail-scaffolded from [SOTA-Track](../SOTA-Track/README.md) Theme **C2** into an execution-ready ticket. Current state code-verified against `fix/2605-review` @ `59827bb5`: live NER runs over the **generated SOAP note** — `live-documentation.service.ts:577` calls `callNlp(runningSummary)` where `runningSummary` is the SMR-generated note (`:555-561`), while the transcript delta only feeds the SMR prompt (`:543`); entity offsets index the note (`:545-546`); live entities are SSE/Redis + in-memory only and are **not** persisted as `NamedEntity` (durable snapshot persists only `runningSummary` as `PRE_SUMMARY`). The `NamedEntity` transcript-span grounding columns already exist (`consultation.prisma:332-335`); the browser NER already reads the transcript (`KnowledgePipeline.ts:276`, C5-05 fixed) so the server live-doc path is the sole note-sourced NER. Re-point at the raw transcript delta + ground note entities to source spans (SPEER); shares the clinical NER path with TASK-476 (land adjacent). No implementation; documentation only. |
