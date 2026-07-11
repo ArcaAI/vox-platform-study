@@ -1,6 +1,6 @@
 # TASK-464 — Surface SDK Provider Audio-Drop Count to the Consultation UI (C6-01 sibling, DISCOVERED)
 
-- **Status**: Review — implemented (strict TDD, layered), all layer gates green; awaiting orchestrator review before merge
+- **Status**: Completed — adversarial review APPROVE (no Critical/Important); all ACs met + STT 25/25 + vox 172/172 green. AC-3 is delivered as tested exported selectors/hook fields (the real vox UI is an external `@arcaai/vox` consumer — scoping accepted per this README). Only the owner's push/PR to main remains.
 - **Type**: bugfix (patient-safety — silent data loss on the SDK path)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · discovered follow-up
 - **Origin**: found by the TASK-454 adversarial reviewer (Important #1) while verifying C6-01.
@@ -83,3 +83,4 @@ The vox `typecheck` (`tsc --noEmit`, includes test files) reports 10 errors in 4
 |---|---|
 | 2026-07-09 | Ticket scaffolded from the TASK-454 review's Important #1 finding (provider counts drops but nothing surfaces them on the SDK path). Awaiting prioritization. |
 | 2026-07-10 | Implemented via strict TDD, LAYERED (scaffold-faithful) approach. Single source-of-truth counter (provider's), new push channel provider→processor→pipeline→PluginManager→hook→store, EXPORTED `selectAudioDropped`/`selectAudioDegraded`, session-sticky `audioLostThisSession` latch (survives reconnect, clears on start/stop). `SttV2WebSocketClient.ts` untouched. Gates: `@arcaai/stt` 416 tests + build/lint/typecheck green; `@arcaai/vox` 3512 tests + build/lint green (typecheck: pre-existing baseline errors only, 0 new). Committed to `fix/task-464-sdk-drop-surfacing`; not merged (orchestrator review). |
+| 2026-07-11 | **Closed (Status → Completed).** Adversarial review (closure gate) = APPROVE, no Critical/Important: push chain verified end-to-end (provider `onDrop` → processor → pipeline `audioDrop` → PluginManager → hook → store), reconnect-safety latch holds (no reset on reconnect), PHI/tenant resets verified in-body (`clearTenantSessionData`/`clearSensitiveData`/`clearOnLogout`/`reset`), single counter (no double-count — ws client path unsubscribed), tests meaningful (STT 25/25, vox 172/172). AC-3 external-consumer scoping accepted (real vox UI is out-of-repo; TASK-454 covers the in-repo playground). Non-blocking notes only (clearOnLogout has inspection-only coverage; hook's local +1 is intentional session-cumulative semantics). No external work remains — only the owner's push/PR. |
