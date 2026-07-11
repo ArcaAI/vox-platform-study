@@ -23,10 +23,14 @@ MODEL REALITY (2026-07): the Streaming Sortformer ``.nemo`` weights
 (``nvidia/diar_streaming_sortformer_4spk-v2.1``, NVIDIA Open Model License —
 pinned per owner directive 2026-07-11) are NOT in the offline HF cache
 (``HF_HOME`` holds only whisper + silero + pyannote-embedding), and the model
-needs the NeMo/PyTorch GPU runtime (no working CPU/ONNX path). So
-``load_default_backend`` raises ``SortformerModelUnavailableError`` until the
-model is staged; once staged, implement the NeMo scorer inside that factory
-against the ``SortformerBackend`` seam — the diarizer, thresholding, and tests do
+needs the NeMo/PyTorch GPU runtime (no working CPU/ONNX path). The NeMo loader is
+IMPLEMENTED (``_restore_sortformer_model`` + ``NemoSortformerBackend``, written
+against the verified ``SortformerEncLabelModel.diarize`` API — model card + NeMo
+source), but is UNVALIDATED-pending-GPU: the un-runnable NeMo calls are fenced in
+``# UNVALIDATED`` blocks and were NOT executed here (no GPU, ``.nemo`` un-staged).
+Until the weights + runtime are staged, ``load_default_backend`` still raises
+``SortformerModelUnavailableError`` (the lazy ``nemo`` import / restore fails) so
+the diarizer degrades to "no labels" — the diarizer, thresholding, and tests do
 NOT change. Track guardrail: self-hosted only — no cloud diarization vendor may
 receive clinical audio.
 
@@ -38,7 +42,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Protocol
+from pathlib import Path
+from typing import Any, Protocol
 
 from stt_v2.core.logging import get_logger
 from stt_v2.pipeline.dto import DiarizationConfig
@@ -124,25 +129,151 @@ def _dominant_speaker(frame: Sequence[float], threshold: float) -> int | None:
     return best_index if frame[best_index] >= threshold else None
 
 
-def load_default_backend(config: DiarizationConfig) -> SortformerBackend:
-    """Production backend factory — requires the Streaming Sortformer model staged.
+# Streaming preset (nvidia/diar_streaming_sortformer_4spk-v2.x model card, all in
+# 80 ms frames). These are the checkpoint's PUBLISHED example values — the
+# latency/accuracy trade-off is a GPU-validation tuning point (AC-5/AC-6), not
+# fabricated here. See the model card "Streaming configuration" section.
+_STREAMING_PRESET: dict[str, int] = {
+    "chunk_len": 340,
+    "chunk_right_context": 40,
+    "fifo_len": 40,
+    "spkcache_update_period": 300,
+    "spkcache_len": 188,
+}
 
-    The ``.nemo`` weights (``config.sortformer_model_id``) are NOT bundled with the
-    service and are currently NOT staged in the offline HF cache, and the model
-    needs the NeMo/PyTorch GPU runtime, so this factory raises
-    ``SortformerModelUnavailableError`` and the diarizer degrades to "no labels".
-    Once the model is staged, implement the NeMo streaming session here against the
-    verified model-card I/O and plug it into the existing ``SortformerBackend`` seam
-    — the diarizer, thresholding, and tests do not change. Track guardrail:
-    self-hosted only — do NOT substitute a cloud diarization vendor.
+
+def _activities_from_nemo_output(tensor_outputs: Any) -> list[list[float]]:
+    """Convert a NeMo ``diarize(include_tensor_outputs=True)`` output → a plain ``T×S``
+    list-of-lists of Python floats.
+
+    ``SortformerEncLabelModel.diarize`` returns ``(segments, tensor_outputs)`` where
+    ``tensor_outputs`` is a ``list`` of ``(T, S)`` speaker-activity tensors, one per
+    audio input (verified against the NeMo source). For the single-buffer
+    ``infer_activities`` call we take the first. Rows arrive as a torch tensor, so we
+    coerce via ``.tolist()`` when present. Pure and model-independent — unit-tested
+    with fakes, so the reusable adapter math needs neither NeMo nor a GPU.
     """
-    raise SortformerModelUnavailableError(
-        f"Streaming Sortformer model '{config.sortformer_model_id}' is not staged on "
-        "this host (needs the ~471 MB .nemo weights + NeMo/PyTorch GPU runtime); "
-        "diarization degrades to 'no labels'. See "
-        "docs/implementation/TASK-475-Streaming-2Speaker-Diarization/README.md "
-        "for the model-staging ask."
-    )
+    if not tensor_outputs:
+        return []
+    matrix: Any = tensor_outputs[0]  # first (only) audio input in the batch
+    to_list = getattr(matrix, "tolist", None)
+    if callable(to_list):
+        matrix = to_list()
+    return [[float(prob) for prob in frame] for frame in matrix]
+
+
+class NemoSortformerBackend:
+    """``SortformerBackend`` over a loaded NeMo ``SortformerEncLabelModel``.
+
+    Structurally satisfies the ``SortformerBackend`` protocol. The only
+    model-dependent step — the ``diarize`` forward — is fenced in the ``# UNVALIDATED``
+    block below; the ``T×S`` extraction is the pure ``_activities_from_nemo_output``
+    helper. Any inference error propagates to ``StreamingSortformerDiarizer.diarize``,
+    which degrades to "no labels" (the hot path never crashes). Self-hosted only: the
+    model runs on-prem; no clinical-audio egress.
+    """
+
+    def __init__(self, model: Any, config: DiarizationConfig) -> None:
+        self._model = model
+        self._config = config
+
+    def infer_activities(
+        self, audio: Sequence[float], sample_rate: int
+    ) -> Sequence[Sequence[float]]:
+        """Run the Sortformer forward over one mono buffer → ``T×S`` activity probs."""
+        import numpy as np  # lazy — keep the module import light + torch-free
+
+        samples = np.asarray(audio, dtype=np.float32)
+        # === UNVALIDATED — requires GPU + .nemo staging ======================
+        # SortformerEncLabelModel.diarize over an in-memory mono buffer, returning the
+        # raw per-frame speaker-activity probabilities (a list of (T, S) tensors, one
+        # per input). Signature verified against the model card + NeMo source, but NOT
+        # executed here (no NVIDIA GPU, .nemo un-staged). Any surprise is caught by the
+        # caller's try/except and degraded to "no labels".
+        _segments, tensor_outputs = self._model.diarize(
+            audio=samples,
+            batch_size=1,
+            sample_rate=sample_rate,
+            include_tensor_outputs=True,
+            verbose=False,
+        )
+        # === end UNVALIDATED =================================================
+        return _activities_from_nemo_output(tensor_outputs)
+
+
+def _restore_sortformer_model(config: DiarizationConfig) -> Any:
+    """Load the streaming Sortformer ``SortformerEncLabelModel`` (NeMo).
+
+    Mirrors ``models/nemo_loader.py``: LAZY ``nemo`` import (so this module and the
+    unit tests import with nemo absent), ``restore_from`` a locally-staged ``.nemo``
+    else ``from_pretrained`` the pinned HF repo (``sortformer_revision`` when set),
+    ``.eval()``, the streaming preset, device placement. Raises on ANY failure —
+    ``load_default_backend`` wraps it so the diarizer degrades. Self-hosted only:
+    stage the weights offline; the clinical loop never auto-downloads.
+    """
+    # === UNVALIDATED — requires GPU + .nemo staging ==========================
+    from nemo.collections.asr.models import SortformerEncLabelModel
+
+    from stt_v2.core.platform import get_device_string
+
+    device = get_device_string()
+    model_id = config.sortformer_model_id
+
+    if model_id.endswith(".nemo") and Path(model_id).exists():
+        # A locally-staged checkpoint — this file IS the revision-pinned artifact.
+        model = SortformerEncLabelModel.restore_from(
+            restore_path=model_id, map_location=device, strict=False
+        )
+    else:
+        # HF repo id, resolved from the offline HF cache (stage it first). Pin by
+        # revision when the operator set one (AC-1); tolerate a NeMo build whose
+        # from_pretrained predates the revision kwarg.
+        pretrained_kwargs: dict[str, Any] = {"model_name": model_id, "map_location": device}
+        if config.sortformer_revision:
+            pretrained_kwargs["revision"] = config.sortformer_revision
+        try:
+            model = SortformerEncLabelModel.from_pretrained(**pretrained_kwargs)
+        except TypeError:
+            pretrained_kwargs.pop("revision", None)
+            model = SortformerEncLabelModel.from_pretrained(**pretrained_kwargs)
+
+    model.eval()
+
+    modules = getattr(model, "sortformer_modules", None)
+    if modules is not None:
+        for name, value in _STREAMING_PRESET.items():
+            setattr(modules, name, value)
+        check = getattr(modules, "_check_streaming_parameters", None)
+        if callable(check):
+            check()
+
+    return model
+    # === end UNVALIDATED ====================================================
+
+
+def load_default_backend(config: DiarizationConfig) -> SortformerBackend:
+    """Production backend factory — loads the self-hosted Streaming Sortformer.
+
+    Delegates the un-runnable NeMo restore to ``_restore_sortformer_model`` and wraps
+    ANY failure (nemo absent, ``.nemo`` un-staged, load / streaming-config error) into
+    ``SortformerModelUnavailableError`` so ``StreamingSortformerDiarizer.diarize``
+    degrades to "no labels" — reproducing today's diarization-off behavior and never
+    crashing the ASR hot path. On THIS host the NeMo/GPU runtime + weights are not
+    staged, so the lazy import still fails and this still raises (see the unit tests).
+    Track guardrail: self-hosted only — do NOT substitute a cloud diarization vendor.
+    """
+    try:
+        model = _restore_sortformer_model(config)
+    except Exception as exc:  # noqa: BLE001 — ANY load failure is fail-safe → degrade
+        raise SortformerModelUnavailableError(
+            f"Streaming Sortformer model '{config.sortformer_model_id}' could not be "
+            f"loaded on this host ({type(exc).__name__}): it needs the ~471 MB .nemo "
+            "weights staged + the NeMo/PyTorch GPU runtime. Diarization degrades to "
+            "'no labels'. See "
+            "docs/implementation/TASK-475-Streaming-2Speaker-Diarization/README.md "
+            "for the model-staging ask."
+        ) from exc
+    return NemoSortformerBackend(model, config)
 
 
 class StreamingSortformerDiarizer:
