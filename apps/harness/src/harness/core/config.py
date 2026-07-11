@@ -165,6 +165,64 @@ class RetrievalConfig(BaseSettings):
         return v
 
 
+_CLAIM_CHECK_STORES = ("memory", "s3")
+
+
+class ClaimCheckConfig(BaseSettings):
+    """Claim-check out-of-band blob store (TASK-483 — Temporal history budget).
+
+    Large clinical blobs (transcript / assembled prompt / generated note / RAG
+    chunks) are moved OUT of Temporal workflow history and replaced with a small
+    content-addressed reference, protecting the ~50 MB history-size budget under a
+    long / heavily-regenerated encounter. The store is SELF-HOSTED only (MinIO,
+    S3-compatible) — the offloaded payloads carry clinical content and must never
+    egress to a cloud bucket (track guardrail).
+
+    ``enabled`` defaults ON with ``min_bytes`` set so offload protects the budget
+    out of the box, and ``should_offload`` keeps small payloads inline (no store
+    tax). The DEFAULT ``store`` is the process-local ``memory`` fake — correct for
+    the hermetic suite and SINGLE-worker local dev; a MULTI-worker deploy MUST set
+    ``store=s3`` + the MinIO endpoint/creds, because a cross-worker activity retry
+    against the in-memory fake fails LOUD (``ClaimCheckNotFound``). Creds are
+    ``SecretStr``, validated at startup (AC-7).
+    """
+
+    model_config = SettingsConfigDict(env_prefix="HARNESS_CLAIM_CHECK_")
+
+    # Offload ON by default (protect the history budget); the threshold keeps small
+    # payloads inline so tiny prompts/notes never pay a store round-trip.
+    enabled: bool = True
+    # Backend selector: ``memory`` (process-local fake — dev/test) | ``s3`` (self-hosted MinIO).
+    store: str = "memory"
+    # Blobs at/above this many utf-8 BYTES are offloaded; below it they stay inline.
+    min_bytes: int = 65_536  # 64 KiB
+    # Tenant-scoped, access-controlled PHI bucket (NOT a public bucket).
+    bucket: str = "harness-claim-check"
+    # Self-hosted MinIO S3 endpoint (host under platform control — no cloud egress).
+    endpoint_url: str = "http://localhost:9000"
+    access_key: SecretStr = SecretStr("")
+    secret_key: SecretStr = SecretStr("")
+    region: str = "us-east-1"
+    secure: bool = False
+    # Advisory blob lifetime (a bucket lifecycle rule enforces expiry out-of-band);
+    # a blob must outlive the longest workflow that may still dereference it.
+    ttl_seconds: int = 604_800  # 7 days
+
+    @field_validator("store")
+    @classmethod
+    def _validate_store(cls, v: str) -> str:
+        if v not in _CLAIM_CHECK_STORES:
+            raise ValueError(f"store must be one of {list(_CLAIM_CHECK_STORES)}")
+        return v
+
+    @field_validator("min_bytes")
+    @classmethod
+    def _positive_min_bytes(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("min_bytes must be a positive integer")
+        return v
+
+
 class Settings(BaseSettings):
     """Root harness application settings."""
 
@@ -291,6 +349,8 @@ class Settings(BaseSettings):
     phi: PhiConfig = Field(default_factory=PhiConfig)
     # Phase-3 institutional RAG (TASK-330): hybrid JIT retriever (flag-gated off).
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
+    # TASK-483 claim-check: out-of-band blob store for the Temporal history budget.
+    claim_check: ClaimCheckConfig = Field(default_factory=ClaimCheckConfig)
 
     @field_validator("log_level")
     @classmethod

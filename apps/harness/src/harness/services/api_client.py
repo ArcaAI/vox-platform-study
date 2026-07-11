@@ -20,6 +20,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
 from harness.sensors.base import NEREntity, normalize_text
+from harness.temporal.claim_check import ClaimCheckRef
 
 
 class ApiServiceError(RuntimeError):
@@ -38,6 +39,13 @@ class AssembleResponse(BaseModel):
 
     user_prompt: str = ""
     system_prompt: str = ""
+    # TASK-483 claim-check: OPTIONAL out-of-band refs for the (large) assembled prompts,
+    # carried alongside the inline fields for the ``generate`` activity to resolve. The
+    # ``assemble_prompt`` activity may offload above the threshold (inline emptied). The
+    # apps/api assemble response never carries these (extra="ignore" drops unknowns); they
+    # are populated harness-side. Additive-optional ⇒ replay-safe.
+    user_prompt_ref: ClaimCheckRef | None = None
+    system_prompt_ref: ClaimCheckRef | None = None
     hyperparameters: dict[str, Any] = Field(default_factory=dict)
     response_format: dict[str, Any] | None = None
     prompt_template_id: str | None = None

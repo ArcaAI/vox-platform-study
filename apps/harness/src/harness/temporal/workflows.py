@@ -47,6 +47,7 @@ with workflow.unsafe.imports_passed_through():
         run_inferential_sensors,
         run_sensors,
     )
+    from harness.temporal.claim_check import ClaimCheckRef
     from harness.temporal.models import (
         DEFAULT_GROUNDEDNESS_THRESHOLD,
         HARNESS_DRAFT_PHASE_EARLY,
@@ -164,6 +165,10 @@ class HarnessDocWorkflow:
         self._edited: bool = False
         self._ever_edited: bool = False
         self._edited_content: str | None = None
+        # TASK-483: OPTIONAL claim-check ref for an offloaded edited note (apps/api-facing
+        # seam; None until a future caller sends the edit by ref). Threaded, with
+        # ``_edited_content``, into the assurance pass's note_text/note_text_ref.
+        self._edited_content_ref: ClaimCheckRef | None = None
         self._edited_version_id: str | None = None
 
     @workflow.signal
@@ -185,6 +190,7 @@ class HarnessDocWorkflow:
         self._edited = True
         self._ever_edited = True
         self._edited_content = payload.content
+        self._edited_content_ref = payload.content_ref
         self._edited_version_id = payload.context_item_version_id
 
     @workflow.query
@@ -341,6 +347,9 @@ class HarnessDocWorkflow:
                 extract_entities,
                 ExtractEntitiesInput(
                     text=inp.transcript_text,
+                    # TASK-483: thread the (future) transcript ref; the activity resolves
+                    # inline-or-ref. None today ⇒ inline path, byte-identical.
+                    text_ref=inp.transcript_ref,
                     language=inp.conversation_language,
                     reuse_priors=True,
                     consultation_id=inp.consultation_id,
@@ -398,6 +407,12 @@ class HarnessDocWorkflow:
             reduced_assurance = True
         retrieved_chunk_ids = [c.chunk_id for c in retrieved.chunks]
         knowledge_chunks = {c.chunk_id: c.text for c in retrieved.chunks}
+        # TASK-483: per-chunk claim-check refs for any offloaded chunk texts; the
+        # inferential activity merges these with ``knowledge_chunks`` (inline "" for the
+        # offloaded ones). Empty ⇒ the pure-inline path (retrieval off / below threshold).
+        knowledge_chunks_ref = {
+            c.chunk_id: c.text_ref for c in retrieved.chunks if c.text_ref is not None
+        }
 
         # 2) Bounded regen loop. The five computational sensors run every iteration
         # (cheap); once they settle, the costly inferential pass (groundedness +
@@ -449,17 +464,18 @@ class HarnessDocWorkflow:
                 start_to_close_timeout=_ACTIVITY_TIMEOUT,
                 retry_policy=_API_RETRY,
             )
-            # Augment the prompt with the retrieved Knowledge Context (StrictCitations).
-            # Empty block (retrieval off / no hits / degraded) leaves the prompt unchanged.
-            user_prompt = assembled.user_prompt
-            if retrieved.prompt_block:
-                user_prompt = f"{user_prompt}\n\n{retrieved.prompt_block}"
-
+            # TASK-483: the retrieved Knowledge Context (StrictCitations) block + the
+            # (possibly offloaded) prompt refs are threaded to ``generate``, which resolves
+            # the prompt inline-or-ref and folds in the block. The workflow no longer
+            # concatenates the blob, so history holds only the small refs.
             generated = await workflow.execute_activity(
                 generate,
                 GenerateInput(
-                    prompt=user_prompt,
+                    prompt=assembled.user_prompt,
+                    prompt_ref=assembled.user_prompt_ref,
                     system_prompt=assembled.system_prompt,
+                    system_prompt_ref=assembled.system_prompt_ref,
+                    prompt_block=retrieved.prompt_block,
                     response_format=assembled.response_format,
                     hyperparameters=assembled.hyperparameters,
                     provider=smr_provider,
@@ -476,7 +492,10 @@ class HarnessDocWorkflow:
                 note_extracted = await workflow.execute_activity(
                     extract_entities,
                     ExtractEntitiesInput(
-                        text=generated.content, language=inp.conversation_language
+                        text=generated.content,
+                        # TASK-483: thread the offloaded-note ref (None ⇒ inline note).
+                        text_ref=generated.content_ref,
+                        language=inp.conversation_language,
                     ),
                     start_to_close_timeout=_ACTIVITY_TIMEOUT,
                     retry_policy=_NLP_RETRY,
@@ -491,7 +510,10 @@ class HarnessDocWorkflow:
                 run_sensors,
                 RunSensorsInput(
                     note_text=generated.content,
+                    # TASK-483: thread the offloaded note + (future) transcript refs.
+                    note_text_ref=generated.content_ref,
                     transcript_text=inp.transcript_text,
+                    transcript_text_ref=inp.transcript_ref,
                     note_entities=note_entities,
                     transcript_entities=transcript_entities,
                     response_format=assembled.response_format,
@@ -532,9 +554,13 @@ class HarnessDocWorkflow:
                     run_inferential_sensors,
                     RunInferentialSensorsInput(
                         note_text=generated.content,
+                        # TASK-483: thread the offloaded note + transcript + chunk refs.
+                        note_text_ref=generated.content_ref,
                         transcript_text=inp.transcript_text,
+                        transcript_text_ref=inp.transcript_ref,
                         citations_map=sensors.citations_map,
                         knowledge_chunks=knowledge_chunks,
+                        knowledge_chunks_ref=knowledge_chunks_ref,
                         groundedness_threshold=groundedness_threshold,
                         safety_enabled=safety_enabled,
                         phi_enabled=phi_enabled,
@@ -602,6 +628,8 @@ class HarnessDocWorkflow:
                         user_id=inp.user_id,
                         job_id=inp.job_id,
                         content=gen_.content,
+                        # TASK-483: thread the offloaded-note ref (activity resolves before POST).
+                        content_ref=gen_.content_ref,
                         model_name=gen_.model or None,
                         sensor_scores=sens_.scores,
                         citations_map=sens_.citations_map,
@@ -643,14 +671,16 @@ class HarnessDocWorkflow:
                     start_to_close_timeout=_ACTIVITY_TIMEOUT,
                     retry_policy=_API_RETRY,
                 )
-                uprompt = asm_.user_prompt
-                if retrieved.prompt_block:
-                    uprompt = f"{uprompt}\n\n{retrieved.prompt_block}"
+                # TASK-483: thread the (offloaded) prompt refs + RAG block to generate
+                # (which resolves + folds the block); mirrors the legacy loop.
                 gen_ = await workflow.execute_activity(
                     generate,
                     GenerateInput(
-                        prompt=uprompt,
+                        prompt=asm_.user_prompt,
+                        prompt_ref=asm_.user_prompt_ref,
                         system_prompt=asm_.system_prompt,
+                        system_prompt_ref=asm_.system_prompt_ref,
+                        prompt_block=retrieved.prompt_block,
                         response_format=asm_.response_format,
                         hyperparameters=asm_.hyperparameters,
                         provider=smr_provider,
@@ -667,7 +697,9 @@ class HarnessDocWorkflow:
                     ne_ = await workflow.execute_activity(
                         extract_entities,
                         ExtractEntitiesInput(
-                            text=gen_.content, language=inp.conversation_language
+                            text=gen_.content,
+                            text_ref=gen_.content_ref,
+                            language=inp.conversation_language,
                         ),
                         start_to_close_timeout=_ACTIVITY_TIMEOUT,
                         retry_policy=_NLP_RETRY,
@@ -679,7 +711,9 @@ class HarnessDocWorkflow:
                     run_sensors,
                     RunSensorsInput(
                         note_text=gen_.content,
+                        note_text_ref=gen_.content_ref,
                         transcript_text=inp.transcript_text,
+                        transcript_text_ref=inp.transcript_ref,
                         note_entities=note_ents,
                         transcript_entities=transcript_entities,
                         response_format=asm_.response_format,
@@ -716,6 +750,9 @@ class HarnessDocWorkflow:
             #                  REGEN to a surfaced FLAG instead of swapping the note.
             signals_enabled = workflow.patched("task-355-assurance-signals")
             assurance_content = generated.content
+            # TASK-483: the offloaded-note ref companion to ``assurance_content`` (threaded
+            # to the assurance pass's note_text_ref). Re-bound alongside the content below.
+            assurance_content_ref = generated.content_ref
             assurance_version_id: str | None = None
             # C1-02 (TASK-458): count edit-driven re-runs so a burst of clinician edits
             # cannot drive an unbounded number of costly inferential passes (patch-gated).
@@ -724,7 +761,11 @@ class HarnessDocWorkflow:
                 # Consume a pending edit (arrived before/between passes): re-bind the
                 # assurance target to the edited version, then clear the per-pass latch.
                 if signals_enabled and self._edited:
-                    assurance_content = self._edited_content or assurance_content
+                    # TASK-483: re-bind to the edited note (inline or offloaded ref); an
+                    # empty edit keeps the current content+ref (mirrors the original `or`).
+                    if self._edited_content or self._edited_content_ref is not None:
+                        assurance_content = self._edited_content or ""
+                        assurance_content_ref = self._edited_content_ref
                     assurance_version_id = self._edited_version_id
                     self._edited = False
                 self._phase = "INFER"
@@ -734,9 +775,13 @@ class HarnessDocWorkflow:
                         run_inferential_sensors,
                         RunInferentialSensorsInput(
                             note_text=assurance_content,
+                            # TASK-483: thread the offloaded note + transcript + chunk refs.
+                            note_text_ref=assurance_content_ref,
                             transcript_text=inp.transcript_text,
+                            transcript_text_ref=inp.transcript_ref,
                             citations_map=sensors.citations_map,
                             knowledge_chunks=knowledge_chunks,
+                            knowledge_chunks_ref=knowledge_chunks_ref,
                             groundedness_threshold=groundedness_threshold,
                             safety_enabled=safety_enabled,
                             phi_enabled=phi_enabled,
@@ -818,6 +863,8 @@ class HarnessDocWorkflow:
                         generated, sensors, assembled, reduced_assurance
                     )
                     assurance_content = generated.content
+                    # TASK-483: keep the ref companion in lockstep with the re-generated note.
+                    assurance_content_ref = generated.content_ref
                     continue
                 break
             decision = str(verdict.decision)
@@ -924,6 +971,8 @@ class HarnessDocWorkflow:
                     user_id=inp.user_id,
                     job_id=inp.job_id,
                     content=generated.content,
+                    # TASK-483: thread the offloaded-note ref (activity resolves before POST).
+                    content_ref=generated.content_ref,
                     model_name=generated.model or None,
                     sensor_scores=sensors.scores,
                     citations_map=sensors.citations_map,

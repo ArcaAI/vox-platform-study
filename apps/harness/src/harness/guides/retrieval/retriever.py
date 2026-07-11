@@ -28,6 +28,7 @@ from harness.core.logging import get_logger
 from harness.guides.retrieval.qdrant_store import RetrievedPoint
 from harness.sensors.base import NEREntity
 from harness.services.reranker_client import RerankResult
+from harness.temporal.claim_check import ClaimCheckRef
 
 logger = get_logger(__name__)
 
@@ -39,6 +40,10 @@ class RetrievedChunk(BaseModel):
 
     chunk_id: str
     text: str
+    # TASK-483 claim-check: OPTIONAL out-of-band ref to the (large) chunk ``text``,
+    # alongside the inline field, so a consumer (the inferential citation-verify pass)
+    # can resolve it. Additive-optional default None ⇒ replay-safe.
+    text_ref: ClaimCheckRef | None = None
     score: float = 0.0
     knowledge_document_id: str = ""
     chunk_index: int = 0

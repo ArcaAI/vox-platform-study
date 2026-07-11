@@ -513,9 +513,11 @@ class TestInstitutionalRetrieval:
         assert recorder.calls["retrieve_context"] == 1
         # Retrieval is entity-triggered, scoped to the tenant.
         assert recorder.retrieve_inputs[0].tenant_id == "t-1"
-        # The generation prompt was augmented with the StrictCitations block.
-        gen_prompt = recorder.generate_inputs[0].prompt
-        assert "kc-1" in gen_prompt and "[[kb:" in gen_prompt
+        # The StrictCitations block is threaded to generate via ``prompt_block`` (TASK-483:
+        # the generate activity folds it into the prompt, so the workflow threads the small
+        # prompt ref instead of the concatenated blob).
+        gen_block = recorder.generate_inputs[0].prompt_block
+        assert "kc-1" in gen_block and "[[kb:" in gen_block
         # Chunk ids are threaded into the computational pass (knowledgeChunkIds mapping)
         assert recorder.run_sensors_inputs[0].retrieved_chunk_ids == ["kc-1"]
         # ...and the chunk text is threaded into the inferential pass (citation-verify).

@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from harness.guides.retrieval.retriever import RetrievedChunk
 from harness.sensors.base import NEREntity, SensorResult
 from harness.sensors.config import SensorThresholds
+from harness.temporal.claim_check import ClaimCheckRef
 
 # Inferential groundedness default — mirrors ``SensorThresholds.groundedness_threshold``
 # so the workflow can thread a default when no policy row drives the loop.
@@ -73,6 +74,13 @@ class HarnessDocWorkflowInput(BaseModel):
     # The transcript ContextItem (provenance) + its text (NER + sensor inputs).
     context_item_id: str | None = None
     transcript_text: str = ""
+    # TASK-483 claim-check: OPTIONAL out-of-band reference to the transcript, carried
+    # ALONGSIDE the inline ``transcript_text`` (never replacing it). Additive-optional
+    # default ⇒ no new workflow command, replay-safe: an old start payload (inline only)
+    # deserializes it to None. The apps/api-facing seam for a future caller to hand the
+    # harness a transcript REF instead of the inline blob; until then the harness threads
+    # ``transcript_text`` inline (ref None) and every consuming activity resolves inline-or-ref.
+    transcript_ref: ClaimCheckRef | None = None
     conversation_language: str = "en"
     dna_style_id: str | None = None
     template: str | None = None
@@ -114,6 +122,11 @@ class EditSignal(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     content: str
+    # TASK-483 claim-check: OPTIONAL out-of-band ref to the edited note, alongside the
+    # inline ``content``. Additive-optional default ⇒ replay-safe (an old signal event
+    # deserializes it to None). The apps/api-facing seam for a future caller to send the
+    # edited note by REF; the assurance pass resolves inline-or-ref before screening.
+    content_ref: ClaimCheckRef | None = None
     context_item_version_id: str | None = None
     edited_by: str | None = None
 
@@ -244,6 +257,12 @@ class ExtractEntitiesInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     text: str
+    # TASK-483 claim-check: OPTIONAL out-of-band ref to ``text``, alongside the inline
+    # field. The activity resolves inline-or-ref at entry (ref set ⇒ dereference; ref
+    # absent ⇒ use ``text``). Additive-optional ⇒ replay-safe. Set on the NOTE-NER call
+    # when the note was offloaded by ``generate``; the transcript-NER call carries the
+    # (future) ``HarnessDocWorkflowInput.transcript_ref``.
+    text_ref: ClaimCheckRef | None = None
     language: str = "en"
     # TASK-480 Half-B — NER-priors reuse. The TRANSCRIPT extraction sets
     # ``reuse_priors=True`` (+ the ids) so the activity may reuse already-persisted
@@ -297,6 +316,18 @@ class GenerateInput(BaseModel):
 
     prompt: str
     system_prompt: str | None = None
+    # TASK-483 claim-check: OPTIONAL out-of-band refs for the (large) prompts, carried
+    # alongside the inline fields. The ``generate`` activity resolves inline-or-ref at
+    # entry before the PHI-egress guard + SMR call. Additive-optional ⇒ replay-safe (an
+    # old input deserializes them to None ⇒ the inline prompt path, byte-identical).
+    prompt_ref: ClaimCheckRef | None = None
+    system_prompt_ref: ClaimCheckRef | None = None
+    # TASK-483: the RAG StrictCitations block to append AFTER the (resolved) user prompt.
+    # Moved off the workflow body (which previously concatenated it) so the workflow can
+    # thread the small prompt REF instead of the concatenated blob; the ``generate``
+    # activity folds it in before the PHI-egress guard. Default "" ⇒ no append (the
+    # retrieval-off common case, byte-identical to a plain prompt), replay-safe.
+    prompt_block: str = ""
     response_format: dict[str, Any] | None = None
     hyperparameters: dict[str, Any] = Field(default_factory=dict)
     provider: str | None = None
@@ -345,6 +376,13 @@ class RunSensorsInput(BaseModel):
 
     note_text: str
     transcript_text: str = ""
+    # TASK-483 claim-check: OPTIONAL out-of-band refs for the (large) note + transcript,
+    # alongside the inline fields. The activity resolves inline-or-ref at entry. Additive-
+    # optional ⇒ replay-safe (an old input ⇒ None ⇒ inline path). ``note_text_ref`` is set
+    # when ``generate`` offloaded the note; ``transcript_text_ref`` threads the (future)
+    # transcript ref.
+    note_text_ref: ClaimCheckRef | None = None
+    transcript_text_ref: ClaimCheckRef | None = None
     note_entities: list[NEREntity] = Field(default_factory=list)
     transcript_entities: list[NEREntity] = Field(default_factory=list)
     response_format: dict[str, Any] | None = None
@@ -369,10 +407,21 @@ class RunInferentialSensorsInput(BaseModel):
 
     note_text: str
     transcript_text: str = ""
+    # TASK-483 claim-check: OPTIONAL out-of-band refs for the (large) note + transcript,
+    # alongside the inline fields; the activity resolves inline-or-ref at entry. Additive-
+    # optional ⇒ replay-safe. ``note_text_ref`` is set when ``generate`` (or the edited
+    # note) was offloaded; ``transcript_text_ref`` threads the (future) transcript ref.
+    note_text_ref: ClaimCheckRef | None = None
+    transcript_text_ref: ClaimCheckRef | None = None
     citations_map: dict[str, Any] = Field(default_factory=dict)
     # Phase-3 RAG: retrieved chunk id -> chunk text, so the citation-verify sensor
     # can entail each cited claim against ONLY its cited chunk(s).
     knowledge_chunks: dict[str, str] = Field(default_factory=dict)
+    # TASK-483 claim-check: OPTIONAL per-chunk out-of-band refs (chunk id -> ref) for the
+    # (large) knowledge chunk texts, alongside ``knowledge_chunks``. The activity merges
+    # inline + resolved-ref chunks at entry. Additive-optional ⇒ replay-safe (an old input
+    # ⇒ {} ⇒ the pure-inline chunk path).
+    knowledge_chunks_ref: dict[str, ClaimCheckRef] = Field(default_factory=dict)
     # Phase-6 policy injection: the groundedness pass threshold + the safety toggle.
     # ``safety_enabled=False`` skips the Granite safety screen entirely.
     groundedness_threshold: float = DEFAULT_GROUNDEDNESS_THRESHOLD
@@ -437,6 +486,11 @@ class PersistDraftInput(BaseModel):
     consultation_id: str
     tenant_id: str
     content: str
+    # TASK-483 claim-check: OPTIONAL out-of-band ref to the (large) draft ``content``,
+    # alongside the inline field. The activity resolves inline-or-ref at entry, then POSTs
+    # the fully-materialized note to apps/api (the persist contract is unchanged — apps/api
+    # still receives the real content). Additive-optional ⇒ replay-safe.
+    content_ref: ClaimCheckRef | None = None
     user_id: str | None = None
     job_id: str | None = None
     model_name: str | None = None
