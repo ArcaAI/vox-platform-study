@@ -549,8 +549,11 @@ class DiarizationConfig:
     #                   used only once its weights are staged (see streaming_sortformer).
     backend: str = "embedding"
     # --- Streaming Sortformer knobs (used only when backend == "sortformer") ---
-    # Commercially-licensed checkpoint (cc-by-4.0) — NOT the cc-by-nc offline v1.
-    sortformer_model_id: str = "nvidia/diar_streaming_sortformer_4spk-v2"
+    # Pinned checkpoint (owner directive 2026-07-11): the v2.1 streaming Sortformer.
+    # License = NVIDIA Open Model License (v2.1) — commercial use permitted; owner-
+    # accepted (waived the in-app acceptance gate). NOTE: this differs from the plain
+    # cc-by-4.0 of `...-v2`; it is NOT the cc-by-nc offline v1. Self-hosted only.
+    sortformer_model_id: str = "nvidia/diar_streaming_sortformer_4spk-v2.1"
     # Pin the model by revision once staged (AC-1: "Model pinned by revision").
     sortformer_revision: str | None = None
     # Per-frame speaker-activity probability threshold for turn extraction.

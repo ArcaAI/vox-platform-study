@@ -19,10 +19,11 @@ Degrading to "no labels" — rather than crashing — keeps the ASR hot path ali
 and reproduces today's default (diarization-off) behavior exactly. No path ever
 fabricates a speaker turn the model did not actually emit.
 
-MODEL REALITY (2026-07): the Streaming Sortformer ``.nemo`` weights (~471 MB,
-``nvidia/diar_streaming_sortformer_4spk-v2``, cc-by-4.0) are NOT in the offline
-HF cache (``HF_HOME`` holds only whisper + silero + pyannote-embedding), and the
-model needs the NeMo/PyTorch GPU runtime (no working CPU/ONNX path). So
+MODEL REALITY (2026-07): the Streaming Sortformer ``.nemo`` weights
+(``nvidia/diar_streaming_sortformer_4spk-v2.1``, NVIDIA Open Model License —
+pinned per owner directive 2026-07-11) are NOT in the offline HF cache
+(``HF_HOME`` holds only whisper + silero + pyannote-embedding), and the model
+needs the NeMo/PyTorch GPU runtime (no working CPU/ONNX path). So
 ``load_default_backend`` raises ``SortformerModelUnavailableError`` until the
 model is staged; once staged, implement the NeMo scorer inside that factory
 against the ``SortformerBackend`` seam — the diarizer, thresholding, and tests do
