@@ -405,6 +405,29 @@ class TestControlHandlerIntegration:
         (msg,), _ = publisher.publish_error.await_args
         assert "resume" in msg.lower()
 
+    def test_make_control_handler_declares_typed_return_not_any(self) -> None:
+        """TASK-462 M-2 — the C2-04 control-error channel must be TYPED, not ``Any``.
+
+        ``_make_control_handler`` builds the callback that decodes each control
+        frame and publishes the PAUSE/RESUME rejection error (C2-04). Declaring its
+        return as ``Any`` erases the type on the control/error path, so a
+        mis-shaped callback would only fail at runtime. It must declare the
+        concrete callback type the ``ControlListener`` consumes
+        (``Callable[[SessionControl], Coroutine[Any, Any, None]]``).
+        """
+        import inspect
+
+        # `from __future__ import annotations` → annotations are source strings.
+        return_annotation = inspect.signature(
+            SessionManager._make_control_handler
+        ).return_annotation
+
+        assert (
+            return_annotation != "Any"
+        ), "control-error callback factory must not be typed as `Any` (M-2)"
+        assert "Callable[[SessionControl]" in return_annotation
+        assert "None" in return_annotation
+
     @pytest.mark.asyncio
     async def test_control_handler_without_preprocessor(self):
         """Control handler without preprocessor should still work."""
