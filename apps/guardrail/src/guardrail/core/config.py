@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -166,7 +168,11 @@ class GroundednessConfig(BaseSettings):
     # negative or >1 value) is rejected at startup ("fail fast") rather than silently
     # marking everything grounded on an honest checked:true response (a config fail-open
     # on a clinical gate).
-    entailment_threshold: float = Field(0.5, ge=0.0, le=1.0)
+    # Annotated (not a Field default) so a plain `0.5` default keeps GroundednessConfig
+    # zero-arg constructible for mypy — a bare `Field(0.5, ...)` default makes the model
+    # look arg-required without the pydantic mypy plugin and breaks the parent's
+    # `default_factory=GroundednessConfig` typing. Same ge/le validation as before.
+    entailment_threshold: Annotated[float, Field(ge=0.0, le=1.0)] = 0.5
 
     # Segments per scorer batch — the throughput lever for the >500 docs/min target.
     batch_size: int = 16
