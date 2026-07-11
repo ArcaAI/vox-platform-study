@@ -29,7 +29,7 @@ import structlog
 
 from stt_v2.core.config.settings import get_settings
 from stt_v2.core.metrics import streaming_session_ended, streaming_session_started
-from stt_v2.pipeline.dto import DualCaptureConfig
+from stt_v2.pipeline.dto import DualCaptureConfig, EndpointConfig
 from stt_v2.storage.blob_service import BlobService
 from stt_v2.streaming.capacity_guard import CapacityGuard
 from stt_v2.streaming.commit_policy import LocalAgreementPolicy
@@ -52,6 +52,7 @@ from stt_v2.streaming.schemas import (
     SessionMetadata,
     SessionStatus,
 )
+from stt_v2.streaming.semantic_endpointer import SemanticEndpointer
 from stt_v2.streaming.session import StreamSession
 
 logger = structlog.get_logger(__name__)
@@ -170,6 +171,26 @@ class SessionManager:
             self._audio_trim_interval_s = float(
                 getattr(_settings, "streaming_audio_trim_interval_s", 30.0)
             )
+            # TASK-473 A3 — semantic endpointing knobs (bare env names; default
+            # OFF so the streaming hot path keeps the fixed silence offset).
+            self._semantic_endpoint_enabled = bool(
+                getattr(_settings, "semantic_endpoint_enabled", False)
+            )
+            self._semantic_endpoint_min_silence_ms = int(
+                getattr(_settings, "semantic_endpoint_min_silence_ms", 200)
+            )
+            self._semantic_endpoint_max_silence_ms = int(
+                getattr(_settings, "semantic_endpoint_max_silence_ms", 500)
+            )
+            self._semantic_endpoint_confidence_threshold = float(
+                getattr(_settings, "semantic_endpoint_confidence_threshold", 0.85)
+            )
+            self._semantic_endpoint_min_words = int(
+                getattr(_settings, "semantic_endpoint_min_words", 3)
+            )
+            self._semantic_endpoint_model_id = str(
+                getattr(_settings, "semantic_endpoint_model_id", "") or ""
+            )
         except Exception:
             self._reaper_interval_s = 300
             self._session_timeout_s = 60
@@ -186,6 +207,13 @@ class SessionManager:
             self._partial_window_s = 8.0
             self._partial_interval_s = 0.4
             self._audio_trim_interval_s = 30.0
+            # TASK-473 A3 — semantic endpointing defaults (OFF).
+            self._semantic_endpoint_enabled = False
+            self._semantic_endpoint_min_silence_ms = 200
+            self._semantic_endpoint_max_silence_ms = 500
+            self._semantic_endpoint_confidence_threshold = 0.85
+            self._semantic_endpoint_min_words = 3
+            self._semantic_endpoint_model_id = ""
 
     # ------------------------------------------------------------------
     # Properties
@@ -246,6 +274,10 @@ class SessionManager:
                 kwargs["force_emit_overlap_ms"] = vad_cfg.force_emit_overlap_ms
         else:
             kwargs["min_silence_duration_ms"] = self._profile.vad_silence_threshold_ms
+        # TASK-473 A3 — build + attach the semantic endpointer (None when
+        # disabled, so the preprocessor keeps the exact fixed silence offset).
+        # Shared with crash recovery, so recovered sessions get one too.
+        kwargs["endpointer"] = self._make_endpointer(pipeline_config)
         return kwargs
 
     def _make_commit_policy(self, pipeline_config: Any) -> LocalAgreementPolicy | None:
@@ -268,6 +300,48 @@ class SessionManager:
         policy = self._commit_policies.get(session_id)
         if policy is not None:
             policy.reset()
+
+    def _resolve_endpoint_config(self, pipeline_config: Any) -> EndpointConfig | None:
+        """Resolve the effective semantic-endpoint config, or None when disabled.
+
+        Resolution order (TASK-473 A3):
+        1. A pipeline override — ``preprocessing.endpoint`` is a real
+           ``EndpointConfig`` with ``enabled=True`` (the future seed opt-in).
+           Strict ``isinstance`` so MagicMock/duck-typed test configs never
+           enable it (mirrors ``_make_commit_policy``).
+        2. Otherwise the global settings (the streaming enable surface, default
+           OFF) build an ``EndpointConfig`` when ``semantic_endpoint_enabled``.
+        Returns None when neither enables it.
+        """
+        preprocessing = getattr(pipeline_config, "preprocessing", None)
+        pipeline_endpoint = getattr(preprocessing, "endpoint", None)
+        if isinstance(pipeline_endpoint, EndpointConfig) and pipeline_endpoint.enabled:
+            return pipeline_endpoint
+
+        if not self._semantic_endpoint_enabled:
+            return None
+        return EndpointConfig(
+            enabled=True,
+            min_endpoint_silence_ms=self._semantic_endpoint_min_silence_ms,
+            max_endpoint_silence_ms=self._semantic_endpoint_max_silence_ms,
+            confidence_threshold=self._semantic_endpoint_confidence_threshold,
+            min_words=self._semantic_endpoint_min_words,
+            model_id=self._semantic_endpoint_model_id,
+        )
+
+    def _make_endpointer(self, pipeline_config: Any) -> SemanticEndpointer | None:
+        """Build a per-session semantic endpointer when enabled (TASK-473 A3).
+
+        Mirrors ``_make_commit_policy``: returns None unless endpointing is
+        enabled (globally or per-pipeline), so a session with it off keeps the
+        fixed silence-offset behavior. The optional turn/EOU model is lazily
+        loaded by the endpointer itself and degrades to the heuristic when
+        un-staged — no cloud dependency.
+        """
+        config = self._resolve_endpoint_config(pipeline_config)
+        if config is None or not config.enabled:
+            return None
+        return SemanticEndpointer(config)
 
     # ------------------------------------------------------------------
     # Startup / Shutdown
@@ -1603,6 +1677,15 @@ class SessionManager:
                     if policy is not None:
                         committed, _tentative = policy.update(result.text)
                         result.stable_chars = len(committed)
+                    # TASK-473 A3 — feed the running hypothesis to the semantic
+                    # endpointer (mirrors the LocalAgreement-2 policy.update feed
+                    # above). The preprocessor reads it at the silence→final cut
+                    # to make a content-driven early-endpoint decision. Inert
+                    # unless endpointing is enabled (endpointer is None).
+                    preprocessor = self._preprocessors.get(session_id)
+                    endpointer = getattr(preprocessor, "endpointer", None)
+                    if endpointer is not None:
+                        endpointer.observe_hypothesis(result.text)
                     await publisher.publish(result)
             except asyncio.CancelledError:
                 pass  # Expected when cancelled by a final utterance

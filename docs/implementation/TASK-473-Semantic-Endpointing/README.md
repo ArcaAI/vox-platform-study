@@ -1,6 +1,6 @@
 # TASK-473 — Semantic Endpointing (Theme A3 · SOTA S1-ENDPOINT · finals cut at meaning, not a fixed timer)
 
-- **Status**: Pending
+- **Status**: In Progress (hermetic model-free core + framework built & gated green; AC-4 measurement gated on TASK-470 + a running stack; optional neural model un-staged → seam raises → heuristic-only)
 - **Type**: feature (streaming end-of-utterance detection) — replaces the fixed Silero VAD silence offset with content-driven endpointing on the realtime hot path
 - **Track**: [SOTA Enhancement Track](../SOTA-Track/README.md) · Theme **A3** (Streaming ASR modernization — semantic endpointing)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · strategic SOTA track (post-Wave-3)
@@ -111,8 +111,51 @@ pnpm py:stt-v2:test:integration    # TASK-470 scorecard: endpointed vs fixed-off
 
 Adversarial review focus: (a) does an early semantic cut ever **truncate** a clinical utterance (a real safety risk) — proven safe by the mid-turn-pause no-cut test + the TASK-470 medical-WER/keyterm guardrail, not asserted? (b) does the disabled/absent path fall back to **exactly** today's fixed-offset behavior (byte-for-byte), and does the `force_emit_after_ms` cap still fire? (c) is the endpointer self-hosted + deterministic (no network, no cloud)? (d) is the finalization-latency win real on TASK-470 without a revision-rate or commit-latency regression? (e) Silero VAD onset (C2-06/I-1) and the C2-05 drain untouched; commit policy + batch path untouched; zero diff outside the manifest.
 
+## Implementation Summary (2026-07-11 · hermetic build on `fix/2605-review` base `9b800af31`)
+
+**Model decision (per the "decide, then build" gate): a model-free heuristic core is buildable now and was built in full; a dedicated neural turn/EOU model is NOT staged, so it sits behind a safe seam.** Verified against the offline HF cache (holds only whisper + silero-vad + pyannote-wespeaker + gliner-guard + an emotion classifier — no turn/endpoint model). The model-free core covers the punctuated-partial case; the neural seam (`load_default_endpoint_model`) raises `EndpointModelUnavailableError` until a model is staged and degrades to the heuristic — mirroring TASK-475's `load_default_backend` fail-safe.
+
+### What was built (model-free core + framework — all hermetic, all green)
+
+1. **`streaming/semantic_endpointer.py` (new)** — `SemanticEndpointer` (per-session, stateful): `observe_hypothesis(text)` records the running ASR hypothesis; `decide(trailing_silence_ms, min_silence_ms) → EndpointDecision(should_endpoint, confidence, reason)` is consulted at the cut. **Model-free positive signal = terminal punctuation** on the hypothesis; **hard veto = trailing disfluency filler** ("…uh"); **defers** on tiny fragments (`min_words`), pre-floor silence, and low confidence. `decide()` NEVER raises. Optional neural seam: `EndOfTurnModel` Protocol + `load_default_endpoint_model` (raises until staged) — a staged model can additionally endpoint on *unpunctuated* complete text; the filler veto still applies. PHI-safe (logs reasons/counts, never transcript).
+2. **`streaming/preprocessor.py`** — at the silence→final gate (`preprocessor.py:404-410`), consult `_should_semantic_endpoint(silence_frames)` FIRST (an earlier semantic cut), `elif` fall through to the existing `silence_frames >= _min_silence_frames` backstop. The consult is defensively wrapped (any error → fixed timer). Endpointer is a ctor kwarg (duck-typed) + `endpointer` property; reset at every utterance boundary. Silero VAD onset (C2-06/I-1) + `force_emit_after_ms` cap untouched.
+3. **`pipeline/dto.py`** — new `EndpointConfig` dataclass (enabled default False, min/max EOU-latency band, confidence threshold, min_words, optional model_id) + an optional `PreprocessingConfig.endpoint` field (backward-compatible; the yaml parser is intentionally NOT wired yet — see boundary).
+4. **`core/config/settings.py`** — six global knobs as **bare uppercased env names** (no `env_prefix`): `SEMANTIC_ENDPOINT_ENABLED` (default False) + min/max-silence, confidence, min-words, model-id. This is the streaming enable surface.
+5. **`streaming/session_manager.py`** — `_make_endpointer`/`_resolve_endpoint_config` (mirror `_make_commit_policy` strict gating: global settings primary, pipeline override via strict `isinstance`, MagicMock configs stay off); threaded into the preprocessor via `_build_preprocessor_vad_kwargs` (shared with crash recovery). The running hypothesis is fed at `_run_partial` right beside the LocalAgreement-2 `policy.update(result.text)` — the pattern the manifest says to mirror.
+6. **Env registration** — the six vars added to `turbo.json#globalEnv` + `.env.example`. **No new dependency** (`uv.lock` untouched — the model-free core is stdlib; the seam raises until staged).
+
+### Safety posture (default-off; degrade-to-fixed-VAD; never cuts early)
+
+Default OFF (global setting + `EndpointConfig.enabled=False`) → the preprocessor keeps the **exact** fixed silence-offset behavior. When enabled, every uncertainty path (disabled, no/empty hypothesis, below the silence floor, trailing filler, too-short, low confidence, model unavailable/error, any `decide()` exception) returns `should_endpoint=False` → the fixed `_min_silence_frames` backstop fires. It only ever cuts **earlier**, and only on a confident, complete turn. The **"never cuts early" guardrail** is proven by `test_mid_utterance_pause_no_early_cut_real_endpointer` (real endpointer, incomplete hypothesis "The patient is uh" + an 8-frame pause < the 16-frame fixed timer → **0 finals**, no truncation) and `test_incomplete_unpunctuated_hypothesis_never_endpoints` / `test_trailing_filler_is_vetoed`.
+
+### RED→GREEN tests (29 new, hermetic — arcaenv pytest)
+
+- `tests/unit/streaming/test_semantic_endpointer.py` (16) — disabled/no-hypothesis → no cut; complete turn + silence-floor → cut (conf ≥ 0.85); below-floor waits; incomplete/filler/too-short → no cut; reset clears; `load_default_endpoint_model` raises; model unavailable/error/NaN → degrade to heuristic; a stubbed confident model endpoints unpunctuated text; the filler veto beats a confident model; `decide` never raises.
+- `tests/unit/streaming/test_preprocessor_semantic_endpoint.py` (7) — endpointer cuts earlier than the fixed timer (vs a no-endpointer control that does NOT); **mid-utterance pause → no early cut (real endpointer)**; disabled endpointer waits the full fixed timer (exact-fixed behavior); `force_emit_after_ms` cap still fires; endpointer error degrades to the fixed timer; reset on final.
+- `tests/unit/streaming/test_session_manager_endpointer.py` (6) — disabled by default; enabled via settings; kwargs thread the endpointer; pipeline override enables; duck-typed config stays off.
+
+### Boundary — built vs BLOCKED / deferred (STOP-and-report)
+
+- **AC-4 (the measured gate)** — BLOCKED on TASK-470's scorecard + a running stack (not hermetic). Not run here. The endpointer is functional when enabled (live hypothesis fed at `_run_partial`), so AC-4 can be run as-is once TASK-470 + a stack are available; if early cuts truncate content, raise `SEMANTIC_ENDPOINT_CONFIDENCE_THRESHOLD` and re-measure.
+- **Optional neural turn/EOU model** — un-staged (verified). Staging ask: stage a self-hosted turn-detector (LiveKit-style) or semantic-VAD (Kyutai-style) into the offline HF cache and implement the scorer inside `load_default_endpoint_model` against the `EndOfTurnModel` seam (return P(end-of-turn)) — the endpointer, gating, and tests do NOT change. Self-hosted only (track guardrail). Until then: heuristic-only (punctuated partials).
+- **Pipeline-level seed opt-in** — deferred to post-AC-4 per the manifest ("default seeds stay on the fixed offset until AC-4 passes"). Not enabled. Enabling it later needs a one-line `yaml_parser._parse_preprocessing` addition to populate `PreprocessingConfig.endpoint` from YAML + the `06-stt.ts` seed edit — both left for the measurement phase (the global env `SEMANTIC_ENDPOINT_ENABLED=true` is the working enable surface now).
+
+### Gate output (worktree src on PYTHONPATH — the shared `conda run` wrapper is unusable in this env; tools run directly from `arcaenv`)
+
+```
+pytest tests/unit/               → 2178 passed, 14 warnings in 24.18s   (incl. 29 new; 0 regressions)
+pytest <3 new TASK-473 files>    → 29 passed in 0.78s
+ruff check src/ tests/           → All checks passed!
+mypy --config-file pyproject src/→ Success: no issues found in 105 source files
+```
+
+### Manifest adherence
+
+Zero diff outside the manifest. Touched exactly: `semantic_endpointer.py` (new), `preprocessor.py`, `pipeline/dto.py`, `core/config/settings.py`, `session_manager.py`, `tests/unit/streaming/**`, `turbo.json`, `.env.example`. NOT touched (STOP-guards honored): `vad/silero_service.py`, `commit_policy.py`, `faster_whisper_asr.py`, any diarization file, the batch/Dramatiq path, `uv.lock`, the C2-05 finalize-drain. `session_manager.py` diarization/surfacing code untouched (only the partial-hypothesis feed beside the commit-policy update + the endpointer build/thread).
+
 ## Change History
 
 | Date | Change |
 |---|---|
+| 2026-07-11 | **Implemented the hermetic model-free semantic-endpointer core + the neural-model seam + preprocessor integration + config/wiring** (TDD, RED→GREEN, 29 new tests). Model decision recorded: model-free heuristic (terminal-punctuation positive signal + trailing-filler veto + silence-floor + confidence) built in full; dedicated turn/EOU model NOT staged (HF-cache verified) → behind `load_default_endpoint_model` (raises until staged, degrades to heuristic → fixed-VAD), staging ask recorded. Default-OFF + degrade-to-fixed-VAD safety posture with the "never cuts early on an incomplete utterance" guardrail test. Env registered (`turbo.json`+`.env.example`); no new dep. Gates green: unit 2178 passed, ruff clean, mypy clean. BLOCKED/deferred: AC-4 measurement (TASK-470 + running stack), the optional neural model (un-staged), and the pipeline seed opt-in (post-AC-4). |
 | 2026-07-10 | Detail-scaffolded from the [SOTA-Track](../SOTA-Track/README.md) plan (Theme **A3** — semantic endpointing) into an execution-ready TDD ticket. **Re-sized M → L** at scaffold time: the end-of-turn decision is threaded through **four** config sources (`VadConfig.min_silence_duration_ms` `dto.py:452` / `ExecutionProfile.vad_silence_threshold_ms` / preprocessor ctor `:124` / batch-only `Settings.vad_min_silence_duration_ms` `:207`) + the preprocessor state machine + a new self-hosted semantic model + its wiring + measurement — more than a pure-config M. Current state code-verified against `fix/2605-review` @ `87199e33`: the end-of-turn cut is a **fixed silence-frame timer** at `preprocessor.py:404-410` (`silence_frames >= _min_silence_frames`), Silero VAD (`silero_service.process_chunk:169`) supplies only acoustic probabilities, there is **no** content/semantic signal in the finalization decision, and config has **no `env_prefix`** (bare uppercased env names, `settings.py:530`). Reconciled the brief's "TASK-451 C2-05" reference: in code C2-05 is the **finalize inference-drain** (TASK-456 — the tail-utterance safety net), while the VAD onset hardening is **TASK-451 C2-06/I-1** — semantic endpointing lowers finalization latency **and** improves tail capture, reducing reliance on the C2-05/TASK-456 drain. Framed as a flag-gated self-hosted semantic endpointer at the silence→final cut with the fixed offset retained as fallback (Silero onset + `force_emit_after_ms` cap untouched), **independent of A2** (runs on either backend), gated on TASK-470's finalization-latency/tail metrics with medical-WER + keyterm-recall (no-truncation) guardrails. Self-hosted only (no cloud PHI). No implementation; documentation only. |
