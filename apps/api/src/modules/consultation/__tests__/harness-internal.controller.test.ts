@@ -12,6 +12,8 @@ import { HarnessServiceTokenGuard } from '../harness-service-token.guard';
 
 const mockService = {
     persistEntities: vi.fn(),
+    // TASK-480 Half-B — read NamedEntity rows the harness reuses as NER priors.
+    getEntities: vi.fn(),
     assemble: vi.fn(),
     persistDraft: vi.fn(),
     recordGateDecision: vi.fn(),
@@ -60,6 +62,21 @@ describe('HarnessInternalController', () => {
 
         expect(mockService.persistEntities).toHaveBeenCalledWith('consultation-1', dto, 'run-1:persist_entities');
         expect(result).toEqual({ savedCount: 1, entityIds: ['ne-1'] });
+    });
+
+    // TASK-480 Half-B — the read route the harness `load_entity_priors` activity calls.
+    it('GET entities -> getEntities(consultationId, tenantId)', async () => {
+        mockService.getEntities.mockResolvedValue({ entities: [{ text: 'X', type: 'DISEASE', umlsCui: 'C1' }] });
+
+        const result = await controller.getEntities('consultation-1', 't-1');
+
+        expect(mockService.getEntities).toHaveBeenCalledWith('consultation-1', 't-1');
+        expect(result).toEqual({ entities: [{ text: 'X', type: 'DISEASE', umlsCui: 'C1' }] });
+    });
+
+    it('GET entities without tenantId throws (and never touches the service)', async () => {
+        await expect(controller.getEntities('consultation-1', undefined)).rejects.toThrow();
+        expect(mockService.getEntities).not.toHaveBeenCalled();
     });
 
     it('POST assemble -> assemble(consultationId, dto) (no dedup — not a WORM write)', async () => {

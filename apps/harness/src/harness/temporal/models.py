@@ -240,12 +240,30 @@ class ExtractEntitiesInput(BaseModel):
 
     text: str
     language: str = "en"
+    # TASK-480 Half-B — NER-priors reuse. The TRANSCRIPT extraction sets
+    # ``reuse_priors=True`` (+ the ids) so the activity may reuse already-persisted
+    # CODED NamedEntity rows (TASK-476) as the transcript entities instead of re-running
+    # the cold NLP pass — the note-NER calls leave these unset. Additive-optional with
+    # safe defaults ⇒ no new workflow command, replay-safe (the activity does the
+    # non-deterministic load; an old replay history schedules ``extract_entities``
+    # exactly as before). The reuse is gated inside the activity by
+    # ``HARNESS_NER_PRIORS_ENABLED`` (default OFF) and only fires when a prior carries an
+    # ontology code, so it is inert until TASK-476 populates the codes.
+    reuse_priors: bool = False
+    consultation_id: str | None = None
+    tenant_id: str | None = None
 
 
 class EntitiesResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     entities: list[NEREntity] = Field(default_factory=list)
+    # TASK-480 Half-B — True when ``entities`` were REUSED from persisted coded priors
+    # (the cold NLP pass was skipped). The workflow reads this to skip the redundant
+    # re-persist of the already-existing rows. Additive-optional ⇒ an old replay
+    # history's recorded result deserializes it to False (the cold-path semantics),
+    # replay-safe.
+    reused: bool = False
 
 
 class PersistEntitiesInput(BaseModel):

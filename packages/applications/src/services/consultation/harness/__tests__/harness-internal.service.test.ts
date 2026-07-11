@@ -388,6 +388,60 @@ describe('HarnessInternalService', () => {
     });
 
     // =========================================================================
+    // getEntities (TASK-480 Half-B — the read counterpart the harness reuses as
+    // NER priors instead of re-extracting cold)
+    // =========================================================================
+
+    describe('getEntities', () => {
+        it('reads NamedEntity rows and maps them to coded, transcript-offset priors', async () => {
+            // A coded row with distinct transcript-span offsets (preferred over source).
+            namedEntityRepository.findByConsultation.mockResolvedValue([
+                {
+                    text: 'metformin',
+                    className: 'MEDICATION',
+                    normalizedText: 'metformin',
+                    startOffset: 14,
+                    endOffset: 23,
+                    transcriptStartOffset: 40,
+                    transcriptEndOffset: 49,
+                    umlsCui: 'C0025598',
+                    rxnormCode: '6809',
+                    snomedCode: null,
+                    icdCode: null,
+                    loincCode: null,
+                },
+            ]);
+
+            const result = await service.getEntities('consultation-1', 'tenant-1');
+
+            expect(cls.run).toHaveBeenCalledTimes(1);
+            expect(cls.set).toHaveBeenCalledWith('tenantId', 'tenant-1');
+            expect(namedEntityRepository.findByConsultation).toHaveBeenCalledWith('consultation-1');
+            expect(result.entities).toEqual([
+                expect.objectContaining({
+                    text: 'metformin',
+                    type: 'MEDICATION', // className -> type
+                    normalizedText: 'metformin',
+                    startOffset: 40, // transcript-span offset preferred
+                    endOffset: 49,
+                    umlsCui: 'C0025598',
+                    rxnormCode: '6809',
+                }),
+            ]);
+        });
+
+        it('throws BadRequestException when tenantId is missing', async () => {
+            await expect(service.getEntities('consultation-1', '')).rejects.toThrow(BadRequestException);
+            expect(namedEntityRepository.findByConsultation).not.toHaveBeenCalled();
+        });
+
+        it('cross-tenant tenantId mismatch → NotFoundException (404-over-403), reads nothing', async () => {
+            await expect(service.getEntities('consultation-1', 'tenant-OTHER')).rejects.toThrow(NotFoundException);
+            expect(namedEntityRepository.findByConsultation).not.toHaveBeenCalled();
+        });
+    });
+
+    // =========================================================================
     // assemble
     // =========================================================================
 

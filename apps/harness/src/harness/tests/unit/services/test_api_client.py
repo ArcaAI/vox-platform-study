@@ -296,6 +296,68 @@ class TestGetPolicy:
             await client.get_policy("t-1")
 
 
+class TestLoadEntityPriors:
+    """TASK-480 Half-B — the read counterpart of persist_entities: the ``extract_entities``
+    activity reads persisted coded NamedEntity rows as NER priors from apps/api."""
+
+    @pytest.mark.asyncio
+    async def test_gets_with_tenant_query_and_maps_camel_rows_to_ner_entities(self):
+        seen: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["request"] = request
+            return httpx.Response(
+                200,
+                json={
+                    "entities": [
+                        {
+                            "text": "hypertension",
+                            "type": "DISEASE",
+                            "normalizedText": "hypertension",
+                            "startOffset": 12,
+                            "endOffset": 24,
+                            "snomedCode": "38341003",
+                            "umlsCui": "C0020538",
+                        },
+                        {"text": "metformin", "type": "MEDICATION", "rxnormCode": "6809"},
+                    ]
+                },
+            )
+
+        client = _client(handler)
+        priors = await client.load_entity_priors("c-1", tenant_id="t-1")
+
+        req = seen["request"]
+        assert req.method == "GET"
+        assert (
+            str(req.url) == "http://api:8868/internal/harness/consultations/c-1/entities?tenantId=t-1"
+        )
+        assert req.headers["X-Service-Token"] == "svc-token"
+        assert [(e.text, e.type, e.start, e.end) for e in priors] == [
+            ("hypertension", "DISEASE", 12, 24),
+            ("metformin", "MEDICATION", -1, -1),  # missing offsets default to -1
+        ]
+        # Ontology codes carry through so the activity can gate reuse on them.
+        assert priors[0].snomed_code == "38341003"
+        assert priors[0].umls_cui == "C0020538"
+        assert priors[1].rxnorm_code == "6809"
+        assert priors[1].snomed_code is None
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_list_when_no_rows(self):
+        client = _client(lambda request: httpx.Response(200, json={"entities": []}))
+        assert await client.load_entity_priors("c-1", tenant_id="t-1") == []
+
+    @pytest.mark.asyncio
+    async def test_raises_on_upstream_error(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(404, json={"error": "not found"})
+
+        client = _client(handler)
+        with pytest.raises(ApiServiceError):
+            await client.load_entity_priors("c-1", tenant_id="t-1")
+
+
 class TestReportProgress:
     """TASK-345 — live progress feed: the workflow's ``report_progress`` activity
     posts one stage event per phase to the internal progress endpoint."""

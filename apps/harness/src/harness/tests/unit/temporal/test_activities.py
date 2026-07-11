@@ -15,9 +15,11 @@ import pytest
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import ActivityEnvironment
 
+from harness.core.config import Settings
 from harness.sensors.base import NEREntity
 from harness.sensors.inferential.granite_client import GraniteServiceError
 from harness.services.api_client import (
+    ApiServiceError,
     AssembleResponse,
     DraftResponse,
     EscalationRecordResponse,
@@ -94,6 +96,25 @@ class _FakeApi:
         return EscalationRecordResponse(recorded=True)
 
 
+class _FakeApiPriors:
+    """apps/api read client stub for TASK-480 NER priors (returns priors or raises)."""
+
+    def __init__(
+        self, *, priors: list[NEREntity] | None = None, error: Exception | None = None
+    ) -> None:
+        self._priors = priors or []
+        self._error = error
+        self.calls: list[tuple[str, str]] = []
+
+    async def load_entity_priors(
+        self, consultation_id: str, *, tenant_id: str
+    ) -> list[NEREntity]:
+        self.calls.append((consultation_id, tenant_id))
+        if self._error is not None:
+            raise self._error
+        return list(self._priors)
+
+
 class _StubJudge:
     """Deterministic judge stub: ``supported`` unless a marker hits the hypothesis."""
 
@@ -142,7 +163,106 @@ class TestExtractEntities:
             activities.extract_entities, ExtractEntitiesInput(text="hi", language="vi")
         )
         assert [e.text for e in result.entities] == ["hypertension"]
+        assert result.reused is False
         assert fake.calls == [("hi", "vi")]
+
+    @pytest.mark.asyncio
+    async def test_reuses_coded_priors_and_skips_cold_nlp(self, env, monkeypatch):
+        """TASK-480 AC-2 — flag on + CODED priors present ⇒ reuse them AND skip the cold
+        NLP pass (the redundancy-kill). RED against today's unconditional cold extract."""
+        nlp = _FakeNlp()
+        priors = [
+            NEREntity(text="hypertension", type="DISEASE", start=0, end=12, snomed_code="38341003")
+        ]
+        api = _FakeApiPriors(priors=priors)
+        monkeypatch.setattr(activities, "get_settings", lambda: Settings(ner_priors_enabled=True))
+        monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
+        monkeypatch.setattr(activities, "_api_client", lambda s: api)
+        result = await env.run(
+            activities.extract_entities,
+            ExtractEntitiesInput(
+                text="Patient has hypertension.",
+                reuse_priors=True,
+                consultation_id="c-1",
+                tenant_id="t-1",
+            ),
+        )
+        assert result.reused is True
+        assert [e.text for e in result.entities] == ["hypertension"]
+        assert result.entities[0].snomed_code == "38341003"
+        assert nlp.calls == []  # cold NLP pass skipped
+        assert api.calls == [("c-1", "t-1")]
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_cold_when_priors_uncoded(self, env, monkeypatch):
+        """TASK-480 AC-3 — priors with NO ontology code fall back to the cold NLP pass
+        (inert until TASK-476 populates the codes)."""
+        nlp = _FakeNlp()
+        api = _FakeApiPriors(priors=[NEREntity(text="cough", type="SYMPTOM", start=0, end=5)])
+        monkeypatch.setattr(activities, "get_settings", lambda: Settings(ner_priors_enabled=True))
+        monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
+        monkeypatch.setattr(activities, "_api_client", lambda s: api)
+        result = await env.run(
+            activities.extract_entities,
+            ExtractEntitiesInput(
+                text="hi", reuse_priors=True, consultation_id="c-1", tenant_id="t-1"
+            ),
+        )
+        assert result.reused is False
+        assert nlp.calls == [("hi", "en")]
+
+    @pytest.mark.asyncio
+    async def test_flag_off_ignores_priors_and_runs_cold(self, env, monkeypatch):
+        """The ops flag defaults OFF ⇒ coded priors are ignored, cold NLP runs, and NO
+        priors read is even attempted (explicit rollout, not a silent flip)."""
+        nlp = _FakeNlp()
+        api = _FakeApiPriors(priors=[NEREntity(text="x", type="DISEASE", umls_cui="C0020538")])
+        monkeypatch.setattr(activities, "get_settings", lambda: Settings(ner_priors_enabled=False))
+        monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
+        monkeypatch.setattr(activities, "_api_client", lambda s: api)
+        result = await env.run(
+            activities.extract_entities,
+            ExtractEntitiesInput(
+                text="hi", reuse_priors=True, consultation_id="c-1", tenant_id="t-1"
+            ),
+        )
+        assert result.reused is False
+        assert nlp.calls == [("hi", "en")]
+        assert api.calls == []
+
+    @pytest.mark.asyncio
+    async def test_note_ner_never_reuses_priors(self, env, monkeypatch):
+        """The note-NER calls leave reuse_priors=False ⇒ always cold, never a priors read
+        (only the transcript pass reuses)."""
+        nlp = _FakeNlp()
+        api = _FakeApiPriors(priors=[NEREntity(text="x", type="DISEASE", umls_cui="C1")])
+        monkeypatch.setattr(activities, "get_settings", lambda: Settings(ner_priors_enabled=True))
+        monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
+        monkeypatch.setattr(activities, "_api_client", lambda s: api)
+        result = await env.run(
+            activities.extract_entities, ExtractEntitiesInput(text="note", language="en")
+        )
+        assert result.reused is False
+        assert nlp.calls == [("note", "en")]
+        assert api.calls == []
+
+    @pytest.mark.asyncio
+    async def test_priors_read_failure_falls_back_to_cold(self, env, monkeypatch):
+        """A degraded apps/api read (priors are an optimization, not a hard dep) falls
+        back to the cold NLP extraction — never fails the pass."""
+        nlp = _FakeNlp()
+        api = _FakeApiPriors(error=ApiServiceError("apps/api down"))
+        monkeypatch.setattr(activities, "get_settings", lambda: Settings(ner_priors_enabled=True))
+        monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
+        monkeypatch.setattr(activities, "_api_client", lambda s: api)
+        result = await env.run(
+            activities.extract_entities,
+            ExtractEntitiesInput(
+                text="hi", reuse_priors=True, consultation_id="c-1", tenant_id="t-1"
+            ),
+        )
+        assert result.reused is False
+        assert nlp.calls == [("hi", "en")]
 
 
 class TestGenerate:

@@ -123,6 +123,31 @@ def _entity_payload(entity: NEREntity, context_item_id: str | None) -> dict[str,
     return payload
 
 
+def _entity_from_payload(item: dict[str, Any]) -> NEREntity:
+    """Map an apps/api camelCase ``HarnessEntityItem`` row back onto a ``NEREntity``.
+
+    The read inverse of :func:`_entity_payload` (TASK-480 NER priors). apps/api already
+    collapses the transcript-span offsets onto ``startOffset``/``endOffset`` (mirroring
+    its ``loadNerEntities``), so we take those directly; the TASK-476 ontology codes
+    carry through so the caller can gate reuse on ``coded``.
+    """
+
+    def _offset(value: Any) -> int:
+        return int(value) if value is not None else -1
+
+    return NEREntity(
+        text=item.get("text", ""),
+        type=item.get("type", ""),
+        start=_offset(item.get("startOffset")),
+        end=_offset(item.get("endOffset")),
+        umls_cui=item.get("umlsCui"),
+        snomed_code=item.get("snomedCode"),
+        rxnorm_code=item.get("rxnormCode"),
+        icd_code=item.get("icdCode"),
+        loinc_code=item.get("loincCode"),
+    )
+
+
 def _prune(body: dict[str, Any]) -> dict[str, Any]:
     """Drop ``None`` values so apps/api's strict DTO validation does not choke."""
     return {k: v for k, v in body.items() if v is not None}
@@ -215,6 +240,24 @@ class ApiClient:
             saved_count=int(data.get("savedCount", 0)),
             entity_ids=list(data.get("entityIds", [])),
         )
+
+    async def load_entity_priors(
+        self, consultation_id: str, *, tenant_id: str
+    ) -> list[NEREntity]:
+        """Read the persisted ``NamedEntity`` rows for a consultation as NER priors.
+
+        The read counterpart of :meth:`persist_entities` (TASK-480 Half-B): the harness
+        reuses these already-persisted (and, once TASK-476 lands, CODED) rows as the
+        transcript NER priors instead of re-extracting cold. Maps the apps/api camelCase
+        ``HarnessEntityItem`` rows back onto :class:`NEREntity` (incl. the ontology
+        codes). Raises :class:`ApiServiceError` on any transport/HTTP error so the caller
+        can fall back to the cold extraction (priors are an optimization, never a hard
+        dependency).
+        """
+        data = await self._get(
+            f"/consultations/{consultation_id}/entities", {"tenantId": tenant_id}
+        )
+        return [_entity_from_payload(e) for e in data.get("entities", [])]
 
     async def assemble(
         self,
