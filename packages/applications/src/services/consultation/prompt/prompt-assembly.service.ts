@@ -247,21 +247,25 @@ export class PromptAssemblyService {
       userPrompt += `\n\n--- DOCTOR HIGHLIGHTS (clinician-flagged spans) ---\n${highlightsBlock}`;
     }
 
-    // TASK-355 Phase C (R-6) — warm-start refinement, gated behind the kill-switch
-    // (default OFF). When enabled: if the template consumed {pre_summary_text} the
-    // block is already present; otherwise append it under a refinement-instruction
-    // header (the seed templates declare the variable but never inline the
-    // placeholder, so without this fallback the snapshot silently never reaches the
-    // LLM). The transcript stays authoritative: the model REFINES this prior draft,
-    // it does not treat it as ground truth. When the flag is OFF this block does not
-    // fire, restoring exact pre-Phase-C behavior on the harness AND legacy paths.
+    // TASK-355 Phase C (R-6) → TASK-480 Half-A — warm-start refinement, gated behind the
+    // kill-switch (default OFF). Matured into the explicit two-stage scratchpad→final
+    // lineage the SOTA S3-F5 verdict names: the live session's running note is STAGE 1
+    // (a working SCRATCHPAD), the harness produces STAGE 2 (the FINAL note) by REFINING
+    // that scratchpad — never regenerating cold. If the template consumed
+    // {pre_summary_text} the block is already present; otherwise append it (the seed
+    // templates declare the variable but never inline the placeholder, so without this
+    // fallback the snapshot silently never reaches the LLM). The transcript stays
+    // authoritative: on a scratchpad↔transcript conflict the model follows the transcript.
+    // When the flag is OFF this block does not fire, restoring exact pre-Phase-C behavior
+    // on the harness AND legacy paths.
     if (this.warmStartEnabled) {
       const preSummaryBlock = variables.pre_summary_text ?? '';
       if (preSummaryBlock && !userPrompt.includes(preSummaryBlock)) {
         userPrompt +=
-          `\n\n--- PRIOR DRAFT (running SOAP note from the live session) ---\n` +
+          `\n\n--- PRIOR DRAFT (running SOAP note from the live session — STAGE 1 SCRATCHPAD) ---\n` +
           `${preSummaryBlock}\n\n` +
-          `INSTRUCTION: Refine and correct the PRIOR DRAFT above into the final note. ` +
+          `INSTRUCTION (two-stage lineage — refine the STAGE 1 SCRATCHPAD into the STAGE 2 FINAL note): ` +
+          `Refine and correct the PRIOR DRAFT above into the final note. ` +
           `Do not regenerate from scratch — preserve correct content and revise only where ` +
           `the transcript, recognized entities, or clinician notes indicate. ` +
           `The full transcript remains the single source of truth; if the prior draft ` +

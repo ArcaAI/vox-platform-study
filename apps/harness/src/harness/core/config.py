@@ -219,6 +219,16 @@ class Settings(BaseSettings):
     # legacy single-phase path, byte-identical to pre-Phase-D history.
     optimistic_delivery_enabled: bool = False
 
+    # TASK-480 Half-B — NER-priors reuse kill-switch (HARNESS_NER_PRIORS_ENABLED,
+    # default OFF). When ON, the transcript ``extract_entities`` activity reuses
+    # already-persisted CODED NamedEntity rows (TASK-476) as the NER priors instead of
+    # re-running the cold NLP pass — killing the redundant second transcript-NER pass.
+    # Read at runtime inside the (non-deterministic) activity, NOT the workflow body, so
+    # it needs no snapshot/patch marker; when OFF (or when no prior carries a code) the
+    # activity falls back to the cold extraction, so enabling it is an explicit ops
+    # rollout, never a silent default flip, and it is inert until TASK-476 codes exist.
+    ner_priors_enabled: bool = False
+
     # SMR generation defaults (None => let the SMR service choose).
     smr_provider: str | None = None
     smr_model: str | None = None

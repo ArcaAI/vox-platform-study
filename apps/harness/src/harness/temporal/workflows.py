@@ -320,21 +320,45 @@ class HarnessDocWorkflow:
             smr_model = inp.smr_model
 
         # 1) Transcript NER. NLP down -> degrade (force human review), don't crash.
+        # TASK-480 Half-B — NER-priors reuse: seed the transcript pass with
+        # ``reuse_priors`` + the ids so the (non-deterministic) activity MAY reuse
+        # already-persisted CODED NamedEntity rows (TASK-476) instead of re-extracting
+        # cold — killing the redundant second NER pass. This is a DATA-ONLY activity
+        # input (the reuse/flag/code logic + apps/api read all live in the activity), so
+        # it adds no new workflow command and needs no ``workflow.patched()``: an old
+        # replay history schedules ``extract_entities`` exactly as before, and its
+        # recorded result deserializes ``reused=False`` (cold-path semantics). The
+        # activity falls back to the cold extraction when the flag is off / priors are
+        # absent / none carry a code, so this is inert until TASK-476 lands.
         self._phase = "EXTRACT"
         degraded = False
+        priors_reused = False
         transcript_entities: list[NEREntity] = []
         try:
             extracted = await workflow.execute_activity(
                 extract_entities,
-                ExtractEntitiesInput(text=inp.transcript_text, language=inp.conversation_language),
+                ExtractEntitiesInput(
+                    text=inp.transcript_text,
+                    language=inp.conversation_language,
+                    reuse_priors=True,
+                    consultation_id=inp.consultation_id,
+                    tenant_id=inp.tenant_id,
+                ),
                 start_to_close_timeout=_ACTIVITY_TIMEOUT,
                 retry_policy=_NLP_RETRY,
             )
             transcript_entities = extracted.entities
+            priors_reused = extracted.reused
         except ActivityError:
             degraded = True
 
-        if transcript_entities:
+        # Persist the freshly-extracted transcript entities. When they were REUSED from
+        # already-persisted coded priors (TASK-480), the rows already exist — skip the
+        # redundant re-persist. Data-driven skip (``priors_reused`` reconstructs from the
+        # recorded activity result: False for every pre-TASK-480 history) ⇒ replay-safe,
+        # no ``workflow.patched()``; mirrors the existing ``if transcript_entities:``
+        # data-driven guard right beside it.
+        if transcript_entities and not priors_reused:
             await workflow.execute_activity(
                 persist_entities,
                 PersistEntitiesInput(

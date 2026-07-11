@@ -1,6 +1,6 @@
 # TASK-480 — Harness Warm-start from Live Note + Reuse `NamedEntity` as NER Priors (Theme E1 · SOTA S3-F5)
 
-- **Status**: Pending
+- **Status**: Review
 - **Type**: refactor / feature (harness lineage unification — kills the cold-regen redundancy of the dual path)
 - **Track**: [SOTA Enhancement Track](../SOTA-Track/README.md) · Theme **E1** (harness warm-start + NER priors)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · strategic SOTA track (post-Wave-3)
@@ -104,8 +104,34 @@ pnpm py:harness:test -k replay_compat
 
 Adversarial review focus (reviewer agent): (a) does the harness genuinely **reuse** coded priors and **skip/seed** the cold `extract_entities` — proven by a RED that failed on today's unconditional cold pass? (b) does it **fall back to cold** when the codes are `null`/absent (so E1 is inert until TASK-476 lands)? (c) is the change **replay-safe** — data-only input, `test_replay_compat` green, no wall-clock/RNG/IO in `@workflow.defn`? (d) is `HARNESS_WARM_START_ENABLED` now in `turbo.json#globalEnv`, and is enabling it in prod an explicit rollout rather than a silent default flip? (e) does warm-start keep the **transcript authoritative** (refine, not replace)? (f) zero diff outside the manifest — no coded-writer (476), no live NER (477), no retraction (481), no snapshot-producer change.
 
+## Implementation Summary
+
+Implemented against `fix/2605-review` (base `a56d682ed`). TASK-476's coded-write path is already present in this base (`NEREntity` ontology codes + `nlp_client._to_entity` + `api_client._entity_payload`), so E1 consumes it. TDD, RED→GREEN, strictly replay-safe.
+
+**Half-B — NER-priors reuse (Python harness + apps/api read):**
+- `apps/harness/.../temporal/models.py` — `ExtractEntitiesInput` gains `reuse_priors`/`consultation_id`/`tenant_id`; `EntitiesResult` gains `reused` (additive-optional ⇒ replay-safe).
+- `apps/harness/.../services/api_client.py` — new `load_entity_priors()` read + `_entity_from_payload()` (inverse of `_entity_payload`).
+- `apps/harness/.../temporal/activities.py` — `extract_entities` reuses coded priors (skips the cold NLP `classify_tokens`) when `reuse_priors` + `HARNESS_NER_PRIORS_ENABLED` + at least one prior carries a code; else cold. `_load_coded_priors` degrades to cold on any apps/api error.
+- `apps/harness/.../core/config.py` — `ner_priors_enabled` (`HARNESS_NER_PRIORS_ENABLED`, default OFF) ops kill-switch, read at runtime inside the activity (not the workflow) ⇒ no snapshot/patch.
+- `apps/harness/.../temporal/workflows.py` — the transcript `extract_entities` call is seeded with `reuse_priors=True` + ids; `persist_entities` is skipped when `priors_reused` (rows already exist). **Data-only workflow input change: no new command, no `workflow.patched()`** — all 7 frozen replay fixtures pass unchanged (AC-4). The chosen "extend `extract_entities`" manifest option keeps the workflow command sequence byte-identical (the load/gate logic lives in the activity).
+- apps/api read endpoint (Half-B): `HarnessInternalService.getEntities()` (CLS + 404-over-403 + `loadNerEntities` projection), `HarnessEntitiesResponse` DTO, and `GET /internal/harness/consultations/:id/entities` on `HarnessInternalController`.
+
+**Half-A — warm-start maturation (TS):**
+- `prompt-assembly.service.ts` — the single-append fallback is matured into the explicit **two-stage scratchpad→final** lineage (STAGE 1 SCRATCHPAD = live note; STAGE 2 FINAL = harness note; transcript authoritative on conflict). Surgical wording enrichment — existing `PRIOR DRAFT`/`Refine`/`single source of truth`/`follow the transcript` substrings preserved; the loader/provenance in `harness-internal.service.ts` are unchanged (validated by existing tests).
+- Env registration: `HARNESS_WARM_START_ENABLED` + `HARNESS_NER_PRIORS_ENABLED` added to `turbo.json#globalEnv`, root `.env.example`, and `apps/harness/.env.example` (AC-1).
+
+**Tests (RED→GREEN):** activity reuse/fallback (`test_activities.py`), api_client read (`test_api_client.py`), workflow persist-skip + reuse wiring (`test_doc_workflow.py` + `_harness_stubs.py`), service read (`harness-internal.service.test.ts`), controller route (`harness-internal.controller.test.ts`), prompt two-stage framing (`prompt-assembly.service.test.ts`).
+
+**Gate evidence:**
+- `pnpm py:harness:test` → **706 passed** (incl. `test_replay_compat` 7 fixtures GREEN — replay-safe); `py:harness:lint` (ruff) clean; `py:harness:typecheck` (mypy) clean (81 files).
+- `pnpm --filter @arcaai/applications test` → **5972 passed / 4 skipped**; `build` clean; `lint` — 0 warnings on the 3 changed files (94 pre-existing prettier warnings elsewhere, untouched).
+- `pnpm build:api` → 8 tasks successful; controller eslint clean (0 errors); `harness-internal.controller.test.ts` **18 passed**.
+
+**No new deps** (`uv.lock` untouched). **No new model download** — reuse reads persisted rows; the existing `blaze999/Medical-NER` runs only in the cold fallback. E1 is inert until TASK-476's codes are populated (reuse gates on a present ontology code).
+
 ## Change History
 
 | Date | Change |
 |---|---|
+| 2026-07-11 | **Implemented (Review).** Half-B NER-priors reuse (data-only, replay-safe: extended `extract_entities` + activity-side load/gate + apps/api `getEntities` read endpoint + `HARNESS_NER_PRIORS_ENABLED` kill-switch) and Half-A two-stage scratchpad→final warm-start maturation + env registration. RED→GREEN throughout; `test_replay_compat` green (no new `workflow.patched()` — an old history replays unchanged). Gates: `py:harness:test` 706 passed + ruff/mypy clean; `@arcaai/applications test` 5972 passed + build/lint clean on changed files; `build:api` green. See Implementation Summary. |
 | 2026-07-10 | Detail-scaffolded from [SOTA-Track](../SOTA-Track/README.md) Theme **E1** into an execution-ready ticket. **Current-state framing corrected against the code (TASK-478-style):** the SOTA premise "the harness regenerates cold, discarding the live-doc's incremental note" is refined — **warm-start from the live note ALREADY EXISTS but is dormant** (TASK-355 Phase C R-6, `HARNESS_WARM_START_ENABLED` **default OFF**: `prompt-assembly.service.ts:179-196`/`:258-270` appends the `PRIOR DRAFT` refine-instruction; `harness-internal.service.ts:256`/`:356-362` loads the `LIVE_SOAP_SNAPSHOT` + records provenance; the var is **absent from `turbo.json#globalEnv`**, documented only in `apps/harness/.env.example:132`), so Half-A is enable+mature+register into the two-stage scratchpad→final lineage, not build-from-zero. **The NER-priors reuse genuinely does NOT exist** — `workflows.py:322-333` re-extracts transcript entities **cold every run** and persists them (`:337-344`); nothing reuses persisted coded `NamedEntity` rows as priors. Codes are `null` today (TASK-476 not landed) → E1 **depends on TASK-476** and lands after C (gating chain E1 → TASK-476 → TASK-470). Measure-first: redundancy-kill metric here; MEDCON concept-F1 / edit-burden deferred to TASK-482 (E3). No implementation; documentation only. |

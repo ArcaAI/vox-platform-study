@@ -110,6 +110,16 @@ export interface HarnessPersistEntitiesResponse {
   entityIds: string[];
 }
 
+/**
+ * TASK-480 Half-B — read response the harness `load_entity_priors` activity consumes:
+ * a consultation's persisted NamedEntity rows (coded per TASK-476) it reuses as NER
+ * priors instead of re-extracting the transcript cold. Reuses the `HarnessEntityItem`
+ * shape (the offsets are already transcript-span-preferred, mirroring `loadNerEntities`).
+ */
+export interface HarnessEntitiesResponse {
+  entities: HarnessEntityItem[];
+}
+
 // ---------------------------------------------------------------------------
 // assemble
 // ---------------------------------------------------------------------------

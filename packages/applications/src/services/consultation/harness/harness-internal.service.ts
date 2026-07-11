@@ -36,6 +36,7 @@ import type {
   HarnessEscalationResponse,
   HarnessFinalizeAssuranceRequest,
   HarnessFinalizeAssuranceResponse,
+  HarnessEntitiesResponse,
   HarnessGateDecisionRequest,
   HarnessGateDecisionResponse,
   HarnessPersistEntitiesRequest,
@@ -195,6 +196,46 @@ export class HarnessInternalService {
         return { savedCount: entityIds.length, entityIds };
       }),
     );
+  }
+
+  /**
+   * TASK-480 Half-B — read a consultation's persisted NamedEntity rows so the durable
+   * loop can reuse them as NER priors (the read counterpart of persistEntities). Reuses
+   * the same transcript-offset-preferring projection as the prompt injection
+   * (loadNerEntities), carrying the TASK-476 ontology codes through; the harness gates
+   * reuse on those codes, so this is inert until they are populated. Read-only — no WORM
+   * audit, no sys-event.
+   */
+  async getEntities(consultationId: string, tenantId: string): Promise<HarnessEntitiesResponse> {
+    if (!tenantId) {
+      throw new BadRequestException('tenantId is required');
+    }
+
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', tenantId);
+      this.cls.set('user', createWorkerSession({ tenantId, kind: 'harness-internal' }));
+
+      // 404-over-403: assert consultation ownership before reading its NER rows (a
+      // cross-tenant id must not leak the priors) — mirrors persistEntities/assemble.
+      const consultation = await this.consultationRepository.findById(consultationId);
+      assertEqualTenants(consultation, { tenantId });
+
+      const entities = await this.loadNerEntities(consultationId);
+      return {
+        entities: entities.map((entity) => ({
+          text: entity.text,
+          type: entity.type,
+          normalizedText: entity.normalizedText ?? undefined,
+          startOffset: entity.startOffset ?? undefined,
+          endOffset: entity.endOffset ?? undefined,
+          umlsCui: entity.umlsCui ?? undefined,
+          snomedCode: entity.snomedCode ?? undefined,
+          rxnormCode: entity.rxnormCode ?? undefined,
+          icdCode: entity.icdCode ?? undefined,
+          loincCode: entity.loincCode ?? undefined,
+        })),
+      };
+    });
   }
 
   /**

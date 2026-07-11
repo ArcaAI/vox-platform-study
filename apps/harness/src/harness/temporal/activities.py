@@ -36,7 +36,7 @@ from harness.guides.retrieval.prompt import build_strict_citations_block
 from harness.guides.retrieval.qdrant_store import KnowledgeQdrantStore
 from harness.guides.retrieval.retriever import HybridRetriever, build_query
 from harness.guides.retrieval.sparse import SparseBm25Embedder
-from harness.sensors.base import SensorContext, SensorResult
+from harness.sensors.base import NEREntity, SensorContext, SensorResult
 from harness.sensors.config import SensorThresholds
 from harness.sensors.inferential import (
     CITATION_VERIFY_NAME,
@@ -51,6 +51,7 @@ from harness.sensors.inferential.base import degraded_result
 from harness.sensors.inferential.groundedness import ClaimVerdictCallback
 from harness.services.api_client import (
     ApiClient,
+    ApiServiceError,
     AssembleResponse,
     DraftResponse,
     FinalizeAssuranceResponse,
@@ -225,10 +226,54 @@ async def fetch_policy(payload: FetchPolicyInput) -> HarnessPolicy:
     return HarnessPolicy.from_api(data)
 
 
+def _has_ontology_code(entity: NEREntity) -> bool:
+    """True when a prior carries any TASK-476 ontology code (worth reusing)."""
+    return bool(
+        entity.umls_cui
+        or entity.snomed_code
+        or entity.rxnorm_code
+        or entity.icd_code
+        or entity.loinc_code
+    )
+
+
+async def _load_coded_priors(settings: Settings, payload: ExtractEntitiesInput) -> list[NEREntity]:
+    """Read persisted ``NamedEntity`` priors from apps/api; return them ONLY when coded.
+
+    TASK-480 Half-B. Degrade-safe: any apps/api error yields ``[]`` so the caller falls
+    back to the cold NLP extraction (priors are an optimization, never a hard
+    dependency). Returns the priors only when at least one carries an ontology code
+    (TASK-476 / AC-3) — so the reuse is a no-op until the codes are populated, and never
+    silently drops coverage to an un-coded pre-476 snapshot.
+    """
+    if not (payload.consultation_id and payload.tenant_id):
+        return []
+    try:
+        priors = await _api_client(settings).load_entity_priors(
+            payload.consultation_id, tenant_id=payload.tenant_id
+        )
+    except ApiServiceError:
+        return []
+    return priors if any(_has_ontology_code(e) for e in priors) else []
+
+
 @activity.defn
 async def extract_entities(payload: ExtractEntitiesInput) -> EntitiesResult:
-    """Run medical NER over ``text`` via the NLP service."""
+    """Run medical NER over ``text`` via the NLP service.
+
+    TASK-480 Half-B — NER-priors reuse: on the TRANSCRIPT pass (``reuse_priors``) and
+    when ``HARNESS_NER_PRIORS_ENABLED`` is on, first try to reuse already-persisted CODED
+    ``NamedEntity`` rows (TASK-476) as the transcript entities instead of re-running the
+    cold NLP extraction — killing the redundant second NER pass. Falls back to the cold
+    NLP extraction when the flag is off, the priors are absent/unreachable, or none carry
+    an ontology code (so it stays inert until TASK-476's codes exist, and never
+    regresses). The note-NER calls leave ``reuse_priors`` unset ⇒ always cold.
+    """
     settings = get_settings()
+    if payload.reuse_priors and settings.ner_priors_enabled:
+        priors = await _load_coded_priors(settings, payload)
+        if priors:
+            return EntitiesResult(entities=priors, reused=True)
     entities = await _nlp_client(settings).classify_tokens(payload.text, language=payload.language)
     return EntitiesResult(entities=entities)
 

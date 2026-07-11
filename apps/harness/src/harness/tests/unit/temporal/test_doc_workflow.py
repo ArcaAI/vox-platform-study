@@ -1431,3 +1431,96 @@ class TestProgressFeed:
         assert failed.consultation_id == "c-1"
         assert failed.tenant_id == "t-1"
         assert failed.job_id == "job-1"
+
+
+class TestNerPriorsReuse:
+    """TASK-480 Half-B — the transcript pass reuses persisted coded priors and the
+    workflow skips the redundant re-persist, else stays cold (no regression)."""
+
+    @pytest.mark.asyncio
+    async def test_transcript_pass_asks_for_priors_reuse(self):
+        """The workflow seeds the TRANSCRIPT ``extract_entities`` call with reuse_priors +
+        the ids; the note-NER pass does not. RED against today (reuse_priors defaults
+        False everywhere)."""
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"])
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                await handle.result()
+
+        # Transcript pass (first extract) requests priors reuse + carries the ids.
+        transcript = recorder.extract_entities_inputs[0]
+        assert transcript.reuse_priors is True
+        assert transcript.consultation_id == "c-1"
+        assert transcript.tenant_id == "t-1"
+        # The note-NER pass (second extract) never reuses.
+        note = recorder.extract_entities_inputs[1]
+        assert note.reuse_priors is False
+
+    @pytest.mark.asyncio
+    async def test_reused_priors_skip_persist_entities(self):
+        """When the transcript entities are REUSED from coded priors, the workflow skips
+        the redundant ``persist_entities`` (the rows already exist). RED against today's
+        unconditional persist."""
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"], reuse_transcript_priors=True)
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        assert recorder.extract_entities_inputs[0].reuse_priors is True
+        # Redundancy killed: the reused rows already exist, so no re-persist.
+        assert recorder.calls["persist_entities"] == 0
+
+    @pytest.mark.asyncio
+    async def test_cold_transcript_pass_still_persists(self):
+        """When priors are NOT reused (flag off / no codes) the transcript pass is cold
+        and its entities are persisted exactly as before (no regression)."""
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"], reuse_transcript_priors=False)
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        assert recorder.calls["persist_entities"] == 1

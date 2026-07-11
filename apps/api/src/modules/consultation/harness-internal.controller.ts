@@ -4,6 +4,7 @@ import {
   HarnessAssuranceEventRequest,
   HarnessAssuranceService,
   HarnessDraftRequest,
+  HarnessEntitiesResponse,
   HarnessEscalationRequest,
   HarnessFinalizeAssuranceRequest,
   HarnessGateDecisionRequest,
@@ -84,6 +85,21 @@ export class HarnessInternalController {
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   async persistEntities(@Param('id') id: string, @Body() dto: HarnessPersistEntitiesRequest, @Headers('Idempotency-Key') idempotencyKey?: string) {
     return this.harnessInternalService.persistEntities(id, dto, idempotencyKey);
+  }
+
+  // TASK-480 Half-B — the read counterpart of persistEntities: the harness
+  // `load_entity_priors` activity GETs the persisted NamedEntity rows to reuse them as
+  // NER priors (skip the redundant cold transcript re-extraction). `tenantId` rides the
+  // query (like `GET /policy`), and the service re-establishes CLS + 404-over-403 from it.
+  @Get('consultations/:id/entities')
+  @ApiOperation({ summary: 'Read persisted NamedEntity rows the harness reuses as NER priors' })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiQuery({ name: 'tenantId', required: true, description: 'Tenant the harness is acting on behalf of.' })
+  async getEntities(@Param('id') id: string, @Query('tenantId') tenantId?: string): Promise<HarnessEntitiesResponse> {
+    if (!tenantId) {
+      throw new BadRequestException('tenantId query parameter is required');
+    }
+    return this.harnessInternalService.getEntities(id, tenantId);
   }
 
   @Post('consultations/:id/assemble')

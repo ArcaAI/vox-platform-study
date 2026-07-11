@@ -87,6 +87,11 @@ class StubConfig:
     # TASK-345 progress feed: make the ``report_progress`` stub raise (progress
     # pipeline down) — the workflow must shrug it off and complete normally.
     progress_fails: bool = False
+    # TASK-480 Half-B: make the TRANSCRIPT ``extract_entities`` stub return
+    # ``reused=True`` (simulating CODED priors available) so tests can assert the
+    # workflow SKIPS the redundant ``persist_entities``. The note-NER calls
+    # (reuse_priors=False) always return reused=False. Default False ⇒ the cold path.
+    reuse_transcript_priors: bool = False
 
 
 @dataclass
@@ -100,6 +105,9 @@ class StubRecorder:
     # ``progress:<stage>``; activities are recorded by name.
     call_order: list[str] = field(default_factory=list)
     fetch_policy_inputs: list[FetchPolicyInput] = field(default_factory=list)
+    # TASK-480 Half-B: the ExtractEntitiesInput of each extract pass (transcript then
+    # note), so tests can assert the transcript pass carried reuse_priors + the ids.
+    extract_entities_inputs: list[ExtractEntitiesInput] = field(default_factory=list)
     persist_entities_inputs: list[PersistEntitiesInput] = field(default_factory=list)
     persist_draft_inputs: list[PersistDraftInput] = field(default_factory=list)
     # TASK-355 Phase D (Slice 4a): the finalize_assurance payloads (optimistic path).
@@ -263,10 +271,16 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
     @activity.defn(name="extract_entities")
     async def extract_entities(payload: ExtractEntitiesInput) -> EntitiesResult:
         recorder.calls["extract_entities"] += 1
+        recorder.extract_entities_inputs.append(payload)
         if config.nlp_fails:
             raise ApplicationError("nlp unavailable", non_retryable=True)
+        # TASK-480 Half-B: only the transcript pass (reuse_priors=True) can reuse; the
+        # note-NER calls stay cold. Models the real activity's contract at the workflow
+        # boundary (the apps/api load + code gate is covered in test_activities).
+        reused = bool(config.reuse_transcript_priors and payload.reuse_priors)
         return EntitiesResult(
-            entities=[NEREntity(text="hypertension", type="DISEASE", start=0, end=12)]
+            entities=[NEREntity(text="hypertension", type="DISEASE", start=0, end=12)],
+            reused=reused,
         )
 
     @activity.defn(name="persist_entities")

@@ -656,6 +656,34 @@ describe('PromptAssemblyService', () => {
             expect(result.userPrompt).toContain('source of truth');
         });
 
+        // TASK-480 Half-A — mature the single-append fallback into the explicit
+        // two-stage scratchpad→final lineage the S3-F5 verdict names: the live draft is
+        // STAGE 1 (scratchpad), the harness note is STAGE 2 (final), and the transcript
+        // stays authoritative on conflict. RED before the block names the two stages.
+        it('frames the prior draft as a two-stage scratchpad→final lineage, transcript authoritative on conflict', async () => {
+            mockPromptTemplateRepository.findById.mockResolvedValue(
+                createMockPromptTemplate({ content: 'Summarize for {conversation_language}.' }),
+            );
+            service = await getService(true); // warm-start ON
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'Patient reports chest pain.',
+                conversationLanguage: 'English',
+                preSummaryText: 'S: chest pain O: BP 120/80 A: stable P: review',
+            });
+
+            const prompt = result.userPrompt;
+            // The prior live draft is the STAGE 1 SCRATCHPAD; the harness produces the STAGE 2 FINAL.
+            expect(prompt).toContain('SCRATCHPAD');
+            expect(prompt).toContain('FINAL');
+            // Refine, never regenerate cold …
+            expect(prompt).toContain('Do not regenerate from scratch');
+            // … and the transcript stays the single source of truth on a draft↔transcript conflict.
+            expect(prompt).toContain('single source of truth');
+            expect(prompt.toLowerCase()).toContain('follow the transcript');
+        });
+
         it('substitutes {pre_summary_text} without duplicating the prior-draft block', async () => {
             mockPromptTemplateRepository.findById.mockResolvedValue(
                 createMockPromptTemplate({ content: 'Prior: {pre_summary_text}. Lang: {conversation_language}.' }),
