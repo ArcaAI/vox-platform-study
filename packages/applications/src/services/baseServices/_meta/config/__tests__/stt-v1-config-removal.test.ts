@@ -41,12 +41,12 @@ describe('STT v1 Config Removal (TASK-210 Phase 1)', () => {
             expect(content).toMatch(/^\s*STT_V2_URL\s*:/m);
         });
 
-        // apps/tts and apps/fedl were removed; the gateway no longer carries
-        // the legacy TTS_PORT/TTS_URL/FEDL_PORT/FEDL_URL config keys.
-        it('should no longer contain TTS_PORT, TTS_URL, FEDL_PORT, FEDL_URL properties', () => {
+        // apps/fedl was removed; the gateway no longer carries the legacy
+        // FEDL_PORT/FEDL_URL config keys. (TTS_PORT/TTS_URL were REINTRODUCED by
+        // apps/tts-v2 / TASK-488 — TTS is a real downstream service again, like
+        // SMR/NLP/GUARDRAIL — so their presence is now correct, not v1 cruft.)
+        it('should no longer contain FEDL_PORT, FEDL_URL properties', () => {
             const content = readFile(interfacePath);
-            expect(content).not.toMatch(/^\s*TTS_PORT\s*:/m);
-            expect(content).not.toMatch(/^\s*TTS_URL\s*:/m);
             expect(content).not.toMatch(/^\s*FEDL_PORT\s*:/m);
             expect(content).not.toMatch(/^\s*FEDL_URL\s*:/m);
         });
@@ -87,12 +87,11 @@ describe('STT v1 Config Removal (TASK-210 Phase 1)', () => {
             expect(content).toMatch(/STT_V2_URL/);
         });
 
-        // apps/tts and apps/fedl were removed; the config service no longer
-        // resolves the legacy TTS_*/FEDL_* env keys.
-        it('should no longer reference TTS_URL, TTS_PORT, FEDL_URL, FEDL_PORT', () => {
+        // apps/fedl was removed; the config service no longer resolves the legacy
+        // FEDL_* env keys. (TTS_URL/TTS_PORT are back for apps/tts-v2 / TASK-488 —
+        // a legitimate downstream service, resolved like SMR_URL/NLP_URL/GUARDRAIL_URL.)
+        it('should no longer reference FEDL_URL, FEDL_PORT', () => {
             const content = readFile(configServicePath);
-            expect(content).not.toMatch(/TTS_URL/);
-            expect(content).not.toMatch(/TTS_PORT/);
             expect(content).not.toMatch(/FEDL_URL/);
             expect(content).not.toMatch(/FEDL_PORT/);
         });
