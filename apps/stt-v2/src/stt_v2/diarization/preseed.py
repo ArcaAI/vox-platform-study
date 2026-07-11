@@ -123,12 +123,14 @@ async def preseed_speaker(
 
         try:
             metadata = await get_voice_profile_metadata(resolved_user_id, tenant_id)
-        except Exception:
+        except Exception as exc:
+            # Type name only (no exc_info) — a SQLAlchemy traceback can embed bind
+            # params (a user id); PHI-hygiene, uniform with voice_profile_model.
             logger.warning(
-                "Voice profile metadata lookup failed (user=%s ctx=%s); continuing",
+                "Voice profile metadata lookup failed (user=%s ctx=%s): %s; continuing",
                 redact_id(resolved_user_id),
                 ctx,
-                exc_info=True,
+                type(exc).__name__,
             )
             metadata = None
 
@@ -164,11 +166,12 @@ async def preseed_speaker(
             ctx,
         )
         return dict(_FAILURE_RESULT)
-    except Exception:
+    except Exception as exc:
+        # Type name only (no exc_info) — PHI-hygiene (a traceback can embed ids/bind params).
         logger.warning(
-            "Failed to pre-seed speaker (consultation=%s ctx=%s)",
+            "Failed to pre-seed speaker (consultation=%s ctx=%s): %s",
             redact_id(consultation_id),
             ctx,
-            exc_info=True,
+            type(exc).__name__,
         )
         return dict(_FAILURE_RESULT)
