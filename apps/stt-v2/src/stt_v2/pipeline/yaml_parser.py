@@ -8,6 +8,7 @@ import yaml
 
 from .dto import (
     VALID_CT2_COMPUTE_TYPES,
+    VALID_DIARIZATION_BACKENDS,
     VALID_ONNX_QUANTIZATIONS,
     VALID_PARAKEET_V3_LANGUAGES,
     VALID_STREAMING_COMMIT_POLICIES,
@@ -287,10 +288,7 @@ class PipelineYamlParser:
                 )
 
         if spec.inference.no_speech_threshold is not None:
-            if (
-                spec.inference.no_speech_threshold < 0
-                or spec.inference.no_speech_threshold > 1
-            ):
+            if spec.inference.no_speech_threshold < 0 or spec.inference.no_speech_threshold > 1:
                 result.add_error(
                     "inference.no_speech_threshold",
                     "no_speech_threshold must be between 0 and 1 when set",
@@ -331,9 +329,7 @@ class PipelineYamlParser:
             and asr_ref.is_inline
             and asr_ref.inline
             and asr_ref.inline.engine == AiModelFormat.NEMO
-            and not is_valid_language_for_engine(
-                spec.inference.language, AiModelFormat.NEMO
-            )
+            and not is_valid_language_for_engine(spec.inference.language, AiModelFormat.NEMO)
         ):
             result.add_error(
                 "inference.language",
@@ -385,6 +381,13 @@ class PipelineYamlParser:
             result.add_error(
                 "diarization.min_segment_duration_s",
                 "Minimum segment duration must be non-negative",
+            )
+        # TASK-475 B2: backend selector must be a known diarizer.
+        if spec.diarization.backend not in VALID_DIARIZATION_BACKENDS:
+            result.add_error(
+                "diarization.backend",
+                f"Invalid backend '{spec.diarization.backend}'. "
+                f"Valid values: {', '.join(VALID_DIARIZATION_BACKENDS)}",
             )
 
         return result
@@ -511,9 +514,7 @@ class PipelineYamlParser:
 
         if "compression_ratio_threshold" in data:
             value = data["compression_ratio_threshold"]
-            kwargs["compression_ratio_threshold"] = (
-                None if value is None else float(value)
-            )
+            kwargs["compression_ratio_threshold"] = None if value is None else float(value)
 
         if "logprob_threshold" in data:
             value = data["logprob_threshold"]
@@ -538,10 +539,16 @@ class PipelineYamlParser:
         if "max_segment_text_chars" in data and data["max_segment_text_chars"] is not None:
             kwargs["max_segment_text_chars"] = int(data["max_segment_text_chars"])
 
-        if "hallucination_rms_threshold" in data and data["hallucination_rms_threshold"] is not None:
+        if (
+            "hallucination_rms_threshold" in data
+            and data["hallucination_rms_threshold"] is not None
+        ):
             kwargs["hallucination_rms_threshold"] = float(data["hallucination_rms_threshold"])
 
-        if "hallucination_short_word_count" in data and data["hallucination_short_word_count"] is not None:
+        if (
+            "hallucination_short_word_count" in data
+            and data["hallucination_short_word_count"] is not None
+        ):
             kwargs["hallucination_short_word_count"] = int(data["hallucination_short_word_count"])
 
         # TASK-351 P2-3 — opt-in streaming English gloss flag.
@@ -618,6 +625,14 @@ class PipelineYamlParser:
             segment_silence_padding_ms=int(data.get("segment_silence_padding_ms", 100)),
             min_update_confidence=float(data.get("min_update_confidence", 0.8)),
             enable_segmentation_refinement=data.get("enable_segmentation_refinement", True),
+            # TASK-475 B2: streaming diarizer backend selector + Sortformer knobs.
+            backend=str(data.get("backend", "embedding")),
+            sortformer_model_id=str(
+                data.get("sortformer_model_id", "nvidia/diar_streaming_sortformer_4spk-v2")
+            ),
+            sortformer_revision=data.get("sortformer_revision"),
+            sortformer_threshold=float(data.get("sortformer_threshold", 0.5)),
+            sortformer_frame_shift_s=float(data.get("sortformer_frame_shift_s", 0.08)),
         )
 
 

@@ -20,6 +20,9 @@ class TestDiarizationConfigDefaults:
         assert config.min_update_confidence == 0.8
         assert config.enable_segmentation_refinement is True
         assert config.max_embeddings_per_speaker == 8
+        # TASK-475 B2: the backend selector defaults to the existing embedding path
+        # so current behavior is preserved until Streaming Sortformer is staged.
+        assert config.backend == "embedding"
 
     def test_removed_fields_do_not_exist(self):
         config = DiarizationConfig()
@@ -154,3 +157,85 @@ diarization:
         spec = parser.parse(yaml_content)
         result = parser.validate(spec)
         assert result.valid
+
+
+class TestDiarizationBackendSelector:
+    """TASK-475 B2: DiarizationConfig gains a backend selector (embedding|sortformer)."""
+
+    @pytest.fixture
+    def parser(self):
+        return PipelineYamlParser()
+
+    def test_backend_defaults_to_embedding(self):
+        assert DiarizationConfig().backend == "embedding"
+
+    def test_sortformer_knobs_have_defaults(self):
+        config = DiarizationConfig()
+        # Commercially-licensed checkpoint (cc-by-4.0), NOT the cc-by-nc offline v1.
+        assert config.sortformer_model_id == "nvidia/diar_streaming_sortformer_4spk-v2"
+        assert config.sortformer_revision is None  # pinned when the model is staged
+        assert config.sortformer_threshold == 0.5
+        assert config.sortformer_frame_shift_s == 0.08
+
+    def test_parse_backend_sortformer(self, parser):
+        yaml_content = """
+version: "1.1"
+models:
+  asr:
+    hf_model_id: "openai/whisper-large-v3-turbo"
+    engine: "ctranslate2"
+diarization:
+  enabled: true
+  backend: "sortformer"
+  sortformer_revision: "abc123"
+  sortformer_threshold: 0.6
+"""
+        spec = parser.parse(yaml_content)
+        assert spec.diarization.backend == "sortformer"
+        assert spec.diarization.sortformer_revision == "abc123"
+        assert spec.diarization.sortformer_threshold == 0.6
+
+    def test_parse_backend_defaults_to_embedding(self, parser):
+        yaml_content = """
+version: "1.1"
+models:
+  asr:
+    hf_model_id: "openai/whisper-large-v3-turbo"
+    engine: "ctranslate2"
+diarization:
+  enabled: true
+"""
+        spec = parser.parse(yaml_content)
+        assert spec.diarization.backend == "embedding"
+
+    def test_validate_rejects_unknown_backend(self, parser):
+        yaml_content = """
+version: "1.1"
+models:
+  asr:
+    hf_model_id: "openai/whisper-large-v3-turbo"
+    engine: "ctranslate2"
+diarization:
+  enabled: true
+  backend: "cloud_magic"
+"""
+        spec = parser.parse(yaml_content)
+        result = parser.validate(spec)
+        assert not result.valid
+        assert any("backend" in e for e in result.get_error_messages())
+
+    def test_validate_accepts_known_backends(self, parser):
+        for backend in ("embedding", "sortformer"):
+            yaml_content = f"""
+version: "1.1"
+models:
+  asr:
+    hf_model_id: "openai/whisper-large-v3-turbo"
+    engine: "ctranslate2"
+diarization:
+  enabled: true
+  backend: "{backend}"
+"""
+            spec = parser.parse(yaml_content)
+            result = parser.validate(spec)
+            assert result.valid, f"backend {backend} should validate"

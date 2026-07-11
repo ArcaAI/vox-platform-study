@@ -1,0 +1,27 @@
+{
+  "_comment": "TASK-475 (Theme B2 · AC-5) committed diarization-accuracy thresholds — the SIBLING of streaming_thresholds.json (TASK-470-owned, left untouched). Every 'baseline' is null until the model-staged LIVE capture on the de-identified 2-speaker clinical fixture (BLOCKED on the un-staged Streaming Sortformer model); an ABSOLUTE bootstrap ceiling/floor gates in the meantime. Tighten each 'baseline' to the captured in-domain value (keeping the documented epsilon) once the live scorecard lands. Published CALLHOME 2-spk DER (~0.066 Sortformer / ~0.099 pyannote) is NOT clinical and NOT collar-free — do not adopt it as the number; these bootstraps only catch a badly-broken diarizer.",
+  "der": {
+    "baseline": null,
+    "ceiling": 0.40,
+    "epsilon": 0.05,
+    "_note": "Lower is better; PRIMARY diarization gate. ceiling 0.40 is a conservative collar-free bootstrap for 2-speaker clinical audio (leaves headroom over clean-audio DER yet still catches a broken diarizer). epsilon 0.05 = allowed drift once the in-domain baseline is captured."
+  },
+  "jaccard_error_rate": {
+    "baseline": null,
+    "ceiling": 0.50,
+    "epsilon": 0.05,
+    "_note": "Lower is better; per-reference-speaker Jaccard error (over-penalizes the minority speaker vs DER). ceiling 0.50 bootstrap."
+  },
+  "speaker_confusion_rate": {
+    "baseline": null,
+    "ceiling": 0.15,
+    "epsilon": 0.03,
+    "_note": "Lower is better; the headline 2-speaker error — clinician↔patient swap time / reference speech. ceiling 0.15 bootstrap; this is the metric most tied to the user-visible label being wrong."
+  },
+  "attribution_accuracy": {
+    "baseline": null,
+    "floor": 0.85,
+    "epsilon": 0.03,
+    "_note": "Higher is better; fraction of reference speech attributed to the correctly-mapped speaker. floor 0.85 bootstrap; tighten to baseline-epsilon once captured."
+  }
+}
