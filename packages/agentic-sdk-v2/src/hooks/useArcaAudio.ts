@@ -18,6 +18,29 @@ import { DualStreamRecorder } from '../core/DualStreamRecorder';
 export type { UseArcaAudio } from './useArca';
 
 /**
+ * TASK-489 — vox-path mirror of the canonical `deriveSpeakerLabel`
+ * (`@arcaai/applications` `services/stt/streaming/speaker-label.ts`).
+ *
+ * The admin streaming path reads the `speakerLabel` the streaming bridge derives
+ * ONCE onto the wire. The vox capture path takes a DIFFERENT route (`@arcaai/stt`
+ * `StreamingBackendSTTProvider` → `TranscriptionResult`) that today threads only
+ * the raw `speakerId`, so this seam applies the SAME semantics locally instead of
+ * surfacing a raw id: the `"unknown"` no-confident-match sentinel becomes a
+ * clinician-facing label, anonymous `"Speaker N"` ids pass through verbatim, and
+ * empty/missing ids yield no label. It NEVER fabricates a clinician/patient name
+ * (identical PHI posture to the canonical mapping). Threading the bridge-derived
+ * label through `@arcaai/stt` so this path can read it off the wire is a separate
+ * follow-up.
+ */
+function deriveSpeakerLabel(speakerId?: string | null): string | undefined {
+  if (typeof speakerId !== 'string') return undefined;
+  const id = speakerId.trim();
+  if (!id) return undefined;
+  if (id.toLowerCase() === 'unknown') return 'Unknown speaker';
+  return id;
+}
+
+/**
  * Focused hook for audio capture, muting, and plugin control.
  *
  * Extracted from useArca for better performance and maintainability (REFACTOR-01).
@@ -143,7 +166,10 @@ export function useArcaAudio() {
                 startTime: result.vadStreamStartSec ?? fallbackTime,
                 endTime: result.vadStreamEndSec ?? fallbackTime,
                 isFinal: true,
-                speakerLabel: result.speakerId,
+                // TASK-489 — derive the canonical display label instead of
+                // surfacing the raw diarizer id (so the `"unknown"` sentinel
+                // never reaches the clinician verbatim).
+                speakerLabel: deriveSpeakerLabel(result.speakerId),
                 confidence: result.confidence,
                 language: result.language,
                 // TASK-372 D9 (Option B) — carry word-level timings through to

@@ -20,7 +20,7 @@ import json
 import os
 import time
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
 from datetime import datetime
 from typing import Any
 
@@ -1837,7 +1837,7 @@ class SessionManager:
         self,
         session: StreamSession,
         preprocessor: StreamingPreprocessor | None = None,
-    ) -> Any:
+    ) -> Callable[[SessionControl], Coroutine[Any, Any, None]]:
         """Create an async callback for session control commands.
 
         On FINALIZE: flush the preprocessor, drain the inference queue,
