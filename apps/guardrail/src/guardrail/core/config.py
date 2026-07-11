@@ -148,9 +148,18 @@ class GroundednessConfig(BaseSettings):
 
     enabled: bool = False
 
-    # Self-hosted NLI entailment model (MiniCheck / Flan-T5-Large class — chosen for the
-    # >500 docs/min live-loop target). Referenced by the loader + surfaced in responses.
-    model_id: str = "lytang/MiniCheck-Flan-T5-Large"
+    # Self-hosted NLI entailment model — MiniCheck-Flan-T5-Large, GGUF/llama.cpp backend
+    # (owner directive 2026-07-11). `model_id`/`model_file` are provenance + logging;
+    # the scorer loads from the explicit local `model_path` (no network pull in the
+    # clinical gate). >500 docs/min live-loop target; Q6 quant is CPU-friendly.
+    model_id: str = "nvhf/MiniCheck-Flan-T5-Large-Q6_K-GGUF"
+    model_file: str = "minicheck-flan-t5-large-q6_k.gguf"
+    # Explicit local .gguf path — REQUIRED to enable (fail-closed unless staged locally).
+    model_path: str | None = None
+    # llama.cpp runtime knobs (CPU-default: the Q6 quant needs no GPU).
+    n_ctx: int = 4096
+    n_threads: int | None = None
+    n_gpu_layers: int = 0
 
     # A segment is `grounded` only when its entailment score >= this threshold.
     # TASK-479 review MINOR-2 — bounded to [0,1] so a fat-fingered threshold (e.g. a

@@ -63,6 +63,14 @@ test = [
     "fakeredis[lua]>=2.21.0",
 ]
 
+# Self-hosted MiniCheck-Flan-T5 GGUF groundedness scorer (TASK-479; owner directive
+# 2026-07-11 — GGUF/llama.cpp backend). OPTIONAL: the scorer lazy-imports llama_cpp and
+# the gate is default-OFF, so base installs / CI skip it. Enable on a staging host with
+# `uv sync --extra groundedness` (or `pip install 'guardrail[groundedness]'`).
+groundedness = [
+    "llama-cpp-python>=0.3.2",
+]
+
 lint = [
     "black>=26.1.0",
     "ruff>=0.15.8",

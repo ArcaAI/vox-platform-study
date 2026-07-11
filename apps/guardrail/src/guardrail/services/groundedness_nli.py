@@ -118,22 +118,19 @@ def split_segments(summary: str) -> list[tuple[str, int, int]]:
 
 
 def load_default_scorer(config: GroundednessConfig) -> NliScorer:
-    """Production scorer factory — requires the self-hosted NLI model staged locally.
+    """Production scorer factory — the self-hosted MiniCheck-Flan-T5 GGUF (llama.cpp).
 
-    The MiniCheck-class model (``config.model_id``) is NOT bundled with the service and is
-    currently NOT staged in the offline HF cache, so this factory raises
-    ``NliModelUnavailableError`` and the verifier degrades FAIL-CLOSED to ``unverified``
-    verdicts. Once the model is staged, implement the scorer here against the verified
-    model-card input format and plug it into the existing ``NliScorer`` seam — the gate
-    contract, endpoint, and tests do not change. Track guardrail: self-hosted only — do
-    NOT substitute a cloud NLI/moderation vendor (clinical text must not leave the host).
+    Delegates to ``load_minicheck_scorer`` (owner directive 2026-07-11: GGUF backend).
+    That loader is FAIL-CLOSED: a missing local ``model_path``, missing llama-cpp-python,
+    an unloadable model, or a failed calibration self-check all raise
+    ``NliModelUnavailableError``, and the verifier degrades to ``unverified`` verdicts.
+    Track guardrail: self-hosted, explicit local staging only — clinical text must not
+    leave the host and the gate never auto-downloads weights. See the TASK-479 README
+    enablement checklist. Imported lazily so this module has no llama.cpp import edge.
     """
-    raise NliModelUnavailableError(
-        f"Self-hosted NLI model '{config.model_id}' is not staged on this host; "
-        "groundedness verdicts degrade to 'unverified' (fail-closed). "
-        "See docs/implementation/TASK-479-Live-Output-Groundedness-Gate/README.md "
-        "for the model-staging follow-up."
-    )
+    from guardrail.services.groundedness_scorer_minicheck import load_minicheck_scorer
+
+    return load_minicheck_scorer(config)
 
 
 def _chunked(
@@ -184,12 +181,16 @@ class GroundednessNliVerifier:
         if scorer is None:
             try:
                 scorer = self._scorer_factory(self._config)
-            except NliModelUnavailableError:
-                # PHI-safe: counts only, never the clinical text.
+            except Exception as exc:
+                # MINOR-1 (applied when the real loader landed): ANY factory failure —
+                # not just NliModelUnavailableError — degrades FAIL-CLOSED to `unverified`
+                # at the verifier level (defence in depth beyond the endpoint backstop).
+                # PHI-safe: counts + error type only, never the clinical text.
                 logger.warning(
                     "guardrail.groundedness.model_unavailable",
                     model_id=self._config.model_id,
                     segment_count=len(spans),
+                    error=type(exc).__name__,
                 )
                 return degrade(REASON_MODEL_UNAVAILABLE)
             self._scorer = scorer
