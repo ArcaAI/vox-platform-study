@@ -1407,6 +1407,39 @@ describe('SttV2WebSocketClient', () => {
       client.disconnect();
     });
 
+    // TASK-489 — the applications bridge now derives a canonical camelCase
+    // `speakerLabel` and the gateway relays it type-erased, so the wire the SDK
+    // actually receives carries `speakerId` + `speakerLabel` (camelCase). Lock
+    // that the client carries BOTH straight through to the admin/vox consumers.
+    it('should carry the canonical camelCase speakerId + speakerLabel from the wire (TASK-489)', async () => {
+      const mockLogger = createMockLogger();
+      const client = new SttV2WebSocketClient(mockLogger);
+
+      const connectPromise = client.connect('wss://api.example.com/ws/stream?tenantId=test-tenant');
+      lastMockWs!.simulateOpen();
+      await connectPromise;
+
+      const transcriptCb = vi.fn();
+      client.onTranscript(transcriptCb);
+
+      lastMockWs!.simulateMessage(JSON.stringify({
+        type: 'transcript',
+        text: 'anonymous diarized final',
+        startTime: 4.0,
+        endTime: 5.0,
+        isFinal: true,
+        speakerId: 'Speaker 0',
+        speakerLabel: 'Speaker 0',
+        seq: 12,
+      }));
+
+      expect(transcriptCb).toHaveBeenCalledWith(
+        expect.objectContaining({ speakerId: 'Speaker 0', speakerLabel: 'Speaker 0' }),
+      );
+
+      client.disconnect();
+    });
+
     // TASK-351 P1-1 — stableChars (committed-prefix length on partials) is
     // additive and dual-cased like the other normalized fields.
     it('should normalize stableChars from camelCase payloads (TASK-351 P1-1)', async () => {

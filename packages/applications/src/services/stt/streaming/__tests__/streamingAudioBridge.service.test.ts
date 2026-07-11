@@ -492,13 +492,13 @@ describe('StreamingAudioBridgeService', () => {
             });
         });
 
-        it('should map speaker metadata when present', async () => {
+        it('should map speaker metadata AND derive a canonical speakerLabel when present (TASK-489 AC-1)', async () => {
             mockXreadgroup
                 .mockResolvedValueOnce([
                     ['stt:result:s-1', [
                         ['1-0', [
                             'text', 'hello world',
-                            'speaker_id', 'speaker-1',
+                            'speaker_id', 'Speaker 0',
                             'speaker_confidence', '0.87',
                             'start_time', '0.5',
                             'end_time', '1.2',
@@ -511,15 +511,43 @@ describe('StreamingAudioBridgeService', () => {
             const obs = service.subscribeToResults('s-1');
             const result = await firstValueFrom(obs.pipe(take(1)));
 
+            // The bridge is the SINGLE canonical id→label mapping seam: it carries
+            // the raw `speakerId` AND derives the human-readable `speakerLabel` once,
+            // so no downstream consumer (vox/admin) re-derives its own.
             expect(result).toEqual({
                 type: 'transcript',
                 text: 'hello world',
-                speakerId: 'speaker-1',
+                speakerId: 'Speaker 0',
+                speakerLabel: 'Speaker 0',
                 speakerConfidence: 0.87,
                 startTime: 0.5,
                 endTime: 1.2,
                 isFinal: true,
             });
+        });
+
+        it('should derive a neutral speakerLabel for the stt-v2 "unknown" sentinel (TASK-489 AC-3)', async () => {
+            mockXreadgroup
+                .mockResolvedValueOnce([
+                    ['stt:result:s-1', [
+                        ['1-0', [
+                            'text', 'who said this',
+                            'speaker_id', 'unknown',
+                            'speaker_confidence', '0.0',
+                            'start_time', '3.0',
+                            'end_time', '3.9',
+                            'is_final', '1',
+                        ]],
+                    ]],
+                ])
+                .mockResolvedValue(null);
+
+            const obs = service.subscribeToResults('s-1');
+            const result = await firstValueFrom(obs.pipe(take(1)));
+
+            // "unknown" is stt-v2's no-confident-match sentinel — the clinician
+            // must see a neutral placeholder, never the raw magic string.
+            expect(result).toMatchObject({ speakerId: 'unknown', speakerLabel: 'Unknown speaker' });
         });
 
         it('should map english_text when code-switch translation is present', async () => {

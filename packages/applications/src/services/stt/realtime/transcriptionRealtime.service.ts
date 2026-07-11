@@ -262,40 +262,6 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
   }
 
   /**
-   * Emit a transcript event to the SSE stream for a given job.
-   */
-  async emitTranscriptEvent(
-    jobId: string,
-    payload: {
-      type: string;
-      text: string;
-      isFinal: boolean;
-      speaker?: string;
-      speakerId?: string;
-      speakerLabel?: string;
-      speakerConfidence?: number;
-    },
-  ): Promise<void> {
-    const channel = `${this.CHANNEL_PREFIX}${jobId}`;
-    const event: TranscriptionEvent = {
-      type: TranscriptionEventType.CHUNK,
-      data: {
-        jobId,
-        chunkIndex: 0,
-        text: payload.text,
-        startTime: 0,
-        endTime: 0,
-        isFinal: payload.isFinal,
-        ...(payload.speaker ? { speaker: payload.speaker } : {}),
-        ...(payload.speakerId ? { speakerId: payload.speakerId } : {}),
-        ...(payload.speakerLabel ? { speakerLabel: payload.speakerLabel } : {}),
-        ...(typeof payload.speakerConfidence === 'number' ? { speakerConfidence: payload.speakerConfidence } : {}),
-      },
-    };
-    await this.cacheService.publish(channel, JSON.stringify(event));
-  }
-
-  /**
    * Emit a completion event to the SSE stream for a given job.
    */
   async emitCompleteEvent(jobId: string): Promise<void> {

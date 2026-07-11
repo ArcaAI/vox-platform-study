@@ -130,6 +130,9 @@ export interface WsTranscriptPayload {
     seq?: number;
     /** Backend inference/processing time in seconds — the latency meta. */
     inference?: number;
+    /** Raw diarizer speaker id (`"Speaker 0"` / `"unknown"`); rendered as a fallback. */
+    speakerId?: string;
+    /** Canonical human-readable speaker label derived once by the bridge (TASK-489). */
     speakerLabel?: string;
     /** 'gloss' results are follow-up translations and never create a row. */
     resultType?: 'segment' | 'gloss';
