@@ -31,6 +31,7 @@ COPY apps/guardrail/pyproject.toml ./apps/guardrail/
 COPY apps/nlp/pyproject.toml ./apps/nlp/
 COPY apps/smr/pyproject.toml ./apps/smr/
 COPY apps/stt-v2/pyproject.toml ./apps/stt-v2/
+COPY apps/tts-v2/pyproject.toml ./apps/tts-v2/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --package harness --no-dev --no-install-project --no-editable
 

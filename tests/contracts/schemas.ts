@@ -206,6 +206,28 @@ export const SmrFeedbackResponseSchema = z.object({
 });
 
 // ============================================================================
+// TTS Service Schemas
+// ============================================================================
+
+export const TtsSynthesizeRequestSchema = z.object({
+  input: z.string().min(1),
+  voice: z.string(),
+  response_format: z.enum(['pcm', 'wav', 'mp3']).default('pcm'),
+  speed: z.number().min(0.25).max(4.0).default(1.0),
+  stream_format: z.enum(['audio', 'sse']).optional(),
+});
+
+export const TtsVoiceSchema = z.object({
+  id: z.string(),
+  locale: z.string(),
+  providers: z.array(z.string()),
+});
+
+export const TtsVoicesResponseSchema = z.object({
+  voices: z.array(TtsVoiceSchema),
+});
+
+// ============================================================================
 // Type Exports
 // ============================================================================
 
@@ -223,3 +245,6 @@ export type SmrPreSummaryResponse = z.infer<typeof SmrPreSummaryResponseSchema>;
 export type SmrJobResponse = z.infer<typeof SmrJobResponseSchema>;
 export type SmrFeedbackRequest = z.infer<typeof SmrFeedbackRequestSchema>;
 export type SmrFeedbackResponse = z.infer<typeof SmrFeedbackResponseSchema>;
+
+export type TtsSynthesizeRequest = z.infer<typeof TtsSynthesizeRequestSchema>;
+export type TtsVoicesResponse = z.infer<typeof TtsVoicesResponseSchema>;

@@ -72,6 +72,11 @@ export interface AgenticState {
   audioError: Error | null;
   activeStream: MediaStream | null;
   activeAudioContext: AudioContext | null;
+
+  // TTS playback state (TASK-491)
+  ttsIsPlaying: boolean;
+  ttsIsLoading: boolean;
+  ttsError: Error | null;
   /**
    * TASK-464 — outbound audio frames dropped at the streaming STT client's
    * backpressure watermark during the current capture session. The dropped PCM
@@ -226,6 +231,11 @@ export interface AgenticActions {
    * handler, which must NOT touch the auth/impersonation state driving the
    * in-flight switch. Shared base for `clearSensitiveData()`.
    */
+  // TTS playback actions (TASK-491)
+  setTtsIsPlaying: (playing: boolean) => void;
+  setTtsIsLoading: (loading: boolean) => void;
+  setTtsError: (error: Error | null) => void;
+
   clearTenantSessionData: () => void;
   clearSensitiveData: () => void;
   /**
@@ -299,6 +309,11 @@ const initialState: AgenticState = {
   audioError: null,
   activeStream: null,
   activeAudioContext: null,
+
+  // TTS playback state (TASK-491)
+  ttsIsPlaying: false,
+  ttsIsLoading: false,
+  ttsError: null,
   // TASK-464 — audio-drop signal starts clean each session.
   audioDroppedFrameCount: 0,
   audioLostThisSession: false,
@@ -449,6 +464,11 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
   setActiveStream: (stream) => set({ activeStream: stream }),
   setActiveAudioContext: (ctx) => set({ activeAudioContext: ctx }),
 
+  // TTS playback setters (TASK-491)
+  setTtsIsPlaying: (playing) => set({ ttsIsPlaying: playing }),
+  setTtsIsLoading: (loading) => set({ ttsIsLoading: loading }),
+  setTtsError: (error) => set({ ttsError: error }),
+
   // TASK-464 — audio-drop surfacing. `incrementDroppedFrames` is called once per
   // dropped frame; `markAudioLost` latches the session signal; `resetAudioDropped`
   // clears both on start/stop (the latch deliberately survives reconnect).
@@ -515,6 +535,10 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
       // delegates here, so the security wipe is covered too.)
       audioDroppedFrameCount: 0,
       audioLostThisSession: false,
+      // TASK-491 — TTS playback state resets on tenant switch (mirrors activeStream).
+      ttsIsPlaying: false,
+      ttsIsLoading: false,
+      ttsError: null,
     }),
 
   clearSensitiveData: () => {

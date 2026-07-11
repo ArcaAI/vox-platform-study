@@ -360,6 +360,41 @@ test-smr:
       when: never
     - !reference [.rules-smr, rules]
 
+# ── TTS tests (pytest) ──────────────────────────────────────────────────────
+# Hermetic — providers/models are mocked/injected, so no DB/Redis/Azure needed.
+
+test-tts:
+  stage: test
+  image: python:3.11-slim
+  tags: [test]
+  needs:
+    - job: lint-python
+      optional: true
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+  cache:
+    - key: pip-tts
+      paths:
+        - .pip-cache/
+      policy: pull-push
+      fallback_keys:
+        - pip-$CI_DEFAULT_BRANCH
+  script:
+    - cd apps/tts-v2
+    - pip install --quiet --retries 5 --timeout 120 ".[test]"
+    - PYTHONPATH=src python -m pytest src/tts_v2/tests/ -v --tb=short --junitxml=../../junit-tts.xml -x
+  artifacts:
+    when: always
+    reports:
+      junit: junit-tts.xml
+    expire_in: 30 days
+  rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_PY == "true"
+      when: never
+    - !reference [.rules-tts, rules]
+
 # ── Guardrail tests (pytest) ─────────────────────────────────────────────────
 
 test-guardrail:

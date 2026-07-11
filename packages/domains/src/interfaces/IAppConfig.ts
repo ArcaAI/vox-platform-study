@@ -25,6 +25,8 @@ export interface IAppConfig {
   NLP_URL: string;
   GUARDRAIL_URL: string;
   HARNESS_URL: string;
+  TTS_PORT: string;
+  TTS_URL: string;
 
   //=========== MQTT ============//
   MQTT_HOST: string;

@@ -1,8 +1,10 @@
-"""TDD tests for health endpoints (TASK-488 Phase 1)."""
+"""TDD tests for health endpoints (TASK-488 Phase 1 + Phase 2 readiness)."""
 
 from __future__ import annotations
 
 import pytest
+
+from tts_v2.tests.fakes import FakeEngine
 
 
 class TestHealth:
@@ -22,7 +24,14 @@ class TestHealth:
         assert resp.json()["status"] == "healthy"
 
     @pytest.mark.asyncio
-    async def test_readiness(self, async_client):
+    async def test_readiness_503_without_providers(self, async_client):
+        # Phase 2: readiness gates on the provider registry.
+        resp = await async_client.get("/api/v1/health/ready")
+        assert resp.status_code == 503
+
+    @pytest.mark.asyncio
+    async def test_readiness_200_with_healthy_provider(self, app, async_client):
+        app.state.provider_registry.register("azure", FakeEngine("azure"))
         resp = await async_client.get("/api/v1/health/ready")
         assert resp.status_code == 200
         assert resp.json()["status"] == "healthy"
