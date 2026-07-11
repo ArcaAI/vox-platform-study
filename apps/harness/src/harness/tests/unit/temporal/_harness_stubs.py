@@ -31,6 +31,7 @@ from harness.services.api_client import (
 )
 from harness.services.sensor_runner import SensorRunOutput
 from harness.services.smr_client import SmrGenerationResult
+from harness.temporal.claim_check import ClaimCheckRef
 from harness.temporal.models import (
     AssembleInput,
     EditSignal,
@@ -56,6 +57,17 @@ from harness.temporal.models import (
 )
 
 _OK_NOTE = '{"subjective": "s", "objective": "o", "assessment": "a", "plan": "p"}'
+
+
+def _stub_ref(name: str) -> ClaimCheckRef:
+    """A dummy claim-check ref for the offloaded-payload replay fixture (TASK-483).
+
+    Replay never dereferences it (activities are not re-run on replay — the recorded
+    result is fed back), so the key/sha need only be well-formed, not resolvable.
+    """
+    return ClaimCheckRef(
+        store="memory", bucket="harness-claim-check", key=f"stub-{name}", size=1, sha256="0" * 64
+    )
 
 
 @dataclass
@@ -94,6 +106,11 @@ class StubConfig:
     # workflow SKIPS the redundant ``persist_entities``. The note-NER calls
     # (reuse_priors=False) always return reused=False. Default False ⇒ the cold path.
     reuse_transcript_priors: bool = False
+    # TASK-483 claim-check: make the ``generate`` + ``assemble_prompt`` stubs return
+    # OFFLOADED results (inline emptied + a ClaimCheckRef) so the captured history carries
+    # the ref-threaded (new-run) command sequence for the replay-compat fixture. The
+    # command sequence is identical to the inline happy path — only the payloads differ.
+    claim_check: bool = False
 
 
 @dataclass
@@ -297,9 +314,15 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
     @activity.defn(name="assemble_prompt")
     async def assemble_prompt(payload: AssembleInput) -> AssembleResponse:
         recorder.calls["assemble_prompt"] += 1
+        # TASK-483: on the claim-check fixture, return the prompts OFFLOADED (inline
+        # emptied + refs) so the captured history threads the ref shape.
+        user_prompt, user_ref = ("", _stub_ref("uprompt")) if config.claim_check else ("U", None)
+        system_prompt, system_ref = ("", _stub_ref("sprompt")) if config.claim_check else ("S", None)
         return AssembleResponse(
-            user_prompt="U",
-            system_prompt="S",
+            user_prompt=user_prompt,
+            user_prompt_ref=user_ref,
+            system_prompt=system_prompt,
+            system_prompt_ref=system_ref,
             hyperparameters={"temperature": 0.2, "max_tokens": 1024},
             response_format={
                 "type": "json_schema",
@@ -328,8 +351,12 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
         recorder.generate_inputs.append(payload)
         if config.generate_fails:
             raise ApplicationError("smr unavailable", non_retryable=True)
+        # TASK-483: on the claim-check fixture, return the note OFFLOADED (content emptied
+        # + ref) so the captured history threads content_ref to the downstream activities.
+        content, content_ref = ("", _stub_ref("note")) if config.claim_check else (config.note_content, None)
         return SmrGenerationResult(
-            content=config.note_content,
+            content=content,
+            content_ref=content_ref,
             model="gpt-4o",
             provider="azure-openai",
             usage={"total_tokens": 40},

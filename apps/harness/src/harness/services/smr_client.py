@@ -13,6 +13,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
 from harness.core.llm_concurrency import LlmCallTimeout, governed_request
+from harness.temporal.claim_check import ClaimCheckRef
 
 
 class SmrServiceError(RuntimeError):
@@ -64,6 +65,13 @@ class SmrGenerationResult(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     content: str
+    # TASK-483 claim-check: OPTIONAL out-of-band ref to the generated note. Set by the
+    # ``generate`` activity when ``content`` is offloaded above the threshold — in which
+    # case ``content`` is emptied so the (large) note stays OUT of Temporal history, and
+    # the workflow threads ``content_ref`` to the downstream activities that resolve it.
+    # Additive-optional default None ⇒ replay-safe (an old ``generate`` result deserializes
+    # it to None ⇒ the inline note path).
+    content_ref: ClaimCheckRef | None = None
     model: str = ""
     provider: str = ""
     usage: dict[str, Any] = Field(default_factory=dict)

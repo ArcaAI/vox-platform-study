@@ -68,6 +68,12 @@ from harness.services.nlp_client import NlpClient
 from harness.services.reranker_client import RerankerClient
 from harness.services.sensor_runner import SensorRunOutput, run_computational_sensors
 from harness.services.smr_client import SmrClient, SmrGenerationResult, SmrServiceError
+from harness.temporal.claim_check import (
+    ClaimCheckRef,
+    build_blob_store,
+    load_blob,
+    maybe_offload,
+)
 from harness.temporal.models import (
     AssembleInput,
     EntitiesResult,
@@ -228,6 +234,49 @@ def _hybrid_retriever(settings: Settings) -> HybridRetriever:
 
 
 # ---------------------------------------------------------------------------
+# Claim-check helpers (TASK-483) — the store/load edge lives HERE in activities
+# (side effects belong in activities, never the deterministic workflow body).
+# ``_resolve_ref`` dereferences an offloaded field (ALWAYS — even if offload is
+# now disabled, an already-offloaded ref must still be readable); ``_offload_text``
+# offloads a produced field above the threshold ONLY when the feature is enabled.
+# ---------------------------------------------------------------------------
+
+
+async def _resolve_ref(settings: Settings, inline: str, ref: ClaimCheckRef | None) -> str:
+    """Inline-or-ref at an activity's edge: dereference ``ref`` when set, else the inline."""
+    if ref is None:
+        return inline
+    return await load_blob(ref, store=build_blob_store(settings.claim_check))
+
+
+async def _offload_text(settings: Settings, text: str) -> tuple[str, ClaimCheckRef | None]:
+    """Offload a produced field above the threshold (``("", ref)``) when enabled.
+
+    Disabled ⇒ ``(text, None)`` (inline, byte-identical to pre-483). Above the
+    threshold the inline is emptied so the blob stays OUT of Temporal history.
+    """
+    cc = settings.claim_check
+    if not cc.enabled:
+        return text, None
+    return await maybe_offload(
+        text, store=build_blob_store(cc), bucket=cc.bucket, min_bytes=cc.min_bytes
+    )
+
+
+async def _resolve_knowledge_chunks(
+    settings: Settings, inline: dict[str, str], refs: dict[str, ClaimCheckRef]
+) -> dict[str, str]:
+    """Merge the inline chunk texts with any offloaded (ref) ones, resolving each ref."""
+    if not refs:
+        return inline
+    store = build_blob_store(settings.claim_check)
+    out = dict(inline)
+    for chunk_id, ref in refs.items():
+        out[chunk_id] = await load_blob(ref, store=store)
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Document-loop activities
 # ---------------------------------------------------------------------------
 
@@ -293,7 +342,9 @@ async def extract_entities(payload: ExtractEntitiesInput) -> EntitiesResult:
         priors = await _load_coded_priors(settings, payload)
         if priors:
             return EntitiesResult(entities=priors, reused=True)
-    entities = await _nlp_client(settings).classify_tokens(payload.text, language=payload.language)
+    # TASK-483: resolve the (possibly offloaded) note/transcript before the cold NER pass.
+    text = await _resolve_ref(settings, payload.text, payload.text_ref)
+    entities = await _nlp_client(settings).classify_tokens(text, language=payload.language)
     return EntitiesResult(entities=entities)
 
 
@@ -315,13 +366,28 @@ async def persist_entities(payload: PersistEntitiesInput) -> PersistEntitiesResp
 async def assemble_prompt(payload: AssembleInput) -> AssembleResponse:
     """Resolve the prompt tier + assemble the SMR payload via apps/api."""
     settings = get_settings()
-    return await _api_client(settings).assemble(
+    resp = await _api_client(settings).assemble(
         payload.consultation_id,
         tenant_id=payload.tenant_id,
         user_id=payload.user_id,
         template=payload.template,
         dna_style_id=payload.dna_style_id,
         conversation_language=payload.conversation_language,
+    )
+    # TASK-483: offload the (large) assembled prompts so they don't enter Temporal
+    # history; ``generate`` resolves them inline-or-ref. Below the threshold they stay
+    # inline (refs None) and the response is unchanged.
+    user_inline, user_ref = await _offload_text(settings, resp.user_prompt)
+    sys_inline, sys_ref = await _offload_text(settings, resp.system_prompt)
+    if user_ref is None and sys_ref is None:
+        return resp
+    return resp.model_copy(
+        update={
+            "user_prompt": user_inline,
+            "user_prompt_ref": user_ref,
+            "system_prompt": sys_inline,
+            "system_prompt_ref": sys_ref,
+        }
     )
 
 
@@ -331,6 +397,20 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
     settings = get_settings()
     hp = payload.hyperparameters or {}
 
+    # TASK-483: resolve the (possibly offloaded) prompts inline-or-ref, then fold in the
+    # RAG StrictCitations block (moved here from the workflow so the workflow can thread
+    # the small prompt REF instead of the concatenated blob). The PHI-egress guard below
+    # then screens the FULLY-assembled prompt, exactly as before.
+    user_prompt = await _resolve_ref(settings, payload.prompt, payload.prompt_ref)
+    if payload.prompt_block:
+        user_prompt = f"{user_prompt}\n\n{payload.prompt_block}"
+    if payload.system_prompt_ref is not None:
+        system_prompt_in: str | None = await _resolve_ref(
+            settings, payload.system_prompt or "", payload.system_prompt_ref
+        )
+    else:
+        system_prompt_in = payload.system_prompt
+
     # TASK-357: enforce the fail-closed PHI egress guard before any cloud SMR call.
     # Local providers (the default) are a pure pass-through. A fail-closed block
     # raises PhiEgressBlocked, which propagates and fails the workflow — no draft is
@@ -338,7 +418,7 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
     redactor = _phi_redactor()
     try:
         prompt = ensure_egress_safe(
-            payload.prompt,
+            user_prompt,
             provider=payload.provider,
             settings=settings,
             phi_enabled=payload.phi_enabled,
@@ -347,14 +427,14 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
         )
         system_prompt = (
             ensure_egress_safe(
-                payload.system_prompt,
+                system_prompt_in,
                 provider=payload.provider,
                 settings=settings,
                 phi_enabled=payload.phi_enabled,
                 phi_fail_closed=payload.phi_fail_closed,
                 redactor=redactor,
             )
-            if payload.system_prompt is not None
+            if system_prompt_in is not None
             else None
         )
     except PhiEgressBlocked as exc:
@@ -365,7 +445,7 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
         raise
 
     try:
-        return await _smr_client(settings).generate(
+        result = await _smr_client(settings).generate(
             prompt=prompt,
             system_prompt=system_prompt,
             provider=payload.provider,
@@ -398,6 +478,14 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
             raise ApplicationError(str(exc), type="SmrResponseLost", non_retryable=True) from exc
         raise
 
+    # TASK-483: offload the generated note so the (large) content stays OUT of Temporal
+    # history; on offload the inline ``content`` is emptied and the workflow threads
+    # ``content_ref`` to the consumers (note-NER / sensors / persist) that resolve it.
+    content_inline, content_ref = await _offload_text(settings, result.content)
+    if content_ref is None:
+        return result
+    return result.model_copy(update={"content": content_inline, "content_ref": content_ref})
+
 
 @activity.defn
 async def retrieve_context(payload: RetrieveContextInput) -> RetrievedContext:
@@ -415,11 +503,17 @@ async def retrieve_context(payload: RetrieveContextInput) -> RetrievedContext:
 
     query = build_query(payload.entities)
     result = await _hybrid_retriever(settings).retrieve(query=query, tenant_id=payload.tenant_id)
-    return RetrievedContext(
-        chunks=result.chunks,
-        degraded=result.degraded,
-        prompt_block=build_strict_citations_block(result.chunks),
-    )
+    # Build the StrictCitations block from the FULL chunk text FIRST (it needs the text),
+    # THEN offload each chunk's text (TASK-483) so the reranked chunk texts don't enter
+    # Temporal history; the inferential citation-verify pass resolves them inline-or-ref.
+    prompt_block = build_strict_citations_block(result.chunks)
+    chunks = []
+    for chunk in result.chunks:
+        inline, ref = await _offload_text(settings, chunk.text)
+        chunks.append(
+            chunk.model_copy(update={"text": inline, "text_ref": ref}) if ref is not None else chunk
+        )
+    return RetrievedContext(chunks=chunks, degraded=result.degraded, prompt_block=prompt_block)
 
 
 @activity.defn
@@ -429,9 +523,13 @@ async def run_sensors(payload: RunSensorsInput) -> SensorRunOutput:
     ``payload.thresholds`` is the policy-driven :class:`SensorThresholds` (Phase 6);
     ``None`` falls back to the sensors' own env-driven defaults.
     """
+    # TASK-483: resolve the (possibly offloaded) note + transcript inline-or-ref.
+    settings = get_settings()
+    note_text = await _resolve_ref(settings, payload.note_text, payload.note_text_ref)
+    transcript_text = await _resolve_ref(settings, payload.transcript_text, payload.transcript_text_ref)
     return run_computational_sensors(
-        note_text=payload.note_text,
-        transcript_text=payload.transcript_text,
+        note_text=note_text,
+        transcript_text=transcript_text,
         note_entities=payload.note_entities,
         transcript_entities=payload.transcript_entities,
         response_format=payload.response_format,
@@ -671,13 +769,22 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
     # Local providers (the default) are an identity no-op. A fail-closed block degrades
     # the whole inferential pass (reduced assurance) rather than raising into the loop —
     # the inferential degrade contract — so an unverifiable note never auto-PASSes.
+    # TASK-483: resolve the (possibly offloaded) note / transcript / chunk texts
+    # inline-or-ref BEFORE the PHI-egress redaction + sensor pass.
+    note_text_in = await _resolve_ref(settings, payload.note_text, payload.note_text_ref)
+    transcript_text_in = await _resolve_ref(
+        settings, payload.transcript_text, payload.transcript_text_ref
+    )
+    knowledge_chunks_in = await _resolve_knowledge_chunks(
+        settings, payload.knowledge_chunks, payload.knowledge_chunks_ref
+    )
     try:
         note_text, transcript_text, citations_map, knowledge_chunks = (
             ensure_inferential_egress_safe(
-                note_text=payload.note_text,
-                transcript_text=payload.transcript_text,
+                note_text=note_text_in,
+                transcript_text=transcript_text_in,
                 citations_map=payload.citations_map,
-                knowledge_chunks=payload.knowledge_chunks,
+                knowledge_chunks=knowledge_chunks_in,
                 judge_provider=str(judge_config.provider),
                 safety_provider=settings.safety.provider if payload.safety_enabled else None,
                 settings=settings,
@@ -784,10 +891,13 @@ async def persist_draft(payload: PersistDraftInput) -> DraftResponse:
     (legacy) keeps the single-shot persist (full scores, straight to PENDING_REVIEW).
     """
     settings = get_settings()
+    # TASK-483: resolve the (possibly offloaded) draft content — apps/api still receives
+    # the fully-materialized note (the persist contract is unchanged).
+    content = await _resolve_ref(settings, payload.content, payload.content_ref)
     return await _api_client(settings).persist_draft(
         payload.consultation_id,
         tenant_id=payload.tenant_id,
-        content=payload.content,
+        content=content,
         user_id=payload.user_id,
         job_id=payload.job_id,
         model_name=payload.model_name,

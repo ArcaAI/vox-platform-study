@@ -205,3 +205,25 @@ class TestReplayCompatibility:
             data_converter=pydantic_data_converter,
         )
         await replayer.replay_workflow(_history("doc_workflow_post_task481_retraction_history"))
+
+    @pytest.mark.asyncio
+    async def test_post_task483_claim_check_history_replays_on_current_definition(self):
+        """Forward + backward guard for the TASK-483 claim-check (out-of-band payload) era.
+
+        The fixture is a happy-path history recorded with the ``generate`` + ``assemble_prompt``
+        stubs returning OFFLOADED results — the note + prompts emptied inline and replaced by a
+        small ``ClaimCheckRef`` that the workflow threads to every downstream activity
+        (``extract_entities`` / ``run_sensors`` / ``run_inferential_sensors`` / ``persist_draft``).
+
+        The claim-check is additive-optional and dereferenced INSIDE the activities, so the
+        recorded command sequence is byte-identical to the inline happy path: NO new
+        ``execute_activity`` command and NO ``workflow.patched()`` marker are introduced (the
+        exact ``phi_enabled`` / ``prior_verdicts`` posture). Replaying this ref-threaded history
+        GREEN proves ref-threading is command-neutral (AC-4) — the partner to the 8 pre-483
+        (inline-blob) fixtures above, which also replay GREEN under the same definition.
+        """
+        replayer = Replayer(
+            workflows=[HarnessDocWorkflow],
+            data_converter=pydantic_data_converter,
+        )
+        await replayer.replay_workflow(_history("doc_workflow_post_task483_claim_check_history"))

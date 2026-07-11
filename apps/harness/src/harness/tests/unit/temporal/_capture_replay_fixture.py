@@ -42,6 +42,11 @@ Two scenarios:
   ``persist_draft(phase=DRAFT_PENDING_SENSORS)`` -> ``run_inferential_sensors`` (FLAG) ->
   ``retract_draft`` -> terminal completion (retracted, no gate/finalize). Records the
   ``task-481-optimistic-retraction`` marker — the retraction forward-guard fixture.
+* ``--claim-check`` (TASK-483) — the happy path with the ``generate`` + ``assemble_prompt``
+  stubs returning OFFLOADED results (content/prompt emptied + a ``ClaimCheckRef``), so the
+  recorded history threads the claim-check REF shape through every downstream activity. The
+  command sequence is byte-identical to the inline happy path (NO new command, NO patch
+  marker), so this fixture proves ref-threading is command-neutral on replay (AC-4).
 
 Usage (from the repo root):
 
@@ -117,6 +122,13 @@ async def capture(out_path: Path, *, scenario: str = "happy") -> None:
         # TASK-481 (E2): optimistic delivery, then the assurance pass FLAGs (UNSAFE) so the
         # delivered draft is RETRACTED (records the task-481-optimistic-retraction marker).
         config = StubConfig(verdicts=["PASS"], inferential_verdicts=["UNSAFE"])
+    elif scenario == "claim-check":
+        # TASK-483: happy path with the generate + assemble stubs returning OFFLOADED
+        # results (content/prompt emptied + a ClaimCheckRef), so the recorded history
+        # threads the claim-check REF shape through every downstream activity. The command
+        # sequence is byte-identical to the inline happy path (no new command, no patch
+        # marker) — this fixture proves ref-threading is command-neutral on replay (AC-4).
+        config = StubConfig(verdicts=["PASS"], inferential_verdicts=["SAFE"], claim_check=True)
     else:
         config = StubConfig(verdicts=["PASS"], inferential_verdicts=["SAFE"])
 
@@ -201,12 +213,21 @@ async def capture(out_path: Path, *, scenario: str = "happy") -> None:
 if __name__ == "__main__":
     args = sys.argv[1:]
     scenario = "happy"
-    _scenarios = ("--failure", "--optimistic", "--regen", "--gate-abandon", "--edit-cap", "--retract")
+    _scenarios = (
+        "--failure",
+        "--optimistic",
+        "--regen",
+        "--gate-abandon",
+        "--edit-cap",
+        "--retract",
+        "--claim-check",
+    )
     if args and args[0] in _scenarios:
         scenario, args = args[0].lstrip("-"), args[1:]
     if len(args) != 1:
         raise SystemExit(
             "usage: python -m ..._capture_replay_fixture "
-            "[--failure|--optimistic|--regen|--gate-abandon|--edit-cap|--retract] <output.json>"
+            "[--failure|--optimistic|--regen|--gate-abandon|--edit-cap|--retract|--claim-check]"
+            " <output.json>"
         )
     asyncio.run(capture(Path(args[0]), scenario=scenario))
