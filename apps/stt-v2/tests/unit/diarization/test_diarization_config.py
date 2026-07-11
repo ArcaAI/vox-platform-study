@@ -171,8 +171,9 @@ class TestDiarizationBackendSelector:
 
     def test_sortformer_knobs_have_defaults(self):
         config = DiarizationConfig()
-        # Commercially-licensed checkpoint (cc-by-4.0), NOT the cc-by-nc offline v1.
-        assert config.sortformer_model_id == "nvidia/diar_streaming_sortformer_4spk-v2"
+        # Pinned v2.1 checkpoint (NVIDIA Open Model License, owner-accepted 2026-07-11);
+        # NOT the plain cc-by-4.0 v2, and NOT the cc-by-nc offline v1.
+        assert config.sortformer_model_id == "nvidia/diar_streaming_sortformer_4spk-v2.1"
         assert config.sortformer_revision is None  # pinned when the model is staged
         assert config.sortformer_threshold == 0.5
         assert config.sortformer_frame_shift_s == 0.08

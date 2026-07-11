@@ -628,7 +628,7 @@ class PipelineYamlParser:
             # TASK-475 B2: streaming diarizer backend selector + Sortformer knobs.
             backend=str(data.get("backend", "embedding")),
             sortformer_model_id=str(
-                data.get("sortformer_model_id", "nvidia/diar_streaming_sortformer_4spk-v2")
+                data.get("sortformer_model_id", "nvidia/diar_streaming_sortformer_4spk-v2.1")
             ),
             sortformer_revision=data.get("sortformer_revision"),
             sortformer_threshold=float(data.get("sortformer_threshold", 0.5)),

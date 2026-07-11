@@ -60,11 +60,11 @@ class TestModelStagingBoundary:
     def test_unavailable_error_names_the_model_and_ticket(self) -> None:
         try:
             load_default_backend(
-                _config(sortformer_model_id="nvidia/diar_streaming_sortformer_4spk-v2")
+                _config(sortformer_model_id="nvidia/diar_streaming_sortformer_4spk-v2.1")
             )
         except SortformerModelUnavailableError as exc:
             message = str(exc)
-            assert "nvidia/diar_streaming_sortformer_4spk-v2" in message
+            assert "nvidia/diar_streaming_sortformer_4spk-v2.1" in message
             assert "TASK-475" in message
         else:  # pragma: no cover - the call above must raise
             pytest.fail("load_default_backend did not raise")
