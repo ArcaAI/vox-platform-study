@@ -182,8 +182,16 @@ async def get_user_identity(
 
     Returns (None, None) when no consultation or doctor is found. When
     ``tenant_id`` is provided the consultation read is tenant-scoped (a
-    cross-tenant consultation resolves to nothing).
+    cross-tenant consultation resolves to nothing). Fails closed (returns
+    ``(None, None)`` without querying) when ``tenant_id`` is missing, uniform with
+    ``get_voice_embedding`` — an unscoped identity read is structurally impossible.
     """
+    if not tenant_id:
+        logger.warning(
+            "Doctor identity lookup refused: missing tenant scope (consultation=%s)",
+            redact_id(consultation_id),
+        )
+        return None, None
     try:
         async with get_session() as session:
             sql = (
@@ -192,12 +200,13 @@ async def get_user_identity(
                 'LEFT JOIN core."UserProfile" up ON up."userId" = c."doctorId" '
                 'WHERE c.id = :consultation_id '
                 "AND c.\"resourceStatus\" = 'ENABLED' "
+                'AND c."tenantId" = :tenant_id '
+                "LIMIT 1"
             )
-            params: dict[str, str] = {"consultation_id": consultation_id}
-            if tenant_id:
-                sql += 'AND c."tenantId" = :tenant_id '
-                params["tenant_id"] = tenant_id
-            sql += "LIMIT 1"
+            params: dict[str, str] = {
+                "consultation_id": consultation_id,
+                "tenant_id": tenant_id,
+            }
 
             result = await session.execute(
                 text(sql),

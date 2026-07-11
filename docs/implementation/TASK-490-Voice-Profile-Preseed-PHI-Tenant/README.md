@@ -1,6 +1,6 @@
 # TASK-490 — Voice-Profile Preseed: PHI in Logs + Missing Tenant Scoping
 
-- **Status**: Review
+- **Status**: Completed — adversarial SECURITY review APPROVE (PHI-in-logs clean, tenant scoping fail-closed structurally, migration deploy-ready + fail-safe); the 2 non-blocking Low findings were also fixed. Migration applies at deploy (local DBs are `db push`-managed). Only the owner's push/PR remains.
 - **Type**: bugfix (security / PHI hygiene + tenant isolation)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · Discovered by the [TASK-474](../TASK-474-Diarization-Internals-Review/README.md) diarization internals review (2026-07-11)
 - **Origin**: TASK-474 findings **B-04 / B-05 (Important)** — the diarization voice-profile preseed path drops `tenant_id` and logs clinician PII.
@@ -50,6 +50,7 @@ The voice-profile preseed (used to name anonymous diarized speakers) has a PHI-l
 
 | Area | Files |
 |---|---|
+| 2026-07-11 | **Closed (Status → Completed).** Adversarial SECURITY review = APPROVE (no Critical/Important): all 14 log sites PHI-clean (ids → `redact_id` sha-256, clinician name → bool, exceptions → type-only), tenant scoping fails closed BEFORE any DB touch (an unscoped read is structurally impossible), `tenant_id` threaded at every hop, cross-tenant no-match asserted behaviorally, migration correctly ordered before `task_496` with a fail-closed SYSTEM backfill; re-run green (stt-v2 28 / database 809 / applications 6003). **Also applied the 2 non-blocking Low findings** for a pristine PHI ticket: (1) `get_user_identity` now fails closed on missing tenant (top guard + unconditional filter, uniform with `get_voice_embedding`); (2) preseed.py's two residual `exc_info=True` → exception **type-name only** (no traceback bind-params). ruff+mypy clean, 25 tests green. Migration applies at deploy. No external work remains — only the owner's push/PR. |
 | Prisma schema + migration | `packages/database/src/prisma/db_main/user.prisma`; `…/migrations/20260711000000_task_490_user_voice_profile_tenant_id/migration.sql` (new) |
 | Tenant-scope extension | `packages/database/src/extensions/tenant-scope.ts`; `…/__tests__/tenant-scope.test.ts` (44→45 + comment) |
 | Seeds | `packages/database/src/prisma/db_main/seed/91-user.ts` (profiles stamped `SEED_TENANT_ID` / `SEED_CUSTOMER_TENANT_IDS.ARCAAI`; INSERT + upsert carry `tenantId`) |
