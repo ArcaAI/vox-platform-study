@@ -1,6 +1,6 @@
 # TASK-452 — Live NER Contract Fix + Token Aggregation (C5-01 · C5-02)
 
-- **Status**: Review — implemented, adversarially reviewed, merged to `fix/task-449-wave1`; final landing pending
+- **Status**: Completed — all 7 ACs met + adversarially reviewed + gates green; only the owner's own push/PR to main remains (per owner directive, they land it)
 - **Type**: bugfix
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · Wave 1 (P0)
 - **Findings**: C5-01 (High, CONFIRMED ✓C ✓H) · C5-02 (High, CONFIRMED ✓C ✓H) — see [TASK-448 register](../TASK-448-Harness-Loop-Quality-Review/README.md)
@@ -122,5 +122,6 @@ Adversarial review focus (reviewer agent): (a) does the fixed mock now match `ap
 
 | Date | Change |
 |---|---|
+| 2026-07-11 | **Closed (Status → Completed).** Closure-review pass (owner directive): all 7 ACs met, adversarial review applied (I-2/M-1/M-4 cleanups), gates green (applications 5884 + nlp 52 passed / ruff + mypy clean / integration build). The discovered sibling was spun off to TASK-463 (separate ticket, not remaining work here). No external work remains — only the owner's git push/PR to main. |
 | 2026-07-09 | Ticket scaffolded from TASK-448 findings C5-01/C5-02; all line references and contract fields re-verified against code by read-only scout. No implementation started. |
 | 2026-07-09 | Implemented (TDD) + adversarially reviewed (no Critical). Cleanups I-2/M-1/M-4 applied. Review discovered the same bug in two NamedEntity persistence paths → TASK-463 (not folded in). Merged to `fix/task-449-wave1` (integration build green). |

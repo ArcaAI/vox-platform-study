@@ -1,6 +1,6 @@
 # TASK-451 — STT Commit-Surface Freeze + VAD Onset Safety (C2-01 · C2-06)
 
-- **Status**: Review — implemented, adversarially reviewed, merged to `fix/task-449-wave1`; final landing pending
+- **Status**: Completed — all 9 ACs met + adversarially reviewed + gates green; only the owner's own push/PR to main remains (per owner directive, they land it)
 - **Type**: bugfix (patient-safety — clinical caption integrity)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · Wave 1 (P0)
 - **Findings**: C2-01 (High, CONFIRMED ✓C) · C2-06 (High — originally PLAUSIBLE; the scout's close read says the claim **holds**, re-verify as task 0)
@@ -112,5 +112,6 @@ Adversarial review focus (reviewer agent): (a) C2-01 — after the fix, is there
 
 | Date | Change |
 |---|---|
+| 2026-07-11 | **Closed (Status → Completed).** Closure-review pass (owner directive "close if finished completely and properly"): all 9 ACs met with recorded evidence, adversarial review applied (Important I-1 bounded, M-2 documented), gates green (82 passed / stt-v2 2085 unit / ruff + mypy clean), C2-06 reproduced RED-first. No external work remains — only the owner's git push/PR to main. |
 | 2026-07-09 | Ticket scaffolded from TASK-448 findings C2-01/C2-06; algorithm, onset math, downstream `stable_chars` contract, and test gaps re-verified against code by read-only scout (scout upgraded C2-06 from PLAUSIBLE to "claim holds"). No implementation started. |
 | 2026-07-09 | Implemented (TDD; C2-06 reproduced) + adversarially reviewed. Non-monotonic `stable_chars` proven safe across all consumers; Important I-1 (unbounded onset dips) bounded. Collateral DTO assertion realigned. Merged to `fix/task-449-wave1` (integration build green). |

@@ -1,6 +1,6 @@
 # TASK-456 — STT Finalize / Reaper Durability (C2-03 · C2-02 · C2-05 · C2-07)
 
-- **Status**: Review — implemented, adversarially reviewed (through a Critical rework + 2 re-reviews), merged to `fix/2605-review` (Wave 2 Batch 1)
+- **Status**: Completed -- all 4 findings RED->GREEN + 3-round adversarial review (Critical rework + both Important applied) + gates green (stt-v2 2100 passed, ruff/mypy clean); only the owner's own push/PR to main remains (per owner directive, they land it)
 - **Type**: bugfix (data durability — realtime transcript loss)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · Wave 2 (P1)
 - **Findings**: C2-03 (High, CONFIRMED ✓C) · C2-02 (High, PLAUSIBLE — re-verify) · C2-05 (Med) · C2-07 (Med) — see [TASK-448 register](../TASK-448-Harness-Loop-Quality-Review/README.md)
@@ -100,3 +100,4 @@ Adversarial review focus: (a) C2-03 — is there ANY remaining path where a tran
 | Date | Change |
 |---|---|
 | 2026-07-09 | Ticket scaffolded from TASK-448 findings C2-02/03/05/07; all four re-verified against the post-Wave-1 tree by read-only scout (refs unchanged; `streaming_audio_idle_timeout_s` confirmed dead config; C2-07 duplicate risk scoped to Media rows). No implementation. |
+| 2026-07-11 | **Closed (Status -> Completed).** Closure-review pass (owner directive "close if finished completely and properly"): all four findings shipped + tested RED->GREEN, 3-round review with the Critical rework + both Important fixes applied (none deferred), py:stt-v2:test:unit 2100 passed / ruff+mypy clean; residuals are out-of-manifest metrics + a non-AC dedup hardening (no AC pending). No external work remains -- only the owner's git push/PR to main. |
