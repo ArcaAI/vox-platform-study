@@ -17,6 +17,18 @@ from stt_v2.diarization.speaker_tracker import SpeakerTracker
 from stt_v2.pipeline.dto import DiarizationConfig
 
 
+@pytest.fixture(autouse=True)
+def _seed_numpy() -> None:
+    """Deterministic random embeddings per test.
+
+    Several tests build embeddings with ``np.random.randn`` and assert on similarity
+    thresholds; unseeded, certain values land across the ambiguous-zone boundary, so the
+    suite was order-dependent (flaky) under ``pytest-randomly``. Seeding per test makes it
+    order-independent. (Pre-existing defect surfaced by TASK-475's test reshuffle.)
+    """
+    np.random.seed(20260712)
+
+
 def _make_embedding(values: list[float] | None = None) -> SpeakerEmbedding:
     if values is None:
         vec = np.random.randn(256).astype(np.float32)
