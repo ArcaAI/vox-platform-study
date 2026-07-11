@@ -86,3 +86,4 @@ Adversarial review focus: (a) C4-02 — is the token attached on EVERY PHI hop, 
 | Date | Change |
 |---|---|
 | 2026-07-09 | Ticket scaffolded from TASK-448 findings C4-02/03/04; all re-verified against the post-Wave-1 tree by read-only scout. Register corrected: harness-progress/assurance SSE are "no PHI" per the code — only live-summary carries PHI, so C4-03's PHI severity is concentrated there. No implementation. |
+| 2026-07-11 | C4-02 **receiver half now implemented** in [TASK-465](../TASK-465-NLP-Guardrail-Service-Token-Enforcement/README.md): NLP + Guardrail enforce `X-Service-Token` (constant-time compare, empty-token dev bypass, NLP also guards its `/ws/classify/*` handshakes), re-verified on `fix/2605-review`. The gateway↔receiver hop is fail-closed end-to-end once the shared secret is Vault-provisioned on both sides (same value). No change to this ticket's Status/scope — noted for traceability. |

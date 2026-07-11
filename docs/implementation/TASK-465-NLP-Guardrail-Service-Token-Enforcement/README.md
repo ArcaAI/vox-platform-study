@@ -1,6 +1,6 @@
 # TASK-465 — NLP + Guardrail Service-Token Enforcement (C4-02 receiver half)
 
-- **Status**: Review (implementation complete on `fix/task-465-nlp-guardrail-auth`; awaiting orchestrator review/merge — do not self-merge)
+- **Status**: Review (implementation landed on `fix/2605-review`; re-verified on that base 2026-07-11 — see Change History. Only the live cross-service smoke + Vault provisioning remain, both ops-gated. Do not self-merge.)
 - **Type**: bugfix (security — completes the fail-closed posture; **fixes a discovered High-severity config bug**) + infrastructure (secret provisioning)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · Wave 2 follow-up (pairs with [TASK-460](../TASK-460-Gateway-Auth-Retry-Hygiene/README.md))
 - **Origin**: TASK-460 (C4-02) made the gateway **send** `X-Service-Token` to NLP + Guardrail, but the receivers didn't **enforce** it — so C4-02 was not fully fail-closed end-to-end until this landed.
@@ -30,7 +30,7 @@ TASK-460 closed C4-02's gateway half. The full fix requires the NLP + Guardrail 
 - [x] **AC-1**: `apps/guardrail` and `apps/nlp` each gain `X-Service-Token` middleware mirroring `apps/smr`'s (constant-time compare; health/docs/metrics exempt; empty-configured-token = dev bypass). EXEMPT_PATHS tailored per service (NLP health at `/api/v1/health*`; Guardrail health at `/api/health*`).
 - [x] **AC-2**: `apps/nlp` gains `service_token: SecretStr` under `env_prefix="NLP_"` → reads `NLP_SERVICE_TOKEN` (matches gateway). `apps/guardrail`'s existing field is **corrected** to read the canonical `GUARDRAIL_SERVICE_TOKEN` via `validation_alias` (was silently reading `GUARDRAIL_V2_SERVICE_TOKEN`).
 - [x] **AC-3 (red first)**: TDD — RED captured (NLP 12 failed; Guardrail 7 failed, incl. `test_legacy_v2_env_no_longer_read` asserting the old key was being read) → GREEN. Missing/wrong token → 401; matching token → passes (404 route-probe); empty token → bypass; exempt paths reachable.
-- [x] **AC-4 (config/docs)**: `GUARDRAIL_SERVICE_TOKEN` / `NLP_SERVICE_TOKEN` already present in `turbo.json#globalEnv` and `.env.example` (added by TASK-460). Rollout order (provision → enforce, same value both sides) documented above; Vault provisioning is the ops action in step 1.
+- [x] **AC-4 (config/docs)**: `GUARDRAIL_SERVICE_TOKEN` / `NLP_SERVICE_TOKEN` present in `turbo.json#globalEnv` and the root `.env.example` (added by TASK-460). Per-app `.env.example`: Guardrail's already carried `GUARDRAIL_SERVICE_TOKEN=""`; `NLP_SERVICE_TOKEN=""` was **added to `apps/nlp/.env.example`** on 2026-07-11 (was missing — the only per-app config gap). Rollout order (provision → enforce, same value both sides) documented above; Vault provisioning is the ops action in step 1.
 - [~] **AC-5**: `pnpm py:guardrail:test` + `pnpm py:nlp:test` + lint + typecheck all green (evidence below). Receiver enforcement + canonical-key sourcing proven by unit tests (incl. an env-driven end-to-end within Guardrail); a **live** gateway↔receiver handshake still to be smoke-tested against a running stack during rollout.
 
 ### Non-goals
@@ -79,6 +79,23 @@ pnpm py:guardrail:typecheck → Success: no issues found in 24 source files
 
 RED→GREEN: pre-implementation the new Guardrail suite failed 7/10 — including `test_legacy_v2_env_no_longer_read` (`assert 'legacy-token-should-be-ignored' == ''`), directly proving the field was reading `GUARDRAIL_V2_SERVICE_TOKEN`; and the NLP suite failed 12/12 (pydantic rejected setting the not-yet-existent `service_token` field + missing middleware module). After the fix all pass.
 
+### Re-verification on the merged `fix/2605-review` base (2026-07-11)
+
+The auth-middleware code was already merged onto `fix/2605-review` (commits `886f6c4ff`, `7f8412a25`). Gates re-run on that base from an isolated worktree (worktree source forced onto the import path with `PYTHONPATH=<worktree>/apps/<svc>/src` because the conda env editable-installs against the shared checkout; lint/typecheck are path-based and unmodified). Suite counts are higher than the original 465 branch because this base also carries TASK-476 (NLP linker) and TASK-479 (Guardrail groundedness) tests:
+
+```
+NLP     pytest apps/nlp/tests/                          → 83 passed  (incl. 18 auth: HTTP + WS + env-binding)
+Guardrail pytest apps/guardrail/src/guardrail/tests/    → 88 passed  (incl. 10 auth; auth.py coverage 100%)
+ruff  apps/nlp/src apps/nlp/tests                        → All checks passed!
+ruff  apps/guardrail/src                                 → All checks passed!
+mypy  apps/nlp/src        (--config apps/nlp/pyproject)  → Success: no issues found in 39 source files
+mypy  apps/guardrail/src  (--config apps/guardrail/…)    → 1 error at core/config.py:298 — PRE-EXISTING, NOT this ticket
+```
+
+The single Guardrail mypy error is on the `groundedness: GroundednessConfig = Field(default_factory=GroundednessConfig)` line (introduced by TASK-479 commit `6a409f7f97`), unrelated to the auth surface — the `service_token` field (config.py:277) and `auth.py` typecheck clean. It is outside this ticket's manifest (TASK-479 owns the Guardrail groundedness surface) and left untouched; flagged for that ticket.
+
+Config gap closed on re-verification: `apps/nlp/.env.example` was missing `NLP_SERVICE_TOKEN` (Guardrail's `.env.example` already had `GUARDRAIL_SERVICE_TOKEN`); added `NLP_SERVICE_TOKEN=""` with a rollout comment (AC-4). Root `.env.example` / `turbo.json` were already correct and were not touched.
+
 ## Change History
 
 | Date | Change |
@@ -86,3 +103,4 @@ RED→GREEN: pre-implementation the new Guardrail suite failed 7/10 — includin
 | 2026-07-09 | Ticket scaffolded from TASK-460's C4-02 coordination finding (gateway sends the token; NLP/Guardrail don't enforce it). Reference middleware (`apps/smr`) and the secret-provisioning rollout-order risk recorded. Awaiting prioritization. |
 | 2026-07-10 | Implemented via strict TDD on `fix/task-465-nlp-guardrail-auth`. Added `ServiceAuthMiddleware` + `service_token` config to NLP; added the same middleware to Guardrail and **fixed the High-severity env-key mismatch** (Guardrail read `GUARDRAIL_V2_SERVICE_TOKEN`; now reads canonical `GUARDRAIL_SERVICE_TOKEN` via `validation_alias`). Empty-token dev/CI bypass preserved. All 6 gates green (NLP 64 / Guardrail 54 tests; lint + mypy clean). Rollout ordering (provision same value both sides → enforce) documented. Status → Review. |
 | 2026-07-10 (review) | Adversarial review caught an **Important** gap: `ServiceAuthMiddleware` is a `BaseHTTPMiddleware`, whose `dispatch()` never runs for WebSocket scopes, so NLP `/ws/classify/token/{id}` and `/ws/classify/text/{id}` accepted unauthenticated connections when a token was configured. Fix: added `enforce_service_token_ws()` (mirrors the HTTP guard exactly — empty-token bypass, constant-time compare, refuse with close 1008) and called it at the top of both WS handlers before `accept()`. Added 4 WS-guard unit tests + a real-endpoint handshake-rejection test + an `NLP_SERVICE_TOKEN` env-binding test; corrected the README's HTTP-only enforcement wording. Guardrail exposes no WS endpoints, so its HTTP-only surface is unaffected. Gates re-run green: **NLP 70 passed, Guardrail 54 passed, NLP lint + mypy clean**. |
+| 2026-07-11 | Verified the already-merged implementation on `fix/2605-review` (commits `886f6c4ff`, `7f8412a25`) from an isolated worktree. Closed the one remaining per-app config gap: added `NLP_SERVICE_TOKEN=""` to `apps/nlp/.env.example` (Guardrail's already had its key; root `.env.example`/`turbo.json` untouched). Re-ran all six gates on this base: **NLP 83 passed (18 auth), Guardrail 88 passed (10 auth), ruff clean both, NLP mypy clean, Guardrail mypy 1 PRE-EXISTING error** at `core/config.py:298` (`GroundednessConfig` default_factory, TASK-479 commit `6a409f7f97`) — unrelated to the auth surface, outside this manifest, left untouched and flagged for TASK-479. Higher suite counts vs the 465 branch reflect TASK-476/479 tests now on the base. Status stays **Review** — the only remaining gaps are the ops-gated live cross-service smoke (AC-5) and Vault provisioning of the shared secret on both sides (§ Ops rollout). |

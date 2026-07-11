@@ -257,23 +257,6 @@ class HarmWeightedResult(BaseModel):
     minor_errors: int
 
 
-class EditBurdenSummary(BaseModel):
-    """Aggregate clinician edit-burden signals (schema mirror of the applications
-    ``edit-burden`` telemetry — see ``packages/applications/.../edit-burden.ts``).
-
-    Populated by a later apps/api adapter over the WORM audit; ``None`` in the
-    offline harness run (which has no audit access). Carried here so the persisted
-    ``EvalRun`` schema can hold the derived signals without a later shape change.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    mean_edit_distance: float | None = None
-    deferral_rate: float | None = None
-    mean_time_to_sign_seconds: float | None = None
-    sample_size: int = 0
-
-
 class EvalCaseResult(BaseModel):
     """All metrics for one case."""
 
@@ -297,6 +280,3 @@ class EvalRunResult(BaseModel):
     thresholds: dict[str, float] = Field(default_factory=dict)
     passed: bool = True
     failures: list[str] = Field(default_factory=list)
-    # TASK-482 E3 — aggregate clinician edit-burden block (schema mirror of the TS
-    # telemetry). ``None`` in the offline harness run.
-    edit_burden: EditBurdenSummary | None = None
