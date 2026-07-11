@@ -176,7 +176,9 @@ describe('LiveDocumentationService', () => {
       expect(payload).not.toBeNull();
       expect(payload!.consultationId).toBe(CID);
       expect(payload!.runningSummary).toBe('Pt on amlodipine for HTN.');
-      expect(payload!.entities).toEqual([{ text: 'amlodipine', type: 'MEDICATION', confidence: 0.92, start: 3, end: 13 }]);
+      // TASK-477: NER runs over the transcript; the entity is GROUNDED (re-located) into the note,
+      // so start/end index 'amlodipine' within "Pt on amlodipine for HTN." (offset 6), not the raw NER offset.
+      expect(payload!.entities).toEqual([{ text: 'amlodipine', type: 'MEDICATION', confidence: 0.92, start: 6, end: 16 }]);
       expect(payload!.sections).toEqual([{ title: 'Running Summary', content: 'Pt on amlodipine for HTN.' }]);
       expect(payload!.lastSegmentId).toBe('seg-42');
       expect(typeof payload!.updatedAt).toBe('string');
@@ -214,7 +216,7 @@ describe('LiveDocumentationService', () => {
   // highlight DTO (entity_type → type). Genuinely-missing fields fall back.
   // ------------------------------------------------------------------
   describe('NLP contract mapping (C5-01)', () => {
-    it('maps the canonical NLP wire shape onto the highlight DTO and falls back for missing fields', async () => {
+    it('maps the canonical NLP wire shape onto the highlight DTO, grounds it into the note, and drops the un-anchorable fallback', async () => {
       const httpMock = {
         axiosRef: {
           post: vi.fn().mockImplementation((url: string) => {
@@ -228,7 +230,7 @@ describe('LiveDocumentationService', () => {
                 },
               });
             }
-            if (url.includes('/generate')) return Promise.resolve({ data: { summary: 'note' } });
+            if (url.includes('/generate')) return Promise.resolve({ data: { summary: 'Patient has hypertension noted.' } });
             return Promise.resolve({ data: {} });
           }),
         },
@@ -239,8 +241,10 @@ describe('LiveDocumentationService', () => {
 
       const payload = await service.flush(CID);
 
-      expect(payload!.entities[0]).toEqual({ text: 'hypertension', type: 'CONDITION', confidence: 0.81, start: 5, end: 17 });
-      expect(payload!.entities[1]).toEqual({ text: '', type: 'UNKNOWN', confidence: 0.4, start: undefined, end: undefined });
+      // TASK-477: callNlp maps the canonical wire shape (entity_type→type, confidence carried); the
+      // entity is then grounded into the note, so start/end index 'hypertension' at offset 12.
+      expect(payload!.entities).toEqual([{ text: 'hypertension', type: 'CONDITION', confidence: 0.81, start: 12, end: 24 }]);
+      // The missing-field fallback entity (text:'') has no surface form to anchor and is dropped by grounding.
     });
   });
 
@@ -284,7 +288,7 @@ describe('LiveDocumentationService', () => {
       expect(payload!.runningSummary).toContain('Start amlodipine 5mg, follow up in one week.');
     });
 
-    it('runs NER over runningSummary so entity offsets index the rendered text', async () => {
+    it('runs NER over the transcript delta and grounds entity offsets into the rendered note (TASK-477)', async () => {
       const httpMock = soapHttpMock();
       const { service } = buildDeps(httpMock);
       service.start({ consultationId: CID, tenantId: TENANT });
@@ -292,11 +296,12 @@ describe('LiveDocumentationService', () => {
 
       const payload = await service.flush(CID);
 
-      // NLP was handed the runningSummary, not the raw transcript.
+      // TASK-477: NER is handed the raw transcript delta (the text that feeds SMR), NOT the note.
       const nlpCall = httpMock.axiosRef.post.mock.calls.find((c) => String(c[0]).includes('/classify/tokens'))!;
-      expect(nlpCall[1].text).toBe(payload!.runningSummary);
+      expect(nlpCall[1].text).toBe('Patient has chest pain');
+      expect(nlpCall[1].text).not.toBe(payload!.runningSummary);
 
-      // The returned offsets resolve to the exact span within runningSummary.
+      // The published entity is grounded, so its offsets resolve to the exact span within runningSummary.
       const entity = payload!.entities[0];
       expect(payload!.runningSummary.slice(entity.start!, entity.end!)).toBe('amlodipine');
     });
