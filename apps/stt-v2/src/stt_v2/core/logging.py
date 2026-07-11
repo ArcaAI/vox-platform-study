@@ -12,6 +12,7 @@ Architecture:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import sys
 from typing import Any, cast
@@ -112,3 +113,18 @@ def setup_logging(log_level: str = "info") -> None:
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
     """Get a bound logger instance."""
     return cast("structlog.stdlib.BoundLogger", structlog.get_logger(name))
+
+
+def redact_id(value: object | None) -> str:
+    """Return a PHI-safe token for an identifier in log records (TASK-490).
+
+    Raw user ids, consultation ids, session labels and names must never appear
+    in log output (redacted-logging posture; TASK-474 finding B-05). A short
+    SHA-256 prefix keeps log lines correlatable — the same input always yields
+    the same token — without exposing the underlying value. ``None``/empty
+    values render as ``"-"``.
+    """
+    if value is None or value == "":
+        return "-"
+    digest = hashlib.sha256(str(value).encode("utf-8")).hexdigest()
+    return digest[:12]

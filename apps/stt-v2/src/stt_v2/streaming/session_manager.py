@@ -609,10 +609,15 @@ class SessionManager:
                 )
 
                 if consultation_id or user_id:
+                    # TASK-490 (B-04) — pass the session tenant so the
+                    # voice-profile lookups are tenant-scoped (they fail
+                    # closed without it; a cross-tenant profile is never
+                    # served).
                     await self._preseed_speaker(
                         speaker_tracker,
                         consultation_id,
                         session_id,
+                        tenant_id=tenant_id,
                         user_id=user_id,
                     )
 
@@ -737,12 +742,14 @@ class SessionManager:
         consultation_id: str | None,
         session_id: str,
         *,
+        tenant_id: str | None = None,
         user_id: str | None = None,
     ) -> None:
         from stt_v2.diarization.preseed import preseed_speaker
         await preseed_speaker(
             tracker,
             consultation_id,
+            tenant_id=tenant_id,
             log_context=session_id,
             user_id=user_id,
         )

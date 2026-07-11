@@ -172,6 +172,45 @@ describe('VoiceProfileService', () => {
       expect(result).toBe(mockCreatedEntity);
     });
 
+    // TASK-490 — a voice profile is biometric PHI stamped with its enrollment
+    // tenant; reads (incl. the STT-v2 diarization preseed) filter on it.
+    it('should stamp the enrolled profile with the CLS tenant (TASK-490)', async () => {
+      const { of } = await import('rxjs');
+      mockHttpService.post.mockReturnValue(
+        of({ data: { embedding: Array(256).fill(0.1), model_id: 'm1' } }),
+      );
+      mockVoiceProfileRepository.createWithEmbedding.mockImplementation(async (entity: any) => entity);
+
+      await service.enroll({
+        userId: 'user-id-1',
+        audioBuffers: [Buffer.from('fake-audio-data')],
+        label: 'My Voice',
+      });
+
+      const [entityArg] = mockVoiceProfileRepository.createWithEmbedding.mock.calls[0];
+      expect(entityArg.tenantId).toBe('tenant-1');
+    });
+
+    it('should reject enrollment without a tenant context (TASK-490)', async () => {
+      mockClsService.get.mockImplementation((key: string) => {
+        if (key === 'user') return { id: 'user-id-1' };
+        return null; // no tenantId in CLS
+      });
+      const { of } = await import('rxjs');
+      mockHttpService.post.mockReturnValue(
+        of({ data: { embedding: Array(256).fill(0.1), model_id: 'm1' } }),
+      );
+
+      await expect(
+        service.enroll({
+          userId: 'user-id-1',
+          audioBuffers: [Buffer.from('fake-audio-data')],
+          label: 'My Voice',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(mockVoiceProfileRepository.createWithEmbedding).not.toHaveBeenCalled();
+    });
+
     it('should throw when STT-v2 service is unreachable', async () => {
       const { throwError } = await import('rxjs');
       const error = new Error('Connection refused');

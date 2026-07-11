@@ -236,9 +236,12 @@ class TestSessionManagerDenoiserWiring:
                 user_id="user-1",
             )
 
+            # TASK-490 (B-04) — the call site now threads the session tenant
+            # so the voice-profile lookups are tenant-scoped.
             mgr._preseed_speaker.assert_awaited_once_with(
                 mock_tracker,
                 None,
                 "s1",
+                tenant_id="t1",
                 user_id="user-1",
             )

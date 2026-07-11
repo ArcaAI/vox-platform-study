@@ -38,11 +38,13 @@ import { PrismaClient } from '../generated/core-prisma-client/client.js';
  * actually exists.
  *
  * The `User*` identity tables (`User`, `UserProfile`, `UserSettings`,
- * `UserMedia`, `UserVoiceProfile`) are deliberately NOT here: `User` is a
- * global, multi-tenant identity (audit §B6 / TASK-305 Phase F). A user's
- * membership in a tenant is modeled by the two tenant-scoped JOIN tables —
- * `UserRoleAssignment` (role) and `UserDepartment` (department) — both of
- * which ARE in this list.
+ * `UserMedia`) are deliberately NOT here: `User` is a global, multi-tenant
+ * identity (audit §B6 / TASK-305 Phase F). A user's membership in a tenant
+ * is modeled by the two tenant-scoped JOIN tables — `UserRoleAssignment`
+ * (role) and `UserDepartment` (department) — both of which ARE in this list.
+ * `UserVoiceProfile` is the TASK-490 exception: it is biometric PHI, so each
+ * profile is stamped with its enrollment tenant and scoped like any other
+ * PHI-bearing model (a user working in multiple tenants enrolls per tenant).
  *
  * History: an earlier revision predicted Phase A would add `tenantId` to
  * the `User*` tables and that this list would grow with them. That never
@@ -79,9 +81,13 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'TranscriptionJob',
   // department.prisma (1)
   'Department',
-  // user.prisma (2)
+  // user.prisma (3)
   'UserRoleAssignment',
   'UserDepartment',
+  // TASK-490 — biometric voice profile, stamped with the enrollment tenant so
+  // reads/writes are tenant-scoped like every other PHI-bearing model (the
+  // STT-v2 preseed path applies the same filter in raw SQL).
+  'UserVoiceProfile',
   // dna-writing-style.prisma (4)
   'DnaWritingStyleReport',
   'DnaWritingStyleVersion',

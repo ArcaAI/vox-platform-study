@@ -2,6 +2,12 @@
 
 Both SessionManager and BatchTranscriptionService delegate to
 ``preseed_speaker`` so the logic lives in one place.
+
+PHI log hygiene (TASK-490, TASK-474 finding B-05): this path handles a
+clinician's display name and user / consultation identifiers. No log record
+emitted here may contain any of them — identifiers are redacted via
+:func:`stt_v2.core.logging.redact_id` (deterministic hash prefix, so lines
+stay correlatable) and the display name is only ever logged as a boolean.
 """
 
 from __future__ import annotations
@@ -10,6 +16,8 @@ import logging
 from typing import Any
 
 import numpy as np
+
+from stt_v2.core.logging import redact_id
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +48,13 @@ async def preseed_speaker(
     immediately (display name is still resolved from the consultation when
     available).
 
-    Non-fatal: any DB error or missing profile is logged and the helper
-    returns a structured failure dict (TASK-296 backend-echo contract).
+    Tenant scoping (TASK-490): ``tenant_id`` is threaded into every DB lookup.
+    The voice-profile queries FAIL CLOSED without it (see
+    ``voice_profile_model.py``), so callers must pass the session's tenant —
+    a cross-tenant profile is never served.
+
+    Non-fatal: any DB error or missing profile is logged (redacted) and the
+    helper returns a structured failure dict (TASK-296 backend-echo contract).
 
     Returns:
         A dict shaped ``{"success": bool, "profile_id": str | None,
@@ -53,12 +66,16 @@ async def preseed_speaker(
     Args:
         tracker: SpeakerTracker instance to pre-register the speaker into.
         consultation_id: Consultation UUID used to resolve the doctor identity.
-        tenant_id: Optional tenant scope added to the DB query.
-        log_context: Optional label (session_id, job_id ...) included in log lines.
+        tenant_id: Tenant scope applied to every DB query (required for the
+            voice-profile lookups to return anything).
+        log_context: Optional label (session_id, job_id ...) included in log
+            lines — always redacted before logging.
         user_id: Optional authenticated user ID; when set, skips consultation
             identity lookup for the voice embedding.
     """
-    label = log_context or consultation_id or user_id
+    # Redacted log context — the fallbacks are identifiers, so the raw value
+    # must never reach a log record (B-05).
+    ctx = redact_id(log_context or consultation_id or user_id)
     try:
         from ..core.database.voice_profile_model import (
             get_user_display_name,
@@ -71,10 +88,10 @@ async def preseed_speaker(
         display_name: str | None = None
 
         logger.info(
-            "Pre-seed requested: consultation_id=%s user_id=%s (%s)",
-            consultation_id,
-            user_id,
-            label,
+            "Pre-seed requested: consultation=%s user=%s (ctx=%s)",
+            redact_id(consultation_id),
+            redact_id(user_id),
+            ctx,
         )
 
         if consultation_id:
@@ -88,19 +105,19 @@ async def preseed_speaker(
 
         if not resolved_user_id:
             logger.warning(
-                "No user identity for consultation %s (%s), skipping pre-seed",
-                consultation_id,
-                label,
+                "No user identity for consultation=%s (ctx=%s), skipping pre-seed",
+                redact_id(consultation_id),
+                ctx,
             )
             return dict(_FAILURE_RESULT)
 
         embedding = await get_voice_embedding(resolved_user_id, tenant_id)
         if not embedding:
             logger.warning(
-                "No active voice profile for user %s (consultation %s / %s), skipping pre-seed",
-                resolved_user_id,
-                consultation_id,
-                label,
+                "No active voice profile (user=%s consultation=%s ctx=%s), skipping pre-seed",
+                redact_id(resolved_user_id),
+                redact_id(consultation_id),
+                ctx,
             )
             return dict(_FAILURE_RESULT)
 
@@ -108,9 +125,9 @@ async def preseed_speaker(
             metadata = await get_voice_profile_metadata(resolved_user_id, tenant_id)
         except Exception:
             logger.warning(
-                "Voice profile metadata lookup failed for user %s (%s); continuing",
-                resolved_user_id,
-                label,
+                "Voice profile metadata lookup failed (user=%s ctx=%s); continuing",
+                redact_id(resolved_user_id),
+                ctx,
                 exc_info=True,
             )
             metadata = None
@@ -119,21 +136,21 @@ async def preseed_speaker(
         model_id: str | None = metadata.get("model_id") if metadata else None
 
         logger.info(
-            "Pre-seed: resolved user=%s display_name=%r embedding_dim=%d (%s)",
-            resolved_user_id,
-            display_name,
+            "Pre-seed: resolved user=%s display_name_set=%s embedding_dim=%d (ctx=%s)",
+            redact_id(resolved_user_id),
+            bool(display_name),
             len(embedding),
-            label,
+            ctx,
         )
         vec = np.array(embedding, dtype=np.float32)
         speaker_id = tracker.register(vec, speaker_id=display_name)
         if speaker_id:
+            # NOTE: ``speaker_id`` is the clinician display name — never log it.
             logger.info(
-                "Pre-seeded speaker from consultation %s: user %s registered as %s (%s)",
-                consultation_id,
-                resolved_user_id,
-                speaker_id,
-                label,
+                "Pre-seeded speaker: consultation=%s user=%s registered=True (ctx=%s)",
+                redact_id(consultation_id),
+                redact_id(resolved_user_id),
+                ctx,
             )
             return {
                 "success": True,
@@ -142,16 +159,16 @@ async def preseed_speaker(
             }
 
         logger.warning(
-            "Pre-seed skipped for consultation %s: tracker at capacity (%s)",
-            consultation_id,
-            label,
+            "Pre-seed skipped for consultation=%s: tracker at capacity (ctx=%s)",
+            redact_id(consultation_id),
+            ctx,
         )
         return dict(_FAILURE_RESULT)
     except Exception:
         logger.warning(
-            "Failed to pre-seed speaker from consultation %s (%s)",
-            consultation_id,
-            label,
+            "Failed to pre-seed speaker (consultation=%s ctx=%s)",
+            redact_id(consultation_id),
+            ctx,
             exc_info=True,
         )
         return dict(_FAILURE_RESULT)

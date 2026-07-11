@@ -2,12 +2,12 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { BaseDataModel, VirtualDbProperty } from '../../../common';
+import { BaseTenantDataModel, VirtualDbProperty } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Models from './';
 
-export class UserVoiceProfile extends BaseDataModel {
+export class UserVoiceProfile extends BaseTenantDataModel {
   public userId: string;
   public isActive: boolean;
   public label: string | null;
@@ -18,7 +18,7 @@ export class UserVoiceProfile extends BaseDataModel {
   @VirtualDbProperty()
   public User: Models.User | undefined;
 
-  constructor(data: UserVoiceProfile & BaseDataModel) {
+  constructor(data: UserVoiceProfile & BaseTenantDataModel) {
     super(data);
     this.userId = data.userId;
     this.isActive = data.isActive;

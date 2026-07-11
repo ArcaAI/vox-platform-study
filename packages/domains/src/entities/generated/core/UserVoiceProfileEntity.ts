@@ -2,16 +2,18 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
-import { BaseEntity, IBaseEntity } from '../../../common';
+import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 
-export interface IUserVoiceProfileEntity extends IBaseEntity {
+// TASK-490 — voice profiles are biometric PHI stamped with their enrollment
+// tenant (`UserVoiceProfile.tenantId`), so the entity is tenant-scoped.
+export interface IUserVoiceProfileEntity extends IBaseTenantEntity {
   userId: string;
   isActive: boolean;
   label?: string | null;
   modelId?: string | null;
 }
 
-export class UserVoiceProfileEntity extends BaseEntity {
+export class UserVoiceProfileEntity extends BaseTenantEntity {
   private _userId: IUserVoiceProfileEntity['userId'];
   private _isActive: IUserVoiceProfileEntity['isActive'];
   private _label?: IUserVoiceProfileEntity['label'];

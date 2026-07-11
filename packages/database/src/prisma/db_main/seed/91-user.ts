@@ -627,6 +627,8 @@ function makeDeterministicEmbedding(seed: number): number[] {
 
 export interface SeedVoiceProfile {
     id: string;
+    /** TASK-490 — enrollment tenant; voice-profile reads are tenant-scoped. */
+    tenantId: string;
     userId: string;
     isActive: boolean;
     label: string;
@@ -643,6 +645,7 @@ export interface SeedVoiceProfile {
 export const SEED_VOICE_PROFILES: SeedVoiceProfile[] = [
     {
         id: SEED_VOICE_PROFILE_IDS.DOCTOR_ACTIVE,
+        tenantId: SEED_TENANT_ID,
         userId: SEED_USER_IDS.DOCTOR,
         isActive: true,
         label: 'Clinic mic (primary)',
@@ -651,6 +654,7 @@ export const SEED_VOICE_PROFILES: SeedVoiceProfile[] = [
     },
     {
         id: SEED_VOICE_PROFILE_IDS.DOCTOR_INACTIVE,
+        tenantId: SEED_TENANT_ID,
         userId: SEED_USER_IDS.DOCTOR,
         isActive: false,
         label: 'Headset (backup)',
@@ -659,6 +663,7 @@ export const SEED_VOICE_PROFILES: SeedVoiceProfile[] = [
     },
     {
         id: SEED_VOICE_PROFILE_IDS.DOCTOR2_ACTIVE,
+        tenantId: SEED_TENANT_ID,
         userId: SEED_USER_IDS.DOCTOR2,
         isActive: true,
         label: 'Clinic mic (primary)',
@@ -667,6 +672,7 @@ export const SEED_VOICE_PROFILES: SeedVoiceProfile[] = [
     },
     {
         id: SEED_VOICE_PROFILE_IDS.DOCTOR2_INACTIVE,
+        tenantId: SEED_TENANT_ID,
         userId: SEED_USER_IDS.DOCTOR2,
         isActive: false,
         label: 'Old enrollment (2025)',
@@ -679,6 +685,7 @@ export const SEED_VOICE_PROFILES: SeedVoiceProfile[] = [
     // embedding seeds keep each vector unique for cosine-similarity demos.
     {
         id: SEED_VOICE_PROFILE_IDS.ARCAAI_DOCTOR_ACTIVE,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
         userId: SEED_USER_IDS.ARCAAI_DOCTOR,
         isActive: true,
         label: 'Clinic mic (primary)',
@@ -831,10 +838,11 @@ export const seedUser = async (client: CorePrismaClient) => {
         const vectorStr = `[${vp.embedding.join(',')}]`;
         await client.$executeRawUnsafe(
             `INSERT INTO "core"."UserVoiceProfile"
-                ("id", "userId", "embedding", "isActive", "label", "modelId",
+                ("id", "tenantId", "userId", "embedding", "isActive", "label", "modelId",
                  "resourceStatus", "createdBy", "createdAt", "updatedAt")
-             VALUES ($1, $2, $3::vector, $4, $5, $6, $7::"core"."ResourceStatusType", $8, $9, $10)
+             VALUES ($1, $2, $3, $4::vector, $5, $6, $7, $8::"core"."ResourceStatusType", $9, $10, $11)
              ON CONFLICT ("id") DO UPDATE SET
+                "tenantId" = EXCLUDED."tenantId",
                 "userId" = EXCLUDED."userId",
                 "embedding" = EXCLUDED."embedding",
                 "isActive" = EXCLUDED."isActive",
@@ -842,6 +850,7 @@ export const seedUser = async (client: CorePrismaClient) => {
                 "modelId" = EXCLUDED."modelId",
                 "updatedAt" = EXCLUDED."updatedAt"`,
             vp.id,
+            vp.tenantId,
             vp.userId,
             vectorStr,
             vp.isActive,
