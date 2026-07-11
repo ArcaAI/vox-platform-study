@@ -1,6 +1,6 @@
 # TASK-466 — apps/api Consumption of Harness Idempotency/Escalation (TASK-458 receiver half, C1-03 + C1-05)
 
-- **Status**: Review
+- **Status**: Completed — adversarial review APPROVE (no Critical/Important): WORM/hash-chained escalation, idempotency across all 5 writers (distinct SLA ticks NOT falsely suppressed), 404-over-403 tenant safety, meaningful tests. Migration idempotent-additive + deploy-ready; harness→api e2e deferred (live Temporal, skip per owner). Only the owner's push/PR remains.
 - **Type**: bugfix (reliability, observability) + cross-service coordination
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · Wave 2 follow-up (pairs with [TASK-458](../TASK-458-Harness-Idempotency-Escalation/README.md))
 - **Origin**: TASK-458 fixed the **harness (sender) half** of C1-03/C1-04/C1-05. Three receiver-side consumption gaps remained — the harness now sends the right signals, but apps/api / apps/smr didn't consume them yet.
@@ -67,6 +67,7 @@ Implemented api-only (C1-03 + C1-05) on branch `fix/task-466-harness-receiver` (
 
 | File | Change |
 |---|---|
+| 2026-07-11 | **Closed (Status → Completed).** Adversarial review = APPROVE, no Critical/Important: WORM+hash-chained escalation (GATE_ESCALATED/GATE_ABANDONED; DB REVOKEs UPDATE/DELETE), idempotency across all 5 writers with distinct SLA ticks NOT falsely suppressed (verified by Map-backed Redis tests), 404-over-403 tenant safety (assertEqualTenants → NotFoundException), zero diff outside manifest. Migration is `ADD VALUE IF NOT EXISTS` with the enums already in the committed generated client (deploy-ready); harness→api e2e deferred (no live Temporal worker — skipped per owner). The stale CH note re: persistEntities/recordGateDecision tenant assertions was resolved by cc250bd47. C1-04 SMR idempotency split to TASK-469 (Completed). No external work remains — only the owner's push/PR. |
 | `packages/database/src/prisma/db_main/harness.prisma` | `HarnessAuditAction` += `GATE_ESCALATED`, `GATE_ABANDONED` |
 | `packages/database/.../migrations/20260710000000_task_466_gate_escalation_audit_actions/migration.sql` | Additive `ALTER TYPE … ADD VALUE IF NOT EXISTS` (both members) |
 | `packages/domains/src/enums/generated/HarnessAuditAction.ts` | Regenerated enum (the only generated file this change touches) |

@@ -1,6 +1,6 @@
 # TASK-458 — Harness Idempotency, Escalation & Policy-Degrade (C1-02…C1-06)
 
-- **Status**: Review — implemented, adversarially reviewed (+ I-1 fix), merged to `fix/2605-review` (Wave 2 Batch 1)
+- **Status**: Completed — sender half implemented + adversarially reviewed (+ I-1 fix); both deferred receiver-half deps now resolved (TASK-466 escalation endpoint APPROVE + TASK-469 SMR idempotency, both Completed). Only the owner's push/PR remains.
 - **Type**: bugfix (reliability, cost, observability)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · Wave 2 (P1)
 - **Findings**: C1-02 (High) · C1-03 (Med) · C1-04 (Med) · C1-05 (Med) · C1-06 (Med) — all CONFIRMED — see [TASK-448 register](../TASK-448-Harness-Loop-Quality-Review/README.md)
@@ -26,6 +26,7 @@ Any change to `workflows.py` that alters the **command sequence** requires a `wo
 
 | File | Change |
 |---|---|
+| 2026-07-11 | **Closed (Status → Completed).** Its two deferred receiver-half dependencies are now both resolved: the C1-05 escalation-receiver endpoint + WORM idempotency landed and passed adversarial review (APPROVE) under TASK-466, and C1-04 SMR idempotency under TASK-469 (Completed). 458's own sender-half implementation was already adversarially reviewed (+ I-1 fix) with gates green. No external work remains — only the owner's push/PR. |
 | `apps/harness/src/harness/temporal/workflows.py` | Terminal abandon timer + cap edit-driven re-run (C1-02); set `reduced_assurance` on policy-fetch failure (C1-06) — each command-sequence change behind a NEW `workflow.patched("task-458-…")` marker |
 | `apps/harness/src/harness/temporal/activities.py` | Real `escalate_gate` (C1-05) |
 | `apps/harness/src/harness/services/api_client.py` | Idempotency key on WORM callbacks (C1-03); new escalation-record method (C1-05) |
