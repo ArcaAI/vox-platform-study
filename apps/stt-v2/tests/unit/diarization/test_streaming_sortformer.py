@@ -18,13 +18,17 @@ import logging
 
 import pytest
 
+from stt_v2.diarization import streaming_sortformer as sortformer_module
 from stt_v2.diarization.streaming_sortformer import (
     REASON_APPLIED,
+    REASON_ERROR,
     REASON_MODEL_UNAVAILABLE,
+    NemoSortformerBackend,
     SortformerBackend,
     SortformerModelUnavailableError,
     StreamingDiarizationResult,
     StreamingSortformerDiarizer,
+    _activities_from_nemo_output,
     load_default_backend,
 )
 from stt_v2.pipeline.dto import DiarizationConfig
@@ -143,3 +147,145 @@ class TestFrameToTurns:
         result = diarizer.diarize([0.0] * 320, sample_rate=16000)
         assert result.applied is False
         assert result.reason == REASON_MODEL_UNAVAILABLE
+
+
+# ---------------------------------------------------------------------------
+# NeMo backend adapter — the NEW seam, hermetic via a fake model handle
+# (no NeMo, no GPU). Mirrors the verified diarize(include_tensor_outputs=True)
+# contract: returns (segments, list[(T×S) tensor]).
+# ---------------------------------------------------------------------------
+
+
+class _FakeTensor:
+    """Minimal stand-in for a torch (T×S) tensor: only ``.tolist()`` is exercised."""
+
+    def __init__(self, rows: list[list[float]]) -> None:
+        self._rows = rows
+
+    def tolist(self) -> list[list[float]]:
+        return self._rows
+
+
+class _FakeNemoModel:
+    """Records ``diarize`` kwargs and returns a canned NeMo-shaped output."""
+
+    def __init__(self, tensor_outputs: object) -> None:
+        self._tensor_outputs = tensor_outputs
+        self.calls: list[dict[str, object]] = []
+
+    def diarize(self, **kwargs):  # type: ignore[no-untyped-def]
+        self.calls.append(kwargs)
+        # NeMo diarize(include_tensor_outputs=True) -> (segments, list[Tensor]).
+        return [["0.00 1.00 speaker_0"]], self._tensor_outputs
+
+
+class TestActivitiesFromNemoOutput:
+    def test_unwraps_batch_and_coerces_tensor_rows(self) -> None:
+        # diarize returns a *list* of (T, S) tensors — take the first, .tolist() it.
+        tensor_outputs = [_FakeTensor([[0.9, 0.1], [0.2, 0.8]])]
+        assert _activities_from_nemo_output(tensor_outputs) == [[0.9, 0.1], [0.2, 0.8]]
+
+    def test_handles_plain_nested_lists(self) -> None:
+        # A batch whose row already is a plain list (no .tolist) still converts.
+        assert _activities_from_nemo_output([[[0.7, 0.3]]]) == [[0.7, 0.3]]
+
+    def test_empty_or_none_is_empty(self) -> None:
+        assert _activities_from_nemo_output([]) == []
+        assert _activities_from_nemo_output(None) == []
+
+    def test_values_are_coerced_to_python_floats(self) -> None:
+        result = _activities_from_nemo_output([_FakeTensor([[1, 0]])])
+        assert result == [[1.0, 0.0]]
+        assert all(isinstance(prob, float) for row in result for prob in row)
+
+
+class TestNemoSortformerBackend:
+    def test_infer_activities_calls_diarize_with_tensor_outputs(self) -> None:
+        model = _FakeNemoModel([_FakeTensor([[0.9, 0.1]])])
+        backend: SortformerBackend = NemoSortformerBackend(model, _config())
+        activities = backend.infer_activities([0.0] * 320, sample_rate=16000)
+        assert list(activities) == [[0.9, 0.1]]
+        assert len(model.calls) == 1
+        call = model.calls[0]
+        assert call["include_tensor_outputs"] is True
+        assert call["batch_size"] == 1
+        assert call["sample_rate"] == 16000
+
+    def test_backend_error_propagates_for_the_diarizer_to_catch(self) -> None:
+        class _BoomModel:
+            def diarize(self, **kwargs):  # type: ignore[no-untyped-def]
+                raise RuntimeError("cuda kernel blew up")
+
+        backend = NemoSortformerBackend(_BoomModel(), _config())
+        # The backend does NOT swallow — the diarizer's try/except does (below).
+        with pytest.raises(RuntimeError):
+            backend.infer_activities([0.0] * 320, sample_rate=16000)
+
+
+# ---------------------------------------------------------------------------
+# Loader fail-safe — ANY restore failure is wrapped as model-unavailable so the
+# diarizer degrades (defence in depth beyond the nemo-absent import failure).
+# ---------------------------------------------------------------------------
+
+
+class TestLoaderFailSafe:
+    def test_arbitrary_restore_error_becomes_unavailable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _boom(config):  # type: ignore[no-untyped-def]
+            raise RuntimeError("no CUDA device")
+
+        monkeypatch.setattr(sortformer_module, "_restore_sortformer_model", _boom)
+        with pytest.raises(SortformerModelUnavailableError) as excinfo:
+            load_default_backend(
+                _config(sortformer_model_id="nvidia/diar_streaming_sortformer_4spk-v2.1")
+            )
+        message = str(excinfo.value)
+        assert "nvidia/diar_streaming_sortformer_4spk-v2.1" in message
+        assert "TASK-475" in message
+        assert "RuntimeError" in message  # underlying cause named (PHI-free)
+
+    def test_successful_restore_drives_the_diarizer_end_to_end(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Full factory -> NemoSortformerBackend -> diarizer -> turns, hermetically:
+        # inject a fake model at the restore seam (no NeMo, no GPU).
+        model = _FakeNemoModel([_FakeTensor([[0.9, 0.1], [0.15, 0.85]])])
+        monkeypatch.setattr(sortformer_module, "_restore_sortformer_model", lambda config: model)
+        diarizer = StreamingSortformerDiarizer(_config())
+        result = diarizer.diarize([0.0] * 320, sample_rate=16000)
+        assert result.applied is True
+        assert result.reason == REASON_APPLIED
+        assert result.num_speakers == 2
+        assert result.to_turns(threshold=0.5) == [(0.0, 0.08, "S0"), (0.08, 0.16, "S1")]
+
+
+# ---------------------------------------------------------------------------
+# Diarizer degrades to "no labels" when a loaded backend errors (REASON_ERROR)
+# ---------------------------------------------------------------------------
+
+
+class TestBackendErrorDegrades:
+    def test_diarize_degrades_to_no_labels_on_backend_error(self) -> None:
+        class _RaisingBackend:
+            def infer_activities(self, audio, sample_rate):  # type: ignore[no-untyped-def]
+                raise ValueError("shape mismatch")
+
+        diarizer = StreamingSortformerDiarizer(_config(), backend=_RaisingBackend())
+        result = diarizer.diarize([0.0] * 320, sample_rate=16000)
+        assert result.applied is False
+        assert result.reason == REASON_ERROR
+        assert result.activities == []
+        assert result.to_turns(threshold=0.5) == []
+
+    def test_backend_error_log_is_phi_safe(self, caplog: pytest.LogCaptureFixture) -> None:
+        class _RaisingBackend:
+            def infer_activities(self, audio, sample_rate):  # type: ignore[no-untyped-def]
+                raise ValueError("boom")
+
+        diarizer = StreamingSortformerDiarizer(_config(), backend=_RaisingBackend())
+        with caplog.at_level(logging.WARNING):
+            diarizer.diarize([0.246810, 0.135790], sample_rate=16000)
+        joined = " ".join(record.getMessage() for record in caplog.records)
+        assert "0.246810" not in joined
+        assert "0.135790" not in joined
