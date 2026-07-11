@@ -97,9 +97,10 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // guard below) → 41. TASK-356 Phase 5 added the realtime-cascade
     // PipelinePolicy + append-only PipelinePolicyChange → 43. TASK-392 added
     // TenantUsageMeter → 44 (TenantEntitlement is INTENTIONALLY_UNSCOPED,
-    // below). (The drift guard below is the durable check; this count stays
-    // as a quick human-readable tripwire.)
-    expect(TENANT_SCOPED_MODELS.size).toBe(44);
+    // below). TASK-490 added UserVoiceProfile (biometric PHI stamped with
+    // its enrollment tenant) → 45. (The drift guard below is the durable
+    // check; this count stays as a quick human-readable tripwire.)
+    expect(TENANT_SCOPED_MODELS.size).toBe(45);
   });
 
   it('includes every PHI-bearing model', () => {

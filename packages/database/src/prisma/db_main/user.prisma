@@ -237,6 +237,15 @@ model UserVoiceProfile {
   version  Int    @default(1) @map("_version")
   id       String @id @default(uuid(7))
 
+  // multi tenant fields
+  // TASK-490 (closes the TASK-296 M-6 / roadmap P2-5 TODO): the enrollment
+  // tenant. A voice profile is biometric PHI — reads are tenant-scoped
+  // (STT-v2 preseed filters on it; the tenant-scope extension injects it),
+  // so a cross-tenant lookup returns nothing. Backfilled from the user's
+  // earliest ENABLED UserRoleAssignment; SYSTEM tenant when none exists
+  // (unreachable by tenant-scoped reads → fail-closed, re-enroll to use).
+  tenantId String
+
   // core fields
   userId String
   // Data Encryption Initiative Phase 3D — DECISION: the speaker `embedding`
@@ -267,6 +276,7 @@ model UserVoiceProfile {
   User User @relation("_User_VoiceProfiles", fields: [userId], references: [id], onDelete: Cascade)
 
   // indexing
+  @@index([tenantId], name: "UserVoiceProfile_tenantId_idx")
   @@index([userId, isActive], name: "UserVoiceProfile_userId_isActive_idx")
   @@index([resourceStatus], name: "UserVoiceProfile_status_idx")
   @@schema("core")

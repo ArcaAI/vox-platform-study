@@ -57,7 +57,16 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
       );
     }
 
+    // TASK-490 — a voice profile is biometric PHI stamped with its enrollment
+    // tenant; reads (incl. the STT-v2 diarization preseed) are tenant-scoped.
+    // Tenant attribution is a security boundary: it comes from CLS only.
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Voice profile enrollment requires a tenant context');
+    }
+
     const entity = UserVoiceProfileFactory.CreateUserVoiceProfile({
+      tenantId,
       userId: request.userId,
       isActive: false,
       label: request.label,
