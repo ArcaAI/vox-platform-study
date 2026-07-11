@@ -47,6 +47,8 @@ export class User extends BaseDataModel {
   public OwnedPromptTemplates: Models.PromptTemplate[] | undefined;
   @VirtualDbProperty()
   public UserDepartments: Models.UserDepartment[] | undefined;
+  @VirtualDbProperty()
+  public PasswordResetTokens: Models.PasswordResetToken[] | undefined;
 
   constructor(data: User & BaseDataModel) {
     super(data);
@@ -77,5 +79,6 @@ export class User extends BaseDataModel {
     this.VoiceProfiles = data.VoiceProfiles;
     this.OwnedPromptTemplates = data.OwnedPromptTemplates;
     this.UserDepartments = data.UserDepartments;
+    this.PasswordResetTokens = data.PasswordResetTokens;
   }
 }

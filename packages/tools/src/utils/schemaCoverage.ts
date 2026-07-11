@@ -127,9 +127,14 @@ export const FACTORY_OMITTED_SCALARS_BY_MODEL: Readonly<Record<string, ReadonlyS
     // Nullable bucket FK assigned when the object is placed in a `TenantBucket`,
     // not at media-record creation.
     Media: new Set<string>(['bucketId']),
+    // A byte quota derived from the tenant's plan/entitlement and reconciled by a
+    // dedicated quota operation — never a bucket-creation input (system-managed).
+    TenantBucket: new Set<string>(['quotaBytes']),
     // Populated after the job completes (the ContextItem it produced) — see the
     // schema comment "Created ContextItem (after completion)".
     TranscriptionJob: new Set<string>(['contextItemId']),
+    // Stamped by the password-change / reset flow (never at user creation).
+    User: new Set<string>(['passwordChangedAt']),
 };
 
 /**

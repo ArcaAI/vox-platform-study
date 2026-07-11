@@ -2,13 +2,12 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { BaseDataModel } from '../../../common';
+import { BaseDataModel, VirtualDbProperty } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Models from './';
 
 export class PasswordResetToken extends BaseDataModel {
-  public userId: string;
   public tokenHash: string;
   public purpose: string;
   public expiresAt: Date;
@@ -20,10 +19,12 @@ export class PasswordResetToken extends BaseDataModel {
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
+  public userId: string;
+  @VirtualDbProperty()
+  public User: Models.User | undefined;
 
   constructor(data: PasswordResetToken & BaseDataModel) {
     super(data);
-    this.userId = data.userId;
     this.tokenHash = data.tokenHash;
     this.purpose = data.purpose;
     this.expiresAt = data.expiresAt;
@@ -35,5 +36,7 @@ export class PasswordResetToken extends BaseDataModel {
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;
+    this.userId = data.userId;
+    this.User = data.User;
   }
 }
