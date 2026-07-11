@@ -315,6 +315,44 @@ describe('useLiveSttSession', () => {
         hook.unmount();
     });
 
+    it('renders the speaker per segment, falling back to speakerId when no friendly label (TASK-489 AC-2)', async () => {
+        const { hook } = await startedHook();
+        const ws = FakeSttWsClient.instances[0];
+
+        // A canonical label rides the wire → it is preferred verbatim.
+        act(() =>
+            ws.handlers.transcript?.({
+                type: 'transcript',
+                text: 'first speaker',
+                isFinal: true,
+                startTime: 0,
+                endTime: 1,
+                seq: 1,
+                speakerId: 'Speaker 0',
+                speakerLabel: 'Speaker 0',
+            }),
+        );
+        // An older worker / bridge sends only the raw id → the hook falls back to it
+        // (never drops the attribution). No re-derivation happens in the consumer.
+        act(() =>
+            ws.handlers.transcript?.({
+                type: 'transcript',
+                text: 'second speaker',
+                isFinal: true,
+                startTime: 1,
+                endTime: 2,
+                seq: 2,
+                speakerId: 'Speaker 1',
+            }),
+        );
+
+        expect(hook.result.current.finals).toHaveLength(2);
+        expect(hook.result.current.finals[0]).toMatchObject({ text: 'first speaker', speakerLabel: 'Speaker 0' });
+        expect(hook.result.current.finals[1]).toMatchObject({ text: 'second speaker', speakerLabel: 'Speaker 1' });
+
+        hook.unmount();
+    });
+
     it('stop(): sends the stop frame, tears down capture and socket, DELETEs the session', async () => {
         const { calls, hook } = await startedHook();
         const ws = FakeSttWsClient.instances[0];

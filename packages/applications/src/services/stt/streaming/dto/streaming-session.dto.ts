@@ -132,6 +132,13 @@ export interface StreamingTranscriptMessage {
   englishText?: string;
   /** Speaker identifier from diarization, if available */
   speakerId?: string;
+  /**
+   * TASK-489 — human-readable speaker label derived ONCE from `speakerId` by
+   * the streaming bridge ({@link deriveSpeakerLabel}). Anonymous (`"Speaker 0"`
+   * / `"Unknown speaker"`) — never a raw clinician/patient name. Consumers
+   * render this and fall back to `speakerId`; they do NOT re-derive it.
+   */
+  speakerLabel?: string;
   /** Speaker identification confidence (0-1) */
   speakerConfidence?: number;
   /** Per-word timestamps, if enabled in pipeline config */

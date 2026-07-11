@@ -3,6 +3,7 @@ import Redis from 'ioredis';
 import { Observable, Subject, finalize } from 'rxjs';
 import { IConfigService } from '../../baseServices/_meta/config';
 import { StreamingTranscriptMessage } from './dto';
+import { deriveSpeakerLabel } from './speaker-label';
 
 /**
  * TASK-351 P1-3 (H5) — XREAD BLOCK window in milliseconds. 500 (down from
@@ -634,6 +635,9 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
 
     // Emit transcript segment
     const speakerId = data.speaker_id || undefined;
+    // TASK-489 — derive the human-readable label ONCE here (the single canonical
+    // id→label seam) so vox/admin consumers read it off the wire, not re-derive.
+    const speakerLabel = deriveSpeakerLabel(speakerId);
     const speakerConfidence = data.speaker_confidence ? parseFloat(data.speaker_confidence) : undefined;
     const englishText = data.english_text || data.englishText || undefined;
 
@@ -686,6 +690,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       ...(resultType ? { resultType } : {}),
       ...(englishText ? { englishText } : {}),
       ...(speakerId ? { speakerId } : {}),
+      ...(speakerLabel ? { speakerLabel } : {}),
       ...(speakerConfidence != null && !isNaN(speakerConfidence) ? { speakerConfidence } : {}),
       ...(wordTimestamps ? { wordTimestamps } : {}),
     });

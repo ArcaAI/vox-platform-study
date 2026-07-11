@@ -38,22 +38,6 @@ export interface ITranscriptionRealtimeService {
   subscribeToJob(jobId: string): Observable<MessageEvent>;
 
   /**
-   * Emit a transcript event to the SSE stream for a given job.
-   */
-  emitTranscriptEvent(
-    jobId: string,
-    payload: {
-      type: string;
-      text: string;
-      isFinal: boolean;
-      speaker?: string;
-      speakerId?: string;
-      speakerLabel?: string;
-      speakerConfidence?: number;
-    },
-  ): Promise<void>;
-
-  /**
    * Emit a completion event to the SSE stream for a given job.
    */
   emitCompleteEvent(jobId: string): Promise<void>;

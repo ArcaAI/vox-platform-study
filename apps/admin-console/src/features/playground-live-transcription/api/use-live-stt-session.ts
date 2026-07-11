@@ -190,7 +190,9 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
             receivedAt: Date.now(),
             latencyMs,
             seq: typeof result.seq === 'number' ? result.seq : null,
-            speakerLabel: result.speakerLabel,
+            // TASK-489 AC-2 — prefer the canonical label the bridge derived; fall back
+            // to the raw speakerId so an older worker/bridge still shows attribution.
+            speakerLabel: result.speakerLabel ?? result.speakerId,
         };
 
         if (result.isFinal) {

@@ -184,7 +184,7 @@ function SessionControlsCard({
     );
 }
 
-function TranscriptPane({ live }: { live: UseLiveSttSessionResult }) {
+export function TranscriptPane({ live }: { live: UseLiveSttSessionResult }) {
     const meta = STATUS_META[live.status];
     const scrollRef = useRef<HTMLOListElement | null>(null);
 
