@@ -299,6 +299,21 @@ class Settings(BaseSettings):
     # (:class:`DeterministicOverlapEntailer`) needs no model and never auto-PASSes.
     atomic_fact_enabled: bool = False
 
+    # TASK-481 — optional self-hosted MiniCheck-Flan-T5 GGUF entailer (owner directive
+    # 2026-07-11: "GGUF everywhere"). When `atomic_fact_model_path` is set (a staged local
+    # .gguf), the verifier swaps the model-free DeterministicOverlapEntailer for the
+    # MiniCheck NLI; unset (default) keeps the hermetic model-free entailer. `model_id`/
+    # `model_file` are provenance only. A build/calibration failure falls back to the safe
+    # deterministic entailer (see `_atomic_fact_entailer`). CPU-default (Q6 quant).
+    atomic_fact_model_path: str | None = None
+    atomic_fact_model_id: str = "nvhf/MiniCheck-Flan-T5-Large-Q6_K-GGUF"
+    atomic_fact_model_file: str = "minicheck-flan-t5-large-q6_k.gguf"
+    atomic_fact_n_ctx: int = 4096
+    atomic_fact_n_threads: int | None = None
+    atomic_fact_n_gpu_layers: int = 0
+    # Per-claim entailment decision: P(entailed) >= this ⇒ grounded.
+    atomic_fact_entail_threshold: float = 0.5
+
     # SMR generation defaults (None => let the SMR service choose).
     smr_provider: str | None = None
     smr_model: str | None = None

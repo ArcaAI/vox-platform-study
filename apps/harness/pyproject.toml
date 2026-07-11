@@ -69,6 +69,15 @@ test = [
     "pytest-xdist>=3.8.0",
 ]
 
+# Optional self-hosted MiniCheck-Flan-T5 GGUF entailer for the atomic-fact verifier
+# (TASK-481; owner directive 2026-07-11 — GGUF/llama.cpp). OPTIONAL: the entailer
+# lazy-imports llama_cpp and the verifier defaults to the model-free entailer, so base
+# installs / CI skip it. Enable on a staging host with `uv sync --extra atomic-fact`
+# (or `pip install '.[atomic-fact]'`) + set HARNESS_ATOMIC_FACT_MODEL_PATH.
+atomic-fact = [
+    "llama-cpp-python>=0.3.2",
+]
+
 # Evaluation harness (TASK-330 Phase 0): PDSQI-9 LLM-as-judge, RAGAS-style
 # faithfulness, DeepEval metric wrappers, and ICC/Gwet-AC2 calibration. Kept as
 # an opt-in extra so the base service install stays slim and CI installs it
