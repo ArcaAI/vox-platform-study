@@ -530,6 +530,59 @@ class Settings(BaseSettings):
             "env_prefix, so the env var is the bare STREAMING_PARTIAL_INTERVAL_S."
         ),
     )
+    # -------------------------------------------------------------------------
+    # Semantic endpointing (TASK-473 A3) — content-driven end-of-utterance.
+    # The Settings class has NO env_prefix, so these are the bare uppercased
+    # env names (e.g. SEMANTIC_ENDPOINT_ENABLED), NOT STT_V2_*.
+    # -------------------------------------------------------------------------
+    semantic_endpoint_enabled: bool = Field(
+        default=False,
+        description=(
+            "Enable content-driven semantic end-of-utterance detection on the "
+            "streaming hot path (TASK-473 A3). Default OFF — the preprocessor "
+            "keeps the fixed Silero-VAD silence offset until this is enabled and "
+            "measured on the TASK-470 scorecard. Env: SEMANTIC_ENDPOINT_ENABLED."
+        ),
+    )
+    semantic_endpoint_min_silence_ms: int = Field(
+        default=200,
+        description=(
+            "Trailing-silence floor (ms) before a semantic early cut is allowed "
+            "(target-min EOU latency, 160–500 ms band). Kept below the fixed "
+            "VAD backstop so a semantic cut is genuinely earlier."
+        ),
+    )
+    semantic_endpoint_max_silence_ms: int = Field(
+        default=500,
+        description=(
+            "Target-max EOU latency band (ms) — informational; the fixed VAD "
+            "silence offset remains the true upper bound / backstop."
+        ),
+    )
+    semantic_endpoint_confidence_threshold: float = Field(
+        default=0.85,
+        description=(
+            "Minimum decision confidence (0–1) to cut a final early. Raise it if "
+            "measurement shows early cuts truncating clinical content (measure-"
+            "first; the fixed backstop always still fires)."
+        ),
+    )
+    semantic_endpoint_min_words: int = Field(
+        default=3,
+        description=(
+            "Minimum running-hypothesis word count before a semantic early cut; "
+            "tiny fragments defer to the fixed silence timer."
+        ),
+    )
+    semantic_endpoint_model_id: str = Field(
+        default="",
+        description=(
+            "OPTIONAL self-hosted turn/EOU model id. Empty = model-free "
+            "heuristic only. A staged model can endpoint on unpunctuated complete "
+            "text; an un-staged id degrades to the heuristic (no cloud vendor "
+            "ever — track guardrail)."
+        ),
+    )
     streaming_result_stream_expire_s: int = Field(
         default=3600,
         description="TTL (seconds) for Redis stream keys after session closes (1 hour).",

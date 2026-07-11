@@ -131,6 +131,7 @@ class StreamingPreprocessor:
         force_emit_overlap_ms: int = _FORCE_EMIT_OVERLAP_MS,
         partial_window_s: float = _DEFAULT_PARTIAL_WINDOW_S,
         partial_interval_s: float = _PARTIAL_INTERVAL_S,
+        endpointer: Any | None = None,
     ) -> None:
         self.session_id = session_id
         self.sample_rate = sample_rate
@@ -138,6 +139,12 @@ class StreamingPreprocessor:
         self._threshold = threshold
         self._min_speech_duration_ms = min_speech_duration_ms
         self._min_silence_duration_ms = min_silence_duration_ms
+        # TASK-473 A3 — optional self-hosted semantic endpointer. When present
+        # AND enabled, it may cut a final EARLIER than the fixed silence timer at
+        # the offset gate below; None/disabled preserves the exact fixed
+        # behavior. Duck-typed (SemanticEndpointer) to keep this module import-
+        # light; every consult is defensively wrapped (never crashes feed()).
+        self._endpointer = endpointer
         self._target_sr = target_sample_rate if target_sample_rate else sample_rate
         self._normalize = normalize
         self._denoiser = denoiser
@@ -201,6 +208,7 @@ class StreamingPreprocessor:
         self._peak_tracker = 0.0001
         self._fallback_noise_floor = 0.002
         self._vad_state.reset()
+        self._reset_endpointer()
 
     @property
     def utterance_count(self) -> int:
@@ -219,6 +227,11 @@ class StreamingPreprocessor:
     @property
     def target_sample_rate(self) -> int:
         return self._target_sr
+
+    @property
+    def endpointer(self) -> Any | None:
+        """The attached semantic endpointer (or None). TASK-473 A3."""
+        return self._endpointer
 
     def drain_processed_samples(self) -> bytes:
         """Drain accumulated processed samples as int16 PCM bytes."""
@@ -403,7 +416,19 @@ class StreamingPreprocessor:
                         utterances.append(utt)
                 elif not is_speech:
                     state.silence_frames += 1
-                    if state.silence_frames >= self._min_silence_frames:
+                    # TASK-473 A3 — semantic endpoint: consult the endpointer
+                    # first. When it signals a confident complete turn it cuts
+                    # the final EARLIER than the fixed timer (or captures a tail
+                    # the timer would strand); otherwise fall through to the
+                    # existing fixed silence-offset backstop. The consult is
+                    # defensive (never raises) and returns False when no
+                    # endpointer is attached / it is disabled — so the fixed
+                    # behavior below is byte-for-byte preserved in that case.
+                    if self._should_semantic_endpoint(state.silence_frames):
+                        utt = self._emit_utterance(is_final=True)
+                        if utt is not None:
+                            utterances.append(utt)
+                    elif state.silence_frames >= self._min_silence_frames:
                         # Speech ended — emit confirmed utterance
                         utt = self._emit_utterance(is_final=True)
                         if utt is not None:
@@ -514,6 +539,48 @@ class StreamingPreprocessor:
         adaptive_threshold = max(_ENERGY_FLOOR, self._fallback_noise_floor * _ENERGY_MULTIPLIER)
         probability = rms / (adaptive_threshold * 2.0)
         return float(np.clip(probability, 0.0, 1.0))
+
+    def _should_semantic_endpoint(self, silence_frames: int) -> bool:
+        """TASK-473 A3 — ask the semantic endpointer whether to cut now.
+
+        Returns True only when an attached, ENABLED endpointer signals a
+        confident complete turn for the current trailing silence. Fail-safe: no
+        endpointer / disabled / any error → False, so the caller falls through to
+        the fixed silence-offset backstop. NEVER raises out of ``feed()``.
+        """
+        endpointer = self._endpointer
+        if endpointer is None or not getattr(endpointer, "enabled", False):
+            return False
+        try:
+            trailing_silence_ms = silence_frames * self._frame_duration_ms
+            decision = endpointer.decide(
+                trailing_silence_ms=trailing_silence_ms,
+                min_silence_ms=self._min_silence_duration_ms,
+            )
+            return bool(decision.should_endpoint)
+        except Exception as exc:  # noqa: BLE001 — degrade to the fixed timer
+            logger.warning(
+                "Semantic endpoint decision failed, using fixed silence timer",
+                session_id=self.session_id,
+                component="ENDPOINT",
+                error=str(exc),
+            )
+            return False
+
+    def _reset_endpointer(self) -> None:
+        """Clear the endpointer's observed hypothesis at an utterance boundary."""
+        endpointer = self._endpointer
+        if endpointer is None:
+            return
+        try:
+            endpointer.reset()
+        except Exception as exc:  # noqa: BLE001 — reset must never break the loop
+            logger.warning(
+                "Semantic endpointer reset failed",
+                session_id=self.session_id,
+                component="ENDPOINT",
+                error=str(exc),
+            )
 
     def _maybe_emit_partial(self) -> AudioUtterance | None:
         """Emit a non-final partial utterance if the timer interval has elapsed.
@@ -658,5 +725,9 @@ class StreamingPreprocessor:
         state.noise_floor_cooldown = _NOISE_FLOOR_COOLDOWN_FRAMES
         state.last_partial_emitted_at = 0.0
         state.utterance_count += 1
+
+        # TASK-473 A3 — drop the observed hypothesis at the utterance boundary;
+        # the next partial re-populates it for the following utterance.
+        self._reset_endpointer()
 
         return utterance

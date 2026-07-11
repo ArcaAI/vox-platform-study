@@ -488,6 +488,39 @@ class DenoiseConfig:
 
 
 @dataclass
+class EndpointConfig:
+    """Semantic end-of-utterance (endpointing) configuration — TASK-473 A3.
+
+    Content-driven end-of-turn detection that augments the fixed Silero-VAD
+    silence offset on the realtime hot path. When ``enabled`` and the running
+    hypothesis carries a reliable completion signal, the streaming preprocessor
+    may cut the final EARLIER than the fixed ``VadConfig.min_silence_duration_ms``
+    backstop (target 160–500 ms band), or capture a tail the timer would strand.
+
+    Safety posture (default OFF): with ``enabled=False`` the preprocessor uses
+    the exact fixed silence-offset behavior. When enabled, the endpointer is
+    conservative — it only cuts on a confident, complete turn and otherwise
+    falls through to the fixed backstop, so an incomplete utterance is never
+    truncated. ``model_id`` is an OPTIONAL self-hosted turn-detector; empty means
+    the model-free heuristic core only (no cloud dependency ever).
+    """
+
+    enabled: bool = False
+    # Target-min EOU latency: trailing-silence floor (ms) before a semantic
+    # early cut is allowed. Kept below the fixed backstop so a cut is "earlier".
+    min_endpoint_silence_ms: int = 200
+    # Target-max EOU latency band (ms) — informational cap; the fixed
+    # VadConfig backstop remains the true upper bound.
+    max_endpoint_silence_ms: int = 500
+    # Minimum decision confidence to cut early (conservative default).
+    confidence_threshold: float = 0.85
+    # Minimum hypothesis word count — tiny fragments defer to the fixed timer.
+    min_words: int = 3
+    # OPTIONAL self-hosted turn/EOU model id; "" = model-free heuristic only.
+    model_id: str = ""
+
+
+@dataclass
 class DiarizationConfig:
     """Speaker diarization configuration."""
 
@@ -551,6 +584,10 @@ class PreprocessingConfig:
     vad: VadConfig = field(default_factory=VadConfig)
     denoise: DenoiseConfig = field(default_factory=DenoiseConfig)
     dual_capture: DualCaptureConfig = field(default_factory=DualCaptureConfig)
+    # TASK-473 A3 — semantic end-of-utterance config (default disabled). The
+    # yaml parser does not yet populate it (pipeline opt-in lands with the
+    # measured seed edit); the streaming enable surface is the global settings.
+    endpoint: EndpointConfig = field(default_factory=EndpointConfig)
 
 
 @dataclass
