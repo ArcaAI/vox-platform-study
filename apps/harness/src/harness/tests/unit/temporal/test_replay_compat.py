@@ -182,3 +182,26 @@ class TestReplayCompatibility:
             data_converter=pydantic_data_converter,
         )
         await replayer.replay_workflow(_history("doc_workflow_post_task458_edit_cap_history"))
+
+    @pytest.mark.asyncio
+    async def test_post_task481_retraction_history_replays_on_current_definition(self):
+        """Forward guard for the TASK-481 (E2) optimistic-delivery RETRACTION era.
+
+        The fixture is an optimistic run whose post-delivery assurance FLAGs (UNSAFE), so the
+        delivered draft is RETRACTED: it carries the ``task-481-optimistic-retraction`` marker
+        (alongside the TASK-345/355 markers) plus the retraction command sequence — early
+        ``persist_draft(phase=DRAFT_PENDING_SENSORS)`` -> ``run_inferential_sensors`` (FLAG) ->
+        ``retract_draft`` -> terminal completion (retracted, NO ``finalize_assurance``, NO
+        gate / ``record_gate_decision``).
+
+        Replaying it through the current definition proves an in-flight retracting execution
+        survives a redeploy, and forward-guards the retraction branch: any FUTURE ungated
+        change to the retraction command sequence fails this replay with a non-determinism
+        error unless gated behind its own ``workflow.patched()``. Recapture alongside every
+        new patch gate (see ``_capture_replay_fixture.py --retract``).
+        """
+        replayer = Replayer(
+            workflows=[HarnessDocWorkflow],
+            data_converter=pydantic_data_converter,
+        )
+        await replayer.replay_workflow(_history("doc_workflow_post_task481_retraction_history"))

@@ -130,6 +130,11 @@ class HarnessDocWorkflowResult(BaseModel):
     escalations: int = 0
     approved: bool = False
     clinician_id: str | None = None
+    # TASK-481 (E2) — the optimistically-delivered draft was RETRACTED because the
+    # post-delivery assurance pass FLAGged it (the retraction net for the accepted
+    # TASK-453 pre-assurance sign-off window). Additive-optional default ⇒ replay-safe:
+    # an old history's recorded result deserializes it to False (the non-retracted path).
+    retracted: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -492,6 +497,36 @@ class FinalizeAssuranceInput(BaseModel):
     model_version: str | None = None
     prompt_template_id: str | None = None
     prompt_version: str | None = None
+
+
+class RetractDraftInput(BaseModel):
+    """Inputs for the TASK-481 (E2) ``retract_draft`` activity (optimistic-delivery net).
+
+    When the optimistic path's post-delivery assurance FLAGs, the delivered
+    ``DRAFT_PENDING_SENSORS`` draft is RETRACTED instead of silently backfilling the FLAG
+    verdict: apps/api marks the draft ``RETRACTED``, writes the WORM audit (carrying the
+    FLAG verdict + the offending atomic/claim refs so the retraction is explainable), and
+    surfaces a clinician-facing retraction event. Idempotent on the apps/api side (a
+    retried retraction re-marks the same terminal state without double-writing).
+    ``context_item_version_id`` binds the retraction to the clinician-edited version when
+    an edit re-bound assurance (mirrors ``finalize_assurance``); None ⇒ the delivered draft.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    consultation_id: str
+    tenant_id: str
+    user_id: str | None = None
+    job_id: str | None = None
+    context_item_id: str
+    context_item_version_id: str | None = None
+    gate_decision: str | None = None
+    reason: str = "assurance_flag"
+    claims_flagged: list[str] = Field(default_factory=list)
+    sensor_scores: dict[str, Any] | None = None
+    guardrail_decisions: dict[str, Any] | None = None
+    reduced_assurance: bool | None = None
+    rag_triad_score: float | None = None
 
 
 class RecordGateInput(BaseModel):

@@ -37,6 +37,11 @@ Two scenarios:
 * ``--edit-cap`` (TASK-458 C1-02) — an optimistic run with edits on TWO assurance passes
   and ``max_edit_reruns=1`` so the loop CAPS the edit-driven re-runs (ONE re-run, not
   two). Records the ``task-458-edit-rerun-cap`` marker — the edit-cap forward-guard fixture.
+* ``--retract`` (TASK-481 E2) — an optimistic run whose post-delivery assurance FLAGs
+  (inferential UNSAFE), so the delivered draft is RETRACTED: early
+  ``persist_draft(phase=DRAFT_PENDING_SENSORS)`` -> ``run_inferential_sensors`` (FLAG) ->
+  ``retract_draft`` -> terminal completion (retracted, no gate/finalize). Records the
+  ``task-481-optimistic-retraction`` marker — the retraction forward-guard fixture.
 
 Usage (from the repo root):
 
@@ -108,12 +113,16 @@ async def capture(out_path: Path, *, scenario: str = "happy") -> None:
         config = StubConfig(
             verdicts=["PASS", "PASS", "PASS"], inferential_verdicts=["SAFE", "SAFE", "SAFE"]
         )
+    elif scenario == "retract":
+        # TASK-481 (E2): optimistic delivery, then the assurance pass FLAGs (UNSAFE) so the
+        # delivered draft is RETRACTED (records the task-481-optimistic-retraction marker).
+        config = StubConfig(verdicts=["PASS"], inferential_verdicts=["UNSAFE"])
     else:
         config = StubConfig(verdicts=["PASS"], inferential_verdicts=["SAFE"])
 
     # TASK-355 Phase D — the optimistic + regen scenarios enable the flag in the
     # snapshotted gate config so the patch-gated reorder path is exercised and recorded.
-    if scenario in ("optimistic", "regen"):
+    if scenario in ("optimistic", "regen", "retract"):
         gate = HarnessGateConfig(optimistic_delivery_enabled=True)
     elif scenario == "edit-cap":
         gate = HarnessGateConfig(optimistic_delivery_enabled=True, max_regen=2, max_edit_reruns=1)
@@ -160,8 +169,9 @@ async def capture(out_path: Path, *, scenario: str = "happy") -> None:
                 task_queue=tq,
             )
             # The failure path never reaches the gate; gate-abandon deliberately never
-            # signs (it abandons on the terminal bound). Everything else signs to close it.
-            if scenario not in ("failure", "gate-abandon"):
+            # signs (it abandons on the terminal bound); retract terminates on the FLAG
+            # WITHOUT a gate wait. Everything else signs to close it.
+            if scenario not in ("failure", "gate-abandon", "retract"):
                 await handle.signal(
                     HarnessDocWorkflow.approval,
                     ApprovalSignal(
@@ -191,11 +201,12 @@ async def capture(out_path: Path, *, scenario: str = "happy") -> None:
 if __name__ == "__main__":
     args = sys.argv[1:]
     scenario = "happy"
-    if args and args[0] in ("--failure", "--optimistic", "--regen", "--gate-abandon", "--edit-cap"):
+    _scenarios = ("--failure", "--optimistic", "--regen", "--gate-abandon", "--edit-cap", "--retract")
+    if args and args[0] in _scenarios:
         scenario, args = args[0].lstrip("-"), args[1:]
     if len(args) != 1:
         raise SystemExit(
             "usage: python -m ..._capture_replay_fixture "
-            "[--failure|--optimistic|--regen|--gate-abandon|--edit-cap] <output.json>"
+            "[--failure|--optimistic|--regen|--gate-abandon|--edit-cap|--retract] <output.json>"
         )
     asyncio.run(capture(Path(args[0]), scenario=scenario))

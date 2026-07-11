@@ -26,6 +26,7 @@ from harness.services.api_client import (
     FinalizeAssuranceResponse,
     PersistEntitiesResponse,
     RecordGateResponse,
+    RetractDraftResponse,
 )
 from harness.services.smr_client import SmrGenerationResult, SmrServiceError
 from harness.temporal import activities
@@ -39,6 +40,7 @@ from harness.temporal.models import (
     PersistEntitiesInput,
     RecordGateInput,
     ReportProgressInput,
+    RetractDraftInput,
     RetrieveContextInput,
     RunInferentialSensorsInput,
     RunSensorsInput,
@@ -94,6 +96,10 @@ class _FakeApi:
     ) -> EscalationRecordResponse:
         self.calls["record_escalation"] = {"consultation_id": consultation_id, **kw}
         return EscalationRecordResponse(recorded=True)
+
+    async def retract_draft(self, consultation_id: str, **kw: Any) -> RetractDraftResponse:
+        self.calls["retract_draft"] = {"consultation_id": consultation_id, **kw}
+        return RetractDraftResponse(retracted=True, context_item_id=kw.get("context_item_id", ""))
 
 
 class _FakeApiPriors:
@@ -464,6 +470,30 @@ class TestApiActivities:
         call = fake.calls["finalize_assurance"]
         assert call["context_item_id"] == "ctx-1"
         assert call["idempotency_key"] == "test-run:test"  # C1-03
+
+    @pytest.mark.asyncio
+    async def test_retract_draft_forwards_flag_and_idempotency_key(self, env, monkeypatch):
+        # TASK-481 (E2) — the retract_draft activity forwards the FLAG verdict + offending
+        # claims to apps/api under a stable idempotency key (a retried retraction dedups).
+        fake = _FakeApi()
+        monkeypatch.setattr(activities, "_api_client", lambda s: fake)
+        result = await env.run(
+            activities.retract_draft,
+            RetractDraftInput(
+                consultation_id="c-1",
+                tenant_id="t-1",
+                context_item_id="ctx-1",
+                gate_decision="FLAG",
+                reason="assurance_flag",
+                claims_flagged=["Start warfarin"],
+            ),
+        )
+        assert result.retracted is True
+        call = fake.calls["retract_draft"]
+        assert call["context_item_id"] == "ctx-1"
+        assert call["gate_decision"] == "FLAG"
+        assert call["claims_flagged"] == ["Start warfarin"]
+        assert call["idempotency_key"] == "test-run:test"  # C1-03 — dedups a retried retraction
 
 
 _SOAP_SCHEMA = {

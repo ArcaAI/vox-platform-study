@@ -237,6 +237,54 @@ class TestRecordGateDecision:
         assert result.recorded is True
 
 
+class TestRetractDraft:
+    """TASK-481 (E2) — the retraction write path (mirrors finalize_assurance)."""
+
+    @pytest.mark.asyncio
+    async def test_retract_draft_posts_flag_verdict_and_reason(self):
+        seen: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["request"] = request
+            return httpx.Response(200, json={"retracted": True, "contextItemId": "ctx-1"})
+
+        client = _client(handler)
+        result = await client.retract_draft(
+            "c-1",
+            tenant_id="t-1",
+            context_item_id="ctx-1",
+            context_item_version_id="v-2",
+            gate_decision="FLAG",
+            reason="assurance_flag",
+            claims_flagged=["Start warfarin"],
+            user_id="u-1",
+            job_id="job-1",
+            idempotency_key="idem-1",
+        )
+
+        req = seen["request"]
+        assert str(req.url) == "http://api:8868/internal/harness/consultations/c-1/retraction"
+        assert req.headers["Idempotency-Key"] == "idem-1"
+        body = json.loads(req.content)
+        assert body["tenantId"] == "t-1"
+        assert body["contextItemId"] == "ctx-1"
+        assert body["contextItemVersionId"] == "v-2"
+        assert body["gateDecision"] == "FLAG"
+        assert body["reason"] == "assurance_flag"
+        assert body["claimsFlagged"] == ["Start warfarin"]
+        assert result.retracted is True
+        assert result.context_item_id == "ctx-1"
+
+    @pytest.mark.asyncio
+    async def test_retract_draft_raises_on_http_error(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(500, json={"error": "boom"})
+
+        client = _client(handler)
+        with pytest.raises(ApiServiceError):
+            await client.retract_draft("c-1", tenant_id="t-1", context_item_id="ctx-1")
+
+
 _POLICY_JSON = {
     "id": "hp-1",
     "tenantId": "t-1",

@@ -45,6 +45,11 @@ class SensorThresholds(BaseSettings):
     # entailed by their cited knowledge chunk(s) per the same judge — a strict
     # citations check (regen-fixable; degrades to the "unverified" badge on outage).
     citation_verify_threshold: float = 0.8
+    # TASK-481 (E2) — reference-free atomic-fact verifier: >= 80% of the note's atomic
+    # claims must be entailed by the transcript per the DETERMINISTIC self-hosted NLI
+    # (a second, model-cheap groundedness gate alongside the LLM-judge groundedness
+    # sensor). Regen-fixable; a degraded backend degrades (never auto-PASS).
+    atomic_fact_threshold: float = 0.8
 
     @field_validator(
         "entity_faithfulness_threshold",
@@ -53,6 +58,7 @@ class SensorThresholds(BaseSettings):
         "numeric_dose_threshold",
         "groundedness_threshold",
         "citation_verify_threshold",
+        "atomic_fact_threshold",
     )
     @classmethod
     def _unit_interval(cls, v: float) -> float:
