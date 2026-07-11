@@ -10,6 +10,13 @@ from .preseed import preseed_speaker
 from .pyannote_embedding import PyannoteEmbeddingService
 from .speaker_tracker import SpeakerTracker
 from .speechbrain_embedding import SpeechBrainEmbeddingService
+from .streaming_sortformer import (
+    SortformerBackend,
+    SortformerModelUnavailableError,
+    StreamingDiarizationResult,
+    StreamingSortformerDiarizer,
+    load_default_backend,
+)
 
 __all__ = [
     "EmbeddingService",
@@ -21,4 +28,10 @@ __all__ = [
     "SpeakerTracker",
     "SpeakerEmbedding",
     "SpeakerIdentification",
+    # TASK-475 B2 — streaming Sortformer diarizer scaffold (self-hosted, NeMo).
+    "SortformerBackend",
+    "SortformerModelUnavailableError",
+    "StreamingDiarizationResult",
+    "StreamingSortformerDiarizer",
+    "load_default_backend",
 ]

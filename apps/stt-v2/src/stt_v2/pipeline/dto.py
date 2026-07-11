@@ -186,9 +186,31 @@ def is_valid_language_code(code: str) -> bool:
 
 
 VALID_PARAKEET_V3_LANGUAGES: set[str] = {
-    "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de",
-    "el", "hu", "it", "lv", "lt", "mt", "pl", "pt", "ro", "sk",
-    "sl", "es", "sv", "ru", "uk",
+    "bg",
+    "hr",
+    "cs",
+    "da",
+    "nl",
+    "en",
+    "et",
+    "fi",
+    "fr",
+    "de",
+    "el",
+    "hu",
+    "it",
+    "lv",
+    "lt",
+    "mt",
+    "pl",
+    "pt",
+    "ro",
+    "sk",
+    "sl",
+    "es",
+    "sv",
+    "ru",
+    "uk",
 }
 
 
@@ -486,6 +508,22 @@ class DiarizationConfig:
     enable_segmentation_refinement: bool = True
     # Rolling window size per speaker (number of recent embeddings to keep)
     max_embeddings_per_speaker: int = 8
+    # TASK-475 (Theme B2): streaming diarizer backend selector.
+    #   "embedding"  -> the existing pyannote/wespeaker embedding-clustering path
+    #                   (DEFAULT — preserves current behavior; batch stays here).
+    #   "sortformer" -> the self-hosted NeMo Streaming Sortformer diarizer for the
+    #                   live 2-speaker loop (frame-level clinician/patient turns),
+    #                   used only once its weights are staged (see streaming_sortformer).
+    backend: str = "embedding"
+    # --- Streaming Sortformer knobs (used only when backend == "sortformer") ---
+    # Commercially-licensed checkpoint (cc-by-4.0) — NOT the cc-by-nc offline v1.
+    sortformer_model_id: str = "nvidia/diar_streaming_sortformer_4spk-v2"
+    # Pin the model by revision once staged (AC-1: "Model pinned by revision").
+    sortformer_revision: str | None = None
+    # Per-frame speaker-activity probability threshold for turn extraction.
+    sortformer_threshold: float = 0.5
+    # Model frame cadence (~80 ms) — converts frame indices to timestamps.
+    sortformer_frame_shift_s: float = 0.08
 
 
 @dataclass
@@ -574,6 +612,11 @@ class PostprocessingConfig:
 
 # Valid values for streaming.commit_policy (TASK-351 P1-1).
 VALID_STREAMING_COMMIT_POLICIES: list[str] = ["none", "local_agreement_2"]
+
+# Valid values for diarization.backend (TASK-475 Theme B2). "embedding" is the
+# existing pyannote/wespeaker embedding-clustering path (default); "sortformer"
+# routes the live 2-speaker loop through the self-hosted NeMo Streaming Sortformer.
+VALID_DIARIZATION_BACKENDS: list[str] = ["embedding", "sortformer"]
 
 
 @dataclass

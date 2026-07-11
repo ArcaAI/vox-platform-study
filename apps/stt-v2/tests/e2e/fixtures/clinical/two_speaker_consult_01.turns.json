@@ -1,0 +1,20 @@
+{
+  "_comment": "TASK-475 (Theme B2 · AC-5) de-identified SYNTHETIC 2-speaker clinical fixture with speaker-turn ground truth. NO real PHI — invented dialogue, no real patient/clinician identifiers. Turns are non-overlapping (clinician/patient clinical scope). Feeds the diarization-accuracy scorecard (streaming_diarization_quality.py). Timings are illustrative until a real de-identified audio capture + forced-alignment ground truth is staged alongside the Sortformer model.",
+  "audio_seconds": 48.0,
+  "speakers": {
+    "clinician": "Clinician",
+    "patient": "Patient"
+  },
+  "turns": [
+    { "start": 0.0, "end": 4.2, "speaker": "clinician", "text": "Good morning, what brings you in today?" },
+    { "start": 4.6, "end": 10.1, "speaker": "patient", "text": "I've had a dull chest tightness for about three days, mostly when I walk upstairs." },
+    { "start": 10.5, "end": 14.0, "speaker": "clinician", "text": "Does it spread anywhere, and does resting make it settle?" },
+    { "start": 14.4, "end": 19.8, "speaker": "patient", "text": "It goes into my left arm a little, and yes it eases off after a few minutes of sitting." },
+    { "start": 20.2, "end": 24.6, "speaker": "clinician", "text": "Any shortness of breath, sweating, or nausea with it?" },
+    { "start": 25.0, "end": 29.3, "speaker": "patient", "text": "A bit breathless, no sweating. I take amlodipine five milligrams for blood pressure." },
+    { "start": 29.7, "end": 34.5, "speaker": "clinician", "text": "Thank you. We'll get an ECG and some bloods, including a troponin, now." },
+    { "start": 34.9, "end": 38.6, "speaker": "patient", "text": "Is it my heart? Should I be worried?" },
+    { "start": 39.0, "end": 44.4, "speaker": "clinician", "text": "We're checking to be safe. The tests take about an hour and I'll review them with you." },
+    { "start": 44.8, "end": 47.6, "speaker": "patient", "text": "Okay, thank you, that's reassuring." }
+  ]
+}

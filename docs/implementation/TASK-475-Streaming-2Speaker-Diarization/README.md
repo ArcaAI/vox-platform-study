@@ -1,6 +1,6 @@
 # TASK-475 — Streaming 2-Speaker Diarization (Theme B2 · SOTA S1-DIAR · **Streaming Sortformer**)
 
-- **Status**: Pending (implementation — **blocked on its two dependencies**: TASK-474's B2 Build Brief must be delivered and TASK-470's scorecard must be extended with a diarization metric before code starts)
+- **Status**: Review (scaffold delivered 2026-07-11 — `DiarizationConfig.backend` switch + Sortformer backend skeleton (fail-closed until staged) + DER/JER/confusion/attribution metric + de-identified 2-speaker fixture + config parse/validate, all hermetic and green: `pnpm py:stt-v2:test` 2392 passed / 37 integration-skipped, ruff clean, mypy clean. The LIVE Sortformer diarizer, the hot-path wiring (`inference.py`/`session_manager.py` incl. recovery), and the AC-5/AC-6 live capture are **BLOCKED on model staging** — see §Implementation Summary → Model-staging ask. User-visible labels are **additionally blocked on TASK-489** (surfacing-contract fix; not implemented here).)
 - **Type**: feature (adds a capability HOPE lacks and every comparable ambient scribe has: live clinician/patient speaker labels)
 - **Track**: [SOTA Enhancement Track](../SOTA-Track/README.md) · Theme **B2** (diarization)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · strategic SOTA track (post-Wave-3)
@@ -103,8 +103,58 @@ Adversarial review focus: (a) does audio truly stay on-prem (no cloud call in th
 
 (See §Requirement Analysis Non-goals — self-hosted only; 2-speaker only; no harness/system-of-record change; no live-note/NER redesign; no batch change; extend TASK-470's scorecard, don't fork it.)
 
+## Implementation Summary (2026-07-11 — scaffold; model-blocked remainder deferred)
+
+Delivered the **buildable, model-independent** slice of B2 (the exact posture of TASK-479): everything that does NOT require the un-staged Streaming Sortformer weights, behind a clean seam, TDD red→green, hermetic. Then stopped at the model boundary.
+
+### What was BUILT (green)
+
+| Piece | Detail |
+|---|---|
+| **Backend selector** (`pipeline/dto.py`, `pipeline/yaml_parser.py`) | `DiarizationConfig.backend: "embedding" \| "sortformer"` **defaults to `embedding`** (current behavior preserved — AC-7), plus Sortformer knobs (`sortformer_model_id` = `nvidia/diar_streaming_sortformer_4spk-v2` cc-by-4.0, `sortformer_revision`, `sortformer_threshold`, `sortformer_frame_shift_s`). Parsed + validated (`VALID_DIARIZATION_BACKENDS`; unknown backend → validation error). No new env var (per-pipeline config, not host env) → no `turbo.json`/`.env.example` change; no deps → no `uv lock`. |
+| **Sortformer backend skeleton** (`diarization/streaming_sortformer.py`, exported from `diarization/__init__.py`) | `SortformerBackend` Protocol + `StreamingSortformerDiarizer` (injectable backend for hermetic tests) + `StreamingDiarizationResult.to_turns()` (pure frame-prob → 2-speaker turn thresholding — the reusable half that survives once the model lands). `load_default_backend()` **raises `SortformerModelUnavailableError` until the `.nemo` is staged** (mirrors `groundedness_nli.load_default_scorer`); the diarizer **degrades to "no labels" (`applied=False`)** rather than crashing the ASR hot path, reproducing today's diarization-off behavior. PHI-safe logs (sample COUNT + reason only, never samples/text). |
+| **Diarization-accuracy metric** (`tests/integration/streaming_diarization_quality.py` — a **sibling** of TASK-470's `streaming_quality.py`, NOT a fork) | `diarization_error_rate` (NIST DER, optimal speaker-label mapping → label-permutation invariant), `jaccard_error_rate`, `speaker_confusion_rate`, `attribution_accuracy`, `build_diarization_scorecard` / `diarization_regression_report` / `assert_no_diarization_regression` (the AC-5 gate, mirroring TASK-470's shape), `load_turns_fixture`. Committed sibling thresholds `tests/integration/streaming_diarization_thresholds.json` (bootstrap ceilings/floors; `baseline: null` until the model-staged live capture). **TASK-470's `streaming_quality.py` + `streaming_thresholds.json` were left byte-untouched.** |
+| **De-identified synthetic fixture** (`tests/e2e/fixtures/clinical/two_speaker_consult_01.turns.json`) | 10 non-overlapping clinician/patient turns w/ speaker-turn ground truth. Fully invented dialogue — no real PHI. |
+
+RED→GREEN tests (all hermetic, no model, no infra):
+- `tests/unit/diarization/test_streaming_sortformer.py` (11): factory **raises** unavailable + names model/ticket; diarizer **degrades** to `applied=False`/`reason=sortformer_model_unavailable` and never raises; PHI-safe log (asserts audio samples absent from log); `to_turns` merges same-speaker frames, splits on sub-threshold silence; `reset()` drops the lazy backend.
+- `tests/unit/diarization/test_streaming_diarization_quality.py` (17): DER perfect-with-swapped-labels = 0; single-speaker-hyp confusion 0.5; missed / false-alarm / empty-hyp / empty-ref; JER 0.75 case; confusion + attribution; **gate FAILS on a synthetic DER regression and on an attribution regression, PASSES on a good card, never passes vacuously** (the AC-5 "gate actually fails" proof); fixture loads 2 speakers + self-scores DER 0.
+- `tests/unit/diarization/test_diarization_config.py` (+7 additive): backend default `embedding`; Sortformer-knob defaults; parse `sortformer`; **validation rejects an unknown backend**.
+
+### What is BLOCKED (not built here — explicit boundary)
+
+| Deferred | Why | Owner/ticket |
+|---|---|---|
+| Live Sortformer inference inside `load_default_backend` + AC-1 GPU load | `.nemo` weights un-staged + no NeMo/GPU runtime | this ticket, **post model-staging** |
+| Hot-path wiring (`inference.py` frame cadence), diarizer construction + **recovery fix** (`session_manager.py:2713`, AC-4), server-side `speaker_label` on `schemas.py` | Cannot be verified end-to-end without the model (would only degrade to today's no-op); TDD would be non-hermetic | this ticket, **post model-staging** |
+| AC-5 live DER capture + AC-6 ASR-guardrail no-regression run | Needs the model + a live stack + real de-identified audio | this ticket, **post model-staging** |
+| Seed a Sortformer-enabled pipeline (`seed/06-stt.ts`) | Would point at an un-staged model (like the existing `MODEL_REPO_PLACEHOLDER`); default stays `embedding` | this ticket, **post model-staging** |
+| **Surfacing contract** (gateway/bridge/DTO/frame-51 hook) — labels reaching the clinician | **Separate ticket TASK-489** (from the TASK-474 FT-1 finding) — do-not-touch here | **TASK-489 (blocking prerequisite)** |
+
+### Model-staging ask (for the orchestrator)
+
+- **Model**: `nvidia/diar_streaming_sortformer_4spk-v2` (HF repo id) — NVIDIA Streaming Sortformer (arXiv:2507.18446), ~**471 MB** `.nemo`, ~117 M params. Stage into `HF_HOME=/Volumes/aillusion/huggingface` (today holds only whisper + silero + pyannote-embedding).
+- **Runtime**: needs the **NeMo/PyTorch GPU** runtime — **no working CPU/ONNX path** (open NeMo issue). Add `nemo_toolkit` + `torch` to `apps/stt-v2` deps (heavy) and `uv lock` at root when staging (mypy already pre-lists `nemo_toolkit`/`nemo` in `ignore_missing_imports`).
+- **Licensing**: pick the **cc-by-4.0** checkpoint (`…4spk-v2`, commercial-OK) — **NOT** the cc-by-nc offline v1 (non-commercial) and not the v2.1 NVIDIA Open Model License. Pin by revision when staged (AC-1).
+- **Once staged**: implement the NeMo streaming session inside `load_default_backend` against the `SortformerBackend` seam — the diarizer, `to_turns` thresholding, config, metric, and tests do NOT change. Then wire the hot path + recovery, capture the AC-5 baseline into `streaming_diarization_thresholds.json` (tighten `baseline` off null), and re-run TASK-470's scorecard for the AC-6 no-regression check. Track guardrail: self-hosted only — no cloud diarizer receives clinical audio.
+
+### Blocking prerequisite — TASK-489 (surfacing contract)
+
+Per the TASK-474 §B2 Build Brief item 4 / finding **FT-1**: even a perfectly-diarized stream shows **nothing** on the default admin surface today — the wire DTO has no `speakerLabel`, the frame-51 hook reads a `speakerLabel` the backend never sends, and the id→label derivation is fragmented. **TASK-489 must land for TASK-475's user-visible outcome (AC-2/AC-3).** It is a **separate ticket** and was deliberately **not touched** here.
+
+### Gate evidence
+
+```
+pnpm py:stt-v2:test        → 2392 passed, 37 skipped (integration; infra down — graceful), 3 xfailed
+                              (new: 45 diarization scaffold tests green)
+pnpm py:stt-v2:lint (ruff)  → All checks passed!
+pnpm py:stt-v2:typecheck    → Success: no issues found in 104 source files
+black --line-length 100     → formatted (canonical)
+```
+
 ## Change History
 
 | Date | Change |
 |---|---|
+| 2026-07-11 | **Scaffold implemented** (Status → Review). Built the model-independent B2 slice TDD red→green (TASK-479 posture): `DiarizationConfig.backend` selector (default `embedding`) + Sortformer knobs with parse/validate; `diarization/streaming_sortformer.py` — `SortformerBackend` Protocol + `StreamingSortformerDiarizer` (injectable, fail-closed) + pure `to_turns` thresholding + `load_default_backend` **raising `SortformerModelUnavailableError` until the `.nemo` is staged** (degrades to "no labels", never crashes the hot path; PHI-safe logs); a DER/JER/confusion/attribution metric + regression gate as a **sibling** `streaming_diarization_quality.py` (+ sibling `streaming_diarization_thresholds.json`, bootstrap thresholds, `baseline: null`) — **TASK-470's scorecard files left untouched**; a de-identified synthetic 2-speaker clinical turn fixture. 45 new hermetic tests (incl. the AC-5 "gate actually fails on a synthetic diarization regression" proof). Gates: `pnpm py:stt-v2:test` 2392 passed / 37 integration-skipped / 3 xfailed, ruff clean, mypy clean. **Explicit boundary**: the live Sortformer inference (AC-1), hot-path wiring + recovery fix (AC-4), and AC-5/AC-6 live capture are **BLOCKED on model staging** (see §Model-staging ask); the **surfacing contract is TASK-489** (blocking prerequisite for AC-2/AC-3) and was not touched. No `inference.py`/`session_manager.py`/`schemas.py`/seed/TASK-489/TASK-490/TASK-470-owned files changed; no env var / dep changes. |
 | 2026-07-10 | Ticket scaffolded from the [SOTA-Track](../SOTA-Track/README.md) plan (Theme B2). Current State **code-verified** against `fix/2605-review` @ 87199e33 (full inventory in [TASK-474](../TASK-474-Diarization-Internals-Review/README.md)): **no streaming Sortformer exists**; the only diarizer is disabled-by-default, finals-only, recovery-lossy **embedding-clustering**, and its speaker data never reaches the clinician (gateway drops it; UI renders a `speaker_label` the backend doesn't emit). Confirmed de-risking hooks already present (`ModelTaskType.SPEAKER_DIARIZATION` + `AiModelFormat.NEMO` enums, a working NeMo loader, `SegmentResult` speaker serialization, an SDK/playground `speaker_label` render path, doctor `preseed`). Defined the Streaming Sortformer (arXiv:2507.18446, self-hosted NeMo) build: emit live clinician/patient labels, coexist with embedding-clustering/preseed/batch behind a `DiarizationConfig.backend` selector, fix the surfacing seam + recovery-loses-state, and feed the live-note/NER lineage. **Dual-gated**: DoR is TASK-474's §B2 Build Brief; acceptance is TASK-470's scorecard extended with a diarization-accuracy metric (AC-5) with all ASR guardrails held (AC-6). Marked measurement-gated + self-hosted-only. No implementation — plan/manifest only; no code changed. |
