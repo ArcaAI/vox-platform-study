@@ -39,12 +39,16 @@ from harness.guides.retrieval.sparse import SparseBm25Embedder
 from harness.sensors.base import NEREntity, SensorContext, SensorResult
 from harness.sensors.config import SensorThresholds
 from harness.sensors.inferential import (
+    ATOMIC_FACT_NAME,
     CITATION_VERIFY_NAME,
     GROUNDEDNESS_NAME,
     SAFETY_NAME,
+    AtomicFactSensor,
     CitationVerifySensor,
+    DeterministicOverlapEntailer,
     GraniteGuardianClient,
     GroundednessSensor,
+    NliEntailer,
     SafetySensor,
 )
 from harness.sensors.inferential.base import degraded_result
@@ -57,6 +61,7 @@ from harness.services.api_client import (
     FinalizeAssuranceResponse,
     PersistEntitiesResponse,
     RecordGateResponse,
+    RetractDraftResponse,
 )
 from harness.services.embeddings_client import EmbeddingsClient
 from harness.services.nlp_client import NlpClient
@@ -79,6 +84,7 @@ from harness.temporal.models import (
     RecordGateInput,
     ReportProgressInput,
     ReportProgressResult,
+    RetractDraftInput,
     RetrieveContextInput,
     RetrievedContext,
     RunInferentialSensorsInput,
@@ -176,6 +182,19 @@ def _build_runtime_judge() -> JudgeClient:
 
 def _granite_client(settings: Settings) -> GraniteGuardianClient:
     return GraniteGuardianClient(settings.safety)
+
+
+def _atomic_fact_entailer(settings: Settings) -> NliEntailer:
+    """Build the atomic-fact verifier's NLI entailer (TASK-481 E2).
+
+    Returns the model-free, deterministic, hermetic :class:`DeterministicOverlapEntailer`
+    by default — no model, no network, no cloud egress of clinical text. This is the
+    swap point for a real self-hosted NLI model (MiniCheck / AlignScore / HHEM-class)
+    once one is provisioned: build it here behind the same :class:`NliEntailer` interface
+    (the ``JudgeClient`` is NEVER used — the verifier is judge-free by contract). Factored
+    out like the other client factories so the tests can monkeypatch it with a stub NLI.
+    """
+    return DeterministicOverlapEntailer()
 
 
 def _phi_redactor() -> PhiRedactor:
@@ -467,6 +486,26 @@ def _citation_verify_decision(result: SensorResult) -> dict[str, Any]:
     }
 
 
+def _atomic_fact_decision(result: SensorResult) -> dict[str, Any]:
+    """Map the atomic-fact result to its guardrail-decision entry (regen-fixable).
+
+    TASK-481 (E2). The DETERMINISTIC reference-free groundedness gate; on degrade
+    (self-hosted NLI unavailable) it degrades so an unverifiable pass never auto-PASSes.
+    """
+    if result.degraded:
+        return {"decision": "DEGRADED", "degraded": True, "reason": result.details.get("reason")}
+    details = result.details
+    return {
+        "decision": "PASS" if result.passed else "REGEN",
+        "passed": result.passed,
+        "score": round(result.score, 6),
+        "total": details.get("total", 0),
+        "grounded": details.get("grounded", 0),
+        "ungrounded": list(details.get("ungrounded", [])),
+        "claimsFlagged": list(result.claims_flagged),
+    }
+
+
 def _safety_decision(result: SensorResult) -> dict[str, Any]:
     """Map the safety result to its guardrail-decision entry (highest-harm FLAG)."""
     if result.degraded:
@@ -529,6 +568,10 @@ def _assemble_inferential_output(
     if citation_verify is not None:
         guardrail_decisions[CITATION_VERIFY_NAME] = _citation_verify_decision(citation_verify)
 
+    atomic_fact = by_name.get(ATOMIC_FACT_NAME)
+    if atomic_fact is not None:
+        guardrail_decisions[ATOMIC_FACT_NAME] = _atomic_fact_decision(atomic_fact)
+
     return InferentialRunOutput(
         results=results,
         guardrail_decisions=guardrail_decisions,
@@ -583,6 +626,24 @@ def _build_assurance_publisher(
             )
 
     return _publish
+
+
+async def _run_atomic_fact_sensor(
+    settings: Settings, ctx: SensorContext, threshold: float
+) -> SensorResult:
+    """Run the DETERMINISTIC reference-free atomic-fact verifier, degrading on any failure.
+
+    TASK-481 (E2). Builds the self-hosted NLI entailer and runs the verifier over the
+    (already PHI-redacted) ``ctx``. Any entailer BUILD failure degrades here (the sensor's
+    own ``arun`` already degrades on a RUNTIME entailer error) — so an unverifiable
+    atomic-fact pass is never a silent auto-PASS (fail-safe), and never raises into the
+    inferential pass.
+    """
+    try:
+        entailer = _atomic_fact_entailer(settings)
+    except Exception as exc:  # noqa: BLE001 — un-buildable NLI degrades, never raises
+        return degraded_result(ATOMIC_FACT_NAME, f"atomic-fact NLI unavailable: {exc}")
+    return await AtomicFactSensor(entailer, threshold=threshold).arun(ctx)
 
 
 @activity.defn
@@ -697,6 +758,15 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
                     ctx, judge=judge, screen_cache=verdict_cache
                 )
             )
+        # TASK-481 (E2) — the DETERMINISTIC reference-free atomic-fact verifier runs
+        # ALONGSIDE the judge sensors (defense-in-depth), gated by the runtime ops
+        # kill-switch (default OFF). It uses a SELF-HOSTED NLI (NOT the judge), so it adds
+        # no cloud egress; a degraded backend degrades (never auto-PASS). Read at runtime
+        # here — not the workflow — so it adds no new workflow command (replay-safe).
+        if settings.atomic_fact_enabled:
+            tasks.append(
+                _run_atomic_fact_sensor(settings, ctx, thresholds.atomic_fact_threshold)
+            )
         results = list(await asyncio.gather(*tasks))
         return _assemble_inferential_output(results, verdict_cache)
     finally:
@@ -767,6 +837,38 @@ async def finalize_assurance(payload: FinalizeAssuranceInput) -> FinalizeAssuran
         model_version=payload.model_version,
         prompt_template_id=payload.prompt_template_id,
         prompt_version=payload.prompt_version,
+        idempotency_key=_idempotency_key(),
+    )
+
+
+@activity.defn
+async def retract_draft(payload: RetractDraftInput) -> RetractDraftResponse:
+    """Retract an optimistically-delivered draft that later failed assurance (TASK-481 E2).
+
+    The optimistic path calls this INSTEAD of ``finalize_assurance`` when the post-delivery
+    assurance pass FLAGs: apps/api marks the delivered ``DRAFT_PENDING_SENSORS`` draft
+    ``RETRACTED``, writes the WORM audit (carrying the FLAG verdict + the offending
+    atomic/claim refs), and surfaces a clinician-facing retraction event — the safety net
+    for the accepted TASK-453 pre-assurance sign-off window. Idempotent on the apps/api
+    side (the stable ``_idempotency_key`` dedups a retried retraction, so a bounded retry
+    never double-writes). Raises :class:`ApiServiceError` on transport/HTTP error; the
+    workflow retries under ``_API_RETRY``.
+    """
+    settings = get_settings()
+    return await _api_client(settings).retract_draft(
+        payload.consultation_id,
+        tenant_id=payload.tenant_id,
+        context_item_id=payload.context_item_id,
+        context_item_version_id=payload.context_item_version_id,
+        gate_decision=payload.gate_decision,
+        reason=payload.reason,
+        claims_flagged=payload.claims_flagged,
+        sensor_scores=payload.sensor_scores,
+        guardrail_decisions=payload.guardrail_decisions,
+        reduced_assurance=payload.reduced_assurance,
+        rag_triad_score=payload.rag_triad_score,
+        user_id=payload.user_id,
+        job_id=payload.job_id,
         idempotency_key=_idempotency_key(),
     )
 
@@ -872,6 +974,7 @@ DOCUMENT_ACTIVITIES: list[Callable[..., Any]] = [
     run_inferential_sensors,
     persist_draft,
     finalize_assurance,
+    retract_draft,
     record_gate_decision,
     escalate_gate,
     report_progress,

@@ -42,6 +42,7 @@ with workflow.unsafe.imports_passed_through():
         ping_activity,
         record_gate_decision,
         report_progress,
+        retract_draft,
         retrieve_context,
         run_inferential_sensors,
         run_sensors,
@@ -70,6 +71,7 @@ with workflow.unsafe.imports_passed_through():
         PersistEntitiesInput,
         RecordGateInput,
         ReportProgressInput,
+        RetractDraftInput,
         RetrieveContextInput,
         RetrievedContext,
         RunInferentialSensorsInput,
@@ -820,7 +822,60 @@ class HarnessDocWorkflow:
                 break
             decision = str(verdict.decision)
 
-            # (c) FINALIZE: backfill the early SummaryMeta with the verdict, flip
+            # (c) RETRACT-or-FINALIZE (TASK-481 E2 — the optimistic-delivery retraction net).
+            #     The optimistic path delivered a READABLE draft BEFORE assurance (the
+            #     clinician can already be reading it — and, per the ACCEPTED TASK-453
+            #     pre-assurance window, may already have signed). When the post-delivery
+            #     assurance settles to a FLAG, the delivered draft is RETRACTED (apps/api
+            #     marks it RETRACTED + writes the WORM audit carrying the FLAG verdict + the
+            #     offending claim refs + surfaces a clinician-facing retraction event)
+            #     INSTEAD of silently backfilling the FLAG verdict via finalize — the
+            #     explicit safety net that makes the accepted window safe (E2 does NOT change
+            #     the TASK-453 sign-off governance). Patch-gated: a pre-E2 optimistic history
+            #     has no marker, so ``workflow.patched`` returns False on replay and the
+            #     legacy finalize-only command sequence is preserved (replay-safe). A
+            #     non-FLAG verdict finalizes exactly as before.
+            if workflow.patched("task-481-optimistic-retraction") and (
+                verdict.decision == GateDecision.FLAG
+            ):
+                self._phase = "RETRACT"
+                await workflow.execute_activity(
+                    retract_draft,
+                    RetractDraftInput(
+                        consultation_id=inp.consultation_id,
+                        tenant_id=inp.tenant_id,
+                        user_id=inp.user_id,
+                        job_id=inp.job_id,
+                        context_item_id=draft.context_item_id,
+                        context_item_version_id=assurance_version_id,
+                        gate_decision=decision,
+                        reason="assurance_flag",
+                        claims_flagged=list(verdict.claims_flagged),
+                        sensor_scores=sensors.scores,
+                        guardrail_decisions=guardrail_decisions or None,
+                        reduced_assurance=reduced_assurance,
+                        rag_triad_score=rag_triad_score,
+                    ),
+                    start_to_close_timeout=_ACTIVITY_TIMEOUT,
+                    retry_policy=_API_RETRY,
+                )
+                # A retracted draft is WITHDRAWN — it does NOT wait for clinician sign-off.
+                # Complete terminally (retracted=True); the retraction event has already
+                # informed the clinician. The gate-wait + record path below is intentionally
+                # skipped (patch-gated, so a pre-E2 replay keeps the legacy gate flow).
+                self._phase = "RETRACTED"
+                return HarnessDocWorkflowResult(
+                    consultation_id=inp.consultation_id,
+                    decision=decision,
+                    context_item_id=draft.context_item_id,
+                    regens_used=regens_used,
+                    escalations=0,
+                    approved=False,
+                    clinician_id=None,
+                    retracted=True,
+                )
+
+            # (c') FINALIZE: backfill the early SummaryMeta with the verdict, flip
             #     DRAFT_PENDING_SENSORS -> PENDING_REVIEW, and record the deferred
             #     SENSOR_RUN (+ REDUCED_ASSURANCE) WORM. Idempotent on apps/api.
             #     ``context_item_version_id`` binds the verdict to a clinician-edited

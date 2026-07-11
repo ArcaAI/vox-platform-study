@@ -74,6 +74,15 @@ class EscalationRecordResponse(BaseModel):
     recorded: bool = False
 
 
+class RetractDraftResponse(BaseModel):
+    """apps/api ack for the TASK-481 (E2) optimistic-delivery retraction callback."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    retracted: bool = False
+    context_item_id: str = ""
+
+
 class ReportProgressResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -428,6 +437,69 @@ class ApiClient:
             f"/consultations/{consultation_id}/gate-decision", body, idempotency_key=idempotency_key
         )
         return RecordGateResponse(recorded=bool(data.get("recorded", False)))
+
+    async def retract_draft(
+        self,
+        consultation_id: str,
+        *,
+        tenant_id: str,
+        context_item_id: str,
+        context_item_version_id: str | None = None,
+        gate_decision: str | None = None,
+        reason: str | None = None,
+        claims_flagged: Sequence[str] | None = None,
+        sensor_scores: dict[str, Any] | None = None,
+        guardrail_decisions: dict[str, Any] | None = None,
+        reduced_assurance: bool | None = None,
+        rag_triad_score: float | None = None,
+        user_id: str | None = None,
+        job_id: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> RetractDraftResponse:
+        """Retract an optimistically-delivered draft that later failed assurance (TASK-481 E2).
+
+        The optimistic path calls this INSTEAD of ``finalize_assurance`` when the
+        post-delivery assurance pass FLAGs: apps/api marks the delivered
+        ``DRAFT_PENDING_SENSORS`` draft ``RETRACTED``, writes the WORM audit (carrying the
+        FLAG verdict + the offending atomic/claim refs), and surfaces a clinician-facing
+        retraction event — the safety net for the accepted TASK-453 pre-assurance sign-off
+        window. Idempotent on the apps/api side (a retried retraction re-marks the same
+        terminal state). Raises :class:`ApiServiceError` on transport/HTTP error (the
+        workflow retries under a bounded ``RetryPolicy``).
+
+        NOTE: the apps/api endpoint that consumes this
+        (``POST /internal/harness/consultations/:id/retraction`` — mark the delivered draft
+        ``RETRACTED`` + WORM audit + clinician retraction event, idempotent like
+        ``finalizeAssurance``) is a coordinated follow-up, out of this harness ticket's
+        primary (hermetic) gate. Until it lands, an optimistic-FLAG retraction 404s → the
+        activity exhausts its bounded retries → the workflow FAILS (fail-safe: the draft
+        stays ``DRAFT_PENDING_SENSORS`` — it is NEVER silently affirmed to ``PENDING_REVIEW``).
+        So enable the endpoint BEFORE enabling optimistic delivery in production (the
+        optimistic path is itself default-OFF, so this ordering is an explicit ops rollout).
+        """
+        body = _prune(
+            {
+                "tenantId": tenant_id,
+                "userId": user_id,
+                "jobId": job_id,
+                "contextItemId": context_item_id,
+                "contextItemVersionId": context_item_version_id,
+                "gateDecision": gate_decision,
+                "reason": reason,
+                "claimsFlagged": list(claims_flagged) if claims_flagged is not None else None,
+                "sensorScores": sensor_scores,
+                "guardrailDecisions": guardrail_decisions,
+                "reducedAssurance": reduced_assurance,
+                "ragTriadScore": rag_triad_score,
+            }
+        )
+        data = await self._post(
+            f"/consultations/{consultation_id}/retraction", body, idempotency_key=idempotency_key
+        )
+        return RetractDraftResponse(
+            retracted=bool(data.get("retracted", False)),
+            context_item_id=data.get("contextItemId", ""),
+        )
 
     async def record_escalation(
         self,

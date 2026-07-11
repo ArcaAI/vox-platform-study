@@ -58,12 +58,16 @@ HIGHEST_HARM_SENSORS: tuple[str, ...] = (entity_faithfulness.NAME, numeric_dose.
 # ``"groundedness"`` is the inferential per-claim entailment gate, and
 # ``"citation_verify"`` is the Phase-3 per-claim citation-entailment gate (both
 # regen the offending ``details["sections"]``, FLAG once the budget is exhausted).
+# ``"atomic_fact"`` (TASK-481 E2) is the DETERMINISTIC reference-free atomic-claim
+# entailment gate — an ungrounded atomic claim regens, then FLAGs on exhaustion (which
+# the optimistic-delivery retraction contract turns into a draft retraction).
 REGEN_FIXABLE_SENSORS: tuple[str, ...] = (
     schema_validity.NAME,
     coverage_omission.NAME,
     citation_presence.NAME,
     "groundedness",
     "citation_verify",
+    "atomic_fact",
 )
 
 

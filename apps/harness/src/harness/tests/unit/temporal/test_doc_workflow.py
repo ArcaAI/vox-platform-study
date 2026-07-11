@@ -877,9 +877,12 @@ class TestOptimisticDelivery:
         assert order == ["run_inferential_sensors", "persist_draft"]
 
     @pytest.mark.asyncio
-    async def test_flag_on_unsafe_safety_delivers_then_finalizes_flag(self):
-        """A delivered draft is still delivered early even when assurance will FLAG;
-        the FLAG lands in finalize (it gates sign-off, not delivery)."""
+    async def test_flag_on_unsafe_safety_delivers_then_retracts(self):
+        """TASK-481 (E2): a delivered draft is still delivered early, but when assurance
+        FLAGs it is RETRACTED (marked RETRACTED + WORM + clinician event) INSTEAD of
+        silently backfilling the FLAG verdict via finalize — the retraction net for the
+        accepted TASK-453 pre-assurance sign-off window. RED against today's finalize-only
+        path (no retraction)."""
         recorder = StubRecorder()
         config = StubConfig(verdicts=["PASS"], inferential_verdicts=["UNSAFE"])
         async with await _env() as env:
@@ -896,16 +899,24 @@ class TestOptimisticDelivery:
                     id=f"harness-doc-{uuid.uuid4()}",
                     task_queue=tq,
                 )
-                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                # No sign-off: a retracted draft terminates WITHOUT waiting at the gate.
                 result = await handle.result()
 
         assert result.decision == "FLAG"
+        assert result.retracted is True
+        assert result.approved is False
         assert result.regens_used == 0
-        # Delivered early despite the eventual FLAG.
+        # Delivered early despite the eventual FLAG...
         assert recorder.persist_draft_inputs[0].phase == HARNESS_DRAFT_PHASE_EARLY
-        fin = recorder.finalize_inputs[0]
-        assert fin.gate_decision == "FLAG"
-        assert fin.guardrail_decisions["safety"]["decision"] == "FLAG"
+        # ...then RETRACTED instead of finalized: retract_draft carries the FLAG verdict +
+        # the offending safety claims; finalize is NOT called, and the gate never runs.
+        assert recorder.calls["retract_draft"] == 1
+        assert recorder.calls["finalize_assurance"] == 0
+        assert recorder.calls["record_gate_decision"] == 0
+        ret = recorder.retract_inputs[0]
+        assert ret.gate_decision == "FLAG"
+        assert ret.context_item_id == "ctx-draft-1"
+        assert "violence" in ret.claims_flagged
 
     @pytest.mark.asyncio
     async def test_flag_on_inferential_degraded_finalizes_reduced_assurance(self):
@@ -1029,8 +1040,9 @@ class TestAssuranceSignals:
         ]
 
     @pytest.mark.asyncio
-    async def test_regen_budget_exhausted_untouched_finalizes_flag(self):
-        """Q1 — REGEN that never settles is bounded by max_regen, then FLAGs (no infinite swap)."""
+    async def test_regen_budget_exhausted_untouched_retracts(self):
+        """Q1 — REGEN that never settles is bounded by max_regen, then FLAGs (no infinite
+        swap). TASK-481 (E2): the exhausted FLAG RETRACTS the last re-delivered draft."""
         recorder = StubRecorder()
         config = StubConfig(
             verdicts=["PASS", "PASS", "PASS"],
@@ -1050,20 +1062,23 @@ class TestAssuranceSignals:
                     id=f"harness-doc-{uuid.uuid4()}",
                     task_queue=tq,
                 )
-                await handle.signal(HarnessDocWorkflow.approval, _approval())
                 result = await handle.result()
 
-        # 2 regens consumed, then the unresolved REGEN escalates to FLAG.
+        # 2 regens consumed, then the unresolved REGEN escalates to FLAG -> retraction.
         assert result.decision == "FLAG"
+        assert result.retracted is True
         assert result.regens_used == 2
         assert recorder.calls["generate"] == 3  # initial + 2 regens
         assert recorder.calls["run_inferential_sensors"] == 3
         assert recorder.calls["persist_draft"] == 3  # early + 2 re-deliveries
-        assert recorder.finalize_inputs[0].gate_decision == "FLAG"
+        assert recorder.calls["retract_draft"] == 1
+        assert recorder.calls["finalize_assurance"] == 0
+        assert recorder.retract_inputs[0].gate_decision == "FLAG"
 
     @pytest.mark.asyncio
     async def test_edit_disables_silent_regen_surfaces_flag(self):
-        """Q1 — once edited, a REGEN verdict does NOT regenerate; it converts to a FLAG."""
+        """Q1 — once edited, a REGEN verdict does NOT regenerate; it converts to a FLAG,
+        and the edited-version draft is RETRACTED (TASK-481 E2) bound to the edit."""
         recorder = StubRecorder()
         config = StubConfig(verdicts=["PASS", "PASS"], inferential_verdicts=["REGEN", "REGEN"])
         async with await _env() as env:
@@ -1086,20 +1101,23 @@ class TestAssuranceSignals:
                     id=wf_id,
                     task_queue=tq,
                 )
-                await handle.signal(HarnessDocWorkflow.approval, _approval())
                 result = await handle.result()
 
-        # REGEN converted to FLAG — no silent swap of an edited note.
+        # REGEN converted to FLAG — no silent swap of an edited note — then RETRACTED.
         assert result.decision == "FLAG"
+        assert result.retracted is True
         assert result.regens_used == 0
         assert recorder.calls["generate"] == 1  # NO re-generation
         assert recorder.calls["persist_draft"] == 1  # NO re-delivery
         assert recorder.calls["run_inferential_sensors"] == 2  # original + re-run on edit
         # assurance re-bound to the edited content + version.
         assert recorder.inferential_inputs[1].note_text == _EDITED_NOTE
-        fin = recorder.finalize_inputs[0]
-        assert fin.gate_decision == "FLAG"
-        assert fin.context_item_version_id == "ver-edit-1"
+        assert recorder.calls["retract_draft"] == 1
+        assert recorder.calls["finalize_assurance"] == 0
+        ret = recorder.retract_inputs[0]
+        assert ret.gate_decision == "FLAG"
+        # The retraction binds to the clinician-edited version (mirrors finalize's binding).
+        assert ret.context_item_version_id == "ver-edit-1"
 
     @pytest.mark.asyncio
     async def test_edit_during_assurance_rebinds_and_reruns(self):

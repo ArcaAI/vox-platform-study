@@ -229,6 +229,18 @@ class Settings(BaseSettings):
     # rollout, never a silent default flip, and it is inert until TASK-476 codes exist.
     ner_priors_enabled: bool = False
 
+    # TASK-481 (E2) — reference-free atomic-fact verifier kill-switch
+    # (HARNESS_ATOMIC_FACT_ENABLED, default OFF). When ON, the ``run_inferential_sensors``
+    # activity runs the DETERMINISTIC self-hosted-NLI atomic-fact verifier ALONGSIDE the
+    # LLM-judge groundedness sensor (a second, model-cheap groundedness gate). Read at
+    # runtime inside the (non-deterministic) activity — NOT the workflow body — so it adds
+    # no new command / snapshot / patch marker (the sensor result flows through the
+    # activity output; the workflow command sequence is byte-identical, replay-safe).
+    # Default OFF ⇒ enabling it is an explicit ops rollout once a self-hosted NLI model
+    # (MiniCheck / AlignScore / HHEM-class) is provisioned; the hermetic default entailer
+    # (:class:`DeterministicOverlapEntailer`) needs no model and never auto-PASSes.
+    atomic_fact_enabled: bool = False
+
     # SMR generation defaults (None => let the SMR service choose).
     smr_provider: str | None = None
     smr_model: str | None = None

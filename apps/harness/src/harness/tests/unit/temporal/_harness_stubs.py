@@ -27,6 +27,7 @@ from harness.services.api_client import (
     FinalizeAssuranceResponse,
     PersistEntitiesResponse,
     RecordGateResponse,
+    RetractDraftResponse,
 )
 from harness.services.sensor_runner import SensorRunOutput
 from harness.services.smr_client import SmrGenerationResult
@@ -47,6 +48,7 @@ from harness.temporal.models import (
     RecordGateInput,
     ReportProgressInput,
     ReportProgressResult,
+    RetractDraftInput,
     RetrieveContextInput,
     RetrievedContext,
     RunInferentialSensorsInput,
@@ -112,6 +114,8 @@ class StubRecorder:
     persist_draft_inputs: list[PersistDraftInput] = field(default_factory=list)
     # TASK-355 Phase D (Slice 4a): the finalize_assurance payloads (optimistic path).
     finalize_inputs: list[FinalizeAssuranceInput] = field(default_factory=list)
+    # TASK-481 (E2): the retract_draft payloads (optimistic FLAG -> retraction net).
+    retract_inputs: list[RetractDraftInput] = field(default_factory=list)
     record_inputs: list[RecordGateInput] = field(default_factory=list)
     escalate_inputs: list[EscalateInput] = field(default_factory=list)
     inferential_inputs: list[RunInferentialSensorsInput] = field(default_factory=list)
@@ -391,6 +395,16 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
         recorder.finalize_inputs.append(payload)
         return FinalizeAssuranceResponse(recorded=True, context_item_id=payload.context_item_id)
 
+    @activity.defn(name="retract_draft")
+    async def retract_draft(payload: RetractDraftInput) -> RetractDraftResponse:
+        # TASK-481 (E2): the optimistic FLAG retraction net — apps/api marks the delivered
+        # draft RETRACTED + WORM + clinician event. The stub records the payload so tests can
+        # assert the FLAG verdict + offending claims that drove the retraction.
+        recorder.calls["retract_draft"] += 1
+        recorder.call_order.append("retract_draft")
+        recorder.retract_inputs.append(payload)
+        return RetractDraftResponse(retracted=True, context_item_id=payload.context_item_id)
+
     @activity.defn(name="record_gate_decision")
     async def record_gate_decision(payload: RecordGateInput) -> RecordGateResponse:
         recorder.calls["record_gate_decision"] += 1
@@ -427,6 +441,7 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
         run_inferential_sensors,
         persist_draft,
         finalize_assurance,
+        retract_draft,
         record_gate_decision,
         escalate_gate,
         report_progress,

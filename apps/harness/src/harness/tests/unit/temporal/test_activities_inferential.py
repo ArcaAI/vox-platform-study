@@ -231,3 +231,69 @@ class TestHeartbeat:
         # The activity heartbeats during the pass so Temporal can detect a hung worker
         # within heartbeat_timeout (60s) rather than start_to_close (900s).
         assert len(beats) >= 1
+
+
+class _StubNli:
+    """Deterministic self-hosted-NLI stub (no model/network) — entailed unless marked."""
+
+    def __init__(self, *, ungrounded_markers: tuple[str, ...] = (), error: Exception | None = None):
+        self._markers = ungrounded_markers
+        self._error = error
+
+    async def entail(self, premise: str, hypothesis: str) -> bool:
+        if self._error is not None:
+            raise self._error
+        return not any(m in hypothesis.lower() for m in self._markers)
+
+
+class TestAtomicFactWiring:
+    """TASK-481 (E2) — the DETERMINISTIC atomic-fact verifier runs ALONGSIDE the judge
+    sensors inside ``run_inferential_sensors`` when ``HARNESS_ATOMIC_FACT_ENABLED`` is on.
+
+    Wired as a fresh activity-side signal (read at runtime — no workflow command, replay-
+    safe): a healthy pass emits an ``atomic_fact`` guardrail decision; a degraded backend
+    degrades that decision (never auto-PASS); default OFF ⇒ the sensor never runs.
+    """
+
+    @pytest.mark.asyncio
+    async def test_disabled_by_default_no_atomic_fact_signal(self, env, monkeypatch):
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: _StubJudge())
+        monkeypatch.setattr(
+            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+        )
+        result = await env.run(activities.run_inferential_sensors, _cited_claim_input())
+        assert "atomic_fact" not in result.guardrail_decisions
+
+    @pytest.mark.asyncio
+    async def test_enabled_adds_deterministic_atomic_fact_signal(self, env, monkeypatch):
+        from harness.core.config import Settings
+
+        monkeypatch.setattr(activities, "get_settings", lambda: Settings(atomic_fact_enabled=True))
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: _StubJudge())
+        monkeypatch.setattr(
+            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+        )
+        monkeypatch.setattr(activities, "_atomic_fact_entailer", lambda s: _StubNli())
+        result = await env.run(activities.run_inferential_sensors, _cited_claim_input())
+        # A grounded note -> atomic_fact PASSes and is a real (non-degraded) gate signal.
+        assert result.guardrail_decisions["atomic_fact"]["decision"] == "PASS"
+        assert any(r.name == "atomic_fact" for r in result.results)
+        assert result.degraded is False
+
+    @pytest.mark.asyncio
+    async def test_atomic_fact_backend_error_degrades_never_auto_passes(self, env, monkeypatch):
+        from harness.core.config import Settings
+
+        monkeypatch.setattr(activities, "get_settings", lambda: Settings(atomic_fact_enabled=True))
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: _StubJudge())
+        monkeypatch.setattr(
+            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+        )
+        monkeypatch.setattr(
+            activities,
+            "_atomic_fact_entailer",
+            lambda s: _StubNli(error=RuntimeError("nli offline")),
+        )
+        result = await env.run(activities.run_inferential_sensors, _cited_claim_input())
+        assert result.guardrail_decisions["atomic_fact"]["decision"] == "DEGRADED"
+        assert result.degraded is True

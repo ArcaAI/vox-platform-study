@@ -262,6 +262,37 @@ class TestCitationVerifyRegenFixable:
         assert verdict.sections_to_regen == ["A"]
 
 
+class TestAtomicFactRegenFixable:
+    """TASK-481 (E2) — ``atomic_fact`` is regen-fixable, like groundedness: an ungrounded
+    atomic claim regens the note, FLAGs on budget exhaustion (feeding the retraction gate)."""
+
+    def test_atomic_fact_registered_as_regen_fixable(self):
+        from harness.sensors.inferential.atomic_fact import NAME as ATOMIC_FACT_NAME
+
+        assert ATOMIC_FACT_NAME in REGEN_FIXABLE_SENSORS
+
+    def test_ungrounded_atomic_claim_regens_with_budget(self):
+        from harness.sensors.inferential.atomic_fact import NAME as ATOMIC_FACT_NAME
+
+        af = SensorResult(
+            name=ATOMIC_FACT_NAME,
+            score=0.5,
+            passed=False,
+            claims_flagged=["Start warfarin"],
+            details={"ungrounded": ["Start warfarin"]},
+        )
+        verdict = aggregate([*_all_pass(), af], regens_remaining=1)
+        assert verdict.decision is GateDecision.REGEN
+        assert "Start warfarin" in verdict.claims_flagged
+
+    def test_ungrounded_atomic_claim_flags_on_budget_exhaustion(self):
+        from harness.sensors.inferential.atomic_fact import NAME as ATOMIC_FACT_NAME
+
+        af = SensorResult(name=ATOMIC_FACT_NAME, score=0.0, passed=False, claims_flagged=["c-x"])
+        verdict = aggregate([*_all_pass(), af], regens_remaining=0)
+        assert verdict.decision is GateDecision.FLAG
+
+
 class TestReducedAssurance:
     """A degraded inferential backend must NOT force a blanket FLAG (reduced assurance)."""
 

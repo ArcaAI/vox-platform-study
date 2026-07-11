@@ -16,6 +16,12 @@ the activity wires together.
 
 from __future__ import annotations
 
+from harness.sensors.inferential.atomic_fact import NAME as ATOMIC_FACT_NAME
+from harness.sensors.inferential.atomic_fact import (
+    AtomicFactSensor,
+    DeterministicOverlapEntailer,
+    NliEntailer,
+)
 from harness.sensors.inferential.citation_verify import NAME as CITATION_VERIFY_NAME
 from harness.sensors.inferential.citation_verify import CitationVerifySensor
 from harness.sensors.inferential.granite_client import (
@@ -34,6 +40,10 @@ __all__ = [
     "SAFETY_NAME",
     "CitationVerifySensor",
     "CITATION_VERIFY_NAME",
+    "AtomicFactSensor",
+    "ATOMIC_FACT_NAME",
+    "NliEntailer",
+    "DeterministicOverlapEntailer",
     "GraniteGuardianClient",
     "GraniteGroundednessJudge",
 ]
