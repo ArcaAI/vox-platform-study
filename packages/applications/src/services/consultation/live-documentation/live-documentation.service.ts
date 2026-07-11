@@ -592,12 +592,21 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn({ message: 'SMR running-summary call failed', consultationId, error: error instanceof Error ? error.message : String(error) });
     }
 
-    let entities = session.lastPayload?.entities ?? [];
+    // TASK-477 (SOTA C2) — extract-from-source + entity-ground (SPEER). Run NER over the RAW
+    // TRANSCRIPT DELTA (the same `delta || transcript` that feeds SMR), NOT the generated note:
+    // the LLM running note carries a material hallucination base rate, so NER over the note
+    // laundered invented findings/medications into first-class clinical entities. The
+    // transcript-sourced entities are then GROUNDED back to the rendered note (below) — a
+    // mention that survives only in the note with no transcript support is never a candidate
+    // here (NER never sees the note) and is therefore never surfaced.
+    const nerSourceText = delta || transcript;
+    const priorEntities = session.lastPayload?.entities ?? [];
+    let extracted: LiveSummaryEntityDto[] = [];
     let nlpFailed = false;
     let nlpLatencyMs = 0;
     const nlpStartedAt = Date.now();
     try {
-      entities = runningSummary ? await this.callNlp(runningSummary, signal) : [];
+      extracted = nerSourceText ? await this.callNlp(nerSourceText, signal) : [];
       nlpLatencyMs = Date.now() - nlpStartedAt;
     } catch (error) {
       if (isStale()) return this.dropStale(session);
@@ -621,6 +630,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       groundednessLatencyMs = Date.now() - groundednessStartedAt;
       if (isStale()) return this.dropStale(session);
     }
+
+    // Ground the union of prior + newly-extracted transcript entities against the CURRENT note
+    // (TASK-477). Merging with the prior set preserves the running highlight set across flushes
+    // (NER only sees the new delta, but the note is cumulative — recall), and always re-grounding
+    // against the current `runningSummary` keeps offsets valid even on the NLP-failure fallback.
+    const entities = this.groundEntitiesToNote([...priorEntities, ...extracted], runningSummary);
 
     const payload: LiveSummaryEventDto = {
       consultationId,
@@ -1084,6 +1099,43 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       start: e.position?.start,
       end: e.position?.end,
     }));
+  }
+
+  /**
+   * Ground transcript-extracted entities to the rendered note (TASK-477 · SOTA C2 · SPEER).
+   *
+   * NER runs over the raw transcript (the source of truth), so every candidate entity is
+   * transcript-supported by construction. To highlight it in the note the panel renders, each
+   * entity's surface form is RE-LOCATED within `runningSummary` and its `start`/`end` set to
+   * that span — so highlight offsets always index the rendered surface, never a different
+   * string (the raw NER offsets index the transcript delta, not the note). An entity whose
+   * surface form does not occur in the note is DROPPED: there is nothing to anchor a highlight
+   * to, and — because NER never sees the note — a note-only (hallucinated) mention is never a
+   * candidate here, closing the hallucination-laundering path.
+   *
+   * De-duplicated by (case-folded text + type); the first note occurrence wins and input order
+   * is otherwise preserved (prior entities before this flush's newly-extracted ones — the merge
+   * that preserves recall across flushes). Matching is case-insensitive so a sentence-cased note
+   * token still grounds its transcript mention; it is purely lexical (no model) — a paraphrased
+   * mention that shares no surface form with the note is intentionally not surfaced (source-
+   * faithful over recall).
+   */
+  private groundEntitiesToNote(entities: LiveSummaryEntityDto[], note: string): LiveSummaryEntityDto[] {
+    if (!note) return [];
+    const haystack = note.toLowerCase();
+    const seen = new Set<string>();
+    const grounded: LiveSummaryEntityDto[] = [];
+    for (const entity of entities) {
+      const needle = entity.text ?? '';
+      if (!needle.trim()) continue;
+      const key = `${needle.toLowerCase()} ${entity.type}`;
+      if (seen.has(key)) continue;
+      const at = haystack.indexOf(needle.toLowerCase());
+      if (at < 0) continue; // no transcript-supported mention survives in the rendered note → drop
+      seen.add(key);
+      grounded.push({ ...entity, start: at, end: at + needle.length });
+    }
+    return grounded;
   }
 
   /**

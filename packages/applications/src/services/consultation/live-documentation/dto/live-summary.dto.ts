@@ -4,10 +4,14 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  * A single medical entity detected by the NLP service for the running summary.
  *
  * Mirrors the `/api/v1/classify/tokens` NLP response shape, re-keyed for the
- * frontend highlight overlay (`text` → `text`, `entity_type` → `type`, `position.{start,end}` → `start`/`end`).
- * NER is run over `runningSummary`
- * so `start`/`end` are character offsets into that flat text (the same text the
- * panel renders), letting the UI map each entity into the section it belongs to.
+ * frontend highlight overlay (`text` → `text`, `entity_type` → `type`).
+ *
+ * TASK-477 (SOTA C2 · SPEER): NER runs over the RAW TRANSCRIPT (the source of truth), NOT the
+ * generated note, so a summary hallucination can never be laundered into a clinical entity. Each
+ * entity is then GROUNDED — re-located into `runningSummary` — so `start`/`end` are character
+ * offsets into that flat text (the same text the panel renders), letting the UI map each entity
+ * into the section it belongs to. Only transcript-supported mentions that also occur in the
+ * rendered note are surfaced; a note-only mention with no transcript support is never surfaced.
  */
 export class LiveSummaryEntityDto {
   @ApiProperty({ description: 'The recognized text span (NLP `text`)' })
