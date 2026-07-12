@@ -308,7 +308,10 @@ class Settings(BaseSettings):
     atomic_fact_model_path: str | None = None
     atomic_fact_model_id: str = "nvhf/MiniCheck-Flan-T5-Large-Q6_K-GGUF"
     atomic_fact_model_file: str = "minicheck-flan-t5-large-q6_k.gguf"
-    atomic_fact_n_ctx: int = 4096
+    # 512 matches Flan-T5's training context (`n_ctx_train`); MiniCheck windows long
+    # documents to ~512-token chunks, so more only wastes the encoder KV alloc and trips
+    # llama.cpp's `n_ctx_seq > n_ctx_train` overflow warning.
+    atomic_fact_n_ctx: int = 512
     atomic_fact_n_threads: int | None = None
     atomic_fact_n_gpu_layers: int = 0
     # Per-claim entailment decision: P(entailed) >= this ⇒ grounded.

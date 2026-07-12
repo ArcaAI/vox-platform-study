@@ -2749,6 +2749,9 @@ dev = [
     { name = "pytest-mock" },
     { name = "ruff" },
 ]
+groundedness = [
+    { name = "llama-cpp-python" },
+]
 lint = [
     { name = "black" },
     { name = "mypy" },
@@ -2773,6 +2776,7 @@ requires-dist = [
     { name = "gliner2-onnx" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.28.1" },
+    { name = "llama-cpp-python", marker = "extra == 'groundedness'", specifier = ">=0.3.2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.19.1" },
     { name = "mypy", marker = "extra == 'lint'", specifier = ">=1.19.1" },
     { name = "onnxruntime", specifier = ">=1.18.0" },
@@ -2797,7 +2801,7 @@ requires-dist = [
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.41.0" },
 ]
-provides-extras = ["dev", "test", "lint"]
+provides-extras = ["dev", "test", "groundedness", "lint"]
 
 [[package]]
 name = "h11"
@@ -2826,6 +2830,7 @@ name = "harness"
 version = "0.1.0"
 source = { editable = "apps/harness" }
 dependencies = [
+    { name = "boto3" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "jsonschema" },
@@ -2847,6 +2852,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+atomic-fact = [
+    { name = "llama-cpp-python" },
+]
 dev = [
     { name = "black" },
     { name = "boto3-stubs", extra = ["bedrock", "bedrock-runtime"] },
@@ -2901,6 +2909,7 @@ test = [
 requires-dist = [
     { name = "black", marker = "extra == 'dev'", specifier = ">=26.1.0" },
     { name = "black", marker = "extra == 'lint'", specifier = ">=26.1.0" },
+    { name = "boto3", specifier = ">=1.34.0" },
     { name = "boto3", marker = "extra == 'eval'", specifier = ">=1.34.0" },
     { name = "boto3-stubs", extras = ["bedrock-runtime", "bedrock"], marker = "extra == 'dev'", specifier = ">=1.43.0" },
     { name = "boto3-stubs", extras = ["bedrock-runtime", "bedrock"], marker = "extra == 'lint'", specifier = ">=1.43.0" },
@@ -2912,6 +2921,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.28.1" },
     { name = "jsonschema", specifier = ">=4.23.0" },
+    { name = "llama-cpp-python", marker = "extra == 'atomic-fact'", specifier = ">=0.3.2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.19.1" },
     { name = "mypy", marker = "extra == 'lint'", specifier = ">=1.19.1" },
     { name = "numpy", marker = "extra == 'eval'", specifier = ">=1.26" },
@@ -2951,7 +2961,7 @@ requires-dist = [
     { name = "types-jsonschema", marker = "extra == 'lint'", specifier = ">=4.26.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.41.0" },
 ]
-provides-extras = ["dev", "test", "eval", "eval-ragas", "guardrails", "rag", "lint"]
+provides-extras = ["dev", "test", "atomic-fact", "eval", "eval-ragas", "guardrails", "rag", "lint"]
 
 [[package]]
 name = "hf-xet"
@@ -4382,6 +4392,19 @@ sdist = { url = "https://files.pythonhosted.org/packages/f1/45/7fa8f56b17dc0f0a4
 wheels = [
     { url = "https://files.pythonhosted.org/packages/25/f4/ead6e0e37209b07c9baa3e984ccdb0348ca370b77cea3aaea8ddbb097e00/lightning_utilities-0.15.3-py3-none-any.whl", hash = "sha256:6c55f1bee70084a1cbeaa41ada96e4b3a0fea5909e844dd335bd80f5a73c5f91", size = 31906, upload-time = "2026-02-22T14:48:52.488Z" },
 ]
+
+[[package]]
+name = "llama-cpp-python"
+version = "0.3.34"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "diskcache" },
+    { name = "jinja2" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12' or extra == 'extra-6-stt-v2-ml' or extra == 'extra-6-stt-v2-ml-gpu' or extra != 'extra-6-stt-v2-nemo'" },
+    { name = "numpy", version = "2.5.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.12' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo')" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c1/2f/46487e949da42b31847853793ddbfd44c7414e94d4364c9a41f91f30af27/llama_cpp_python-0.3.34.tar.gz", hash = "sha256:d849d286d808284f1d3ec1bd6875572430d29d1f9574a010232caa4e9cef0e35", size = 71617302, upload-time = "2026-07-12T04:33:41.928Z" }
 
 [[package]]
 name = "llvmlite"

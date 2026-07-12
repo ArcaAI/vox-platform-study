@@ -1,6 +1,6 @@
 # TASK-459 — Live-Documentation Durability: Truncation + Owner Lock (C5-04 · C5-06)
 
-- **Status**: Review — implemented, adversarially reviewed (+ I-1/I-2 fixes), merged to `fix/2605-review` (Wave 2 Batch 1)
+- **Status**: Completed — implemented, adversarially reviewed (+ I-1/I-2 fixes), merged to `fix/2605-review` (Wave 2 Batch 1). Hermetic gates evidenced; sole residual is a live-stack real-Redis integration run + an out-of-scope schema follow-up, both skippable per the standing live-stack/HW directive — no code outstanding.
 - **Type**: bugfix (data durability + cost)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · Wave 2 (P1)
 - **Findings**: C5-04 (Med, CONFIRMED) · C5-06 (Med, CONFIRMED) — see [TASK-448 register](../TASK-448-Harness-Loop-Quality-Review/README.md)
@@ -78,4 +78,5 @@ Adversarial review focus: (a) C5-04 — can any truncation sequence still perman
 
 | Date | Change |
 |---|---|
+| 2026-07-12 | **Triage — program closure sweep. Status → Completed.** Implementation merged + adversarially reviewed (I-1/I-2 applied) with hermetic gates evidenced in §Implementation Summary. The only residual is a live-stack real-Redis integration run + an out-of-scope schema follow-up — both skippable per the standing "skip HW/live-stack tests" directive; no code change outstanding. |
 | 2026-07-09 | Ticket scaffolded from TASK-448 findings C5-04/C5-06; both re-verified against the post-Wave-1 tree by read-only scout, confirmed independent of TASK-452's `callNlp` fix. `eval` NX-lock hook identified. No implementation. |

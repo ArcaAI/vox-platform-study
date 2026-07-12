@@ -112,20 +112,51 @@ class LlamaCppMiniCheckEntailer:
 
 
 def _make_llama_logit_fn(llama: object) -> LogitFn:
-    """Best-effort first-decoder-step logit reader over a loaded llama.cpp T5 handle.
+    """First-decoder-step label-logit reader over a loaded llama.cpp T5 handle.
 
-    CALIBRATION-PENDING: the exact llama-cpp-python T5 encode/decode + per-step logits
-    access is version-sensitive and is validated only end-to-end by ``verify_calibration``.
+    Flan-T5 is an ENCODER-DECODER: the high-level ``Llama.eval`` only runs the decoder
+    (``llama_decode``) and aborts with ``"llama_encode must be called first"`` on a T5
+    graph. This drives the low-level path llama-cpp-python's completion API omits for
+    encoder-decoder models: tokenize the MiniCheck prompt → ``llama_encode`` the encoder
+    input → ``llama_decode`` a single decoder-start token → read that step's vocab logits
+    and index the label tokens (ids 3 / 209). ``P(yes)`` here is the entailment probability.
+
+    Uses llama-cpp-python internals (``_model`` / ``_ctx`` / ``_internals.LlamaBatch``),
+    which are version-sensitive — the fail-closed ``verify_calibration`` gate validates this
+    wiring end-to-end on the host before the entailer is used. (Mirrors the guardrail
+    TASK-479 scorer; the two services can't share a package.)
     """
-    import numpy as np  # local import — only when a real model is loaded
+    import numpy as np  # local imports — only when a real model is loaded
+    import llama_cpp
+    from llama_cpp._internals import LlamaBatch
+
+    model = llama._model  # type: ignore[attr-defined]  # _LlamaModel
+    ctx = llama._ctx  # type: ignore[attr-defined]      # _LlamaContext
+    n_vocab = int(llama.n_vocab())  # type: ignore[attr-defined]
+
+    # T5 decoder-start token (pad id 0 for Flan-T5); fall back sanely if metadata omits it.
+    dec_start = llama_cpp.llama_model_decoder_start_token(model.model)
+    if dec_start is None or dec_start < 0:
+        bos = model.token_bos()
+        dec_start = bos if bos is not None and bos >= 0 else 0
+
+    def _clear_kv() -> None:
+        mem = llama_cpp.llama_get_memory(ctx.ctx)
+        if mem is not None:
+            llama_cpp.llama_memory_clear(mem, True)
 
     def logit_fn(prompt: str) -> tuple[float, float]:
-        llama.reset()  # type: ignore[attr-defined]
-        tokens = llama.tokenize(prompt.encode("utf-8"), add_bos=True, special=True)  # type: ignore[attr-defined]
-        llama.eval(tokens)  # type: ignore[attr-defined]
-        logits = np.asarray(llama.scores, dtype=np.float64).reshape(-1, llama.n_vocab())  # type: ignore[attr-defined]
-        last = logits[llama.n_tokens - 1]  # type: ignore[attr-defined]
-        return float(last[MINICHECK_LABEL_TOKEN_NO]), float(last[MINICHECK_LABEL_TOKEN_YES])
+        _clear_kv()  # score each (premise, hypothesis) independently — no cross-pair state
+        # T5 has no BOS (token_bos == -1); `special=True` maps the embedded '</s>'.
+        enc = llama.tokenize(prompt.encode("utf-8"), add_bos=False, special=True)  # type: ignore[attr-defined]
+        enc_batch = LlamaBatch(n_tokens=len(enc), embd=0, n_seq_max=1, verbose=False)
+        enc_batch.set_batch(enc, n_past=0, logits_all=False)
+        ctx.encode(enc_batch)  # llama_encode — populates the cross-attention state
+        dec_batch = LlamaBatch(n_tokens=1, embd=0, n_seq_max=1, verbose=False)
+        dec_batch.set_batch([dec_start], n_past=0, logits_all=False)
+        ctx.decode(dec_batch)  # one decoder step; set_batch marks it logits=True
+        logits = np.ctypeslib.as_array(ctx.get_logits(), shape=(n_vocab,)).astype(np.float64)
+        return float(logits[MINICHECK_LABEL_TOKEN_NO]), float(logits[MINICHECK_LABEL_TOKEN_YES])
 
     return logit_fn
 
@@ -138,7 +169,7 @@ _ENTAILER_CACHE: dict[str, LlamaCppMiniCheckEntailer] = {}
 def load_minicheck_entailer(
     *,
     model_path: str,
-    n_ctx: int = 4096,
+    n_ctx: int = 512,  # Flan-T5 train ctx; MiniCheck windows to ~512-token chunks
     n_threads: int | None = None,
     n_gpu_layers: int = 0,
     threshold: float = 0.5,

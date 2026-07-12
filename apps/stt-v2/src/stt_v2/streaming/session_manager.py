@@ -59,6 +59,29 @@ logger = structlog.get_logger(__name__)
 
 StreamingAsrCallable = Callable[[np.ndarray, int], Awaitable[dict[str, Any]]]
 
+
+def _build_sortformer_diarizer(diarization_config: Any) -> Any:
+    """TASK-475 (Theme B2) — build the Streaming Sortformer diarizer, or None.
+
+    Returns a fresh :class:`StreamingSortformerDiarizer` only when diarization is
+    ENABLED and its ``backend`` is ``"sortformer"``; otherwise None (the default
+    embedding path is untouched). Used at BOTH session open and crash recovery so
+    a recovered sortformer session reconstructs a fresh, stateless diarizer
+    (AC-4) rather than silently losing diarization. The diarizer lazy-loads its
+    NeMo backend and degrades to "no labels" until the weights are staged, so
+    this construction is safe on a model-less host.
+    """
+    if not diarization_config:
+        return None
+    if not getattr(diarization_config, "enabled", False):
+        return None
+    if getattr(diarization_config, "backend", "embedding") != "sortformer":
+        return None
+
+    from stt_v2.diarization.streaming_sortformer import StreamingSortformerDiarizer
+
+    return StreamingSortformerDiarizer(diarization_config)
+
 # TASK-456 C2-03 — shared Redis Hash holding transcripts whose durable persist
 # exhausted its inline retries on a transient error. The reaper loop (any
 # worker) re-drives entries with an idempotency key; because it lives on shared
@@ -569,8 +592,13 @@ class SessionManager:
             metadata.diarization = effective_diarization
             await session.force_persist()
 
+            # TASK-475 (Theme B2) — sortformer sessions use the self-hosted
+            # Streaming Sortformer diarizer INSTEAD of the embedding
+            # SpeakerIdentifier; the embedding preseed/tracker path is skipped.
+            sortformer_diarizer = _build_sortformer_diarizer(diarization_config)
+
             speaker_identifier = None
-            if effective_diarization and diarization_config:
+            if effective_diarization and diarization_config and sortformer_diarizer is None:
                 from stt_v2.diarization.embedding_service import get_embedding_service
                 from stt_v2.diarization.speaker_identifier import SpeakerIdentifier
                 from stt_v2.diarization.speaker_tracker import SpeakerTracker
@@ -659,6 +687,7 @@ class SessionManager:
                 postprocessing_config=postprocessing_config,
                 initial_prompt=initial_prompt,
                 speaker_identifier=speaker_identifier,
+                sortformer_diarizer=sortformer_diarizer,
                 prev_text_context_words=prev_text_context_words,
                 max_words_per_second=max_words_per_second,
                 max_segment_text_chars=max_segment_text_chars,
@@ -2790,17 +2819,26 @@ class SessionManager:
                         pipeline_config, meta.session_id
                     )
 
+                    recovery_diarization_config = (
+                        pipeline_config.diarization if pipeline_config else None
+                    )
+
                     inference_worker = StreamingInferenceWorker(
                         result_publisher=publisher,
                         asr_pipeline=asr_pipeline,
                         tenant_id=meta.tenant_id,
                         consultation_id=meta.consultation_id,
-                        diarization_config=(
-                            pipeline_config.diarization if pipeline_config else None
-                        ),
+                        diarization_config=recovery_diarization_config,
                         postprocessing_config=recovery_postprocessing_config,
                         initial_prompt=recovery_initial_prompt,
-                        speaker_identifier=None,  # Recovery loses session state
+                        speaker_identifier=None,  # Recovery loses embedding tracker state
+                        # TASK-475 AC-4 — the Streaming Sortformer diarizer is
+                        # stateless per-utterance, so a recovered sortformer
+                        # session reconstructs a fresh one (vs. None) and keeps
+                        # emitting turn labels after a crash-restart.
+                        sortformer_diarizer=_build_sortformer_diarizer(
+                            recovery_diarization_config
+                        ),
                         prev_text_context_words=prev_text_context_words,
                         max_words_per_second=max_words_per_second,
                         gloss_callable=recovery_gloss_pipeline,

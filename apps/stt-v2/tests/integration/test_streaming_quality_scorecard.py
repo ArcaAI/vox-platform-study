@@ -141,6 +141,32 @@ def test_committed_revision_rate_excludes_tentative_tail() -> None:
     # A stable, forward-extending committed prefix is not a revision.
     assert committed_revision_rate([("the", 3), ("the patient", 11)])["rate"] == 0.0
 
+    # A tail-only frame carries NO committed-prefix info: the STT pipeline emits
+    # stableChars=0 on TASK-471 tentative-tail refreshes (the UI carries the settled
+    # prefix forward, never un-settling it). A non-empty committed prefix followed by
+    # such an sc=0 frame is NOT a committed rewrite — the metric must skip the frame,
+    # else it false-positives on every tail refresh (regression observed live: the
+    # TASK-470 scorecard on the …402 pipeline reported ~0.10-0.15 committed churn that
+    # was ENTIRELY sc→0 tail frames, not settled-text flicker).
+    assert (
+        committed_revision_rate([("the patient has", 11), ("the patient has more", 0)])["rate"]
+        == 0.0
+    )
+    # Interleaved commit / tail / commit (the live wire pattern sc 11→0→19): the sc=0
+    # tail frame must not break the prefix comparison; the forward-extending commit is clean.
+    assert (
+        committed_revision_rate(
+            [("the patient", 11), ("the patient ghosted tail", 0), ("the patient is here", 19)]
+        )["rate"]
+        == 0.0
+    )
+    # A genuine committed rollback SEPARATED by a tail frame is STILL caught — skipping
+    # sc=0 frames carries the last committed prefix forward, so it is not blind to churn.
+    assert (
+        committed_revision_rate([("the patient has", 15), ("x", 0), ("the patient", 11)])["rate"]
+        > 0.0
+    )
+
 
 def test_quality_metric_functions_are_correct() -> None:
     """Pin the WER / recall / regression-gate math (runs with no services up)."""

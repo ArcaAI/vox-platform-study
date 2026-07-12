@@ -1,22 +1,22 @@
 {
-  "_comment": "TASK-470 (Theme F) committed regression thresholds — the single source of truth A1/A2/A3/B/C are judged against. TRANSPORT baselines are TASK-455's captured LocalAgreement-2 numbers (stt-loss-report.json: commit-latency P50 6023.2 / P99 7624.2 ms, partial_revision.rate 0.0, seq.gap_count 0, audio_coverage_ratio 0.996). QUALITY baselines are null until the orchestrator's LIVE-STACK scorecard run captures them on the clinical fixtures; an ABSOLUTE bootstrap ceiling/floor gates them in the meantime. Tighten quality 'baseline' to the captured value (keeping the documented epsilon) once the live scorecard lands.",
+  "_comment": "TASK-470 (Theme F) committed regression thresholds — the single source of truth A1/A2/A3/B/C are judged against. TRANSPORT baselines are TASK-455's captured LocalAgreement-2 numbers (stt-loss-report.json: commit-latency P50 6023.2 / P99 7624.2 ms, partial_revision.rate 0.0, seq.gap_count 0, audio_coverage_ratio 0.996). QUALITY captured on 2026-07-12 by the live-stack scorecard over the 3 clinical fixtures (pipeline …402 turbo-whisper-large-v3, Apple-Silicon CPU). FINDING: this pipeline is run-to-run NON-DETERMINISTIC (greedy decode + CPU threading) — across repeated live runs medical_wer moved 0.0328↔0.0656 (smooth, ~0.03 swing), keyterm_recall 1.0↔0.833 and keyphrase_recall 0.75↔1.0 (DISCRETE recall cliff: dropping 1 of ~6 terms = −0.167, far exceeding any sane epsilon), and committed_revision_rate 0.0↔0.18 (see the A1 note). Consequence: only medical_wer carries a captured 'baseline' (its epsilon comfortably exceeds the observed WER swing); the recall metrics keep baseline=null and are gated by the ABSOLUTE floors only — a tight vs-baseline epsilon on a discrete recall cliff manufactures flaky reds, whereas the 0.70 floor is a real, stable guardrail that still catches a genuinely regressed model. The absolute ceiling/floor back-stop every metric regardless.",
   "medical_wer": {
-    "baseline": null,
+    "baseline": 0.0656,
     "ceiling": 0.35,
     "epsilon": 0.05,
-    "_note": "Lower is better; GUARDRAIL. ceiling 0.35 is a conservative bootstrap for clean scripted clinical reads on whisper-large-v3-turbo (SOTA short-form English medical WER is ~0.10-0.20; 0.35 leaves headroom yet still catches a badly-regressed model). epsilon 0.05 = the allowed drift once baseline is captured."
+    "_note": "Lower is better; GUARDRAIL. baseline 0.0656 = worst captured clip (medication_review_01); WER is smooth over 60+ words so the run-to-run swing (~0.03) fits inside epsilon. ceiling 0.35 back-stop for clean scripted clinical reads on whisper-large-v3-turbo (SOTA short-form English medical WER ~0.10-0.20). With epsilon 0.05 the effective regression limit is 0.1156 — a badly-regressed model still trips, every observed clean clip (0.0328/0.0484/0.0645/0.0656) passes."
   },
   "keyterm_recall": {
     "baseline": null,
     "floor": 0.70,
     "epsilon": 0.05,
-    "_note": "Higher is better; GUARDRAIL — the 'did we drop the drug/dose/finding' catcher. floor 0.70 bootstrap; epsilon 0.05 drift once baseline captured."
+    "_note": "Higher is better; GUARDRAIL — the 'did we drop the drug/dose/finding' catcher. baseline INTENTIONALLY null: live capture showed keyterm_recall wobbling 1.0↔0.833 run-to-run (a discrete −0.167 cliff per dropped term) on the non-deterministic CPU pipeline, so a vs-baseline epsilon 0.05 would flake. The absolute floor 0.70 is the robust gate — a real regression (drug/dose/finding systematically dropped) still trips it; single-term ASR jitter does not. epsilon retained for when a deterministic (GPU/beam) pipeline lands and a baseline can be captured."
   },
   "keyphrase_recall": {
     "baseline": null,
     "floor": 0.70,
     "epsilon": 0.05,
-    "_note": "Higher is better; GUARDRAIL. Subsequence (looser) recall for longer descriptive phrases. floor 0.70 bootstrap."
+    "_note": "Higher is better; GUARDRAIL. Subsequence (looser) recall for longer descriptive phrases. baseline INTENTIONALLY null for the same reason as keyterm_recall: live capture showed 0.75↔1.0 run-to-run wobble (discharge_summary_01 intermittently misses 'follow up with primary care'). Gated by the absolute floor 0.70; epsilon retained for a future deterministic pipeline."
   },
   "committed_revision_rate": {
     "baseline": 0.0,

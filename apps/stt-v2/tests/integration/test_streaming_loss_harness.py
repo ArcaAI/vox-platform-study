@@ -381,24 +381,34 @@ def committed_revision_rate(entries: Sequence[tuple[str, int | None]]) -> dict[s
     compares only the LocalAgreement-2 committed region ``text[:stable_chars]`` —
     the settled text the UI renders as final. Re-transcribing the not-yet-committed
     tentative tail (``text[stable_chars:]``, which the UI ghosts) is by design and
-    is NOT churn, so it does not count here. ``stable_chars`` None/≤0 ⇒ nothing
-    committed yet ⇒ empty prefix ⇒ never a rewrite. This is the real caption-churn
-    guardrail; LA-2's monotonic commit-with-rollback keeps it ≈ 0, so a non-trivial
-    value means genuine settled-text flicker (a real regression), not tail volatility.
+    is NOT churn, so it does not count here.
+
+    ``stable_chars`` None/≤0 carries NO committed-prefix information for that frame:
+    it is a tentative-tail-only refresh (TASK-471 emits stableChars=0 on those), and
+    the UI carries the previously-settled prefix forward unchanged — it does NOT
+    un-settle it. So such frames are SKIPPED, not read as a retraction to empty; each
+    committed frame is compared against the last frame that actually reported a
+    committed prefix. This is the real caption-churn guardrail; LA-2's monotonic
+    commit-with-rollback keeps it ≈ 0, so a non-trivial value means genuine
+    settled-text flicker (a real regression), not tail volatility.
     """
 
-    def _committed(text: str, sc: int | None) -> str:
+    def _committed(text: str, sc: int | None) -> str | None:
+        # None ⇒ this frame carries no committed-prefix info (skip, carry forward).
         if not isinstance(sc, int) or sc <= 0:
-            return ""
+            return None
         return text[:sc].strip()
 
-    prefixes = [_committed(t, sc) for t, sc in entries]
+    total = len(entries)
     revisions = 0
-    for prev, cur in zip(prefixes, prefixes[1:], strict=False):
-        # An empty prior prefix (nothing committed yet) can never be "rewritten".
-        if prev and not cur.startswith(prev):
+    prev: str | None = None  # last frame that actually reported a committed prefix
+    for text, sc in entries:
+        cur = _committed(text, sc)
+        if not cur:  # no committed info this frame (tail-only) → prefix unchanged
+            continue
+        if prev is not None and not cur.startswith(prev):
             revisions += 1
-    total = len(prefixes)
+        prev = cur
     denom = max(1, total)
     return {
         "partials": total,
