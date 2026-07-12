@@ -21,7 +21,7 @@ class TestDefaults:
     def test_default_routing_chains(self) -> None:
         s = Settings()
         assert s.routing_en == ["azure", "kokoro"]
-        assert s.routing_ml == ["azure", "indic_parler"]
+        assert s.routing_ml == ["azure", "sarvam", "indic_parler"]
 
 
 class TestEnvPrefix:

@@ -72,6 +72,47 @@ class TTSEngine(Protocol):
     def synthesize(self, req: SynthesisRequest) -> AsyncIterator[AudioChunk]: ...
 
 
+@runtime_checkable
+class SynthesisStream(Protocol):
+    """A duplex synthesis stream: push incremental text in, iterate audio out.
+
+    Used by the WS-duplex path (TASK-492) for speak-while-generating: SMR tokens
+    are pushed in as they stream, and audio frames come out per sentence. A
+    non-streaming engine is wrapped by ``SentenceAdapter``; a natively duplex
+    engine (Azure text-stream) exposes this directly via ``open_stream``.
+    """
+
+    async def push_text(self, text: str) -> None:
+        """Feed a text fragment (a trailing space marks a likely boundary)."""
+        ...
+
+    async def flush(self) -> None:
+        """Force-emit any buffered text as a boundary now."""
+        ...
+
+    async def end_input(self) -> None:
+        """Signal no more input; drain the remainder and finish the stream."""
+        ...
+
+    def __aiter__(self) -> AsyncIterator[AudioChunk]: ...
+
+    async def aclose(self) -> None:
+        """Cancel and free upstream resources (Azure connection / GPU task)."""
+        ...
+
+
+@runtime_checkable
+class DuplexTTSEngine(Protocol):
+    """Optional capability: an engine with a native incremental-text duplex.
+
+    The router prefers ``open_stream`` when present (Azure text-stream); every
+    other engine is driven per-sentence through ``SentenceAdapter`` over
+    ``synthesize``.
+    """
+
+    def open_stream(self, req: SynthesisRequest) -> SynthesisStream: ...
+
+
 class ProviderRegistry:
     """Name → engine registry (mirrors smr_v2.providers.base.ProviderRegistry)."""
 

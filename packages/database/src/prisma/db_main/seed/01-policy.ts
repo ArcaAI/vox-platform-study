@@ -155,6 +155,10 @@ export const DEFAULT_POLICIES = [
             // implies `read` (used by the GET routes). Tenant-scoped; the controller
             // pins every read/write to the caller's tenant.
             { action: 'manage', subject: 'PipelinePolicy', conditions: { tenantId: '${context.tenantId}' } },
+            // TASK-496 — tenant admins manage their own tenant's TTS config + BYO
+            // provider credentials. Tenant-scoped; the controller pins every op to
+            // the caller's tenant. `manage` implies `read` (used by the GET routes).
+            { action: 'manage', subject: 'TenantTtsConfig', conditions: { tenantId: '${context.tenantId}' } },
         ],
     },
     {

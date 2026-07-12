@@ -64,6 +64,55 @@ class IndicParlerConfig(BaseSettings):
     device: str = "cpu"
     speaker_ml: str = "Anjali"
     speaker_en: str = "Mary"
+    # Internal-mirror overrides (TASK-495). The HF repo is click-through gated, so
+    # prod loads from an ungated local mirror instead of hf.co. When model_path is
+    # set the model + prompt tokenizer load from it (local_files_only); when
+    # desc_encoder_path is set the description tokenizer (google/flan-t5-large,
+    # baked into config as a Hub id) loads from it instead of fetching. Empty =
+    # dev fallback to the gated hub pull. Pair with HF_HUB_OFFLINE/TRANSFORMERS_OFFLINE.
+    model_path: str = ""
+    desc_encoder_path: str = ""
+
+
+class IndicF5Config(BaseSettings):
+    """AI4Bharat IndicF5 (Malayalam, voice-clone) — EXPERIMENTAL, gated OFF.
+
+    ⚠️ Prod/commercial enablement is NO-GO pending the owner's license review
+    (TASK-494): the released weights are a fine-tune of the CC-BY-NC SWivid F5-TTS
+    base — the MIT tag can't override NonCommercial. Never set
+    TTS_INDICF5_ENABLED=true in production without written clearance.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="TTS_INDICF5_")
+
+    enabled: bool = False
+    hf_model: str = "ai4bharat/IndicF5"
+    model_path: str = ""  # local mirror dir (TASK-495); gated hub repo otherwise
+    device: str = "cpu"
+    ref_audio_path: str = ""  # voice-clone reference wav
+    ref_text: str = ""  # transcript of the reference wav
+
+
+class SarvamConfig(BaseSettings):
+    """Sarvam AI Bulbul TTS provider (cloud; best code-switched Malayalam).
+
+    ⚠️ The public API is NOT PHI-safe (no HIPAA/BAA, 30-day retention, not
+    India-resident) — point `base_url` at the enterprise VPC/on-prem host before
+    enabling for real patient data (TASK-493 §5).
+    """
+
+    model_config = SettingsConfigDict(env_prefix="TTS_SARVAM_", populate_by_name=True)
+
+    enabled: bool = False
+    api_key: SecretStr = SecretStr("")
+    base_url: str = "https://api.sarvam.ai"
+    model: str = "bulbul:v3"
+    voice_ml: str = "ishita"
+    voice_en: str = "ishita"
+    sample_rate: int = 24000
+    timeout_s: int = 30
+    max_concurrent: int = 4
+    use_streaming: bool = False  # phase 2: WebSocket streaming API
 
 
 class Settings(BaseSettings):
@@ -95,13 +144,15 @@ class Settings(BaseSettings):
         default_factory=lambda: ["azure", "kokoro"]
     )
     routing_ml: Annotated[list[str], NoDecode] = Field(
-        default_factory=lambda: ["azure", "indic_parler"]
+        default_factory=lambda: ["azure", "sarvam", "indic_parler"]
     )
 
     # Provider sub-configs (loaded from their own env prefixes)
     azure: AzureSpeechConfig = Field(default_factory=AzureSpeechConfig)
+    sarvam: SarvamConfig = Field(default_factory=SarvamConfig)
     kokoro: KokoroConfig = Field(default_factory=KokoroConfig)
     indic_parler: IndicParlerConfig = Field(default_factory=IndicParlerConfig)
+    indic_f5: IndicF5Config = Field(default_factory=IndicF5Config)
 
     @field_validator("log_level")
     @classmethod

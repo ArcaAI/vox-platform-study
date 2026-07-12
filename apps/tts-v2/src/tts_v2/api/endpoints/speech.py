@@ -35,6 +35,13 @@ class SpeechRequest(BaseModel):
     response_format: AudioFormat = AudioFormat.PCM
     speed: float = Field(default=1.0, ge=0.25, le=4.0)
     stream_format: Literal["audio", "sse"] | None = None
+    # Per-request routing overrides injected by the gateway from a tenant's
+    # resolved config (TASK-496). None → fall back to the static settings chains.
+    routing_en: list[str] | None = None
+    routing_ml: list[str] | None = None
+    allowed_providers: list[str] | None = None
+    # Decrypted per-tenant BYO provider credentials (TASK-496), gateway-injected.
+    provider_overrides: dict[str, dict[str, str]] | None = None
 
 
 @router.post("/audio/speech")
@@ -55,7 +62,14 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
 
     fmt = body.response_format
     stream = tts_router.synthesize(
-        voice_id=body.voice, text=body.input, fmt=fmt, speed=body.speed
+        voice_id=body.voice,
+        text=body.input,
+        fmt=fmt,
+        speed=body.speed,
+        routing_en=body.routing_en,
+        routing_ml=body.routing_ml,
+        allowed_providers=body.allowed_providers,
+        provider_overrides=body.provider_overrides,
     )
 
     # Prime the generator so provider-availability errors become an HTTP status

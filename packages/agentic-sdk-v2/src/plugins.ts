@@ -60,6 +60,8 @@ export { useArcaAudio } from './hooks/useArcaAudio';
 // Lives in the plugins entry so Web Audio / room code stays out of `core`.
 export { useTtsPlayback } from './hooks/useTtsPlayback';
 export type { UseTtsPlayback, SpeakOptions } from './hooks/useTtsPlayback';
+export { useTtsStream } from './hooks/useTtsStream';
+export type { UseTtsStream, TtsStreamOptions } from './hooks/useTtsStream';
 
 // =============================================================================
 // Plugin Manager

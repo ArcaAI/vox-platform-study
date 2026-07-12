@@ -1,0 +1,94 @@
+// ============================================================================
+// Per-Tenant TTS Configuration (TASK-496)
+//
+// DB-backed, tenant-admin-editable TTS "spec", resolved at request time by the
+// apps/api gateway and injected into the STATELESS apps/tts-v2 service (the
+// Python service never touches Postgres). Two models:
+//
+//   1. TenantTtsConfig — ONE row per tenant (tenantId @unique). The reserved
+//      SYSTEM tenant `00000000-0000-0000-0000-000000000000` owns the PLATFORM-
+//      DEFAULT row; a tenant row overrides it field-by-field (null / [] =>
+//      inherit). Resolution (tenant row merged over the SYSTEM default, clamped
+//      to PLATFORM_TTS_LIMITS) lives in TenantTtsConfigService
+//      (packages/applications). Mirrors TenantFrontendConfig (typed columns +
+//      a configJson forward-compat escape hatch).
+//
+//   2. TenantTtsProviderCredential — OPTIONAL per-(tenant, provider) bring-your-
+//      own API key (D1). Vault-Transit ciphertext ONLY (encryptedApiKey +
+//      keyVersion); plaintext is never stored. Mirrors GlobalSetting.encryptedValue.
+//      NOT a SYSTEM-shared read model — credentials are never shared cross-tenant.
+// ============================================================================
+
+model TenantTtsConfig {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields (one config per tenant; SYSTEM tenant = platform default)
+  tenantId String @unique
+
+  // core fields — tenant TTS spec. NULLABLE (and [] for arrays) = inherit from
+  // the SYSTEM default / code default. Every value is clamped to
+  // PLATFORM_TTS_LIMITS by the resolver; the DTO validates enum/range up front.
+  defaultVoiceEn         String?
+  defaultVoiceMl         String?
+  routingEn              String[] @default([])
+  routingMl              String[] @default([])
+  allowedProviders       String[] @default([])
+  defaultFormat          String? // pcm | wav | mp3 (validated in the DTO)
+  defaultSpeed           Float?
+  sampleRate             Int?
+  maxInputChars          Int?
+  sarvamPublicApiAllowed Boolean  @default(false)
+  configJson             Json?    @db.JsonB
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // indexing
+  @@index([tenantId], name: "TenantTtsConfig_tenantId_idx")
+  @@schema("core")
+}
+
+model TenantTtsProviderCredential {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // core fields — bring-your-own provider credential (D1). The plaintext API key
+  // is Vault-Transit encrypted; only the ciphertext + key version live here.
+  provider        String // azure | sarvam
+  endpoint        String?
+  encryptedApiKey Bytes?
+  keyVersion      Int?
+  enabled         Boolean @default(false)
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // indexing — one credential row per (tenant, provider)
+  @@unique([tenantId, provider], name: "TenantTtsProviderCredential_tenant_provider_unique")
+  @@index([tenantId], name: "TenantTtsProviderCredential_tenantId_idx")
+  @@schema("core")
+}

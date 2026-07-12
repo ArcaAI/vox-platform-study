@@ -49,11 +49,25 @@ spec:
             # aliases). Flip to "true" once the credential is provisioned.
             - name: TTS_AZURE_ENABLED
               value: "false"
+            # Sarvam Bulbul (cloud; best ml code-switch). ⚠️ public API is not
+            # PHI-safe — set TTS_SARVAM_BASE_URL to the VPC/on-prem host before
+            # enabling for patient data (TASK-493 §5). Off by default.
+            - name: TTS_SARVAM_ENABLED
+              value: "false"
+            - name: TTS_SARVAM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: hope-secrets
+                  key: TTS_SARVAM_API_KEY
+                  optional: true
             # Self-hosted local engines require the [local] image variant + a GPU
             # node; keep them OFF in the base deployment.
             - name: TTS_KOKORO_ENABLED
               value: "false"
             - name: TTS_PARLER_ENABLED
+              value: "false"
+            # IndicF5 — EXPERIMENTAL; prod enablement NO-GO pending license review (TASK-494).
+            - name: TTS_INDICF5_ENABLED
               value: "false"
           startupProbe:
             httpGet:

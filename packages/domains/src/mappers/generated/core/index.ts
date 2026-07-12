@@ -43,6 +43,8 @@ export * from './TenantBucketEntityMapper';
 export * from './TenantEntitlementEntityMapper';
 export * from './TenantFrontendConfigEntityMapper';
 export * from './TenantStorageConfigEntityMapper';
+export * from './TenantTtsConfigEntityMapper';
+export * from './TenantTtsProviderCredentialEntityMapper';
 export * from './TenantEntityMapper';
 export * from './TenantUsageMeterEntityMapper';
 export * from './TranscriptionJobEntityMapper';

@@ -1,0 +1,300 @@
+import { EffectiveTtsConfigResponse, IConfigService, ITenantTtsConfigService, SecretsService, TtsProviderOverrides } from '@arcaai/applications';
+import { Inject, Logger, Optional } from '@nestjs/common';
+import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway } from '@nestjs/websockets';
+import type { IncomingMessage } from 'http';
+import WebSocket from 'ws';
+import { StreamTicketService } from '../auth/stream-ticket.service';
+
+/**
+ * TASK-492 — WS-duplex TTS gateway. Bridges a browser WebSocket to the tts-v2
+ * streaming endpoint so a summary can be spoken while it is still generating.
+ *
+ * Posture mirrors `SttWsGateway` (TASK-307 W5.8): the handshake is gated by a
+ * single-use stream ticket (never a JWT in the URL), and EVERY rejection closes
+ * with the same generic `4401` so a prober cannot enumerate sessions / tickets /
+ * scopes — the real cause goes to the warn log only.
+ *
+ * Unlike STT there is no server-side session resource to own, so there is no
+ * tenant-binding cross-check: the ticket is minted bound to the caller's active
+ * tenant (`POST /auth/stream-ticket`, scope `tts_session:<sessionId>`) and
+ * single-use consumption at handshake is the authorization. The gateway relays
+ * frames verbatim (binary PCM passthrough — never re-encoded/compressed) and
+ * injects `X-Service-Token` on the upstream hop only.
+ */
+export const TTS_WS_CLOSE_CODES = {
+  AUTH_FAILED: 4401,
+  UPSTREAM_ERROR: 1011,
+} as const;
+
+export const TTS_WS_GENERIC_AUTH_REASON = 'Authentication failed';
+
+const TTS_SESSION_SCOPE_PREFIX = 'tts_session:';
+
+/**
+ * WS egress backpressure threshold. When the browser socket's `bufferedAmount`
+ * exceeds this many bytes the upstream (tts-v2) socket is paused until it drains,
+ * so a slow consumer can't make the gateway buffer audio without bound. Default
+ * 512 KiB; overridable via `TTS_WS_EGRESS_HIGH_WATERMARK_BYTES`.
+ */
+export const TTS_WS_EGRESS_HIGH_WATERMARK_BYTES = (() => {
+  const raw = Number(process.env.TTS_WS_EGRESS_HIGH_WATERMARK_BYTES);
+  return Number.isFinite(raw) && raw > 0 ? raw : 512 * 1024;
+})();
+
+const BACKPRESSURE_POLL_MS = 50;
+
+interface Bridge {
+  client: WebSocket;
+  upstream: WebSocket;
+  /** Client→upstream control frames received before the upstream socket opened. */
+  pending: Array<{ data: WebSocket.RawData; isBinary: boolean }>;
+  upstreamOpen: boolean;
+  backpressureTimer?: ReturnType<typeof setInterval>;
+  /** Resolved tenant TTS spec injected into the init frame (TASK-496); null = none. */
+  effectiveConfig: EffectiveTtsConfigResponse | null;
+  /** Decrypted BYO provider credentials injected into the init frame; null = none. */
+  providerOverrides: TtsProviderOverrides | null;
+  /** The client's first `init` frame is enriched with the tenant config exactly once. */
+  initEnriched: boolean;
+}
+
+@WebSocketGateway({ path: '/ws/tts-v2/stream' })
+export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
+  private readonly logger = new Logger(TtsWsGateway.name);
+  private readonly bridges = new Map<WebSocket, Bridge>();
+
+  /**
+   * Factory for the upstream tts-v2 socket. Overridable in tests to inject a
+   * fake without a live server.
+   */
+  createUpstreamSocket: (url: string, headers: Record<string, string>) => WebSocket = (url, headers) => new WebSocket(url, { headers });
+
+  constructor(
+    private readonly streamTicketService: StreamTicketService,
+    @Inject(IConfigService) private readonly configService: IConfigService,
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-496 — resolve the ticket tenant's TTS spec and inject it into the init frame.
+    @Optional() @Inject(ITenantTtsConfigService) private readonly tenantTtsConfig?: ITenantTtsConfigService,
+  ) {}
+
+  async handleConnection(client: WebSocket, req: IncomingMessage): Promise<void> {
+    const url = new URL(req.url || '', 'http://localhost');
+    const sessionId = url.searchParams.get('sessionId');
+    const ticket = url.searchParams.get('ticket');
+
+    if (!sessionId) {
+      return this.reject(client, 'missing sessionId');
+    }
+    if (!ticket) {
+      return this.reject(client, 'missing ticket', sessionId);
+    }
+
+    const stored = await this.streamTicketService.consumeTicket(ticket);
+    if (!stored) {
+      return this.reject(client, 'invalid stream ticket', sessionId);
+    }
+
+    const expectedScope = `${TTS_SESSION_SCOPE_PREFIX}${sessionId}`;
+    if (stored.scope !== expectedScope) {
+      return this.reject(client, 'ticket scope mismatch', sessionId);
+    }
+
+    await this.openBridge(client, sessionId, stored.tenantId);
+  }
+
+  handleDisconnect(client: WebSocket): void {
+    this.teardown(client);
+  }
+
+  /** Uniform generic close (no enumeration signal); real cause to the warn log. */
+  private reject(client: WebSocket, reason: string, sessionId?: string): void {
+    this.logger.warn({ message: 'TTS WS handshake rejected', reason, ...(sessionId ? { sessionId } : {}) });
+    try {
+      client.close(TTS_WS_CLOSE_CODES.AUTH_FAILED, TTS_WS_GENERIC_AUTH_REASON);
+    } catch {
+      /* socket may already be closing */
+    }
+  }
+
+  private async openBridge(client: WebSocket, sessionId: string, tenantId: string | null): Promise<void> {
+    const headers: Record<string, string> = {};
+    const token = this.secretsService?.getSecretSync('TTS_SERVICE_TOKEN');
+    if (token) {
+      headers['X-Service-Token'] = token;
+    }
+
+    // TASK-496 — pre-resolve the tenant's effective TTS spec (fail-open: a lookup
+    // error leaves it null → tts-v2 uses its own settings). Injected into the
+    // first `init` frame the browser sends.
+    let effectiveConfig: EffectiveTtsConfigResponse | null = null;
+    let providerOverrides: TtsProviderOverrides | null = null;
+    if (this.tenantTtsConfig && tenantId) {
+      try {
+        [effectiveConfig, providerOverrides] = await Promise.all([
+          this.tenantTtsConfig.getEffective(tenantId),
+          this.tenantTtsConfig.resolveProviderOverrides(tenantId),
+        ]);
+      } catch (err) {
+        this.logger.warn({
+          message: 'Tenant TTS config resolve failed; init frame not enriched',
+          sessionId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    let upstream: WebSocket;
+    try {
+      upstream = this.createUpstreamSocket(this.ttsWsUrl(), headers);
+    } catch (err) {
+      this.logger.error({
+        message: 'Failed to open upstream TTS socket',
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      this.reject(client, 'upstream unavailable', sessionId);
+      return;
+    }
+
+    const bridge: Bridge = {
+      client,
+      upstream,
+      pending: [],
+      upstreamOpen: false,
+      effectiveConfig,
+      providerOverrides,
+      initEnriched: false,
+    };
+    this.bridges.set(client, bridge);
+
+    upstream.on('open', () => {
+      bridge.upstreamOpen = true;
+      for (const frame of bridge.pending) {
+        this.safeSend(upstream, frame.data, frame.isBinary);
+      }
+      bridge.pending = [];
+    });
+
+    // Upstream → browser: verbatim relay (binary PCM frames + JSON control),
+    // with egress backpressure onto the upstream when the browser saturates.
+    upstream.on('message', (data: WebSocket.RawData, isBinary: boolean) => {
+      this.safeSend(client, data, isBinary);
+      this.applyBackpressure(bridge);
+    });
+    upstream.on('close', () => this.closeClientAndTeardown(client));
+    upstream.on('error', (err: Error) => {
+      this.logger.warn({ message: 'Upstream TTS socket error', sessionId, error: err.message });
+      this.closeClientAndTeardown(client, TTS_WS_CLOSE_CODES.UPSTREAM_ERROR);
+    });
+
+    // Browser → upstream: control frames (init/text/flush/end). Buffered until
+    // the upstream socket is open (the client sends init immediately on connect).
+    client.on('message', (data: WebSocket.RawData, isBinary: boolean) => {
+      const frame = this.maybeEnrichInit(bridge, data, isBinary);
+      if (bridge.upstreamOpen) {
+        this.safeSend(upstream, frame, isBinary);
+      } else {
+        bridge.pending.push({ data: frame, isBinary });
+      }
+    });
+
+    this.logger.log({ message: 'TTS WS bridge opened', sessionId });
+  }
+
+  /** Pause the upstream while the browser socket is over the egress watermark. */
+  private applyBackpressure(bridge: Bridge): void {
+    const buffered = (bridge.client as { bufferedAmount?: number }).bufferedAmount ?? 0;
+    if (buffered <= TTS_WS_EGRESS_HIGH_WATERMARK_BYTES || bridge.backpressureTimer) {
+      return;
+    }
+    bridge.upstream.pause?.();
+    const timer = setInterval(() => {
+      const bufferedNow = (bridge.client as { bufferedAmount?: number }).bufferedAmount ?? 0;
+      if (bufferedNow <= TTS_WS_EGRESS_HIGH_WATERMARK_BYTES) {
+        bridge.upstream.resume?.();
+        clearInterval(timer);
+        bridge.backpressureTimer = undefined;
+      }
+    }, BACKPRESSURE_POLL_MS);
+    (timer as unknown as { unref?: () => void }).unref?.();
+    bridge.backpressureTimer = timer;
+  }
+
+  /**
+   * TASK-496 — enrich the browser's first `init` frame with the tenant's resolved
+   * routing chains + whitelist (and default speed when omitted). Binary frames,
+   * non-init frames, and everything after the first init pass through untouched.
+   * Fail-open: a non-JSON frame is forwarded verbatim.
+   */
+  private maybeEnrichInit(bridge: Bridge, data: WebSocket.RawData, isBinary: boolean): WebSocket.RawData {
+    if (isBinary || bridge.initEnriched || (!bridge.effectiveConfig && !bridge.providerOverrides)) {
+      return data;
+    }
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(data.toString());
+    } catch {
+      return data;
+    }
+    if (!parsed || parsed.type !== 'init') {
+      return data;
+    }
+    bridge.initEnriched = true;
+    const enriched: Record<string, unknown> = { ...parsed };
+    const eff = bridge.effectiveConfig;
+    if (eff) {
+      enriched.speed = parsed.speed ?? eff.defaultSpeed;
+      enriched.routing_en = eff.routingEn;
+      enriched.routing_ml = eff.routingMl;
+      enriched.allowed_providers = eff.allowedProviders;
+    }
+    if (bridge.providerOverrides && Object.keys(bridge.providerOverrides).length > 0) {
+      enriched.provider_overrides = bridge.providerOverrides;
+    }
+    // Buffer (not string) to satisfy WebSocket.RawData; isBinary stays false, so
+    // ws still ships it as a TEXT frame — tts-v2 parses it as JSON init.
+    return Buffer.from(JSON.stringify(enriched));
+  }
+
+  private safeSend(socket: WebSocket, data: WebSocket.RawData, isBinary: boolean): void {
+    if (socket.readyState === socket.OPEN) {
+      socket.send(data, { binary: isBinary });
+    }
+  }
+
+  private closeClientAndTeardown(client: WebSocket, code?: number): void {
+    if (client.readyState === client.OPEN) {
+      try {
+        client.close(code);
+      } catch {
+        /* already closing */
+      }
+    }
+    this.teardown(client);
+  }
+
+  private teardown(client: WebSocket): void {
+    const bridge = this.bridges.get(client);
+    if (!bridge) {
+      return;
+    }
+    this.bridges.delete(client);
+    if (bridge.backpressureTimer) {
+      clearInterval(bridge.backpressureTimer);
+      bridge.backpressureTimer = undefined;
+    }
+    if (bridge.upstream.readyState === bridge.upstream.OPEN || bridge.upstream.readyState === bridge.upstream.CONNECTING) {
+      try {
+        bridge.upstream.close();
+      } catch {
+        /* already closing */
+      }
+    }
+  }
+
+  /** TTS_URL (http[s]://host:port) → ws[s]://host:port/api/v1/audio/stream. */
+  private ttsWsUrl(): string {
+    const base = this.configService.getConfigValue('TTS_URL').replace(/\/+$/, '');
+    return `${base.replace(/^http/, 'ws')}/api/v1/audio/stream`;
+  }
+}

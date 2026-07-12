@@ -54,3 +54,50 @@ class FakeEngine:
                 yield AudioChunk(data=self._payload, is_final=(i == self._chunks - 1))
         finally:
             self.closed += 1
+
+
+class FakeStream:
+    """A minimal SynthesisStream test double: one audio frame per pushed fragment."""
+
+    def __init__(self, payload: bytes = b"NATIVE") -> None:
+        self._payload = payload
+        self._frames: list[AudioChunk] = []
+        self._ended = False
+        self.pushed: list[str] = []
+        self.closed = False
+
+    async def push_text(self, text: str) -> None:
+        self.pushed.append(text)
+        self._frames.append(AudioChunk(data=self._payload))
+
+    async def flush(self) -> None:
+        pass
+
+    async def end_input(self) -> None:
+        self._ended = True
+
+    def __aiter__(self) -> AsyncIterator[AudioChunk]:
+        return self
+
+    async def __anext__(self) -> AudioChunk:
+        if self._frames:
+            return self._frames.pop(0)
+        if self._ended:
+            raise StopAsyncIteration
+        raise StopAsyncIteration
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+class FakeDuplexEngine(FakeEngine):
+    """A FakeEngine that also advertises a native duplex ``open_stream``."""
+
+    def __init__(self, name: str = "azure", **kw) -> None:
+        super().__init__(name, **kw)
+        self.streams: list[FakeStream] = []
+
+    def open_stream(self, req: SynthesisRequest) -> FakeStream:
+        stream = FakeStream()
+        self.streams.append(stream)
+        return stream

@@ -43,6 +43,8 @@ export * from './TenantBucketEntity';
 export * from './TenantEntitlementEntity';
 export * from './TenantFrontendConfigEntity';
 export * from './TenantStorageConfigEntity';
+export * from './TenantTtsConfigEntity';
+export * from './TenantTtsProviderCredentialEntity';
 export * from './TenantEntity';
 export * from './TenantUsageMeterEntity';
 export * from './TranscriptionJobEntity';
