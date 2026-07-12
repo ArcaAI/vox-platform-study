@@ -1,6 +1,6 @@
 # TASK-468 — apps/api Lint Glob Missed `tests/**` (e2e specs never linted)
 
-- **Status**: Review (lint gate green + unit suite green; e2e specs are Playwright — not run live here, but changes are formatting + lint-fixes only)
+- **Status**: Completed (lint gate green + unit suite green; the diff is formatting + lint-fixes only. The live Playwright API-e2e run is the sole residual — skippable per the standing live-stack directive.)
 - **Type**: infrastructure (lint/test hygiene)
 - **Origin**: flagged during [TASK-467](../TASK-467-STT-WS-Control-Frame-Classification/README.md), which deliberately left the pre-existing e2e prettier violations untouched (surgical scope). This ticket closes that gap.
 - **Branch**: `fix/2605-review`
@@ -75,4 +75,5 @@ Linting `tests/**` surfaced **5846 problems**:
 
 | Date | Change |
 |---|---|
+| 2026-07-12 | **Triage — program closure sweep. Status → Completed.** In-scope lint-glob coverage + fixes done and evidenced (lint gate exit 0 over `{src,tests}`, API unit suite 2056 pass); the diff is formatting + lint-fixes only. Sole residual is the Playwright API-e2e run on a live stack (skippable per the standing directive); no code change outstanding. |
 | 2026-07-10 | Fixed the apps/api lint glob gap discovered in TASK-467: `{src,apps,libs,test}` (NestJS scaffold default; `apps`/`libs` absent, `test/` = vestigial Jest sample) never reached the real `tests/` tree, so 59 Playwright e2e specs were unlinted. Changed glob → `{src,tests}`; added a `tests/**` eslint override relaxing `no-explicit-any` + `turbo/no-undeclared-env-vars` (test-appropriate); fixed 9 genuine unused/unsafe errors; `eslint --fix` normalized prettier across 59 files. Lint gate green over `{src,tests}` (exit 0), API unit suite unchanged (2056 pass). e2e not run live. Status → Review. |

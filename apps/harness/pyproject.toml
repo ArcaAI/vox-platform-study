@@ -41,6 +41,12 @@ dependencies = [
     "opentelemetry-instrumentation-httpx>=0.60b1",
     "opentelemetry-exporter-otlp-proto-grpc>=1.39.0",
     "opentelemetry-instrumentation-logging>=0.60b1",
+    # Claim-check payload offload (TASK-483): S3BlobStore keeps large workflow
+    # payloads out of Temporal history. Lazy-imported (claim_check.py, inside
+    # S3BlobStore only) and gated behind HARNESS_CLAIM_CHECK_STORE=s3 (default
+    # `memory`), but promoted to a base dep so the production S3 path is always
+    # installable without an extra — matching the smr-v2 base-dep precedent.
+    "boto3>=1.34.0",
 ]
 
 [project.optional-dependencies]

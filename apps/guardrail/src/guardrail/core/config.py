@@ -159,7 +159,10 @@ class GroundednessConfig(BaseSettings):
     # Explicit local .gguf path — REQUIRED to enable (fail-closed unless staged locally).
     model_path: str | None = None
     # llama.cpp runtime knobs (CPU-default: the Q6 quant needs no GPU).
-    n_ctx: int = 4096
+    # n_ctx = 512 matches Flan-T5's training context (`n_ctx_train`); MiniCheck itself
+    # windows long documents to ~512-token chunks, so a larger context only wastes the
+    # encoder KV alloc and trips llama.cpp's `n_ctx_seq > n_ctx_train` overflow warning.
+    n_ctx: int = 512
     n_threads: int | None = None
     n_gpu_layers: int = 0
 
