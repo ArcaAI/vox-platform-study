@@ -34,14 +34,19 @@ class _FakeResult:
 
 
 class _FakeConfig:
-    def __init__(self, subscription=None, region=None):
+    def __init__(self, subscription=None, region=None, endpoint=None):
         self.subscription = subscription
         self.region = region
+        self.endpoint = endpoint
         self.speech_synthesis_voice_name = None
         self.output_format = None
+        self.properties = {}
 
     def set_speech_synthesis_output_format(self, fmt):
         self.output_format = fmt
+
+    def set_property(self, pid, value):
+        self.properties[pid] = value
 
 
 class _FakeAudioDataStream:
@@ -99,6 +104,101 @@ def make_fake_sdk(result):
 
     SDK.SpeechSynthesizer = _Synth
     SDK.Connection = _Connection
+    return SDK
+
+
+# ── Fake TextStream (v2 duplex) SDK ─────────────────────────────────────────
+
+
+class _FakeEvent:
+    def __init__(self):
+        self._cbs = []
+
+    def connect(self, cb):
+        self._cbs.append(cb)
+
+    def fire(self, evt):
+        for cb in self._cbs:
+            cb(evt)
+
+
+class _FakeSynthEvt:
+    def __init__(self, audio=None, detail=None):
+        self.result = _SimpleResult(audio)
+        self.cancellation_details = detail
+
+
+class _SimpleResult:
+    def __init__(self, audio):
+        self.audio_data = audio
+
+
+class _FakeInputStream:
+    def __init__(self, request):
+        self._request = request
+
+    def write(self, text):
+        self._request._synth._on_write(text)
+
+    def close(self):
+        self._request._synth._on_close()
+
+
+class _FakeStreamRequest:
+    def __init__(self, input_type=None):
+        self.input_type = input_type
+        self._synth = None
+        self.input_stream = _FakeInputStream(self)
+
+
+def make_fake_stream_sdk(*, cancel=False):
+    class _InputType:
+        TextStream = "text-stream"
+
+    class _OutputFormats:
+        Raw24Khz16BitMonoPcm = "raw-24k-pcm"
+        Riff24Khz16BitMonoPcm = "riff-24k-pcm"
+        Audio24Khz48KBitRateMonoMp3 = "mp3-24k-48k"
+
+    class _PropertyId:
+        SpeechSynthesis_FrameTimeoutInterval = "frame-timeout"
+        SpeechSynthesis_RtfTimeoutThreshold = "rtf-timeout"
+
+    class SDK:
+        SpeechConfig = _FakeConfig
+        SpeechSynthesisOutputFormat = _OutputFormats
+        SpeechSynthesisRequest = _FakeStreamRequest
+        SpeechSynthesisRequestInputType = _InputType
+        PropertyId = _PropertyId
+        synths: list = []
+
+    class _StreamSynth:
+        def __init__(self, speech_config=None, audio_config=None):
+            self.cfg = speech_config
+            self.synthesizing = _FakeEvent()
+            self.synthesis_completed = _FakeEvent()
+            self.synthesis_canceled = _FakeEvent()
+            self.stopped = False
+            SDK.synths.append(self)
+
+        def speak_async(self, request):
+            request._synth = self  # synchronous binding
+            return _FakeFuture(_FakeResult("started"))
+
+        def stop_speaking_async(self):
+            self.stopped = True
+            return _FakeFuture(None)
+
+        def _on_write(self, text):
+            if cancel:
+                self.synthesis_canceled.fire(_FakeSynthEvt(detail="boom"))
+                return
+            self.synthesizing.fire(_FakeSynthEvt(audio=text.encode()))
+
+        def _on_close(self):
+            self.synthesis_completed.fire(_FakeSynthEvt())
+
+    SDK.SpeechSynthesizer = _StreamSynth
     return SDK
 
 
@@ -214,6 +314,57 @@ class TestProviderContract:
         provider = AzureSpeechProvider(_config(), sdk=sdk)
         await provider.prewarm()
         assert sdk.state["connection_opened"] is True
+
+
+class TestTextStreamDuplex:
+    """Native duplex path (TASK-492) — v2 WS TextStream, fully faked."""
+
+    @pytest.mark.asyncio
+    async def test_push_text_yields_audio_then_done(self):
+        sdk = make_fake_stream_sdk()
+        provider = AzureSpeechProvider(_config(), sdk=sdk)
+        stream = provider.open_stream(_req(text="", provider_voice="en-IN-NeerjaNeural"))
+        await stream.push_text("Hello ")
+        await stream.push_text("there ")
+        await stream.end_input()
+        frames = [c.data async for c in stream]
+        assert frames == [b"Hello ", b"there "]
+
+    @pytest.mark.asyncio
+    async def test_stream_uses_v2_endpoint_and_voice(self):
+        sdk = make_fake_stream_sdk()
+        provider = AzureSpeechProvider(_config(region="westus"), sdk=sdk)
+        stream = provider.open_stream(_req(provider_voice="ml-IN-SobhanaNeural"))
+        await stream.push_text("hi ")
+        await stream.end_input()
+        _ = [c async for c in stream]
+        cfg = sdk.synths[-1].cfg
+        assert cfg.endpoint == (
+            "wss://westus.tts.speech.microsoft.com/cognitiveservices/websocket/v2"
+        )
+        assert cfg.speech_synthesis_voice_name == "ml-IN-SobhanaNeural"
+        assert cfg.output_format == "raw-24k-pcm"
+        # Frame/RTF timeouts set so slow LLM tokens don't abort mid-stream.
+        assert cfg.properties == {"frame-timeout": "10000", "rtf-timeout": "100"}
+
+    @pytest.mark.asyncio
+    async def test_canceled_raises(self):
+        sdk = make_fake_stream_sdk(cancel=True)
+        provider = AzureSpeechProvider(_config(), sdk=sdk)
+        stream = provider.open_stream(_req())
+        await stream.push_text("hi ")
+        await stream.end_input()
+        with pytest.raises(AzureSynthesisError):
+            _ = [c async for c in stream]
+
+    @pytest.mark.asyncio
+    async def test_aclose_stops_synthesis(self):
+        sdk = make_fake_stream_sdk()
+        provider = AzureSpeechProvider(_config(), sdk=sdk)
+        stream = provider.open_stream(_req())
+        await stream.push_text("hi ")
+        await stream.aclose()
+        assert sdk.synths[-1].stopped is True
 
 
 @pytest.mark.e2e

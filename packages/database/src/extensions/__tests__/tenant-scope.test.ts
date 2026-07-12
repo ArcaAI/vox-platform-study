@@ -98,9 +98,11 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // PipelinePolicy + append-only PipelinePolicyChange → 43. TASK-392 added
     // TenantUsageMeter → 44 (TenantEntitlement is INTENTIONALLY_UNSCOPED,
     // below). TASK-490 added UserVoiceProfile (biometric PHI stamped with
-    // its enrollment tenant) → 45. (The drift guard below is the durable
-    // check; this count stays as a quick human-readable tripwire.)
-    expect(TENANT_SCOPED_MODELS.size).toBe(45);
+    // its enrollment tenant) → 45. TASK-496 added the per-tenant TTS config
+    // TenantTtsConfig + TenantTtsProviderCredential (BYO provider keys) → 47.
+    // (The drift guard below is the durable check; this count stays as a quick
+    // human-readable tripwire.)
+    expect(TENANT_SCOPED_MODELS.size).toBe(47);
   });
 
   it('includes every PHI-bearing model', () => {
@@ -244,7 +246,10 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
       // cascade's platform default (ConfigResolver reads it for every tenant).
       // GlobalSetting — platform infra settings (S3/MinIO, STT) are seeded under
       // the SYSTEM tenant; the AppSettingsService platform cache reads them.
-      new Set(['AsrPipeline', 'AiModel', 'HarnessPolicy', 'PipelinePolicy', 'GlobalSetting']),
+      // TASK-496 — TenantTtsConfig's SYSTEM-tenant row is the per-tenant TTS
+      // platform default every tenant's resolveForTenant merges over (credentials
+      // are NEVER shared, so TenantTtsProviderCredential is intentionally absent).
+      new Set(['AsrPipeline', 'AiModel', 'HarnessPolicy', 'PipelinePolicy', 'GlobalSetting', 'TenantTtsConfig']),
     );
   });
 

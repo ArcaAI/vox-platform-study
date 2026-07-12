@@ -16,17 +16,26 @@ from stt_v2.diarization.speaker_identifier import SpeakerIdentifier
 from stt_v2.diarization.speaker_tracker import SpeakerTracker
 from stt_v2.pipeline.dto import DiarizationConfig
 
+# Fixed seed for the embedding draws below. One source of truth so the autouse baseline
+# and the in-body re-seeds (ambiguous-zone tests) can never drift apart.
+_SEED = 20260712
+
 
 @pytest.fixture(autouse=True)
 def _seed_numpy() -> None:
-    """Deterministic random embeddings per test.
+    """Baseline-deterministic random embeddings for ordinary test runs.
 
     Several tests build embeddings with ``np.random.randn`` and assert on similarity
-    thresholds; unseeded, certain values land across the ambiguous-zone boundary, so the
-    suite was order-dependent (flaky) under ``pytest-randomly``. Seeding per test makes it
-    order-independent. (Pre-existing defect surfaced by TASK-475's test reshuffle.)
+    thresholds; unseeded, certain draws land across the ambiguous-zone boundary and the
+    assertion flips. Seeding here pins those draws for non-randomized runs.
+
+    NOTE: ``pytest-randomly`` re-seeds ``numpy.random`` in its ``pytest_runtest_call`` hook —
+    i.e. AFTER this setup-phase fixture — so under that plugin this baseline is overridden
+    per test and cannot fix the flake on its own. The two threshold-sensitive ambiguous-zone
+    tests therefore re-seed inside the test body (call phase), where they win. (Pre-existing
+    defect surfaced by TASK-475's test reshuffle.)
     """
-    np.random.seed(20260712)
+    np.random.seed(_SEED)
 
 
 def _make_embedding(values: list[float] | None = None) -> SpeakerEmbedding:
@@ -188,6 +197,9 @@ class TestAmbiguousZone:
     @pytest.mark.asyncio
     async def test_ambiguous_with_segmentation_splits(self):
         """Ambiguous zone with segmentation should re-split and re-identify."""
+        # Call-phase re-seed: beats pytest-randomly's per-test numpy re-seed (see _seed_numpy),
+        # keeping the query cosine inside the ambiguous zone so a list result is guaranteed.
+        np.random.seed(_SEED)
         tracker = SpeakerTracker(max_speakers=5)
         # Register a speaker so compare returns non-None
         base = np.random.randn(256).astype(np.float32)
@@ -263,6 +275,9 @@ class TestAmbiguousZone:
     @pytest.mark.asyncio
     async def test_ambiguous_without_segmentation_service_fallback(self):
         """Without segmentation service, ambiguous zone should fallback to best match."""
+        # Call-phase re-seed: beats pytest-randomly's per-test numpy re-seed (see _seed_numpy),
+        # keeping the query cosine >= low_threshold so the fallback (not new-speaker) path runs.
+        np.random.seed(_SEED)
         tracker = SpeakerTracker(max_speakers=5)
         base = np.random.randn(256).astype(np.float32)
         base = base / np.linalg.norm(base)

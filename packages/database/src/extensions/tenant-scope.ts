@@ -119,6 +119,9 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // pipeline-policy.prisma (2) — TASK-356 Phase 5 realtime-cascade policy.
   'PipelinePolicy', // also a SYSTEM-shared read model (global-default row, below)
   'PipelinePolicyChange', // append-only WORM change log (no soft-delete)
+  // tenant-tts-config.prisma (2) — TASK-496 per-tenant TTS config + BYO creds.
+  'TenantTtsConfig', // also a SYSTEM-shared read model (platform-default row, below)
+  'TenantTtsProviderCredential', // per-(tenant,provider) BYO key; NOT SYSTEM-shared
   // entitlement.prisma (1) — TASK-392 rolling-monthly usage meters. The
   // reconcile job reads/writes these via the UNSCOPED `baseClient` (explicit
   // tenantId filters, no CLS — same escape hatch as the audit-retention
@@ -187,6 +190,12 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // (doctor→department→tenant→SYSTEM default). READS widen to [caller, SYSTEM];
   // WRITES are NOT widened (only a platform admin mutates the SYSTEM default).
   'PipelinePolicy',
+  // TASK-496 — the per-tenant TTS PLATFORM-DEFAULT row is owned by the SYSTEM
+  // tenant and read by every tenant's resolveForTenant (tenant row merged over
+  // the SYSTEM default). READS widen to [caller, SYSTEM]; WRITES are NOT widened
+  // (only a platform admin mutates the SYSTEM default). Credentials are NEVER
+  // shared — TenantTtsProviderCredential is intentionally absent here.
+  'TenantTtsConfig',
   // Platform infrastructure settings (S3/MinIO endpoint + credentials, STT
   // pipeline slugs/queues, …) are seeded under the SYSTEM tenant in
   // `seed/06-stt.ts`, alongside the SYSTEM-owned AsrPipeline/AiModel catalog.

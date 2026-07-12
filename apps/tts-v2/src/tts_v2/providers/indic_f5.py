@@ -1,0 +1,106 @@
+"""Self-hosted AI4Bharat IndicF5 (Malayalam) provider — TASK-494. EXPERIMENTAL.
+
+IndicF5 is a flow-matching / F5 diffusion **voice-clone** model: each synthesis
+needs a reference audio + its transcript (unlike Parler's description speakers).
+It emits **24 kHz** natively (no resample). Full-utterance → the provider chunks
+text into sentences itself and streams PCM per sentence (`native_streaming=True`),
+mirroring `IndicParlerProvider`. torch/transformers are imported lazily so hermetic
+tests inject a `generate` callable.
+
+⚠️ PROD/COMMERCIAL ENABLEMENT IS NO-GO pending the owner's license review
+(TASK-494): the released weights are a fine-tune of the CC-BY-NC SWivid F5-TTS
+base (Emilia) — the MIT tag cannot override the NonCommercial restriction. Ships
+`enabled=false`; NEVER set `TTS_INDICF5_ENABLED=true` in production without written
+clearance. Indic Parler-TTS (Apache-2.0) remains the DEFAULT local ml engine. The
+weights are also HF-gated → mirror internally (TASK-495) before any real use.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import AsyncIterator, Callable
+
+import numpy as np
+
+from tts_v2.core.audio import encode_pcm, pcm16_to_mp3, pcm16_to_wav
+from tts_v2.core.config import IndicF5Config
+from tts_v2.core.logging import get_logger
+from tts_v2.core.metrics import TTS_MODEL_LOADED
+from tts_v2.providers.base import AudioChunk, AudioFormat, SynthesisRequest
+from tts_v2.routing.chunking import chunk_text
+
+logger = get_logger(__name__)
+
+_NATIVE_RATE = 24000  # IndicF5 is 24 kHz native (no resample)
+_MAX_SENTENCE_CHARS = 300
+
+
+class IndicF5Provider:
+    name = "indic_f5"
+    supported_locales = {"ml-IN", "en-IN"}
+    native_streaming = True
+
+    def __init__(
+        self,
+        config: IndicF5Config,
+        *,
+        generate: Callable[[str], np.ndarray] | None = None,
+    ) -> None:
+        self._config = config
+        self._generate = generate  # (text) -> float32 samples @ 24 kHz
+
+    def _ensure_loaded(self) -> None:
+        if self._generate is not None:
+            return
+        self._generate = self._load_model()
+        TTS_MODEL_LOADED.labels(model="indic_f5").set(1)
+        logger.info("tts_v2.indic_f5_loaded", device=self._config.device, model=self._config.hf_model)
+
+    def _load_model(self) -> Callable[[str], np.ndarray]:
+        from transformers import AutoModel
+
+        source = self._config.model_path or self._config.hf_model  # local mirror (TASK-495) or gated hub
+        model = AutoModel.from_pretrained(source, trust_remote_code=True).to(self._config.device)
+        ref_audio = self._config.ref_audio_path
+        ref_text = self._config.ref_text
+
+        def _generate(text: str) -> np.ndarray:
+            audio = model(text, ref_audio_path=ref_audio, ref_text=ref_text)
+            arr = np.asarray(audio, dtype=np.float32)
+            # IndicF5 may return int16-range samples; normalize to [-1, 1].
+            if arr.size and np.abs(arr).max() > 1.5:
+                arr = arr / 32768.0
+            return arr
+
+        return _generate
+
+    async def warmup(self) -> None:
+        await asyncio.to_thread(self._ensure_loaded)
+        assert self._generate is not None
+        await asyncio.to_thread(self._generate, "warm up")
+
+    async def health(self) -> bool:
+        return True
+
+    async def synthesize(self, req: SynthesisRequest) -> AsyncIterator[AudioChunk]:
+        self._ensure_loaded()
+        assert self._generate is not None
+        sentences = chunk_text(req.text, req.locale, _MAX_SENTENCE_CHARS)
+
+        pcm_parts: list[bytes] = []
+        for sentence in sentences:
+            audio = await asyncio.to_thread(self._generate, sentence)
+            pcm = encode_pcm(np.asarray(audio, dtype=np.float32), _NATIVE_RATE, req.sample_rate)
+            if req.fmt == AudioFormat.PCM:
+                yield AudioChunk(data=pcm)
+            else:
+                pcm_parts.append(pcm)
+
+        if req.fmt != AudioFormat.PCM:
+            joined = b"".join(pcm_parts)
+            data = (
+                pcm16_to_wav(joined, req.sample_rate)
+                if req.fmt == AudioFormat.WAV
+                else pcm16_to_mp3(joined, req.sample_rate)
+            )
+            yield AudioChunk(data=data, is_final=True)

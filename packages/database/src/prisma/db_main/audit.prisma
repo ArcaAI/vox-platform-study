@@ -167,6 +167,7 @@ enum ResourceType {
   UserVoiceProfile
   UserDepartment
   TenantFrontendConfig
+  TenantTtsConfig
 
   @@schema("core")
 }

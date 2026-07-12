@@ -88,6 +88,8 @@ export * from './TenantBucketRepository';
 export * from './TenantEntitlementRepository';
 export * from './TenantFrontendConfigRepository';
 export * from './TenantStorageConfigRepository';
+export * from './TenantTtsConfigRepository';
+export * from './TenantTtsProviderCredentialRepository';
 export * from './TenantRepository';
 export * from './TenantUsageMeterRepository';
 export * from './TranscriptionJobRepository';

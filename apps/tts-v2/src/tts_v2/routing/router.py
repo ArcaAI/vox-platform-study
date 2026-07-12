@@ -9,6 +9,7 @@ breakers skip providers that are failing.
 
 from __future__ import annotations
 
+import hashlib
 import time
 from collections.abc import AsyncIterator
 from contextlib import aclosing
@@ -27,12 +28,15 @@ from tts_v2.core.metrics import (
 from tts_v2.providers.base import (
     AudioChunk,
     AudioFormat,
+    DuplexTTSEngine,
     ProviderRegistry,
     SynthesisRequest,
+    SynthesisStream,
     TTSEngine,
 )
 from tts_v2.routing.chunking import chunk_text
 from tts_v2.routing.circuit_breaker import CircuitBreaker
+from tts_v2.routing.sentence_adapter import SentenceAdapter
 
 CB_FAILURE_THRESHOLD = 5
 CB_RECOVERY_TIMEOUT_S = 30.0
@@ -44,6 +48,45 @@ class AllProvidersUnavailableError(RuntimeError):
     def __init__(self, voice_id: str) -> None:
         super().__init__(f"no TTS provider available for voice '{voice_id}'")
         self.voice_id = voice_id
+
+
+# Per-tenant BYO credentials the gateway decrypts + injects (TASK-496):
+# ``{"azure": {"api_key": ..., "region": ...}, "sarvam": {"api_key": ..., "base_url": ...}}``.
+ProviderOverrides = dict[str, dict[str, str]]
+
+
+def _override_cache_key(name: str, override: dict[str, str]) -> str:
+    raw = f"{name}|{override.get('api_key', '')}|{override.get('region', '')}|{override.get('base_url', '')}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _build_override_engine(settings: Settings, name: str, override: dict[str, str]) -> TTSEngine | None:
+    """Build a per-tenant provider from injected BYO credentials (TASK-496).
+
+    Clones the platform base config with the tenant's key/endpoint. Returns None
+    for a provider that takes no BYO key or an unknown name (→ fall back to the
+    shared registered engine). Provider imports are lazy to keep the router light.
+    """
+    from pydantic import SecretStr
+
+    api_key = override.get("api_key")
+    if not api_key:
+        return None
+    if name == "azure":
+        from tts_v2.providers.azure_speech import AzureSpeechProvider
+
+        update: dict[str, object] = {"api_key": SecretStr(api_key), "enabled": True}
+        if override.get("region"):
+            update["region"] = override["region"]
+        return AzureSpeechProvider(settings.azure.model_copy(update=update))
+    if name == "sarvam":
+        from tts_v2.providers.sarvam import SarvamProvider
+
+        update = {"api_key": SecretStr(api_key), "enabled": True}
+        if override.get("base_url"):
+            update["base_url"] = override["base_url"]
+        return SarvamProvider(settings.sarvam.model_copy(update=update))
+    return None
 
 
 class TTSRouter:
@@ -62,23 +105,56 @@ class TTSRouter:
         self._cb_threshold = cb_threshold
         self._cb_recovery_s = cb_recovery_s
         self._breakers: dict[str, CircuitBreaker] = {}
+        # Per-tenant BYO provider instances, cached by credential hash (TASK-496).
+        self._tenant_engines: dict[str, TTSEngine] = {}
 
     def breaker(self, name: str) -> CircuitBreaker:
         if name not in self._breakers:
             self._breakers[name] = CircuitBreaker(self._cb_threshold, self._cb_recovery_s)
         return self._breakers[name]
 
-    def resolve_chain(self, locale: str) -> list[str]:
-        """Locale → ordered provider chain. Code-switch ``ml-en`` → ml chain."""
+    def resolve_chain(
+        self,
+        locale: str,
+        *,
+        routing_en: list[str] | None = None,
+        routing_ml: list[str] | None = None,
+    ) -> list[str]:
+        """Locale → ordered provider chain. Code-switch ``ml-en`` → ml chain.
+
+        Per-request ``routing_en``/``routing_ml`` (injected by the gateway from a
+        tenant's resolved config, TASK-496) override the static settings chains.
+        """
         base = locale.split("-")[0]
-        chain = self._settings.routing_ml if base == "ml" else self._settings.routing_en
+        if base == "ml":
+            chain = routing_ml if routing_ml else self._settings.routing_ml
+        else:
+            chain = routing_en if routing_en else self._settings.routing_en
         return list(chain)
 
-    def candidates(self, voice: Voice) -> list[str]:
-        """Providers that are registered, bound to this voice, and not tripped."""
+    def candidates(
+        self,
+        voice: Voice,
+        *,
+        routing_en: list[str] | None = None,
+        routing_ml: list[str] | None = None,
+        allowed_providers: list[str] | None = None,
+        override_providers: set[str] | None = None,
+    ) -> list[str]:
+        """Providers that are registered, bound to this voice, and not tripped.
+
+        ``allowed_providers`` (tenant whitelist, TASK-496) further bounds the chain;
+        ``override_providers`` (tenants with a BYO key) count as available even when
+        the platform hasn't registered that provider.
+        """
+        allow = set(allowed_providers) if allowed_providers else None
         out: list[str] = []
-        for name in self.resolve_chain(voice.locale):
-            if name not in self._registry:
+        for name in self.resolve_chain(voice.locale, routing_en=routing_en, routing_ml=routing_ml):
+            if allow is not None and name not in allow:
+                continue
+            registered = name in self._registry
+            overridden = override_providers is not None and name in override_providers
+            if not registered and not overridden:
                 continue
             if name not in voice.bindings:
                 continue
@@ -86,6 +162,21 @@ class TTSRouter:
                 continue
             out.append(name)
         return out
+
+    def _engine_for(self, name: str, provider_overrides: ProviderOverrides | None) -> TTSEngine:
+        """Engine for a provider: a per-tenant BYO instance when overridden (cached
+        by credential hash), else the shared registered engine (TASK-496)."""
+        if provider_overrides and name in provider_overrides:
+            override = provider_overrides[name]
+            key = _override_cache_key(name, override)
+            engine = self._tenant_engines.get(key)
+            if engine is None:
+                engine = _build_override_engine(self._settings, name, override)
+                if engine is not None:
+                    self._tenant_engines[key] = engine
+            if engine is not None:
+                return engine
+        return self._registry.get(name)
 
     async def synthesize(
         self,
@@ -95,10 +186,20 @@ class TTSRouter:
         fmt: AudioFormat = AudioFormat.PCM,
         speed: float = 1.0,
         request_id: str = "",
+        routing_en: list[str] | None = None,
+        routing_ml: list[str] | None = None,
+        allowed_providers: list[str] | None = None,
+        provider_overrides: ProviderOverrides | None = None,
     ) -> AsyncIterator[AudioChunk]:
         voice = self._catalog.get(voice_id)  # VoiceNotFoundError → 404 at endpoint
         locale = voice.locale
-        candidates = self.candidates(voice)
+        candidates = self.candidates(
+            voice,
+            routing_en=routing_en,
+            routing_ml=routing_ml,
+            allowed_providers=allowed_providers,
+            override_providers=set(provider_overrides) if provider_overrides else None,
+        )
         if not candidates:
             TTS_REQUESTS.labels(provider="none", locale=locale, status="unavailable").inc()
             raise AllProvidersUnavailableError(voice_id)
@@ -110,7 +211,7 @@ class TTSRouter:
                 TTS_FAILOVER.labels(from_provider=failed_from, to_provider=name).inc()
                 failed_from = None
 
-            engine: TTSEngine = self._registry.get(name)
+            engine: TTSEngine = self._engine_for(name, provider_overrides)
             breaker = self.breaker(name)
             req = SynthesisRequest(
                 text=text,
@@ -162,6 +263,67 @@ class TTSRouter:
         TTS_REQUESTS.labels(provider="none", locale=locale, status="unavailable").inc()
         raise AllProvidersUnavailableError(voice_id) from last_exc
 
+    def stream(
+        self,
+        *,
+        voice_id: str,
+        fmt: AudioFormat = AudioFormat.PCM,
+        speed: float = 1.0,
+        request_id: str = "",
+        routing_en: list[str] | None = None,
+        routing_ml: list[str] | None = None,
+        allowed_providers: list[str] | None = None,
+        provider_overrides: ProviderOverrides | None = None,
+    ) -> SynthesisStream:
+        """Open a duplex stream: incremental text in, audio frames out (TASK-492).
+
+        Prefers a natively-duplex engine (Azure text-stream) when the first
+        candidate supports it and the request is PCM at speed 1.0 (TextStream mode
+        has no SSML/rate control — ``speed != 1.0`` falls back to the per-sentence
+        adapter over ``synthesize`` so ``<prosody rate>`` still applies). All other
+        engines are driven per-sentence via ``SentenceAdapter`` with before-first-
+        byte failover; the provider is locked once the first audio frame ships.
+        """
+        voice = self._catalog.get(voice_id)  # VoiceNotFoundError → 404 at endpoint
+        candidates = self.candidates(
+            voice,
+            routing_en=routing_en,
+            routing_ml=routing_ml,
+            allowed_providers=allowed_providers,
+            override_providers=set(provider_overrides) if provider_overrides else None,
+        )
+        if not candidates:
+            TTS_REQUESTS.labels(provider="none", locale=voice.locale, status="unavailable").inc()
+            raise AllProvidersUnavailableError(voice_id)
+
+        first = candidates[0]
+        engine0 = self._engine_for(first, provider_overrides)
+        if isinstance(engine0, DuplexTTSEngine) and fmt == AudioFormat.PCM and speed == 1.0:
+            req = SynthesisRequest(
+                text="",
+                provider_voice=voice.bindings[first],
+                locale=voice.locale,
+                fmt=fmt,
+                speed=speed,
+                sample_rate=self._settings.sample_rate,
+                request_id=request_id,
+            )
+            return engine0.open_stream(req)
+
+        synth = _ChainSynthesizer(
+            self,
+            voice_id,
+            voice,
+            candidates,
+            fmt=fmt,
+            speed=speed,
+            request_id=request_id,
+            provider_overrides=provider_overrides,
+        )
+        return SentenceAdapter(
+            synth, locale=voice.locale, max_chars=self._settings.max_input_chars
+        )
+
     async def _sentence_adapter(
         self, engine: TTSEngine, req: SynthesisRequest
     ) -> AsyncIterator[AudioChunk]:
@@ -179,3 +341,92 @@ class TTSRouter:
             audio_s = audio_bytes / (2 * req.sample_rate)  # s16le mono
             if audio_s > 0:
                 TTS_RTF.labels(provider=name).observe(gen_s / audio_s)
+
+
+class _ChainSynthesizer:
+    """Per-sentence synth callable for the SentenceAdapter (TASK-492).
+
+    Sentence 1 tries the candidate chain (before-first-byte failover); once the
+    first audio frame ships the stream locks to that provider — every later
+    sentence uses only it, and a failure then is surfaced (never a mid-stream
+    voice switch). Mirrors the ``synthesize`` failover rules for the duplex path.
+    """
+
+    def __init__(
+        self,
+        router: TTSRouter,
+        voice_id: str,
+        voice: Voice,
+        candidates: list[str],
+        *,
+        fmt: AudioFormat,
+        speed: float,
+        request_id: str,
+        provider_overrides: ProviderOverrides | None = None,
+    ) -> None:
+        self._router = router
+        self._voice_id = voice_id
+        self._voice = voice
+        self._candidates = candidates
+        self._fmt = fmt
+        self._speed = speed
+        self._request_id = request_id
+        self._overrides = provider_overrides
+        self._locked: str | None = None
+
+    def _req(self, name: str, sentence: str) -> SynthesisRequest:
+        return SynthesisRequest(
+            text=sentence,
+            provider_voice=self._voice.bindings[name],
+            locale=self._voice.locale,
+            fmt=self._fmt,
+            speed=self._speed,
+            sample_rate=self._router._settings.sample_rate,
+            request_id=self._request_id,
+        )
+
+    async def __call__(self, sentence: str) -> AsyncIterator[AudioChunk]:
+        r = self._router
+        locale = self._voice.locale
+
+        if self._locked is not None:
+            engine = r._engine_for(self._locked, self._overrides)
+            async with aclosing(engine.synthesize(self._req(self._locked, sentence))) as stream:
+                async for chunk in stream:
+                    yield chunk
+            return
+
+        last_exc: Exception | None = None
+        failed_from: str | None = None
+        for name in self._candidates:
+            if r.breaker(name).is_open():
+                continue
+            if failed_from is not None:
+                TTS_FAILOVER.labels(from_provider=failed_from, to_provider=name).inc()
+                failed_from = None
+            engine = r._engine_for(name, self._overrides)
+            breaker = r.breaker(name)
+            emitted = False
+            started = time.perf_counter()
+            try:
+                async with aclosing(engine.synthesize(self._req(name, sentence))) as stream:
+                    async for chunk in stream:
+                        if not emitted:
+                            TTS_TTFA.labels(provider=name, locale=locale).observe(
+                                time.perf_counter() - started
+                            )
+                            emitted = True
+                            self._locked = name  # lock the whole stream to this provider
+                        yield chunk
+                breaker.record_success()
+                return
+            except Exception as exc:
+                breaker.record_failure()
+                TTS_PROVIDER_ERRORS.labels(provider=name, type=type(exc).__name__).inc()
+                last_exc = exc
+                if emitted:
+                    raise  # audio already flowing — no mid-stream switch
+                failed_from = name
+                continue
+
+        raise AllProvidersUnavailableError(self._voice_id) from last_exc

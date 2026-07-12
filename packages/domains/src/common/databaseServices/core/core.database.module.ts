@@ -49,6 +49,8 @@ import { TenantEntitlementRepository } from '../../../repositories/generated/cor
 import { TenantFrontendConfigRepository } from '../../../repositories/generated/core/TenantFrontendConfigRepository';
 import { TenantRepository } from '../../../repositories/generated/core/TenantRepository';
 import { TenantStorageConfigRepository } from '../../../repositories/generated/core/TenantStorageConfigRepository';
+import { TenantTtsConfigRepository } from '../../../repositories/generated/core/TenantTtsConfigRepository';
+import { TenantTtsProviderCredentialRepository } from '../../../repositories/generated/core/TenantTtsProviderCredentialRepository';
 import { TenantUsageMeterRepository } from '../../../repositories/generated/core/TenantUsageMeterRepository';
 import { TranscriptionJobRepository } from '../../../repositories/generated/core/TranscriptionJobRepository';
 import { UserDepartmentRepository } from '../../../repositories/generated/core/UserDepartmentRepository';
@@ -139,6 +141,9 @@ const repositories = [
   TenantStorageConfigRepository,
   // Voice profile domain
   UserVoiceProfileRepository,
+  // Per-tenant TTS configuration (TASK-496)
+  TenantTtsConfigRepository,
+  TenantTtsProviderCredentialRepository,
   // Clinical documentation harness domain (TASK-330 Phase 0)
   GoldenSetRepository,
   GoldenCaseRepository,

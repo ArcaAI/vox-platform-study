@@ -7,7 +7,11 @@ import pytest
 
 from tts_v2.core.config import IndicParlerConfig
 from tts_v2.providers.base import AudioFormat, SynthesisRequest, TTSEngine
-from tts_v2.providers.indic_parler import IndicParlerProvider
+from tts_v2.providers.indic_parler import (
+    IndicParlerProvider,
+    _resolve_desc_source,
+    _resolve_model_source,
+)
 
 
 class FakeGenerate:
@@ -70,3 +74,36 @@ def test_protocol_and_streaming_flag():
     provider = IndicParlerProvider(IndicParlerConfig(), generate=FakeGenerate())
     assert isinstance(provider, TTSEngine)
     assert provider.native_streaming is True
+
+
+# --- TASK-495: internal-mirror load-branch resolution ---
+
+
+def test_model_source_defaults_to_gated_hub():
+    """No mirror configured (dev) → gated hub id, no local_files_only."""
+    source, kwargs = _resolve_model_source(IndicParlerConfig())
+    assert source == "ai4bharat/indic-parler-tts"
+    assert kwargs == {}
+
+
+def test_model_source_uses_mirror_offline_when_path_set():
+    """Mirror path set (prod) → load from it, offline (never touch gated hub)."""
+    cfg = IndicParlerConfig(model_path="/models/indic-parler-tts/abc123")
+    source, kwargs = _resolve_model_source(cfg)
+    assert source == "/models/indic-parler-tts/abc123"
+    assert kwargs == {"local_files_only": True}
+
+
+def test_desc_source_defaults_to_baked_hub_id():
+    """No desc mirror → the baked flan-t5 hub id fetched at load."""
+    source, kwargs = _resolve_desc_source(IndicParlerConfig(), "google/flan-t5-large")
+    assert source == "google/flan-t5-large"
+    assert kwargs == {}
+
+
+def test_desc_source_uses_mirror_offline_when_path_set():
+    """Desc mirror set → mirrored tokenizer, offline (baked id ignored)."""
+    cfg = IndicParlerConfig(desc_encoder_path="/models/flan-t5-large")
+    source, kwargs = _resolve_desc_source(cfg, "google/flan-t5-large")
+    assert source == "/models/flan-t5-large"
+    assert kwargs == {"local_files_only": True}

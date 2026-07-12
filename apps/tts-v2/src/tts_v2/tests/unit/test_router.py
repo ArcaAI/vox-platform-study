@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+import tts_v2.routing.router as router_mod
 from tts_v2.catalog.voices import VoiceCatalog
 from tts_v2.core.config import Settings
 from tts_v2.providers.base import AudioFormat, ProviderRegistry
@@ -83,6 +84,45 @@ class TestRouting:
         router = _router({"azure": engine})
         await _collect(router, voice_id="en-female-1", text="One. Two. Three.")
         assert engine.calls == 3
+
+    @pytest.mark.asyncio
+    async def test_routing_override_reorders_chain(self) -> None:
+        # TASK-496 — a per-request routing_en override (gateway-injected from the
+        # tenant config) wins over the static settings chain.
+        azure, kokoro = FakeEngine("azure"), FakeEngine("kokoro", chunks=1)
+        router = _router({"azure": azure, "kokoro": kokoro})
+        chunks = await _collect(
+            router, voice_id="en-female-1", text="Hi.", routing_en=["kokoro", "azure"]
+        )
+        assert kokoro.calls == 1 and azure.calls == 0
+        assert len(chunks) == 1
+
+    @pytest.mark.asyncio
+    async def test_allowed_providers_whitelist_filters_chain(self) -> None:
+        # TASK-496 — allowed_providers bounds the chain; azure (first by default)
+        # is dropped when not whitelisted.
+        azure, kokoro = FakeEngine("azure"), FakeEngine("kokoro", chunks=1)
+        router = _router({"azure": azure, "kokoro": kokoro})
+        chunks = await _collect(
+            router, voice_id="en-female-1", text="Hi.", allowed_providers=["kokoro"]
+        )
+        assert azure.calls == 0 and kokoro.calls == 1
+        assert len(chunks) == 1
+
+    @pytest.mark.asyncio
+    async def test_provider_override_builds_per_tenant_engine(self, monkeypatch) -> None:
+        # TASK-496 — a BYO key lets a tenant use a provider the platform did NOT
+        # register; the router builds a per-tenant engine from the injected creds.
+        fake = FakeEngine("azure", chunks=1)
+        monkeypatch.setattr(router_mod, "_build_override_engine", lambda settings, name, override: fake)
+        router = _router({})  # azure NOT registered at the platform
+        chunks = await _collect(
+            router,
+            voice_id="en-female-1",
+            text="Hi.",
+            provider_overrides={"azure": {"api_key": "tenant-key", "region": "eastus"}},
+        )
+        assert fake.calls == 1 and len(chunks) == 1
 
     @pytest.mark.asyncio
     async def test_cancellation_closes_engine(self) -> None:

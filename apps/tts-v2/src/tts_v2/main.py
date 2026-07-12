@@ -47,9 +47,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception as exc:  # noqa: BLE001 — prewarm is best-effort
             logger.warning("tts_v2.azure_prewarm_failed", error=str(exc))
 
+    # Sarvam (cloud; best ml code-switch) — register gated by TTS_SARVAM_ENABLED.
+    if settings.sarvam.enabled and "sarvam" not in registry:
+        from tts_v2.providers.sarvam import SarvamProvider
+
+        registry.register("sarvam", SarvamProvider(settings.sarvam))
+        logger.info("tts_v2.provider_registered", provider="sarvam", model=settings.sarvam.model)
+
     # Local engines register only after their model warms successfully — a load
     # failure leaves them unregistered (degraded, not dead).
-    if settings.kokoro.enabled or settings.indic_parler.enabled:
+    if settings.kokoro.enabled or settings.indic_parler.enabled or settings.indic_f5.enabled:
         from tts_v2.providers.registration import warm_and_register
 
         if settings.kokoro.enabled and "kokoro" not in registry:
@@ -62,6 +69,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
             await warm_and_register(
                 registry, "indic_parler", IndicParlerProvider(settings.indic_parler), logger=logger
+            )
+
+        # IndicF5 — EXPERIMENTAL, prod enablement NO-GO pending license review (TASK-494).
+        if settings.indic_f5.enabled and "indic_f5" not in registry:
+            from tts_v2.providers.indic_f5 import IndicF5Provider
+
+            await warm_and_register(
+                registry, "indic_f5", IndicF5Provider(settings.indic_f5), logger=logger
             )
 
     logger.info("tts_v2.started", providers=registry.list_providers())
@@ -110,11 +125,13 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
 
     from tts_v2.api.endpoints.health import router as health_router
     from tts_v2.api.endpoints.speech import router as speech_router
+    from tts_v2.api.endpoints.stream_ws import router as stream_ws_router
     from tts_v2.api.endpoints.voices import router as voices_router
 
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(voices_router, prefix="/api/v1")
     app.include_router(speech_router, prefix="/api/v1")
+    app.include_router(stream_ws_router, prefix="/api/v1")
 
     if settings.metrics_enabled:
         from prometheus_fastapi_instrumentator import Instrumentator

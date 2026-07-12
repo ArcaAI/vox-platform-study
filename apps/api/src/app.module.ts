@@ -52,6 +52,7 @@ import { EntitlementsApiModule } from './modules/entitlements/entitlements.modul
 import { HarnessAdminModule } from './modules/harness-admin/harness-admin.module';
 // TASK-356 Phase 5 — realtime-pipeline toggle cascade admin (/admin/harness/pipeline-policy).
 import { PipelinePolicyAdminModule } from './modules/pipeline-policy-admin/pipeline-policy-admin.module';
+import { TenantTtsConfigModule } from './modules/tenant-tts-config/tenant-tts-config.module';
 import { HealthModule } from './modules/health/health.module';
 import { InternalModule } from './modules/internal/internal.module';
 import { MonitoringModule } from './modules/monitoring/monitoring.module';
@@ -277,6 +278,8 @@ const featureModules: any[] = [
   HarnessAdminModule,
   // TASK-356 Phase 5 — /admin/harness/pipeline-policy (realtime-toggle cascade admin).
   PipelinePolicyAdminModule,
+  // TASK-496 — /admin/tts-config (per-tenant TTS spec + BYO provider credentials).
+  TenantTtsConfigModule,
   QueueAdminModule,
   // TASK-403 — always-on availability probe for the dev-only Prisma Studio
   // shell (the shell module below stays conditionally registered).

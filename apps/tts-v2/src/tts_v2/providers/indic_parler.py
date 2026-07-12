@@ -31,6 +31,33 @@ _NATIVE_RATE = 44100
 _MAX_SENTENCE_CHARS = 400  # Parler practical per-utterance limit
 
 
+def _resolve_model_source(config: IndicParlerConfig) -> tuple[str, dict[str, bool]]:
+    """Where to load the Parler model + prompt tokenizer from (TASK-495).
+
+    When ``model_path`` is set (an internal ungated mirror) load from it with
+    ``local_files_only=True`` so transformers never touches the gated hub;
+    otherwise fall back to the gated ``hf_model`` id (dev only).
+    """
+    if config.model_path:
+        return config.model_path, {"local_files_only": True}
+    return config.hf_model, {}
+
+
+def _resolve_desc_source(
+    config: IndicParlerConfig, baked_id: str
+) -> tuple[str, dict[str, bool]]:
+    """Where to load the description (flan-t5) tokenizer from (TASK-495).
+
+    Parler bakes ``google/flan-t5-large`` as a Hub id in its config, so it is
+    fetched at load even when the model is local. When ``desc_encoder_path`` is
+    set load the mirrored tokenizer from it (``local_files_only``); otherwise use
+    the baked id from ``model.config.text_encoder._name_or_path``.
+    """
+    if config.desc_encoder_path:
+        return config.desc_encoder_path, {"local_files_only": True}
+    return baked_id, {}
+
+
 class IndicParlerProvider:
     name = "indic_parler"
     supported_locales = {"ml-IN", "en-IN"}
@@ -65,9 +92,15 @@ class IndicParlerProvider:
         from transformers import AutoTokenizer
 
         device = self._config.device
-        model = ParlerTTSForConditionalGeneration.from_pretrained(self._config.hf_model).to(device)
-        tokenizer = AutoTokenizer.from_pretrained(self._config.hf_model)
-        desc_tokenizer = AutoTokenizer.from_pretrained(model.config.text_encoder._name_or_path)
+        model_source, model_kwargs = _resolve_model_source(self._config)
+        model = ParlerTTSForConditionalGeneration.from_pretrained(
+            model_source, **model_kwargs
+        ).to(device)
+        tokenizer = AutoTokenizer.from_pretrained(model_source, **model_kwargs)
+        desc_source, desc_kwargs = _resolve_desc_source(
+            self._config, model.config.text_encoder._name_or_path
+        )
+        desc_tokenizer = AutoTokenizer.from_pretrained(desc_source, **desc_kwargs)
 
         def _generate(text: str, description: str) -> np.ndarray:
             desc_ids = desc_tokenizer(description, return_tensors="pt").to(device)

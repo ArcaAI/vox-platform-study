@@ -43,6 +43,8 @@ export * from './TenantBucketFactory';
 export * from './TenantEntitlementFactory';
 export * from './TenantFrontendConfigFactory';
 export * from './TenantStorageConfigFactory';
+export * from './TenantTtsConfigFactory';
+export * from './TenantTtsProviderCredentialFactory';
 export * from './TenantFactory';
 export * from './TenantUsageMeterFactory';
 export * from './TranscriptionJobFactory';

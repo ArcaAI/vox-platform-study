@@ -54,3 +54,5 @@ export * from './metering';
 export * from './rbac';
 // TASK-386 — platform runtime metrics (E1/E2/E3) + multi-instance socket registry.
 export * from './platform-metrics';
+// TASK-496 — per-tenant TTS configuration (DB-backed spec + BYO provider creds).
+export * from './tenant-tts-config';

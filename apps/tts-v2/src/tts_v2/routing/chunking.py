@@ -29,6 +29,23 @@ def segment(text: str, locale: str) -> list[str]:
     return [p.strip() for p in _BOUNDARY_RE.split(text.strip()) if p.strip()]
 
 
+def split_confirmed(buffer: str, locale: str) -> tuple[list[str], str]:
+    """Incremental split for streaming: pull out sentences whose boundary is
+    *confirmed* by following whitespace, and keep the trailing unterminated
+    fragment as the remainder (ElevenLabs trailing-space convention).
+
+    Returns ``(complete_sentences, remainder)``. A fragment like ``"Hello."`` with
+    no following whitespace stays in the remainder until more text confirms it,
+    so mid-word/decimal boundaries are never emitted early.
+    """
+    matches = list(_BOUNDARY_RE.finditer(buffer))
+    if not matches:
+        return [], buffer
+    cut = matches[-1].end()
+    confirmed, remainder = buffer[:cut], buffer[cut:]
+    return segment(confirmed, locale), remainder
+
+
 def chunk_text(text: str, locale: str, max_chars: int) -> list[str]:
     """Segment into sentences, then hard-wrap any sentence longer than max_chars."""
     out: list[str] = []

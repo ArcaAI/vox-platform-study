@@ -50,6 +50,8 @@ export * from './TenantEntitlementModel';
 export * from './TenantFrontendConfigModel';
 export * from './TenantModel';
 export * from './TenantStorageConfigModel';
+export * from './TenantTtsConfigModel';
+export * from './TenantTtsProviderCredentialModel';
 export * from './TenantUsageMeterModel';
 export * from './TranscriptionJobModel';
 export * from './UserDepartmentModel';

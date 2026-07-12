@@ -43,4 +43,5 @@ export enum ResourceType {
   UserVoiceProfile = 'UserVoiceProfile',
   UserDepartment = 'UserDepartment',
   TenantFrontendConfig = 'TenantFrontendConfig',
+  TenantTtsConfig = 'TenantTtsConfig',
 }
