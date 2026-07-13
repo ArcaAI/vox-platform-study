@@ -273,7 +273,18 @@ describe('BaseService', () => {
       );
     });
 
-    it('emits tenantId=null when CLS is absent (does not silently accept payload tenantId)', () => {
+    // TASK-503 — a GLOBAL_ADMIN authenticates with an empty CLS tenantId and
+    // stays unscoped until they elevate to a working tenant (see
+    // `resolve-active-tenant.ts`). Any mutation broadcast during that window
+    // (e.g. a self-service UserSettings save while browsing the cross-tenant
+    // audit-logs grid) previously stamped `tenantId: null`, which
+    // `AuditLogProcessor`'s fail-closed guard rejects outright. Falls back to
+    // the reserved SYSTEM tenant — the same convention already used by
+    // `AuditLogService` for pre-CLS LOGIN/IMPERSONATION events (TASK-305 A.8)
+    // — so platform-level events attribute to SYSTEM instead of crashing the
+    // queue. The anti-spoofing invariant is unchanged: the caller-supplied
+    // `payload.tenantId` is still never used.
+    it('falls back to the SYSTEM tenant when CLS is absent (does not silently accept payload tenantId)', () => {
       mockClsService.get.mockReturnValue(null);
 
       service.testBroadcastSysEvent('RESOURCE_CREATED' as SysEventType, {
@@ -282,7 +293,7 @@ describe('BaseService', () => {
       });
 
       const [, payload] = (mockEventEmitter.emit as ReturnType<typeof vi.fn>).mock.calls[0] as [string, Record<string, unknown>];
-      expect(payload.tenantId).toBeNull();
+      expect(payload.tenantId).toBe('00000000-0000-0000-0000-000000000000');
       expect(payload.other).toBe('x');
     });
 
