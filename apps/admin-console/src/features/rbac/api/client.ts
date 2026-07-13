@@ -3,6 +3,7 @@
 import { deleteJson, getJson, patchJson, postJson } from '@/shared/api';
 import type {
     BreakGlass,
+    CloneRoleRequest,
     CreatePolicyRequest,
     CreateRoleRequest,
     Policy,
@@ -35,6 +36,11 @@ export function listRoleMembers(roleId: string, params?: RbacListParams): Promis
 
 export function createRole(body: CreateRoleRequest): Promise<Role> {
     return postJson(ROLES, body);
+}
+
+/** TASK-501 — clone a role (SYSTEM or CUSTOM) into a new CUSTOM role. */
+export function cloneRole(id: string, body: CloneRoleRequest): Promise<Role> {
+    return postJson(`${ROLES}/${encodeURIComponent(id)}/clone`, body);
 }
 
 export function updateRole(id: string, body: UpdateRoleRequest): Promise<Role> {

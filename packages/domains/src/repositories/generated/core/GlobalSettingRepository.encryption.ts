@@ -82,6 +82,10 @@ declare module './GlobalSettingRepository' {
   }
 }
 
+// TASK-504 note: a behaviour-identical canonical copy of this function lives in
+// the applications layer (secrets/secret-field.util.ts). This domains-layer copy
+// is intentional — domains cannot import applications (import cycle). Keep the
+// two implementations byte-identical; do not diverge one without the other.
 function parseKeyVersionFromCiphertext(ct: string): number {
   // Vault Transit ciphertext is of the form `vault:vN:<b64>` where N is
   // the key version. Parse robustly: bad shape → 1 (the bootstrap key).

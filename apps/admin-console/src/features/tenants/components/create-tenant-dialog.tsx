@@ -10,43 +10,75 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError } from '@/shared/api';
-import { useCreateTenant } from '../api/hooks';
-import type { CreateTenantRequest, TenantPlan } from '../api/types';
+import { useProvisionTenant } from '../api/hooks';
+import type { ProvisionTenantAdmin, ProvisionTenantRequest, TenantPlan } from '../api/types';
 import { PLAN_LABELS } from './plan-badge';
 
-const PLAN_CHOICES: Array<{ value: TenantPlan | ''; label: string; hint: string }> = [
-    { value: '', label: 'No plan', hint: 'Assign a commercial plan later' },
-    { value: 'TRIAL', label: PLAN_LABELS.TRIAL, hint: 'Time-boxed evaluation' },
+const PLAN_CHOICES: Array<{ value: TenantPlan; label: string; hint: string }> = [
     { value: 'STARTER', label: PLAN_LABELS.STARTER, hint: 'Small practices' },
+    { value: 'TRIAL', label: PLAN_LABELS.TRIAL, hint: 'Time-boxed evaluation' },
     { value: 'PRO', label: PLAN_LABELS.PRO, hint: 'Multi-department organizations' },
     { value: 'ENTERPRISE', label: PLAN_LABELS.ENTERPRISE, hint: 'Full platform capabilities' },
 ];
 
+type AdminMode = 'existing' | 'new-local';
+type Step = 1 | 2 | 3;
+
 /**
- * Create-tenant wizard (frame 12 primary action): step 1 collects the
- * identity details, step 2 picks the plan and confirms the summary before the
- * POST. Navigates to the new tenant on success.
+ * Cosmetic client-side preview only — the server (`generateUniqueTenantKey`,
+ * TASK-497 D3) is the authoritative generator (collision suffixing, reserved
+ * fallback). This mirrors it loosely just so the user sees what to expect.
+ */
+function previewTenantKey(name: string): string {
+    return name
+        .toLowerCase()
+        .replace(/['’]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 40)
+        .replace(/-+$/, '');
+}
+
+/**
+ * Create-tenant-with-admin wizard (TASK-497 §3.5): step 1 identity, step 2
+ * plan, step 3 the tenant's initial TENANT_ADMIN (existing user or a new
+ * local account) — mandatory, so a tenant is never created adminless from
+ * this dialog. Submits via `POST /admin/tenants/provision`.
  */
 export function CreateTenantDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
     const router = useRouter();
-    const createTenant = useCreateTenant();
-    const [step, setStep] = useState<1 | 2>(1);
+    const provisionTenant = useProvisionTenant();
+    const [step, setStep] = useState<Step>(1);
     const [name, setName] = useState('');
     const [tenantKey, setTenantKey] = useState('');
     const [description, setDescription] = useState('');
-    const [plan, setPlan] = useState<TenantPlan | ''>('');
+    const [plan, setPlan] = useState<TenantPlan>('STARTER');
+    const [adminMode, setAdminMode] = useState<AdminMode>('existing');
+    const [existingUserId, setExistingUserId] = useState('');
+    const [newEmail, setNewEmail] = useState('');
+    const [newUsername, setNewUsername] = useState('');
+    const [newPassword, setNewPassword] = useState('');
 
-    const detailsValid = name.trim().length > 0 && tenantKey.trim().length > 0;
+    const detailsValid = name.trim().length > 0;
+    const adminValid = adminMode === 'existing' ? existingUserId.trim().length > 0 : newEmail.trim().length > 0 && newPassword.length > 0;
+    const keyPreview = previewTenantKey(name);
+
+    function reset() {
+        setStep(1);
+        setName('');
+        setTenantKey('');
+        setDescription('');
+        setPlan('STARTER');
+        setAdminMode('existing');
+        setExistingUserId('');
+        setNewEmail('');
+        setNewUsername('');
+        setNewPassword('');
+        provisionTenant.reset();
+    }
 
     function handleOpenChange(next: boolean) {
-        if (!next) {
-            setStep(1);
-            setName('');
-            setTenantKey('');
-            setDescription('');
-            setPlan('');
-            createTenant.reset();
-        }
+        if (!next) reset();
         onOpenChange(next);
     }
 
@@ -56,28 +88,40 @@ export function CreateTenantDialog({ open, onOpenChange }: { open: boolean; onOp
     }
 
     function handleCreate() {
-        const body: CreateTenantRequest = {
-            name: name.trim(),
-            key: tenantKey.trim(),
-            ...(description.trim() ? { description: description.trim() } : {}),
-            ...(plan ? { plan } : {}),
+        const admin: ProvisionTenantAdmin =
+            adminMode === 'existing'
+                ? { mode: 'existing', userId: existingUserId.trim() }
+                : {
+                      mode: 'new-local',
+                      email: newEmail.trim(),
+                      ...(newUsername.trim() ? { username: newUsername.trim() } : {}),
+                      password: newPassword,
+                  };
+
+        const body: ProvisionTenantRequest = {
+            tenantName: name.trim(),
+            ...(tenantKey.trim() ? { tenantKey: tenantKey.trim() } : {}),
+            plan,
+            admin,
         };
-        createTenant.mutate(body, {
-            onSuccess: (created) => {
+        provisionTenant.mutate(body, {
+            onSuccess: (result) => {
                 toast.success('Tenant created');
                 handleOpenChange(false);
-                if (created?.id) router.push(`/tenants/${created.id}`);
+                if (result?.tenant?.id) router.push(`/tenants/${result.tenant.id}`);
             },
             onError: (error) => toast.error(error instanceof GatewayError ? error.message : 'Could not create the tenant.'),
         });
     }
+
+    const stepLabel = { 1: 'details', 2: 'plan', 3: 'tenant admin' }[step];
 
     return (
         <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                     <DialogTitle>New tenant</DialogTitle>
-                    <DialogDescription>{step === 1 ? 'Step 1 of 2 \u2014 details' : 'Step 2 of 2 \u2014 plan & confirm'}</DialogDescription>
+                    <DialogDescription>{`Step ${step} of 3 — ${stepLabel}`}</DialogDescription>
                 </DialogHeader>
                 {step === 1 ? (
                     <form onSubmit={handleDetailsSubmit} className="flex flex-col gap-4">
@@ -95,19 +139,18 @@ export function CreateTenantDialog({ open, onOpenChange }: { open: boolean; onOp
                             />
                         </div>
                         <div className="flex flex-col gap-2">
-                            <Label htmlFor="create-tenant-key">
-                                Key <span aria-hidden className="text-destructive">*</span>
-                            </Label>
+                            <Label htmlFor="create-tenant-key">Key (optional)</Label>
                             <Input
                                 id="create-tenant-key"
                                 value={tenantKey}
                                 onChange={(event) => setTenantKey(event.target.value)}
-                                placeholder="sunrise-medical"
+                                placeholder={keyPreview || 'sunrise-medical'}
                                 autoComplete="off"
                                 className="font-mono"
-                                required
                             />
-                            <p className="text-muted-foreground text-xs">Short unique code used in URLs and API calls.</p>
+                            <p className="text-muted-foreground text-xs">
+                                {tenantKey.trim() ? 'Short unique code used in URLs and API calls.' : keyPreview ? <>Auto-generated: <span className="font-mono">{keyPreview}</span></> : 'Auto-generated from the name when left blank.'}
+                            </p>
                         </div>
                         <div className="flex flex-col gap-2">
                             <Label htmlFor="create-tenant-description">Description</Label>
@@ -129,13 +172,14 @@ export function CreateTenantDialog({ open, onOpenChange }: { open: boolean; onOp
                             </Button>
                         </DialogFooter>
                     </form>
-                ) : (
+                ) : null}
+                {step === 2 ? (
                     <div className="flex flex-col gap-4">
                         <fieldset className="flex flex-col gap-2">
                             <legend className="mb-2 text-sm font-medium">Plan</legend>
                             {PLAN_CHOICES.map((choice) => (
                                 <label
-                                    key={choice.value || 'none'}
+                                    key={choice.value}
                                     className="border-input has-[:checked]:border-primary has-[:checked]:bg-primary/5 flex cursor-pointer items-start gap-3 rounded-md border p-3"
                                 >
                                     <input
@@ -153,29 +197,100 @@ export function CreateTenantDialog({ open, onOpenChange }: { open: boolean; onOp
                                 </label>
                             ))}
                         </fieldset>
-                        <dl className="bg-muted/50 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-md border p-3 text-sm">
-                            <dt className="text-muted-foreground">Name</dt>
-                            <dd className="font-medium">{name.trim()}</dd>
-                            <dt className="text-muted-foreground">Key</dt>
-                            <dd className="font-mono text-xs leading-5">{tenantKey.trim()}</dd>
-                            {description.trim() ? (
-                                <>
-                                    <dt className="text-muted-foreground">Description</dt>
-                                    <dd className="truncate">{description.trim()}</dd>
-                                </>
-                            ) : null}
-                        </dl>
                         <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setStep(1)} disabled={createTenant.isPending}>
+                            <Button type="button" variant="outline" onClick={() => setStep(1)}>
                                 Back
                             </Button>
-                            <Button type="button" onClick={handleCreate} disabled={createTenant.isPending}>
-                                {createTenant.isPending ? <Spinner /> : null}
+                            <Button type="button" onClick={() => setStep(3)}>
+                                Next
+                            </Button>
+                        </DialogFooter>
+                    </div>
+                ) : null}
+                {step === 3 ? (
+                    <div className="flex flex-col gap-4">
+                        <fieldset className="flex flex-col gap-2">
+                            <legend className="mb-2 text-sm font-medium">Tenant admin</legend>
+                            <label className="border-input has-[:checked]:border-primary has-[:checked]:bg-primary/5 flex cursor-pointer items-center gap-3 rounded-md border p-3">
+                                <input
+                                    type="radio"
+                                    name="create-tenant-admin-mode"
+                                    checked={adminMode === 'existing'}
+                                    onChange={() => setAdminMode('existing')}
+                                    className="accent-primary"
+                                />
+                                <span className="text-sm font-medium">Use an existing user</span>
+                            </label>
+                            <label className="border-input has-[:checked]:border-primary has-[:checked]:bg-primary/5 flex cursor-pointer items-center gap-3 rounded-md border p-3">
+                                <input
+                                    type="radio"
+                                    name="create-tenant-admin-mode"
+                                    checked={adminMode === 'new-local'}
+                                    onChange={() => setAdminMode('new-local')}
+                                    className="accent-primary"
+                                />
+                                <span className="text-sm font-medium">Create a new local user</span>
+                            </label>
+                        </fieldset>
+                        {adminMode === 'existing' ? (
+                            <div className="flex flex-col gap-2">
+                                <Label htmlFor="create-tenant-admin-user-id">Existing user id</Label>
+                                <Input
+                                    id="create-tenant-admin-user-id"
+                                    value={existingUserId}
+                                    onChange={(event) => setExistingUserId(event.target.value)}
+                                    className="font-mono"
+                                    autoComplete="off"
+                                    required
+                                />
+                            </div>
+                        ) : (
+                            <>
+                                <div className="flex flex-col gap-2">
+                                    <Label htmlFor="create-tenant-admin-email">Email</Label>
+                                    <Input
+                                        id="create-tenant-admin-email"
+                                        type="email"
+                                        value={newEmail}
+                                        onChange={(event) => setNewEmail(event.target.value)}
+                                        autoComplete="off"
+                                        required
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    <Label htmlFor="create-tenant-admin-username">Username (optional)</Label>
+                                    <Input
+                                        id="create-tenant-admin-username"
+                                        value={newUsername}
+                                        onChange={(event) => setNewUsername(event.target.value)}
+                                        autoComplete="off"
+                                        placeholder="Defaults to the email"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    <Label htmlFor="create-tenant-admin-password">Password</Label>
+                                    <Input
+                                        id="create-tenant-admin-password"
+                                        type="password"
+                                        value={newPassword}
+                                        onChange={(event) => setNewPassword(event.target.value)}
+                                        autoComplete="new-password"
+                                        required
+                                    />
+                                </div>
+                            </>
+                        )}
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setStep(2)} disabled={provisionTenant.isPending}>
+                                Back
+                            </Button>
+                            <Button type="button" onClick={handleCreate} disabled={!adminValid || provisionTenant.isPending}>
+                                {provisionTenant.isPending ? <Spinner /> : null}
                                 Create tenant
                             </Button>
                         </DialogFooter>
                     </div>
-                )}
+                ) : null}
             </DialogContent>
         </Dialog>
     );

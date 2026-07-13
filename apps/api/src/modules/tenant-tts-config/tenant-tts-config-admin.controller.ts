@@ -2,13 +2,13 @@ import {
   EffectiveTtsConfigResponse,
   IActiveUserContext,
   ITenantTtsConfigService,
-  isSuperAdmin,
   SetTtsCredentialRequest,
   TenantTtsConfigResponse,
   TtsCredentialResponse,
   UpdateTenantTtsConfigRequest,
 } from '@arcaai/applications';
-import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, Inject, Param, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Put, Query } from '@nestjs/common';
+import { resolveScopedTenantId } from '../../shared/tenant-scope';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
@@ -138,17 +138,6 @@ export class TenantTtsConfigAdminController {
 
   /** Tenant admins → own tenant; global-admins → `?tenantId=` (or CLS tenant). */
   private resolveTenantId(queryTenantId?: string): string {
-    const user = this.cls.get('user');
-    if (isSuperAdmin(user)) {
-      const target = queryTenantId ?? this.cls.get('tenantId') ?? user?.tenantId ?? undefined;
-      if (!target) throw new BadRequestException('Platform admins must pass ?tenantId= to scope this request.');
-      return target;
-    }
-    const tenantId = this.cls.get('tenantId') ?? user?.tenantId ?? undefined;
-    if (!tenantId) throw new BadRequestException('Tenant context is required.');
-    if (queryTenantId && queryTenantId !== tenantId) {
-      throw new ForbiddenException('You do not have access to this tenant');
-    }
-    return tenantId;
+    return resolveScopedTenantId(this.cls.get('user'), this.cls.get('tenantId'), queryTenantId);
   }
 }

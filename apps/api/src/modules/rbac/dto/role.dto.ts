@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsUUID, IsNumber, Min, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsUUID, IsNumber, IsBoolean, Min, IsIn } from 'class-validator';
 
 /**
  * DTO for creating a new role
@@ -28,6 +28,20 @@ export class CreateRoleDto {
   @IsOptional()
   @IsUUID()
   parentRoleId?: string;
+
+  @ApiPropertyOptional({ description: 'Create as a SYSTEM role — global admin only (TASK-501)', example: false })
+  @IsOptional()
+  @IsBoolean()
+  isSystemRole?: boolean;
+}
+
+/**
+ * TASK-501 — DTO for cloning a role (SYSTEM or CUSTOM) into a new CUSTOM role.
+ */
+export class CloneRoleDto {
+  @ApiProperty({ description: 'Name for the cloned CUSTOM role', example: 'DOCTOR (copy)' })
+  @IsString()
+  name: string;
 }
 
 /**

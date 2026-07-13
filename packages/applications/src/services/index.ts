@@ -28,6 +28,8 @@ export * from './harness-audit';
 export * from './harness-policy';
 // TASK-356 Phase 5 — generalized realtime-config cascade resolver (Pillar B).
 export * from './config-resolver';
+// TASK-504 Phase 3 — capability/settings registry (typed catalog of admin-controllable settings).
+export * from './settings-registry';
 // TASK-356 Phase 5 — editable realtime-pipeline policy (cascade admin surface).
 export * from './pipeline-policy';
 // TASK-330 Phase 6 — read-only observability projections (audit/eval/gate-queue).
@@ -56,3 +58,8 @@ export * from './rbac';
 export * from './platform-metrics';
 // TASK-496 — per-tenant TTS configuration (DB-backed spec + BYO provider creds).
 export * from './tenant-tts-config';
+// TASK-498 — tenant-scoped external identity provider (OIDC config + per-tenant client resolver + JIT-provisioning login round-trip).
+export * from './tenant-idp-config';
+export * from './idp-resolver';
+export * from './federated-auth';
+export * from './directory-sync';

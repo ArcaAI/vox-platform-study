@@ -2107,5 +2107,62 @@ describe('ApiKeyService', () => {
                 expect(result.id).toBe('foreign-key');
             });
         });
+
+        /**
+         * BUG-005 Issue 1 — the LIST endpoints (`fetchAll`/`fetchAllByTenantId`)
+         * previously filtered by tenantId only, so an owner-only caller (e.g. a
+         * real end-user, or an operator impersonating one) saw every key in the
+         * tenant instead of just their own. Mirrors the by-id `assertKeyAccess`
+         * owner gate above.
+         */
+        describe('fetchAll / fetchAllByTenantId narrow to the caller\'s own keys for owner-only callers', () => {
+            it('fetchAll adds userId to the where clause for an owner-only caller', async () => {
+                setOwnerOnlyCaller('owner-1');
+                mockApiKeyRepository.findAll.mockResolvedValue([]);
+                mockApiKeyRepository.count.mockResolvedValue(0);
+
+                await service.fetchAll({ page: 1, limit: 10 } as any);
+
+                expect(mockApiKeyRepository.findAll).toHaveBeenCalledWith(
+                    expect.objectContaining({ where: { tenantId: 'tenant-1', userId: 'owner-1' } }),
+                );
+            });
+
+            it('fetchAll does NOT add userId for a tenant-admin (manage:ApiKey) caller', async () => {
+                setTenantAdminCaller('admin-1');
+                mockApiKeyRepository.findAll.mockResolvedValue([]);
+                mockApiKeyRepository.count.mockResolvedValue(0);
+
+                await service.fetchAll({ page: 1, limit: 10 } as any);
+
+                const findAllArgs = mockApiKeyRepository.findAll.mock.calls[0][0];
+                expect(findAllArgs.where?.userId).toBeUndefined();
+                expect(findAllArgs.where?.tenantId).toBe('tenant-1');
+            });
+
+            it('fetchAllByTenantId adds userId to the where clause for an owner-only caller', async () => {
+                setOwnerOnlyCaller('owner-1');
+                mockApiKeyRepository.findAll.mockResolvedValue([]);
+                mockApiKeyRepository.count.mockResolvedValue(0);
+
+                await service.fetchAllByTenantId({ tenantId: 'tenant-1', page: 1, limit: 10 } as any);
+
+                expect(mockApiKeyRepository.findAll).toHaveBeenCalledWith(
+                    expect.objectContaining({ where: { tenantId: 'tenant-1', userId: 'owner-1' } }),
+                );
+            });
+
+            it('fetchAllByTenantId does NOT add userId for a GLOBAL_ADMIN cross-tenant caller', async () => {
+                setSuperAdminCaller('sa-1');
+                mockApiKeyRepository.findAll.mockResolvedValue([]);
+                mockApiKeyRepository.count.mockResolvedValue(0);
+
+                await service.fetchAllByTenantId({ tenantId: 'tenant-2', page: 1, limit: 10 } as any);
+
+                expect(mockApiKeyRepository.findAll).toHaveBeenCalledWith(
+                    expect.objectContaining({ where: { tenantId: 'tenant-2' } }),
+                );
+            });
+        });
     });
 });

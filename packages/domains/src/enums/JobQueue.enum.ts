@@ -23,4 +23,7 @@ export enum JobQueue {
 
   // Institutional RAG knowledge corpus (TASK-330 Phase 3)
   IngestKnowledgeDocument = 'IngestKnowledgeDocument',
+
+  // Tenant-scoped external identity provider — admin-triggered directory pull (TASK-498 P3)
+  SyncTenantDirectoryUsers = 'SyncTenantDirectoryUsers',
 }

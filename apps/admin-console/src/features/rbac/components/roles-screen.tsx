@@ -374,7 +374,13 @@ export function RolesScreen() {
                         />
                         <div className="flex min-h-0 flex-1 flex-col">
                             {selectedId ? (
-                                <RoleDetailPane key={selectedId} roleId={selectedId} tier={tier} onRequestDelete={setDeleteTarget} />
+                                <RoleDetailPane
+                                    key={selectedId}
+                                    roleId={selectedId}
+                                    tier={tier}
+                                    onRequestDelete={setDeleteTarget}
+                                    onCloned={(role) => void setSelectedId(role.id)}
+                                />
                             ) : (
                                 <EmptyState
                                     icon={IconShieldCog}
@@ -394,6 +400,7 @@ export function RolesScreen() {
                     tier={tier}
                     onOpenChange={(open) => !open && void setSelectedId(null)}
                     onRequestDelete={setDeleteTarget}
+                    onCloned={(role) => void setSelectedId(role.id)}
                 />
             ) : null}
 

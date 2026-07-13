@@ -335,11 +335,17 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
    *
    * TASK-305 D.5.2 (audit M-1) — scoped to the caller's CLS tenantId so a
    * Tenant-A admin cannot enumerate Tenant-B keys. GLOBAL_ADMIN bypasses.
+   *
+   * BUG-005 Issue 1 (TASK-390 follow-up) — also owner-scoped: a caller
+   * without the tenant-wide `manage:ApiKey` grant (i.e. holding only
+   * `api-key-own-manage`) sees only their own keys, mirroring
+   * `assertKeyAccess`'s by-id owner gate.
    */
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<ApiKeyEntity>> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { limit, page, search } = props;
-    const tenantScopedWhere = this.buildTenantWhere();
+    const ownerScope = this.callerCanManageAllKeys() ? undefined : { userId: this.requestUserId };
+    const tenantScopedWhere = this.buildTenantWhere(ownerScope);
 
     const [apiKeys, count] = await Promise.all([
       this.apiKeyRepository.findAll({
@@ -373,6 +379,9 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
    * driven by the DTO `tenantId`. Pre-guard, a Tenant-A admin could
    * enumerate Tenant-B API keys by passing a foreign `tenantId`.
    * GLOBAL_ADMIN bypasses for admin-tooling cross-tenant listing.
+   *
+   * BUG-005 Issue 1 (TASK-390 follow-up) — also owner-scoped, same gate as
+   * `fetchAll` above.
    */
   async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<ApiKeyEntity>> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -382,14 +391,16 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
       throw new NotFoundException('Resource not found');
     }
 
+    const where = this.callerCanManageAllKeys() ? { tenantId } : { tenantId, userId: this.requestUserId };
+
     const apiKeys = await this.apiKeyRepository.findAll({
       ...withFormattedPaginatedProps(props),
-      where: { tenantId },
+      where,
     });
 
     const count = await this.apiKeyRepository.count({
       ...withFormattedCountProps(props),
-      where: { tenantId },
+      where,
     });
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {

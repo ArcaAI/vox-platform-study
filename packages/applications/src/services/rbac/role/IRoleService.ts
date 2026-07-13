@@ -40,6 +40,13 @@ export interface CreateRbacRoleRequest {
   externalName?: string;
   externalId?: string;
   parentRoleId?: string;
+  /** TASK-501 — only a global admin may set `true` (service-enforced). */
+  isSystemRole?: boolean;
+}
+
+/** TASK-501 — clone always produces a new CUSTOM role, any admin may call it. */
+export interface CloneRbacRoleRequest {
+  name: string;
 }
 
 export interface UpdateRbacRoleRequest {
@@ -87,6 +94,8 @@ export interface IRbacRoleService {
   create(request: CreateRbacRoleRequest): Promise<RbacRoleRecord>;
   update(id: string, request: UpdateRbacRoleRequest): Promise<RbacRoleRecord>;
   patch(id: string, request: UpdateRbacRoleRequest): Promise<RbacRoleRecord>;
+  /** TASK-501 — clone a role (SYSTEM or CUSTOM) into a new CUSTOM role with copied policies. */
+  clone(sourceId: string, request: CloneRbacRoleRequest): Promise<RbacRoleRecord>;
   /** TASK-409 — deleting a role always requires break-glass confirmation. */
   softDelete(id: string, breakGlass?: BreakGlassCredentials): Promise<{ id: string; name: string }>;
   assignPolicy(roleId: string, policyId: string, dto: RbacRolePolicyAssignmentInput): Promise<void>;

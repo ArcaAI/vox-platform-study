@@ -10,6 +10,7 @@ export {
     patchWithEtag,
     postJson,
     putJson,
+    putWithEtag,
     request,
     versionFromEtag,
     type CursorPaginated,

@@ -8,7 +8,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { toast } from 'sonner';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { UserSetting } from '@/features/users/api/types';
+import type { UserDepartment, UserSetting } from '@/features/users/api/types';
 import type { SafeSession } from '@/shared/auth/hooks';
 import { renderWithProviders } from '@/test/render';
 import type { UserPreferences } from '../../api/types';
@@ -23,6 +23,22 @@ const SESSION: SafeSession = {
     workingTenantName: 'Sunrise Medical Group',
     impersonatingUserId: null,
     impersonatingUsername: null,
+    effectiveUser: { id: 'u-1', username: 'super_admin', email: 'root@hope.dev', roles: ['GLOBAL_ADMIN'], tenantId: null, departmentId: null },
+    effectiveIsElevated: true,
+    effectiveTenantId: 'ten-1',
+};
+
+/** BUG-005 — an operator (super_admin) impersonating doctor2. */
+const IMPERSONATING_SESSION: SafeSession = {
+    user: { id: 'u-1', username: 'super_admin', email: 'root@hope.dev', roles: ['GLOBAL_ADMIN'], tenantId: null },
+    isElevated: true,
+    workingTenantId: null,
+    workingTenantName: null,
+    impersonatingUserId: 'doctor2-id',
+    impersonatingUsername: 'doctor2',
+    effectiveUser: { id: 'doctor2-id', username: 'doctor2', email: 'doctor2@hope.dev', roles: ['DOCTOR'], tenantId: 'ten-1', departmentId: null },
+    effectiveIsElevated: false,
+    effectiveTenantId: 'ten-1',
 };
 
 const SETTING: UserSetting = {
@@ -41,6 +57,20 @@ const SETTING: UserSetting = {
     dataType: 'string',
     namespace: 'arcaai-sdk',
     userId: 'u-1',
+};
+
+const DEPARTMENT: UserDepartment = {
+    id: 'ud-1',
+    userId: 'u-1',
+    departmentId: 'dept-1',
+    departmentName: 'Cardiology',
+    departmentCode: 'CARD',
+    isPrimary: true,
+    tenantId: 'ten-1',
+    resourceStatus: 'ENABLED',
+    createdAt: '2026-06-01T08:00:00.000Z',
+    updatedAt: '2026-06-01T08:00:00.000Z',
+    version: 1,
 };
 
 const PREFERENCES: UserPreferences = {
@@ -75,15 +105,16 @@ function stubFetch(handler: Handler): RecordedCall[] {
     return calls;
 }
 
-function happyHandler(overrides: { settings?: () => Response } = {}): Handler {
+function happyHandler(overrides: { settings?: () => Response; session?: SafeSession; departments?: UserDepartment[] } = {}): Handler {
     return (url, method) => {
-        if (url === '/api/auth/session') return Response.json(SESSION);
+        if (url === '/api/auth/session') return Response.json(overrides.session ?? SESSION);
         if (url.includes('/user/me/settings/')) return Response.json({ ...SETTING, value: 'pipe-2' });
         if (url.includes('/user/me/settings')) return (overrides.settings ?? (() => Response.json([SETTING])))();
         if (url.includes('/user/me/preferences')) {
             if (method === 'PATCH') return Response.json(PREFERENCES);
             return Response.json(PREFERENCES);
         }
+        if (url.includes('/user/me/departments')) return Response.json(overrides.departments ?? []);
         throw new Error(`Unexpected fetch in test: ${method} ${url}`);
     };
 }
@@ -106,6 +137,24 @@ describe('AccountScreen', () => {
         expect(within(identity).getByText('GLOBAL_ADMIN')).toBeDefined();
         expect(within(identity).getByText('Sunrise Medical Group')).toBeDefined();
         expect(within(identity).getByText('SA')).toBeDefined();
+    });
+
+    /** BUG-005 Issue 4 — the Identity card shows the caller's own department when present. */
+    it('shows the primary department on the Identity card when present', async () => {
+        stubFetch(happyHandler({ departments: [DEPARTMENT] }));
+        renderWithProviders(<AccountScreen />);
+
+        const identity = await screen.findByRole('region', { name: 'Identity' });
+        expect(await within(identity).findByText('Cardiology')).toBeDefined();
+    });
+
+    it('renders no department field when the caller has none', async () => {
+        stubFetch(happyHandler({ departments: [] }));
+        renderWithProviders(<AccountScreen />);
+
+        const identity = await screen.findByRole('region', { name: 'Identity' });
+        await within(identity).findByText('super_admin');
+        expect(within(identity).queryByText('Department')).toBeNull();
     });
 
     it('saving a setting PATCHes the namespaced key and toasts', async () => {
@@ -150,6 +199,27 @@ describe('AccountScreen', () => {
         renderWithProviders(<AccountScreen />);
 
         expect(await screen.findByText('No settings yet')).toBeDefined();
+    });
+
+    /**
+     * BUG-005 Issue 4 — while impersonating, the Identity card + page meta
+     * must show the impersonated user, not the operator (`super_admin`).
+     */
+    it('shows the impersonated identity, not the operator, while impersonating', async () => {
+        stubFetch(happyHandler({ session: IMPERSONATING_SESSION }));
+        renderWithProviders(<AccountScreen />);
+
+        const identity = await screen.findByRole('region', { name: 'Identity' });
+        expect(within(identity).getByText('doctor2')).toBeDefined();
+        expect(within(identity).getByText('doctor2@hope.dev')).toBeDefined();
+        expect(within(identity).getByText('DOCTOR')).toBeDefined();
+        expect(within(identity).queryByText('super_admin')).toBeNull();
+        expect(within(identity).queryByText('root@hope.dev')).toBeNull();
+        expect(within(identity).queryByText('GLOBAL_ADMIN')).toBeNull();
+
+        // Page meta (h1 "Account" companion) ALSO reflects the target — two
+        // occurrences: the header meta line and the Identity card.
+        expect(screen.getAllByText('doctor2').length).toBeGreaterThanOrEqual(2);
     });
 
     it('mirrors the loaded layout with skeletons while the session is in flight', () => {

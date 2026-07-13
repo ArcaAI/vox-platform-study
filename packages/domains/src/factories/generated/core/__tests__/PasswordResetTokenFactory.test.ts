@@ -43,6 +43,33 @@ describe('PasswordResetTokenFactory (TASK-400)', () => {
         expect(token.requestedVia).toBe('admin');
     });
 
+    // TASK-497 §3.4 — the `email_verification` purpose stashes the pending
+    // tenant name (captured at POST /auth/register) here until POST
+    // /auth/register/verify consumes the token, since the token's own
+    // columns carry only token-management metadata.
+    it('carries an arbitrary metaData payload (TASK-497)', () => {
+        const token = PasswordResetTokenFactory.CreatePasswordResetToken({
+            userId: 'user-1',
+            tokenHash: HASH,
+            expiresAt: IN_1H,
+            purpose: 'email_verification',
+            metaData: { pendingTenantName: 'Acme Health' },
+        });
+
+        expect(token.purpose).toBe('email_verification');
+        expect(token.metaData).toEqual({ pendingTenantName: 'Acme Health' });
+    });
+
+    it('defaults metaData to null when omitted', () => {
+        const token = PasswordResetTokenFactory.CreatePasswordResetToken({
+            userId: 'user-1',
+            tokenHash: HASH,
+            expiresAt: IN_1H,
+        });
+
+        expect(token.metaData ?? null).toBeNull();
+    });
+
     it('validate() rejects a missing tokenHash / userId / expiresAt', () => {
         const build = (over: Partial<{ tokenHash: string; userId: string; expiresAt: Date }>) =>
             PasswordResetTokenFactory.CreatePasswordResetToken({

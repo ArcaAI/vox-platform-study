@@ -1,4 +1,4 @@
-import { TenantBucketPurpose } from '@arcaai/domains';
+import { TenantBucketPurpose, TenantPlan } from '@arcaai/domains';
 import {
   CreateTenantBucketRequest,
   DeleteTenantBucketObjectResponse,
@@ -27,6 +27,14 @@ export abstract class ITenantBucketService {
   /** Remove a single object from a tenant bucket via the storage provider. */
   abstract deleteObject(bucketId: string, fileKey: string): Promise<DeleteTenantBucketObjectResponse>;
   abstract provisionSystemBuckets(tenantId: string): Promise<TenantBucketResponse[]>;
+  /**
+   * Writes the plan's `PlanEntitlement.storageQuotaBytes` onto the tenant's
+   * primary (AUDIO) system bucket as `TenantBucket.quotaBytes` (TASK-497 D4).
+   * Idempotent — only writes when the bucket's `quotaBytes` is currently
+   * null; a `null` plan or a `null` storageQuotaBytes (unlimited tier) is a
+   * no-op that leaves `quotaBytes` null.
+   */
+  abstract applyPlanStorageQuota(tenantId: string, plan: TenantPlan | null): Promise<void>;
   abstract getPresignedUrl(bucketId: string, fileKey: string): Promise<{ url: string }>;
   /** Read the tenant's current default bucket per purpose. */
   abstract getDefaultBuckets(): Promise<TenantBucketDefaultsResponse>;

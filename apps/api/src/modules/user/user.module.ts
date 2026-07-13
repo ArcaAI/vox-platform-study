@@ -17,6 +17,7 @@ import { UserPreferencesController } from './controllers/user-preferences.contro
 import { UserRolesController } from './controllers/user-roles.controller';
 import { UserSettingsController } from './controllers/user-settings.controller';
 import { UserDepartmentsController } from './controllers/user-departments.controller';
+import { UserDepartmentsMeController } from './controllers/user-departments-me.controller';
 import { PasswordResetController } from './controllers/password-reset.controller';
 // TASK-400 — public self-service forgot-password (mounted under auth/).
 import { ForgotPasswordController } from './controllers/forgot-password.controller';
@@ -46,6 +47,7 @@ import { UserExportService } from './user-export.service';
     UserRolesController,
     UserSettingsController,
     UserDepartmentsController,
+    UserDepartmentsMeController,
     PasswordResetController,
     ForgotPasswordController,
   ],

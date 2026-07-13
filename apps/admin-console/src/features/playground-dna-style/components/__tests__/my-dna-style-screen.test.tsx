@@ -120,7 +120,7 @@ function stubFetch(handler: FetchHandler): RecordedCall[] {
  * impersonatingUserId to null.
  */
 function session(overrides: Partial<Record<string, unknown>> = {}) {
-    return {
+    const base = {
         user: { id: 'u-1', username: 'g_admin', email: 'g_admin@hope.local', roles: ['GLOBAL_ADMIN'], tenantId: null },
         isElevated: true,
         workingTenantId: 'tnt-1',
@@ -129,6 +129,9 @@ function session(overrides: Partial<Record<string, unknown>> = {}) {
         impersonatingUsername: 'dr.house',
         ...overrides,
     };
+    // BUG-005 — WorkingTenantGate now reads the effective identity; mirror the
+    // (possibly overridden) operator fields since these fixtures never impersonate.
+    return { ...base, effectiveUser: { ...base.user, departmentId: null }, effectiveIsElevated: base.isElevated, effectiveTenantId: base.workingTenantId };
 }
 
 function pathnameOf(call: RecordedCall): string {

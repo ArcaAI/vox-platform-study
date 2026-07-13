@@ -74,6 +74,26 @@ const BILLING_MEMBERS: RoleMember[] = [
     },
 ];
 
+/** TASK-501 — SYSTEM-role policy unlock reads `effectiveIsElevated` off the BFF session. */
+function session(overrides: { roles?: string[]; effectiveIsElevated?: boolean } = {}) {
+    const roles = overrides.roles ?? ['TENANT_ADMIN'];
+    const effectiveIsElevated = overrides.effectiveIsElevated ?? roles.includes('GLOBAL_ADMIN');
+    return {
+        user: { id: 'u-1', username: 'admin', email: 'admin@arca.ai', roles, tenantId: null },
+        isElevated: effectiveIsElevated,
+        workingTenantId: null,
+        workingTenantName: null,
+        impersonatingUserId: null,
+        impersonatingUsername: null,
+        effectiveUser: { id: 'u-1', username: 'admin', email: 'admin@arca.ai', roles, tenantId: null, departmentId: null },
+        effectiveIsElevated,
+        effectiveTenantId: null,
+    };
+}
+
+const TENANT_ADMIN_SESSION = session({ roles: ['TENANT_ADMIN'] });
+const GLOBAL_ADMIN_SESSION = session({ roles: ['GLOBAL_ADMIN'] });
+
 const POLICY_CATALOG: Policy[] = [
     {
         id: 'p-1',
@@ -100,6 +120,7 @@ interface RecordedCall {
 /** Default handler covering the list, the two roles, the policy catalog and DELETEs. */
 function defaultHandler(url: string, method: string): Response | undefined {
     if (method === 'DELETE') return new Response(null, { status: 204 });
+    if (url === '/api/auth/session') return Response.json(TENANT_ADMIN_SESSION);
     if (url.startsWith('/api/hope/admin/rbac/roles/r-2/members'))
         return Response.json({ data: BILLING_MEMBERS, total: BILLING_MEMBERS.length, page: 1, pageSize: 50 });
     if (url.startsWith('/api/hope/admin/rbac/roles/r-1/members')) return Response.json({ data: [], total: 0, page: 1, pageSize: 50 });
@@ -162,7 +183,7 @@ describe('RolesScreen (two-pane redesign)', () => {
         expect(within(table).getAllByText('Granted').length).toBeGreaterThanOrEqual(1);
     });
 
-    it('locks system roles: no Edit/Delete, Policies tab shows the lock notice and no attach', async () => {
+    it('locks system roles for a tenant admin: no Edit/Delete, Policies tab shows the lock notice and no attach; Clone stays available', async () => {
         stubFetch();
         // Land directly on the system role's Policies tab (Radix tab activation
         // is URL-driven here — see role-detail useRoleTab).
@@ -171,9 +192,75 @@ describe('RolesScreen (two-pane redesign)', () => {
         await screen.findByRole('heading', { level: 2, name: 'GlobalAdmin' });
         expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+        // Clone (TASK-501) is offered even for a locked system role and even to a tenant admin.
+        expect(screen.getByRole('button', { name: 'Clone' })).toBeDefined();
         // Lock notice appears in both the header and the Policies panel.
         expect((await screen.findAllByText(/System role — seed-managed and read-only/i)).length).toBeGreaterThanOrEqual(1);
         expect(screen.queryByRole('button', { name: 'Attach policy' })).toBeNull();
+    });
+
+    it('TASK-501 — a global admin session unlocks the Policies tab AND Edit on a SYSTEM role; Delete stays hidden', async () => {
+        stubFetch((url, method) => {
+            if (url === '/api/auth/session') return Response.json(GLOBAL_ADMIN_SESSION);
+            return defaultHandler(url, method);
+        });
+        renderWithProviders(<RolesScreen />, { searchParams: '?role=r-1&tab=policies' });
+
+        await screen.findByRole('heading', { level: 2, name: 'GlobalAdmin' });
+        // No lock notice, and attach/detach affordances are reachable.
+        expect(screen.queryByText(/System role — seed-managed and read-only/i)).toBeNull();
+        expect(await screen.findByRole('button', { name: 'Attach policy' })).toBeDefined();
+        expect(screen.getByRole('button', { name: 'Detach tenant.manage' })).toBeDefined();
+        // Edit unlocks for a global admin (matches the backend isSuperAdmin carve-out on update/patch).
+        expect(screen.getByRole('button', { name: 'Edit' })).toBeDefined();
+        // Delete stays hidden for EVERY caller — softDelete() is hard-blocked platform-wide.
+        expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+    });
+
+    it('TASK-501 — a global admin can rename a SYSTEM role through the Edit dialog', async () => {
+        const RENAMED_SYSTEM_ROLE = { ...SYSTEM_ROLE, name: 'GlobalAdmin', description: 'Renamed by a global admin' };
+        const calls = stubFetch((url, method) => {
+            if (url === '/api/auth/session') return Response.json(GLOBAL_ADMIN_SESSION);
+            if (method === 'PATCH' && url === '/api/hope/admin/rbac/roles/r-1') return Response.json(RENAMED_SYSTEM_ROLE);
+            return defaultHandler(url, method);
+        });
+        renderWithProviders(<RolesScreen />, { searchParams: '?role=r-1' });
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+        const descriptionInput = await screen.findByLabelText(/description/i);
+        fireEvent.change(descriptionInput, { target: { value: 'Renamed by a global admin' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+        await waitFor(() => expect(calls.some((call) => call.method === 'PATCH')).toBe(true));
+        const patch = calls.find((call) => call.method === 'PATCH');
+        expect(patch?.url).toBe('/api/hope/admin/rbac/roles/r-1');
+        expect(patch?.body).toEqual({ name: 'GlobalAdmin', description: 'Renamed by a global admin' });
+    });
+
+    it('TASK-501 — clones a role and lands on the new role, prefilling "{name} (copy)"', async () => {
+        const CLONED_ROLE = role({ id: 'r-9', name: 'Billing (copy)', isSystemRole: false, policies: [] });
+        const calls = stubFetch((url, method) => {
+            if (method === 'POST' && url === '/api/hope/admin/rbac/roles/r-2/clone') return Response.json(CLONED_ROLE);
+            if (url === '/api/hope/admin/rbac/roles/r-9') return Response.json(CLONED_ROLE);
+            if (url.startsWith('/api/hope/admin/rbac/roles/r-9/members')) return Response.json({ data: [], total: 0, page: 1, pageSize: 50 });
+            return defaultHandler(url, method);
+        });
+        renderWithProviders(<RolesScreen />);
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Billing' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Clone' }));
+
+        const nameInput = (await screen.findByLabelText(/^name/i)) as HTMLInputElement;
+        expect(nameInput.value).toBe('Billing (copy)');
+        fireEvent.click(screen.getByRole('button', { name: 'Clone role' }));
+
+        await waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url.endsWith('/clone'))).toBe(true));
+        const post = calls.find((call) => call.method === 'POST' && call.url.endsWith('/clone'));
+        expect(post?.url).toBe('/api/hope/admin/rbac/roles/r-2/clone');
+        expect(post?.body).toEqual({ name: 'Billing (copy)' });
+
+        // Selection follows the clone onto its own detail.
+        await screen.findByRole('heading', { level: 2, name: 'Billing (copy)' });
     });
 
     it('deletes a role through the screen-level break-glass step-up', async () => {

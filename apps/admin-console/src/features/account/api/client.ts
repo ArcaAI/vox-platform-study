@@ -4,7 +4,7 @@ import { getJson, getWithEtag, patchJson, request } from '@/shared/api';
 import type { ListParams, Paginated, WithEtag } from '@/shared/api';
 import type { Tenant, TenantConfig, UpdateTenantConfigItem } from '@/features/tenants/api/types';
 import type { EntitlementCapabilities } from '@/features/entitlements/api/types';
-import type { UpdateUserSettingRequest, UserSetting } from '@/features/users/api/types';
+import type { UpdateUserSettingRequest, UserDepartment, UserSetting } from '@/features/users/api/types';
 import type { UpdateUserPreferencesRequest, UserPreferences } from './types';
 
 export function getMyTenant(): Promise<Tenant> {
@@ -38,6 +38,11 @@ export function updateMySetting(namespace: string, key: string, body: UpdateUser
 
 export function getMyPreferences(): Promise<UserPreferences> {
     return getJson('user/me/preferences');
+}
+
+/** BUG-005 Issue 4 — the caller's own department(s), incl. while impersonated. */
+export function getMyDepartments(): Promise<UserDepartment[]> {
+    return getJson('user/me/departments');
 }
 
 export function updateMyPreferences(body: UpdateUserPreferencesRequest): Promise<UserPreferences> {

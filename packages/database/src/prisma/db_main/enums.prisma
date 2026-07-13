@@ -354,3 +354,24 @@ enum PipelinePolicyScope {
 
   @@schema("core")
 }
+
+// TASK-498 — protocol of a tenant's external identity provider. Both values ship
+// now so the data model is protocol-neutral; v1 (this ticket) accepts/validates
+// OIDC only. SAML is delivered by TASK-499 on the same TenantIdentityProvider row.
+enum IdpProtocol {
+  OIDC
+  SAML
+
+  @@schema("core")
+}
+
+// TASK-498 — lifecycle of a TenantIdentityProvider row. DRAFT until a successful
+// "Test connection" flips it to ENABLED (D7 — prevents self-lockout from a bad
+// config); DISABLED is an explicit tenant-admin pause (distinct from soft delete).
+enum IdpStatus {
+  DRAFT
+  ENABLED
+  DISABLED
+
+  @@schema("core")
+}

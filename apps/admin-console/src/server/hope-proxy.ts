@@ -27,7 +27,11 @@ function buildHeaders(request: Request, session: SessionPayload): Headers {
     headers.set('authorization', `Bearer ${token}`);
     // Tenant-bound users must never send X-Tenant-Id (gateway 400s on
     // mismatch); elevated users send it only after picking a working tenant.
-    if (session.workingTenantId && isElevated(session.user)) {
+    // While impersonating, the act-as JWT is already bound to the target's
+    // own tenant — the operator's working-tenant pick (selected before
+    // impersonating started) must never ride along, or it diverges from the
+    // JWT and the gateway 400s every proxied call (BUG-005 Issue 3).
+    if (!session.impersonation && session.workingTenantId && isElevated(session.user)) {
         headers.set('x-tenant-id', session.workingTenantId);
     }
     return headers;

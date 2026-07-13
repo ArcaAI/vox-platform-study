@@ -26,6 +26,15 @@ export const GLOBAL_TENANT_KEY = '__GLOBAL__';
 export const GLOBAL_ADMIN_ROLE = 'GLOBAL_ADMIN';
 
 /**
+ * Seeded `Role.id` for `TENANT_ADMIN` (`packages/database/.../seed/03-role.ts`
+ * `SEED_ROLE_IDS.TENANT_ADMIN`). Declared as a local literal (not a
+ * cross-package import) mirroring the `SYSTEM_TENANT_ID` precedent in
+ * `tenant.service.ts` — used by `TenantOnboardingService` (TASK-497 §3.3) to
+ * assign the new tenant's initial admin without a role-name lookup.
+ */
+export const TENANT_ADMIN_ROLE_ID = '00000000-0000-0000-0000-000000000002';
+
+/**
  * Generic UUID v1–v7 regex (case-insensitive). Tenant identifiers stored in
  * the database are UUID v7, but we accept any UUID-shaped value to keep the
  * disambiguation logic forgiving of legacy data.

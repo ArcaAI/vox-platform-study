@@ -159,6 +159,12 @@ export const DEFAULT_POLICIES = [
             // provider credentials. Tenant-scoped; the controller pins every op to
             // the caller's tenant. `manage` implies `read` (used by the GET routes).
             { action: 'manage', subject: 'TenantTtsConfig', conditions: { tenantId: '${context.tenantId}' } },
+            // TASK-498 — tenant admins manage their own tenant's external OIDC
+            // identity provider config. Tenant-scoped; the controller pins every
+            // op to the caller's tenant. `manage` implies `read` (used by the GET
+            // routes). GLOBAL_ADMIN already covers this via the wildcard `manage
+            // all` rule above.
+            { action: 'manage', subject: 'TenantIdentityProvider', conditions: { tenantId: '${context.tenantId}' } },
         ],
     },
     {

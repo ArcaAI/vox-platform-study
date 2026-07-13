@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { IconLink, IconLock, IconPencil, IconTrash, IconUsersGroup } from '@tabler/icons-react';
+import { IconCopy, IconLink, IconLock, IconPencil, IconTrash, IconUsersGroup } from '@tabler/icons-react';
 import { parseAsStringLiteral, useQueryState } from 'nuqs';
 import { toast } from 'sonner';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
@@ -16,6 +16,7 @@ import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError } from '@/shared/api';
+import { useSession } from '@/shared/auth';
 import { BreakGlassDialog, type BreakGlassCredentials } from '@/shared/confirm/break-glass-dialog';
 import { CopyButton } from '@/shared/copy-button';
 import { DetailDrawer } from '@/shared/detail/detail-drawer';
@@ -25,7 +26,7 @@ import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
-import { useAssignPolicyToRole, useDetachPolicyFromRole, usePolicies, useRole, useRoleMembers, useUpdateRole } from '../api/hooks';
+import { useAssignPolicyToRole, useCloneRole, useDetachPolicyFromRole, usePolicies, useRole, useRoleMembers, useUpdateRole } from '../api/hooks';
 import type { Role } from '../api/types';
 import { derivePermissionMatrix, type MatrixPolicyInput } from '../lib/permission-matrix';
 import { PermissionMatrix, PermissionMatrixSkeleton } from './permission-matrix';
@@ -44,6 +45,16 @@ const TAB_DEFS: { value: RoleTab; label: string }[] = [
 /** Active detail tab in the URL (`?tab=`), shared by the desktop pane and the compact drawer. */
 function useRoleTab() {
     return useQueryState('tab', parseAsStringLiteral(ROLE_TABS).withDefault('permissions'));
+}
+
+/**
+ * TASK-501 — SYSTEM-role policy assign/revoke is global-admin only; the
+ * effective identity (impersonation-aware, BUG-005) drives the lock so the
+ * UI matches what the gateway will actually accept.
+ */
+function useIsGlobalAdmin() {
+    const session = useSession();
+    return session.data?.effectiveIsElevated ?? false;
 }
 
 function EditRoleDialog({ role, open, onOpenChange }: { role: Role; open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -307,7 +318,8 @@ function PoliciesTabPanel({ role }: { role: Role }) {
     const [detachTarget, setDetachTarget] = useState<{ id: string; name: string } | null>(null);
     const [detachError, setDetachError] = useState<string | null>(null);
     const policies = role.policies ?? [];
-    const locked = role.isSystemRole;
+    const isGlobalAdmin = useIsGlobalAdmin();
+    const locked = role.isSystemRole && !isGlobalAdmin;
 
     function closeDetachDialog() {
         setDetachTarget(null);
@@ -379,20 +391,119 @@ function PoliciesTabPanel({ role }: { role: Role }) {
     );
 }
 
-/** Edit / Delete affordances — hidden (not disabled) for locked system roles. */
-function RoleDetailActions({ role, onEdit, onRequestDelete }: { role: Role; onEdit: () => void; onRequestDelete: (role: Role) => void }) {
-    if (role.isSystemRole) return null;
+/**
+ * Clone is always offered — cloning a SYSTEM role into an editable CUSTOM
+ * copy is the point (TASK-501). Edit unlocks for a global admin on a SYSTEM
+ * role too (matches the service-layer `isSuperAdmin` carve-out on
+ * update/patch). Delete stays hidden for EVERY system role, EVERY caller —
+ * `softDelete()` is hard-blocked platform-wide, deleting a seed-managed role
+ * shared across every tenant is irreversible and out of scope even for a
+ * global admin (confirmed decision, see the ticket README).
+ */
+function RoleDetailActions({
+    role,
+    onEdit,
+    onRequestDelete,
+    onClone,
+}: {
+    role: Role;
+    onEdit: () => void;
+    onRequestDelete: (role: Role) => void;
+    onClone: () => void;
+}) {
+    const isGlobalAdmin = useIsGlobalAdmin();
+    const canEdit = !role.isSystemRole || isGlobalAdmin;
     return (
         <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={onEdit}>
-                <IconPencil aria-hidden />
-                Edit
+            <Button variant="outline" size="sm" onClick={onClone}>
+                <IconCopy aria-hidden />
+                Clone
             </Button>
-            <Button variant="destructive" size="sm" onClick={() => onRequestDelete(role)}>
-                <IconTrash aria-hidden />
-                Delete
-            </Button>
+            {canEdit ? (
+                <Button variant="outline" size="sm" onClick={onEdit}>
+                    <IconPencil aria-hidden />
+                    Edit
+                </Button>
+            ) : null}
+            {!role.isSystemRole ? (
+                <Button variant="destructive" size="sm" onClick={() => onRequestDelete(role)}>
+                    <IconTrash aria-hidden />
+                    Delete
+                </Button>
+            ) : null}
         </div>
+    );
+}
+
+/** Prefills "{source.name} (copy)"; lands the caller on the new role via onCloned. */
+function CloneRoleDialog({
+    role,
+    open,
+    onOpenChange,
+    onCloned,
+}: {
+    role: Role;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    onCloned: (role: Role) => void;
+}) {
+    const cloneRole = useCloneRole();
+    const [name, setName] = useState(`${role.name} (copy)`);
+
+    function handleOpenChange(next: boolean) {
+        if (!next) {
+            setName(`${role.name} (copy)`);
+            cloneRole.reset();
+        }
+        onOpenChange(next);
+    }
+
+    function handleSubmit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        cloneRole.mutate(
+            { id: role.id, body: { name: name.trim() } },
+            {
+                onSuccess: (cloned) => {
+                    toast.success('Role cloned');
+                    handleOpenChange(false);
+                    onCloned(cloned);
+                },
+                onError: (error) => toast.error(error.message),
+            },
+        );
+    }
+
+    return (
+        <Dialog open={open} onOpenChange={handleOpenChange}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Clone role</DialogTitle>
+                    <DialogDescription>
+                        Creates a new custom role with a copy of <span className="font-mono">{role.name}</span>&rsquo;s policies.
+                    </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-2">
+                        <Label htmlFor="clone-role-name">
+                            Name{' '}
+                            <span aria-hidden className="text-destructive">
+                                *
+                            </span>
+                        </Label>
+                        <Input id="clone-role-name" value={name} onChange={(event) => setName(event.target.value)} autoComplete="off" required />
+                    </div>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={cloneRole.isPending}>
+                            Cancel
+                        </Button>
+                        <Button type="submit" disabled={!name.trim() || cloneRole.isPending}>
+                            {cloneRole.isPending ? <Spinner /> : null}
+                            Clone role
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
     );
 }
 
@@ -406,6 +517,7 @@ function LockNotice() {
 }
 
 function TabPanels({ role, tier }: { role: Role; tier: ViewportTier }) {
+    const isGlobalAdmin = useIsGlobalAdmin();
     return (
         <>
             <TabsContent value="permissions" className="mt-0">
@@ -415,7 +527,7 @@ function TabPanels({ role, tier }: { role: Role; tier: ViewportTier }) {
                 <MembersTabPanel role={role} />
             </TabsContent>
             <TabsContent value="policies" className="mt-0">
-                {role.isSystemRole ? <LockNotice /> : null}
+                {role.isSystemRole && !isGlobalAdmin ? <LockNotice /> : null}
                 <div className="mt-3">
                     <PoliciesTabPanel role={role} />
                 </div>
@@ -466,11 +578,23 @@ function RoleDetailSkeleton() {
  * Header (name · type · status · Edit/Delete) then Permissions / Members /
  * Policies tabs; only the tab-panel region scrolls.
  */
-export function RoleDetailPane({ roleId, tier, onRequestDelete }: { roleId: string; tier: ViewportTier; onRequestDelete: (role: Role) => void }) {
+export function RoleDetailPane({
+    roleId,
+    tier,
+    onRequestDelete,
+    onCloned,
+}: {
+    roleId: string;
+    tier: ViewportTier;
+    onRequestDelete: (role: Role) => void;
+    onCloned: (role: Role) => void;
+}) {
     const detail = useRole(roleId);
     const role = detail.data ?? null;
     const [tab, setTab] = useRoleTab();
     const [editOpen, setEditOpen] = useState(false);
+    const [cloneOpen, setCloneOpen] = useState(false);
+    const isGlobalAdmin = useIsGlobalAdmin();
 
     if (detail.isPending) return <RoleDetailSkeleton />;
     if (detail.error || !role) {
@@ -496,9 +620,9 @@ export function RoleDetailPane({ roleId, tier, onRequestDelete }: { roleId: stri
                         <RoleMeta role={role} />
                     </div>
                     {role.description ? <p className="text-muted-foreground text-sm">{role.description}</p> : null}
-                    {role.isSystemRole ? <LockNotice /> : null}
+                    {role.isSystemRole && !isGlobalAdmin ? <LockNotice /> : null}
                 </div>
-                <RoleDetailActions role={role} onEdit={() => setEditOpen(true)} onRequestDelete={onRequestDelete} />
+                <RoleDetailActions role={role} onEdit={() => setEditOpen(true)} onRequestDelete={onRequestDelete} onClone={() => setCloneOpen(true)} />
             </div>
             <Separator />
             <Tabs value={tab} onValueChange={(next) => void setTab(next as RoleTab)} className="flex min-h-0 flex-1 flex-col gap-4">
@@ -508,6 +632,7 @@ export function RoleDetailPane({ roleId, tier, onRequestDelete }: { roleId: stri
                 </div>
             </Tabs>
             <EditRoleDialog key={`${role.id}-${role.updatedAt}`} role={role} open={editOpen} onOpenChange={setEditOpen} />
+            <CloneRoleDialog key={`clone-${role.id}`} role={role} open={cloneOpen} onOpenChange={setCloneOpen} onCloned={onCloned} />
         </div>
     );
 }
@@ -522,17 +647,20 @@ export function RoleDetailDrawer({
     tier,
     onOpenChange,
     onRequestDelete,
+    onCloned,
 }: {
     roleId: string | null;
     tier: ViewportTier;
     onOpenChange: (open: boolean) => void;
     onRequestDelete: (role: Role) => void;
+    onCloned: (role: Role) => void;
 }) {
     const open = roleId !== null;
     const detail = useRole(roleId ?? '');
     const role = detail.data ?? null;
     const [tab, setTab] = useRoleTab();
     const [editOpen, setEditOpen] = useState(false);
+    const [cloneOpen, setCloneOpen] = useState(false);
 
     return (
         <Tabs value={tab} onValueChange={(next) => void setTab(next as RoleTab)}>
@@ -553,8 +681,8 @@ export function RoleDetailDrawer({
                 meta={role ? <RoleMeta role={role} /> : null}
                 tabs={role ? <RoleTabsList /> : null}
                 footer={
-                    role && !role.isSystemRole ? (
-                        <RoleDetailActions role={role} onEdit={() => setEditOpen(true)} onRequestDelete={onRequestDelete} />
+                    role ? (
+                        <RoleDetailActions role={role} onEdit={() => setEditOpen(true)} onRequestDelete={onRequestDelete} onClone={() => setCloneOpen(true)} />
                     ) : null
                 }
             >
@@ -570,6 +698,7 @@ export function RoleDetailDrawer({
                 )}
             </DetailDrawer>
             {role ? <EditRoleDialog key={`${role.id}-${role.updatedAt}`} role={role} open={editOpen} onOpenChange={setEditOpen} /> : null}
+            {role ? <CloneRoleDialog key={`clone-${role.id}`} role={role} open={cloneOpen} onOpenChange={setCloneOpen} onCloned={onCloned} /> : null}
         </Tabs>
     );
 }

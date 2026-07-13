@@ -21,7 +21,7 @@ import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import type { UserSetting } from '@/features/users/api/types';
-import { useMyPreferences, useMySettings, useUpdateMyPreferences, useUpdateMySetting } from '../api/hooks';
+import { useMyDepartments, useMyPreferences, useMySettings, useUpdateMyPreferences, useUpdateMySetting } from '../api/hooks';
 import type { WorkflowMode } from '../api/types';
 
 function initials(username: string): string {
@@ -74,6 +74,7 @@ export function AccountScreen() {
     const sessionQuery = useSession();
     const settingsQuery = useMySettings();
     const preferencesQuery = useMyPreferences();
+    const departmentsQuery = useMyDepartments();
     const updateSetting = useUpdateMySetting();
     const updatePreferences = useUpdateMyPreferences();
 
@@ -81,9 +82,14 @@ export function AccountScreen() {
     const [prefDraft, setPrefDraft] = useState<{ workflowMode?: WorkflowMode; language?: string; dnaStyleId?: string }>({});
 
     const session = sessionQuery.data;
+    // BUG-005 Issue 4 — /account shows the EFFECTIVE identity: the
+    // impersonated target while impersonating, else the operator's own.
+    const identityUser = session?.effectiveUser;
+    const departments = departmentsQuery.data ?? [];
+    const primaryDepartment = departments.find((d) => d.isPrimary) ?? departments[0];
     const settings = settingsQuery.data ?? [];
     const preferences = preferencesQuery.data;
-    const isBusy = sessionQuery.isFetching || settingsQuery.isFetching || preferencesQuery.isFetching;
+    const isBusy = sessionQuery.isFetching || settingsQuery.isFetching || preferencesQuery.isFetching || departmentsQuery.isFetching;
 
     const workflowMode = prefDraft.workflowMode ?? preferences?.workflowMode;
     const language = prefDraft.language ?? preferences?.language ?? '';
@@ -128,7 +134,7 @@ export function AccountScreen() {
 
     return (
         <ScreenTemplate
-            header={<PageHeader title="Account" meta={session ? <span>{session.user.username}</span> : null} />}
+            header={<PageHeader title="Account" meta={identityUser ? <span>{identityUser.username}</span> : null} />}
             footer={
                 <StatusFooter
                     start={<span>{isBusy ? 'Refreshing' : 'Up to date'}</span>}
@@ -142,7 +148,7 @@ export function AccountScreen() {
         >
             {sessionQuery.isPending ? (
                 <AccountSkeleton />
-            ) : sessionQuery.error || !session ? (
+            ) : sessionQuery.error || !session || !identityUser ? (
                 <ErrorState error={sessionQuery.error} onRetry={() => void sessionQuery.refetch()} />
             ) : (
                 <div className="flex flex-col gap-6">
@@ -153,14 +159,14 @@ export function AccountScreen() {
                         <Card className="gap-4 p-6">
                             <div className="flex flex-wrap items-center gap-4">
                                 <Avatar size="lg">
-                                    <AvatarFallback>{initials(session.user.username)}</AvatarFallback>
+                                    <AvatarFallback>{initials(identityUser.username)}</AvatarFallback>
                                 </Avatar>
                                 <div className="flex min-w-0 flex-col">
-                                    <span className="text-lg font-semibold">{session.user.username}</span>
-                                    {session.user.email ? <span className="text-muted-foreground text-sm">{session.user.email}</span> : null}
+                                    <span className="text-lg font-semibold">{identityUser.username}</span>
+                                    {identityUser.email ? <span className="text-muted-foreground text-sm">{identityUser.email}</span> : null}
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
-                                    {session.user.roles.map((role) => (
+                                    {identityUser.roles.map((role) => (
                                         <Badge key={role} variant="secondary" className="font-mono text-[10px]">
                                             {role}
                                         </Badge>
@@ -170,6 +176,11 @@ export function AccountScreen() {
                             {session.workingTenantName ? (
                                 <p className="text-muted-foreground text-sm">
                                     Acting on <span className="text-foreground font-medium">{session.workingTenantName}</span>
+                                </p>
+                            ) : null}
+                            {primaryDepartment ? (
+                                <p className="text-muted-foreground text-sm">
+                                    Department: <span className="text-foreground font-medium">{primaryDepartment.departmentName ?? primaryDepartment.departmentId}</span>
                                 </p>
                             ) : null}
                         </Card>

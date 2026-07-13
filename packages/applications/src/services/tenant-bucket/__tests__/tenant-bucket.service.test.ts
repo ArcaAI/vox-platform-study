@@ -2,6 +2,20 @@ import { BadRequestException, ForbiddenException, NotFoundException } from '@nes
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TenantBucketService } from '../tenant-bucket.service';
 
+// TASK-497 D4 — inject an "unlimited" test tier (storageQuotaBytes: null) so
+// the "leave quotaBytes null" branch is exercised without depending on a real
+// plan happening to carry a null default.
+vi.mock('../../entitlements/entitlements.constants', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../entitlements/entitlements.constants')>();
+    return {
+        ...actual,
+        PLAN_ENTITLEMENT_DEFAULTS: {
+            ...actual.PLAN_ENTITLEMENT_DEFAULTS,
+            UNLIMITED_TEST_TIER: { ...actual.PLAN_ENTITLEMENT_DEFAULTS.STARTER, storageQuotaBytes: null },
+        },
+    };
+});
+
 const BUCKET_TYPE_SYSTEM = 'SYSTEM';
 const BUCKET_TYPE_CUSTOM = 'CUSTOM';
 
@@ -797,6 +811,73 @@ describe('TenantBucketService', () => {
 
             expect(result).toHaveLength(2);
             expect(mockTenantBucketRepository.create).toHaveBeenCalledTimes(2);
+        });
+    });
+
+    // TASK-497 D4 — plan storageQuotaBytes -> primary system bucket quotaBytes.
+    describe('applyPlanStorageQuota', () => {
+        const recordingsBucket = (quotaBytes: bigint | null = null) => ({
+            id: 'bucket-recordings',
+            tenantId: 'tenant-1',
+            slug: 'recordings',
+            purpose: 'AUDIO',
+            quotaBytes,
+        });
+        const attachmentsBucket = (quotaBytes: bigint | null = null) => ({
+            id: 'bucket-attachments',
+            tenantId: 'tenant-1',
+            slug: 'attachments',
+            purpose: 'ATTACHMENTS',
+            quotaBytes,
+        });
+
+        it('writes the STARTER plan storageQuotaBytes (5 GiB) onto the AUDIO system bucket when unset', async () => {
+            mockTenantBucketRepository.findSystemBuckets.mockResolvedValue([
+                attachmentsBucket(),
+                recordingsBucket(),
+            ]);
+            mockTenantBucketRepository.update.mockImplementation((id: string, entity: any) => entity);
+
+            await service.applyPlanStorageQuota('tenant-1', 'STARTER' as any);
+
+            expect(mockTenantBucketRepository.update).toHaveBeenCalledTimes(1);
+            const [updatedId, updatedEntity] = mockTenantBucketRepository.update.mock.calls[0];
+            expect(updatedId).toBe('bucket-recordings');
+            expect(updatedEntity.quotaBytes).toBe(BigInt(5 * 1024 ** 3));
+        });
+
+        it('is idempotent — does not overwrite a bucket that already has a quota', async () => {
+            mockTenantBucketRepository.findSystemBuckets.mockResolvedValue([
+                recordingsBucket(BigInt(1024)),
+            ]);
+
+            await service.applyPlanStorageQuota('tenant-1', 'STARTER' as any);
+
+            expect(mockTenantBucketRepository.update).not.toHaveBeenCalled();
+        });
+
+        it('is a no-op when the tenant has no system buckets yet', async () => {
+            mockTenantBucketRepository.findSystemBuckets.mockResolvedValue([]);
+
+            await expect(service.applyPlanStorageQuota('tenant-1', 'STARTER' as any)).resolves.not.toThrow();
+            expect(mockTenantBucketRepository.update).not.toHaveBeenCalled();
+        });
+
+        it('is a no-op for a null (ungated/system) plan', async () => {
+            await service.applyPlanStorageQuota('tenant-1', null);
+
+            expect(mockTenantBucketRepository.findSystemBuckets).not.toHaveBeenCalled();
+            expect(mockTenantBucketRepository.update).not.toHaveBeenCalled();
+        });
+
+        it('leaves quotaBytes null for an unlimited-tier plan (D4)', async () => {
+            mockTenantBucketRepository.findSystemBuckets.mockResolvedValue([
+                recordingsBucket(),
+            ]);
+
+            await service.applyPlanStorageQuota('tenant-1', 'UNLIMITED_TEST_TIER' as any);
+
+            expect(mockTenantBucketRepository.update).not.toHaveBeenCalled();
         });
     });
 });

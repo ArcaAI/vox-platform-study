@@ -1,4 +1,4 @@
-import { ResourceType, SysEventType, TenantBucketFactory, TenantBucketPurpose, TenantBucketRepository, TenantRepository } from '@arcaai/domains';
+import { ResourceType, SysEventType, TenantBucketFactory, TenantBucketPurpose, TenantBucketRepository, TenantPlan, TenantRepository } from '@arcaai/domains';
 import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
@@ -7,6 +7,11 @@ import { IActiveUserContext } from '../../interfaces';
 import { IBlobStorageService } from '../baseServices/storage/IBlobStorageService';
 import { IS3Service } from '../baseServices/storage/s3/IS3Service';
 import { ITenantBucketService } from './ITenantBucketService';
+// TASK-497 D4 — plan-tier storageQuotaBytes matrix (STARTER default etc.).
+// Imported directly (not IEntitlementsService) since bucket provisioning runs
+// before any per-tenant TenantEntitlement override can exist, so the seeded
+// per-plan default IS the resolved value at tenant-creation time.
+import { PLAN_ENTITLEMENT_DEFAULTS } from '../entitlements/entitlements.constants';
 import {
   CreateTenantBucketRequest,
   DeleteTenantBucketObjectResponse,
@@ -289,6 +294,34 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     });
 
     return created;
+  }
+
+  /**
+   * TASK-497 D4 — writes the plan's `storageQuotaBytes` onto the tenant's
+   * primary (AUDIO) system bucket as `TenantBucket.quotaBytes`, so
+   * `getUsageStats`'s `SUM(TenantBucket.quotaBytes)` reflects the plan's
+   * capacity. Best-effort/idempotent: a `null` plan (ungated/system tenant),
+   * a missing AUDIO bucket, an already-quota'd bucket, or a `null`
+   * (unlimited-tier) `storageQuotaBytes` are all safe no-ops.
+   */
+  async applyPlanStorageQuota(tenantId: string, plan: TenantPlan | null): Promise<void> {
+    if (!plan) {
+      return;
+    }
+
+    const systemBuckets = await this.tenantBucketRepository.findSystemBuckets(tenantId);
+    const primary = systemBuckets.find((b) => b.purpose === TenantBucketPurpose.AUDIO) ?? systemBuckets[0];
+    if (!primary || primary.quotaBytes != null) {
+      return;
+    }
+
+    const storageQuotaBytes = PLAN_ENTITLEMENT_DEFAULTS[plan]?.storageQuotaBytes;
+    if (storageQuotaBytes == null) {
+      return;
+    }
+
+    primary.quotaBytes = BigInt(storageQuotaBytes);
+    await this.tenantBucketRepository.update(primary.id, primary);
   }
 
   async createCustomBucket(dto: CreateTenantBucketRequest): Promise<TenantBucketResponse> {

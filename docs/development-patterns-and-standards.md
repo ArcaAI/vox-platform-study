@@ -487,6 +487,28 @@ Every admin PATCH on versioned resources: client reads `_version` (rendered as s
 
 No generic idempotency-key middleware exists. Idempotent behavior is implemented per feature where it matters: duplicate-code checks before create (`department.service.ts`), upsert-style tag setting (`services/tenant/dto/setTenantTags.request.ts` flow), Temporal workflows give the harness loop durable execution semantics, and sys-event BullMQ jobs carry bounded retry options (`SYS_EVENT_JOB_OPTIONS`: 2 attempts, exponential backoff — `packages/applications/src/services/sysEvent/sysEvent.service.ts`). Don't claim idempotency guarantees beyond these.
 
+### 6.10 Settings storage — Vault vs Database (TASK-504)
+
+The normative rule for where any admin-controllable variable lives: **the database is the control plane; Vault is the crypto substrate — never the control plane.** Admin-editable non-secrets go in Postgres (it has OCC/audit/cascade/UI; Vault has none). Secrets go in Vault: shared platform secrets in kv-v2, per-tenant admin-set secrets as **Vault-Transit ciphertext inside a DB column** (never plaintext). Classify each variable into one data class and route it:
+
+| Data class | Storage tier | Encryption | Who edits |
+|---|---|---|---|
+| 1. Platform infra secret (shared) | Vault kv-v2 | Vault-native | operator/IaC only (no admin UI) |
+| 2. Tenant BYO secret | DB column, Vault-Transit ciphertext (`encrypted* Bytes` + `keyVersion`); reject write if no Vault | Vault Transit | tenant-admin + global-admin |
+| 3. Cascading behavioural config | DB dedicated table + `ConfigResolver` cascade + OCC | none | tiered by max-scope |
+| 4. Global KV / kill-switch | `GlobalSetting` + AppSettings cache (Redis for instant fan-out) | optional | global-admin |
+| 5. Plan capability / quota | entitlements matrix (`PlanEntitlement`/`TenantEntitlement`) | none | global-admin |
+| 6. Deploy/runtime env | env → `turbo.json#globalEnv` → `IConfigService` | none | operator only |
+
+Anti-patterns (review-enforced): admin-editable non-secret in Vault (wrong tool); secret as DB plaintext (always Vault-Transit ciphertext; reject write when `SECRETS_PROVIDER≠vault`); a secret echoed in a read DTO (write-only DTO + masked read `hasKey`; reveal only behind step-up + audit); a config write without OCC (`If-Match`→428/412) or without a SysEvent; an enforcing kill-switch defaulting ON (default OFF — fail-safe).
+
+Reusable primitives (TASK-504):
+- `packages/applications/src/services/baseServices/_meta/secrets/secret-field.util.ts` — canonical `encryptSecretField`/`decryptSecretField`/`parseKeyVersionFromCiphertext` for every class-2 field (a behaviour-identical twin lives in the domains-layer `GlobalSettingRepository.encryption.ts` — the two must not drift; domains cannot import applications).
+- `packages/applications/src/services/settings-registry/` — `HOPE_SETTINGS_REGISTRY` typed catalog (tier/scope/sensitivity/editor/category) with a uniform `assertWithinMaxScope` clamp and the `walkCascade` cascade primitive; served RBAC-filtered at `GET /api/v1/admin/settings/catalog`.
+- `apps/api/src/shared/tenant-scope.ts` — `resolveScopedTenantId` / `resolveScopedTenantIdOptional` / `assertTenantInScope` — the one home for cross-tenant admin resolution (global-admin `?tenantId=`; tenant-bound pinned; 404-over-403).
+
+Full framework + rationale: `docs/implementation/TASK-504-Capability-Settings-Control-Architecture/README.md` §3–§5.
+
 ---
 
 ## 7. Known internal inconsistencies (verified 2026-07-04)

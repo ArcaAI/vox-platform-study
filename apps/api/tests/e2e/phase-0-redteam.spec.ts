@@ -13,27 +13,50 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Phase 0 — Item 1+2: mass-assignment chain', () => {
   let doctorToken: string;
-  let doctorTenantConfigId: string;
-  let doctorTenantConfigVersion: number;
+  let tenantAdminToken: string;
+  let tenantAdminConfigId: string;
+  let tenantAdminConfigVersion: number;
 
   test.beforeAll(async ({ request }) => {
-    const login = await request.post('/api/v1/auth/login', {
+    const doctorLogin = await request.post('/api/v1/auth/login', {
       data: { username: 'doctor', password: 'password123', tenantKey: '__GLOBAL__' },
     });
-    expect(login.status(), 'doctor login failed').toBe(200);
-    doctorToken = (await login.json()).token;
+    expect(doctorLogin.status(), 'doctor login failed').toBe(200);
+    doctorToken = (await doctorLogin.json()).token;
 
-    // The doctor must own *some* unlocked GlobalSetting to attempt the
-    // exploit. Discover one via the tenant-config GET endpoint.
+    const tenantAdminLogin = await request.post('/api/v1/auth/login', {
+      data: { username: 'tenant_admin', password: 'password123', tenantKey: '__GLOBAL__' },
+    });
+    expect(tenantAdminLogin.status(), 'tenant_admin login failed').toBe(200);
+    tenantAdminToken = (await tenantAdminLogin.json()).token;
+
+    // BUG-005 Issue 2 (defense-in-depth) gated PATCH /tenant/me/config behind
+    // `update:Tenant` — a DOCTOR token no longer reaches the ValidationPipe at
+    // all (see the dedicated 403 test below), so the mass-assignment chain is
+    // now proven through tenant_admin, the caller actually authorized to PATCH.
     const configs = await request.get('/api/v1/tenant/me/config?limit=200&page=1', {
-      headers: { Authorization: `Bearer ${doctorToken}` },
+      headers: { Authorization: `Bearer ${tenantAdminToken}` },
     });
     expect(configs.status(), 'tenant config fetch failed').toBe(200);
     const body = await configs.json();
     const unlocked = body.data.find((c: { locked?: boolean; version?: number }) => c.locked !== true);
-    expect(unlocked, 'no unlocked GlobalSetting found for doctor — test seed gap').toBeDefined();
-    doctorTenantConfigId = unlocked.id;
-    doctorTenantConfigVersion = unlocked.version;
+    expect(unlocked, 'no unlocked GlobalSetting found for tenant_admin — test seed gap').toBeDefined();
+    tenantAdminConfigId = unlocked.id;
+    tenantAdminConfigVersion = unlocked.version;
+  });
+
+  // BUG-005 Issue 2 — a non-elevated end-user (DOCTOR) must never reach the
+  // config write at all: the authorization guard rejects it before the
+  // ValidationPipe (and therefore before mass-assignment checking) runs.
+  test('PATCH /tenant/me/config as a non-admin end-user is blocked with 403 (defense-in-depth)', async ({ request }) => {
+    const response = await request.patch('/api/v1/tenant/me/config', {
+      headers: {
+        Authorization: `Bearer ${doctorToken}`,
+        'If-Match': '"1"',
+      },
+      data: [{ id: 'irrelevant', value: 'irrelevant' }],
+    });
+    expect(response.status(), 'non-admin PATCH must be blocked before reaching mass-assignment validation').toBe(403);
   });
 
   test('PATCH /tenant/me/config with extra fields (key, tenantId, locked) is rejected with 400', async ({ request }) => {
@@ -43,12 +66,12 @@ test.describe('Phase 0 — Item 1+2: mass-assignment chain', () => {
     // (smuggled key/locked/tenantId/defaultValue) is rejected with 400.
     const response = await request.patch('/api/v1/tenant/me/config', {
       headers: {
-        Authorization: `Bearer ${doctorToken}`,
-        'If-Match': `"${doctorTenantConfigVersion}"`,
+        Authorization: `Bearer ${tenantAdminToken}`,
+        'If-Match': `"${tenantAdminConfigVersion}"`,
       },
       data: [
         {
-          id: doctorTenantConfigId,
+          id: tenantAdminConfigId,
           value: 'attacker-controlled-jwt-secret',
           // Smuggled fields — must be rejected by ValidationPipe (Item 1)
           // and never reach the service (Item 2 allowlist).
@@ -64,10 +87,10 @@ test.describe('Phase 0 — Item 1+2: mass-assignment chain', () => {
 
   test('after rejection, the underlying setting is unchanged', async ({ request }) => {
     const after = await request.get('/api/v1/tenant/me/config?limit=200&page=1', {
-      headers: { Authorization: `Bearer ${doctorToken}` },
+      headers: { Authorization: `Bearer ${tenantAdminToken}` },
     });
     const body = await after.json();
-    const row = body.data.find((c: { id: string }) => c.id === doctorTenantConfigId);
+    const row = body.data.find((c: { id: string }) => c.id === tenantAdminConfigId);
     expect(row.key, 'key must NOT have been overwritten').not.toBe('JWT_SECRET_KEY');
     expect(row.locked, 'locked must NOT have been escalated').not.toBe(true);
   });

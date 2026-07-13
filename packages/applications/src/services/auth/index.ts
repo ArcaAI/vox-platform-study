@@ -10,6 +10,7 @@ export * from './jwt-revocation.service';
 export * from './refresh-token.service';
 export * from './oidc.strategy';
 export * from './session.serializer';
+export * from './registration';
 
 // API Gateway specific exports
 export * from './gateway-auth.strategy';

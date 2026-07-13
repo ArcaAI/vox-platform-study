@@ -7,7 +7,18 @@ import { SESSION_COOKIE_NAME } from '@/shared/auth/session-cookie';
  * handlers — a forged cookie gets through here but fails there.
  */
 
-const PUBLIC_PATHS = new Set(['/login', '/api/auth/login']);
+const PUBLIC_PATHS = new Set([
+  '/login',
+  '/api/auth/login',
+  // TASK-497 — verified self-signup: public until the account is created +
+  // verified. The gateway itself 404s both routes when
+  // REGISTRATION_SELF_SIGNUP_ENABLED is off, so this allowlist entry alone
+  // does not widen access.
+  '/register',
+  '/verify-email',
+  '/api/auth/register',
+  '/api/auth/register/verify',
+]);
 
 function isPublic(pathname: string): boolean {
     return PUBLIC_PATHS.has(pathname);

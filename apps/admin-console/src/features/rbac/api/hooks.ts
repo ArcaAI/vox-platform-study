@@ -3,6 +3,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     assignPolicyToRole,
+    cloneRole,
     createPolicy,
     createRole,
     deletePolicy,
@@ -18,7 +19,17 @@ import {
     validatePolicyRules,
 } from './client';
 import { rbacKeys } from './keys';
-import type { BreakGlass, CreatePolicyRequest, CreateRoleRequest, PolicyListParams, PolicyRule, RbacListParams, UpdatePolicyRequest, UpdateRoleRequest } from './types';
+import type {
+    BreakGlass,
+    CloneRoleRequest,
+    CreatePolicyRequest,
+    CreateRoleRequest,
+    PolicyListParams,
+    PolicyRule,
+    RbacListParams,
+    UpdatePolicyRequest,
+    UpdateRoleRequest,
+} from './types';
 
 export function useRoles(params?: RbacListParams) {
     return useQuery({ queryKey: rbacKeys.roles(params), queryFn: () => listRoles(params), placeholderData: keepPreviousData });
@@ -54,6 +65,15 @@ function useInvalidateRbac() {
 export function useCreateRole() {
     const invalidate = useInvalidateRbac();
     return useMutation({ mutationFn: (body: CreateRoleRequest) => createRole(body), onSuccess: invalidate });
+}
+
+/** TASK-501 — clone a role (SYSTEM or CUSTOM) into a new CUSTOM role. */
+export function useCloneRole() {
+    const invalidate = useInvalidateRbac();
+    return useMutation({
+        mutationFn: ({ id, body }: { id: string; body: CloneRoleRequest }) => cloneRole(id, body),
+        onSuccess: invalidate,
+    });
 }
 
 export function useUpdateRole() {

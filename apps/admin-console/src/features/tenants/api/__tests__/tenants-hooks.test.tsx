@@ -10,7 +10,7 @@ import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ListParams } from '@/shared/api';
 import { tenantKeys } from '../keys';
-import { useTenant, useTenants, useUpdateTenant } from '../hooks';
+import { useProvisionTenant, useTenant, useTenants, useUpdateTenant } from '../hooks';
 
 function createWrapper(queryClient: QueryClient) {
     return function Wrapper({ children }: { children: ReactNode }) {
@@ -77,6 +77,22 @@ describe('tenant hooks', () => {
         const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
         expect(new Headers(init.headers).get('if-match')).toBe('"7"');
         expect(JSON.parse(String(init.body))).toEqual({ name: 'Renamed', expectedVersion: 7 });
+        expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: tenantKeys.root });
+    });
+
+    // TASK-497 §3.5 — global-admin create-tenant-with-admin.
+    it('useProvisionTenant posts to admin/tenants/provision and invalidates the tenants namespace', async () => {
+        const fetchMock = vi.fn(async () => Response.json({ tenant: { id: 't-1' }, adminUserId: 'u1', tenantKey: 'acme' }));
+        vi.stubGlobal('fetch', fetchMock);
+        const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+        const { result } = renderHook(() => useProvisionTenant(), { wrapper: createWrapper(queryClient) });
+        result.current.mutate({ tenantName: 'Acme', admin: { mode: 'existing', userId: 'u1' } });
+
+        await waitFor(() => expect(result.current.isSuccess).toBe(true));
+        const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+        expect(String(url)).toContain('admin/tenants/provision');
         expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: tenantKeys.root });
     });
 });

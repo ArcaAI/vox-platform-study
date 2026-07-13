@@ -1,16 +1,23 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsIn, IsArray } from 'class-validator';
+import { IsString, IsOptional, IsIn, IsArray, MaxLength, Validate } from 'class-validator';
 import { BaseRequest } from '../../../common';
 import { TenantPlan } from '@arcaai/domains';
+import { NotReservedTenantKeyConstraint } from '../validators/not-reserved-tenant-key.validator';
 
 export class CreateTenantRequest extends BaseRequest {
   @ApiProperty({ description: 'Name of the tenant' })
   @IsString()
   name!: string;
 
-  @ApiProperty({ description: 'Unique key for the tenant' })
+  // TASK-497 D3 — optional: auto-generated (slugified from `name`, deduped)
+  // by `TenantService.create` when omitted. When supplied (global-admin
+  // override), it is used as-is after validation.
+  @ApiPropertyOptional({ description: 'Unique key for the tenant (auto-generated from name when omitted)' })
+  @IsOptional()
   @IsString()
-  key!: string;
+  @MaxLength(40)
+  @Validate(NotReservedTenantKeyConstraint)
+  key?: string;
 
   @ApiProperty({ description: 'Description of the tenant', required: false })
   @IsString()

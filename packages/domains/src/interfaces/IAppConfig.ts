@@ -15,6 +15,14 @@ export interface IAppConfig {
   LOG_FILE_DATE_PATTERN?: string;
   LOG_FILE_SEPARATE_ERROR?: boolean;
 
+  //=========== AUTH / REGISTRATION ============//
+  /**
+   * Verified self-signup master switch (TASK-497 D1). OFF by default — a
+   * healthcare/PHI platform cannot expose open registration without email
+   * verification gating tenant provisioning.
+   */
+  REGISTRATION_SELF_SIGNUP_ENABLED: boolean;
+
   //=========== INTERNAL SERVICES ============//
   PORT: string;
   URL: string;

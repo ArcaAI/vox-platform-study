@@ -1,13 +1,13 @@
 import {
   IActiveUserContext,
-  isSuperAdmin,
   PipelinePolicyEffectiveResponse,
   PipelinePolicyResponse,
   PipelinePolicyService,
   UpdatePipelinePolicyRequest,
 } from '@arcaai/applications';
 import { PipelinePolicyScope } from '@arcaai/domains';
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Put, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Put, Query } from '@nestjs/common';
+import { resolveScopedTenantId } from '../../shared/tenant-scope';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
@@ -126,18 +126,7 @@ export class PipelinePolicyAdminController {
 
   /** Resolve the effective tenant: tenant admins → own tenant; global-admins → `?tenantId=` (or CLS tenant). */
   private resolveTenantId(queryTenantId?: string): string {
-    const user = this.cls.get('user');
-    if (isSuperAdmin(user)) {
-      const target = queryTenantId ?? this.cls.get('tenantId') ?? user?.tenantId ?? undefined;
-      if (!target) throw new BadRequestException('Platform admins must pass ?tenantId= to scope this request.');
-      return target;
-    }
-    const tenantId = this.cls.get('tenantId') ?? user?.tenantId ?? undefined;
-    if (!tenantId) throw new BadRequestException('Tenant context is required.');
-    if (queryTenantId && queryTenantId !== tenantId) {
-      throw new ForbiddenException('You do not have access to this tenant');
-    }
-    return tenantId;
+    return resolveScopedTenantId(this.cls.get('user'), this.cls.get('tenantId'), queryTenantId);
   }
 
   /** Parse the `?scope=` query into the enum, defaulting to TENANT; unknown → 400. */

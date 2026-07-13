@@ -87,6 +87,16 @@ describe('useDataGrid (headless controller)', () => {
     );
   });
 
+  it('filters to the union of selected values for a multiSelect column with no explicit filterFn (TASK-500)', () => {
+    const { result } = renderHook(() => useDataGrid<Person>({ data: makeData(4), columns: COLUMNS, getRowId: (r) => r.id }));
+
+    act(() => result.current.setFilter({ id: 'status', operator: 'inArray', value: ['ACTIVE'], variant: 'multiSelect' }, 'status'));
+    expect(result.current.table.getFilteredRowModel().rows.map((r) => r.original.id).sort()).toEqual(['p1', 'p3']);
+
+    act(() => result.current.setFilter({ id: 'status', operator: 'inArray', value: ['ACTIVE', 'ARCHIVED'], variant: 'multiSelect' }, 'status'));
+    expect(result.current.table.getFilteredRowModel().rows.map((r) => r.original.id).sort()).toEqual(['p0', 'p1', 'p2', 'p3']);
+  });
+
   it('emits onPaginate with an offset PageRequest on page change and respects rowCount', () => {
     const onPaginate = vi.fn();
     const { result } = renderHook(() =>

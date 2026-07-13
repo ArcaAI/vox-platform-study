@@ -6,6 +6,7 @@ import {
   BreakGlassDto,
   CreateRoleDto,
   UpdateRoleDto,
+  CloneRoleDto,
   AssignPolicyToRoleDto,
   RoleResponse,
   PaginatedRoleResponse,
@@ -119,7 +120,22 @@ export class RolesController {
       externalName: dto.externalName,
       externalId: dto.externalId,
       parentRoleId: dto.parentRoleId,
+      isSystemRole: dto.isSystemRole,
     });
+    return this.toResponse(role);
+  }
+
+  /**
+   * TASK-501 — clone a role (SYSTEM or CUSTOM) into a new CUSTOM role,
+   * copying its policy set. Any admin holding manage:Role may call this.
+   */
+  @Post(':id/clone')
+  @CanManage('Role')
+  @ApiOperation({ summary: 'Clone a role (SYSTEM or CUSTOM) into a new CUSTOM role, copying its policies' })
+  @ApiResponse({ status: 201, description: 'Role cloned', type: RoleResponse })
+  @ApiResponse({ status: 404, description: 'Source role not found' })
+  async clone(@Param('id') id: string, @Body() dto: CloneRoleDto): Promise<RoleResponse> {
+    const role = await this.roleService.clone(id, { name: dto.name });
     return this.toResponse(role);
   }
 

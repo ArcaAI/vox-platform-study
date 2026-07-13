@@ -144,6 +144,8 @@ describe('TASK-409 — RbacRoleService break-glass on detach (removePolicy)', ()
     vi.clearAllMocks();
     mocks = makeMocks();
     service = buildService(mocks);
+    // TASK-501 — removePolicy now pre-checks the role's isSystemRole flag.
+    mocks.roleRepo.findByIdGuardSelect.mockResolvedValue(PLAIN_ROLE);
   });
 
   it('detaching a PROTECTED policy is absolutely blocked (403) even with correct step-up', async () => {
@@ -182,5 +184,12 @@ describe('TASK-409 — RbacRoleService break-glass on detach (removePolicy)', ()
     const audits = breakGlassAudits(mocks);
     expect(audits[0]?.data.outcome).toBe('confirmed');
     expect(audits[0]?.data.operation).toBe('role-policy-detach');
+  });
+
+  it('TASK-501 — system role, non-elevated caller → 403 BEFORE any break-glass prompt', async () => {
+    mocks.roleRepo.findByIdGuardSelect.mockResolvedValue(SYSTEM_ROLE);
+    await expect(service.removePolicy('role-sys', 'policy-1', GOOD_CREDS('team-policy'))).rejects.toThrow(ForbiddenException);
+    expect(mocks.crypto.verify).not.toHaveBeenCalled();
+    expect(mocks.rolePolicyRepo.softDeleteByRoleAndPolicy).not.toHaveBeenCalled();
   });
 });

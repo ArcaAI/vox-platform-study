@@ -168,6 +168,9 @@ enum ResourceType {
   UserDepartment
   TenantFrontendConfig
   TenantTtsConfig
+  // TASK-498 — tenant-scoped external identity provider (OIDC).
+  TenantIdentityProvider
+  FederatedIdentity
 
   @@schema("core")
 }

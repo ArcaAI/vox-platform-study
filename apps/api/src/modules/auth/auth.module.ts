@@ -1,9 +1,18 @@
-import { AuthServiceModule, UserDepartmentServiceModule, UserRoleAssignmentServiceModule, UserServiceModule } from '@arcaai/applications';
+import {
+  AuthServiceModule,
+  FederatedAuthServiceModule,
+  RegistrationServiceModule,
+  UserDepartmentServiceModule,
+  UserRoleAssignmentServiceModule,
+  UserServiceModule,
+} from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { Module } from '@nestjs/common';
 import { TenantOwnedResourceModule } from '../../common';
 import { AdminImpersonationController } from './admin-impersonation.controller';
 import { AuthController } from './auth.controller';
+import { AuthSsoController } from './auth-sso.controller';
+import { RegisterController } from './register.controller';
 import { StreamTicketModule } from './stream-ticket.module';
 
 /**
@@ -38,11 +47,18 @@ import { StreamTicketModule } from './stream-ticket.module';
     // DELETE-route interceptor consult). NestJS dedupes the module instance
     // with the AppModule/StreamingModule imports.
     TenantOwnedResourceModule,
+    // TASK-498 — FederatedAuthService (OIDC login round-trip + JIT provisioning).
+    FederatedAuthServiceModule,
+    // TASK-497 — RegistrationService (verified self-signup) for RegisterController.
+    RegistrationServiceModule,
   ],
   // TASK-401 — AdminImpersonationController adds the global-admin-only
   // `POST /admin/users/:id/impersonate` mint alongside the legacy
   // `/auth/impersonate` route (same module: it reuses the exact same
   // service/repository set the AuthController already wires).
-  controllers: [AuthController, AdminImpersonationController],
+  // TASK-498 — AuthSsoController adds `/auth/sso/{start,callback}`, reusing
+  // the same createJwt/RefreshTokenService mint path as AuthController.login.
+  // TASK-497 — RegisterController adds `/auth/register` + `/auth/register/verify`.
+  controllers: [AuthController, AdminImpersonationController, AuthSsoController, RegisterController],
 })
 export class AuthModule {}

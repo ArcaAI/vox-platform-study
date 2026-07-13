@@ -116,7 +116,7 @@ function SettingsSkeleton() {
  * a single heterogeneous batch is impossible — see the ticket README). A 412
  * stops the run, keeps drafts ("no silent loss") and reloads versions.
  */
-export function TenantSettingsTab() {
+export function TenantSettingsTab({ readOnly = false }: { readOnly?: boolean } = {}) {
     const uid = useId();
     const tier = useViewportTier();
     const configsQuery = useMyTenantConfigs();
@@ -250,7 +250,7 @@ export function TenantSettingsTab() {
                     ) : (
                         <Card className="gap-0 divide-y p-0">
                             {activeRows.map((config) => {
-                                const readOnly = isReadOnly(config);
+                                const rowReadOnly = readOnly || isReadOnly(config);
                                 const draft = drafts[config.id];
                                 const controlId = `${uid}-${config.id || config.key}`;
                                 return (
@@ -287,7 +287,7 @@ export function TenantSettingsTab() {
                                             <ConfigControl
                                                 config={config}
                                                 value={draft ?? config.value}
-                                                disabled={readOnly}
+                                                disabled={rowReadOnly}
                                                 onChange={(value) => setDrafts((current) => ({ ...current, [config.id]: value }))}
                                             />
                                         </div>
@@ -296,7 +296,7 @@ export function TenantSettingsTab() {
                             })}
                         </Card>
                     )}
-                    {dirtyRows.length > 0 ? (
+                    {!readOnly && dirtyRows.length > 0 ? (
                         <div className="bg-background sticky bottom-0 flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-md border p-3 shadow-sm">
                             <span className="text-sm" role="status">
                                 {dirtyRows.length === 1 ? '1 unsaved change' : `${dirtyRows.length} unsaved changes`}

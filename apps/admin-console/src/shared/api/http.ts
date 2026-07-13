@@ -178,6 +178,11 @@ export async function patchWithEtag<T>(path: string, body: unknown, etag: string
     return request<T>(path, { method: 'PATCH', body, etag });
 }
 
+/** PUT of a versioned row (full-record OCC write): the caller passes the ETag captured at read time. */
+export async function putWithEtag<T>(path: string, body: unknown, etag: string): Promise<WithEtag<T>> {
+    return request<T>(path, { method: 'PUT', body, etag });
+}
+
 /** PATCH of an unversioned resource (no If-Match requirement). */
 export async function patchJson<T>(path: string, body?: unknown): Promise<T> {
     return (await request<T>(path, { method: 'PATCH', body })).data;

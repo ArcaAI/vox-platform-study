@@ -11,8 +11,35 @@ import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EntitlementCapabilities } from '@/features/entitlements/api/types';
 import type { Tenant, TenantConfig } from '@/features/tenants/api/types';
+import type { SafeSession } from '@/shared/auth/hooks';
 import { renderWithProviders } from '@/test/render';
 import { TenantProfileScreen } from '../tenant-profile-screen';
+
+/** Elevated (admin) session — the default for every pre-existing test below. */
+const ELEVATED_SESSION: SafeSession = {
+    user: { id: 'admin-1', username: 'super_admin', email: 'root@hope.dev', roles: ['GLOBAL_ADMIN'], tenantId: null },
+    isElevated: true,
+    workingTenantId: 'ten-1',
+    workingTenantName: 'Sunrise Medical Group',
+    impersonatingUserId: null,
+    impersonatingUsername: null,
+    effectiveUser: { id: 'admin-1', username: 'super_admin', email: 'root@hope.dev', roles: ['GLOBAL_ADMIN'], tenantId: null, departmentId: null },
+    effectiveIsElevated: true,
+    effectiveTenantId: 'ten-1',
+};
+
+/** BUG-005 — a non-elevated session: a real end-user, or an operator impersonating one. */
+const NON_ADMIN_SESSION: SafeSession = {
+    user: { id: 'admin-1', username: 'super_admin', email: 'root@hope.dev', roles: ['GLOBAL_ADMIN'], tenantId: null },
+    isElevated: true,
+    workingTenantId: null,
+    workingTenantName: null,
+    impersonatingUserId: 'doctor2-id',
+    impersonatingUsername: 'doctor2',
+    effectiveUser: { id: 'doctor2-id', username: 'doctor2', email: 'doctor2@hope.dev', roles: ['DOCTOR'], tenantId: 'ten-1', departmentId: null },
+    effectiveIsElevated: false,
+    effectiveTenantId: 'ten-1',
+};
 
 const BASE = {
     projectId: null,
@@ -143,8 +170,9 @@ function stubViewport(tier: 'desktop' | 'mobile') {
 }
 
 /** URL-branching happy-path handler; /tenant/me/config must match before /tenant/me. */
-function happyHandler(overrides: { tenant?: () => Response; configPatch?: () => Response } = {}): Handler {
+function happyHandler(overrides: { tenant?: () => Response; configPatch?: () => Response; session?: SafeSession } = {}): Handler {
     return (url, method) => {
+        if (url.includes('/api/auth/session')) return Response.json(overrides.session ?? ELEVATED_SESSION);
         if (url.includes('/tenant/me/config')) {
             if (method === 'PATCH') return (overrides.configPatch ?? (() => Response.json(CONFIG_PAGE)))();
             return Response.json(CONFIG_PAGE);
@@ -194,7 +222,9 @@ describe('TenantProfileScreen', () => {
         renderWithProviders(<TenantProfileScreen />, { searchParams: '?tab=plan' });
 
         const plan = await screen.findByRole('region', { name: 'Plan & usage' });
-        expect(within(plan).getByText('Users')).toBeDefined();
+        // BUG-005 — entitlements now fetch only after the session resolves the
+        // caller as elevated, so the panel populates one tick later.
+        expect(await within(plan).findByText('Users')).toBeDefined();
         expect(within(plan).getByText('12 / 25')).toBeDefined();
         expect(within(plan).getByText('Near limit')).toBeDefined();
         expect(within(plan).getByText('4 / Unlimited')).toBeDefined();
@@ -321,5 +351,56 @@ describe('TenantProfileScreen', () => {
 
         fireEvent.click(screen.getByRole('button', { name: /retry/i }));
         expect((await screen.findAllByText('Sunrise Medical Group')).length).toBeGreaterThan(0);
+    });
+
+    /**
+     * BUG-005 Issue 2 — while impersonating (or for a real end-user), the
+     * screen must show only basic org identity + a read-only Settings tab;
+     * "Plan & usage" (limits/meters/entitlements) must not render or fetch.
+     */
+    describe('non-elevated / impersonated session (BUG-005 Issue 2)', () => {
+        it('hides the Plan & usage tab and never fetches entitlements', async () => {
+            const calls = stubFetch(happyHandler({ session: NON_ADMIN_SESSION }));
+            renderWithProviders(<TenantProfileScreen />);
+
+            await screen.findByRole('region', { name: 'Organization' });
+            expect(screen.queryByRole('tab', { name: 'Plan & usage' })).toBeNull();
+            expect(calls.some((call) => call.url.includes('/entitlements/me'))).toBe(false);
+        });
+
+        it('shows only the organization name and status, hiding key/plan/description/tags/timestamps', async () => {
+            stubFetch(happyHandler({ session: NON_ADMIN_SESSION }));
+            renderWithProviders(<TenantProfileScreen />);
+
+            const identity = await screen.findByRole('region', { name: 'Organization' });
+            expect(within(identity).getByText('Sunrise Medical Group')).toBeDefined();
+            expect(within(identity).getByText('Active')).toBeDefined();
+            expect(within(identity).queryByText('sunrise-medical')).toBeNull();
+            expect(within(identity).queryByText('Enterprise')).toBeNull();
+            expect(within(identity).queryByText('Multi-clinic group in Da Nang')).toBeNull();
+            expect(within(identity).queryByText('pilot')).toBeNull();
+        });
+
+        it('keeps the Settings tab, read-only (no Save bar even after an edit)', async () => {
+            stubFetch(happyHandler({ session: NON_ADMIN_SESSION }));
+            renderWithProviders(<TenantProfileScreen />, { searchParams: '?tab=settings' });
+
+            await screen.findByRole('navigation', { name: 'Settings categories' });
+            expect(screen.getByRole('tab', { name: 'Settings', selected: true })).toBeDefined();
+            fireEvent.click(screen.getByRole('button', { name: /Security/ }));
+            const input = await screen.findByLabelText('Value for session-timeout-minutes');
+            expect((input as HTMLInputElement).disabled).toBe(true);
+            fireEvent.change(input, { target: { value: '60' } });
+            expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+        });
+
+        it('keeps the full admin view for an elevated session (regression)', async () => {
+            stubFetch(happyHandler({ session: ELEVATED_SESSION }));
+            renderWithProviders(<TenantProfileScreen />);
+
+            const identity = await screen.findByRole('region', { name: 'Organization' });
+            expect(within(identity).getByText('sunrise-medical')).toBeDefined();
+            expect(screen.getByRole('tab', { name: 'Plan & usage' })).toBeDefined();
+        });
     });
 });

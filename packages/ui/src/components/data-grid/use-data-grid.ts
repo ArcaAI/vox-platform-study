@@ -24,6 +24,7 @@ import { getDefaultFilterOperator } from '@/lib/data-table';
 import type { FilterVariant } from '@/types/data-table';
 
 import { buildQueryAnnouncement } from './announce';
+import { includesSomeFilter } from './filter-controls';
 import { buildDisplayRows, type DisplayRow } from './group-rows';
 import { useCoarsePointer } from './use-container-breakpoint';
 import { useGridLayout } from './use-grid-layout';
@@ -243,9 +244,19 @@ export function useDataGrid<TData>(props: VirtualizedDataGridProps<TData>): UseD
     [layout, emitLayout],
   );
 
+  // TASK-500 — a `multiSelect` column with no explicit `filterFn` falls back to
+  // TanStack's default `includesString`, which stringifies the array filter value
+  // (`"ACTIVE,ARCHIVED"`) and never matches a scalar cell once 2+ values are
+  // selected. Resolve an array-aware default so client-side facets work out of the
+  // box; an explicit per-column `filterFn` still wins.
+  const resolvedColumns = useMemo(
+    () => columns.map((col) => (col.meta?.variant === 'multiSelect' && !col.filterFn ? { ...col, filterFn: includesSomeFilter } : col)),
+    [columns],
+  );
+
   const table = useReactTable<TData>({
     data,
-    columns,
+    columns: resolvedColumns,
     state: {
       sorting,
       columnFilters,
