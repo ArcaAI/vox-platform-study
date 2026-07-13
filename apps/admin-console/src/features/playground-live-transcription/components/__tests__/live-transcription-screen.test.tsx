@@ -160,13 +160,20 @@ function stubFetch(handler: FetchHandler): RecordedCall[] {
 }
 
 function session(overrides: Partial<{ workingTenantId: string | null; tenantId: string | null }> = {}) {
+    const workingTenantId = 'workingTenantId' in overrides ? overrides.workingTenantId! : 'tnt-1';
+    const user = { id: 'u-1', username: 'root', email: 'root@hope.local', roles: ['GLOBAL_ADMIN'], tenantId: overrides.tenantId ?? null };
     return {
-        user: { id: 'u-1', username: 'root', email: 'root@hope.local', roles: ['GLOBAL_ADMIN'], tenantId: overrides.tenantId ?? null },
+        user,
         isElevated: true,
-        workingTenantId: 'workingTenantId' in overrides ? overrides.workingTenantId : 'tnt-1',
+        workingTenantId,
         workingTenantName: 'Sunrise Medical Group',
         impersonatingUserId: null,
         impersonatingUsername: null,
+        // BUG-005 — WorkingTenantGate now reads the effective identity; mirror
+        // the operator fields since this fixture never impersonates.
+        effectiveUser: { ...user, departmentId: null },
+        effectiveIsElevated: true,
+        effectiveTenantId: workingTenantId,
     };
 }
 

@@ -23,7 +23,7 @@ import {
   AiModelFactory,
   TenantPlan,
 } from '@arcaai/domains';
-import { InternalServerErrorException, ArgumentInvalidException } from '@arcaai/exceptions';
+import { InternalServerErrorException, ArgumentInvalidException, DataNotFoundException } from '@arcaai/exceptions';
 import { ITenantService } from './ITenantService';
 import { CreateTenantRequest, UpdateTenantRequest } from './dto';
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedPaginatedProps, withFormattedCountProps } from '../../common';
@@ -33,6 +33,7 @@ import { ITenantBucketService } from '../tenant-bucket/ITenantBucketService';
 import { GLOBAL_TENANT_KEY, GLOBAL_ADMIN_ROLE, isUuidIdentifier } from './constants';
 import { DEFAULT_GEN_DEPARTMENT } from './departmentDefaults';
 import { scrubLockedForAudit } from './scrubbing';
+import { generateUniqueTenantKey } from './tenantKey';
 // TASK-392 (Q8) — plan → model clone-subset. Imported from the specific file
 // (not the entitlements barrel) to avoid pulling the request-scoped
 // EntitlementsService and creating a module import cycle.
@@ -96,13 +97,20 @@ export class TenantService extends BaseService implements ITenantService {
    * @throws InternalServerErrorException if tenant creation fails
    */
   async create(request: CreateTenantRequest): Promise<TenantEntity> {
+    // TASK-497 D3 — auto-generate the key from `name` when the caller omits
+    // it; an explicit `key` (global-admin override) is used as-is (already
+    // format/reserved-validated by the DTO).
+    const key = request.key ?? (await generateUniqueTenantKey(request.name, (candidate) => this.tenantKeyExists(candidate)));
+
     const newTenant = TenantFactory.CreateTenant({
       ...request,
-      // TASK-392 (Q4 / proposal §5) — new tenants default to TRIAL (overridable
-      // via `request.plan`), resolving the TASK-387 FLAG#1 open question. The
-      // factory stamps a 7-day PRO-entitled trial clock. Enforcement ships OFF
-      // (Q9), so this is display-only until the kill-switch is flipped per-env.
-      plan: request.plan ?? TenantPlan.TRIAL,
+      key,
+      // TASK-497 D2 — new tenants default to STARTER (overridable via
+      // `request.plan`), replacing the prior TASK-392 TRIAL default. TRIAL
+      // remains a selectable plan and keeps its 7-day PRO-entitled trial
+      // clock in the factory. Enforcement ships OFF (Q9), so this is
+      // display-only until the kill-switch is flipped per-env.
+      plan: request.plan ?? TenantPlan.STARTER,
       createdBy: this.requestUser?.id,
     });
 
@@ -111,6 +119,14 @@ export class TenantService extends BaseService implements ITenantService {
     if (!tenant) {
       throw new InternalServerErrorException(`Failed to create TenantEntity: ${request}`);
     }
+
+    // TASK-503 — tenant creation is a cross-tenant, global-admin operation:
+    // CLS `tenantId` is empty for the whole call (the new tenant isn't
+    // "active" yet), so `broadcastSysEvent()`'s CLS-only attribution
+    // (anti-spoofing, TASK-306 AC-10) would stamp every provisioning event
+    // below with `tenantId: null`. Rebind CLS to the tenant this call is
+    // legitimately provisioning, request-scoped, before the first broadcast.
+    this.clsService.set('tenantId', tenant.id);
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: tenant.id,
@@ -123,6 +139,18 @@ export class TenantService extends BaseService implements ITenantService {
     } catch (error) {
       this.logger.warn({
         message: 'Failed to provision system storage buckets for new tenant',
+        tenantId: tenant.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    try {
+      // TASK-497 D4 — write the plan's storageQuotaBytes onto the primary
+      // system bucket now that buckets exist.
+      await this.tenantBucketService.applyPlanStorageQuota(tenant.id, tenant.plan ?? null);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to apply plan storage quota for new tenant',
         tenantId: tenant.id,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -448,6 +476,23 @@ export class TenantService extends BaseService implements ITenantService {
         newTenantId,
         globalTenantId: globalTenant.id,
       });
+    }
+  }
+
+  /**
+   * TASK-497 D3 — existence probe for `generateUniqueTenantKey`. `findFirst`
+   * throws `DataNotFoundException` on a miss in production; treated the same
+   * as a falsy resolved value (test-double convention) — both mean "free".
+   */
+  private async tenantKeyExists(key: string): Promise<boolean> {
+    try {
+      const found = await this.tenantRepository.findFirst({ where: { key } });
+      return Boolean(found);
+    } catch (error) {
+      if (error instanceof DataNotFoundException) {
+        return false;
+      }
+      throw error;
     }
   }
 

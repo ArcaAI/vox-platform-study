@@ -15,7 +15,7 @@ import {
 } from '@arcaai/domains';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
-import { SecretsService } from '../baseServices/_meta/secrets';
+import { decryptSecretField, encryptSecretField, SecretsService } from '../baseServices/_meta/secrets';
 import { ITenantTtsConfigService } from './ITenantTtsConfigService';
 import { TenantTtsConfigDtoMapper } from './tenant-tts-config.dto.mapper';
 import {
@@ -26,14 +26,6 @@ import {
   UpdateTenantTtsConfigRequest,
 } from './dto';
 import { BYO_PROVIDERS, resolveEffectiveTtsConfig, TtsProviderOverrides, TtsSpecInput } from './platform-limits';
-
-/** Vault Transit ciphertext is `vault:vN:<b64>`; extract N (bad shape → 1). */
-function parseKeyVersionFromCiphertext(ct: string): number {
-  const parts = ct.split(':');
-  if (parts.length < 3 || parts[1].length < 2 || parts[1][0] !== 'v') return 1;
-  const n = parseInt(parts[1].slice(1), 10);
-  return Number.isFinite(n) && n > 0 ? n : 1;
-}
 
 /** Editable spec fields (everything on the update DTO except the OCC token). */
 const SPEC_FIELDS = [
@@ -156,28 +148,18 @@ export class TenantTtsConfigService extends BaseService implements ITenantTtsCon
   }
 
   /** Set or rotate a tenant's BYO key for a provider (encrypted at rest). */
-  async setCredential(
-    tenantId: string,
-    provider: string,
-    dto: SetTtsCredentialRequest,
-  ): Promise<TtsCredentialResponse> {
+  async setCredential(tenantId: string, provider: string, dto: SetTtsCredentialRequest): Promise<TtsCredentialResponse> {
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
     }
     if (!(BYO_PROVIDERS as readonly string[]).includes(provider)) {
-      throw new BadRequestException(
-        `Unsupported BYO provider '${provider}'. Expected: ${BYO_PROVIDERS.join(', ')}`,
-      );
+      throw new BadRequestException(`Unsupported BYO provider '${provider}'. Expected: ${BYO_PROVIDERS.join(', ')}`);
     }
     if (!this.secretsService) {
-      throw new BadRequestException(
-        'BYO provider keys require the Vault secrets provider (SECRETS_PROVIDER=vault).',
-      );
+      throw new BadRequestException('BYO provider keys require the Vault secrets provider (SECRETS_PROVIDER=vault).');
     }
 
-    const ciphertext = await this.secretsService.encrypt(Buffer.from(dto.apiKey, 'utf8'));
-    const encryptedApiKey = Buffer.from(ciphertext, 'utf8');
-    const keyVersion = parseKeyVersionFromCiphertext(ciphertext);
+    const { ciphertext: encryptedApiKey, keyVersion } = await encryptSecretField(this.secretsService, dto.apiKey);
     const endpoint = dto.endpoint ?? null;
     const enabled = dto.enabled ?? true;
 
@@ -238,8 +220,7 @@ export class TenantTtsConfigService extends BaseService implements ITenantTtsCon
         continue;
       }
       try {
-        const ct = Buffer.from(row.encryptedApiKey).toString('utf8');
-        const apiKey = (await this.secretsService.decrypt(ct)).toString('utf8');
+        const apiKey = await decryptSecretField(this.secretsService, row.encryptedApiKey);
         const entry: { api_key: string; region?: string; base_url?: string } = { api_key: apiKey };
         if (row.endpoint) {
           if (row.provider === 'azure') entry.region = row.endpoint;

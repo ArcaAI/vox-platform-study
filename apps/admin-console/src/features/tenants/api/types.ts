@@ -14,10 +14,31 @@ export interface Tenant extends VersionedResource {
 
 export interface CreateTenantRequest {
     name: string;
-    key: string;
+    /** Optional — auto-generated from `name` when omitted (TASK-497 D3). */
+    key?: string;
     description?: string;
     plan?: TenantPlan;
     tags?: string[];
+}
+
+/** TASK-497 §3.5 — the tenant's initial TENANT_ADMIN, for POST /admin/tenants/provision. */
+export type ProvisionTenantAdmin =
+    | { mode: 'existing'; userId: string }
+    | { mode: 'new-local'; email: string; username?: string; password: string };
+
+export interface ProvisionTenantRequest {
+    tenantName: string;
+    /** Optional — auto-generated from `tenantName` when omitted (TASK-497 D3). */
+    tenantKey?: string;
+    plan?: TenantPlan;
+    admin: ProvisionTenantAdmin;
+}
+
+/** POST /admin/tenants/provision response (TenantProvisionResponse). */
+export interface TenantProvisionResult {
+    tenant: Tenant;
+    adminUserId: string;
+    tenantKey: string;
 }
 
 /** PATCH /admin/tenants/:id body (expectedVersion is added by the client). */

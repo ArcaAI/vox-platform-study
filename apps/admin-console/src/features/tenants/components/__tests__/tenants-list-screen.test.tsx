@@ -207,13 +207,15 @@ describe('TenantsListScreen', () => {
         await waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url === '/api/hope/admin/tenants/t-1/suspend')).toBe(true));
     });
 
-    it('creates a tenant through the wizard and navigates to the new detail page', async () => {
+    // TASK-497 §3.5 — the wizard now has a mandatory 3rd (tenant-admin) step
+    // and submits through POST /admin/tenants/provision, never adminless.
+    it('creates a tenant with an admin through the wizard and navigates to the new detail page', async () => {
         const calls = stubFetch((url, init) => {
             const settings = settingsResponse(url, init);
             if (settings) return settings;
             if ((init?.method ?? 'GET') === 'GET' && url.includes('/admin/tenants?')) return listResponse([]);
-            if (init?.method === 'POST' && url === '/api/hope/admin/tenants') {
-                return Response.json(tenant({ id: 't-new', name: 'Acme Health', key: 'acme' }));
+            if (init?.method === 'POST' && url === '/api/hope/admin/tenants/provision') {
+                return Response.json({ tenant: tenant({ id: 't-new', name: 'Acme Health', key: 'acme' }), adminUserId: 'user-1', tenantKey: 'acme' });
             }
             return undefined;
         });
@@ -227,13 +229,14 @@ describe('TenantsListScreen', () => {
         fireEvent.change(within(dialog).getByLabelText(/^key/i), { target: { value: 'acme' } });
         fireEvent.click(within(dialog).getByRole('button', { name: /next/i }));
 
-        // Step 2 confirms the entered details before submitting.
-        expect(within(dialog).getByText('Acme Health')).toBeDefined();
+        // Step 2 (plan, defaults to STARTER) -> step 3 (tenant admin, defaults to "existing user").
+        fireEvent.click(within(dialog).getByRole('button', { name: /next/i }));
+        fireEvent.change(within(dialog).getByLabelText(/existing user id/i), { target: { value: 'user-1' } });
         fireEvent.click(within(dialog).getByRole('button', { name: /create tenant/i }));
 
         await waitFor(() => {
-            const post = calls.find((call) => call.method === 'POST' && call.url === '/api/hope/admin/tenants');
-            expect(post?.body).toEqual({ name: 'Acme Health', key: 'acme' });
+            const post = calls.find((call) => call.method === 'POST' && call.url === '/api/hope/admin/tenants/provision');
+            expect(post?.body).toEqual({ tenantName: 'Acme Health', tenantKey: 'acme', plan: 'STARTER', admin: { mode: 'existing', userId: 'user-1' } });
         });
         await waitFor(() => expect(push).toHaveBeenCalledWith('/tenants/t-new'));
     });

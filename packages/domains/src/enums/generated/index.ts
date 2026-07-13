@@ -11,6 +11,8 @@ export * from './ContextItemType';
 export * from './FedlRoundStatus';
 export * from './HarnessAuditAction';
 export * from './HighlightTargetKind';
+export * from './IdpProtocol';
+export * from './IdpStatus';
 export * from './KnowledgeDocumentStatus';
 export * from './ModelCategory';
 export * from './ModelJobStatus';

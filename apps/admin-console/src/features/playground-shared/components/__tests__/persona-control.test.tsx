@@ -30,6 +30,9 @@ function session(overrides: Partial<SafeSession> = {}): SafeSession {
         workingTenantName: null,
         impersonatingUserId: null,
         impersonatingUsername: null,
+        effectiveUser: { id: 'admin-1', username: 'alice-admin', email: 'alice@hope.test', roles: ['GLOBAL_ADMIN'], tenantId: null, departmentId: null },
+        effectiveIsElevated: true,
+        effectiveTenantId: null,
         ...overrides,
     };
 }

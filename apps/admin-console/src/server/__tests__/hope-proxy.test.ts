@@ -133,6 +133,30 @@ describe('handleProxy', () => {
         expect(calls[0].headers.get('authorization')).toBe('Bearer impersonation-token');
     });
 
+    // BUG-005 Issue 3 (latent bug folded in): if the operator had a working
+    // tenant selected BEFORE impersonating, and it differs from the target's
+    // own (resolved) tenant, the gateway's ContextInterceptor 400s every
+    // proxied call because the header no longer matches the act-as JWT's
+    // tenantId. The act-as JWT is already tenant-bound to the target — the
+    // header must never ride along while impersonating.
+    it('never sends the operator stale working-tenant header while impersonating', async () => {
+        await seedSession({
+            ...baseSession,
+            // Operator picked a working tenant before impersonating.
+            workingTenantId: '60000000-0000-0000-0000-000000000000',
+            impersonation: {
+                accessToken: 'impersonation-token',
+                originalAccessToken: 'access-1',
+                originalRefreshToken: 'refresh-1',
+                targetUserId: 'user-2',
+                targetTenantId: '50000000-0000-0000-0000-000000000000',
+            },
+        });
+        const calls = installFetchMock(() => Response.json({}));
+        await handleProxy(new Request('http://console.local/api/hope/consultations'), ['consultations']);
+        expect(calls[0].headers.get('x-tenant-id')).toBeNull();
+    });
+
     it('forwards If-Match/Content-Type/Idempotency-Key and body; returns ETag/Content-Type and status', async () => {
         await seedSession(baseSession);
         const calls = installFetchMock(() =>

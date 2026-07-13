@@ -40,7 +40,11 @@ export function WorkingTenantGate({
         );
     }
 
-    if (session.data.isElevated && !session.data.workingTenantId) {
+    // BUG-005 Issue 3 — key off the EFFECTIVE identity, not the operator's:
+    // while impersonating, isElevated/workingTenantId stay the operator's
+    // (always elevated, often no working tenant picked), which fired this
+    // gate even though the impersonated target is tenant-bound.
+    if (session.data.effectiveIsElevated && !session.data.effectiveTenantId) {
         return (
             <div className="flex flex-col gap-4">
                 <PageHeader title={title} meta={meta} />

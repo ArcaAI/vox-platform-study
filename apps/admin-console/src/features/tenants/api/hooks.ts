@@ -18,6 +18,7 @@ import {
     getTenantUsage,
     listTenantConfigs,
     listTenants,
+    provisionTenant,
     restoreTenant,
     setTenantTags,
     suspendTenant,
@@ -26,7 +27,13 @@ import {
     updateTenantConfigs,
 } from './client';
 import { tenantKeys } from './keys';
-import type { CreateTenantRequest, UpdateTenantConfigItem, UpdateTenantRequest, UpsertTenantFrontendConfigRequest } from './types';
+import type {
+    CreateTenantRequest,
+    ProvisionTenantRequest,
+    UpdateTenantConfigItem,
+    UpdateTenantRequest,
+    UpsertTenantFrontendConfigRequest,
+} from './types';
 
 export function useTenants(params?: ListParams) {
     return useQuery({ queryKey: tenantKeys.list(params), queryFn: () => listTenants(params), placeholderData: keepPreviousData });
@@ -66,6 +73,12 @@ function useInvalidateTenants() {
 export function useCreateTenant() {
     const invalidate = useInvalidateTenants();
     return useMutation({ mutationFn: (body: CreateTenantRequest) => createTenant(body), onSuccess: invalidate });
+}
+
+/** TASK-497 §3.5 — global-admin create-tenant-with-admin. */
+export function useProvisionTenant() {
+    const invalidate = useInvalidateTenants();
+    return useMutation({ mutationFn: (body: ProvisionTenantRequest) => provisionTenant(body), onSuccess: invalidate });
 }
 
 export function useUpdateTenant() {

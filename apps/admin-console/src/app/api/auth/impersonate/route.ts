@@ -9,7 +9,16 @@ interface ImpersonateRequestBody {
 }
 
 interface GatewayImpersonateResponse {
-    user: { id: string; username: string; email: string; roles: string[]; permissions: string[]; tenantId: string };
+    user: {
+        id: string;
+        username: string;
+        email: string;
+        roles: string[];
+        permissions: string[];
+        tenantId: string;
+        /** Target's primary department in the impersonation tenant (TASK-331 F-9); absent if none active. */
+        departmentId?: string;
+    };
     token: string;
     impersonatedBy: string;
     expiresAt: string;
@@ -72,6 +81,12 @@ export async function POST(request: Request): Promise<Response> {
             originalRefreshToken: session.refreshToken,
             targetUserId: data.user.id,
             targetUsername: data.user.username,
+            // BUG-005 Phase 0 — the full target identity, so the client can
+            // project an effective session distinct from the operator's own.
+            targetEmail: data.user.email,
+            targetRoles: data.user.roles,
+            targetTenantId: data.user.tenantId,
+            targetDepartmentId: data.user.departmentId,
         },
     };
     await setSession(updated);

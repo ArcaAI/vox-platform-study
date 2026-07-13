@@ -81,6 +81,7 @@ export class MyTenantController {
    * fallback for global-admins).
    */
   @Patch('me/config')
+  @Authorize(['update', 'Tenant'])
   @RequiresIfMatch()
   @ApiOperation({
     summary: 'Update current tenant configuration',

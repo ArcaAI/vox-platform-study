@@ -131,6 +131,12 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // throttler + global-admin cross-tenant override CRUD read it through the
   // extended client without a matching CLS tenant).
   'TenantUsageMeter',
+  // identity-provider.prisma (3) — TASK-498 tenant-scoped external OIDC IdP.
+  // None are SYSTEM-shared reads — a tenant's IdP config/links/domains are
+  // never visible cross-tenant.
+  'TenantIdentityProvider',
+  'FederatedIdentity',
+  'TenantIdentityProviderDomain',
 ]);
 
 /**

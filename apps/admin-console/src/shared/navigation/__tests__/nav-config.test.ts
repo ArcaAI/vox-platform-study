@@ -16,11 +16,11 @@ const TENANT_ADMIN_RULES: PermissionRule[] = [
 ];
 
 describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playground tier TASK-420/431)', () => {
-    it('covers the full 34-route map across the four tiers', () => {
-        expect(NAV_ENTRIES).toHaveLength(34);
+    it('covers the full 36-route map across the four tiers', () => {
+        expect(NAV_ENTRIES).toHaveLength(36);
         expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(11);
         expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(7);
-        expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(11);
+        expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(13);
         expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(5);
     });
 

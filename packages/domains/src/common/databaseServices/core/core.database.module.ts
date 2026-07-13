@@ -18,6 +18,7 @@ import { DnaWritingStyleReportRepository } from '../../../repositories/generated
 import { DnaWritingStyleVersionRepository } from '../../../repositories/generated/core/DnaWritingStyleVersionRepository';
 import { EvalRunRepository } from '../../../repositories/generated/core/EvalRunRepository';
 import { EvalScoreRepository } from '../../../repositories/generated/core/EvalScoreRepository';
+import { FederatedIdentityRepository } from '../../../repositories/generated/core/FederatedIdentityRepository';
 import { GlobalSettingRepository } from '../../../repositories/generated/core/GlobalSettingRepository';
 import { GoldenCaseRepository } from '../../../repositories/generated/core/GoldenCaseRepository';
 import { GoldenSetRepository } from '../../../repositories/generated/core/GoldenSetRepository';
@@ -47,6 +48,8 @@ import { TagRepository } from '../../../repositories/generated/core/TagRepositor
 import { TenantBucketRepository } from '../../../repositories/generated/core/TenantBucketRepository';
 import { TenantEntitlementRepository } from '../../../repositories/generated/core/TenantEntitlementRepository';
 import { TenantFrontendConfigRepository } from '../../../repositories/generated/core/TenantFrontendConfigRepository';
+import { TenantIdentityProviderRepository } from '../../../repositories/generated/core/TenantIdentityProviderRepository';
+import { TenantIdentityProviderDomainRepository } from '../../../repositories/generated/core/TenantIdentityProviderDomainRepository';
 import { TenantRepository } from '../../../repositories/generated/core/TenantRepository';
 import { TenantStorageConfigRepository } from '../../../repositories/generated/core/TenantStorageConfigRepository';
 import { TenantTtsConfigRepository } from '../../../repositories/generated/core/TenantTtsConfigRepository';
@@ -159,6 +162,10 @@ const repositories = [
   // Institutional RAG knowledge corpus (TASK-330 Phase 3)
   KnowledgeDocumentRepository,
   KnowledgeChunkRepository,
+  // Tenant-scoped external identity provider (TASK-498)
+  TenantIdentityProviderRepository,
+  FederatedIdentityRepository,
+  TenantIdentityProviderDomainRepository,
 ];
 
 @Module({

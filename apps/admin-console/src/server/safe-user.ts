@@ -19,16 +19,51 @@ export interface SafeSession {
     workingTenantName: string | null;
     impersonatingUserId: string | null;
     impersonatingUsername: string | null;
+    /**
+     * The identity screens should render/authorize against: the impersonated
+     * target while impersonating, otherwise the operator's own `user`
+     * (BUG-005). `user`/`isElevated` above stay operator-only — they drive the
+     * persona-control chrome (site header, "Impersonating" banner), which must
+     * keep showing the real operator.
+     */
+    effectiveUser: {
+        id: string;
+        username: string;
+        email: string;
+        roles: string[];
+        tenantId: string | null;
+        departmentId: string | null;
+    };
+    effectiveIsElevated: boolean;
+    /** Tenant scope for the effective identity: the target's tenant while
+     * impersonating, else the operator's own working-tenant pick. */
+    effectiveTenantId: string | null;
 }
 
 export function toSafeSession(session: SessionPayload): SafeSession {
     const { id, username, email, roles, tenantId } = session.user;
+    const { impersonation } = session;
+
+    const effectiveUser = impersonation
+        ? {
+              id: impersonation.targetUserId,
+              username: impersonation.targetUsername ?? impersonation.targetUserId,
+              email: impersonation.targetEmail ?? '',
+              roles: impersonation.targetRoles ?? [],
+              tenantId: impersonation.targetTenantId ?? null,
+              departmentId: impersonation.targetDepartmentId ?? null,
+          }
+        : { id, username, email, roles, tenantId: tenantId ?? null, departmentId: null };
+
     return {
         user: { id, username, email, roles, tenantId: tenantId ?? null },
         isElevated: isElevated(session.user),
         workingTenantId: session.workingTenantId ?? null,
         workingTenantName: session.workingTenantName ?? null,
-        impersonatingUserId: session.impersonation?.targetUserId ?? null,
-        impersonatingUsername: session.impersonation?.targetUsername ?? null,
+        impersonatingUserId: impersonation?.targetUserId ?? null,
+        impersonatingUsername: impersonation?.targetUsername ?? null,
+        effectiveUser,
+        effectiveIsElevated: isElevated({ roles: effectiveUser.roles }),
+        effectiveTenantId: impersonation ? (impersonation.targetTenantId ?? null) : (session.workingTenantId ?? null),
     };
 }

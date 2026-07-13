@@ -132,6 +132,23 @@ describe('ConfigService', () => {
             expect(service.config.LOG_FILE_MAX_FILES).toBe(500);
         });
 
+        it('defaults REGISTRATION_SELF_SIGNUP_ENABLED to false when unset (TASK-497 D1)', () => {
+            delete process.env.REGISTRATION_SELF_SIGNUP_ENABLED;
+
+            const service = createService();
+
+            expect(service.config.REGISTRATION_SELF_SIGNUP_ENABLED).toBe(false);
+        });
+
+        it('reads REGISTRATION_SELF_SIGNUP_ENABLED=true as a boolean (TASK-497 D1)', () => {
+            process.env.REGISTRATION_SELF_SIGNUP_ENABLED = 'true';
+
+            const service = createService();
+
+            expect(service.config.REGISTRATION_SELF_SIGNUP_ENABLED).toBe(true);
+            expect(typeof service.config.REGISTRATION_SELF_SIGNUP_ENABLED).toBe('boolean');
+        });
+
         it('should handle edge cases in boolean parsing', () => {
             // Test that only lowercase 'true' is truthy (case-sensitive)
             process.env.DEBUG = 'true';

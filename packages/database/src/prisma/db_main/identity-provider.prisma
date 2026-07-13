@@ -1,0 +1,138 @@
+// ============================================================================
+// Tenant-Scoped External Identity Provider (TASK-498, OIDC v1)
+//
+// Per-tenant federated authentication. Three models:
+//
+//   1. TenantIdentityProvider — a tenant admin's configured external IdP
+//      (Entra/Okta/Google/Keycloak/…). Non-secret config lives in `config`
+//      (Json); the OIDC client secret + directory-API credentials are sealed
+//      with Vault Transit (`encryptedSecretRef` / `directoryCredentialsRef`) —
+//      plaintext is never stored. `protocol` ships both OIDC and SAML values
+//      now so the model is protocol-neutral, but v1 accepts/validates OIDC
+//      only; SAML lands on this same table via TASK-499.
+//
+//   2. FederatedIdentity — links a HOPE user to a subject at a specific
+//      provider (`userId` is a loose ref, matching the `createdBy`/`updatedBy`
+//      audit-field convention — no Prisma relation to User). OIDC `sub` (SAML
+//      `NameID` reuses the same `subject` column). One HOPE user may federate
+//      with multiple providers; unique on `(providerId, subject)`.
+//
+//   3. TenantIdentityProviderDomain — verified email-domain → provider
+//      allowlist for home-realm discovery (HRD) at login. `domain` is
+//      globally unique (one domain routes to exactly one provider).
+// ============================================================================
+
+model TenantIdentityProvider {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // core fields
+  protocol    IdpProtocol // OIDC | SAML — v1 accepts/validates OIDC only
+  displayName String
+  // Lifecycle: DRAFT until a successful "Test connection" flips it to ENABLED
+  // (D7 — prevents self-lockout from a bad config); DISABLED is an explicit pause.
+  providerStatus IdpStatus @default(DRAFT)
+  // Non-secret config: issuer/discoveryUrl, clientId, scopes, claimMappings,
+  // groupToRoleMap, defaultRoleId, defaultDepartmentId (loose refs), jitEnabled,
+  // enforceSsoOnly. Validated by the DTO; the DB column stays untyped JSON so
+  // TASK-499's SAML fields slot in without a schema break.
+  config Json @db.JsonB
+  // Vault Transit ciphertext refs — plaintext never stored.
+  encryptedSecretRef      String? // OIDC client secret
+  directoryCredentialsRef String? // MS Graph / Google Directory API credentials
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // relations
+  FederatedIdentities        FederatedIdentity[]           @relation("_TenantIdentityProvider_FederatedIdentities")
+  TenantIdentityProviderDomains TenantIdentityProviderDomain[] @relation("_TenantIdentityProvider_Domains")
+
+  // indexing
+  @@unique([tenantId, protocol, displayName], name: "TenantIdentityProvider_tenant_protocol_displayName_unique")
+  @@index([tenantId], name: "TenantIdentityProvider_tenantId_idx")
+  @@schema("core")
+}
+
+model FederatedIdentity {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // core fields
+  userId      String // loose ref to User.id — no Prisma relation (audit-field convention)
+  subject     String // OIDC `sub`; SAML `NameID` reuses this field (TASK-499)
+  lastLoginAt DateTime?
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // relations
+  providerId String
+  Provider   TenantIdentityProvider @relation("_TenantIdentityProvider_FederatedIdentities", fields: [providerId], references: [id], onDelete: Cascade)
+
+  // indexing
+  @@unique([providerId, subject], name: "FederatedIdentity_providerId_subject_unique")
+  @@index([userId], name: "FederatedIdentity_userId_idx")
+  @@index([tenantId], name: "FederatedIdentity_tenantId_idx")
+  @@schema("core")
+}
+
+model TenantIdentityProviderDomain {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // core fields — verified email domain, globally unique (one domain routes to
+  // exactly one provider). DNS-TXT domain verification is deferred/optional in v1.
+  domain String
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // relations
+  providerId String
+  Provider   TenantIdentityProvider @relation("_TenantIdentityProvider_Domains", fields: [providerId], references: [id], onDelete: Cascade)
+
+  // indexing
+  @@unique([domain], name: "TenantIdentityProviderDomain_domain_unique")
+  @@index([providerId], name: "TenantIdentityProviderDomain_providerId_idx")
+  @@schema("core")
+}

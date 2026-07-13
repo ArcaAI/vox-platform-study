@@ -30,6 +30,16 @@ export interface ImpersonationState {
     targetUserId: string;
     /** Display name for the global "Impersonating" banner. */
     targetUsername?: string;
+    /**
+     * Full target identity (BUG-005 Phase 0), so the client can project an
+     * *effective* session distinct from the operator's own. Optional — absent
+     * on sessions sealed before this field existed; consumers must tolerate
+     * undefined.
+     */
+    targetEmail?: string;
+    targetRoles?: string[];
+    targetTenantId?: string;
+    targetDepartmentId?: string;
 }
 
 export interface SessionPayload {

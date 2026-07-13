@@ -23,6 +23,30 @@ export async function loginAsAdmin(page: Page): Promise<void> {
 }
 
 /**
+ * Impersonates the given (seeded) username via the BFF impersonate route
+ * (BUG-005 / TASK-502 verification). Runs inside the page for the same
+ * cookie reason as selectWorkingTenant; call after loginAsAdmin().
+ */
+export async function impersonateUser(page: Page, username: string): Promise<void> {
+    const result = await page.evaluate(async (targetUsername) => {
+        const search = await fetch(
+            `/api/hope/admin/users?search=${encodeURIComponent(targetUsername)}&searchFields=username&limit=1`,
+        );
+        if (!search.ok) return `Could not find user "${targetUsername}" (${search.status})`;
+        const body = (await search.json()) as { data?: Array<{ id: string; username: string }> };
+        const user = body.data?.find((u) => u.username === targetUsername);
+        if (!user) return `No seeded user named "${targetUsername}"`;
+        const impersonate = await fetch('/api/auth/impersonate', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ userId: user.id }),
+        });
+        return impersonate.ok ? null : `Failed to impersonate "${targetUsername}" (${impersonate.status})`;
+    }, username);
+    if (result) throw new Error(result);
+}
+
+/**
  * Selects the first tenant as the elevated session's working tenant (the
  * tenant-scoped admin surfaces 400 without one). Runs inside the page so the
  * BFF session cookie (Secure; not sent by page.request over plain http)

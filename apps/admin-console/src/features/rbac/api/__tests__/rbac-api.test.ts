@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     assignPolicyToRole,
+    cloneRole,
     createPolicy,
     createRole,
     deletePolicy,
@@ -93,6 +94,12 @@ describe('rbac client — roles', () => {
         expect(calls[3].body).toEqual({ priority: 5 });
         expect(calls[4].body).toEqual({ password: 'pw', confirmationName: 'AUDITOR' });
         expect(calls[5].body).toEqual({ password: 'pw', confirmationName: 'AUDITOR' });
+    });
+
+    it('TASK-501 — clones a role via POST .../clone', async () => {
+        const calls = installFetchMock();
+        await cloneRole('r-1', { name: 'AUDITOR (copy)' });
+        expect(calls[0]).toEqual({ url: '/api/hope/admin/rbac/roles/r-1/clone', method: 'POST', body: { name: 'AUDITOR (copy)' } });
     });
 });
 

@@ -125,6 +125,8 @@ const mockDatabaseService = {
 // Mock TenantBucketService
 const mockTenantBucketService = {
     provisionSystemBuckets: vi.fn(),
+    // TASK-497 D4 — plan storageQuotaBytes -> primary bucket quotaBytes.
+    applyPlanStorageQuota: vi.fn(),
 };
 
 /**
@@ -411,23 +413,86 @@ describe('TenantService', () => {
             expect(result.name).toBe('New Tenant');
         });
 
-        // TASK-392 (Q4 / proposal §5) — new tenants default to TRIAL (overridable).
-        it('defaults the plan to TRIAL when the request omits it', async () => {
+        // TASK-497 D2 — new tenants default to STARTER (overridable), replacing
+        // the prior TASK-392 TRIAL default.
+        it('defaults the plan to STARTER when the request omits it', async () => {
             const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
             mockTenantRepository.create.mockResolvedValue(newTenant);
 
             await service.create({ key: 'NEW_TRIAL', name: 'New Trial' });
 
-            expect(TenantFactory.CreateTenant).toHaveBeenCalledWith(expect.objectContaining({ plan: TenantPlan.TRIAL }));
+            expect(TenantFactory.CreateTenant).toHaveBeenCalledWith(expect.objectContaining({ plan: TenantPlan.STARTER }));
         });
 
-        it('respects an explicit plan on create (no TRIAL override)', async () => {
+        it('respects an explicit plan on create (no STARTER override)', async () => {
             const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
             mockTenantRepository.create.mockResolvedValue(newTenant);
 
             await service.create({ key: 'NEW_ENT', name: 'New Ent', plan: TenantPlan.ENTERPRISE });
 
             expect(TenantFactory.CreateTenant).toHaveBeenCalledWith(expect.objectContaining({ plan: TenantPlan.ENTERPRISE }));
+        });
+
+        // TASK-497 D3 — auto-generated tenant key when the request omits it.
+        describe('create — tenant key auto-generation (TASK-497 D3)', () => {
+            it('generates a unique key from the name when key is omitted', async () => {
+                const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
+                mockTenantRepository.create.mockResolvedValue(newTenant);
+                mockTenantRepository.findFirst.mockResolvedValue(undefined);
+
+                await service.create({ name: 'Acme Health Clinic' } as any);
+
+                expect(TenantFactory.CreateTenant).toHaveBeenCalledWith(expect.objectContaining({ key: 'acme-health-clinic' }));
+            });
+
+            it('appends a numeric collision suffix when the generated key is taken', async () => {
+                const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
+                mockTenantRepository.create.mockResolvedValue(newTenant);
+                mockTenantRepository.findFirst.mockImplementation(async (props: any) => {
+                    const key = props?.where?.key;
+                    if (key === 'acme') return createMockTenantEntity({ key: 'acme' });
+                    return undefined;
+                });
+
+                await service.create({ name: 'Acme' } as any);
+
+                expect(TenantFactory.CreateTenant).toHaveBeenCalledWith(expect.objectContaining({ key: 'acme-2' }));
+            });
+
+            it('uses the explicit key as-is when supplied (no auto-generation)', async () => {
+                const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
+                mockTenantRepository.create.mockResolvedValue(newTenant);
+
+                await service.create({ key: 'EXPLICIT_KEY', name: 'Explicit Co' });
+
+                expect(TenantFactory.CreateTenant).toHaveBeenCalledWith(expect.objectContaining({ key: 'EXPLICIT_KEY' }));
+                // No existence probe for the caller-supplied key — only the
+                // (unrelated) __GLOBAL__ config-clone lookup may hit findFirst.
+                expect(mockTenantRepository.findFirst).not.toHaveBeenCalledWith(
+                    expect.objectContaining({ where: { key: 'EXPLICIT_KEY' } }),
+                );
+            });
+        });
+
+        // TASK-497 D4 — plan storageQuotaBytes applied to the primary bucket
+        // as part of the tenant spin-up (composes with provisionSystemBuckets).
+        it('applies the plan storage quota to the new tenant after provisioning buckets', async () => {
+            const newTenant = { ...createMockTenantEntity({ id: 'new-tenant-id' }), plan: TenantPlan.STARTER };
+            mockTenantRepository.create.mockResolvedValue(newTenant);
+
+            await service.create({ key: 'NEW', name: 'New', plan: TenantPlan.STARTER });
+
+            expect(mockTenantBucketService.applyPlanStorageQuota).toHaveBeenCalledWith('new-tenant-id', TenantPlan.STARTER);
+        });
+
+        it('does not abort tenant creation when applyPlanStorageQuota fails', async () => {
+            const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
+            mockTenantRepository.create.mockResolvedValue(newTenant);
+            mockTenantBucketService.applyPlanStorageQuota.mockRejectedValueOnce(new Error('db down'));
+
+            const result = await service.create({ key: 'NEW', name: 'New' });
+
+            expect(result.id).toBe('new-tenant-id');
         });
 
         // TASK-356 Phase 1 (D-5) — clone-per-tenant model catalog.
@@ -1999,6 +2064,47 @@ describe('TenantService', () => {
             const result = await service.create({ key: 'NEW_TENANT', name: 'New Tenant' });
 
             expect(result.id).toBe('new-tenant-id');
+        });
+    });
+
+    describe('provisionDefaultDepartment / tenant-created audit attribution (TASK-503)', () => {
+        it('rebinds CLS tenantId to the new tenant so provisioning broadcasts are not stamped null', async () => {
+            // Models the real global-admin-creating-a-tenant case: CLS carries
+            // NO active tenant (root cause) until `create()` rebinds it. A
+            // stateful mock is required because a real ClsService's `get`
+            // reflects prior `set` calls — the suite-wide static mock does not.
+            let clsTenantId: string | null = null;
+            mockClsService.get.mockImplementation((key: string) => {
+                switch (key) {
+                    case 'user':
+                        return { id: 'current-user-id', firstName: 'Test', lastName: 'User', email: 'test@example.com' };
+                    case 'tenantId':
+                        return clsTenantId;
+                    default:
+                        return null;
+                }
+            });
+            mockClsService.set.mockImplementation((key: string, value: unknown) => {
+                if (key === 'tenantId') clsTenantId = value as string;
+            });
+
+            const newTenant = createMockTenantEntity({ id: 'new-tenant-id', key: 'NEW_TENANT' });
+            mockTenantRepository.create.mockResolvedValue(newTenant);
+            mockTenantRepository.findFirst.mockResolvedValue(null);
+
+            await service.create({ key: 'NEW_TENANT', name: 'New Tenant' });
+
+            expect(mockClsService.set).toHaveBeenCalledWith('tenantId', 'new-tenant-id');
+
+            const tenantCreatedBroadcast = mockEventEmitter.emit.mock.calls.find(
+                ([eventName, payload]) => eventName === SysEventType.ResourceCreated && (payload as any).resourceId === 'new-tenant-id',
+            );
+            const departmentCreatedBroadcast = mockEventEmitter.emit.mock.calls.find(
+                ([eventName, payload]) => eventName === SysEventType.ResourceCreated && (payload as any).resourceType === ResourceType.Department,
+            );
+
+            expect(tenantCreatedBroadcast?.[1].tenantId).toBe('new-tenant-id');
+            expect(departmentCreatedBroadcast?.[1].tenantId).toBe('new-tenant-id');
         });
     });
 

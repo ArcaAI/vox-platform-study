@@ -44,6 +44,9 @@ import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { AuthModule } from './modules/auth/auth.module';
 // TASK-390 #24 (ST1) — /admin/settings global-settings CRUD (global-admin tier).
 import { GlobalSettingModule } from './modules/global-setting/global-setting.module';
+// TASK-504 Phase 3c — /admin/settings/catalog capability inventory (registered
+// BEFORE GlobalSettingModule so the static route wins over admin/settings/:id).
+import { SettingsCatalogModule } from './modules/settings-catalog/settings-catalog.module';
 import { ConsultationModule } from './modules/consultation/consultation.module';
 import { DepartmentModule } from './modules/department/department.module';
 import { DnaWritingStyleModule } from './modules/dna-writing-style/dna-writing-style.module';
@@ -53,6 +56,8 @@ import { HarnessAdminModule } from './modules/harness-admin/harness-admin.module
 // TASK-356 Phase 5 — realtime-pipeline toggle cascade admin (/admin/harness/pipeline-policy).
 import { PipelinePolicyAdminModule } from './modules/pipeline-policy-admin/pipeline-policy-admin.module';
 import { TenantTtsConfigModule } from './modules/tenant-tts-config/tenant-tts-config.module';
+// TASK-498 — tenant-scoped external identity provider (OIDC) admin surface.
+import { TenantIdpConfigModule } from './modules/tenant-idp-config/tenant-idp-config.module';
 import { HealthModule } from './modules/health/health.module';
 import { InternalModule } from './modules/internal/internal.module';
 import { MonitoringModule } from './modules/monitoring/monitoring.module';
@@ -260,6 +265,9 @@ const featureModules: any[] = [
   // TASK-392 (Phase 4) — /admin/entitlements/* (global-admin matrix/override/kill-switch/downgrade)
   // + /entitlements/me (tenant self-snapshot). All entitlements endpoints live here.
   EntitlementsApiModule,
+  // TASK-504 Phase 3c — /admin/settings/catalog. MUST precede GlobalSettingModule
+  // so the static `catalog` route registers before `admin/settings/:id`.
+  SettingsCatalogModule,
   // TASK-390 #24 — /admin/settings (global-settings CRUD; wires the existing service).
   GlobalSettingModule,
   // TASK-330 Phase 3 — institutional-RAG knowledge ingestion (BullMQ worker;
@@ -280,6 +288,8 @@ const featureModules: any[] = [
   PipelinePolicyAdminModule,
   // TASK-496 — /admin/tts-config (per-tenant TTS spec + BYO provider credentials).
   TenantTtsConfigModule,
+  // TASK-498 — /admin/tenant-idp-config (tenant-scoped external OIDC identity provider).
+  TenantIdpConfigModule,
   QueueAdminModule,
   // TASK-403 — always-on availability probe for the dev-only Prisma Studio
   // shell (the shell module below stays conditionally registered).

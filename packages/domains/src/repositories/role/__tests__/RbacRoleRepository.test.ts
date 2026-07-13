@@ -258,6 +258,22 @@ describe('TASK-311 — RbacRoleFactory', () => {
       expect(input.isSystemRole).toBe(false);
       expect(input.resourceStatus).toBe(ResourceStatusType.ENABLED);
     });
+
+    it('TASK-501 — honours an explicit isSystemRole:true (global-admin SYSTEM-role create)', () => {
+      const input = RbacRoleFactory.buildCreateInput({
+        name: 'CLINICIAN',
+        isSystemRole: true,
+        createdBy: 'admin-1',
+      });
+
+      expect(input.isSystemRole).toBe(true);
+    });
+
+    it('TASK-501 — defaults isSystemRole to false when omitted', () => {
+      const input = RbacRoleFactory.buildCreateInput({ name: 'orphan', createdBy: 'user-1' });
+
+      expect(input.isSystemRole).toBe(false);
+    });
   });
 
   describe('buildUpdateInput', () => {

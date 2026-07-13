@@ -12,13 +12,19 @@ export type FetchHandler = (call: RecordedCall) => Response | unknown;
 export function sessionPayload(overrides: { isElevated?: boolean; workingTenantId?: string | null } = {}) {
     const isElevated = overrides.isElevated ?? true;
     const workingTenantId = overrides.workingTenantId === undefined ? 'tnt-1' : overrides.workingTenantId;
+    const user = { id: 'u-1', username: 'admin', email: 'a@x.io', roles: isElevated ? ['GLOBAL_ADMIN'] : ['TENANT_ADMIN'] };
     return {
-        user: { id: 'u-1', username: 'admin', email: 'a@x.io', roles: isElevated ? ['GLOBAL_ADMIN'] : ['TENANT_ADMIN'] },
+        user,
         isElevated,
         workingTenantId,
         workingTenantName: workingTenantId ? 'Sunrise Medical Group' : null,
         impersonatingUserId: null,
         impersonatingUsername: null,
+        // BUG-005 — WorkingTenantGate now reads the effective identity; these
+        // fixtures never impersonate, so it mirrors the operator fields.
+        effectiveUser: { ...user, tenantId: null, departmentId: null },
+        effectiveIsElevated: isElevated,
+        effectiveTenantId: workingTenantId,
     };
 }
 

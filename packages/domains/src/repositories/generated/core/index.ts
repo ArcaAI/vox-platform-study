@@ -32,6 +32,7 @@ export * from './EvalRunRepository.encryption';
 export * from './EvalScoreRepository';
 // TASK-369 Phase 3C — sibling that patches EvalScoreRepository.prototype.
 export * from './EvalScoreRepository.encryption';
+export * from './FederatedIdentityRepository';
 export * from './GlobalSettingRepository';
 export * from './GoldenCaseRepository';
 // TASK-369 Phase 3C — sibling that patches GoldenCaseRepository.prototype.
@@ -87,6 +88,8 @@ export * from './TagRepository';
 export * from './TenantBucketRepository';
 export * from './TenantEntitlementRepository';
 export * from './TenantFrontendConfigRepository';
+export * from './TenantIdentityProviderRepository';
+export * from './TenantIdentityProviderDomainRepository';
 export * from './TenantStorageConfigRepository';
 export * from './TenantTtsConfigRepository';
 export * from './TenantTtsProviderCredentialRepository';

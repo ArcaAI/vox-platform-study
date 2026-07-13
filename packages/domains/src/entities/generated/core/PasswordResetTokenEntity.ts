@@ -35,6 +35,11 @@ export class PasswordResetTokenEntity extends BaseEntity {
   private _requestedByUserId?: IPasswordResetTokenEntity['requestedByUserId'];
   private _requestedVia?: IPasswordResetTokenEntity['requestedVia'];
   private _requestIp?: IPasswordResetTokenEntity['requestIp'];
+  // TASK-497 §3.4 — `IBaseEntity.metaData` was declared but never wired on
+  // `BaseEntity` (a pre-existing gap affecting every entity, out of scope
+  // here); implemented locally so the `email_verification` purpose can stash
+  // the pending tenant name until POST /auth/register/verify consumes it.
+  private _metaData?: IPasswordResetTokenEntity['metaData'];
 
   constructor(init: IPasswordResetTokenEntity) {
     super(init);
@@ -47,6 +52,7 @@ export class PasswordResetTokenEntity extends BaseEntity {
     this._requestedByUserId = init.requestedByUserId;
     this._requestedVia = init.requestedVia;
     this._requestIp = init.requestIp;
+    this._metaData = init.metaData;
   }
 
   get userId(): IPasswordResetTokenEntity['userId'] {
@@ -119,6 +125,14 @@ export class PasswordResetTokenEntity extends BaseEntity {
 
   set requestIp(value: IPasswordResetTokenEntity['requestIp']) {
     this.setProperty('requestIp', value);
+  }
+
+  get metaData(): IPasswordResetTokenEntity['metaData'] {
+    return this._metaData;
+  }
+
+  set metaData(value: IPasswordResetTokenEntity['metaData']) {
+    this.setProperty('metaData', value);
   }
 
   /** Consumable right now: never used, never revoked, not yet expired. */

@@ -7,9 +7,11 @@ import { deleteJson, getJson, getWithEtag, patchJson, patchWithEtag, postJson, p
 import type { ListParams, Paginated, WithEtag } from '@/shared/api';
 import type {
     CreateTenantRequest,
+    ProvisionTenantRequest,
     Tenant,
     TenantConfig,
     TenantFrontendConfig,
+    TenantProvisionResult,
     TenantUsage,
     UpdateTenantConfigItem,
     UpdateTenantRequest,
@@ -37,6 +39,11 @@ export function listTenantsByUser(userId: string, params?: ListParams): Promise<
 
 export function createTenant(body: CreateTenantRequest): Promise<Tenant> {
     return postJson(BASE, body);
+}
+
+/** TASK-497 §3.5 — global-admin create-tenant-with-admin (never leaves a tenant adminless). */
+export function provisionTenant(body: ProvisionTenantRequest): Promise<TenantProvisionResult> {
+    return postJson(`${BASE}/provision`, body);
 }
 
 /** OCC PATCH: If-Match header + body expectedVersion derived from the ETag. */

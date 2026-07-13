@@ -80,7 +80,7 @@ function captureExtensionConfig(opts: {
 // ---------------------------------------------------------------------------
 
 describe('TENANT_SCOPED_MODELS allow-list', () => {
-  it('contains the 41 tenant-scoped models currently defined in db_main/*.prisma', () => {
+  it('contains the 50 tenant-scoped models currently defined in db_main/*.prisma', () => {
     // The allow-list tracks SCHEMA TRUTH (every model here has a tenantId
     // scalar), not the audit's 30-name wish-list. The User* identity tables
     // are intentionally excluded — `User` is global by design (§B6 /
@@ -100,9 +100,11 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // below). TASK-490 added UserVoiceProfile (biometric PHI stamped with
     // its enrollment tenant) → 45. TASK-496 added the per-tenant TTS config
     // TenantTtsConfig + TenantTtsProviderCredential (BYO provider keys) → 47.
-    // (The drift guard below is the durable check; this count stays as a quick
-    // human-readable tripwire.)
-    expect(TENANT_SCOPED_MODELS.size).toBe(47);
+    // TASK-498 added the tenant-scoped external OIDC identity provider
+    // TenantIdentityProvider + FederatedIdentity + TenantIdentityProviderDomain
+    // → 50. (The drift guard below is the durable check; this count stays as
+    // a quick human-readable tripwire.)
+    expect(TENANT_SCOPED_MODELS.size).toBe(50);
   });
 
   it('includes every PHI-bearing model', () => {

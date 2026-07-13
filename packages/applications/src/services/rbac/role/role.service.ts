@@ -14,12 +14,13 @@ import {
   SYSTEM_TENANT_ID,
   UserRepository,
 } from '@arcaai/domains';
-import { BaseService } from '../../../common';
+import { BaseService, isSuperAdmin } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PolicyEngine } from '../../../authorization/policy.engine';
 import { ICryptoService } from '../../crypto/ICryptoService';
 import { BreakGlassCredentials, BreakGlassOutcome, checkBreakGlass, RBAC_BREAK_GLASS_AUDIT_ACTION } from '../breakGlass';
 import {
+  CloneRbacRoleRequest,
   CreateRbacRoleRequest,
   IRbacRoleService,
   RbacRoleListQuery,
@@ -136,6 +137,10 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
   }
 
   async create(request: CreateRbacRoleRequest): Promise<RbacRoleRecord> {
+    if (request.isSystemRole === true && !isSuperAdmin(this.requestUser)) {
+      throw new ForbiddenException('Only a global admin can create a system role.');
+    }
+
     if (request.parentRoleId) {
       await this.validateParentRole(request.parentRoleId);
     }
@@ -147,6 +152,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
       externalName: request.externalName,
       externalId: request.externalId,
       parentRoleId: request.parentRoleId,
+      isSystemRole: request.isSystemRole,
       createdBy: user?.id,
     });
     const role = (await this.roleRepository.create(data)) as RbacRoleRecord;
@@ -173,7 +179,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
       throw new NotFoundException('Role not found');
     }
 
-    if (existing.isSystemRole) {
+    if (existing.isSystemRole && !isSuperAdmin(this.requestUser)) {
       throw new BadRequestException(`Cannot modify system role '${existing.name}'. System roles are protected from modification.`);
     }
 
@@ -209,7 +215,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
       throw new NotFoundException('Role not found');
     }
 
-    if (existing.isSystemRole) {
+    if (existing.isSystemRole && !isSuperAdmin(this.requestUser)) {
       throw new BadRequestException(`Cannot modify system role '${existing.name}'. System roles are protected from modification.`);
     }
 
@@ -281,6 +287,14 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
   }
 
   async assignPolicy(roleId: string, policyId: string, dto: RbacRolePolicyAssignmentInput): Promise<void> {
+    const role = await this.roleRepository.findByIdGuardSelect(roleId);
+    if (!role) {
+      throw new NotFoundException('Role not found');
+    }
+    if (role.isSystemRole && !isSuperAdmin(this.requestUser)) {
+      throw new ForbiddenException('Only a global admin can modify policies on a system role.');
+    }
+
     const user = this.requestUser;
 
     const existing = (await this.rolePolicyRepository.findFirstByRoleAndPolicy(roleId, policyId)) as { id: string; priority: number } | null;
@@ -321,6 +335,16 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
   }
 
   async removePolicy(roleId: string, policyId: string, breakGlass?: BreakGlassCredentials): Promise<void> {
+    // TASK-501 — SYSTEM-role policy detach is a global-admin-only operation
+    // (defense in depth — the admin console already scopes the affordance).
+    const role = await this.roleRepository.findByIdGuardSelect(roleId);
+    if (!role) {
+      throw new NotFoundException('Role not found');
+    }
+    if (role.isSystemRole && !isSuperAdmin(this.requestUser)) {
+      throw new ForbiddenException('Only a global admin can modify policies on a system role.');
+    }
+
     // TASK-409 — the detach target must exist (the policy name anchors both
     // the confirmation contract and the anti-lockout check below).
     const policy = (await this.policyRepository.findById(policyId)) as { id: string; name: string; isProtected?: boolean } | null;
@@ -363,6 +387,63 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
       roleId,
       removedBy: user?.id,
     });
+  }
+
+  /**
+   * TASK-501 — clone a role (SYSTEM or CUSTOM) into a new CUSTOM role that
+   * copies the source's policy set. Any admin may call this (no isSuperAdmin
+   * gate) — cloning a SYSTEM role is the whole point, since SYSTEM roles
+   * themselves stay locked to global admins.
+   */
+  async clone(sourceId: string, request: CloneRbacRoleRequest): Promise<RbacRoleRecord> {
+    const source = (await this.roleRepository.findByIdWithPolicies(sourceId, this.roleReadInclude())) as RbacRoleRecord | null;
+    if (!source) {
+      throw new NotFoundException('Role not found');
+    }
+
+    const user = this.requestUser;
+    const data = RbacRoleFactory.buildCreateInput({
+      name: request.name,
+      description: source.description ?? undefined,
+      externalName: source.externalName ?? undefined,
+      externalId: source.externalId ?? undefined,
+      parentRoleId: source.parentRoleId ?? undefined,
+      createdBy: user?.id,
+    });
+    const role = (await this.roleRepository.create(data)) as RbacRoleRecord;
+
+    const sourcePolicies = source.RolePolicies ?? [];
+    for (const rolePolicy of sourcePolicies) {
+      if (!rolePolicy.Policy) continue;
+      await this.rolePolicyRepository.create(
+        RolePolicyFactory.buildCreateInput({
+          roleId: role.id,
+          policyId: rolePolicy.Policy.id,
+          priority: rolePolicy.priority,
+          createdBy: user?.id,
+        }),
+      );
+    }
+
+    const cloned: RbacRoleRecord = {
+      ...role,
+      RolePolicies: sourcePolicies.filter((rolePolicy) => rolePolicy.Policy !== null),
+    };
+
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: cloned.id,
+      data: cloned as unknown as object,
+    });
+
+    this.logger.log({
+      message: 'Role cloned',
+      sourceRoleId: sourceId,
+      roleId: cloned.id,
+      roleName: cloned.name,
+      clonedBy: user?.id,
+    });
+
+    return cloned;
   }
 
   /**

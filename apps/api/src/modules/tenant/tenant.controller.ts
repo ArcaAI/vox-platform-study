@@ -19,6 +19,7 @@ import { Controller, Body, Param, Get, Post, Put, HttpCode, Inject, Query, Forbi
 import { ApiTags, ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { ApiEndpoint, CanAny, CanManage } from '../../decorators';
+import { assertTenantInScope as assertTenantScope } from '../../shared/tenant-scope';
 
 // AC-10 (TASK-336) — canonical RFC 4122 8-4-4-4-12 shape (any version, incl. the
 // uuidv7 tenant ids the platform mints). Lets the config scope guard decide
@@ -62,11 +63,7 @@ export class TenantController {
    * bypasses (cross-tenant ops are an operator's job).
    */
   private assertTenantInScope(targetTenantId: string): void {
-    const user = this.cls.get('user');
-    if (isSuperAdmin(user)) return;
-    if (!user?.tenantId || user.tenantId !== targetTenantId) {
-      throw new ForbiddenException('You do not have access to this tenant');
-    }
+    assertTenantScope(this.cls.get('user'), targetTenantId);
   }
 
   /**

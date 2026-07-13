@@ -133,6 +133,10 @@ export class ConfigService implements IConfigService, OnModuleInit {
       // eslint-disable-next-line turbo/no-undeclared-env-vars
       LOG_FILE_SEPARATE_ERROR: process.env.LOG_FILE_SEPARATE_ERROR === 'true',
 
+      // Auth / Registration
+      // eslint-disable-next-line turbo/no-undeclared-env-vars
+      REGISTRATION_SELF_SIGNUP_ENABLED: process.env.REGISTRATION_SELF_SIGNUP_ENABLED === 'true',
+
       // Internal Services
       PORT: process.env.PORT || '8868',
       // eslint-disable-next-line turbo/no-undeclared-env-vars

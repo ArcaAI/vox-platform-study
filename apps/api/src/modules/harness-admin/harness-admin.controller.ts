@@ -20,10 +20,11 @@ import {
   UpdateHarnessPolicyRequest,
   UpdateLiveDocEngineConfigRequest,
 } from '@arcaai/applications';
-import { BadRequestException, Body, Controller, ForbiddenException, Get, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
+import { resolveScopedTenantId, resolveScopedTenantIdOptional } from '../../shared/tenant-scope';
 import { HarnessOpsClient, HarnessWorkflowActionResult, HarnessWorkflowDetail, HarnessWorkflowListResult } from './harness-ops.client';
 import { CreateGoldenCaseRequest, CreateGoldenSetRequest, SignalWorkflowRequest, WorkflowActionRequest } from './dto';
 
@@ -415,30 +416,12 @@ export class HarnessAdminController {
 
   /** Resolve the effective read tenant: tenant admins → own tenant; global-admins → `?tenantId=` (or CLS tenant). */
   private resolveReadTenantId(queryTenantId?: string): string {
-    const user = this.cls.get('user');
-    if (isSuperAdmin(user)) {
-      const target = queryTenantId ?? this.cls.get('tenantId') ?? user?.tenantId ?? undefined;
-      if (!target) throw new BadRequestException('Platform admins must pass ?tenantId= to scope this read.');
-      return target;
-    }
-    const tenantId = this.cls.get('tenantId') ?? user?.tenantId ?? undefined;
-    if (!tenantId) throw new BadRequestException('Tenant context is required.');
-    if (queryTenantId && queryTenantId !== tenantId) {
-      throw new ForbiddenException('You do not have access to this tenant');
-    }
-    return tenantId;
+    return resolveScopedTenantId(this.cls.get('user'), this.cls.get('tenantId'), queryTenantId);
   }
 
   /** Workflow-list tenant filter: tenant admins → own tenant; global-admins → optional `?tenantId=` (undefined = all tenants). */
   private resolveWorkflowListTenant(queryTenantId?: string): string | undefined {
-    const user = this.cls.get('user');
-    if (isSuperAdmin(user)) return queryTenantId;
-    const tenantId = this.cls.get('tenantId') ?? user?.tenantId ?? undefined;
-    if (!tenantId) throw new BadRequestException('Tenant context is required.');
-    if (queryTenantId && queryTenantId !== tenantId) {
-      throw new ForbiddenException('You do not have access to this tenant');
-    }
-    return tenantId;
+    return resolveScopedTenantIdOptional(this.cls.get('user'), this.cls.get('tenantId'), queryTenantId);
   }
 
   /** Platform (global-admin) gate for the GLOBAL-DEFAULT policy routes. */

@@ -17,6 +17,9 @@ export interface RbacRoleCreateProps {
   externalName?: string;
   externalId?: string;
   parentRoleId?: string;
+  /** TASK-501 — defaults to `false`; only a global admin may pass `true`
+   *  (enforced by `RbacRoleService.create`, not the factory). */
+  isSystemRole?: boolean;
   createdBy?: string;
 }
 
@@ -38,7 +41,7 @@ export interface RbacRoleCreateInputShape {
   externalName?: string;
   externalId?: string;
   parentRoleId?: string;
-  isSystemRole: false;
+  isSystemRole: boolean;
   resourceStatus: ResourceStatusType;
   createdBy?: string;
 }
@@ -63,7 +66,7 @@ export const RbacRoleFactory = {
       externalName: props.externalName,
       externalId: props.externalId,
       parentRoleId: props.parentRoleId,
-      isSystemRole: false,
+      isSystemRole: props.isSystemRole ?? false,
       resourceStatus: ResourceStatusType.ENABLED,
       createdBy: props.createdBy,
     };

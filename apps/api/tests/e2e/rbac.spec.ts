@@ -351,6 +351,89 @@ test.describe('RBAC Controllers', () => {
         expect([400, 403, 500]).toContain(response.status());
       });
     });
+
+    // TASK-501 — global admin gains create/update on SYSTEM roles + role cloning.
+    test.describe('TASK-501 — SYSTEM-role authoring + clone', () => {
+      test('super_admin (GLOBAL_ADMIN) can rename a SYSTEM role; tenant admin cannot', async ({ request }) => {
+        if (!rbacEndpointsAvailable || !superAdminToken || !adminToken) {
+          test.skip();
+          return;
+        }
+
+        const listResponse = await request.get('/api/v1/admin/rbac/roles', {
+          headers: { Authorization: `Bearer ${superAdminToken}` },
+        });
+        if (listResponse.status() !== 200) {
+          test.skip();
+          return;
+        }
+        const listBody = await listResponse.json();
+        const systemRole = listBody.data.find((r: any) => r.isSystemRole);
+        if (!systemRole) {
+          test.skip();
+          return;
+        }
+
+        const asGlobalAdmin = await request.put(`/api/v1/admin/rbac/roles/${systemRole.id}`, {
+          headers: { Authorization: `Bearer ${superAdminToken}` },
+          data: { description: `TASK-501 e2e ${Date.now()}` },
+        });
+        expect(asGlobalAdmin.status()).toBe(200);
+
+        const asTenantAdmin = await request.put(`/api/v1/admin/rbac/roles/${systemRole.id}`, {
+          headers: { Authorization: `Bearer ${adminToken}` },
+          data: { description: 'should be refused' },
+        });
+        expect([400, 403]).toContain(asTenantAdmin.status());
+      });
+
+      test('any admin may clone a SYSTEM role into a new CUSTOM role with copied policies', async ({ request }) => {
+        if (!rbacEndpointsAvailable || !adminToken || !superAdminToken) {
+          test.skip();
+          return;
+        }
+
+        const listResponse = await request.get('/api/v1/admin/rbac/roles', {
+          headers: { Authorization: `Bearer ${superAdminToken}` },
+        });
+        if (listResponse.status() !== 200) {
+          test.skip();
+          return;
+        }
+        const listBody = await listResponse.json();
+        const systemRole = listBody.data.find((r: any) => r.isSystemRole && r.policies?.length > 0) ?? listBody.data.find((r: any) => r.isSystemRole);
+        if (!systemRole) {
+          test.skip();
+          return;
+        }
+
+        const cloneName = `${systemRole.name}-clone-${Date.now()}`;
+        const response = await request.post(`/api/v1/admin/rbac/roles/${systemRole.id}/clone`, {
+          headers: { Authorization: `Bearer ${adminToken}` },
+          data: { name: cloneName },
+        });
+
+        expect(response.status()).toBe(201);
+        const body = await response.json();
+        testRoleIds.push(body.id);
+        expect(body.name).toBe(cloneName);
+        expect(body.isSystemRole).toBe(false);
+        expect(body.policies.map((p: any) => p.id).sort()).toEqual(systemRole.policies.map((p: any) => p.id).sort());
+      });
+
+      test('cloning a non-existent role 404s', async ({ request }) => {
+        if (!rbacEndpointsAvailable || !superAdminToken) {
+          test.skip();
+          return;
+        }
+
+        const response = await request.post('/api/v1/admin/rbac/roles/00000000-0000-0000-0000-000000000000/clone', {
+          headers: { Authorization: `Bearer ${superAdminToken}` },
+          data: { name: `orphan-clone-${Date.now()}` },
+        });
+        expect(response.status()).toBe(404);
+      });
+    });
   });
 
   // ============================================================================

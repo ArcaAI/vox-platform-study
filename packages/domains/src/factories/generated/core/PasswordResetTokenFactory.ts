@@ -13,6 +13,8 @@ export interface CreatePasswordResetTokenProps extends BaseEntityFactoryCreatePr
   requestedByUserId?: IPasswordResetTokenEntity['requestedByUserId'];
   requestedVia?: IPasswordResetTokenEntity['requestedVia'];
   requestIp?: IPasswordResetTokenEntity['requestIp'];
+  /** TASK-497 §3.4 — arbitrary purpose-specific payload (e.g. `{ pendingTenantName }` for `email_verification`). */
+  metaData?: IPasswordResetTokenEntity['metaData'];
 
   createdAt?: IPasswordResetTokenEntity['createdAt'];
   updatedAt?: IPasswordResetTokenEntity['updatedAt'];
@@ -40,6 +42,7 @@ export class PasswordResetTokenFactory {
       requestedByUserId: props.requestedByUserId ?? null,
       requestedVia: props.requestedVia ?? null,
       requestIp: props.requestIp ?? null,
+      metaData: props.metaData ?? null,
     });
   }
 }

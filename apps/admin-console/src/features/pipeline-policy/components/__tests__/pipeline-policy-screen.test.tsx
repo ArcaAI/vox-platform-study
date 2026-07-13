@@ -69,6 +69,11 @@ const SESSION = {
     workingTenantName: 'Sunrise Medical Group' as string | null,
     impersonatingUserId: null,
     impersonatingUsername: null,
+    // BUG-005 — WorkingTenantGate now reads the effective identity; this
+    // fixture never impersonates, so it mirrors the operator fields.
+    effectiveUser: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['GLOBAL_ADMIN'], tenantId: null, departmentId: null },
+    effectiveIsElevated: true,
+    effectiveTenantId: 'tnt-1' as string | null,
 };
 
 interface RecordedCall {
@@ -273,7 +278,7 @@ describe('PipelinePolicyScreen', () => {
     });
 
     it('gates an elevated session without a working tenant behind the NoTenant empty state', async () => {
-        stubFetch({ session: { ...SESSION, workingTenantId: null, workingTenantName: null } });
+        stubFetch({ session: { ...SESSION, workingTenantId: null, workingTenantName: null, effectiveTenantId: null } });
         renderWithProviders(<PipelinePolicyScreen />);
 
         expect(await screen.findByText('Select a working tenant')).toBeDefined();

@@ -69,6 +69,13 @@ export interface CreateRoleRequest {
     externalName?: string;
     externalId?: string;
     parentRoleId?: string;
+    /** Global admin only — server rejects for a non-elevated caller (TASK-501). */
+    isSystemRole?: boolean;
+}
+
+/** TASK-501 — clone a role (SYSTEM or CUSTOM) into a new CUSTOM role. */
+export interface CloneRoleRequest {
+    name: string;
 }
 
 export interface UpdateRoleRequest {

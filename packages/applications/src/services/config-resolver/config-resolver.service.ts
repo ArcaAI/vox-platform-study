@@ -1,10 +1,6 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import {
-  PipelinePolicyEntity,
-  PipelinePolicyRepository,
-  PipelinePolicyScope,
-  UserProfileRepository,
-} from '@arcaai/domains';
+import { PipelinePolicyEntity, PipelinePolicyRepository, PipelinePolicyScope, UserProfileRepository } from '@arcaai/domains';
+import { CascadeTier, walkCascade } from '../settings-registry/scope-cascade';
 
 /**
  * TASK-356 Phase 5 (Pillar B) — generalized realtime-config cascade resolver.
@@ -117,12 +113,10 @@ export class ConfigResolver {
     }
 
     const doctorRow =
-      ctx.doctorId != null
-        ? cascadeRows.find((r) => r.scope === PipelinePolicyScope.DOCTOR && r.scopeId === ctx.doctorId) ?? null
-        : null;
+      ctx.doctorId != null ? (cascadeRows.find((r) => r.scope === PipelinePolicyScope.DOCTOR && r.scopeId === ctx.doctorId) ?? null) : null;
     const departmentRow =
       ctx.departmentId != null
-        ? cascadeRows.find((r) => r.scope === PipelinePolicyScope.DEPARTMENT && r.scopeId === ctx.departmentId) ?? null
+        ? (cascadeRows.find((r) => r.scope === PipelinePolicyScope.DEPARTMENT && r.scopeId === ctx.departmentId) ?? null)
         : null;
     const tenantRow = cascadeRows.find((r) => r.scope === PipelinePolicyScope.TENANT) ?? null;
 
@@ -173,13 +167,11 @@ export class ConfigResolver {
 
     const departmentRow =
       ctx.departmentId != null
-        ? cascadeRows.find((r) => r.scope === PipelinePolicyScope.DEPARTMENT && r.scopeId === ctx.departmentId) ?? null
+        ? (cascadeRows.find((r) => r.scope === PipelinePolicyScope.DEPARTMENT && r.scopeId === ctx.departmentId) ?? null)
         : null;
     const tenantRow = cascadeRows.find((r) => r.scope === PipelinePolicyScope.TENANT) ?? null;
     const doctorRow =
-      ctx.doctorId != null
-        ? cascadeRows.find((r) => r.scope === PipelinePolicyScope.DOCTOR && r.scopeId === ctx.doctorId) ?? null
-        : null;
+      ctx.doctorId != null ? (cascadeRows.find((r) => r.scope === PipelinePolicyScope.DOCTOR && r.scopeId === ctx.doctorId) ?? null) : null;
 
     // Tenant gate = the non-doctor cascade resolution (doctorRow EXCLUDED).
     const tenantEnabled = this.resolveOne('dnaStyleEnabled', {
@@ -189,7 +181,7 @@ export class ConfigResolver {
       systemRow,
     }).value;
 
-    const doctorToggle = doctorRow ? (doctorRow.dnaStyleEnabled as boolean | null | undefined) ?? null : null;
+    const doctorToggle = doctorRow ? ((doctorRow.dnaStyleEnabled as boolean | null | undefined) ?? null) : null;
     const effective = tenantEnabled && (doctorToggle ?? true);
 
     return { effective, tenantEnabled, doctorToggle };
@@ -229,23 +221,19 @@ export class ConfigResolver {
   ): { value: boolean; source: ConfigResolutionSource } {
     const { codeDefault, maxScope } = PIPELINE_SETTING_DESCRIPTORS[key];
 
-    const tiers: Array<{ source: ConfigResolutionSource; row: PipelinePolicyEntity | null }> = [];
+    // Build the tier list honoring max scope (which tiers may set this key),
+    // then delegate the first-set-wins walk to the shared cascade primitive.
+    const tiers: CascadeTier<ConfigResolutionSource>[] = [];
     if (maxScope === PipelinePolicyScope.DOCTOR) {
-      tiers.push({ source: 'doctor', row: rows.doctorRow });
+      tiers.push({ source: 'doctor', value: rows.doctorRow ? rows.doctorRow[key] : null });
     }
     if (maxScope === PipelinePolicyScope.DOCTOR || maxScope === PipelinePolicyScope.DEPARTMENT) {
-      tiers.push({ source: 'department', row: rows.departmentRow });
+      tiers.push({ source: 'department', value: rows.departmentRow ? rows.departmentRow[key] : null });
     }
-    tiers.push({ source: 'tenant', row: rows.tenantRow });
-    tiers.push({ source: 'system-default', row: rows.systemRow });
+    tiers.push({ source: 'tenant', value: rows.tenantRow ? rows.tenantRow[key] : null });
+    tiers.push({ source: 'system-default', value: rows.systemRow ? rows.systemRow[key] : null });
 
-    for (const tier of tiers) {
-      const value = tier.row ? (tier.row[key] as boolean | null | undefined) : null;
-      if (value !== null && value !== undefined) {
-        return { value, source: tier.source };
-      }
-    }
-    return { value: codeDefault, source: 'code-default' };
+    return walkCascade<ConfigResolutionSource, boolean>(tiers, codeDefault);
   }
 
   private codeDefaultResult(): ResolvedPipelineToggles {

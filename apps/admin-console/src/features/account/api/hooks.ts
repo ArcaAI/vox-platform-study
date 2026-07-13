@@ -5,6 +5,7 @@ import type { ListParams } from '@/shared/api';
 import type { UpdateTenantConfigItem } from '@/features/tenants/api/types';
 import type { UpdateUserSettingRequest } from '@/features/users/api/types';
 import {
+    getMyDepartments,
     getMyEntitlements,
     getMyPreferences,
     getMyTenant,
@@ -25,8 +26,8 @@ export function useMyTenantConfigs(params?: ListParams) {
     return useQuery({ queryKey: accountKeys.tenantConfigs(params), queryFn: () => listMyTenantConfigs(params), placeholderData: keepPreviousData });
 }
 
-export function useMyEntitlements() {
-    return useQuery({ queryKey: accountKeys.entitlements(), queryFn: getMyEntitlements });
+export function useMyEntitlements(enabled = true) {
+    return useQuery({ queryKey: accountKeys.entitlements(), queryFn: getMyEntitlements, enabled });
 }
 
 export function useMySettings() {
@@ -35,6 +36,11 @@ export function useMySettings() {
 
 export function useMyPreferences() {
     return useQuery({ queryKey: accountKeys.preferences(), queryFn: getMyPreferences });
+}
+
+/** BUG-005 Issue 4 — the caller's own department(s); works impersonated too. */
+export function useMyDepartments() {
+    return useQuery({ queryKey: accountKeys.departments(), queryFn: getMyDepartments });
 }
 
 function useInvalidateAccount() {

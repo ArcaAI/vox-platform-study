@@ -18,6 +18,7 @@ import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
+import { useSession } from '@/shared/auth';
 import type { CapabilityUsageRow, EntitlementCapabilities } from '@/features/entitlements/api/types';
 import type { TenantPlan } from '@/features/tenants/api/types';
 import { useMyEntitlements, useMyTenant } from '../api/hooks';
@@ -52,7 +53,7 @@ const FEATURE_LABELS: { key: keyof EntitlementCapabilities['features']; label: s
     { key: 'monitoringAccess', label: 'Monitoring access' },
 ];
 
-const TABS = [
+const ALL_TABS = [
     { value: 'organization', label: 'Organization' },
     { value: 'plan', label: 'Plan & usage' },
     { value: 'settings', label: 'Settings' },
@@ -202,11 +203,18 @@ function PlanUsagePanel() {
 export function TenantProfileScreen() {
     const uid = useId();
     const tenantQuery = useMyTenant();
-    const entitlementsQuery = useMyEntitlements();
+    const session = useSession();
+    // BUG-005 Issue 2 — while impersonating (or for a real end-user), only the
+    // basic org identity + a read-only Settings tab render; Plan & usage
+    // (limits/meters/entitlements) is admin-only. Defaults to false (safe)
+    // until the session resolves, matching the harness-policy-screen pattern.
+    const effectiveIsElevated = session.data?.effectiveIsElevated ?? false;
+    const tabs = effectiveIsElevated ? ALL_TABS : ALL_TABS.filter((t) => t.value !== 'plan');
+    const entitlementsQuery = useMyEntitlements(effectiveIsElevated);
     const [tabParam, setTabParam] = useQueryState('tab', parseAsString.withDefault('organization'));
 
     const tenant = tenantQuery.data;
-    const tab = TABS.some((t) => t.value === tabParam) ? tabParam : 'organization';
+    const tab = tabs.some((t) => t.value === tabParam) ? tabParam : 'organization';
     const isBusy = tenantQuery.isFetching || entitlementsQuery.isFetching;
 
     const header = (
@@ -268,7 +276,7 @@ export function TenantProfileScreen() {
                 header={header}
                 tabs={
                     <TabsList variant="line">
-                        {TABS.map((t) => (
+                        {tabs.map((t) => (
                             <TabsTrigger key={t.value} value={t.value}>
                                 {t.label}
                             </TabsTrigger>
@@ -287,54 +295,60 @@ export function TenantProfileScreen() {
                                 <IdentityField label="Organization name">
                                     <span className="font-medium">{tenant.name}</span>
                                 </IdentityField>
-                                <IdentityField label="Tenant key">
-                                    <span className="truncate font-mono text-xs">{tenant.key}</span>
-                                    <CopyButton value={tenant.key} label="Copy tenant key" />
-                                </IdentityField>
-                                <IdentityField label="Plan">
-                                    {tenant.plan ? (
-                                        <Badge variant="secondary">{PLAN_LABELS[tenant.plan]}</Badge>
-                                    ) : (
-                                        <span className="text-muted-foreground">{EM_DASH}</span>
-                                    )}
-                                </IdentityField>
                                 <IdentityField label="Status">
                                     <ResourceStatusBadge status={tenant.resourceStatus} />
                                 </IdentityField>
-                                <IdentityField label="Description">
-                                    {tenant.description ? tenant.description : <span className="text-muted-foreground">{EM_DASH}</span>}
-                                </IdentityField>
-                                <IdentityField label="Tags">
-                                    {tenant.tags.length > 0 ? (
-                                        tenant.tags.map((tag) => (
-                                            <Badge key={tag} variant="outline">
-                                                {tag}
-                                            </Badge>
-                                        ))
-                                    ) : (
-                                        <span className="text-muted-foreground">{EM_DASH}</span>
-                                    )}
-                                </IdentityField>
-                                <IdentityField label="Created">{formatDateTime(tenant.createdAt)}</IdentityField>
-                                <IdentityField label="Updated">{formatRelativeTime(tenant.updatedAt)}</IdentityField>
+                                {effectiveIsElevated ? (
+                                    <>
+                                        <IdentityField label="Tenant key">
+                                            <span className="truncate font-mono text-xs">{tenant.key}</span>
+                                            <CopyButton value={tenant.key} label="Copy tenant key" />
+                                        </IdentityField>
+                                        <IdentityField label="Plan">
+                                            {tenant.plan ? (
+                                                <Badge variant="secondary">{PLAN_LABELS[tenant.plan]}</Badge>
+                                            ) : (
+                                                <span className="text-muted-foreground">{EM_DASH}</span>
+                                            )}
+                                        </IdentityField>
+                                        <IdentityField label="Description">
+                                            {tenant.description ? tenant.description : <span className="text-muted-foreground">{EM_DASH}</span>}
+                                        </IdentityField>
+                                        <IdentityField label="Tags">
+                                            {tenant.tags.length > 0 ? (
+                                                tenant.tags.map((tag) => (
+                                                    <Badge key={tag} variant="outline">
+                                                        {tag}
+                                                    </Badge>
+                                                ))
+                                            ) : (
+                                                <span className="text-muted-foreground">{EM_DASH}</span>
+                                            )}
+                                        </IdentityField>
+                                        <IdentityField label="Created">{formatDateTime(tenant.createdAt)}</IdentityField>
+                                        <IdentityField label="Updated">{formatRelativeTime(tenant.updatedAt)}</IdentityField>
+                                    </>
+                                ) : null}
                             </dl>
                         </Card>
                     </section>
                 </TabsContent>
-                <TabsContent value="plan">
-                    <section aria-labelledby={`${uid}-entitlements`} className="flex flex-col gap-3">
-                        <h2 id={`${uid}-entitlements`} className="sr-only">
-                            Plan &amp; usage
-                        </h2>
-                        <PlanUsagePanel />
-                    </section>
-                </TabsContent>
+                {effectiveIsElevated ? (
+                    <TabsContent value="plan">
+                        <section aria-labelledby={`${uid}-entitlements`} className="flex flex-col gap-3">
+                            <h2 id={`${uid}-entitlements`} className="sr-only">
+                                Plan &amp; usage
+                            </h2>
+                            <PlanUsagePanel />
+                        </section>
+                    </TabsContent>
+                ) : null}
                 <TabsContent value="settings">
                     <section aria-labelledby={`${uid}-settings`} className="flex flex-col gap-3">
                         <h2 id={`${uid}-settings`} className="sr-only">
                             Tenant settings
                         </h2>
-                        <TenantSettingsTab />
+                        <TenantSettingsTab readOnly={!effectiveIsElevated} />
                     </section>
                 </TabsContent>
             </ScreenTemplate>
