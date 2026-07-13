@@ -254,17 +254,21 @@ export class AdminImpersonationController {
     } satisfies ImpersonationEventPayload);
 
     // TASK-396 pattern — forced audit row for the sensitive action. Direct emit
-    // (not broadcastSysEvent): a global-admin's CLS tenant is usually null and
-    // the AuditLogProcessor fail-closes on null tenants, so the row is
-    // attributed to the RESOLVED impersonation tenant (a persisted assignment,
-    // never caller-supplied free text).
+    // (not broadcastSysEvent): a global-admin's CLS tenant is usually EMPTY
+    // STRING (never null — their JWT carries `tenantId: ''`, see
+    // `resolve-active-tenant.ts`) and the AuditLogProcessor fail-closes on a
+    // falsy tenant, so the row is attributed to the RESOLVED impersonation
+    // tenant (a persisted assignment, never caller-supplied free text).
+    // TASK-503 — `??` only falls back on null/undefined and let the real
+    // empty-string CLS value through, producing a job the processor rejected;
+    // `||` catches the actual falsy shape.
     this.eventEmitter?.emit(SysEventType.ResourceViewed, {
       responsibleEntityId: actor.id,
       responsibleIp: req.ip || '127.0.0.1',
       resourceType: ResourceType.User,
       resourceId: targetUser.id,
       correlationId: this.clsService.get('correlationId') ?? undefined,
-      tenantId: this.clsService.get('tenantId') ?? resolvedTenantId,
+      tenantId: this.clsService.get('tenantId') || resolvedTenantId,
       forceAuditLog: true,
       data: {
         action: USER_IMPERSONATION_STARTED,

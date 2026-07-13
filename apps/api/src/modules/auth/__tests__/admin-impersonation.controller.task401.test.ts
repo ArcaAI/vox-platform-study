@@ -300,6 +300,22 @@ describe('AdminImpersonationController — TASK-401 audit emissions', () => {
         expect((forced?.[1] as { tenantId: string }).tenantId).toBe('tenant-CLS');
     });
 
+    // TASK-503 — a global-admin's JWT carries `tenantId: ''` (empty string,
+    // never `null`; see `resolve-active-tenant.ts`). The prior `?? resolvedTenantId`
+    // only falls back on null/undefined, so an unscoped global admin produced a
+    // forced audit row with `tenantId: ''`, which `AuditLogProcessor`'s
+    // fail-closed guard rejects (`job.data.tenantId is required`). The `null`
+    // case above never reproduced this because the test harness's sentinel for
+    // "no tenant" didn't match the real empty-string CLS/JWT shape.
+    it('falls back to the resolved tenant when CLS tenantId is empty string (real global-admin JWT shape)', async () => {
+        const { controller, eventEmitter } = buildController({ user: { id: 'admin-A', tenantId: '' } });
+
+        await controller.impersonate('target-B', {}, REQ);
+
+        const forced = eventEmitter.emit.mock.calls.find(([name]) => name === SysEventType.ResourceViewed);
+        expect((forced?.[1] as { tenantId: string }).tenantId).toBe('tenant-B');
+    });
+
     it('omits reason from the audit payloads when not provided (never undefined-noise)', async () => {
         const { controller, eventEmitter } = buildController({ user: { id: 'admin-A' } });
 
