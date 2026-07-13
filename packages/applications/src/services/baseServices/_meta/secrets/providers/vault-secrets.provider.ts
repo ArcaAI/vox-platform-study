@@ -18,6 +18,11 @@ interface VaultClientLike {
   approleLogin(options: { role_id: string; secret_id: string }): Promise<{
     auth: { client_token: string; lease_duration: number; renewable: boolean };
   }>;
+  renew(options: { lease_id: string; increment?: number }): Promise<{
+    lease_id: string;
+    renewable: boolean;
+    lease_duration: number;
+  }>;
   tokenRenewSelf(options?: { increment?: number | string }): Promise<{
     auth: { lease_duration: number; renewable: boolean };
   }>;
@@ -492,5 +497,16 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
       leaseId: res.lease_id,
       ttlSec: res.lease_duration,
     };
+  }
+
+  /**
+   * BUG-006 — renew a Vault DB-engine lease (`sys/leases/renew`) so the
+   * dynamic PG user issued by issueDbCredential() survives past its
+   * default_ttl without a pool rebuild. Called by VaultLeaseRenewer.
+   */
+  async renewDbLease(leaseId: string, incrementSec: number): Promise<{ ttlSec: number }> {
+    this.ensureBooted();
+    const res = await this.client.renew({ lease_id: leaseId, increment: incrementSec });
+    return { ttlSec: res.lease_duration };
   }
 }

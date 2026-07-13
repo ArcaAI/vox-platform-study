@@ -349,4 +349,24 @@ export class SecretsService {
     }
     return maybe.issueDbCredential(role);
   }
+
+  /**
+   * BUG-006 — renew a Vault DB-engine lease (extends its TTL up to
+   * max_ttl without changing the underlying PG user). Called by
+   * VaultLeaseRenewer ahead of lease expiry; falls back to a fresh
+   * requestDbCredential()-backed pool swap once max_ttl is reached.
+   * Capability-checked like requestDbCredential; throws fail-fast on
+   * non-Vault providers.
+   */
+  async renewDbLease(leaseId: string, incrementSec: number): Promise<{ ttlSec: number }> {
+    const maybe = this.provider as unknown as {
+      renewDbLease?: (leaseId: string, incrementSec: number) => Promise<{ ttlSec: number }>;
+    };
+    if (typeof maybe.renewDbLease !== 'function') {
+      throw new Error(
+        'SecretsService.renewDbLease() requires Vault provider (SECRETS_PROVIDER=vault); current provider has no database-engine support',
+      );
+    }
+    return maybe.renewDbLease(leaseId, incrementSec);
+  }
 }

@@ -169,15 +169,21 @@ vault write database/config/hope-main \
 #   defaults: 50/role × 3 nodes = 150 < 200 (PG default). With higher
 #   pod counts the operator must tune max_open_connections downward.
 #
-# TTL defaults: 1h / 24h max — keeps the lease-renewal storm modest
-# and bounds blast radius for a compromised credential.
+# TTL defaults (BUG-006 follow-up): default_ttl=1h keeps the lease-renewal
+# cadence modest (VaultLeaseRenewer renews every ~30min); max_ttl=168h (7d)
+# is the dev rotation ceiling — the underlying PG role is force-rotated
+# (DROP+CREATE via wrapper.swap()) only once a week instead of daily.
+# Widening max_ttl trades a larger compromised-credential blast-radius
+# window for far fewer forced pool-swap events; matches the value in
+# scripts/setup-dev-vault-db.sh (must stay in sync — see
+# docs/operations/vault/README.md "Dynamic DB credentials").
 echo "[vault-init] creating database/roles/hope-app-role"
 vault write database/roles/hope-app-role \
   db_name=hope-main \
   creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}' INHERIT IN ROLE hope_app_template;" \
   revocation_statements="REVOKE ALL PRIVILEGES ON DATABASE ${VAULT_DB_NAME} FROM \"{{name}}\"; REASSIGN OWNED BY \"{{name}}\" TO hope_app_template; DROP OWNED BY \"{{name}}\"; DROP ROLE IF EXISTS \"{{name}}\";" \
   default_ttl="1h" \
-  max_ttl="24h" \
+  max_ttl="168h" \
   max_open_connections=50 2>/dev/null || true
 
 echo "[vault-init] OK"
