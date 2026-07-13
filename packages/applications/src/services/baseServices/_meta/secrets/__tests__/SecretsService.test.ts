@@ -401,6 +401,33 @@ describe('SecretsService.requestDbCredential (Phase 5 Task 5.3)', () => {
   });
 });
 
+// BUG-006 — renewDbLease is the missing link between issueDbCredential
+// (one-shot) and VaultLeaseRenewer (periodic caller): without it the
+// renewer has nothing to invoke and dynamic PG creds go stale at lease
+// expiry. Mirrors the requestDbCredential capability-check pattern above.
+describe('SecretsService.renewDbLease (BUG-006)', () => {
+  it('throws a guard error when the underlying provider has no renewDbLease()', async () => {
+    const provider = new InMemorySecretsProvider({});
+    const service = new SecretsService(provider, {});
+    await expect(service.renewDbLease('lease-1', 3600)).rejects.toThrow(/requires vault/i);
+  });
+
+  it('proxies to provider.renewDbLease with the lease id and increment', async () => {
+    const fakeVault = {
+      renewDbLease: vi.fn(async (_leaseId: string, _incrementSec: number) => ({ ttlSec: 3600 })),
+      getSecret: vi.fn(),
+      getSecrets: vi.fn(),
+      health: vi.fn(),
+    } as unknown as InMemorySecretsProvider;
+    const service = new SecretsService(fakeVault, {});
+    const result = await service.renewDbLease('database/creds/hope-app-role/abc', 3600);
+    expect(result).toEqual({ ttlSec: 3600 });
+    expect(
+      (fakeVault as unknown as { renewDbLease: unknown }).renewDbLease,
+    ).toHaveBeenCalledWith('database/creds/hope-app-role/abc', 3600);
+  });
+});
+
 describe('SecretsService Redis Pub/Sub invalidation', () => {
   it('clears one key on "arca:secrets:invalidate" message {key}', async () => {
     const provider = new InMemorySecretsProvider({ K: 'v', K2: 'v2' });

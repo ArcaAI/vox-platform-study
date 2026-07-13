@@ -127,7 +127,7 @@ vault write database/roles/${VAULT_ROLE} \
   creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}' INHERIT IN ROLE hope_app_template;" \
   revocation_statements="REVOKE ALL PRIVILEGES ON DATABASE ${DB_NAME} FROM \"{{name}}\"; REASSIGN OWNED BY \"{{name}}\" TO hope_app_template; DROP OWNED BY \"{{name}}\"; DROP ROLE IF EXISTS \"{{name}}\";" \
   default_ttl="1h" \
-  max_ttl="24h" \
+  max_ttl="168h" \
   max_open_connections=50
 EOF
 then

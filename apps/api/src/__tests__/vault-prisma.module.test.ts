@@ -20,12 +20,14 @@ vi.mock('@arcaai/database', () => ({
 const originalEnv = { ...process.env };
 
 beforeEach(() => {
+  vi.useFakeTimers();
   vi.clearAllMocks();
   vaultPrismaCreate.mockReset();
   process.env = { ...originalEnv };
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   process.env = originalEnv;
 });
 
@@ -70,6 +72,9 @@ describe('buildVaultPrismaFactory env-toggle gating', () => {
     vaultPrismaCreate.mockResolvedValueOnce({
       client: fakeClient,
       disconnect: disconnectMock,
+      leaseId: 'lid-1',
+      ttlSec: 3600,
+      swap: vi.fn(async () => undefined),
     });
 
     const { buildVaultPrismaFactory } = await import('../vault-prisma.module');
@@ -110,6 +115,9 @@ describe('buildVaultPrismaFactory env-toggle gating', () => {
     vaultPrismaCreate.mockResolvedValueOnce({
       client: fakeClient,
       disconnect: vi.fn(async () => undefined),
+      leaseId: 'lid-1',
+      ttlSec: 3600,
+      swap: vi.fn(async () => undefined),
     });
 
     const db = await import('@arcaai/database');
@@ -137,6 +145,9 @@ describe('buildVaultPrismaFactory env-toggle gating', () => {
     vaultPrismaCreate.mockResolvedValueOnce({
       client: {},
       disconnect: disconnectMock,
+      leaseId: 'lid-1',
+      ttlSec: 3600,
+      swap: vi.fn(async () => undefined),
     });
 
     const { buildVaultPrismaFactory } = await import('../vault-prisma.module');
@@ -144,5 +155,122 @@ describe('buildVaultPrismaFactory env-toggle gating', () => {
     await factory();
 
     expect(vaultPrismaCreate).toHaveBeenCalledWith({}, 'custom-role-name');
+  });
+});
+
+// BUG-006 — the lease-renewal machinery (VaultLeaseRenewer, swap()) existed
+// but nothing in this factory ever started it, so dynamic PG creds went
+// stale at lease expiry (~1h) with no reconnect. These tests pin down the
+// wiring: renew before expiry while under max_ttl, fall back to swap() on
+// renew failure or once max_ttl is close, and register/deregister with
+// SecretsService so health() reflects renewer state.
+describe('buildVaultPrismaFactory — Vault DB-lease renewal (BUG-006)', () => {
+  function fakeWrapper(overrides: Record<string, unknown> = {}) {
+    return {
+      client: { $queryRaw: vi.fn() },
+      disconnect: vi.fn(async () => undefined),
+      leaseId: 'database/creds/hope-app-role/lid-1',
+      ttlSec: 100,
+      swap: vi.fn(async () => undefined),
+      ...overrides,
+    };
+  }
+
+  it('starts a VaultLeaseRenewer at 50% TTL, calls secrets.renewDbLease, and registers it via secrets.setLeaseRenewer', async () => {
+    process.env.SECRETS_PROVIDER = 'vault';
+    process.env.PG_DYNAMIC_CREDS = 'true';
+
+    const wrapper = fakeWrapper();
+    vaultPrismaCreate.mockResolvedValueOnce(wrapper);
+
+    const renewDbLease = vi.fn(async () => ({ ttlSec: 100 }));
+    const setLeaseRenewer = vi.fn();
+    const clearLeaseRenewer = vi.fn();
+    const secrets = { requestDbCredential: vi.fn(), renewDbLease, setLeaseRenewer, clearLeaseRenewer } as never;
+
+    const { buildVaultPrismaFactory } = await import('../vault-prisma.module');
+    const factory = buildVaultPrismaFactory(secrets)!;
+    const result = await factory();
+
+    expect(setLeaseRenewer).toHaveBeenCalledTimes(1);
+    expect(renewDbLease).not.toHaveBeenCalled();
+
+    // 50% of ttlSec=100 -> renew tick at 50_000ms.
+    await vi.advanceTimersByTimeAsync(49_999);
+    expect(renewDbLease).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(renewDbLease).toHaveBeenCalledWith(wrapper.leaseId, 100);
+    expect(wrapper.swap).not.toHaveBeenCalled();
+
+    await result.disconnect();
+    expect(clearLeaseRenewer).toHaveBeenCalledTimes(1);
+    expect(wrapper.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to wrapper.swap() when secrets.renewDbLease rejects', async () => {
+    process.env.SECRETS_PROVIDER = 'vault';
+    process.env.PG_DYNAMIC_CREDS = 'true';
+
+    const wrapper = fakeWrapper();
+    vaultPrismaCreate.mockResolvedValueOnce(wrapper);
+
+    const renewDbLease = vi.fn(async () => {
+      throw new Error('vault unreachable');
+    });
+    const secrets = { requestDbCredential: vi.fn(), renewDbLease } as never;
+
+    const { buildVaultPrismaFactory } = await import('../vault-prisma.module');
+    const factory = buildVaultPrismaFactory(secrets)!;
+    const result = await factory();
+
+    await vi.advanceTimersByTimeAsync(50_000);
+    expect(renewDbLease).toHaveBeenCalledTimes(1);
+    expect(wrapper.swap).toHaveBeenCalledTimes(1);
+
+    await result.disconnect();
+  });
+
+  it('swaps instead of renewing once elapsed time is within the swap-safety margin of PG_VAULT_MAX_TTL_SEC', async () => {
+    process.env.SECRETS_PROVIDER = 'vault';
+    process.env.PG_DYNAMIC_CREDS = 'true';
+    process.env.PG_VAULT_MAX_TTL_SEC = '40';
+
+    const wrapper = fakeWrapper();
+    vaultPrismaCreate.mockResolvedValueOnce(wrapper);
+
+    const renewDbLease = vi.fn(async () => ({ ttlSec: 100 }));
+    const secrets = { requestDbCredential: vi.fn(), renewDbLease } as never;
+
+    const { buildVaultPrismaFactory } = await import('../vault-prisma.module');
+    const factory = buildVaultPrismaFactory(secrets)!;
+    const result = await factory();
+
+    // First tick at 50% of ttlSec=100 -> 50s elapsed, already past the
+    // max_ttl(40s) minus margin threshold -> must swap, not renew.
+    await vi.advanceTimersByTimeAsync(50_000);
+    expect(renewDbLease).not.toHaveBeenCalled();
+    expect(wrapper.swap).toHaveBeenCalledTimes(1);
+
+    await result.disconnect();
+  });
+
+  it('tolerates a secrets dependency with no setLeaseRenewer/renewDbLease (structural VaultDbSecretsLike callers)', async () => {
+    process.env.SECRETS_PROVIDER = 'vault';
+    process.env.PG_DYNAMIC_CREDS = 'true';
+
+    const wrapper = fakeWrapper();
+    vaultPrismaCreate.mockResolvedValueOnce(wrapper);
+
+    const secrets = { requestDbCredential: vi.fn() } as never;
+    const { buildVaultPrismaFactory } = await import('../vault-prisma.module');
+    const factory = buildVaultPrismaFactory(secrets)!;
+    const result = await factory();
+
+    // No renewDbLease available -> renew tick must fall back to swap()
+    // without throwing.
+    await vi.advanceTimersByTimeAsync(50_000);
+    expect(wrapper.swap).toHaveBeenCalledTimes(1);
+
+    await expect(result.disconnect()).resolves.toBeUndefined();
   });
 });
