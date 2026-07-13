@@ -16,6 +16,7 @@ import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorBanner, ErrorState } from '@/shared/state/error-state';
 import { useRedisHealth, useServicesHealth, useSessions, useUptime } from '../api';
 import type { HeartbeatRecord, ServiceProbe, ServiceUptime } from '../api';
+import { DevServiceDownHint } from './dev-service-down-hint';
 
 /** Probe/uptime status → semantic role (never color-only: labels ride along). */
 function serviceStatusRole(status: string): StatusColorRole {
@@ -137,6 +138,7 @@ function ServiceHealthGrid({ health, uptime }: { health: ReturnType<typeof useSe
             body = (
                 <div className="flex flex-col gap-2">
                     {health.isError ? <ErrorBanner error={health.error} onRetry={() => void health.refetch()} /> : null}
+                    <DevServiceDownHint services={probes} />
                     <ul aria-label="Service health" className="grid list-none gap-3 sm:grid-cols-2 xl:grid-cols-3">
                         {keys.map((key) => {
                             const probe: ServiceProbe | undefined = probes[key];

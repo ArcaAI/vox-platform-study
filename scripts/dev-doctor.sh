@@ -35,14 +35,16 @@ pass() { printf "${GREEN}%-6s${NC} %-34s %s\n" "PASS" "$1" "${2:-}"; }
 fail() { printf "${RED}%-6s${NC} %-34s %s\n" "FAIL" "$1" "${2:-}"; FAILURES=$((FAILURES + 1)); }
 warn() { printf "${YELLOW}%-6s${NC} %-34s %s\n" "WARN" "$1" "${2:-}"; WARNINGS=$((WARNINGS + 1)); }
 
-# http_check <required|optional> <label> <url> [expected-detail]
+# http_check <required|optional> <label> <url> [restart-hint]
+# restart-hint: printed only on a REQUIRED failure, so a not-listening dev
+# service names its own start command instead of leaving a bare → 000 (BUG-009).
 http_check() {
-    local req="$1" label="$2" url="$3" code
+    local req="$1" label="$2" url="$3" hint="${4:-}" code
     code="$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 "$url" 2>/dev/null)" || code="000"
     if [ "${code:0:1}" = "2" ] || [ "${code:0:1}" = "3" ]; then
         pass "$label" "$url → $code"
     elif [ "$req" = "required" ]; then
-        fail "$label" "$url → $code"
+        fail "$label" "$url → $code${hint:+ — start with '$hint'}"
     else
         warn "$label" "$url → $code (optional)"
     fi
@@ -100,11 +102,11 @@ http_check required "lm-studio" "http://localhost:1234/v1/models"
 http_check optional "ollama" "http://localhost:11434/"
 
 echo -e "${CYAN}── HOPE services ────────────────────────────────────────────────${NC}"
-http_check required "api (8868)" "http://localhost:${API_PORT:-8868}/api/v1/health"
-http_check required "stt (8861)" "http://localhost:${STT_PORT:-8861}/api/v1/health"
-http_check required "smr (8862)" "http://localhost:${SMR_PORT:-8862}/api/v1/health"
-http_check required "nlp (8864)" "http://localhost:${NLP_PORT:-8864}/api/v1/health"
-http_check required "harness (8866)" "http://localhost:${HARNESS_PORT:-8866}/api/v1/health"
+http_check required "api (8868)" "http://localhost:${API_PORT:-8868}/api/v1/health" "pnpm dev:api"
+http_check required "stt (8861)" "http://localhost:${STT_PORT:-8861}/api/v1/health" "pnpm dev:stt-v2"
+http_check required "smr (8862)" "http://localhost:${SMR_PORT:-8862}/api/v1/health" "pnpm dev:smr-v2"
+http_check required "nlp (8864)" "http://localhost:${NLP_PORT:-8864}/api/v1/health" "pnpm dev:nlp"
+http_check required "harness (8866)" "http://localhost:${HARNESS_PORT:-8866}/api/v1/health" "pnpm dev:harness"
 http_check required "ui-playground (5175)" "http://localhost:${UI_PORT:-5175}/"
 # guardrail mounts its routers under /api (no version segment), unlike the rest
 http_check optional "guardrail (8863)" "http://localhost:${GUARDRAIL_PORT:-8863}/api/health"
