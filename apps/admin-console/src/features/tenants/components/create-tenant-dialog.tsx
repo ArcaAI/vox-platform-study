@@ -10,9 +10,11 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError } from '@/shared/api';
+import type { User } from '@/features/users/api/types';
 import { useProvisionTenant } from '../api/hooks';
 import type { ProvisionTenantAdmin, ProvisionTenantRequest, TenantPlan } from '../api/types';
 import { PLAN_LABELS } from './plan-badge';
+import { UserPicker } from './user-picker';
 
 const PLAN_CHOICES: Array<{ value: TenantPlan; label: string; hint: string }> = [
     { value: 'STARTER', label: PLAN_LABELS.STARTER, hint: 'Small practices' },
@@ -54,13 +56,13 @@ export function CreateTenantDialog({ open, onOpenChange }: { open: boolean; onOp
     const [description, setDescription] = useState('');
     const [plan, setPlan] = useState<TenantPlan>('STARTER');
     const [adminMode, setAdminMode] = useState<AdminMode>('existing');
-    const [existingUserId, setExistingUserId] = useState('');
+    const [existingUser, setExistingUser] = useState<User | null>(null);
     const [newEmail, setNewEmail] = useState('');
     const [newUsername, setNewUsername] = useState('');
     const [newPassword, setNewPassword] = useState('');
 
     const detailsValid = name.trim().length > 0;
-    const adminValid = adminMode === 'existing' ? existingUserId.trim().length > 0 : newEmail.trim().length > 0 && newPassword.length > 0;
+    const adminValid = adminMode === 'existing' ? existingUser !== null : newEmail.trim().length > 0 && newPassword.length > 0;
     const keyPreview = previewTenantKey(name);
 
     function reset() {
@@ -70,7 +72,7 @@ export function CreateTenantDialog({ open, onOpenChange }: { open: boolean; onOp
         setDescription('');
         setPlan('STARTER');
         setAdminMode('existing');
-        setExistingUserId('');
+        setExistingUser(null);
         setNewEmail('');
         setNewUsername('');
         setNewPassword('');
@@ -90,7 +92,7 @@ export function CreateTenantDialog({ open, onOpenChange }: { open: boolean; onOp
     function handleCreate() {
         const admin: ProvisionTenantAdmin =
             adminMode === 'existing'
-                ? { mode: 'existing', userId: existingUserId.trim() }
+                ? { mode: 'existing', userId: existingUser?.id ?? '' }
                 : {
                       mode: 'new-local',
                       email: newEmail.trim(),
@@ -110,7 +112,14 @@ export function CreateTenantDialog({ open, onOpenChange }: { open: boolean; onOp
                 handleOpenChange(false);
                 if (result?.tenant?.id) router.push(`/tenants/${result.tenant.id}`);
             },
-            onError: (error) => toast.error(error instanceof GatewayError ? error.message : 'Could not create the tenant.'),
+            onError: (error) =>
+                toast.error(
+                    error instanceof GatewayError
+                        ? error.status === 409
+                            ? 'That tenant key is already taken — try a different key.'
+                            : error.message
+                        : 'Could not create the tenant.',
+                ),
         });
     }
 
@@ -234,15 +243,8 @@ export function CreateTenantDialog({ open, onOpenChange }: { open: boolean; onOp
                         </fieldset>
                         {adminMode === 'existing' ? (
                             <div className="flex flex-col gap-2">
-                                <Label htmlFor="create-tenant-admin-user-id">Existing user id</Label>
-                                <Input
-                                    id="create-tenant-admin-user-id"
-                                    value={existingUserId}
-                                    onChange={(event) => setExistingUserId(event.target.value)}
-                                    className="font-mono"
-                                    autoComplete="off"
-                                    required
-                                />
+                                <Label htmlFor="create-tenant-admin-user-id">User</Label>
+                                <UserPicker id="create-tenant-admin-user-id" value={existingUser} onChange={setExistingUser} />
                             </div>
                         ) : (
                             <>

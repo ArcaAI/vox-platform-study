@@ -6,6 +6,7 @@ import { IServiceHealthMonitoringService } from './IServiceHealthMonitoringServi
 import { HeartbeatRecord, ServiceStatus, ServiceUptime, SessionsResponse, UptimeResponse } from './dto';
 
 interface ServiceConfig {
+  key: string;
   name: string;
   url: string;
   healthEndpoint: string;
@@ -67,33 +68,43 @@ export class ServiceHealthMonitoringService implements IServiceHealthMonitoringS
   private initializeServices(): void {
     // Mirrors the gateway health controller's downstream set
     // (apps/api/.../health/health.controller.ts): the real services are
-    // SMR (8862), NLP (8864), STT v2 (8861), Guardrail (8863) and the
-    // Clinical Documentation Harness (8866). apps/tts and apps/fedl no
-    // longer exist; 8863 is now Guardrail. Guardrail mounts its health
-    // router under `/api` (not `/api/v1`), same as the health controller.
+    // SMR (8862), NLP (8864), STT v2 (8861), TTS (8865), Guardrail (8863)
+    // and the Clinical Documentation Harness (8866). Guardrail mounts its
+    // health router under `/api` (not `/api/v1`), same as the health controller.
     this.services = [
       {
+        key: 'smr',
         name: 'Summarization',
         // eslint-disable-next-line turbo/no-undeclared-env-vars
         url: process.env.SMR_SERVICE_URL || process.env.SMR_URL || 'http://localhost:8862',
         healthEndpoint: '/api/v1/health',
       },
       {
+        key: 'nlp',
         name: 'Medical NLP',
         url: process.env.NLP_URL || 'http://localhost:8864',
         healthEndpoint: '/api/v1/health',
       },
       {
+        key: 'stt',
         name: 'Speech to Text',
         url: process.env.STT_V2_URL || 'http://localhost:8861',
         healthEndpoint: '/api/v1/health',
       },
       {
+        key: 'tts',
+        name: 'Text to Speech',
+        url: process.env.TTS_URL || 'http://localhost:8865',
+        healthEndpoint: '/api/v1/health',
+      },
+      {
+        key: 'guardrail',
         name: 'Guardrail',
         url: process.env.GUARDRAIL_URL || 'http://localhost:8863',
         healthEndpoint: '/api/health',
       },
       {
+        key: 'harness',
         name: 'Clinical Documentation Harness',
         url: process.env.HARNESS_URL || 'http://localhost:8866',
         healthEndpoint: '/api/v1/health',
@@ -156,20 +167,20 @@ export class ServiceHealthMonitoringService implements IServiceHealthMonitoringS
       });
     }
 
-    await this.storeHeartbeat(service.name, { status, responseTime });
+    await this.storeHeartbeat(service.key, { status, responseTime });
   }
 
-  private async storeHeartbeat(serviceName: string, data: { status: 'up' | 'down'; responseTime: number }): Promise<void> {
+  private async storeHeartbeat(serviceKey: string, data: { status: 'up' | 'down'; responseTime: number }): Promise<void> {
     if (!this.redis) {
       this.logger.warn({
         message: 'Heartbeat storage skipped',
         reason: 'redis_unavailable',
-        service: serviceName,
+        service: serviceKey,
       });
       return;
     }
 
-    const key = `${REDIS_KEY_PREFIX}${serviceName}`;
+    const key = `${REDIS_KEY_PREFIX}${serviceKey}`;
     const heartbeat: HeartbeatRecord = {
       timestamp: new Date().toISOString(),
       status: data.status,
@@ -183,25 +194,25 @@ export class ServiceHealthMonitoringService implements IServiceHealthMonitoringS
     } catch (error) {
       this.logger.error({
         message: 'Heartbeat storage failed',
-        service: serviceName,
+        service: serviceKey,
         error: error instanceof Error ? error.message : 'Unknown',
       });
     }
   }
 
-  private async getHeartbeats(serviceName: string): Promise<HeartbeatRecord[]> {
+  private async getHeartbeats(serviceKey: string): Promise<HeartbeatRecord[]> {
     if (!this.redis) {
       return [];
     }
 
     try {
-      const key = `${REDIS_KEY_PREFIX}${serviceName}`;
+      const key = `${REDIS_KEY_PREFIX}${serviceKey}`;
       const data = await this.redis.lrange(key, 0, HEARTBEAT_HISTORY_SIZE - 1);
       return data.map((item) => JSON.parse(item) as HeartbeatRecord);
     } catch (error) {
       this.logger.error({
         message: 'Heartbeat retrieval failed',
-        service: serviceName,
+        service: serviceKey,
         error: error instanceof Error ? error.message : 'Unknown',
       });
       return [];
@@ -229,10 +240,10 @@ export class ServiceHealthMonitoringService implements IServiceHealthMonitoringS
     const services: Record<string, ServiceUptime> = {};
 
     for (const service of this.services) {
-      const heartbeats = await this.getHeartbeats(service.name);
+      const heartbeats = await this.getHeartbeats(service.key);
       const latestHeartbeat = heartbeats[0];
 
-      services[service.name] = {
+      services[service.key] = {
         status: this.determineStatus(heartbeats),
         uptime: this.calculateUptime(heartbeats),
         responseTime: latestHeartbeat?.responseTime ?? 0,
@@ -247,11 +258,11 @@ export class ServiceHealthMonitoringService implements IServiceHealthMonitoringS
     };
   }
 
-  async getServiceUptime(serviceName: string): Promise<ServiceUptime | null> {
-    const service = this.services.find((s) => s.name === serviceName);
+  async getServiceUptime(serviceKey: string): Promise<ServiceUptime | null> {
+    const service = this.services.find((s) => s.key === serviceKey);
     if (!service) return null;
 
-    const heartbeats = await this.getHeartbeats(serviceName);
+    const heartbeats = await this.getHeartbeats(serviceKey);
     const latestHeartbeat = heartbeats[0];
 
     return {
@@ -263,8 +274,8 @@ export class ServiceHealthMonitoringService implements IServiceHealthMonitoringS
     };
   }
 
-  async getHeartbeatHistory(serviceName: string): Promise<HeartbeatRecord[]> {
-    return this.getHeartbeats(serviceName);
+  async getHeartbeatHistory(serviceKey: string): Promise<HeartbeatRecord[]> {
+    return this.getHeartbeats(serviceKey);
   }
 
   async getSessionCounts(): Promise<SessionsResponse> {
@@ -274,6 +285,7 @@ export class ServiceHealthMonitoringService implements IServiceHealthMonitoringS
       services: {
         smr: { active: 0 },
         stt: { active: 0 },
+        tts: { active: 0 },
         nlp: { active: 0 },
         guardrail: { active: 0 },
         harness: { active: 0 },

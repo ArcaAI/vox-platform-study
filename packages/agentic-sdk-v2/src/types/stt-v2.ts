@@ -82,10 +82,6 @@ export interface CreateStreamingSessionRequest {
   sampleRate?: number;
   /** ISO 639-1 language code (e.g., "en", "th") */
   language?: string;
-  /** Enable multilingual code-switching */
-  codeSwitching?: boolean;
-  /** Enable speaker diarization */
-  diarization?: boolean;
   /** Microphone device identifier */
   microphoneId?: string;
 }

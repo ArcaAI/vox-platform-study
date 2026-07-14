@@ -212,7 +212,7 @@ function SdkBoundary() {
     const session = useSession();
     const mounted = useHydrated();
 
-    const tenantId = session.data ? (session.data.workingTenantId ?? session.data.user.tenantId) || undefined : undefined;
+    const tenantId = session.data ? (session.data.effectiveTenantId ?? session.data.user.tenantId) || undefined : undefined;
 
     const config = useMemo<VoxProviderConfig | null>(() => {
         if (!mounted) return null;

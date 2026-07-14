@@ -41,12 +41,12 @@ const HEALTH = {
     status: 'degraded',
     timestamp: NOW,
     services: {
-        smr: { status: 'healthy', service: 'smr', uptime_seconds: 86_400, duration_ms: 210 },
-        stt: { status: 'healthy', service: 'stt', duration_ms: 118 },
-        tts: { status: 'healthy', service: 'tts', duration_ms: 104 },
-        nlp: { status: 'healthy', service: 'nlp', duration_ms: 88 },
-        guardrail: { status: 'healthy', service: 'guardrail', duration_ms: 65 },
-        harness: { status: 'degraded', service: 'harness', error: 'exports depth 117' },
+        smr: { status: 'healthy', service: 'Summarization', uptime_seconds: 86_400, duration_ms: 210 },
+        stt: { status: 'healthy', service: 'Speech to Text', duration_ms: 118 },
+        tts: { status: 'healthy', service: 'Text to Speech', duration_ms: 104 },
+        nlp: { status: 'healthy', service: 'Medical NLP', duration_ms: 88 },
+        guardrail: { status: 'healthy', service: 'Guardrail', duration_ms: 65 },
+        harness: { status: 'degraded', service: 'Clinical Documentation Harness', error: 'exports depth 117' },
     },
 };
 
@@ -101,12 +101,12 @@ describe('MonitoringScreen', () => {
         renderWithProviders(<MonitoringScreen />);
 
         const stats = await screen.findByRole('region', { name: /key metrics/i });
-        expect(await within(stats).findByText('4/5')).toBeDefined();
+        expect(await within(stats).findByText('5/6')).toBeDefined();
         expect(within(stats).getByText('Services healthy')).toBeDefined();
         // Lowest uptime across monitored services — never an invented SLO.
         expect(within(stats).getByText('97.2%')).toBeDefined();
         expect(within(stats).getByText('Lowest uptime')).toBeDefined();
-        expect(within(stats).getByText('23')).toBeDefined();
+        expect(within(stats).getByText('28')).toBeDefined();
         expect(within(stats).getByText('Active sessions')).toBeDefined();
         expect(within(stats).getByText('3 ms')).toBeDefined();
         expect(within(stats).getByText('Redis latency')).toBeDefined();
@@ -119,11 +119,13 @@ describe('MonitoringScreen', () => {
         const grid = await screen.findByRole('list', { name: /service health/i });
         const cards = within(grid).getAllByRole('listitem');
         expect(cards.length).toBe(6);
-        expect(within(grid).getByText('harness')).toBeDefined();
+        expect(within(grid).getByText('Clinical Documentation Harness')).toBeDefined();
+        expect(within(grid).getByText('Medical NLP')).toBeDefined();
         expect(within(grid).getByText('Degraded')).toBeDefined();
         expect(within(grid).getByText('exports depth 117')).toBeDefined();
         expect(within(grid).getByText('99.97%')).toBeDefined();
         expect(within(grid).getByText('15 of 20 recent checks up')).toBeDefined();
+        expect(within(screen.getByRole('table')).getByText('Summarization')).toBeDefined();
     });
 
     it('renders redis health facts and per-service session counts', async () => {
@@ -137,6 +139,7 @@ describe('MonitoringScreen', () => {
 
         const sessions = screen.getByRole('list', { name: /active sessions by service/i });
         expect(within(sessions).getByText('12')).toBeDefined();
+        expect(within(sessions).getByText('Summarization')).toBeDefined();
         expect(screen.getByText(/19 unique users/i)).toBeDefined();
     });
 

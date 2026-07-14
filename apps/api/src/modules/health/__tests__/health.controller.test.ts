@@ -216,8 +216,8 @@ describe('ApiHealthController', () => {
             // TASK-307 W5.1 / AC-15 / E-3 — version and checks are stripped
             // from the public response to avoid leaking downstream service
             // versions / internal probe details (per audit finding C-8).
-            expect(result.services.smr.service).toBe('smr');
-            expect(result.services.guardrail.service).toBe('guardrail');
+            expect(result.services.smr.service).toBe('Summarization');
+            expect(result.services.guardrail.service).toBe('Guardrail');
             expect(result.services.smr).not.toHaveProperty('version');
             expect(result.services.guardrail).not.toHaveProperty('version');
         });
@@ -270,7 +270,7 @@ describe('ApiHealthController', () => {
             const result = await controller.checkServiceByKey('smr');
 
             expect(result.status).toBe('healthy');
-            expect(result.service).toBe('smr');
+            expect(result.service).toBe('Summarization');
             expect(result.duration_ms).toBeGreaterThanOrEqual(0);
             // TASK-307 W5.1 / AC-15 — version + checks are stripped before
             // returning to the client (audit C-8 / E-3 / D-11). Full
