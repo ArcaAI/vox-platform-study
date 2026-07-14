@@ -49,9 +49,10 @@ function ScreenBody() {
 
     const selectedPipeline = pipelines.find((pipeline) => pipeline.id === pipelineId) ?? null;
 
-    // Sessions bind to the working tenant; tenant-bound admins use their home
-    // tenant. The WS tenant-claim guard fails closed without this value.
-    const tenantId = session.data ? (session.data.workingTenantId ?? session.data.user.tenantId) : null;
+    // Sessions bind to the effective (impersonated, when active) tenant;
+    // tenant-bound admins use their home tenant. The WS tenant-claim guard
+    // fails closed without this value.
+    const tenantId = session.data ? (session.data.effectiveTenantId ?? session.data.user.tenantId) : null;
 
     const busy = BUSY_STATUSES.includes(live.status);
     const canStart = !!pipelineId && !!tenantId && !busy;

@@ -15,17 +15,17 @@ export interface IServiceHealthMonitoringService {
 
   /**
    * Get uptime data for a specific service.
-   * @param serviceName - Display name of the service
+   * @param serviceKey - Service key (smr, nlp, stt, guardrail, harness)
    * @returns Service uptime data, or null if service not found
    */
-  getServiceUptime(serviceName: string): Promise<ServiceUptime | null>;
+  getServiceUptime(serviceKey: string): Promise<ServiceUptime | null>;
 
   /**
    * Get heartbeat history for a specific service.
-   * @param serviceName - Display name of the service
+   * @param serviceKey - Service key (smr, nlp, stt, guardrail, harness)
    * @returns Array of heartbeat records (newest first)
    */
-  getHeartbeatHistory(serviceName: string): Promise<HeartbeatRecord[]>;
+  getHeartbeatHistory(serviceKey: string): Promise<HeartbeatRecord[]>;
 
   /**
    * Get active session counts for all services.

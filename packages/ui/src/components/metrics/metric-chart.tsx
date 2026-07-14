@@ -217,7 +217,7 @@ export function MetricChart(props: MetricChartProps) {
         </ChartContainer>
       </div>
       <table data-slot="metric-chart-table" className="sr-only">
-        <caption>{ariaLabel}</caption>
+        <caption className="sr-only">{ariaLabel}</caption>
         <thead>
           <tr>
             <th scope="col">{xKey}</th>

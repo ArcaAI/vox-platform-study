@@ -81,7 +81,7 @@ interface SttStreamClient {
 
 export interface StartLiveSttOptions {
     pipelineId: string;
-    /** `workingTenantId ?? session.user.tenantId` — REQUIRED for the WS tenant-claim guard. */
+    /** `effectiveTenantId ?? session.user.tenantId` — REQUIRED for the WS tenant-claim guard. */
     tenantId: string;
     language?: string;
 }
