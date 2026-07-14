@@ -30,7 +30,7 @@ def mock_provider_registry():
 
     registry = ProviderRegistry()
     mock_provider = AsyncMock()
-    mock_provider.generate = AsyncMock(return_value=("Generated text!", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}))
+    mock_provider.generate = AsyncMock(return_value=("Generated text!", "", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}))
 
     async def _generate_stream(_request):
         yield StreamChunk(type="chunk", content="Generated text!")

@@ -120,7 +120,7 @@ class TestGenerateEndpointWithTenantKeys:
     def mock_provider(self):
         provider = AsyncMock()
         provider.generate = AsyncMock(
-            return_value=("Generated text", {
+            return_value=("Generated text", "", {
                 "prompt_tokens": 10,
                 "completion_tokens": 20,
                 "total_tokens": 30,

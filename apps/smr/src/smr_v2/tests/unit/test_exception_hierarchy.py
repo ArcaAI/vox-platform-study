@@ -58,7 +58,7 @@ def _make_provider(*, generate_exc=None):
         p.generate = AsyncMock(side_effect=generate_exc)
     else:
         p.generate = AsyncMock(
-            return_value=("ok", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0})
+            return_value=("ok", "", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0})
         )
     p.health_check = AsyncMock(return_value=True)
     p.get_info = AsyncMock()

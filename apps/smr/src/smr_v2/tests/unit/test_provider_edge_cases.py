@@ -45,7 +45,7 @@ class TestOllamaEdgeCases:
         mock_resp.raise_for_status = MagicMock()
         mock_http.post.return_value = mock_resp
         provider = OllamaProvider(config=ollama_config, http_client=mock_http)
-        content, usage = await provider.generate(GenerateRequest(prompt="hi"))
+        content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hi"))
         assert content == ""
 
     @pytest.mark.asyncio
@@ -57,7 +57,7 @@ class TestOllamaEdgeCases:
         mock_resp.raise_for_status = MagicMock()
         mock_http.post.return_value = mock_resp
         provider = OllamaProvider(config=ollama_config, http_client=mock_http)
-        content, usage = await provider.generate(GenerateRequest(prompt="hi"))
+        content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hi"))
         assert content == ""
 
     @pytest.mark.asyncio
@@ -159,7 +159,7 @@ class TestAzureEdgeCases:
         provider = AzureOpenAIProvider(config=azure_config)
         provider._client = AsyncMock()
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
-        content, usage = await provider.generate(GenerateRequest(prompt="hi", provider="azure_openai"))
+        content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hi", provider="azure_openai"))
         assert content == ""
 
     @pytest.mark.asyncio
@@ -229,7 +229,7 @@ class TestBedrockEdgeCases:
         with patch("smr_v2.providers.bedrock.boto3") as mock_boto3:
             mock_boto3.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
-            content, usage = await provider.generate(GenerateRequest(prompt="hi", provider="bedrock"))
+            content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hi", provider="bedrock"))
         assert content == "Hello world"
 
     @pytest.mark.asyncio

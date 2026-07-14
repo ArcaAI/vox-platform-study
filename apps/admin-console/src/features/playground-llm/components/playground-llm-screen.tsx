@@ -57,6 +57,12 @@ function parseMaxTokens(raw: string): number {
     return Math.min(Math.max(parsed, 1), 32768);
 }
 
+function formatSentProviderModel(request: LlmRequest | null): string {
+    const provider = request?.body.provider ?? '';
+    const model = request?.body.model ?? '';
+    return model ? `${provider} \u00b7 ${model}` : provider;
+}
+
 /**
  * Frame 54 strip under the header: the EFFECTIVE request settings, including
  * the HarnessPolicy-cascade note whenever provider/model are omitted, plus
@@ -87,28 +93,32 @@ function RequestSummaryStrip({
         </span>
     );
     return (
-        <div className="bg-card text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border px-3 py-2 font-mono text-xs">
+        <div className="bg-card text-foreground flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border px-3 py-2 font-mono text-xs">
             {providersLoading ? (
                 <Skeleton className="h-4 w-48" />
             ) : hasCatalog ? (
                 <>
-                    <span>Provider: {selectedProvider}</span>
+                    <span><span className="text-muted-foreground">Provider </span>{selectedProvider}</span>
                     {separator}
-                    {selectedModel ? <span>model {selectedModel}</span> : <span>model omitted {'\u2192'} tenant default via HarnessPolicy cascade</span>}
+                    {selectedModel ? (
+                        <span><span className="text-muted-foreground">model </span>{selectedModel}</span>
+                    ) : (
+                        <span className="text-muted-foreground">model omitted {'\u2192'} tenant default via HarnessPolicy cascade</span>
+                    )}
                 </>
             ) : (
-                <span>provider/model omitted {'\u2192'} tenant default via HarnessPolicy cascade</span>
+                <span className="text-muted-foreground">provider/model omitted {'\u2192'} tenant default via HarnessPolicy cascade</span>
             )}
             {separator}
-            <span>temp {temperature.toFixed(1)}</span>
+            <span><span className="text-muted-foreground">temp </span>{temperature.toFixed(1)}</span>
             {separator}
-            <span>max-tokens {maxTokens}</span>
+            <span><span className="text-muted-foreground">max-tokens </span>{maxTokens}</span>
             {separator}
-            <span>{streaming ? 'streaming' : 'sync'}</span>
+            <span className={streaming ? 'text-primary' : ''}>{streaming ? 'streaming' : 'sync'}</span>
             {taskId ? (
                 <>
                     {separator}
-                    <span>task {taskId}</span>
+                    <span><span className="text-muted-foreground">task </span>{taskId}</span>
                 </>
             ) : null}
         </div>
@@ -162,6 +172,7 @@ function PlaygroundLlmBody() {
     const session = useSession();
     const roles = session.data?.user.roles ?? [];
     const isElevated = session.data?.isElevated ?? false;
+    const workingTenantName = session.data?.workingTenantName ?? null;
     const canDebug = roles.includes('GLOBAL_ADMIN') || roles.includes('TENANT_ADMIN');
 
     const [globalCatalog, setGlobalCatalog] = useState(false);
@@ -278,7 +289,7 @@ function PlaygroundLlmBody() {
     };
 
     return (
-        <PlaygroundCanvas className="max-w-[1200px]">
+        <PlaygroundCanvas className="max-w-[1440px]">
             <CanvasHeader
                 title="Agent Playground"
                 description={'Compose → run → stream · runs under your own account'}
@@ -308,7 +319,7 @@ function PlaygroundLlmBody() {
                         taskId={run.kind === 'stream' ? run.taskId : null}
                     />
                     <span className="text-muted-foreground text-xs">{footerStatus(run, stream, isPending, recovered)}</span>
-                    <div className="grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,4fr)_minmax(0,5fr)_minmax(0,3fr)]">
+                    <div className="grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,3fr)_minmax(0,4fr)_minmax(0,3fr)]">
                         <PromptEditorCard
                             form={form}
                             onPatch={patch}
@@ -329,6 +340,7 @@ function PlaygroundLlmBody() {
                             stream={stream}
                             isPending={isPending}
                             postMortem={postMortemQuery.data}
+                            streamProviderModel={formatSentProviderModel(lastRequestRef.current)}
                             onCancel={handleCancel}
                             cancelPending={cancelMutation.isPending}
                             onRetry={handleRetry}
@@ -345,6 +357,7 @@ function PlaygroundLlmBody() {
                             showGlobalSwitch={isElevated}
                             globalCatalog={globalCatalog}
                             onGlobalCatalogChange={setGlobalCatalog}
+                            workingTenantName={workingTenantName}
                         />
                     </div>
                 </TabsContent>

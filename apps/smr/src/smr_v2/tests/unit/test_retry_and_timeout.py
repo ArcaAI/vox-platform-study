@@ -104,7 +104,7 @@ class TestRetryHandler:
         """No retry needed when first attempt succeeds."""
         mock_provider = AsyncMock()
         mock_provider.generate = AsyncMock(
-            return_value=("Success!", {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15})
+            return_value=("Success!", "", {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15})
         )
         app = _app_factory(mock_provider)
         resp = await _post_generate(app, {
@@ -122,7 +122,7 @@ class TestRetryHandler:
         mock_provider.generate = AsyncMock(
             side_effect=[
                 RuntimeError("provider down"),
-                ("Recovered!", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}),
+                ("Recovered!", "", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}),
             ]
         )
         app = _app_factory(mock_provider)
@@ -171,7 +171,7 @@ class TestRetryHandler:
         mock_provider.generate = AsyncMock(
             side_effect=[
                 RuntimeError("transient"),
-                ("Second try!", {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}),
+                ("Second try!", "", {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}),
             ]
         )
         app = _app_factory(mock_provider)
@@ -213,7 +213,7 @@ class TestPerRequestTimeout:
 
         async def slow_generate(*args, **kwargs):
             await asyncio.sleep(10)
-            return "late", {}
+            return "late", "", {}
 
         mock_provider = AsyncMock()
         mock_provider.generate = AsyncMock(side_effect=slow_generate)
@@ -238,7 +238,7 @@ class TestPerRequestTimeout:
             nonlocal call_count
             call_count += 1
             await asyncio.sleep(2)
-            return "too slow", {}
+            return "too slow", "", {}
 
         mock_provider = AsyncMock()
         mock_provider.generate = AsyncMock(side_effect=barely_slow)
@@ -261,7 +261,7 @@ class TestPerRequestTimeout:
         mock_provider.generate = AsyncMock(
             side_effect=[
                 TimeoutError(),
-                ("Fast!", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}),
+                ("Fast!", "", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}),
             ]
         )
 
@@ -283,7 +283,7 @@ class TestPerRequestTimeout:
 
         async def always_slow(*args, **kwargs):
             await asyncio.sleep(10)
-            return "never", {}
+            return "never", "", {}
 
         mock_provider = AsyncMock()
         mock_provider.generate = AsyncMock(side_effect=always_slow)
@@ -315,7 +315,7 @@ class TestRetryWithTimeout:
             side_effect=[
                 TimeoutError(),
                 TimeoutError(),
-                ("Finally!", {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}),
+                ("Finally!", "", {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}),
             ]
         )
         app = _app_factory(mock_provider)

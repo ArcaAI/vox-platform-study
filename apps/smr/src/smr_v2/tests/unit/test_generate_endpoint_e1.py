@@ -19,7 +19,7 @@ def mock_provider():
     from smr_v2.models.stream import StreamChunk
 
     provider = AsyncMock()
-    provider.generate = AsyncMock(return_value=("Generated summary", {
+    provider.generate = AsyncMock(return_value=("Generated summary", "", {
         "prompt_tokens": 50,
         "completion_tokens": 100,
         "total_tokens": 150,
@@ -93,7 +93,7 @@ class TestGenerateEndpointTokenUsage:
 
     @pytest.mark.asyncio
     async def test_sync_generate_with_response_format(self, client, mock_provider):
-        mock_provider.generate = AsyncMock(return_value=('{"plan":"rest"}', {
+        mock_provider.generate = AsyncMock(return_value=('{"plan":"rest"}', "", {
             "prompt_tokens": 30, "completion_tokens": 10, "total_tokens": 40,
         }))
         resp = await client.post("/api/v1/generate", json={

@@ -28,7 +28,7 @@ from smr_v2.models.requests import GenerateRequest
 def mock_provider():
     provider = AsyncMock()
     provider.generate = AsyncMock(
-        return_value=("Generated text", {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2})
+        return_value=("Generated text", "", {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2})
     )
     return provider
 

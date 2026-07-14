@@ -28,6 +28,7 @@ def mock_provider():
     provider.generate = AsyncMock(
         return_value=(
             "Generated summary",
+            "",
             {"prompt_tokens": 50, "completion_tokens": 100, "total_tokens": 150},
         )
     )

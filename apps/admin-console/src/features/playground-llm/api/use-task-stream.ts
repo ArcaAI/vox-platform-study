@@ -31,6 +31,8 @@ export interface TaskStreamState {
     status: TaskStreamStatus;
     /** Accumulated chunk text (a reconnect replay starts a fresh accumulation). */
     content: string;
+    /** Accumulated reasoning/thinking text (same replay-reset rule as content). */
+    reasoning: string;
     chunkCount: number;
     usage: SmrTokenUsage | null;
     finishReason: string | null;
@@ -43,13 +45,14 @@ export interface TaskStreamState {
 
 interface StreamFields {
     content: string;
+    reasoning: string;
     chunkCount: number;
     usage: SmrTokenUsage | null;
     finishReason: string | null;
     error: string | null;
 }
 
-const EMPTY_FIELDS: StreamFields = { content: '', chunkCount: 0, usage: null, finishReason: null, error: null };
+const EMPTY_FIELDS: StreamFields = { content: '', reasoning: '', chunkCount: 0, usage: null, finishReason: null, error: null };
 
 /** Event-driven slice; `key` ties it to one connection so stale data is ignored. */
 interface StreamEventState extends StreamFields {
@@ -93,6 +96,11 @@ export function useTaskStream(taskId: string | null): TaskStreamState {
                     ? { ...previous, content: previous.content + (frame.content ?? ''), chunkCount: previous.chunkCount + 1 }
                     : previous,
             );
+        });
+        source.addEventListener('reasoning', (event) => {
+            const frame = parseFrame(event);
+            if (!frame) return;
+            setEventState((previous) => (previous.key === key ? { ...previous, reasoning: previous.reasoning + (frame.content ?? '') } : previous));
         });
         source.addEventListener('usage', (event) => {
             const frame = parseFrame(event);
@@ -143,6 +151,7 @@ export function useTaskStream(taskId: string | null): TaskStreamState {
     return {
         status,
         content: fields.content,
+        reasoning: fields.reasoning,
         chunkCount: fields.chunkCount,
         usage: fields.usage,
         finishReason: fields.finishReason,

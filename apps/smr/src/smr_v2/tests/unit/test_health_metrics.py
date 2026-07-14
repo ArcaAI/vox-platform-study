@@ -44,7 +44,7 @@ def _make_mock_provider(*, healthy: bool = True):
     provider = AsyncMock()
     provider.health_check = AsyncMock(return_value=healthy)
     provider.generate = AsyncMock(
-        return_value=("Generated text!", {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15})
+        return_value=("Generated text!", "", {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15})
     )
     provider.get_info = AsyncMock(
         return_value=ProviderInfo(
