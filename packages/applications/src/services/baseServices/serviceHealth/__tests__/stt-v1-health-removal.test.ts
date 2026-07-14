@@ -69,43 +69,44 @@ describe('STT v1 Health Check Removal (TASK-210 Phase 1)', () => {
             const result = await service.getUptime();
 
             const serviceNames = Object.keys(result.services);
-            expect(serviceNames).toHaveLength(5);
-            expect(serviceNames).toContain('Summarization');
-            expect(serviceNames).toContain('Medical NLP');
-            expect(serviceNames).toContain('Speech to Text');
-            expect(serviceNames).toContain('Guardrail');
-            expect(serviceNames).toContain('Clinical Documentation Harness');
+            expect(serviceNames).toHaveLength(6);
+            expect(serviceNames).toContain('smr');
+            expect(serviceNames).toContain('nlp');
+            expect(serviceNames).toContain('stt');
+            expect(serviceNames).toContain('tts');
+            expect(serviceNames).toContain('guardrail');
+            expect(serviceNames).toContain('harness');
         });
 
         it('should return uptime for STT v2 (Speech to Text)', async () => {
             mockRedisInstance.lrange.mockResolvedValue([]);
-            const result = await service.getServiceUptime('Speech to Text');
+            const result = await service.getServiceUptime('stt');
             expect(result).not.toBeNull();
             expect(result!.status).toBe('unknown');
         });
 
         it('should still return uptime for Summarization', async () => {
             mockRedisInstance.lrange.mockResolvedValue([]);
-            const result = await service.getServiceUptime('Summarization');
+            const result = await service.getServiceUptime('smr');
             expect(result).not.toBeNull();
             expect(result!.status).toBe('unknown');
         });
 
         it('should return uptime for Guardrail', async () => {
             mockRedisInstance.lrange.mockResolvedValue([]);
-            const result = await service.getServiceUptime('Guardrail');
+            const result = await service.getServiceUptime('guardrail');
             expect(result).not.toBeNull();
             expect(result!.status).toBe('unknown');
         });
     });
 
     describe('health check URLs should not include STT v1', () => {
-        it('should perform health checks for all 5 services', async () => {
+        it('should perform health checks for all 6 services', async () => {
             mockFetch.mockResolvedValue({ ok: true });
 
             await service.performHealthChecks();
 
-            expect(mockFetch).toHaveBeenCalledTimes(5);
+            expect(mockFetch).toHaveBeenCalledTimes(6);
         });
 
         it('should not call any STT v1 URL (port 5003)', async () => {

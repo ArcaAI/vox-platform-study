@@ -106,8 +106,6 @@ export interface StreamingSessionLike {
     consultationId?: string;
     sampleRate?: number;
     language?: string;
-    codeSwitching?: boolean;
-    diarization?: boolean;
     microphoneId?: string;
   }): Promise<{
     sessionId: string;
@@ -189,8 +187,6 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
       consultationId: streamingConfig.consultationId,
       sampleRate: streamingConfig.sampleRate,
       language: streamingConfig.language,
-      codeSwitching: streamingConfig.codeSwitching,
-      diarization: streamingConfig.diarization,
       microphoneId: streamingConfig.microphoneId,
     });
 

@@ -95,3 +95,45 @@ test.describe('playground inside the console shell (TASK-502)', () => {
         await expectNoA11yViolations(page);
     });
 });
+
+test.describe('playground — DNA writing style', () => {
+    test.beforeEach(async ({ page }) => {
+        await selectWorkingTenant(page);
+    });
+
+    test('renders the screen with no WCAG 2.2 AA violations', async ({ page }) => {
+        await page.goto('/playground/dna-writing-style');
+        await expect(page.getByRole('heading', { level: 1, name: 'My DNA Writing Style' })).toBeVisible();
+        await expectNoA11yViolations(page);
+    });
+});
+
+test.describe('playground — consultation demo', () => {
+    test.beforeEach(async ({ page }) => {
+        await selectWorkingTenant(page);
+    });
+
+    test('renders the screen with no WCAG 2.2 AA violations', async ({ page }) => {
+        await page.goto('/playground/consultation');
+        await expect(page.getByRole('heading', { level: 1, name: 'Consultation Demo' })).toBeVisible();
+        await expectNoA11yViolations(page);
+    });
+});
+
+test.describe('playground — live transcription', () => {
+    test.beforeEach(async ({ page }) => {
+        await selectWorkingTenant(page);
+    });
+
+    test('exposes Streaming session / Batch upload tabs with no WCAG 2.2 AA violations', async ({ page }) => {
+        await page.goto('/playground/live-transcription');
+        await expect(page.getByRole('heading', { level: 1, name: 'Live Transcription' })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Streaming session' })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Batch upload' })).toBeVisible();
+
+        await page.getByRole('tab', { name: 'Batch upload' }).click();
+        await expect(page.getByRole('tabpanel')).toBeVisible();
+
+        await expectNoA11yViolations(page);
+    });
+});
