@@ -41,7 +41,7 @@ export interface ServiceSessionCount {
 /**
  * Response for sessions endpoint.
  *
- * Covers the real downstream services (smr, stt, nlp, guardrail, harness) so
+ * Covers the real downstream services (smr, stt, tts, nlp, guardrail, harness) so
  * the sessions surface stays aligned with uptime/health. Counts are static
  * placeholders; see ServiceHealthMonitoringService.getSessionCounts (no
  * per-service polling).
@@ -50,6 +50,7 @@ export interface SessionsResponse {
   services: {
     smr: ServiceSessionCount;
     stt: ServiceSessionCount;
+    tts: ServiceSessionCount;
     nlp: ServiceSessionCount;
     guardrail: ServiceSessionCount;
     harness: ServiceSessionCount;

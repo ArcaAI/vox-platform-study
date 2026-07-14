@@ -119,7 +119,6 @@ describe('StreamingSessionManager', () => {
         consultationId: 'consult-456',
         sampleRate: 44100,
         language: 'th',
-        codeSwitching: true,
         microphoneId: 'mic-1',
       };
 
@@ -130,7 +129,6 @@ describe('StreamingSessionManager', () => {
       expect(callBody.consultationId).toBe('consult-456');
       expect(callBody.sampleRate).toBe(44100);
       expect(callBody.language).toBe('th');
-      expect(callBody.codeSwitching).toBe(true);
       expect(callBody.microphoneId).toBe('mic-1');
     });
 

@@ -145,10 +145,11 @@ function ServiceHealthGrid({ health, uptime }: { health: ReturnType<typeof useSe
                             const serviceUptime: ServiceUptime | undefined = uptimes[key];
                             const status = probe?.status ?? serviceUptime?.status ?? 'unknown';
                             const responseMs = serviceUptime?.responseTime ?? probe?.duration_ms;
+                            const serviceName = probe?.service ?? key;
                             return (
                                 <li key={key} className="flex flex-col gap-1.5 rounded-lg border p-4 text-sm">
                                     <span className="flex items-center gap-2">
-                                        <StatusDot colorRole={serviceStatusRole(status)} label={<span className="font-medium">{key}</span>} />
+                                        <StatusDot colorRole={serviceStatusRole(status)} label={<span className="font-medium">{serviceName}</span>} />
                                         <span className="text-muted-foreground text-xs">{serviceStatusLabel(status)}</span>
                                     </span>
                                     {probe?.error ? <span className="text-destructive text-xs">{probe.error}</span> : null}

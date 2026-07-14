@@ -232,7 +232,7 @@ export class ApiHealthController {
   // TASK-386 (#21) — widened to `read:TenantTelemetry` (see /services above).
   @CanAny(['manage', 'all'], ['read', 'TenantTelemetry'])
   @ApiOperation({ summary: 'Health check for a single downstream microservice (admin only)' })
-  @ApiParam({ name: 'serviceKey', enum: ['smr', 'nlp', 'stt', 'guardrail', 'harness'], description: 'Service key' })
+  @ApiParam({ name: 'serviceKey', enum: ['smr', 'nlp', 'stt', 'tts', 'guardrail', 'harness'], description: 'Service key' })
   @ApiResponse({ status: 200, description: 'Sanitised health status of the requested service' })
   @ApiResponse({ status: 401, description: 'Authentication required' })
   @ApiResponse({ status: 404, description: 'Unknown service key' })
@@ -264,7 +264,7 @@ export class ApiHealthController {
       });
       return {
         status: data.status || 'healthy',
-        service: data.service || svc.name,
+        service: svc.name,
         uptime_seconds: data.uptime_seconds,
         duration_ms: Date.now() - start,
       };

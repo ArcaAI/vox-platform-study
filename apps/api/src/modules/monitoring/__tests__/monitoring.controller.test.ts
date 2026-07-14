@@ -125,9 +125,9 @@ describe('MonitoringController', () => {
         it('should delegate to monitoringService.getUptime', async () => {
             const expected: UptimeResponse = {
                 services: {
-                    'Speech to Text': createMockUptime(),
-                    Guardrail: createMockUptime(),
-                    Summarization: createMockUptime(),
+                    stt: createMockUptime(),
+                    guardrail: createMockUptime(),
+                    smr: createMockUptime(),
                 },
                 refreshedAt: new Date().toISOString(),
             };
