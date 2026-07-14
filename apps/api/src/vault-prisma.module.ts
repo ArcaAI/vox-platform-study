@@ -21,7 +21,7 @@
  * importer having to wire it explicitly.
  */
 
-import { SecretsService } from '@arcaai/applications';
+import { SecretsService, VaultLeaseRenewer } from '@arcaai/applications';
 import { VAULT_PRISMA_FACTORY, type VaultPrismaFactory, type VaultPrismaFactoryResult } from '@arcaai/domains';
 import { Global, Logger, Module } from '@nestjs/common';
 import {
@@ -33,6 +33,39 @@ import {
 } from '@arcaai/database';
 
 const logger = new Logger('VaultPrismaFactoryModule');
+
+// BUG-006 — conservative fallback ONLY: the real hope-app-role max_ttl now
+// differs per environment (dev 168h/7d, prod 720h/30d — see
+// docs/operations/vault/README.md "Dynamic DB credentials") and MUST be set
+// explicitly via PG_VAULT_MAX_TTL_SEC in each env file. This constant only
+// applies if that var is missing; being smaller than any real max_ttl just
+// means swapping somewhat more often than strictly necessary, never a
+// missed swap. Vault's max_ttl clock starts at lease ISSUE time and does
+// NOT reset on renewal, so elapsed time is measured from the credential's
+// acquire()/swap() time, not from the last successful renew.
+const DEFAULT_MAX_TTL_SEC = 24 * 60 * 60;
+// Stop renewing and rebuild the pool this many seconds (or this fraction of
+// max_ttl, whichever is smaller) before max_ttl — renewal beyond max_ttl is
+// rejected by Vault outright, so the swap must land with room to spare.
+const SWAP_SAFETY_MARGIN_CAP_SEC = 300;
+const SWAP_SAFETY_MARGIN_FRACTION = 0.25;
+
+function resolveMaxTtlSec(): number {
+  // eslint-disable-next-line turbo/no-undeclared-env-vars
+  const raw = process.env.PG_VAULT_MAX_TTL_SEC;
+  const parsed = raw ? Number(raw) : NaN;
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_TTL_SEC;
+}
+
+function swapSafetyMarginSec(maxTtlSec: number): number {
+  return Math.min(SWAP_SAFETY_MARGIN_CAP_SEC, maxTtlSec * SWAP_SAFETY_MARGIN_FRACTION);
+}
+
+/** Structural surface for registering renewer health with SecretsService, without forcing every VaultDbSecretsLike caller to implement it. */
+interface LeaseRenewerRegistrar {
+  setLeaseRenewer?(renewer: { readonly degraded: boolean; readonly failureCount: number }): void;
+  clearLeaseRenewer?(): void;
+}
 
 /**
  * Pure builder that returns a Vault prisma factory OR null, based on
@@ -75,13 +108,51 @@ export function buildVaultPrismaFactory(secrets: VaultDbSecretsLike): VaultPrism
       getTenantId: () => resolveTenantContext().tenantId,
       isSuperAdmin: () => resolveTenantContext().isSuperAdmin,
     });
+
+    // BUG-006 — without this, the credential fetched above is baked into
+    // the pool for its whole lifetime: Vault revokes the underlying PG user
+    // at lease expiry and every subsequent query 401s (P1000) until a
+    // manual restart. Renew at 50% TTL while under max_ttl; once renewal
+    // is no longer possible (or a renewal call fails) rebuild the pool via
+    // wrapper.swap(), which mints a brand-new credential.
+    const maxTtlSec = resolveMaxTtlSec();
+    let acquiredAtMs = Date.now();
+    const renewer = new VaultLeaseRenewer({
+      leaseId: wrapper.leaseId,
+      ttlSec: wrapper.ttlSec,
+      renew: async () => {
+        const elapsedSec = (Date.now() - acquiredAtMs) / 1000;
+        const canRenew = typeof secrets.renewDbLease === 'function' && elapsedSec < maxTtlSec - swapSafetyMarginSec(maxTtlSec);
+        if (canRenew) {
+          try {
+            return await secrets.renewDbLease!(wrapper.leaseId, wrapper.ttlSec);
+          } catch (err: unknown) {
+            logger.warn(`Vault DB lease renew failed for role '${role}'; falling back to pool swap: ${(err as Error).message}`);
+          }
+        }
+        await wrapper.swap();
+        acquiredAtMs = Date.now();
+        logger.log(`Vault DB lease pool swapped for role '${role}' (renew window exhausted or failed)`);
+        return { ttlSec: wrapper.ttlSec };
+      },
+      onDegraded: (failureCount) => {
+        logger.error(`Vault DB lease renewer degraded for role '${role}' after ${failureCount} consecutive failures`);
+      },
+    });
+    renewer.start();
+    (secrets as unknown as LeaseRenewerRegistrar).setLeaseRenewer?.(renewer);
+
     return {
       // The PrismaClient surface from @arcaai/database is the one
       // CoreDatabaseService consumes; the structural cast keeps the
       // wrapper free of the workspace's generated-types path.
       client: baseClient as unknown as VaultPrismaFactoryResult['client'],
       extendedClient: extendedClient as unknown as VaultPrismaFactoryResult['extendedClient'],
-      disconnect: () => wrapper.disconnect(),
+      disconnect: async () => {
+        await renewer.stop();
+        (secrets as unknown as LeaseRenewerRegistrar).clearLeaseRenewer?.();
+        await wrapper.disconnect();
+      },
     };
   };
 }
