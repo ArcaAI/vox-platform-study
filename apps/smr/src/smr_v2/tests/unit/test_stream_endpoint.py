@@ -124,6 +124,24 @@ class TestStreamEndpointSSE:
         assert resp.status_code == 200
 
     @pytest.mark.asyncio
+    async def test_stream_resumes_from_last_event_id_header(self, settings):
+        """A Last-Event-ID header should be used as the resume cursor when no query param is given."""
+        tm = AsyncMock()
+        tm.get_task = AsyncMock(return_value=TaskState(
+            task_id="t1", status=TaskStatus.RUNNING, provider="p", model="m"
+        ))
+        tm.read_chunks_blocking = AsyncMock(return_value=[
+            ("3-0", StreamChunk(type="done", data={"finish_reason": "stop"})),
+        ])
+
+        app = _build_app(settings, tm)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/api/v1/tasks/t1/stream", headers={"Last-Event-ID": "2-0"})
+        assert resp.status_code == 200
+        tm.read_chunks_blocking.assert_any_call("t1", last_id="2-0", block_ms=5000)
+
+    @pytest.mark.asyncio
     async def test_stream_404_for_nonexistent_task(self, settings):
         tm = AsyncMock()
         tm.get_task = AsyncMock(return_value=None)

@@ -242,6 +242,23 @@ describe('PlaygroundLlmScreen', () => {
         expect(screen.getByText('azure-openai \u00b7 gpt-5')).toBeDefined();
     });
 
+    it('renders a Reasoning panel for a sync generation that carries reasoning', async () => {
+        stubLlm((call, parsed) => {
+            if (parsed.pathname === '/api/hope/text/generate' && call.method === 'POST') {
+                return Response.json({ ...SYNC_RESULT, reasoning: 'Checking for cardiac vs pulmonary causes first.' });
+            }
+            return undefined;
+        });
+        renderWithProviders(<PlaygroundLlmScreen />);
+
+        await screen.findByLabelText('Provider');
+        fireEvent.click(screen.getByRole('switch', { name: 'Streaming mode' }));
+        await generateWithPrompt('Summarize the visit transcript below');
+
+        expect(await screen.findByText('Checking for cardiac vs pulmonary causes first.')).toBeDefined();
+        expect(screen.getByText('Patient presents with exertional dyspnea.')).toBeDefined();
+    });
+
     it('streams tokens over the BFF-proxied SSE: chunks append live, usage/done finalize', async () => {
         const calls = stubLlm((call, parsed) => {
             if (parsed.pathname === '/api/hope/text/generate' && call.method === 'POST') return Response.json(STREAM_ACK);
@@ -412,14 +429,15 @@ describe('PlaygroundLlmScreen', () => {
         await screen.findByLabelText('Provider');
         // The request-summary strip sits under the canvas header (TASK-442 §4: the
         // playground banner moved to the top-bar persona control).
-        expect(screen.getByText('Provider: azure-openai')).toBeDefined();
-        expect(screen.getByText('model gpt-5')).toBeDefined();
-        expect(screen.getByText('temp 0.2')).toBeDefined();
-        expect(screen.getByText('max-tokens 1024')).toBeDefined();
+        const strip = (text: string) => screen.getByText((_, element) => element?.textContent === text);
+        expect(strip('Provider azure-openai')).toBeDefined();
+        expect(strip('model gpt-5')).toBeDefined();
+        expect(strip('temp 0.2')).toBeDefined();
+        expect(strip('max-tokens 1024')).toBeDefined();
         expect(screen.getByText('streaming')).toBeDefined();
 
         await generateWithPrompt('Summarize');
-        expect(await screen.findByText('task t-5531')).toBeDefined();
+        expect(await screen.findByText((_, element) => element?.textContent === 'task t-5531')).toBeDefined();
     });
 
     it('finalizes a dropped stream from the task read when the task completed server-side', async () => {
@@ -510,7 +528,7 @@ describe('PlaygroundLlmScreen', () => {
         const calls = stubLlm();
         renderWithProviders(<PlaygroundLlmScreen />);
 
-        const globalSwitch = await screen.findByRole('switch', { name: /__GLOBAL__/ });
+        const globalSwitch = await screen.findByRole('switch', { name: /Global catalog/ });
         fireEvent.click(globalSwitch);
 
         await waitFor(() => expect(calls.some((call) => call.url.includes('/api/hope/text/providers?tenantKey=__GLOBAL__'))).toBe(true));

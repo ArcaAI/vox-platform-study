@@ -252,7 +252,14 @@ export function EditTemplateForm({
                     <Label htmlFor="edit-template-name">
                         Name <RequiredMark />
                     </Label>
-                    <Input id="edit-template-name" value={name} onChange={(event) => setName(event.target.value)} autoComplete="off" required />
+                    <Input
+                        id="edit-template-name"
+                        aria-label="Name"
+                        value={name}
+                        onChange={(event) => setName(event.target.value)}
+                        autoComplete="off"
+                        required
+                    />
                 </div>
                 <div className="flex flex-col gap-2">
                     <Label htmlFor="edit-template-status">Status</Label>
@@ -285,6 +292,7 @@ export function EditTemplateForm({
                 </Label>
                 <Textarea
                     id="edit-template-content"
+                    aria-label="Prompt content"
                     value={content}
                     onChange={(event) => setContent(event.target.value)}
                     className="min-h-40 flex-1 resize-none font-mono text-xs"

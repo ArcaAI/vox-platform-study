@@ -23,8 +23,8 @@ function CatalogList({ title, endpoint, items, isLoading, error, onRetry }: Cata
     return (
         <section className="flex flex-col gap-2">
             <div className="flex items-baseline justify-between gap-2">
-                <h3 className="text-sm font-medium">{title}</h3>
-                <span className="text-muted-foreground font-mono text-xs">{endpoint}</span>
+                <h3 className="text-sm font-semibold">{title}</h3>
+                <span className="text-muted-foreground/70 font-mono text-[11px]">{endpoint}</span>
             </div>
             {isLoading ? (
                 <div className="flex flex-col gap-2">
@@ -38,9 +38,12 @@ function CatalogList({ title, endpoint, items, isLoading, error, onRetry }: Cata
             ) : (
                 <ul className="flex flex-col gap-2">
                     {items.map((provider) => (
-                        <li key={provider.name} className="flex flex-col gap-1 rounded-md border p-2">
+                        <li
+                            key={provider.name}
+                            className="flex flex-col gap-1.5 rounded-lg border p-3 transition-colors hover:bg-accent/40"
+                        >
                             <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-mono text-sm">{provider.name}</span>
+                                <span className="font-mono text-sm font-medium">{provider.name}</span>
                                 {provider.is_default ? <StatusBadge label="default" colorRole="primary" /> : null}
                                 <StatusBadge
                                     label={provider.is_available ? 'Available' : 'Unavailable'}
@@ -72,6 +75,7 @@ interface ProvidersCardProps {
     showGlobalSwitch: boolean;
     globalCatalog: boolean;
     onGlobalCatalogChange: (checked: boolean) => void;
+    workingTenantName: string | null;
 }
 
 export function ProvidersCard({
@@ -85,12 +89,15 @@ export function ProvidersCard({
     showGlobalSwitch,
     globalCatalog,
     onGlobalCatalogChange,
+    workingTenantName,
 }: ProvidersCardProps) {
     return (
         <Card className="gap-4">
             <CardHeader>
                 <CardTitle>Providers &amp; guardrails</CardTitle>
-                <CardDescription>Catalogs resolve against the working tenant</CardDescription>
+                <CardDescription>
+                    {workingTenantName ? `Catalogs resolve against ${workingTenantName}` : 'Catalogs resolve against the working tenant'}
+                </CardDescription>
                 <CardAction>
                     <Button variant="ghost" size="icon" aria-label="Refresh provider catalogs" onClick={onRefresh}>
                         <IconRefresh aria-hidden />
@@ -101,9 +108,9 @@ export function ProvidersCard({
                 {showGlobalSwitch ? (
                     <div className="flex items-start justify-between gap-3 rounded-md border p-3">
                         <div className="flex min-w-0 flex-col gap-0.5">
-                            <Label htmlFor="llm-global-catalog">Use __GLOBAL__ catalog</Label>
+                            <Label htmlFor="llm-global-catalog">Global catalog</Label>
                             <p className="text-muted-foreground text-xs">
-                                GLOBAL_ADMIN only — other sessions get 403 (legacy isSuperAdmin check, pre-TASK-417).
+                                Global admins only — resolves against <code className="font-mono">__GLOBAL__</code> instead of the working tenant.
                             </p>
                         </div>
                         <Switch id="llm-global-catalog" checked={globalCatalog} onCheckedChange={onGlobalCatalogChange} />
@@ -125,8 +132,8 @@ export function ProvidersCard({
                     error={guardrailsError}
                     onRetry={onRefresh}
                 />
-                <p className="text-muted-foreground text-xs">
-                    Provider/model omitted → the tenant’s HarnessPolicy cascade resolves them; when nothing resolves SMR fails closed with 422.
+                <p className="text-muted-foreground/80 border-t pt-3 text-[11px] leading-relaxed">
+                    Provider/model omitted → HarnessPolicy cascade resolves them; unresolved fails closed with <code className="font-mono">422</code>.
                 </p>
             </CardContent>
         </Card>

@@ -39,6 +39,7 @@ dependencies = [
     "asyncpg>=0.31.0",
     # GLiNER ONNX — content safety, adversarial, PII detection
     "gliner2-onnx",
+    "transformers>=5.0",
     "onnxruntime>=1.18.0",
 ]
 

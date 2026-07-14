@@ -26,6 +26,24 @@ def _get_tracer() -> Tracer:
     return get_tracer(__name__)
 
 
+def _split_inline_think(text: str, in_think: bool) -> tuple[list[tuple[str, str]], bool]:
+    segments: list[tuple[str, str]] = []
+    remaining = text
+    while remaining:
+        tag = "</think>" if in_think else "<think>"
+        idx = remaining.find(tag)
+        if idx == -1:
+            segments.append(("reasoning" if in_think else "chunk", remaining))
+            remaining = ""
+        else:
+            before = remaining[:idx]
+            if before:
+                segments.append(("reasoning" if in_think else "chunk", before))
+            in_think = not in_think
+            remaining = remaining[idx + len(tag):]
+    return segments, in_think
+
+
 class OllamaProvider:
     """Ollama self-hosted LLM provider."""
 
@@ -52,6 +70,7 @@ class OllamaProvider:
                 "num_predict": resolved["max_tokens"],
                 "top_p": resolved["top_p"],
             },
+            "think": True,
         }
         if request.system_prompt:
             payload["system"] = request.system_prompt
@@ -89,7 +108,7 @@ class OllamaProvider:
             span.set_attribute("gen_ai.usage.input_tokens", usage["prompt_tokens"])
             span.set_attribute("gen_ai.usage.output_tokens", usage["completion_tokens"])
             span.set_attribute("gen_ai.response.finish_reason", "stop")
-            return data.get("response", ""), usage
+            return data.get("response", ""), data.get("thinking", ""), usage
 
     async def generate_stream(self, request: GenerateRequest) -> AsyncIterator[StreamChunk]:
         resolved = resolve_request_defaults(request)
@@ -105,6 +124,7 @@ class OllamaProvider:
         ) as span:
             url = f"{self._base_url}/api/generate"
             payload = self._build_payload(request, stream=True)
+            in_inline_think = False
 
             async with self._http.stream("POST", url, json=payload) as resp:
                 resp.raise_for_status()
@@ -124,8 +144,17 @@ class OllamaProvider:
                         yield StreamChunk(type="usage", data=usage)
                         yield StreamChunk(type="done", data={"finish_reason": "stop"})
                         return
+                    thinking = data.get("thinking", "")
+                    if thinking:
+                        yield StreamChunk(type="reasoning", content=thinking)
                     text = data.get("response", "")
-                    if text:
+                    if not text:
+                        continue
+                    if not thinking:
+                        segments, in_inline_think = _split_inline_think(text, in_inline_think)
+                        for chunk_type, chunk_text in segments:
+                            yield StreamChunk(type=chunk_type, content=chunk_text)
+                    else:
                         yield StreamChunk(type="chunk", content=text)
 
     async def health_check(self) -> bool:

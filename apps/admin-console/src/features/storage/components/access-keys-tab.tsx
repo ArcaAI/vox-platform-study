@@ -65,11 +65,8 @@ function CreateAccessKeyDialog({
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="flex flex-col gap-4">
                     <div className="flex flex-col gap-2">
-                        <Label htmlFor="access-key-name">
+                        <Label htmlFor="access-key-name" className="after:text-destructive after:content-['_*']">
                             Name
-                            <span aria-hidden className="text-destructive">
-                                *
-                            </span>
                         </Label>
                         <Input id="access-key-name" value={name} onChange={(event) => setName(event.target.value)} required />
                     </div>

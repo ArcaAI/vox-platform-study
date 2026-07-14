@@ -10,10 +10,12 @@
  *     legacy `audio` slug but keeps the AUDIO purpose so streaming/batch
  *     bucket resolution is unchanged.
  *
- * Note: Only the DB rows are created here. The underlying provider buckets are
- * created lazily by the storage flow (`TenantBucketService` provisions missing
- * physical buckets on demand and in `provisionSystemBuckets`) or via the admin
- * endpoint `POST /admin/tenants/storage/buckets/provision/:tenantId`.
+ * Note: Only the DB rows are created here. The seed pipeline's next step
+ * (`05b-tenant-bucket-provision.ts`) provisions the matching physical MinIO
+ * buckets. The underlying provider bucket is also created lazily by the
+ * storage flow (`TenantBucketService` provisions missing physical buckets on
+ * demand and in `provisionSystemBuckets`) or via the admin endpoint
+ * `POST /admin/tenants/storage/buckets/provision/:tenantId` as a fallback.
  *
  * Convergence for environments seeded before TASK-426:
  *   - a legacy `audio` row is RENAMED to `recordings` in place (id preserved so

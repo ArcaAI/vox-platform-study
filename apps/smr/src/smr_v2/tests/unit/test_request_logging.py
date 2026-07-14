@@ -60,6 +60,7 @@ def mock_provider_registry():
     mock_provider.generate = AsyncMock(
         return_value=(
             "Generated text!",
+            "",
             {"prompt_tokens": 15, "completion_tokens": 25, "total_tokens": 40},
         )
     )

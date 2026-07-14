@@ -79,7 +79,7 @@ function CascadeResolveCard({ column, matrixRows, rows }: { column: ToggleColumn
     const winner = winningTier(column.key, rows.effective);
     const effective = rows.effective;
     return (
-        <Card className="gap-3 p-4" aria-label={`Cascade resolve for ${column.param}`}>
+        <Card className="gap-3 p-4" role="group" aria-label={`Cascade resolve for ${column.param}`}>
             <h2 className="text-sm font-semibold">Cascade resolve &middot; one key</h2>
             <div className="flex flex-col gap-1 font-mono text-xs">
                 <p className="text-muted-foreground">{column.param}</p>

@@ -34,6 +34,7 @@ def mock_provider_registry():
     mock_provider.generate = AsyncMock(
         return_value=(
             "Generated text!",
+            "",
             {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
         )
     )
@@ -190,6 +191,7 @@ class TestGenerateWithRateLimits:
             mp.generate = AsyncMock(
                 return_value=(
                     "ok",
+                    "",
                     {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
                 )
             )
