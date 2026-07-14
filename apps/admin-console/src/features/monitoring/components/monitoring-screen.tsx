@@ -145,7 +145,7 @@ function ServiceHealthGrid({ health, uptime }: { health: ReturnType<typeof useSe
                             const serviceUptime: ServiceUptime | undefined = uptimes[key];
                             const status = probe?.status ?? serviceUptime?.status ?? 'unknown';
                             const responseMs = serviceUptime?.responseTime ?? probe?.duration_ms;
-                            const serviceName = probe?.service ?? key;
+                            const serviceName = probe?.service && probe.service !== key ? probe.service : key;
                             return (
                                 <li key={key} className="flex flex-col gap-1.5 rounded-lg border p-4 text-sm">
                                     <span className="flex items-center gap-2">
@@ -178,10 +178,16 @@ function ServiceHealthGrid({ health, uptime }: { health: ReturnType<typeof useSe
     );
 }
 
-function ResponseTimeCard({ uptime }: { uptime: ReturnType<typeof useUptime> }) {
+function ResponseTimeCard({
+    uptime,
+    health,
+}: {
+    uptime: ReturnType<typeof useUptime>;
+    health: ReturnType<typeof useServicesHealth>;
+}) {
     const isLoading = uptime.isPending || (uptime.isError && uptime.isFetching);
     const chartData = Object.entries(uptime.data?.services ?? {}).map(([key, service]) => ({
-        service: key,
+        service: healthName(health.data, key),
         ms: Math.round(service.responseTime),
     }));
     return (
@@ -274,7 +280,12 @@ function RedisHealthCard({ redis }: { redis: ReturnType<typeof useRedisHealth> }
     );
 }
 
-function ActiveSessionsCard({ sessions }: { sessions: ReturnType<typeof useSessions> }) {
+function healthName(health: ReturnType<typeof useServicesHealth>['data'], key: string): string {
+    const name = health?.services[key]?.service;
+    return name && name !== key ? name : key;
+}
+
+function ActiveSessionsCard({ sessions, health }: { sessions: ReturnType<typeof useSessions>; health: ReturnType<typeof useServicesHealth> }) {
     let body: ReactNode;
     if (sessions.isPending) {
         body = (
@@ -294,7 +305,7 @@ function ActiveSessionsCard({ sessions }: { sessions: ReturnType<typeof useSessi
                 <ul aria-label="Active sessions by service" className="flex list-none flex-col">
                     {entries.map(([key, service]) => (
                         <li key={key} className="flex items-center justify-between border-b py-1.5 text-sm last:border-0">
-                            <span>{key}</span>
+                            <span>{healthName(health.data, key)}</span>
                             <span className="tabular-nums">{formatNumber(service.active)}</span>
                         </li>
                     ))}
@@ -348,10 +359,10 @@ export function MonitoringScreen() {
             <div className="flex flex-col gap-4">
                 <ServiceHealthGrid health={health} uptime={uptime} />
                 <div className="grid items-start gap-4 lg:grid-cols-2">
-                    <ResponseTimeCard uptime={uptime} />
+                    <ResponseTimeCard uptime={uptime} health={health} />
                     <div className="flex flex-col gap-4">
                         <RedisHealthCard redis={redis} />
-                        <ActiveSessionsCard sessions={sessions} />
+                        <ActiveSessionsCard sessions={sessions} health={health} />
                     </div>
                 </div>
             </div>

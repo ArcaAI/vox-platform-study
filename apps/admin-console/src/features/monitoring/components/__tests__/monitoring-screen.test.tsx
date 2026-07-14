@@ -125,6 +125,7 @@ describe('MonitoringScreen', () => {
         expect(within(grid).getByText('exports depth 117')).toBeDefined();
         expect(within(grid).getByText('99.97%')).toBeDefined();
         expect(within(grid).getByText('15 of 20 recent checks up')).toBeDefined();
+        expect(within(screen.getByRole('table')).getByText('Summarization')).toBeDefined();
     });
 
     it('renders redis health facts and per-service session counts', async () => {
@@ -138,6 +139,7 @@ describe('MonitoringScreen', () => {
 
         const sessions = screen.getByRole('list', { name: /active sessions by service/i });
         expect(within(sessions).getByText('12')).toBeDefined();
+        expect(within(sessions).getByText('Summarization')).toBeDefined();
         expect(screen.getByText(/19 unique users/i)).toBeDefined();
     });
 

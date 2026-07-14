@@ -87,7 +87,7 @@ function ServicesStrip() {
                 ) : (
                     services.map(([key, probe]) => (
                         <span key={key} className="inline-flex items-center gap-2 text-sm">
-                            <StatusDot colorRole={serviceStatusRole(probe.status)} label={key} />
+                            <StatusDot colorRole={serviceStatusRole(probe.status)} label={probe.service && probe.service !== key ? probe.service : key} />
                             {probe.status !== 'healthy' ? (
                                 <span className={`text-xs ${probe.status === 'degraded' ? 'text-warning-strong' : 'text-destructive'}`}>
                                     {serviceStatusDetail(probe.status, probe.error)}
@@ -101,9 +101,21 @@ function ServicesStrip() {
     );
 }
 
-function RequestsByServiceCard({ metrics }: { metrics: ReturnType<typeof usePlatformMetrics> }) {
+function RequestsByServiceCard({
+    metrics,
+    health,
+}: {
+    metrics: ReturnType<typeof usePlatformMetrics>;
+    health: ReturnType<typeof useServicesHealth>;
+}) {
     const isLoading = metrics.isPending || (metrics.isError && metrics.isFetching);
-    const chartData = (metrics.data?.services ?? []).map((service) => ({ service: service.key, requests: service.requestsPerMinute ?? 0 }));
+    const chartData = (metrics.data?.services ?? []).map((service) => {
+        const name = health.data?.services[service.key]?.service;
+        return {
+            service: name && name !== service.key ? name : service.key,
+            requests: service.requestsPerMinute ?? 0,
+        };
+    });
     return (
         <Card className="gap-4">
             <CardHeader>
@@ -205,6 +217,7 @@ function RecentActivityCard() {
  */
 export function PlatformDashboard() {
     const metrics = usePlatformMetrics();
+    const health = useServicesHealth();
 
     return (
         <ScreenTemplate
@@ -236,7 +249,7 @@ export function PlatformDashboard() {
                     <ServicesStrip />
                 </section>
                 <div className="grid items-start gap-4 lg:grid-cols-2">
-                    <RequestsByServiceCard metrics={metrics} />
+                    <RequestsByServiceCard metrics={metrics} health={health} />
                     <RecentActivityCard />
                 </div>
             </div>
