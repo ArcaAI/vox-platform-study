@@ -91,6 +91,12 @@ export class ApiHealthController {
         healthEndpoint: '/api/v1/health',
       },
       {
+        key: 'tts',
+        name: 'Text to Speech',
+        url: this.configService.getConfigValue('TTS_URL'),
+        healthEndpoint: '/api/v1/health',
+      },
+      {
         key: 'guardrail',
         name: 'Guardrail',
         url: this.configService.getConfigValue('GUARDRAIL_URL'),
