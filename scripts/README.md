@@ -101,3 +101,33 @@ pnpm test:api:up             # test API on 8868 with .env.test
 pnpm test:unit | pnpm test:integration | pnpm test:e2e
 pnpm docker:test:down        # stops containers and removes volumes
 ```
+
+## Troubleshooting
+
+### One service shows "down" in the Admin Console (but you started it)
+
+The Admin Console health card renders exactly what the gateway probe finds: a
+red/"down" card means that service's port isn't answering *right now* — not a
+false alarm. When you launch services as separate `pnpm dev:*` terminals, a
+per-service startup crash (traceback scrolled off, port already in use, a shell
+without `arcaenv` activated, or a closed terminal that took its child process
+with it) is invisible except as that one red card ~30s later.
+
+```bash
+pnpm dev:doctor              # aggregated one-shot probe — a failed required
+                             # service prints its exact restart command,
+                             # e.g. "harness (8866) … — start with 'pnpm dev:harness'"
+```
+
+Then re-launch just the offending service in the foreground and read the output
+verbatim. To avoid the hidden-crash trap entirely, prefer the supervisor, which
+runs every service in one aggregated stream with port preflight and a cleanup
+trap:
+
+```bash
+pnpm dev:stack               # api stt smr guardrail nlp harness worker admin
+```
+
+The harness worker (`pnpm dev:harness:worker`) has no port — it is a process
+polling Temporal's task queue. `pnpm dev:doctor` reports it separately as
+`harness worker process`.

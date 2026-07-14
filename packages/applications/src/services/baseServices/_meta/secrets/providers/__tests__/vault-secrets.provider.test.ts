@@ -370,6 +370,33 @@ describe('VaultSecretsProvider transit helpers', () => {
     await p.boot();
     await expect(p.issueDbCredential('r')).rejects.toThrow(/empty creds/);
   });
+
+  // BUG-006 — the lease-renewal machinery existed (VaultLeaseRenewer) but
+  // nothing could actually call Vault's renew endpoint for a DB lease. This
+  // is that call: POST sys/leases/renew, surfaced via node-vault's
+  // generated client.renew({ lease_id, increment }).
+  it('renewDbLease renews sys/leases/renew with lease_id + increment and returns the new TTL', async () => {
+    const mockRenew = vi.fn().mockResolvedValue({
+      lease_id: 'database/creds/hope-app-role/abc',
+      renewable: true,
+      lease_duration: 3600,
+    });
+    const p = provider({ renew: mockRenew });
+    await p.boot();
+    const result = await p.renewDbLease('database/creds/hope-app-role/abc', 3600);
+    expect(mockRenew).toHaveBeenCalledWith({
+      lease_id: 'database/creds/hope-app-role/abc',
+      increment: 3600,
+    });
+    expect(result).toEqual({ ttlSec: 3600 });
+  });
+
+  it('renewDbLease propagates a rejected/expired-lease error from Vault', async () => {
+    const mockRenew = vi.fn().mockRejectedValue(new Error('lease not found'));
+    const p = provider({ renew: mockRenew });
+    await p.boot();
+    await expect(p.renewDbLease('dead-lease', 3600)).rejects.toThrow(/lease not found/);
+  });
 });
 
 // Phase 3A (Data Encryption Initiative) — the PHI field-encryption workstream

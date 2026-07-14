@@ -162,6 +162,34 @@ describe('MonitoringScreen', () => {
         await waitFor(() => expect(callsTo(fetchMock, 'monitoring/uptime')).toBe(2));
     });
 
+    it('surfaces the dev:doctor hint when a service is genuinely down (not-listening)', async () => {
+        installFetch({
+            health: () =>
+                Response.json({
+                    ...HEALTH,
+                    status: 'degraded',
+                    services: {
+                        ...HEALTH.services,
+                        harness: { status: 'down', service: 'harness', error: 'connect ECONNREFUSED 127.0.0.1:8866' },
+                    },
+                }),
+        });
+        renderWithProviders(<MonitoringScreen />);
+
+        const hint = await screen.findByRole('status', { name: /service not responding/i });
+        expect(within(hint).getByText(/pnpm dev:doctor/)).toBeDefined();
+        expect(hint.textContent).toContain('harness');
+    });
+
+    it('does not show the dev:doctor hint when no service is down', async () => {
+        installFetch();
+        renderWithProviders(<MonitoringScreen />);
+
+        // default fixture: harness is degraded (up, slow), never down
+        await screen.findByRole('list', { name: /service health/i });
+        expect(screen.queryByText(/pnpm dev:doctor/)).toBeNull();
+    });
+
     it('renders empty states when no services report and no samples exist', async () => {
         installFetch({
             health: () => Response.json({ ...HEALTH, status: 'unknown', services: {} }),

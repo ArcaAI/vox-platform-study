@@ -118,6 +118,57 @@ unless `VaultAppSecretsDegraded` fires (then check Vault reachability).
 `database/creds/hope-app-role`; leases auto-revoke on shutdown. To force-rotate the
 DB **root** the engine uses: `vault write -f database/rotate-root/<conn>`.
 
+`hope-app-role` has two TTLs (BUG-006 follow-up, 2026-07-13):
+
+| TTL | Value | Meaning |
+|---|---|---|
+| `default_ttl` | `1h` (all envs) | Lease duration `VaultLeaseRenewer` (`apps/api/src/vault-prisma.module.ts`) renews at 50% via `sys/leases/renew` — cheap, frequent Vault round-trips, matches Vault-native rotation practice |
+| `max_ttl` | dev `168h` (7d) / prod `720h` (30d) | Hard ceiling from lease ISSUE time (does not reset on renewal). Once elapsed time nears this ceiling (within `min(300s, 25% of max_ttl)`), the renewer stops renewing and force-rotates the PG role instead: `wrapper.swap()` drops the old dynamic user and mints a fresh one |
+
+Widening `max_ttl` (previously `24h` everywhere, pre-BUG-006) trades a longer
+compromised-credential blast-radius window for far fewer forced pool-swap /
+`DROP ROLE` events — deliberate for dev convenience and prod connection-pool
+stability. If a credential is suspected compromised, don't wait for
+`max_ttl`: `vault lease revoke database/creds/hope-app-role/<lease-id>` kills
+it immediately (the app's next query fails and the renewer's swap fallback
+recovers on its next tick — see `apps/api/src/vault-prisma.module.ts`'s
+`renew` callback).
+
+**Dev** — set by TWO scripts that MUST stay in sync (`vault write
+database/roles/hope-app-role ... default_ttl=1h max_ttl=168h ...`):
+`scripts/setup-dev-vault-db.sh` (manual re-apply / `pnpm dev:setup`) and
+`infrastructure/docker/configs/vault/dev-init.sh` (the `vault-init` sidecar,
+runs automatically on `./scripts/start-infra.sh --all`). `.env.dev` sets
+`PG_VAULT_MAX_TTL_SEC=604800` (7d in seconds) to match.
+
+**Production** — there is currently NO in-repo script that provisions this
+role (unlike dev); `infrastructure/single-deployment/vault/bootstrap/` only
+configures kv-v2/transit/AppRole, and `deployment/` (k3s+ArgoCD) only wires
+env vars. Provision it manually once per prod Vault, then keep
+`apps/api/.env.production`'s `PG_VAULT_MAX_TTL_SEC=2592000` (30d in seconds)
+in sync with whatever `max_ttl` you set below:
+
+```bash
+vault write database/config/hope-main \
+  plugin_name=postgresql-database-plugin \
+  allowed_roles="hope-app-role" \
+  connection_url="postgresql://{{username}}:{{password}}@<prod-pg-host>:5432/hope_main?sslmode=require" \
+  username="<vault_admin>" \
+  password="<vault_admin_password>"
+vault write database/roles/hope-app-role \
+  db_name=hope-main \
+  creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}' INHERIT IN ROLE hope_app_template;" \
+  revocation_statements="REVOKE ALL PRIVILEGES ON DATABASE hope_main FROM \"{{name}}\"; REASSIGN OWNED BY \"{{name}}\" TO hope_app_template; DROP OWNED BY \"{{name}}\"; DROP ROLE IF EXISTS \"{{name}}\";" \
+  default_ttl="1h" \
+  max_ttl="720h" \
+  max_open_connections=50
+```
+
+If `PG_VAULT_MAX_TTL_SEC` is ever unset or drifts out of sync with the real
+Vault `max_ttl`, the app falls back to a conservative 24h — safe (it just
+swaps more often than strictly necessary) but not silent: watch for
+unexpectedly frequent `Vault DB lease pool swapped` log lines.
+
 **Transit key rotation** (`hope-globalsetting`): `vault write -f transit/keys/hope-globalsetting/rotate`.
 Transit auto-decrypts old ciphertext with prior key versions, so this is
 zero-downtime; optionally `rewrap` historical ciphertext afterwards.

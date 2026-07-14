@@ -47,6 +47,8 @@ export interface DbCredential {
 /** Minimum SecretsService surface required by the Vault factory. */
 export interface VaultDbSecretsLike {
   requestDbCredential(role: string): Promise<DbCredential>;
+  /** BUG-006 — renew the active lease ahead of expiry (Vault-mode only). */
+  renewDbLease?(leaseId: string, incrementSec: number): Promise<{ ttlSec: number }>;
 }
 
 /**
