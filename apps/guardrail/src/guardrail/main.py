@@ -12,7 +12,7 @@ from typing import cast
 
 import httpx
 import redis.asyncio as aioredis
-from fastapi import FastAPI, Response
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from guardrail.core.config import (
@@ -223,11 +223,9 @@ def create_app() -> FastAPI:
 
     # Metrics endpoint
     if settings.metrics_enabled:
-        from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+        from prometheus_fastapi_instrumentator import Instrumentator
 
-        @app.get("/metrics")
-        async def metrics() -> Response:
-            return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+        Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
     return app
 

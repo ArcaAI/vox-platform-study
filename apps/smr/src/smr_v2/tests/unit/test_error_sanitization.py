@@ -44,7 +44,7 @@ def _make_provider(*, generate_exc=None):
         p.generate = AsyncMock(side_effect=generate_exc)
     else:
         p.generate = AsyncMock(
-            return_value=("ok", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0})
+            return_value=("ok", "", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0})
         )
     p.health_check = AsyncMock(return_value=True)
     p.get_info = AsyncMock(
@@ -276,6 +276,6 @@ class TestProtocolContract:
         from smr_v2.providers.base import LLMProvider
 
         hints = get_type_hints(LLMProvider.generate)
-        assert hints["return"] == tuple[str, dict], (
-            f"Expected tuple[str, dict], got {hints['return']}"
+        assert hints["return"] == tuple[str, str, dict], (
+            f"Expected tuple[str, str, dict], got {hints['return']}"
         )

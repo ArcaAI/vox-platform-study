@@ -74,12 +74,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     registry = app.state.provider_registry
     # LM Studio (OpenAI-compatible) is the primary/default local LLM engine.
-    if settings.openai_compat.enabled and "lm-studio" not in registry.list_providers():
+    if settings.openai_compat.enabled and "openai_compat" not in registry.list_providers():
         from smr_v2.providers.openai_compat import OpenAICompatProvider
         lm_provider = OpenAICompatProvider(settings.openai_compat)
-        registry.register("lm-studio", lm_provider)
-        registry.register("openai_compat", lm_provider)  # backward-compatible alias
-        logger.info("smr_v2.provider_registered", provider="lm-studio", base_url=settings.openai_compat.base_url)
+        registry.register("openai_compat", lm_provider)
+        logger.info("smr_v2.provider_registered", provider="openai_compat", base_url=settings.openai_compat.base_url)
 
     # Ollama is an optional, lower-priority local LLM engine.
     if settings.ollama.enabled and "ollama" not in registry.list_providers():
@@ -91,7 +90,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         from smr_v2.providers.azure_openai import AzureOpenAIProvider
         azure_provider = AzureOpenAIProvider(settings.azure)
         registry.register("azure-openai", azure_provider)
-        registry.register("azure", azure_provider)  # backward-compatible alias
         logger.info("smr_v2.provider_registered", provider="azure-openai")
 
     if settings.bedrock.enabled and "bedrock" not in registry.list_providers():
@@ -105,9 +103,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     provider_configs = {
         "ollama": settings.ollama,
         "azure-openai": settings.azure,
-        "azure": settings.azure,
         "bedrock": settings.bedrock,
-        "lm-studio": settings.openai_compat,
         "openai_compat": settings.openai_compat,
     }
     for name in registry.list_providers():
@@ -141,9 +137,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         provider_configs = {
             "ollama": settings.ollama,
             "azure-openai": settings.azure,
-            "azure": settings.azure,
             "bedrock": settings.bedrock,
-            "lm-studio": settings.openai_compat,
             "openai_compat": settings.openai_compat,
         }
         sems: dict[str, asyncio.Semaphore] = {}

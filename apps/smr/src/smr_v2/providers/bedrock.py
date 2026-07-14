@@ -108,6 +108,7 @@ class BedrockProvider:
 
             content_blocks = response["output"]["message"]["content"]
             content = "".join(block.get("text", "") for block in content_blocks)
+            reasoning = "".join(block.get("reasoningContent", {}).get("text", "") for block in content_blocks)
 
             raw_usage = response.get("usage", {})
             usage = {
@@ -118,7 +119,7 @@ class BedrockProvider:
             span.set_attribute("gen_ai.usage.input_tokens", usage["prompt_tokens"])
             span.set_attribute("gen_ai.usage.output_tokens", usage["completion_tokens"])
             span.set_attribute("gen_ai.response.finish_reason", stop_reason or "stop")
-            return content, usage
+            return content, reasoning, usage
 
     async def generate_stream(self, request: GenerateRequest) -> AsyncIterator[StreamChunk]:
         resolved = resolve_request_defaults(request)
@@ -159,7 +160,11 @@ class BedrockProvider:
                         raise event
 
                     if "contentBlockDelta" in event:
-                        text = event["contentBlockDelta"]["delta"].get("text", "")
+                        delta = event["contentBlockDelta"]["delta"]
+                        reasoning_text = delta.get("reasoningContent", {}).get("text", "")
+                        if reasoning_text:
+                            yield StreamChunk(type="reasoning", content=reasoning_text)
+                        text = delta.get("text", "")
                         if text:
                             yield StreamChunk(type="chunk", content=text)
                     elif "messageStop" in event:

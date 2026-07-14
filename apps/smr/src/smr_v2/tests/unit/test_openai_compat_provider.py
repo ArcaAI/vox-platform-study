@@ -132,7 +132,7 @@ class TestOpenAICompatProvider:
     async def test_generate_returns_content_and_usage(self, provider, mock_client):
         mock_client.chat.completions.create.return_value = _mock_completion_response()
 
-        content, usage = await provider.generate(_make_request())
+        content, _reasoning, usage = await provider.generate(_make_request())
 
         assert content == "Hello world"
         assert usage == {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
@@ -161,6 +161,33 @@ class TestOpenAICompatProvider:
         assert call_kwargs["model"] == "custom-llm"
 
     # -- 6. generate_stream yields chunks --
+    @pytest.mark.asyncio
+    async def test_generate_stream_yields_reasoning_then_content(self, provider, mock_client):
+        chunk1 = MagicMock()
+        chunk1.choices = [MagicMock()]
+        chunk1.choices[0].delta.content = None
+        chunk1.choices[0].delta.reasoning_content = "Let me think"
+        chunk1.choices[0].finish_reason = None
+
+        chunk2 = MagicMock()
+        chunk2.choices = [MagicMock()]
+        chunk2.choices[0].delta.content = "Answer"
+        chunk2.choices[0].delta.reasoning_content = None
+        chunk2.choices[0].finish_reason = "stop"
+
+        mock_client.chat.completions.create.return_value = _async_stream_chunks(
+            [chunk1, chunk2]
+        )
+
+        results: list[StreamChunk] = []
+        async for sc in provider.generate_stream(_make_request(stream=True)):
+            results.append(sc)
+
+        assert results[0].type == "reasoning"
+        assert results[0].content == "Let me think"
+        assert results[1].type == "chunk"
+        assert results[1].content == "Answer"
+
     @pytest.mark.asyncio
     async def test_generate_stream_yields_chunks(self, provider, mock_client):
         chunk1 = MagicMock()

@@ -21,7 +21,7 @@ from httpx import ASGITransport, AsyncClient
 def mock_provider():
     provider = AsyncMock()
     provider.generate = AsyncMock(
-        return_value=("ok", {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2})
+        return_value=("ok", "", {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2})
     )
     return provider
 

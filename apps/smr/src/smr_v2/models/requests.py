@@ -21,7 +21,7 @@ class ResponseFormat(BaseModel):
 class GenerateRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=200_000)
     system_prompt: str | None = Field(default=None, max_length=50_000)
-    provider: str = "lm-studio"
+    provider: str = "openai_compat"
     model: str | None = None
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=None, ge=1)

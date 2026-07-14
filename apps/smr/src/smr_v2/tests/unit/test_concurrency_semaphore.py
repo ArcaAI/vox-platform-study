@@ -29,7 +29,7 @@ def _make_provider(*, delay: float = 0.0, exc: Exception | None = None):
             await asyncio.sleep(delay)
         if exc:
             raise exc
-        return "ok", {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15}
+        return "ok", "", {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15}
 
     p.generate = AsyncMock(side_effect=_generate)
     p.health_check = AsyncMock(return_value=True)
@@ -169,7 +169,7 @@ class TestConcurrentRequestsLimitedBySemaphore:
             concurrency_log.append(current_count)
             await asyncio.sleep(0.3)
             current_count -= 1
-            return "ok", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            return "ok", "", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         provider = AsyncMock()
         provider.generate = AsyncMock(side_effect=_tracked_generate)
@@ -303,7 +303,7 @@ class TestSemaphoresPerProvider:
             concurrency_a.append(count_a)
             await asyncio.sleep(0.2)
             count_a -= 1
-            return "a", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            return "a", "", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         async def _gen_b(*args, **kwargs):
             nonlocal count_b
@@ -311,7 +311,7 @@ class TestSemaphoresPerProvider:
             concurrency_b.append(count_b)
             await asyncio.sleep(0.2)
             count_b -= 1
-            return "b", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            return "b", "", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         provider_a = AsyncMock()
         provider_a.generate = AsyncMock(side_effect=_gen_a)

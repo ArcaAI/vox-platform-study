@@ -511,13 +511,37 @@ describe('SmrProxyController', () => {
         json: vi.fn(),
       };
 
-      await controller.streamTaskEvents('task-1', mockRes as any);
+      await controller.streamTaskEvents('task-1', undefined, mockRes as any);
 
       expect(mockRes.setHeader).toHaveBeenCalledWith('Content-Type', 'text/event-stream');
       expect(mockRes.flushHeaders).toHaveBeenCalled();
       expect(mockStream.on).toHaveBeenCalledWith('data', expect.any(Function));
       expect(mockStream.on).toHaveBeenCalledWith('end', expect.any(Function));
       expect(mockStream.on).toHaveBeenCalledWith('error', expect.any(Function));
+    });
+
+    it('forwards the inbound Last-Event-ID header as a last_event_id query param', async () => {
+      const mockStream = {
+        on: vi.fn(),
+        destroy: vi.fn(),
+      };
+      mockHttpService.axiosRef.get.mockResolvedValue({ data: mockStream });
+
+      const mockRes = {
+        setHeader: vi.fn(),
+        flushHeaders: vi.fn(),
+        write: vi.fn(),
+        end: vi.fn(),
+        on: vi.fn(),
+        headersSent: false,
+        status: vi.fn().mockReturnThis(),
+        json: vi.fn(),
+      };
+
+      await controller.streamTaskEvents('task-1', '2-0', mockRes as any);
+
+      const [url] = mockHttpService.axiosRef.get.mock.calls[0];
+      expect(url).toContain('last_event_id=2-0');
     });
 
     // TASK-462 M-1 — the SSE connect-error branch must never forward the raw
@@ -541,7 +565,7 @@ describe('SmrProxyController', () => {
         json: vi.fn(),
       };
 
-      await controller.streamTaskEvents('task-err', mockRes as any);
+      await controller.streamTaskEvents('task-err', undefined, mockRes as any);
 
       expect(mockRes.status).toHaveBeenCalledWith(502);
       expect(mockRes.json).toHaveBeenCalledWith({ detail: 'SMR service unavailable' });

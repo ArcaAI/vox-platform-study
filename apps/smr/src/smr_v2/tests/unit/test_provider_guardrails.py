@@ -121,7 +121,7 @@ class TestBedrockGuardrailIntervened:
             provider = BedrockProvider(config=bedrock_config_with_guardrail)
 
         with patch("smr_v2.providers.bedrock.logger") as mock_logger:
-            content, usage = await provider.generate(
+            content, _reasoning, usage = await provider.generate(
                 GenerateRequest(prompt="bad prompt", provider="bedrock")
             )
 

@@ -8,6 +8,6 @@ from pydantic import BaseModel
 
 
 class StreamChunk(BaseModel):
-    type: Literal["chunk", "meta", "done", "error", "usage"]
+    type: Literal["chunk", "reasoning", "meta", "done", "error", "usage"]
     content: str | None = None
     data: dict[str, Any] | None = None

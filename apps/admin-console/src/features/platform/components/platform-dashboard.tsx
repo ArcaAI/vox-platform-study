@@ -163,17 +163,17 @@ function RecentActivityCard() {
                     {rows.map((row) => (
                         <li
                             key={row.id}
-                            className="grid grid-cols-[5rem_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1 border-b py-2 text-sm last:border-0 sm:grid-cols-[5rem_minmax(0,1.2fr)_minmax(0,1fr)_auto]"
+                            className="grid lg:grid-cols-[5rem_9rem_1fr_12rem] items-start gap-x-3 gap-y-1 border-b py-2 text-left text-sm last:border-0 grid-cols-[5rem_7rem_1fr_9rem]"
                         >
                             <time dateTime={row.createdAt} className="text-muted-foreground text-xs tabular-nums">
                                 {formatRelativeTime(row.createdAt)}
                             </time>
                             <span className="truncate font-mono text-xs">{row.eventType ?? row.action}</span>
-                            <span className="text-muted-foreground truncate text-xs" title={row.resourceId ?? undefined}>
+                            <span className="text-muted-foreground col-span-2 truncate text-xs sm:col-span-1" title={row.resourceId ?? undefined}>
                                 {row.resourceType}
                                 {row.resourceId ? <span className="font-mono"> · {row.resourceId}</span> : null}
                             </span>
-                            <span className="text-muted-foreground truncate text-xs">{auditActor(row)}</span>
+                            <span className="text-muted-foreground col-span-2 truncate text-xs sm:col-span-1">{auditActor(row)}</span>
                         </li>
                     ))}
                 </ul>
