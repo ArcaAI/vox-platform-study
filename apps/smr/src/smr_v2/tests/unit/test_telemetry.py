@@ -211,7 +211,7 @@ class TestOllamaGenAISpans:
         mock_http_client.post.return_value = mock_response
 
         provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
-        content, usage = await provider.generate(GenerateRequest(prompt="hi"))
+        content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hi"))
 
         spans = in_memory_exporter.get_finished_spans()
         assert len(spans) >= 1
@@ -339,7 +339,7 @@ class TestAzureGenAISpans:
             provider._client = AsyncMock()
             provider._client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-            content, usage = await provider.generate(GenerateRequest(prompt="hi"))
+            content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hi"))
 
         spans = in_memory_exporter.get_finished_spans()
         gen_spans = [s for s in spans if s.attributes.get("gen_ai.system") == "azure_openai"]
@@ -442,7 +442,7 @@ class TestBedrockGenAISpans:
 
             with patch("smr_v2.providers.bedrock.asyncio") as mock_asyncio:
                 mock_asyncio.to_thread = _fake_to_thread
-                content, usage = await provider.generate(GenerateRequest(prompt="hi"))
+                content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hi"))
 
         spans = in_memory_exporter.get_finished_spans()
         gen_spans = [s for s in spans if s.attributes.get("gen_ai.system") == "aws_bedrock"]

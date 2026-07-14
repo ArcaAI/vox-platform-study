@@ -109,6 +109,29 @@ class TestBedrockAsyncStream:
         assert text_chunks[2].content == "!"
 
     @pytest.mark.asyncio
+    async def test_stream_yields_reasoning_chunk(self):
+        """A reasoningContent delta must produce a reasoning StreamChunk."""
+        provider = _make_provider()
+        provider._client.converse_stream.return_value = {
+            "stream": MockEventStream([
+                {"contentBlockDelta": {"delta": {"reasoningContent": {"text": "Thinking..."}}}},
+                {"contentBlockDelta": {"delta": {"text": "Answer"}}},
+                {"messageStop": {"stopReason": "end_turn"}},
+            ])
+        }
+
+        chunks: list[StreamChunk] = []
+        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi")):
+            chunks.append(chunk)
+
+        reasoning_chunks = [c for c in chunks if c.type == "reasoning"]
+        content_chunks = [c for c in chunks if c.type == "chunk"]
+        assert len(reasoning_chunks) == 1
+        assert reasoning_chunks[0].content == "Thinking..."
+        assert len(content_chunks) == 1
+        assert content_chunks[0].content == "Answer"
+
+    @pytest.mark.asyncio
     async def test_stream_yields_done_chunk(self):
         """A messageStop event must produce a done StreamChunk with finish_reason."""
         provider = _make_provider()

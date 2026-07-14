@@ -87,7 +87,9 @@ class OpenAICompatProvider:
 
             response = await self._client.chat.completions.create(**kwargs)
 
-            content = response.choices[0].message.content or ""
+            message = response.choices[0].message
+            content = message.content or ""
+            reasoning = getattr(message, "reasoning_content", None) or getattr(message, "reasoning", None) or ""
             usage = {
                 "prompt_tokens": response.usage.prompt_tokens if response.usage else 0,
                 "completion_tokens": response.usage.completion_tokens if response.usage else 0,
@@ -96,7 +98,7 @@ class OpenAICompatProvider:
             span.set_attribute("gen_ai.usage.input_tokens", usage["prompt_tokens"])
             span.set_attribute("gen_ai.usage.output_tokens", usage["completion_tokens"])
             span.set_attribute("gen_ai.response.finish_reason", response.choices[0].finish_reason or "stop")
-            return content, usage
+            return content, reasoning, usage
 
     async def generate_stream(self, request: GenerateRequest) -> AsyncIterator[StreamChunk]:
         resolved = resolve_request_defaults(request)
@@ -147,6 +149,9 @@ class OpenAICompatProvider:
                     continue
                 delta = chunk.choices[0].delta
                 finish = chunk.choices[0].finish_reason
+                reasoning = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
+                if isinstance(reasoning, str) and reasoning:
+                    yield StreamChunk(type="reasoning", content=reasoning)
                 if delta.content:
                     yield StreamChunk(type="chunk", content=delta.content)
                 if finish:

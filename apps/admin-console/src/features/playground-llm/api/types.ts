@@ -52,6 +52,7 @@ export interface GenerateTextResponse {
     task_id: string;
     status: string;
     content: string;
+    reasoning?: string;
     provider: string;
     model: string;
     usage: SmrTokenUsage;
@@ -130,7 +131,7 @@ export interface SmrTask {
 
 /** SSE frame on GET text/tasks/:taskId/stream (SMR StreamChunk; named events). */
 export interface SmrStreamFrame {
-    type: 'chunk' | 'meta' | 'done' | 'error' | 'usage';
+    type: 'chunk' | 'reasoning' | 'meta' | 'done' | 'error' | 'usage';
     content?: string | null;
     data?: Record<string, unknown> | null;
 }

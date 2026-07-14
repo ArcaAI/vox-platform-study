@@ -56,7 +56,7 @@ class TestOllamaGenerate:
         mock_http_client.post.return_value = mock_response
 
         provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
-        content, usage = await provider.generate(GenerateRequest(prompt="hi"))
+        content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hi"))
         assert content == "Hello there!"
         assert isinstance(usage, dict)
 
@@ -145,6 +145,97 @@ class TestOllamaGenerateStream:
         assert len(text_chunks) >= 2
         assert text_chunks[0].content == "Hello"
         assert text_chunks[1].content == " world"
+
+    @pytest.mark.asyncio
+    async def test_stream_requests_thinking(self, ollama_config, mock_http_client):
+        from smr_v2.providers.ollama import OllamaProvider
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+
+        def _aiter_lines():
+            return _async_iter([
+                json.dumps({"response": "", "done": True}),
+            ])
+
+        mock_response.aiter_lines = _aiter_lines
+        mock_http_client.stream = _mock_stream_context(mock_response)
+
+        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
+        captured = {}
+        original_stream = mock_http_client.stream
+
+        def _capturing_stream(*args, **kwargs):
+            captured["kwargs"] = kwargs
+            return original_stream(*args, **kwargs)
+
+        mock_http_client.stream = _capturing_stream
+        async for _ in provider.generate_stream(GenerateRequest(prompt="hi", stream=True)):
+            pass
+
+        assert captured["kwargs"]["json"]["think"] is True
+
+    @pytest.mark.asyncio
+    async def test_stream_yields_reasoning_chunks_from_thinking_field(self, ollama_config, mock_http_client):
+        from smr_v2.providers.ollama import OllamaProvider
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+
+        def _aiter_lines():
+            return _async_iter([
+                json.dumps({"thinking": "Let me think", "response": "", "done": False}),
+                json.dumps({"thinking": "", "response": "Answer", "done": False}),
+                json.dumps({"response": "", "done": True}),
+            ])
+
+        mock_response.aiter_lines = _aiter_lines
+        mock_http_client.stream = _mock_stream_context(mock_response)
+
+        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
+        chunks = []
+        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True)):
+            chunks.append(chunk)
+
+        reasoning_chunks = [c for c in chunks if c.type == "reasoning"]
+        content_chunks = [c for c in chunks if c.type == "chunk"]
+        assert len(reasoning_chunks) == 1
+        assert reasoning_chunks[0].content == "Let me think"
+        assert len(content_chunks) == 1
+        assert content_chunks[0].content == "Answer"
+
+    @pytest.mark.asyncio
+    async def test_stream_parses_inline_think_tags_when_no_native_thinking_field(self, ollama_config, mock_http_client):
+        from smr_v2.providers.ollama import OllamaProvider
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+
+        def _aiter_lines():
+            return _async_iter([
+                json.dumps({"response": "<think>", "done": False}),
+                json.dumps({"response": "Let me ", "done": False}),
+                json.dumps({"response": "think", "done": False}),
+                json.dumps({"response": "</think>", "done": False}),
+                json.dumps({"response": "Answer", "done": False}),
+                json.dumps({"response": "", "done": True}),
+            ])
+
+        mock_response.aiter_lines = _aiter_lines
+        mock_http_client.stream = _mock_stream_context(mock_response)
+
+        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
+        chunks = []
+        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True)):
+            chunks.append(chunk)
+
+        reasoning_chunks = [c for c in chunks if c.type == "reasoning"]
+        content_chunks = [c for c in chunks if c.type == "chunk"]
+        assert "".join(c.content for c in reasoning_chunks) == "Let me think"
+        assert "".join(c.content for c in content_chunks) == "Answer"
 
     @pytest.mark.asyncio
     async def test_stream_ends_with_done(self, ollama_config, mock_http_client):

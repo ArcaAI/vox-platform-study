@@ -30,8 +30,10 @@ async def stream_task(
     if state is None:
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
 
+    cursor_start = last_event_id or request.headers.get("last-event-id") or "0-0"
+
     async def event_generator() -> AsyncIterator[dict[str, str]]:
-        cursor = last_event_id or "0-0"
+        cursor = cursor_start
         while True:
             if await request.is_disconnected():
                 break

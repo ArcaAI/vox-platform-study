@@ -45,6 +45,7 @@ class GenerateResponse(BaseModel):
     task_id: str
     status: str
     content: str
+    reasoning: str = ""
     provider: str
     model: str
     usage: TokenUsage = Field(default_factory=TokenUsage)

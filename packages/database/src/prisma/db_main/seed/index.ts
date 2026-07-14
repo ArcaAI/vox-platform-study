@@ -9,6 +9,7 @@ import { seedRole } from './03-role';
 import { seedDepartment } from './04-department';
 import { seedTenant, seedTenantFrontendConfig } from './05-tenant';
 import { seedTenantBucket } from './05a-tenant-bucket';
+import { provisionTenantBuckets } from './05b-tenant-bucket-provision';
 import { seedStt } from './06-stt';
 import { seedPromptTemplate } from './07-prompt-template';
 import { seedDnaWritingStyle } from './08-dna-writing-style';
@@ -83,6 +84,8 @@ export const seed = async () => {
         await seedTenantFrontendConfig(client);
         console.log('');
         await seedTenantBucket(client);
+        console.log('');
+        await provisionTenantBuckets(client);
         console.log('');
 
         // Phase 2: Depends on Phase 1

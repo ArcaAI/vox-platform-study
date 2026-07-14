@@ -19,9 +19,9 @@ class LLMProvider(Protocol):
     """Contract that every LLM provider must satisfy."""
 
     # NOTE: usage dict is intentionally unparameterized here — the public
-    # contract is asserted as tuple[str, dict] by the protocol-contract test.
-    async def generate(self, request: GenerateRequest) -> tuple[str, dict]:  # type: ignore[type-arg]
-        """Non-streaming generation. Returns (content, usage_dict)."""
+    # contract is asserted as tuple[str, str, dict] by the protocol-contract test.
+    async def generate(self, request: GenerateRequest) -> tuple[str, str, dict]:  # type: ignore[type-arg]
+        """Non-streaming generation. Returns (content, reasoning, usage_dict)."""
         ...
 
     def generate_stream(self, request: GenerateRequest) -> AsyncIterator[StreamChunk]:

@@ -46,7 +46,7 @@ class TestBedrockGenerate:
         with patch("smr_v2.providers.bedrock.boto3") as mock_boto3:
             mock_boto3.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
-            content, usage = await provider.generate(GenerateRequest(prompt="hi", provider="bedrock"))
+            content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hi", provider="bedrock"))
             assert content == "Bedrock says hi!"
             assert isinstance(usage, dict)
 

@@ -51,7 +51,7 @@ class TestAzureGenerate:
         provider._client = AsyncMock()
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
-        content, usage = await provider.generate(GenerateRequest(prompt="hi", provider="azure_openai"))
+        content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hi", provider="azure_openai"))
         assert content == "Azure response!"
         assert isinstance(usage, dict)
 
@@ -89,6 +89,37 @@ class TestAzureGenerate:
 
 
 class TestAzureGenerateStream:
+    @pytest.mark.asyncio
+    async def test_stream_yields_reasoning_then_content(self, azure_config):
+        from smr_v2.providers.azure_openai import AzureOpenAIProvider
+
+        async def _mock_stream():
+            reasoning_chunk = MagicMock()
+            reasoning_chunk.choices = [MagicMock()]
+            reasoning_chunk.choices[0].delta.content = None
+            reasoning_chunk.choices[0].delta.reasoning_content = "Thinking..."
+            reasoning_chunk.choices[0].finish_reason = None
+            yield reasoning_chunk
+
+            content_chunk = MagicMock()
+            content_chunk.choices = [MagicMock()]
+            content_chunk.choices[0].delta.content = "Answer"
+            content_chunk.choices[0].delta.reasoning_content = None
+            content_chunk.choices[0].finish_reason = "stop"
+            yield content_chunk
+
+        provider = AzureOpenAIProvider(config=azure_config)
+        provider._client = AsyncMock()
+        provider._client.chat.completions.create = AsyncMock(return_value=_mock_stream())
+
+        chunks = []
+        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, provider="azure_openai")):
+            chunks.append(chunk)
+
+        reasoning_chunks = [c for c in chunks if c.type == "reasoning"]
+        assert len(reasoning_chunks) == 1
+        assert reasoning_chunks[0].content == "Thinking..."
+
     @pytest.mark.asyncio
     async def test_stream_yields_chunks(self, azure_config):
         from smr_v2.providers.azure_openai import AzureOpenAIProvider

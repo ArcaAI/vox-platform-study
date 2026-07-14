@@ -101,6 +101,12 @@ describe('useTaskStream', () => {
         act(() => source.emit('usage', JSON.stringify({ type: 'usage', data: { prompt_tokens: 20, completion_tokens: 214, total_tokens: 234 } })));
         expect(result.current.usage).toEqual({ prompt_tokens: 20, completion_tokens: 214, total_tokens: 234 });
 
+        act(() => {
+            source.emit('reasoning', JSON.stringify({ type: 'reasoning', content: 'Weighing differentials', data: null }));
+            source.emit('reasoning', JSON.stringify({ type: 'reasoning', content: ' before answering.', data: null }));
+        });
+        expect(result.current.reasoning).toBe('Weighing differentials before answering.');
+
         act(() => source.emit('done', JSON.stringify({ type: 'done', data: { finish_reason: 'stop' } })));
         expect(result.current.status).toBe('done');
         expect(result.current.finishReason).toBe('stop');

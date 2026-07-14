@@ -330,7 +330,7 @@ async def generate(
 
         for attempt in range(max_retries + 1):
             try:
-                content, usage = await asyncio.wait_for(
+                content, reasoning, usage = await asyncio.wait_for(
                     provider.generate(request_body),
                     timeout=timeout_s,
                 )
@@ -399,6 +399,7 @@ async def generate(
             task_id=task.task_id,
             status="completed",
             content=content,
+            reasoning=reasoning,
             provider=request_body.provider,
             model=model,
             usage=TokenUsage(

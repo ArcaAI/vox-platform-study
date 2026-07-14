@@ -110,7 +110,7 @@ class TestOllamaTokenUsage:
         mock_resp.raise_for_status = MagicMock()
         mock_http.post = AsyncMock(return_value=mock_resp)
 
-        content, usage = await provider.generate(GenerateRequest(prompt="hello"))
+        content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hello"))
         assert content == "Hello!"
         assert usage["prompt_tokens"] == 10
         assert usage["completion_tokens"] == 20
@@ -124,7 +124,7 @@ class TestOllamaTokenUsage:
         mock_resp.raise_for_status = MagicMock()
         mock_http.post = AsyncMock(return_value=mock_resp)
 
-        content, usage = await provider.generate(GenerateRequest(prompt="hello"))
+        content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hello"))
         assert content == "Hi"
         assert usage["prompt_tokens"] == 0
         assert usage["completion_tokens"] == 0
@@ -254,7 +254,7 @@ class TestAzureTokenUsage:
         mock_resp.usage = MagicMock(prompt_tokens=50, completion_tokens=100, total_tokens=150)
         provider._client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
-        content, usage = await provider.generate(GenerateRequest(prompt="hello"))
+        content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hello"))
         assert content == "Summary here"
         assert usage["prompt_tokens"] == 50
         assert usage["completion_tokens"] == 100
@@ -341,7 +341,7 @@ class TestBedrockTokenUsage:
             "usage": {"inputTokens": 25, "outputTokens": 50},
         }
 
-        content, usage = await provider.generate(GenerateRequest(prompt="hello"))
+        content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hello"))
         assert content == "Summary"
         assert usage["prompt_tokens"] == 25
         assert usage["completion_tokens"] == 50
@@ -354,7 +354,7 @@ class TestBedrockTokenUsage:
             "output": {"message": {"content": [{"text": "Hi"}]}},
         }
 
-        content, usage = await provider.generate(GenerateRequest(prompt="hello"))
+        content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hello"))
         assert content == "Hi"
         assert usage["prompt_tokens"] == 0
         assert usage["completion_tokens"] == 0

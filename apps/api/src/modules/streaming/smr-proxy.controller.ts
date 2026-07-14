@@ -24,6 +24,7 @@ import {
   Controller,
   ForbiddenException,
   Get,
+  Headers,
   HttpException,
   HttpStatus,
   Inject,
@@ -506,7 +507,11 @@ export class SmrProxyController {
   @Authorize()
   @ApiOperation({ summary: 'Stream task chunks via SSE from SMR v2' })
   @ApiParam({ name: 'taskId', description: 'Task ID to stream' })
-  async streamTaskEvents(@Param('taskId') taskId: string, @Res() res: Response): Promise<void> {
+  async streamTaskEvents(
+    @Param('taskId') taskId: string,
+    @Headers('last-event-id') lastEventId: string | undefined,
+    @Res() res: Response,
+  ): Promise<void> {
     const base = this.getSmrBaseUrl();
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -518,7 +523,10 @@ export class SmrProxyController {
     let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
     try {
-      const upstream = await this.httpService.axiosRef.get(`${base}/api/v1/tasks/${taskId}/stream`, {
+      const streamUrl = lastEventId
+        ? `${base}/api/v1/tasks/${taskId}/stream?last_event_id=${encodeURIComponent(lastEventId)}`
+        : `${base}/api/v1/tasks/${taskId}/stream`;
+      const upstream = await this.httpService.axiosRef.get(streamUrl, {
         headers: { ...this.getForwardHeaders(), Accept: 'text/event-stream' },
         responseType: 'stream',
         timeout: 300_000,
