@@ -35,6 +35,7 @@ const createMockConfigService = () => ({
             SMR_URL: 'http://localhost:8862',
             NLP_URL: 'http://localhost:8864',
             STT_V2_URL: 'http://localhost:8861',
+            TTS_URL: 'http://localhost:8867',
             GUARDRAIL_URL: 'http://localhost:8863',
             HARNESS_URL: 'http://localhost:8866',
         };
@@ -128,14 +129,16 @@ describe('ApiHealthController', () => {
         const smrHealthy = { data: { status: 'healthy', service: 'smr', version: '2.0.0', uptime_seconds: 200, timestamp: '2026-03-02T00:00:00Z', checks: {} } };
         const nlpHealthy = { data: { status: 'healthy', service: 'nlp', version: '1.0.0', uptime_seconds: 300, timestamp: '2026-03-02T00:00:00Z', checks: {} } };
         const sttHealthy = { data: { status: 'healthy', service: 'stt-v2', version: '1.0.0', uptime_seconds: 400, timestamp: '2026-03-02T00:00:00Z', checks: {} } };
+        const ttsHealthy = { data: { status: 'healthy', service: 'tts-v2', version: '1.0.0', uptime_seconds: 450, timestamp: '2026-03-02T00:00:00Z', checks: {} } };
         const guardrailHealthy = { data: { status: 'healthy', service: 'guardrail', version: '1.0.0', uptime_seconds: 500, timestamp: '2026-03-02T00:00:00Z', checks: {} } };
         const harnessHealthy = { data: { status: 'healthy', service: 'harness', version: '0.1.0', uptime_seconds: 600, timestamp: '2026-03-02T00:00:00Z', checks: {} } };
 
-        it('should return health status for all 5 downstream services', async () => {
+        it('should return health status for all 6 downstream services', async () => {
             mockHttpService.axiosRef.get
                 .mockResolvedValueOnce(smrHealthy)
                 .mockResolvedValueOnce(nlpHealthy)
                 .mockResolvedValueOnce(sttHealthy)
+                .mockResolvedValueOnce(ttsHealthy)
                 .mockResolvedValueOnce(guardrailHealthy)
                 .mockResolvedValueOnce(harnessHealthy);
 
@@ -145,11 +148,13 @@ describe('ApiHealthController', () => {
             expect(result.services).toHaveProperty('smr');
             expect(result.services).toHaveProperty('nlp');
             expect(result.services).toHaveProperty('stt');
+            expect(result.services).toHaveProperty('tts');
             expect(result.services).toHaveProperty('guardrail');
             expect(result.services).toHaveProperty('harness');
             expect(result.services.smr.status).toBe('healthy');
             expect(result.services.nlp.status).toBe('healthy');
             expect(result.services.stt.status).toBe('healthy');
+            expect(result.services.tts.status).toBe('healthy');
             expect(result.services.guardrail.status).toBe('healthy');
             expect(result.services.harness.status).toBe('healthy');
         });
@@ -159,6 +164,7 @@ describe('ApiHealthController', () => {
                 .mockResolvedValueOnce(smrHealthy)
                 .mockRejectedValueOnce(new Error('ECONNREFUSED'))
                 .mockResolvedValueOnce(sttHealthy)
+                .mockResolvedValueOnce(ttsHealthy)
                 .mockResolvedValueOnce(guardrailHealthy)
                 .mockResolvedValueOnce(harnessHealthy);
 
@@ -168,6 +174,7 @@ describe('ApiHealthController', () => {
             expect(result.services.smr.status).toBe('healthy');
             expect(result.services.nlp.status).toBe('down');
             expect(result.services.stt.status).toBe('healthy');
+            expect(result.services.tts.status).toBe('healthy');
             expect(result.services.guardrail.status).toBe('healthy');
             expect(result.services.harness.status).toBe('healthy');
         });
@@ -181,6 +188,7 @@ describe('ApiHealthController', () => {
             expect(result.services.smr.status).toBe('down');
             expect(result.services.nlp.status).toBe('down');
             expect(result.services.stt.status).toBe('down');
+            expect(result.services.tts.status).toBe('down');
             expect(result.services.guardrail.status).toBe('down');
             expect(result.services.harness.status).toBe('down');
         });
@@ -199,6 +207,7 @@ describe('ApiHealthController', () => {
                 .mockResolvedValueOnce(smrHealthy)
                 .mockResolvedValueOnce(nlpHealthy)
                 .mockResolvedValueOnce(sttHealthy)
+                .mockResolvedValueOnce(ttsHealthy)
                 .mockResolvedValueOnce(guardrailHealthy)
                 .mockResolvedValueOnce(harnessHealthy);
 
@@ -232,13 +241,14 @@ describe('ApiHealthController', () => {
             await controller.checkServices();
 
             const calledUrls = mockHttpService.axiosRef.get.mock.calls.map((c: any[]) => c[0]);
-            expect(calledUrls).toHaveLength(5);
+            expect(calledUrls).toHaveLength(6);
             expect(calledUrls[0]).toMatch(/localhost:8862\/api\/v1\/health$/);
             expect(calledUrls[1]).toMatch(/localhost:8864\/api\/v1\/health$/);
             expect(calledUrls[2]).toMatch(/localhost:8861\/api\/v1\/health$/);
+            expect(calledUrls[3]).toMatch(/localhost:8867\/api\/v1\/health$/);
             // Guardrail mounts health under /api (not /api/v1).
-            expect(calledUrls[3]).toMatch(/localhost:8863\/api\/health$/);
-            expect(calledUrls[4]).toMatch(/localhost:8866\/api\/v1\/health$/);
+            expect(calledUrls[4]).toMatch(/localhost:8863\/api\/health$/);
+            expect(calledUrls[5]).toMatch(/localhost:8866\/api\/v1\/health$/);
         });
     });
 

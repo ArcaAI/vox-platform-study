@@ -43,6 +43,7 @@ const HEALTH = {
     services: {
         smr: { status: 'healthy', service: 'smr', uptime_seconds: 86_400, duration_ms: 210 },
         stt: { status: 'healthy', service: 'stt', duration_ms: 118 },
+        tts: { status: 'healthy', service: 'tts', duration_ms: 104 },
         nlp: { status: 'healthy', service: 'nlp', duration_ms: 88 },
         guardrail: { status: 'healthy', service: 'guardrail', duration_ms: 65 },
         harness: { status: 'degraded', service: 'harness', error: 'exports depth 117' },
@@ -53,13 +54,14 @@ const UPTIME = {
     services: {
         smr: { status: 'healthy', uptime: 99.97, responseTime: 210, lastCheck: NOW, heartbeats: heartbeats(20, 0) },
         stt: { status: 'healthy', uptime: 99.4, responseTime: 118, lastCheck: NOW, heartbeats: heartbeats(19, 1) },
+        tts: { status: 'healthy', uptime: 99.1, responseTime: 104, lastCheck: NOW, heartbeats: heartbeats(18, 2) },
         harness: { status: 'degraded', uptime: 97.2, responseTime: 2_140, lastCheck: NOW, heartbeats: heartbeats(15, 5) },
     },
     refreshedAt: NOW,
 };
 
 const SESSIONS = {
-    services: { smr: { active: 12 }, stt: { active: 7 }, nlp: { active: 3 }, guardrail: { active: 0 }, harness: { active: 1 } },
+    services: { smr: { active: 12 }, stt: { active: 7 }, tts: { active: 5 }, nlp: { active: 3 }, guardrail: { active: 0 }, harness: { active: 1 } },
     totalUsers: 19,
     refreshedAt: NOW,
 };
@@ -116,7 +118,7 @@ describe('MonitoringScreen', () => {
 
         const grid = await screen.findByRole('list', { name: /service health/i });
         const cards = within(grid).getAllByRole('listitem');
-        expect(cards.length).toBe(5);
+        expect(cards.length).toBe(6);
         expect(within(grid).getByText('harness')).toBeDefined();
         expect(within(grid).getByText('Degraded')).toBeDefined();
         expect(within(grid).getByText('exports depth 117')).toBeDefined();
