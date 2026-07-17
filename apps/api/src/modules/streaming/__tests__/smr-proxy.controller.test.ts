@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { ModelTaskType } from '@arcaai/domains';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SmrProxyController } from '../smr-proxy.controller';
 
@@ -9,8 +10,10 @@ const createMockHttpService = () => ({
   },
 });
 
+// TASK-506 — `fetchTenantConfigs` dropped: the providers listings no longer
+// read the retired GlobalSetting keys; only `fetchByCodeName` (the explicit
+// `?tenantKey=__GLOBAL__` resolution) remains.
 const createMockTenantService = () => ({
-  fetchTenantConfigs: vi.fn(),
   fetchByCodeName: vi.fn(),
 });
 
@@ -89,16 +92,6 @@ describe('SmrProxyController', () => {
       // can pass for legacy fixtures that expect the happy path.
       if (key === 'user') return { id: 'user-1', roles: [] };
       return undefined;
-    });
-
-    mockTenantService.fetchTenantConfigs.mockResolvedValue({
-      data: [
-        { key: 'default-smr-provider', value: 'ollama' },
-        { key: 'default-smr-model', value: 'granite4:latest' },
-      ],
-      count: 2,
-      limit: 200,
-      page: 1,
     });
 
     controller = new SmrProxyController(
@@ -702,96 +695,141 @@ describe('SmrProxyController', () => {
     });
   });
 
-  describe('GET /text/providers', () => {
-    it('should return provider/model from tenant config defaults', async () => {
-      const result = await controller.getProviders();
+  // ── TASK-506 §3.3 — providers listings repointed to the AiModel registry ──
+  // `GET /text/providers` and `GET /text/guardrail-providers` no longer read the
+  // retired GlobalSetting keys (`smr-provider-models` / `default-smr-*` /
+  // `default-guardrail-*`); the registry (ENABLED AiModel rows grouped by
+  // `provider`) is the single UI catalog. The live-SMR probe survives ONLY as
+  // the /providers transition fallback when the registry has zero rows.
 
-      expect(mockTenantService.fetchTenantConfigs).toHaveBeenCalledWith({
-        tenantId: 'tenant-1',
-        limit: 200,
-        page: 1,
-      });
-      expect(mockHttpService.axiosRef.get).not.toHaveBeenCalledWith(
-        expect.stringContaining('/api/v1/providers'),
-        expect.any(Object),
+  const createMockAiModelService = () => ({ getByTaskTypeSharedRead: vi.fn(async () => []) });
+  const createMockAiTaskDefaultService = () => ({ getEffective: vi.fn() });
+
+  const buildProvidersController = (opts: {
+    aiModels?: { getByTaskTypeSharedRead: ReturnType<typeof vi.fn> };
+    aiTaskDefaults?: { getEffective: ReturnType<typeof vi.fn> };
+    harnessPolicy?: { resolveSmrSelection: ReturnType<typeof vi.fn> };
+  }) =>
+    new SmrProxyController(
+      mockHttpService as any,
+      mockTenantService as any,
+      mockClsService as any,
+      mockContextItemRepo as any,
+      mockPromptTemplateRepo as any,
+      mockDnaStyleRepo as any,
+      mockDepartmentRepo as any,
+      mockMediaRepo as any,
+      mockBlobStorage as any,
+      mockConfigService as any,
+      undefined, // secretsService (@Optional)
+      (opts.harnessPolicy ?? undefined) as any,
+      (opts.aiModels ?? undefined) as any,
+      (opts.aiTaskDefaults ?? undefined) as any,
+    );
+
+  const registryRow = (over: Record<string, unknown>) => ({
+    id: `id-${String(over.slug ?? 'row')}`,
+    name: String(over.slug ?? 'row'),
+    slug: 'row',
+    provider: null,
+    architecture: null,
+    taskType: ModelTaskType.TEXT_GENERATION,
+    format: 'GGUF',
+    sourceUri: '',
+    memorySizeMb: null,
+    resourceStatus: 'ENABLED',
+    ...over,
+  });
+
+  describe('GET /text/providers (registry-backed — TASK-506)', () => {
+    it('groups ENABLED TEXT_GENERATION + SUMMARIZATION rows by provider in the legacy shape, default from HarnessPolicy', async () => {
+      const aiModels = createMockAiModelService();
+      aiModels.getByTaskTypeSharedRead.mockImplementation(async (taskType: string) =>
+        taskType === ModelTaskType.TEXT_GENERATION
+          ? [
+              registryRow({ slug: 'lms-gemma-4-e2b-it-qat', provider: 'lm-studio', sourceUri: 'gemma-4-e2b-it-qat', memorySizeMb: 3100 }),
+              registryRow({ slug: 'ollama-qwen3.5-2b', provider: 'ollama', sourceUri: 'qwen3.5:2b', memorySizeMb: 900 }),
+            ]
+          : [registryRow({ slug: 'lms-gemma-4-e4b-it-qat', provider: 'lm-studio', sourceUri: 'gemma-4-e4b-it-qat', taskType: ModelTaskType.SUMMARIZATION })],
       );
+      const harnessPolicy = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat' }) };
+      const ctrl = buildProvidersController({ aiModels, harnessPolicy });
+
+      const result = await ctrl.getProviders();
+
+      expect(aiModels.getByTaskTypeSharedRead).toHaveBeenCalledWith(ModelTaskType.TEXT_GENERATION);
+      expect(aiModels.getByTaskTypeSharedRead).toHaveBeenCalledWith(ModelTaskType.SUMMARIZATION);
+      expect(harnessPolicy.resolveSmrSelection).toHaveBeenCalledWith('tenant-1');
       expect(result).toEqual([
+        {
+          name: 'lm-studio',
+          models: [
+            { name: 'gemma-4-e2b-it-qat', slug: 'lms-gemma-4-e2b-it-qat', size: '3.0 GB' },
+            { name: 'gemma-4-e4b-it-qat', slug: 'lms-gemma-4-e4b-it-qat', size: '' },
+          ],
+          is_available: true,
+          is_default: true,
+          default_model: 'gemma-4-e2b-it-qat',
+        },
         {
           name: 'ollama',
-          models: ['granite4:latest'],
+          models: [{ name: 'qwen3.5:2b', slug: 'ollama-qwen3.5-2b', size: '900 MB' }],
           is_available: true,
-          default_model: 'granite4:latest',
+          is_default: false,
+          default_model: 'qwen3.5:2b',
         },
       ]);
+      // The retired GlobalSetting keys are never read.
+      expect(mockHttpService.axiosRef.get).not.toHaveBeenCalled();
     });
 
-    // TASK-307 W5.9 (AC-23, audit D-12) retuned this from an implicit
-    // GLOBAL_ADMIN → __GLOBAL__ fallback to an EXPLICIT
-    // ?tenantKey=__GLOBAL__ query parameter. Behaviour beyond the
-    // resolver remains identical.
-    it('should resolve global tenant config when GLOBAL_ADMIN passes ?tenantKey=__GLOBAL__ (W5.9)', async () => {
-      mockClsService.get.mockImplementation((key: string) => {
-        if (key === 'tenantId') return undefined;
-        if (key === 'user') return { roles: ['GLOBAL_ADMIN'] };
-        return undefined;
-      });
+    it('dedupes a row returned under both task types', async () => {
+      const aiModels = createMockAiModelService();
+      const shared = registryRow({ slug: 'lms-gemma-4-e2b-it-qat', provider: 'lm-studio', sourceUri: 'gemma-4-e2b-it-qat' });
+      aiModels.getByTaskTypeSharedRead.mockResolvedValue([shared]);
+      const ctrl = buildProvidersController({ aiModels });
 
-      mockTenantService.fetchByCodeName.mockResolvedValue({ id: 'global-tenant' });
-      mockTenantService.fetchTenantConfigs.mockResolvedValue({
-        data: [
-          { key: 'default-smr-provider', value: 'azure-openai' },
-          { key: 'default-smr-model', value: 'gpt-4o-mini' },
-        ],
-        count: 2,
-        limit: 200,
-        page: 1,
-      });
+      const result = await ctrl.getProviders();
 
-      const result = await controller.getProviders('__GLOBAL__');
-
-      expect(mockTenantService.fetchByCodeName).toHaveBeenCalledWith('__GLOBAL__');
-      expect(mockTenantService.fetchTenantConfigs).toHaveBeenCalledWith({
-        tenantId: 'global-tenant',
-        limit: 200,
-        page: 1,
-      });
-      expect(result).toEqual([
-        {
-          name: 'azure-openai',
-          models: ['gpt-4o-mini'],
-          is_available: true,
-          default_model: 'gpt-4o-mini',
-        },
-      ]);
+      expect(result).toHaveLength(1);
+      expect(result[0].models).toHaveLength(1);
     });
 
-    it('should fall back to SMR /providers when tenant settings are empty', async () => {
-      mockTenantService.fetchTenantConfigs.mockResolvedValue({
-        data: [],
-        count: 0,
-        limit: 200,
-        page: 1,
-      });
+    it('marks no default when the HarnessPolicy cascade is unresolved (fail-open)', async () => {
+      const aiModels = createMockAiModelService();
+      aiModels.getByTaskTypeSharedRead.mockResolvedValue([registryRow({ slug: 's', provider: 'ollama', sourceUri: 'qwen3.5:2b' })]);
+      const harnessPolicy = { resolveSmrSelection: vi.fn().mockRejectedValue(new BadRequestException('unresolved')) };
+      const ctrl = buildProvidersController({ aiModels, harnessPolicy });
+
+      const result = await ctrl.getProviders();
+
+      expect(result).toHaveLength(1);
+      expect(result[0].is_default).toBe(false);
+      expect(result[0].default_model).toBe('qwen3.5:2b'); // first model, mirroring the legacy shape
+    });
+
+    it('skips rows without a provider (unmigrated) — all-unmigrated falls to the SMR probe', async () => {
+      const aiModels = createMockAiModelService();
+      aiModels.getByTaskTypeSharedRead.mockResolvedValue([registryRow({ slug: 'legacy-row', provider: null, sourceUri: 'legacy' })]);
+      mockHttpService.axiosRef.get.mockResolvedValue({ data: [] });
+      const ctrl = buildProvidersController({ aiModels });
+
+      await ctrl.getProviders();
+
+      expect(mockHttpService.axiosRef.get).toHaveBeenCalledWith(expect.stringContaining('/api/v1/providers'), expect.any(Object));
+    });
+
+    it('falls back to the live SMR /providers probe when the registry returns zero rows (transition safety)', async () => {
+      const aiModels = createMockAiModelService(); // returns []
       mockHttpService.axiosRef.get.mockResolvedValue({
         data: [
-          {
-            name: 'ollama',
-            display_name: 'Ollama',
-            status: 'available',
-            default_model: 'granite4:latest',
-            models: [{ name: 'granite4:latest', supports_streaming: true }],
-          },
-          {
-            name: 'azure-openai',
-            display_name: 'Azure OpenAI',
-            status: 'unavailable',
-            default_model: 'gpt-4o-mini',
-            models: [{ name: 'gpt-4o-mini', supports_streaming: true }],
-          },
+          { name: 'ollama', display_name: 'Ollama', status: 'available', default_model: 'granite4:latest', models: [{ name: 'granite4:latest' }] },
+          { name: 'azure-openai', display_name: 'Azure OpenAI', status: 'unavailable', default_model: 'gpt-4o-mini', models: [{ name: 'gpt-4o-mini' }] },
         ],
       });
+      const ctrl = buildProvidersController({ aiModels });
 
-      const result = await controller.getProviders();
+      const result = await ctrl.getProviders();
 
       expect(mockHttpService.axiosRef.get).toHaveBeenCalledWith(expect.stringContaining('/api/v1/providers'), expect.any(Object));
       expect(result).toEqual([
@@ -800,49 +838,44 @@ describe('SmrProxyController', () => {
       ]);
     });
 
-    it('should return empty list when tenant settings are empty and SMR fallback fails', async () => {
-      mockTenantService.fetchTenantConfigs.mockResolvedValue({
-        data: [],
-        count: 0,
-        limit: 200,
-        page: 1,
-      });
+    it('returns an empty list when the registry is empty and the SMR probe fails', async () => {
+      const aiModels = createMockAiModelService();
       mockHttpService.axiosRef.get.mockRejectedValue(new Error('ECONNREFUSED'));
+      const ctrl = buildProvidersController({ aiModels });
 
-      await expect(controller.getProviders()).resolves.toEqual([]);
+      await expect(ctrl.getProviders()).resolves.toEqual([]);
+    });
+
+    it('treats a registry read failure as zero rows (probe fallback, never a 5xx to the console)', async () => {
+      const aiModels = { getByTaskTypeSharedRead: vi.fn().mockRejectedValue(new BadRequestException('Tenant ID is required')) };
+      mockHttpService.axiosRef.get.mockResolvedValue({ data: [] });
+      const ctrl = buildProvidersController({ aiModels });
+
+      await expect(ctrl.getProviders()).resolves.toEqual([]);
+      expect(mockHttpService.axiosRef.get).toHaveBeenCalledWith(expect.stringContaining('/api/v1/providers'), expect.any(Object));
     });
   });
 
-  // TASK-307 W5.9 (AC-23, audit D-12) — the GLOBAL-tenant fallback must
-  // be requested EXPLICITLY via `?tenantKey=__GLOBAL__`. The old
-  // implicit "GLOBAL_ADMIN without a CLS tenantId silently reads
-  // __GLOBAL__" path is removed because operators rarely intend it and
-  // tenant admins debugging an issue can land on it by mistake when CLS
-  // resolution misfires.
-  describe('TASK-307 W5.9 — explicit ?tenantKey=__GLOBAL__ on getProviders (AC-23, audit D-12)', () => {
-    beforeEach(() => {
-      mockTenantService.fetchTenantConfigs.mockResolvedValue({
-        data: [{ key: 'default-smr-provider', value: 'azure-openai' }, { key: 'default-smr-model', value: 'gpt-4o-mini' }],
-        count: 2,
-        limit: 200,
-        page: 1,
-      });
-    });
-
-    it('GLOBAL_ADMIN with ?tenantKey=__GLOBAL__ resolves to the GLOBAL tenant', async () => {
+  // TASK-307 W5.9 (AC-23, audit D-12) — the GLOBAL-tenant targeting must stay
+  // EXPLICIT via `?tenantKey=__GLOBAL__` after the registry repoint.
+  describe('TASK-307 W5.9 — explicit ?tenantKey=__GLOBAL__ posture on getProviders (TASK-506 registry-backed)', () => {
+    it('GLOBAL_ADMIN with ?tenantKey=__GLOBAL__ resolves the GLOBAL tenant id', async () => {
       mockClsService.get.mockImplementation((key: string) => {
         if (key === 'tenantId') return undefined;
         if (key === 'user') return { id: 'admin', roles: ['GLOBAL_ADMIN'] };
         return undefined;
       });
       mockTenantService.fetchByCodeName.mockResolvedValue({ id: 'global-tenant' });
+      const aiModels = createMockAiModelService();
+      aiModels.getByTaskTypeSharedRead.mockResolvedValue([registryRow({ slug: 's', provider: 'ollama', sourceUri: 'qwen3.5:2b' })]);
+      const harnessPolicy = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'ollama', model: 'qwen3.5:2b' }) };
+      const ctrl = buildProvidersController({ aiModels, harnessPolicy });
 
-      await controller.getProviders('__GLOBAL__');
+      const result = await ctrl.getProviders('__GLOBAL__');
 
       expect(mockTenantService.fetchByCodeName).toHaveBeenCalledWith('__GLOBAL__');
-      expect(mockTenantService.fetchTenantConfigs).toHaveBeenCalledWith(
-        expect.objectContaining({ tenantId: 'global-tenant' }),
-      );
+      expect(harnessPolicy.resolveSmrSelection).toHaveBeenCalledWith('global-tenant');
+      expect(result).toHaveLength(1);
     });
 
     it('non-GLOBAL_ADMIN with ?tenantKey=__GLOBAL__ is FORBIDDEN', async () => {
@@ -851,8 +884,9 @@ describe('SmrProxyController', () => {
         if (key === 'user') return { id: 'u-1', roles: ['DOCTOR'] };
         return undefined;
       });
+      const ctrl = buildProvidersController({ aiModels: createMockAiModelService() });
 
-      await expect(controller.getProviders('__GLOBAL__')).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(ctrl.getProviders('__GLOBAL__')).rejects.toBeInstanceOf(ForbiddenException);
       expect(mockTenantService.fetchByCodeName).not.toHaveBeenCalled();
     });
 
@@ -862,9 +896,10 @@ describe('SmrProxyController', () => {
         if (key === 'user') return { id: 'admin', roles: ['GLOBAL_ADMIN'] };
         return undefined;
       });
+      const ctrl = buildProvidersController({ aiModels: createMockAiModelService() });
 
-      await expect(controller.getProviders('other-tenant')).rejects.toBeInstanceOf(BadRequestException);
-      await expect(controller.getProviders('__global__')).rejects.toBeInstanceOf(BadRequestException);
+      await expect(ctrl.getProviders('other-tenant')).rejects.toBeInstanceOf(BadRequestException);
+      await expect(ctrl.getProviders('__global__')).rejects.toBeInstanceOf(BadRequestException);
       expect(mockTenantService.fetchByCodeName).not.toHaveBeenCalled();
     });
 
@@ -874,8 +909,9 @@ describe('SmrProxyController', () => {
         if (key === 'user') return { id: 'admin', roles: ['GLOBAL_ADMIN'] };
         return undefined;
       });
+      const ctrl = buildProvidersController({ aiModels: createMockAiModelService() });
 
-      await expect(controller.getProviders()).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(ctrl.getProviders()).rejects.toBeInstanceOf(UnauthorizedException);
       expect(mockTenantService.fetchByCodeName).not.toHaveBeenCalled();
     });
 
@@ -885,225 +921,113 @@ describe('SmrProxyController', () => {
         if (key === 'user') return { id: 'u-1', roles: ['DOCTOR'] };
         return undefined;
       });
+      const aiModels = createMockAiModelService();
+      aiModels.getByTaskTypeSharedRead.mockResolvedValue([registryRow({ slug: 's', provider: 'ollama', sourceUri: 'qwen3.5:2b' })]);
+      const harnessPolicy = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'ollama', model: 'qwen3.5:2b' }) };
+      const ctrl = buildProvidersController({ aiModels, harnessPolicy });
 
-      await controller.getProviders();
+      await ctrl.getProviders();
 
       expect(mockTenantService.fetchByCodeName).not.toHaveBeenCalled();
-      expect(mockTenantService.fetchTenantConfigs).toHaveBeenCalledWith(
-        expect.objectContaining({ tenantId: 'tenant-cls' }),
-      );
+      expect(harnessPolicy.resolveSmrSelection).toHaveBeenCalledWith('tenant-cls');
     });
   });
 
-  describe('GET /text/providers (catalog-based — TASK-240)', () => {
-    const CATALOG_JSON = JSON.stringify([
-      {
-        provider: 'ollama',
-        models: [
-          { name: 'granite4:latest', size: '2.1 GB' },
-          { name: 'gemma3:latest', size: '3.3 GB' },
-        ],
-      },
-      {
-        provider: 'lm-studio',
-        models: [
-          { name: 'qwen3.5-4b', size: '3.1 GB' },
-        ],
-      },
-      {
-        provider: 'azure-openai',
-        models: [
-          { name: 'gpt-4o-mini', size: '' },
-        ],
-      },
-    ]);
-
-    it('should return all catalog providers with models and sizes when catalog setting exists', async () => {
-      mockTenantService.fetchTenantConfigs.mockResolvedValue({
-        data: [
-          { key: 'default-smr-provider', value: 'ollama' },
-          { key: 'default-smr-model', value: 'granite4:latest' },
-          { key: 'smr-provider-models', value: CATALOG_JSON },
-        ],
-        count: 3,
-        limit: 200,
-        page: 1,
-      });
-
-      const result = await controller.getProviders();
-
-      expect(result).toHaveLength(3);
-      expect(result[0].name).toBe('ollama');
-      expect(result[0].models).toEqual([
-        { name: 'granite4:latest', size: '2.1 GB' },
-        { name: 'gemma3:latest', size: '3.3 GB' },
+  // TASK-506 — the guardrail listing reads ENABLED GUARDRAIL registry rows and
+  // marks the effective `guardrail.validate` default (AiTaskDefault cascade).
+  // NO upstream probe: an empty registry simply means "not configured".
+  describe('GET /text/guardrail-providers (registry-backed — TASK-506)', () => {
+    it('groups ENABLED GUARDRAIL rows by provider and marks the effective guardrail.validate default', async () => {
+      const aiModels = createMockAiModelService();
+      aiModels.getByTaskTypeSharedRead.mockResolvedValue([
+        registryRow({ slug: 'granite-guardian-4.1-8b', provider: 'lm-studio', sourceUri: 'granite-guardian-4.1-8b', taskType: ModelTaskType.GUARDRAIL, memorySizeMb: 4900 }),
+        registryRow({ slug: 'ollama-guardian', provider: 'ollama', sourceUri: 'granite3-guardian:8b', taskType: ModelTaskType.GUARDRAIL }),
       ]);
-      expect(result[1].name).toBe('lm-studio');
-      expect(result[2].name).toBe('azure-openai');
-    });
-
-    it('should mark the tenant default provider and model in the response', async () => {
-      mockTenantService.fetchTenantConfigs.mockResolvedValue({
-        data: [
-          { key: 'default-smr-provider', value: 'lm-studio' },
-          { key: 'default-smr-model', value: 'qwen3.5-4b' },
-          { key: 'smr-provider-models', value: CATALOG_JSON },
-        ],
-        count: 3,
-        limit: 200,
-        page: 1,
-      });
-
-      const result = await controller.getProviders();
-
-      const lmStudio = result.find((p: any) => p.name === 'lm-studio');
-      expect(lmStudio.is_default).toBe(true);
-      expect(lmStudio.default_model).toBe('qwen3.5-4b');
-
-      const ollama = result.find((p: any) => p.name === 'ollama');
-      expect(ollama.is_default).toBe(false);
-    });
-
-    it('should set is_available true for all catalog providers', async () => {
-      mockTenantService.fetchTenantConfigs.mockResolvedValue({
-        data: [
-          { key: 'default-smr-provider', value: 'ollama' },
-          { key: 'default-smr-model', value: 'granite4:latest' },
-          { key: 'smr-provider-models', value: CATALOG_JSON },
-        ],
-        count: 3,
-        limit: 200,
-        page: 1,
-      });
-
-      const result = await controller.getProviders();
-      for (const provider of result) {
-        expect(provider.is_available).toBe(true);
-      }
-    });
-  });
-
-  // TASK-338 — admin-configurable Guardrail engine endpoint. Mirrors the
-  // catalog-based SMR provider listing but reads the `guardrail` namespace
-  // settings + `guardrail-provider-models` catalog, and has NO upstream fallback.
-  describe('GET /text/guardrail-providers (TASK-338)', () => {
-    const GUARDRAIL_CATALOG_JSON = JSON.stringify([
-      {
-        provider: 'lm-studio',
-        models: [
-          { name: 'granite-guardian-4.1-8b', size: '4.9 GB' },
-          { name: 'ibm-granite/granite-guardian-3.2-5b', size: '3.1 GB' },
-        ],
-      },
-      {
-        provider: 'ollama',
-        models: [{ name: 'granite3-guardian:8b', size: '4.9 GB' }],
-      },
-      {
-        provider: 'azure-openai',
-        models: [{ name: 'gpt-4o-mini', size: '' }],
-      },
-    ]);
-
-    it('should return all guardrail catalog providers with the tenant default marked', async () => {
-      mockTenantService.fetchTenantConfigs.mockResolvedValue({
-        data: [
-          { key: 'default-guardrail-provider', value: 'lm-studio' },
-          { key: 'default-guardrail-model', value: 'granite-guardian-4.1-8b' },
-          { key: 'guardrail-provider-models', value: GUARDRAIL_CATALOG_JSON },
-        ],
-        count: 3,
-        limit: 200,
-        page: 1,
-      });
-
-      const result = await controller.getGuardrailProviders();
-
-      expect(mockTenantService.fetchTenantConfigs).toHaveBeenCalledWith({
+      const aiTaskDefaults = createMockAiTaskDefaultService();
+      aiTaskDefaults.getEffective.mockResolvedValue({
         tenantId: 'tenant-1',
-        limit: 200,
-        page: 1,
+        taskKey: 'guardrail.validate',
+        modelSlug: 'granite-guardian-4.1-8b',
+        source: 'system',
+        configJson: null,
+        model: {
+          id: 'm1',
+          slug: 'granite-guardian-4.1-8b',
+          name: 'Granite Guardian 4.1 8B',
+          provider: 'lm-studio',
+          architecture: 'granite',
+          taskType: 'GUARDRAIL',
+          format: 'GGUF',
+          sourceUri: 'granite-guardian-4.1-8b',
+        },
       });
-      expect(result).toHaveLength(3);
-      expect(result[0].name).toBe('lm-studio');
-      expect(result[0].models).toEqual([
-        { name: 'granite-guardian-4.1-8b', size: '4.9 GB' },
-        { name: 'ibm-granite/granite-guardian-3.2-5b', size: '3.1 GB' },
-      ]);
+      const ctrl = buildProvidersController({ aiModels, aiTaskDefaults });
 
-      const lmStudio = result.find((p: any) => p.name === 'lm-studio');
-      expect(lmStudio.is_default).toBe(true);
-      expect(lmStudio.default_model).toBe('granite-guardian-4.1-8b');
-      for (const provider of result) {
-        expect(provider.is_available).toBe(true);
-      }
+      const result = await ctrl.getGuardrailProviders();
+
+      expect(aiModels.getByTaskTypeSharedRead).toHaveBeenCalledWith(ModelTaskType.GUARDRAIL);
+      expect(aiTaskDefaults.getEffective).toHaveBeenCalledWith('guardrail.validate', 'tenant-1');
+      expect(result).toEqual([
+        {
+          name: 'lm-studio',
+          models: [{ name: 'granite-guardian-4.1-8b', slug: 'granite-guardian-4.1-8b', size: '4.8 GB' }],
+          is_available: true,
+          is_default: true,
+          default_model: 'granite-guardian-4.1-8b',
+        },
+        {
+          name: 'ollama',
+          models: [{ name: 'granite3-guardian:8b', slug: 'ollama-guardian', size: '' }],
+          is_available: true,
+          is_default: false,
+          default_model: 'granite3-guardian:8b',
+        },
+      ]);
     });
 
-    it('should NOT fall back to the SMR /providers upstream', async () => {
-      mockTenantService.fetchTenantConfigs.mockResolvedValue({
-        data: [],
-        count: 0,
-        limit: 200,
-        page: 1,
-      });
+    it('does NOT fall back to the SMR /providers upstream on an empty registry', async () => {
+      const ctrl = buildProvidersController({ aiModels: createMockAiModelService(), aiTaskDefaults: createMockAiTaskDefaultService() });
 
-      const result = await controller.getGuardrailProviders();
+      const result = await ctrl.getGuardrailProviders();
 
       expect(result).toEqual([]);
-      expect(mockHttpService.axiosRef.get).not.toHaveBeenCalledWith(
-        expect.stringContaining('/api/v1/providers'),
-        expect.any(Object),
-      );
+      expect(mockHttpService.axiosRef.get).not.toHaveBeenCalled();
     });
 
-    it('should ignore SMR settings and only read guardrail settings', async () => {
-      mockTenantService.fetchTenantConfigs.mockResolvedValue({
-        data: [
-          { key: 'default-smr-provider', value: 'ollama' },
-          { key: 'default-smr-model', value: 'granite4:latest' },
-          { key: 'default-guardrail-provider', value: 'ollama' },
-          { key: 'default-guardrail-model', value: 'granite3-guardian:8b' },
-          { key: 'guardrail-provider-models', value: GUARDRAIL_CATALOG_JSON },
-        ],
-        count: 5,
-        limit: 200,
-        page: 1,
-      });
+    it('fails open when the effective-default resolution throws — listing returned, no default marked', async () => {
+      const aiModels = createMockAiModelService();
+      aiModels.getByTaskTypeSharedRead.mockResolvedValue([
+        registryRow({ slug: 'granite-guardian-4.1-8b', provider: 'lm-studio', sourceUri: 'granite-guardian-4.1-8b', taskType: ModelTaskType.GUARDRAIL }),
+      ]);
+      const aiTaskDefaults = createMockAiTaskDefaultService();
+      aiTaskDefaults.getEffective.mockRejectedValue(new Error('resolver down'));
+      const ctrl = buildProvidersController({ aiModels, aiTaskDefaults });
 
-      const result = await controller.getGuardrailProviders();
+      const result = await ctrl.getGuardrailProviders();
 
-      const ollama = result.find((p: any) => p.name === 'ollama');
-      expect(ollama.is_default).toBe(true);
-      expect(ollama.default_model).toBe('granite3-guardian:8b');
+      expect(result).toHaveLength(1);
+      expect(result[0].is_default).toBe(false);
     });
 
-    it('should resolve global tenant config when GLOBAL_ADMIN passes ?tenantKey=__GLOBAL__', async () => {
+    it('resolves the GLOBAL tenant for the effective default when GLOBAL_ADMIN passes ?tenantKey=__GLOBAL__', async () => {
       mockClsService.get.mockImplementation((key: string) => {
         if (key === 'tenantId') return undefined;
         if (key === 'user') return { roles: ['GLOBAL_ADMIN'] };
         return undefined;
       });
       mockTenantService.fetchByCodeName.mockResolvedValue({ id: 'global-tenant' });
-      mockTenantService.fetchTenantConfigs.mockResolvedValue({
-        data: [
-          { key: 'default-guardrail-provider', value: 'lm-studio' },
-          { key: 'default-guardrail-model', value: 'granite-guardian-4.1-8b' },
-          { key: 'guardrail-provider-models', value: GUARDRAIL_CATALOG_JSON },
-        ],
-        count: 3,
-        limit: 200,
-        page: 1,
-      });
+      const aiModels = createMockAiModelService();
+      aiModels.getByTaskTypeSharedRead.mockResolvedValue([
+        registryRow({ slug: 'granite-guardian-4.1-8b', provider: 'lm-studio', sourceUri: 'granite-guardian-4.1-8b', taskType: ModelTaskType.GUARDRAIL }),
+      ]);
+      const aiTaskDefaults = createMockAiTaskDefaultService();
+      aiTaskDefaults.getEffective.mockResolvedValue({ tenantId: 'global-tenant', taskKey: 'guardrail.validate', modelSlug: null, source: null, configJson: null, model: null });
+      const ctrl = buildProvidersController({ aiModels, aiTaskDefaults });
 
-      const result = await controller.getGuardrailProviders('__GLOBAL__');
+      await ctrl.getGuardrailProviders('__GLOBAL__');
 
       expect(mockTenantService.fetchByCodeName).toHaveBeenCalledWith('__GLOBAL__');
-      expect(mockTenantService.fetchTenantConfigs).toHaveBeenCalledWith({
-        tenantId: 'global-tenant',
-        limit: 200,
-        page: 1,
-      });
-      expect(result.find((p: any) => p.name === 'lm-studio').is_default).toBe(true);
+      expect(aiTaskDefaults.getEffective).toHaveBeenCalledWith('guardrail.validate', 'global-tenant');
     });
 
     it('non-GLOBAL_ADMIN with ?tenantKey=__GLOBAL__ is FORBIDDEN', async () => {
@@ -1112,8 +1036,9 @@ describe('SmrProxyController', () => {
         if (key === 'user') return { roles: ['DOCTOR'] };
         return undefined;
       });
+      const ctrl = buildProvidersController({ aiModels: createMockAiModelService() });
 
-      await expect(controller.getGuardrailProviders('__GLOBAL__')).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(ctrl.getGuardrailProviders('__GLOBAL__')).rejects.toBeInstanceOf(ForbiddenException);
     });
   });
 

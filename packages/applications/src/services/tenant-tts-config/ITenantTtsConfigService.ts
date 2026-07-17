@@ -3,6 +3,7 @@ import {
   SetTtsCredentialRequest,
   TenantTtsConfigResponse,
   TtsCredentialResponse,
+  TtsPlatformCatalogResponse,
   UpdateTenantTtsConfigRequest,
 } from './dto';
 import { TtsProviderOverrides } from './platform-limits';
@@ -20,6 +21,12 @@ export abstract class ITenantTtsConfigService {
 
   /** Resolved spec: tenant row over the SYSTEM default, clamped to platform limits. */
   abstract getEffective(tenantId: string): Promise<EffectiveTtsConfigResponse>;
+
+  /**
+   * TASK-506 — platform TTS catalog derived from the AiModel registry (SYSTEM
+   * ENABLED TEXT_TO_SPEECH rows; code-constant fallback pre-seed).
+   */
+  abstract getPlatformCatalog(): Promise<TtsPlatformCatalogResponse>;
 
   /** Create (expectedVersion 0) or compare-and-set the tenant's config row. */
   abstract upsertRow(tenantId: string, dto: UpdateTenantTtsConfigRequest): Promise<TenantTtsConfigResponse>;

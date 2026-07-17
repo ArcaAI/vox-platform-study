@@ -161,7 +161,7 @@ function FailClosedPanel({ message, onRetry }: { message: string; onRetry: () =>
             <p className="text-sm font-medium">No model resolved for this tenant.</p>
             <p className="text-muted-foreground text-sm">{message}</p>
             <p className="text-muted-foreground text-xs">
-                Provider and model were omitted and the tenant's HarnessPolicy cascade produced no effective model, SMR refuses to guess. Pick an
+                Provider and model were omitted and the tenant’s HarnessPolicy cascade produced no effective model, SMR refuses to guess. Pick an
                 explicit provider/model or fix the tenant policy.
             </p>
             <div>
@@ -274,7 +274,7 @@ export function OutputPane({ run, stream, isPending, postMortem, streamProviderM
                             <div role="alert" className="border-warning/30 bg-warning/10 flex flex-col gap-2 rounded-lg border p-3 text-sm">
                                 <p className="font-medium">Stream connection lost.</p>
                                 <p className="text-muted-foreground">
-                                    The SSE transport dropped before a terminal frame. Reattaching replays the task's chunk log from the start, the
+                                    The SSE transport dropped before a terminal frame. Reattaching replays the task’s chunk log from the start, the
                                     panel resets automatically.
                                 </p>
                                 {postMortem ? (

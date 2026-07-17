@@ -254,6 +254,13 @@ export class TenantService extends BaseService implements ITenantService {
           sourceUri: src.sourceUri,
           sourceRevision: src.sourceRevision ?? undefined,
           format: src.format,
+          // TASK-506 (r2605 Finding C) — carry the registry columns through the
+          // clone; dropping them left every new tenant with NULL-provider
+          // clones that SHADOW the SYSTEM values in the TASK-506 resolvers
+          // (same defect the seed backfill already fixed).
+          provider: src.provider ?? undefined,
+          architecture: src.architecture ?? undefined,
+          metaData: src.metaData ?? undefined,
           memorySizeMb: src.memorySizeMb ?? undefined,
           computeType: src.computeType ?? undefined,
           tags: src.tags,

@@ -303,6 +303,7 @@ enum AiModelFormat {
   AZURE_SPEECH // Cloud — Azure Cognitive Services Speech
   AZURE_FOUNDRY // TASK-505 — Cloud, Azure AI Foundry MAI-Transcribe (preview)
   PARAKEET_CPP // TASK-505 — parakeet.cpp ggml runtime (Parakeet/Nemotron)
+  CLOUD_API // TASK-506 — generic cloud-API engine (Sarvam TTS, Azure OpenAI catalog rows)
 
   @@schema("core")
 }

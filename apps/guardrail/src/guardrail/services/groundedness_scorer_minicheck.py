@@ -140,8 +140,8 @@ def _make_llama_logit_fn(llama: object) -> LogitFn:
     which are version-sensitive — hence the fail-closed ``verify_calibration()`` gate
     validates this wiring end-to-end on the host before the scorer is allowed to enable.
     """
-    import numpy as np  # local imports — only when a real model is loaded
-    import llama_cpp
+    import llama_cpp  # local imports — only when a real model is loaded
+    import numpy as np
     from llama_cpp._internals import LlamaBatch
 
     model = llama._model  # type: ignore[attr-defined]  # _LlamaModel

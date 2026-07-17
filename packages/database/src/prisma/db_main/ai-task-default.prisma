@@ -1,0 +1,47 @@
+// ============================================================================
+// AI Task Defaults (TASK-506)
+//
+// Per-tenant "default model for task X" selector — the Class-3 generalization
+// of HarnessPolicy.smrProvider/smrModel for non-pipeline AI tasks. One row per
+// (tenant, taskKey); the reserved SYSTEM tenant `00000000-…` row is the
+// platform default. Resolution (AiTaskDefaultService.getEffective in
+// packages/applications): tenant row → SYSTEM row → consuming service's env
+// fallback. `modelSlug` references AiModel.slug within [tenant, SYSTEM] scope —
+// no FK, per the AiModel slug-reference convention (see stt.prisma).
+//
+// Governance (owner decision 2026-07-17): `guardrail.*` task keys are
+// GLOBAL-ADMIN-ONLY (service-level isSuperAdmin guard on writes); `nlp.*` keys
+// are tenant-admin editable via manage:AiTaskDefault.
+// ============================================================================
+
+model AiTaskDefault {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields (SYSTEM tenant row = platform default)
+  tenantId String
+
+  // core fields
+  taskKey    String // guardrail.validate | nlp.ner | nlp.classification
+  modelSlug  String // references AiModel.slug (no FK — house convention)
+  configJson Json?  @db.JsonB // task-specific extras (thresholds, etc.)
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // indexing — one default per (tenant, task)
+  @@unique([tenantId, taskKey], name: "AiTaskDefault_tenant_task_unique")
+  @@index([tenantId], name: "AiTaskDefault_tenantId_idx")
+  @@index([taskKey], name: "AiTaskDefault_taskKey_idx")
+  @@schema("core")
+}

@@ -7,7 +7,7 @@
 
 import { deleteJson, getJson, getWithEtag, putJson, request, versionFromEtag } from '@/shared/api';
 import type { WithEtag } from '@/shared/api';
-import type { EffectiveTtsConfig, SetTtsCredentialRequest, TtsConfigRow, TtsCredential, TtsProvider, UpdateTtsConfigRequest } from './types';
+import type { EffectiveTtsConfig, SetTtsCredentialRequest, TtsConfigRow, TtsCredential, TtsPlatformCatalog, TtsProvider, UpdateTtsConfigRequest } from './types';
 
 const BASE = 'admin/tts-config';
 
@@ -36,6 +36,11 @@ export function putTtsRow(patch: Omit<UpdateTtsConfigRequest, 'expectedVersion'>
     body: { ...patch, expectedVersion },
     etag: etag ?? FIRST_EDIT_ETAG,
   });
+}
+
+/** Registry-derived platform catalog: providers + voices (TASK-506; tenant-agnostic). */
+export function getTtsCatalog(): Promise<TtsPlatformCatalog> {
+  return getJson(`${BASE}/catalog`);
 }
 
 /** Masked BYO credentials for every provider (never the key). */

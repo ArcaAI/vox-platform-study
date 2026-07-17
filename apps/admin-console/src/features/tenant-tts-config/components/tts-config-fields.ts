@@ -5,9 +5,18 @@
  * (comma-separated) and coercing empty scalars to null (= inherit).
  */
 
-import type { TtsConfigRow, TtsFormat, UpdateTtsConfigRequest } from '../api';
+import type { TtsConfigRow, TtsFormat, TtsVoiceBindings, UpdateTtsConfigRequest } from '../api';
 
 export type TtsFieldKind = 'string' | 'select' | 'integer' | 'fraction' | 'switch' | 'list';
+
+/**
+ * Stable INTERNAL voice ids (TASK-506) — mirror tts-v2's DEFAULT_VOICES
+ * (`catalog/voices.py`). These are the values `defaultVoiceEn/Ml` and the
+ * bindings editor key on; per-provider voice names live in the bindings map.
+ */
+export const EN_INTERNAL_VOICE_IDS = ['en-female-1', 'en-male-1'] as const;
+export const ML_INTERNAL_VOICE_IDS = ['ml-female-1', 'ml-male-1'] as const;
+export const ALL_INTERNAL_VOICE_IDS = [...EN_INTERNAL_VOICE_IDS, ...ML_INTERNAL_VOICE_IDS] as const;
 
 export interface TtsField {
   key: keyof UpdateTtsConfigRequest;
@@ -28,8 +37,20 @@ export const TTS_FIELD_GROUPS: readonly TtsFieldGroup[] = [
   {
     title: 'Voices & output',
     fields: [
-      { key: 'defaultVoiceEn', label: 'Default English voice', kind: 'string', hint: 'Empty = inherit the platform default.' },
-      { key: 'defaultVoiceMl', label: 'Default Malayalam voice', kind: 'string', hint: 'Empty = inherit.' },
+      {
+        key: 'defaultVoiceEn',
+        label: 'Default English voice',
+        kind: 'select',
+        options: EN_INTERNAL_VOICE_IDS,
+        hint: 'Internal voice id; empty = inherit the platform default.',
+      },
+      {
+        key: 'defaultVoiceMl',
+        label: 'Default Malayalam voice',
+        kind: 'select',
+        options: ML_INTERNAL_VOICE_IDS,
+        hint: 'Internal voice id; empty = inherit.',
+      },
       { key: 'defaultFormat', label: 'Default format', kind: 'select', options: TTS_FORMATS },
       { key: 'defaultSpeed', label: 'Default speed', kind: 'fraction', hint: 'Clamped to the platform speed range.' },
       { key: 'sampleRate', label: 'Sample rate (Hz)', kind: 'integer' },
@@ -76,6 +97,45 @@ function parseList(draft: string): string[] {
     .split(',')
     .map((part) => part.trim())
     .filter((part) => part.length > 0);
+}
+
+/** Tenant bindings persisted on the row (under configJson.voiceBindings). */
+export function rowVoiceBindings(row: TtsConfigRow): TtsVoiceBindings {
+  const raw = row.configJson?.['voiceBindings'];
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as TtsVoiceBindings) : {};
+}
+
+/** Editor rows: the 4 internal ids ∪ any voice id already bound (saved or effective). */
+export function bindingVoiceIds(saved: TtsVoiceBindings, effective: TtsVoiceBindings | undefined): string[] {
+  const ids = new Set<string>(ALL_INTERNAL_VOICE_IDS);
+  for (const id of Object.keys(effective ?? {})) ids.add(id);
+  for (const id of Object.keys(saved)) ids.add(id);
+  return [...ids];
+}
+
+/**
+ * Apply per-provider drafts over the saved tenant bindings into the FULL map
+ * the PUT persists (the gateway replaces configJson.voiceBindings wholesale).
+ * A draft of '' clears that provider binding (inherit); voice ids left with no
+ * providers are dropped from the map.
+ */
+export function mergeBindingDrafts(saved: TtsVoiceBindings, drafts: Record<string, Record<string, string>>): TtsVoiceBindings {
+  const merged: TtsVoiceBindings = {};
+  const voiceIds = new Set([...Object.keys(saved), ...Object.keys(drafts)]);
+  for (const voiceId of voiceIds) {
+    const providerMap: Record<string, string> = { ...saved[voiceId] };
+    for (const [provider, value] of Object.entries(drafts[voiceId] ?? {})) {
+      if (value === '') delete providerMap[provider];
+      else providerMap[provider] = value;
+    }
+    if (Object.keys(providerMap).length > 0) merged[voiceId] = providerMap;
+  }
+  return merged;
+}
+
+/** Whether the drafts change anything relative to the saved bindings. */
+export function bindingsDirty(saved: TtsVoiceBindings, drafts: Record<string, Record<string, string>>): boolean {
+  return JSON.stringify(mergeBindingDrafts(saved, drafts)) !== JSON.stringify(mergeBindingDrafts(saved, {}));
 }
 
 /**

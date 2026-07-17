@@ -7,6 +7,9 @@
 export type TtsProvider = 'azure' | 'sarvam';
 export type TtsFormat = 'pcm' | 'wav' | 'mp3';
 
+/** Per-voice provider bindings: { [internalVoiceId]: { [provider]: providerVoiceName } } (TASK-506). */
+export type TtsVoiceBindings = Record<string, Record<string, string>>;
+
 /** Resolved/clamped effective config — every field concrete. */
 export interface EffectiveTtsConfig {
   tenantId: string;
@@ -20,6 +23,8 @@ export interface EffectiveTtsConfig {
   sampleRate: number;
   maxInputChars: number;
   sarvamPublicApiAllowed: boolean;
+  /** SYSTEM bindings merged under tenant bindings (tenant wins per voice id). */
+  voiceBindings?: TtsVoiceBindings;
 }
 
 /** Raw row — nullable fields = inherit; carries the OCC version. */
@@ -35,6 +40,8 @@ export interface TtsConfigRow {
   sampleRate?: number | null;
   maxInputChars?: number | null;
   sarvamPublicApiAllowed: boolean;
+  /** Persisted config extras — TASK-506 carries the tenant `voiceBindings` here. */
+  configJson?: Record<string, unknown> | null;
   resourceStatus?: string;
   version: number;
   createdAt?: string;
@@ -53,7 +60,28 @@ export interface UpdateTtsConfigRequest {
   sampleRate?: number | null;
   maxInputChars?: number | null;
   sarvamPublicApiAllowed?: boolean;
+  /** Full desired bindings map (persisted under configJson.voiceBindings) — TASK-506. */
+  voiceBindings?: TtsVoiceBindings;
   expectedVersion: number;
+}
+
+/** GET admin/tts-config/catalog — registry-derived platform catalog (TASK-506). */
+export interface TtsCatalogVoice {
+  id: string;
+  locale: string;
+  gender?: string;
+  name?: string;
+}
+
+export interface TtsCatalogProvider {
+  provider: string;
+  slug: string;
+  name: string;
+  voices: TtsCatalogVoice[];
+}
+
+export interface TtsPlatformCatalog {
+  providers: TtsCatalogProvider[];
 }
 
 /** Masked credential view — never carries the key. */

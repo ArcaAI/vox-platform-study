@@ -208,20 +208,21 @@ class QueueConfig(BaseSettings):
 
 
 class DatabaseConfig(BaseSettings):
-    """Per-tenant config DB access (TASK-338, decision Q3c).
+    """Per-tenant config DB access (TASK-338, decision Q3c; TASK-506 default-on).
 
-    When ``db_config_enabled`` is true the service resolves the admin-chosen
-    guardrail provider/model **per tenant** at request time by reading
-    ``core.GlobalSetting`` directly (SQLAlchemy + asyncpg, mirroring STT-v2),
-    with a short TTL cache. When false (the default) the service keeps using the
-    env-only engine selected by ``GUARDRAIL_V2_PROVIDER`` — existing deployments
-    are unaffected.
+    When ``db_config_enabled`` is true (the default since TASK-506) the service
+    resolves the admin-chosen guardrail provider/model **per tenant** at request
+    time by reading ``core."AiTaskDefault"`` ⋈ ``core."AiModel"`` directly
+    (SQLAlchemy + asyncpg, mirroring STT-v2), with a short TTL cache. When false
+    the service uses only the env-selected engine (``GUARDRAIL_V2_PROVIDER``).
     """
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_")
 
-    # Disabled by default so env-only deployments behave exactly as before.
-    db_config_enabled: bool = False
+    # Enabled by default (TASK-506): the resolver fails open to the env-selected
+    # engine on ANY DB error or empty result, so deployments without a reachable
+    # Postgres behave exactly as env-only ones.
+    db_config_enabled: bool = True
 
     # Read-only connection string to the shared HOPE core DB.
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/hope"

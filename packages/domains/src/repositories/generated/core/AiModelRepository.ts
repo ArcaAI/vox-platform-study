@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@arcaai/database';
 
 import { Repository } from '../../../common';
 import { AiModelEntityMapper } from '../../../mappers';
@@ -18,17 +19,29 @@ export class AiModelRepository extends Repository<AiModelEntity, AiModel> {
   // ============================================
 
   /**
-   * Find model by slug within a tenant
+   * Find model by slug within a tenant.
+   *
+   * r2605 Finding A — when a transaction/base client is supplied the read is
+   * routed through it (the cross-tenant base-client lane in
+   * `AiTaskDefaultService`), so the tenant-scope extension never rewrites the
+   * explicit tenant filter. Without `tx` behaviour is unchanged.
    */
-  async findBySlug(tenantId: string, slug: string): Promise<AiModelEntity | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async findBySlug(tenantId: string, slug: string, tx?: Prisma.TransactionClient | any): Promise<AiModelEntity | null> {
+    const where = {
+      tenantId,
+      slug,
+      resourceStatus: ResourceStatusType.ENABLED,
+    };
+
+    if (tx) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const model = await (tx as Record<string, any>).aiModel.findFirst({ where });
+      return model ? AiModelEntityMapper.getInstance().toDomainEntity(model) : null;
+    }
+
     try {
-      return await this.findFirst({
-        filters: {
-          tenantId,
-          slug,
-          resourceStatus: ResourceStatusType.ENABLED,
-        },
-      });
+      return await this.findFirst({ filters: where });
     } catch {
       return null;
     }
@@ -61,6 +74,32 @@ export class AiModelRepository extends Repository<AiModelEntity, AiModel> {
       },
       sort: [{ name: 'asc' }],
     });
+  }
+
+  /**
+   * Find ENABLED models by task type WITHOUT pinning a tenant (r2605 Finding E).
+   *
+   * `AiModel` is a SYSTEM-shared read model: when NO `tenantId` filter is
+   * supplied, the tenant-scope extension widens the read to
+   * `tenantId IN [caller, SYSTEM]` (`mergeSharedReadTenantIntoWhere`), so a
+   * tenant without cloned rows still sees the SYSTEM catalog. Do NOT pass an
+   * explicit `{ in: [...] }` here — the extension's strict-equality guard
+   * throws on non-string `tenantId` values. The legacy `findByTaskType`
+   * (exact-tenant pin) stays untouched for its existing callers.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async findByTaskTypeSharedRead(taskType: ModelTaskType, tx?: Prisma.TransactionClient | any): Promise<AiModelEntity[]> {
+    const args = {
+      where: {
+        taskType,
+        resourceStatus: ResourceStatusType.ENABLED,
+      },
+      orderBy: { name: 'asc' as const },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const delegate = tx ? (tx as Record<string, any>).aiModel : (this as any).db;
+    const models = await delegate.findMany(args);
+    return models.map((model: AiModel) => AiModelEntityMapper.getInstance().toDomainEntity(model));
   }
 
   /**

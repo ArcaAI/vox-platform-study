@@ -7,6 +7,7 @@
 // server-side categories, the generalized effective-config resolver).
 
 import { ENTITLEMENT_SETTINGS } from './descriptors/entitlements.descriptors';
+import { MODEL_DEFAULT_SETTINGS } from './descriptors/model-defaults.descriptors';
 import { PIPELINE_SETTINGS } from './descriptors/pipeline.descriptors';
 import { TTS_SETTINGS } from './descriptors/tts.descriptors';
 import { SettingsRegistry } from './settings-registry';
@@ -15,4 +16,6 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   ...PIPELINE_SETTINGS,
   ...TTS_SETTINGS,
   ...ENTITLEMENT_SETTINGS,
+  // TASK-506 — AI task-model defaults (guardrail/NLP).
+  ...MODEL_DEFAULT_SETTINGS,
 ]);

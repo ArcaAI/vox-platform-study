@@ -104,6 +104,30 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
     expect(ks.maxScope).toBe('system');
   });
 
+  // TASK-506 — task-model default descriptors (models.<taskKey>).
+  it('registers the three AI task-model defaults as db-config strings, maxScope tenant', () => {
+    for (const key of ['models.guardrail.validate', 'models.nlp.ner', 'models.nlp.classification']) {
+      expect(HOPE_SETTINGS_REGISTRY.getOrThrow(key)).toMatchObject({
+        tier: 'db-config',
+        dataType: 'string',
+        sensitivity: 'internal',
+        maxScope: 'tenant',
+      });
+    }
+  });
+
+  it('guards the guardrail default behind the global-admin resource; nlp defaults are tenant-editable via AiTaskDefault', () => {
+    const guardrail = HOPE_SETTINGS_REGISTRY.getOrThrow('models.guardrail.validate');
+    expect(guardrail.editableBy).toBe('all');
+    expect(guardrail.globalOnly).toBe(true);
+
+    for (const key of ['models.nlp.ner', 'models.nlp.classification']) {
+      const d = HOPE_SETTINGS_REGISTRY.getOrThrow(key);
+      expect(d.editableBy).toBe('AiTaskDefault');
+      expect(d.globalOnly).not.toBe(true);
+    }
+  });
+
   it('every descriptor carries the required classification fields', () => {
     for (const d of HOPE_SETTINGS_REGISTRY.list()) {
       expect(d.key).toBeTruthy();

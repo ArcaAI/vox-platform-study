@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsArray, IsEnum, IsNumber, IsInt, Matches, MaxLength, MinLength, Min } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsEnum, IsIn, IsNumber, IsInt, Matches, MaxLength, MinLength, Min } from 'class-validator';
 import { ModelCategory, ModelTaskType, ModelType, AiModelSource, AiModelFormat } from '@arcaai/domains';
+import { AI_MODEL_PROVIDERS } from './create-model.request';
 
 export class UpdateModelRequest {
   @ApiPropertyOptional({
@@ -88,6 +89,22 @@ export class UpdateModelRequest {
   @IsEnum(AiModelFormat)
   @IsOptional()
   format?: AiModelFormat;
+
+  @ApiPropertyOptional({
+    description: 'Canonical runtime provider id (TASK-506)',
+    enum: AI_MODEL_PROVIDERS,
+  })
+  @IsOptional()
+  @IsIn(AI_MODEL_PROVIDERS)
+  provider?: string;
+
+  @ApiPropertyOptional({
+    description: 'Model architecture family (TASK-506)',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  architecture?: string;
 
   @ApiPropertyOptional({
     description: 'Estimated memory size in MB',

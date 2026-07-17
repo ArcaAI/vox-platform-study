@@ -11,7 +11,7 @@
  */
 
 import { IconPlayerPlay } from '@tabler/icons-react';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
@@ -204,11 +204,13 @@ function PlaygroundLlmBody() {
     const generateMutation = useGenerateText();
     const assembledMutation = useGenerateAssembled();
     const cancelMutation = useCancelTask();
-    const lastRequestRef = useRef<LlmRequest | null>(null);
+    // State (not a ref): the last request also renders as the stream's
+    // provider/model line, so the read must be reactive.
+    const [lastRequest, setLastRequest] = useState<LlmRequest | null>(null);
     const isPending = generateMutation.isPending || assembledMutation.isPending;
 
     const runRequest = (request: LlmRequest) => {
-        lastRequestRef.current = request;
+        setLastRequest(request);
         const handleSuccess = (outcome: AssembledGenerateResponse) => {
             if (isStreamingAck(outcome)) setRun({ kind: 'stream', taskId: outcome.task_id });
             else setRun({ kind: 'sync', result: outcome, debug: outcome._debug });
@@ -272,7 +274,7 @@ function PlaygroundLlmBody() {
     };
 
     const handleRetry = () => {
-        if (lastRequestRef.current) runRequest(lastRequestRef.current);
+        if (lastRequest) runRequest(lastRequest);
     };
 
     const handleCancel = () => {
@@ -340,7 +342,7 @@ function PlaygroundLlmBody() {
                             stream={stream}
                             isPending={isPending}
                             postMortem={postMortemQuery.data}
-                            streamProviderModel={formatSentProviderModel(lastRequestRef.current)}
+                            streamProviderModel={formatSentProviderModel(lastRequest)}
                             onCancel={handleCancel}
                             cancelPending={cancelMutation.isPending}
                             onRetry={handleRetry}

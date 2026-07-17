@@ -247,6 +247,11 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       enriched.routing_en = eff.routingEn;
       enriched.routing_ml = eff.routingMl;
       enriched.allowed_providers = eff.allowedProviders;
+      // TASK-506 — resolved voice bindings; only injected when non-empty so
+      // tts-v2 keeps its built-in DEFAULT_VOICES otherwise.
+      if (eff.voiceBindings && Object.keys(eff.voiceBindings).length > 0) {
+        enriched.voice_bindings = eff.voiceBindings;
+      }
     }
     if (bridge.providerOverrides && Object.keys(bridge.providerOverrides).length > 0) {
       enriched.provider_overrides = bridge.providerOverrides;

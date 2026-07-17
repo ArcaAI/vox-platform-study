@@ -60,6 +60,28 @@ def _provider_overrides(value: Any) -> dict[str, dict[str, str]] | None:
     return out or None
 
 
+def _voice_bindings(value: Any) -> dict[str, dict[str, str]] | None:
+    """Coerce init-frame voice_bindings to {voiceId: {provider: voiceName}} (TASK-506).
+
+    Malformed entries are dropped safely; an empty/invalid frame field → None
+    (the catalog's DEFAULT_VOICES bindings stay in effect).
+    """
+    if not isinstance(value, dict) or not value:
+        return None
+    out: dict[str, dict[str, str]] = {}
+    for voice_id, bindings in value.items():
+        if not isinstance(voice_id, str) or not isinstance(bindings, dict):
+            continue
+        clean = {
+            provider: name
+            for provider, name in bindings.items()
+            if isinstance(provider, str) and provider and isinstance(name, str) and name
+        }
+        if clean:
+            out[voice_id] = clean
+    return out or None
+
+
 def _authorized(ws: WebSocket) -> bool:
     """Constant-time X-Service-Token check (empty configured token = dev bypass)."""
     token: str = ws.app.state.settings.service_token.get_secret_value()
@@ -109,6 +131,7 @@ async def audio_stream(ws: WebSocket) -> None:
     routing_ml = _str_list(init.get("routing_ml"))
     allowed_providers = _str_list(init.get("allowed_providers"))
     provider_overrides = _provider_overrides(init.get("provider_overrides"))
+    voice_bindings = _voice_bindings(init.get("voice_bindings"))
 
     try:
         stream = tts_router.stream(
@@ -119,6 +142,7 @@ async def audio_stream(ws: WebSocket) -> None:
             routing_ml=routing_ml,
             allowed_providers=allowed_providers,
             provider_overrides=provider_overrides,
+            voice_bindings=voice_bindings,
         )
     except VoiceNotFoundError:
         await _send_error(ws, _ERR_INVALID_VOICE, "unknown voice")

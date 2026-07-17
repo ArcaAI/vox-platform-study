@@ -1,10 +1,13 @@
 import {
+  AiModelService,
   Authorize,
   HarnessPolicyService,
   IActiveUserContext,
+  IAiTaskDefaultService,
   IBlobStorageService,
   IConfigService,
   ITenantService,
+  ModelResponse,
   SecretsService,
   isSuperAdmin,
 } from '@arcaai/applications';
@@ -15,6 +18,7 @@ import {
   DepartmentRepository,
   DnaWritingStyleReportRepository,
   MediaRepository,
+  ModelTaskType,
   PromptTemplateRepository,
 } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
@@ -100,29 +104,23 @@ const ATTACHMENT_TEXT_LIMIT = 200_000;
 const GLOBAL_TENANT_KEY = '__GLOBAL__';
 // TASK-417 — GLOBAL_ADMIN is the single elevated role (SUPER_ADMIN retired).
 const GLOBAL_ADMIN_ROLE = 'GLOBAL_ADMIN';
-const TENANT_PROVIDER_SETTINGS_LIMIT = 200;
 
-interface TenantSettingLike {
-  key: string;
-  value: string;
+// TASK-506 — one listing entry per registry `provider`, keeping the legacy
+// response shape the console/SDK already consume (`name`/`models`/`is_available`/
+// `is_default`/`default_model`); each model carries the provider-native
+// identifier (`AiModel.sourceUri`) as `name` plus the stable registry `slug`.
+interface ProviderListingModel {
+  name: string;
+  slug: string;
+  size: string;
 }
 
-interface ProviderCatalogModel {
-  name?: string;
-  id?: string;
-  size?: string;
-}
-
-interface ProviderCatalogEntry {
-  provider: string;
-  models: ProviderCatalogModel[];
-}
-
-// TASK-338 — the per-engine GlobalSetting keys that back a provider listing.
-interface ProviderSettingKeys {
-  providerKey: string;
-  modelKey: string;
-  catalogKey: string;
+interface ProviderListingEntry {
+  name: string;
+  models: ProviderListingModel[];
+  is_available: boolean;
+  is_default: boolean;
+  default_model?: string;
 }
 
 // TASK-343 — the class-level `@UseGuards(JwtAuthGuard)` was removed: every
@@ -153,6 +151,14 @@ export class SmrProxyController {
     // caller (playground/SDK) omits the model. @Optional so test fixtures that
     // construct the controller without it keep compiling.
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
+    // TASK-506 — the providers listings read the AiModel registry (the single
+    // UI catalog) through the SHARED-READ query (r2605 Finding E): visibility
+    // is [caller tenant, SYSTEM] de-duplicated by slug, tenant clone wins.
+    // @Optional so existing positional test fixtures keep compiling.
+    @Optional() @Inject(AiModelService) private readonly aiModelService?: AiModelService,
+    // TASK-506 — resolves the effective `guardrail.validate` default for the
+    // guardrail listing's default marking.
+    @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
   ) {}
 
   /**
@@ -311,106 +317,75 @@ export class SmrProxyController {
     throw new UnauthorizedException('No tenant context available');
   }
 
-  private parseModelList(rawValue: string | undefined): string[] {
-    if (!rawValue) return [];
-
+  /**
+   * TASK-506 — read the registry rows backing a providers listing.
+   *
+   * r2605 Finding E — this previously called `getByTaskType`, which pins the
+   * CLS tenant explicitly and therefore DEFEATS the SYSTEM-shared-read
+   * widening (tenants without cloned rows got an empty listing). The
+   * shared-read variant queries without a tenant pin so the extension widens
+   * visibility to [caller tenant, SYSTEM], de-duplicated by slug with the
+   * tenant clone preferred (ENABLED-only either way). FAILS OPEN to zero rows
+   * — a registry read problem must degrade the LISTING (probe fallback /
+   * empty), never 5xx the console.
+   */
+  private async fetchRegistryModels(taskTypes: ModelTaskType[]): Promise<ModelResponse[]> {
+    if (!this.aiModelService) return [];
     try {
-      const parsed = JSON.parse(rawValue) as unknown;
-      if (Array.isArray(parsed)) {
-        return parsed
-          .map((item) => {
-            if (typeof item === 'string') return item;
-            if (item && typeof item === 'object' && 'name' in item && typeof item.name === 'string') {
-              return item.name;
-            }
-            if (item && typeof item === 'object' && 'id' in item && typeof item.id === 'string') {
-              return item.id;
-            }
-            return '';
-          })
-          .filter((item) => item.length > 0);
+      const lists = await Promise.all(taskTypes.map((taskType) => this.aiModelService!.getByTaskTypeSharedRead(taskType)));
+      const seen = new Set<string>();
+      const rows: ModelResponse[] = [];
+      for (const row of lists.flat()) {
+        if (seen.has(row.id)) continue; // a row can carry both listed task types
+        seen.add(row.id);
+        rows.push(row);
       }
-    } catch {
-      // Not JSON, fallback to treating value as a single model slug.
-    }
-
-    return [rawValue];
-  }
-
-  private normalizeCatalogModels(models: ProviderCatalogModel[]): { name: string; size: string }[] {
-    return models
-      .map((model) => ({
-        name: (model.name ?? model.id ?? '').trim(),
-        size: model.size ?? '',
-      }))
-      .filter((model) => model.name.length > 0);
-  }
-
-  // TASK-338 — the provider/model/catalog setting keys differ per engine
-  // (SMR vs Guardrail). `buildProvidersFromTenantSettings` is parameterised on
-  // these keys so the same shaping logic backs both `/providers` and
-  // `/guardrail-providers`. Defaults preserve the original SMR behaviour.
-  private static readonly SMR_PROVIDER_KEYS: ProviderSettingKeys = {
-    providerKey: 'default-smr-provider',
-    modelKey: 'default-smr-model',
-    catalogKey: 'smr-provider-models',
-  };
-
-  private static readonly GUARDRAIL_PROVIDER_KEYS: ProviderSettingKeys = {
-    providerKey: 'default-guardrail-provider',
-    modelKey: 'default-guardrail-model',
-    catalogKey: 'guardrail-provider-models',
-  };
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private buildProvidersFromTenantSettings(settings: TenantSettingLike[], keys: ProviderSettingKeys = SmrProxyController.SMR_PROVIDER_KEYS): any[] {
-    const defaultProvider = settings.find((setting) => setting.key === keys.providerKey)?.value?.trim();
-    const defaultModelRaw = settings.find((setting) => setting.key === keys.modelKey)?.value;
-    const catalogRaw = settings.find((setting) => setting.key === keys.catalogKey)?.value;
-
-    const catalog = this.parseProviderCatalog(catalogRaw);
-    if (catalog && catalog.length > 0) {
-      return catalog.map((entry: ProviderCatalogEntry) => {
-        const models = this.normalizeCatalogModels(entry.models);
-        const firstModelName = models[0]?.name;
-        return {
-          name: entry.provider,
-          models,
-          is_available: true,
-          is_default: entry.provider === defaultProvider,
-          default_model: entry.provider === defaultProvider ? defaultModelRaw?.trim() || firstModelName : firstModelName,
-        };
+      return rows;
+    } catch (err) {
+      this.logger.warn({
+        message: 'AiModel registry read failed for providers listing; treating as empty',
+        error: err instanceof Error ? err.message : String(err),
       });
-    }
-
-    const models = this.parseModelList(defaultModelRaw);
-    const defaultModel = models[0];
-
-    if (!defaultProvider && !defaultModel) {
       return [];
     }
-
-    return [
-      {
-        name: defaultProvider || 'default',
-        models,
-        is_available: true,
-        default_model: defaultModel,
-      },
-    ];
   }
 
-  private parseProviderCatalog(rawValue: string | undefined): ProviderCatalogEntry[] | null {
-    if (!rawValue) return null;
-    try {
-      const parsed = JSON.parse(rawValue) as unknown;
-      if (Array.isArray(parsed) && parsed.length > 0 && parsed[0] && typeof parsed[0] === 'object' && 'provider' in parsed[0]) {
-        return parsed as ProviderCatalogEntry[];
-      }
-    } catch {
-      // Malformed JSON, fall back to legacy behavior
+  /**
+   * TASK-506 — group registry rows by `provider` into the legacy listing shape.
+   * Rows without a `provider` are skipped (not yet machine-actionable — the
+   * pre-506 catalog rows); `defaultSelection` marks the tenant's effective
+   * default provider/model (HarnessPolicy for SMR, AiTaskDefault for guardrail).
+   */
+  private groupRegistryModelsByProvider(
+    rows: ModelResponse[],
+    defaultSelection?: { provider?: string | null; model?: string | null },
+  ): ProviderListingEntry[] {
+    const groups = new Map<string, ProviderListingModel[]>();
+    for (const row of rows) {
+      const provider = row.provider?.trim();
+      if (!provider) continue;
+      const models = groups.get(provider) ?? [];
+      models.push({ name: row.sourceUri, slug: row.slug, size: this.formatModelSize(row.memorySizeMb) });
+      groups.set(provider, models);
     }
-    return null;
+    return [...groups.entries()].map(([provider, models]) => {
+      const isDefault = provider === defaultSelection?.provider;
+      return {
+        name: provider,
+        models,
+        is_available: true,
+        is_default: isDefault,
+        // Mirrors the legacy shape: the default provider surfaces the selected
+        // model; other providers surface their first model.
+        default_model: isDefault ? (defaultSelection?.model ?? models[0]?.name) : models[0]?.name,
+      };
+    });
+  }
+
+  /** `memorySizeMb` → the human string the legacy catalog carried ('4.8 GB' / '900 MB' / ''). */
+  private formatModelSize(memorySizeMb: number | null | undefined): string {
+    if (typeof memorySizeMb !== 'number' || !Number.isFinite(memorySizeMb) || memorySizeMb <= 0) return '';
+    return memorySizeMb >= 1024 ? `${(memorySizeMb / 1024).toFixed(1)} GB` : `${memorySizeMb} MB`;
   }
 
   @Post('generate')
@@ -949,36 +924,42 @@ export class SmrProxyController {
     return null;
   }
 
+  // TASK-506 §3.3 — the listing reads the AiModel registry (ENABLED
+  // TEXT_GENERATION + SUMMARIZATION rows grouped by `provider`), replacing the
+  // retired `smr-provider-models`/`default-smr-*` GlobalSetting keys. The
+  // tenant's effective default still comes from the HarnessPolicy cascade
+  // (`applySmrModelSelection` untouched). The live SMR probe survives ONLY as
+  // transition safety when the registry has zero rows.
   @Get('providers')
   @Authorize()
   @ApiOperation({
     summary:
-      'List configured LLM providers from tenant settings, with SMR service fallback. ' +
-      `GLOBAL_ADMINs may explicitly target the GLOBAL tenant with ?tenantKey=${GLOBAL_TENANT_KEY}.`,
+      'List LLM providers/models from the AiModel registry (ENABLED TEXT_GENERATION/SUMMARIZATION rows), with a live SMR probe ' +
+      `fallback when the registry is empty. GLOBAL_ADMINs may explicitly target the GLOBAL tenant with ?tenantKey=${GLOBAL_TENANT_KEY}.`,
   })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getProviders(@Query('tenantKey') tenantKey?: string): Promise<any[]> {
     const tenantId = await this.resolveTenantId(tenantKey);
-    const configs = await this.tenantService.fetchTenantConfigs({
-      tenantId,
-      limit: TENANT_PROVIDER_SETTINGS_LIMIT,
-      page: 1,
-    });
+    const rows = await this.fetchRegistryModels([ModelTaskType.TEXT_GENERATION, ModelTaskType.SUMMARIZATION]);
 
-    const tenantProviders = this.buildProvidersFromTenantSettings(
-      configs.data.map((setting) => ({
-        key: setting.key,
-        value: setting.value,
-      })),
-    );
-
-    if (tenantProviders.length > 0) {
-      return tenantProviders;
+    // Default marking from the tenant's effective SMR selection; fail-open (no
+    // default marked) when the cascade is unresolved.
+    let defaultSelection: { provider: string; model: string } | undefined;
+    try {
+      defaultSelection = await this.harnessPolicyService?.resolveSmrSelection(tenantId);
+    } catch {
+      defaultSelection = undefined;
     }
 
-    // Fallback: no tenant settings configured — fetch live providers from the SMR service.
-    // The Python ProviderInfo model uses `status: str` ("available"/"unavailable") rather than
-    // `is_available: boolean`, so we map it here to satisfy the TypeScript SmrProvider interface.
+    const providers = this.groupRegistryModelsByProvider(rows, defaultSelection);
+    if (providers.length > 0) {
+      return providers;
+    }
+
+    // Transition fallback: empty registry — fetch live providers from the SMR
+    // service. The Python ProviderInfo model uses `status: str`
+    // ("available"/"unavailable") rather than `is_available: boolean`, so we map
+    // it here to satisfy the TypeScript SmrProvider interface.
     try {
       const base = this.getSmrBaseUrl();
       const response = await this.withRetry(
@@ -1004,32 +985,32 @@ export class SmrProxyController {
     }
   }
 
-  // TASK-338 — admin-configurable Guardrail engine. Mirrors `GET /providers`
-  // but reads the `guardrail` namespace settings + the `guardrail-provider-models`
-  // catalog. There is no upstream-service fallback: the Guardrail catalog is
-  // always seeded per-tenant, so an empty result simply means "not configured".
+  // TASK-506 §3.3 (supersedes TASK-338) — the guardrail listing reads ENABLED
+  // GUARDRAIL registry rows and marks the effective `guardrail.validate`
+  // default (AiTaskDefault tenant→SYSTEM cascade). There is no upstream-service
+  // probe: an empty result simply means "not configured".
   @Get('guardrail-providers')
   @Authorize()
   @ApiOperation({
     summary:
-      'List configured Guardrail LLM providers/models from tenant settings. ' +
-      `GLOBAL_ADMINs may explicitly target the GLOBAL tenant with ?tenantKey=${GLOBAL_TENANT_KEY}.`,
+      'List Guardrail LLM providers/models from the AiModel registry (ENABLED GUARDRAIL rows), the effective guardrail.validate ' +
+      `default marked. GLOBAL_ADMINs may explicitly target the GLOBAL tenant with ?tenantKey=${GLOBAL_TENANT_KEY}.`,
   })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getGuardrailProviders(@Query('tenantKey') tenantKey?: string): Promise<any[]> {
     const tenantId = await this.resolveTenantId(tenantKey);
-    const configs = await this.tenantService.fetchTenantConfigs({
-      tenantId,
-      limit: TENANT_PROVIDER_SETTINGS_LIMIT,
-      page: 1,
-    });
+    const rows = await this.fetchRegistryModels([ModelTaskType.GUARDRAIL]);
 
-    return this.buildProvidersFromTenantSettings(
-      configs.data.map((setting) => ({
-        key: setting.key,
-        value: setting.value,
-      })),
-      SmrProxyController.GUARDRAIL_PROVIDER_KEYS,
-    );
+    // Effective default via the AiTaskDefault cascade; fail-open (no default
+    // marked) when the resolver is unavailable or errors.
+    let defaultSelection: { provider?: string | null; model?: string | null } | undefined;
+    try {
+      const effective = await this.aiTaskDefaultService?.getEffective('guardrail.validate', tenantId);
+      defaultSelection = effective?.model ? { provider: effective.model.provider, model: effective.model.sourceUri } : undefined;
+    } catch {
+      defaultSelection = undefined;
+    }
+
+    return this.groupRegistryModelsByProvider(rows, defaultSelection);
   }
 }

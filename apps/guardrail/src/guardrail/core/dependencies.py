@@ -53,11 +53,12 @@ def get_guardian_provider(request: Request) -> GuardianLike:
 async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
     """Resolve the guardian provider for the request tenant (TASK-338, Q3c).
 
-    When ``db_config_enabled`` is false (default), this returns the env-configured
-    guardian provider unchanged — behavior is identical to before. When enabled,
-    it reads the per-tenant guardrail provider/model from ``core.GlobalSetting``
-    (via the X-Tenant-Id header, with TTL cache + default-tenant/env fallback) and
-    builds a guardian provider for the resolved engine.
+    When ``db_config_enabled`` is false, this returns the env-configured
+    guardian provider unchanged — behavior is identical to before. When enabled
+    (the default since TASK-506), it reads the per-tenant guardrail provider/model
+    from ``core."AiTaskDefault"`` ⋈ ``core."AiModel"`` (via the X-Tenant-Id header,
+    with TTL cache + default-tenant/env fallback) and builds a guardian provider
+    for the resolved engine.
     """
     settings = request.app.state.settings
     default_provider: GuardianLike = request.app.state.guardian_provider

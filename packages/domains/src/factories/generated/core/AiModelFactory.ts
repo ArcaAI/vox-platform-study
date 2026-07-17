@@ -18,6 +18,10 @@ export interface CreateAiModelProps extends BaseEntityFactoryCreateProps {
   sourceUri: IAiModelEntity['sourceUri'];
   sourceRevision?: IAiModelEntity['sourceRevision'];
   format: IAiModelEntity['format'];
+  // TASK-506 — canonical runtime provider + architecture family.
+  provider?: IAiModelEntity['provider'];
+  architecture?: IAiModelEntity['architecture'];
+  metaData?: IAiModelEntity['metaData'];
   memorySizeMb?: IAiModelEntity['memorySizeMb'];
   computeType?: IAiModelEntity['computeType'];
   tenantId: IAiModelEntity['tenantId'];
@@ -55,6 +59,9 @@ export class AiModelFactory {
       sourceUri: props.sourceUri,
       sourceRevision: props.sourceRevision ?? null,
       format: props.format,
+      provider: props.provider ?? null,
+      architecture: props.architecture ?? null,
+      metaData: props.metaData ?? undefined,
       memorySizeMb: props.memorySizeMb ?? null,
       computeType: props.computeType ?? null,
       downloadStatus: Enums.AiModelDownloadStatus.NOT_DOWNLOADED,

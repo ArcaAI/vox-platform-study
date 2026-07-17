@@ -1,21 +1,26 @@
-"""Per-tenant Guardrail config resolution from the database (TASK-338, Q3c).
+"""Per-tenant Guardrail config resolution from the database (TASK-338, Q3c;
+repointed to the AI model registry by TASK-506).
 
 The Guardrail service resolves the admin-chosen provider/model **per tenant** at
-request time by reading ``core.GlobalSetting`` directly (SQLAlchemy + asyncpg,
-mirroring STT-v2's read-only DB access), with a short TTL cache (OQ2, ~60s).
+request time by reading ``core."AiTaskDefault"`` joined to ``core."AiModel"``
+directly (SQLAlchemy + asyncpg, mirroring STT-v2's read-only DB access), with a
+short TTL cache (OQ2, ~60s).
 
 Resolution order (tenant-level fallback):
-    1. rows for the request tenant (``X-Tenant-Id`` header)
+    1. rows for the request tenant (``X-Tenant-Id`` header) — each lookup
+       widens to the SYSTEM tenant's rows, preferring the tenant's own
     2. rows for the system/default tenant (the seeded GLOBAL tenant)
     3. env default (handled by the caller via ``settings.engine``)
 
-Cross-worker contract (a parallel TS worker seeds these EXACT rows):
-    namespace ``guardrail`` / key ``default-guardrail-provider``   (e.g. ``lm-studio``)
-    namespace ``guardrail`` / key ``default-guardrail-model``      (e.g. ``granite-guardian-4.1-8b``)
-    namespace ``guardrail`` / key ``guardrail-azure-deployment``   (non-secret; may be empty)
+Cross-worker contract (the seed provides the SYSTEM rows, TASK-506):
+    ``AiTaskDefault`` — taskKey ``guardrail.validate`` → ``modelSlug``
+    ``AiModel``       — ``slug`` → provider / sourceUri / metaData.azureDeployment
+The model sent to the runtime is the AiModel row's **sourceUri**, not the slug.
 
 DB access is best-effort: any error resolves to an empty config so the endpoint
 transparently falls back to the env-selected engine (fail-safe, never fail-hard).
+Errors are negatively cached for one TTL window — at most one DB attempt per
+tenant per TTL, so an env-only deployment never pays per-request retries.
 """
 
 from __future__ import annotations
@@ -23,9 +28,10 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import String, select
-from sqlalchemy.dialects.postgresql import ENUM
+from sqlalchemy.dialects.postgresql import ENUM, JSONB
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -38,11 +44,16 @@ from guardrail.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Cross-worker contract — do NOT rename (seeded by the TS worker).
-GUARDRAIL_NAMESPACE = "guardrail"
-KEY_PROVIDER = "default-guardrail-provider"
-KEY_MODEL = "default-guardrail-model"
-KEY_AZURE_DEPLOYMENT = "guardrail-azure-deployment"
+# Cross-worker contract — do NOT rename (seeded by the TS worker, TASK-506).
+TASK_KEY_GUARDRAIL_VALIDATE = "guardrail.validate"
+
+# Platform-wide rows live on the SYSTEM tenant (house rule: NULL-tenant is banned).
+SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000"
+
+# Internal keys of the resolved per-tenant field map (cache entries).
+KEY_PROVIDER = "provider"
+KEY_MODEL = "model"
+KEY_AZURE_DEPLOYMENT = "azure-deployment"
 
 # Provider switch value (lm-studio|ollama|azure|bedrock) -> Settings sub-config attr.
 _PROVIDER_TO_ATTR = {
@@ -59,33 +70,45 @@ class _Base(DeclarativeBase):
 
 # Mirror Prisma's `core."ResourceStatusType"` enum so the resourceStatus filter
 # binds correctly against the Postgres enum column (create_type=False — it already
-# exists from Prisma).
+# exists from Prisma). Member set MUST match enums.prisma exactly
+# (packages/database/src/prisma/db_main/enums.prisma).
 _ResourceStatusType = ENUM(
     "ENABLED",
     "DISABLED",
-    "DELETED",
-    "PENDING",
+    "SUSPENDED",
     "ARCHIVED",
+    "DELETED",
     name="ResourceStatusType",
     schema="core",
     create_type=False,
 )
 
 
-class GlobalSettingRead(_Base):
-    """Read-only mapping of ``core."GlobalSetting"`` (column names from Prisma)."""
+class AiTaskDefaultRead(_Base):
+    """Read-only mapping of ``core."AiTaskDefault"`` (column names from Prisma)."""
 
-    __tablename__ = "GlobalSetting"
+    __tablename__ = "AiTaskDefault"
     __table_args__ = {"schema": "core"}
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    tenant_id: Mapped[str | None] = mapped_column("tenantId", String)
-    name: Mapped[str] = mapped_column(String)
-    key: Mapped[str] = mapped_column(String)
-    namespace: Mapped[str | None] = mapped_column(String)
-    value: Mapped[str] = mapped_column(String)
-    default_value: Mapped[str | None] = mapped_column("defaultValue", String)
-    data_type: Mapped[str] = mapped_column("dataType", String)
+    tenant_id: Mapped[str] = mapped_column("tenantId", String)
+    task_key: Mapped[str] = mapped_column("taskKey", String)
+    model_slug: Mapped[str] = mapped_column("modelSlug", String)
+    resource_status: Mapped[str] = mapped_column("resourceStatus", _ResourceStatusType)
+
+
+class AiModelRead(_Base):
+    """Read-only mapping of ``core."AiModel"`` (registry columns this reader needs)."""
+
+    __tablename__ = "AiModel"
+    __table_args__ = {"schema": "core"}
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column("tenantId", String)
+    slug: Mapped[str] = mapped_column(String)
+    provider: Mapped[str | None] = mapped_column(String)
+    source_uri: Mapped[str | None] = mapped_column("sourceUri", String)
+    meta_data: Mapped[dict[str, Any] | None] = mapped_column("_metadata", JSONB)
     resource_status: Mapped[str] = mapped_column("resourceStatus", _ResourceStatusType)
 
 
@@ -170,7 +193,13 @@ class TenantConfigResolver:
         )
 
     async def _get_for_tenant(self, tenant_id: str) -> dict[str, str]:
-        """Return ``{key: value}`` for a tenant, using/refreshing the TTL cache."""
+        """Return ``{key: value}`` for a tenant, using/refreshing the TTL cache.
+
+        A load error is negatively cached: the empty (fail-open) result is
+        stored for the same TTL, so an unreachable DB costs at most one
+        connection attempt per tenant per TTL window — not one per request.
+        The warning logs on the attempt, not on every cached read.
+        """
         now = self._time()
         entry = self._cache.get(tenant_id)
         if entry is not None and entry.expires_at > now:
@@ -184,25 +213,66 @@ class TenantConfigResolver:
                 tenant_id=tenant_id,
                 error=str(exc),
             )
-            return {}
+            keys = {}
 
         self._cache[tenant_id] = _CacheEntry(keys=keys, expires_at=now + self._cache_ttl_s)
         return keys
 
     async def _load_from_db(self, tenant_id: str) -> dict[str, str]:
-        """Query ``core.GlobalSetting`` for this tenant's guardrail rows."""
+        """Resolve this tenant's guardrail model via ``AiTaskDefault ⋈ AiModel``.
+
+        Reads the ENABLED ``guardrail.validate`` task default for
+        ``[tenant, SYSTEM]`` joined to the ENABLED ``AiModel`` row for its
+        ``modelSlug`` in the same scope, preferring the tenant's own task
+        default over SYSTEM's, then the tenant's own model copy over the
+        SYSTEM catalog row. Returns the resolved field map:
+        provider ← ``AiModel.provider`` (may be absent when NULL — the caller
+        keeps the env provider), model ← ``AiModel.sourceUri``, azure
+        deployment ← ``AiModel._metadata->>'azureDeployment'``.
+        """
+        scope = [tenant_id, SYSTEM_TENANT_ID]
         async with self._session_factory() as session:
             result = await session.execute(
-                select(GlobalSettingRead.key, GlobalSettingRead.value).where(
-                    GlobalSettingRead.tenant_id == tenant_id,
-                    GlobalSettingRead.namespace == GUARDRAIL_NAMESPACE,
-                    GlobalSettingRead.key.in_(
-                        [KEY_PROVIDER, KEY_MODEL, KEY_AZURE_DEPLOYMENT]
-                    ),
-                    GlobalSettingRead.resource_status == "ENABLED",
+                select(
+                    AiTaskDefaultRead.tenant_id.label("default_tenant_id"),
+                    AiModelRead.tenant_id.label("model_tenant_id"),
+                    AiModelRead.provider,
+                    AiModelRead.source_uri,
+                    AiModelRead.meta_data,
+                )
+                .join(AiModelRead, AiModelRead.slug == AiTaskDefaultRead.model_slug)
+                .where(
+                    AiTaskDefaultRead.task_key == TASK_KEY_GUARDRAIL_VALIDATE,
+                    AiTaskDefaultRead.tenant_id.in_(scope),
+                    AiTaskDefaultRead.resource_status == "ENABLED",
+                    AiModelRead.tenant_id.in_(scope),
+                    AiModelRead.resource_status == "ENABLED",
                 )
             )
-            return {row.key: row.value for row in result.all()}
+            rows = result.all()
+
+        row = min(rows, key=lambda r: self._row_rank(r, tenant_id), default=None)
+        if row is None:
+            return {}
+
+        keys: dict[str, str] = {}
+        if row.provider:
+            keys[KEY_PROVIDER] = row.provider
+        if row.source_uri:
+            keys[KEY_MODEL] = row.source_uri
+        meta = row.meta_data if isinstance(row.meta_data, dict) else {}
+        deployment = meta.get("azureDeployment")
+        if isinstance(deployment, str) and deployment.strip():
+            keys[KEY_AZURE_DEPLOYMENT] = deployment
+        return keys
+
+    @staticmethod
+    def _row_rank(row: Any, tenant_id: str) -> tuple[int, int]:
+        """Preference rank: tenant task-default first, then tenant model copy."""
+        return (
+            0 if row.default_tenant_id == tenant_id else 1,
+            0 if row.model_tenant_id == tenant_id else 1,
+        )
 
     def clear_cache(self) -> None:
         """Drop all cached entries (test/admin helper)."""

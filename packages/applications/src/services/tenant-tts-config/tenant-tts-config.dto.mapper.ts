@@ -15,6 +15,7 @@ export class TenantTtsConfigDtoMapper {
       sampleRate: entity.sampleRate ?? null,
       maxInputChars: entity.maxInputChars ?? null,
       sarvamPublicApiAllowed: entity.sarvamPublicApiAllowed,
+      configJson: entity.configJson ?? null,
       resourceStatus: entity.resourceStatus ?? undefined,
       version: entity.version,
       createdAt: entity.createdAt?.toISOString(),
@@ -40,6 +41,7 @@ export class TenantTtsConfigDtoMapper {
       sampleRate: null,
       maxInputChars: null,
       sarvamPublicApiAllowed: false,
+      configJson: null,
       version: 0,
     };
   }

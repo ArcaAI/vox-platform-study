@@ -8,3 +8,4 @@ export * from './registry';
 export * from './descriptors/pipeline.descriptors';
 export * from './descriptors/tts.descriptors';
 export * from './descriptors/entitlements.descriptors';
+export * from './descriptors/model-defaults.descriptors';

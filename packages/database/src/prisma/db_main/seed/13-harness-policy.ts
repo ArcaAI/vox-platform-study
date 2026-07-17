@@ -9,8 +9,10 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * via its `fetch_policy` activity (apps/harness). Phase 2 sets the SMR
  * generation default on that row:
  *   - smrProvider = 'lm-studio'
- *   - smrModel    = 'gemma-4-e2b-it-sft-rlvr-medical'
- * (both were NULL → "let the SMR service choose").
+ *   - smrModel    = 'gemma-4-e2b-it-qat'
+ * (both were NULL → "let the SMR service choose"; TASK-506 moved the model
+ * default from `gemma-4-e2b-it-sft-rlvr-medical` to the owner-declared
+ * platform default `gemma-4-e2b-it-qat` — registry row `lms-gemma-4-e2b-it-qat`).
  *
  * This step writes ONLY those two columns and is idempotent. It ALSO records a
  * WORM `HarnessPolicyChange` audit entry for the default-set, mirroring the
@@ -27,7 +29,9 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 /** The agreed SMR system default (overrides the NULL "service chooses"). */
 export const SYSTEM_HARNESS_POLICY_SMR_DEFAULTS = {
     smrProvider: 'lm-studio',
-    smrModel: 'gemma-4-e2b-it-sft-rlvr-medical',
+    // TASK-506 (owner decision #7, 2026-07-17) — the platform summarization
+    // default is gemma-4-e2b-it-qat (was gemma-4-e2b-it-sft-rlvr-medical).
+    smrModel: 'gemma-4-e2b-it-qat',
 } as const;
 
 /**
@@ -72,7 +76,7 @@ function snapshotKnobs(row: Record<string, unknown>): HarnessPolicyKnobs {
     return out;
 }
 
-const SEED_CHANGE_REASON = 'TASK-356 Phase 2 seed: set SMR system default (lm-studio / gemma-4-e2b-it-sft-rlvr-medical)';
+const SEED_CHANGE_REASON = 'TASK-506 seed: set SMR system default (lm-studio / gemma-4-e2b-it-qat)';
 
 /**
  * Idempotently set the SYSTEM HarnessPolicy SMR default + record a WORM change.

@@ -11,7 +11,7 @@ import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
-import { useTtsEffective, useTtsRow, usePutTtsRow, type EffectiveTtsConfig } from '../api';
+import { useTtsCatalog, useTtsEffective, useTtsRow, usePutTtsRow, type EffectiveTtsConfig } from '../api';
 import { TtsConfigForm } from './tts-config-form';
 import { TtsCredentialsTab } from './tts-credentials-tab';
 
@@ -32,6 +32,13 @@ function EffectiveResolveCard({ effective }: { effective: EffectiveTtsConfig }) 
     { label: 'routing ml', value: list(effective.routingMl) },
     { label: 'allowed', value: list(effective.allowedProviders) },
     { label: 'sarvam public', value: effective.sarvamPublicApiAllowed ? 'on' : 'off' },
+    // TASK-506 — effective merged bindings, read-only (tenant over SYSTEM per voice id).
+    ...Object.entries(effective.voiceBindings ?? {}).map(([voiceId, bindings]) => ({
+      label: `bind ${voiceId}`,
+      value: Object.entries(bindings)
+        .map(([provider, voice]) => `${provider}:${voice}`)
+        .join(', '),
+    })),
   ];
   return (
     <Card className="gap-3 p-4" aria-labelledby={`${uid}-title`}>
@@ -60,6 +67,17 @@ function ConfigTabSkeleton() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Skeleton className="h-56" />
         <Skeleton className="h-56" />
+        {/* Voice-bindings card: per-voice rows of provider selects (rule 10: mirror the loaded shape). */}
+        <div className="flex flex-col gap-3 lg:col-span-2">
+          <Skeleton className="h-5 w-32" />
+          {Array.from({ length: 2 }, (_, index) => (
+            <div key={index} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <Skeleton className="h-8" />
+              <Skeleton className="h-8" />
+              <Skeleton className="h-8" />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -70,9 +88,11 @@ function ConfigTab() {
   const uid = useId();
   const effectiveQuery = useTtsEffective();
   const rowQuery = useTtsRow();
+  // Catalog failure degrades gracefully: the bindings editor is hidden, the rest of the form stays editable.
+  const catalogQuery = useTtsCatalog();
   const mutation = usePutTtsRow();
 
-  if (effectiveQuery.isPending || rowQuery.isPending) return <ConfigTabSkeleton />;
+  if (effectiveQuery.isPending || rowQuery.isPending || catalogQuery.isPending) return <ConfigTabSkeleton />;
   if (effectiveQuery.error || !effectiveQuery.data) {
     return <ErrorState error={effectiveQuery.error} onRetry={() => void effectiveQuery.refetch()} />;
   }
@@ -100,6 +120,8 @@ function ConfigTab() {
             mutation={mutation}
             onReloadLatest={() => void rowQuery.refetch()}
             successMessage="Tenant TTS config saved"
+            catalog={catalogQuery.data}
+            effectiveBindings={effectiveQuery.data.voiceBindings}
           />
         </section>
       </div>

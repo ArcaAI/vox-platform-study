@@ -35,6 +35,12 @@ export class ModelResponse {
   @ApiProperty({ description: 'Model format', enum: AiModelFormat })
   format: AiModelFormat;
 
+  @ApiPropertyOptional({ description: 'Canonical runtime provider id (TASK-506)', nullable: true })
+  provider?: string | null;
+
+  @ApiPropertyOptional({ description: 'Model architecture family (TASK-506)', nullable: true })
+  architecture?: string | null;
+
   @ApiPropertyOptional({ description: 'Estimated memory size in MB' })
   memorySizeMb?: number | null;
 

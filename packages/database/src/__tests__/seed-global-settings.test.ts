@@ -25,18 +25,15 @@ const CORE_SUFFIXES = [
   'FF_CONSULTATION_SHARING',
   'STT_MODEL',
   'STT_VAD',
-  'SMR_PROVIDER',
-  'SMR_MODEL',
-  // TASK-338 — SMR Azure deployment-name (032), Guardrail provider/model/Azure
-  // (033/034/035), seeded for every tenant.
+  // TASK-338 — SMR Azure deployment-name (032), seeded for every tenant.
+  // TASK-506 — SMR_PROVIDER/SMR_MODEL (030/031), the guardrail namespace
+  // (033/034/035) and UX_SMR_PROVIDER_MODELS (043) were RETIRED (superseded
+  // by HarnessPolicy + AiTaskDefault + the AiModel registry); their ids stay
+  // reserved but are no longer declared or emitted.
   'SMR_AZURE_DEPLOYMENT',
-  'GUARDRAIL_PROVIDER',
-  'GUARDRAIL_MODEL',
-  'GUARDRAIL_AZURE_DEPLOYMENT',
   'UX_LOCAL_ASR_MODELS',
   'UX_LOCAL_VAD_MODELS',
   'UX_LOCAL_NOISE_SUPPRESSION_MODELS',
-  'UX_SMR_PROVIDER_MODELS',
   // TASK-338 — Guardrail provider/model catalog (044).
   'UX_GUARDRAIL_PROVIDER_MODELS',
   'LOCKED_CONFIG_PATHS',
@@ -222,27 +219,14 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
           expect(flag).toBeDefined();
         });
 
-        // TASK-338 — admin-configurable Guardrail engine block.
-        it('emits the guardrail namespace block (3 settings, provider/model locked)', () => {
+        // TASK-506 — the TASK-338 guardrail namespace is RETIRED (superseded
+        // by AiTaskDefault + the AiModel registry); nothing is emitted and
+        // `retireSupersededGlobalSettings` sweeps existing rows to DELETED.
+        it('emits NO guardrail namespace settings (retired by TASK-506)', () => {
           const guardrail = settingsForTenant(tenantId).filter(
             (s) => s.namespace === 'guardrail',
           );
-          const keys = guardrail.map((s) => s.key).sort();
-          expect(keys).toEqual([
-            'default-guardrail-model',
-            'default-guardrail-provider',
-            'guardrail-azure-deployment',
-          ]);
-
-          const provider = guardrail.find((s) => s.key === 'default-guardrail-provider');
-          const model = guardrail.find((s) => s.key === 'default-guardrail-model');
-          const azure = guardrail.find((s) => s.key === 'guardrail-azure-deployment');
-          expect(provider?.value).toBe('lm-studio');
-          expect(provider?.locked).toBe(true);
-          expect(model?.value).toBe('granite-guardian-4.1-8b');
-          expect(model?.locked).toBe(true);
-          expect(azure?.value).toBe('');
-          expect(azure?.locked).toBeFalsy();
+          expect(guardrail).toEqual([]);
         });
 
         // TASK-338 — SMR Azure deployment-name parity (non-secret, unlocked).

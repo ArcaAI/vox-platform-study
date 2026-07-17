@@ -5,10 +5,25 @@
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 import type { AiModel, PaginatedModels } from '../../api/types';
 import { AiModelsScreen } from '../ai-models-screen';
+
+// Radix Select scrolls the highlighted item into view on open; happy-dom has no layout engine.
+beforeAll(() => {
+    if (!Element.prototype.scrollIntoView) {
+        Element.prototype.scrollIntoView = () => {};
+    }
+});
+
+/** Open a Radix Select trigger and pick an option by its visible label (happy-dom pointer path). */
+async function selectOption(trigger: HTMLElement, optionName: string | RegExp) {
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    const option = await screen.findByRole('option', { name: optionName });
+    fireEvent.pointerUp(option, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    fireEvent.click(option);
+}
 
 const MODEL: AiModel = {
     id: 'm-1',
@@ -22,6 +37,8 @@ const MODEL: AiModel = {
     sourceUri: 'openai/whisper-large-v4',
     sourceRevision: null,
     format: 'FASTER_WHISPER',
+    provider: 'built-in',
+    architecture: 'whisper',
     memorySizeMb: 3096,
     computeType: 'float16',
     downloadStatus: 'DOWNLOADED',
@@ -88,6 +105,42 @@ describe('AiModelsScreen', () => {
         expect(screen.getByText('Hugging Face')).toBeDefined();
         expect(screen.getByText('Active')).toBeDefined();
         expect(screen.getByRole('grid', { name: 'AI models' })).toBeDefined();
+    });
+
+    it('renders the runtime provider badge and architecture (TASK-506)', async () => {
+        stubFetch(() => Response.json(envelope([MODEL])));
+        renderWithProviders(<AiModelsScreen />);
+
+        expect(await screen.findByText('built-in')).toBeDefined();
+        expect(screen.getByText('whisper')).toBeDefined();
+    });
+
+    it('registers a model with the TASK-506 runtime provider and architecture fields', async () => {
+        const calls = stubFetch((url, method) => {
+            if (method === 'POST') return Response.json({ ...MODEL, id: 'm-2' });
+            return Response.json(envelope([]));
+        });
+        renderWithProviders(<AiModelsScreen />);
+        await screen.findByText('No models registered yet');
+
+        fireEvent.click(screen.getAllByRole('button', { name: 'Register model' })[0]);
+        const dialog = await screen.findByRole('dialog');
+        fireEvent.change(within(dialog).getByLabelText(/^name/i), { target: { value: 'Gemma 4 E2B QAT' } });
+        fireEvent.change(within(dialog).getByLabelText(/^slug/i), { target: { value: 'lms-gemma-4-e2b-it-qat' } });
+        fireEvent.change(within(dialog).getByLabelText(/^task type/i), { target: { value: 'TEXT_GENERATION' } });
+        fireEvent.change(within(dialog).getByLabelText(/^source uri/i), { target: { value: 'gemma-4-e2b-it-qat' } });
+        await selectOption(within(dialog).getByLabelText(/^runtime provider/i), 'lm-studio');
+        fireEvent.change(within(dialog).getByLabelText(/^architecture/i), { target: { value: 'gemma4' } });
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Register model' }));
+
+        await waitFor(() => expect(calls.some((call) => call.method === 'POST')).toBe(true));
+        const post = calls.find((call) => call.method === 'POST');
+        expect(post?.body).toMatchObject({
+            slug: 'lms-gemma-4-e2b-it-qat',
+            provider: 'lm-studio',
+            architecture: 'gemma4',
+        });
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     });
 
     it('renders the capability badges on a single line so the fixed-height row keeps its border (TASK-429)', async () => {

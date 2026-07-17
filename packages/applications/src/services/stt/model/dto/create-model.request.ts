@@ -1,6 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsArray, IsEnum, IsNumber, Matches, MaxLength, MinLength, Min } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsArray, IsEnum, IsIn, IsNumber, Matches, MaxLength, MinLength, Min } from 'class-validator';
 import { ModelCategory, ModelTaskType, ModelType, AiModelSource, AiModelFormat } from '@arcaai/domains';
+
+/** TASK-506 — canonical runtime provider ids for registry rows. */
+export const AI_MODEL_PROVIDERS = ['ollama', 'lm-studio', 'azure', 'bedrock', 'built-in', 'sarvam'] as const;
 
 export class CreateModelRequest {
   @ApiProperty({
@@ -91,6 +94,24 @@ export class CreateModelRequest {
   })
   @IsEnum(AiModelFormat)
   format: AiModelFormat;
+
+  @ApiPropertyOptional({
+    description: 'Canonical runtime provider id (TASK-506)',
+    enum: AI_MODEL_PROVIDERS,
+    example: 'lm-studio',
+  })
+  @IsOptional()
+  @IsIn(AI_MODEL_PROVIDERS)
+  provider?: string;
+
+  @ApiPropertyOptional({
+    description: 'Model architecture family (TASK-506)',
+    example: 'gemma4',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  architecture?: string;
 
   @ApiPropertyOptional({
     description: 'Estimated memory size in MB',

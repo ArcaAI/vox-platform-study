@@ -35,6 +35,10 @@ export class TenantTtsConfigResponse {
   @ApiProperty({ description: 'Whether routing to the Sarvam public API is allowed' })
   sarvamPublicApiAllowed!: boolean;
 
+  // TASK-506 — carries voiceBindings (and any other task-specific extras).
+  @ApiPropertyOptional({ description: 'Persisted config extras (incl. voiceBindings)', nullable: true, type: Object })
+  configJson?: Record<string, unknown> | null;
+
   @ApiPropertyOptional({ description: 'Resource status' })
   resourceStatus?: string;
 

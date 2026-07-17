@@ -64,6 +64,11 @@ class TransformerTokenClassifier(TokenClassifier):
 
     async def initialize(self) -> None:
         """Load transformer token classification model"""
+        # TASK-506 — idempotent: per-request MedicalSuggester instances share the
+        # default token classifier and call initialize() again; never reload it.
+        if self.is_initialized:
+            return
+
         try:
             logger.info("Initializing TokenClassifier service.")
 

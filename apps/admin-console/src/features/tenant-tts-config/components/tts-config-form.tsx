@@ -13,8 +13,9 @@ import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { GatewayError } from '@/shared/api';
 import type { WithEtag } from '@/shared/api';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
-import type { TtsConfigRow, UpdateTtsConfigRequest } from '../api';
-import { buildSparsePatch, fieldDraftValue, TTS_FIELD_GROUPS, type TtsField } from './tts-config-fields';
+import type { TtsConfigRow, TtsPlatformCatalog, TtsVoiceBindings, UpdateTtsConfigRequest } from '../api';
+import { bindingsDirty, buildSparsePatch, fieldDraftValue, mergeBindingDrafts, rowVoiceBindings, TTS_FIELD_GROUPS, type TtsField } from './tts-config-fields';
+import { VoiceBindingsEditor } from './voice-bindings-editor';
 
 export type TtsRowMutation = UseMutationResult<
   WithEtag<TtsConfigRow>,
@@ -46,13 +47,19 @@ function FieldEditor({
     );
   }
   if (field.kind === 'select') {
+    const options = field.options ?? [];
+    // Escape hatch (TASK-506): a saved value outside the closed list keeps the
+    // legacy free-text editor instead of silently coercing it into an option.
+    if (typeof value === 'string' && value !== '' && !options.includes(value)) {
+      return <Input id={id} value={value} onChange={(event) => onChange(event.target.value)} className="h-8 font-mono text-xs" />;
+    }
     return (
       <Select value={String(value)} onValueChange={onChange}>
         <SelectTrigger id={id} className="h-8 font-mono text-xs">
           <SelectValue placeholder="inherit" />
         </SelectTrigger>
         <SelectContent>
-          {(field.options ?? []).map((option) => (
+          {options.map((option) => (
             <SelectItem key={option} value={option} className="font-mono text-xs">
               {option}
             </SelectItem>
@@ -90,17 +97,29 @@ export function TtsConfigForm({
   mutation,
   onReloadLatest,
   successMessage,
+  catalog,
+  effectiveBindings,
 }: {
   row: TtsConfigRow;
   etag: string | null;
   mutation: TtsRowMutation;
   onReloadLatest: () => void;
   successMessage: string;
+  /** TASK-506 registry catalog; omitted (e.g. catalog fetch failed) hides the bindings editor. */
+  catalog?: TtsPlatformCatalog;
+  /** Effective merged bindings — used only for the editor's row-id union. */
+  effectiveBindings?: TtsVoiceBindings;
 }) {
   const uid = useId();
   const [drafts, setDrafts] = useState<Record<string, string | boolean>>({});
+  const [bindingDrafts, setBindingDrafts] = useState<Record<string, Record<string, string>>>({});
 
-  const patch = buildSparsePatch(row, drafts);
+  const savedBindings = rowVoiceBindings(row);
+  const bindingsChanged = catalog !== undefined && bindingsDirty(savedBindings, bindingDrafts);
+  const patch: Omit<UpdateTtsConfigRequest, 'expectedVersion'> = {
+    ...buildSparsePatch(row, drafts),
+    ...(bindingsChanged ? { voiceBindings: mergeBindingDrafts(savedBindings, bindingDrafts) } : {}),
+  };
   const dirty = Object.keys(patch).length > 0;
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -112,6 +131,7 @@ export function TtsConfigForm({
         onSuccess: () => {
           toast.success(successMessage);
           setDrafts({});
+          setBindingDrafts({});
         },
         onError: (error) => {
           if (!isOccError(error)) toast.error(error.message);
@@ -150,6 +170,18 @@ export function TtsConfigForm({
             </div>
           </Card>
         ))}
+        {catalog ? (
+          <VoiceBindingsEditor
+            uid={uid}
+            catalog={catalog}
+            saved={savedBindings}
+            effective={effectiveBindings}
+            drafts={bindingDrafts}
+            onDraftChange={(voiceId, provider, value) =>
+              setBindingDrafts((current) => ({ ...current, [voiceId]: { ...current[voiceId], [provider]: value } }))
+            }
+          />
+        ) : null}
       </div>
       <OccConflictAlert
         error={mutation.error}

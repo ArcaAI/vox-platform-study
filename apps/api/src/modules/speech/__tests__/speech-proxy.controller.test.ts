@@ -144,4 +144,76 @@ describe('SpeechProxyController', () => {
       expect(res.status).toHaveBeenCalledWith(500);
     });
   });
+
+  // TASK-506 §3.4 — the resolved effective config's voiceBindings are injected
+  // into the forwarded body as `voice_bindings` (tts-v2 falls back to its
+  // built-in DEFAULT_VOICES when absent). Fail-open posture unchanged.
+  describe('POST /speech/synthesize — tenant config voice_bindings injection (TASK-506)', () => {
+    const BINDINGS = { 'en-female-1': { azure: 'en-IN-NeerjaNeural' }, 'ml-male-1': { azure: 'ml-IN-MidhunNeural' } };
+
+    const makeEffective = (voiceBindings: Record<string, Record<string, string>>) => ({
+      tenantId: 't1',
+      defaultFormat: 'pcm',
+      defaultSpeed: 1.0,
+      routingEn: ['azure'],
+      routingMl: ['azure'],
+      allowedProviders: ['azure'],
+      voiceBindings,
+    });
+
+    const makeTenantTtsConfig = (voiceBindings: Record<string, Record<string, string>>) => ({
+      getEffective: vi.fn().mockResolvedValue(makeEffective(voiceBindings)),
+      resolveProviderOverrides: vi.fn().mockResolvedValue({}),
+    });
+
+    const makeCls = () => ({ get: vi.fn((key: string) => (key === 'tenantId' ? 't1' : undefined)) });
+
+    const buildController = (tenantTtsConfig: unknown) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      new SpeechProxyController(http as any, config as any, createMockSecrets('svc-token') as any, tenantTtsConfig as any, makeCls() as any);
+
+    it('injects voice_bindings from the effective config when non-empty', async () => {
+      const tenantTtsConfig = makeTenantTtsConfig(BINDINGS);
+      const ctrl = buildController(tenantTtsConfig);
+      http.axiosRef.post.mockResolvedValue({ headers: { 'content-type': 'audio/pcm' }, data: makeStream() });
+      const res = makeRes();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
+
+      const body = http.axiosRef.post.mock.calls[0][1];
+      expect(body.voice_bindings).toEqual(BINDINGS);
+      // The rest of the TASK-496 injection is preserved.
+      expect(body.routing_en).toEqual(['azure']);
+      expect(body.allowed_providers).toEqual(['azure']);
+    });
+
+    it('omits voice_bindings when the effective bindings map is empty', async () => {
+      const ctrl = buildController(makeTenantTtsConfig({}));
+      http.axiosRef.post.mockResolvedValue({ headers: { 'content-type': 'audio/pcm' }, data: makeStream() });
+      const res = makeRes();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
+
+      const body = http.axiosRef.post.mock.calls[0][1];
+      expect('voice_bindings' in body).toBe(false);
+    });
+
+    it('FAILS OPEN — a config resolve error forwards the body without bindings', async () => {
+      const tenantTtsConfig = {
+        getEffective: vi.fn().mockRejectedValue(new Error('config db down')),
+        resolveProviderOverrides: vi.fn().mockResolvedValue({}),
+      };
+      const ctrl = buildController(tenantTtsConfig);
+      http.axiosRef.post.mockResolvedValue({ headers: { 'content-type': 'audio/pcm' }, data: makeStream() });
+      const res = makeRes();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
+
+      const body = http.axiosRef.post.mock.calls[0][1];
+      expect(body).toEqual({ input: 'Hi.', voice: 'en-female-1' });
+    });
+  });
 });

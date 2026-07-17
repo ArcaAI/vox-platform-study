@@ -1171,6 +1171,9 @@ importers:
 
   packages/database:
     dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.1079.0
+        version: 3.1079.0
       '@prisma/adapter-pg':
         specifier: ^7.8.0
         version: 7.8.0
@@ -29721,7 +29724,7 @@ snapshots:
       dom-accessibility-api: 0.5.16
       lodash-es: 4.18.1
       redent: 3.0.0
-      vitest: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@25.9.4)(@vitest/browser-playwright@4.1.9)(@vitest/coverage-istanbul@4.1.9)(@vitest/coverage-v8@4.1.9)(@vitest/ui@4.1.9)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@7.3.6(@types/node@25.9.4)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
+      vitest: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/browser-playwright@4.1.9)(@vitest/coverage-istanbul@4.1.9)(@vitest/coverage-v8@4.1.9)(@vitest/ui@4.1.9)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@7.3.6(@types/node@26.1.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
 
   vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@25.9.4)(@vitest/browser-playwright@4.1.9)(@vitest/coverage-istanbul@4.1.9)(@vitest/coverage-v8@4.1.9)(@vitest/ui@4.1.9)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@7.3.6(@types/node@25.9.4)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)):
     dependencies:

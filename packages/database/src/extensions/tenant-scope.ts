@@ -122,6 +122,8 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // tenant-tts-config.prisma (2) — TASK-496 per-tenant TTS config + BYO creds.
   'TenantTtsConfig', // also a SYSTEM-shared read model (platform-default row, below)
   'TenantTtsProviderCredential', // per-(tenant,provider) BYO key; NOT SYSTEM-shared
+  // ai-task-default.prisma (1) — TASK-506 per-tenant default model per AI task.
+  'AiTaskDefault', // also a SYSTEM-shared read model (platform-default row, below)
   // entitlement.prisma (1) — TASK-392 rolling-monthly usage meters. The
   // reconcile job reads/writes these via the UNSCOPED `baseClient` (explicit
   // tenantId filters, no CLS — same escape hatch as the audit-retention
@@ -202,6 +204,12 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // (only a platform admin mutates the SYSTEM default). Credentials are NEVER
   // shared — TenantTtsProviderCredential is intentionally absent here.
   'TenantTtsConfig',
+  // TASK-506 — per-task default-model rows (guardrail.validate / nlp.*): the
+  // SYSTEM tenant row is the platform default every tenant merges under its
+  // own row (AiTaskDefaultService.getEffective). READS widen to
+  // [caller, SYSTEM]; WRITES are NOT widened (guardrail.* keys are additionally
+  // global-admin-only at the service layer).
+  'AiTaskDefault',
   // Platform infrastructure settings (S3/MinIO endpoint + credentials, STT
   // pipeline slugs/queues, …) are seeded under the SYSTEM tenant in
   // `seed/06-stt.ts`, alongside the SYSTEM-owned AsrPipeline/AiModel catalog.

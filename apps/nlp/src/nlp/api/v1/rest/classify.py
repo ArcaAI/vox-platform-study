@@ -1,7 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from nlp.core.logging import get_logger
-from nlp.dependencies import get_text_classifier, get_token_classifier
+from nlp.dependencies import (
+    get_text_classifier,
+    get_text_classifier_for,
+    get_token_classifier,
+    get_token_classifier_for,
+)
 from nlp.schemas.classification import (
     TextClassificationRequest,
     TextClassificationResponse,
@@ -26,6 +31,15 @@ async def classify_text(
     Uses text classification model to categorize medical documents
     (clinical notes, discharge summaries, lab reports, etc.)
     """
+    # TASK-506 — optional per-request model override; a load failure surfaces
+    # as 503 (same style as the sentinel-unconfigured path below).
+    if request.model_name:
+        try:
+            service = await get_text_classifier_for(request.model_name)
+        except Exception as e:
+            logger.error(f"Text classification model load failed: {str(e)}")
+            raise HTTPException(status_code=503, detail="Text classification model not available") from e
+
     try:
         # Check if service is initialized
         if not service.is_initialized:
@@ -52,6 +66,15 @@ async def classify_tokens(
     Uses token classification model to identify and extract medical entities
     with BIO tagging and confidence scores.
     """
+    # TASK-506 — optional per-request model override; a load failure surfaces
+    # as 503 in the same style as an unavailable default model.
+    if request.model_name:
+        try:
+            service = await get_token_classifier_for(request.model_name)
+        except Exception as e:
+            logger.error(f"Token classification model load failed: {str(e)}")
+            raise HTTPException(status_code=503, detail="Token classification model not available") from e
+
     try:
         if not service.is_initialized:
             raise HTTPException(status_code=503, detail="Token classification model not available")

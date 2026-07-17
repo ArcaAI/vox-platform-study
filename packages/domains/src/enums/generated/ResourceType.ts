@@ -46,4 +46,5 @@ export enum ResourceType {
   TenantTtsConfig = 'TenantTtsConfig',
   TenantIdentityProvider = 'TenantIdentityProvider',
   FederatedIdentity = 'FederatedIdentity',
+  AiTaskDefault = 'AiTaskDefault',
 }

@@ -1,4 +1,5 @@
 export * from './AiModelFactory';
+export * from './AiTaskDefaultFactory';
 export * from './ApiKeyFactory';
 export * from './AsrPipelineFactory';
 export * from './AsrPipelineVersionFactory';

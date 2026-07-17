@@ -5,6 +5,7 @@ import {
   SetTtsCredentialRequest,
   TenantTtsConfigResponse,
   TtsCredentialResponse,
+  TtsPlatformCatalogResponse,
   UpdateTenantTtsConfigRequest,
 } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Put, Query } from '@nestjs/common';
@@ -96,6 +97,19 @@ export class TenantTtsConfigAdminController {
   ): Promise<TenantTtsConfigResponse> {
     const dto = { ...request, expectedVersion: expectedFromHeader ?? request.expectedVersion };
     return this.configService.upsertRow(this.resolveTenantId(tenantId), dto);
+  }
+
+  @Get('catalog')
+  @Authorize(['read', 'TenantTtsConfig'])
+  @ApiOperation({
+    summary: 'Platform TTS catalog — providers + voices derived from the AiModel registry (TASK-506)',
+    description:
+      'SYSTEM ENABLED TEXT_TO_SPEECH registry rows (code-constant fallback pre-seed). Tenant-agnostic: the catalog is the ' +
+      'platform-wide universe voice bindings are validated against — no tenant scoping.',
+  })
+  @ApiResponse({ status: 200, type: TtsPlatformCatalogResponse })
+  async getCatalog(): Promise<TtsPlatformCatalogResponse> {
+    return this.configService.getPlatformCatalog();
   }
 
   @Get('credentials')
