@@ -191,6 +191,40 @@ class Settings(BaseSettings):
         description="Azure Speech service region (e.g., eastus, westeurope)",
     )
 
+    # Azure AI Foundry — MAI-Transcribe (TASK-505 P3, engine AZURE_FOUNDRY).
+    # Decision D4: PREVIEW service (no SLA, no diarization) — disabled by
+    # default, batch-only, and PHI must not flow until GA + data-residency
+    # sign-off. Env vars: AZURE_FOUNDRY_ENABLED / _ENDPOINT / _API_KEY / _MODEL.
+    azure_foundry_enabled: bool = Field(
+        default=False,
+        description="Enable the Azure AI Foundry MAI-Transcribe engine (D4: preview, off by default)",
+    )
+    azure_foundry_endpoint: str | None = Field(
+        default=None,
+        description="Azure AI Foundry / Speech resource endpoint, e.g. https://<res>.cognitiveservices.azure.com",
+    )
+    azure_foundry_api_key: str | None = Field(
+        default=None,
+        description="Azure AI Foundry API key",
+    )
+    azure_foundry_model: str = Field(
+        default="mai-transcribe-1.5",
+        description="MAI transcription model name for enhancedMode",
+    )
+
+    # parakeet.cpp — ggml runtime for NVIDIA Parakeet/Nemotron ASR
+    # (TASK-505 P3, engine PARAKEET_CPP). No official Python bindings exist
+    # upstream (mudler/parakeet.cpp is C API + CLI); the loader lazy-imports a
+    # binding module when present, else loads the shared library path below.
+    parakeet_cpp_library_path: str | None = Field(
+        default=None,
+        description="Path to libparakeet shared library (env PARAKEET_CPP_LIBRARY_PATH)",
+    )
+    parakeet_cpp_num_threads: int = Field(
+        default=4,
+        description="CPU threads for parakeet.cpp inference",
+    )
+
     # VAD — Silero v5 ONNX
     vad_model_path: str | None = Field(
         default=None,
@@ -201,16 +235,16 @@ class Settings(BaseSettings):
         description="Silero VAD speech detection threshold (0.0–1.0)",
     )
     vad_min_speech_duration_ms: int = Field(
-        default=250,
-        description="Minimum speech segment length in ms",
+        default=100,
+        description="Minimum speech segment length in ms (TASK-505: 100 so short clinical confirmations survive)",
     )
     vad_min_silence_duration_ms: int = Field(
         default=500,
         description="Minimum silence to end speech segment in ms",
     )
     vad_speech_pad_ms: int = Field(
-        default=30,
-        description="Padding before speech onset in ms",
+        default=200,
+        description="Padding applied to both segment ends in ms (TASK-505: 200 per production ASR guidance)",
     )
     vad_sample_rate: int = Field(
         default=16000,
@@ -241,6 +275,15 @@ class Settings(BaseSettings):
             "embeddings during enrollment. Below this, the enrollment is rejected "
             "as inconsistent. Lower this (~0.3) for dev with consumer-grade "
             "microphones; keep >=0.6 in production."
+        ),
+    )
+    voice_profile_embedding_dim: int = Field(
+        default=256,
+        description=(
+            "Speaker-embedding dimension — must match the deployed "
+            "UserVoiceProfile.embedding vector(N) column. 256 = wespeaker "
+            "(current); 192 = ECAPA-TDNN (TASK-505 D1 cutover: apply the "
+            "vector(192) migration + re-enroll, see TASK-505 README Phase 4)"
         ),
     )
 

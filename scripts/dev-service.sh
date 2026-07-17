@@ -9,7 +9,7 @@
 # deterministic regardless of local file drift.
 #
 # USAGE:
-#   ./scripts/dev-service.sh <stt|smr|nlp|guardrail|harness|worker> [--watch] [--print]
+#   ./scripts/dev-service.sh <stt|smr|nlp|guardrail|harness|tts|worker> [--watch] [--print]
 #   ./scripts/dev-service.sh --check-stt-key      # preflight only (used by dev:doctor)
 #
 # FLAGS:
@@ -21,7 +21,7 @@
 #
 # PORT OVERRIDES (for side-by-side verification etc.):
 #   STT_PORT (8861), SMR_PORT (8862), GUARDRAIL_PORT (8863), NLP_PORT (8864),
-#   HARNESS_PORT (8866)
+#   HARNESS_PORT (8866), TTS_PORT (8865)
 #
 # BIND ADDRESS:
 #   Services bind 127.0.0.1 by default — these are PHI-processing dev
@@ -116,7 +116,7 @@ for arg in "$@"; do
         --watch) WATCH=1 ;;
         --print) PRINT=1 ;;
         --help|-h) usage; exit 0 ;;
-        stt|smr|nlp|guardrail|harness|worker) SERVICE="$arg" ;;
+        stt|smr|nlp|guardrail|harness|tts|worker) SERVICE="$arg" ;;
         *) echo -e "${RED}Unknown argument: $arg${NC}" >&2; usage >&2; exit 2 ;;
     esac
 done

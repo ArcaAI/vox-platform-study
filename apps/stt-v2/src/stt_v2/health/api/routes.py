@@ -72,6 +72,16 @@ async def health_check() -> dict[str, Any]:
     streaming_info = _check_streaming()
     checks["streaming"] = streaming_info
 
+    # TASK-505 P1 — registered ASR engines + their resolved (device, compute)
+    # bindings on this host, so silent downgrades (e.g. CPU fallback) are
+    # visible. Purely informational; never affects overall status.
+    try:
+        from stt_v2.processors.binding import asr_processor_health
+
+        checks["processors"] = asr_processor_health()
+    except Exception as exc:  # noqa: BLE001 — health must never crash on this
+        checks["processors"] = {"error": str(exc)}
+
     uptime = (datetime.utcnow() - _startup_time).total_seconds()
 
     return {

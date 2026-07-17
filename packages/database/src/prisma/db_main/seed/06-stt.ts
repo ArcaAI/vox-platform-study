@@ -47,6 +47,12 @@ export const AiModelFormat = {
     GGUF: 'GGUF',
     // TASK-356 Phase 2 — CTranslate2 (faster-whisper) artifacts.
     CTRANSLATE2: 'CTRANSLATE2',
+    // TASK-505 P5 — Prisma↔Python enum sync (see migration task_505_stt_engine_enums).
+    FASTER_WHISPER: 'FASTER_WHISPER',
+    ONNX_OPTIMUM: 'ONNX_OPTIMUM',
+    AZURE_SPEECH: 'AZURE_SPEECH',
+    AZURE_FOUNDRY: 'AZURE_FOUNDRY',
+    PARAKEET_CPP: 'PARAKEET_CPP',
 } as const;
 
 export const ModelCategory = {
@@ -62,6 +68,8 @@ export const ModelTaskType = {
     TEXT_GENERATION: 'TEXT_GENERATION',
     // TASK-356 Phase 1 — guardrail/safety models (foundation migration).
     GUARDRAIL: 'GUARDRAIL',
+    // TASK-505 P5 — diarization stack task types.
+    SPEAKER_EMBEDDING: 'SPEAKER_EMBEDDING',
 } as const;
 
 export const ModelType = {
@@ -181,30 +189,28 @@ export const DEFAULT_AI_MODELS = [
         tags: ['english-only', 'nemo', 'high-quality'],
     },
     {
-        // TASK-356 Phase 2 — STT default: faster-whisper whisper-large-v3-turbo,
-        // self-converted to CTranslate2 and quantized int8 (README §4.8(c)).
-        // TODO(D-4): engineers run `ct2-transformers-converter --model
-        // openai/whisper-large-v3-turbo --quantization int8 --output_dir <repo>`
-        // and publish the artifact, then replace MODEL_REPO_PLACEHOLDER below
-        // (and the matching hf_model_id in PIPELINE_CONFIGS.faster_whisper_turbo_int8)
-        // with the real model-repo URI. Until then this row intentionally does
-        // NOT resolve at runtime.
+        // TASK-356 Phase 2 / TASK-505 — faster-whisper whisper-large-v3-turbo,
+        // CTranslate2 int8. D-4 resolved: points at the community deepdml
+        // conversion (owner decision D3, 2026-07-16); loads via
+        // FasterWhisperLoader at runtime.
         id: '80000000-0000-0000-0001-000000000007',
         tenantId: DEFAULT_TENANT_ID,
         name: 'Faster-Whisper Large V3 Turbo (CT2 int8)',
         slug: 'faster-whisper-large-v3-turbo-int8',
-        description: 'whisper-large-v3-turbo self-converted to CTranslate2 and quantized int8 for faster-whisper. Engineer-published artifact (D-4); resolves by slug at runtime.',
+        description: 'whisper-large-v3-turbo converted to CTranslate2 and quantized int8 for faster-whisper (deepdml community conversion). Resolves by slug at runtime.',
         category: ModelCategory.AUDIO,
         taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
         modelType: ModelType.QUANTIZED_MODEL,
         source: AiModelSource.LOCAL,
-        sourceUri: 'MODEL_REPO_PLACEHOLDER/faster-whisper-large-v3-turbo-ct2',
+        sourceUri: 'deepdml/faster-whisper-large-v3-turbo-ct2',
         sourceRevision: 'main',
-        format: AiModelFormat.CTRANSLATE2,
+        // TASK-505 review — FASTER_WHISPER (was CTRANSLATE2, which is the
+        // legacy transformers-path alias and dispatched to the WRONG loader).
+        format: AiModelFormat.FASTER_WHISPER,
         memorySizeMb: 1700,
         computeType: 'int8',
-        // TASK-361 — keep registered (catalog-visible) but NOT 'production'/'recommended':
-        // the placeholder sourceUri below does not resolve until the D-4 artifact is published.
+        // TASK-361/505 — registered + catalog-visible; production/recommended
+        // tags stay off until the CT2 pipeline earns the default via benchmarks.
         tags: ['multilingual', 'faster-whisper', 'ctranslate2', 'int8'],
     },
 
@@ -278,6 +284,87 @@ export const DEFAULT_AI_MODELS = [
         memorySizeMb: 256,
         computeType: 'float32',
         tags: ['vad', 'diarization', 'pyannote'],
+    },
+
+    // =========================================================================
+    // TASK-505 P5 — new engines (matrix pipelines #5-#8) + diarization embedding
+    // =========================================================================
+    {
+        id: '80000000-0000-0000-0001-000000000010',
+        tenantId: DEFAULT_TENANT_ID,
+        name: 'Azure Speech STT',
+        slug: 'azure-speech-stt',
+        description: 'Azure Cognitive Services Speech-to-Text (cloud). Credentials via AZURE_SPEECH_KEY/AZURE_SPEECH_REGION settings.',
+        category: ModelCategory.AUDIO,
+        taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+        modelType: ModelType.BASE_MODEL,
+        source: AiModelSource.LOCAL,
+        sourceUri: 'azure://speech-to-text',
+        sourceRevision: 'main',
+        format: AiModelFormat.AZURE_SPEECH,
+        memorySizeMb: 0,
+        computeType: 'cloud',
+        tags: ['cloud', 'azure', 'multilingual'],
+    },
+    {
+        // Decision D4: PREVIEW service — engine disabled unless
+        // AZURE_FOUNDRY_ENABLED; batch-only; no PHI until GA sign-off.
+        id: '80000000-0000-0000-0001-000000000011',
+        tenantId: DEFAULT_TENANT_ID,
+        name: 'Azure MAI-Transcribe 1.5',
+        slug: 'mai-transcribe-1.5',
+        description: 'Microsoft MAI-Transcribe 1.5 via the Azure AI Foundry LLM Speech API (PREVIEW — no SLA, no diarization; batch-only per TASK-505 D4).',
+        category: ModelCategory.AUDIO,
+        taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+        modelType: ModelType.BASE_MODEL,
+        source: AiModelSource.LOCAL,
+        sourceUri: 'mai-transcribe-1.5',
+        sourceRevision: 'main',
+        format: AiModelFormat.AZURE_FOUNDRY,
+        memorySizeMb: 0,
+        computeType: 'cloud',
+        tags: ['cloud', 'azure-foundry', 'preview', 'multilingual'],
+    },
+    {
+        id: '80000000-0000-0000-0001-000000000012',
+        tenantId: DEFAULT_TENANT_ID,
+        name: 'Nemotron 3.5 ASR Streaming 0.6B (parakeet.cpp)',
+        slug: 'nemotron-3.5-asr-streaming-0.6b',
+        description: 'NVIDIA nemotron-3.5-asr-streaming-0.6b (cache-aware FastConformer-RNNT, 40 locales, OpenMDW-1.1) served by the parakeet.cpp ggml runtime. Weights: GGUF conversion via parakeet.cpp convert script.',
+        category: ModelCategory.AUDIO,
+        taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+        modelType: ModelType.QUANTIZED_MODEL,
+        source: AiModelSource.HUGGINGFACE,
+        sourceUri: 'nvidia/nemotron-3.5-asr-streaming-0.6b',
+        sourceRevision: 'main',
+        format: AiModelFormat.PARAKEET_CPP,
+        memorySizeMb: 800,
+        computeType: 'q8_0',
+        // TASK-505 review — the NVIDIA repo carries the raw .nemo checkpoint;
+        // parakeet.cpp needs the GGUF conversion (convert script) staged first.
+        tags: ['streaming', 'multilingual', 'ggml', 'parakeet.cpp', 'requires-conversion'],
+    },
+    {
+        // Decision D1: ECAPA-TDNN is the chosen diarization embedding
+        // extractor. Catalog row is informational — pipelines reference the
+        // embedding model INLINE (models.embedding slug resolution is not
+        // implemented; see TASK-505 README). Cutover (vector(192) migration +
+        // re-enrollment) is owner-scheduled — README Phase 4 runbook.
+        id: '80000000-0000-0000-0001-000000000013',
+        tenantId: DEFAULT_TENANT_ID,
+        name: 'ECAPA-TDNN Speaker Embedding',
+        slug: 'ecapa-tdnn-voxceleb',
+        description: 'SpeechBrain ECAPA-TDNN speaker-verification embeddings (192-d, ~1.71% EER, Apache-2.0). TASK-505 D1 diarization feature extractor.',
+        category: ModelCategory.AUDIO,
+        taskType: ModelTaskType.SPEAKER_EMBEDDING,
+        modelType: ModelType.BASE_MODEL,
+        source: AiModelSource.HUGGINGFACE,
+        sourceUri: 'speechbrain/spkrec-ecapa-voxceleb',
+        sourceRevision: 'main',
+        format: AiModelFormat.PYTORCH,
+        memorySizeMb: 96,
+        computeType: 'float32',
+        tags: ['diarization', 'speaker-embedding', 'ecapa'],
     },
 
     // =========================================================================
@@ -1086,40 +1173,92 @@ export const DEFAULT_AI_MODELS = [
  */
 const PIPELINE_CONFIGS = {
     // High-quality production pipeline (v1.1 — safetensor, MPS/CUDA/CPU auto)
-    production: `version: "1.1"
+    production: `version: "2.0"
 
-# Production pipeline: Whisper Large V3 Turbo (safetensor), VAD + denoise
-# Uses safetensor engine for automatic MPS/CUDA/CPU acceleration.
-# ONNX engine is CPU-only and ~15x slower on Apple Silicon.
+# TASK-505 matrix #1 — [whisper-large-v3-turbo] Full features.
+# All stages on: normalize/denoise(dual-path)/resample/VAD/diar-FE,
+# ASR + 2-spk diarization + LocalAgreement-2 stabilizer, full post.
+
 models:
-  asr:
-    hf_model_id: "openai/whisper-large-v3-turbo"
-    engine: "safetensor"
-  vad:
-    hf_model_id: "snakers4/silero-vad"
-    engine: "onnx"
-    version: "v6.0"
-  denoise:
-    hf_model_id: "nickolay/rnnoise"
-    engine: "onnx"
+  asr: "whisper-large-v3-turbo"
+  vad: "silero-vad-v6"
+  denoise: "rnnoise"
+  embedding:
+    hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"   # D1 — ECAPA feature extractor
+    engine: "pytorch"
 
 preprocessing:
-  target_sample_rate: 16000
-  normalize: true
-  vad:
+  normalize:
     enabled: true
-    threshold: 0.5
-    min_speech_duration_ms: 250
-    min_silence_duration_ms: 1000
+    processor: peak
   denoise:
     enabled: true
     strength: 0.7
-  # Dual capture (TASK-329 X8 / TASK-331 doc-06 F2): persist the pre-filter
-  # (raw) stream alongside the processed stream so the consultation playground
-  # can surface RAW+PROCESSED. Toggle per pipeline; enabled on the default.
+    scope: vad_only          # D2 dual-path: denoise gates VAD; ASR gets raw audio
+  resample:
+    enabled: true
+    target_sample_rate: 16000
+  vad:
+    enabled: true
+    threshold: 0.5
+    min_speech_duration_ms: 100
+    min_silence_duration_ms: 700
+    padding_ms: 200
+  diar_feature_extraction:
+    enabled: true
   dual_capture:
     enabled: true
-    capture_raw: true       # capture audio BEFORE noise removal / VAD trimming
+    capture_raw: true
+
+inference:
+  batch_size: 1
+  compute_type: auto
+  device: auto
+  language: null
+
+diarization:
+  enabled: true
+  backend: embedding
+  max_speakers: 2
+
+streaming:
+  commit_policy: local_agreement_2
+
+postprocessing:
+  timestamps:
+    word_timestamps: true
+    sentence_timestamps: true
+  punctuation:
+    enabled: true
+  remove_disfluencies: false # clinical verbatim posture — cleanup stays opt-in
+  lowercase: false
+  segment_merge:
+    enabled: true
+  dual_capture:
+    enabled: true
+    capture_processed: true  # what ASR consumed (raw when scope=vad_only)
+`,
+
+    // TASK-356 Phase 2 / TASK-505 — faster-whisper whisper-large-v3-turbo,
+    // CTranslate2 int8 (deepdml artifact, resolvable). Carries diarization +
+    // dual_capture.
+    faster_whisper_turbo_int8: `version: "2.0"
+
+# TASK-505 matrix #7 — [faster-whisper] deepdml CT2 int8, bare.
+
+models:
+  asr: "faster-whisper-large-v3-turbo-int8"
+
+preprocessing:
+  normalize:
+    enabled: false
+  denoise:
+    enabled: false
+  resample:
+    enabled: true            # runtime floor: VAD/ASR require the target rate
+    target_sample_rate: 16000
+  vad:
+    enabled: false           # streaming falls back to energy framing
 
 inference:
   batch_size: 1
@@ -1129,116 +1268,39 @@ inference:
 
 postprocessing:
   timestamps:
-    word_timestamps: true
-    sentence_timestamps: true
+    word_timestamps: false
+    sentence_timestamps: false
   punctuation:
-    enabled: true
+    enabled: false
   remove_disfluencies: false
   lowercase: false
-  dual_capture:
-    enabled: true
-    capture_processed: true # capture audio AFTER all filters
-
-streaming:
-  # TASK-485 — the DEFAULT pipeline (production-whisper-large-v3, isDefault) must
-  # also carry LocalAgreement-2 so partials carry stable_chars and the TASK-471
-  # tentative-tail render is active on the default clinician streaming path — parity
-  # with turbo (:1250) and best_practice_realtime (:1430). Streaming-only: batch use
-  # is unaffected (no partials). Committed-region churn stays ≈0 (verified TASK-487).
-  commit_policy: local_agreement_2
-`,
-
-    // TASK-356 Phase 2 — STT default: faster-whisper whisper-large-v3-turbo,
-    // CTranslate2 int8 (README §4.8(c)). Carries diarization + dual_capture.
-    // TODO(D-4): replace MODEL_REPO_PLACEHOLDER (matches the AiModel sourceUri
-    // for slug `faster-whisper-large-v3-turbo-int8`) with the real model-repo
-    // URI once engineers publish the converted artifact.
-    faster_whisper_turbo_int8: `version: "1.1"
-
-# Production pipeline: faster-whisper whisper-large-v3-turbo, CTranslate2 int8.
-# Engineers self-convert (ct2-transformers-converter --model
-# openai/whisper-large-v3-turbo --quantization int8) and publish the artifact;
-# this pipeline resolves it by hf_model_id. FasterWhisperLoader already supports
-# compute_type=int8 + local/HF paths. Diarization + dual_capture carried over.
-models:
-  asr:
-    hf_model_id: "MODEL_REPO_PLACEHOLDER/faster-whisper-large-v3-turbo-ct2"
-    engine: "faster_whisper"
-    compute_type: "int8"
-  vad:
-    hf_model_id: "snakers4/silero-vad"
-    engine: "onnx"
-    version: "v6.0"
-  denoise:
-    hf_model_id: "nickolay/rnnoise"
-    engine: "onnx"
-
-preprocessing:
-  target_sample_rate: 16000
-  normalize: true
-  vad:
-    enabled: true
-    threshold: 0.5
-    min_speech_duration_ms: 250
-    min_silence_duration_ms: 1000
-  denoise:
-    enabled: true
-    strength: 0.7
-  # Dual capture (TASK-329 X8 / TASK-331 doc-06 F2): persist the pre-filter
-  # (raw) stream alongside the processed stream. Carried over from production.
-  dual_capture:
-    enabled: true
-    capture_raw: true       # capture audio BEFORE noise removal / VAD trimming
-
-inference:
-  batch_size: 1
-  compute_type: int8
-  device: auto
-  language: null
-
-# Diarization (VAD + speaker labels) — README §4.8(c) feature toggle.
-diarization:
-  enabled: true
-  max_speakers: 2
-
-postprocessing:
-  timestamps:
-    word_timestamps: true
-    sentence_timestamps: true
-  punctuation:
-    enabled: true
-  remove_disfluencies: false
-  lowercase: false
-  dual_capture:
-    enabled: true
-    capture_processed: true # capture audio AFTER all filters
+  segment_merge:
+    enabled: false
 `,
 
     // Fast turbo pipeline for real-time (v1.1 — safetensor, MPS/CUDA/CPU auto)
-    turbo: `version: "1.1"
+    turbo: `version: "2.0"
 
-# Turbo pipeline: Whisper Large V3 Turbo (safetensor), VAD enabled
-# Uses safetensor engine for automatic MPS/CUDA/CPU acceleration.
-# On Apple Silicon MPS: ~14s for 107s audio. ONNX CPU: ~200s.
+# TASK-505 matrix #2 — [whisper-large-v3-turbo] Transcription only.
+# No pre-processing stages, ASR + diarization + stabilizer, no post.
+
 models:
-  asr:
-    hf_model_id: "openai/whisper-large-v3-turbo"
-    engine: "safetensor"
-  vad:
-    hf_model_id: "snakers4/silero-vad"
-    engine: "onnx"
-    version: "v6.0"
+  asr: "whisper-large-v3-turbo"
+  vad: "silero-vad-v6"
+  embedding:
+    hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"
+    engine: "pytorch"
 
 preprocessing:
-  target_sample_rate: 16000
-  normalize: true
-  vad:
-    enabled: true
-    threshold: 0.5
-    min_speech_duration_ms: 200
-    min_silence_duration_ms: 500
+  normalize:
+    enabled: false
   denoise:
     enabled: false
+  resample:
+    enabled: true            # runtime floor: VAD/ASR require the target rate
+    target_sample_rate: 16000
+  vad:
+    enabled: false           # streaming falls back to energy framing
 
 inference:
   batch_size: 1
@@ -1246,19 +1308,24 @@ inference:
   device: auto
   language: null
 
-postprocessing:
-  timestamps:
-    word_timestamps: true
-    sentence_timestamps: true
-  punctuation:
-    enabled: true
-  remove_disfluencies: false
-  lowercase: false
+diarization:
+  enabled: true
+  backend: embedding
+  max_speakers: 2
 
 streaming:
-  # TASK-471 A1 — activate LocalAgreement-2 so partials carry stable_chars and
-  # the (already-built) tentative-tail render lights up. Commit logic unchanged.
   commit_policy: local_agreement_2
+
+postprocessing:
+  timestamps:
+    word_timestamps: false
+    sentence_timestamps: false
+  punctuation:
+    enabled: false
+  remove_disfluencies: false
+  lowercase: false
+  segment_merge:
+    enabled: false
 `,
 
     // Lightweight CPU pipeline (v1.1 — slug-based model ref)
@@ -1278,7 +1345,7 @@ preprocessing:
   vad:
     enabled: true
     threshold: 0.6
-    min_speech_duration_ms: 300
+    min_speech_duration_ms: 100
     min_silence_duration_ms: 1500
   denoise:
     enabled: false
@@ -1300,33 +1367,147 @@ postprocessing:
 `,
 
     // Optimized pipeline (v1.1 — safetensor, MPS/CUDA/CPU auto)
-    optimized: `version: "1.1"
 
-# Optimized pipeline: Whisper Large V3 Turbo (safetensor), VAD + denoise
-# Uses safetensor engine for automatic hardware acceleration.
+    // NeMo pipeline for English (v1.1 — slug-based model ref)
+
+    // Best Practice: High-Quality Real-time Pipeline
+    // Uses Silero VAD v6 + RNNoise + Whisper Large V3 Turbo (safetensor)
+
+    // Best Practice: High-Quality Batch Processing Pipeline
+    // Uses Silero VAD v6 + DeepFilterNet + Whisper Large V3 (safetensor)
+
+    whisper_no_postprocessing: `version: "2.0"
+
+# TASK-505 matrix #3 — [whisper-large-v3-turbo] No postprocessing.
+# Full pre-processing + ASR + diarization + stabilizer; post off.
+
 models:
-  asr:
-    hf_model_id: "openai/whisper-large-v3-turbo"
-    engine: "safetensor"
-  vad:
-    hf_model_id: "snakers4/silero-vad"
-    engine: "onnx"
-    version: "v6.0"
-  denoise:
-    hf_model_id: "nickolay/rnnoise"
-    engine: "onnx"
+  asr: "whisper-large-v3-turbo"
+  vad: "silero-vad-v6"
+  denoise: "rnnoise"
+  embedding:
+    hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"   # D1 — ECAPA feature extractor
+    engine: "pytorch"
 
 preprocessing:
-  target_sample_rate: 16000
-  normalize: true
-  vad:
+  normalize:
     enabled: true
-    threshold: 0.5
-    min_speech_duration_ms: 250
-    min_silence_duration_ms: 800
+    processor: peak
   denoise:
     enabled: true
     strength: 0.7
+    scope: vad_only          # D2 dual-path: denoise gates VAD; ASR gets raw audio
+  resample:
+    enabled: true
+    target_sample_rate: 16000
+  vad:
+    enabled: true
+    threshold: 0.5
+    min_speech_duration_ms: 100
+    min_silence_duration_ms: 700
+    padding_ms: 200
+  diar_feature_extraction:
+    enabled: true
+  dual_capture:
+    enabled: true
+    capture_raw: true
+
+inference:
+  batch_size: 1
+  compute_type: auto
+  device: auto
+  language: null
+
+diarization:
+  enabled: true
+  backend: embedding
+  max_speakers: 2
+
+streaming:
+  commit_policy: local_agreement_2
+
+postprocessing:
+  timestamps:
+    word_timestamps: false
+    sentence_timestamps: false
+  punctuation:
+    enabled: false
+  remove_disfluencies: false
+  lowercase: false
+  segment_merge:
+    enabled: false
+`,
+
+    whisper_no_preprocessing: `version: "2.0"
+
+# TASK-505 matrix #4 — [whisper-large-v3-turbo] No preprocessing.
+# Pre off, ASR + diarization + stabilizer, full post-processing.
+
+models:
+  asr: "whisper-large-v3-turbo"
+  vad: "silero-vad-v6"
+  embedding:
+    hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"
+    engine: "pytorch"
+
+preprocessing:
+  normalize:
+    enabled: false
+  denoise:
+    enabled: false
+  resample:
+    enabled: true            # runtime floor: VAD/ASR require the target rate
+    target_sample_rate: 16000
+  vad:
+    enabled: false           # streaming falls back to energy framing
+
+inference:
+  batch_size: 1
+  compute_type: auto
+  device: auto
+  language: null
+
+diarization:
+  enabled: true
+  backend: embedding
+  max_speakers: 2
+
+streaming:
+  commit_policy: local_agreement_2
+
+postprocessing:
+  timestamps:
+    word_timestamps: true
+    sentence_timestamps: true
+  punctuation:
+    enabled: true
+  remove_disfluencies: false # clinical verbatim posture — cleanup stays opt-in
+  lowercase: false
+  segment_merge:
+    enabled: true
+  dual_capture:
+    enabled: true
+    capture_processed: true  # what ASR consumed (raw when scope=vad_only)
+`,
+
+    azure_speech_transcription: `version: "2.0"
+
+# TASK-505 matrix #5 — [azure] Azure Speech-to-Text, bare.
+# Cloud engine; credentials via AZURE_SPEECH_KEY/AZURE_SPEECH_REGION.
+
+models:
+  asr: "azure-speech-stt"
+
+preprocessing:
+  normalize:
+    enabled: false
+  denoise:
+    enabled: false
+  resample:
+    enabled: true            # runtime floor: VAD/ASR require the target rate
+    target_sample_rate: 16000
+  vad:
+    enabled: false           # streaming falls back to energy framing
 
 inference:
   batch_size: 1
@@ -1336,169 +1517,92 @@ inference:
 
 postprocessing:
   timestamps:
-    word_timestamps: true
-    sentence_timestamps: true
+    word_timestamps: false
+    sentence_timestamps: false
   punctuation:
-    enabled: true
+    enabled: false
   remove_disfluencies: false
   lowercase: false
+  segment_merge:
+    enabled: false
 `,
 
-    // NeMo pipeline for English (v1.1 — slug-based model ref)
-    nemo_english: `version: "1.1"
+    azure_foundry_mai: `version: "2.0"
 
-# NeMo English pipeline: Parakeet CTC 1.1B
+# TASK-505 matrix #6 — [azure] MAI-Transcribe 1.5, bare.
+# PREVIEW (D4): batch-only; engine disabled unless AZURE_FOUNDRY_ENABLED.
+
 models:
-  asr: "parakeet-ctc-1.1b"
-  vad:
-    hf_model_id: "snakers4/silero-vad"
-    engine: "onnx"
-    version: "v6.0"
+  asr: "mai-transcribe-1.5"
 
 preprocessing:
-  target_sample_rate: 16000
-  normalize: true
-  vad:
-    enabled: true
-    threshold: 0.5
-    min_speech_duration_ms: 250
-    min_silence_duration_ms: 1000
+  normalize:
+    enabled: false
   denoise:
     enabled: false
+  resample:
+    enabled: true            # runtime floor: VAD/ASR require the target rate
+    target_sample_rate: 16000
+  vad:
+    enabled: false           # streaming falls back to energy framing
 
 inference:
-  batch_size: 8
-  compute_type: float32
+  batch_size: 1
+  compute_type: auto
   device: auto
   language: null
 
 postprocessing:
   timestamps:
     word_timestamps: false
-    sentence_timestamps: true
+    sentence_timestamps: false
   punctuation:
-    enabled: true
+    enabled: false
   remove_disfluencies: false
   lowercase: false
+  segment_merge:
+    enabled: false
 `,
 
-    // Best Practice: High-Quality Real-time Pipeline
-    // Uses Silero VAD v6 + RNNoise + Whisper Large V3 Turbo (safetensor)
-    best_practice_realtime: `version: "1.1"
+    parakeet_nemotron_streaming: `version: "2.0"
 
-# Best practice pipeline for high-quality real-time transcription
-# Combines the latest VAD, noise suppression, and ASR models
-# Uses safetensor engine for automatic MPS/CUDA/CPU acceleration.
+# TASK-505 matrix #8 — [parakeet.cpp] nemotron-3.5-asr-streaming-0.6b, bare.
+# ggml runtime; per-utterance integration (native stateful streaming is a
+# separate ticket).
+
 models:
-  # ASR: Whisper Large V3 Turbo (safetensor) for fast, hardware-accelerated transcription
-  asr:
-    hf_model_id: "openai/whisper-large-v3-turbo"
-    engine: "safetensor"
-  # VAD: Silero VAD v6 for best accuracy with minimal latency
-  vad:
-    hf_model_id: "snakers4/silero-vad"
-    engine: "onnx"
-    version: "v6.0"
-  # Noise Suppression: RNNoise for lightweight real-time noise removal
-  denoise:
-    hf_model_id: "nickolay/rnnoise"
-    engine: "onnx"
+  asr: "nemotron-3.5-asr-streaming-0.6b"
 
 preprocessing:
-  vad:
-    enabled: true
-    threshold: 0.45           # Slightly lower for better speech detection
-    min_speech_duration_ms: 200  # Faster response for real-time
-    min_silence_duration_ms: 150
-    padding_ms: 50            # Smoother transitions
+  normalize:
+    enabled: false
   denoise:
-    enabled: true
-    strength: 0.7             # Strong but not aggressive noise removal
-  target_sample_rate: 16000
-  normalize: true
+    enabled: false
+  resample:
+    enabled: true            # runtime floor: VAD/ASR require the target rate
+    target_sample_rate: 16000
+  vad:
+    enabled: false           # streaming falls back to energy framing
 
 inference:
-  batch_size: 8               # Lower batch for real-time latency
-  compute_type: float16       # Balanced speed/quality
-  device: auto                # Use GPU if available
-  num_workers: 4
-  beam_size: 5
-  temperature: 0.0            # Deterministic output
-  language: null              # Auto-detect language
-
-postprocessing:
-  timestamps:
-    word_timestamps: true     # Enable word-level timestamps
-    sentence_timestamps: true
-  punctuation:
-    enabled: true
-  remove_disfluencies: false
-  lowercase: false
-
-streaming:
-  # TASK-471 A1 — activate LocalAgreement-2 so partials carry stable_chars and
-  # the (already-built) tentative-tail render lights up. Commit logic unchanged.
-  commit_policy: local_agreement_2
-
-resources:
-  max_memory_mb: 4096
-  timeout_seconds: 120
-`,
-
-    // Best Practice: High-Quality Batch Processing Pipeline
-    // Uses Silero VAD v6 + DeepFilterNet + Whisper Large V3 (safetensor)
-    best_practice_batch: `version: "1.1"
-
-# Best practice pipeline for high-quality batch transcription
-# Optimized for accuracy over speed
-# Uses safetensor engine for automatic MPS/CUDA/CPU acceleration.
-models:
-  # ASR: Full Whisper Large V3 (safetensor) for maximum accuracy
-  asr:
-    hf_model_id: "openai/whisper-large-v3"
-    engine: "safetensor"
-  # VAD: Silero VAD v6 for accurate speech detection
-  vad:
-    hf_model_id: "snakers4/silero-vad"
-    engine: "onnx"
-    version: "v6.0"
-  # Noise Suppression: DeepFilterNet for high-quality enhancement
-  denoise: "deepfilternet-v3"  # Use pre-registered model
-
-preprocessing:
-  vad:
-    enabled: true
-    threshold: 0.5
-    min_speech_duration_ms: 250
-    min_silence_duration_ms: 200
-    padding_ms: 30
-  denoise:
-    enabled: true
-    strength: 0.8             # Aggressive noise removal for clean audio
-  target_sample_rate: 16000
-  normalize: true
-
-inference:
-  batch_size: 16              # Higher batch for throughput
-  compute_type: float16
+  batch_size: 1
+  compute_type: auto
   device: auto
-  num_workers: 4
-  beam_size: 5
-  temperature: 0.0
   language: null
 
+streaming:
+  commit_policy: none
+
 postprocessing:
   timestamps:
-    word_timestamps: true
-    sentence_timestamps: true
+    word_timestamps: false
+    sentence_timestamps: false
   punctuation:
-    enabled: true
+    enabled: false
   remove_disfluencies: false
   lowercase: false
-
-resources:
-  max_memory_mb: 8192
-  timeout_seconds: 300
+  segment_merge:
+    enabled: false
 `,
 
     // =========================================================================
@@ -1523,7 +1627,7 @@ preprocessing:
   vad:
     enabled: true
     threshold: 0.5
-    min_speech_duration_ms: 250
+    min_speech_duration_ms: 100
     min_silence_duration_ms: 500
   denoise:
     enabled: true
@@ -1564,9 +1668,9 @@ preprocessing:
   vad:
     enabled: true
     threshold: 0.6
-    min_speech_duration_ms: 250
+    min_speech_duration_ms: 100
     min_silence_duration_ms: 500
-    padding_ms: 100
+    padding_ms: 200
   denoise:
     enabled: true
     strength: 0.3
@@ -1608,7 +1712,7 @@ preprocessing:
   vad:
     enabled: true
     threshold: 0.5
-    min_speech_duration_ms: 250
+    min_speech_duration_ms: 100
     min_silence_duration_ms: 500
   denoise:
     enabled: true
@@ -1654,25 +1758,22 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     {
         id: '81000000-0000-0000-0001-000000000001',
         tenantId: DEFAULT_TENANT_ID,
-        name: 'Production Pipeline (Whisper Large V3)',
+        name: '[whisper-large-v3-turbo] Full Features',
         slug: 'production-whisper-large-v3',
-        description: 'High-quality production pipeline using Whisper Large V3 with VAD and noise reduction. Best for final transcriptions.',
+        description: 'TASK-505 matrix #1 — full pipeline: normalize + dual-path denoise + resample + VAD + diarization feature extraction, whisper-large-v3-turbo ASR, 2-speaker diarization, LocalAgreement-2 stabilizer, full post-processing. Slug kept for setting/FK continuity.',
         configYaml: PIPELINE_CONFIGS.production,
-        // TASK-361 — restored as the effective system default. This pipeline loads
-        // a resolvable artifact (whisper-large-v3-turbo, safetensor), whereas the
-        // CT2 int8 pipeline (id …0008) still carries the non-resolving
-        // MODEL_REPO_PLACEHOLDER pending the D-4 publish. Existing DBs are
-        // reconciled by switchDefaultSttPipeline (which respects an admin-chosen
-        // resolvable default).
+        // System default (TASK-361, kept by TASK-505). seedAsrPipelines never
+        // clobbers isDefault on update, so an admin's runtime default choice
+        // survives re-seeds.
         isDefault: true,
         tags: ['production', 'high-quality', 'recommended'],
     },
     {
         id: '81000000-0000-0000-0001-000000000002',
         tenantId: DEFAULT_TENANT_ID,
-        name: 'Turbo Pipeline (Whisper Large V3 Turbo)',
+        name: '[whisper-large-v3-turbo] Transcription Only',
         slug: 'turbo-whisper-large-v3',
-        description: 'Fast turbo pipeline using Whisper Large V3 Turbo. Optimized for real-time streaming with minimal latency.',
+        description: 'TASK-505 matrix #2 — no pre-processing, whisper-large-v3-turbo ASR + diarization + stabilizer, no post-processing. Slug kept for tenant-clone/test continuity.',
         configYaml: PIPELINE_CONFIGS.turbo,
         tags: ['streaming', 'real-time', 'fast'],
     },
@@ -1685,59 +1786,71 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
         configYaml: PIPELINE_CONFIGS.lightweight,
         tags: ['cpu', 'lightweight', 'low-resource'],
     },
-    {
-        id: '81000000-0000-0000-0001-000000000004',
-        tenantId: DEFAULT_TENANT_ID,
-        name: 'Optimized Pipeline (Faster Whisper ONNX)',
-        slug: 'optimized-faster-whisper',
-        description: 'Optimized ONNX pipeline using Faster Whisper with CTranslate2. 4x faster than standard Whisper.',
-        configYaml: PIPELINE_CONFIGS.optimized,
-        tags: ['optimized', 'fast', 'onnx'],
-    },
-    {
-        id: '81000000-0000-0000-0001-000000000005',
-        tenantId: DEFAULT_TENANT_ID,
-        name: 'NeMo English Pipeline (Parakeet CTC)',
-        slug: 'nemo-parakeet-english',
-        description: 'NVIDIA NeMo pipeline using Parakeet CTC 1.1B. English-only with high accuracy.',
-        configYaml: PIPELINE_CONFIGS.nemo_english,
-        tags: ['english', 'nemo', 'nvidia'],
-    },
     // =========================================================================
     // BEST PRACTICE PIPELINES (v1.1 with inline model definitions)
     // =========================================================================
     {
-        id: '81000000-0000-0000-0001-000000000006',
-        tenantId: DEFAULT_TENANT_ID,
-        name: 'Best Practice: Real-time (Silero VAD v6 + RNNoise + Whisper Turbo)',
-        slug: 'best-practice-realtime',
-        description: 'Best practice pipeline for real-time transcription. Uses Silero VAD v6 for accurate speech detection, RNNoise for lightweight noise suppression, and Whisper Large V3 Turbo (safetensor) for fast, hardware-accelerated ASR.',
-        configYaml: PIPELINE_CONFIGS.best_practice_realtime,
-        tags: ['best-practice', 'real-time', 'streaming', 'recommended', 'v1.1'],
-    },
-    {
-        id: '81000000-0000-0000-0001-000000000007',
-        tenantId: DEFAULT_TENANT_ID,
-        name: 'Best Practice: Batch (Silero VAD v6 + DeepFilterNet + Whisper Large V3)',
-        slug: 'best-practice-batch',
-        description: 'Best practice pipeline for high-quality batch transcription. Uses Silero VAD v6, DeepFilterNet for superior noise removal, and Whisper Large V3 (safetensor) for maximum accuracy with hardware acceleration.',
-        configYaml: PIPELINE_CONFIGS.best_practice_batch,
-        tags: ['best-practice', 'batch', 'high-quality', 'v1.1'],
-    },
-    {
-        // TASK-356 Phase 2 / TASK-361 — faster-whisper CT2 int8 pipeline. Registered
-        // in the catalog (model slug `faster-whisper-large-v3-turbo-int8`) but NOT the
-        // default until the D-4 artifact replaces MODEL_REPO_PLACEHOLDER.
+        // TASK-356 Phase 2 / TASK-505 — faster-whisper CT2 int8 pipeline.
+        // Registered in the catalog; resolvable (deepdml) but not the default
+        // until it earns it via benchmarks (Phase 6).
         id: '81000000-0000-0000-0001-000000000008',
         tenantId: DEFAULT_TENANT_ID,
-        name: 'Production Pipeline (Faster-Whisper Turbo CT2 int8)',
+        name: '[faster-whisper] deepdml CT2 int8',
         slug: 'production-faster-whisper-turbo-int8',
-        description: 'High-quality + fast production pipeline using whisper-large-v3-turbo converted to CTranslate2 int8 via faster-whisper. Carries diarization + dual capture. TASK-356 Phase 2 default.',
+        description: 'TASK-505 matrix #7 — bare faster-whisper transcription (deepdml/faster-whisper-large-v3-turbo-ct2, int8). Slug kept for tenant-clone continuity.',
         configYaml: PIPELINE_CONFIGS.faster_whisper_turbo_int8,
-        // TASK-361 — registered + catalog-visible, but NOT the default: its ASR
-        // model still carries the non-resolving MODEL_REPO_PLACEHOLDER (D-4).
+        // Registered + catalog-visible, not the default (TASK-505: resolvable
+        // via deepdml; default flip deferred to Phase 6 benchmarks).
         isDefault: false,
         tags: ['faster-whisper', 'ctranslate2', 'int8', 'diarization'],
+    },
+    // =========================================================================
+    // TASK-505 P5 — remaining matrix pipelines (#3-#6, #8)
+    // =========================================================================
+    {
+        id: '81000000-0000-0000-0001-000000000009',
+        tenantId: DEFAULT_TENANT_ID,
+        name: '[whisper-large-v3-turbo] No Postprocessing',
+        slug: 'whisper-turbo-no-postprocessing',
+        description: 'TASK-505 matrix #3 — full pre-processing + ASR + diarization + stabilizer; post-processing disabled.',
+        configYaml: PIPELINE_CONFIGS.whisper_no_postprocessing,
+        tags: ['matrix', 'whisper-turbo'],
+    },
+    {
+        id: '81000000-0000-0000-0001-000000000010',
+        tenantId: DEFAULT_TENANT_ID,
+        name: '[whisper-large-v3-turbo] No Preprocessing',
+        slug: 'whisper-turbo-no-preprocessing',
+        description: 'TASK-505 matrix #4 — no pre-processing; ASR + diarization + stabilizer + full post-processing.',
+        configYaml: PIPELINE_CONFIGS.whisper_no_preprocessing,
+        tags: ['matrix', 'whisper-turbo'],
+    },
+    {
+        id: '81000000-0000-0000-0001-000000000011',
+        tenantId: DEFAULT_TENANT_ID,
+        name: '[azure] Azure Speech-to-Text',
+        slug: 'azure-speech-transcription',
+        description: 'TASK-505 matrix #5 — bare Azure Cognitive Services Speech transcription (cloud).',
+        configYaml: PIPELINE_CONFIGS.azure_speech_transcription,
+        tags: ['matrix', 'cloud', 'azure'],
+    },
+    {
+        id: '81000000-0000-0000-0001-000000000012',
+        tenantId: DEFAULT_TENANT_ID,
+        name: '[azure] MAI-Transcribe 1.5',
+        slug: 'azure-foundry-mai-transcribe',
+        description: 'TASK-505 matrix #6 — bare MAI-Transcribe 1.5 via Azure AI Foundry (PREVIEW, D4: batch-only, engine off by default).',
+        configYaml: PIPELINE_CONFIGS.azure_foundry_mai,
+        tags: ['matrix', 'cloud', 'azure-foundry', 'preview'],
+    },
+    {
+        id: '81000000-0000-0000-0001-000000000013',
+        tenantId: DEFAULT_TENANT_ID,
+        name: '[parakeet.cpp] Nemotron 3.5 ASR Streaming',
+        slug: 'parakeet-nemotron-streaming',
+        description: 'TASK-505 matrix #8 — bare nemotron-3.5-asr-streaming-0.6b transcription via the parakeet.cpp ggml runtime.',
+        configYaml: PIPELINE_CONFIGS.parakeet_nemotron_streaming,
+        tags: ['matrix', 'streaming', 'parakeet.cpp'],
     },
     // =========================================================================
     // CODE-SWITCHING & LANGUAGE-SPECIFIC PIPELINES
@@ -1799,8 +1912,7 @@ export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
         slug: 'production-whisper-large-v3',
         description: 'ArcaAI default production pipeline using Whisper Large V3 with VAD and noise reduction.',
         configYaml: PIPELINE_CONFIGS.production,
-        // TASK-361 — restored as the effective default (resolvable artifact);
-        // CT2 int8 pipeline (…0103) deferred until the D-4 artifact is published.
+        // Tenant default (TASK-361, kept by TASK-505).
         isDefault: true,
         tags: ['production', 'high-quality', 'recommended'],
     },
@@ -1815,15 +1927,15 @@ export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
         tags: ['streaming', 'real-time', 'fast'],
     },
     {
-        // TASK-356 Phase 2 / TASK-361 — ArcaAI CT2 int8 pipeline (registered, not default until D-4).
+        // TASK-356 Phase 2 / TASK-505 — ArcaAI CT2 int8 pipeline (registered, resolvable, not default).
         id: '81000000-0000-0000-0001-000000000103',
         tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
         name: 'ArcaAI Production Pipeline (Faster-Whisper Turbo CT2 int8)',
         slug: 'production-faster-whisper-turbo-int8',
         description: 'ArcaAI default production pipeline using whisper-large-v3-turbo CTranslate2 int8 (faster-whisper) with diarization + dual capture.',
         configYaml: PIPELINE_CONFIGS.faster_whisper_turbo_int8,
-        // TASK-361 — registered + catalog-visible, but NOT the default: its ASR
-        // model still carries the non-resolving MODEL_REPO_PLACEHOLDER (D-4).
+        // Registered + catalog-visible, not the default (TASK-505: resolvable
+        // via deepdml; default flip deferred to Phase 6 benchmarks).
         isDefault: false,
         tags: ['faster-whisper', 'ctranslate2', 'int8', 'diarization'],
     },
@@ -1860,9 +1972,8 @@ export const GLOBAL_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
         slug: 'production-whisper-large-v3',
         description: 'Global tenant default production pipeline using Whisper Large V3 with VAD and noise reduction. Referenced by the tenant `default-stt-pipeline` setting.',
         configYaml: PIPELINE_CONFIGS.production,
-        // TASK-361 — restored as the effective default (resolvable artifact);
-        // CT2 int8 pipeline (…0403) deferred until the D-4 artifact is published.
-        // Referenced by the tenant `default-stt-pipeline` GlobalSetting (91-user.ts).
+        // Tenant default (TASK-361, kept by TASK-505). Referenced by the tenant
+        // `default-stt-pipeline` GlobalSetting (91-user.ts).
         isDefault: true,
         tags: ['production', 'high-quality', 'recommended'],
     },
@@ -1877,17 +1988,17 @@ export const GLOBAL_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
         tags: ['streaming', 'real-time', 'fast'],
     },
     {
-        // TASK-356 Phase 2 / TASK-361 — Global tenant CT2 int8 pipeline (registered,
-        // not default until D-4). The tenant `default-stt-pipeline` GlobalSetting now
-        // points at the resolvable production-whisper-large-v3 pipeline (…0401).
+        // TASK-356 Phase 2 / TASK-505 — Global tenant CT2 int8 pipeline
+        // (registered, resolvable, not default). The tenant `default-stt-pipeline`
+        // GlobalSetting points at the production-whisper-large-v3 pipeline (…0401).
         id: '81000000-0000-0000-0001-000000000403',
         tenantId: SEED_TENANT_ID,
         name: 'Global Production Pipeline (Faster-Whisper Turbo CT2 int8)',
         slug: 'production-faster-whisper-turbo-int8',
         description: 'Global tenant default production pipeline using whisper-large-v3-turbo CTranslate2 int8 (faster-whisper) with diarization + dual capture.',
         configYaml: PIPELINE_CONFIGS.faster_whisper_turbo_int8,
-        // TASK-361 — registered + catalog-visible, but NOT the default: its ASR
-        // model still carries the non-resolving MODEL_REPO_PLACEHOLDER (D-4).
+        // Registered + catalog-visible, not the default (TASK-505: resolvable
+        // via deepdml; default flip deferred to Phase 6 benchmarks).
         isDefault: false,
         tags: ['faster-whisper', 'ctranslate2', 'int8', 'diarization'],
     },
@@ -2126,9 +2237,8 @@ export const DEFAULT_STT_SETTINGS = [
         namespace: 'stt.config',
         name: 'defaults',
         key: 'batch_pipeline_slug',
-        // TASK-361 — both batch + streaming defaults point at the resolvable
-        // production-whisper-large-v3 pipeline. The faster-whisper CT2 int8
-        // pipeline stays registered but is deferred until the D-4 artifact lands.
+        // Batch + streaming defaults point at production-whisper-large-v3
+        // (TASK-361; kept by TASK-505 pending Phase 6 benchmarks).
         value: 'production-whisper-large-v3',
         defaultValue: 'production-whisper-large-v3',
         dataType: ValueType.String,
@@ -2140,9 +2250,7 @@ export const DEFAULT_STT_SETTINGS = [
         namespace: 'stt.config',
         name: 'defaults',
         key: 'streaming_pipeline_slug',
-        // TASK-361 — both batch + streaming defaults point at the resolvable
-        // production-whisper-large-v3 pipeline. The faster-whisper CT2 int8
-        // pipeline stays registered but is deferred until the D-4 artifact lands.
+        // See batch_pipeline_slug note above.
         value: 'production-whisper-large-v3',
         defaultValue: 'production-whisper-large-v3',
         dataType: ValueType.String,
@@ -2290,113 +2398,6 @@ export const seedAsrPipelines = async (client: CorePrismaClient) => {
     return { success: true, count: allPipelines.length };
 };
 
-// =============================================================================
-// DEFAULT ASR PIPELINE RECONCILIATION (no double-default)
-//
-// TASK-356 Phase 2 set the faster-whisper CT2 int8 pipeline as the default.
-// TASK-361 reverses that: the CT2 model carries a non-resolving placeholder
-// sourceUri (MODEL_REPO_PLACEHOLDER, pending the D-4 publish), so it cannot be
-// the effective default. We restore the resolvable production-whisper-large-v3
-// pipeline as the default while keeping the CT2 pipeline registered.
-// =============================================================================
-
-/** Resolvable production default (whisper-large-v3-turbo, safetensor). Restored as the effective default in TASK-361. */
-export const STT_DEFAULT_PIPELINE_SLUG = 'production-whisper-large-v3';
-/** Faster-whisper CT2 int8 pipeline — registered but NOT default until the D-4 artifact replaces MODEL_REPO_PLACEHOLDER (TASK-361). */
-export const STT_PLACEHOLDER_PIPELINE_SLUG = 'production-faster-whisper-turbo-int8';
-
-/**
- * Every tenant that owns ASR pipelines in the seed: the SYSTEM master catalog
- * (DEFAULT_TENANT_ID === SYSTEM_TENANT_ID), the Global customer tenant, and the
- * three customer tenants. switchDefaultSttPipeline reconciles each.
- */
-export const STT_DEFAULT_PIPELINE_BACKFILL_TENANTS = [
-    DEFAULT_TENANT_ID, // SYSTEM master catalog (=== SYSTEM_TENANT_ID)
-    SEED_TENANT_ID, // Global customer tenant
-    SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-];
-
-/**
- * TASK-361 — reconcile EXISTING databases back to the resolvable
- * production-whisper-large-v3 default without creating a second default.
- *
- * TASK-356 Phase 2 promoted the faster-whisper CT2 int8 pipeline to the default,
- * but its model carries a non-resolving placeholder sourceUri (D-4), so it must
- * not be the effective default. `seedAsrPipelines` deliberately never clobbers
- * `isDefault` on update, so a DB previously switched to CT2 still has CT2 as its
- * default after re-seed. This backfill reconciles each tenant to EXACTLY ONE
- * default — the resolvable target — while respecting an admin's resolvable pick:
- *
- *   - CT2 is the current default (TASK-356 Phase 2 auto-promotion) → demote it
- *     and promote production-whisper-large-v3 (the resolvable default);
- *   - admin already picked a different RESOLVABLE default (e.g. turbo) → keep
- *     their choice and just ensure the placeholder CT2 is not also a default;
- *   - production-whisper-large-v3 is already the sole default (fresh seed) → no-op.
- *
- * The non-resolving placeholder CT2 is never left as a default, even if it was
- * the current `isDefault` row. Idempotent: re-running converges to the same
- * single-default state and performs no writes once converged.
- */
-export const switchDefaultSttPipeline = async (client: CorePrismaClient) => {
-    console.log('Reconciling default ASR pipeline (TASK-361)...');
-    let switched = 0;
-    let skipped = 0;
-
-    for (const tenantId of STT_DEFAULT_PIPELINE_BACKFILL_TENANTS) {
-        const target = await client.asrPipeline.findFirst({
-            where: { tenantId, slug: STT_DEFAULT_PIPELINE_SLUG },
-        });
-        // Resolvable default pipeline not seeded for this tenant — nothing to reconcile.
-        if (!target) {
-            continue;
-        }
-
-        const currentDefaults = await client.asrPipeline.findMany({
-            where: { tenantId, isDefault: true },
-        });
-        const otherDefaults = currentDefaults.filter((p) => p.id !== target.id);
-        // An admin explicitly chose some OTHER resolvable pipeline — i.e. a default
-        // that is neither the resolvable target nor the non-resolving placeholder CT2.
-        const adminPicked = otherDefaults.find((p) => p.slug !== STT_PLACEHOLDER_PIPELINE_SLUG);
-
-        let touched = false;
-        if (adminPicked) {
-            // Respect the admin's resolvable default; ensure the target is not a
-            // second default and demote any stale placeholder-CT2 default too.
-            if (target.isDefault) {
-                await client.asrPipeline.update({ where: { id: target.id }, data: { isDefault: false } });
-                touched = true;
-            }
-            for (const stale of otherDefaults) {
-                if (stale.slug === STT_PLACEHOLDER_PIPELINE_SLUG && stale.isDefault) {
-                    await client.asrPipeline.update({ where: { id: stale.id }, data: { isDefault: false } });
-                    touched = true;
-                }
-            }
-        } else {
-            // No admin override → the resolvable target is the intended sole default.
-            // Demote any other defaults (including the placeholder CT2) and promote
-            // the target if needed.
-            for (const stale of otherDefaults) {
-                await client.asrPipeline.update({ where: { id: stale.id }, data: { isDefault: false } });
-                touched = true;
-            }
-            if (!target.isDefault) {
-                await client.asrPipeline.update({ where: { id: target.id }, data: { isDefault: true } });
-                touched = true;
-            }
-        }
-
-        if (touched) {
-            switched += 1;
-        } else {
-            skipped += 1;
-        }
-    }
-
-    console.log(`  Reconciled default ASR pipeline: ${switched} switched, ${skipped} unchanged`);
-    return { success: true, switched, skipped };
-};
 
 export const seedSttSettings = async (client: CorePrismaClient) => {
     console.log('Seeding STT Global Settings...');
@@ -2453,12 +2454,11 @@ export const seedStt = async (client: CorePrismaClient) => {
         await seedAsrPipelines(client);
         console.log('');
 
-        // TASK-361 — reconcile the default pipeline back to the resolvable
-        // production-whisper-large-v3 on existing DBs (seedAsrPipelines won't
-        // clobber isDefault on update, and the non-resolving CT2 placeholder must
-        // not remain the default until the D-4 artifact lands).
-        await switchDefaultSttPipeline(client);
-        console.log('');
+        // TASK-505 — the TASK-361 switchDefaultSttPipeline reconciliation was
+        // removed: the CT2 artifact now resolves (deepdml, decision D3), so
+        // there is no placeholder default to demote, and re-running it would
+        // silently override an admin's legitimate CT2 default choice.
+        // seedAsrPipelines never clobbers isDefault on update.
 
         // Seed Global Settings
         await seedSttSettings(client);

@@ -99,6 +99,11 @@ async def test_create_session_passes_tenant_to_preseed():
         mgr._load_pipeline_config = AsyncMock(return_value=pipeline_config)
         mgr._load_vad_service = AsyncMock(return_value=MagicMock())
         mgr._load_asr_pipeline = AsyncMock(return_value=(MagicMock(), None))
+        # TASK-505 P1 — bind the REAL shared assembly (session wiring moved
+        # out of create/recover into _assemble_session_runtime).
+        mgr._assemble_session_runtime = (
+            lambda **kw: SessionManager._assemble_session_runtime(mgr, **kw)
+        )
         mgr._load_gloss_pipeline = AsyncMock(return_value=None)
         mgr._preseed_speaker = AsyncMock()
         mgr._redis = AsyncMock()

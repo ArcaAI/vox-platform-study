@@ -22,6 +22,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import numpy as np
 import pytest
 
+from stt_v2.pipeline.dto import AiModelFormat
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -382,6 +384,7 @@ class TestMakeAsrCallable:
         loaded.processor = mock_processor
         loaded.feature_extractor = None
         loaded.device = torch.device("cpu")
+        loaded.format = AiModelFormat.SAFETENSOR
         return loaded
 
     @staticmethod
@@ -490,6 +493,7 @@ class TestMakeAsrCallable:
         loaded.processor = processor
         loaded.feature_extractor = None
         loaded.device = torch.device("cpu")
+        loaded.format = AiModelFormat.SAFETENSOR
 
         fn = mgr._make_asr_callable(
             loaded,
@@ -528,6 +532,7 @@ class TestMakeAsrCallable:
         loaded.processor = _LanguageRequiredProcessor()
         loaded.feature_extractor = None
         loaded.device = torch.device("cpu")
+        loaded.format = AiModelFormat.SAFETENSOR
 
         fn = mgr._make_asr_callable(
             loaded,
@@ -608,6 +613,7 @@ class TestMakeAsrCallable:
         loaded.processor = processor
         loaded.feature_extractor = None
         loaded.device = torch.device("cpu")
+        loaded.format = AiModelFormat.SAFETENSOR
 
         fn = mgr._make_asr_callable(loaded, self._mock_inference_config())
         result = await fn(np.zeros(16000, dtype=np.float32), 16000)
@@ -732,7 +738,7 @@ class TestCreateSessionModelWiring:
         captured_args = {}
         original_load = AsyncMock(return_value=(None, None))
 
-        async def spy_load_asr(pipeline_config, session_id):
+        async def spy_load_asr(pipeline_config, session_id, tenant_id=None):
             captured_args["pipeline_config"] = pipeline_config
             captured_args["session_id"] = session_id
             return await original_load(pipeline_config, session_id)
@@ -1721,6 +1727,7 @@ class TestMakeAsrCallableEdgeCases:
         loaded.processor = mock_processor
         loaded.feature_extractor = None
         loaded.device = torch.device("cpu")
+        loaded.format = AiModelFormat.SAFETENSOR
 
         fn = mgr._make_asr_callable(
             loaded, MagicMock(beam_size=1, code_switching=False, language="en", temperature=None)
@@ -2152,3 +2159,159 @@ class TestSessionLeakPrevention:
         count = await mgr.reap_expired_sessions(timeout_s=60)
 
         assert count == 0
+
+
+
+class TestRecoverSessionsWorkerParity:
+    """TASK-505 P1 — a recovered inference worker must be wired identically
+    to a freshly created one (shared SessionAssembly).
+
+    Recovery previously dropped ``max_segment_text_chars``, both
+    hallucination knobs, and the ``enable_prev_text_context`` zeroing —
+    recovered sessions silently ran with code defaults.
+    """
+
+    @pytest.mark.asyncio
+    async def test_recovered_worker_gets_full_inference_config(self):
+        from stt_v2.streaming.schemas import SessionMetadata, SessionStatus
+
+        mgr = _make_manager()
+
+        meta = SessionMetadata(
+            session_id="recovered-3",
+            tenant_id="t-1",
+            pipeline_id="pipe-1",
+            status=SessionStatus.ACTIVE,
+            worker_id="test-worker",
+            sample_rate=16000,
+        )
+
+        mgr._redis.scan = AsyncMock(return_value=(0, [b"stt:session:recovered-3"]))
+        mgr._redis.hgetall = AsyncMock(return_value=meta.to_redis_dict())
+        mgr._redis.exists = AsyncMock(return_value=False)
+
+        pipeline_cfg = _make_pipeline_config()
+        pipeline_cfg.inference.max_segment_text_chars = 555
+        pipeline_cfg.inference.hallucination_rms_threshold = 0.02
+        pipeline_cfg.inference.hallucination_short_word_count = 5
+        pipeline_cfg.inference.prev_text_context_words = 40
+        pipeline_cfg.inference.enable_prev_text_context = False
+
+        mgr._load_pipeline_config = AsyncMock(return_value=pipeline_cfg)
+        mgr._load_vad_service = AsyncMock(return_value=MagicMock())
+        mgr._load_asr_pipeline = AsyncMock(return_value=(AsyncMock(), None))
+
+        with (
+            patch("stt_v2.streaming.session_manager.IngestionConsumer") as MockConsumer,
+            patch("stt_v2.streaming.session_manager.ControlListener") as MockListener,
+            patch("stt_v2.streaming.session_manager.ResultPublisher"),
+        ):
+            MockConsumer.return_value = AsyncMock()
+            MockListener.return_value = AsyncMock()
+
+            await mgr._recover_sessions()
+
+        worker = mgr._inference_workers["recovered-3"]
+        assert worker._max_segment_text_chars == 555
+        assert worker._hallucination_rms_threshold == 0.02
+        assert worker._hallucination_short_word_count == 5
+        # enable_prev_text_context=False must zero the context window.
+        assert worker._prev_text_context_words == 0
+
+
+class TestAssemblyWithRealPipelineSpec:
+    """TASK-505 P2-P5 review — the criticals were masked by MagicMock pipeline
+    configs (auto-created `.spec.models…` attributes). These tests drive
+    `_assemble_session_runtime` with a REAL `PipelineSpec` parsed from the
+    actual seeded default-pipeline YAML shape."""
+
+    _SEED_LIKE_YAML = (
+        'version: "2.0"\n'
+        "models:\n"
+        '  asr: "whisper-large-v3-turbo"\n'
+        '  vad: "silero-vad-v6"\n'
+        "  embedding:\n"
+        '    hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"\n'
+        '    engine: "pytorch"\n'
+        "preprocessing:\n"
+        "  vad:\n"
+        "    enabled: true\n"
+        "diarization:\n"
+        "  enabled: true\n"
+        "  backend: embedding\n"
+        "  max_speakers: 2\n"
+        "streaming:\n"
+        "  commit_policy: local_agreement_2\n"
+    )
+
+    @pytest.mark.asyncio
+    async def test_embedding_diarization_session_assembles_on_real_spec(self):
+        from stt_v2.pipeline.yaml_parser import PipelineYamlParser
+
+        spec = PipelineYamlParser().parse(self._SEED_LIKE_YAML)
+
+        mgr = _make_manager()
+        mgr._load_vad_service = AsyncMock(return_value=MagicMock())
+        mgr._load_asr_pipeline = AsyncMock(return_value=(AsyncMock(), None))
+        mgr._load_gloss_pipeline = AsyncMock(return_value=None)
+        mgr._preseed_speaker = AsyncMock()
+        fake_emb = MagicMock()
+        mgr._get_pipeline_embedding_service = AsyncMock(return_value=fake_emb)
+
+        with patch("stt_v2.streaming.session_manager.ResultPublisher"):
+            runtime = await mgr._assemble_session_runtime(
+                session_id="real-spec-1",
+                tenant_id="t-1",
+                consultation_id="c-1",
+                user_id="u-1",
+                sample_rate=16000,
+                pipeline_config=spec,
+                build_speaker_identifier=True,
+            )
+
+        # The pipeline's embedding model reached BOTH consumers:
+        mgr._get_pipeline_embedding_service.assert_awaited_with(
+            "speechbrain/spkrec-ecapa-voxceleb"
+        )
+        assert runtime.inference_worker._embedding_service is fake_emb
+        assert runtime.effective_diarization is True
+
+    @pytest.mark.asyncio
+    async def test_slug_asr_ref_resolves_db_config_for_streaming(self):
+        # TASK-505 P5 review critical: slug-based seed pipelines must resolve
+        # the DB model row on the STREAMING path too (was batch-only).
+        from stt_v2.pipeline.yaml_parser import PipelineYamlParser
+
+        spec = PipelineYamlParser().parse(
+            'version: "2.0"\nmodels:\n  asr: "whisper-large-v3-turbo"\n'
+        )
+
+        mgr = _make_manager()
+        db_config = MagicMock()
+        mock_reader = MagicMock()
+        mock_reader.get_model_by_slug = AsyncMock(return_value=db_config)
+        loaded = MagicMock()
+        loaded.format = AiModelFormat.SAFETENSOR
+        loaded.model_slug = "whisper-large-v3-turbo"
+        mock_cache = MagicMock()
+        mock_cache.get_or_load_from_ref = AsyncMock(return_value=loaded)
+        mgr._make_asr_callable = MagicMock(return_value=AsyncMock())
+
+        from stt_v2.streaming.session_manager import SessionManager
+
+        with (
+            patch("stt_v2.models.get_model_cache", return_value=mock_cache),
+            patch(
+                "stt_v2.pipeline.config_reader.get_model_reader",
+                return_value=mock_reader,
+            ),
+        ):
+            await SessionManager._load_asr_pipeline(
+                mgr, spec, "s-1", tenant_id="t-9"
+            )
+
+        mock_reader.get_model_by_slug.assert_awaited_once_with(
+            "whisper-large-v3-turbo", "t-9"
+        )
+        kwargs = mock_cache.get_or_load_from_ref.call_args.kwargs
+        assert kwargs["db_model_config"] is db_config

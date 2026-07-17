@@ -319,9 +319,11 @@ class TestVadConfig:
         config = VadConfig()
         assert config.enabled is True
         assert config.threshold == 0.6
-        assert config.min_speech_duration_ms == 250
+        # TASK-505: clinical defaults — 100 ms keeps short confirmations
+        # ("yes"/"no"); 200 ms padding protects onsets/tails.
+        assert config.min_speech_duration_ms == 100
         assert config.min_silence_duration_ms == 100
-        assert config.padding_ms == 30
+        assert config.padding_ms == 200
 
     def test_custom_values(self):
         """Test custom configuration values."""
@@ -775,15 +777,24 @@ class TestModelRefEdgeCases:
             ref = ModelRef.from_value({"hf_model_id": "test", "engine": engine_str})
             assert ref.inline.engine == expected_format, f"Failed for {engine_str}"
 
-    def test_unknown_engine_defaults_to_safetensor(self):
-        """Test that unknown engine strings default to SAFETENSOR."""
-        ref = ModelRef.from_value(
-            {
-                "hf_model_id": "test/model",
-                "engine": "unknown_engine",
-            }
-        )
-        # Unknown engine should default to SAFETENSOR
+    def test_unknown_engine_raises(self):
+        """TASK-505 P1 — unknown engine strings are a hard error.
+
+        The old silent SAFETENSOR default meant a typo ('faster_wisper')
+        loaded a completely different engine and failed obscurely at model
+        load; misconfiguration must surface at parse/validate time.
+        """
+        with pytest.raises(ValueError, match="Unknown ASR engine 'unknown_engine'"):
+            ModelRef.from_value(
+                {
+                    "hf_model_id": "test/model",
+                    "engine": "unknown_engine",
+                }
+            )
+
+    def test_missing_engine_key_still_defaults_to_safetensor(self):
+        """Omitting the engine key keeps the documented SAFETENSOR default."""
+        ref = ModelRef.from_value({"hf_model_id": "test/model"})
         assert ref.inline.engine == AiModelFormat.SAFETENSOR
 
     def test_dict_with_extra_fields_ignored(self):

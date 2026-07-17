@@ -870,7 +870,7 @@ class TestPipelineOrder:
             target_sample_rate=16000,
             normalize=True,
             vad=VadConfig(enabled=False),
-            denoise=DenoiseConfig(enabled=True, strength=0.8),
+            denoise=DenoiseConfig(enabled=True, strength=0.8, scope="full"),
         )
 
         with patch.object(preprocessor, "_load_audio") as mock_load:
@@ -946,9 +946,9 @@ class TestPipelineOrder:
 
         original_normalize = preprocessor._normalize
 
-        def tracking_normalize(samples):
+        def tracking_normalize(samples, method="peak"):
             call_order.append("normalize")
-            return original_normalize(samples)
+            return original_normalize(samples, method=method)
 
         preprocessor._normalize = tracking_normalize
 
@@ -962,7 +962,7 @@ class TestPipelineOrder:
             target_sample_rate=16000,
             normalize=True,
             vad=VadConfig(enabled=False),
-            denoise=DenoiseConfig(enabled=True, strength=0.7),
+            denoise=DenoiseConfig(enabled=True, strength=0.7, scope="full"),
         )
 
         with patch.object(preprocessor, "_load_audio") as mock_load:
@@ -1158,7 +1158,7 @@ class TestPreprocessingCombinedFeatures:
             target_sample_rate=16000,
             normalize=False,
             vad=VadConfig(enabled=False),
-            denoise=DenoiseConfig(enabled=True, strength=1.0),
+            denoise=DenoiseConfig(enabled=True, strength=1.0, scope="full"),
         )
 
         async def fake_denoise(samples, sr, strength):
@@ -1194,7 +1194,7 @@ class TestPreprocessingCombinedFeatures:
             target_sample_rate=16000,
             normalize=True,
             vad=VadConfig(enabled=False),
-            denoise=DenoiseConfig(enabled=True, strength=0.8),
+            denoise=DenoiseConfig(enabled=True, strength=0.8, scope="full"),
         )
 
         # Stereo audio (2 channels)
@@ -1292,3 +1292,124 @@ class TestPreprocessingCombinedFeatures:
         assert vad_received_sr == [
             16000
         ], f"VAD should receive target_sample_rate (16000), got: {vad_received_sr}"
+
+
+class TestTask505DualPathDenoise:
+    """TASK-505 P2 (decision D2) — dual-path denoise + v2 stage toggles."""
+
+    def _pre(self):
+        return AudioPreprocessor()
+
+    def _config(self, **over):
+        from stt_v2.pipeline.dto import DenoiseConfig, PreprocessingConfig, VadConfig
+
+        cfg = PreprocessingConfig(
+            target_sample_rate=16000,
+            normalize=False,
+            vad=VadConfig(enabled=over.pop("vad_enabled", True)),
+            denoise=DenoiseConfig(
+                enabled=over.pop("denoise_enabled", True),
+                strength=0.7,
+                scope=over.pop("scope", "vad_only"),
+            ),
+        )
+        for k, v in over.items():
+            setattr(cfg, k, v)
+        return cfg
+
+    def _sine_bytes(self, sr=16000, seconds=1.0, freq=440.0):
+        import io
+
+        import soundfile as sf
+
+        t = np.arange(int(sr * seconds)) / sr
+        wave = (0.5 * np.sin(2 * np.pi * freq * t)).astype(np.float32)
+        buf = io.BytesIO()
+        sf.write(buf, wave, sr, format="WAV")
+        return buf.getvalue()
+
+    @pytest.mark.asyncio
+    async def test_vad_only_scope_feeds_denoised_to_vad_but_raw_to_asr(self):
+        pre = self._pre()
+        captured = {}
+
+        async def fake_denoise(samples, sr, strength):
+            return np.zeros_like(samples), sr
+
+        async def fake_vad(samples, sample_rate, vad_config, model):
+            captured["vad_input"] = samples
+            return [], True
+
+        with (
+            patch.object(pre, "_apply_denoise", side_effect=fake_denoise),
+            patch.object(pre, "_apply_vad_smart", side_effect=fake_vad),
+        ):
+            out = await pre.process(self._sine_bytes(), self._config(scope="vad_only"))
+
+        # VAD saw the denoised (zeroed) branch…
+        assert float(np.abs(captured["vad_input"]).max()) == 0.0
+        # …while the ASR-bound samples kept the raw signal.
+        assert float(np.abs(out.samples).max()) > 0.3
+        assert out.denoise_applied is True
+
+    @pytest.mark.asyncio
+    async def test_full_scope_keeps_legacy_denoised_asr_audio(self):
+        pre = self._pre()
+
+        async def fake_denoise(samples, sr, strength):
+            return np.zeros_like(samples), sr
+
+        with (
+            patch.object(pre, "_apply_denoise", side_effect=fake_denoise),
+            patch.object(
+                pre, "_apply_vad_smart", side_effect=AsyncMock(return_value=([], True))
+            ),
+        ):
+            out = await pre.process(self._sine_bytes(), self._config(scope="full"))
+
+        assert float(np.abs(out.samples).max()) == 0.0
+
+    @pytest.mark.asyncio
+    async def test_vad_only_skips_denoise_when_vad_disabled(self):
+        # No consumer for the denoised branch → don't pay for it.
+        pre = self._pre()
+        denoise_mock = AsyncMock()
+
+        with patch.object(pre, "_apply_denoise", side_effect=denoise_mock):
+            out = await pre.process(
+                self._sine_bytes(),
+                self._config(scope="vad_only", vad_enabled=False),
+            )
+
+        denoise_mock.assert_not_awaited()
+        assert out.denoise_applied is False
+
+    @pytest.mark.asyncio
+    async def test_resample_disabled_still_resamples_with_warning_on_mismatch(self):
+        # resample.enabled=false is honored only when input already matches;
+        # a mismatch resamples anyway (VAD/ASR require the target rate).
+        pre = self._pre()
+        with patch.object(
+            pre, "_apply_vad_smart", side_effect=AsyncMock(return_value=([], True))
+        ):
+            out = await pre.process(
+                self._sine_bytes(sr=48000),
+                self._config(denoise_enabled=False, resample_enabled=False),
+            )
+        assert out.sample_rate == 16000
+        assert len(out.samples) == 16000
+
+    def test_rms_normalize(self):
+        pre = self._pre()
+        wave = (0.5 * np.sin(2 * np.pi * 440 * np.arange(16000) / 16000)).astype(
+            np.float32
+        )
+        out = pre._normalize(wave, method="rms")
+        rms = float(np.sqrt(np.mean(out**2)))
+        assert rms == pytest.approx(0.1, rel=0.05)
+
+    def test_peak_normalize_unchanged(self):
+        pre = self._pre()
+        wave = np.array([0.25, -0.5, 0.1], dtype=np.float32)
+        out = pre._normalize(wave)
+        assert float(np.abs(out).max()) == pytest.approx(1.0)

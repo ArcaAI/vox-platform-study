@@ -25,6 +25,23 @@ from stt_v2.streaming.preprocessor import AudioUtterance
 from stt_v2.streaming.schemas import SegmentResult
 
 
+def _bind_asr_dispatch(mgr):
+    """TASK-505 P1 — _make_asr_callable dispatches through registry adapters
+    that call back into per-engine builder methods on the manager; bind the
+    real ones onto MagicMock(spec=SessionManager) harnesses."""
+    from stt_v2.streaming.session_manager import SessionManager
+
+    for _name in (
+        "_make_nemo_callable",
+        "_make_faster_whisper_callable",
+        "_make_azure_callable",
+        "_make_transformers_callable",
+        "_make_multimodal_lm_callable",
+    ):
+        setattr(mgr, _name, getattr(SessionManager, _name).__get__(mgr))
+    return mgr
+
+
 def _make_utterance(
     index: int = 0,
     duration_s: float = 1.0,
@@ -404,6 +421,8 @@ class TestTranslateTaskKwargs:
 
         mgr = MagicMock(spec=SessionManager)
 
+        _bind_asr_dispatch(mgr)
+
         mock_model = MagicMock()
         mock_model.dtype = torch.float32
         mock_model.generate.return_value = torch.tensor([[1, 2]])
@@ -416,6 +435,7 @@ class TestTranslateTaskKwargs:
         asr_model.model = mock_model
         asr_model.processor = mock_processor
         asr_model.feature_extractor = None
+        asr_model.format = AiModelFormat.SAFETENSOR
         asr_model.device = torch.device("cpu")
 
         run_gloss = SessionManager._make_asr_callable(

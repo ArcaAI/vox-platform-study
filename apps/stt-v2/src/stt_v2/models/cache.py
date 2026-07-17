@@ -10,12 +10,14 @@ from typing import Any
 from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError
 from ..pipeline.dto import AiModelConfig, AiModelFormat, InlineModelDef, ModelRef, ModelTaskType
+from .azure_foundry_loader import AzureFoundryLoader
 from .azure_speech_loader import AzureSpeechLoader
 from .base_loader import BaseModelLoader, LoadedModel
 from .faster_whisper_loader import FasterWhisperLoader
 from .huggingface_loader import HuggingFaceLoader
 from .nemo_loader import NeMoLoader
 from .onnx_loader import ONNXLoader
+from .parakeet_cpp_loader import ParakeetCppLoader
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +110,9 @@ class ModelCache:
             # TASK-351 P1-2 — faster-whisper on CTranslate2 (lazy import)
             AiModelFormat.FASTER_WHISPER: FasterWhisperLoader(),
             AiModelFormat.AZURE_SPEECH: AzureSpeechLoader(),  # Cloud-based Azure Cognitive Services
+            # TASK-505 P3 — new engines (both lazy at load time).
+            AiModelFormat.AZURE_FOUNDRY: AzureFoundryLoader(),
+            AiModelFormat.PARAKEET_CPP: ParakeetCppLoader(),
         }
 
         logger.info(

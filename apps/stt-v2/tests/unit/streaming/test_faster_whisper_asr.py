@@ -39,6 +39,23 @@ from stt_v2.streaming.faster_whisper_asr import (
 # ---------------------------------------------------------------------------
 
 
+def _bind_asr_dispatch(mgr):
+    """TASK-505 P1 — _make_asr_callable dispatches through registry adapters
+    that call back into per-engine builder methods on the manager; bind the
+    real ones onto MagicMock(spec=SessionManager) harnesses."""
+    from stt_v2.streaming.session_manager import SessionManager
+
+    for _name in (
+        "_make_nemo_callable",
+        "_make_faster_whisper_callable",
+        "_make_azure_callable",
+        "_make_transformers_callable",
+        "_make_multimodal_lm_callable",
+    ):
+        setattr(mgr, _name, getattr(SessionManager, _name).__get__(mgr))
+    return mgr
+
+
 class _FakeWord:
     def __init__(self, word: str, start: float, end: float, probability: float = 0.9):
         self.word = word
@@ -413,6 +430,8 @@ class TestSessionManagerFasterWhisperRouting:
         from stt_v2.streaming.session_manager import SessionManager
 
         mgr = MagicMock(spec=SessionManager)
+
+        _bind_asr_dispatch(mgr)
         mgr._profile = MagicMock(asr_max_batch_size=4)
         loaded = _make_loaded()
 
@@ -438,6 +457,8 @@ class TestSessionManagerFasterWhisperRouting:
         from stt_v2.streaming.session_manager import SessionManager
 
         mgr = MagicMock(spec=SessionManager)
+
+        _bind_asr_dispatch(mgr)
         mgr._profile = MagicMock(asr_max_batch_size=8)
         loaded = _make_loaded()
 

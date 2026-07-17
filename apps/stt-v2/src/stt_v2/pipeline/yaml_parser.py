@@ -8,7 +8,9 @@ import yaml
 
 from .dto import (
     VALID_CT2_COMPUTE_TYPES,
+    VALID_DENOISE_SCOPES,
     VALID_DIARIZATION_BACKENDS,
+    VALID_NORMALIZE_PROCESSORS,
     VALID_ONNX_QUANTIZATIONS,
     VALID_PARAKEET_V3_LANGUAGES,
     VALID_STREAMING_COMMIT_POLICIES,
@@ -16,6 +18,7 @@ from .dto import (
     DenoiseConfig,
     DiarizationConfig,
     DualCaptureConfig,
+    EndpointConfig,
     InferenceConfig,
     ModelRef,
     ModelRefs,
@@ -23,6 +26,7 @@ from .dto import (
     PostprocessingConfig,
     PreprocessingConfig,
     PunctuationConfig,
+    SegmentMergeConfig,
     StreamingConfig,
     TimestampConfig,
     VadConfig,
@@ -43,7 +47,11 @@ class PipelineYamlParser:
     - 1.1: Enhanced format with inline model definitions (hf_model_id + engine)
     """
 
-    SUPPORTED_VERSIONS = ["1.0", "1.1"]
+    # TASK-505 P2 — "2.0" adds provider::model shorthand + declarable
+    # normalize/resample/segment_merge/denoise-scope/endpoint stages. All v2
+    # fields also parse under v1.x (forward-tolerant); the version gate is
+    # advisory for admin surfaces.
+    SUPPORTED_VERSIONS = ["1.0", "1.1", "2.0"]
 
     # Recognised top-level pipeline config sections. Unknown keys are warned
     # about (not silently dropped) so future intent-only keys don't no-op.
@@ -233,6 +241,38 @@ class PipelineYamlParser:
             result.add_error(
                 "preprocessing.target_sample_rate",
                 "Sample rate must be one of: 8000, 16000, 22050, 44100, 48000",
+            )
+
+        # TASK-505 P2 — schema v2 stage validations.
+        if spec.preprocessing.normalize_processor not in VALID_NORMALIZE_PROCESSORS:
+            result.add_error(
+                "preprocessing.normalize.processor",
+                f"Normalize processor must be one of: {', '.join(VALID_NORMALIZE_PROCESSORS)}",
+            )
+
+        if spec.preprocessing.denoise.scope not in VALID_DENOISE_SCOPES:
+            result.add_error(
+                "preprocessing.denoise.scope",
+                f"Denoise scope must be one of: {', '.join(VALID_DENOISE_SCOPES)}",
+            )
+
+        if spec.preprocessing.diar_feature_extraction_enabled and spec.models.embedding is None:
+            result.add_error(
+                "preprocessing.diar_feature_extraction",
+                "diar_feature_extraction requires a models.embedding reference "
+                "(the extraction stage needs a speaker-embedding model)",
+            )
+
+        sm = spec.postprocessing.segment_merge
+        if sm.gap_threshold_s is not None and sm.gap_threshold_s < 0:
+            result.add_error(
+                "postprocessing.segment_merge.gap_threshold_s",
+                "gap_threshold_s must be >= 0",
+            )
+        if sm.max_duration_s is not None and sm.max_duration_s <= 0:
+            result.add_error(
+                "postprocessing.segment_merge.max_duration_s",
+                "max_duration_s must be > 0",
             )
 
         # Inference validation
@@ -454,13 +494,68 @@ class PipelineYamlParser:
 
     def _parse_preprocessing(self, data: dict[str, Any]) -> PreprocessingConfig:
         """Parse preprocessing section."""
+        # TASK-505 P2 — normalize accepts a bool (legacy) or a dict
+        # {enabled, processor: peak|rms}.
+        normalize_data = data.get("normalize", True)
+        if isinstance(normalize_data, dict):
+            normalize = bool(normalize_data.get("enabled", True))
+            normalize_processor = str(normalize_data.get("processor", "peak"))
+        else:
+            normalize = bool(normalize_data)
+            normalize_processor = "peak"
+
+        # TASK-505 P2 — resample declared as a stage; the block's
+        # target_sample_rate wins over the legacy top-level key.
+        resample_data = data.get("resample", {})
+        if isinstance(resample_data, dict) and resample_data:
+            resample_enabled = bool(resample_data.get("enabled", True))
+            target_sample_rate = int(
+                resample_data.get(
+                    "target_sample_rate", data.get("target_sample_rate", 16000)
+                )
+            )
+        elif isinstance(resample_data, bool):
+            # TASK-505 review — bool shorthand parity with `normalize:`
+            # (`resample: false` silently no-oped before).
+            resample_enabled = resample_data
+            target_sample_rate = int(data.get("target_sample_rate", 16000))
+        else:
+            resample_enabled = True
+            target_sample_rate = int(data.get("target_sample_rate", 16000))
+
+        # TASK-505 P2 — semantic endpoint block (EndpointConfig existed since
+        # TASK-473 but was never populated from YAML).
+        endpoint_data = data.get("endpoint", {})
+        endpoint = EndpointConfig(
+            enabled=bool(endpoint_data.get("enabled", False)),
+            min_endpoint_silence_ms=int(endpoint_data.get("min_endpoint_silence_ms", 200)),
+            max_endpoint_silence_ms=int(endpoint_data.get("max_endpoint_silence_ms", 500)),
+            confidence_threshold=float(endpoint_data.get("confidence_threshold", 0.85)),
+            min_words=int(endpoint_data.get("min_words", 3)),
+            model_id=str(endpoint_data.get("model_id", "")),
+        )
+
+        # TASK-505 P2 — declarative diarization feature-extraction marker.
+        dfe_data = data.get("diar_feature_extraction")
+        if isinstance(dfe_data, dict):
+            diar_feature_extraction_enabled: bool | None = bool(
+                dfe_data.get("enabled", True)
+            )
+        elif dfe_data is not None:
+            diar_feature_extraction_enabled = bool(dfe_data)
+        else:
+            diar_feature_extraction_enabled = None
+
         vad_data = data.get("vad", {})
         vad = VadConfig(
             enabled=vad_data.get("enabled", True),
             threshold=float(vad_data.get("threshold", 0.6)),
-            min_speech_duration_ms=int(vad_data.get("min_speech_duration_ms", 350)),
+            # TASK-505: fallbacks aligned with VadConfig defaults (the old 350
+            # ms min-speech fallback was the harshest value in the codebase and
+            # silently dropped short clinical confirmations).
+            min_speech_duration_ms=int(vad_data.get("min_speech_duration_ms", 100)),
             min_silence_duration_ms=int(vad_data.get("min_silence_duration_ms", 100)),
-            padding_ms=int(vad_data.get("padding_ms", 30)),
+            padding_ms=int(vad_data.get("padding_ms", 200)),
             pre_speech_context_ms=int(vad_data.get("pre_speech_context_ms", 500)),
             force_emit_after_ms=int(vad_data.get("force_emit_after_ms", 25000)),
             force_emit_lookback_ms=int(vad_data.get("force_emit_lookback_ms", 1500)),
@@ -471,6 +566,9 @@ class PipelineYamlParser:
         denoise = DenoiseConfig(
             enabled=denoise_data.get("enabled", False),
             strength=float(denoise_data.get("strength", 0.5)),
+            # TASK-505 P2 (D2 dual-path): default vad_only — denoise gates VAD,
+            # ASR consumes raw audio.
+            scope=str(denoise_data.get("scope", "vad_only")),
         )
 
         dual_capture_data = data.get("dual_capture") or {}
@@ -480,11 +578,15 @@ class PipelineYamlParser:
         )
 
         return PreprocessingConfig(
-            target_sample_rate=int(data.get("target_sample_rate", 16000)),
-            normalize=data.get("normalize", True),
+            target_sample_rate=target_sample_rate,
+            normalize=normalize,
+            normalize_processor=normalize_processor,
+            resample_enabled=resample_enabled,
             vad=vad,
             denoise=denoise,
             dual_capture=dual_capture,
+            endpoint=endpoint,
+            diar_feature_extraction_enabled=diar_feature_extraction_enabled,
         )
 
     def _parse_inference(self, data: dict[str, Any]) -> InferenceConfig:
@@ -598,12 +700,34 @@ class PipelineYamlParser:
             capture_processed=bool(dual_capture_data.get("capture_processed", False)),
         )
 
+        # TASK-505 P2 — per-pipeline segment merge; absent keys inherit the
+        # global setting gate (enabled=None) / values (None).
+        segment_merge_data = data.get("segment_merge") or {}
+        segment_merge = SegmentMergeConfig(
+            enabled=(
+                bool(segment_merge_data["enabled"])
+                if "enabled" in segment_merge_data
+                else None
+            ),
+            gap_threshold_s=(
+                float(segment_merge_data["gap_threshold_s"])
+                if segment_merge_data.get("gap_threshold_s") is not None
+                else None
+            ),
+            max_duration_s=(
+                float(segment_merge_data["max_duration_s"])
+                if segment_merge_data.get("max_duration_s") is not None
+                else None
+            ),
+        )
+
         return PostprocessingConfig(
             timestamps=timestamps,
             punctuation=punctuation,
             remove_disfluencies=data.get("remove_disfluencies", False),
             lowercase=data.get("lowercase", False),
             dual_capture=dual_capture,
+            segment_merge=segment_merge,
         )
 
     def _parse_streaming(self, data: dict[str, Any]) -> StreamingConfig:

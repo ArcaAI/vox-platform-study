@@ -33,6 +33,9 @@ from ..batch_service import get_batch_service
 from ..dto import TimingMetrics, TranscriptionResult
 from .schemas import (
     ErrorResponse,
+    PipelineValidateRequest,
+    PipelineValidateResponse,
+    PipelineValidationErrorItem,
     SegmentResponse,
     SentenceTimestampResponse,
     TimingMetricsResponse,
@@ -255,4 +258,49 @@ def _build_response(result: TranscriptionResult) -> TranscriptionResponse:
         raw_audio_uri=result.raw_audio_uri,
         processed_audio_uri=result.processed_audio_uri,
         transcript_uri=result.transcript_uri,
+    )
+
+
+@router.post(
+    "/pipelines/validate",
+    response_model=PipelineValidateResponse,
+    summary="Validate a pipeline configuration YAML",
+    description=(
+        "TASK-505 P2 — authoritative pipeline-config validation using the same "
+        "parser/validator the runtime uses (versions 1.0/1.1/2.0, provider :: "
+        "model shorthand, stage toggles). The gateway's admin validate surface "
+        "proxies here so TypeScript never hand-duplicates the rules."
+    ),
+)
+async def validate_pipeline_yaml(
+    request: PipelineValidateRequest,
+) -> PipelineValidateResponse:
+    from stt_v2.pipeline.yaml_parser import get_yaml_parser
+
+    parser = get_yaml_parser()
+    try:
+        spec = parser.parse(request.config_yaml)
+    except Exception as exc:  # noqa: BLE001 — TASK-505 review: the parser can
+        # raise TypeError/AttributeError on malformed stage blocks (e.g.
+        # `endpoint: true`); a 500 here made the gateway treat the service as
+        # unreachable and fall back to its loose local verdict, so the invalid
+        # config got SAVED and every later session crashed at parse time.
+        # Any parse failure is a config error and must be reported as one.
+        return PipelineValidateResponse(
+            valid=False,
+            errors=[
+                PipelineValidationErrorItem(
+                    field="config_yaml",
+                    message=f"{type(exc).__name__}: {exc}",
+                )
+            ],
+        )
+
+    result = parser.validate(spec)
+    return PipelineValidateResponse(
+        valid=result.valid,
+        errors=[
+            PipelineValidationErrorItem(field=e.field, message=e.message)
+            for e in result.errors
+        ],
     )

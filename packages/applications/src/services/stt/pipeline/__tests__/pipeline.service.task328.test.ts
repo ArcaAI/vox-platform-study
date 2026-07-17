@@ -97,6 +97,7 @@ describe('PipelineService — TASK-328 A6', () => {
     let service: PipelineService;
 
     beforeEach(() => {
+        vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
         vi.clearAllMocks();
         mockClsService.get.mockImplementation((key: string) => {
             switch (key) {

@@ -47,7 +47,12 @@ class TestNormalizeFrame:
         assert np.abs(result).max() <= 1.0 + 1e-6
 
     def test_peak_decay(self):
-        """Peak tracker should decay when subsequent frames are quieter."""
+        """TASK-505: bounded-window peak — held inside the window, released after.
+
+        The old exponential decay (0.9997/frame ≈ 107 s time constant) let one
+        loud transient suppress speech for minutes; the window holds the peak
+        for a few seconds, then releases it entirely.
+        """
         pp = _make_preprocessor(normalize=True)
         loud = np.full(512, 0.8, dtype=np.float32)
         pp._normalize_frame(loud)
@@ -55,9 +60,15 @@ class TestNormalizeFrame:
 
         quiet = np.full(512, 0.01, dtype=np.float32)
         pp._normalize_frame(quiet)
-        peak_after_quiet = pp._peak_tracker
+        # Inside the window the transient peak is HELD (stable divisor).
+        assert pp._peak_tracker == pytest.approx(peak_after_loud)
 
-        assert peak_after_quiet < peak_after_loud
+        # Feed a full window of quiet frames — the transient leaves the window
+        # and the tracker releases down to the divisor floor (gain ceiling:
+        # quiet levels below _NORMALIZER_MIN_PEAK are never fully boosted).
+        for _ in range(pp._peak_window.maxlen + 1):
+            pp._normalize_frame(quiet.copy())
+        assert pp._peak_tracker == pytest.approx(0.05, abs=1e-6)
 
 
 class TestResampleFrame:

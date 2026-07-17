@@ -309,18 +309,39 @@ class ModelRegistryReader:
         return {m.slug: m for m in models}
 
     def _to_model_config(self, model: AiModelRead) -> AiModelConfig:
-        """Convert database model to AiModelConfig."""
+        """Convert database model to AiModelConfig.
+
+        TASK-505 P5 — the DB catalog carries formats the STT runtime does not
+        execute (MLX/GGUF are LM-Studio-served LLM rows); referencing one from
+        a pipeline must fail with a clear message, not a bare enum ValueError.
+        """
+        try:
+            model_task_type = ModelTaskType(model.task_type)
+        except ValueError:
+            raise ValueError(
+                f"Model '{model.slug}' has task type '{model.task_type}', which "
+                "the STT runtime does not recognise (catalog-only task type)."
+            ) from None
+        try:
+            model_format = AiModelFormat(model.format)
+        except ValueError:
+            raise ValueError(
+                f"Model '{model.slug}' has format '{model.format}', which the "
+                "STT runtime does not execute (it is a catalog-only format, "
+                "e.g. an LM-Studio-served LLM). Reference an ASR-capable model "
+                "in the pipeline YAML instead."
+            ) from None
         return AiModelConfig(
             id=model.id,
             tenant_id=model.tenant_id,
             slug=model.slug,
             name=model.name,
             description=model.description,
-            task_type=ModelTaskType(model.task_type),
+            task_type=model_task_type,
             source=AiModelSource(model.source),
             source_uri=model.source_uri,
             source_revision=model.source_revision,
-            format=AiModelFormat(model.format),
+            format=model_format,
             memory_size_mb=model.memory_size_mb,
             compute_type=model.compute_type,
             download_status=AiModelDownloadStatus(model.download_status),

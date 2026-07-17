@@ -10,7 +10,7 @@
  */
 
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PipelineService } from '../pipeline.service';
 
 // Enum constants to avoid import issues
@@ -211,6 +211,11 @@ describe('PipelineService', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+
+        // TASK-505 review — create/update call validateYaml, which now
+        // attempts the stt-v2 remote hop; stub fetch file-wide so unit tests
+        // never touch the network (specific tests re-stub for remote cases).
+        vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
 
         mockClsService.get.mockImplementation((key: string) => {
             switch (key) {
@@ -607,11 +612,68 @@ describe('PipelineService', () => {
     });
 
     describe('validateYaml', () => {
+        // TASK-505 P2 — validateYaml proxies to stt-v2 for authoritative
+        // validation; unit tests stub fetch (unreachable by default, so the
+        // local structural verdict stands).
+        beforeEach(() => {
+            vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
+        });
+
+        afterEach(() => {
+            vi.unstubAllGlobals();
+        });
+
         it('should return valid for correct YAML', async () => {
             const result = await service.validateYaml(validConfigYaml);
 
             expect(result.valid).toBe(true);
             expect(result.errors).toBeUndefined();
+        });
+
+        it('surfaces stt-v2 validation errors when the service is reachable (TASK-505 P2)', async () => {
+            vi.stubGlobal(
+                'fetch',
+                vi.fn().mockResolvedValue({
+                    ok: true,
+                    json: async () => ({
+                        valid: false,
+                        errors: [
+                            { field: 'preprocessing.denoise.scope', message: 'Denoise scope must be one of: vad_only, full' },
+                        ],
+                    }),
+                }),
+            );
+
+            const result = await service.validateYaml(validConfigYaml);
+
+            expect(result.valid).toBe(false);
+            expect(result.errors?.[0]).toContain('preprocessing.denoise.scope');
+        });
+
+        it('accepts the remote verdict when stt-v2 says valid', async () => {
+            const fetchMock = vi.fn().mockResolvedValue({
+                ok: true,
+                json: async () => ({ valid: true, errors: [] }),
+            });
+            vi.stubGlobal('fetch', fetchMock);
+
+            const result = await service.validateYaml(validConfigYaml);
+
+            expect(result.valid).toBe(true);
+            expect(fetchMock).toHaveBeenCalledWith(
+                expect.stringContaining('/api/v1/pipelines/validate'),
+                expect.objectContaining({ method: 'POST' }),
+            );
+        });
+
+        it('does not call stt-v2 when local structural checks already fail', async () => {
+            const fetchMock = vi.fn();
+            vi.stubGlobal('fetch', fetchMock);
+
+            const result = await service.validateYaml('');
+
+            expect(result.valid).toBe(false);
+            expect(fetchMock).not.toHaveBeenCalled();
         });
 
         it('should return invalid for empty YAML', async () => {

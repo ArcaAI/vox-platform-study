@@ -1316,12 +1316,16 @@ class TestShortUtteranceRecovery:
 
     @pytest.mark.asyncio
     async def test_alternating_near_threshold_pattern_is_rejected(self):
-        # TASK-451 I-1: periodic near-threshold noise (monitor beep, tapping,
-        # HVAC) that cleanly alternates above/below threshold must NOT accrete
-        # a false onset. 7 above / 6 below at the default 7-frame onset — the
-        # dip budget is cumulative per onset attempt, so this is rejected even
-        # though every individual dip is isolated.
-        probs = [0.9, 0.1, 0.9, 0.1, 0.9, 0.1, 0.9, 0.1, 0.9, 0.1, 0.9, 0.1, 0.9]
+        # TASK-451 I-1, contract updated by TASK-505: SPARSE periodic noise
+        # (a real monitor beep — one above-threshold frame every ~250 ms) must
+        # NOT accrete a false onset: the cumulative dip budget (3 frames) is
+        # spent between blips, resetting the attempt. NOTE: dense per-frame
+        # alternation (0.9/0.1 every 32 ms) is now treated as speech — that
+        # matches upstream Silero (max consecutive low = 1 frame < min_silence
+        # keeps its segment open) and clinical word retention outranks the
+        # synthetic 16 Hz-alternation case; the downstream hallucination filter
+        # owns residual false utterances.
+        probs = [0.9, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.9, 0.1, 0.1, 0.1, 0.1, 0.9]
         call_count = [0]
 
         def _vad(chunk, session_state, threshold=None):
@@ -1438,3 +1442,381 @@ class TestPartialCadenceConfigurable:
             utts = await pp.feed(_make_speech_pcm(200))
 
         assert [u for u in utts if not u.is_final] == []
+
+
+# =========================================================================
+# Tests: TASK-505 Phase 0 — VAD word-clipping fixes
+# =========================================================================
+
+
+def _sequence_vad(probs: list[float]) -> MagicMock:
+    """VAD that returns the given probabilities in order, then repeats the last."""
+    seq = list(probs)
+
+    def _process_chunk(chunk, session_state, threshold=None):
+        return seq.pop(0) if len(seq) > 1 else seq[0]
+
+    svc = MagicMock()
+    svc.is_loaded = True
+    svc.process_chunk = MagicMock(side_effect=_process_chunk)
+    return svc
+
+
+class TestTask505OffsetHysteresis:
+    """Streaming offset must use neg_threshold (threshold - 0.15)."""
+
+    @pytest.mark.asyncio
+    async def test_mid_band_frames_do_not_count_as_silence(self):
+        # threshold 0.6 → neg 0.45. Sequence: 4 strong frames, 5 frames at
+        # 0.5 (mid-band), then hard silence. min_silence = 2 frames (64 ms).
+        # WITHOUT hysteresis the two 0.5-frames after onset would already
+        # complete the silence run and the utterance ends before the hard
+        # silence; WITH hysteresis the mid-band frames hold speech and the
+        # offset only completes after two 0.1-frames.
+        probs = [0.9, 0.9, 0.9, 0.9] + [0.5] * 5 + [0.1] * 10
+        pp = StreamingPreprocessor(
+            session_id="hys",
+            vad_service=_sequence_vad(probs),
+            threshold=0.6,
+            min_speech_duration_ms=96,   # 3 frames
+            min_silence_duration_ms=64,  # 2 frames
+        )
+
+        finals: list[AudioUtterance] = []
+        frames_fed = 0
+        frame_bytes = _FRAME_SIZE_16K * 2
+        pcm = _make_speech_pcm(32 * 25)
+        for i in range(len(probs)):
+            chunk = pcm[i * frame_bytes : (i + 1) * frame_bytes]
+            utts = await pp.feed(chunk)
+            frames_fed += 1
+            finals.extend(u for u in utts if u.is_final)
+            if finals:
+                break
+
+        assert finals, "expected an utterance"
+        # Offset must complete only after the mid-band frames PLUS two hard
+        # silence frames: 4 + 5 + 2 = 11 frames fed. Without hysteresis the
+        # utterance closes at frame 6 (4 speech + 2 mid-band-as-silence).
+        assert frames_fed == 11
+
+
+class TestTask505FlushPendingOnset:
+    """flush() must emit audio from an unconfirmed onset (last word of session)."""
+
+    @pytest.mark.asyncio
+    async def test_flush_emits_unconfirmed_onset_audio(self):
+        # min_speech = 8 frames (256 ms); feed only 3 speech frames — onset
+        # NOT confirmed — then flush. The spoken audio must not be discarded.
+        pp = StreamingPreprocessor(
+            session_id="pend",
+            vad_service=_make_vad_service(0.9),
+            threshold=0.5,
+            min_speech_duration_ms=256,
+            min_silence_duration_ms=200,
+        )
+
+        utts = await pp.feed(_make_speech_pcm(32 * 3))
+        assert utts == []
+        assert pp.in_speech is False
+
+        final = await pp.flush()
+        assert final is not None
+        assert final.is_final is True
+        # All 3 fed frames must be present.
+        assert len(final.samples) >= 3 * _FRAME_SIZE_16K
+
+    @pytest.mark.asyncio
+    async def test_flush_still_none_when_nothing_pending(self):
+        pp = StreamingPreprocessor(
+            session_id="pend2",
+            vad_service=_make_vad_service(0.0),
+            threshold=0.5,
+        )
+        await pp.feed(_make_pcm_bytes(320))
+        assert await pp.flush() is None
+
+
+class TestTask505RingCapacity:
+    """Pre-speech ring must hold pre-context PLUS onset-confirmation frames."""
+
+    @pytest.mark.asyncio
+    async def test_onset_tracking_does_not_evict_pre_context(self):
+        # pre_speech_context = 2 frames (64 ms), min_speech = 4 frames (128 ms).
+        # Feed 2 silence frames then 4 speech frames. At confirmation the
+        # utterance must contain: 2 pre-context + 3 onset-tracked + the
+        # confirming frame = 6 frames. With the old cap (= pre-context only)
+        # the ring held 2 frames and the first onset frames were evicted.
+        probs = [0.1, 0.1] + [0.9] * 30
+        pp = StreamingPreprocessor(
+            session_id="ring",
+            vad_service=_sequence_vad(probs),
+            threshold=0.5,
+            min_speech_duration_ms=128,
+            min_silence_duration_ms=64,
+            pre_speech_context_ms=64,
+        )
+
+        frame_bytes = _FRAME_SIZE_16K * 2
+        pcm = _make_speech_pcm(32 * 6)
+        for i in range(6):
+            await pp.feed(pcm[i * frame_bytes : (i + 1) * frame_bytes])
+
+        assert pp.in_speech is True
+        buffered = sum(len(f) for f in pp._state.utterance_buffer)
+        assert buffered == 6 * _FRAME_SIZE_16K
+
+
+class TestTask505SmartSplitOverlap:
+    """Force-emit smart split must carry overlap so no word is cut."""
+
+    @pytest.mark.asyncio
+    async def test_smart_split_carry_overlaps_previous_emit(self):
+        # max utterance = 10 frames (320 ms). Frames all speech-prob; frame 8
+        # is zero-energy (a plosive closure) — the smart-split target.
+        pp = StreamingPreprocessor(
+            session_id="split",
+            vad_service=_make_vad_service(0.9),
+            threshold=0.5,
+            min_speech_duration_ms=32,
+            min_silence_duration_ms=320,
+            max_utterance_duration_ms=320,
+            pre_speech_context_ms=32,
+        )
+
+        frame = (10000 * np.sin(2 * np.pi * 440 * np.linspace(0, 0.032, _FRAME_SIZE_16K))).astype(
+            np.int16
+        )
+        zero = np.zeros(_FRAME_SIZE_16K, dtype=np.int16)
+
+        finals: list[AudioUtterance] = []
+        for i in range(14):
+            chunk = (zero if i == 8 else frame).tobytes()
+            utts = await pp.feed(chunk)
+            finals.extend(u for u in utts if u.is_final)
+
+        assert finals, "expected a force-emitted utterance"
+        first = finals[0]
+        # Continuation must start BEFORE the first emit ended by at least
+        # ~100 ms of overlap (old behavior: carry started exactly at the
+        # split point with zero overlap before it).
+        assert pp._state.utterance_start_time < first.end_time - 0.096
+
+
+class TestTask505Normalizer:
+    """Bounded-window normalizer must recover quickly after a transient."""
+
+    def test_speech_recovers_after_loud_transient(self):
+        pp = StreamingPreprocessor(session_id="norm", normalize=True)
+
+        transient = np.ones(_FRAME_SIZE_16K, dtype=np.float32)
+        quiet = np.full(_FRAME_SIZE_16K, 0.05, dtype=np.float32)
+
+        pp._normalize_frame(transient)
+        out = None
+        # 5 seconds of quiet speech after the transient (156 frames).
+        for _ in range(156):
+            out = pp._normalize_frame(quiet.copy())
+
+        assert out is not None
+        # With a bounded window the transient has left the window and quiet
+        # speech normalizes back to ~1.0. The old 107-s-decay tracker left
+        # this at ~0.05 (speech suppressed → VAD misses words).
+        assert float(np.max(out)) > 0.5
+
+
+class TestTask505Resampler:
+    """Streaming resampler must anti-alias (no naive per-frame interp)."""
+
+    def test_high_frequency_content_attenuated(self):
+        # 12 kHz tone at 48 kHz input. After proper decimation to 16 kHz it
+        # lies above Nyquist (8 kHz) and must be attenuated, not folded to
+        # 4 kHz at near-full amplitude as linear interpolation does.
+        pp = StreamingPreprocessor(session_id="rs", sample_rate=48000, target_sample_rate=16000)
+
+        n = pp._frame_size  # input samples per frame at 48 kHz
+        outputs = []
+        for i in range(12):
+            t = (np.arange(n) + i * n) / 48000.0
+            frame = np.sin(2 * np.pi * 12000 * t).astype(np.float32)
+            outputs.append(pp._resample_frame(frame))
+
+        out = np.concatenate(outputs[2:])  # skip warmup frames
+        rms = float(np.sqrt(np.mean(out**2)))
+        assert rms < 0.1, f"aliased image not attenuated (rms={rms:.3f})"
+
+    def test_passband_content_preserved(self):
+        # 1 kHz tone must pass through at full amplitude.
+        pp = StreamingPreprocessor(session_id="rs2", sample_rate=48000, target_sample_rate=16000)
+
+        n = pp._frame_size
+        outputs = []
+        for i in range(12):
+            t = (np.arange(n) + i * n) / 48000.0
+            frame = np.sin(2 * np.pi * 1000 * t).astype(np.float32)
+            outputs.append(pp._resample_frame(frame))
+
+        out = np.concatenate(outputs[2:])
+        rms = float(np.sqrt(np.mean(out**2)))
+        assert 0.6 < rms < 0.8  # sine RMS ≈ 0.707
+
+    def test_output_frame_length_stable(self):
+        pp = StreamingPreprocessor(session_id="rs3", sample_rate=48000, target_sample_rate=16000)
+        frame = np.zeros(pp._frame_size, dtype=np.float32)
+        for _ in range(5):
+            out = pp._resample_frame(frame)
+            assert len(out) == _FRAME_SIZE_16K
+
+
+class TestTask505Defaults:
+    """Clinical defaults: short confirmations must survive."""
+
+    def test_ctor_min_speech_default_is_100ms(self):
+        pp = StreamingPreprocessor(session_id="d1")
+        # 100 ms / 32 ms → 3 frames
+        assert pp._min_speech_frames == 3
+
+    @pytest.mark.asyncio
+    async def test_short_yes_survives_with_defaults(self):
+        # A ~130 ms "yes" (4 speech frames) followed by silence must emit an
+        # utterance under the new defaults (old default 250 ms → dropped).
+        probs = [0.9] * 4 + [0.05] * 40
+        pp = StreamingPreprocessor(
+            session_id="yes",
+            vad_service=_sequence_vad(probs),
+            threshold=0.5,
+            min_silence_duration_ms=200,
+        )
+
+        finals = []
+        frame_bytes = _FRAME_SIZE_16K * 2
+        pcm = _make_speech_pcm(32 * 20)
+        for i in range(20):
+            utts = await pp.feed(pcm[i * frame_bytes : (i + 1) * frame_bytes])
+            finals.extend(u for u in utts if u.is_final)
+
+        assert finals, "short confirmation was dropped"
+
+
+class TestTask505ReviewFixes:
+    """Fixes from the Phase 0 adversarial review."""
+
+    @pytest.mark.asyncio
+    async def test_mid_band_babble_does_not_defer_final_forever(self):
+        # threshold 0.6 → neg 0.45. Speech, then alternating 0.44/0.46 babble:
+        # the run anchors at the first 0.44 and mid-band 0.46 frames must keep
+        # counting (wall-clock), so the final emits after min_silence instead
+        # of deferring to the 25 s force-emit.
+        probs = [0.9] * 4 + [0.44, 0.46] * 20
+        pp = StreamingPreprocessor(
+            session_id="babble",
+            vad_service=_sequence_vad(probs),
+            threshold=0.6,
+            min_speech_duration_ms=96,
+            min_silence_duration_ms=192,  # 6 frames
+        )
+
+        finals: list[AudioUtterance] = []
+        frame_bytes = _FRAME_SIZE_16K * 2
+        pcm = _make_speech_pcm(32 * 30)
+        frames_fed = 0
+        for i in range(30):
+            utts = await pp.feed(pcm[i * frame_bytes : (i + 1) * frame_bytes])
+            frames_fed += 1
+            finals.extend(u for u in utts if u.is_final)
+            if finals:
+                break
+
+        assert finals, "final deferred past the silence window"
+        # Onset confirms at frame 3; run starts at the first 0.44 (frame 5,
+        # 1-indexed) and completes 6 wall-clock frames later → frame 10.
+        assert frames_fed == 10
+
+    def test_normalizer_never_amplifies_noise_floor(self):
+        # Divisor floor (gain ceiling 20×): ambient noise at 0.002 peak must
+        # not be normalized to full scale during long pauses.
+        pp = StreamingPreprocessor(session_id="floor", normalize=True)
+        noise = np.full(_FRAME_SIZE_16K, 0.002, dtype=np.float32)
+        out = None
+        for _ in range(200):
+            out = pp._normalize_frame(noise.copy())
+        assert out is not None
+        assert float(np.max(out)) <= 0.05
+
+    @pytest.mark.asyncio
+    async def test_flush_single_blip_not_emitted(self):
+        # A lone above-threshold noise frame at session stop must not ship a
+        # ring of ambient noise to ASR (>= 2 onset frames required).
+        probs = [0.1] * 5 + [0.9]
+        pp = StreamingPreprocessor(
+            session_id="blip",
+            vad_service=_sequence_vad(probs + [0.9]),
+            threshold=0.5,
+            min_speech_duration_ms=256,
+        )
+        frame_bytes = _FRAME_SIZE_16K * 2
+        pcm = _make_speech_pcm(32 * 6)
+        for i in range(6):
+            await pp.feed(pcm[i * frame_bytes : (i + 1) * frame_bytes])
+        assert await pp.flush() is None
+
+
+class TestTask505DualPathDenoiseStreaming:
+    """TASK-505 P2 (decision D2) — dual-path denoise on the streaming path."""
+
+    def _zeroing_denoiser(self):
+        d = MagicMock()
+        d.in_fade_in = False
+        d.process = MagicMock(side_effect=lambda f: np.zeros_like(f))
+        return d
+
+    @pytest.mark.asyncio
+    async def test_vad_only_scope_buffers_raw_audio(self):
+        # Denoiser zeroes everything: with scope=vad_only the VAD must see the
+        # zeroed branch while the emitted utterance keeps the raw signal.
+        vad_probs = []
+
+        def _vad(chunk, session_state, threshold=None):
+            vad_probs.append(float(np.abs(chunk).max()))
+            return 0.9
+
+        svc = MagicMock()
+        svc.is_loaded = True
+        svc.process_chunk = MagicMock(side_effect=_vad)
+
+        pp = StreamingPreprocessor(
+            session_id="dp1",
+            vad_service=svc,
+            threshold=0.5,
+            min_speech_duration_ms=32,
+            min_silence_duration_ms=64,
+            denoiser=self._zeroing_denoiser(),
+            denoise_scope="vad_only",
+        )
+
+        await pp.feed(_make_speech_pcm(320))
+        final = await pp.flush()
+
+        assert final is not None
+        # VAD consumed the zeroed (denoised) frames…
+        assert max(vad_probs) == 0.0
+        # …but the emitted audio (ASR input) kept the raw signal.
+        assert float(np.abs(final.samples).max()) > 0.1
+
+    @pytest.mark.asyncio
+    async def test_full_scope_keeps_legacy_denoised_audio(self):
+        pp = StreamingPreprocessor(
+            session_id="dp2",
+            vad_service=_make_vad_service(0.9),
+            threshold=0.5,
+            min_speech_duration_ms=32,
+            min_silence_duration_ms=64,
+            denoiser=self._zeroing_denoiser(),
+            denoise_scope="full",
+        )
+
+        await pp.feed(_make_speech_pcm(320))
+        final = await pp.flush()
+
+        assert final is not None
+        assert float(np.abs(final.samples).max()) == 0.0

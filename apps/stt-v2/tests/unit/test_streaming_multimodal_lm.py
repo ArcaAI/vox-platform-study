@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 import torch
 
+from stt_v2.pipeline.dto import AiModelFormat
 from stt_v2.streaming.execution_profile import ExecutionProfile, PlatformType
 
 
@@ -73,6 +74,7 @@ def _mock_multimodal_model():
     loaded.model = mock_model
     loaded.processor = mock_processor
     loaded.feature_extractor = None
+    loaded.format = AiModelFormat.SAFETENSOR
     loaded.device = torch.device("cpu")
     loaded.extra = {"multimodal_lm": True, "max_audio_seconds": 30}
     return loaded

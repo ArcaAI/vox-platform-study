@@ -64,6 +64,11 @@ class TestSessionManagerDenoiserWiring:
             mgr._load_pipeline_config = AsyncMock(return_value=pipeline_config)
             mgr._load_vad_service = AsyncMock(return_value=MagicMock())
             mgr._load_asr_pipeline = AsyncMock(return_value=(MagicMock(), None))
+            # TASK-505 P1 — bind the REAL shared assembly (session wiring moved
+            # out of create/recover into _assemble_session_runtime).
+            mgr._assemble_session_runtime = (
+                lambda **kw: SessionManager._assemble_session_runtime(mgr, **kw)
+            )
             mgr._redis = AsyncMock()
             mgr._worker_id = "test-worker"
             mgr._capacity_guard = MagicMock()
@@ -135,6 +140,11 @@ class TestSessionManagerDenoiserWiring:
             mgr._load_pipeline_config = AsyncMock(return_value=pipeline_config)
             mgr._load_vad_service = AsyncMock(return_value=MagicMock())
             mgr._load_asr_pipeline = AsyncMock(return_value=(MagicMock(), None))
+            # TASK-505 P1 — bind the REAL shared assembly (session wiring moved
+            # out of create/recover into _assemble_session_runtime).
+            mgr._assemble_session_runtime = (
+                lambda **kw: SessionManager._assemble_session_runtime(mgr, **kw)
+            )
             mgr._redis = AsyncMock()
             mgr._worker_id = "test-worker"
             mgr._capacity_guard = MagicMock()
@@ -215,6 +225,11 @@ class TestSessionManagerDenoiserWiring:
             mgr._load_pipeline_config = AsyncMock(return_value=pipeline_config)
             mgr._load_vad_service = AsyncMock(return_value=MagicMock())
             mgr._load_asr_pipeline = AsyncMock(return_value=(MagicMock(), None))
+            # TASK-505 P1 — bind the REAL shared assembly (session wiring moved
+            # out of create/recover into _assemble_session_runtime).
+            mgr._assemble_session_runtime = (
+                lambda **kw: SessionManager._assemble_session_runtime(mgr, **kw)
+            )
             mgr._redis = AsyncMock()
             mgr._worker_id = "test-worker"
             mgr._capacity_guard = MagicMock()

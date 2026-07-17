@@ -249,14 +249,18 @@ class TestSettings:
             assert settings.azure_speech_region is None
 
     def test_vad_defaults(self):
-        """Test Silero VAD default configuration."""
+        """Test Silero VAD default configuration.
+
+        TASK-505: `_env_file=None` so the CODE defaults are asserted — a local
+        untracked .env previously masked the defaults (and diverged from CI).
+        """
         with patch.dict(os.environ, {}, clear=True):
-            settings = Settings()
+            settings = Settings(_env_file=None)
             assert settings.vad_model_path is None
             assert settings.vad_threshold == 0.5
-            assert settings.vad_min_speech_duration_ms == 250
+            assert settings.vad_min_speech_duration_ms == 100
             assert settings.vad_min_silence_duration_ms == 500
-            assert settings.vad_speech_pad_ms == 30
+            assert settings.vad_speech_pad_ms == 200
             assert settings.vad_sample_rate == 16000
 
     def test_vad_env_override(self):

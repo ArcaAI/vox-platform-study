@@ -40,10 +40,6 @@ import {
     ModelType,
     backfillCustomerTenantAiModels,
     CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL,
-    switchDefaultSttPipeline,
-    STT_DEFAULT_PIPELINE_BACKFILL_TENANTS,
-    STT_DEFAULT_PIPELINE_SLUG,
-    STT_PLACEHOLDER_PIPELINE_SLUG,
 } from '../prisma/db_main/seed/06-stt';
 import { ALL_SETTINGS, SMR_PROVIDER_MODELS } from '../prisma/db_main/seed/11-global-setting';
 import {
@@ -1213,7 +1209,13 @@ describe('STT Seed Data', () => {
             // render lights up. Asserted across every tenant variant that shares
             // the realtime/turbo configYaml (system + ArcaAI customer + Global).
             it('should activate LocalAgreement-2 commit policy on the realtime + turbo streaming pipelines (TASK-471)', () => {
-                const streamingSlugs = ['best-practice-realtime', 'turbo-whisper-large-v3'];
+                // TASK-505 P5 — best-practice-realtime retired; the matrix
+                // streaming pipelines carry LA-2.
+                const streamingSlugs = [
+                    'turbo-whisper-large-v3',
+                    'whisper-turbo-no-postprocessing',
+                    'whisper-turbo-no-preprocessing',
+                ];
                 const allPipelines = [
                     ...DEFAULT_ASR_PIPELINES,
                     ...CUSTOMER_TENANT_ASR_PIPELINES,
@@ -1221,8 +1223,8 @@ describe('STT Seed Data', () => {
                 ];
                 const realtimeRows = allPipelines.filter((p) => streamingSlugs.includes(p.slug));
 
-                // system best-practice-realtime + system/ArcaAI/Global turbo => >= 4 rows.
-                expect(realtimeRows.length).toBeGreaterThanOrEqual(4);
+                // system #3 + #4 + system/ArcaAI/Global turbo => >= 5 rows.
+                expect(realtimeRows.length).toBeGreaterThanOrEqual(5);
                 realtimeRows.forEach((pipeline) => {
                     // A top-level `streaming:` mapping whose commit_policy activates
                     // LocalAgreement-2 (YAML comments between the keys are ignored
@@ -1271,18 +1273,15 @@ describe('STT Seed Data', () => {
                 expect(lightweight?.tags).toContain('lightweight');
             });
 
-            it('should include optimized ONNX pipeline', () => {
-                const optimized = DEFAULT_ASR_PIPELINES.find((p) => p.slug === 'optimized-faster-whisper');
-                expect(optimized).toBeDefined();
-                expect(optimized?.tags).toContain('optimized');
-                expect(optimized?.tags).toContain('onnx');
-            });
-
-            it('should include NeMo English pipeline', () => {
-                const nemo = DEFAULT_ASR_PIPELINES.find((p) => p.slug === 'nemo-parakeet-english');
-                expect(nemo).toBeDefined();
-                expect(nemo?.tags).toContain('nemo');
-                expect(nemo?.tags).toContain('english');
+            it('should include the TASK-505 matrix pipelines', () => {
+                const slugs = DEFAULT_ASR_PIPELINES.map((p) => p.slug);
+                [
+                    'whisper-turbo-no-postprocessing',
+                    'whisper-turbo-no-preprocessing',
+                    'azure-speech-transcription',
+                    'azure-foundry-mai-transcribe',
+                    'parakeet-nemotron-streaming',
+                ].forEach((slug) => expect(slugs).toContain(slug));
             });
         });
     });
@@ -1484,9 +1483,9 @@ describe('ASR Pipeline isDefault invariant (TASK-331 doc-03 Q2)', () => {
     });
 
     it('should make the resolvable production-whisper-large-v3 pipeline (TASK-361) the system isDefault one', () => {
-        // TASK-361 — the SYSTEM default is the resolvable production-whisper-large-v3
-        // pipeline (id …0001); the CT2 int8 pipeline (id …0008) is registered but
-        // NOT default until the D-4 artifact replaces MODEL_REPO_PLACEHOLDER.
+        // TASK-361/505 — the SYSTEM default is production-whisper-large-v3
+        // (id …0001); the CT2 int8 pipeline (id …0008) is registered (resolvable
+        // via deepdml since TASK-505) but not the seeded default.
         const systemDefault = DEFAULT_ASR_PIPELINES.find(
             (p) => p.id === '81000000-0000-0000-0001-000000000001'
         );
@@ -1494,7 +1493,7 @@ describe('ASR Pipeline isDefault invariant (TASK-331 doc-03 Q2)', () => {
         expect(systemDefault?.slug).toBe('production-whisper-large-v3');
         expect(systemDefault?.isDefault).toBe(true);
 
-        // The CT2 placeholder pipeline must NOT be a default so there is exactly one.
+        // The CT2 pipeline is not a seeded default, so there is exactly one.
         const ct2 = DEFAULT_ASR_PIPELINES.find(
             (p) => p.id === '81000000-0000-0000-0001-000000000008'
         );
@@ -1588,18 +1587,19 @@ describe('TASK-356 Phase 2 / TASK-361 — STT default (CT2 registered; whisper-l
         expect(AiModelFormat.CTRANSLATE2).toBe('CTRANSLATE2');
     });
 
-    it('registers the CT2 int8 turbo AiModel under SYSTEM with a clearly-marked placeholder sourceUri', () => {
+    it('registers the CT2 int8 turbo AiModel under SYSTEM with the resolvable deepdml sourceUri', () => {
         const ct2 = DEFAULT_AI_MODELS.find((m) => m.slug === CT2_MODEL_SLUG);
         expect(ct2).toBeDefined();
         expect(ct2?.tenantId).toBe(SYSTEM_TENANT_ID);
         expect(ct2?.category).toBe(ModelCategory.AUDIO);
         expect(ct2?.taskType).toBe(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION);
         expect(ct2?.modelType).toBe(ModelType.QUANTIZED_MODEL);
-        expect(ct2?.format).toBe(AiModelFormat.CTRANSLATE2);
+        expect(ct2?.format).toBe(AiModelFormat.FASTER_WHISPER);
         expect(ct2?.computeType).toBe('int8');
-        // D-4: engineers publish the real CT2 artifact before the prod flip; the
-        // placeholder intentionally won't resolve at runtime yet.
-        expect(ct2?.sourceUri).toContain('MODEL_REPO_PLACEHOLDER');
+        // TASK-505 (D-4 resolved): the CT2 artifact now points at the real
+        // deepdml conversion (owner decision D3, 2026-07-16) — resolvable at
+        // runtime via FasterWhisperLoader.
+        expect(ct2?.sourceUri).toBe('deepdml/faster-whisper-large-v3-turbo-ct2');
     });
 
     it('registers the CT2 pipeline as NOT default and keeps production-whisper-large-v3 as the SYSTEM default', () => {
@@ -1648,17 +1648,18 @@ describe('TASK-356 Phase 2 / TASK-361 — STT default (CT2 registered; whisper-l
         expect(DEFAULT_ASR_PIPELINES.map((p) => p.slug)).toContain(DEFAULT_PIPELINE_SLUG);
     });
 
-    it('carries diarization + dual_capture into the CT2 pipeline config', () => {
+    it('is the bare matrix #7 pipeline referencing the CT2 model by slug (TASK-505)', () => {
         const ct2 = DEFAULT_ASR_PIPELINES.find((p) => p.slug === CT2_PIPELINE_SLUG);
         expect(ct2).toBeDefined();
-        expect(ct2!.configYaml).toContain('engine: "faster_whisper"');
-        expect(ct2!.configYaml).toMatch(/compute_type:\s*int8/);
-        expect(ct2!.configYaml).toContain('diarization:');
-        expect(ct2!.configYaml).toContain('dual_capture:');
+        // D6 — registry-authoritative: the CT2 artifact is referenced by its
+        // catalog slug; format/compute live on the AiModel row.
+        expect(ct2!.configYaml).toContain('asr: "faster-whisper-large-v3-turbo-int8"');
+        // Matrix #7 is bare: no pre/diarization/post stages.
+        expect(ct2!.configYaml).not.toContain('diarization:');
     });
 });
 
-describe('TASK-361 — STT default resolves to a loadable artifact (no placeholder default)', () => {
+describe('TASK-361/505 — STT default resolves to a loadable artifact (no placeholder default)', () => {
     const PLACEHOLDER = 'MODEL_REPO_PLACEHOLDER';
     const CT2_MODEL_SLUG = 'faster-whisper-large-v3-turbo-int8';
     const CT2_PIPELINE_SLUG = 'production-faster-whisper-turbo-int8';
@@ -1668,10 +1669,10 @@ describe('TASK-361 — STT default resolves to a loadable artifact (no placehold
         ...CUSTOMER_TENANT_ASR_PIPELINES,
     ];
 
-    it('never marks a pipeline whose config references the placeholder artifact as isDefault', () => {
-        // AC-1/AC-2: the live default STT pipeline must resolve to a real artifact.
-        // The CT2 int8 pipeline carries the non-resolving MODEL_REPO_PLACEHOLDER
-        // (pending the D-4 publish), so it must NOT be any tenant's isDefault.
+    it('never marks a pipeline whose config references a placeholder artifact as isDefault', () => {
+        // AC-1/AC-2: the live default STT pipeline must resolve to a real
+        // artifact. TASK-505 removed the last placeholder (deepdml URI), so
+        // this is a guard against placeholders ever reappearing as defaults.
         const placeholderDefaults = allPipelines.filter(
             (p) => p.isDefault === true && p.configYaml.includes(PLACEHOLDER)
         );
@@ -1688,15 +1689,16 @@ describe('TASK-361 — STT default resolves to a loadable artifact (no placehold
         expect(bySlug(streaming?.value)?.configYaml).not.toContain(PLACEHOLDER);
     });
 
-    it('keeps the placeholder CT2 AiModel registered but NOT tagged production/recommended (AC-3)', () => {
+    it('keeps the CT2 AiModel registered but NOT tagged production/recommended (AC-3)', () => {
         const ct2 = DEFAULT_AI_MODELS.find((m) => m.slug === CT2_MODEL_SLUG);
         expect(ct2).toBeDefined(); // still in the catalog so admins can see it
-        expect(ct2?.sourceUri).toContain(PLACEHOLDER); // still the placeholder until D-4
+        // TASK-505: D-4 resolved — real deepdml artifact, no placeholder left.
+        expect(ct2?.sourceUri).not.toContain(PLACEHOLDER);
         expect(ct2?.tags).not.toContain('production');
         expect(ct2?.tags).not.toContain('recommended');
     });
 
-    it('does not tag the placeholder CT2 pipeline as production/recommended (AC-3)', () => {
+    it('does not tag the CT2 pipeline as production/recommended (AC-3)', () => {
         const ct2Pipelines = allPipelines.filter((p) => p.slug === CT2_PIPELINE_SLUG);
         expect(ct2Pipelines.length).toBeGreaterThan(0);
         ct2Pipelines.forEach((p) => {
@@ -2610,81 +2612,6 @@ describe('TASK-356 Phase 5 — seedPipelinePolicy (cascade defaults + WORM)', ()
         expect(result.demo).toBe('noop');
         expect(client.pipelinePolicy.create).toHaveBeenCalledTimes(1);
         expect(created[0].data.tenantId).toBe(SYSTEM_TENANT_ID);
-    });
-});
-
-// =============================================================================
-// TASK-356 Phase 2 — switchDefaultSttPipeline backfill (no double-default)
-// =============================================================================
-
-describe('TASK-361 — switchDefaultSttPipeline backfill (reconcile back to resolvable default)', () => {
-    type Row = { id: string; tenantId: string; slug: string; isDefault: boolean };
-
-    const makeMockClient = (rows: Row[]) => {
-        const matches = (row: Row, where: Record<string, unknown>) =>
-            Object.entries(where).every(([k, v]) => (row as Record<string, unknown>)[k] === v);
-        const client = {
-            asrPipeline: {
-                findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
-                    rows.find((r) => matches(r, where)) ?? null
-                ),
-                findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
-                    rows.filter((r) => matches(r, where))
-                ),
-                update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
-                    const row = rows.find((r) => r.id === where.id);
-                    if (row) Object.assign(row, data);
-                    return row;
-                }),
-            },
-        };
-        return { client, rows };
-    };
-
-    // Use a tenant that switchDefaultSttPipeline actually iterates over.
-    const T = SYSTEM_TENANT_ID;
-    const whisperRow = (isDefault: boolean): Row => ({ id: 'whisper', tenantId: T, slug: STT_DEFAULT_PIPELINE_SLUG, isDefault });
-    const ct2Row = (isDefault: boolean): Row => ({ id: 'ct2', tenantId: T, slug: STT_PLACEHOLDER_PIPELINE_SLUG, isDefault });
-    const turboRow = (isDefault: boolean): Row => ({ id: 'turbo', tenantId: T, slug: 'turbo-whisper-large-v3', isDefault });
-
-    const tenantDefaults = (rows: Row[]) => rows.filter((r) => r.tenantId === T && r.isDefault);
-
-    it('targets every pipeline-owning tenant (SYSTEM + Global + customers)', () => {
-        expect(STT_DEFAULT_PIPELINE_BACKFILL_TENANTS).toContain(SYSTEM_TENANT_ID);
-        expect(STT_DEFAULT_PIPELINE_BACKFILL_TENANTS.length).toBeGreaterThanOrEqual(3);
-    });
-
-    it('demotes the placeholder CT2 default and promotes resolvable whisper-large-v3 (migrates a Phase-2 DB back)', async () => {
-        // A DB that TASK-356 Phase 2 switched to CT2: CT2 is the current default.
-        const { client, rows } = makeMockClient([whisperRow(false), ct2Row(true)]);
-        const result = await switchDefaultSttPipeline(client as never);
-
-        const defaults = tenantDefaults(rows);
-        expect(defaults).toHaveLength(1);
-        expect(defaults[0].slug).toBe(STT_DEFAULT_PIPELINE_SLUG);
-        expect(result.switched).toBeGreaterThanOrEqual(1);
-    });
-
-    it('respects an admin-chosen resolvable default (turbo) and demotes only the placeholder CT2', async () => {
-        const { client, rows } = makeMockClient([whisperRow(false), turboRow(true), ct2Row(true)]);
-        await switchDefaultSttPipeline(client as never);
-
-        const defaults = tenantDefaults(rows);
-        expect(defaults).toHaveLength(1);
-        expect(defaults[0].slug).toBe('turbo-whisper-large-v3');
-    });
-
-    it('is a no-op when whisper-large-v3 is already the sole default (fresh DB) and is idempotent on re-run', async () => {
-        const { client, rows } = makeMockClient([whisperRow(true), ct2Row(false)]);
-        const first = await switchDefaultSttPipeline(client as never);
-        expect(client.asrPipeline.update).not.toHaveBeenCalled();
-        expect(first.switched).toBe(0);
-
-        // Re-run converges to the same single-default state.
-        await switchDefaultSttPipeline(client as never);
-        const defaults = tenantDefaults(rows);
-        expect(defaults).toHaveLength(1);
-        expect(defaults[0].slug).toBe(STT_DEFAULT_PIPELINE_SLUG);
     });
 });
 

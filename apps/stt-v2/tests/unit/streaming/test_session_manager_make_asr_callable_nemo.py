@@ -13,6 +13,23 @@ from stt_v2.pipeline.dto import AiModelFormat, InferenceConfig
 from stt_v2.streaming.session_manager import SessionManager
 
 
+def _bind_asr_dispatch(mgr):
+    """TASK-505 P1 — _make_asr_callable dispatches through registry adapters
+    that call back into per-engine builder methods on the manager; bind the
+    real ones onto MagicMock(spec=SessionManager) harnesses."""
+    from stt_v2.streaming.session_manager import SessionManager
+
+    for _name in (
+        "_make_nemo_callable",
+        "_make_faster_whisper_callable",
+        "_make_azure_callable",
+        "_make_transformers_callable",
+        "_make_multimodal_lm_callable",
+    ):
+        setattr(mgr, _name, getattr(SessionManager, _name).__get__(mgr))
+    return mgr
+
+
 def _make_loaded_nemo(transcribe_return) -> LoadedModel:
     nemo_model = MagicMock()
     nemo_model.transcribe.return_value = transcribe_return
@@ -47,6 +64,7 @@ class TestMakeAsrCallableNemo:
     @pytest.mark.asyncio
     async def test_returns_callable_for_nemo_format_without_processor(self):
         mgr = MagicMock(spec=SessionManager)
+        _bind_asr_dispatch(mgr)
         loaded = _make_loaded_nemo(
             [_hyp("hello world", words=[("hello", 0.0, 0.5), ("world", 0.5, 1.0)])]
         )
@@ -64,6 +82,7 @@ class TestMakeAsrCallableNemo:
     @pytest.mark.asyncio
     async def test_initial_prompt_ignored_for_nemo(self, caplog):
         mgr = MagicMock(spec=SessionManager)
+        _bind_asr_dispatch(mgr)
         loaded = _make_loaded_nemo([_hyp("hi")])
 
         callable_ = SessionManager._make_asr_callable(

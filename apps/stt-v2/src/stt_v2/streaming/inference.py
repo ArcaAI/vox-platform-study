@@ -140,6 +140,7 @@ class StreamingInferenceWorker:
         hallucination_short_word_count: int | None = None,
         gloss_callable: Any = None,
         gloss_timeout_s: float | None = None,
+        embedding_service: Any = None,  # TASK-505 — per-pipeline embedding model
     ) -> None:
         self._publisher = result_publisher
         self._asr_pipeline = asr_pipeline
@@ -192,7 +193,14 @@ class StreamingInferenceWorker:
         )
         self._gloss_tasks: set[asyncio.Task[None]] = set()
         self._punctuation_model: Any = None
+        self._embedding_service: Any = embedding_service
         self._previous_text: str = ""
+        # TASK-505 P1 — force-emit boundary dedup state: the preprocessor's
+        # force-emit split carries overlap audio into the continuation (120 ms
+        # smart split / 500 ms hard split), so consecutive FINALS overlap in
+        # time and the ASR transcribes the carried words twice.
+        self._last_final_end: float = 0.0
+        self._last_final_tail: str = ""
         self._initial_prompt: str | None = initial_prompt
         self._speaker_identifier = speaker_identifier
         # TASK-475 (Theme B2) — self-hosted Streaming Sortformer diarizer. When
@@ -360,6 +368,23 @@ class StreamingInferenceWorker:
             )
             text = ""
 
+        # Step 2a2: force-emit boundary dedup (TASK-505 P1) — strip words the
+        # previous final already published when this final's audio overlaps it
+        # (the carry region). Runs BEFORE the prev-text context update so the
+        # Whisper conditioning context does not carry the duplicates either.
+        dedup_dropped_words: list[str] = []
+        if utterance.is_final and text.strip():
+            text, dedup_dropped_words = self._dedup_forced_boundary(text, utterance)
+
+        # TASK-505 P1 review — record the boundary state HERE, from the
+        # pre-postprocessing text: the next final's dedup input is also
+        # pre-postprocessing, so a tail captured after punctuation/disfluency
+        # editing would break the suffix/prefix match exactly in pipelines
+        # that enable postprocessing.
+        if utterance.is_final:
+            self._last_final_end = utterance.end_time
+            self._last_final_tail = " ".join(text.split()[-12:]) if text.strip() else ""
+
         if text.strip():
             if self._prev_text_context_words > 0:
                 words = text.strip().split()
@@ -400,6 +425,15 @@ class StreamingInferenceWorker:
             split_timestamps,
             utterance.start_time,
         )
+
+        # TASK-505 P1 — keep word timestamps consistent with the boundary
+        # dedup. Match-based (not positional): the sanitizer can delete
+        # artifact tokens whose raw timestamp entries survive, so a blind
+        # leading-N trim removed the wrong entries (P1 review finding).
+        if dedup_dropped_words:
+            word_timestamps = self._trim_dedup_word_timestamps(
+                word_timestamps, dedup_dropped_words
+            )
 
         # Respect word_timestamps config
         if (
@@ -653,6 +687,70 @@ class StreamingInferenceWorker:
                 })
         return result
 
+    def _dedup_forced_boundary(
+        self,
+        text: str,
+        utterance: AudioUtterance,
+    ) -> tuple[str, list[str]]:
+        """Strip words duplicated across a force-emit boundary.
+
+        Applies only when this final's audio starts BEFORE the previous
+        final ended (the preprocessor carry region) — silence-separated
+        finals have no time overlap and pass through untouched. The word
+        window is capped at 3: the truly duplicated audio is the carry
+        overlap (120 ms smart split / 500 ms hard split ≈ 1-3 words), while
+        ``overlap_s`` over-measures on smart splits (the previous final's
+        ``end_time`` includes post-split audio), so a duration-scaled window
+        could eat genuinely repeated phrases (P1 review finding). Returns
+        ``(deduped_text, dropped_words)``.
+        """
+        overlap_s = self._last_final_end - utterance.start_time
+        if overlap_s <= 0 or not self._last_final_tail:
+            return text, []
+
+        from stt_v2.postprocessing.overlap import dedup_overlap
+
+        max_words = min(3, max(1, int(overlap_s * 4.0) + 1))
+        deduped = dedup_overlap(self._last_final_tail, text, max_overlap_words=max_words)
+        dropped_count = len(text.split()) - len(deduped.split())
+        dropped_words = text.split()[:dropped_count] if dropped_count > 0 else []
+        if dropped_words:
+            logger.debug(
+                "Force-emit boundary dedup",
+                component="POSTPROCESSOR",
+                overlap_s=round(overlap_s, 3),
+                words_dropped=len(dropped_words),
+            )
+        return deduped, dropped_words
+
+    @staticmethod
+    def _trim_dedup_word_timestamps(
+        word_timestamps: list[dict[str, Any]],
+        dropped_words: list[str],
+    ) -> list[dict[str, Any]]:
+        """Remove the leading timestamp entries for boundary-deduped words.
+
+        Match-based: raw ASR timestamp entries can include artifact tokens the
+        sanitizer already removed from the text, so positional trimming cut
+        the wrong entries. Each dropped word removes its first matching entry
+        (case/punctuation-insensitive) within a bounded leading window;
+        non-matching artifact entries are left in place (pre-existing
+        sanitizer/timestamp misalignment is out of scope here).
+        """
+
+        def _norm(w: str) -> str:
+            return w.lower().rstrip(".,!?;:")
+
+        out = list(word_timestamps)
+        window = len(dropped_words) + 8
+        for word in dropped_words:
+            target = _norm(word)
+            for i, entry in enumerate(out[:window]):
+                if _norm(str(entry.get("word", ""))) == target:
+                    del out[i]
+                    break
+        return out
+
     def _sanitize_text(self, text: str) -> str:
         """Apply lightweight normalization for streaming transcript quality."""
         cleaned = (text or "").strip()
@@ -715,9 +813,15 @@ class StreamingInferenceWorker:
             return None
 
         try:
-            from stt_v2.diarization.embedding_service import get_embedding_service
+            # TASK-505 P2-P5 review — honor the per-pipeline embedding service
+            # when the session assembly injected one; the settings singleton is
+            # only the fallback (the per-pipeline model previously reached only
+            # the segmentation-refinement path, not this primary extraction).
+            emb_service = self._embedding_service
+            if emb_service is None:
+                from stt_v2.diarization.embedding_service import get_embedding_service
 
-            emb_service = get_embedding_service()
+                emb_service = get_embedding_service()
             # Limit to first 5s for embedding quality
             max_samples = int(5.0 * utterance.sample_rate)
             samples = utterance.samples[:max_samples]
