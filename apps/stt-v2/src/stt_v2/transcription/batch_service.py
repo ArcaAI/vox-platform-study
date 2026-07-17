@@ -47,8 +47,9 @@ from ..core.metrics import (
 from ..models.azure_speech_loader import normalize_language_for_azure
 from ..models.base_loader import LoadedModel
 from ..models.cache import get_model_cache
+from ..models.whisper_kwargs import build_whisper_generate_kwargs
 from ..pipeline.config_reader import get_model_reader
-from ..pipeline.dto import AiModelFormat, InferenceConfig, ModelTaskType, PipelineConfig
+from ..pipeline.dto import InferenceConfig, ModelTaskType, PipelineConfig
 from .dto import (
     AudioSegment,
     ChunkTranscriptionResult,
@@ -97,33 +98,12 @@ class BatchTranscriptionService:
         Returns:
             *current_text* with any duplicated leading words removed.
         """
-        if not previous_text or not current_text:
-            return current_text
+        # TASK-505 P1 — body extracted to stt_v2.postprocessing.overlap so the
+        # streaming force-emit boundary reuses the same semantics without
+        # importing this (Azure-SDK-heavy) module.
+        from stt_v2.postprocessing.overlap import dedup_overlap
 
-        prev_words = previous_text.split()
-        curr_words = current_text.split()
-
-        if not prev_words or not curr_words:
-            return current_text
-
-        # Only look at the tail of previous and head of current
-        tail = prev_words[-max_overlap_words:]
-        head = curr_words[:max_overlap_words]
-
-        # Find longest suffix of tail that matches a prefix of head
-        best_overlap = 0
-        for length in range(1, min(len(tail), len(head)) + 1):
-            suffix = tail[-length:]
-            prefix = head[:length]
-            # Case-insensitive comparison, strip punctuation for matching
-            if [w.lower().rstrip(".,!?;:") for w in suffix] == [
-                w.lower().rstrip(".,!?;:") for w in prefix
-            ]:
-                best_overlap = length
-
-        if best_overlap > 0:
-            return " ".join(curr_words[best_overlap:])
-        return current_text
+        return dedup_overlap(previous_text, current_text, max_overlap_words)
 
     @staticmethod
     def _split_vad_segments_for_embedding(
@@ -351,6 +331,7 @@ class BatchTranscriptionService:
                         initial_prompt=initial_prompt,
                         inline_identifier=inline_identifier,
                         inline_diarization_config=inline_diarization_config,
+                        segment_merge_config=spec.postprocessing.segment_merge,
                     )
                 else:
                     # Full-audio ASR (no VAD or no segments detected)
@@ -801,6 +782,21 @@ class BatchTranscriptionService:
 
         # Load ASR model (required)
         asr_ref = model_refs.asr
+        # TASK-505 P1 — capability sanity check for the batch mode: a
+        # platform/engine mismatch warns loudly here at load time
+        # (observability-first, never blocks — see processors/binding.py).
+        try:
+            from ..processors.asr_engines import ASR_FORMAT_TO_NAME
+            from ..processors.binding import resolve_engine_binding
+
+            _engine_fmt = (
+                asr_ref.inline.engine if asr_ref.is_inline and asr_ref.inline else None
+            )
+            _engine_name = ASR_FORMAT_TO_NAME.get(_engine_fmt) if _engine_fmt else None
+            if _engine_name is not None:
+                resolve_engine_binding("asr", _engine_name, mode="batch")
+        except Exception:  # noqa: BLE001 — advisory only, never block loading
+            logger.debug("Batch engine capability check skipped", exc_info=True)
         if asr_ref.is_inline and asr_ref.inline:
             # Inline model definition
             logger.info(f"Loading inline ASR model: {asr_ref.inline.hf_model_id}")
@@ -1042,6 +1038,7 @@ class BatchTranscriptionService:
         initial_prompt: str | None = None,
         inline_identifier: Any | None = None,
         inline_diarization_config: Any | None = None,
+        segment_merge_config: Any | None = None,
     ) -> RawTranscription:
         """Run ASR inference on each VAD speech segment independently.
 
@@ -1104,13 +1101,42 @@ class BatchTranscriptionService:
         # Each Whisper generate() incurs ~6s encoder overhead regardless of
         # audio length.  Merging 28 segments into ~4-5 chunks cuts total
         # inference time from ~180s to ~40s for 60s audio.
-        merge_gap = settings.segment_merge_gap_threshold_s
-        if merge_gap > 0 and len(speech_segments) > 1:
+        # TASK-505 P2 — per-pipeline override (postprocessing.segment_merge):
+        # enabled True/False overrides the global setting gate; None inherits
+        # it (the v1 behavior). gap/max values override when set.
+        sm = segment_merge_config
+
+        def _sm_num(value: Any) -> float | None:
+            # isinstance gate — duck-typed test configs (MagicMock) must fall
+            # back to the global values, matching the codebase's strict-gate
+            # idiom for pipeline config reads.
+            return (
+                float(value)
+                if isinstance(value, (int, float)) and not isinstance(value, bool)
+                else None
+            )
+
+        sm_gap = _sm_num(getattr(sm, "gap_threshold_s", None))
+        sm_max = _sm_num(getattr(sm, "max_duration_s", None))
+        sm_enabled = getattr(sm, "enabled", None)
+        merge_gap = sm_gap if sm_gap is not None else settings.segment_merge_gap_threshold_s
+        merge_max = sm_max if sm_max is not None else chunk_length_s
+        merge_enabled = (
+            sm_enabled
+            if isinstance(sm_enabled, bool)
+            else settings.segment_merge_gap_threshold_s > 0
+        )
+        # TASK-505 review — an explicit per-pipeline `enabled: true` must not
+        # be defeated by a global gap of 0 (the operator's way of disabling
+        # merging globally): fall back to the historical default gap.
+        if sm_enabled is True and merge_gap <= 0:
+            merge_gap = 2.0
+        if merge_enabled and merge_gap > 0 and len(speech_segments) > 1:
             from .segment_merger import merge_vad_segments
 
             speech_segments = merge_vad_segments(
                 speech_segments,
-                max_duration_s=chunk_length_s,
+                max_duration_s=merge_max,
                 gap_threshold_s=merge_gap,
             )
             if len(speech_segments) < original_count:
@@ -1121,7 +1147,7 @@ class BatchTranscriptionService:
                     original_count,
                     len(speech_segments),
                     merge_gap,
-                    chunk_length_s,
+                    merge_max,
                 )
 
         total = max(len(speech_segments), 1)
@@ -1505,47 +1531,36 @@ class BatchTranscriptionService:
     ) -> RawTranscription:
         """Run ASR model inference.
 
-        For engines that support sliding-window chunking (Optimum ONNX),
-        *chunk_callback* and *first_word_hook* are forwarded so that
-        callers receive near-real-time partial results.
+        TASK-505 P1 — dispatch is registry-driven (same table as the streaming
+        path): the engine adapter is resolved from the processor registry by
+        ``AiModelFormat``, so adding an engine registers one spec + one
+        adapter instead of editing this chain. For engines that support
+        sliding-window chunking (Optimum ONNX), *chunk_callback* and
+        *first_word_hook* are forwarded so that callers receive near-real-time
+        partial results.
         """
+        from ..processors.asr_engines import resolve_asr_engine
 
-        if model.format == AiModelFormat.AZURE_SPEECH:
-            return await self._run_azure_speech_inference(
-                samples, sample_rate, model, config, progress_callback
-            )
-        elif model.format in [
-            AiModelFormat.SAFETENSOR,
-            AiModelFormat.PYTORCH,
-            AiModelFormat.CTRANSLATE2,
-        ]:
-            return await self._run_transformers_inference(
-                samples, sample_rate, model, config, progress_callback,
-                prompt=prompt,
-                initial_prompt=initial_prompt,
-            )
-        elif model.format in [AiModelFormat.ONNX, AiModelFormat.ONNX_OPTIMUM]:
-            # Check if loaded with Optimum (has proper processor)
-            if model.extra.get("optimum") or model.processor is not None:
-                return await self._run_optimum_onnx_inference(
-                    samples,
-                    sample_rate,
-                    model,
-                    config,
-                    progress_callback,
-                    chunk_callback=chunk_callback,
-                    first_word_hook=first_word_hook,
-                    prompt=prompt,
-                )
-            return await self._run_onnx_inference(
-                samples, sample_rate, model, config, progress_callback
-            )
-        elif model.format == AiModelFormat.NEMO:
-            return await self._run_nemo_inference(
-                samples, sample_rate, model, config, progress_callback
-            )
-        else:
-            raise TranscriptionError(f"Unsupported model format: {model.format}")
+        try:
+            engine = resolve_asr_engine(model.format)
+        except LookupError:
+            raise TranscriptionError(
+                f"Unsupported model format: {model.format}"
+            ) from None
+
+        result: RawTranscription = await engine.run_batch(
+            self,
+            samples,
+            sample_rate,
+            model,
+            config,
+            progress_callback,
+            chunk_callback=chunk_callback,
+            first_word_hook=first_word_hook,
+            prompt=prompt,
+            initial_prompt=initial_prompt,
+        )
+        return result
 
     async def _run_azure_speech_inference(
         self,
@@ -1845,57 +1860,15 @@ class BatchTranscriptionService:
         with torch.no_grad():
             # Check if model supports generate (Whisper, Seq2Seq)
             if hasattr(asr_model, "generate"):
-                generate_kwargs: dict[str, Any] = {
-                    "task": "transcribe",
-                    "return_timestamps": True,
-                }
-
-                # TASK-351 P2-1 — a configured language is always pinned
-                # (passed to the engine), including when code_switching is
-                # enabled. language: null + code_switching keeps auto-LID.
-                if lang is not None:
-                    generate_kwargs["language"] = lang
-
-                no_repeat_ngram_size = getattr(config, "no_repeat_ngram_size", None)
-                if isinstance(no_repeat_ngram_size, int) and no_repeat_ngram_size > 0:
-                    generate_kwargs["no_repeat_ngram_size"] = no_repeat_ngram_size
-
-                beam_size = getattr(config, "beam_size", None)
-                if isinstance(beam_size, int) and beam_size > 1:
-                    generate_kwargs["num_beams"] = beam_size
-
-                temperature = getattr(config, "temperature", None)
-                if isinstance(temperature, (int, float)) and not isinstance(
-                    temperature, bool
-                ):
-                    temperature = [float(temperature)]
-                if isinstance(temperature, (list, tuple)) and len(temperature) > 0:
-                    temp_list = [float(x) for x in temperature]
-                    if len(temp_list) == 1:
-                        generate_kwargs["temperature"] = temp_list[0]
-                        generate_kwargs["do_sample"] = temp_list[0] > 0.0
-                    else:
-                        generate_kwargs["temperature"] = tuple(temp_list)
-
-                compression_ratio_threshold = getattr(
-                    config, "compression_ratio_threshold", None
+                # TASK-505 P1 — shared decode-kwargs builder (was one of three
+                # hand-kept copies; semantics locked by
+                # tests/unit/test_batch_inference_kwargs.py).
+                generate_kwargs = build_whisper_generate_kwargs(
+                    config,
+                    task="transcribe",
+                    return_timestamps=True,
+                    language=lang,
                 )
-                if isinstance(compression_ratio_threshold, (int, float)):
-                    generate_kwargs["compression_ratio_threshold"] = float(
-                        compression_ratio_threshold
-                    )
-
-                logprob_threshold = getattr(config, "logprob_threshold", None)
-                if isinstance(logprob_threshold, (int, float)):
-                    generate_kwargs["logprob_threshold"] = float(logprob_threshold)
-
-                no_speech_threshold = getattr(config, "no_speech_threshold", None)
-                if isinstance(no_speech_threshold, (int, float)):
-                    generate_kwargs["no_speech_threshold"] = float(no_speech_threshold)
-
-                raw_condition = getattr(config, "condition_on_prev_tokens", False)
-                if isinstance(raw_condition, (bool, int)) and bool(raw_condition):
-                    generate_kwargs["condition_on_prev_tokens"] = True
 
                 generate_kwargs = {k: v for k, v in generate_kwargs.items() if v is not None}
 
@@ -2162,16 +2135,17 @@ class BatchTranscriptionService:
         code_switching = getattr(config, "code_switching", False)
         lang = getattr(config, "language", None)
 
-        generate_kwargs: dict[str, Any] = {
-            "task": "transcribe",
-            "return_timestamps": False,
-        }
+        # TASK-505 P1 — shared decode-kwargs builder (was one of three
+        # hand-kept copies). return_timestamps=False: Optimum decodes offsets
+        # per chunk itself for speed.
+        generate_kwargs = build_whisper_generate_kwargs(
+            config,
+            task="transcribe",
+            return_timestamps=False,
+            language=lang,
+        )
 
-        # TASK-351 P2-1 — a configured language is always pinned (passed to
-        # the engine), including when code_switching is enabled. language:
-        # null + code_switching keeps auto-LID.
         if lang is not None:
-            generate_kwargs["language"] = lang
             if code_switching:
                 logger.info(
                     "Code-switching enabled with pinned matrix language '%s'",
@@ -2179,41 +2153,6 @@ class BatchTranscriptionService:
                 )
         elif code_switching:
             logger.info("Code-switching enabled — language will be auto-detected per chunk")
-
-        no_repeat_ngram_size = getattr(config, "no_repeat_ngram_size", None)
-        if isinstance(no_repeat_ngram_size, int) and no_repeat_ngram_size > 0:
-            generate_kwargs["no_repeat_ngram_size"] = no_repeat_ngram_size
-
-        beam_size = getattr(config, "beam_size", None)
-        if isinstance(beam_size, int) and beam_size > 1:
-            generate_kwargs["num_beams"] = beam_size
-
-        temperature = getattr(config, "temperature", None)
-        if isinstance(temperature, (int, float)) and not isinstance(temperature, bool):
-            temperature = [float(temperature)]
-        if isinstance(temperature, (list, tuple)) and len(temperature) > 0:
-            temp_list = [float(x) for x in temperature]
-            if len(temp_list) == 1:
-                generate_kwargs["temperature"] = temp_list[0]
-                generate_kwargs["do_sample"] = temp_list[0] > 0.0
-            else:
-                generate_kwargs["temperature"] = tuple(temp_list)
-
-        compression_ratio_threshold = getattr(config, "compression_ratio_threshold", None)
-        if isinstance(compression_ratio_threshold, (int, float)):
-            generate_kwargs["compression_ratio_threshold"] = float(compression_ratio_threshold)
-
-        logprob_threshold = getattr(config, "logprob_threshold", None)
-        if isinstance(logprob_threshold, (int, float)):
-            generate_kwargs["logprob_threshold"] = float(logprob_threshold)
-
-        no_speech_threshold = getattr(config, "no_speech_threshold", None)
-        if isinstance(no_speech_threshold, (int, float)):
-            generate_kwargs["no_speech_threshold"] = float(no_speech_threshold)
-
-        raw_condition = getattr(config, "condition_on_prev_tokens", False)
-        if isinstance(raw_condition, (bool, int)) and bool(raw_condition):
-            generate_kwargs["condition_on_prev_tokens"] = True
 
         # Whisper initial_prompt conditioning (prompt_ids)
         if prompt:
@@ -2572,6 +2511,191 @@ class BatchTranscriptionService:
             language=result.get("language"),
             word_timestamps=result.get("word_timestamps", []),
             segments=result.get("segments", []),
+        )
+
+    async def _run_faster_whisper_inference(
+        self,
+        samples: np.ndarray,
+        sample_rate: int,
+        model: LoadedModel,
+        config: Any,
+        progress_callback: Callable[[float], None] | None = None,
+        initial_prompt: str | None = None,
+    ) -> RawTranscription:
+        """Run inference via faster-whisper (CTranslate2).
+
+        TASK-505 Phase 1 — batch parity: the engine was streaming-only since
+        TASK-351, so batch jobs on FASTER_WHISPER pipelines hard-failed with
+        "Unsupported model format". Reuses the streaming adapter (true
+        word-level timestamps + probabilities).
+        """
+        import asyncio
+
+        from stt_v2.streaming.faster_whisper_asr import FasterWhisperAsrAdapter
+
+        adapter = FasterWhisperAsrAdapter(
+            model,
+            config,
+            batch_size=getattr(config, "batch_size", None),
+        )
+
+        result = await asyncio.to_thread(
+            adapter, samples, sample_rate, prompt=initial_prompt
+        )
+
+        if progress_callback:
+            progress_callback(1.0)
+
+        return RawTranscription(
+            text=result.get("text", ""),
+            language=result.get("language"),
+            word_timestamps=result.get("word_timestamps", []),
+            segments=result.get("segments", []),
+        )
+
+    async def _run_parakeet_cpp_inference(
+        self,
+        samples: np.ndarray,
+        sample_rate: int,
+        model: LoadedModel,
+        config: Any,
+        progress_callback: Callable[[float], None] | None = None,
+    ) -> RawTranscription:
+        """Run inference via parakeet.cpp (ggml) — TASK-505 P3."""
+        import asyncio
+
+        from stt_v2.streaming.parakeet_cpp_asr import ParakeetCppAsrAdapter
+
+        if getattr(config, "initial_prompt", None):
+            logger.warning(
+                "initial_prompt was set on a parakeet.cpp pipeline; "
+                "RNNT models do not accept text conditioning. Ignoring."
+            )
+
+        adapter = ParakeetCppAsrAdapter(model, config)
+        result = await asyncio.to_thread(adapter, samples, sample_rate)
+
+        if progress_callback:
+            progress_callback(1.0)
+
+        return RawTranscription(
+            text=result.get("text", ""),
+            language=result.get("language"),
+            word_timestamps=result.get("word_timestamps", []),
+            segments=result.get("segments", []),
+        )
+
+    async def _run_azure_foundry_inference(
+        self,
+        samples: np.ndarray,
+        sample_rate: int,
+        model: LoadedModel,
+        config: Any,
+        progress_callback: Callable[[float], None] | None = None,
+    ) -> RawTranscription:
+        """Run inference via the Azure AI Foundry LLM Speech API
+        (MAI-Transcribe) — TASK-505 P3, decision D4 (preview, batch-only).
+
+        REST ``POST {endpoint}/speechtotext/transcriptions:transcribe`` with
+        multipart WAV + an ``enhancedMode`` definition selecting the MAI
+        model. 401 → CloudASRAuthError, 429 → CloudASRQuotaError (both on the
+        existing retry taxonomy).
+        """
+        import io
+        import json as _json
+
+        import httpx
+        import soundfile as sf
+
+        from ..core.exceptions import (
+            CloudASRAuthError,
+            CloudASRQuotaError,
+            CloudASRTranscriptionError,
+        )
+
+        conn = model.model or {}
+        endpoint = conn.get("endpoint", "")
+        api_key = conn.get("api_key", "")
+        mai_model = conn.get("model", "mai-transcribe-1.5")
+
+        wav_buf = io.BytesIO()
+        sf.write(wav_buf, samples, sample_rate, format="WAV", subtype="PCM_16")
+        wav_buf.seek(0)
+
+        definition: dict[str, Any] = {
+            "enhancedMode": {"enabled": True, "model": mai_model},
+        }
+        lang = getattr(config, "language", None)
+        if lang:
+            definition["locales"] = [normalize_language_for_azure(lang)]
+
+        url = f"{endpoint}/speechtotext/transcriptions:transcribe"
+        try:
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                response = await client.post(
+                    url,
+                    params={"api-version": "2025-10-15"},
+                    headers={"Ocp-Apim-Subscription-Key": api_key},
+                    files={"audio": ("audio.wav", wav_buf, "audio/wav")},
+                    data={"definition": _json.dumps(definition)},
+                )
+        except httpx.HTTPError as exc:
+            raise CloudASRTranscriptionError(
+                f"Azure Foundry request failed: {exc}"
+            ) from exc
+
+        if response.status_code == 401:
+            raise CloudASRAuthError("Azure Foundry authentication failed (401)")
+        if response.status_code == 429:
+            raise CloudASRQuotaError("Azure Foundry quota exceeded (429)")
+        if response.status_code >= 400:
+            raise CloudASRTranscriptionError(
+                f"Azure Foundry transcription failed ({response.status_code}): "
+                f"{response.text[:500]}"
+            )
+
+        body = response.json()
+        combined = body.get("combinedPhrases") or []
+        text = " ".join(
+            str(p.get("text", "") or "").strip() for p in combined
+        ).strip()
+
+        segments: list[dict[str, Any]] = []
+        word_timestamps: list[dict[str, Any]] = []
+        for phrase in body.get("phrases") or []:
+            offset_ms = float(phrase.get("offsetMilliseconds", 0) or 0)
+            duration_ms = float(phrase.get("durationMilliseconds", 0) or 0)
+            seg_text = str(phrase.get("text", "") or "").strip()
+            if seg_text:
+                segments.append(
+                    {
+                        "text": seg_text,
+                        "start": offset_ms / 1000.0,
+                        "end": (offset_ms + duration_ms) / 1000.0,
+                    }
+                )
+            for w in phrase.get("words") or []:
+                w_off = float(w.get("offsetMilliseconds", 0) or 0)
+                w_dur = float(w.get("durationMilliseconds", 0) or 0)
+                w_text = str(w.get("text", "") or "").strip()
+                if w_text:
+                    word_timestamps.append(
+                        {
+                            "word": w_text,
+                            "start": w_off / 1000.0,
+                            "end": (w_off + w_dur) / 1000.0,
+                            "confidence": float(w.get("confidence", 1.0) or 1.0),
+                        }
+                    )
+
+        if progress_callback:
+            progress_callback(1.0)
+
+        return RawTranscription(
+            text=text,
+            language=(body.get("phrases") or [{}])[0].get("locale") if body.get("phrases") else None,
+            word_timestamps=word_timestamps,
+            segments=segments,
         )
 
     def _postprocess(

@@ -204,6 +204,9 @@ class TestFeedVADDenoise:
             sample_rate=16000,
             vad_service=vad_svc,
             denoiser=ScalingDenoiser(scale=0.5),
+            # TASK-505 P2: these tests verify the LEGACY denoised-audio-to-ASR
+            # plumbing, which now lives behind scope="full" (default is dual-path).
+            denoise_scope="full",
             threshold=0.5,
             min_speech_duration_ms=250,
             min_silence_duration_ms=700,
@@ -263,6 +266,9 @@ class TestFlushDenoisePipeline:
             sample_rate=16000,
             vad_service=vad_svc,
             denoiser=TrackingDenoiser(),
+            # TASK-505 P2: these tests verify the LEGACY denoised-audio-to-ASR
+            # plumbing, which now lives behind scope="full" (default is dual-path).
+            denoise_scope="full",
             threshold=0.5,
             min_speech_duration_ms=250,
             min_silence_duration_ms=700,

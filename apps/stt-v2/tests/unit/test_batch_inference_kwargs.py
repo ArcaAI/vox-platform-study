@@ -35,60 +35,21 @@ def _assemble_generate_kwargs(
     *,
     return_timestamps: bool,
 ) -> dict[str, Any]:
-    """Replicate the inline ``generate_kwargs`` assembly in ``batch_service.py``.
+    """Delegate to the PRODUCTION builder (TASK-505 P1).
 
-    Keep this in sync with the Transformers/ONNX call sites whenever the
-    inline logic changes.
+    This helper used to be a hand-kept replica of the inline assembly in
+    ``batch_service.py``; the logic now lives in
+    ``stt_v2.models.whisper_kwargs.build_whisper_generate_kwargs`` and every
+    call site consumes it, so these tests exercise the real code.
     """
-    lang = getattr(config, "language", None)
+    from stt_v2.models.whisper_kwargs import build_whisper_generate_kwargs
 
-    generate_kwargs: dict[str, Any] = {
-        "task": "transcribe",
-        "return_timestamps": return_timestamps,
-    }
-
-    # TASK-351 P2-1 — a configured language is always pinned (passed to the
-    # engine), including when code_switching is enabled. language: null +
-    # code_switching keeps auto-LID.
-    if lang is not None:
-        generate_kwargs["language"] = lang
-
-    no_repeat_ngram_size = getattr(config, "no_repeat_ngram_size", None)
-    if isinstance(no_repeat_ngram_size, int) and no_repeat_ngram_size > 0:
-        generate_kwargs["no_repeat_ngram_size"] = no_repeat_ngram_size
-
-    beam_size = getattr(config, "beam_size", None)
-    if isinstance(beam_size, int) and beam_size > 1:
-        generate_kwargs["num_beams"] = beam_size
-
-    temperature = getattr(config, "temperature", None)
-    if isinstance(temperature, (int, float)) and not isinstance(temperature, bool):
-        temperature = [float(temperature)]
-    if isinstance(temperature, (list, tuple)) and len(temperature) > 0:
-        temp_list = [float(x) for x in temperature]
-        if len(temp_list) == 1:
-            generate_kwargs["temperature"] = temp_list[0]
-            generate_kwargs["do_sample"] = temp_list[0] > 0.0
-        else:
-            generate_kwargs["temperature"] = tuple(temp_list)
-
-    compression_ratio_threshold = getattr(config, "compression_ratio_threshold", None)
-    if isinstance(compression_ratio_threshold, (int, float)):
-        generate_kwargs["compression_ratio_threshold"] = float(compression_ratio_threshold)
-
-    logprob_threshold = getattr(config, "logprob_threshold", None)
-    if isinstance(logprob_threshold, (int, float)):
-        generate_kwargs["logprob_threshold"] = float(logprob_threshold)
-
-    no_speech_threshold = getattr(config, "no_speech_threshold", None)
-    if isinstance(no_speech_threshold, (int, float)):
-        generate_kwargs["no_speech_threshold"] = float(no_speech_threshold)
-
-    raw_condition = getattr(config, "condition_on_prev_tokens", False)
-    if isinstance(raw_condition, (bool, int)) and bool(raw_condition):
-        generate_kwargs["condition_on_prev_tokens"] = True
-
-    return generate_kwargs
+    return build_whisper_generate_kwargs(
+        config,
+        task="transcribe",
+        return_timestamps=return_timestamps,
+        language=getattr(config, "language", None),
+    )
 
 
 # =========================================================================

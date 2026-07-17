@@ -551,3 +551,160 @@ class TestVADSessionManager:
             await mgr.remove(f"session-{i}")
 
         assert mgr.active_session_count == 5
+
+
+# =========================================================================
+# Tests: TASK-505 Phase 0 — hysteresis + falsy-fallback fixes
+# =========================================================================
+
+
+class TestTask505Hysteresis:
+    """Offset hysteresis (neg_threshold) in _probs_to_segments.
+
+    Upstream Silero get_speech_timestamps exits speech only when the
+    probability drops below ``neg_threshold = threshold - 0.15``; a single
+    on/off threshold cuts trailing unvoiced phones (/s/, /f/, /t/) whose
+    probabilities hover between the two.
+    """
+
+    def test_tail_frames_between_thresholds_stay_in_segment(self):
+        # threshold 0.5 → neg_threshold 0.35. Frames at 0.45 are BELOW the
+        # onset threshold but ABOVE neg_threshold: they must extend the
+        # segment (word tail), not count as silence.
+        frame_size = 512
+        sample_rate = 16000
+        probs = [0.9] * 10 + [0.45] * 5 + [0.1] * 10
+
+        segments = SileroVADService._probs_to_segments(
+            probs=probs,
+            frame_size=frame_size,
+            sample_rate=sample_rate,
+            threshold=0.5,
+            min_speech_ms=96,
+            min_silence_ms=96,
+            pad_ms=0,
+            total_samples=frame_size * len(probs),
+        )
+
+        assert len(segments) == 1
+        # End = last frame >= neg_threshold (index 14) + 1 → 15 frames.
+        expected_end = 15 * frame_size / sample_rate
+        assert segments[0].end_time == pytest.approx(expected_end, abs=1e-6)
+
+    def test_frames_between_thresholds_do_not_trigger_onset(self):
+        # 0.45 alone (below onset threshold 0.5) must NOT start speech.
+        frame_size = 512
+        probs = [0.45] * 30
+
+        segments = SileroVADService._probs_to_segments(
+            probs=probs,
+            frame_size=frame_size,
+            sample_rate=16000,
+            threshold=0.5,
+            min_speech_ms=96,
+            min_silence_ms=96,
+            pad_ms=0,
+            total_samples=frame_size * len(probs),
+        )
+
+        assert segments == []
+
+    def test_neg_threshold_floor(self):
+        # Very low threshold: neg_threshold floors at 0.01, never <= 0.
+        frame_size = 512
+        probs = [0.2] * 10 + [0.005] * 10
+
+        segments = SileroVADService._probs_to_segments(
+            probs=probs,
+            frame_size=frame_size,
+            sample_rate=16000,
+            threshold=0.1,
+            min_speech_ms=96,
+            min_silence_ms=96,
+            pad_ms=0,
+            total_samples=frame_size * len(probs),
+        )
+
+        assert len(segments) == 1
+
+
+class TestTask505FalsyOverrides:
+    """Explicit zero overrides must be honored (no `or` falsy fallback)."""
+
+    def _run_detect(self, mocker, **kwargs):
+        service = SileroVADService()
+        service._loaded = True
+        mock_session = mocker.MagicMock()
+        # 20 speech frames then 20 silence frames
+        outputs = []
+        for prob in [0.9] * 20 + [0.05] * 20:
+            outputs.append([np.array([[prob]]), np.zeros((2, 1, 128), dtype=np.float32)])
+        mock_session.run = mocker.MagicMock(side_effect=outputs)
+        service._session = mock_session
+
+        samples = np.zeros(512 * 40, dtype=np.float32)
+        return service.detect_speech(samples, sample_rate=16000, **kwargs)
+
+    def test_explicit_zero_padding_respected(self, mocker):
+        result = self._run_detect(mocker, speech_pad_ms=0, min_silence_duration_ms=96)
+        assert len(result.segments) == 1
+        # pad 0 → start exactly at frame 0 (no negative-clamped pad offset
+        # ambiguity here; the discriminator is the end boundary).
+        seg = result.segments[0]
+        assert seg.start_time == pytest.approx(0.0)
+        # End of last speech frame = frame 20 boundary exactly (no pad).
+        assert seg.end_time == pytest.approx(20 * 512 / 16000, abs=1e-6)
+
+
+class TestTask505ReviewFixes:
+    """Fixes from the Phase 0 adversarial review."""
+
+    def test_padded_segments_never_overlap(self):
+        # 200 ms padding with a 3-frame (96 ms) gap between two words: without
+        # the upstream gap-split clamp, seg1.end overlaps seg2.start by ~300 ms
+        # and the merged WAV duplicates audio / diarization gets non-monotonic
+        # turns.
+        frame_size = 512
+        probs = [0.9] * 10 + [0.1] * 3 + [0.9] * 10 + [0.1] * 10
+
+        segments = SileroVADService._probs_to_segments(
+            probs=probs,
+            frame_size=frame_size,
+            sample_rate=16000,
+            threshold=0.6,
+            min_speech_ms=96,
+            min_silence_ms=96,
+            pad_ms=200,
+            total_samples=frame_size * len(probs),
+        )
+
+        assert len(segments) == 2
+        assert segments[0].end_time <= segments[1].start_time
+        # The raw gap midpoint is 11.5 frames — both boundaries meet there.
+        mid = 11.5 * frame_size / 16000
+        assert segments[0].end_time == pytest.approx(mid, abs=1e-6)
+        assert segments[1].start_time == pytest.approx(mid, abs=1e-6)
+
+    def test_mid_band_frames_do_not_clear_open_silence_run(self):
+        # Upstream Silero semantics: the silence run is wall-clock from the
+        # first sub-neg frame; mid-band frames (neg..threshold) must NOT clear
+        # it. Alternating 0.46/0.44 babble after speech (threshold 0.6, neg
+        # 0.45) must close the segment after min_silence, not hold it open.
+        frame_size = 512
+        probs = [0.7] * 10 + [0.44, 0.46] * 10 + [0.1] * 5
+
+        segments = SileroVADService._probs_to_segments(
+            probs=probs,
+            frame_size=frame_size,
+            sample_rate=16000,
+            threshold=0.6,
+            min_speech_ms=96,
+            min_silence_ms=96,  # 3 frames
+            pad_ms=0,
+            total_samples=frame_size * len(probs),
+        )
+
+        assert len(segments) == 1
+        # Run anchors at the first 0.44 (frame 10); closes 3 frames later —
+        # the segment must end at frame 10, not absorb the babble tail.
+        assert segments[0].end_time == pytest.approx(10 * frame_size / 16000, abs=1e-6)

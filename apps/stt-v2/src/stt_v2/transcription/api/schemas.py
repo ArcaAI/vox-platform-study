@@ -79,3 +79,23 @@ class ErrorResponse(BaseModel):
     error_code: str
     message: str
     details: dict[str, Any] = Field(default_factory=dict)
+
+
+class PipelineValidateRequest(BaseModel):
+    """TASK-505 P2 — validate a pipeline YAML against the Python parser."""
+
+    config_yaml: str = Field(..., description="Pipeline configuration YAML")
+
+
+class PipelineValidationErrorItem(BaseModel):
+    field: str
+    message: str
+
+
+class PipelineValidateResponse(BaseModel):
+    """Authoritative validation verdict (single source of truth: the same
+    PipelineYamlParser the runtime uses — the gateway proxies here instead of
+    hand-duplicating rules in TypeScript)."""
+
+    valid: bool
+    errors: list[PipelineValidationErrorItem] = Field(default_factory=list)

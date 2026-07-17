@@ -320,9 +320,13 @@ models:
         assert len(result.errors) == 0
 
     def test_validate_unsupported_version(self, parser):
-        """Test validation with unsupported version."""
+        """Test validation with unsupported version.
+
+        TASK-505 P2: "2.0" is now a SUPPORTED version — the unsupported
+        example moves to a future version string.
+        """
         yaml = """
-version: "2.0"
+version: "3.0"
 models:
   asr: whisper
 """
@@ -2160,3 +2164,219 @@ streaming:
         # distinctly (settled) from the remaining tentative tail.
         assert stable_chars > 0
         assert text2[:stable_chars] == committed2
+
+
+class TestTask505VadDefaults:
+    """TASK-505 Phase 0 — clinical VAD fallback defaults.
+
+    A pipeline that omits VAD keys must inherit the clinical defaults
+    (min_speech 100 ms so short confirmations survive; padding 200 ms per
+    2025-26 production guidance), aligned with VadConfig/settings — the old
+    parser fallback (350 ms) was the harshest value in the codebase.
+    """
+
+    @pytest.fixture
+    def parser(self):
+        return PipelineYamlParser()
+
+    def test_vad_fallbacks_align_with_clinical_defaults(self, parser):
+        yaml_str = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+preprocessing:
+  target_sample_rate: 16000
+"""
+        spec = parser.parse(yaml_str)
+        assert spec.preprocessing.vad.min_speech_duration_ms == 100
+        assert spec.preprocessing.vad.padding_ms == 200
+
+    def test_explicit_vad_values_still_win(self, parser):
+        yaml_str = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+preprocessing:
+  vad:
+    min_speech_duration_ms: 250
+    padding_ms: 30
+"""
+        spec = parser.parse(yaml_str)
+        assert spec.preprocessing.vad.min_speech_duration_ms == 250
+        assert spec.preprocessing.vad.padding_ms == 30
+
+
+class TestTask505SchemaV2:
+    """TASK-505 Phase 2 — pipeline schema v2.
+
+    v2 adds: `provider :: model[@rev]` shorthand, declarable
+    normalize-processor / resample / segment_merge stages, denoise.scope
+    (dual-path per decision D2), endpoint parsing, and the
+    diar_feature_extraction declaration. v1.0/1.1 configs parse unchanged.
+    """
+
+    @pytest.fixture
+    def parser(self):
+        return PipelineYamlParser()
+
+    def _parse(self, parser, body: str):
+        return parser.parse('version: "2.0"\n' + body)
+
+    def test_version_2_is_supported(self, parser):
+        spec = self._parse(parser, "models:\n  asr: whisper-large-v3\n")
+        result = parser.validate(spec)
+        assert not [e for e in result.errors if e.field == "version"]
+
+    def test_provider_model_shorthand(self, parser):
+        spec = self._parse(
+            parser,
+            "models:\n  asr: \"transformer :: openai/whisper-large-v3-turbo\"\n",
+        )
+        ref = spec.models.asr
+        assert ref.is_inline
+        assert ref.inline.engine == AiModelFormat.SAFETENSOR
+        assert ref.inline.hf_model_id == "openai/whisper-large-v3-turbo"
+
+    def test_provider_model_with_revision(self, parser):
+        spec = self._parse(
+            parser,
+            "models:\n  asr: whisper-large-v3\n  vad: \"onnx :: snakers4/silero-vad@v6.0\"\n",
+        )
+        vad = spec.models.vad
+        assert vad.is_inline
+        assert vad.inline.engine == AiModelFormat.ONNX
+        assert vad.inline.hf_model_id == "snakers4/silero-vad"
+        assert vad.inline.version == "v6.0"
+
+    def test_faster_whisper_provider(self, parser):
+        spec = self._parse(
+            parser,
+            "models:\n  asr: \"faster-whisper :: deepdml/faster-whisper-large-v3-turbo-ct2\"\n",
+        )
+        assert spec.models.asr.inline.engine == AiModelFormat.FASTER_WHISPER
+
+    def test_unknown_provider_raises(self, parser):
+        with pytest.raises(ValueError, match="Unknown ASR provider 'warpdrive'"):
+            self._parse(parser, "models:\n  asr: \"warpdrive :: some/model\"\n")
+
+    def test_normalize_dict_form(self, parser):
+        spec = self._parse(
+            parser,
+            "models:\n  asr: m\npreprocessing:\n  normalize:\n    enabled: true\n    processor: rms\n",
+        )
+        assert spec.preprocessing.normalize is True
+        assert spec.preprocessing.normalize_processor == "rms"
+
+    def test_normalize_bool_shorthand_keeps_peak(self, parser):
+        spec = self._parse(
+            parser, "models:\n  asr: m\npreprocessing:\n  normalize: false\n"
+        )
+        assert spec.preprocessing.normalize is False
+        assert spec.preprocessing.normalize_processor == "peak"
+
+    def test_invalid_normalize_processor_fails_validation(self, parser):
+        spec = self._parse(
+            parser,
+            "models:\n  asr: m\npreprocessing:\n  normalize:\n    processor: loudness\n",
+        )
+        result = parser.validate(spec)
+        assert any("normalize" in e.field for e in result.errors)
+
+    def test_resample_block(self, parser):
+        spec = self._parse(
+            parser,
+            "models:\n  asr: m\npreprocessing:\n  resample:\n    enabled: false\n    target_sample_rate: 16000\n",
+        )
+        assert spec.preprocessing.resample_enabled is False
+        assert spec.preprocessing.target_sample_rate == 16000
+
+    def test_resample_enabled_by_default(self, parser):
+        spec = self._parse(parser, "models:\n  asr: m\n")
+        assert spec.preprocessing.resample_enabled is True
+
+    def test_denoise_scope_defaults_to_vad_only(self, parser):
+        # Decision D2 (dual-path): denoised audio gates VAD; ASR gets raw.
+        spec = self._parse(
+            parser, "models:\n  asr: m\npreprocessing:\n  denoise:\n    enabled: true\n"
+        )
+        assert spec.preprocessing.denoise.scope == "vad_only"
+
+    def test_denoise_scope_full_accepted(self, parser):
+        spec = self._parse(
+            parser,
+            "models:\n  asr: m\npreprocessing:\n  denoise:\n    enabled: true\n    scope: full\n",
+        )
+        assert spec.preprocessing.denoise.scope == "full"
+
+    def test_invalid_denoise_scope_fails_validation(self, parser):
+        spec = self._parse(
+            parser,
+            "models:\n  asr: m\npreprocessing:\n  denoise:\n    scope: sideways\n",
+        )
+        result = parser.validate(spec)
+        assert any("denoise" in e.field for e in result.errors)
+
+    def test_segment_merge_block(self, parser):
+        spec = self._parse(
+            parser,
+            "models:\n  asr: m\npostprocessing:\n  segment_merge:\n    enabled: true\n    gap_threshold_s: 1.5\n    max_duration_s: 20\n",
+        )
+        sm = spec.postprocessing.segment_merge
+        assert sm.enabled is True
+        assert sm.gap_threshold_s == 1.5
+        assert sm.max_duration_s == 20.0
+
+    def test_segment_merge_absent_inherits_global(self, parser):
+        spec = self._parse(parser, "models:\n  asr: m\n")
+        assert spec.postprocessing.segment_merge.enabled is None
+
+    def test_endpoint_block_is_parsed(self, parser):
+        # EndpointConfig existed in the DTO but the parser never populated it.
+        spec = self._parse(
+            parser,
+            "models:\n  asr: m\npreprocessing:\n  endpoint:\n    enabled: true\n    min_endpoint_silence_ms: 250\n    min_words: 4\n",
+        )
+        ep = spec.preprocessing.endpoint
+        assert ep.enabled is True
+        assert ep.min_endpoint_silence_ms == 250
+        assert ep.min_words == 4
+
+    def test_diar_feature_extraction_requires_embedding_model(self, parser):
+        spec = self._parse(
+            parser,
+            "models:\n  asr: m\npreprocessing:\n  diar_feature_extraction:\n    enabled: true\n",
+        )
+        result = parser.validate(spec)
+        assert any("embedding" in e.message for e in result.errors)
+
+        spec_ok = self._parse(
+            parser,
+            "models:\n  asr: m\n  embedding: \"transformer :: speechbrain/spkrec-ecapa-voxceleb\"\npreprocessing:\n  diar_feature_extraction:\n    enabled: true\n",
+        )
+        result_ok = parser.validate(spec_ok)
+        assert not [e for e in result_ok.errors if "embedding" in e.message]
+
+    def test_v1_configs_parse_unchanged(self, parser):
+        # Regression guard: the entire v1.1 surface must keep parsing.
+        spec = parser.parse(
+            'version: "1.1"\n'
+            "models:\n  asr:\n    hf_model_id: openai/whisper-large-v3-turbo\n    engine: safetensor\n"
+            "preprocessing:\n  target_sample_rate: 16000\n  normalize: true\n"
+        )
+        assert spec.preprocessing.normalize is True
+        assert spec.preprocessing.resample_enabled is True
+        assert spec.preprocessing.denoise.scope == "vad_only"
+
+
+class TestTask505ReviewFixes:
+    """Parser fixes from the P2-P5 adversarial review."""
+
+    @pytest.fixture
+    def parser(self):
+        return PipelineYamlParser()
+
+    def test_resample_bool_shorthand(self, parser):
+        spec = parser.parse(
+            'version: "2.0"\nmodels:\n  asr: m\npreprocessing:\n  resample: false\n'
+        )
+        assert spec.preprocessing.resample_enabled is False

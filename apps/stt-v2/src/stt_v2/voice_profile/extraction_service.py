@@ -48,11 +48,18 @@ class ExtractionService:
             min_cross_sample_similarity = get_settings().voice_profile_min_similarity
         self._min_cross_sample_similarity = min_cross_sample_similarity
 
-        self._expected_embedding_dim = (
-            expected_embedding_dim
-            if expected_embedding_dim is not None
-            else EXPECTED_EMBEDDING_DIM
-        )
+        if expected_embedding_dim is None:
+            # TASK-505 P4 (decision D1) — the dimension follows the deployed
+            # `UserVoiceProfile.embedding vector(N)` column via settings, so
+            # the ECAPA cutover (192-d) is a config + SQL step, not a code
+            # change (see the TASK-505 README §Phase 4 runbook). Default stays
+            # the wespeaker 256-d until the owner schedules re-enrollment.
+            from ..core.config.settings import get_settings
+
+            expected_embedding_dim = getattr(
+                get_settings(), "voice_profile_embedding_dim", EXPECTED_EMBEDDING_DIM
+            )
+        self._expected_embedding_dim = expected_embedding_dim
 
     async def extract(
         self,

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | Review (investigated; plan proposed; no code written) |
+| **Status** | Completed |
 | **Type** | bugfix / developer-experience |
 | **Reported** | 2026-07-13 |
 | **Branch** | fix/2605-review |
@@ -156,7 +156,30 @@ This ticket treats the whole thing as **one bug** because there is no confirmed 
 
 ---
 
-## 5. Files Referenced (for the implementer)
+## 5. Implementation Summary (Step 1 + Step 2, TDD)
+
+**Step 1 — RC-1 confirmed.** Full stack started fresh (`pnpm dev:stack`, harness+worker included). Direct probe: `curl http://127.0.0.1:8866/api/v1/health` → `200 {"status":"healthy",...}`. Gateway aggregate (via the Admin Console UI, authenticated as `global_admin`) shows `harness: healthy`. No code defect — confirms 2.3: the service just wasn't running. (One incidental finding while re-launching: a stale harness process from an earlier investigation session was still holding port 8866, which `dev:stack`'s port preflight correctly refused to start over — killed it and re-launched clean. This is exactly the "stale run occupies the port" trigger named in RC-1.)
+
+**Step 2a+2c shipped** (2b docs folded in too — see `scripts/README.md`):
+- `apps/admin-console/src/features/monitoring/components/dev-service-down-hint.tsx` (new) — `DevServiceDownHint`: renders a `role="status"` banner naming any `down`/`unhealthy` service and pointing at `pnpm dev:doctor` / `pnpm dev:stack`. Hidden when `NODE_ENV === 'production'` (dev-only affordance, per its own doc comment).
+- `apps/admin-console/src/features/monitoring/components/monitoring-screen.tsx` — wires `DevServiceDownHint` into `ServiceHealthGrid`, above the service list.
+- `apps/admin-console/src/features/monitoring/components/__tests__/dev-service-down-hint.test.tsx` (new, TDD) — 4 cases: names the down service (not healthy ones), treats `unhealthy` same as `down`, renders nothing when all healthy/degraded, renders nothing when `enabled={false}` (prod gate).
+- `apps/admin-console/src/features/monitoring/components/__tests__/monitoring-screen.test.tsx` — 2 cases added: hint renders with the `pnpm dev:doctor` text + service name when a probe is `down`; hint absent on the default (all-healthy/degraded) fixture.
+- `scripts/dev-doctor.sh` — `http_check` takes an optional restart-hint; every required HOPE-service check now names its own start command on failure (e.g. `harness (8866) … → 000 — start with 'pnpm dev:harness'`).
+- `scripts/README.md` — new "Troubleshooting" section: explains the red-card-is-real posture, points at `dev:doctor` / `dev:stack`.
+
+**Verification evidence (live, this session):**
+- Unit: `pnpm --filter @arcaai/admin-console test` (scoped to the two changed suites) → **2 files, 12 tests passed**.
+- Lint: `pnpm --filter @arcaai/admin-console lint` → clean, 0 warnings.
+- Build: `pnpm --filter @arcaai/admin-console build` → compiled + typechecked successfully, all 54 routes generated.
+- Runtime (browser, both themes): logged into the Admin Console as `global_admin`; **Platform Dashboard** and **Monitoring** screens both show `harness: Healthy` (4ms) once the service is actually running. `nlp`/`guardrail` were genuinely down at check time (first-run HF model download still in progress — unrelated to this ticket) and the new hint rendered live, unprompted: *"nlp, guardrail aren't responding — if you started services by hand, one may have failed to launch. Run `pnpm dev:doctor` … or `pnpm dev:stack` …"* — verified in light and dark theme.
+- `pnpm dev:doctor` (live, real stack): `harness (8866) → 200 PASS`; the failing `nlp (8864)` line now prints `— start with 'pnpm dev:nlp'`, confirming the RC-A restart-hint hardening.
+
+**Out of scope / left as optional follow-ups (per §4 Step 3–4 and the ticket's own scope decision):** RC-B (`localhost`→`127.0.0.1` dev URL normalization) and RC-C (worker Temporal preflight) were not implemented — they're explicitly optional hardening, not needed to close the reported symptom.
+
+---
+
+## 6. Files Referenced (for the implementer)
 
 | Area | Path |
 |---|---|
@@ -174,8 +197,9 @@ This ticket treats the whole thing as **one bug** because there is no confirmed 
 
 ---
 
-## 6. Change History
+## 7. Change History
 
 | Date | Author | Change |
 |---|---|---|
 | 2026-07-13 | Claude (investigation) | Created ticket. Traced full admin→BFF→gateway→harness health chain; captured live ground truth (8866 not listening while other 4 services up); proved harness code imports and boots cleanly (200 in ~2s, ready 200). Root cause = harness process not running (operational), real fix = dev-time startup visibility. Plan proposed; no code written. |
+| 2026-07-13 | Claude (implementation) | TDD-implemented Step 2a+2c: `DevServiceDownHint` component (4 unit tests) wired into `MonitoringScreen` (2 new tests); `dev-doctor.sh` restart-hints; `scripts/README.md` troubleshooting section. Confirmed RC-1 live: started the full dev stack (killed a stale leftover harness process holding 8866 first — same footgun RC-1 describes), harness probed 200/healthy end-to-end through the real gateway + Admin Console UI (both themes). Unit/lint/build all green. Status → Completed. |

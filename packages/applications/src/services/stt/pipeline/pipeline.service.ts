@@ -471,6 +471,24 @@ export class PipelineService extends BaseService implements IPipelineService {
    * Validate pipeline YAML configuration
    */
   async validateYaml(yaml: string): Promise<{ valid: boolean; errors?: string[] }> {
+    // Fast local structural checks first (also the fallback verdict when the
+    // STT service is unreachable).
+    const local = this.validateYamlLocally(yaml);
+    if (!local.valid) {
+      return local;
+    }
+
+    // TASK-505 P2 — authoritative validation proxied to stt-v2, which runs
+    // the SAME PipelineYamlParser the runtime uses (schema v2: provider::model
+    // shorthand, stage toggles, engine/quantization/language rules). This
+    // replaces hand-duplicating those rules in TypeScript; when the service
+    // is unreachable the loose local verdict stands (create/update still
+    // fail-fast at the Python runtime if a bad config slips through).
+    const remote = await this.validateYamlRemotely(yaml);
+    return remote ?? local;
+  }
+
+  private validateYamlLocally(yaml: string): { valid: boolean; errors?: string[] } {
     const errors: string[] = [];
 
     try {
@@ -503,6 +521,39 @@ export class PipelineService extends BaseService implements IPipelineService {
     } catch (error) {
       errors.push(`YAML parsing error: ${error instanceof Error ? error.message : 'Unknown error'}`);
       return { valid: false, errors };
+    }
+  }
+
+  private async validateYamlRemotely(
+    yaml: string,
+  ): Promise<{ valid: boolean; errors?: string[] } | null> {
+    try {
+      // URL resolution mirrors serviceHealthMonitoring.service.ts; stt-v2 is
+      // gateway-fronted and carries no service-token middleware.
+      const base = process.env.STT_V2_URL || 'http://localhost:8861';
+      const response = await fetch(`${base}/api/v1/pipelines/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config_yaml: yaml }),
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!response.ok) {
+        return null;
+      }
+      const body = (await response.json()) as {
+        valid: boolean;
+        errors?: { field: string; message: string }[];
+      };
+      if (body.valid) {
+        return { valid: true };
+      }
+      return {
+        valid: false,
+        errors: (body.errors ?? []).map((e) => `${e.field}: ${e.message}`),
+      };
+    } catch {
+      // Unreachable/timeout — the local verdict stands.
+      return null;
     }
   }
 

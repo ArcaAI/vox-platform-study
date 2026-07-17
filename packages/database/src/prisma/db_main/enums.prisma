@@ -142,6 +142,10 @@ enum ModelTaskType {
   AUDIO_TO_AUDIO
   AUDIO_CLASSIFICATION
   VOICE_ACTIVITY_DETECTION
+  // TASK-505 P5 — diarization stack rows (Python dto.py already had
+  // SPEAKER_DIARIZATION; SPEAKER_EMBEDDING types the feature extractors).
+  SPEAKER_DIARIZATION
+  SPEAKER_EMBEDDING
 
   // Tabular
   TABULAR_CLASSIFICATION
@@ -293,6 +297,12 @@ enum AiModelFormat {
   FASTER_WHISPER // TASK-356 — faster-whisper engine artifacts
   MLX // TASK-356 — Apple-silicon MLX (LM Studio)
   GGUF // TASK-356 — llama.cpp / quantized GGUF
+  // TASK-505 P5 — Prisma↔Python enum sync (Python dto.py had these; DB rows
+  // with them previously crashed config_reader — and vice versa MLX/GGUF).
+  ONNX_OPTIMUM // HuggingFace Optimum ONNX (ORTModelForSpeechSeq2Seq)
+  AZURE_SPEECH // Cloud — Azure Cognitive Services Speech
+  AZURE_FOUNDRY // TASK-505 — Cloud, Azure AI Foundry MAI-Transcribe (preview)
+  PARAKEET_CPP // TASK-505 — parakeet.cpp ggml runtime (Parakeet/Nemotron)
 
   @@schema("core")
 }

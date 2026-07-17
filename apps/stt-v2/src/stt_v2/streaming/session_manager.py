@@ -21,6 +21,7 @@ import os
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Coroutine
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -29,6 +30,7 @@ import structlog
 
 from stt_v2.core.config.settings import get_settings
 from stt_v2.core.metrics import streaming_session_ended, streaming_session_started
+from stt_v2.models.whisper_kwargs import build_whisper_generate_kwargs
 from stt_v2.pipeline.dto import DualCaptureConfig, EndpointConfig
 from stt_v2.storage.blob_service import BlobService
 from stt_v2.streaming.capacity_guard import CapacityGuard
@@ -98,6 +100,25 @@ _RETRYABLE_4XX = frozenset({408, 425, 429})
 OUTBOX_LEASE_TTL_S = 90.0
 
 
+@dataclass
+class _SessionRuntime:
+    """Per-session runtime components built by ``_assemble_session_runtime``.
+
+    TASK-505 P1 — one assembly shared by session creation and crash recovery
+    (the duplicated recovery wiring had already drifted from creation).
+    """
+
+    publisher: ResultPublisher
+    preprocessor: StreamingPreprocessor
+    inference_worker: StreamingInferenceWorker
+    vad_service: Any
+    asr_pipeline: Any
+    denoiser: Any
+    vad_enabled: bool
+    target_sr: int
+    effective_diarization: bool
+
+
 class SessionManager:
     """Manages the full lifecycle of streaming sessions.
 
@@ -135,6 +156,11 @@ class SessionManager:
         # TASK-351 P1-1 — per-session LocalAgreement-2 commit policies
         # (only sessions whose pipeline enables streaming.commit_policy).
         self._commit_policies: dict[str, LocalAgreementPolicy] = {}
+        # TASK-505 — per-pipeline embedding services, cached per model id
+        # (the seeded default pipeline declares one, so every session would
+        # otherwise reload the model).
+        self._pipeline_embedding_services: dict[str, Any] = {}
+        self._pipeline_embedding_lock = asyncio.Lock()
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._reaper_task: asyncio.Task[None] | None = None
         self._snapshot_task: asyncio.Task[None] | None = None
@@ -302,6 +328,269 @@ class SessionManager:
         # Shared with crash recovery, so recovered sessions get one too.
         kwargs["endpointer"] = self._make_endpointer(pipeline_config)
         return kwargs
+
+    async def _assemble_session_runtime(
+        self,
+        *,
+        session_id: str,
+        tenant_id: str | None,
+        consultation_id: str | None,
+        user_id: str | None,
+        sample_rate: int,
+        pipeline_config: Any,
+        build_speaker_identifier: bool,
+    ) -> _SessionRuntime:
+        """Build the per-session runtime components (TASK-505 P1).
+
+        ONE assembly shared by ``create_session`` and ``_recover_sessions`` —
+        the recovery path previously kept a hand-copied second wiring that
+        drifted (it dropped ``max_segment_text_chars``, both hallucination
+        knobs, and the ``enable_prev_text_context`` zeroing, so recovered
+        sessions silently ran with code defaults).
+
+        ``build_speaker_identifier=False`` (recovery) skips the embedding
+        SpeakerIdentifier: its in-memory tracker state is lost on crash, so a
+        recovered session restarts without it (Sortformer, being stateless
+        per-utterance, IS reconstructed either way — TASK-475 AC-4).
+        """
+        publisher = ResultPublisher(redis=self._redis, session_id=session_id)
+
+        # VAD + preprocessor (YAML wins, profile silence default — TASK-351 P0-4)
+        vad_service = await self._load_vad_service(pipeline_config, session_id)
+        vad_enabled = bool(pipeline_config and pipeline_config.preprocessing.vad.enabled)
+        vad_kwargs = self._build_preprocessor_vad_kwargs(pipeline_config)
+
+        target_sr = (
+            pipeline_config.preprocessing.target_sample_rate
+            if pipeline_config and pipeline_config.preprocessing.target_sample_rate
+            else sample_rate
+        )
+
+        denoiser = None
+        if pipeline_config:
+            denoise_enabled = pipeline_config.preprocessing.denoise.enabled
+        else:
+            denoise_enabled = self._profile.denoise_enabled_default
+        if denoise_enabled:
+            strength = (
+                pipeline_config.preprocessing.denoise.strength
+                if pipeline_config
+                else 1.0
+            )
+            denoiser = StreamingDenoiser(input_sr=target_sr, strength=strength)
+            if not denoiser.initialize():
+                denoiser = None  # pyrnnoise unavailable, degrade gracefully
+
+        normalize = (
+            pipeline_config.preprocessing.normalize
+            if pipeline_config
+            else False
+        )
+
+        denoise_scope = (
+            getattr(pipeline_config.preprocessing.denoise, "scope", "vad_only")
+            if pipeline_config
+            else "vad_only"
+        )
+
+        preprocessor = StreamingPreprocessor(
+            session_id=session_id,
+            sample_rate=sample_rate,
+            vad_service=vad_service,
+            target_sample_rate=target_sr,
+            normalize=normalize,
+            denoiser=denoiser,
+            denoise_scope=denoise_scope,
+            **vad_kwargs,
+        )
+
+        # ASR + diarization
+        asr_pipeline, initial_prompt = await self._load_asr_pipeline(
+            pipeline_config, session_id, tenant_id=tenant_id,
+        )
+
+        diarization_config = pipeline_config.diarization if pipeline_config else None
+        effective_diarization = (
+            bool(getattr(diarization_config, "enabled", False))
+            if diarization_config
+            else False
+        )
+
+        # TASK-475 (Theme B2) — sortformer sessions use the self-hosted
+        # Streaming Sortformer diarizer INSTEAD of the embedding
+        # SpeakerIdentifier; the embedding preseed/tracker path is skipped.
+        sortformer_diarizer = _build_sortformer_diarizer(diarization_config)
+
+        # TASK-505 P2-P5 review — resolve the per-pipeline embedding service
+        # ONCE for the whole session (worker utterance-extraction AND the
+        # speaker-identifier below); cached per model id on the manager so the
+        # seeded default (ECAPA on every session) doesn't reload the model.
+        pipeline_embedding_service = None
+        if effective_diarization and sortformer_diarizer is None:
+            emb_model_id = None
+            if pipeline_config and pipeline_config.models.embedding:
+                emb_ref = pipeline_config.models.embedding
+                if emb_ref.is_inline and emb_ref.inline:
+                    emb_model_id = emb_ref.inline.hf_model_id
+            if emb_model_id:
+                try:
+                    pipeline_embedding_service = (
+                        await self._get_pipeline_embedding_service(emb_model_id)
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to load pipeline embedding model %s for session %s",
+                        emb_model_id,
+                        session_id,
+                        exc_info=True,
+                    )
+
+        speaker_identifier = None
+        if (
+            build_speaker_identifier
+            and effective_diarization
+            and diarization_config
+            and sortformer_diarizer is None
+        ):
+            from stt_v2.diarization.embedding_service import get_embedding_service
+            from stt_v2.diarization.speaker_identifier import SpeakerIdentifier
+            from stt_v2.diarization.speaker_tracker import SpeakerTracker
+
+            speaker_tracker = SpeakerTracker(
+                max_speakers=diarization_config.max_speakers,
+                max_embeddings_per_speaker=diarization_config.max_embeddings_per_speaker,
+            )
+
+            seg_service = None
+            if diarization_config.enable_segmentation_refinement:
+                try:
+                    # TASK-505 P2-P5 review — pipeline_config here is a
+                    # PipelineSpec (already `.spec`); the previous
+                    # `pipeline_config.spec.models.…` raised AttributeError —
+                    # swallowed here, so per-pipeline segmentation models
+                    # never loaded in streaming.
+                    seg_model_id = None
+                    if pipeline_config and pipeline_config.models.segmentation:
+                        seg_ref = pipeline_config.models.segmentation
+                        if seg_ref.is_inline and seg_ref.inline:
+                            seg_model_id = seg_ref.inline.hf_model_id
+                    if seg_model_id:
+                        from stt_v2.diarization.segmentation_service import SegmentationService
+                        seg_service = SegmentationService(hf_model_id=seg_model_id)
+                        await seg_service.initialize()
+                except Exception:
+                    logger.warning("Failed to load segmentation model for session %s", session_id, exc_info=True)
+
+            # TASK-505 P2 — the per-pipeline embedding service resolved above;
+            # settings singleton is the fallback.
+            emb_service = pipeline_embedding_service
+            try:
+                if emb_service is None:
+                    emb_service = get_embedding_service()
+            except Exception:
+                logger.warning("Failed to get embedding service for session %s", session_id, exc_info=True)
+
+            speaker_identifier = SpeakerIdentifier(
+                tracker=speaker_tracker,
+                embedding_service=emb_service,
+                segmentation_service=seg_service,
+                config=diarization_config,
+            )
+
+            if consultation_id or user_id:
+                # TASK-490 (B-04) — pass the session tenant so the
+                # voice-profile lookups are tenant-scoped (they fail
+                # closed without it; a cross-tenant profile is never
+                # served).
+                await self._preseed_speaker(
+                    speaker_tracker,
+                    consultation_id,
+                    session_id,
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                )
+
+        # Inference worker (per-utterance ASR)
+        postprocessing_config = (
+            pipeline_config.postprocessing if pipeline_config else None
+        )
+
+        inference_cfg = pipeline_config.inference if pipeline_config else None
+        prev_text_context_words = getattr(
+            inference_cfg, "prev_text_context_words", None
+        )
+        if inference_cfg and not getattr(inference_cfg, "enable_prev_text_context", True):
+            prev_text_context_words = 0
+        max_words_per_second = getattr(
+            inference_cfg, "max_words_per_second", None
+        )
+        max_segment_text_chars = getattr(
+            inference_cfg, "max_segment_text_chars", None
+        )
+        hallucination_rms_threshold = getattr(
+            inference_cfg, "hallucination_rms_threshold", None
+        )
+        hallucination_short_word_count = getattr(
+            inference_cfg, "hallucination_short_word_count", None
+        )
+
+        # TASK-351 P2-3 — opt-in English gloss (None unless enabled)
+        gloss_pipeline = await self._load_gloss_pipeline(
+            pipeline_config, session_id
+        )
+
+        inference_worker = StreamingInferenceWorker(
+            result_publisher=publisher,
+            asr_pipeline=asr_pipeline,
+            tenant_id=tenant_id,
+            consultation_id=consultation_id,
+            diarization_config=diarization_config,
+            postprocessing_config=postprocessing_config,
+            initial_prompt=initial_prompt,
+            speaker_identifier=speaker_identifier,
+            sortformer_diarizer=sortformer_diarizer,
+            prev_text_context_words=prev_text_context_words,
+            max_words_per_second=max_words_per_second,
+            max_segment_text_chars=max_segment_text_chars,
+            hallucination_rms_threshold=hallucination_rms_threshold,
+            hallucination_short_word_count=hallucination_short_word_count,
+            gloss_callable=gloss_pipeline,
+            embedding_service=pipeline_embedding_service,
+        )
+
+        return _SessionRuntime(
+            publisher=publisher,
+            preprocessor=preprocessor,
+            inference_worker=inference_worker,
+            vad_service=vad_service,
+            asr_pipeline=asr_pipeline,
+            denoiser=denoiser,
+            vad_enabled=vad_enabled,
+            target_sr=target_sr,
+            effective_diarization=effective_diarization,
+        )
+
+    async def _get_pipeline_embedding_service(self, hf_model_id: str) -> Any:
+        """Resolve (and cache) a per-pipeline speaker-embedding service.
+
+        TASK-505 P2-P5 review — one initialized service per model id for the
+        manager's lifetime; single-flight via lock so concurrent session
+        creation doesn't double-load the model.
+        """
+        cached = self._pipeline_embedding_services.get(hf_model_id)
+        if cached is not None:
+            return cached
+        async with self._pipeline_embedding_lock:
+            cached = self._pipeline_embedding_services.get(hf_model_id)
+            if cached is not None:
+                return cached
+            from stt_v2.diarization.embedding_service import create_embedding_service
+
+            logger.info("Loading pipeline diarization embedding model: %s", hf_model_id)
+            service = create_embedding_service(hf_model_id=hf_model_id)
+            await service.initialize()
+            self._pipeline_embedding_services[hf_model_id] = service
+            return service
 
     def _make_commit_policy(self, pipeline_config: Any) -> LocalAgreementPolicy | None:
         """Build a LocalAgreement-2 policy when the pipeline enables it.
@@ -529,172 +818,25 @@ class SessionManager:
             if language is not None and pipeline_config:
                 pipeline_config.inference.language = language
 
-            # Create result publisher (needed by inference worker)
-            publisher = ResultPublisher(redis=self._redis, session_id=session_id)
-
-            # Load VAD service from pipeline config (B1: Wire VAD)
-            vad_service = await self._load_vad_service(pipeline_config, session_id)
-
-            # Create streaming preprocessor (VAD + utterance extraction).
-            # TASK-351 P0-4 — kwargs built by the shared helper (YAML wins,
-            # profile silence default, settings-driven partial window).
-            vad_enabled = bool(pipeline_config and pipeline_config.preprocessing.vad.enabled)
-            vad_kwargs = self._build_preprocessor_vad_kwargs(pipeline_config)
-
-            target_sr = (
-                pipeline_config.preprocessing.target_sample_rate
-                if pipeline_config and pipeline_config.preprocessing.target_sample_rate
-                else sample_rate
-            )
-
-            # Noise suppression setup
-            denoiser = None
-            if pipeline_config:
-                denoise_enabled = pipeline_config.preprocessing.denoise.enabled
-            else:
-                denoise_enabled = self._profile.denoise_enabled_default
-            if denoise_enabled:
-                strength = (
-                    pipeline_config.preprocessing.denoise.strength
-                    if pipeline_config
-                    else 1.0
-                )
-                denoiser = StreamingDenoiser(input_sr=target_sr, strength=strength)
-                if not denoiser.initialize():
-                    denoiser = None  # pyrnnoise unavailable, degrade gracefully
-            normalize = (
-                pipeline_config.preprocessing.normalize
-                if pipeline_config
-                else False
-            )
-
-            preprocessor = StreamingPreprocessor(
+            # TASK-505 P1 — one shared assembly for creation AND recovery.
+            runtime = await self._assemble_session_runtime(
                 session_id=session_id,
-                sample_rate=sample_rate,
-                vad_service=vad_service,
-                target_sample_rate=target_sr,
-                normalize=normalize,
-                denoiser=denoiser,
-                **vad_kwargs,
-            )
-
-            session.processed_sample_rate = target_sr
-            session._vad_active = vad_enabled
-
-            # Load ASR pipeline from pipeline config (B2: Wire ASR)
-            asr_pipeline, initial_prompt = await self._load_asr_pipeline(
-                pipeline_config, session_id,
-            )
-
-            diarization_config = pipeline_config.diarization if pipeline_config else None
-            effective_diarization = bool(getattr(diarization_config, "enabled", False)) if diarization_config else False
-
-            metadata.diarization = effective_diarization
-            await session.force_persist()
-
-            # TASK-475 (Theme B2) — sortformer sessions use the self-hosted
-            # Streaming Sortformer diarizer INSTEAD of the embedding
-            # SpeakerIdentifier; the embedding preseed/tracker path is skipped.
-            sortformer_diarizer = _build_sortformer_diarizer(diarization_config)
-
-            speaker_identifier = None
-            if effective_diarization and diarization_config and sortformer_diarizer is None:
-                from stt_v2.diarization.embedding_service import get_embedding_service
-                from stt_v2.diarization.speaker_identifier import SpeakerIdentifier
-                from stt_v2.diarization.speaker_tracker import SpeakerTracker
-
-                speaker_tracker = SpeakerTracker(
-                    max_speakers=diarization_config.max_speakers,
-                    max_embeddings_per_speaker=diarization_config.max_embeddings_per_speaker,
-                )
-
-                seg_service = None
-                if diarization_config.enable_segmentation_refinement:
-                    try:
-                        seg_model_id = None
-                        if pipeline_config and pipeline_config.spec.models.segmentation:
-                            seg_ref = pipeline_config.spec.models.segmentation
-                            if seg_ref.is_inline and seg_ref.inline:
-                                seg_model_id = seg_ref.inline.hf_model_id
-                        if seg_model_id:
-                            from stt_v2.diarization.segmentation_service import SegmentationService
-                            seg_service = SegmentationService(hf_model_id=seg_model_id)
-                            await seg_service.initialize()
-                    except Exception:
-                        logger.warning("Failed to load segmentation model for session %s", session_id, exc_info=True)
-
-                emb_service = None
-                try:
-                    emb_service = get_embedding_service()
-                except Exception:
-                    logger.warning("Failed to get embedding service for session %s", session_id, exc_info=True)
-
-                speaker_identifier = SpeakerIdentifier(
-                    tracker=speaker_tracker,
-                    embedding_service=emb_service,
-                    segmentation_service=seg_service,
-                    config=diarization_config,
-                )
-
-                if consultation_id or user_id:
-                    # TASK-490 (B-04) — pass the session tenant so the
-                    # voice-profile lookups are tenant-scoped (they fail
-                    # closed without it; a cross-tenant profile is never
-                    # served).
-                    await self._preseed_speaker(
-                        speaker_tracker,
-                        consultation_id,
-                        session_id,
-                        tenant_id=tenant_id,
-                        user_id=user_id,
-                    )
-
-            # Create inference worker (per-utterance ASR)
-            postprocessing_config = (
-                pipeline_config.postprocessing if pipeline_config else None
-            )
-
-            inference_cfg = pipeline_config.inference if pipeline_config else None
-            prev_text_context_words = getattr(
-                inference_cfg, "prev_text_context_words", None
-            )
-            if inference_cfg and not getattr(inference_cfg, "enable_prev_text_context", True):
-                prev_text_context_words = 0
-            max_words_per_second = getattr(
-                inference_cfg, "max_words_per_second", None
-            )
-            max_segment_text_chars = getattr(
-                inference_cfg, "max_segment_text_chars", None
-            )
-            hallucination_rms_threshold = getattr(
-                inference_cfg, "hallucination_rms_threshold", None
-            )
-            hallucination_short_word_count = getattr(
-                inference_cfg, "hallucination_short_word_count", None
-            )
-
-            # TASK-351 P2-3 — opt-in English gloss (None unless enabled)
-            gloss_pipeline = await self._load_gloss_pipeline(
-                pipeline_config, session_id
-            )
-
-            inference_worker = StreamingInferenceWorker(
-                result_publisher=publisher,
-                asr_pipeline=asr_pipeline,
                 tenant_id=tenant_id,
                 consultation_id=consultation_id,
-                diarization_config=diarization_config,
-                postprocessing_config=postprocessing_config,
-                initial_prompt=initial_prompt,
-                speaker_identifier=speaker_identifier,
-                sortformer_diarizer=sortformer_diarizer,
-                prev_text_context_words=prev_text_context_words,
-                max_words_per_second=max_words_per_second,
-                max_segment_text_chars=max_segment_text_chars,
-                hallucination_rms_threshold=hallucination_rms_threshold,
-                hallucination_short_word_count=hallucination_short_word_count,
-                gloss_callable=gloss_pipeline,
+                user_id=user_id,
+                sample_rate=sample_rate,
+                pipeline_config=pipeline_config,
+                build_speaker_identifier=True,
             )
+            publisher = runtime.publisher
+            preprocessor = runtime.preprocessor
+            inference_worker = runtime.inference_worker
+
+            session.processed_sample_rate = runtime.target_sr
+            session._vad_active = runtime.vad_enabled
+
+            metadata.diarization = runtime.effective_diarization
+            await session.force_persist()
 
             self._register_inference_runtime(session, inference_worker)
 
@@ -740,9 +882,9 @@ class SessionManager:
                 session_id=session_id,
                 tenant_id=tenant_id,
                 pipeline_id=pipeline_id,
-                has_vad=vad_service is not None,
-                has_asr=asr_pipeline is not None,
-                has_denoiser=denoiser is not None,
+                has_vad=runtime.vad_service is not None,
+                has_asr=runtime.asr_pipeline is not None,
+                has_denoiser=runtime.denoiser is not None,
                 active_sessions=self.active_session_count,
             )
             return session
@@ -973,6 +1115,7 @@ class SessionManager:
         self,
         pipeline_config: Any,
         session_id: str,
+        tenant_id: str | None = None,
     ) -> tuple[StreamingAsrCallable | None, str | None]:
         """Load ASR model and create a callable pipeline for streaming inference.
 
@@ -996,10 +1139,24 @@ class SessionManager:
         model_cache = get_model_cache()
         asr_ref = pipeline_config.models.asr
 
+        # TASK-505 P5 review — the seeded matrix pipelines reference ASR
+        # models by CATALOG SLUG (decision D6); only batch resolved slugs
+        # before, so streaming raised ModelLoadError on every slug-based
+        # pipeline. Resolve the DB row here (tenant-scoped, mirroring
+        # batch_service._load_models).
+        db_model_config = None
+        if not (asr_ref.is_inline and asr_ref.inline) and asr_ref.slug:
+            from stt_v2.pipeline.config_reader import get_model_reader
+
+            db_model_config = await get_model_reader().get_model_by_slug(
+                asr_ref.slug, tenant_id
+            )
+
         # Load ASR model via the model cache
         asr_model = await model_cache.get_or_load_from_ref(
             model_ref=asr_ref,
             task_type=ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+            db_model_config=db_model_config,
         )
 
         # Use pipeline inference config directly
@@ -1080,7 +1237,13 @@ class SessionManager:
             return None
 
         fmt = getattr(asr_model, "format", None)
-        if fmt in (AiModelFormat.NEMO, AiModelFormat.AZURE_SPEECH):
+        if fmt in (
+            AiModelFormat.NEMO,
+            AiModelFormat.AZURE_SPEECH,
+            # TASK-505 P3 — no translate task on the new engines either.
+            AiModelFormat.AZURE_FOUNDRY,
+            AiModelFormat.PARAKEET_CPP,
+        ):
             logger.warning(
                 "streaming_english_gloss is not supported for engine %s — "
                 "gloss disabled",
@@ -1106,109 +1269,199 @@ class SessionManager:
     ) -> StreamingAsrCallable:
         """Create a standalone callable ASR pipeline for streaming inference.
 
-        ``task="translate"`` (TASK-351 P2-3) builds the English-gloss variant
-        on the same loaded model (Whisper-family engines only — the gloss
-        caller filters out NeMo/Azure/multimodal before requesting it).
+        TASK-505 P1 — dispatch is registry-driven: the engine adapter is
+        resolved from the processor registry by ``AiModelFormat``, so adding
+        an engine registers one spec + one adapter instead of editing an
+        if/elif chain here AND in batch. ``task="translate"`` (TASK-351 P2-3)
+        builds the English-gloss variant on the same loaded model
+        (Whisper-family engines only — the gloss caller filters out
+        NeMo/Azure/multimodal before requesting it).
         """
-        import torch
-
         from stt_v2.models.base_loader import LoadedModel
-        from stt_v2.pipeline.dto import AiModelFormat
+        from stt_v2.processors.asr_engines import ASR_FORMAT_TO_NAME, resolve_asr_engine
+        from stt_v2.processors.binding import resolve_engine_binding
 
         loaded_model: LoadedModel = asr_model
+        engine = resolve_asr_engine(loaded_model.format)
 
-        if loaded_model.format == AiModelFormat.NEMO:
-            from stt_v2.models.nemo_adapter import NemoAsrAdapter
-
-            if initial_prompt:
-                logger.warning(
-                    "initial_prompt was supplied for a NeMo (Parakeet) "
-                    "streaming pipeline; Parakeet does not support text "
-                    "conditioning. Ignoring.",
-                )
-            if getattr(inference_config, "code_switching", False):
-                logger.warning(
-                    "code_switching was requested for a NeMo (Parakeet) "
-                    "streaming pipeline; ignoring (multilingual variants "
-                    "must be selected at the model level).",
-                )
-
-            nemo_adapter = NemoAsrAdapter(loaded_model, inference_config)
-
-            async def run_nemo_inference(
-                samples: np.ndarray,
-                sample_rate: int,
-                *,
-                prompt: str | None = None,  # noqa: ARG001 — ignored
-            ) -> dict[str, Any]:
-                return await asyncio.to_thread(
-                    nemo_adapter, samples, sample_rate
+        # TASK-505 P1 — resolve + log the (device, compute) binding once per
+        # session so silent downgrades (e.g. faster-whisper MPS→CPU) are
+        # visible; a mismatch warns (observability-first, never blocks).
+        engine_name = ASR_FORMAT_TO_NAME.get(loaded_model.format)
+        if engine_name is not None and task == "transcribe":
+            profile = getattr(self, "_profile", None)
+            binding = resolve_engine_binding(
+                "asr",
+                engine_name,
+                mode="streaming",
+                compute_pref=[getattr(profile, "asr_compute_type", None)],
+            )
+            if binding is not None:
+                logger.info(
+                    "ASR engine binding resolved",
+                    engine=engine_name,
+                    device=binding.device,
+                    compute=binding.compute,
                 )
 
-            return run_nemo_inference
+        callable_: StreamingAsrCallable = engine.make_streaming_callable(
+            self,
+            loaded_model,
+            inference_config,
+            initial_prompt=initial_prompt,
+            task=task,
+        )
+        return callable_
 
-        if loaded_model.format == AiModelFormat.FASTER_WHISPER:
-            # TASK-351 P1-2 — faster-whisper/CTranslate2 engine.
-            from stt_v2.streaming.faster_whisper_asr import FasterWhisperAsrAdapter
+    def _make_nemo_callable(
+        self,
+        loaded_model: Any,
+        inference_config: Any,
+        initial_prompt: str | None = None,
+    ) -> StreamingAsrCallable:
+        """NeMo (Parakeet) per-utterance streaming callable (moved verbatim
+        from the former _make_asr_callable branch — TASK-505 P1)."""
+        from stt_v2.models.nemo_adapter import NemoAsrAdapter
 
-            fw_adapter = FasterWhisperAsrAdapter(
-                loaded_model,
-                inference_config,
-                batch_size=getattr(self._profile, "asr_max_batch_size", None),
-                task=task,
+        if initial_prompt:
+            logger.warning(
+                "initial_prompt was supplied for a NeMo (Parakeet) "
+                "streaming pipeline; Parakeet does not support text "
+                "conditioning. Ignoring.",
+            )
+        if getattr(inference_config, "code_switching", False):
+            logger.warning(
+                "code_switching was requested for a NeMo (Parakeet) "
+                "streaming pipeline; ignoring (multilingual variants "
+                "must be selected at the model level).",
             )
 
-            async def run_faster_whisper_inference(
-                samples: np.ndarray,
-                sample_rate: int,
-                *,
-                prompt: str | None = None,
-            ) -> dict[str, Any]:
-                return await asyncio.to_thread(
-                    fw_adapter, samples, sample_rate, prompt=prompt
-                )
+        nemo_adapter = NemoAsrAdapter(loaded_model, inference_config)
 
-            return run_faster_whisper_inference
-
-        if loaded_model.format == AiModelFormat.AZURE_SPEECH:
-            from stt_v2.models.azure_speech_loader import normalize_language_for_azure
-            from stt_v2.streaming.azure_asr import azure_recognize_utterance
-
-            speech_config = loaded_model.model  # SpeechConfig instance
-            language = normalize_language_for_azure(
-                getattr(inference_config, "language", None),
+        async def run_nemo_inference(
+            samples: np.ndarray,
+            sample_rate: int,
+            *,
+            prompt: str | None = None,  # noqa: ARG001 — ignored
+        ) -> dict[str, Any]:
+            return await asyncio.to_thread(
+                nemo_adapter, samples, sample_rate
             )
-            code_switching = getattr(inference_config, "code_switching", False)
 
-            # Warn about Whisper-specific params that don't apply
-            for param in (
-                "beam_size", "temperature", "compression_ratio_threshold",
-                "logprob_threshold", "no_speech_threshold",
-                "condition_on_prev_tokens",
-            ):
-                if getattr(inference_config, param, None) is not None:
-                    logger.warning(
-                        "Azure Speech streaming: ignoring Whisper-specific "
-                        "param %s",
-                        param,
-                    )
+        return run_nemo_inference
 
-            async def run_azure_inference(
-                samples: np.ndarray,
-                sample_rate: int,
-                *,
-                prompt: str | None = None,  # noqa: ARG001 — not used by Azure
-            ) -> dict[str, Any]:
-                return await asyncio.to_thread(
-                    azure_recognize_utterance,
-                    speech_config,
-                    samples,
-                    sample_rate,
-                    language,
-                    code_switching,
+    def _make_faster_whisper_callable(
+        self,
+        loaded_model: Any,
+        inference_config: Any,
+        task: str = "transcribe",
+    ) -> StreamingAsrCallable:
+        """faster-whisper/CTranslate2 per-utterance streaming callable (moved
+        verbatim from the former _make_asr_callable branch — TASK-505 P1)."""
+        # TASK-351 P1-2 — faster-whisper/CTranslate2 engine.
+        from stt_v2.streaming.faster_whisper_asr import FasterWhisperAsrAdapter
+
+        fw_adapter = FasterWhisperAsrAdapter(
+            loaded_model,
+            inference_config,
+            batch_size=getattr(self._profile, "asr_max_batch_size", None),
+            task=task,
+        )
+
+        async def run_faster_whisper_inference(
+            samples: np.ndarray,
+            sample_rate: int,
+            *,
+            prompt: str | None = None,
+        ) -> dict[str, Any]:
+            return await asyncio.to_thread(
+                fw_adapter, samples, sample_rate, prompt=prompt
+            )
+
+        return run_faster_whisper_inference
+
+    def _make_parakeet_cpp_callable(
+        self,
+        loaded_model: Any,
+        inference_config: Any,
+    ) -> StreamingAsrCallable:
+        """parakeet.cpp per-utterance streaming callable (TASK-505 P3).
+
+        Minimal integration: per-utterance decode via the duck-typed binding.
+        The model family's native cache-aware stateful streaming does not fit
+        the per-utterance callable contract — separate ticket.
+        """
+        from stt_v2.streaming.parakeet_cpp_asr import ParakeetCppAsrAdapter
+
+        adapter = ParakeetCppAsrAdapter(loaded_model, inference_config)
+
+        async def run_parakeet_inference(
+            samples: np.ndarray,
+            sample_rate: int,
+            *,
+            prompt: str | None = None,  # noqa: ARG001 — RNNT has no text conditioning
+        ) -> dict[str, Any]:
+            return await asyncio.to_thread(adapter, samples, sample_rate)
+
+        return run_parakeet_inference
+
+    def _make_azure_callable(
+        self,
+        loaded_model: Any,
+        inference_config: Any,
+    ) -> StreamingAsrCallable:
+        """Azure Speech per-utterance streaming callable (moved verbatim from
+        the former _make_asr_callable branch — TASK-505 P1)."""
+        from stt_v2.models.azure_speech_loader import normalize_language_for_azure
+        from stt_v2.streaming.azure_asr import azure_recognize_utterance
+
+        speech_config = loaded_model.model  # SpeechConfig instance
+        language = normalize_language_for_azure(
+            getattr(inference_config, "language", None),
+        )
+        code_switching = getattr(inference_config, "code_switching", False)
+
+        # Warn about Whisper-specific params that don't apply
+        for param in (
+            "beam_size", "temperature", "compression_ratio_threshold",
+            "logprob_threshold", "no_speech_threshold",
+            "condition_on_prev_tokens",
+        ):
+            if getattr(inference_config, param, None) is not None:
+                logger.warning(
+                    "Azure Speech streaming: ignoring Whisper-specific "
+                    "param %s",
+                    param,
                 )
 
-            return run_azure_inference
+        async def run_azure_inference(
+            samples: np.ndarray,
+            sample_rate: int,
+            *,
+            prompt: str | None = None,  # noqa: ARG001 — not used by Azure
+        ) -> dict[str, Any]:
+            return await asyncio.to_thread(
+                azure_recognize_utterance,
+                speech_config,
+                samples,
+                sample_rate,
+                language,
+                code_switching,
+            )
+
+        return run_azure_inference
+
+    def _make_transformers_callable(
+        self,
+        loaded_model: Any,
+        inference_config: Any,
+        initial_prompt: str | None = None,
+        task: str = "transcribe",
+    ) -> StreamingAsrCallable:
+        """Default transformers (Whisper/CTC) streaming callable, including
+        the multimodal-LM routing (moved verbatim from the former
+        _make_asr_callable default path — TASK-505 P1)."""
+        import torch
 
         model = loaded_model.model
         processor = loaded_model.processor or loaded_model.feature_extractor
@@ -1266,58 +1519,20 @@ class SessionManager:
                 )
             )
 
-        static_kwargs: dict[str, Any] = {
-            "task": task,
-            "return_timestamps": True,
-        }
-
-        # TASK-351 P2-1 — a configured language is always pinned (passed to
-        # the engine), including when code_switching is enabled. language:
-        # null + code_switching keeps auto-LID.
-        if lang is not None:
-            static_kwargs["language"] = lang
+        # TASK-505 P1 — shared decode-kwargs builder (was one of three
+        # hand-kept copies; semantics locked by
+        # tests/unit/test_batch_inference_kwargs.py).
+        static_kwargs = build_whisper_generate_kwargs(
+            inference_config,
+            task=task,
+            return_timestamps=True,
+            language=lang,
+        )
 
         if task == "translate":
             # TASK-351 P2-3 — mirror the batch English-translation pass:
             # force the English output token for the gloss decode.
             static_kwargs["language"] = "en"
-
-        no_repeat_ngram_size = getattr(inference_config, "no_repeat_ngram_size", None)
-        if isinstance(no_repeat_ngram_size, int) and no_repeat_ngram_size > 0:
-            static_kwargs["no_repeat_ngram_size"] = no_repeat_ngram_size
-
-        beam_size = getattr(inference_config, "beam_size", None)
-        if isinstance(beam_size, int) and beam_size > 1:
-            static_kwargs["num_beams"] = beam_size
-
-        temperature = getattr(inference_config, "temperature", None)
-        if isinstance(temperature, (int, float)) and not isinstance(temperature, bool):
-            temperature = [float(temperature)]
-        if isinstance(temperature, (list, tuple)) and len(temperature) > 0:
-            temp_list = [float(x) for x in temperature]
-            if len(temp_list) == 1:
-                static_kwargs["temperature"] = temp_list[0]
-                static_kwargs["do_sample"] = temp_list[0] > 0.0
-            else:
-                static_kwargs["temperature"] = tuple(temp_list)
-
-        compression_ratio_threshold = getattr(
-            inference_config, "compression_ratio_threshold", None
-        )
-        if isinstance(compression_ratio_threshold, (int, float)):
-            static_kwargs["compression_ratio_threshold"] = float(compression_ratio_threshold)
-
-        logprob_threshold = getattr(inference_config, "logprob_threshold", None)
-        if isinstance(logprob_threshold, (int, float)):
-            static_kwargs["logprob_threshold"] = float(logprob_threshold)
-
-        no_speech_threshold = getattr(inference_config, "no_speech_threshold", None)
-        if isinstance(no_speech_threshold, (int, float)):
-            static_kwargs["no_speech_threshold"] = float(no_speech_threshold)
-
-        raw_condition = getattr(inference_config, "condition_on_prev_tokens", False)
-        if isinstance(raw_condition, (bool, int)) and bool(raw_condition):
-            static_kwargs["condition_on_prev_tokens"] = True
 
         async def run_inference(
             samples: np.ndarray,
@@ -1424,6 +1639,7 @@ class SessionManager:
             return {"text": text, "word_timestamps": word_timestamps}
 
         return run_inference
+
 
     def _make_multimodal_lm_callable(
         self,
@@ -2737,112 +2953,28 @@ class SessionManager:
                         meta.pipeline_id, tenant_id=meta.tenant_id
                     )
 
-                    # Load VAD service
-                    vad_service = await self._load_vad_service(
-                        pipeline_config, meta.session_id
-                    )
-
-                    # Build preprocessor with VAD config from pipeline.
-                    # TASK-351 P0-4 — same shared helper as session creation,
-                    # so recovered sessions get identical VAD/partial wiring
-                    # (including force-emit settings, previously dropped here).
-                    vad_enabled = bool(
-                        pipeline_config and pipeline_config.preprocessing.vad.enabled
-                    )
-                    vad_kwargs = self._build_preprocessor_vad_kwargs(pipeline_config)
-
-                    target_sr = (
-                        pipeline_config.preprocessing.target_sample_rate
-                        if pipeline_config and pipeline_config.preprocessing.target_sample_rate
-                        else meta.sample_rate
-                    )
-
-                    denoiser = None
-                    if pipeline_config:
-                        denoise_enabled = pipeline_config.preprocessing.denoise.enabled
-                    else:
-                        denoise_enabled = self._profile.denoise_enabled_default
-                    if denoise_enabled:
-                        strength = (
-                            pipeline_config.preprocessing.denoise.strength
-                            if pipeline_config
-                            else 1.0
-                        )
-                        denoiser = StreamingDenoiser(input_sr=target_sr, strength=strength)
-                        if not denoiser.initialize():
-                            denoiser = None
-
-                    normalize = (
-                        pipeline_config.preprocessing.normalize
-                        if pipeline_config
-                        else False
-                    )
-
-                    preprocessor = StreamingPreprocessor(
+                    # TASK-505 P1 — one shared assembly for creation AND
+                    # recovery (recovery previously kept a drifted hand copy).
+                    # build_speaker_identifier=False: the embedding tracker
+                    # state is lost on crash; Sortformer (stateless
+                    # per-utterance, TASK-475 AC-4) IS reconstructed inside.
+                    runtime = await self._assemble_session_runtime(
                         session_id=meta.session_id,
-                        sample_rate=meta.sample_rate,
-                        vad_service=vad_service,
-                        target_sample_rate=target_sr,
-                        normalize=normalize,
-                        denoiser=denoiser,
-                        **vad_kwargs,
-                    )
-                    session.processed_sample_rate = target_sr
-                    session._vad_active = vad_enabled
-
-                    # Load ASR pipeline
-                    asr_pipeline, recovery_initial_prompt = await self._load_asr_pipeline(
-                        pipeline_config,
-                        meta.session_id,
-                    )
-
-                    publisher = ResultPublisher(
-                        redis=self._redis, session_id=meta.session_id
-                    )
-
-                    recovery_postprocessing_config = (
-                        pipeline_config.postprocessing if pipeline_config else None
-                    )
-
-                    recovery_inference_cfg = (
-                        pipeline_config.inference if pipeline_config else None
-                    )
-                    prev_text_context_words = getattr(
-                        recovery_inference_cfg, "prev_text_context_words", None
-                    )
-                    max_words_per_second = getattr(
-                        recovery_inference_cfg, "max_words_per_second", None
-                    )
-
-                    # TASK-351 P2-3 — rebuild the opt-in gloss callable
-                    recovery_gloss_pipeline = await self._load_gloss_pipeline(
-                        pipeline_config, meta.session_id
-                    )
-
-                    recovery_diarization_config = (
-                        pipeline_config.diarization if pipeline_config else None
-                    )
-
-                    inference_worker = StreamingInferenceWorker(
-                        result_publisher=publisher,
-                        asr_pipeline=asr_pipeline,
                         tenant_id=meta.tenant_id,
                         consultation_id=meta.consultation_id,
-                        diarization_config=recovery_diarization_config,
-                        postprocessing_config=recovery_postprocessing_config,
-                        initial_prompt=recovery_initial_prompt,
-                        speaker_identifier=None,  # Recovery loses embedding tracker state
-                        # TASK-475 AC-4 — the Streaming Sortformer diarizer is
-                        # stateless per-utterance, so a recovered sortformer
-                        # session reconstructs a fresh one (vs. None) and keeps
-                        # emitting turn labels after a crash-restart.
-                        sortformer_diarizer=_build_sortformer_diarizer(
-                            recovery_diarization_config
-                        ),
-                        prev_text_context_words=prev_text_context_words,
-                        max_words_per_second=max_words_per_second,
-                        gloss_callable=recovery_gloss_pipeline,
+                        user_id=meta.user_id,
+                        sample_rate=meta.sample_rate,
+                        pipeline_config=pipeline_config,
+                        build_speaker_identifier=False,
                     )
+                    publisher = runtime.publisher
+                    preprocessor = runtime.preprocessor
+                    inference_worker = runtime.inference_worker
+                    vad_service = runtime.vad_service
+                    asr_pipeline = runtime.asr_pipeline
+
+                    session.processed_sample_rate = runtime.target_sr
+                    session._vad_active = runtime.vad_enabled
 
                     # TODO: Replay last ~2 s of audio from Redis Stream to
                     # warm VAD state.  Deferred — VAD starts cold but

@@ -3,7 +3,26 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+from stt_v2.pipeline.dto import AiModelFormat
+
 torch = pytest.importorskip("torch")
+
+
+def _bind_asr_dispatch(mgr):
+    """TASK-505 P1 — _make_asr_callable dispatches through registry adapters
+    that call back into per-engine builder methods on the manager; bind the
+    real ones onto MagicMock(spec=SessionManager) harnesses."""
+    from stt_v2.streaming.session_manager import SessionManager
+
+    for _name in (
+        "_make_nemo_callable",
+        "_make_faster_whisper_callable",
+        "_make_azure_callable",
+        "_make_transformers_callable",
+        "_make_multimodal_lm_callable",
+    ):
+        setattr(mgr, _name, getattr(SessionManager, _name).__get__(mgr))
+    return mgr
 
 
 class TestSessionManagerAsrCallable:
@@ -13,6 +32,8 @@ class TestSessionManagerAsrCallable:
         from stt_v2.streaming.session_manager import SessionManager
 
         mgr = MagicMock(spec=SessionManager)
+
+        _bind_asr_dispatch(mgr)
 
         # Build a mock LoadedModel with .model, .processor, .device
         fake_output = torch.tensor([[1, 2, 3]])
@@ -34,6 +55,7 @@ class TestSessionManagerAsrCallable:
         mock_asr_model.processor = mock_processor
         mock_asr_model.feature_extractor = None
         mock_asr_model.device = torch.device("cpu")
+        mock_asr_model.format = AiModelFormat.SAFETENSOR
 
         run_inference = SessionManager._make_asr_callable(
             mgr,
@@ -65,6 +87,7 @@ class TestSessionManagerAsrCallable:
         mock_asr_model.processor = mock_processor
         mock_asr_model.feature_extractor = None
         mock_asr_model.device = torch.device("cpu")
+        mock_asr_model.format = AiModelFormat.SAFETENSOR
         return mock_asr_model, mock_model
 
     @pytest.mark.asyncio
@@ -74,6 +97,8 @@ class TestSessionManagerAsrCallable:
         from stt_v2.streaming.session_manager import SessionManager
 
         mgr = MagicMock(spec=SessionManager)
+
+        _bind_asr_dispatch(mgr)
         mock_asr_model, mock_model = self._make_mock_asr_model()
 
         run_inference = SessionManager._make_asr_callable(
@@ -94,6 +119,8 @@ class TestSessionManagerAsrCallable:
         from stt_v2.streaming.session_manager import SessionManager
 
         mgr = MagicMock(spec=SessionManager)
+
+        _bind_asr_dispatch(mgr)
         mock_asr_model, mock_model = self._make_mock_asr_model()
 
         run_inference = SessionManager._make_asr_callable(

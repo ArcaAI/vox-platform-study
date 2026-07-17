@@ -37,7 +37,16 @@ describe('generateSamlSpKeyPair', () => {
     expect(privateKey.asymmetricKeyDetails?.modulusLength).toBe(2048);
 
     const cert = new X509Certificate(certificatePem);
-    expect(cert.signatureAlgorithm).toBe('sha256WithRSAEncryption');
+    const signatureAlgorithm = (cert as { signatureAlgorithm?: string }).signatureAlgorithm;
+    if (signatureAlgorithm !== undefined) {
+      expect(signatureAlgorithm).toBe('sha256WithRSAEncryption');
+    } else {
+      // Node < 23 has no X509Certificate.signatureAlgorithm (the original
+      // assertion compared against undefined and could never pass) — assert
+      // the sha256WithRSAEncryption OID (1.2.840.113549.1.1.11) in the DER.
+      const sha256RsaOidDer = Buffer.from('06092a864886f70d01010b', 'hex');
+      expect(cert.raw.includes(sha256RsaOidDer)).toBe(true);
+    }
   });
 
   it('honors a custom key size', async () => {

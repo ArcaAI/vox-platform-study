@@ -95,9 +95,10 @@ class TestOnnxVadParamForwarding:
             )
 
         call_kwargs = mock_probs.call_args
-        assert call_kwargs.kwargs["min_speech_ms"] == 250
+        # TASK-505: clinical defaults aligned with VadConfig (100/100/200).
+        assert call_kwargs.kwargs["min_speech_ms"] == 100
         assert call_kwargs.kwargs["min_silence_ms"] == 100
-        assert call_kwargs.kwargs["pad_ms"] == 30
+        assert call_kwargs.kwargs["pad_ms"] == 200
 
 
 class TestApplyVadSmartForwarding:

@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, ClassVar
 
 
 class ModelTaskType(StrEnum):
@@ -14,6 +14,8 @@ class ModelTaskType(StrEnum):
     AUDIO_DENOISING = "AUDIO_DENOISING"
     AUDIO_TO_AUDIO = "AUDIO_TO_AUDIO"  # For noise suppression (RNNoise, etc.)
     SPEAKER_DIARIZATION = "SPEAKER_DIARIZATION"
+    # TASK-505 P5 — feature extractors (e.g. ECAPA) in the catalog.
+    SPEAKER_EMBEDDING = "SPEAKER_EMBEDDING"
 
 
 class AiModelSource(StrEnum):
@@ -41,6 +43,12 @@ class AiModelFormat(StrEnum):
     FASTER_WHISPER = "FASTER_WHISPER"
     # Cloud-based engines (no local model, API-driven)
     AZURE_SPEECH = "AZURE_SPEECH"  # Azure Cognitive Services Speech
+    # TASK-505 P3 — Azure AI Foundry LLM Speech API (MAI-Transcribe family).
+    # PREVIEW (decision D4): disabled by default, batch-only.
+    AZURE_FOUNDRY = "AZURE_FOUNDRY"
+    # TASK-505 P3 — parakeet.cpp (ggml runtime, mudler/parakeet.cpp) for
+    # NVIDIA Parakeet / nemotron-3.5-asr-streaming models. CPU/Metal/CUDA.
+    PARAKEET_CPP = "PARAKEET_CPP"
 
 
 class AiModelDownloadStatus(StrEnum):
@@ -254,6 +262,11 @@ def is_valid_language_for_engine(code: str, engine: AiModelFormat) -> bool:
         # language set. The earlier Whisper-set fallback masked unsupported
         # languages (e.g. 'ml' is Whisper-only) until runtime.
         return primary in VALID_PARAKEET_V3_LANGUAGES
+    if engine in (AiModelFormat.AZURE_FOUNDRY, AiModelFormat.PARAKEET_CPP):
+        # TASK-505 P3 — locale coverage is model/service-side (MAI: 43 langs;
+        # nemotron-3.5: 40 locales) and evolves with releases; accept any
+        # plausible primary tag and let the engine reject unsupported ones.
+        return primary.isalpha() and 2 <= len(primary) <= 3
     return primary in VALID_WHISPER_LANGUAGES
 
 
@@ -355,15 +368,69 @@ class ModelRef:
             return self.inline.hf_model_id
         return self.slug or ""
 
+    # TASK-505 P2 — `provider :: model[@rev]` shorthand providers. Values are
+    # engine strings resolved through the same engine_mapping below, so the
+    # two vocabularies stay consistent.
+    _PROVIDER_ALIASES: ClassVar[dict[str, str]] = {
+        "transformer": "SAFETENSOR",
+        "transformers": "SAFETENSOR",
+        "safetensor": "SAFETENSOR",
+        "hf": "SAFETENSOR",
+        "huggingface": "SAFETENSOR",
+        "pytorch": "PYTORCH",
+        "onnx": "ONNX",
+        "onnx-optimum": "ONNX_OPTIMUM",
+        "optimum": "ONNX_OPTIMUM",
+        "nemo": "NEMO",
+        "faster-whisper": "FASTER_WHISPER",
+        "faster_whisper": "FASTER_WHISPER",
+        "ctranslate2": "CTRANSLATE2",
+        "ct2": "CTRANSLATE2",
+        "azure": "AZURE_SPEECH",
+        "azure-speech": "AZURE_SPEECH",
+        # TASK-505 P3 — new engines (product matrix pipelines #6 and #8).
+        "azure-foundry": "AZURE_FOUNDRY",
+        "parakeet.cpp": "PARAKEET_CPP",
+        # Denoise models (RNNoise et al.) load via the ONNX runtime path.
+        "rnnoise": "ONNX",
+    }
+
     @classmethod
     def from_value(cls, value: str | dict[str, Any]) -> "ModelRef":
         """
         Create ModelRef from YAML value.
 
         Args:
-            value: Either a string slug or a dict with inline definition
+            value: A string slug, a ``provider :: model[@rev]`` shorthand
+                (TASK-505 P2, schema v2), or a dict with an inline definition.
         """
         if isinstance(value, str):
+            if "::" in value:
+                provider_raw, _, model_part = value.partition("::")
+                provider = provider_raw.strip().lower()
+                model_id = model_part.strip()
+                rev: str | None = None
+                if "@" in model_id:
+                    model_id, _, rev_raw = model_id.partition("@")
+                    model_id = model_id.strip()
+                    rev = rev_raw.strip() or None
+                engine_str = cls._PROVIDER_ALIASES.get(provider)
+                if engine_str is None:
+                    raise ValueError(
+                        f"Unknown ASR provider '{provider}'. Valid providers: "
+                        + ", ".join(sorted(cls._PROVIDER_ALIASES))
+                    )
+                if not model_id:
+                    raise ValueError(
+                        f"'{value}' is missing the model id after '::'"
+                    )
+                return cls.from_value(
+                    {
+                        "hf_model_id": model_id,
+                        "engine": engine_str,
+                        **({"version": rev} if rev else {}),
+                    }
+                )
             return cls(slug=value)
         elif isinstance(value, dict):
             # If the dict carries a slug (and no hf_model_id), treat as slug reference
@@ -387,10 +454,31 @@ class ModelRef:
                 "FASTER_WHISPER": AiModelFormat.FASTER_WHISPER,
                 "FASTER-WHISPER": AiModelFormat.FASTER_WHISPER,
                 "OPTIMUM": AiModelFormat.ONNX_OPTIMUM,
+                # TASK-505 P1 review — accept the enum's own value (and the
+                # registry spelling) now that unknown strings hard-error.
+                "ONNX_OPTIMUM": AiModelFormat.ONNX_OPTIMUM,
+                "ONNX-OPTIMUM": AiModelFormat.ONNX_OPTIMUM,
                 "AZURE_SPEECH": AiModelFormat.AZURE_SPEECH,
                 "AZURE": AiModelFormat.AZURE_SPEECH,
+                # TASK-505 P3 — new engines.
+                "AZURE_FOUNDRY": AiModelFormat.AZURE_FOUNDRY,
+                "AZURE-FOUNDRY": AiModelFormat.AZURE_FOUNDRY,
+                "FOUNDRY": AiModelFormat.AZURE_FOUNDRY,
+                "MAI": AiModelFormat.AZURE_FOUNDRY,
+                "PARAKEET_CPP": AiModelFormat.PARAKEET_CPP,
+                "PARAKEET-CPP": AiModelFormat.PARAKEET_CPP,
+                "PARAKEET.CPP": AiModelFormat.PARAKEET_CPP,
             }
-            engine = engine_mapping.get(engine_str, AiModelFormat.SAFETENSOR)
+            # TASK-505 P1 — unknown engine strings are a hard error. The old
+            # silent SAFETENSOR default turned a typo into a different engine
+            # that failed obscurely at model-load time.
+            engine_or_none = engine_mapping.get(engine_str)
+            if engine_or_none is None:
+                raise ValueError(
+                    f"Unknown ASR engine '{value.get('engine')}'. Valid engines: "
+                    + ", ".join(sorted({k.lower() for k in engine_mapping}))
+                )
+            engine = engine_or_none
 
             inline = InlineModelDef(
                 hf_model_id=value.get("hf_model_id", value.get("model_id", "")),
@@ -467,16 +555,31 @@ class VadConfig:
 
     enabled: bool = True
     threshold: float = 0.6
-    # TASK-451 C2-06: aligned with Silero VAD's reference default (250 ms). The
-    # prior 350 ms required ~10 consecutive above-threshold frames for onset and
-    # dropped short clinical confirmations ("no", "yes") that never reached it.
-    min_speech_duration_ms: int = 250
+    # TASK-505: 100 ms (was 250, TASK-451). A spoken "yes"/"no" is ~150-250 ms;
+    # at 250 ms the whole word is discarded before reaching ASR. Production
+    # consensus (LiveKit ships 50 ms) is 50-100 ms with the false-positive
+    # control left to threshold + hysteresis, not duration gating.
+    min_speech_duration_ms: int = 100
     min_silence_duration_ms: int = 100
-    padding_ms: int = 30
+    # TASK-505: 200 ms (was 30). Batch-only segment padding; Silero onsets are
+    # structurally late by 30-100 ms and unvoiced tails fall below threshold —
+    # faster-whisper ships speech_pad_ms=400 for transcription use.
+    padding_ms: int = 200
     pre_speech_context_ms: int = 500
     force_emit_after_ms: int = 25000
     force_emit_lookback_ms: int = 1500
     force_emit_overlap_ms: int = 500
+
+
+# TASK-505 P2 — denoise data-flow scope (decision D2, dual-path):
+#   "vad_only" (default): the denoised signal gates VAD only; ASR consumes the
+#     raw (resampled) audio. Medical-ASR evidence (arXiv 2512.17562): speech
+#     enhancement before ASR degraded accuracy in 40/40 tested configurations.
+#   "full": legacy behavior — ASR consumes the denoised audio.
+VALID_DENOISE_SCOPES: list[str] = ["vad_only", "full"]
+
+# TASK-505 P2 — normalize processor selection (peak = legacy).
+VALID_NORMALIZE_PROCESSORS: list[str] = ["peak", "rms"]
 
 
 @dataclass
@@ -485,6 +588,7 @@ class DenoiseConfig:
 
     enabled: bool = False
     strength: float = 0.5
+    scope: str = "vad_only"  # TASK-505 P2 (D2): vad_only | full
 
 
 @dataclass
@@ -584,13 +688,22 @@ class PreprocessingConfig:
 
     target_sample_rate: int = 16000
     normalize: bool = True
+    # TASK-505 P2 — normalize processor: peak (legacy) | rms.
+    normalize_processor: str = "peak"
+    # TASK-505 P2 — resample declared as a stage; disabling is honored only
+    # when the input is already VAD-compatible (runtime guards resample when
+    # Silero needs 8/16 kHz).
+    resample_enabled: bool = True
     vad: VadConfig = field(default_factory=VadConfig)
     denoise: DenoiseConfig = field(default_factory=DenoiseConfig)
     dual_capture: DualCaptureConfig = field(default_factory=DualCaptureConfig)
-    # TASK-473 A3 — semantic end-of-utterance config (default disabled). The
-    # yaml parser does not yet populate it (pipeline opt-in lands with the
-    # measured seed edit); the streaming enable surface is the global settings.
+    # TASK-473 A3 / TASK-505 P2 — semantic end-of-utterance config (default
+    # disabled); parsed from `preprocessing.endpoint` since schema v2.
     endpoint: EndpointConfig = field(default_factory=EndpointConfig)
+    # TASK-505 P2 — declarative marker for the diarization feature-extraction
+    # stage (executes inside the diarization track): True requires
+    # models.embedding; None = not declared.
+    diar_feature_extraction_enabled: bool | None = None
 
 
 @dataclass
@@ -640,6 +753,21 @@ class PunctuationConfig:
 
 
 @dataclass
+class SegmentMergeConfig:
+    """Per-pipeline VAD segment merging (TASK-505 P2).
+
+    ``enabled=None`` inherits the global setting gate
+    (``settings.segment_merge_gap_threshold_s > 0`` — the v1 behavior);
+    True/False override it. ``gap_threshold_s``/``max_duration_s`` override
+    the global values when set.
+    """
+
+    enabled: bool | None = None
+    gap_threshold_s: float | None = None
+    max_duration_s: float | None = None
+
+
+@dataclass
 class PostprocessingConfig:
     """Postprocessing configuration."""
 
@@ -648,6 +776,7 @@ class PostprocessingConfig:
     remove_disfluencies: bool = False
     lowercase: bool = False
     dual_capture: DualCaptureConfig = field(default_factory=DualCaptureConfig)
+    segment_merge: SegmentMergeConfig = field(default_factory=SegmentMergeConfig)
 
 
 # Valid values for streaming.commit_policy (TASK-351 P1-1).

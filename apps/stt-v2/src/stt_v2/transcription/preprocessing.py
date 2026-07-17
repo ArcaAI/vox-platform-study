@@ -97,25 +97,57 @@ class AudioPreprocessor:
         # Normalize (before denoise -- operates on original-rate audio)
         if config.normalize:
             logger.debug(f"[{job_id}] [PREPROCESSOR] Normalize :: Normalizing audio...")
-            samples = self._normalize(samples)
+            samples = self._normalize(
+                samples, method=getattr(config, "normalize_processor", "peak")
+            )
             was_normalized = True
 
         # ----- Denoise (operates at 48 kHz) -----
-        # Resample is deferred so that `_apply_denoise` can go
-        # original_sr → 48 kHz in a single step, and the final
-        # resample to target_sr happens once afterward.
+        # TASK-505 P2 (decision D2, dual-path): with scope="vad_only" (the
+        # default) the denoised signal only GATES the VAD — ASR consumes the
+        # raw audio (medical-ASR evidence: enhancement before ASR degraded
+        # accuracy in 40/40 tested configurations, arXiv 2512.17562). VAD
+        # segments are time-based, so boundaries from the denoised branch
+        # slice the raw timeline 1:1. scope="full" keeps the legacy
+        # denoised-audio-to-ASR flow.
         denoise_applied = False
+        vad_branch: np.ndarray | None = None
+        denoise_scope = getattr(config.denoise, "scope", "full")
         if config.denoise.enabled:
-            logger.debug(
-                f"[{job_id}] [NOISE_SUPPRESSION] Applying RNNoise for noise suppression..."
-            )
-            samples, current_sr = await self._apply_denoise(
-                samples, current_sr, config.denoise.strength
-            )
-            denoise_applied = True
+            if denoise_scope == "full":
+                logger.debug(
+                    f"[{job_id}] [NOISE_SUPPRESSION] Applying RNNoise for noise suppression..."
+                )
+                samples, current_sr = await self._apply_denoise(
+                    samples, current_sr, config.denoise.strength
+                )
+                denoise_applied = True
+            elif config.vad.enabled:
+                logger.debug(
+                    f"[{job_id}] [NOISE_SUPPRESSION] RNNoise on the VAD branch only (dual-path)..."
+                )
+                denoised, denoised_sr = await self._apply_denoise(
+                    samples.copy(), current_sr, config.denoise.strength
+                )
+                if denoised_sr != config.target_sample_rate:
+                    denoised = self._resample(
+                        denoised, denoised_sr, config.target_sample_rate
+                    )
+                vad_branch = denoised
+                denoise_applied = True
+            # scope == "vad_only" with VAD disabled: the denoised branch has
+            # no consumer — skip the work entirely.
 
         # ----- Single final resample to target_sample_rate -----
         if current_sr != config.target_sample_rate:
+            if not getattr(config, "resample_enabled", True):
+                # TASK-505 P2 — a declared resample skip is honored only when
+                # the input already matches; VAD/ASR require the target rate.
+                logger.warning(
+                    f"[{job_id}] [PREPROCESSOR] resample.enabled=false but input is "
+                    f"{current_sr}Hz != target {config.target_sample_rate}Hz — "
+                    "resampling anyway (VAD/ASR require the target rate)"
+                )
             logger.debug(
                 f"[{job_id}] [PREPROCESSOR] Resample :: Resampling audio from {current_sr}Hz to {config.target_sample_rate}Hz..."
             )
@@ -131,7 +163,10 @@ class AudioPreprocessor:
         if config.vad.enabled:
             logger.debug(f"[{job_id}] [VAD] Running VAD to detect speech segments...")
             segments, vad_applied = await self._apply_vad_smart(
-                samples, config.target_sample_rate, config.vad, vad_model
+                vad_branch if vad_branch is not None else samples,
+                config.target_sample_rate,
+                config.vad,
+                vad_model,
             )
 
         return ProcessedAudio(
@@ -251,8 +286,20 @@ class AudioPreprocessor:
             indices = np.linspace(0, len(samples) - 1, new_length)
             return cast(np.ndarray, np.interp(indices, np.arange(len(samples)), samples))
 
-    def _normalize(self, samples: np.ndarray) -> np.ndarray:
-        """Normalize audio to [-1, 1] range."""
+    def _normalize(self, samples: np.ndarray, method: str = "peak") -> np.ndarray:
+        """Normalize audio.
+
+        ``peak`` (legacy): scale to [-1, 1] by the absolute peak.
+        ``rms`` (TASK-505 P2): scale to a target RMS of 0.1 (≈ −20 dBFS),
+        clipped to [-1, 1] — steadier level for VAD than peak scaling when
+        the recording contains isolated transients.
+        """
+        if method == "rms":
+            rms = float(np.sqrt(np.mean(np.square(samples)))) if len(samples) else 0.0
+            if rms > 1e-8:
+                samples = np.clip(samples * (0.1 / rms), -1.0, 1.0)
+            return samples
+
         max_val = np.abs(samples).max()
         if max_val > 0:
             samples = samples / max_val
@@ -264,9 +311,9 @@ class AudioPreprocessor:
         sample_rate: int,
         vad_model: LoadedModel,
         threshold: float,
-        min_speech_duration_ms: int = 350,
+        min_speech_duration_ms: int = 100,  # TASK-505: aligned with VadConfig
         min_silence_duration_ms: int = 100,
-        padding_ms: int = 30,
+        padding_ms: int = 200,  # TASK-505: aligned with VadConfig
     ) -> list[AudioSegment]:
         """
         Apply Voice Activity Detection.
@@ -386,9 +433,9 @@ class AudioPreprocessor:
         sample_rate: int,
         session: Any,
         threshold: float,
-        min_speech_ms: int = 250,
+        min_speech_ms: int = 100,  # TASK-505: aligned with VadConfig
         min_silence_ms: int = 100,
-        pad_ms: int = 30,
+        pad_ms: int = 200,  # TASK-505: aligned with VadConfig
     ) -> list[AudioSegment]:
         """Run Silero-style VAD directly on an ONNX Runtime session."""
         from ..vad.silero_service import SileroVADService

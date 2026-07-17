@@ -111,10 +111,21 @@ class SileroVADService:
             raise RuntimeError("SileroVADService not initialised — call initialize() first")
 
         settings = get_settings()
-        threshold = threshold or settings.vad_threshold
-        min_speech_ms = min_speech_duration_ms or settings.vad_min_speech_duration_ms
-        min_silence_ms = min_silence_duration_ms or settings.vad_min_silence_duration_ms
-        pad_ms = speech_pad_ms or settings.vad_speech_pad_ms
+        # TASK-505 — `is not None` (not `or`): an explicit 0 override is valid
+        # (e.g. speech_pad_ms=0 for exact boundaries) and must not silently
+        # fall back to settings.
+        threshold = threshold if threshold is not None else settings.vad_threshold
+        min_speech_ms = (
+            min_speech_duration_ms
+            if min_speech_duration_ms is not None
+            else settings.vad_min_speech_duration_ms
+        )
+        min_silence_ms = (
+            min_silence_duration_ms
+            if min_silence_duration_ms is not None
+            else settings.vad_min_silence_duration_ms
+        )
+        pad_ms = speech_pad_ms if speech_pad_ms is not None else settings.vad_speech_pad_ms
 
         frame_size = _SILERO_FRAME_SIZE_16K if sample_rate == 16000 else _SILERO_FRAME_SIZE_8K
         audio_duration = len(samples) / sample_rate
@@ -265,67 +276,91 @@ class SileroVADService:
         min_silence_ms: int,
         pad_ms: int,
         total_samples: int,
+        neg_threshold: float | None = None,
     ) -> list[SpeechSegment]:
         """Convert per-frame probabilities into merged speech segments.
 
         Implements the same logic as Silero's ``get_speech_timestamps``:
         - A frame above *threshold* triggers speech onset.
-        - Speech ends after *min_silence_ms* of consecutive below-threshold frames.
+        - TASK-505: speech is HELD while the probability stays at or above
+          *neg_threshold* (default ``threshold - 0.15``, floored at 0.01) —
+          the upstream Silero hysteresis. Trailing unvoiced phones (/s/, /f/,
+          /t/) hover between the two thresholds and were previously counted
+          as silence, clipping word tails.
+        - Speech ends after *min_silence_ms* of consecutive sub-neg-threshold
+          frames.
         - Segments shorter than *min_speech_ms* are discarded.
         - *pad_ms* is added before segment start and after segment end.
         """
+        if neg_threshold is None:
+            neg_threshold = max(threshold - 0.15, 0.01)
         min_speech_frames = int(min_speech_ms * sample_rate / 1000 / frame_size)
         min_silence_frames = int(min_silence_ms * sample_rate / 1000 / frame_size)
         pad_samples = int(pad_ms * sample_rate / 1000)
 
-        segments: list[SpeechSegment] = []
+        # Pass 1 — RAW frame boundaries (no padding). Silence-run semantics
+        # follow upstream Silero: the run is anchored at the first sub-
+        # neg_threshold frame and counts WALL-CLOCK frames from there; only a
+        # frame >= threshold clears it. Mid-band frames (neg..threshold) hold
+        # speech while no run is open, but do NOT clear an open run —
+        # otherwise probabilities hovering around neg_threshold keep the
+        # segment open forever (TASK-505 review finding).
+        raw: list[tuple[int, int, float]] = []  # (start_frame, end_frame_excl, avg_prob)
         speech_start: int | None = None
         silence_count = 0
         speech_frame_count = 0
 
+        def _close_segment(end_frame: int) -> None:
+            nonlocal speech_start
+            if speech_start is not None and speech_frame_count >= min_speech_frames:
+                seg_probs = probs[speech_start:end_frame]
+                avg_prob = sum(seg_probs) / len(seg_probs) if seg_probs else 0.0
+                raw.append((speech_start, end_frame, avg_prob))
+            speech_start = None
+
         for i, prob in enumerate(probs):
-            if prob >= threshold:
-                if speech_start is None:
+            if speech_start is None:
+                if prob >= threshold:
                     speech_start = i
-                    speech_frame_count = 0
+                    speech_frame_count = 1
+                    silence_count = 0
+                continue
+
+            if prob >= threshold:
                 silence_count = 0
                 speech_frame_count += 1
+            elif prob < neg_threshold or silence_count > 0:
+                silence_count += 1
             else:
-                if speech_start is not None:
-                    silence_count += 1
-                    if silence_count >= min_silence_frames:
-                        # End of speech
-                        if speech_frame_count >= min_speech_frames:
-                            start_sample = max(0, speech_start * frame_size - pad_samples)
-                            end_sample = min(
-                                total_samples, (i - silence_count + 1) * frame_size + pad_samples
-                            )
+                # Mid-band with no open silence run — speech hold.
+                speech_frame_count += 1
 
-                            avg_prob = (
-                                sum(probs[speech_start : i - silence_count + 1])
-                                / (i - silence_count + 1 - speech_start)
-                                if (i - silence_count + 1 - speech_start) > 0
-                                else 0.0
-                            )
+            if silence_count >= min_silence_frames:
+                # End of speech at the start of the silence run.
+                _close_segment(i - silence_count + 1)
+                silence_count = 0
 
-                            segments.append(
-                                SpeechSegment(
-                                    start_time=start_sample / sample_rate,
-                                    end_time=end_sample / sample_rate,
-                                    probability=avg_prob,
-                                )
-                            )
-                        speech_start = None
-                        silence_count = 0
+        # Handle trailing speech (segment still open at end of audio).
+        if speech_start is not None:
+            _close_segment(len(probs))
 
-        # Handle trailing speech
-        if speech_start is not None and speech_frame_count >= min_speech_frames:
-            start_sample = max(0, speech_start * frame_size - pad_samples)
-            end_sample = total_samples
-
-            trailing_probs = probs[speech_start:]
-            avg_prob = sum(trailing_probs) / len(trailing_probs) if trailing_probs else 0.0
-
+        # Pass 2 — apply padding with the upstream neighbor clamp: when two
+        # raw segments are closer than 2*pad, split the raw gap at its
+        # midpoint so padded segments never overlap (overlap duplicates audio
+        # in the merged WAV and hands non-monotonic turns to diarization).
+        segments: list[SpeechSegment] = []
+        for idx, (s_frame, e_frame, avg_prob) in enumerate(raw):
+            start_sample = max(0, s_frame * frame_size - pad_samples)
+            end_sample = min(total_samples, e_frame * frame_size + pad_samples)
+            if e_frame == len(probs):
+                # Trailing segment historically extends to the end of audio.
+                end_sample = total_samples
+            if idx > 0:
+                gap_mid = (raw[idx - 1][1] * frame_size + s_frame * frame_size) // 2
+                start_sample = max(start_sample, gap_mid)
+            if idx < len(raw) - 1:
+                gap_mid = (e_frame * frame_size + raw[idx + 1][0] * frame_size) // 2
+                end_sample = min(end_sample, gap_mid)
             segments.append(
                 SpeechSegment(
                     start_time=start_sample / sample_rate,
@@ -346,6 +381,7 @@ class SileroVADService:
         min_silence_ms: int,
         pad_ms: int,
         total_samples: int,
+        neg_threshold: float | None = None,
     ) -> list[SpeechSegment]:
         """Public wrapper for converting VAD frame probabilities to segments."""
         return SileroVADService._probs_to_segments(
@@ -357,6 +393,7 @@ class SileroVADService:
             min_silence_ms=min_silence_ms,
             pad_ms=pad_ms,
             total_samples=total_samples,
+            neg_threshold=neg_threshold,
         )
 
 

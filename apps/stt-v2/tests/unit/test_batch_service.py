@@ -1058,6 +1058,39 @@ class TestBatchServiceInferenceMethods:
         with pytest.raises(TranscriptionError, match="Unsupported model format"):
             await service._run_inference(samples, 16000, model, config)
 
+    @pytest.mark.asyncio
+    async def test_run_inference_faster_whisper_dispatches(self, service):
+        """TASK-505 P1 — FASTER_WHISPER must have a batch branch.
+
+        The engine was streaming-only since TASK-351 (the canonical parity
+        trap): a batch job on a FASTER_WHISPER pipeline hard-failed with
+        "Unsupported model format".
+        """
+        model = self.create_loaded_model_with_format(AiModelFormat.FASTER_WHISPER)
+        samples = np.zeros(16000, dtype=np.float32)
+        config = MagicMock()
+
+        with patch(
+            "stt_v2.streaming.faster_whisper_asr.FasterWhisperAsrAdapter"
+        ) as mock_adapter_cls:
+            mock_adapter_cls.return_value = MagicMock(
+                return_value={
+                    "text": "fw batch text",
+                    "language": "en",
+                    "word_timestamps": [
+                        {"word": "fw", "start": 0.0, "end": 0.2, "confidence": 0.9}
+                    ],
+                    "segments": [{"text": "fw batch text", "start": 0.0, "end": 1.0}],
+                }
+            )
+            result = await service._run_inference(samples, 16000, model, config)
+
+        mock_adapter_cls.assert_called_once()
+        assert result.text == "fw batch text"
+        assert result.language == "en"
+        assert result.word_timestamps[0]["word"] == "fw"
+        assert result.segments[0]["end"] == 1.0
+
 
 class TestBatchServiceInlineModelLoading:
     """Tests for inline model loading in batch service."""
