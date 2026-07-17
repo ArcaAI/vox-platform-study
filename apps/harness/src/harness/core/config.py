@@ -30,6 +30,10 @@ class TemporalConfig(BaseSettings):
     namespace: str = "default"
     task_queue: str = "harness-task-queue"
     connect_timeout_s: float = 5.0
+    # Grace period the worker gives in-flight activities to finish (or observe
+    # cancellation) after shutdown is requested, before it force-cancels them.
+    # 0 = cancel immediately (Temporal's default). Applies on SIGINT/SIGTERM.
+    graceful_shutdown_timeout_s: float = 30.0
 
 
 _SAFETY_PROVIDERS = ("lm-studio", "ollama", "azure", "bedrock")
