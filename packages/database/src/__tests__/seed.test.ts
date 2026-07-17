@@ -1427,6 +1427,46 @@ describe('STT Seed Data', () => {
 });
 
 // =============================================================================
+// FULL-PARITY PIPELINE POLICY (TASK-505/356 correction, owner directive 2026-07-17)
+//   Every customer-facing tenant (Global + ArcaAI) mirrors the FULL SYSTEM ASR
+//   pipeline catalog — the same slug set as DEFAULT_ASR_PIPELINES — so a tenant
+//   is never seeded a curated subset. Exactly one default per tenant preserved.
+// =============================================================================
+
+describe('Full-parity ASR pipeline catalog per customer tenant (TASK-505/356 policy)', () => {
+    const systemSlugs = [...new Set(DEFAULT_ASR_PIPELINES.map((p) => p.slug))].sort();
+
+    it('gives the Global customer tenant the SAME slug set as SYSTEM', () => {
+        const globalSlugs = [
+            ...new Set(
+                GLOBAL_TENANT_ASR_PIPELINES.filter((p) => p.tenantId === SEED_TENANT_ID).map((p) => p.slug),
+            ),
+        ].sort();
+        expect(globalSlugs).toEqual(systemSlugs);
+    });
+
+    it('gives the ArcaAI customer tenant the SAME slug set as SYSTEM', () => {
+        const arcaaiSlugs = [
+            ...new Set(
+                CUSTOMER_TENANT_ASR_PIPELINES.filter(
+                    (p) => p.tenantId === SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+                ).map((p) => p.slug),
+            ),
+        ].sort();
+        expect(arcaaiSlugs).toEqual(systemSlugs);
+    });
+
+    it('keeps globally-unique IDs once every tenant carries the full catalog', () => {
+        const ids = [
+            ...DEFAULT_ASR_PIPELINES,
+            ...GLOBAL_TENANT_ASR_PIPELINES,
+            ...CUSTOMER_TENANT_ASR_PIPELINES,
+        ].map((p) => p.id);
+        expect(new Set(ids).size).toBe(ids.length);
+    });
+});
+
+// =============================================================================
 // PER-TENANT ASR PIPELINES + isDefault (TASK-331 doc-03 F3 / Q2)
 // =============================================================================
 

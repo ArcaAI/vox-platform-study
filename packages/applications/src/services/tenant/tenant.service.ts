@@ -290,78 +290,100 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * Clones the SYSTEM default `AsrPipeline` (plus its current
-   * `AsrPipelineVersion`) into the newly created tenant so each tenant owns an
-   * editable, tenant-scoped default pipeline (TASK-356 Phase 2, D — extend_clone).
-   * Composes with the AiModel clone (`provisionTenantModelCatalog`) as an
-   * independent provisioning step.
+   * Clones EVERY enabled SYSTEM `AsrPipeline` (plus each one's current
+   * `AsrPipelineVersion`) into the newly created tenant, so a new tenant owns
+   * the SAME pipeline catalog as SYSTEM — full parity (TASK-505/356 policy,
+   * owner directive 2026-07-17). This generalizes the original TASK-356 Phase 2
+   * single-default clone; mirroring `provisionTenantModelCatalog`, which already
+   * clones the whole SYSTEM AiModel catalog. Composes as an independent
+   * provisioning step.
    *
-   * Behaviour mirrors `provisionTenantModelCatalog`:
-   *  - Reads the SYSTEM-owned default pipeline (the one seeded as `isDefault` —
-   *    currently the faster-whisper CT2 production pipeline).
-   *  - Idempotent / backfill-safe: when the new tenant already owns the slug
-   *    (`isSlugUnique` === false) the whole clone is skipped, so this method
-   *    doubles as the existing-tenant backfill.
-   *  - Builds a clone via `AsrPipelineFactory` bound to the NEW tenant, then
-   *    marks it the tenant default atomically via `setDefaultForTenant` (which
-   *    preserves the one-default-per-tenant invariant).
-   *  - Copies the source pipeline's *current* version (newest by
-   *    `versionNumber`) as the clone's v1; when the source has no version rows,
-   *    v1 is synthesized from the pipeline-level `configYaml`.
-   *  - A missing SYSTEM default is a safe no-op (logged for operators).
+   * Behaviour:
+   *  - Reads the SYSTEM-owned ENABLED pipelines (the shared master catalog).
+   *  - Idempotent / backfill-safe per slug: pipelines the new tenant already
+   *    owns (`isSlugUnique` === false) are skipped, so this doubles as the
+   *    existing-tenant backfill and can grow a tenant's catalog on re-run.
+   *  - Builds each clone via `AsrPipelineFactory` bound to the NEW tenant and
+   *    copies the source's *current* version (newest by `versionNumber`) as the
+   *    clone's v1; when a source has no version rows, v1 is synthesized from the
+   *    pipeline-level `configYaml`.
+   *  - Marks the clone of the SYSTEM default (`isDefault`) as the tenant default
+   *    atomically via `setDefaultForTenant` (preserves one-default-per-tenant).
+   *  - Per-row failure-isolated (one bad clone never aborts the others or tenant
+   *    creation); an empty SYSTEM catalog is a safe no-op (logged for operators).
    */
   private async provisionTenantPipelineCatalog(newTenantId: string): Promise<void> {
-    const source = await this.asrPipelineRepository.findDefault(SYSTEM_TENANT_ID);
-    if (!source) {
+    const sources = await this.asrPipelineRepository.findEnabledPipelines(SYSTEM_TENANT_ID);
+    if (sources.length === 0) {
       this.logger.warn({
-        message: 'No SYSTEM default ASR pipeline to clone for new tenant',
+        message: 'No SYSTEM ASR pipelines to clone for new tenant',
         newTenantId,
         systemTenantId: SYSTEM_TENANT_ID,
       });
       return;
     }
 
-    // Idempotency: skip when the tenant already owns the slug (backfill-safe).
-    const isUnique = await this.asrPipelineRepository.isSlugUnique(newTenantId, source.slug);
-    if (!isUnique) {
-      return;
+    let defaultCloneId: string | undefined;
+
+    for (const source of sources) {
+      try {
+        // Idempotency: skip the slugs the tenant already owns (backfill-safe).
+        const isUnique = await this.asrPipelineRepository.isSlugUnique(newTenantId, source.slug);
+        if (!isUnique) {
+          continue;
+        }
+
+        const clonedPipeline = AsrPipelineFactory.CreateAsrPipeline({
+          tenantId: newTenantId,
+          name: source.name,
+          slug: source.slug,
+          description: source.description ?? undefined,
+          configYaml: source.configYaml,
+          tags: source.tags,
+          createdBy: this.requestUser?.id,
+        });
+
+        const savedPipeline = await this.asrPipelineRepository.create(clonedPipeline);
+        if (source.isDefault) {
+          defaultCloneId = savedPipeline.id;
+        }
+
+        // Carry the source pipeline's current version YAML (findByPipeline is
+        // newest-first) as the clone's v1; fall back to the pipeline-level
+        // configYaml when the source has no version rows.
+        const sourceVersions = await this.asrPipelineVersionRepository.findByPipeline(source.id);
+        const currentVersionYaml = sourceVersions[0]?.configYaml ?? source.configYaml;
+        const nextVersionNumber = await this.asrPipelineVersionRepository.getNextVersionNumber(savedPipeline.id);
+
+        const clonedVersion = AsrPipelineVersionFactory.CreateAsrPipelineVersion({
+          asrPipelineId: savedPipeline.id,
+          versionNumber: nextVersionNumber,
+          configYaml: currentVersionYaml,
+          name: savedPipeline.name,
+          description: savedPipeline.description ?? undefined,
+          changeReason: 'Cloned from SYSTEM ASR pipeline catalog on tenant provisioning (TASK-505/356 full parity)',
+          changedBy: this.requestUser?.id,
+          tenantId: newTenantId,
+          createdBy: this.requestUser?.id,
+        });
+
+        await this.asrPipelineVersionRepository.create(clonedVersion);
+      } catch (error) {
+        this.logger.warn({
+          message: 'Failed to clone ASR pipeline for new tenant - continuing',
+          newTenantId,
+          sourcePipelineId: source.id,
+          sourceSlug: source.slug,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
-    const clonedPipeline = AsrPipelineFactory.CreateAsrPipeline({
-      tenantId: newTenantId,
-      name: source.name,
-      slug: source.slug,
-      description: source.description ?? undefined,
-      configYaml: source.configYaml,
-      tags: source.tags,
-      createdBy: this.requestUser?.id,
-    });
-
-    const savedPipeline = await this.asrPipelineRepository.create(clonedPipeline);
-
     // Tenant-scoped default flip (atomic; unsets any other tenant default first).
-    await this.asrPipelineRepository.setDefaultForTenant(newTenantId, savedPipeline.id, this.requestUser?.id);
-
-    // Carry the source pipeline's current version YAML (findByPipeline is
-    // newest-first) as the clone's v1; fall back to the pipeline-level
-    // configYaml when the source has no version rows.
-    const sourceVersions = await this.asrPipelineVersionRepository.findByPipeline(source.id);
-    const currentVersionYaml = sourceVersions[0]?.configYaml ?? source.configYaml;
-    const nextVersionNumber = await this.asrPipelineVersionRepository.getNextVersionNumber(savedPipeline.id);
-
-    const clonedVersion = AsrPipelineVersionFactory.CreateAsrPipelineVersion({
-      asrPipelineId: savedPipeline.id,
-      versionNumber: nextVersionNumber,
-      configYaml: currentVersionYaml,
-      name: savedPipeline.name,
-      description: savedPipeline.description ?? undefined,
-      changeReason: 'Cloned from SYSTEM default ASR pipeline on tenant provisioning (TASK-356 Phase 2)',
-      changedBy: this.requestUser?.id,
-      tenantId: newTenantId,
-      createdBy: this.requestUser?.id,
-    });
-
-    await this.asrPipelineVersionRepository.create(clonedVersion);
+    // Only when the SYSTEM default was actually cloned this run.
+    if (defaultCloneId) {
+      await this.asrPipelineRepository.setDefaultForTenant(newTenantId, defaultCloneId, this.requestUser?.id);
+    }
   }
 
   /**

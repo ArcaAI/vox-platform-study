@@ -37,8 +37,22 @@ function buildHeaders(request: Request, session: SessionPayload): Headers {
     return headers;
 }
 
+/**
+ * Rebuild the gateway path from Next's catch-all segments, RE-ENCODING each
+ * one. `params.path` is percent-DECODED (Next splits the pathname on literal
+ * `/` then `decodeURIComponent`s each segment), so a file key that arrived
+ * encoded — e.g. `files/2026%2F07%2F.../complete.wav` — reaches us as a single
+ * segment holding real slashes. A plain `path.join('/')` would forward those
+ * as separator slashes, and the gateway's single-segment
+ * `@Get('buckets/:name/files/:key')` route can't match the multi-segment tail
+ * → 404. Encoding each segment restores the `%2F` so `:key` matches (BUG-006).
+ */
+function encodeGatewayPath(path: string[]): string {
+    return path.map(encodeURIComponent).join('/');
+}
+
 async function sendToGateway(request: Request, path: string[], search: string, session: SessionPayload, body: ArrayBuffer | null): Promise<Response> {
-    return fetch(gatewayUrl(path.join('/'), search), {
+    return fetch(gatewayUrl(encodeGatewayPath(path), search), {
         method: request.method,
         headers: buildHeaders(request, session),
         body: body && body.byteLength > 0 ? body : undefined,

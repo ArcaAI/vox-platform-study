@@ -68,14 +68,15 @@ const mockPromptTemplateRepository = {
 };
 
 // Mock AsrPipelineRepository
-// TASK-356 Phase 2 (D — extend_clone) — `create()` now also clones the SYSTEM
-// default ASR pipeline (+ its current version) into each new tenant, so the
-// repo mock exposes the pipeline-clone surface (findDefault/isSlugUnique/
-// create/setDefaultForTenant) in addition to the legacy findAll/count.
+// TASK-356 Phase 2 (D — extend_clone), extended by the TASK-505/356 full-parity
+// policy — `create()` now clones EVERY enabled SYSTEM ASR pipeline (+ each one's
+// current version) into each new tenant, so the repo mock exposes the
+// pipeline-clone surface (findEnabledPipelines/isSlugUnique/create/
+// setDefaultForTenant) in addition to the legacy findAll/count.
 const mockAsrPipelineRepository = {
     findAll: vi.fn(),
     count: vi.fn(),
-    findDefault: vi.fn(),
+    findEnabledPipelines: vi.fn(),
     isSlugUnique: vi.fn(),
     create: vi.fn(),
     setDefaultForTenant: vi.fn(),
@@ -366,10 +367,10 @@ describe('TenantService', () => {
         mockAiModelRepository.isSlugUnique.mockResolvedValue(true);
         mockAiModelRepository.create.mockImplementation(async (entity: any) => entity);
 
-        // TASK-356 Phase 2 — default: no SYSTEM default pipeline so the
-        // pipeline-clone provisioning step is a no-op for the existing create
-        // tests. The pipeline-clone tests below override `findDefault`.
-        mockAsrPipelineRepository.findDefault.mockResolvedValue(null);
+        // TASK-356 Phase 2 — default: no SYSTEM pipelines so the pipeline-clone
+        // provisioning step is a no-op for the existing create tests. The
+        // pipeline-clone tests below override `findEnabledPipelines`.
+        mockAsrPipelineRepository.findEnabledPipelines.mockResolvedValue([]);
         mockAsrPipelineRepository.isSlugUnique.mockResolvedValue(true);
         mockAsrPipelineRepository.create.mockImplementation(async (entity: any) => entity);
         mockAsrPipelineRepository.setDefaultForTenant.mockResolvedValue(undefined);
@@ -586,10 +587,12 @@ describe('TenantService', () => {
             expect(result.id).toBe('new-tenant-id');
         });
 
-        // TASK-356 Phase 2 (D — extend_clone) — clone the SYSTEM default ASR
-        // pipeline (+ its current version) into the new tenant, tenant-scoped
-        // default, idempotent, failure-isolated.
-        describe('create — provisionTenantPipelineCatalog (TASK-356 Phase 2)', () => {
+        // TASK-356 Phase 2 (D — extend_clone), extended by the TASK-505/356
+        // full-parity policy — clone EVERY enabled SYSTEM ASR pipeline (+ each
+        // one's current version) into the new tenant, mark the clone of the
+        // SYSTEM default as the tenant default, idempotent per slug,
+        // failure-isolated.
+        describe('create — provisionTenantPipelineCatalog (TASK-505/356 full parity)', () => {
             const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
             const makeSystemPipeline = (over: Record<string, unknown> = {}) => ({
                 id: 'sys-pipeline-ct2',
@@ -599,37 +602,54 @@ describe('TenantService', () => {
                 description: 'system default pipeline',
                 configYaml: 'version: "1.1"\nmodels:\n  asr: {}\n',
                 tags: ['production'],
-                isDefault: true,
+                isDefault: false,
                 ...over,
             });
+            // A realistic SYSTEM catalog: the default (production) + two others.
+            const makeSystemCatalog = () => [
+                makeSystemPipeline({
+                    id: 'sys-pipeline-production',
+                    slug: 'production-whisper-large-v3',
+                    name: 'Full Features',
+                    isDefault: true,
+                }),
+                makeSystemPipeline({ id: 'sys-pipeline-turbo', slug: 'turbo-whisper-large-v3', name: 'Turbo' }),
+                makeSystemPipeline(),
+            ];
 
-            it('clones the SYSTEM default pipeline into the new tenant and marks it the tenant default', async () => {
+            it('clones EVERY enabled SYSTEM pipeline into the new tenant and marks the SYSTEM default clone the tenant default', async () => {
                 const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
                 mockTenantRepository.create.mockResolvedValue(newTenant);
-                mockAsrPipelineRepository.findDefault.mockResolvedValue(makeSystemPipeline());
+                mockAsrPipelineRepository.findEnabledPipelines.mockResolvedValue(makeSystemCatalog());
                 mockAsrPipelineRepository.isSlugUnique.mockResolvedValue(true);
 
                 await service.create({ key: 'NEW', name: 'New' });
 
-                // Reads the SYSTEM-owned default pipeline (never a customer tenant).
-                expect(mockAsrPipelineRepository.findDefault).toHaveBeenCalledWith(SYSTEM_TENANT_ID);
-                // Clones exactly one pipeline, bound to the NEW tenant (never SYSTEM).
-                expect(mockAsrPipelineRepository.create).toHaveBeenCalledTimes(1);
-                const created = mockAsrPipelineRepository.create.mock.calls[0][0];
-                expect(created.tenantId).toBe('new-tenant-id');
-                expect(created.slug).toBe('production-faster-whisper-turbo-int8');
-                // Tenant-scoped default flip (atomic; preserves one-default invariant).
-                expect(mockAsrPipelineRepository.setDefaultForTenant).toHaveBeenCalledWith(
-                    'new-tenant-id',
-                    created.id,
-                    expect.anything(),
+                // Reads the SYSTEM-owned catalog (never a customer tenant).
+                expect(mockAsrPipelineRepository.findEnabledPipelines).toHaveBeenCalledWith(SYSTEM_TENANT_ID);
+                // Clones ALL three SYSTEM pipelines, each bound to the NEW tenant.
+                expect(mockAsrPipelineRepository.create).toHaveBeenCalledTimes(3);
+                const createdSlugs = mockAsrPipelineRepository.create.mock.calls.map((c) => c[0].slug);
+                expect(new Set(createdSlugs)).toEqual(
+                    new Set(['production-whisper-large-v3', 'turbo-whisper-large-v3', 'production-faster-whisper-turbo-int8']),
                 );
+                mockAsrPipelineRepository.create.mock.calls.forEach(([created]) => {
+                    expect(created.tenantId).toBe('new-tenant-id');
+                });
+                // Exactly one default flip: the clone of the SYSTEM default (production).
+                expect(mockAsrPipelineRepository.setDefaultForTenant).toHaveBeenCalledTimes(1);
+                const defaultCall = mockAsrPipelineRepository.setDefaultForTenant.mock.calls[0];
+                expect(defaultCall[0]).toBe('new-tenant-id');
+                const productionClone = mockAsrPipelineRepository.create.mock.calls
+                    .map((c) => c[0])
+                    .find((p) => p.slug === 'production-whisper-large-v3');
+                expect(defaultCall[1]).toBe(productionClone.id);
             });
 
-            it('clones the source pipeline current version (carrying its YAML) as the tenant pipeline v1', async () => {
+            it('clones each source pipeline current version (carrying its YAML) as the tenant pipeline v1', async () => {
                 const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
                 mockTenantRepository.create.mockResolvedValue(newTenant);
-                mockAsrPipelineRepository.findDefault.mockResolvedValue(makeSystemPipeline());
+                mockAsrPipelineRepository.findEnabledPipelines.mockResolvedValue([makeSystemPipeline({ isDefault: true })]);
                 mockAsrPipelineRepository.isSlugUnique.mockResolvedValue(true);
                 // findByPipeline returns newest-first; [0] is the current version.
                 mockAsrPipelineVersionRepository.findByPipeline.mockResolvedValue([
@@ -651,7 +671,9 @@ describe('TenantService', () => {
             it('synthesizes v1 from the pipeline configYaml when the source has no version rows', async () => {
                 const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
                 mockTenantRepository.create.mockResolvedValue(newTenant);
-                mockAsrPipelineRepository.findDefault.mockResolvedValue(makeSystemPipeline({ configYaml: 'PIPELINE-LEVEL-YAML' }));
+                mockAsrPipelineRepository.findEnabledPipelines.mockResolvedValue([
+                    makeSystemPipeline({ configYaml: 'PIPELINE-LEVEL-YAML', isDefault: true }),
+                ]);
                 mockAsrPipelineRepository.isSlugUnique.mockResolvedValue(true);
                 mockAsrPipelineVersionRepository.findByPipeline.mockResolvedValue([]);
 
@@ -661,24 +683,26 @@ describe('TenantService', () => {
                 expect(mockAsrPipelineVersionRepository.create.mock.calls[0][0].configYaml).toBe('PIPELINE-LEVEL-YAML');
             });
 
-            it('is idempotent — skips when the new tenant already owns the pipeline slug', async () => {
+            it('is idempotent per slug — skips the pipelines the tenant already owns, clones the rest', async () => {
                 const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
                 mockTenantRepository.create.mockResolvedValue(newTenant);
-                mockAsrPipelineRepository.findDefault.mockResolvedValue(makeSystemPipeline());
-                // Tenant already has the slug (backfill re-run) → skip entirely.
-                mockAsrPipelineRepository.isSlugUnique.mockResolvedValue(false);
+                mockAsrPipelineRepository.findEnabledPipelines.mockResolvedValue(makeSystemCatalog());
+                // Tenant already owns the turbo slug (backfill re-run) → skip only that one.
+                mockAsrPipelineRepository.isSlugUnique.mockImplementation(
+                    async (_tenantId: string, slug: string) => slug !== 'turbo-whisper-large-v3',
+                );
 
                 await service.create({ key: 'NEW', name: 'New' });
 
-                expect(mockAsrPipelineRepository.create).not.toHaveBeenCalled();
-                expect(mockAsrPipelineRepository.setDefaultForTenant).not.toHaveBeenCalled();
-                expect(mockAsrPipelineVersionRepository.create).not.toHaveBeenCalled();
+                const createdSlugs = mockAsrPipelineRepository.create.mock.calls.map((c) => c[0].slug);
+                expect(createdSlugs).not.toContain('turbo-whisper-large-v3');
+                expect(mockAsrPipelineRepository.create).toHaveBeenCalledTimes(2);
             });
 
-            it('no SYSTEM default pipeline → clone is a safe no-op', async () => {
+            it('no SYSTEM pipelines → clone is a safe no-op', async () => {
                 const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
                 mockTenantRepository.create.mockResolvedValue(newTenant);
-                mockAsrPipelineRepository.findDefault.mockResolvedValue(null);
+                mockAsrPipelineRepository.findEnabledPipelines.mockResolvedValue([]);
 
                 const result = await service.create({ key: 'NEW', name: 'New' });
 
@@ -690,12 +714,33 @@ describe('TenantService', () => {
             it('pipeline-clone failure does not abort tenant creation', async () => {
                 const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
                 mockTenantRepository.create.mockResolvedValue(newTenant);
-                mockAsrPipelineRepository.findDefault.mockRejectedValue(new Error('db down'));
+                mockAsrPipelineRepository.findEnabledPipelines.mockRejectedValue(new Error('db down'));
 
                 const result = await service.create({ key: 'NEW', name: 'New' });
 
-                expect(mockAsrPipelineRepository.findDefault).toHaveBeenCalled();
+                expect(mockAsrPipelineRepository.findEnabledPipelines).toHaveBeenCalled();
                 expect(result.id).toBe('new-tenant-id');
+            });
+
+            it('one pipeline clone failing does not abort the others (per-row isolation)', async () => {
+                const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
+                mockTenantRepository.create.mockResolvedValue(newTenant);
+                mockAsrPipelineRepository.findEnabledPipelines.mockResolvedValue(makeSystemCatalog());
+                mockAsrPipelineRepository.isSlugUnique.mockResolvedValue(true);
+                // The turbo clone throws; production + ct2 still clone.
+                mockAsrPipelineRepository.create.mockImplementation(async (entity: any) => {
+                    if (entity.slug === 'turbo-whisper-large-v3') throw new Error('unique violation');
+                    return entity;
+                });
+
+                const result = await service.create({ key: 'NEW', name: 'New' });
+
+                expect(result.id).toBe('new-tenant-id');
+                const createdSlugs = mockAsrPipelineRepository.create.mock.calls.map((c) => c[0].slug);
+                expect(createdSlugs).toContain('production-whisper-large-v3');
+                expect(createdSlugs).toContain('production-faster-whisper-turbo-int8');
+                // The default (production) still got flipped despite the sibling failure.
+                expect(mockAsrPipelineRepository.setDefaultForTenant).toHaveBeenCalledTimes(1);
             });
         });
 
