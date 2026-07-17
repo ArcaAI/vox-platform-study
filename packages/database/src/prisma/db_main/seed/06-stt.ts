@@ -797,16 +797,48 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     },
 ];
 
+/**
+ * TASK-505/356 policy correction (owner directive 2026-07-17): every
+ * customer-facing tenant mirrors the FULL SYSTEM pipeline catalog — a new
+ * tenant gets the SAME pipelines as SYSTEM, not a curated subset. The first
+ * rows of each customer array below stay hand-authored because their IDs are
+ * referenced by other seeds (91-user `default-stt-pipeline`, 09-consultation
+ * job seeds); the REMAINING SYSTEM pipelines are derived here so the customer
+ * catalogs can never drift from DEFAULT_ASR_PIPELINES.
+ *
+ * Derived IDs reuse the `81000000-…-0001-…` block with the tenant discriminator
+ * in the hundreds slot (SYSTEM=0xx, ArcaAI=1xx, Global=4xx) and a sequence
+ * starting at 10 (…110+, …410+) so they never collide with the hand-authored
+ * rows (…101-103 / …401-403). Slugs/configYaml are shared with SYSTEM (upsert
+ * key is `{tenantId, slug}`; safe under `@@unique([tenantId, slug])`).
+ */
+const deriveRemainingTenantPipelines = (
+    tenantId: string,
+    discriminator: '1' | '4',
+    namePrefix: string,
+    explicitSlugs: ReadonlySet<string>,
+): AsrPipelineSeed[] =>
+    DEFAULT_ASR_PIPELINES.filter((p) => !explicitSlugs.has(p.slug)).map((p, i) => ({
+        ...p,
+        // …0001-000000000<disc><seq>, seq = 10 + index (2 digits) → 110.. / 410..
+        id: `81000000-0000-0000-0001-000000000${discriminator}${String(10 + i).padStart(2, '0')}`,
+        tenantId,
+        name: `${namePrefix} ${p.name}`,
+        // Only the hand-authored production row is the tenant default.
+        isDefault: false,
+    }));
+
 // =============================================================================
 // PER-CUSTOMER-TENANT ASR PIPELINES (TASK-331 doc-03 F3 / Q2)
 //
 // The DEFAULT_ASR_PIPELINES above are platform-wide system seeds owned by the
-// reserved system tenant. The ArcaAI customer tenant was
-// previously left with ZERO pipelines; this gave admins nothing to manage and
-// no per-tenant default. Here we give the customer tenant a small, realistic
-// catalog (a production default + a turbo/streaming option) and mark EXACTLY
-// ONE as `isDefault: true`. The runtime (resolveRemoteConfig) honours that
-// per-tenant default ahead of the GlobalSetting slug default.
+// reserved system tenant. Per the TASK-505/356 full-parity policy, every
+// customer tenant now carries the ENTIRE SYSTEM catalog: three hand-authored
+// rows (production default + turbo + CT2, whose IDs other seeds reference) plus
+// the remaining SYSTEM pipelines appended via `deriveRemainingTenantPipelines`.
+// EXACTLY ONE row is `isDefault: true` (production). The runtime
+// (resolveRemoteConfig) honours that per-tenant default ahead of the
+// GlobalSetting slug default.
 //
 // ID scheme: kept inside the `81000000-…-0001-…` ASR-pipeline block; the LAST
 // UUID group encodes the tenant (1xx=ArcaAI) so the IDs
@@ -815,6 +847,12 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
 //
 // Exported for testing purposes.
 // =============================================================================
+
+const EXPLICIT_TENANT_PIPELINE_SLUGS = new Set([
+    'production-whisper-large-v3',
+    'turbo-whisper-large-v3',
+    'production-faster-whisper-turbo-int8',
+]);
 
 export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
     // --- ArcaAI ---
@@ -852,6 +890,13 @@ export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
         isDefault: false,
         tags: ['faster-whisper', 'ctranslate2', 'int8', 'diarization'],
     },
+    // --- ArcaAI: remaining SYSTEM pipelines (full-parity policy) ---
+    ...deriveRemainingTenantPipelines(
+        SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+        '1',
+        'ArcaAI',
+        EXPLICIT_TENANT_PIPELINE_SLUGS,
+    ),
 ];
 
 // =============================================================================
@@ -915,6 +960,13 @@ export const GLOBAL_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
         isDefault: false,
         tags: ['faster-whisper', 'ctranslate2', 'int8', 'diarization'],
     },
+    // --- Global: remaining SYSTEM pipelines (full-parity policy) ---
+    ...deriveRemainingTenantPipelines(
+        SEED_TENANT_ID,
+        '4',
+        'Global',
+        EXPLICIT_TENANT_PIPELINE_SLUGS,
+    ),
 ];
 
 // =============================================================================

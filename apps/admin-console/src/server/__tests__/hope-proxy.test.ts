@@ -100,6 +100,28 @@ describe('handleProxy', () => {
         expect(calls[0].headers.get('x-tenant-id')).toBeNull();
     });
 
+    // BUG-006: downloading a blob whose key contains slashes (e.g.
+    // `2026/07/10/streams/<id>/processed/complete.wav`). The browser encodes the
+    // key as `%2F`; Next's catch-all decodes it into a single segment with real
+    // slashes. A plain `path.join('/')` forwards those as separators and the
+    // gateway's single-segment `buckets/:name/files/:key` route 404s. The
+    // segments must be re-encoded so the `%2F` reaches the gateway intact.
+    it('re-encodes slashes inside a decoded file-key segment so :key stays one segment', async () => {
+        await seedSession(baseSession);
+        const calls = installFetchMock(() => Response.json({ key: 'k', url: 'https://presigned' }));
+
+        await handleProxy(
+            new Request(
+                'http://console.local/api/hope/storage/buckets/hope-recordings-global/files/2026%2F07%2F10%2Fstreams%2F019f4cb3%2Fprocessed%2Fcomplete.wav',
+            ),
+            ['storage', 'buckets', 'hope-recordings-global', 'files', '2026/07/10/streams/019f4cb3/processed/complete.wav'],
+        );
+
+        expect(calls[0].url).toBe(
+            `${API}/api/v1/storage/buckets/hope-recordings-global/files/2026%2F07%2F10%2Fstreams%2F019f4cb3%2Fprocessed%2Fcomplete.wav`,
+        );
+    });
+
     it('attaches X-Tenant-Id only for elevated users with a working tenant', async () => {
         await seedSession({ ...baseSession, workingTenantId: '50000000-0000-0000-0000-000000000000' });
         const elevatedCalls = installFetchMock(() => Response.json({}));
