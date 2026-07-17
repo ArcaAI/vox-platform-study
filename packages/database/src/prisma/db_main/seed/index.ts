@@ -20,6 +20,7 @@ import { seedRateLimitSettings } from './12-rate-limit-settings';
 import { seedHarnessPolicy } from './13-harness-policy';
 import { seedPipelinePolicy } from './14-pipeline-policy';
 import { seedEntitlements } from './15-entitlements';
+import { seedAiTaskDefault } from './16-ai-task-default';
 import { seedUser } from './91-user';
 
 /**
@@ -102,6 +103,10 @@ export const seed = async () => {
         // TASK-356 Phase 5 — SYSTEM + demo PipelinePolicy cascade defaults (+ WORM).
         // Needs the reserved SYSTEM tenant + the Global demo tenant (both Phase 1).
         await seedPipelinePolicy(client);
+        console.log('');
+        // TASK-506 — SYSTEM AiTaskDefault platform defaults (guardrail/NLP task
+        // models). CREATE-ONLY; needs the AiModel catalog (seedStt above).
+        await seedAiTaskDefault(client);
         console.log('');
 
         // Phase 3: Depends on Phase 2 (PromptTemplate.departmentId → Department)

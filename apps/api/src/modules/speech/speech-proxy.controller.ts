@@ -21,6 +21,9 @@ interface SpeechSynthesizeRequest {
   routing_ml?: string[];
   allowed_providers?: string[];
   provider_overrides?: Record<string, { api_key: string; region?: string; base_url?: string }>;
+  // TASK-506 — resolved voice bindings ({internalVoiceId: {provider: providerVoiceName}});
+  // tts-v2 falls back to its built-in DEFAULT_VOICES when absent.
+  voice_bindings?: Record<string, Record<string, string>>;
 }
 
 interface UpstreamErrorPayload {
@@ -74,6 +77,9 @@ export class SpeechProxyController {
         routing_ml: eff.routingMl,
         allowed_providers: eff.allowedProviders,
         ...(Object.keys(overrides).length > 0 ? { provider_overrides: overrides } : {}),
+        // TASK-506 — resolved voice bindings (tenant over SYSTEM merge); only
+        // injected when non-empty so tts-v2 keeps its built-in defaults otherwise.
+        ...(eff.voiceBindings && Object.keys(eff.voiceBindings).length > 0 ? { voice_bindings: eff.voiceBindings } : {}),
       };
     } catch (err) {
       this.logger.warn({

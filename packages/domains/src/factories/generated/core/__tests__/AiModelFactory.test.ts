@@ -425,5 +425,43 @@ describe('AiModelFactory', () => {
 
       expect(model.format).toBe(AiModelFormat.NEMO);
     });
+
+    // TASK-506 — machine-actionable registry identity columns.
+    it('should carry provider, architecture, and metaData when supplied', () => {
+      const model = AiModelFactory.CreateAiModel({
+        tenantId: TEST_TENANT_ID,
+        name: 'Gemma 4 E2B IT QAT',
+        slug: 'lms-gemma-4-e2b-it-qat',
+        category: ModelCategory.NLP,
+        taskType: ModelTaskType.TEXT_GENERATION,
+        modelType: ModelType.QUANTIZED_MODEL,
+        source: AiModelSource.LOCAL,
+        sourceUri: 'gemma-4-e2b-it-qat',
+        format: AiModelFormat.GGUF,
+        provider: 'lm-studio',
+        architecture: 'gemma4',
+        metaData: { voices: [{ id: 'en-female-1', locale: 'en-IN' }] },
+      });
+
+      expect(model.provider).toBe('lm-studio');
+      expect(model.architecture).toBe('gemma4');
+      expect(model.metaData).toEqual({ voices: [{ id: 'en-female-1', locale: 'en-IN' }] });
+    });
+
+    it('should default provider/architecture to null when omitted', () => {
+      const model = AiModelFactory.CreateAiModel({
+        tenantId: TEST_TENANT_ID,
+        name: 'Whisper Large V3',
+        slug: 'whisper-large-v3',
+        category: ModelCategory.AUDIO,
+        taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+        modelType: ModelType.BASE_MODEL,
+        source: AiModelSource.HUGGINGFACE,
+        sourceUri: 'openai/whisper-large-v3',
+        format: AiModelFormat.SAFETENSOR,
+      });
+      expect(model.provider).toBeNull();
+      expect(model.architecture).toBeNull();
+    });
   });
 });

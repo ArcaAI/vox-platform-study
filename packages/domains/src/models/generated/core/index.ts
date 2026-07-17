@@ -1,4 +1,5 @@
 export * from './AiModelModel';
+export * from './AiTaskDefaultModel';
 export * from './ApiKeyModel';
 export * from './AsrPipelineModel';
 export * from './AsrPipelineVersionModel';

@@ -1,11 +1,12 @@
 import type { CorePrismaClient } from '../../../client';
-import { ValueType } from '../../../generated/core-prisma-client/client.js';
+import { ResourceStatusType, ValueType } from '../../../generated/core-prisma-client/client.js';
 import {
     SEED_CUSTOMER_TENANT_IDS,
     SEED_TENANT_ID,
     SEED_USER_IDS,
     SEED_GLOBAL_SETTING_IDS,
     SYSTEM_TENANT_ID,
+    SYSTEM_USER_ID,
 } from './00-constants';
 
 /**
@@ -15,15 +16,20 @@ import {
  * every tenant (Global + customer tenants) so the admin panel and SDK
  * always see populated configuration.
  *
- * Every tenant gets the same 24 settings (consolidated):
+ * Every tenant gets the same 18 settings (consolidated):
  *   - general       (3) — session limits, language, timeouts
  *   - feature-flags (6) — toggles for platform capabilities
  *   - stt           (2) — speech-to-text defaults
- *   - smr           (3) — summarisation provider / model / Azure deployment defaults
- *   - guardrail     (3) — content-safety provider / model / Azure deployment defaults
- *   - ux-constants  (5) — static model lists + provider catalogs for UI dropdowns
+ *   - smr           (1) — Azure deployment name (non-secret)
+ *   - ux-constants  (4) — static model lists + guardrail provider catalog
  *   - admin         (1) — locked config paths
  *   - arcaai-admin  (1) — admin-console menu order
+ *
+ * TASK-506 — the smr default-provider/default-model keys, the ad-hoc
+ * `smr-provider-models` UI catalog and the entire `guardrail` namespace are
+ * RETIRED (superseded by the `AiTaskDefault` table + registry-backed provider
+ * listings). They are removed from the seeded arrays and swept to
+ * resourceStatus DELETED by `retireSupersededGlobalSettings` below.
  *
  * Uses upsert on the (tenantId, name, key) composite unique constraint
  * to remain idempotent across repeated runs.
@@ -70,62 +76,12 @@ const LOCAL_NOISE_SUPPRESSION_MODELS = JSON.stringify([
 ]);
 
 // =============================================================================
-// SMR Provider-Model Catalog — available text-generation providers and models
-//
-// Seeded per-tenant so the admin UI can populate provider/model selectors.
-// Admins pick a default provider + model from this catalog.
+// TASK-506 — the SMR provider-model catalog (`SMR_PROVIDER_MODELS`,
+// `smr-provider-models` ux-constants key) was RETIRED: provider/model listings
+// now come from the AiModel registry (ENABLED rows grouped by `provider`), and
+// the platform text/summarization default lives on HarnessPolicy
+// (13-harness-policy.ts) + the AiTaskDefault table (16-ai-task-default.ts).
 // =============================================================================
-
-// LM Studio is the default/primary local engine; Ollama is optional/lower-priority.
-export const SMR_PROVIDER_NAMES = ['lm-studio', 'ollama', 'azure-openai'] as const;
-
-export const SMR_PROVIDER_MODELS = [
-    {
-        provider: 'lm-studio',
-        models: [
-            { name: 'google/gemma-4-e4b', size: '4.7 GB' },
-            { name: 'lmstudio-community/gemma-4-E4B-it-QAT-GGUF', size: '4.7 GB' },
-            { name: 'google/gemma-4-12b-qat', size: '8.1 GB' },
-            { name: 'qwen3.5-4b', size: '3.1 GB' },
-            { name: 'qwen3.5-0.8b', size: '0.95 GB' },
-            { name: 'qwen/qwen3.5-9b', size: '6.1 GB' },
-            { name: 'qwen/qwen3.5-35b-a3b', size: '20.6 GB' },
-            { name: 'liquid/lfm2-24b-a2b', size: '12.5 GB' },
-            { name: 'zai-org/glm-4.6v-flash', size: '6.6 GB' },
-            { name: 'liquidai/lfm2.5-1.2b-instruct-mlx', size: '2.2 GB' },
-            { name: 'lfm2.5-1.2b-thinking-mlx', size: '2.2 GB' },
-            { name: 'liquidai/lfm2.5-vl-1.6b', size: '3.0 GB' },
-            { name: 'translategemma-27b-it', size: '14.2 GB' },
-            { name: 'gemma-4-e2b-it-sft-rlvr-medical', size: '5.6 GB' },
-            { name: 'unsloth/medgemma-1.5-4b-it', size: '8.8 GB' },
-            { name: 'gpt-oss-20b', size: '12.3 GB' },
-        ],
-    },
-    {
-        provider: 'ollama',
-        models: [
-            { name: 'qwen3.5:27b', size: '17 GB' },
-            { name: 'qwen3.5:latest', size: '6.6 GB' },
-            { name: 'translategemma:12b', size: '8.1 GB' },
-            { name: 'translategemma:latest', size: '3.3 GB' },
-            { name: 'hf.co/unsloth/medgemma-27b-text-it-GGUF:Q4_K_M', size: '16 GB' },
-            { name: 'gemma3:latest', size: '3.3 GB' },
-            { name: 'gemma3n:e2b', size: '5.6 GB' },
-            { name: 'gpt-oss:latest', size: '13 GB' },
-            { name: 'gemma3n:latest', size: '7.5 GB' },
-            { name: 'granite4:tiny-h', size: '4.2 GB' },
-            { name: 'granite4:latest', size: '2.1 GB' },
-        ],
-    },
-    {
-        provider: 'azure-openai',
-        models: [
-            { name: 'gpt-4o-mini', size: '' },
-        ],
-    },
-] as const;
-
-const SMR_PROVIDER_MODELS_JSON = JSON.stringify(SMR_PROVIDER_MODELS);
 
 // =============================================================================
 // Guardrail Provider-Model Catalog (TASK-338) — available content-safety /
@@ -204,16 +160,10 @@ function tenantSettings(
         ffConsultationSharing: string;
         sttModel: string;
         sttVad: string;
-        smrProvider: string;
-        smrModel: string;
         smrAzureDeployment: string;
-        guardrailProvider: string;
-        guardrailModel: string;
-        guardrailAzureDeployment: string;
         uxLocalAsrModels: string;
         uxLocalVadModels: string;
         uxLocalNoiseSuppressionModels: string;
-        uxSmrProviderModels: string;
         uxGuardrailProviderModels: string;
         lockedConfigPaths: string;
         adminMenuOrder: string;
@@ -335,8 +285,10 @@ function tenantSettings(
             namespace: 'stt',
             name: 'Default STT Model',
             key: 'default-stt-model',
-            value: 'whisper-large-v3',
-            defaultValue: 'whisper-large-v3',
+            // TASK-506 — whisper-large-v3 was retired from the AiModel catalog;
+            // the surviving backend ASR default is the turbo variant.
+            value: 'whisper-large-v3-turbo',
+            defaultValue: 'whisper-large-v3-turbo',
             dataType: ValueType.String,
             description: 'Default speech-to-text model slug used for backend transcription (not used for local browser STT)',
             locked: true,
@@ -354,36 +306,11 @@ function tenantSettings(
             locked: true,
         },
 
-        // ── smr (2) ─────────────────────────────────────────────────────
-        {
-            id: ids.smrProvider,
-            tenantId,
-            namespace: 'smr',
-            name: 'Default SMR Provider',
-            key: 'default-smr-provider',
-            value: 'lm-studio',
-            defaultValue: 'lm-studio',
-            dataType: ValueType.String,
-            description: 'Default LLM provider for summarization (e.g., lm-studio, ollama, azure-openai)',
-            locked: true,
-        },
-        {
-            id: ids.smrModel,
-            tenantId,
-            namespace: 'smr',
-            name: 'Default SMR Model',
-            key: 'default-smr-model',
-            // TASK-356 Phase 2 — the platform-default summarization model is
-            // gemma-4-e2b-it-sft-rlvr-medical (mirrors the SYSTEM
-            // HarnessPolicy.smrModel set by seedHarnessPolicy). Must remain a
-            // member of the lm-studio SMR provider catalog (SMR_PROVIDER_MODELS)
-            // so the resolver stays valid.
-            value: 'gemma-4-e2b-it-sft-rlvr-medical',
-            defaultValue: 'gemma-4-e2b-it-sft-rlvr-medical',
-            dataType: ValueType.String,
-            description: 'Default LLM model slug for summarization tasks (LM Studio model name)',
-            locked: true,
-        },
+        // ── smr (1) ─────────────────────────────────────────────────────
+        // TASK-506 — default-smr-provider / default-smr-model RETIRED: the
+        // platform summarization default lives on HarnessPolicy (SYSTEM row,
+        // 13-harness-policy.ts); provider/model listings come from the AiModel
+        // registry. Only the non-secret Azure deployment name remains here.
         {
             // TASK-338 — Azure OpenAI deployment NAME for SMR (non-secret).
             // The Azure API key remains env/Vault only (never a plaintext
@@ -400,46 +327,14 @@ function tenantSettings(
             description: 'Azure OpenAI deployment name used by SMR when provider=azure-openai (non-secret; the API key stays in env/Vault)',
         },
 
-        // ── guardrail (3) — TASK-338 admin-configurable Guardrail engine ──
-        {
-            id: ids.guardrailProvider,
-            tenantId,
-            namespace: 'guardrail',
-            name: 'Default Guardrail Provider',
-            key: 'default-guardrail-provider',
-            value: 'lm-studio',
-            defaultValue: 'lm-studio',
-            dataType: ValueType.String,
-            description: 'Default LLM provider for the Guardrail service (e.g., lm-studio, ollama, azure-openai)',
-            locked: true,
-        },
-        {
-            id: ids.guardrailModel,
-            tenantId,
-            namespace: 'guardrail',
-            name: 'Default Guardrail Model',
-            key: 'default-guardrail-model',
-            value: 'granite-guardian-4.1-8b',
-            defaultValue: 'granite-guardian-4.1-8b',
-            dataType: ValueType.String,
-            description: 'Default model slug for the Guardrail service (LM Studio Granite Guardian model name)',
-            locked: true,
-        },
-        {
-            // TASK-338 — Azure OpenAI deployment NAME for Guardrail (non-secret).
-            // Same key remains env/Vault posture as SMR above.
-            id: ids.guardrailAzureDeployment,
-            tenantId,
-            namespace: 'guardrail',
-            name: 'Guardrail Azure Deployment',
-            key: 'guardrail-azure-deployment',
-            value: '',
-            defaultValue: '',
-            dataType: ValueType.String,
-            description: 'Azure OpenAI deployment name used by Guardrail when provider=azure-openai (non-secret; the API key stays in env/Vault)',
-        },
+        // ── guardrail (0) — RETIRED (TASK-506) ──────────────────────────
+        // The TASK-338 guardrail namespace (default-guardrail-provider /
+        // default-guardrail-model / guardrail-azure-deployment) is superseded
+        // by the AiTaskDefault table (`guardrail.validate` key, GLOBAL-ADMIN-
+        // ONLY writes) + the AiModel registry. Existing rows are swept to
+        // DELETED by retireSupersededGlobalSettings.
 
-        // ── ux-constants (3) ────────────────────────────────────────────
+        // ── ux-constants (4) ────────────────────────────────────────────
         {
             id: ids.uxLocalAsrModels,
             tenantId,
@@ -476,18 +371,8 @@ function tenantSettings(
             description: 'Available local browser-based noise suppression models for the SDK installation page',
             locked: true,
         },
-        {
-            id: ids.uxSmrProviderModels,
-            tenantId,
-            namespace: 'ux-constants',
-            name: 'SMR Provider Models',
-            key: 'smr-provider-models',
-            value: SMR_PROVIDER_MODELS_JSON,
-            defaultValue: SMR_PROVIDER_MODELS_JSON,
-            dataType: ValueType.Json,
-            description: 'Available text-generation providers and models for summarization (admin selects default from this catalog)',
-            locked: true,
-        },
+        // TASK-506 — the `smr-provider-models` catalog key is RETIRED (the
+        // AiModel registry is the single provider/model catalog).
         {
             // TASK-338 — Guardrail provider/model catalog mirroring the SMR one.
             id: ids.uxGuardrailProviderModels,
@@ -555,16 +440,10 @@ export const ALL_SETTINGS: SettingDef[] = [
         ffConsultationSharing: IDS.GLOBAL_FF_CONSULTATION_SHARING,
         sttModel: IDS.GLOBAL_STT_MODEL,
         sttVad: IDS.GLOBAL_STT_VAD,
-        smrProvider: IDS.GLOBAL_SMR_PROVIDER,
-        smrModel: IDS.GLOBAL_SMR_MODEL,
         smrAzureDeployment: IDS.GLOBAL_SMR_AZURE_DEPLOYMENT,
-        guardrailProvider: IDS.GLOBAL_GUARDRAIL_PROVIDER,
-        guardrailModel: IDS.GLOBAL_GUARDRAIL_MODEL,
-        guardrailAzureDeployment: IDS.GLOBAL_GUARDRAIL_AZURE_DEPLOYMENT,
         uxLocalAsrModels: IDS.GLOBAL_UX_LOCAL_ASR_MODELS,
         uxLocalVadModels: IDS.GLOBAL_UX_LOCAL_VAD_MODELS,
         uxLocalNoiseSuppressionModels: IDS.GLOBAL_UX_LOCAL_NOISE_SUPPRESSION_MODELS,
-        uxSmrProviderModels: IDS.GLOBAL_UX_SMR_PROVIDER_MODELS,
         uxGuardrailProviderModels: IDS.GLOBAL_UX_GUARDRAIL_PROVIDER_MODELS,
         lockedConfigPaths: IDS.GLOBAL_LOCKED_CONFIG_PATHS,
         adminMenuOrder: IDS.GLOBAL_ADMIN_MENU_ORDER,
@@ -581,16 +460,10 @@ export const ALL_SETTINGS: SettingDef[] = [
         ffConsultationSharing: IDS.ARCAAI_FF_CONSULTATION_SHARING,
         sttModel: IDS.ARCAAI_STT_MODEL,
         sttVad: IDS.ARCAAI_STT_VAD,
-        smrProvider: IDS.ARCAAI_SMR_PROVIDER,
-        smrModel: IDS.ARCAAI_SMR_MODEL,
         smrAzureDeployment: IDS.ARCAAI_SMR_AZURE_DEPLOYMENT,
-        guardrailProvider: IDS.ARCAAI_GUARDRAIL_PROVIDER,
-        guardrailModel: IDS.ARCAAI_GUARDRAIL_MODEL,
-        guardrailAzureDeployment: IDS.ARCAAI_GUARDRAIL_AZURE_DEPLOYMENT,
         uxLocalAsrModels: IDS.ARCAAI_UX_LOCAL_ASR_MODELS,
         uxLocalVadModels: IDS.ARCAAI_UX_LOCAL_VAD_MODELS,
         uxLocalNoiseSuppressionModels: IDS.ARCAAI_UX_LOCAL_NOISE_SUPPRESSION_MODELS,
-        uxSmrProviderModels: IDS.ARCAAI_UX_SMR_PROVIDER_MODELS,
         uxGuardrailProviderModels: IDS.ARCAAI_UX_GUARDRAIL_PROVIDER_MODELS,
         lockedConfigPaths: IDS.ARCAAI_LOCKED_CONFIG_PATHS,
         adminMenuOrder: IDS.ARCAAI_ADMIN_MENU_ORDER,
@@ -627,8 +500,57 @@ const PLATFORM_SETTINGS: SettingDef[] = [
     },
 ];
 
+// =============================================================================
+// TASK-506 — superseded GlobalSetting keys (soft-retire sweep)
+//
+// These six keys are replaced by the AiTaskDefault table + registry-backed
+// provider listings in this same ticket. `retireSupersededGlobalSettings`
+// sweeps EVERY tenant's copy to resourceStatus DELETED (idempotent; rows stay
+// recoverable). NOTE: `default-stt-pipeline` and all other keys are untouched.
+// =============================================================================
+
+export const RETIRED_GLOBAL_SETTING_KEYS: ReadonlyArray<{ namespace: string; key: string }> = [
+    { namespace: 'smr', key: 'default-smr-provider' },
+    { namespace: 'smr', key: 'default-smr-model' },
+    { namespace: 'ux-constants', key: 'smr-provider-models' },
+    { namespace: 'guardrail', key: 'default-guardrail-provider' },
+    { namespace: 'guardrail', key: 'default-guardrail-model' },
+    { namespace: 'guardrail', key: 'guardrail-azure-deployment' },
+];
+
+/**
+ * Idempotently soft-retire the superseded GlobalSetting rows across ALL
+ * tenants: resourceStatus DELETED + updatedAt/updatedBy stamps + `_version`
+ * increment. Already-DELETED rows are excluded, so re-runs write nothing.
+ */
+export const retireSupersededGlobalSettings = async (
+    client: CorePrismaClient,
+): Promise<{ retired: number }> => {
+    console.log('Retiring superseded Global Settings (TASK-506)...');
+
+    let retired = 0;
+    for (const { namespace, key } of RETIRED_GLOBAL_SETTING_KEYS) {
+        const result = await client.globalSetting.updateMany({
+            where: { namespace, key, resourceStatus: { not: ResourceStatusType.DELETED } },
+            data: {
+                resourceStatus: ResourceStatusType.DELETED,
+                resourceStatusUpdatedAt: new Date(),
+                resourceStatusUpdatedBy: SYSTEM_USER_ID,
+                version: { increment: 1 },
+            },
+        });
+        if (result.count > 0) {
+            console.log(`  Retired ${namespace}/${key} (${result.count} tenant rows)`);
+        }
+        retired += result.count;
+    }
+
+    console.log(`Retired ${retired} superseded Global Setting rows`);
+    return { retired };
+};
+
 export const seedGlobalSetting = async (client: CorePrismaClient) => {
-    console.log('Seeding per-tenant Global Settings (24 settings × 4 tenants)...');
+    console.log('Seeding per-tenant Global Settings (18 settings × 2 tenants)...');
 
     for (const s of ALL_SETTINGS) {
         await client.globalSetting.upsert({
@@ -702,4 +624,8 @@ export const seedGlobalSetting = async (client: CorePrismaClient) => {
         });
         console.log(`  [SYSTEM] ${s.namespace}/${s.key}`);
     }
+
+    // TASK-506 — sweep the superseded smr/guardrail keys AFTER the upserts so
+    // existing DBs converge on the retired state (idempotent; see above).
+    await retireSupersededGlobalSettings(client);
 };

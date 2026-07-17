@@ -15,6 +15,8 @@ export class AiModelDtoMapper {
       sourceUri: entity.sourceUri,
       sourceRevision: entity.sourceRevision,
       format: entity.format,
+      provider: entity.provider ?? null,
+      architecture: entity.architecture ?? null,
       memorySizeMb: entity.memorySizeMb,
       computeType: entity.computeType,
       downloadStatus: entity.downloadStatus,

@@ -42,6 +42,11 @@ class SpeechRequest(BaseModel):
     allowed_providers: list[str] | None = None
     # Decrypted per-tenant BYO provider credentials (TASK-496), gateway-injected.
     provider_overrides: dict[str, dict[str, str]] | None = None
+    # Per-request voice-binding overrides (TASK-506), gateway-resolved from the
+    # AiModel registry / tenant TTS config: {internalVoiceId: {provider: voiceName}}.
+    # A present entry MERGES over that voice's DEFAULT_VOICES binding map
+    # (unmentioned providers keep their catalog binding — "empty = inherit").
+    voice_bindings: dict[str, dict[str, str]] | None = None
 
 
 @router.post("/audio/speech")
@@ -70,6 +75,7 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
         routing_ml=body.routing_ml,
         allowed_providers=body.allowed_providers,
         provider_overrides=body.provider_overrides,
+        voice_bindings=body.voice_bindings,
     )
 
     # Prime the generator so provider-availability errors become an HTTP status

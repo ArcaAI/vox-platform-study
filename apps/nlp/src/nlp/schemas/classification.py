@@ -11,6 +11,9 @@ from nlp.schemas.common import Entity, SupportedLanguage
 class TextClassificationRequest(BaseModel):
     text: str = Field(..., description="Input text")
     language: SupportedLanguage | None = Field(default=SupportedLanguage.ENGLISH, description="Language of the text")
+    # TASK-506 — optional per-request model override (gateway-injected from the
+    # AiTaskDefault registry). None → the startup default instance, unchanged.
+    model_name: str | None = Field(default=None, description="Optional HF model id overriding the default classifier")
 
 
 class TextClassificationResponse(BaseModel):
@@ -27,6 +30,9 @@ class TokenClassificationRequest(BaseModel):
     text: str = Field(..., description="Input text")
     aggregation_strategy: str = Field(default="simple", description="Entity aggregation strategy")
     language: SupportedLanguage | None = Field(default=SupportedLanguage.ENGLISH, description="Language of the text")
+    # TASK-506 — optional per-request model override (gateway-injected from the
+    # AiTaskDefault registry). None → the startup default instance, unchanged.
+    model_name: str | None = Field(default=None, description="Optional HF model id overriding the default NER model")
 
 
 class TokenClassificationResponse(BaseModel):

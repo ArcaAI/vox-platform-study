@@ -1,4 +1,5 @@
 export * from './AiModelEntityMapper';
+export * from './AiTaskDefaultEntityMapper';
 export * from './ApiKeyEntityMapper';
 export * from './AsrPipelineEntityMapper';
 export * from './AsrPipelineVersionEntityMapper';

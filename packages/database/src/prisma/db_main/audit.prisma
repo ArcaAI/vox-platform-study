@@ -171,6 +171,8 @@ enum ResourceType {
   // TASK-498 — tenant-scoped external identity provider (OIDC).
   TenantIdentityProvider
   FederatedIdentity
+  // TASK-506 — per-tenant default model per AI task.
+  AiTaskDefault
 
   @@schema("core")
 }

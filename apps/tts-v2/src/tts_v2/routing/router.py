@@ -54,6 +54,37 @@ class AllProvidersUnavailableError(RuntimeError):
 # ``{"azure": {"api_key": ..., "region": ...}, "sarvam": {"api_key": ..., "base_url": ...}}``.
 ProviderOverrides = dict[str, dict[str, str]]
 
+# Per-request voice-binding overrides the gateway resolves from the AiModel
+# registry / tenant TTS config and injects (TASK-506):
+# ``{internalVoiceId: {provider: providerVoiceName}}``.
+VoiceBindings = dict[str, dict[str, str]]
+
+
+def _apply_voice_bindings(voice: Voice, voice_bindings: VoiceBindings | None) -> Voice:
+    """Apply a gateway-injected binding override for this voice (TASK-506).
+
+    A present override MERGES over the voice's catalog binding map: mentioned
+    providers get the overridden voice name, unmentioned providers keep their
+    catalog binding (and thus their failover eligibility — the admin UI's
+    "empty = inherit" semantics). Malformed entries (non-string provider/voice
+    names) are dropped; an absent/empty or fully malformed override keeps the
+    catalog bindings. Returns a frozen copy — the global ``VoiceCatalog`` is
+    never mutated.
+    """
+    if not voice_bindings:
+        return voice
+    override = voice_bindings.get(voice.id)
+    if not isinstance(override, dict):
+        return voice
+    clean = {
+        provider: name
+        for provider, name in override.items()
+        if isinstance(provider, str) and provider and isinstance(name, str) and name
+    }
+    if not clean:
+        return voice
+    return replace(voice, bindings={**voice.bindings, **clean})
+
 
 def _override_cache_key(name: str, override: dict[str, str]) -> str:
     raw = f"{name}|{override.get('api_key', '')}|{override.get('region', '')}|{override.get('base_url', '')}"
@@ -190,8 +221,10 @@ class TTSRouter:
         routing_ml: list[str] | None = None,
         allowed_providers: list[str] | None = None,
         provider_overrides: ProviderOverrides | None = None,
+        voice_bindings: VoiceBindings | None = None,
     ) -> AsyncIterator[AudioChunk]:
         voice = self._catalog.get(voice_id)  # VoiceNotFoundError → 404 at endpoint
+        voice = _apply_voice_bindings(voice, voice_bindings)  # TASK-506 override
         locale = voice.locale
         candidates = self.candidates(
             voice,
@@ -274,6 +307,7 @@ class TTSRouter:
         routing_ml: list[str] | None = None,
         allowed_providers: list[str] | None = None,
         provider_overrides: ProviderOverrides | None = None,
+        voice_bindings: VoiceBindings | None = None,
     ) -> SynthesisStream:
         """Open a duplex stream: incremental text in, audio frames out (TASK-492).
 
@@ -285,6 +319,7 @@ class TTSRouter:
         byte failover; the provider is locked once the first audio frame ships.
         """
         voice = self._catalog.get(voice_id)  # VoiceNotFoundError → 404 at endpoint
+        voice = _apply_voice_bindings(voice, voice_bindings)  # TASK-506 override
         candidates = self.candidates(
             voice,
             routing_en=routing_en,

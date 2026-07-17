@@ -208,12 +208,16 @@ describe('TenantsListScreen', () => {
     });
 
     // TASK-497 §3.5 — the wizard now has a mandatory 3rd (tenant-admin) step
-    // and submits through POST /admin/tenants/provision, never adminless.
+    // (existing user picked via the UserPicker combobox) and submits through
+    // POST /admin/tenants/provision, never adminless.
     it('creates a tenant with an admin through the wizard and navigates to the new detail page', async () => {
         const calls = stubFetch((url, init) => {
             const settings = settingsResponse(url, init);
             if (settings) return settings;
             if ((init?.method ?? 'GET') === 'GET' && url.includes('/admin/tenants?')) return listResponse([]);
+            if ((init?.method ?? 'GET') === 'GET' && url.includes('/api/hope/admin/users')) {
+                return Response.json({ data: [{ id: 'user-1', username: 'admin.acme', isServiceAccount: false }], count: 1, limit: 10, page: 0 });
+            }
             if (init?.method === 'POST' && url === '/api/hope/admin/tenants/provision') {
                 return Response.json({ tenant: tenant({ id: 't-new', name: 'Acme Health', key: 'acme' }), adminUserId: 'user-1', tenantKey: 'acme' });
             }
@@ -229,9 +233,12 @@ describe('TenantsListScreen', () => {
         fireEvent.change(within(dialog).getByLabelText(/^key/i), { target: { value: 'acme' } });
         fireEvent.click(within(dialog).getByRole('button', { name: /next/i }));
 
-        // Step 2 (plan, defaults to STARTER) -> step 3 (tenant admin, defaults to "existing user").
+        // Step 2 (plan, defaults to STARTER) -> step 3 (tenant admin, defaults to
+        // "existing user", picked via the UserPicker — its popover portals to body).
         fireEvent.click(within(dialog).getByRole('button', { name: /next/i }));
-        fireEvent.change(within(dialog).getByLabelText(/existing user id/i), { target: { value: 'user-1' } });
+        fireEvent.click(within(dialog).getByRole('combobox', { name: /user/i }));
+        fireEvent.change(await screen.findByPlaceholderText(/search users by username/i), { target: { value: 'admin.acme' } });
+        fireEvent.click(await screen.findByText('admin.acme'));
         fireEvent.click(within(dialog).getByRole('button', { name: /create tenant/i }));
 
         await waitFor(() => {

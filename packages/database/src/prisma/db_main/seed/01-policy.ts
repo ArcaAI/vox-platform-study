@@ -159,6 +159,13 @@ export const DEFAULT_POLICIES = [
             // provider credentials. Tenant-scoped; the controller pins every op to
             // the caller's tenant. `manage` implies `read` (used by the GET routes).
             { action: 'manage', subject: 'TenantTtsConfig', conditions: { tenantId: '${context.tenantId}' } },
+            // TASK-506 — tenant admins read + manage their own tenant's AI
+            // task-model defaults (AiTaskDefault). Tenant-scoped; global admins
+            // are covered by `manage:all`. NOTE (governance): tenant admins DO
+            // hold manage:AiTaskDefault here — the `guardrail.*` task-key
+            // restriction (GLOBAL-ADMIN-ONLY writes) is enforced at the
+            // application-service layer, not by RBAC.
+            { action: ['read', 'manage'], subject: 'AiTaskDefault', conditions: { tenantId: '${context.tenantId}' } },
             // TASK-498 — tenant admins manage their own tenant's external OIDC
             // identity provider config. Tenant-scoped; the controller pins every
             // op to the caller's tenant. `manage` implies `read` (used by the GET

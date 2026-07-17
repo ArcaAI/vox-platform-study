@@ -30,7 +30,10 @@ import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { ErrorState } from '@/shared/state/error-state';
 import { useCreateModel, useModel, useUpdateModel } from '../api/hooks';
 import type { AiModel, AiModelFormat, AiModelSource, CreateModelRequest, ModelCategory, ModelType } from '../api/types';
-import { CATEGORY_OPTIONS, FORMAT_OPTIONS, MODEL_TYPE_OPTIONS, SOURCE_LABELS, SOURCE_OPTIONS, humanizeEnum } from './model-meta';
+import { CATEGORY_OPTIONS, FORMAT_OPTIONS, MODEL_TYPE_OPTIONS, RUNTIME_PROVIDER_OPTIONS, SOURCE_LABELS, SOURCE_OPTIONS, humanizeEnum } from './model-meta';
+
+/** Radix SelectItem forbids the empty string; sentinel for "no runtime provider". */
+const PROVIDER_NONE = 'none';
 
 interface ModelFormValues {
     name: string;
@@ -43,6 +46,8 @@ interface ModelFormValues {
     sourceUri: string;
     sourceRevision: string;
     format: AiModelFormat;
+    provider: string;
+    architecture: string;
     memorySizeMb: string;
     computeType: string;
     tags: string;
@@ -60,6 +65,8 @@ function toValues(model?: AiModel): ModelFormValues {
         sourceUri: model?.sourceUri ?? '',
         sourceRevision: model?.sourceRevision ?? '',
         format: model?.format ?? 'SAFETENSOR',
+        provider: model?.provider ?? '',
+        architecture: model?.architecture ?? '',
         memorySizeMb: model?.memorySizeMb != null ? String(model.memorySizeMb) : '',
         computeType: model?.computeType ?? '',
         tags: model?.tags.join(', ') ?? '',
@@ -78,6 +85,9 @@ function toRequest(values: ModelFormValues): CreateModelRequest {
         sourceUri: values.sourceUri.trim(),
         format: values.format,
         ...(values.description.trim() ? { description: values.description.trim() } : {}),
+        // "(none)" omits the field — the gateway DTO rejects null/empty (@IsIn).
+        ...(values.provider ? { provider: values.provider } : {}),
+        ...(values.architecture.trim() ? { architecture: values.architecture.trim() } : {}),
         ...(values.sourceRevision.trim() ? { sourceRevision: values.sourceRevision.trim() } : {}),
         ...(values.memorySizeMb.trim() ? { memorySizeMb: Number(values.memorySizeMb) } : {}),
         ...(values.computeType.trim() ? { computeType: values.computeType.trim() } : {}),
@@ -280,6 +290,33 @@ function ModelForm({
                         value={values.format}
                         onChange={(value) => set('format', value)}
                         options={FORMAT_OPTIONS}
+                    />
+                </Field>
+                <Field id={`${uid}-provider`} label="Runtime provider">
+                    <Select
+                        value={values.provider === '' ? PROVIDER_NONE : values.provider}
+                        onValueChange={(next) => set('provider', next === PROVIDER_NONE ? '' : next)}
+                    >
+                        <SelectTrigger id={`${uid}-provider`} className="w-full">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value={PROVIDER_NONE}>(none)</SelectItem>
+                            {RUNTIME_PROVIDER_OPTIONS.map((provider) => (
+                                <SelectItem key={provider} value={provider} className="font-mono">
+                                    {provider}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </Field>
+                <Field id={`${uid}-architecture`} label="Architecture">
+                    <Input
+                        id={`${uid}-architecture`}
+                        value={values.architecture}
+                        onChange={(event) => set('architecture', event.target.value)}
+                        className="font-mono"
+                        placeholder="gemma4"
                     />
                 </Field>
                 <Field id={`${uid}-source-uri`} label="Source URI" required className="sm:col-span-2">

@@ -3,4 +3,5 @@ export const ttsConfigKeys = {
   effective: () => [...ttsConfigKeys.root, 'effective'] as const,
   row: () => [...ttsConfigKeys.root, 'row'] as const,
   credentials: () => [...ttsConfigKeys.root, 'credentials'] as const,
+  catalog: () => [...ttsConfigKeys.root, 'catalog'] as const,
 };

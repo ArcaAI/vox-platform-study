@@ -20,13 +20,15 @@ import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
 import { useDeleteModel, useModelsPaginated } from '../api/hooks';
 import type { AiModel } from '../api/types';
 import { ModelFormSheet } from './model-form-sheet';
-import { CATEGORY_OPTIONS, SOURCE_LABELS, SOURCE_OPTIONS, humanizeEnum } from './model-meta';
+import { CATEGORY_OPTIONS, RUNTIME_PROVIDER_OPTIONS, SOURCE_LABELS, SOURCE_OPTIONS, humanizeEnum } from './model-meta';
 
 /** Omni search targets (→ gateway `searchFields`) and the implicit sort — stable refs for the hook. */
 const AI_MODEL_SEARCH_FIELDS = ['name', 'slug'];
 const AI_MODEL_DEFAULT_SORT: SortRule[] = [{ id: 'name', desc: false }];
 
-const PROVIDER_OPTIONS: FilterOption[] = SOURCE_OPTIONS.map((source) => ({ value: source, label: SOURCE_LABELS[source] }));
+const SOURCE_FILTER_OPTIONS: FilterOption[] = SOURCE_OPTIONS.map((source) => ({ value: source, label: SOURCE_LABELS[source] }));
+/** TASK-506 runtime-provider filter chip. */
+const PROVIDER_FILTER_OPTIONS: FilterOption[] = RUNTIME_PROVIDER_OPTIONS.map((provider) => ({ value: provider, label: provider }));
 const CAPABILITY_OPTIONS: FilterOption[] = CATEGORY_OPTIONS.map((category) => ({ value: category, label: humanizeEnum(category) }));
 const STATUS_OPTIONS: FilterOption[] = [
     { value: 'ENABLED', label: 'Enabled' },
@@ -111,10 +113,32 @@ export function AiModelsScreen() {
                 size: 200,
             },
             {
-                accessorKey: 'source',
+                // TASK-506: the real runtime provider column (the source column below covers artifact origin).
+                accessorKey: 'provider',
                 header: 'Provider',
                 enableSorting: false,
-                meta: { label: 'Provider', variant: 'multiSelect', options: PROVIDER_OPTIONS },
+                meta: { label: 'Provider', variant: 'multiSelect', options: PROVIDER_FILTER_OPTIONS },
+                cell: ({ row }) => (
+                    <span className="flex items-center gap-1.5">
+                        {row.original.provider ? (
+                            <Badge variant="outline" className="font-mono">
+                                {row.original.provider}
+                            </Badge>
+                        ) : (
+                            <span className="text-muted-foreground">—</span>
+                        )}
+                        {row.original.architecture ? (
+                            <span className="text-muted-foreground font-mono text-xs">{row.original.architecture}</span>
+                        ) : null}
+                    </span>
+                ),
+                size: 170,
+            },
+            {
+                accessorKey: 'source',
+                header: 'Source',
+                enableSorting: false,
+                meta: { label: 'Source', variant: 'multiSelect', options: SOURCE_FILTER_OPTIONS },
                 cell: ({ row }) => SOURCE_LABELS[row.original.source] ?? row.original.source,
                 size: 140,
             },

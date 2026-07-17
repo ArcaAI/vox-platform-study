@@ -21,6 +21,9 @@ export const MODEL_TYPE_OPTIONS: ModelType[] = ['BASE_MODEL', 'FINETUNED_MODEL',
 
 export const FORMAT_OPTIONS: AiModelFormat[] = ['SAFETENSOR', 'ONNX', 'NEMO', 'PYTORCH', 'CTRANSLATE2', 'FASTER_WHISPER', 'MLX', 'GGUF'];
 
+/** Canonical runtime provider ids (TASK-506; mirrors AI_MODEL_PROVIDERS in @arcaai/applications). */
+export const RUNTIME_PROVIDER_OPTIONS = ['ollama', 'lm-studio', 'azure', 'bedrock', 'built-in', 'sarvam'] as const;
+
 /** "AUTOMATIC_SPEECH_RECOGNITION" -> "automatic speech recognition". */
 export function humanizeEnum(value: string): string {
     return value.replaceAll('_', ' ').toLowerCase();

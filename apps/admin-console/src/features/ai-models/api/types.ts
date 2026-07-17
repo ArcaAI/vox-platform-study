@@ -21,6 +21,10 @@ export interface AiModel {
     sourceUri: string;
     sourceRevision?: string | null;
     format: AiModelFormat;
+    /** Canonical runtime provider id (TASK-506): ollama | lm-studio | azure | bedrock | built-in | sarvam. */
+    provider?: string | null;
+    /** Model architecture family (TASK-506): gemma4, granite, whisper, ... */
+    architecture?: string | null;
     memorySizeMb?: number | null;
     computeType?: string | null;
     downloadStatus: AiModelDownloadStatus;
@@ -58,6 +62,8 @@ export interface CreateModelRequest {
     sourceUri: string;
     sourceRevision?: string;
     format: AiModelFormat;
+    provider?: string;
+    architecture?: string;
     memorySizeMb?: number;
     computeType?: string;
     tags?: string[];
@@ -75,6 +81,8 @@ export interface UpdateModelRequest {
     sourceUri?: string;
     sourceRevision?: string;
     format?: AiModelFormat;
+    provider?: string;
+    architecture?: string;
     memorySizeMb?: number;
     computeType?: string;
     tags?: string[];

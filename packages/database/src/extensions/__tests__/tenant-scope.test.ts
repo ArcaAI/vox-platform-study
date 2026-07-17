@@ -80,7 +80,7 @@ function captureExtensionConfig(opts: {
 // ---------------------------------------------------------------------------
 
 describe('TENANT_SCOPED_MODELS allow-list', () => {
-  it('contains the 50 tenant-scoped models currently defined in db_main/*.prisma', () => {
+  it('contains the 51 tenant-scoped models currently defined in db_main/*.prisma', () => {
     // The allow-list tracks SCHEMA TRUTH (every model here has a tenantId
     // scalar), not the audit's 30-name wish-list. The User* identity tables
     // are intentionally excluded — `User` is global by design (§B6 /
@@ -102,9 +102,10 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // TenantTtsConfig + TenantTtsProviderCredential (BYO provider keys) → 47.
     // TASK-498 added the tenant-scoped external OIDC identity provider
     // TenantIdentityProvider + FederatedIdentity + TenantIdentityProviderDomain
-    // → 50. (The drift guard below is the durable check; this count stays as
+    // → 50. TASK-506 added the per-tenant task-default selector AiTaskDefault
+    // → 51. (The drift guard below is the durable check; this count stays as
     // a quick human-readable tripwire.)
-    expect(TENANT_SCOPED_MODELS.size).toBe(50);
+    expect(TENANT_SCOPED_MODELS.size).toBe(51);
   });
 
   it('includes every PHI-bearing model', () => {
@@ -251,7 +252,18 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
       // TASK-496 — TenantTtsConfig's SYSTEM-tenant row is the per-tenant TTS
       // platform default every tenant's resolveForTenant merges over (credentials
       // are NEVER shared, so TenantTtsProviderCredential is intentionally absent).
-      new Set(['AsrPipeline', 'AiModel', 'HarnessPolicy', 'PipelinePolicy', 'GlobalSetting', 'TenantTtsConfig']),
+      // TASK-506 — AiTaskDefault's SYSTEM-tenant rows are the platform default
+      // model per AI task (guardrail.validate / nlp.*) every tenant's
+      // getEffective merges under its own row; writes are NOT widened.
+      new Set([
+        'AsrPipeline',
+        'AiModel',
+        'HarnessPolicy',
+        'PipelinePolicy',
+        'GlobalSetting',
+        'TenantTtsConfig',
+        'AiTaskDefault',
+      ]),
     );
   });
 

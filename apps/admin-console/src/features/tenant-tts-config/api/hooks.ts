@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getTtsCredentials, getTtsEffective, getTtsRow, putTtsRow, removeTtsCredential, setTtsCredential } from './client';
+import { getTtsCatalog, getTtsCredentials, getTtsEffective, getTtsRow, putTtsRow, removeTtsCredential, setTtsCredential } from './client';
 import { ttsConfigKeys } from './keys';
 import type { SetTtsCredentialRequest, TtsProvider, UpdateTtsConfigRequest } from './types';
 
@@ -15,6 +15,11 @@ export function useTtsRow() {
 
 export function useTtsCredentials() {
   return useQuery({ queryKey: ttsConfigKeys.credentials(), queryFn: getTtsCredentials });
+}
+
+/** Platform TTS catalog (TASK-506) — a slow-moving reference list. */
+export function useTtsCatalog() {
+  return useQuery({ queryKey: ttsConfigKeys.catalog(), queryFn: getTtsCatalog, staleTime: 5 * 60 * 1000 });
 }
 
 export function usePutTtsRow() {

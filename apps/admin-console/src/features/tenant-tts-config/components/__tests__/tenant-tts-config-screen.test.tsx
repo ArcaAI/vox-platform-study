@@ -6,14 +6,64 @@
  */
 
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
-import type { EffectiveTtsConfig, TtsConfigRow, TtsCredential } from '../../api/types';
+import type { EffectiveTtsConfig, TtsConfigRow, TtsCredential, TtsPlatformCatalog } from '../../api/types';
 import { TenantTtsConfigScreen } from '../tenant-tts-config-screen';
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
+
+// Radix Select scrolls the highlighted item into view on open; happy-dom has no layout engine.
+beforeAll(() => {
+  if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = () => {};
+  }
+});
+
+/** Open a Radix Select trigger and pick an option by its visible label (happy-dom pointer path). */
+async function selectOption(trigger: HTMLElement, optionName: string | RegExp) {
+  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+  const option = await screen.findByRole('option', { name: optionName });
+  fireEvent.pointerUp(option, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+  fireEvent.click(option);
+}
+
+/** TASK-506 registry-derived platform catalog (providers + voices). */
+const CATALOG: TtsPlatformCatalog = {
+  providers: [
+    {
+      provider: 'azure',
+      slug: 'azure-neural-voices',
+      name: 'Azure neural voices',
+      voices: [
+        { id: 'en-IN-NeerjaNeural', locale: 'en-IN', gender: 'female' },
+        { id: 'en-IN-PrabhatNeural', locale: 'en-IN', gender: 'male' },
+        { id: 'ml-IN-SobhanaNeural', locale: 'ml-IN', gender: 'female' },
+        { id: 'ml-IN-MidhunNeural', locale: 'ml-IN', gender: 'male' },
+      ],
+    },
+    {
+      provider: 'kokoro',
+      slug: 'kokoro',
+      name: 'Kokoro',
+      voices: [
+        { id: 'af_heart', locale: 'en-US' },
+        { id: 'am_adam', locale: 'en-US' },
+      ],
+    },
+    {
+      provider: 'sarvam',
+      slug: 'sarvam-bulbul',
+      name: 'Sarvam Bulbul',
+      voices: [
+        { id: 'ishita', locale: 'ml-IN' },
+        { id: 'shubh', locale: 'ml-IN' },
+      ],
+    },
+  ],
+};
 
 function effective(overrides: Partial<EffectiveTtsConfig> = {}): EffectiveTtsConfig {
   return {
@@ -28,6 +78,7 @@ function effective(overrides: Partial<EffectiveTtsConfig> = {}): EffectiveTtsCon
     sampleRate: 24000,
     maxInputChars: 4096,
     sarvamPublicApiAllowed: false,
+    voiceBindings: { 'en-female-1': { azure: 'en-IN-NeerjaNeural', kokoro: 'af_heart' } },
     ...overrides,
   };
 }
@@ -105,6 +156,9 @@ function stubFetch({ session = SESSION, configRow = row(), credentials = CREDENT
       }
       if (call.method === 'GET' && call.url === '/api/hope/admin/tts-config/credentials') {
         return Response.json(credentials);
+      }
+      if (call.method === 'GET' && call.url === '/api/hope/admin/tts-config/catalog') {
+        return Response.json(CATALOG);
       }
       throw new Error(`Unhandled fetch: ${call.method} ${call.url}`);
     }),
@@ -192,6 +246,78 @@ describe('TenantTtsConfigScreen', () => {
     const put = calls.find((call) => call.method === 'PUT');
     expect(put?.url).toBe('/api/hope/admin/tts-config/credentials/azure');
     expect(put?.body).toEqual({ apiKey: 'new-secret-key', endpoint: 'eastus', enabled: true });
+  });
+
+  it('renders the internal-id voice selects and the catalog-driven bindings editor (TASK-506)', async () => {
+    stubFetch({ configRow: row({ defaultVoiceEn: 'en-female-1' }) });
+    renderWithProviders(<TenantTtsConfigScreen />);
+
+    // Standard internal id -> closed Select over the internal voice ids.
+    const voiceEn = await screen.findByLabelText('Default English voice');
+    expect(voiceEn.getAttribute('role')).toBe('combobox');
+
+    // Bindings editor: one row per internal voice id, one select per catalog provider.
+    expect(screen.getByText('Voice bindings')).toBeDefined();
+    for (const voiceId of ['en-female-1', 'en-male-1', 'ml-female-1', 'ml-male-1']) {
+      expect(screen.getAllByText(voiceId).length).toBeGreaterThan(0);
+    }
+    expect(screen.getByRole('combobox', { name: 'sarvam voice for ml-female-1' })).toBeDefined();
+
+    // Effective merged bindings are read-only on the resolve card.
+    expect(screen.getByText('bind en-female-1')).toBeDefined();
+    expect(screen.getByText('azure:en-IN-NeerjaNeural, kokoro:af_heart')).toBeDefined();
+  });
+
+  it('keeps the free-text escape hatch when the saved voice id is nonstandard', async () => {
+    stubFetch(); // row() ships the nonstandard 'en-US-JennyNeural'
+    renderWithProviders(<TenantTtsConfigScreen />);
+
+    const voiceEn = await screen.findByLabelText('Default English voice');
+    expect(voiceEn.tagName).toBe('INPUT');
+    expect((voiceEn as HTMLInputElement).value).toBe('en-US-JennyNeural');
+  });
+
+  it('saves an internal default voice picked from the select', async () => {
+    const calls = stubFetch({
+      configRow: row({ defaultVoiceEn: 'en-female-1' }),
+      custom: (call) => {
+        if (call.method === 'PUT' && call.url === '/api/hope/admin/tts-config/row') {
+          return Response.json(row({ defaultVoiceEn: 'en-male-1', version: 8 }), { headers: { etag: '"8"' } });
+        }
+        return undefined;
+      },
+    });
+    renderWithProviders(<TenantTtsConfigScreen />);
+
+    await selectOption(await screen.findByLabelText('Default English voice'), 'en-male-1');
+    fireEvent.click(screen.getByRole('button', { name: /Save · If-Match/ }));
+
+    await waitFor(() => expect(calls.some((call) => call.method === 'PUT')).toBe(true));
+    const put = calls.find((call) => call.method === 'PUT');
+    expect(put?.body).toEqual({ defaultVoiceEn: 'en-male-1', expectedVersion: 7 });
+  });
+
+  it('saves a changed voice binding as the full merged voiceBindings map', async () => {
+    const calls = stubFetch({
+      configRow: row({ configJson: { voiceBindings: { 'ml-female-1': { azure: 'ml-IN-SobhanaNeural' } } } }),
+      custom: (call) => {
+        if (call.method === 'PUT' && call.url === '/api/hope/admin/tts-config/row') {
+          return Response.json(row({ version: 8 }), { headers: { etag: '"8"' } });
+        }
+        return undefined;
+      },
+    });
+    renderWithProviders(<TenantTtsConfigScreen />);
+
+    await selectOption(await screen.findByRole('combobox', { name: 'sarvam voice for ml-female-1' }), /^ishita/);
+    fireEvent.click(screen.getByRole('button', { name: /Save · If-Match/ }));
+
+    await waitFor(() => expect(calls.some((call) => call.method === 'PUT')).toBe(true));
+    const put = calls.find((call) => call.method === 'PUT');
+    expect(put?.body).toEqual({
+      voiceBindings: { 'ml-female-1': { azure: 'ml-IN-SobhanaNeural', sarvam: 'ishita' } },
+      expectedVersion: 7,
+    });
   });
 
   it('surfaces a block error with retry when the effective read fails', async () => {

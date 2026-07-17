@@ -227,6 +227,7 @@ const mockModelRepository = {
     findAll: vi.fn(),
     findEnabledModels: vi.fn(),
     findByTaskType: vi.fn(),
+    findByTaskTypeSharedRead: vi.fn(),
     findDownloadedModels: vi.fn(),
     count: vi.fn(),
     create: vi.fn(),
@@ -320,6 +321,31 @@ describe('AiModelService', () => {
             });
 
             expect(result.format).toBe(format);
+        });
+
+        // TASK-506 — machine-actionable registry identity columns.
+        it('should carry provider + architecture through create to the response', async () => {
+            mockModelRepository.isSlugUnique.mockResolvedValue(true);
+            mockModelRepository.create.mockImplementation(async (entity: any) => entity);
+
+            const result = await service.create({
+                name: 'Gemma 4 E2B IT QAT',
+                slug: 'lms-gemma-4-e2b-it-qat',
+                category: ModelCategory.NLP as any,
+                taskType: 'TEXT_GENERATION' as any,
+                modelType: ModelType.QUANTIZED_MODEL as any,
+                source: AiModelSource.LOCAL as any,
+                sourceUri: 'gemma-4-e2b-it-qat',
+                format: AiModelFormat.GGUF as any,
+                provider: 'lm-studio',
+                architecture: 'gemma4',
+            });
+
+            expect(result.provider).toBe('lm-studio');
+            expect(result.architecture).toBe('gemma4');
+            const created = mockModelRepository.create.mock.calls[0][0];
+            expect(created.provider).toBe('lm-studio');
+            expect(created.architecture).toBe('gemma4');
         });
 
         it('should throw BadRequestException when slug already exists', async () => {
@@ -417,6 +443,24 @@ describe('AiModelService', () => {
             const result = await service.update('model-1', { name: 'X', expectedVersion: 4 } as any);
 
             expect(result.version).toBe(4);
+        });
+
+        // TASK-506 — provider/architecture flow through update to the response.
+        it('update() carries provider + architecture onto the entity and response', async () => {
+            const existingModel = createBehavioralModelEntity({ id: 'model-1', version: 3 });
+            mockModelRepository.findById.mockResolvedValue(existingModel);
+            mockModelRepository.updateWithVersion.mockImplementation(async (_id: any, entity: any) => entity);
+
+            const result = await service.update('model-1', {
+                provider: 'ollama',
+                architecture: 'qwen3.5',
+                expectedVersion: 3,
+            } as any);
+
+            expect((existingModel as any).provider).toBe('ollama');
+            expect((existingModel as any).architecture).toBe('qwen3.5');
+            expect(result.provider).toBe('ollama');
+            expect(result.architecture).toBe('qwen3.5');
         });
     });
 
@@ -535,6 +579,61 @@ describe('AiModelService', () => {
 
             expect(result).toHaveLength(1);
             expect(result[0].taskType).toBe(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION);
+        });
+    });
+
+    // r2605 Finding E — the legacy getByTaskType pins the CLS tenant, which
+    // DEFEATS the SYSTEM-shared-read widening (tenants without clones get an
+    // empty picker). The shared-read variant queries without a tenant pin so
+    // the extension widens to [caller, SYSTEM], then de-duplicates by slug
+    // preferring the caller-tenant row.
+    describe('getByTaskTypeSharedRead (r2605 Finding E)', () => {
+        const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
+        it('uses the shared-read query and de-duplicates by slug preferring the caller-tenant row', async () => {
+            const systemDupe = createBehavioralModelEntity({ id: 'sys-1', tenantId: SYSTEM_TENANT_ID, slug: 'medical-ner' });
+            const tenantDupe = createBehavioralModelEntity({ id: 'ten-1', tenantId: 'tenant-1', slug: 'medical-ner' });
+            const systemOnly = createBehavioralModelEntity({ id: 'sys-2', tenantId: SYSTEM_TENANT_ID, slug: 'granite-guardian' });
+            mockModelRepository.findByTaskTypeSharedRead.mockResolvedValue([systemDupe, tenantDupe, systemOnly]);
+
+            const result = await service.getByTaskTypeSharedRead(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION as any);
+
+            expect(mockModelRepository.findByTaskTypeSharedRead).toHaveBeenCalledWith(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION);
+            expect(mockModelRepository.findByTaskType).not.toHaveBeenCalled();
+            expect(result).toHaveLength(2);
+            const bySlug = Object.fromEntries(result.map((r: any) => [r.slug, r.id]));
+            expect(bySlug['medical-ner']).toBe('ten-1'); // caller-tenant row wins the dedup
+            expect(bySlug['granite-guardian']).toBe('sys-2'); // SYSTEM-only row survives
+        });
+
+        it('dedup preference is order-independent (tenant row first is kept)', async () => {
+            const tenantDupe = createBehavioralModelEntity({ id: 'ten-1', tenantId: 'tenant-1', slug: 'medical-ner' });
+            const systemDupe = createBehavioralModelEntity({ id: 'sys-1', tenantId: SYSTEM_TENANT_ID, slug: 'medical-ner' });
+            mockModelRepository.findByTaskTypeSharedRead.mockResolvedValue([tenantDupe, systemDupe]);
+
+            const result = await service.getByTaskTypeSharedRead(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION as any);
+
+            expect(result).toHaveLength(1);
+            expect(result[0].id).toBe('ten-1');
+        });
+
+        it('falls back to an explicit SYSTEM-pinned query when CLS carries no tenant (non-elevated global admin)', async () => {
+            mockClsService.get.mockImplementation((key: string) => {
+                switch (key) {
+                    case 'user': return { id: 'current-user-id', roles: ['GLOBAL_ADMIN'] };
+                    case 'tenantId': return undefined; // not elevated into a working tenant
+                    default: return null;
+                }
+            });
+            const sysRows = [createBehavioralModelEntity({ id: 'sys-1', tenantId: SYSTEM_TENANT_ID, slug: 'medical-ner' })];
+            mockModelRepository.findByTaskType.mockResolvedValue(sysRows);
+
+            const result = await service.getByTaskTypeSharedRead(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION as any);
+
+            expect(mockModelRepository.findByTaskType).toHaveBeenCalledWith(SYSTEM_TENANT_ID, ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION);
+            expect(mockModelRepository.findByTaskTypeSharedRead).not.toHaveBeenCalled();
+            expect(result).toHaveLength(1);
+            expect(result[0].id).toBe('sys-1');
         });
     });
 

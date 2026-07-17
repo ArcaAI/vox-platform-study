@@ -41,7 +41,7 @@ import {
     backfillCustomerTenantAiModels,
     CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL,
 } from '../prisma/db_main/seed/06-stt';
-import { ALL_SETTINGS, SMR_PROVIDER_MODELS } from '../prisma/db_main/seed/11-global-setting';
+import { ALL_SETTINGS } from '../prisma/db_main/seed/11-global-setting';
 import {
     seedHarnessPolicy,
     SYSTEM_HARNESS_POLICY_SMR_DEFAULTS,
@@ -1044,31 +1044,48 @@ describe('STT Seed Data', () => {
             });
         });
 
-        describe('ASR Models', () => {
-            it('should include Whisper Large V3 model', () => {
-                const whisperLarge = DEFAULT_AI_MODELS.find((m) => m.slug === 'whisper-large-v3');
-                expect(whisperLarge).toBeDefined();
-                expect(whisperLarge?.taskType).toBe(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION);
-                expect(whisperLarge?.source).toBe(AiModelSource.HUGGINGFACE);
-            });
-
+        describe('ASR Models (TASK-506 consolidated keepers)', () => {
             it('should include Whisper Large V3 Turbo model', () => {
                 const whisperTurbo = DEFAULT_AI_MODELS.find((m) => m.slug === 'whisper-large-v3-turbo');
                 expect(whisperTurbo).toBeDefined();
+                expect(whisperTurbo?.taskType).toBe(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION);
+                expect(whisperTurbo?.source).toBe(AiModelSource.HUGGINGFACE);
                 expect(whisperTurbo?.modelType).toBe(ModelType.QUANTIZED_MODEL);
             });
 
-            it('should include Faster Whisper ONNX model', () => {
-                const fasterWhisper = DEFAULT_AI_MODELS.find((m) => m.slug === 'faster-whisper-large-v3');
-                expect(fasterWhisper).toBeDefined();
-                expect(fasterWhisper?.format).toBe(AiModelFormat.ONNX);
+            it('should include Whisper Small model (lightweight pipeline)', () => {
+                const whisperSmall = DEFAULT_AI_MODELS.find((m) => m.slug === 'whisper-small');
+                expect(whisperSmall).toBeDefined();
+                expect(whisperSmall?.taskType).toBe(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION);
             });
 
-            it('should include NeMo Parakeet model', () => {
-                const parakeet = DEFAULT_AI_MODELS.find((m) => m.slug === 'parakeet-ctc-1.1b');
-                expect(parakeet).toBeDefined();
-                expect(parakeet?.format).toBe(AiModelFormat.NEMO);
+            it('should include the faster-whisper CT2 int8 model', () => {
+                const ct2 = DEFAULT_AI_MODELS.find((m) => m.slug === 'faster-whisper-large-v3-turbo-int8');
+                expect(ct2).toBeDefined();
+                expect(ct2?.format).toBe(AiModelFormat.FASTER_WHISPER);
             });
+
+            it('should include the Azure Speech + MAI-Transcribe cloud engines', () => {
+                const azure = DEFAULT_AI_MODELS.find((m) => m.slug === 'azure-speech-stt');
+                const mai = DEFAULT_AI_MODELS.find((m) => m.slug === 'mai-transcribe-1.5');
+                expect(azure?.format).toBe(AiModelFormat.AZURE_SPEECH);
+                expect(mai?.format).toBe(AiModelFormat.AZURE_FOUNDRY);
+            });
+
+            it('should include the parakeet.cpp Nemotron streaming model', () => {
+                const nemotron = DEFAULT_AI_MODELS.find((m) => m.slug === 'nemotron-3.5-asr-streaming-0.6b');
+                expect(nemotron).toBeDefined();
+                expect(nemotron?.format).toBe(AiModelFormat.PARAKEET_CPP);
+            });
+
+            // TASK-506 — the legacy ASR rows are RETIRED (soft-DELETED by
+            // retireLegacyAiModels), no longer part of the seeded catalog.
+            it.each(['whisper-large-v3', 'whisper-medium', 'faster-whisper-large-v3', 'parakeet-ctc-1.1b'])(
+                'should NOT seed retired ASR model %s (TASK-506)',
+                (slug) => {
+                    expect(DEFAULT_AI_MODELS.find((m) => m.slug === slug)).toBeUndefined();
+                },
+            );
         });
 
         describe('Guardrail Models (TASK-356 Phase 1)', () => {
@@ -1089,19 +1106,21 @@ describe('STT Seed Data', () => {
         });
 
         describe('VAD Models', () => {
-            it('should include Silero VAD models', () => {
-                const sileroVadV4 = DEFAULT_AI_MODELS.find((m) => m.slug === 'silero-vad-v4');
-                const sileroVadV5 = DEFAULT_AI_MODELS.find((m) => m.slug === 'silero-vad-v5');
-                expect(sileroVadV4).toBeDefined();
-                expect(sileroVadV5).toBeDefined();
-                expect(sileroVadV4?.taskType).toBe(ModelTaskType.VOICE_ACTIVITY_DETECTION);
-                expect(sileroVadV5?.taskType).toBe(ModelTaskType.VOICE_ACTIVITY_DETECTION);
+            it('should include the Silero VAD V6 model (only remaining VAD, TASK-506)', () => {
+                const sileroVadV6 = DEFAULT_AI_MODELS.find((m) => m.slug === 'silero-vad-v6');
+                expect(sileroVadV6).toBeDefined();
+                expect(sileroVadV6?.taskType).toBe(ModelTaskType.VOICE_ACTIVITY_DETECTION);
+                // v4/v5/pyannote are retired (soft-DELETED by retireLegacyAiModels).
+                expect(DEFAULT_AI_MODELS.find((m) => m.slug === 'silero-vad-v4')).toBeUndefined();
+                expect(DEFAULT_AI_MODELS.find((m) => m.slug === 'silero-vad-v5')).toBeUndefined();
+                expect(DEFAULT_AI_MODELS.find((m) => m.slug === 'pyannote-vad')).toBeUndefined();
             });
 
             it('should have VAD models with low memory requirements', () => {
                 const vadModels = DEFAULT_AI_MODELS.filter(
                     (m) => m.taskType === ModelTaskType.VOICE_ACTIVITY_DETECTION
                 );
+                expect(vadModels.length).toBeGreaterThanOrEqual(1);
                 vadModels.forEach((model) => {
                     expect(model.memorySizeMb).toBeLessThan(500);
                 });
@@ -1109,10 +1128,12 @@ describe('STT Seed Data', () => {
         });
 
         describe('Noise Reduction Models', () => {
-            it('should include DeepFilterNet model', () => {
-                const deepfilter = DEFAULT_AI_MODELS.find((m) => m.slug === 'deepfilternet-v3');
-                expect(deepfilter).toBeDefined();
-                expect(deepfilter?.taskType).toBe(ModelTaskType.AUDIO_TO_AUDIO);
+            it('should include the RNNoise model (only remaining denoiser, TASK-506)', () => {
+                const rnnoise = DEFAULT_AI_MODELS.find((m) => m.slug === 'rnnoise');
+                expect(rnnoise).toBeDefined();
+                expect(rnnoise?.taskType).toBe(ModelTaskType.AUDIO_TO_AUDIO);
+                expect(DEFAULT_AI_MODELS.find((m) => m.slug === 'deepfilternet-v3')).toBeUndefined();
+                expect(DEFAULT_AI_MODELS.find((m) => m.slug === 'nvidia-cleanunet')).toBeUndefined();
             });
         });
     });
@@ -1527,54 +1548,46 @@ describe('ASR Pipeline isDefault invariant (TASK-331 doc-03 Q2)', () => {
 });
 
 // =============================================================================
-// TASK-356 Phase 2 — DEFAULT MODEL WIRING
-//   (a) SMR  → gemma-4-e2b-it-sft-rlvr-medical (lm-studio)
-//   (b) Guardrail → granite-guardian-4.1-8b (regression guard; no flip)
-//   (c) STT  → faster-whisper whisper-large-v3-turbo CTranslate2 int8
+// TASK-506 — DEFAULT MODEL WIRING (supersedes the TASK-356 Phase 2 blocks)
+//   (a) SMR  → gemma-4-e2b-it-qat via HarnessPolicy (GlobalSetting keys RETIRED)
+//   (b) Guardrail → granite-guardian-4.1-8b via AiTaskDefault (keys RETIRED)
+//   (c) STT  → unchanged (CT2 registered; whisper-large-v3-turbo default)
 // =============================================================================
 
-describe('TASK-356 Phase 2 — SMR default (gemma-4-e2b-it-sft-rlvr-medical)', () => {
-    it('points the default-smr-model GlobalSetting at gemma-4-e2b-it-sft-rlvr-medical for every tenant', () => {
-        const smrModelSettings = ALL_SETTINGS.filter((s) => s.key === 'default-smr-model');
-        expect(smrModelSettings.length).toBeGreaterThanOrEqual(1);
-        smrModelSettings.forEach((s) => {
-            expect(s.value).toBe('gemma-4-e2b-it-sft-rlvr-medical');
-            expect(s.defaultValue).toBe('gemma-4-e2b-it-sft-rlvr-medical');
-        });
+describe('TASK-506 — SMR default moved off GlobalSetting (HarnessPolicy is authoritative)', () => {
+    it('no longer seeds the default-smr-provider / default-smr-model GlobalSetting keys', () => {
+        expect(ALL_SETTINGS.filter((s) => s.key === 'default-smr-model')).toEqual([]);
+        expect(ALL_SETTINGS.filter((s) => s.key === 'default-smr-provider')).toEqual([]);
+        expect(ALL_SETTINGS.filter((s) => s.key === 'smr-provider-models')).toEqual([]);
     });
 
-    it('keeps gemma-4-e2b-it-sft-rlvr-medical a member of the lm-studio SMR provider catalog (resolver validity)', () => {
-        const lmStudio = SMR_PROVIDER_MODELS.find((p) => p.provider === 'lm-studio');
-        expect(lmStudio).toBeDefined();
-        const names = lmStudio!.models.map((m) => m.name);
-        expect(names).toContain('gemma-4-e2b-it-sft-rlvr-medical');
+    it('keeps the non-secret smr-azure-deployment key for every tenant', () => {
+        const rows = ALL_SETTINGS.filter((s) => s.key === 'smr-azure-deployment');
+        expect(rows.length).toBeGreaterThanOrEqual(1);
+        rows.forEach((s) => expect(s.namespace).toBe('smr'));
+    });
+
+    it('keeps the platform SMR default model registered in the catalog (lms-gemma-4-e2b-it-qat)', () => {
+        const row = DEFAULT_AI_MODELS.find((m) => m.slug === 'lms-gemma-4-e2b-it-qat');
+        expect(row).toBeDefined();
+        expect(row?.sourceUri).toBe('gemma-4-e2b-it-qat');
+        expect(row?.tags).toContain('default');
+        expect(row?.tags).toContain('summarization');
     });
 });
 
-describe('TASK-356 Phase 2 — Guardrail default (granite) regression guard', () => {
-    it('keeps default-guardrail-model = granite-guardian-4.1-8b for every tenant', () => {
-        const guardrailModelSettings = ALL_SETTINGS.filter((s) => s.key === 'default-guardrail-model');
-        expect(guardrailModelSettings.length).toBeGreaterThanOrEqual(1);
-        guardrailModelSettings.forEach((s) => {
-            expect(s.value).toBe('granite-guardian-4.1-8b');
-            expect(s.defaultValue).toBe('granite-guardian-4.1-8b');
-        });
+describe('TASK-506 — Guardrail default moved off GlobalSetting (AiTaskDefault is authoritative)', () => {
+    it('no longer seeds the guardrail namespace GlobalSetting keys', () => {
+        expect(ALL_SETTINGS.filter((s) => s.namespace === 'guardrail')).toEqual([]);
     });
 
-    it('keeps default-guardrail-provider = lm-studio for every tenant', () => {
-        const guardrailProviderSettings = ALL_SETTINGS.filter((s) => s.key === 'default-guardrail-provider');
-        expect(guardrailProviderSettings.length).toBeGreaterThanOrEqual(1);
-        guardrailProviderSettings.forEach((s) => {
-            expect(s.value).toBe('lm-studio');
-        });
-    });
-
-    it('keeps the granite-guardian catalog row registered under SYSTEM (GUARDRAIL / GGUF)', () => {
+    it('keeps the granite-guardian catalog row registered under SYSTEM (GUARDRAIL / GGUF / lm-studio)', () => {
         const granite = DEFAULT_AI_MODELS.find((m) => m.slug === 'granite-guardian-4.1-8b');
         expect(granite).toBeDefined();
         expect(granite?.tenantId).toBe(SYSTEM_TENANT_ID);
         expect(granite?.taskType).toBe(ModelTaskType.GUARDRAIL);
         expect(granite?.format).toBe(AiModelFormat.GGUF);
+        expect((granite as { provider?: string } | undefined)?.provider).toBe('lm-studio');
     });
 });
 
@@ -2110,169 +2123,119 @@ describe('Usage Record Seed Data', () => {
 // SMR V2 LLM MODELS SEED DATA TESTS
 // =============================================================================
 
-describe('SMR v2 LLM Models Seed Data', () => {
-    const smrModels = DEFAULT_AI_MODELS.filter(
+describe('LLM Models Seed Data (TASK-506 consolidated matrix)', () => {
+    const llmModels = DEFAULT_AI_MODELS.filter(
         (m) => m.taskType === ModelTaskType.SUMMARIZATION || m.taskType === ModelTaskType.TEXT_GENERATION
     );
 
     describe('Provider Coverage', () => {
-        it('should include 11 Ollama models', () => {
-            const ollamaModels = smrModels.filter((m) => m.tags.includes('ollama'));
-            expect(ollamaModels.length).toBe(11);
+        it('should include exactly 3 Ollama models', () => {
+            const ollamaModels = llmModels.filter((m) => m.tags.includes('ollama'));
+            expect(ollamaModels.length).toBe(3);
         });
 
-        it('should include at least one Azure OpenAI model', () => {
-            const azureModels = smrModels.filter((m) => m.tags.includes('azure-openai'));
-            expect(azureModels.length).toBeGreaterThanOrEqual(1);
+        it('should include exactly 5 LM Studio models', () => {
+            const lmsModels = llmModels.filter((m) => m.tags.includes('lm-studio'));
+            expect(lmsModels.length).toBe(5);
         });
 
-        it('should include at least one Bedrock model', () => {
-            const bedrockModels = smrModels.filter((m) => m.tags.includes('bedrock'));
-            expect(bedrockModels.length).toBeGreaterThanOrEqual(1);
+        it('should include exactly 1 Azure cloud model', () => {
+            const azureModels = llmModels.filter((m) => m.tags.includes('azure'));
+            expect(azureModels.length).toBe(1);
         });
 
-        it('should include 13 LM Studio models', () => {
-            const lmsModels = smrModels.filter((m) => m.tags.includes('lm-studio'));
-            expect(lmsModels.length).toBe(13);
-        });
-
-        it('should include at least one OpenAI-compatible model', () => {
-            const compatModels = smrModels.filter((m) =>
-                m.tags.includes('openai-compat') || m.tags.includes('lm-studio')
-            );
-            expect(compatModels.length).toBeGreaterThanOrEqual(1);
+        it('should be exactly 9 LLM rows (the owner-approved matrix)', () => {
+            expect(llmModels.length).toBe(9);
         });
     });
 
     describe('Model Structure', () => {
         it('should have NLP category for all LLM models', () => {
-            smrModels.forEach((model) => {
+            llmModels.forEach((model) => {
                 expect(model.category).toBe(ModelCategory.NLP);
             });
         });
 
-        it('should have valid task types (SUMMARIZATION or TEXT_GENERATION)', () => {
-            smrModels.forEach((model) => {
-                expect([ModelTaskType.SUMMARIZATION, ModelTaskType.TEXT_GENERATION]).toContain(model.taskType);
+        it('should use TEXT_GENERATION for every LLM row', () => {
+            llmModels.forEach((model) => {
+                expect(model.taskType).toBe(ModelTaskType.TEXT_GENERATION);
             });
         });
 
-        it('should have unique slugs for all SMR models', () => {
-            const slugs = smrModels.map((m) => m.slug);
+        it('should have unique slugs for all LLM models', () => {
+            const slugs = llmModels.map((m) => m.slug);
             expect(new Set(slugs).size).toBe(slugs.length);
         });
 
-        it('should have smr tag on all SMR models', () => {
-            smrModels.forEach((model) => {
-                expect(model.tags).toContain('smr');
+        it('should have the llm tag + a canonical provider on all LLM models', () => {
+            llmModels.forEach((model) => {
+                expect(model.tags).toContain('llm');
+                expect(['ollama', 'lm-studio', 'azure']).toContain(
+                    (model as { provider?: string }).provider,
+                );
             });
         });
 
-        it('should have IDs in the 80000000-0000-0000-0005 range', () => {
-            smrModels.forEach((model) => {
-                expect(model.id).toMatch(/^80000000-0000-0000-0005-/);
+        it('should have IDs in the fresh 80000000-0000-0000-0007 block (TASK-506)', () => {
+            llmModels.forEach((model) => {
+                expect(model.id).toMatch(/^80000000-0000-0000-0007-/);
             });
         });
     });
 
     describe('Ollama Models', () => {
-        const EXPECTED_OLLAMA_SLUGS = [
-            'ollama-qwen3.5-27b',
-            'ollama-qwen3.5-latest',
-            'ollama-translategemma-12b',
-            'ollama-translategemma-latest',
-            'ollama-medgemma-27b-text-q4km',
-            'ollama-gemma3-latest',
-            'ollama-gemma3n-e2b',
-            'ollama-gpt-oss-latest',
-            'ollama-gemma3n-latest',
-            'ollama-granite4-tiny-h',
-            'ollama-granite4-latest',
-        ];
+        const EXPECTED_OLLAMA = [
+            ['ollama-gemma4-12b-mlx', 'gemma4:12b-mlx'],
+            ['ollama-gemma4-e2b-it-qat', 'gemma4:e2b-it-qat'],
+            ['ollama-qwen3.5-2b', 'qwen3.5:2b'],
+        ] as const;
 
-        it.each(EXPECTED_OLLAMA_SLUGS)('should include Ollama model %s', (slug) => {
-            const model = smrModels.find((m) => m.slug === slug);
+        it.each(EXPECTED_OLLAMA)('should include Ollama model %s (sourceUri %s)', (slug, sourceUri) => {
+            const model = llmModels.find((m) => m.slug === slug);
             expect(model).toBeDefined();
             expect(model?.tags).toContain('ollama');
-            expect(model?.tags).toContain('smr');
-        });
-
-        it('should store the original Ollama model name in description or sourceUri', () => {
-            const granite = smrModels.find((m) => m.slug === 'ollama-granite4-latest');
-            expect(granite).toBeDefined();
-            expect(granite?.sourceUri).toContain('granite4');
+            expect(model?.sourceUri).toBe(sourceUri);
         });
     });
 
     describe('LM Studio Models', () => {
-        const EXPECTED_LMS_SLUGS = [
-            'lms-qwen3.5-4b',
-            'lms-qwen3.5-0.8b',
-            'lms-qwen3.5-9b',
-            'lms-qwen3.5-35b-a3b',
-            'lms-lfm2-24b-a2b',
-            'lms-glm-4.6v-flash',
-            'lms-lfm2.5-1.2b-instruct',
-            'lms-lfm2.5-1.2b-thinking',
-            'lms-lfm2.5-vl-1.6b',
-            'lms-translategemma-27b-it',
-            'lms-gemma-4-e2b-it-sft-rlvr-medical',
-            'lms-medgemma-1.5-4b-unsloth',
-            'lms-gpt-oss-20b',
-        ];
+        const EXPECTED_LMS = [
+            ['lms-gemma-4-e2b-it-qat', 'gemma-4-e2b-it-qat'],
+            ['lms-gemma-4-e4b-it-qat', 'gemma-4-e4b-it-qat'],
+            ['lms-gemma-4-medical-icd10', 'gemma-4-medical-icd10'],
+            ['lms-gemma-4-12b-qat', 'google/gemma-4-12b-qat'],
+            ['lms-medgemma-1.5-4b-it', 'medgemma-1.5-4b-it'],
+        ] as const;
 
-        it.each(EXPECTED_LMS_SLUGS)('should include LM Studio model %s', (slug) => {
-            const model = smrModels.find((m) => m.slug === slug);
+        it.each(EXPECTED_LMS)('should include LM Studio model %s (sourceUri %s)', (slug, sourceUri) => {
+            const model = llmModels.find((m) => m.slug === slug);
             expect(model).toBeDefined();
             expect(model?.tags).toContain('lm-studio');
-            expect(model?.tags).toContain('smr');
+            expect(model?.sourceUri).toBe(sourceUri);
         });
 
-        it('should have openai-compat tag on all LM Studio models', () => {
-            const lmsModels = smrModels.filter((m) => m.tags.includes('lm-studio'));
-            lmsModels.forEach((model) => {
-                expect(model.tags).toContain('openai-compat');
-            });
-        });
-
-        it('should mark lms-gemma-4-e2b-it-sft-rlvr-medical as a SAFETENSOR-format model', () => {
-            const gemmaMedical = smrModels.find((m) => m.slug === 'lms-gemma-4-e2b-it-sft-rlvr-medical');
-            expect(gemmaMedical).toBeDefined();
-            expect(gemmaMedical?.format).toBe(AiModelFormat.SAFETENSOR);
+        it('should mark ONLY lms-gemma-4-e2b-it-qat as the platform default (tags default+summarization)', () => {
+            const defaults = llmModels.filter((m) => m.tags.includes('default'));
+            expect(defaults.map((m) => m.slug)).toEqual(['lms-gemma-4-e2b-it-qat']);
+            expect(defaults[0].tags).toContain('summarization');
         });
     });
 
-    describe('Azure OpenAI Models', () => {
-        it('should include gpt-4o-mini model', () => {
-            const gpt4oMini = smrModels.find((m) => m.slug === 'gpt-4o-mini');
-            expect(gpt4oMini).toBeDefined();
-            expect(gpt4oMini?.tags).toContain('azure-openai');
-        });
-    });
-
-    describe('Default Provider Models', () => {
-        it('should include gpt-4 model (default Azure OpenAI model)', () => {
-            const gpt4 = smrModels.find((m) => m.slug === 'gpt-4');
-            expect(gpt4).toBeDefined();
-            expect(gpt4?.tags).toContain('azure-openai');
-        });
-
-        it('should include claude-3-haiku model (default Bedrock model)', () => {
-            const claude = smrModels.find((m) => m.slug === 'claude-3-haiku');
-            expect(claude).toBeDefined();
-            expect(claude?.tags).toContain('bedrock');
-        });
-
-        it('should have granite4-latest as a small default-capable Ollama model', () => {
-            const granite = smrModels.find((m) => m.slug === 'ollama-granite4-latest');
-            expect(granite).toBeDefined();
-            expect(granite?.memorySizeMb).toBeLessThanOrEqual(2200);
+    describe('Azure Cloud Model', () => {
+        it('should include azure-gpt-5.4-mini as CLOUD_API with an empty deployment placeholder', () => {
+            const gpt = llmModels.find((m) => m.slug === 'azure-gpt-5.4-mini');
+            expect(gpt).toBeDefined();
+            expect(gpt?.format).toBe(AiModelFormat.CLOUD_API);
+            expect(gpt?.sourceUri).toBe('gpt-5.4-mini');
+            expect(
+                (gpt as { metaData?: { azureDeployment?: string } } | undefined)?.metaData?.azureDeployment,
+            ).toBe('');
         });
     });
 
     describe('Model Size Metadata', () => {
         it('should have memorySizeMb > 0 for local models', () => {
-            const localModels = smrModels.filter(
+            const localModels = llmModels.filter(
                 (m) => m.tags.includes('ollama') || m.tags.includes('lm-studio')
             );
             localModels.forEach((model) => {
@@ -2281,79 +2244,38 @@ describe('SMR v2 LLM Models Seed Data', () => {
         });
 
         it('should have memorySizeMb = 0 for cloud models', () => {
-            const cloudModels = smrModels.filter(
-                (m) => m.tags.includes('azure-openai') || m.tags.includes('bedrock')
-            );
+            const cloudModels = llmModels.filter((m) => m.tags.includes('cloud'));
             cloudModels.forEach((model) => {
                 expect(model.memorySizeMb).toBe(0);
+            });
+        });
+    });
+
+    describe('Retired LLM catalog (TASK-506)', () => {
+        it('should no longer seed any of the legacy SMR provider rows', () => {
+            const legacy = DEFAULT_AI_MODELS.filter((m) => m.tags.includes('smr'));
+            expect(legacy).toEqual([]);
+            ['gpt-4', 'gpt-4o', 'gpt-4o-mini', 'claude-3-haiku', 'claude-3.5-sonnet',
+                'local-model-openai-compat', 'ollama-granite4-latest', 'lms-qwen3.5-0.8b',
+                'lms-gemma-4-e2b-it-sft-rlvr-medical'].forEach((slug) => {
+                expect(DEFAULT_AI_MODELS.find((m) => m.slug === slug)).toBeUndefined();
             });
         });
     });
 });
 
 // =============================================================================
-// STT LOCAL PROCESSING (BROWSER) MODELS SEED DATA TESTS
+// STT LOCAL PROCESSING (BROWSER) MODELS — RETIRED (TASK-506)
 // =============================================================================
+// The 7 browser-local whisper rows were retired: the SDK's model lists are
+// hardcoded (`constants.task210.test.ts` locks the removed /ai-models fetch)
+// and `TenantFrontendConfig.asrModel` is free-text, so no runtime path reads
+// these catalog rows. `retireLegacyAiModels` soft-deletes existing copies.
 
-describe('STT Local Processing Models Seed Data', () => {
-    const localModels = DEFAULT_AI_MODELS.filter(
-        (m) => m.tags.includes('local-processing') && m.taskType === ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION
-    );
-
-    describe('Browser Whisper Model Coverage', () => {
-        it('should include whisper-tiny for local processing', () => {
-            const tiny = localModels.find((m) => m.slug === 'whisper-tiny');
-            expect(tiny).toBeDefined();
-            expect(tiny?.tags).toContain('local-processing');
-        });
-
-        it('should include whisper-base for local processing', () => {
-            const base = localModels.find((m) => m.slug === 'whisper-base');
-            expect(base).toBeDefined();
-            expect(base?.tags).toContain('local-processing');
-        });
-
-        it('should include whisper-small for local processing', () => {
-            const small = localModels.find((m) => m.slug === 'whisper-small-local');
-            expect(small).toBeDefined();
-            expect(small?.tags).toContain('local-processing');
-        });
-
-        it('should include whisper-medium for local processing', () => {
-            const medium = localModels.find((m) => m.slug === 'whisper-medium-local');
-            expect(medium).toBeDefined();
-            expect(medium?.tags).toContain('local-processing');
-        });
-    });
-
-    describe('Local Model Properties', () => {
-        it('should use ONNX format for all local models (browser compatibility)', () => {
-            localModels.forEach((model) => {
-                expect(model.format).toBe(AiModelFormat.ONNX);
-            });
-        });
-
-        it('should have onnx-community source URIs for local models', () => {
-            localModels.forEach((model) => {
-                expect(model.sourceUri).toMatch(/^onnx-community\//);
-            });
-        });
-
-        it('should have AUDIO category for all local models', () => {
-            localModels.forEach((model) => {
-                expect(model.category).toBe(ModelCategory.AUDIO);
-            });
-        });
-
-        it('should have reasonable memory sizes for browser use', () => {
-            localModels.forEach((model) => {
-                expect(model.memorySizeMb).toBeLessThanOrEqual(1024);
-            });
-        });
-
-        it('should have at least 4 local processing models', () => {
-            expect(localModels.length).toBeGreaterThanOrEqual(4);
-        });
+describe('STT Local Processing Models retired (TASK-506)', () => {
+    it('should seed NO local-processing rows in the consolidated catalog', () => {
+        const localModels = DEFAULT_AI_MODELS.filter((m) => m.tags.includes('local-processing'));
+        expect(localModels).toEqual([]);
     });
 });
 
@@ -2364,6 +2286,7 @@ describe('STT Local Processing Models Seed Data', () => {
 describe('Customer-tenant AI model catalog backfill', () => {
     const makeMockClient = (findFirstImpl: () => unknown) => {
         const created: Array<{ data: Record<string, unknown> }> = [];
+        const updated: Array<{ where: Record<string, unknown>; data: Record<string, unknown> }> = [];
         const client = {
             aiModel: {
                 findFirst: vi.fn(async () => findFirstImpl()),
@@ -2371,9 +2294,13 @@ describe('Customer-tenant AI model catalog backfill', () => {
                     created.push(args);
                     return args.data;
                 }),
+                update: vi.fn(async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+                    updated.push(args);
+                    return args.data;
+                }),
             },
         };
-        return { client, created };
+        return { client, created, updated };
     };
 
     it('targets the global + the ArcaAI customer tenant (not the SYSTEM tenant)', () => {
@@ -2398,12 +2325,36 @@ describe('Customer-tenant AI model catalog backfill', () => {
         });
     });
 
-    it('is idempotent — skips slugs the tenant already owns', async () => {
-        const { client } = makeMockClient(() => ({ id: 'already-exists' }));
+    it('is idempotent — skips slugs the tenant already owns (provider already set)', async () => {
+        const { client } = makeMockClient(() => ({ id: 'already-exists', provider: 'lm-studio' }));
         const result = await backfillCustomerTenantAiModels(client as never);
 
         expect(result.count).toBe(0);
+        expect(result.synced).toBe(0);
         expect(client.aiModel.create).not.toHaveBeenCalled();
+        expect(client.aiModel.update).not.toHaveBeenCalled();
+    });
+
+    it('column-syncs pre-506 clones — fills provider/architecture (+metaData) ONLY while provider is NULL (TASK-506)', async () => {
+        // Pre-506 clones exist (create-only backfill) but predate the new
+        // columns; the guardrail/NLP/TTS resolvers prefer the same-tenant
+        // model row, so a NULL-provider clone would shadow the SYSTEM value.
+        const { client, updated } = makeMockClient(() => ({ id: 'pre-506-clone', provider: null }));
+        const result = await backfillCustomerTenantAiModels(client as never);
+
+        const expectedSynced = DEFAULT_AI_MODELS.length * CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL.length;
+        expect(result.count).toBe(0);
+        expect(result.synced).toBe(expectedSynced);
+        expect(client.aiModel.create).not.toHaveBeenCalled();
+        updated.forEach(({ where, data }) => {
+            expect(where).toEqual({ id: 'pre-506-clone' });
+            expect(data.provider).toBeTruthy();
+            expect(data.version).toEqual({ increment: 1 });
+            // Never touches tenant-customizable presentation fields.
+            expect(data).not.toHaveProperty('name');
+            expect(data).not.toHaveProperty('tags');
+            expect(data).not.toHaveProperty('resourceStatus');
+        });
     });
 });
 
@@ -2439,9 +2390,9 @@ describe('TASK-356 Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
         return { client, created, updated, changes };
     };
 
-    it('exposes the agreed SMR defaults (lm-studio + gemma-4-e2b-it-sft-rlvr-medical)', () => {
+    it('exposes the agreed SMR defaults (lm-studio + gemma-4-e2b-it-qat)', () => {
         expect(SYSTEM_HARNESS_POLICY_SMR_DEFAULTS.smrProvider).toBe('lm-studio');
-        expect(SYSTEM_HARNESS_POLICY_SMR_DEFAULTS.smrModel).toBe('gemma-4-e2b-it-sft-rlvr-medical');
+        expect(SYSTEM_HARNESS_POLICY_SMR_DEFAULTS.smrModel).toBe('gemma-4-e2b-it-qat');
     });
 
     it('creates the SYSTEM policy row with the SMR defaults and writes a WORM change (beforeJson=null)', async () => {
@@ -2454,7 +2405,7 @@ describe('TASK-356 Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
         expect(client.harnessPolicy.create).toHaveBeenCalledTimes(1);
         expect(created[0].data.tenantId).toBe(SYSTEM_TENANT_ID);
         expect(created[0].data.smrProvider).toBe('lm-studio');
-        expect(created[0].data.smrModel).toBe('gemma-4-e2b-it-sft-rlvr-medical');
+        expect(created[0].data.smrModel).toBe('gemma-4-e2b-it-qat');
 
         // WORM audit entry (HarnessPolicyChange) recorded for the default-set.
         expect(client.harnessPolicyChange.create).toHaveBeenCalledTimes(1);
@@ -2463,7 +2414,7 @@ describe('TASK-356 Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
         expect(change.beforeJson).toBeNull();
         expect((change.afterJson as Record<string, unknown>).smrProvider).toBe('lm-studio');
         expect((change.afterJson as Record<string, unknown>).smrModel).toBe(
-            'gemma-4-e2b-it-sft-rlvr-medical'
+            'gemma-4-e2b-it-qat'
         );
         expect(change.changedBy).toBe(SYSTEM_USER_ID);
     });
@@ -2474,7 +2425,7 @@ describe('TASK-356 Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
             tenantId: SYSTEM_TENANT_ID,
             version: 3,
             smrProvider: 'lm-studio',
-            smrModel: 'gemma-4-e2b-it-sft-rlvr-medical',
+            smrModel: 'gemma-4-e2b-it-qat',
         });
         const result = await seedHarnessPolicy(client as never);
 
@@ -2503,12 +2454,12 @@ describe('TASK-356 Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
         // Writes ONLY the two SMR columns (does not clobber other admin knobs).
         expect(Object.keys(updated[0].data).sort()).toEqual(['smrModel', 'smrProvider']);
         expect(updated[0].data.smrProvider).toBe('lm-studio');
-        expect(updated[0].data.smrModel).toBe('gemma-4-e2b-it-sft-rlvr-medical');
+        expect(updated[0].data.smrModel).toBe('gemma-4-e2b-it-qat');
 
         const change = changes[0].data;
         expect((change.beforeJson as Record<string, unknown>).smrModel).toBeNull();
         expect((change.afterJson as Record<string, unknown>).smrModel).toBe(
-            'gemma-4-e2b-it-sft-rlvr-medical'
+            'gemma-4-e2b-it-qat'
         );
         // The audit snapshot preserves untouched knobs (granite safety model).
         expect((change.afterJson as Record<string, unknown>).safetyModel).toBe('granite-guardian-4.1-8b');

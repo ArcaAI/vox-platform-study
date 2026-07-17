@@ -38,4 +38,12 @@ export class EffectiveTtsConfigResponse {
 
   @ApiProperty({ description: 'Whether routing to the Sarvam public API is allowed' })
   sarvamPublicApiAllowed!: boolean;
+
+  // TASK-506 — SYSTEM bindings merged under tenant bindings (per-voice-id
+  // shallow merge, tenant wins). Injected into tts-v2 as `voice_bindings`.
+  @ApiProperty({
+    description: 'Effective per-voice provider voice-name bindings: { [internalVoiceId]: { [provider]: providerVoiceName } }',
+    type: Object,
+  })
+  voiceBindings!: Record<string, Record<string, string>>;
 }

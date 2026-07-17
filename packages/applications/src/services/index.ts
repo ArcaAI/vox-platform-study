@@ -30,6 +30,8 @@ export * from './harness-policy';
 export * from './config-resolver';
 // TASK-504 Phase 3 — capability/settings registry (typed catalog of admin-controllable settings).
 export * from './settings-registry';
+// TASK-506 — per-tenant AI task-model defaults (guardrail/NLP), tenant → SYSTEM cascade.
+export * from './ai-task-default';
 // TASK-356 Phase 5 — editable realtime-pipeline policy (cascade admin surface).
 export * from './pipeline-policy';
 // TASK-330 Phase 6 — read-only observability projections (audit/eval/gate-queue).

@@ -17,6 +17,11 @@ export interface IAiModelEntity extends IBaseTaggedEntity {
   sourceUri: string;
   sourceRevision?: string | null;
   format: Enums.AiModelFormat;
+  // TASK-506 — machine-actionable registry identity: canonical runtime
+  // provider (`ollama` | `lm-studio` | `azure` | `bedrock` | `built-in` |
+  // `sarvam`) and model architecture family (`gemma4`, `whisper`, ...).
+  provider?: string | null;
+  architecture?: string | null;
   memorySizeMb?: number | null;
   computeType?: string | null;
   downloadStatus: Enums.AiModelDownloadStatus;
@@ -37,6 +42,14 @@ export class AiModelEntity extends BaseTaggedEntity {
   private _sourceUri: IAiModelEntity['sourceUri'];
   private _sourceRevision?: IAiModelEntity['sourceRevision'];
   private _format: IAiModelEntity['format'];
+  private _provider?: IAiModelEntity['provider'];
+  private _architecture?: IAiModelEntity['architecture'];
+  // TASK-506 — `IBaseEntity.metaData` was declared but never wired on
+  // `BaseEntity` (pre-existing gap affecting every entity); implemented
+  // locally so registry extras (TTS `metaData.voices`, Azure deployment
+  // names) survive the DB → entity round-trip. Mirrors
+  // `PasswordResetTokenEntity`'s local wiring.
+  private _metaData?: IAiModelEntity['metaData'];
   private _memorySizeMb?: IAiModelEntity['memorySizeMb'];
   private _computeType?: IAiModelEntity['computeType'];
   private _downloadStatus: IAiModelEntity['downloadStatus'];
@@ -57,6 +70,9 @@ export class AiModelEntity extends BaseTaggedEntity {
     this._sourceUri = init.sourceUri;
     this._sourceRevision = init.sourceRevision;
     this._format = init.format;
+    this._provider = init.provider;
+    this._architecture = init.architecture;
+    this._metaData = init.metaData;
     this._memorySizeMb = init.memorySizeMb;
     this._computeType = init.computeType;
     this._downloadStatus = init.downloadStatus;
@@ -145,6 +161,30 @@ export class AiModelEntity extends BaseTaggedEntity {
 
   set format(value: IAiModelEntity['format']) {
     this.setProperty('format', value);
+  }
+
+  get provider(): IAiModelEntity['provider'] {
+    return this._provider;
+  }
+
+  set provider(value: IAiModelEntity['provider']) {
+    this.setProperty('provider', value);
+  }
+
+  get architecture(): IAiModelEntity['architecture'] {
+    return this._architecture;
+  }
+
+  set architecture(value: IAiModelEntity['architecture']) {
+    this.setProperty('architecture', value);
+  }
+
+  get metaData(): IAiModelEntity['metaData'] {
+    return this._metaData;
+  }
+
+  set metaData(value: IAiModelEntity['metaData']) {
+    this.setProperty('metaData', value);
   }
 
   get memorySizeMb(): IAiModelEntity['memorySizeMb'] {

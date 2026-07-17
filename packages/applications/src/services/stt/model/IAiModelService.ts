@@ -43,6 +43,13 @@ export interface IAiModelService {
   getByTaskType(taskType: ModelTaskType): Promise<ModelResponse[]>;
 
   /**
+   * Get ENABLED models by task type across [caller tenant, SYSTEM] via the
+   * shared-read widening, de-duplicated by slug preferring the caller-tenant
+   * row; SYSTEM-pinned fallback when CLS carries no tenant (r2605 Finding E).
+   */
+  getByTaskTypeSharedRead(taskType: ModelTaskType): Promise<ModelResponse[]>;
+
+  /**
    * Get downloaded models
    */
   getDownloadedModels(): Promise<ModelResponse[]>;

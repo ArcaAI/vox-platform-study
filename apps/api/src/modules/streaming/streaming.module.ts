@@ -1,4 +1,6 @@
 import {
+  AiModelServiceModule,
+  AiTaskDefaultServiceModule,
   EntitlementsServiceModule,
   HarnessPolicyServiceModule,
   PipelineServiceModule,
@@ -33,6 +35,11 @@ import { TranscriptionJobController } from './transcription-job.controller';
     PipelineServiceModule,
     CoreDatabaseModule,
     HarnessPolicyServiceModule, // TASK-356 D-7 — SMR-selection resolver for SmrProxyController
+    // TASK-506 — registry-backed providers listings on SmrProxyController:
+    // AiModelService lists ENABLED rows per taskType; AiTaskDefaultService
+    // resolves the effective `guardrail.validate` default.
+    AiModelServiceModule,
+    AiTaskDefaultServiceModule,
     // TASK-386 (#5/#17): provides `ISocketRegistryService` so `SttWsGateway`
     // publishes its per-instance open-socket count for the platform aggregate.
     PlatformMetricsServiceModule,

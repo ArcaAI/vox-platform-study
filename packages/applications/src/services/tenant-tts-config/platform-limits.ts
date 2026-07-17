@@ -14,6 +14,26 @@ export const BYO_PROVIDERS = ['azure', 'sarvam'] as const;
 /** Decrypted per-tenant provider credentials, injected by the gateway into tts-v2. */
 export type TtsProviderOverrides = Record<string, { api_key: string; region?: string; base_url?: string }>;
 
+/**
+ * TASK-506 — admin-selectable voice bindings persisted under
+ * `TenantTtsConfig.configJson.voiceBindings`:
+ * `{ [internalVoiceId]: { [provider]: providerVoiceName } }`.
+ */
+export type TtsVoiceBindings = Record<string, Record<string, string>>;
+
+/**
+ * Merge SYSTEM voice bindings under tenant bindings: per-voice-id shallow
+ * merge, tenant wins per provider entry. Pure so it is trivially unit-tested
+ * and usable on the gateway hot path.
+ */
+export function mergeVoiceBindings(system: TtsVoiceBindings, tenant: TtsVoiceBindings): TtsVoiceBindings {
+  const out: TtsVoiceBindings = {};
+  for (const voiceId of new Set([...Object.keys(system), ...Object.keys(tenant)])) {
+    out[voiceId] = { ...(system[voiceId] ?? {}), ...(tenant[voiceId] ?? {}) };
+  }
+  return out;
+}
+
 /** Nullable spec shape (a tenant OR the SYSTEM-default row). null/[] = inherit. */
 export interface TtsSpecInput {
   routingEn?: string[] | null;
@@ -86,8 +106,20 @@ function pickArray(tenant: string[] | null | undefined, system: string[] | null 
  * default over code defaults, then clamp every value to the platform limits.
  * `allowedProviders` bounds the routing chains; when the Sarvam PHI toggle is
  * off, `sarvam` is stripped from routing + the whitelist (fail-safe).
+ *
+ * r2605 Finding F — `universe` is the registry-derived provider universe (the
+ * ENABLED SYSTEM `TEXT_TO_SPEECH` registry rows, plan §3.4.2): it replaces the
+ * code-constant universe in the whitelist clamp, the routing-chain clamps AND
+ * the code-default fallback chains, so disabling a registry row disables the
+ * provider platform-wide, and a registry-only provider survives the clamps.
+ * Omitted (empty catalog / legacy callers) = the code constant — behaviour
+ * identical to before.
  */
-export function resolveEffectiveTtsConfig(system: TtsSpecInput | null, tenant: TtsSpecInput | null): EffectiveTtsConfig {
+export function resolveEffectiveTtsConfig(
+  system: TtsSpecInput | null,
+  tenant: TtsSpecInput | null,
+  universe: ReadonlySet<string> = PROVIDER_UNIVERSE,
+): EffectiveTtsConfig {
   const s = system ?? {};
   const t = tenant ?? {};
   const d = PLATFORM_TTS_LIMITS.codeDefaults;
@@ -95,16 +127,17 @@ export function resolveEffectiveTtsConfig(system: TtsSpecInput | null, tenant: T
   const sarvamPublicApiAllowed = pickScalar(t.sarvamPublicApiAllowed, s.sarvamPublicApiAllowed, d.sarvamPublicApiAllowed);
 
   // Allowed-provider whitelist: clamp to the universe; empty => the full universe.
-  const whitelistRaw = pickArray(t.allowedProviders, s.allowedProviders, [...PLATFORM_TTS_LIMITS.providerUniverse]);
-  let allowedProviders = whitelistRaw.filter((p) => PROVIDER_UNIVERSE.has(p));
-  if (allowedProviders.length === 0) allowedProviders = [...PLATFORM_TTS_LIMITS.providerUniverse];
+  const whitelistRaw = pickArray(t.allowedProviders, s.allowedProviders, [...universe]);
+  let allowedProviders = whitelistRaw.filter((p) => universe.has(p));
+  if (allowedProviders.length === 0) allowedProviders = [...universe];
   if (!sarvamPublicApiAllowed) allowedProviders = allowedProviders.filter((p) => p !== 'sarvam');
   const allowed = new Set(allowedProviders);
 
   const clampChain = (chain: string[], fallback: string[]): string[] => {
-    const filtered = chain.filter((p) => PROVIDER_UNIVERSE.has(p) && allowed.has(p));
+    const filtered = chain.filter((p) => universe.has(p) && allowed.has(p));
     if (filtered.length > 0) return filtered;
-    // Fall back to the code default, still clamped to the whitelist.
+    // Fall back to the code default, still clamped to the universe + whitelist
+    // (`allowed` is always a subset of `universe`, so one filter suffices).
     const fb = fallback.filter((p) => allowed.has(p));
     return fb.length > 0 ? fb : filtered;
   };

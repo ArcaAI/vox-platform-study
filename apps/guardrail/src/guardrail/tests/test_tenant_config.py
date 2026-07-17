@@ -1,11 +1,15 @@
-"""Unit tests for per-tenant guardrail config resolution (TASK-338, Phase 4).
+"""Unit tests for per-tenant guardrail config resolution (TASK-338, Phase 4;
+repointed to the AiTaskDefault ⋈ AiModel registry by TASK-506).
 
-The DB is fully mocked — no live database is required. ``_load_from_db`` is the
-seam: tests subclass the resolver to return canned per-tenant rows and count
-lookups so the TTL cache + fallback behavior can be asserted deterministically.
+The DB is fully mocked — no live database is required. Two seams are used:
+``_load_from_db`` (subclassed to return canned per-tenant rows, for the TTL
+cache + tenant-fallback behavior) and a fake SQLAlchemy session (for the
+registry-row preference/mapping logic inside ``_load_from_db`` itself).
 """
 
 from __future__ import annotations
+
+from types import SimpleNamespace
 
 import pytest
 
@@ -14,7 +18,10 @@ from guardrail.core.tenant_config import (
     KEY_AZURE_DEPLOYMENT,
     KEY_MODEL,
     KEY_PROVIDER,
-    GlobalSettingRead,
+    SYSTEM_TENANT_ID,
+    TASK_KEY_GUARDRAIL_VALIDATE,
+    AiModelRead,
+    AiTaskDefaultRead,
     GuardrailTenantConfig,
     TenantConfigResolver,
     build_guardian_provider,
@@ -187,7 +194,10 @@ async def test_cache_valid_within_ttl() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Fail-safe: DB errors resolve to empty (caller falls back to env)
+# Fail-safe: DB errors resolve to empty (caller falls back to env) and are
+# negatively cached for one TTL window (TASK-506 review Minor 1) — an env-only
+# deployment without a reachable Postgres pays at most one connection attempt
+# per tenant per TTL, not one per request.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -203,17 +213,52 @@ async def test_db_error_resolves_to_empty_config() -> None:
 
 
 @pytest.mark.asyncio
-async def test_db_error_is_not_cached() -> None:
+async def test_db_error_is_negatively_cached_within_ttl() -> None:
+    r = _resolver({})
+    r.raise_on = {TENANT_A, DEFAULT_TENANT}
+
+    await r.resolve(TENANT_A)
+    await r.resolve(TENANT_A)  # second resolve within TTL
+
+    # One load attempt per tenant (request tenant + default fallback), not two.
+    assert r.calls == [TENANT_A, DEFAULT_TENANT]
+
+
+@pytest.mark.asyncio
+async def test_db_error_negative_cache_expires_with_ttl() -> None:
+    clock = _Clock()
     data = {TENANT_A: {KEY_PROVIDER: "ollama"}}
-    r = _resolver(data)
+    r = _resolver(data, clock=clock, ttl=60)
     r.raise_on = {TENANT_A}
 
     first = await r.resolve(TENANT_A)
-    assert first.provider is None  # errored -> empty
+    assert first.provider is None  # errored -> empty (fail-open)
 
     r.raise_on.clear()
+    clock.t = 61.0  # negative entry expired
     second = await r.resolve(TENANT_A)
-    assert second.provider == "ollama"  # refetched, not served from error cache
+    assert second.provider == "ollama"  # refetched after the TTL window
+
+
+@pytest.mark.asyncio
+async def test_db_error_one_session_attempt_per_tenant_per_ttl() -> None:
+    # Real _load_from_db path: a failing session factory is invoked once per
+    # tenant per TTL window even across repeated resolves.
+    count = 0
+
+    def factory() -> _FakeSession:
+        nonlocal count
+        count += 1
+        return _FakeSession(exc=RuntimeError("connection refused"))
+
+    r = TenantConfigResolver(
+        session_factory=factory, default_tenant_id=DEFAULT_TENANT, cache_ttl_s=60
+    )
+
+    await r.resolve(TENANT_A)
+    await r.resolve(TENANT_A)
+
+    assert count == 2  # TENANT_A + DEFAULT_TENANT fallback, once each — not 4
 
 
 # ---------------------------------------------------------------------------
@@ -303,13 +348,191 @@ def test_build_guardian_provider_ollama() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Contract: the read targets the exact GlobalSetting table/columns
+# DB layer (TASK-506): AiTaskDefault ⋈ AiModel row preference + field mapping.
+# The SQLAlchemy session is faked; rows mimic the labeled columns the real
+# query selects (default_tenant_id, model_tenant_id, provider, source_uri,
+# meta_data).
 # ---------------------------------------------------------------------------
 
-def test_global_setting_read_maps_prisma_columns() -> None:
-    table = GlobalSettingRead.__table__
+
+class _FakeResult:
+    def __init__(self, rows: list) -> None:
+        self._rows = rows
+
+    def all(self) -> list:
+        return list(self._rows)
+
+
+class _FakeSession:
+    def __init__(self, rows: list | None = None, exc: Exception | None = None) -> None:
+        self._rows = rows or []
+        self._exc = exc
+
+    async def __aenter__(self) -> _FakeSession:
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> bool:
+        return False
+
+    async def execute(self, stmt: object) -> _FakeResult:
+        if self._exc is not None:
+            raise self._exc
+        return _FakeResult(self._rows)
+
+
+def _row(
+    default_tenant: str,
+    model_tenant: str,
+    provider: str | None,
+    source_uri: str | None,
+    meta: dict | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        default_tenant_id=default_tenant,
+        model_tenant_id=model_tenant,
+        provider=provider,
+        source_uri=source_uri,
+        meta_data=meta,
+    )
+
+
+def _db_resolver(rows: list | None = None, exc: Exception | None = None) -> TenantConfigResolver:
+    return TenantConfigResolver(
+        session_factory=lambda: _FakeSession(rows, exc),
+        default_tenant_id=DEFAULT_TENANT,
+        cache_ttl_s=60,
+    )
+
+
+@pytest.mark.asyncio
+async def test_db_tenant_task_default_beats_system() -> None:
+    rows = [
+        _row(SYSTEM_TENANT_ID, SYSTEM_TENANT_ID, "lm-studio", "granite-guardian-4.1-8b"),
+        _row(TENANT_A, SYSTEM_TENANT_ID, "ollama", "gemma4:e2b-it-qat"),
+    ]
+    cfg = await _db_resolver(rows).resolve(TENANT_A)
+
+    assert cfg.provider == "ollama"
+    assert cfg.model == "gemma4:e2b-it-qat"
+
+
+@pytest.mark.asyncio
+async def test_db_system_row_used_when_tenant_has_none() -> None:
+    rows = [_row(SYSTEM_TENANT_ID, SYSTEM_TENANT_ID, "lm-studio", "granite-guardian-4.1-8b")]
+    cfg = await _db_resolver(rows).resolve(TENANT_A)
+
+    assert cfg.provider == "lm-studio"
+    assert cfg.model == "granite-guardian-4.1-8b"
+
+
+@pytest.mark.asyncio
+async def test_db_prefers_same_tenant_model_row() -> None:
+    # Same (SYSTEM) task default joined against both the tenant's own AiModel
+    # copy and the SYSTEM catalog row → the tenant's copy wins.
+    rows = [
+        _row(SYSTEM_TENANT_ID, SYSTEM_TENANT_ID, "lm-studio", "system-source-uri"),
+        _row(SYSTEM_TENANT_ID, TENANT_A, "lm-studio", "tenant-source-uri"),
+    ]
+    cfg = await _db_resolver(rows).resolve(TENANT_A)
+
+    assert cfg.model == "tenant-source-uri"
+
+
+@pytest.mark.asyncio
+async def test_db_no_rows_resolves_empty_for_env_fallback() -> None:
+    cfg = await _db_resolver([]).resolve(TENANT_A)
+
+    assert cfg.provider is None
+    assert cfg.model is None
+    assert cfg.azure_deployment is None
+
+
+@pytest.mark.asyncio
+async def test_db_session_error_resolves_empty_for_env_fallback() -> None:
+    cfg = await _db_resolver(exc=RuntimeError("connection refused")).resolve(TENANT_A)
+
+    assert cfg.provider is None
+    assert cfg.model is None
+
+
+@pytest.mark.asyncio
+async def test_db_null_provider_column_keeps_env_provider() -> None:
+    rows = [_row(TENANT_A, SYSTEM_TENANT_ID, None, "some-source-uri")]
+    cfg = await _db_resolver(rows).resolve(TENANT_A)
+
+    assert cfg.provider is None  # provider column NULL → env provider retained
+    assert cfg.model == "some-source-uri"
+
+    s = Settings()
+    provider, engine = resolve_guardian_engine(s, cfg)
+    assert provider == s.provider  # env default provider
+    assert engine.guardian_model == "some-source-uri"  # model still overridden
+
+
+@pytest.mark.asyncio
+async def test_db_azure_deployment_read_from_metadata() -> None:
+    rows = [
+        _row(
+            TENANT_A,
+            SYSTEM_TENANT_ID,
+            "azure",
+            "gpt-5.4-mini",
+            meta={"azureDeployment": "prod-guardian-deploy"},
+        )
+    ]
+    cfg = await _db_resolver(rows).resolve(TENANT_A)
+
+    assert cfg.provider == "azure"
+    assert cfg.model == "gpt-5.4-mini"
+    assert cfg.azure_deployment == "prod-guardian-deploy"
+
+
+@pytest.mark.asyncio
+async def test_db_metadata_without_deployment_leaves_it_unset() -> None:
+    rows = [_row(TENANT_A, SYSTEM_TENANT_ID, "azure", "gpt-5.4-mini", meta={"other": "x"})]
+    cfg = await _db_resolver(rows).resolve(TENANT_A)
+
+    assert cfg.azure_deployment is None
+
+
+# ---------------------------------------------------------------------------
+# Contract: the read targets the exact AiTaskDefault / AiModel tables+columns
+# ---------------------------------------------------------------------------
+
+def test_ai_task_default_read_maps_prisma_columns() -> None:
+    table = AiTaskDefaultRead.__table__
     assert table.schema == "core"
-    assert table.name == "GlobalSetting"  # type: ignore[attr-defined]
-    # Prisma column names (camelCase) the SQLAlchemy model maps onto.
+    assert table.name == "AiTaskDefault"  # type: ignore[attr-defined]
     colnames = {c.name for c in table.columns}
-    assert {"id", "tenantId", "key", "namespace", "value", "dataType", "resourceStatus"} <= colnames
+    assert {"id", "tenantId", "taskKey", "modelSlug", "resourceStatus"} <= colnames
+
+
+def test_ai_model_read_maps_prisma_columns() -> None:
+    table = AiModelRead.__table__
+    assert table.schema == "core"
+    assert table.name == "AiModel"  # type: ignore[attr-defined]
+    colnames = {c.name for c in table.columns}
+    assert {"id", "tenantId", "slug", "provider", "sourceUri", "_metadata", "resourceStatus"} <= colnames
+
+
+def test_guardrail_task_key_contract() -> None:
+    # Cross-worker contract with the seed + gateway (TASK-506) — do NOT rename.
+    assert TASK_KEY_GUARDRAIL_VALIDATE == "guardrail.validate"
+    assert SYSTEM_TENANT_ID == "00000000-0000-0000-0000-000000000000"
+
+
+def test_resource_status_enum_mirror_matches_postgres() -> None:
+    # The SQL mirror must match core."ResourceStatusType" exactly (source of
+    # truth: packages/database/src/prisma/db_main/enums.prisma) so enum binds
+    # can never drift — Postgres has no PENDING and does have SUSPENDED.
+    from guardrail.core.tenant_config import _ResourceStatusType
+
+    assert set(_ResourceStatusType.enums) == {
+        "ENABLED",
+        "DISABLED",
+        "SUSPENDED",
+        "ARCHIVED",
+        "DELETED",
+    }
+    assert _ResourceStatusType.name == "ResourceStatusType"
+    assert _ResourceStatusType.schema == "core"

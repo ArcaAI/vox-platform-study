@@ -38,6 +38,7 @@ import { ThrottleConfigModule, TieredThrottlerGuard } from './modules/throttle';
 import { RateLimitAdminModule } from './modules/admin-rate-limit/rate-limit-admin.module';
 // TASK-419 item 3 — /admin/ai-services read-only Guardrail/NLP proxy plane.
 import { AiInferenceModule } from './modules/ai-inference/ai-inference.module';
+import { AiTaskDefaultModule } from './modules/ai-task-default/ai-task-default.module';
 import { AiServiceAdminModule } from './modules/ai-service-admin/ai-service-admin.module';
 import { ApiKeyModule } from './modules/api-key/api-key.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
@@ -256,6 +257,8 @@ const featureModules: any[] = [
   RateLimitAdminModule,
   AiServiceAdminModule,
   AiInferenceModule,
+  // TASK-506 — /admin/ai-task-defaults (per-tenant default model per AI task key).
+  AiTaskDefaultModule,
   ApiKeyModule,
   AuthModule,
   AuditLogModule,

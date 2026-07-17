@@ -24,4 +24,12 @@ export class ExtractEntitiesRequest {
   @IsString()
   @MaxLength(32)
   language?: string;
+
+  // TASK-506 — explicit model override (the AiModel row's sourceUri, an HF id).
+  // When omitted, the gateway injects the tenant's effective `nlp.ner` default.
+  @ApiPropertyOptional({ description: 'Explicit HF model id overriding the tenant nlp.ner default (forwarded as model_name).' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  modelName?: string;
 }

@@ -1,7 +1,17 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { AiModelRepository, AiModelFactory, ResourceType, SysEventType, AiModelDownloadStatus, ModelTaskType, ResourceStatusType } from '@arcaai/domains';
+import {
+  AiModelEntity,
+  AiModelFactory,
+  AiModelRepository,
+  AiModelDownloadStatus,
+  ModelTaskType,
+  ResourceStatusType,
+  ResourceType,
+  SYSTEM_TENANT_ID,
+  SysEventType,
+} from '@arcaai/domains';
 import { IAiModelService } from './IAiModelService';
 import { CreateModelRequest, UpdateModelRequest, ModelResponse, PaginatedModelResponse } from './dto';
 import { AiModelDtoMapper } from './aiModel.dto.mapper';
@@ -47,6 +57,8 @@ export class AiModelService extends BaseService implements IAiModelService {
       sourceUri: dto.sourceUri,
       sourceRevision: dto.sourceRevision,
       format: dto.format,
+      provider: dto.provider,
+      architecture: dto.architecture,
       memorySizeMb: dto.memorySizeMb,
       computeType: dto.computeType,
       tags: dto.tags,
@@ -106,6 +118,8 @@ export class AiModelService extends BaseService implements IAiModelService {
     if (dto.sourceUri !== undefined) existing.sourceUri = dto.sourceUri;
     if (dto.sourceRevision !== undefined) existing.sourceRevision = dto.sourceRevision;
     if (dto.format !== undefined) existing.format = dto.format;
+    if (dto.provider !== undefined) existing.provider = dto.provider;
+    if (dto.architecture !== undefined) existing.architecture = dto.architecture;
     if (dto.memorySizeMb !== undefined) existing.memorySizeMb = dto.memorySizeMb;
     if (dto.computeType !== undefined) existing.computeType = dto.computeType;
     if (dto.tags !== undefined) existing.tags = dto.tags;
@@ -254,6 +268,39 @@ export class AiModelService extends BaseService implements IAiModelService {
 
     const models = await this.aiModelRepository.findByTaskType(tenantId, taskType);
     return models.map(AiModelDtoMapper.toResponse);
+  }
+
+  /**
+   * Get ENABLED models by task type across [caller tenant, SYSTEM] — the
+   * registry-picker read (r2605 Finding E).
+   *
+   * The legacy `getByTaskType` pins `tenantId` to the CLS tenant, which
+   * DEFEATS the tenant-scope extension's SYSTEM-shared-read widening: a
+   * tenant without cloned rows sees an empty catalog. This variant queries
+   * WITHOUT a tenant pin (the extension widens the read to
+   * `tenantId IN [caller, SYSTEM]`), then de-duplicates by slug preferring
+   * the caller-tenant row over its SYSTEM template. With NO CLS tenant at
+   * all (a non-elevated global admin — the extension would pass the read
+   * through unfiltered across ALL tenants), it pins explicitly to the
+   * SYSTEM platform catalog instead. Legacy callers of `getByTaskType`
+   * (exact-tenant semantics) are untouched.
+   */
+  async getByTaskTypeSharedRead(taskType: ModelTaskType): Promise<ModelResponse[]> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      const systemModels = await this.aiModelRepository.findByTaskType(SYSTEM_TENANT_ID, taskType);
+      return systemModels.map(AiModelDtoMapper.toResponse);
+    }
+
+    const rows = await this.aiModelRepository.findByTaskTypeSharedRead(taskType);
+    const bySlug = new Map<string, AiModelEntity>();
+    for (const row of rows) {
+      const existing = bySlug.get(row.slug);
+      if (!existing || (existing.tenantId !== tenantId && row.tenantId === tenantId)) {
+        bySlug.set(row.slug, row);
+      }
+    }
+    return [...bySlug.values()].map(AiModelDtoMapper.toResponse);
   }
 
   /**

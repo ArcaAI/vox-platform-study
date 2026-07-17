@@ -4,6 +4,7 @@ import { CoreUnitOfWorkService } from '../../unitsOfWork/core/core.unitOfWork';
 import { CoreDatabaseService, VAULT_PRISMA_FACTORY, type VaultPrismaFactory } from './core.database.service';
 
 import { AiModelRepository } from '../../../repositories/generated/core/AiModelRepository';
+import { AiTaskDefaultRepository } from '../../../repositories/generated/core/AiTaskDefaultRepository';
 import { ApiKeyRepository } from '../../../repositories/generated/core/ApiKeyRepository';
 import { AsrPipelineRepository } from '../../../repositories/generated/core/AsrPipelineRepository';
 import { AsrPipelineVersionRepository } from '../../../repositories/generated/core/AsrPipelineVersionRepository';
@@ -125,6 +126,8 @@ const repositories = [
   AsrPipelineRepository,
   AsrPipelineVersionRepository,
   AiModelRepository,
+  // Per-tenant AI task-model defaults (TASK-506)
+  AiTaskDefaultRepository,
   TranscriptionJobRepository,
   // Audit domain
   AuditLogRepository,

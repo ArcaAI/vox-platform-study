@@ -125,6 +125,11 @@ model AiModel {
   // Model format for loader selection
   format AiModelFormat // SAFETENSOR, ONNX, NEMO, PYTORCH
 
+  // Serving provider + architecture (TASK-506) — nullable; set for admin-
+  // selectable task models (LLM/guardrail/NLP/TTS) and backfilled for engines.
+  provider     String? // ollama | lm-studio | azure | bedrock | built-in | sarvam
+  architecture String? // e.g. gemma4, gemma3, qwen3.5, granite, whisper
+
   // Resource requirements (for scheduling/allocation)
   memorySizeMb Int? // Estimated GPU/CPU memory in MB
   computeType  String? // float32, float16, int8
@@ -157,6 +162,7 @@ model AiModel {
   @@index([taskType], name: "AiModel_taskType_idx")
   @@index([source], name: "AiModel_source_idx")
   @@index([format], name: "AiModel_format_idx")
+  @@index([provider], name: "AiModel_provider_idx")
   @@index([resourceStatus], name: "AiModel_status_idx")
   @@schema("core")
 }

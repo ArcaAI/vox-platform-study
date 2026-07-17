@@ -510,6 +510,12 @@ describe('TenantService', () => {
             sourceUri: `uri/${slug}`,
             sourceRevision: 'main',
             format: 'GGUF',
+            // TASK-506 (r2605 Finding C) — the registry columns every clone
+            // must carry; dropping them yields NULL-provider clones that
+            // shadow the SYSTEM values in the TASK-506 resolvers.
+            provider: 'lm-studio',
+            architecture: 'granite',
+            metaData: { seededBy: 'task-506' },
             memorySizeMb: 100,
             computeType: 'quantized',
             tags: ['x'],
@@ -532,6 +538,27 @@ describe('TenantService', () => {
             expect(mockAiModelRepository.create).toHaveBeenCalledTimes(2);
             const clonedTenantIds = mockAiModelRepository.create.mock.calls.map((c: any[]) => c[0].tenantId);
             expect(clonedTenantIds).toEqual(['new-tenant-id', 'new-tenant-id']);
+        });
+
+        it('clone carries provider, architecture and metaData (r2605 Finding C)', async () => {
+            const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
+            mockTenantRepository.create.mockResolvedValue(newTenant);
+            mockAiModelRepository.findAll.mockResolvedValue([
+                makeSystemModel('a', {
+                    provider: 'azure-foundry',
+                    architecture: 'transformer',
+                    metaData: { voices: [{ id: 'en-IN-NeerjaNeural', locale: 'en-IN' }], deployment: 'mai-transcribe' },
+                }),
+            ]);
+            mockAiModelRepository.isSlugUnique.mockResolvedValue(true);
+
+            await service.create({ key: 'NEW', name: 'New' });
+
+            expect(mockAiModelRepository.create).toHaveBeenCalledTimes(1);
+            const cloned = mockAiModelRepository.create.mock.calls[0][0];
+            expect(cloned.provider).toBe('azure-foundry');
+            expect(cloned.architecture).toBe('transformer');
+            expect(cloned.metaData).toEqual({ voices: [{ id: 'en-IN-NeerjaNeural', locale: 'en-IN' }], deployment: 'mai-transcribe' });
         });
 
         it('clone is idempotent — skips slugs already present in the tenant', async () => {

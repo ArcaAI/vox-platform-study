@@ -46,6 +46,15 @@ AiModelFormatType = ENUM(
     "ONNX",
     "NEMO",
     "PYTORCH",
+    "CTRANSLATE2",
+    "FASTER_WHISPER",
+    "MLX",
+    "GGUF",
+    "ONNX_OPTIMUM",
+    "AZURE_SPEECH",
+    "AZURE_FOUNDRY",
+    "PARAKEET_CPP",
+    "CLOUD_API",
     name="AiModelFormat",
     schema="core",
     create_type=False,
@@ -62,29 +71,74 @@ AiModelDownloadStatusType = ENUM(
 )
 
 ModelCategoryType = ENUM(
-    "AUDIO",
-    "TEXT",
+    "MULTI_MODAL",
     "VISION",
-    "MULTIMODAL",
+    "NLP",
+    "AUDIO",
+    "TABULAR",
+    "UNKNOWN",
     name="ModelCategory",
     schema="core",
     create_type=False,
 )
 
+# Mirrors ModelTaskType in packages/database/src/prisma/db_main/enums.prisma —
+# guarded against drift by tests/unit/test_db_enum_mirrors.py (TASK-506).
 ModelTaskTypeEnum = ENUM(
-    "AUTOMATIC_SPEECH_RECOGNITION",
-    "VOICE_ACTIVITY_DETECTION",
-    "AUDIO_DENOISING",
-    "AUDIO_TO_AUDIO",
-    "SPEAKER_DIARIZATION",
-    "TEXT_TO_SPEECH",
-    "LANGUAGE_MODEL",
-    "TRANSLATION",
-    "SUMMARIZATION",
-    "TEXT_CLASSIFICATION",
-    "NAMED_ENTITY_RECOGNITION",
+    # Multimodal
+    "IMAGE_TEXT_TO_TEXT",
+    "VISUAL_QUESTION_ANSWERING",
+    "DOCUMENT_QUESTION_ANSWERING",
+    "VIDEO_TEXT_TO_TEXT",
+    "ANY_TO_ANY",
+    # Vision
+    "DEPTH_ESTIMATION",
     "IMAGE_CLASSIFICATION",
     "OBJECT_DETECTION",
+    "IMAGE_SEGMENTATION",
+    "TEXT_TO_IMAGE",
+    "IMAGE_TO_TEXT",
+    "IMAGE_TO_IMAGE",
+    "IMAGE_TO_VIDEO",
+    "UNCONDITIONAL_IMAGE_GENERATION",
+    "VIDEO_CLASSIFICATION",
+    "TEXT_TO_VIDEO",
+    "ZERO_SHOT_IMAGE_CLASSIFICATION",
+    "MASK_GENERATION",
+    "ZERO_SHOT_OBJECT_DETECTION",
+    "TEXT_TO_3D",
+    "IMAGE_TO_3D",
+    "IMAGE_FEATURE_EXTRACTION",
+    "KEYPOINT_DETECTION",
+    # NLP
+    "TEXT_CLASSIFICATION",
+    "TOKEN_CLASSIFICATION",
+    "TABLE_QUESTION_ANSWERING",
+    "QUESTION_ANSWERING",
+    "ZERO_SHOT_CLASSIFICATION",
+    "TRANSLATION",
+    "SUMMARIZATION",
+    "FEATURE_EXTRACTION",
+    "TEXT_GENERATION",
+    "TEXT2TEXT_GENERATION",
+    "FILL_MASK",
+    "SENTENCE_SIMILARITY",
+    "GUARDRAIL",
+    # Audio
+    "TEXT_TO_SPEECH",
+    "TEXT_TO_AUDIO",
+    "AUTOMATIC_SPEECH_RECOGNITION",
+    "AUDIO_TO_AUDIO",
+    "AUDIO_CLASSIFICATION",
+    "VOICE_ACTIVITY_DETECTION",
+    "SPEAKER_DIARIZATION",
+    "SPEAKER_EMBEDDING",
+    # Tabular
+    "TABULAR_CLASSIFICATION",
+    "TABULAR_REGRESSION",
+    "TIME_SERIES_FORECASTING",
+    # Unknown
+    "UNKNOWN",
     name="ModelTaskType",
     schema="core",
     create_type=False,
@@ -161,6 +215,8 @@ class AiModelRead(Base):
     source_uri: Mapped[str] = mapped_column("sourceUri", String)
     source_revision: Mapped[str | None] = mapped_column("sourceRevision", String)
     format: Mapped[str] = mapped_column(AiModelFormatType)
+    provider: Mapped[str | None] = mapped_column(String)
+    architecture: Mapped[str | None] = mapped_column(String)
     memory_size_mb: Mapped[int | None] = mapped_column("memorySizeMb", Integer)
     compute_type: Mapped[str | None] = mapped_column("computeType", String)
     download_status: Mapped[str] = mapped_column("downloadStatus", AiModelDownloadStatusType)

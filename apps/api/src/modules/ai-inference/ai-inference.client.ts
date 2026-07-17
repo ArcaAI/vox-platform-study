@@ -1,7 +1,8 @@
 import { HttpService } from '@nestjs/axios';
 import { HttpException, Inject, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
-import { IConfigService, SecretsService } from '@arcaai/applications';
+import { IActiveUserContext, IConfigService, SecretsService } from '@arcaai/applications';
 import { isAxiosError } from 'axios';
+import { ClsService } from 'nestjs-cls';
 
 const DEFAULT_GUARDRAIL_URL = 'http://localhost:8863';
 const DEFAULT_NLP_URL = 'http://localhost:8864';
@@ -51,6 +52,11 @@ export class AiInferenceClient {
     // empty `X-Service-Token`, which a token-requiring receiver rejects
     // (fail-closed — TASK-460 C4-02, same posture as `HarnessOpsClient`).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-506 — guardrail + NLP resolve per-tenant model defaults, so both
+    // hops carry the caller's tenant in `X-Tenant-Id`. Optional so unit
+    // fixtures (and internal callers without a request context) keep working;
+    // no CLS tenant simply omits the header.
+    @Optional() private readonly cls?: ClsService<IActiveUserContext>,
   ) {}
 
   /** Content-safety / PII / prompt-injection analysis. Body is the upstream snake_case shape. */
@@ -61,6 +67,11 @@ export class AiInferenceClient {
   /** Medical NER (token classification). Body is the upstream snake_case shape. */
   async classifyTokens(body: Record<string, unknown>): Promise<Record<string, unknown>> {
     return this.post(this.nlpUrl(), '/api/v1/classify/tokens', body, NLP_TIMEOUT_MS, 'NLP_SERVICE_TOKEN');
+  }
+
+  /** Diagnosis suggestions (text classification, TASK-506). Body is the upstream snake_case shape. */
+  async suggestDiagnosis(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.post(this.nlpUrl(), '/api/v1/diagnosis/suggestions', body, NLP_TIMEOUT_MS, 'NLP_SERVICE_TOKEN');
   }
 
   private guardrailUrl(): string {
@@ -79,10 +90,19 @@ export class AiInferenceClient {
    */
   private async buildHeaders(secretKey: 'GUARDRAIL_SERVICE_TOKEN' | 'NLP_SERVICE_TOKEN'): Promise<Record<string, string>> {
     const token = (await this.secretsService?.getSecretOptional(secretKey)) ?? '';
-    return {
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'X-Service-Token': token,
     };
+    // TASK-506 — tenant context for per-tenant model-default resolution in the
+    // receiving service. Omitted (not empty) without a CLS tenant: the services
+    // treat a missing tenant as "use the platform default", so this hop stays
+    // usable for internal/service callers.
+    const tenantId = this.cls?.get('tenantId');
+    if (tenantId) {
+      headers['X-Tenant-Id'] = tenantId;
+    }
+    return headers;
   }
 
   private async post(

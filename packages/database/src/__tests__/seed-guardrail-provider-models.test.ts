@@ -102,21 +102,25 @@ describe('Guardrail Provider-Model Catalog Seed Data (TASK-338)', () => {
     });
   });
 
-  describe('seed IDs for Guardrail engine + Azure deployment settings', () => {
+  describe('seed IDs for the surviving SMR Azure deployment setting', () => {
     const SETTING_PREFIXES = ['GLOBAL', 'ARCAAI'] as const;
-    const SUFFIXES = [
-      'GUARDRAIL_PROVIDER',
-      'GUARDRAIL_MODEL',
-      'GUARDRAIL_AZURE_DEPLOYMENT',
-      'SMR_AZURE_DEPLOYMENT',
-    ] as const;
 
     for (const prefix of SETTING_PREFIXES) {
-      for (const suffix of SUFFIXES) {
-        const key = `${prefix}_${suffix}` as keyof typeof SEED_GLOBAL_SETTING_IDS;
-        it(`should define ${key}`, () => {
-          expect(SEED_GLOBAL_SETTING_IDS[key]).toBeDefined();
-          expect(SEED_GLOBAL_SETTING_IDS[key]).toMatch(/^85000000-/);
+      const key = `${prefix}_SMR_AZURE_DEPLOYMENT` as keyof typeof SEED_GLOBAL_SETTING_IDS;
+      it(`should define ${key}`, () => {
+        expect(SEED_GLOBAL_SETTING_IDS[key]).toBeDefined();
+        expect(SEED_GLOBAL_SETTING_IDS[key]).toMatch(/^85000000-/);
+      });
+    }
+
+    // TASK-506 — the guardrail engine settings (GUARDRAIL_PROVIDER /
+    // GUARDRAIL_MODEL / GUARDRAIL_AZURE_DEPLOYMENT) were RETIRED: superseded
+    // by the AiTaskDefault table (guardrail.validate) + the AiModel registry.
+    for (const prefix of SETTING_PREFIXES) {
+      for (const suffix of ['GUARDRAIL_PROVIDER', 'GUARDRAIL_MODEL', 'GUARDRAIL_AZURE_DEPLOYMENT']) {
+        const key = `${prefix}_${suffix}`;
+        it(`should NOT define retired id ${key} (TASK-506)`, () => {
+          expect((SEED_GLOBAL_SETTING_IDS as Record<string, string>)[key]).toBeUndefined();
         });
       }
     }

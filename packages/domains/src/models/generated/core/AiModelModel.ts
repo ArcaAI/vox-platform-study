@@ -18,6 +18,8 @@ export class AiModel extends BaseTenantDataModel {
   public sourceUri: string;
   public sourceRevision: string | null;
   public format: Enums.AiModelFormat;
+  public provider: string | null;
+  public architecture: string | null;
   public memorySizeMb: number | null;
   public computeType: string | null;
   public downloadStatus: Enums.AiModelDownloadStatus;
@@ -42,6 +44,8 @@ export class AiModel extends BaseTenantDataModel {
     this.sourceUri = data.sourceUri;
     this.sourceRevision = data.sourceRevision;
     this.format = data.format;
+    this.provider = data.provider;
+    this.architecture = data.architecture;
     this.memorySizeMb = data.memorySizeMb;
     this.computeType = data.computeType;
     this.downloadStatus = data.downloadStatus;

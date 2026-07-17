@@ -72,3 +72,52 @@ describe('resolveEffectiveTtsConfig (TASK-496)', () => {
     expect(eff.routingEn).toEqual(['azure', 'kokoro']);
   });
 });
+
+/**
+ * r2605 Finding F — registry-driven provider universe. `resolveEffectiveTtsConfig`
+ * takes an optional `universe` (the ENABLED SYSTEM TTS registry providers) that
+ * replaces the code-constant universe in the allowedProviders clamp, the
+ * routing-chain clamps AND the code-default fallback chains, so DISABLING a
+ * registry row disables the provider platform-wide. Omitted universe = the code
+ * constant = today's behaviour byte-for-byte.
+ */
+describe('resolveEffectiveTtsConfig — registry universe (r2605 Finding F)', () => {
+  it('omitted universe is byte-for-byte identical to the code-constant behaviour', () => {
+    const system = { routingEn: ['azure', 'kokoro'], allowedProviders: ['azure', 'kokoro', 'sarvam'] };
+    const tenant = { defaultSpeed: 1.5, sarvamPublicApiAllowed: true };
+    expect(resolveEffectiveTtsConfig(system, tenant, undefined)).toEqual(resolveEffectiveTtsConfig(system, tenant));
+  });
+
+  it('a provider absent from the registry universe is stripped from allowedProviders AND the routing chains', () => {
+    // azure's registry row is disabled/absent → universe has no azure.
+    const universe = new Set(['kokoro', 'indic_parler', 'sarvam']);
+    const eff = resolveEffectiveTtsConfig(null, null, universe);
+    // Code default routingEn ['azure','kokoro'] → azure stripped.
+    expect(eff.routingEn).toEqual(['kokoro']);
+    // Code default routingMl ['azure','sarvam','indic_parler'] → azure stripped,
+    // sarvam stripped by the PHI toggle default.
+    expect(eff.routingMl).toEqual(['indic_parler']);
+    expect(eff.allowedProviders).not.toContain('azure');
+  });
+
+  it('the code-default FALLBACK chain is also clamped to the universe when a tenant chain empties', () => {
+    // Tenant routes only via azure, but azure is platform-disabled → the chain
+    // empties and the code-default fallback must come back universe-clamped.
+    const universe = new Set(['kokoro', 'indic_parler']);
+    const eff = resolveEffectiveTtsConfig(null, { routingEn: ['azure'] }, universe);
+    expect(eff.routingEn).toEqual(['kokoro']); // code default ['azure','kokoro'] clamped
+  });
+
+  it('a REGISTRY-ONLY provider (not in the code constant) survives the clamps', () => {
+    const universe = new Set(['kokoro', 'elevenlabs']);
+    const eff = resolveEffectiveTtsConfig(null, { routingEn: ['elevenlabs', 'kokoro'], allowedProviders: ['elevenlabs', 'kokoro'] }, universe);
+    expect(eff.routingEn).toEqual(['elevenlabs', 'kokoro']);
+    expect(eff.allowedProviders).toEqual(['elevenlabs', 'kokoro']);
+  });
+
+  it('an empty whitelist under a registry universe resets to THAT universe (minus sarvam by default)', () => {
+    const universe = new Set(['kokoro', 'sarvam']);
+    const eff = resolveEffectiveTtsConfig(null, null, universe);
+    expect(eff.allowedProviders).toEqual(['kokoro']); // universe reset, sarvam PHI-stripped
+  });
+});

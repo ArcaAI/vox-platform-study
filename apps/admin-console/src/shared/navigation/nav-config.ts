@@ -1,6 +1,7 @@
 import {
   IconActivity,
   IconAdjustmentsAlt,
+  IconAdjustmentsCog,
   IconBrain,
   IconBroadcast,
   IconBuilding,
@@ -28,6 +29,7 @@ import {
   IconSparkles,
   IconStack2,
   IconStethoscope,
+  IconTargetArrow,
   IconTelescope,
   IconUserCircle,
   IconUsers,
@@ -116,6 +118,15 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // Global-admin only per the 2026-07-04 review (backend guard re-pin: TASK-419).
   // Hidden from the sidebar/palette (route stays reachable by direct URL).
   { route: '/ai-models', label: 'AI models', tier: '10-19', icon: IconBrain, required: [['manage', 'all']], implemented: false },
+  // TASK-506 — SYSTEM-tenant task-default rows; guardrail config is global-admin-only by owner directive.
+  {
+    route: '/ai-task-defaults',
+    label: 'AI task defaults',
+    tier: '10-19',
+    icon: IconAdjustmentsCog,
+    required: [['manage', 'all']],
+    implemented: true,
+  },
   { route: '/rate-limits', label: 'Rate limits', tier: '10-19', icon: IconGauge, required: [['manage', 'all']], implemented: true },
   { route: '/queues', label: 'Queues & jobs', tier: '10-19', icon: IconStack2, required: [['manage', 'all']], implemented: true },
   { route: '/schedulers', label: 'Schedulers', tier: '10-19', icon: IconCalendarTime, required: [['manage', 'all']], implemented: true },
@@ -276,6 +287,18 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     required: [
       ['read', 'TenantTtsConfig'],
       ['manage', 'TenantTtsConfig'],
+    ],
+    implemented: true,
+  },
+  // TASK-506 — tenant overrides for the NLP task defaults (guardrail is deliberately absent here).
+  {
+    route: '/ai-model-defaults',
+    label: 'AI model defaults',
+    tier: '30-49',
+    icon: IconTargetArrow,
+    required: [
+      ['read', 'AiTaskDefault'],
+      ['manage', 'AiTaskDefault'],
     ],
     implemented: true,
   },

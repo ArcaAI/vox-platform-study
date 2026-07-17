@@ -37,10 +37,19 @@ def _env_provider(settings: Settings) -> OpenAICompatGuardianProvider:
     return OpenAICompatGuardianProvider(settings=settings.engine, http_client=object())  # type: ignore[arg-type]
 
 
+def test_db_config_enabled_defaults_true(monkeypatch) -> None:
+    # TASK-506: DB-backed model resolution is the default. Safe even without a
+    # reachable Postgres — the resolver fails open to the env-selected engine.
+    monkeypatch.delenv("GUARDRAIL_DB_CONFIG_ENABLED", raising=False)
+    from guardrail.core.config import DatabaseConfig
+
+    assert DatabaseConfig().db_config_enabled is True
+
+
 @pytest.mark.asyncio
 async def test_db_config_disabled_returns_env_provider() -> None:
     settings = Settings()
-    assert settings.db.db_config_enabled is False
+    settings.db.db_config_enabled = False  # explicit opt-out (default is True, TASK-506)
     env_provider = _env_provider(settings)
 
     state = SimpleNamespace(

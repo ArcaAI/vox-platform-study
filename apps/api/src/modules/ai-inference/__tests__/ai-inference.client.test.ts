@@ -91,6 +91,47 @@ describe('AiInferenceClient — URL resolution', () => {
     const [, , nlpOptions] = axiosPost.mock.calls[1];
     expect(nlpOptions?.headers?.['X-Service-Token']).toBe('nlp-secret');
   });
+
+  // TASK-506 — the guardrail/NLP services resolve per-tenant model defaults, so
+  // BOTH hops now carry the caller's tenant context.
+  it('attaches X-Tenant-Id from the CLS tenant on guardrail AND NLP calls', async () => {
+    const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? 'tenant-42' : undefined)) };
+    const client = new AiInferenceClient(httpService as never, undefined, undefined, cls as never);
+    axiosPost.mockResolvedValue({ data: {} });
+
+    await client.analyzeGuardrail({ text: 'x' });
+    await client.classifyTokens({ text: 'x' });
+    await client.suggestDiagnosis({ text: 'x' });
+
+    for (const call of axiosPost.mock.calls) {
+      const [, , options] = call;
+      expect(options?.headers?.['X-Tenant-Id']).toBe('tenant-42');
+    }
+  });
+
+  it('omits X-Tenant-Id when no CLS tenant is available (internal/service calls)', async () => {
+    const cls = { get: vi.fn(() => undefined) };
+    const client = new AiInferenceClient(httpService as never, undefined, undefined, cls as never);
+    axiosPost.mockResolvedValue({ data: {} });
+
+    await client.classifyTokens({ text: 'x' });
+
+    const [, , options] = axiosPost.mock.calls[0];
+    expect(options?.headers?.['X-Tenant-Id']).toBeUndefined();
+  });
+
+  it('suggestDiagnosis POSTs the NLP /api/v1/diagnosis/suggestions endpoint', async () => {
+    const client = new AiInferenceClient(httpService as never, undefined);
+    axiosPost.mockResolvedValue({ data: { suggestions: [] } });
+
+    await client.suggestDiagnosis({ text: 'persistent cough', min_confidence: 0.4 });
+
+    expect(axiosPost).toHaveBeenCalledWith(
+      'http://localhost:8864/api/v1/diagnosis/suggestions',
+      { text: 'persistent cough', min_confidence: 0.4 },
+      expect.anything(),
+    );
+  });
 });
 
 describe('AiInferenceClient — proxying + errors', () => {

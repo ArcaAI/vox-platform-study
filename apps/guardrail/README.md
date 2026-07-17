@@ -234,19 +234,18 @@ criterion) as the final user message after the judged text. The model replies wi
 them. Medical-context validation uses a generic JSON prompt path. All engines fail open on
 timeout/error.
 
-## Per-Tenant Engine Configuration (Admin-Configurable, TASK-338)
+## Per-Tenant Engine Configuration (Admin-Configurable, TASK-338 / TASK-506)
 
-By default the engine/model are **env-only** (`GUARDRAIL_V2_PROVIDER` + the per-engine
-`GUARDRAIL_*` vars above). TASK-338 adds an **opt-in** path where the engine/model are
-resolved **per tenant at request time** from the admin console's settings in the database
-— without changing the env-only behavior for existing deployments.
+The engine/model are resolved **per tenant at request time** from the AI model registry
+(`core."AiTaskDefault"` ⋈ `core."AiModel"`) — **enabled by default since TASK-506**, with
+the env-only selection (`GUARDRAIL_V2_PROVIDER` + the per-engine `GUARDRAIL_*` vars above)
+as the bootstrap/fail-open fallback. Deployments without a reachable Postgres behave
+exactly as env-only ones.
 
-### Enabling DB-driven config
-
-Set `GUARDRAIL_DB_CONFIG_ENABLED=true` and point the service at the shared core DB:
+### DB-driven config knobs
 
 ```bash
-# Opt in to per-tenant DB resolution (default: false → env-only behavior)
+# Per-tenant DB resolution (default: true; false → env-only behavior)
 GUARDRAIL_DB_CONFIG_ENABLED=true
 
 # Read-only connection to the shared HOPE core DB (postgres:// is normalized to asyncpg)
@@ -260,38 +259,40 @@ GUARDRAIL_DEFAULT_TENANT_ID=50000000-0000-0000-0000-000000000000
 GUARDRAIL_CONFIG_CACHE_TTL_S=60
 ```
 
-When `GUARDRAIL_DB_CONFIG_ENABLED=false` (the default) the service never touches the DB and
-behaves exactly as the env-only configuration above.
+`GUARDRAIL_DB_CONFIG_ENABLED` defaults to **true** (TASK-506). Set it to `false` and the
+service never touches the DB and behaves exactly as the env-only configuration above.
 
-### How resolution works
+### How resolution works (TASK-506: `AiTaskDefault` ⋈ `AiModel`)
 
 1. The caller (SMR) forwards the consultation tenant as the **`X-Tenant-Id`** request header
    to `POST /api/medical/validate`.
-2. The service reads three rows from `core."GlobalSetting"` (SQLAlchemy + asyncpg, read-only,
-   mirroring STT-v2) for that tenant:
+2. The service reads (SQLAlchemy + asyncpg, read-only, mirroring STT-v2) the ENABLED
+   `core."AiTaskDefault"` row with `taskKey = 'guardrail.validate'` for
+   `[tenant, SYSTEM]`, joined to the ENABLED `core."AiModel"` row matching its
+   `modelSlug` in the same scope (tenant task-default preferred over SYSTEM's; the
+   tenant's own model copy preferred over the SYSTEM catalog row):
 
-   | namespace | key | meaning |
+   | resolved field | source column | meaning |
    |---|---|---|
-   | `guardrail` | `default-guardrail-provider` | `lm-studio` \| `ollama` \| `azure` \| `bedrock` |
-   | `guardrail` | `default-guardrail-model` | model id / slug for the guardian model |
-   | `guardrail` | `guardrail-azure-deployment` | non-secret Azure deployment name (may be empty) |
+   | provider | `AiModel."provider"` | `lm-studio` \| `ollama` \| `azure` \| `bedrock` (NULL → env provider retained) |
+   | model | `AiModel."sourceUri"` | the provider-native model id sent to the runtime (never the slug) |
+   | azure deployment | `AiModel."_metadata"->>'azureDeployment'` | non-secret Azure deployment name (may be absent) |
 
-3. **Resolution order (tenant-level):** request tenant rows → default/system tenant rows →
-   env defaults (`settings.engine`). A request tenant with no guardrail rows defers entirely
-   to the default tenant.
+3. **Resolution order (tenant-level):** request tenant (widened to SYSTEM) →
+   default/system tenant → env defaults (`settings.engine`).
 4. Resolved configs are held in a simple **per-tenant TTL cache (~60s)**, so steady-state
    request latency is unaffected.
 5. The resolved **provider/model override** only the model selection; `base_url`/`api_key`
    still come from env (the DB only stores provider, model, and the non-secret Azure
    deployment name).
 
-DB access is **fail-safe**: any DB error resolves to "no override", so the endpoint
-transparently falls back to the env-selected engine.
+DB access is **fail-safe**: any DB error or empty result resolves to "no override", so the
+endpoint transparently falls back to the env-selected engine.
 
 ### Azure key vs deployment
 
-The Azure **deployment name** is DB-driven (`guardrail-azure-deployment`). The Azure **API
-key stays env/Vault** — it is never stored in a plaintext `GlobalSetting` (admin-set keys are
+The Azure **deployment name** is DB-driven (`AiModel` `metaData.azureDeployment`). The Azure
+**API key stays env/Vault** — it is never stored in plaintext DB rows (admin-set keys are
 blocked on TASK-302 Phase 4D).
 
 ## Architecture

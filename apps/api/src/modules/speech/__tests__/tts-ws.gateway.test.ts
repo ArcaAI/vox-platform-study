@@ -140,4 +140,74 @@ describe('TtsWsGateway', () => {
     upstream.emit('error', new Error('upstream boom'));
     expect(client.close).toHaveBeenCalledWith(TTS_WS_CLOSE_CODES.UPSTREAM_ERROR);
   });
+
+  // TASK-506 §3.4 — the first `init` frame is additionally enriched with the
+  // tenant's resolved `voice_bindings` (mirrors the batch speech proxy).
+  describe('init-frame voice_bindings enrichment (TASK-506)', () => {
+    const BINDINGS = { 'en-female-1': { azure: 'en-IN-NeerjaNeural' } };
+
+    const makeTenantTtsConfig = (voiceBindings: Record<string, Record<string, string>>) => ({
+      getEffective: vi.fn().mockResolvedValue({
+        tenantId: 't1',
+        defaultFormat: 'pcm',
+        defaultSpeed: 1.0,
+        routingEn: ['azure'],
+        routingMl: ['azure'],
+        allowedProviders: ['azure'],
+        voiceBindings,
+      }),
+      resolveProviderOverrides: vi.fn().mockResolvedValue({}),
+    });
+
+    const lastUpstreamTextFrame = () => {
+      const call = (upstream.send as ReturnType<typeof vi.fn>).mock.calls.at(-1);
+      return JSON.parse(String(call?.[0]));
+    };
+
+    it('injects voice_bindings into the first init frame when non-empty', async () => {
+      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never, makeTenantTtsConfig(BINDINGS) as never);
+      gateway.createUpstreamSocket = vi.fn(() => upstream as never);
+      const client = makeSocket();
+      await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
+      upstream.emit('open');
+
+      client.emit('message', Buffer.from('{"type":"init","voice":"en-female-1"}'), false);
+
+      const frame = lastUpstreamTextFrame();
+      expect(frame.type).toBe('init');
+      expect(frame.voice_bindings).toEqual(BINDINGS);
+      expect(frame.routing_en).toEqual(['azure']);
+    });
+
+    it('omits voice_bindings when the resolved bindings map is empty', async () => {
+      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never, makeTenantTtsConfig({}) as never);
+      gateway.createUpstreamSocket = vi.fn(() => upstream as never);
+      const client = makeSocket();
+      await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
+      upstream.emit('open');
+
+      client.emit('message', Buffer.from('{"type":"init","voice":"en-female-1"}'), false);
+
+      const frame = lastUpstreamTextFrame();
+      expect(frame.type).toBe('init');
+      expect('voice_bindings' in frame).toBe(false);
+    });
+
+    it('fails open — a config resolve error relays the init frame verbatim', async () => {
+      const failing = {
+        getEffective: vi.fn().mockRejectedValue(new Error('config db down')),
+        resolveProviderOverrides: vi.fn().mockRejectedValue(new Error('config db down')),
+      };
+      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never, failing as never);
+      gateway.createUpstreamSocket = vi.fn(() => upstream as never);
+      const client = makeSocket();
+      await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
+      upstream.emit('open');
+
+      const raw = Buffer.from('{"type":"init","voice":"en-female-1"}');
+      client.emit('message', raw, false);
+
+      expect(upstream.send).toHaveBeenCalledWith(raw, { binary: false });
+    });
+  });
 });

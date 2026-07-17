@@ -18,9 +18,27 @@ class FakeService:
         pass
 
 
+# Singleton slots in nlp.dependencies backing the get_* getters. Preset (not
+# just patched) so code holding a direct reference to the ORIGINAL getters —
+# router Depends defaults bound at import, monitoring's check table — also
+# resolves to the fake, independent of module import order (TASK-506).
+_DEP_SLOTS = (
+    "_text_classifier_instance",
+    "_token_classifier_instance",
+    "_text_corrector_instance",
+    "_medical_suggester_instance",
+    "_websocket_manager_instance",
+)
+
+
 @pytest.fixture()
 def mock_services():
+    import nlp.dependencies as deps
+
     fake = FakeService()
+    saved = {name: deps.__dict__.get(name) for name in _DEP_SLOTS}
+    for name in _DEP_SLOTS:
+        deps.__dict__[name] = fake
     patches = [
         patch("nlp.dependencies.get_text_classifier", return_value=fake),
         patch("nlp.dependencies.get_token_classifier", return_value=fake),
@@ -41,6 +59,8 @@ def mock_services():
     yield fake
     for p in patches:
         p.stop()
+    for name, value in saved.items():
+        deps.__dict__[name] = value
 
 
 @pytest.fixture()
