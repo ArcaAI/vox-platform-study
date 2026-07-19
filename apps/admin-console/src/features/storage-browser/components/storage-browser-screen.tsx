@@ -92,8 +92,8 @@ function ScreenBody() {
         void setParams({ object: key || null });
     }
 
-    function focusUploadZone() {
-        document.getElementById(UPLOAD_INPUT_ID)?.focus();
+    function openUploadPicker() {
+        document.getElementById(UPLOAD_INPUT_ID)?.click();
     }
 
     return (
@@ -117,7 +117,7 @@ function ScreenBody() {
                             </>
                         }
                         actions={
-                            <Button onClick={focusUploadZone}>
+                            <Button onClick={openUploadPicker} disabled={!activeBucket}>
                                 <IconUpload aria-hidden />
                                 Upload files
                             </Button>
@@ -150,7 +150,6 @@ function ScreenBody() {
                                 value={search}
                                 onChange={(value) => void setParams({ search: value || null })}
                             />
-                            {activeBucket ? <UploadZone key={activeBucket} bucketName={activeBucket} /> : null}
                             <span aria-hidden className="text-muted-foreground ml-auto hidden font-mono text-xs lg:inline">
                                 GET buckets/:name/files
                             </span>
@@ -187,9 +186,10 @@ function ScreenBody() {
                     onSelectFile={selectFile}
                     hasSearch={!!search}
                     onClearSearch={() => void setParams({ search: null })}
-                    onRequestUpload={focusUploadZone}
+                    onRequestUpload={openUploadPicker}
                 />
             </ScreenTemplate>
+            {activeBucket ? <UploadZone key={activeBucket} bucketName={activeBucket} /> : null}
 
             <ObjectDetailDrawer
                 bucketName={activeBucket}

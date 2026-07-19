@@ -43,11 +43,27 @@ test.describe('prisma studio screen', () => {
         await page.emulateMedia({ colorScheme: 'light' });
         await openPstudio(page);
         const iframe = page.locator('iframe[title="Prisma Studio"]');
-        test.skip((await iframe.count()) === 0, 'Prisma Studio is disabled in this environment');
+        await expect(iframe).toBeVisible();
         await expect(iframe).toHaveAttribute('src', '/api/hope/admin/pstudio');
         const openLink = page.getByRole('link', { name: 'Open in new tab' });
         await expect(openLink).toBeVisible();
         await expect(openLink).toHaveAttribute('href', '/api/hope/admin/pstudio');
+        await expect(page.getByText('Studio enabled')).toBeVisible();
+    });
+
+    test('states the fail-closed permission requirement on the disabled card', async ({ page }) => {
+        await page.route('**/api/hope/admin/pstudio/status', async (route) => {
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({ enabled: false }),
+            });
+        });
+        await openPstudio(page);
+        await expect(page.getByText('Prisma Studio is disabled')).toBeVisible();
+        await expect(page.getByText('ENABLE_PRISMA_STUDIO=true')).toBeVisible();
+        await expect(page.getByText('manage:PrismaStudio')).toBeVisible();
+        await expect(page.getByText('Studio disabled')).toBeVisible();
     });
 
     /**
@@ -61,7 +77,7 @@ test.describe('prisma studio screen', () => {
     test('executes a studio query through the session-guarded proxy', async ({ page }) => {
         await openPstudio(page);
         const iframe = page.locator('iframe[title="Prisma Studio"]');
-        test.skip((await iframe.count()) === 0, 'Prisma Studio is disabled in this environment');
+        await expect(iframe).toBeVisible();
 
         const result = await page.evaluate(async () => {
             const shell = await fetch('/api/hope/admin/pstudio');

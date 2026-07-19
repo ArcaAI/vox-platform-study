@@ -280,6 +280,7 @@ describe('DnaWritingStylesScreen', () => {
         const dialog = await screen.findByRole('dialog');
         // GET doctor/:doctorId detail lands in the slide-over.
         expect(await within(dialog).findByText('rep-1')).toBeDefined();
+        expect(within(dialog).getByText('Report ID')).toBeDefined();
         expect(within(dialog).getByText('Formal, concise clinical prose.')).toBeDefined();
 
         // GET :reportId/versions timeline, newest first.
@@ -304,6 +305,7 @@ describe('DnaWritingStylesScreen', () => {
         renderWithProviders(<DnaWritingStylesScreen />, { searchParams: '?selected=doc-1' });
 
         fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+        expect(within(screen.getByRole('dialog')).getAllByText('Style text')).toHaveLength(1);
         fireEvent.change(screen.getByLabelText('Style text'), { target: { value: 'Adjusted clinical prose.' } });
         fireEvent.change(screen.getByLabelText('Change reason'), { target: { value: 'tone fix' } });
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));

@@ -5,8 +5,8 @@
  * Updated for the new schema structure with direct roleId on UserRoleAssignment.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { PolicyEngine, PolicyRule, PolicyContext, AppAbility } from '../policy.engine';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PolicyContext, PolicyEngine, PolicyRule } from '../policy.engine';
 
 // Mock dependencies
 const mockPrismaClient = {
@@ -146,6 +146,34 @@ describe('PolicyEngine', () => {
       expect(ability.can('list', 'User')).toBe(true);
       expect(ability.can('create', 'User')).toBe(false);
       expect(ability.can('delete', 'User')).toBe(false);
+    });
+    it('should build ability from array-valued CASL action and subject fields', async () => {
+      const context: PolicyContext = {
+        userId: 'user-array-rule',
+        tenantId: 'tenant-456',
+      };
+
+      const mockRole = createMockRole('role-array', 'api-key-owner', [
+        { action: ['read', 'update', 'delete', 'list'], subject: 'ApiKey' },
+      ]);
+
+      mockPrismaClient.userRoleAssignment.findMany.mockResolvedValue([
+        {
+          id: 'ura-array',
+          userId: 'user-array-rule',
+          roleId: 'role-array',
+          tenantId: 'tenant-456',
+          scopeOverrides: null,
+          resourceStatus: 'ENABLED',
+        },
+      ]);
+      mockPrismaClient.role.findMany.mockResolvedValue([mockRole]);
+
+      const ability = await policyEngine.buildAbility(context);
+
+      expect(ability.can('read', 'ApiKey')).toBe(true);
+      expect(ability.can('update', 'Secret')).toBe(true);
+      expect(ability.can('create', 'ApiKey')).toBe(false);
     });
 
     it('should build ability with manage:all permission', async () => {

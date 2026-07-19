@@ -74,11 +74,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     registry = app.state.provider_registry
     # LM Studio (OpenAI-compatible) is the primary/default local LLM engine.
-    if settings.openai_compat.enabled and "openai_compat" not in registry.list_providers():
+    if settings.openai_compat.enabled:
         from smr_v2.providers.openai_compat import OpenAICompatProvider
-        lm_provider = OpenAICompatProvider(settings.openai_compat)
-        registry.register("openai_compat", lm_provider)
-        logger.info("smr_v2.provider_registered", provider="openai_compat", base_url=settings.openai_compat.base_url)
+
+        if "openai_compat" not in registry.list_providers():
+            registry.register("openai_compat", OpenAICompatProvider(settings.openai_compat))
+            logger.info("smr_v2.provider_registered", provider="openai_compat", base_url=settings.openai_compat.base_url)
+        if "lm-studio" not in registry.list_providers():
+            registry.register("lm-studio", registry.get("openai_compat"))
 
     # Ollama is an optional, lower-priority local LLM engine.
     if settings.ollama.enabled and "ollama" not in registry.list_providers():
@@ -105,6 +108,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         "azure-openai": settings.azure,
         "bedrock": settings.bedrock,
         "openai_compat": settings.openai_compat,
+        "lm-studio": settings.openai_compat,
     }
     for name in registry.list_providers():
         cfg = provider_configs.get(name)
@@ -139,6 +143,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "azure-openai": settings.azure,
             "bedrock": settings.bedrock,
             "openai_compat": settings.openai_compat,
+            "lm-studio": settings.openai_compat,
         }
         sems: dict[str, asyncio.Semaphore] = {}
         for name in registry.list_providers():

@@ -31,25 +31,27 @@ import { ALL_TENANTS } from './05-tenant';
 export const SYSTEM_BUCKET_SLUGS = {
   ATTACHMENTS: 'attachments',
   RECORDINGS: 'recordings',
+  MISC: 'misc',
 } as const;
 
-/** Legacy slugs converged away by this seed (see module doc). */
 const LEGACY_AUDIO_SLUG = 'audio';
-const LEGACY_MISC_SLUG = 'misc';
 
 const SYSTEM_BUCKET_DESCRIPTIONS: Record<string, string> = {
   [SYSTEM_BUCKET_SLUGS.ATTACHMENTS]: 'Tenant attachment storage (consultation documents, lab results, user-uploaded files)',
   [SYSTEM_BUCKET_SLUGS.RECORDINGS]: 'Tenant audio recordings from live transcription (raw and processed)',
+  [SYSTEM_BUCKET_SLUGS.MISC]: 'Tenant misc assets (background, avatars, images)',
 };
 
 const SYSTEM_BUCKET_PATH_PATTERNS: Record<string, string> = {
   [SYSTEM_BUCKET_SLUGS.ATTACHMENTS]: '{yyyy}/{MM}/{dd}',
   [SYSTEM_BUCKET_SLUGS.RECORDINGS]: '{yyyy}/{MM}',
+  [SYSTEM_BUCKET_SLUGS.MISC]: '{category}',
 };
 
-const SYSTEM_BUCKET_PURPOSES: Record<string, 'AUDIO' | 'ATTACHMENTS'> = {
+const SYSTEM_BUCKET_PURPOSES: Record<string, 'AUDIO' | 'ATTACHMENTS' | 'MISC'> = {
   [SYSTEM_BUCKET_SLUGS.ATTACHMENTS]: 'ATTACHMENTS',
   [SYSTEM_BUCKET_SLUGS.RECORDINGS]: 'AUDIO',
+  [SYSTEM_BUCKET_SLUGS.MISC]: 'MISC',
 };
 
 function sanitizeBucketName(input: string): string {
@@ -105,25 +107,6 @@ async function convergeLegacyBuckets(client: CorePrismaClient, tenant: { id: str
       },
     });
     console.log(`  Soft-deleted redundant legacy 'audio' bucket for tenant ${tenant.key}`);
-  }
-
-  const retiredMisc = await client.tenantBucket.updateMany({
-    where: {
-      tenantId: tenant.id,
-      slug: LEGACY_MISC_SLUG,
-      bucketType: 'SYSTEM',
-      resourceStatus: { not: 'DELETED' },
-    },
-    data: {
-      resourceStatus: 'DELETED',
-      resourceStatusUpdatedAt: new Date(),
-      resourceStatusUpdatedBy: SYSTEM_USER_ID,
-      updatedBy: SYSTEM_USER_ID,
-      version: { increment: 1 },
-    },
-  });
-  if (retiredMisc.count > 0) {
-    console.log(`  Soft-deleted legacy 'misc' system bucket for tenant ${tenant.key}`);
   }
 }
 

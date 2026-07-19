@@ -14,8 +14,8 @@ import { readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { MsGraphPasswordResetMailer, resolvePasswordResetMailerConfig, createPasswordResetMailer } from '../msgraph-mailer';
+import { DEFAULT_PASSWORD_RESET_BASE_URL, LoggingPasswordResetMailer } from '../IPasswordResetMailer';
 import { DevOutboxPasswordResetMailer } from '../dev-outbox-mailer';
-import { LoggingPasswordResetMailer } from '../IPasswordResetMailer';
 
 const sendEmail = vi.fn();
 const graphStub = { sendEmail } as never;
@@ -64,7 +64,7 @@ describe('resolvePasswordResetMailerConfig', () => {
         void _omit;
         const config = resolvePasswordResetMailerConfig(rest);
         if (config.kind === 'graph') {
-            expect(config.baseUrl).toBe('http://localhost:5174');
+            expect(config.baseUrl).toBe(DEFAULT_PASSWORD_RESET_BASE_URL);
         } else {
             throw new Error('expected graph config');
         }
@@ -95,6 +95,24 @@ describe('MsGraphPasswordResetMailer', () => {
         expect(content).toContain('https://admin.example.com/reset-password?token=abc123');
         expect(content).toMatch(/60 minutes/);
         expect(recipients).toEqual(['doc@example.com']);
+    });
+
+    it('uses the shared localhost fallback when the Graph base URL is unset', async () => {
+        sendEmail.mockResolvedValue(undefined);
+        const { PASSWORD_RESET_BASE_URL: _omit, ...envWithoutBaseUrl } = FULL_ENV;
+        void _omit;
+        const config = resolvePasswordResetMailerConfig(envWithoutBaseUrl);
+        if (config.kind !== 'graph') throw new Error('expected graph config');
+
+        const ok = await new MsGraphPasswordResetMailer(graphStub, { sender: config.sender, baseUrl: config.baseUrl }).sendResetLink({
+            email: 'doc@example.com',
+            resetPath: '/reset-password?token=default',
+            token: 'default',
+            expiresInSeconds: 3600,
+        });
+
+        expect(ok).toBe(true);
+        expect(sendEmail.mock.calls[0][2]).toContain(`${DEFAULT_PASSWORD_RESET_BASE_URL}/reset-password?token=default`);
     });
 
     it('returns false (never throws) when Graph rejects the send', async () => {

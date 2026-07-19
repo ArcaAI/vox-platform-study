@@ -221,9 +221,9 @@ export interface ListUsageRecordsParams {
  */
 export interface AssignDepartmentRequest {
     departmentId: string;
-    preSummaryPromptId?: string;
-    newPatientPromptId?: string;
-    revisitPromptId?: string;
+    preSummaryPromptId?: string | null;
+    newPatientPromptId?: string | null;
+    revisitPromptId?: string | null;
     expectedVersion: number;
 }
 

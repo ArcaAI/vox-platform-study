@@ -1,7 +1,7 @@
 'use client';
 
-import { useRef, useState, type ReactNode } from 'react';
-import { IconDownload, IconFile, IconTrash, IconUpload, IconX } from '@tabler/icons-react';
+import { useRef, useState, type ChangeEvent, type ReactNode } from 'react';
+import { IconDownload, IconTrash } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Input } from '@arcaai/ui/components/shadcn/input';
@@ -117,72 +117,53 @@ export function SelectedObjectActions({ bucketName, object, onDeleted }: { bucke
     );
 }
 
-/** Stable DOM id so the header "Upload files" action can move focus here. */
+/** Stable DOM id so page upload actions can open this input. */
 export const UPLOAD_INPUT_ID = 'storage-browser-upload-input';
 
 /**
- * Frame 31 upload zone (redesign): a compact, permanently-visible toolbar
- * control — visible label, native file input, chosen file name/size with a
- * remove control (rule 11 §9), multipart POST on submit. Ref-based reset
- * because file inputs are uncontrolled.
+ * Hidden file picker for the page-level upload actions. Selecting a file starts
+ * the multipart upload immediately and resets the input so the same file can be
+ * selected again after a failure.
  */
 export function UploadZone({ bucketName }: { bucketName: string }) {
     const upload = useUploadFile();
     const inputId = UPLOAD_INPUT_ID;
     const inputRef = useRef<HTMLInputElement>(null);
-    const [file, setFile] = useState<File | null>(null);
 
-    function clearSelection() {
-        setFile(null);
-        if (inputRef.current) inputRef.current.value = '';
-    }
-
-    function handleUpload() {
+    function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+        const file = event.target.files?.[0];
         if (!file) return;
+
         upload.mutate(
             { bucketName, file },
             {
                 onSuccess: (result) => {
                     toast.success(`Uploaded ${result.key} (${formatBytes(result.size)})`);
-                    clearSelection();
                 },
                 onError: (error) => toast.error(mutationMessage(error, 'Could not upload the file.')),
+                onSettled: () => {
+                    if (inputRef.current) inputRef.current.value = '';
+                },
             },
         );
     }
 
     return (
-        <div className="flex flex-wrap items-end gap-2">
-            <div className="flex min-w-0 flex-col gap-1">
-                <Label htmlFor={inputId} className="text-muted-foreground text-xs font-normal">
-                    Upload to {bucketName}
-                </Label>
-                <Input
-                    ref={inputRef}
-                    id={inputId}
-                    type="file"
-                    className="h-9 w-56 max-w-full"
-                    onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-                    aria-describedby={`${inputId}-hint`}
-                />
-                <span id={`${inputId}-hint`} className="sr-only">
-                    Multipart POST, max 100 MB. The key defaults to the file name at the bucket root.
-                </span>
-            </div>
-            {file ? (
-                <div className="bg-muted/50 flex h-9 items-center gap-2 rounded-md border px-2 text-sm">
-                    <IconFile aria-hidden className="text-muted-foreground size-4 shrink-0" />
-                    <span className="min-w-0 max-w-40 flex-1 truncate font-mono text-xs">{file.name}</span>
-                    <span className="text-muted-foreground shrink-0 text-xs tabular-nums">{formatBytes(file.size)}</span>
-                    <Button variant="ghost" size="icon-sm" aria-label={`Remove selected file ${file.name}`} onClick={clearSelection}>
-                        <IconX aria-hidden />
-                    </Button>
-                </div>
-            ) : null}
-            <Button size="sm" onClick={handleUpload} disabled={!file || upload.isPending}>
-                {upload.isPending ? <Spinner /> : <IconUpload aria-hidden />}
-                Upload
-            </Button>
-        </div>
+        <>
+            <Label htmlFor={inputId} className="sr-only">
+                Upload files to {bucketName}
+            </Label>
+            <Input
+                ref={inputRef}
+                id={inputId}
+                type="file"
+                className="hidden"
+                onChange={handleFileChange}
+                aria-describedby={`${inputId}-hint`}
+            />
+            <span id={`${inputId}-hint`} className="sr-only">
+                Multipart POST, max 100 MB. The key defaults to the file name at the bucket root.
+            </span>
+        </>
     );
 }

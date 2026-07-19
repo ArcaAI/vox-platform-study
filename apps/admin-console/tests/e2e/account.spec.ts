@@ -1,18 +1,21 @@
 /**
  * Frame 25 (account half) — Account screen spec: authenticated smoke of the
- * session identity region and the rule 11 §11 axe gate in both themes.
- * Requires a running stack (skips otherwise).
+ * session identity region, the my-settings inline edit flow (per-row
+ * dirty-gated save), the preferences form (dirty-gated save across three
+ * fields), and the rule 11 §11 axe gate in both themes. Requires a running
+ * stack (skips otherwise).
  */
 
 import { expect, test, type Page } from '@playwright/test';
 import { expectNoA11yViolations } from './helpers/a11y';
-import { loginAsAdmin } from './helpers/auth';
+import { loginAsAdmin, selectWorkingTenant } from './helpers/auth';
 import { ADMIN_CREDENTIALS, API_DOWN_MESSAGE, APP_DOWN_MESSAGE, apiAvailable, appAvailable } from './helpers/stack';
 
 test.beforeEach(async ({ page }) => {
     test.skip(!(await appAvailable()), APP_DOWN_MESSAGE);
     test.skip(!(await apiAvailable()), API_DOWN_MESSAGE);
     await loginAsAdmin(page);
+    await selectWorkingTenant(page);
 });
 
 test.describe('account screen', () => {
@@ -29,6 +32,7 @@ test.describe('account screen', () => {
         await page.goto('/account');
         await expect(page.getByRole('heading', { level: 1, name: 'Account' })).toBeVisible();
         await expect(page.getByRole('region', { name: 'Identity' })).toBeVisible();
+        await expect(page.getByLabel('Workflow mode')).toBeVisible();
         await expectNoA11yViolations(page);
     });
 
@@ -37,7 +41,106 @@ test.describe('account screen', () => {
         await page.goto('/account');
         await expect(page.getByRole('heading', { level: 1, name: 'Account' })).toBeVisible();
         await expect(page.getByRole('region', { name: 'Identity' })).toBeVisible();
+        await expect(page.getByLabel('Workflow mode')).toBeVisible();
         await expectNoA11yViolations(page);
+    });
+
+    test('renders the my-settings and preferences sections', async ({ page }) => {
+        await page.goto('/account');
+        await expect(page.getByRole('heading', { level: 2, name: 'My settings' })).toBeVisible();
+        const preferences = page.getByRole('region', { name: 'Preferences' });
+        await expect(preferences).toBeVisible();
+        const workflowField = preferences.getByLabel('Workflow mode');
+        await expect(workflowField).toBeVisible();
+        await expect(preferences.getByLabel('Language', { exact: true })).toBeVisible();
+        await expect(preferences.getByLabel('DNA style ID')).toBeVisible();
+    });
+
+    test('the my-settings section explains where app settings are stored', async ({ page }) => {
+        await page.goto('/account');
+        const mySettings = page.getByRole('region', { name: 'My settings' });
+        await expect(mySettings).toBeVisible();
+        await expect(mySettings).toContainText('Raw key-value settings written by the apps you use.');
+        await expect(mySettings).toContainText('Theme Preference');
+        await expect(mySettings.getByLabel('Value for theme')).toHaveValue('dark');
+    });
+
+    test('an editable "my setting" row enables save only once its value is changed', async ({ page }) => {
+        await page.goto('/account');
+        const mySettings = page.getByRole('region', { name: 'My settings' });
+        const editableInput = mySettings.locator('input[aria-label^="Value for "]:not([disabled])').first();
+        await expect(editableInput).toBeVisible();
+
+        const ariaLabel = await editableInput.getAttribute('aria-label');
+        const key = ariaLabel?.replace('Value for ', '') ?? '';
+        const saveButton = page.getByRole('button', { name: `Save ${key}` });
+        await expect(saveButton).toBeDisabled();
+
+        const original = await editableInput.inputValue();
+        await editableInput.fill(`${original}-e2e-untouched`);
+        await expect(saveButton).toBeEnabled();
+
+        await editableInput.fill(original);
+        await expect(saveButton).toBeDisabled();
+    });
+
+    test('seeded "my setting" rows expose namespaced edit controls', async ({ page }) => {
+        await page.goto('/account');
+        const mySettings = page.getByRole('region', { name: 'My settings' });
+        const settingInput = mySettings.locator('input[aria-label^="Value for "]').first();
+        await expect(settingInput).toBeVisible();
+        await expect(settingInput).toBeEnabled();
+        await expect(mySettings.getByText('ui', { exact: true })).toBeVisible();
+
+        const ariaLabel = await settingInput.getAttribute('aria-label');
+        const key = ariaLabel?.replace('Value for ', '') ?? '';
+        await expect(page.getByRole('button', { name: `Save ${key}` })).toBeDisabled();
+    });
+
+    test('save preferences enables only once a field changes, and reflects back after saving', async ({ page }) => {
+        await page.goto('/account');
+        const preferences = page.getByRole('region', { name: 'Preferences' });
+        const languageInput = preferences.getByLabel('Language', { exact: true });
+        await expect(languageInput).toBeVisible();
+        const saveButton = page.getByRole('button', { name: 'Save preferences' });
+        await expect(saveButton).toBeDisabled();
+
+        const original = await languageInput.inputValue();
+        const temp = `${original}-e2e-temp`;
+        try {
+            await languageInput.fill(temp);
+            await expect(saveButton).toBeEnabled();
+            await saveButton.click();
+
+            await expect(page.getByText('Preferences saved')).toBeVisible();
+            await expect(saveButton).toBeDisabled();
+        } finally {
+            await languageInput.fill(original);
+            if (original.length > 0) {
+                await saveButton.click();
+                await expect(page.getByText('Preferences saved')).toBeVisible();
+            }
+        }
+    });
+
+    test('workflow mode offers local and remote options', async ({ page }) => {
+        await page.goto('/account');
+        const preferences = page.getByRole('region', { name: 'Preferences' });
+        const workflowField = preferences.getByLabel('Workflow mode');
+        await expect(workflowField).toBeVisible();
+        await workflowField.click();
+        await expect(page.getByRole('option', { name: 'Local (on-device pipeline)' })).toBeVisible();
+        await expect(page.getByRole('option', { name: 'Remote (server pipeline)' })).toBeVisible();
+        await page.keyboard.press('Escape');
+    });
+
+    test('a locked transcription mode shows the admin-locked badge', async ({ page }) => {
+        await page.goto('/account');
+        const preferences = page.getByRole('region', { name: 'Preferences' });
+        const workflowField = preferences.getByLabel('Workflow mode');
+        await expect(workflowField).toBeVisible();
+        const lockedBadge = page.getByText('Locked by admin');
+        await expect(lockedBadge).toBeVisible();
     });
 });
 
@@ -76,17 +179,19 @@ test.describe('tenant profile — tabs + settings sub-nav (TASK-440)', () => {
         await page.goto('/tenant-profile?tab=settings');
         await expect(page.getByRole('heading', { level: 1, name: 'Tenant profile' })).toBeVisible();
 
-        if (await page.getByRole('tab', { name: 'Settings' }).isVisible()) {
-            // Either the category rail, the "no tenant settings" empty state, or a load error is acceptable.
+        const settingsTab = page.getByRole('tab', { name: 'Settings' });
+        const noTenant = page.getByText('No working tenant selected');
+        await expect(settingsTab.or(noTenant).first()).toBeVisible();
+
+        if (await settingsTab.isVisible()) {
             await expect(
                 page
                     .getByRole('navigation', { name: 'Settings categories' })
                     .or(page.getByText('No tenant settings'))
-                    .or(page.getByText('No working tenant selected'))
                     .first(),
             ).toBeVisible();
         } else {
-            await expect(page.getByText('No working tenant selected')).toBeVisible();
+            await expect(noTenant).toBeVisible();
         }
     });
 
