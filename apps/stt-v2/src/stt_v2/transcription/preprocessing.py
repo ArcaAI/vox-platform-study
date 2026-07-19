@@ -113,20 +113,26 @@ class AudioPreprocessor:
         denoise_applied = False
         vad_branch: np.ndarray | None = None
         denoise_scope = getattr(config.denoise, "scope", "full")
+        denoise_engine_name = getattr(config.denoise, "engine", "rnnoise")
+        denoise_fn = (
+            self._apply_denoise_deepfilternet3
+            if denoise_engine_name == "deepfilternet3"
+            else self._apply_denoise
+        )
         if config.denoise.enabled:
             if denoise_scope == "full":
                 logger.debug(
-                    f"[{job_id}] [NOISE_SUPPRESSION] Applying RNNoise for noise suppression..."
+                    f"[{job_id}] [NOISE_SUPPRESSION] Applying {denoise_engine_name} for noise suppression..."
                 )
-                samples, current_sr = await self._apply_denoise(
+                samples, current_sr = await denoise_fn(
                     samples, current_sr, config.denoise.strength
                 )
                 denoise_applied = True
             elif config.vad.enabled:
                 logger.debug(
-                    f"[{job_id}] [NOISE_SUPPRESSION] RNNoise on the VAD branch only (dual-path)..."
+                    f"[{job_id}] [NOISE_SUPPRESSION] {denoise_engine_name} on the VAD branch only (dual-path)..."
                 )
-                denoised, denoised_sr = await self._apply_denoise(
+                denoised, denoised_sr = await denoise_fn(
                     samples.copy(), current_sr, config.denoise.strength
                 )
                 if denoised_sr != config.target_sample_rate:
@@ -573,6 +579,72 @@ class AudioPreprocessor:
             return samples, sample_rate
         except Exception as e:
             logger.warning("RNNoise denoising failed: %s, returning original audio", e)
+            return samples, sample_rate
+
+    async def _apply_denoise_deepfilternet3(
+        self,
+        samples: np.ndarray,
+        sample_rate: int,
+        strength: float,
+    ) -> tuple[np.ndarray, int]:
+        """Apply DeepFilterNet3 noise suppression (TASK-507).
+
+        DeepFilterNet3 operates full-band at 48 kHz, like RNNoise, so this
+        method follows the exact same upsample → denoise → (caller resamples
+        down) contract as ``_apply_denoise``.
+
+        Args:
+            samples: Float32 mono audio at ``sample_rate``.
+            sample_rate: Current sample rate of the input.
+            strength: Denoise strength 0.0 (bypass) to 1.0 (full denoise).
+
+        Returns:
+            Tuple of (denoised float32 audio, output sample rate).
+            When denoising is applied the output sample rate is 48 000.
+            When skipped (strength <= 0 or error) it equals the input ``sample_rate``.
+        """
+        if strength <= 0.0:
+            return samples, sample_rate
+
+        try:
+            import torch
+            from df.enhance import enhance, init_df
+
+            samples_48k = (
+                self._resample(samples, sample_rate, _RNNOISE_SAMPLE_RATE)
+                if sample_rate != _RNNOISE_SAMPLE_RATE
+                else samples.copy()
+            )
+
+            model, df_state, _, _ = init_df(default_model="DeepFilterNet3")
+            audio_tensor = torch.from_numpy(samples_48k.astype(np.float32)).unsqueeze(0)
+            enhanced_tensor = enhance(model, df_state, audio_tensor)
+            denoised_48k = enhanced_tensor.squeeze(0).cpu().numpy().astype(np.float32)
+
+            if len(denoised_48k) > len(samples_48k):
+                denoised_48k = denoised_48k[: len(samples_48k)]
+            elif len(denoised_48k) < len(samples_48k):
+                denoised_48k = np.pad(denoised_48k, (0, len(samples_48k) - len(denoised_48k)))
+
+            if strength < 1.0:
+                denoised_48k = strength * denoised_48k + (1.0 - strength) * samples_48k
+
+            logger.debug(
+                "DeepFilterNet3 denoising applied (strength=%.2f, input_sr=%d, output_sr=%d)",
+                strength,
+                sample_rate,
+                _RNNOISE_SAMPLE_RATE,
+            )
+            return denoised_48k.astype(np.float32), _RNNOISE_SAMPLE_RATE
+
+        except ImportError:
+            logger.warning(
+                "deepfilternet not installed — skipping denoising. "
+                "Install with: pip install deepfilternet"
+            )
+            return samples, sample_rate
+        except Exception as e:
+            logger.warning("DeepFilterNet3 denoising failed: %s, returning original audio", e)
             return samples, sample_rate
 
     def _merge_segments(

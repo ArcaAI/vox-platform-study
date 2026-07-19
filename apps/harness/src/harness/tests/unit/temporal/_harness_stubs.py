@@ -34,6 +34,7 @@ from harness.services.smr_client import SmrGenerationResult
 from harness.temporal.claim_check import ClaimCheckRef
 from harness.temporal.models import (
     AssembleInput,
+    CallMcpToolInput,
     EditSignal,
     EntitiesResult,
     EscalateInput,
@@ -44,8 +45,10 @@ from harness.temporal.models import (
     GenerateInput,
     HarnessPolicy,
     InferentialRunOutput,
+    McpToolCallResult,
     PersistDraftInput,
     PersistEntitiesInput,
+    SegmentCitationRef,
     RecordGateInput,
     ReportProgressInput,
     ReportProgressResult,
@@ -111,6 +114,16 @@ class StubConfig:
     # the ref-threaded (new-run) command sequence for the replay-compat fixture. The
     # command sequence is identical to the inline happy path — only the payloads differ.
     claim_check: bool = False
+    # TASK-516 (Phase 5): MCP terminology validation. When the policy arms the
+    # (patch-gated) MCP path, the ``call_mcp_tool`` stub returns this outcome —
+    # ``mcp_degraded`` drives the workflow to reduced assurance; ``mcp_fails`` makes
+    # the activity raise (allowlist/PHI/infra) which the workflow degrades on.
+    mcp_degraded: bool = False
+    mcp_fails: bool = False
+    # TASK-519 — PHI-safe segment citation refs returned by ``assemble_prompt``.
+    # Empty (default) ⇒ GenerateInput.segment_citations stays empty (byte-identical
+    # prompt). Non-empty ⇒ workflow must thread them into both GenerateInput sites.
+    segment_citations: list[SegmentCitationRef] = field(default_factory=list)
 
 
 @dataclass
@@ -136,6 +149,8 @@ class StubRecorder:
     record_inputs: list[RecordGateInput] = field(default_factory=list)
     escalate_inputs: list[EscalateInput] = field(default_factory=list)
     inferential_inputs: list[RunInferentialSensorsInput] = field(default_factory=list)
+    # TASK-516 (Phase 5): the CallMcpToolInput of each MCP terminology validation call.
+    call_mcp_inputs: list[CallMcpToolInput] = field(default_factory=list)
     retrieve_inputs: list[RetrieveContextInput] = field(default_factory=list)
     generate_inputs: list[GenerateInput] = field(default_factory=list)
     run_sensors_inputs: list[RunSensorsInput] = field(default_factory=list)
@@ -304,6 +319,22 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
             reused=reused,
         )
 
+    @activity.defn(name="call_mcp_tool")
+    async def call_mcp_tool(payload: CallMcpToolInput) -> McpToolCallResult:
+        recorder.calls["call_mcp_tool"] += 1
+        recorder.call_order.append("call_mcp_tool")
+        recorder.call_mcp_inputs.append(payload)
+        if config.mcp_fails:
+            raise ApplicationError("mcp tool unavailable", non_retryable=True)
+        return McpToolCallResult(
+            ok=not config.mcp_degraded,
+            server=payload.server.name,
+            tool=payload.tool,
+            content="" if config.mcp_degraded else '{"valid": true}',
+            degraded=config.mcp_degraded,
+            error_code="server_error" if config.mcp_degraded else None,
+        )
+
     @activity.defn(name="persist_entities")
     async def persist_entities(payload: PersistEntitiesInput) -> PersistEntitiesResponse:
         recorder.calls["persist_entities"] += 1
@@ -332,6 +363,9 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
             prompt_template_id="tmpl-1",
             prompt_version="3",
             resolved_from="department",
+            # TASK-519 — thread configured refs (default []) so workflow tests
+            # can assert GenerateInput.segment_citations is populated from assemble.
+            segment_citations=list(config.segment_citations),
         )
 
     @activity.defn(name="retrieve_context")
@@ -460,6 +494,7 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
     return [
         fetch_policy,
         extract_entities,
+        call_mcp_tool,
         persist_entities,
         assemble_prompt,
         retrieve_context,

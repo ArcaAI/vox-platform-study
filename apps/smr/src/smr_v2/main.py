@@ -74,13 +74,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     registry = app.state.provider_registry
     # LM Studio (OpenAI-compatible) is the primary/default local LLM engine.
+    # Register both keys against one instance (product key + backward-compat alias).
     if settings.openai_compat.enabled:
         from smr_v2.providers.openai_compat import OpenAICompatProvider
 
-        if "openai_compat" not in registry.list_providers():
-            registry.register("openai_compat", OpenAICompatProvider(settings.openai_compat))
-            logger.info("smr_v2.provider_registered", provider="openai_compat", base_url=settings.openai_compat.base_url)
-        if "lm-studio" not in registry.list_providers():
+        if "openai_compat" not in registry.list_providers() and "lm-studio" not in registry.list_providers():
+            lm_provider = OpenAICompatProvider(settings.openai_compat)
+            registry.register("lm-studio", lm_provider)
+            registry.register("openai_compat", lm_provider)
+            logger.info(
+                "smr_v2.provider_registered",
+                provider="lm-studio",
+                base_url=settings.openai_compat.base_url,
+            )
+        elif "openai_compat" not in registry.list_providers():
+            registry.register("openai_compat", registry.get("lm-studio"))
+        elif "lm-studio" not in registry.list_providers():
             registry.register("lm-studio", registry.get("openai_compat"))
 
     # Ollama is an optional, lower-priority local LLM engine.
@@ -93,6 +102,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         from smr_v2.providers.azure_openai import AzureOpenAIProvider
         azure_provider = AzureOpenAIProvider(settings.azure)
         registry.register("azure-openai", azure_provider)
+        registry.register("azure", azure_provider)  # backward-compatible alias
         logger.info("smr_v2.provider_registered", provider="azure-openai")
 
     if settings.bedrock.enabled and "bedrock" not in registry.list_providers():
@@ -100,15 +110,34 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         registry.register("bedrock", BedrockProvider(settings.bedrock))
         logger.info("smr_v2.provider_registered", provider="bedrock")
 
+    # vLLM — production primary self-host engine (TASK-513). OpenAI-wire, but a
+    # first-class registry key with engine-native stats + /health + cache metrics.
+    if settings.vllm.enabled and "vllm" not in registry.list_providers():
+        from smr_v2.providers.vllm import VllmProvider
+        registry.register("vllm", VllmProvider(settings.vllm, http_client))
+        logger.info("smr_v2.provider_registered", provider="vllm", base_url=settings.vllm.base_url)
+
+    # llama.cpp — production GGUF-tier engine (TASK-514). Native /completion client
+    # with engine-native timings (the AD-1 reference engine).
+    if settings.llama_cpp.enabled and "llama-cpp" not in registry.list_providers():
+        from smr_v2.providers.llama_cpp import LlamaCppProvider
+        registry.register("llama-cpp", LlamaCppProvider(settings.llama_cpp, http_client))
+        logger.info(
+            "smr_v2.provider_registered", provider="llama-cpp", base_url=settings.llama_cpp.base_url
+        )
+
     from smr_v2.services.rate_limiter import RateLimitTracker
 
     rate_limiters: dict[str, RateLimitTracker] = {}
     provider_configs = {
         "ollama": settings.ollama,
         "azure-openai": settings.azure,
+        "azure": settings.azure,
         "bedrock": settings.bedrock,
-        "openai_compat": settings.openai_compat,
         "lm-studio": settings.openai_compat,
+        "openai_compat": settings.openai_compat,
+        "vllm": settings.vllm,
+        "llama-cpp": settings.llama_cpp,
     }
     for name in registry.list_providers():
         cfg = provider_configs.get(name)
@@ -134,6 +163,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             cbs[name] = CircuitBreaker(
                 failure_threshold=cb_cfg.failure_threshold,
                 recovery_timeout=cb_cfg.recovery_timeout_s,
+                half_open_max_calls=cb_cfg.half_open_max_calls,
+                reset_timeout_s=cb_cfg.reset_timeout_s,
+                count_rate_limits=cb_cfg.count_rate_limits,
             )
         app.state.circuit_breakers = cbs
 
@@ -141,9 +173,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         provider_configs = {
             "ollama": settings.ollama,
             "azure-openai": settings.azure,
+            "azure": settings.azure,
             "bedrock": settings.bedrock,
-            "openai_compat": settings.openai_compat,
             "lm-studio": settings.openai_compat,
+            "openai_compat": settings.openai_compat,
+            "vllm": settings.vllm,
+            "llama-cpp": settings.llama_cpp,
         }
         sems: dict[str, asyncio.Semaphore] = {}
         for name in registry.list_providers():

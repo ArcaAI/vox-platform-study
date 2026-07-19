@@ -49,6 +49,9 @@ class AiModelFormat(StrEnum):
     # TASK-505 P3 — parakeet.cpp (ggml runtime, mudler/parakeet.cpp) for
     # NVIDIA Parakeet / nemotron-3.5-asr-streaming models. CPU/Metal/CUDA.
     PARAKEET_CPP = "PARAKEET_CPP"
+    # TASK-507 — whisper.cpp (ggml runtime, ggml-org/whisper.cpp) for GGUF
+    # whisper-large-v3-turbo. CPU/Metal/CUDA, via the pywhispercpp binding.
+    WHISPER_CPP = "WHISPER_CPP"
 
 
 class AiModelDownloadStatus(StrEnum):
@@ -391,6 +394,8 @@ class ModelRef:
         # TASK-505 P3 — new engines (product matrix pipelines #6 and #8).
         "azure-foundry": "AZURE_FOUNDRY",
         "parakeet.cpp": "PARAKEET_CPP",
+        # TASK-507 — whisper.cpp (product matrix pipelines #1-4, GGUF).
+        "whisper.cpp": "WHISPER_CPP",
         # Denoise models (RNNoise et al.) load via the ONNX runtime path.
         "rnnoise": "ONNX",
     }
@@ -468,6 +473,9 @@ class ModelRef:
                 "PARAKEET_CPP": AiModelFormat.PARAKEET_CPP,
                 "PARAKEET-CPP": AiModelFormat.PARAKEET_CPP,
                 "PARAKEET.CPP": AiModelFormat.PARAKEET_CPP,
+                "WHISPER_CPP": AiModelFormat.WHISPER_CPP,
+                "WHISPER-CPP": AiModelFormat.WHISPER_CPP,
+                "WHISPER.CPP": AiModelFormat.WHISPER_CPP,
             }
             # TASK-505 P1 — unknown engine strings are a hard error. The old
             # silent SAFETENSOR default turned a typo into a different engine
@@ -578,6 +586,9 @@ class VadConfig:
 #   "full": legacy behavior — ASR consumes the denoised audio.
 VALID_DENOISE_SCOPES: list[str] = ["vad_only", "full"]
 
+# TASK-507 — denoise engine selection (rnnoise = legacy default).
+VALID_DENOISE_ENGINES: list[str] = ["rnnoise", "deepfilternet3"]
+
 # TASK-505 P2 — normalize processor selection (peak = legacy).
 VALID_NORMALIZE_PROCESSORS: list[str] = ["peak", "rms"]
 
@@ -589,6 +600,9 @@ class DenoiseConfig:
     enabled: bool = False
     strength: float = 0.5
     scope: str = "vad_only"  # TASK-505 P2 (D2): vad_only | full
+    # TASK-507 — denoise engine selector. "rnnoise" (default, unchanged
+    # behavior) or "deepfilternet3" (DeepFilterNet3, full-band 48kHz DNN).
+    engine: str = "rnnoise"
 
 
 @dataclass

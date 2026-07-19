@@ -106,7 +106,7 @@ describe('AgenticProvider (HOOK-02)', () => {
 
       await expect(
         pipeline!.triggerNER('Patient has chest pain')
-      ).rejects.toThrow('Backend NER is not supported via the API gateway');
+      ).rejects.toThrow('Backend NER is not yet wired in this SDK');
     });
 
     it('should fail KnowledgePipeline backend NER when apiClient is NOT passed', async () => {
@@ -128,7 +128,7 @@ describe('AgenticProvider (HOOK-02)', () => {
       // Without apiClient, backend NER should still fail fast (unsupported via API gateway)
       await expect(
         pipeline!.triggerNER('Patient has chest pain')
-      ).rejects.toThrow('Backend NER is not supported via the API gateway');
+      ).rejects.toThrow('Backend NER is not yet wired in this SDK');
     });
   });
 
@@ -152,7 +152,7 @@ describe('AgenticProvider (HOOK-02)', () => {
 
       await expect(
         pipeline!.triggerNER('Patient takes aspirin')
-      ).rejects.toThrow('Backend NER is not supported via the API gateway');
+      ).rejects.toThrow('Backend NER is not yet wired in this SDK');
       expect(mockApiClient.post).not.toHaveBeenCalled();
     });
 

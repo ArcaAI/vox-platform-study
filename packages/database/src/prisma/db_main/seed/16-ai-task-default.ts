@@ -49,6 +49,23 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
         taskKey: 'nlp.classification',
         modelSlug: 'symps-disease-bert-v3-c41',
     },
+    // TASK-511 (Phase 3A) — SMR generation routing, mapped to the CURRENT SMR
+    // default (HarnessPolicy SYSTEM smrProvider/smrModel = lm-studio /
+    // gemma-4-e2b-it-qat, registry slug `lms-gemma-4-e2b-it-qat`). Both live and
+    // finalize point at the same platform default today; a global admin may
+    // split them later. `resolveSmrSelection` consults these keys FIRST.
+    {
+        id: '86000000-0000-0000-0000-000000000004',
+        tenantId: SYSTEM_TENANT_ID,
+        taskKey: 'smr.live',
+        modelSlug: 'lms-gemma-4-e2b-it-qat',
+    },
+    {
+        id: '86000000-0000-0000-0000-000000000005',
+        tenantId: SYSTEM_TENANT_ID,
+        taskKey: 'smr.finalize',
+        modelSlug: 'lms-gemma-4-e2b-it-qat',
+    },
 ];
 
 export const seedAiTaskDefault = async (

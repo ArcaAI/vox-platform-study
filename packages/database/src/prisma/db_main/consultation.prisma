@@ -105,7 +105,15 @@ model ContextItem {
   // DNA Writing Style (reference ID, similar to mediaId pattern)
   dnaWritingStyleId String?
 
-  // Qdrant sync status (for semantic search)
+  // Qdrant sync status (for semantic search). RESERVED, NO WRITER (TASK-508
+  // Phase 0 / SOTA gap review D2): the target `context_items` Qdrant
+  // collection was never actually provisioned-and-used — its provisioning
+  // was removed from infrastructure/docker/scripts/init-qdrant-collections.py
+  // as orphaned. `markQdrantNeedsSync()` (context.service.ts) still flips
+  // `qdrantSynced` to false on content updates, but nothing ever flips it
+  // back to true or reads/writes a `context_items` point — these columns are
+  // additive-safe dead weight kept for a future semantic-search feature, not
+  // an active sync flag. Columns intentionally left in place (no migration).
   qdrantSynced   Boolean   @default(false)
   qdrantSyncedAt DateTime?
 
@@ -123,6 +131,10 @@ model ContextItem {
   SummaryMeta     SummaryMeta?
   NamedEntities   NamedEntity[]        @relation("NamedEntityParent")
   Versions        ContextItemVersion[]
+  // TASK-519 — segment-level structure of a TRANSCRIPT context item (turns /
+  // diarized segments with time + character-offset anchors). Only populated
+  // for TRANSCRIPT items; empty for every other type.
+  TranscriptSegments TranscriptSegment[]
 
   // TASK-330 Phase 1 — NamedEntities whose transcript span points at THIS
   // (TRANSCRIPT) context item. Distinct from the `NamedEntities` container
@@ -227,6 +239,17 @@ model SummaryMeta {
   // Token usage (for analytics)
   inputTokens  Int? // Tokens used for input
   outputTokens Int? // Tokens generated
+
+  // TASK-509 Phase 1B — AD-1 generation-stats headline fields. Persisted per
+  // summary alongside the existing token/latency columns. `stopReason` is the
+  // NORMALIZED stop reason (stop | length | content_filter | tool_call | abort
+  // | error | other); `ttftMs` is time-to-first-token; `tokensPerSecond` is the
+  // decode throughput. predicted/total token counts are DERIVABLE from the
+  // existing inputTokens/outputTokens, so they are intentionally NOT added. All
+  // nullable/additive.
+  stopReason      String? // normalized generation stop reason
+  ttftMs          Int? // time-to-first-token in milliseconds
+  tokensPerSecond Float? // decode throughput (predicted tokens / decode-time)
 
   // Cache + quality analytics (TASK-329 P6)
   cacheHit     Boolean? // Whether this summary was served from cache
@@ -337,6 +360,14 @@ model NamedEntity {
   // Location in source text
   startOffset Int? // Character offset start
   endOffset   Int? // Character offset end
+
+  // TASK-518 — negation/assertion polarity for this mention (ConText/NegEx).
+  // One of PRESENT | ABSENT | HISTORICAL | FAMILY | HYPOTHETICAL. Nullable +
+  // additive; a null value is read as PRESENT (the safe default) so existing
+  // rows and any writer that does not set it stay positive assertions.
+  // Downstream faithfulness / concept-F1 sensors exclude ABSENT from
+  // positive-claim checks.
+  assertion String?
 
   // Confidence and scoring
   confidence Float? // Confidence score (0.0 - 1.0)
@@ -509,5 +540,75 @@ model Highlight {
   @@index([sourceContextItemId], name: "Highlight_sourceContextItemId_idx")
   // Tenant-leading composite for per-consultation reads (TASK-305 A.4 pattern).
   @@index([tenantId, consultationId], name: "Highlight_tenant_consultation_idx")
+  @@schema("core")
+}
+
+// =============================================================================
+// TRANSCRIPT SEGMENT (TASK-519 — segment-level transcript + evidence links)
+// =============================================================================
+// A single ordered segment (a diarized turn / VAD segment) of a TRANSCRIPT
+// context item. STT emits per-segment metadata (start/end timestamps, speaker,
+// and the text slice) which the ingest previously DROPPED (gap D8). Persisting
+// them here lets the harness/summary paths cite the exact source segment for a
+// grounded claim (sentence-level `[[seg:<id>]]` provenance) and lets a future
+// console click-to-source seek the audio (t0/t1).
+//
+// PHI posture (deliberate): this row stores ONLY non-PHI structural metadata —
+// the segment's ordinal, time span, diarization label, and the CHARACTER
+// OFFSETS [charStart, charEnd) into the parent TRANSCRIPT's content. The
+// segment TEXT is NOT duplicated here: it is a slice of the transcript
+// ContextItem's already-encrypted `content`, recoverable via the offsets. This
+// keeps the table free of any new plaintext-PHI surface (the TASK-369 posture)
+// and avoids a second ciphertext column set.
+//
+// Like NamedEntity / AudioRecording (sibling per-transcript annotation tables)
+// it is TENANT-SCOPED but soft-delete EXEMPT: segments live and die with their
+// parent transcript, so there is no `resourceStatus` column and the model is
+// listed in MODELS_WITHOUT_SOFT_DELETE.
+model TranscriptSegment {
+  // Meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // Multi-tenant
+  tenantId String
+
+  // Parent TRANSCRIPT context item.
+  contextItemId String
+  ContextItem   ContextItem @relation(fields: [contextItemId], references: [id])
+
+  // 0-based ordinal within the transcript (append order = playback order).
+  idx Int
+
+  // Segment time span (milliseconds from the recording start). Nullable — a
+  // text-only transcript (no diarization/timestamps) still persists ordered
+  // segments with null timings.
+  t0Ms Int?
+  t1Ms Int?
+
+  // Diarization / speaker label (e.g. "SPEAKER_00", "doctor"). Nullable.
+  speaker String?
+
+  // Character offsets [charStart, charEnd) of this segment within the parent
+  // TRANSCRIPT's decrypted content — the anchor NER grounding resolves to map
+  // an entity's transcript span onto its source segment id. Nullable when the
+  // offsets could not be resolved (segment text not found in the transcript).
+  charStart Int?
+  charEnd   Int?
+
+  // Audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One row per (contextItem, idx) — idempotent re-ingest of a transcript's
+  // segments, and the natural ordering key.
+  @@unique([contextItemId, idx], name: "TranscriptSegment_item_idx_unique")
+  @@index([tenantId], name: "TranscriptSegment_tenantId_idx")
+  @@index([contextItemId], name: "TranscriptSegment_contextItemId_idx")
+  // Tenant-leading composite for per-transcript reads (TASK-305 A.4 pattern).
+  @@index([tenantId, contextItemId], name: "TranscriptSegment_tenant_item_idx")
   @@schema("core")
 }

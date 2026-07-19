@@ -230,8 +230,21 @@ export class HarnessObservabilityService {
    * Read-only: no new capture, no sys-event, no workflow change. PHI hygiene — the
    * summary text is consumed to compute the distance and NEVER returned; only
    * derived scalars leave. Any signal whose input is absent is `null`.
+   *
+   * TASK-508 Phase 0-F — the burden aggregate below is legitimately all-zero for
+   * an existing, in-tenant consultation that simply has no activity yet, so it
+   * cannot be used to infer existence (0-C's controller-side heuristic conflated
+   * "no such consultation" with "no activity yet"). Existence + tenancy are
+   * therefore verified HERE, against the source of truth, before computing
+   * anything: the same `filters: { tenantId, id }` + empty-result convention
+   * `getEvalRun` uses above, so a nonexistent id and a cross-tenant id both
+   * resolve to an empty array and throw the identical `DataNotFoundException`
+   * (404-over-403 — no existence leak).
    */
   async getEditBurden(tenantId: string, consultationId: string): Promise<EditBurdenResponse> {
+    const consultations = await this.consultationRepository.findAll({ filters: { tenantId, id: consultationId }, limit: 1 });
+    if (!consultations[0]) throw new DataNotFoundException('Consultation', consultationId);
+
     const events = await this.auditRepository.getByConsultation(tenantId, consultationId);
 
     const decisions: string[] = [];

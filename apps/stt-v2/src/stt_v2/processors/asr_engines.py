@@ -32,6 +32,8 @@ ASR_FORMAT_TO_NAME: dict[AiModelFormat, str] = {
     # TASK-505 P3 — new engines.
     AiModelFormat.AZURE_FOUNDRY: "azure_foundry",
     AiModelFormat.PARAKEET_CPP: "parakeet_cpp",
+    # TASK-507 — whisper.cpp.
+    AiModelFormat.WHISPER_CPP: "whisper_cpp",
 }
 
 
@@ -299,6 +301,41 @@ class ParakeetCppEngine(AsrEngine):
         task: str = "transcribe",
     ) -> Any:
         return manager._make_parakeet_cpp_callable(loaded_model, inference_config)
+
+
+class WhisperCppEngine(AsrEngine):
+    """whisper.cpp (ggml) — TASK-507. Per-utterance streaming + whole-audio
+    batch via the same duck-typed adapter (mirrors ``ParakeetCppEngine``)."""
+
+    async def run_batch(
+        self,
+        service: Any,
+        samples: Any,
+        sample_rate: int,
+        model: Any,
+        config: Any,
+        progress_callback: Any = None,
+        *,
+        chunk_callback: Any = None,
+        first_word_hook: Any = None,
+        prompt: str | None = None,
+        initial_prompt: str | None = None,
+    ) -> Any:
+        return await service._run_whisper_cpp_inference(
+            samples, sample_rate, model, config, progress_callback,
+            prompt=prompt or initial_prompt,
+        )
+
+    def make_streaming_callable(
+        self,
+        manager: Any,
+        loaded_model: Any,
+        inference_config: Any,
+        *,
+        initial_prompt: str | None = None,
+        task: str = "transcribe",
+    ) -> Any:
+        return manager._make_whisper_cpp_callable(loaded_model, inference_config)
 
 
 class AzureFoundryEngine(AsrEngine):

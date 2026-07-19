@@ -13,6 +13,7 @@ export interface CreateNamedEntityProps extends BaseEntityFactoryCreateProps {
   normalizedText?: INamedEntityEntity['normalizedText'];
   startOffset?: INamedEntityEntity['startOffset'];
   endOffset?: INamedEntityEntity['endOffset'];
+  assertion?: INamedEntityEntity['assertion'];
   confidence?: INamedEntityEntity['confidence'];
   aiModelId?: INamedEntityEntity['aiModelId'];
   aiModelVersion?: INamedEntityEntity['aiModelVersion'];
@@ -55,6 +56,7 @@ export class NamedEntityFactory {
       normalizedText: props.normalizedText ?? null,
       startOffset: props.startOffset ?? null,
       endOffset: props.endOffset ?? null,
+      assertion: props.assertion ?? null,
       confidence: props.confidence ?? null,
       aiModelId: props.aiModelId ?? null,
       aiModelVersion: props.aiModelVersion ?? null,

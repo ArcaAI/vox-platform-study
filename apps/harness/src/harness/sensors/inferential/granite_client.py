@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 from typing import Any
 
 import httpx
@@ -32,6 +33,25 @@ import httpx
 from harness.core.config import SafetyGuardConfig
 from harness.core.llm_concurrency import governed_request
 from harness.eval.judge.base import JudgeConnectionError, Messages
+from harness.eval.judge.providers import build_llm_call_stats
+
+
+def _native_stats_fields(
+    provider: str, data: dict[str, Any]
+) -> tuple[int, int, int | None, str | None]:
+    """Extract ``(prompt_tokens, predicted_tokens, total_tokens, raw_stop_reason)`` from a
+    guardian/groundedness response envelope, engine-aware and null-safe (TASK-509 / AD-1).
+    """
+    if provider == "ollama":
+        prompt = int(data.get("prompt_eval_count", 0) or 0)
+        predicted = int(data.get("eval_count", 0) or 0)
+        return prompt, predicted, prompt + predicted, data.get("done_reason")
+    usage = data.get("usage") or {}
+    prompt = int(usage.get("prompt_tokens", 0) or 0)
+    predicted = int(usage.get("completion_tokens", 0) or 0)
+    choices = data.get("choices") or []
+    finish = choices[0].get("finish_reason") if choices else None
+    return prompt, predicted, usage.get("total_tokens"), finish
 
 
 class GraniteServiceError(RuntimeError):
@@ -98,6 +118,9 @@ class GraniteGuardianClient:
         self._no_think = config.no_think
         self._timeout = config.timeout_s
         self._transport = transport
+        # TASK-509 (AD-1) Phase 1B: AD-1 stats dict aggregating the per-dimension screen
+        # calls (None until the first screen), read by the Phase 2 ``GUARDRAIL`` emitter.
+        self.last_stats: dict[str, Any] | None = None
 
     @property
     def criteria(self) -> list[str]:
@@ -120,15 +143,48 @@ class GraniteGuardianClient:
         identical to the former serial loop; any one failure still raises
         :class:`GraniteServiceError` so the safety screen degrades, never guesses.
         """
+        self.last_stats = None
         if not self._criteria:
             return {}
+        started = time.monotonic()
         async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
-            verdicts = await asyncio.gather(
+            results = await asyncio.gather(
                 *(self._classify(client, criterion, text) for criterion in self._criteria)
             )
+        total_ms = int((time.monotonic() - started) * 1000)
+        verdicts = [verdict for verdict, _ in results]
+        self.last_stats = self._aggregate_stats([call for _, call in results], total_ms=total_ms)
         return dict(zip(self._criteria, verdicts, strict=True))
 
-    async def _classify(self, client: httpx.AsyncClient, criterion: str, text: str) -> bool:
+    def _aggregate_stats(
+        self, per_call: list[tuple[int, int, int | None, str | None]], *, total_ms: int
+    ) -> dict[str, Any]:
+        """Fold the per-dimension native fields into one AD-1 stats dict (TASK-509).
+
+        Token counts sum across the fan-out; a truncation (``length``) on any dimension
+        dominates the aggregate stop reason, else the first reported reason.
+        """
+        prompt = sum(p for p, _, _, _ in per_call)
+        predicted = sum(pr for _, pr, _, _ in per_call)
+        totals = [t for _, _, t, _ in per_call if t is not None]
+        raws = [r for *_, r in per_call if r]
+        raw = next(
+            (r for r in raws if r.strip().lower() in ("length", "max_tokens")),
+            raws[0] if raws else None,
+        )
+        return build_llm_call_stats(
+            provider=self._provider,
+            model=self.model,
+            raw_stop_reason=raw,
+            prompt_tokens=prompt,
+            predicted_tokens=predicted,
+            total_tokens=sum(totals) if totals else None,
+            total_ms=total_ms,
+        )
+
+    async def _classify(
+        self, client: httpx.AsyncClient, criterion: str, text: str
+    ) -> tuple[bool, tuple[int, int, int | None, str | None]]:
         # Canonical BYOC protocol: the note-to-judge is the assistant message, the
         # ``<guardian>`` criteria block is the final user message after it.
         messages = [
@@ -167,11 +223,13 @@ class GraniteGuardianClient:
             # governor exhausted its retries; surface it as the same degrade-don't-guess
             # signal as any transport failure so the safety screen self-degrades.
             raise GraniteServiceError(f"granite guardian request failed: {exc}") from exc
-        content = self._extract_content(resp.json())
+        data = resp.json()
+        content = self._extract_content(data)
         match = _SCORE_RE.search(content)
         if match is None:
             raise GraniteParseError(f"no <score> verdict for risk {criterion!r}: {content[:120]!r}")
-        return match.group(1).lower() == "yes"
+        # TASK-509 (AD-1): return the per-call native stats fields for screen() to aggregate.
+        return match.group(1).lower() == "yes", _native_stats_fields(self._provider, data)
 
     def _extract_content(self, data: dict[str, Any]) -> str:
         """Read the verdict text from the engine-specific response envelope."""
@@ -252,6 +310,8 @@ class GraniteGroundednessJudge:
         self._no_think = config.no_think
         self._timeout = config.timeout_s
         self._transport = transport
+        # TASK-509 (AD-1) Phase 1B: AD-1 stats dict from the most recent ``complete`` call.
+        self.last_stats: dict[str, Any] | None = None
 
     async def complete(
         self,
@@ -288,11 +348,24 @@ class GraniteGroundednessJudge:
                 resp.raise_for_status()
                 return resp
 
+        started = time.monotonic()
         try:
             resp = await governed_request(self._base_url, _send)
         except (httpx.HTTPError, TimeoutError) as exc:
             raise JudgeConnectionError(f"granite groundedness request failed: {exc}") from exc
-        match = _SCORE_RE.search(self._content(resp.json()))
+        data = resp.json()
+        # TASK-509 (AD-1): capture the native usage/finish-reason stats for this call.
+        prompt, predicted, total, raw = _native_stats_fields(self._provider, data)
+        self.last_stats = build_llm_call_stats(
+            provider=self._provider,
+            model=self.model,
+            raw_stop_reason=raw,
+            prompt_tokens=prompt,
+            predicted_tokens=predicted,
+            total_tokens=total,
+            total_ms=int((time.monotonic() - started) * 1000),
+        )
+        match = _SCORE_RE.search(self._content(data))
         if match is None:
             return False  # unparseable verdict -> conservative ungrounded (never a degrade)
         # 'yes' = ungroundedness risk present => NOT supported; 'no' = grounded => supported.

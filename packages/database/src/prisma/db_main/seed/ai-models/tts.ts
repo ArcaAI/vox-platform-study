@@ -51,14 +51,18 @@ export const TTS_AI_MODELS: AiModelSeed[] = [
         tenantId: SYSTEM_TENANT_ID,
         name: 'Kokoro',
         slug: 'kokoro',
-        description: 'Kokoro local ONNX TTS engine — fast English synthesis on CPU.',
+        description: 'hexgrad/Kokoro-82M — local PyTorch TTS engine, fast English synthesis on CPU. Weights managed internally by the `kokoro` package (KPipeline), not by this catalog row.',
         category: ModelCategory.AUDIO,
         taskType: ModelTaskType.TEXT_TO_SPEECH,
         modelType: ModelType.BASE_MODEL,
-        source: AiModelSource.LOCAL,
-        sourceUri: 'kokoro',
+        source: AiModelSource.HUGGINGFACE,
+        // TASK-507 — corrected to the real upstream repo + format: the
+        // `kokoro` PyPI package (tts-v2's actual runtime dependency) loads
+        // PyTorch weights, not ONNX — `kokoro-onnx` is a different package
+        // this service does not use.
+        sourceUri: 'hexgrad/Kokoro-82M',
         sourceRevision: 'main',
-        format: AiModelFormat.ONNX,
+        format: AiModelFormat.PYTORCH,
         provider: 'built-in',
         architecture: null,
         memorySizeMb: 512,

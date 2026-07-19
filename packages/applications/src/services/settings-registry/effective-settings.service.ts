@@ -10,6 +10,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService';
 import { ConfigResolutionContext, ConfigResolver, PipelineToggleKey } from '../config-resolver/config-resolver.service';
+import { AGENTIC_CONTEXT_KEY_PREFIX } from './descriptors/agentic-context.descriptors';
 import { HOPE_SETTINGS_REGISTRY } from './registry';
 
 export interface EffectiveSettingResult {
@@ -56,6 +57,14 @@ export class EffectiveSettingsService {
       const taskKey = key.slice('models.'.length);
       const effective = await this.aiTaskDefaultService.getEffective(taskKey, ctx.tenantId);
       return { key, tier: descriptor.tier, value: effective.modelSlug, sourceScope: effective.source ?? 'none' };
+    }
+
+    // TASK-511 (Phase 3A) — agentic.context.* resolves to its registry code
+    // default (the effective-facade seam). A global override lane (global-kv /
+    // Redis kill-switch) lands here later; today the descriptor default is the
+    // effective value the live-documentation loop reads.
+    if (key.startsWith(AGENTIC_CONTEXT_KEY_PREFIX)) {
+      return { key, tier: descriptor.tier, value: descriptor.default, sourceScope: 'code-default' };
     }
 
     throw new ArgumentInvalidException(`No effective resolver is registered for setting '${key}'.`);

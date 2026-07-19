@@ -41,6 +41,12 @@ volumes:
   # platform-metrics profile. Provisioning (datasource + dashboards) is mounted
   # read-only from ./configs/grafana, so this only persists runtime UI state.
   grafana-data:
+  # TASK-513/514: HF weights cache for the production-inference `inference`
+  # profile (vLLM safetensors + TEI bge-m3), so `up` does not re-download on
+  # every restart. llama.cpp reads pre-staged GGUFs from a host bind-mount
+  # instead (operator-managed), so it needs no named volume.
+  vllm-cache:
+  tei-embed-data:
 
 services:
   # HashiCorp Vault - Secret Management
@@ -347,4 +353,129 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
+  # ==========================================================================
+  # Production-inference engines (TASK-508 Phase 4 / TASK-513-514). All three
+  # are OPT-IN behind the `inference` profile — a plain `docker compose up` and
+  # `start-infra.sh --all` do NOT start them (mirrors the vault/temporal/rag
+  # opt-in precedent). This profile stages the PRODUCTION engine matrix (AD-4)
+  # for a GPU dev host; LM Studio + Ollama remain the default local engines.
+  #
+  # Start (from the monorepo root):
+  #   docker compose -f infrastructure/docker/docker-compose.dev.yml \
+  #                  --profile inference up -d
+  #
+  # Wire SMR to them via .env (see .env.example "Production inference engines"):
+  #   SMR_V2_VLLM_ENABLED=true       SMR_V2_VLLM_BASE_URL=http://localhost:8000/v1
+  #   SMR_V2_LLAMA_CPP_ENABLED=true  SMR_V2_LLAMA_CPP_BASE_URL=http://localhost:8080
+  #
+  # Images are PINNED (no `latest`). vLLM + llama.cpp roll fast; bump to a build
+  # you have validated on your hardware (see docs/operations/inference/README.md).
+  # ==========================================================================
+
+  # vLLM — production primary chat/summarization engine (OpenAI wire, continuous
+  # batching, automatic prefix caching, native structured outputs, /metrics).
+  # Requires an NVIDIA GPU + the NVIDIA container runtime on the host.
+  vllm:
+    container_name: hope-vllm
+    image: vllm/vllm-openai:v0.11.0
+    profiles: ["inference"]
+    networks:
+      - hope-network
+    restart: unless-stopped
+    # vLLM needs a large /dev/shm for its NCCL/worker IPC.
+    ipc: host
+    ports:
+      - '${SMR_V2_VLLM_PORT:-8000}:8000'
+    environment:
+      # A gated model download needs a token; ungated models ignore it.
+      HF_TOKEN: ${HF_TOKEN:-}
+      HF_HOME: /data
+    command:
+      - "--model"
+      - "${VLLM_MODEL:-Qwen/Qwen3-8B}"
+      - "--served-model-name"
+      - "${VLLM_SERVED_MODEL_NAME:-${VLLM_MODEL:-Qwen/Qwen3-8B}}"
+      - "--max-model-len"
+      - "${VLLM_MAX_MODEL_LEN:-8192}"
+      - "--gpu-memory-utilization"
+      - "${VLLM_GPU_MEM_UTIL:-0.90}"
+    volumes:
+      - vllm-cache:/data
+    # First boot downloads weights, so the startup window is generous. The
+    # vLLM image ships python3 (but not curl), so probe /health via python.
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "python3 -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)\""
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 600s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: ["gpu"]
+
+  # llama.cpp server — production GGUF-tier engine (CPU/edge, small utility
+  # models, MiniCheck GGUF path). Serves the native /completion endpoint SMR's
+  # `llama-cpp` provider targets. Reads a PRE-STAGED GGUF from a host bind-mount
+  # (operator downloads it once — see the runbook); no weights are pulled here.
+  # `--slots` exposes /slots for per-slot occupancy visibility + healthcheck.
+  llama-cpp:
+    container_name: hope-llama-cpp
+    image: ghcr.io/ggml-org/llama.cpp:server-b9853
+    profiles: ["inference"]
+    networks:
+      - hope-network
+    restart: unless-stopped
+    ports:
+      - '${SMR_V2_LLAMA_CPP_PORT:-8080}:8080'
+    environment:
+      LLAMA_ARG_HOST: "0.0.0.0"
+      LLAMA_ARG_PORT: "8080"
+    command:
+      - "-m"
+      - "/models/${LLAMA_CPP_MODEL:-model.gguf}"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
+      - "-c"
+      - "${LLAMA_CPP_CTX_SIZE:-8192}"
+      # Expose /slots (per-slot state) for the healthcheck + ops visibility.
+      - "--slots"
+    volumes:
+      - ${LLAMA_CPP_MODELS_DIR:-./models/llama-cpp}:/models:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/slots > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  # TEI embeddings — production BAAI/bge-m3 embeddings (AD-4). Mirrors the
+  # hope-reranker TEI service but serves the embedding model on a separate port.
+  # Like the reranker, the TEI image is minimal (no shell/curl) → no exec
+  # healthcheck; readiness is observed via /health. On Apple Silicon set
+  # HOPE_TEI_EMBED_IMAGE=ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-1.9.
+  tei-embed:
+    container_name: hope-tei-embed
+    image: ${HOPE_TEI_EMBED_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-1.9}
+    profiles: ["inference"]
+    networks:
+      - hope-network
+    restart: unless-stopped
+    ports:
+      - '${HOPE_TEI_EMBED_PORT:-8871}:80'
+    environment:
+      MODEL_ID: ${HOPE_TEI_EMBED_MODEL:-BAAI/bge-m3}
+      HF_HOME: /data
+      MAX_CLIENT_BATCH_SIZE: "32"
+    command: ["--model-id", "${HOPE_TEI_EMBED_MODEL:-BAAI/bge-m3}"]
+    volumes:
+      - tei-embed-data:/data
 

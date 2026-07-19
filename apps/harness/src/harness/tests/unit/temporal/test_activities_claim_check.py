@@ -29,6 +29,7 @@ from harness.temporal.models import (
     ExtractEntitiesInput,
     GenerateInput,
     PersistDraftInput,
+    SegmentCitationRef,
 )
 
 _BUCKET = "harness-claim-check"
@@ -134,6 +135,29 @@ class TestGenerateOffloadsNote:
         )
         # generate resolved the offloaded prompt AND folded in the StrictCitations block.
         assert fake.kwargs["prompt"] == "BASE PROMPT\n\n[[kb:1]] chunk"
+
+    @pytest.mark.asyncio
+    async def test_folds_segment_citations_block_when_refs_provided(self, env, monkeypatch):
+        """TASK-519: generate folds a [[seg:<id>]] StrictCitations block when refs given."""
+        seg_id = "11111111-1111-1111-1111-111111111111"
+        fake = _FakeSmr("small")
+        monkeypatch.setattr(activities, "get_settings", lambda: _settings(min_bytes=100_000))
+        monkeypatch.setattr(activities, "_smr_client", lambda s: fake)
+
+        await env.run(
+            activities.generate,
+            GenerateInput(
+                prompt="BASE PROMPT",
+                segment_citations=[
+                    SegmentCitationRef(id=seg_id, speaker="CLINICIAN", t0_ms=0, t1_ms=500)
+                ],
+            ),
+        )
+        prompt = fake.kwargs["prompt"]
+        assert prompt.startswith("BASE PROMPT")
+        assert "[[seg:" in prompt
+        assert seg_id in prompt
+        assert "CLINICIAN" in prompt
 
 
 class TestConsumersResolveInlineOrRef:

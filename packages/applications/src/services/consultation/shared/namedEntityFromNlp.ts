@@ -23,6 +23,9 @@ export interface NlpNamedEntity {
   rxnorm_code?: string | null;
   icd_code?: string | null;
   loinc_code?: string | null;
+  // TASK-518 — negation/assertion polarity emitted by the NLP assertion pass
+  // (PRESENT|ABSENT|HISTORICAL|FAMILY|HYPOTHETICAL). Nullable; null ⇒ PRESENT.
+  assertion?: string | null;
   // Legacy / alternate fallbacks (defence-in-depth against contract drift)
   value?: string | null;
   type?: string | null;
@@ -59,5 +62,8 @@ export function namedEntityPropsFromNlp(entity: NlpNamedEntity, ctx: { tenantId:
     rxnormCode: entity.rxnorm_code ?? undefined,
     icdCode: entity.icd_code ?? undefined,
     loincCode: entity.loinc_code ?? undefined,
+    // TASK-518 — carry the assertion polarity onto the column (undefined when
+    // absent so the factory nulls it; a null value is read as PRESENT).
+    assertion: entity.assertion ?? undefined,
   };
 }

@@ -1,0 +1,122 @@
+/**
+ * Wire types for the global-admin Agentic Policy surface (TASK-512, tier
+ * 10-19). Shapes mirror the gateway DTOs in @arcaai/applications
+ * (HarnessPolicyResponse / UpdateHarnessPolicyRequest, LiveDocEngineConfig*,
+ * SettingCatalog*) — the console cannot import that server package, so the
+ * fields are re-declared here once, matching the gateway. Features never
+ * import one another (rule 13), so these deliberately duplicate the
+ * harness-policy feature's overlapping types.
+ */
+
+/** Where the effective policy row resolved from (HarnessPolicySource). */
+export type HarnessPolicySource = 'tenant' | 'system-default' | 'code-default';
+
+/**
+ * GET /admin/harness/policy/global response — the SYSTEM-tenant GLOBAL-DEFAULT
+ * agentic loop policy. `version` is the OCC token the ETag interceptor renders
+ * as `ETag: "<version>"`. The TASK-511 agentic loop knobs are nullable
+ * overrides (null = harness env/code default) and may be absent on older rows.
+ */
+export interface AgenticPolicy {
+    id: string | null;
+    tenantId: string;
+    source: HarnessPolicySource;
+    entityFaithfulnessThreshold: number;
+    coverageThreshold: number;
+    citationPresenceThreshold: number;
+    numericDoseThreshold: number;
+    groundednessThreshold: number;
+    safetyEnabled: boolean;
+    phiEnabled: boolean;
+    phiFailClosed: boolean;
+    safetyProvider: string;
+    safetyModel: string;
+    smrProvider: string | null;
+    smrModel: string | null;
+    maxRegen: number;
+    gateSlaSeconds: number;
+    gateEscalationSeconds: number;
+    toolAllowlist: string[] | null;
+    // TASK-511 agentic loop knobs (nullable overrides; may be undefined on the wire).
+    optimisticDeliveryEnabled?: boolean | null;
+    atomicFactEnabled?: boolean | null;
+    retrievalEnabled?: boolean | null;
+    warmStartEnabled?: boolean | null;
+    nerPriorsEnabled?: boolean | null;
+    maxEditReruns?: number | null;
+    regenFeedbackEnabled?: boolean | null;
+    updatedAt: string | null;
+    version: number;
+}
+
+/**
+ * PATCH body (UpdateHarnessPolicyRequest): sparse — omit = unchanged; `null`
+ * clears an override back to the harness env/code default. `reason` rides on
+ * the WORM HarnessPolicyChange row. `expectedVersion` is folded from If-Match
+ * server-side; the client sends both.
+ */
+export interface UpdateAgenticPolicyRequest {
+    entityFaithfulnessThreshold?: number;
+    coverageThreshold?: number;
+    citationPresenceThreshold?: number;
+    numericDoseThreshold?: number;
+    groundednessThreshold?: number;
+    safetyEnabled?: boolean;
+    phiEnabled?: boolean;
+    phiFailClosed?: boolean;
+    safetyProvider?: string;
+    safetyModel?: string;
+    smrProvider?: string | null;
+    smrModel?: string | null;
+    maxRegen?: number;
+    gateSlaSeconds?: number;
+    gateEscalationSeconds?: number;
+    toolAllowlist?: string[] | null;
+    optimisticDeliveryEnabled?: boolean | null;
+    atomicFactEnabled?: boolean | null;
+    retrievalEnabled?: boolean | null;
+    warmStartEnabled?: boolean | null;
+    nerPriorsEnabled?: boolean | null;
+    maxEditReruns?: number | null;
+    regenFeedbackEnabled?: boolean | null;
+    reason?: string;
+    expectedVersion?: number;
+}
+
+/** Where the live-doc engine enabled flag resolved from. */
+export type LiveDocEngineConfigSource = 'env-default' | 'redis-override';
+
+/** GET/PATCH /admin/harness/live/config — the engine kill-switch (NOT versioned). */
+export interface LiveDocEngineConfig {
+    enabled: boolean;
+    envDefault: boolean;
+    source: LiveDocEngineConfigSource;
+    updatedAt?: string;
+    updatedBy?: string;
+}
+
+/** PATCH body (UpdateLiveDocEngineConfigRequest) — plain PATCH, no If-Match. */
+export interface UpdateLiveDocEngineConfigRequest {
+    enabled: boolean;
+    reason?: string;
+}
+
+/** One entry of the settings catalog (SettingCatalogItemResponse) — metadata only. */
+export interface SettingCatalogItem {
+    key: string;
+    tier: string;
+    dataType: string;
+    sensitivity: string;
+    maxScope: string;
+    editableBy: string;
+    category: string;
+    globalOnly?: boolean;
+    label?: string;
+    description?: string;
+}
+
+/** GET /admin/settings/catalog envelope (SettingCatalogResponse). */
+export interface SettingCatalog {
+    items: SettingCatalogItem[];
+    categories: string[];
+}

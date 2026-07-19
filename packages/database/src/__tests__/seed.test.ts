@@ -1262,8 +1262,20 @@ describe('STT Seed Data', () => {
             it('should include production pipeline', () => {
                 const production = DEFAULT_ASR_PIPELINES.find((p) => p.slug === 'production-whisper-large-v3');
                 expect(production).toBeDefined();
-                expect(production?.tags).toContain('production');
-                expect(production?.tags).toContain('recommended');
+                expect(production?.tags).toContain('high-quality');
+            });
+
+            // TASK-507 — production-whisper-large-v3-turbo-gguf is the new
+            // platform default (matrix #2); it carries the 'production'/
+            // 'recommended' tags production-whisper-large-v3 used to carry.
+            it('should include the new default GGUF pipeline', () => {
+                const ggufDefault = DEFAULT_ASR_PIPELINES.find(
+                    (p) => p.slug === 'production-whisper-large-v3-turbo-gguf',
+                );
+                expect(ggufDefault).toBeDefined();
+                expect(ggufDefault?.isDefault).toBe(true);
+                expect(ggufDefault?.tags).toContain('production');
+                expect(ggufDefault?.tags).toContain('recommended');
             });
 
             // TASK-485 — the DEFAULT (isDefault) pipeline must also carry the
@@ -1543,23 +1555,23 @@ describe('ASR Pipeline isDefault invariant (TASK-331 doc-03 Q2)', () => {
         });
     });
 
-    it('should make the resolvable production-whisper-large-v3 pipeline (TASK-361) the system isDefault one', () => {
-        // TASK-361/505 — the SYSTEM default is production-whisper-large-v3
-        // (id …0001); the CT2 int8 pipeline (id …0008) is registered (resolvable
-        // via deepdml since TASK-505) but not the seeded default.
+    it('should make the whisper.cpp GGUF pipeline (TASK-507) the system isDefault one', () => {
+        // TASK-507 — the SYSTEM default is production-whisper-large-v3-turbo-gguf
+        // (id …0014); production-whisper-large-v3 (id …0001, the former TASK-361
+        // default) is registered but no longer the seeded default.
         const systemDefault = DEFAULT_ASR_PIPELINES.find(
-            (p) => p.id === '81000000-0000-0000-0001-000000000001'
+            (p) => p.id === '81000000-0000-0000-0001-000000000014'
         );
         expect(systemDefault).toBeDefined();
-        expect(systemDefault?.slug).toBe('production-whisper-large-v3');
+        expect(systemDefault?.slug).toBe('production-whisper-large-v3-turbo-gguf');
         expect(systemDefault?.isDefault).toBe(true);
 
-        // The CT2 pipeline is not a seeded default, so there is exactly one.
-        const ct2 = DEFAULT_ASR_PIPELINES.find(
-            (p) => p.id === '81000000-0000-0000-0001-000000000008'
+        // The old default is not a seeded default anymore, so there is exactly one.
+        const oldDefault = DEFAULT_ASR_PIPELINES.find(
+            (p) => p.id === '81000000-0000-0000-0001-000000000001'
         );
-        expect(ct2?.slug).toBe('production-faster-whisper-turbo-int8');
-        expect(ct2?.isDefault).toBe(false);
+        expect(oldDefault?.slug).toBe('production-whisper-large-v3');
+        expect(oldDefault?.isDefault).toBe(false);
     });
 
     it('should give each customer tenant exactly one isDefault pipeline', () => {
@@ -1631,16 +1643,16 @@ describe('TASK-506 — Guardrail default moved off GlobalSetting (AiTaskDefault 
     });
 });
 
-describe('TASK-356 Phase 2 / TASK-361 — STT default (CT2 registered; whisper-large-v3 effective default)', () => {
+describe('TASK-356 Phase 2 / TASK-507 — STT default (CT2 registered; whisper.cpp GGUF effective default)', () => {
     const CT2_MODEL_SLUG = 'faster-whisper-large-v3-turbo-int8';
     const CT2_PIPELINE_SLUG = 'production-faster-whisper-turbo-int8';
-    const DEFAULT_PIPELINE_SLUG = 'production-whisper-large-v3';
+    const DEFAULT_PIPELINE_SLUG = 'production-whisper-large-v3-turbo-gguf';
 
     it('mirrors the CTRANSLATE2 format in the seed enum mirror', () => {
         expect(AiModelFormat.CTRANSLATE2).toBe('CTRANSLATE2');
     });
 
-    it('registers the CT2 int8 turbo AiModel under SYSTEM with the resolvable deepdml sourceUri', () => {
+    it('registers the CT2 turbo AiModel under SYSTEM with the resolvable deepdml sourceUri', () => {
         const ct2 = DEFAULT_AI_MODELS.find((m) => m.slug === CT2_MODEL_SLUG);
         expect(ct2).toBeDefined();
         expect(ct2?.tenantId).toBe(SYSTEM_TENANT_ID);
@@ -1648,14 +1660,16 @@ describe('TASK-356 Phase 2 / TASK-361 — STT default (CT2 registered; whisper-l
         expect(ct2?.taskType).toBe(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION);
         expect(ct2?.modelType).toBe(ModelType.QUANTIZED_MODEL);
         expect(ct2?.format).toBe(AiModelFormat.FASTER_WHISPER);
-        expect(ct2?.computeType).toBe('int8');
+        // TASK-507 — precision bumped int8 → float16 (CTranslate2's spelling;
+        // NOT the ggml-style "f16" abbreviation — see resolve_ct2_compute_type).
+        expect(ct2?.computeType).toBe('float16');
         // TASK-505 (D-4 resolved): the CT2 artifact now points at the real
         // deepdml conversion (owner decision D3, 2026-07-16) — resolvable at
         // runtime via FasterWhisperLoader.
         expect(ct2?.sourceUri).toBe('deepdml/faster-whisper-large-v3-turbo-ct2');
     });
 
-    it('registers the CT2 pipeline as NOT default and keeps production-whisper-large-v3 as the SYSTEM default', () => {
+    it('registers the CT2 pipeline as NOT default and keeps the whisper.cpp GGUF pipeline as the SYSTEM default', () => {
         const ct2 = DEFAULT_ASR_PIPELINES.find((p) => p.slug === CT2_PIPELINE_SLUG);
         expect(ct2).toBeDefined();
         expect(ct2?.isDefault).toBe(false);
@@ -1663,7 +1677,7 @@ describe('TASK-356 Phase 2 / TASK-361 — STT default (CT2 registered; whisper-l
         expect(production?.isDefault).toBe(true);
     });
 
-    it('makes production-whisper-large-v3 the isDefault one for SYSTEM, Global, and every customer tenant', () => {
+    it('makes the whisper.cpp GGUF pipeline the isDefault one for SYSTEM, Global, and every customer tenant', () => {
         const groups = [DEFAULT_ASR_PIPELINES, GLOBAL_TENANT_ASR_PIPELINES, CUSTOMER_TENANT_ASR_PIPELINES];
         groups.forEach((group) => {
             const tenantIds = new Set(group.map((p) => p.tenantId));
@@ -2184,8 +2198,18 @@ describe('LLM Models Seed Data (TASK-506 consolidated matrix)', () => {
             expect(azureModels.length).toBe(1);
         });
 
-        it('should be exactly 9 LLM rows (the owner-approved matrix)', () => {
-            expect(llmModels.length).toBe(9);
+        it('should include exactly 1 vLLM model (TASK-515 self-host tier)', () => {
+            const vllmModels = llmModels.filter((m) => m.tags.includes('vllm'));
+            expect(vllmModels.length).toBe(1);
+        });
+
+        it('should include exactly 1 llama.cpp model (TASK-515 self-host tier)', () => {
+            const llamaCppModels = llmModels.filter((m) => m.tags.includes('llama-cpp'));
+            expect(llamaCppModels.length).toBe(1);
+        });
+
+        it('should be exactly 11 LLM rows (9 owner-approved matrix + 2 TASK-515 self-host)', () => {
+            expect(llmModels.length).toBe(11);
         });
     });
 
@@ -2210,7 +2234,7 @@ describe('LLM Models Seed Data (TASK-506 consolidated matrix)', () => {
         it('should have the llm tag + a canonical provider on all LLM models', () => {
             llmModels.forEach((model) => {
                 expect(model.tags).toContain('llm');
-                expect(['ollama', 'lm-studio', 'azure']).toContain(
+                expect(['ollama', 'lm-studio', 'azure', 'vllm', 'llama-cpp']).toContain(
                     (model as { provider?: string }).provider,
                 );
             });
@@ -2744,9 +2768,16 @@ function getYamlBlock(yaml: string, keyPath: string[]): string | null {
 }
 
 describe('Dual Capture Pipeline Config (TASK-331 doc-06 F2)', () => {
-    const defaultPipeline = DEFAULT_ASR_PIPELINES.find((p) => p.isDefault === true);
+    // TASK-507 — dual_capture lives on the "Full Features" pipeline
+    // (production-whisper-large-v3, matrix #1), which carries the full
+    // pre/post-processing stages; it is no longer the tenant default (the new
+    // default, matrix #2, is a no-pre/no-post pipeline with nothing to dual-
+    // capture), so this suite targets it by slug rather than by isDefault.
+    const defaultPipeline = DEFAULT_ASR_PIPELINES.find(
+        (p) => p.slug === 'production-whisper-large-v3',
+    );
 
-    it('should expose a default pipeline (production-whisper-large-v3, TASK-361) whose config drives dual capture', () => {
+    it('should expose the full-features pipeline (production-whisper-large-v3) whose config drives dual capture', () => {
         expect(defaultPipeline).toBeDefined();
         expect(defaultPipeline?.slug).toBe('production-whisper-large-v3');
     });

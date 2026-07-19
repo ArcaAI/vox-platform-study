@@ -197,6 +197,8 @@ class TestManifestContents:
         # TASK-505 P3.
         "parakeet_cpp",
         "azure_foundry",
+        # TASK-507.
+        "whisper_cpp",
     }
 
     def test_asr_engines_registered(self):

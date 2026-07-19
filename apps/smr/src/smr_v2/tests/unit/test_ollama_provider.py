@@ -55,10 +55,12 @@ class TestOllamaGenerate:
         mock_response.raise_for_status = MagicMock()
         mock_http_client.post.return_value = mock_response
 
+        from smr_v2.models.stats import GenerationStats
+
         provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
-        content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hi"))
+        content, _reasoning, stats = await provider.generate(GenerateRequest(prompt="hi"))
         assert content == "Hello there!"
-        assert isinstance(usage, dict)
+        assert isinstance(stats, GenerationStats)
 
     @pytest.mark.asyncio
     async def test_generate_uses_correct_endpoint(self, ollama_config, mock_http_client):

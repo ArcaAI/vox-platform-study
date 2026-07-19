@@ -11,7 +11,7 @@ authors = [
 ]
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 keywords = ["text-to-speech", "tts", "fastapi", "multi-provider", "malayalam"]
 classifiers = [
     "Development Status :: 3 - Alpha",

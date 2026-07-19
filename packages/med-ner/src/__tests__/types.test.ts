@@ -105,7 +105,11 @@ describe('MODEL_MAP', () => {
 
 describe('DEFAULT_MED_NER_OPTIONS', () => {
   it('should have correct default values', () => {
-    expect(DEFAULT_MED_NER_OPTIONS.model).toBe('default');
+    // TASK-508 Phase 0 (0.8) / SOTA gap review D7 — the default preset must be
+    // the medical model ('clinical'), not the generic Xenova/bert-base-NER
+    // ('default' preset is still selectable explicitly, just no longer the
+    // fallback when no model is specified).
+    expect(DEFAULT_MED_NER_OPTIONS.model).toBe('clinical');
     expect(DEFAULT_MED_NER_OPTIONS.threshold).toBe(0.5);
     expect(DEFAULT_MED_NER_OPTIONS.mergeAdjacent).toBe(true);
     expect(DEFAULT_MED_NER_OPTIONS.mergeOverlapping).toBe(true);

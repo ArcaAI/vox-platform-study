@@ -10,7 +10,7 @@
 // (`'all'`, the CASL manage-everything subject) and the descriptor is flagged
 // `globalOnly`. `nlp.*` keys stay tenant-editable via `manage:AiTaskDefault`.
 
-import { AI_TASK_KEYS, AiTaskKey, GLOBAL_ADMIN_ONLY_TASK_PREFIX } from '../../ai-task-default/constants';
+import { AI_TASK_KEYS, AiTaskKey, GLOBAL_ADMIN_ONLY_TASK_PREFIXES } from '../../ai-task-default/constants';
 import { SettingDescriptor } from '../registry.types';
 
 const META: Record<AiTaskKey, { label: string; description: string }> = {
@@ -26,10 +26,19 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
     label: 'Medical classification model',
     description: 'Default text-classification model used for diagnosis suggestions.',
   },
+  // TASK-511 (Phase 3A) — SMR generation routing (global admins only).
+  'smr.live': {
+    label: 'SMR live-summary model',
+    description: 'Default text-generation model for the live-documentation delta summariser (global admins only).',
+  },
+  'smr.finalize': {
+    label: 'SMR final-summary model',
+    description: 'Default text-generation model for the final/comprehensive summary generator (global admins only).',
+  },
 };
 
 export const MODEL_DEFAULT_SETTINGS: SettingDescriptor[] = AI_TASK_KEYS.map<SettingDescriptor>((taskKey) => {
-  const globalAdminOnly = taskKey.startsWith(GLOBAL_ADMIN_ONLY_TASK_PREFIX);
+  const globalAdminOnly = GLOBAL_ADMIN_ONLY_TASK_PREFIXES.some((p) => taskKey.startsWith(p));
   return {
     key: `models.${taskKey}`,
     tier: 'db-config',

@@ -1,0 +1,120 @@
+// =============================================================================
+// TASK-510 — Agentic SOTA Program, Phase 2A: Ordered session trajectory.
+//
+// AgentTrajectoryStep is the ordered, typed, per-session step stream (owner
+// ask 2): every AI working session (live-doc session, harness run, summary
+// job, eval run) emits an ordered sequence of typed steps — LLM_CALL /
+// TOOL_CALL / SENSOR / RETRIEVAL / GUARDRAIL / THINKING / SIGNAL / GATE /
+// PHASE — correlated to the OTel trace. Stats-first / payload-by-reference:
+// LLM_CALL steps embed the AD-1 GenerationStats in `stats`, while any
+// prompt/note/thinking payload is stored ONLY as a claim-check ref / encrypted
+// pointer in `payloadRef` — never plaintext clinical content in this ops table.
+//
+// Posture (deliberate, differs from the standard clinical models):
+//   - TENANT-SCOPED (tenantId injected by the tenant-scope $extends — see
+//     TENANT_SCOPED_MODELS in packages/database/src/extensions/tenant-scope.ts).
+//   - NO soft-delete lifecycle: this is high-volume OPERATIONAL TELEMETRY with
+//     HARD RETENTION (a nightly prune job hard-deletes aged rows) rather than
+//     the ENABLED/DELETED soft-delete used by clinical data. It is therefore
+//     listed in MODELS_WITHOUT_SOFT_DELETE (packages/database/src/client.ts)
+//     and, mirroring the sibling telemetry tables there (SummaryMeta /
+//     NamedEntity / HarnessAuditEvent), it carries NO `resourceStatus` column.
+//   - NO sys-events on write (telemetry exemption — the trajectory is itself
+//     the event stream; emitting a sys-event per step would be circular).
+//   - `_version` (OCC) + `_metadata` + standard audit fields are kept per the
+//     house convention so the row still round-trips through the shared
+//     BaseTenantEntity / Repository machinery.
+// =============================================================================
+
+enum AgentSessionKind {
+  LIVE_DOC
+  HARNESS_DOC
+  SUMMARY_JOB
+  EVAL_RUN
+
+  @@schema("core")
+}
+
+enum AgentStepType {
+  LLM_CALL
+  TOOL_CALL
+  SENSOR
+  RETRIEVAL
+  GUARDRAIL
+  THINKING
+  SIGNAL
+  GATE
+  PHASE
+
+  @@schema("core")
+}
+
+enum AgentStepStatus {
+  STARTED
+  OK
+  ERROR
+  SKIPPED
+  TIMEOUT
+
+  @@schema("core")
+}
+
+model AgentTrajectoryStep {
+  // Meta fields (BaseEntity pattern) — `_version` is the OCC token.
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // Multi-tenant
+  tenantId String
+
+  // Optional link to the consultation this session documents (null for eval
+  // runs / non-consultation sessions).
+  consultationId String?
+
+  // Session identity + ordering.
+  sessionKind AgentSessionKind
+  sessionId   String // live session id | temporal workflowId | bullmq jobId | eval run id
+  // Temporal runId when applicable; EMPTY-STRING SENTINEL ("") for non-Temporal
+  // sessions (LIVE_DOC / SUMMARY_JOB / EVAL_RUN). NOT nullable on purpose: a
+  // NULL runId would make the composite unique below non-idempotent, because
+  // Postgres treats each NULL as distinct — two retried batches with the same
+  // (tenantId, sessionId, seq) and runId=NULL would NOT conflict, defeating the
+  // `skipDuplicates`/ON CONFLICT DO NOTHING ingest contract (§2B). "" makes the
+  // unique behave uniformly across all four session kinds.
+  runId       String @default("")
+  seq         Int // per-(sessionId,runId) monotonic, emitter-assigned
+
+  // Step identity + lifecycle.
+  stepType AgentStepType
+  name     String // e.g. "generate", "sensor:groundedness", "mcp:terminology.validate"
+  status   AgentStepStatus
+
+  startedAt  DateTime
+  endedAt    DateTime?
+  durationMs Int?
+
+  // Stats-first / payload-by-reference (PHI posture).
+  stats      Json? @db.JsonB // AD-1 GenerationStats for LLM_CALL steps
+  payloadRef Json? @db.JsonB // claim-check ref / encrypted pointer — never plaintext content
+
+  errorCode     String?
+  correlationId String? // OTel trace/span correlation
+
+  // Audit fields (standard). NOTE: no resource-status fields — this is
+  // append-only ops telemetry pruned by retention, not soft-deleted (see the
+  // header + MODELS_WITHOUT_SOFT_DELETE).
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One row per (tenant, session, run, seq) — idempotent step ingest. `runId`
+  // is a non-null "" sentinel (see above) so this holds for ALL session kinds,
+  // not just Temporal (HARNESS_DOC) sessions.
+  @@unique([tenantId, sessionId, runId, seq], name: "AgentTrajectoryStep_session_seq_unique")
+  // Consultation timeline reads + retention-by-age prune scans.
+  @@index([tenantId, consultationId], name: "AgentTrajectoryStep_tenant_consultation_idx")
+  @@index([tenantId, createdAt], name: "AgentTrajectoryStep_tenant_createdAt_idx")
+  @@schema("core")
+}

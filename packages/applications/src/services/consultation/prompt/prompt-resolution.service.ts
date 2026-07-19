@@ -157,20 +157,30 @@ export class PromptResolutionService {
     }
 
     // --- promptId ---
-    let promptId: string | null = null;
+    let departmentPromptId: string | null = null;
     if (department) {
       switch (params.promptType) {
         case 'pre-summary':
-          promptId = department.preSummaryPromptId ?? null;
+          departmentPromptId = department.preSummaryPromptId ?? null;
           break;
         case 'revisit':
-          promptId = department.revisitPromptId ?? null;
+          departmentPromptId = department.revisitPromptId ?? null;
           break;
         case 'new-patient':
         default:
-          promptId = department.newPatientPromptId ?? null;
+          departmentPromptId = department.newPatientPromptId ?? null;
           break;
       }
+    }
+
+    // TASK-511 (Phase 3A) — prompt governance: a department template is only
+    // resolvable for clinical generation flows once it is APPROVED. A not-yet-
+    // approved (DRAFT/PUBLISHED) department template is SKIPPED so resolution
+    // falls through to the APPROVED system default (fallback chain otherwise
+    // unchanged). The system default (CATCHALL_SOAP) is seeded APPROVED.
+    let promptId: string | null = null;
+    if (departmentPromptId && (await this.isApprovedTemplate(departmentPromptId))) {
+      promptId = departmentPromptId;
     }
     if (!promptId) {
       promptId = SYSTEM_DEFAULTS.promptId;
@@ -218,15 +228,18 @@ export class PromptResolutionService {
   // =========================================================================
 
   /**
-   * Tier-0: verify the doctor's preferred prompt template exists.
-   * Returns the template id when it resolves, else null (falls through to lower tiers).
+   * Tier-0: verify the doctor's preferred prompt template exists AND is APPROVED.
+   * TASK-511 (Phase 3A) — an unapproved (DRAFT/PUBLISHED) preferred template is
+   * skipped (returns null) so resolution falls through to the department/default
+   * tiers. Returns the template id only when it resolves to an APPROVED template.
    */
   private async resolvePreferredPromptId(preferredPromptTemplateId?: string | null): Promise<string | null> {
     if (!preferredPromptTemplateId) return null;
 
     try {
       const template = await this.promptTemplateRepository.findById(preferredPromptTemplateId);
-      return template?.id ?? null;
+      if (template && template.status === 'APPROVED') return template.id;
+      return null;
     } catch (error) {
       this.logger.warn({
         message: 'Failed to resolve preferred prompt template — skipping preferred tier',
@@ -234,6 +247,25 @@ export class PromptResolutionService {
         error: error instanceof Error ? error.message : String(error),
       });
       return null;
+    }
+  }
+
+  /**
+   * TASK-511 (Phase 3A) — a template id is resolvable for a clinical flow only
+   * when it maps to an APPROVED template. Missing / unapproved / lookup-error →
+   * false (the caller then falls through to the APPROVED system default).
+   */
+  private async isApprovedTemplate(promptTemplateId: string): Promise<boolean> {
+    try {
+      const template = await this.promptTemplateRepository.findById(promptTemplateId);
+      return template?.status === 'APPROVED';
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to verify prompt-template approval — treating as unapproved',
+        promptTemplateId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
     }
   }
 

@@ -55,10 +55,13 @@ KEY_PROVIDER = "provider"
 KEY_MODEL = "model"
 KEY_AZURE_DEPLOYMENT = "azure-deployment"
 
-# Provider switch value (lm-studio|ollama|azure|bedrock) -> Settings sub-config attr.
+# Provider switch value -> Settings sub-config attr. TASK-515 adds the
+# production self-host engines vllm / llama-cpp (OpenAI-compatible wire).
 _PROVIDER_TO_ATTR = {
     "lm-studio": "openai_compat",
     "ollama": "ollama",
+    "vllm": "vllm",
+    "llama-cpp": "llama_cpp",
     "azure": "azure",
     "bedrock": "bedrock",
 }

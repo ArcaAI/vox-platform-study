@@ -134,12 +134,20 @@ def _azure():
     from smr_v2.core.config import AzureOpenAIConfig
     from smr_v2.providers.azure_openai import AzureOpenAIProvider
 
+    # deployment_name explicitly forced empty (not merely omitted — some test
+    # environments leak SMR_V2_AZURE_DEPLOYMENT_NAME, e.g. the e2e conftest's
+    # module-level os.environ mutation from the monorepo-root .env) so this
+    # suite reliably pins the D-7 "no silent default_model substitution"
+    # contract, which is orthogonal to deployment_name's own precedence
+    # contract (TASK-508 D6, covered by TestAzureDeploymentName in
+    # test_azure_provider.py) — when set, deployment_name is *meant* to
+    # override request.model.
     return AzureOpenAIProvider(
         AzureOpenAIConfig(
             api_key="k",
             endpoint="https://test.openai.azure.com",
-            deployment_name="gpt-4",
             default_model="azure-default",
+            deployment_name="",
         )
     )
 

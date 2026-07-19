@@ -55,6 +55,7 @@ AiModelFormatType = ENUM(
     "AZURE_FOUNDRY",
     "PARAKEET_CPP",
     "CLOUD_API",
+    "WHISPER_CPP",
     name="AiModelFormat",
     schema="core",
     create_type=False,

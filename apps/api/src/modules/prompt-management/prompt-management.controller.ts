@@ -5,6 +5,7 @@ import {
   CreatePromptTemplateRequest,
   UpdatePromptTemplateRequest,
   AssignDepartmentPromptRequest,
+  ApprovePromptTemplateRequest,
   TestPromptTemplateRequest,
   PromptTestResultResponse,
   PromptUsageAnalyticsResponse,
@@ -307,6 +308,57 @@ export class PromptManagementController {
     const effectiveRequest: TestPromptTemplateRequest =
       expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
     return this.promptService.testPromptTemplate(id, effectiveRequest);
+  }
+
+  // ─── TASK-511 (Phase 3A): prompt governance approval ─────────────────
+  //
+  // Flips the template to `status = APPROVED` — the gate `prompt-resolution`
+  // requires for clinical flows — pins a `PromptVersion` snapshot, and writes a
+  // WORM-style change row via the existing sys-event. GLOBAL_ADMIN only: the
+  // real 403 is raised in the service (`isSuperAdmin` privilege check), mirroring
+  // the `guardrail.*`/`@CanManage` precedent (privilege on a manageable resource,
+  // not an existence probe — cross-tenant is still 404 via `assertOwnedByTenant`).
+  //
+  // Optimistic concurrency (parity with `update`/`testTemplate`): the `If-Match`
+  // header is REQUIRED and folds over any body-supplied `expectedVersion`; the
+  // `@RequiresIfMatch()` param decorator fires 428 when it is missing, and a
+  // version drift surfaces as 412 from the service CAS write.
+  @Post(':id/approve')
+  @HttpCode(200)
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Approve a prompt template for clinical use (TASK-511, GLOBAL_ADMIN only)',
+    description:
+      'Sets `status = APPROVED` (required by prompt resolution for clinical ' +
+      'flows), pins a PromptVersion snapshot, and records a WORM-style audit ' +
+      'change row. GLOBAL_ADMIN-only privilege → 403 otherwise. Optimistic ' +
+      'concurrency: `If-Match` REQUIRED (folds over body `expectedVersion`); ' +
+      'missing header → 428, version drift → 412. Idempotent: approving an ' +
+      'already-APPROVED template returns the current row.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the row version the client read (e.g. `"7"`).',
+    required: true,
+    example: '"7"',
+  })
+  @ApiParam({ name: 'id', description: 'Prompt template ID', type: String })
+  @ApiResponse({ status: 200, description: 'Approved (or already-approved) template', type: PromptTemplateResponse })
+  @ApiResponse({ status: 403, description: 'Forbidden — prompt approval is a GLOBAL_ADMIN-only privilege.' })
+  @ApiResponse({ status: 404, description: 'Template not found (or cross-tenant).' })
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  async approve(
+    @Param('id') id: string,
+    @Body() request: ApprovePromptTemplateRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise<PromptTemplateResponse> {
+    // Header takes precedence over body when both are present (mirrors
+    // `update`/`testTemplate`); on this `@RequiresIfMatch()` route the param
+    // decorator already fired 428 if the header was missing.
+    const effectiveRequest: ApprovePromptTemplateRequest =
+      expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
+    return this.promptService.approveTemplate(id, effectiveRequest);
   }
 
   @ApiEndpoint({

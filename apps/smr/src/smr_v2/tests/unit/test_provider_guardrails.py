@@ -121,7 +121,7 @@ class TestBedrockGuardrailIntervened:
             provider = BedrockProvider(config=bedrock_config_with_guardrail)
 
         with patch("smr_v2.providers.bedrock.logger") as mock_logger:
-            content, _reasoning, usage = await provider.generate(
+            content, _reasoning, stats = await provider.generate(
                 GenerateRequest(prompt="bad prompt", provider="bedrock")
             )
 
@@ -129,8 +129,12 @@ class TestBedrockGuardrailIntervened:
             call_args = mock_logger.warning.call_args
             assert "guardrail_intervened" in call_args[0][0]
 
+        from smr_v2.models.stats import GenerationStats
+
         assert isinstance(content, str)
-        assert isinstance(usage, dict)
+        assert isinstance(stats, GenerationStats)
+        # AD-1: the native ``guardrail_intervened`` maps to content_filter.
+        assert stats.stop_reason == "content_filter"
 
 
 # ===========================================================================

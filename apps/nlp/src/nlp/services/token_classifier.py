@@ -10,6 +10,7 @@ from nlp.core.logging import get_logger
 from nlp.core.metrics import MODEL_MEDICAL_NER, track_model_inference
 from nlp.schemas.classification import TokenClassificationRequest, TokenClassificationResponse
 from nlp.schemas.common import Entity, TextPosition
+from nlp.services.assertion import AssertionModel, NegExAssertionClassifier
 from nlp.services.ontology_linker import OntologyLinker
 
 logger = get_logger(__name__)
@@ -47,6 +48,7 @@ class TransformerTokenClassifier(TokenClassifier):
         configs: TokenClassificationConfig | None = None,
         linker: OntologyLinker | None = None,
         linker_config: OntologyLinkerConfig | None = None,
+        assertion_classifier: AssertionModel | None = None,
     ):
         if configs is None:
             configs = TokenClassificationConfig()
@@ -61,6 +63,10 @@ class TransformerTokenClassifier(TokenClassifier):
         # post-`_to_entities` in `process()` to populate the entity code fields.
         self.linker = linker if linker is not None else OntologyLinker()
         self.linker_config = linker_config if linker_config is not None else OntologyLinkerConfig()
+        # TASK-518 — deterministic ConText/NegEx assertion classifier. Runs after
+        # linking to label each span's polarity (PRESENT/ABSENT/…). The injected
+        # AssertionModel is the model-swap seam for a future learned model.
+        self.assertion_classifier = assertion_classifier if assertion_classifier is not None else NegExAssertionClassifier()
 
     async def initialize(self) -> None:
         """Load transformer token classification model"""
@@ -79,7 +85,9 @@ class TransformerTokenClassifier(TokenClassifier):
                 "token-classification",
                 model=self.model,
                 tokenizer=self.tokenizer,
-                device=0 if torch.cuda.is_available() else -1,
+                # TASK-508 D6: configs.use_gpu (default True) now gates GPU use;
+                # default preserves today's auto-detect-when-available behavior.
+                device=0 if (self.configs.use_gpu and torch.cuda.is_available()) else -1,
             )
 
             self.label_mapping = self.model.config.id2label
@@ -126,6 +134,10 @@ class TransformerTokenClassifier(TokenClassifier):
             # TASK-476 C1 — resolve ontology codes for each recognized span so the
             # NLP service is the authoritative producer of CODED entities.
             entities = self._link_entities(entities)
+            # TASK-518 — label each span's assertion polarity (negation/family/
+            # historical/hypothetical) over the request text. Config-gated.
+            if self.configs.assertion_enabled and entities:
+                entities = self.assertion_classifier.classify(request.text, entities)
 
             return TokenClassificationResponse(
                 # tokens=tokens,

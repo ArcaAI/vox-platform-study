@@ -1,3 +1,4 @@
+export * from './AgentTrajectoryStepRepository';
 export * from './AiModelRepository';
 export * from './AiTaskDefaultRepository';
 export * from './ApiKeyRepository';
@@ -59,6 +60,7 @@ export * from './KnowledgeDocumentRepository';
 // findByIdWithDecryptedValue. Importing here ensures the augmentation
 // runs at module load (no separate import needed in consumer code).
 export * from './GlobalSettingRepository.encryption';
+export * from './McpServerRepository';
 export * from './MediaRepository';
 export * from './NamedEntityRepository';
 // TASK-369 Phase 3C — sibling that patches NamedEntityRepository.prototype.
@@ -97,6 +99,7 @@ export * from './TenantTtsProviderCredentialRepository';
 export * from './TenantRepository';
 export * from './TenantUsageMeterRepository';
 export * from './TranscriptionJobRepository';
+export * from './TranscriptSegmentRepository';
 // TASK-369 Phase 3C — sibling that patches TranscriptionJobRepository.prototype.
 export * from './TranscriptionJobRepository.encryption';
 export * from './UserDepartmentRepository';

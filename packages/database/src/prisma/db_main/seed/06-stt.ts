@@ -85,19 +85,20 @@ export const DEFAULT_AI_MODELS: AiModelSeed[] = [
  * Models are referenced by slug (from AiModel table)
  */
 const PIPELINE_CONFIGS = {
-    // High-quality production pipeline (v1.1 — safetensor, MPS/CUDA/CPU auto)
+    // High-quality production pipeline (v2.0 — whisper.cpp GGUF, TASK-507)
     production: `version: "2.0"
 
-# TASK-505 matrix #1 — [whisper-large-v3-turbo] Full features.
-# All stages on: normalize/denoise(dual-path)/resample/VAD/diar-FE,
-# ASR + 2-spk diarization + LocalAgreement-2 stabilizer, full post.
+# TASK-507 matrix #1 — [whisper-large-v3-turbo gguf] Full features.
+# All stages on: normalize/denoise(dual-path, DeepFilterNet3)/resample/VAD/diar-FE,
+# whisper.cpp GGUF ASR + 2-spk diarization + LocalAgreement-2 stabilizer, full post.
+# No longer the tenant default (TASK-507) — see PIPELINE_CONFIGS.whisper_turbo_gguf_default.
 
 models:
-  asr: "whisper-large-v3-turbo"
+  asr: "whisper-large-v3-turbo-gguf"
   vad: "silero-vad-v6"
-  denoise: "rnnoise"
+  denoise: "deepfilternet3"
   embedding:
-    hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"   # D1 — ECAPA feature extractor
+    hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"   # D1 — ECAPA feature extractor (kept, TASK-507)
     engine: "pytorch"
 
 preprocessing:
@@ -108,6 +109,7 @@ preprocessing:
     enabled: true
     strength: 0.7
     scope: vad_only          # D2 dual-path: denoise gates VAD; ASR gets raw audio
+    engine: deepfilternet3   # TASK-507
   resample:
     enabled: true
     target_sample_rate: 16000
@@ -192,13 +194,68 @@ postprocessing:
 `,
 
     // Fast turbo pipeline for real-time (v1.1 — safetensor, MPS/CUDA/CPU auto)
+    // TASK-507 — this is now matrix #9 (safetensor "Transcription only"),
+    // kept unchanged; matrix #2's GGUF equivalent is
+    // PIPELINE_CONFIGS.whisper_turbo_gguf_default below (the new default).
     turbo: `version: "2.0"
 
-# TASK-505 matrix #2 — [whisper-large-v3-turbo] Transcription only.
+# TASK-505 matrix #9 (was #2) — [whisper-large-v3-turbo] Transcription only.
 # No pre-processing stages, ASR + diarization + stabilizer, no post.
 
 models:
   asr: "whisper-large-v3-turbo"
+  vad: "silero-vad-v6"
+  embedding:
+    hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"
+    engine: "pytorch"
+
+preprocessing:
+  normalize:
+    enabled: false
+  denoise:
+    enabled: false
+  resample:
+    enabled: true            # runtime floor: VAD/ASR require the target rate
+    target_sample_rate: 16000
+  vad:
+    enabled: false           # streaming falls back to energy framing
+
+inference:
+  batch_size: 1
+  compute_type: auto
+  device: auto
+  language: null
+
+diarization:
+  enabled: true
+  backend: embedding
+  max_speakers: 2
+
+streaming:
+  commit_policy: local_agreement_2
+
+postprocessing:
+  timestamps:
+    word_timestamps: false
+    sentence_timestamps: false
+  punctuation:
+    enabled: false
+  remove_disfluencies: false
+  lowercase: false
+  segment_merge:
+    enabled: false
+`,
+
+    // TASK-507 matrix #2 — [whisper-large-v3-turbo gguf] Transcription only.
+    // Same shape as `turbo` above but whisper.cpp GGUF ASR — this is the NEW
+    // platform default (isDefault flip in DEFAULT_ASR_PIPELINES etc.).
+    whisper_turbo_gguf_default: `version: "2.0"
+
+# TASK-507 matrix #2 — [whisper-large-v3-turbo gguf] Transcription only.
+# No pre-processing stages, whisper.cpp GGUF ASR + diarization + stabilizer, no post.
+
+models:
+  asr: "whisper-large-v3-turbo-gguf"
   vad: "silero-vad-v6"
   embedding:
     hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"
@@ -291,15 +348,16 @@ postprocessing:
 
     whisper_no_postprocessing: `version: "2.0"
 
-# TASK-505 matrix #3 — [whisper-large-v3-turbo] No postprocessing.
-# Full pre-processing + ASR + diarization + stabilizer; post off.
+# TASK-507 matrix #3 — [whisper-large-v3-turbo gguf] No postprocessing.
+# Full pre-processing (DeepFilterNet3 denoise) + whisper.cpp GGUF ASR +
+# diarization + stabilizer; post off.
 
 models:
-  asr: "whisper-large-v3-turbo"
+  asr: "whisper-large-v3-turbo-gguf"
   vad: "silero-vad-v6"
-  denoise: "rnnoise"
+  denoise: "deepfilternet3"
   embedding:
-    hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"   # D1 — ECAPA feature extractor
+    hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"   # D1 — ECAPA feature extractor (kept, TASK-507)
     engine: "pytorch"
 
 preprocessing:
@@ -310,6 +368,7 @@ preprocessing:
     enabled: true
     strength: 0.7
     scope: vad_only          # D2 dual-path: denoise gates VAD; ASR gets raw audio
+    engine: deepfilternet3   # TASK-507
   resample:
     enabled: true
     target_sample_rate: 16000
@@ -353,11 +412,11 @@ postprocessing:
 
     whisper_no_preprocessing: `version: "2.0"
 
-# TASK-505 matrix #4 — [whisper-large-v3-turbo] No preprocessing.
-# Pre off, ASR + diarization + stabilizer, full post-processing.
+# TASK-507 matrix #4 — [whisper-large-v3-turbo gguf] No preprocessing.
+# Pre off, whisper.cpp GGUF ASR + diarization + stabilizer, full post-processing.
 
 models:
-  asr: "whisper-large-v3-turbo"
+  asr: "whisper-large-v3-turbo-gguf"
   vad: "silero-vad-v6"
   embedding:
     hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"
@@ -671,24 +730,37 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     {
         id: '81000000-0000-0000-0001-000000000001',
         tenantId: DEFAULT_TENANT_ID,
-        name: '[whisper-large-v3-turbo] Full Features',
+        name: '[whisper-large-v3-turbo gguf] Full Features',
         slug: 'production-whisper-large-v3',
-        description: 'TASK-505 matrix #1 — full pipeline: normalize + dual-path denoise + resample + VAD + diarization feature extraction, whisper-large-v3-turbo ASR, 2-speaker diarization, LocalAgreement-2 stabilizer, full post-processing. Slug kept for setting/FK continuity.',
+        description: 'TASK-507 matrix #1 — full pipeline: normalize + dual-path denoise (DeepFilterNet3) + resample + VAD + diarization feature extraction, whisper.cpp GGUF ASR, 2-speaker diarization, LocalAgreement-2 stabilizer, full post-processing. Slug kept for setting/FK continuity.',
         configYaml: PIPELINE_CONFIGS.production,
-        // System default (TASK-361, kept by TASK-505). seedAsrPipelines never
-        // clobbers isDefault on update, so an admin's runtime default choice
-        // survives re-seeds.
-        isDefault: true,
-        tags: ['production', 'high-quality', 'recommended'],
+        // TASK-507 — no longer the tenant default (flipped to
+        // production-whisper-large-v3-turbo-gguf below). seedAsrPipelines
+        // never clobbers isDefault on update, so the one-time flip for
+        // already-seeded environments is a separate explicit step —
+        // see flipDefaultAsrPipelineToGgufTurbo().
+        isDefault: false,
+        tags: ['high-quality'],
     },
     {
         id: '81000000-0000-0000-0001-000000000002',
         tenantId: DEFAULT_TENANT_ID,
         name: '[whisper-large-v3-turbo] Transcription Only',
         slug: 'turbo-whisper-large-v3',
-        description: 'TASK-505 matrix #2 — no pre-processing, whisper-large-v3-turbo ASR + diarization + stabilizer, no post-processing. Slug kept for tenant-clone/test continuity.',
+        description: 'TASK-505 matrix #9 (was #2) — no pre-processing, whisper-large-v3-turbo (safetensor) ASR + diarization + stabilizer, no post-processing. Slug kept for tenant-clone/test continuity.',
         configYaml: PIPELINE_CONFIGS.turbo,
         tags: ['streaming', 'real-time', 'fast'],
+    },
+    {
+        // TASK-507 matrix #2 — new platform default.
+        id: '81000000-0000-0000-0001-000000000014',
+        tenantId: DEFAULT_TENANT_ID,
+        name: '[whisper-large-v3-turbo gguf] Transcription Only',
+        slug: 'production-whisper-large-v3-turbo-gguf',
+        description: 'TASK-507 matrix #2 — no pre-processing, whisper.cpp GGUF ASR + diarization + stabilizer, no post-processing. New platform default (replaces production-whisper-large-v3).',
+        configYaml: PIPELINE_CONFIGS.whisper_turbo_gguf_default,
+        isDefault: true,
+        tags: ['production', 'streaming', 'real-time', 'fast', 'recommended'],
     },
     {
         id: '81000000-0000-0000-0001-000000000003',
@@ -852,6 +924,10 @@ const EXPLICIT_TENANT_PIPELINE_SLUGS = new Set([
     'production-whisper-large-v3',
     'turbo-whisper-large-v3',
     'production-faster-whisper-turbo-int8',
+    // TASK-507 — new default pipeline; its id is referenced by the tenant
+    // `default-stt-pipeline` GlobalSetting, so it's hand-authored per tenant
+    // like the three above.
+    'production-whisper-large-v3-turbo-gguf',
 ]);
 
 export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
@@ -859,13 +935,13 @@ export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
     {
         id: '81000000-0000-0000-0001-000000000101',
         tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-        name: 'ArcaAI Production Pipeline (Whisper Large V3)',
+        name: 'ArcaAI Production Pipeline (Whisper Large V3 GGUF)',
         slug: 'production-whisper-large-v3',
-        description: 'ArcaAI default production pipeline using Whisper Large V3 with VAD and noise reduction.',
+        description: 'ArcaAI full-features pipeline using whisper.cpp GGUF ASR with VAD and DeepFilterNet3 noise reduction.',
         configYaml: PIPELINE_CONFIGS.production,
-        // Tenant default (TASK-361, kept by TASK-505).
-        isDefault: true,
-        tags: ['production', 'high-quality', 'recommended'],
+        // TASK-507 — no longer the tenant default; see …-000000000104 below.
+        isDefault: false,
+        tags: ['high-quality'],
     },
     {
         id: '81000000-0000-0000-0001-000000000102',
@@ -878,17 +954,28 @@ export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
         tags: ['streaming', 'real-time', 'fast'],
     },
     {
-        // TASK-356 Phase 2 / TASK-505 — ArcaAI CT2 int8 pipeline (registered, resolvable, not default).
+        // TASK-356 Phase 2 / TASK-505 — ArcaAI CT2 pipeline (registered, resolvable, not default).
         id: '81000000-0000-0000-0001-000000000103',
         tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-        name: 'ArcaAI Production Pipeline (Faster-Whisper Turbo CT2 int8)',
+        name: 'ArcaAI Production Pipeline (Faster-Whisper Turbo CT2 f16)',
         slug: 'production-faster-whisper-turbo-int8',
-        description: 'ArcaAI default production pipeline using whisper-large-v3-turbo CTranslate2 int8 (faster-whisper) with diarization + dual capture.',
+        description: 'ArcaAI default production pipeline using whisper-large-v3-turbo CTranslate2 f16 (faster-whisper) with diarization + dual capture.',
         configYaml: PIPELINE_CONFIGS.faster_whisper_turbo_int8,
         // Registered + catalog-visible, not the default (TASK-505: resolvable
         // via deepdml; default flip deferred to Phase 6 benchmarks).
         isDefault: false,
-        tags: ['faster-whisper', 'ctranslate2', 'int8', 'diarization'],
+        tags: ['faster-whisper', 'ctranslate2', 'diarization'],
+    },
+    {
+        // TASK-507 — new tenant default (matrix #2, whisper.cpp GGUF).
+        id: '81000000-0000-0000-0001-000000000104',
+        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+        name: 'ArcaAI Production Pipeline (Whisper Large V3 Turbo GGUF)',
+        slug: 'production-whisper-large-v3-turbo-gguf',
+        description: 'ArcaAI default production pipeline: whisper.cpp GGUF ASR, no pre/post-processing, low-latency streaming.',
+        configYaml: PIPELINE_CONFIGS.whisper_turbo_gguf_default,
+        isDefault: true,
+        tags: ['production', 'streaming', 'real-time', 'fast', 'recommended'],
     },
     // --- ArcaAI: remaining SYSTEM pipelines (full-parity policy) ---
     ...deriveRemainingTenantPipelines(
@@ -926,14 +1013,13 @@ export const GLOBAL_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
     {
         id: '81000000-0000-0000-0001-000000000401',
         tenantId: SEED_TENANT_ID,
-        name: 'Global Production Pipeline (Whisper Large V3)',
+        name: 'Global Production Pipeline (Whisper Large V3 GGUF)',
         slug: 'production-whisper-large-v3',
-        description: 'Global tenant default production pipeline using Whisper Large V3 with VAD and noise reduction. Referenced by the tenant `default-stt-pipeline` setting.',
+        description: 'Global tenant full-features pipeline using whisper.cpp GGUF ASR with VAD and DeepFilterNet3 noise reduction.',
         configYaml: PIPELINE_CONFIGS.production,
-        // Tenant default (TASK-361, kept by TASK-505). Referenced by the tenant
-        // `default-stt-pipeline` GlobalSetting (91-user.ts).
-        isDefault: true,
-        tags: ['production', 'high-quality', 'recommended'],
+        // TASK-507 — no longer the tenant default; see …-000000000404 below.
+        isDefault: false,
+        tags: ['high-quality'],
     },
     {
         id: '81000000-0000-0000-0001-000000000402',
@@ -946,19 +1032,30 @@ export const GLOBAL_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
         tags: ['streaming', 'real-time', 'fast'],
     },
     {
-        // TASK-356 Phase 2 / TASK-505 — Global tenant CT2 int8 pipeline
-        // (registered, resolvable, not default). The tenant `default-stt-pipeline`
-        // GlobalSetting points at the production-whisper-large-v3 pipeline (…0401).
+        // TASK-356 Phase 2 / TASK-505 — Global tenant CT2 pipeline
+        // (registered, resolvable, not default).
         id: '81000000-0000-0000-0001-000000000403',
         tenantId: SEED_TENANT_ID,
-        name: 'Global Production Pipeline (Faster-Whisper Turbo CT2 int8)',
+        name: 'Global Production Pipeline (Faster-Whisper Turbo CT2 f16)',
         slug: 'production-faster-whisper-turbo-int8',
-        description: 'Global tenant default production pipeline using whisper-large-v3-turbo CTranslate2 int8 (faster-whisper) with diarization + dual capture.',
+        description: 'Global tenant default production pipeline using whisper-large-v3-turbo CTranslate2 f16 (faster-whisper) with diarization + dual capture.',
         configYaml: PIPELINE_CONFIGS.faster_whisper_turbo_int8,
         // Registered + catalog-visible, not the default (TASK-505: resolvable
         // via deepdml; default flip deferred to Phase 6 benchmarks).
         isDefault: false,
-        tags: ['faster-whisper', 'ctranslate2', 'int8', 'diarization'],
+        tags: ['faster-whisper', 'ctranslate2', 'diarization'],
+    },
+    {
+        // TASK-507 — new tenant default (matrix #2, whisper.cpp GGUF).
+        // Referenced by the tenant `default-stt-pipeline` GlobalSetting (91-user.ts).
+        id: '81000000-0000-0000-0001-000000000404',
+        tenantId: SEED_TENANT_ID,
+        name: 'Global Production Pipeline (Whisper Large V3 Turbo GGUF)',
+        slug: 'production-whisper-large-v3-turbo-gguf',
+        description: 'Global tenant default production pipeline: whisper.cpp GGUF ASR, no pre/post-processing, low-latency streaming. Referenced by the tenant `default-stt-pipeline` setting.',
+        configYaml: PIPELINE_CONFIGS.whisper_turbo_gguf_default,
+        isDefault: true,
+        tags: ['production', 'streaming', 'real-time', 'fast', 'recommended'],
     },
     // --- Global: remaining SYSTEM pipelines (full-parity policy) ---
     ...deriveRemainingTenantPipelines(
@@ -1202,10 +1299,11 @@ export const DEFAULT_STT_SETTINGS = [
         namespace: 'stt.config',
         name: 'defaults',
         key: 'batch_pipeline_slug',
-        // Batch + streaming defaults point at production-whisper-large-v3
-        // (TASK-361; kept by TASK-505 pending Phase 6 benchmarks).
-        value: 'production-whisper-large-v3',
-        defaultValue: 'production-whisper-large-v3',
+        // TASK-507 — batch + streaming defaults point at the new whisper.cpp
+        // GGUF pipeline (production-whisper-large-v3-turbo-gguf), replacing
+        // production-whisper-large-v3 (TASK-361/505).
+        value: 'production-whisper-large-v3-turbo-gguf',
+        defaultValue: 'production-whisper-large-v3-turbo-gguf',
         dataType: ValueType.String,
         description: 'Default pipeline slug for batch transcription',
     },
@@ -1216,8 +1314,8 @@ export const DEFAULT_STT_SETTINGS = [
         name: 'defaults',
         key: 'streaming_pipeline_slug',
         // See batch_pipeline_slug note above.
-        value: 'production-whisper-large-v3',
-        defaultValue: 'production-whisper-large-v3',
+        value: 'production-whisper-large-v3-turbo-gguf',
+        defaultValue: 'production-whisper-large-v3-turbo-gguf',
         dataType: ValueType.String,
         description: 'Default pipeline slug for streaming transcription',
     },
@@ -1449,6 +1547,96 @@ export const seedAsrPipelines = async (client: CorePrismaClient) => {
     return { success: true, count: allPipelines.length };
 };
 
+// TASK-507 — matrix #2 (whisper.cpp GGUF "Transcription Only") is the new
+// platform default, replacing `production-whisper-large-v3` (matrix #1).
+const STT_OLD_DEFAULT_PIPELINE_SLUG = 'production-whisper-large-v3';
+const STT_NEW_DEFAULT_PIPELINE_SLUG = 'production-whisper-large-v3-turbo-gguf';
+
+/** Tenants that carry a full ASR pipeline catalog (mirrors seedAsrPipelines). */
+const STT_DEFAULT_PIPELINE_BACKFILL_TENANTS = [
+    DEFAULT_TENANT_ID, // SYSTEM master catalog (=== SYSTEM_TENANT_ID)
+    SEED_TENANT_ID, // Global customer tenant
+    SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+];
+
+/**
+ * TASK-507 — migrate EXISTING databases to the new whisper.cpp GGUF default
+ * without creating a second default (mirrors the TASK-356 Phase 2
+ * `switchDefaultSttPipeline`, removed once its own reconciliation completed).
+ *
+ * `seedAsrPipelines` deliberately never clobbers `isDefault` on update, so on
+ * an existing DB the freshly-created GGUF row arrives as `isDefault: true`
+ * while the prior default (production-whisper-large-v3) is still
+ * `isDefault: true` — two defaults for one tenant. This backfill reconciles
+ * each tenant to EXACTLY ONE default, while respecting an admin who already
+ * moved the default elsewhere:
+ *
+ *   - prior default is still the untouched OLD production slug → demote it
+ *     and promote the new GGUF pipeline;
+ *   - admin already picked a different default (e.g. turbo) → keep their
+ *     choice and demote the freshly-seeded GGUF pipeline instead;
+ *   - the GGUF pipeline is already the sole default (fresh seed) → no-op.
+ *
+ * Idempotent: re-running converges to the same single-default state and
+ * performs no writes once converged.
+ */
+export const switchDefaultSttPipelineToGgufTurbo = async (client: CorePrismaClient) => {
+    console.log('Reconciling default ASR pipeline (TASK-507)...');
+    let switched = 0;
+    let skipped = 0;
+
+    for (const tenantId of STT_DEFAULT_PIPELINE_BACKFILL_TENANTS) {
+        const ggufDefault = await client.asrPipeline.findFirst({
+            where: { tenantId, slug: STT_NEW_DEFAULT_PIPELINE_SLUG },
+        });
+        // New pipeline not seeded for this tenant — nothing to reconcile.
+        if (!ggufDefault) {
+            continue;
+        }
+
+        const currentDefaults = await client.asrPipeline.findMany({
+            where: { tenantId, isDefault: true },
+        });
+        const otherDefaults = currentDefaults.filter((p) => p.id !== ggufDefault.id);
+        const adminPicked = otherDefaults.find((p) => p.slug !== STT_OLD_DEFAULT_PIPELINE_SLUG);
+
+        let touched = false;
+        if (adminPicked) {
+            // Respect the admin's explicit default; ensure the GGUF pipeline
+            // is not a second default and demote any stale OLD-slug default.
+            if (ggufDefault.isDefault) {
+                await client.asrPipeline.update({ where: { id: ggufDefault.id }, data: { isDefault: false } });
+                touched = true;
+            }
+            for (const stale of otherDefaults) {
+                if (stale.slug === STT_OLD_DEFAULT_PIPELINE_SLUG && stale.isDefault) {
+                    await client.asrPipeline.update({ where: { id: stale.id }, data: { isDefault: false } });
+                    touched = true;
+                }
+            }
+        } else {
+            // No admin override → the GGUF pipeline is the intended sole
+            // default. Demote any OLD-slug defaults and promote it if needed.
+            for (const stale of otherDefaults) {
+                await client.asrPipeline.update({ where: { id: stale.id }, data: { isDefault: false } });
+                touched = true;
+            }
+            if (!ggufDefault.isDefault) {
+                await client.asrPipeline.update({ where: { id: ggufDefault.id }, data: { isDefault: true } });
+                touched = true;
+            }
+        }
+
+        if (touched) {
+            switched += 1;
+        } else {
+            skipped += 1;
+        }
+    }
+
+    console.log(`  Reconciled default ASR pipeline: ${switched} switched, ${skipped} unchanged`);
+    return { success: true, switched, skipped };
+};
 
 export const seedSttSettings = async (client: CorePrismaClient) => {
     console.log('Seeding STT Global Settings...');
@@ -1510,6 +1698,13 @@ export const seedStt = async (client: CorePrismaClient) => {
         // there is no placeholder default to demote, and re-running it would
         // silently override an admin's legitimate CT2 default choice.
         // seedAsrPipelines never clobbers isDefault on update.
+
+        // TASK-507 — reconcile the default pipeline to the new whisper.cpp
+        // GGUF pipeline on existing DBs (seedAsrPipelines won't clobber
+        // isDefault on update, so without this an existing DB would have two
+        // defaults per tenant).
+        await switchDefaultSttPipelineToGgufTurbo(client);
+        console.log('');
 
         // TASK-506 — soft-retire the legacy catalog rows across all tenants
         // AFTER the upserts (idempotent; the pipeline-reference guard skips

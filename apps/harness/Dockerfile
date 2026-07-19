@@ -24,6 +24,24 @@ ARG BASE_IMAGE=hope-python-base:latest
 # ── Stage 1: builder ─────────────────────────────────────────────────────────
 FROM ${BASE_IMAGE} AS builder
 
+# Build toolchain (builder stage ONLY — never leaks into the production stage,
+# which copies just /app/.venv + source). Required because the `atomic-fact`
+# extra pulls llama-cpp-python (the MiniCheck GGUF entailer, TASK-481), which
+# has no usable prebuilt wheel and compiles a native llama.cpp from source;
+# hope-python-base intentionally ships no C/C++ toolchain. Its own layer so it
+# caches independently of the dependency sync below.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        cmake
+
+# Portability: without this, cmake targets the BUILD HOST's CPU (-march=native),
+# producing a llama.cpp binary that SIGILLs on any runtime host with a different
+# instruction set. GGML_NATIVE=OFF forces a portable baseline build instead.
+ENV CMAKE_ARGS="-DGGML_NATIVE=OFF" \
+    FORCE_CMAKE=1
+
 # Layer 1: install ONLY harness's deps from the workspace lock.
 COPY pyproject.toml uv.lock ./
 COPY apps/harness/pyproject.toml ./apps/harness/
@@ -33,13 +51,15 @@ COPY apps/smr/pyproject.toml ./apps/smr/
 COPY apps/stt-v2/pyproject.toml ./apps/stt-v2/
 COPY apps/tts-v2/pyproject.toml ./apps/tts-v2/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --package harness --no-dev --no-install-project --no-editable
+    uv sync --frozen --package harness --no-dev --extra rag --extra guardrails --extra atomic-fact \
+        --no-install-project --no-editable
 
 # Layer 2: copy source + install the package itself.
 COPY apps/harness/README.md ./apps/harness/
 COPY apps/harness/src ./apps/harness/src
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --package harness --no-dev --no-editable
+    uv sync --frozen --package harness --no-dev --extra rag --extra guardrails --extra atomic-fact \
+        --no-editable
 
 # Slim the venv: drop bytecode + egg-info only. Do NOT delete dirs named
 # "docs"/"doc"/"tests" — some packages ship real importable submodules with

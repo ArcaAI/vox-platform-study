@@ -44,6 +44,8 @@ import {
   HarnessProgressService,
   // TASK-355 Phase D Slice 5d — live per-claim assurance feed.
   HarnessAssuranceService,
+  // TASK-510 Phase 2D — dedicated Redis subscriber for the trajectory SSE relay.
+  RedisSubscriberService,
 } from '@arcaai/applications';
 import {
   Controller,
@@ -60,7 +62,7 @@ import {
   type MessageEvent,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiProperty, ApiPropertyOptional, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
-import type { Observable } from 'rxjs';
+import { Observable, interval, map, merge, type Subscription } from 'rxjs';
 import { ApiEndpoint, Authorize } from '../../decorators';
 import { TenantOwnedResource } from '../../common';
 import { StreamScope } from '../auth';
@@ -173,7 +175,12 @@ export class ConsultationController {
     private readonly harnessProgressService: HarnessProgressService,
     // TASK-355 Phase D Slice 5d — live per-claim assurance feed (SSE relay).
     private readonly harnessAssuranceService: HarnessAssuranceService,
+    // TASK-510 Phase 2D — dedicated Redis subscriber for the trajectory SSE relay.
+    private readonly redisSubscriber: RedisSubscriberService,
   ) {}
+
+  /** TASK-510 Phase 2D — heartbeat cadence keeping idle trajectory streams alive through proxies. */
+  private static readonly TRAJECTORY_HEARTBEAT_MS = 15000;
 
   private getDoctorId(): string {
     const user = this.cls.get('user');
@@ -552,6 +559,57 @@ export class ConsultationController {
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   streamHarnessAssurance(@Param('id') id: string): Observable<MessageEvent> {
     return this.harnessAssuranceService.subscribeToAssurance(id);
+  }
+
+  // TASK-510 Phase 2D — relays `consultation:trajectory:{id}` (each step is
+  // republished there by AgentTrajectoryService.recordSteps) so an admin/review
+  // surface can watch the ordered agentic session live. Ticket-scoped SSE,
+  // mirroring the live-summary / harness-progress streams (@TenantOwnedResource
+  // pre-stream 404 guard + @StreamScope one-shot ticket). Append-only feed: no
+  // snapshot late-join (the admin read API serves history) and no terminal
+  // `closed` event — the client closes when it navigates away.
+  @Get(':id/trajectory/stream')
+  @Sse()
+  @TenantOwnedResource({ modelName: 'Consultation', paramName: 'id' })
+  @StreamScope({ namespace: 'consultation_trajectory', param: 'id' })
+  @ApiOperation({
+    summary: 'Stream the ordered agentic-session trajectory for a consultation via SSE',
+    description:
+      'Server-Sent Events stream relaying the Redis channel `consultation:trajectory:{id}`. Each event is an AgentTrajectoryStepResponse JSON (stats-first; `payloadRef` is never included). Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `consultation_trajectory:<id>`.',
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  streamTrajectory(@Param('id') id: string): Observable<MessageEvent> {
+    const channel = `consultation:trajectory:${id}`;
+
+    return new Observable<MessageEvent>((subscriber) => {
+      let inner: Subscription | null = null;
+
+      (async () => {
+        const messages$ = await this.redisSubscriber.subscribeToChannel(channel);
+        const relay$ = messages$.pipe(map((raw: string): MessageEvent => ({ data: raw }) as MessageEvent));
+        const heartbeat$ = interval(ConsultationController.TRAJECTORY_HEARTBEAT_MS).pipe(
+          map((): MessageEvent => ({ data: JSON.stringify({ type: 'heartbeat', ts: new Date().toISOString() }) }) as MessageEvent),
+        );
+
+        inner = merge(relay$, heartbeat$).subscribe({
+          next: (event) => subscriber.next(event),
+          error: (err) => subscriber.error(err),
+          complete: () => subscriber.complete(),
+        });
+      })().catch((error) => {
+        this.logger.error({
+          message: 'Failed to initialise trajectory SSE subscription',
+          consultationId: id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        subscriber.next({ data: JSON.stringify({ error: 'Failed to subscribe to trajectory', consultationId: id }) } as MessageEvent);
+        subscriber.complete();
+      });
+
+      // Releasing the inner subscription drives the refcounted channel cleanup
+      // (last viewer out tears the Redis subscription down).
+      return () => inner?.unsubscribe();
+    });
   }
 
   // ─── Timeline ────────────────────────────────────────────────────

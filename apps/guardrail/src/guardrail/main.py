@@ -83,9 +83,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
 
     # Initialize the LLM engine providers based on the selected provider.
-    # lm-studio (default) | azure | bedrock run over the OpenAI-compatible chat API;
-    # ollama uses its native API. The content provider keeps the historical
-    # `ollama_provider` app.state slot so endpoints/job_processor stay engine-agnostic.
+    # lm-studio (default) | vllm | llama-cpp | azure | bedrock run over the
+    # OpenAI-compatible chat API; ollama uses its native API. The content
+    # provider keeps the historical `ollama_provider` app.state slot so
+    # endpoints/job_processor stay engine-agnostic. TASK-515: the self-host
+    # production engines (vllm/llama-cpp) serve Granite Guardian, so the Granite
+    # BYOC protocol applies to them as it does for lm-studio.
+    _GRANITE_ENGINES = {"lm-studio", "vllm", "llama-cpp"}
     engine_cfg = settings.engine
     if not hasattr(app.state, "ollama_provider") or app.state.ollama_provider is None:
         if settings.provider == "ollama":
@@ -99,7 +103,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             app.state.ollama_provider = OpenAICompatProvider(
                 settings=cast(OpenAICompatConfig, engine_cfg),
                 http_client=http_client,
-                use_granite=(settings.provider == "lm-studio"),
+                use_granite=(settings.provider in _GRANITE_ENGINES),
             )
         logger.info(
             "guardrail.content_provider_initialized",

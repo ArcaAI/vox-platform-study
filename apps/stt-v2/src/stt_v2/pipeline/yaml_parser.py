@@ -8,6 +8,7 @@ import yaml
 
 from .dto import (
     VALID_CT2_COMPUTE_TYPES,
+    VALID_DENOISE_ENGINES,
     VALID_DENOISE_SCOPES,
     VALID_DIARIZATION_BACKENDS,
     VALID_NORMALIZE_PROCESSORS,
@@ -254,6 +255,12 @@ class PipelineYamlParser:
             result.add_error(
                 "preprocessing.denoise.scope",
                 f"Denoise scope must be one of: {', '.join(VALID_DENOISE_SCOPES)}",
+            )
+
+        if spec.preprocessing.denoise.engine not in VALID_DENOISE_ENGINES:
+            result.add_error(
+                "preprocessing.denoise.engine",
+                f"Denoise engine must be one of: {', '.join(VALID_DENOISE_ENGINES)}",
             )
 
         if spec.preprocessing.diar_feature_extraction_enabled and spec.models.embedding is None:
@@ -569,6 +576,8 @@ class PipelineYamlParser:
             # TASK-505 P2 (D2 dual-path): default vad_only — denoise gates VAD,
             # ASR consumes raw audio.
             scope=str(denoise_data.get("scope", "vad_only")),
+            # TASK-507 — denoise engine selector (rnnoise = legacy default).
+            engine=str(denoise_data.get("engine", "rnnoise")),
         )
 
         dual_capture_data = data.get("dual_capture") or {}

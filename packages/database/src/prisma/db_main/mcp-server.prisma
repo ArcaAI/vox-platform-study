@@ -1,0 +1,79 @@
+// =============================================================================
+// TASK-516 — Agentic SOTA Program, Phase 5: MCP external-tools registry.
+//
+// McpServer is the global-admin-managed registry of external tool servers the
+// clinical documentation harness may call out to over the MCP streamable-HTTP
+// transport (AD-5). It is a STANDARD tenant-scoped config model (tenantId +
+// resourceStatus soft-delete + _version OCC + audit), mirroring AiModel /
+// AiTaskDefault — NOT the telemetry posture of AgentTrajectoryStep.
+//
+// Posture (deliberate, security-load-bearing):
+//   - SYSTEM-tenant rows only, initially: servers are registered by a global
+//     admin under the reserved SYSTEM tenant (00000000-…). The model is
+//     tenant-scoped (TENANT_SCOPED_MODELS) AND a SYSTEM-shared read model
+//     (SYSTEM_SHARED_READ_MODELS) so every tenant's harness run can READ the
+//     shared registry to resolve a server it references, while WRITES stay
+//     SYSTEM-only (global-admin, enforced at the service layer — the
+//     guardrail.* GLOBAL_ADMIN precedent).
+//   - NO secret material in the DB. `authRef` is a Vault PATH ONLY (e.g.
+//     "secret/data/mcp/terminology"); the actual credential is fetched from
+//     Vault at call time by the harness and is NEVER stored here or echoed in
+//     any API response / log / trajectory.
+//   - `phiBoundary` defaults to "external" (AD-5: an MCP server is a cloud
+//     egress UNLESS explicitly marked "in-boundary"). The harness PHI egress
+//     guard screens outbound tool args FAIL-CLOSED for "external" servers.
+//   - `enabled` is a per-server runtime kill-switch; the whole feature is
+//     additionally gated OFF by default by HarnessPolicy.mcpToolsEnabled.
+//   - All tools are READ-ONLY in this ticket (write-capable MCP is a future
+//     ticket behind an explicit human-approval-gate design).
+// =============================================================================
+
+model McpServer {
+  // Meta fields (BaseEntity pattern) — `_version` is the OCC token.
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // Multi-tenant — SYSTEM tenant owns the shared registry rows (see header).
+  tenantId String
+
+  // Business fields.
+  name        String
+  description String? @db.Text
+  // The MCP server root URL (streamable-HTTP endpoint). Self-hosted or external;
+  // `phiBoundary` records which side of the PHI boundary it sits on.
+  baseUrl     String
+  // Transport is a free string (no enum migration, like AiModel.provider). Only
+  // "streamable-http" is supported in this ticket.
+  transport   String  @default("streamable-http")
+  // Vault PATH to the server's credential (e.g. "secret/data/mcp/terminology").
+  // NEVER secret material — the harness resolves the actual token from Vault at
+  // call time. Nullable: a self-hosted in-boundary server may need no auth.
+  authRef     String?
+  // Per-server tool allow-list (JSON array of tool ids). The effective allowlist
+  // the harness enforces is `HarnessPolicy.toolAllowlist ∩ this`. Null = no
+  // server-side restriction (still bounded by the policy allowlist).
+  toolAllowlist Json? @db.JsonB
+  // PHI boundary: "external" (cloud egress — PHI egress guard screens args
+  // fail-closed) | "in-boundary" (self-hosted, under platform control). Free
+  // string with an "external" default (fail-safe: unmarked ⇒ treated as egress).
+  phiBoundary String  @default("external")
+  // Per-server runtime kill-switch. Default FALSE ⇒ a freshly-registered server
+  // is dormant until explicitly enabled (defence in depth on top of the
+  // HarnessPolicy.mcpToolsEnabled feature flag, which is itself default-off).
+  enabled     Boolean @default(false)
+
+  // Resource status + Audit (standard fields)
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+  createdBy               String?            @default("60000000-0000-0000-0000-000000000000")
+  updatedBy               String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+
+  // One server row per (tenant, name). The composite unique doubles as the
+  // tenant lookup index, so no separate @@index([tenantId]) is declared.
+  @@unique([tenantId, name], name: "McpServer_tenant_name_unique")
+  @@schema("core")
+}

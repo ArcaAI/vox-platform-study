@@ -166,13 +166,16 @@ class TestBedrockAsyncStream:
         async for chunk in provider.generate_stream(GenerateRequest(prompt="hi")):
             chunks.append(chunk)
 
+        # AD-1: the usage chunk now carries the FULL GenerationStats dict
+        # (``predicted_tokens`` not ``completion_tokens``) with the real
+        # normalized stop reason, emitted once after the stream drains.
         usage_chunks = [c for c in chunks if c.type == "usage"]
         assert len(usage_chunks) == 1
-        assert usage_chunks[0].data == {
-            "prompt_tokens": 10,
-            "completion_tokens": 5,
-            "total_tokens": 15,
-        }
+        data = usage_chunks[0].data
+        assert data["prompt_tokens"] == 10
+        assert data["predicted_tokens"] == 5
+        assert data["total_tokens"] == 15
+        assert data["stop_reason"] == "stop"  # end_turn → stop (Bedrock table)
 
     @pytest.mark.asyncio
     async def test_stream_handles_empty_text(self):

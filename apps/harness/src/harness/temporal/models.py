@@ -158,12 +158,80 @@ class HarnessDocWorkflowResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class TrajectoryContext(BaseModel):
+    """Workflow-owned, deterministic per-activity trajectory context (TASK-510).
+
+    Threaded as an ADDITIVE-OPTIONAL field on every activity input so the
+    (non-deterministic) emission lives entirely in activity code while the
+    ordering (``seq``) is allocated deterministically in the workflow body — no
+    new workflow command, so the recorded command sequence is unchanged and the
+    replay fixtures stay valid (the TASK-483 additive-input precedent).
+
+    ``seq`` is this activity's monotonic base; an activity that emits >1 step
+    (e.g. ``generate`` → ``LLM_CALL`` + ``THINKING``) offsets locally from it.
+    ``tenant_id``/``consultation_id``/``correlation_id`` carry the routing +
+    correlation the trajectory step needs; ``session_id``/``run_id`` are read
+    from ``activity.info()`` (the Temporal workflow/run ids) inside the activity.
+    ``is_regen`` marks a bounded-regen generation (drives ``harness_regen_total``).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: str
+    consultation_id: str | None = None
+    correlation_id: str | None = None
+    seq: int = 0
+    is_regen: bool = False
+
+
 class FetchPolicyInput(BaseModel):
     """Input for the ``fetch_policy`` activity (reads the effective tenant policy)."""
 
     model_config = ConfigDict(extra="forbid")
 
     tenant_id: str
+    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (workflow-owned seq
+    # + session meta). Default None ⇒ command-neutral / replay-safe (an old input
+    # deserializes it to None ⇒ no emission). Same on every activity input below.
+    trajectory: TrajectoryContext | None = None
+
+
+class McpServerConfig(BaseModel):
+    """A registered MCP external-tools server, snapshotted onto the policy (TASK-516).
+
+    The ``fetch_policy`` activity reads the SYSTEM-shared ``McpServer`` registry
+    (server METADATA only) alongside the tenant policy and threads the enabled
+    servers here, so server resolution + the allowlist intersection happen in the
+    deterministic workflow body from replay-carried data (no per-loop registry
+    read). ``auth_ref`` is a Vault PATH — NEVER secret bytes; the credential is
+    resolved out-of-band at call time in the activity. READ-ONLY tools only.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    name: str
+    base_url: str
+    transport: str = "streamable-http"
+    auth_ref: str | None = None
+    tool_allowlist: list[str] | None = None
+    # "external" (cloud egress — PHI-screened FAIL-CLOSED) | "in-boundary" (self-hosted).
+    phi_boundary: str = "external"
+    enabled: bool = False
+
+    @classmethod
+    def from_api(cls, data: dict[str, Any]) -> McpServerConfig:
+        """Map an apps/api camelCase ``McpServerResponse`` onto this model (tolerant)."""
+        return cls(
+            id=str(data.get("id", "")),
+            name=str(data.get("name", "")),
+            base_url=str(data.get("baseUrl", "")),
+            transport=data.get("transport") or "streamable-http",
+            auth_ref=data.get("authRef"),
+            tool_allowlist=data.get("toolAllowlist"),
+            phi_boundary=data.get("phiBoundary") or "external",
+            enabled=bool(data.get("enabled", False)),
+        )
 
 
 class HarnessPolicy(BaseModel):
@@ -192,6 +260,27 @@ class HarnessPolicy(BaseModel):
     gate_sla_seconds: int = 86_400
     gate_escalation_seconds: int = 43_200
     tool_allowlist: list[str] | None = None
+    # TASK-511 (Phase 3A) — the seven additive agentic loop knobs. NULLABLE by
+    # design: ``None`` ⇒ the harness env/code default applies (per-field
+    # fallthrough), so the loop overrides a runtime default ONLY when the policy
+    # carries an explicit non-null value. Consumed via ``_resolve_flag`` in the
+    # activities (ner-priors / atomic-fact / retrieval) and the workflow-body gate
+    # merge (optimistic-delivery / max-edit-reruns); warm-start + regen-feedback
+    # are carried for Phase 6 consumption.
+    optimistic_delivery_enabled: bool | None = None
+    atomic_fact_enabled: bool | None = None
+    retrieval_enabled: bool | None = None
+    warm_start_enabled: bool | None = None
+    ner_priors_enabled: bool | None = None
+    max_edit_reruns: int | None = None
+    regen_feedback_enabled: bool | None = None
+    # TASK-516 (Phase 5) — MCP external-tools master switch. NULLABLE by design:
+    # ``None`` ⇒ OFF (the whole MCP tool path stays dormant), so the feature is off
+    # by default everywhere until a global admin flips this per-tenant knob AND the
+    # referenced ``McpServer.enabled`` is true. ``mcp_servers`` carries the enabled
+    # SYSTEM-shared registry rows the workflow resolves against (empty ⇒ nothing to call).
+    mcp_tools_enabled: bool | None = None
+    mcp_servers: list[McpServerConfig] = Field(default_factory=list)
     version: int = 0
 
     @classmethod
@@ -229,6 +318,25 @@ class HarnessPolicy(BaseModel):
             gate_sla_seconds=_get("gateSlaSeconds", defaults.gate_sla_seconds),
             gate_escalation_seconds=_get("gateEscalationSeconds", defaults.gate_escalation_seconds),
             tool_allowlist=data.get("toolAllowlist"),
+            # TASK-511 (Phase 3A) — nullable agentic knobs: pass the value through
+            # verbatim (``data.get`` ⇒ None for missing/explicit-null), so ``None``
+            # falls through to the harness env/code default at the consumption site.
+            optimistic_delivery_enabled=data.get("optimisticDeliveryEnabled"),
+            atomic_fact_enabled=data.get("atomicFactEnabled"),
+            retrieval_enabled=data.get("retrievalEnabled"),
+            warm_start_enabled=data.get("warmStartEnabled"),
+            ner_priors_enabled=data.get("nerPriorsEnabled"),
+            max_edit_reruns=data.get("maxEditReruns"),
+            regen_feedback_enabled=data.get("regenFeedbackEnabled"),
+            # TASK-516 (Phase 5) — nullable MCP master switch (None ⇒ OFF) + the enabled
+            # SYSTEM-shared registry rows. ``mcpServers`` is the registry snapshot the
+            # fetch_policy activity attaches; missing/empty ⇒ no servers to resolve.
+            mcp_tools_enabled=data.get("mcpToolsEnabled"),
+            mcp_servers=[
+                McpServerConfig.from_api(s)
+                for s in (data.get("mcpServers") or [])
+                if isinstance(s, dict)
+            ],
             version=_get("version", defaults.version),
         )
 
@@ -276,6 +384,13 @@ class ExtractEntitiesInput(BaseModel):
     reuse_priors: bool = False
     consultation_id: str | None = None
     tenant_id: str | None = None
+    # TASK-511 (Phase 3A) — per-run NER-priors override threaded from the effective
+    # policy. None ⇒ the activity falls through to ``HARNESS_NER_PRIORS_ENABLED``
+    # (env default). Additive-optional ⇒ replay-safe (an old input ⇒ None ⇒ env path,
+    # byte-identical); no new workflow command.
+    ner_priors_enabled: bool | None = None
+    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    trajectory: TrajectoryContext | None = None
 
 
 class EntitiesResult(BaseModel):
@@ -290,6 +405,51 @@ class EntitiesResult(BaseModel):
     reused: bool = False
 
 
+class CallMcpToolInput(BaseModel):
+    """Input for the ``call_mcp_tool`` activity (TASK-516 — READ-ONLY MCP tools).
+
+    The workflow resolves the server from the policy snapshot and threads it here
+    with the tenant policy allowlist so the activity enforces the intersection
+    (``policy_tool_allowlist`` ∩ ``server.tool_allowlist``) and the fail-closed PHI
+    egress screen (when the server is ``phi_boundary="external"``) BEFORE any
+    network call. Additive-optional trajectory context (workflow-owned seq).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    server: McpServerConfig
+    tool: str
+    args: dict[str, Any] = Field(default_factory=dict)
+    # The tenant's HarnessPolicy.toolAllowlist (None ⇒ no tenant restriction; the
+    # server allowlist still applies). Intersected with the server allowlist.
+    policy_tool_allowlist: list[str] | None = None
+    # PHI egress policy snapshot (mirrors the generate/inferential egress guard).
+    phi_enabled: bool = True
+    phi_fail_closed: bool = True
+    trajectory: TrajectoryContext | None = None
+
+
+class McpToolCallResult(BaseModel):
+    """Result of a ``call_mcp_tool`` activity (degrade-safe, never leaks secrets)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ok: bool = False
+    server: str = ""
+    tool: str = ""
+    # Inline tool result text (empty when offloaded to the claim-check store).
+    content: str = ""
+    # TASK-483 claim-check ref when the result exceeded the size cap and was offloaded.
+    content_ref: ClaimCheckRef | None = None
+    # True when a server/transport error degraded the call — the workflow OR-s this
+    # into ``reduced_assurance`` and NEVER crashes the loop.
+    degraded: bool = False
+    # True when claim-check was disabled but the result exceeded the cap and was truncated.
+    truncated: bool = False
+    # Coarse failure code for the trajectory step (never carries secret material).
+    error_code: str | None = None
+
+
 class PersistEntitiesInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -298,6 +458,8 @@ class PersistEntitiesInput(BaseModel):
     context_item_id: str | None = None
     entities: list[NEREntity] = Field(default_factory=list)
     user_id: str | None = None
+    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    trajectory: TrajectoryContext | None = None
 
 
 class AssembleInput(BaseModel):
@@ -309,6 +471,53 @@ class AssembleInput(BaseModel):
     template: str | None = None
     dna_style_id: str | None = None
     conversation_language: str | None = None
+    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    trajectory: TrajectoryContext | None = None
+
+
+class RegenFinding(BaseModel):
+    """TASK-517 — one failed sensor's critique for the next regen iteration.
+
+    Carries the sensor ``sensor`` (name), the ``failing_claims`` it flagged, and
+    a short, model-readable ``expected_fix`` instruction. Data-only (no PHI note
+    text — only the already-surfaced claim refs the sensor produced).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    sensor: str
+    failing_claims: list[str] = Field(default_factory=list)
+    expected_fix: str = ""
+
+
+class RegenFeedback(BaseModel):
+    """TASK-517 — the prior iteration's aggregated critique threaded into regen.
+
+    Additive-optional on :class:`GenerateInput`; reconstructed deterministically
+    from recorded sensor outputs on replay (absent on legacy histories ⇒ None ⇒
+    byte-identical no-feedback prompt), so it adds no new workflow command.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    findings: list[RegenFinding] = Field(default_factory=list)
+
+
+class SegmentCitationRef(BaseModel):
+    """TASK-519 — one transcript-segment citation ref for finalize StrictCitations.
+
+    PHI-safe: id + short speaker/time/ordinal hints only — never segment plaintext.
+    Threaded as an additive-optional list on :class:`GenerateInput`; empty/absent
+    ⇒ no segment citation block (byte-identical to before), replay-safe.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    speaker: str | None = None
+    t0_ms: int | None = None
+    t1_ms: int | None = None
+    idx: int | None = None
 
 
 class GenerateInput(BaseModel):
@@ -339,6 +548,19 @@ class GenerateInput(BaseModel):
     # no new workflow command, replay-safe (TASK-355 Slice-5d precedent).
     phi_enabled: bool = True
     phi_fail_closed: bool = True
+    # TASK-517 — critique-informed regen. ADDITIVE-OPTIONAL: the prior iteration's
+    # failed-sensor findings, appended to the prompt as a corrective suffix on a
+    # regen iteration. None (the default, and every FIRST iteration) ⇒ the prompt
+    # is byte-identical to before ⇒ no new workflow command, replay-safe.
+    regen_feedback: RegenFeedback | None = None
+    # TASK-519 — segment StrictCitations. ADDITIVE-OPTIONAL: when the caller
+    # supplies transcript-segment refs, ``generate`` folds a ``[[seg:<id>]]``
+    # instruction + allowed-id list into the prompt (PHI-safe hints only).
+    # Empty (default, and every legacy history) ⇒ byte-identical to before ⇒
+    # no new workflow command, replay-safe.
+    segment_citations: list[SegmentCitationRef] = Field(default_factory=list)
+    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    trajectory: TrajectoryContext | None = None
 
 
 class RetrieveContextInput(BaseModel):
@@ -353,6 +575,12 @@ class RetrieveContextInput(BaseModel):
 
     tenant_id: str
     entities: list[NEREntity] = Field(default_factory=list)
+    # TASK-511 (Phase 3A) — per-run retrieval override threaded from the effective
+    # policy. None ⇒ the activity falls through to ``HARNESS_RETRIEVAL_ENABLED``
+    # (env default). Additive-optional ⇒ replay-safe; no new workflow command.
+    retrieval_enabled: bool | None = None
+    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    trajectory: TrajectoryContext | None = None
 
 
 class RetrievedContext(BaseModel):
@@ -393,6 +621,8 @@ class RunSensorsInput(BaseModel):
     # Phase-6: policy-driven computational thresholds (None => the sensors' own
     # env-driven ``SensorThresholds`` defaults).
     thresholds: SensorThresholds | None = None
+    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    trajectory: TrajectoryContext | None = None
 
 
 class RunInferentialSensorsInput(BaseModel):
@@ -426,6 +656,10 @@ class RunInferentialSensorsInput(BaseModel):
     # ``safety_enabled=False`` skips the Granite safety screen entirely.
     groundedness_threshold: float = DEFAULT_GROUNDEDNESS_THRESHOLD
     safety_enabled: bool = True
+    # TASK-511 (Phase 3A) — per-run atomic-fact override threaded from the effective
+    # policy. None ⇒ the activity falls through to ``HARNESS_ATOMIC_FACT_ENABLED``
+    # (env default). Additive-optional ⇒ replay-safe; no new workflow command.
+    atomic_fact_enabled: bool | None = None
     # TASK-357: the run-effective PHI egress policy, snapshotted from the harness
     # policy at workflow start so the guard in ``run_inferential_sensors`` is
     # deterministic across replay (defaults mirror the fail-closed code default).
@@ -449,6 +683,8 @@ class RunInferentialSensorsInput(BaseModel):
     # ``workflow.patched()``; an old replay history without it defaults to {} (T8). Held only in
     # workflow history (data-only) — never persisted to an external store (L3 is default-OFF, §4.5).
     prior_verdicts: dict[str, bool] = Field(default_factory=dict)
+    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    trajectory: TrajectoryContext | None = None
 
 
 class InferentialRunOutput(BaseModel):
@@ -514,6 +750,8 @@ class PersistDraftInput(BaseModel):
     # ⇒ early persist: readable draft now, verdict withheld, assurance deferred to
     # ``finalize_assurance``.
     phase: str | None = None
+    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    trajectory: TrajectoryContext | None = None
 
 
 class FinalizeAssuranceInput(BaseModel):
@@ -551,6 +789,8 @@ class FinalizeAssuranceInput(BaseModel):
     model_version: str | None = None
     prompt_template_id: str | None = None
     prompt_version: str | None = None
+    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    trajectory: TrajectoryContext | None = None
 
 
 class RetractDraftInput(BaseModel):
@@ -581,6 +821,8 @@ class RetractDraftInput(BaseModel):
     guardrail_decisions: dict[str, Any] | None = None
     reduced_assurance: bool | None = None
     rag_triad_score: float | None = None
+    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    trajectory: TrajectoryContext | None = None
 
 
 class RecordGateInput(BaseModel):
@@ -594,6 +836,8 @@ class RecordGateInput(BaseModel):
     context_item_version_id: str | None = None
     attestation_hash: str | None = None
     clinician_id: str | None = None
+    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    trajectory: TrajectoryContext | None = None
 
 
 class EscalateInput(BaseModel):
@@ -603,6 +847,8 @@ class EscalateInput(BaseModel):
     tenant_id: str
     reason: str
     job_id: str | None = None
+    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    trajectory: TrajectoryContext | None = None
 
 
 class EscalateResult(BaseModel):

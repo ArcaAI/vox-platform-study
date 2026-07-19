@@ -44,7 +44,7 @@ class MockProvider:
             raise RuntimeError("Provider failed")
         if self._slow:
             await asyncio.sleep(0.5)
-        return self._content, {
+        return self._content, "", {
             "prompt_tokens": 10,
             "completion_tokens": 5,
             "total_tokens": 15,

@@ -216,7 +216,7 @@ export interface MedNEROptions {
   /**
    * Model to use for NER.
    * Can be a preset name ('default', 'biomedical', 'clinical') or a HuggingFace model ID.
-   * @default 'default'
+   * @default 'clinical'
    */
   model?: MedNERModel;
 
@@ -323,7 +323,11 @@ export interface MedNEROptions {
  * Default options for MedNERProcessor.
  */
 export const DEFAULT_MED_NER_OPTIONS: Required<Omit<MedNEROptions, 'entityTypes' | 'onProgress' | 'dtype' | 'workerFactory'>> = {
-  model: 'default',
+  // TASK-508 Phase 0 (0.8) / SOTA gap review D7 — default to the medical
+  // ('clinical') preset, not the generic Xenova/bert-base-NER. 'default'
+  // remains a selectable preset (see MODEL_MAP) for callers that explicitly
+  // want the generic model; it is just no longer the implicit fallback.
+  model: 'clinical',
   threshold: 0.5,
   mergeAdjacent: true,
   mergeOverlapping: true,

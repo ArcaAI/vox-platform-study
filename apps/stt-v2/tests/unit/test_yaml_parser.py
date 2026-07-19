@@ -122,6 +122,46 @@ postprocessing:
         assert spec.inference.batch_size == 16
         assert spec.inference.device == "auto"
 
+    def test_parse_denoise_engine_defaults_to_rnnoise(self, parser, minimal_yaml):
+        """TASK-507 — preprocessing.denoise.engine defaults to 'rnnoise'."""
+        spec = parser.parse(minimal_yaml)
+        assert spec.preprocessing.denoise.engine == "rnnoise"
+
+    def test_parse_denoise_engine_deepfilternet3(self, parser):
+        """TASK-507 — preprocessing.denoise.engine accepts 'deepfilternet3'."""
+        yaml = """
+version: "2.0"
+models:
+  asr: whisper-large-v3-turbo
+preprocessing:
+  denoise:
+    enabled: true
+    strength: 0.7
+    engine: deepfilternet3
+"""
+        spec = parser.parse(yaml)
+        result = parser.validate(spec)
+
+        assert spec.preprocessing.denoise.engine == "deepfilternet3"
+        assert result.valid is True
+
+    def test_validate_rejects_unknown_denoise_engine(self, parser):
+        """TASK-507 — an unrecognized denoise engine is a hard validation error."""
+        yaml = """
+version: "2.0"
+models:
+  asr: whisper-large-v3-turbo
+preprocessing:
+  denoise:
+    enabled: true
+    engine: not-a-real-engine
+"""
+        spec = parser.parse(yaml)
+        result = parser.validate(spec)
+
+        assert result.valid is False
+        assert any("denoise.engine" in e.field for e in result.errors)
+
     def test_parse_invalid_yaml_syntax(self, parser):
         """Test parsing invalid YAML syntax."""
         invalid_yaml = """

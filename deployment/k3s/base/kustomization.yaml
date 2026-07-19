@@ -12,6 +12,8 @@ resources:
   - api.yaml
   - guardrail.yaml
   - reranker.yaml
+  - vllm.yaml
+  - llama-cpp.yaml
   - smr.yaml
   - stt-v2.yaml
   - stt-v2-worker.yaml

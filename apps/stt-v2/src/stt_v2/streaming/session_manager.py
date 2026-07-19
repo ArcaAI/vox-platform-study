@@ -35,6 +35,7 @@ from stt_v2.pipeline.dto import DualCaptureConfig, EndpointConfig
 from stt_v2.storage.blob_service import BlobService
 from stt_v2.streaming.capacity_guard import CapacityGuard
 from stt_v2.streaming.commit_policy import LocalAgreementPolicy
+from stt_v2.streaming.deepfilternet_denoiser import DeepFilterNet3StreamingDenoiser
 from stt_v2.streaming.denoiser import StreamingDenoiser
 from stt_v2.streaming.execution_profile import ExecutionProfile
 from stt_v2.streaming.inference import StreamingInferenceWorker
@@ -377,9 +378,19 @@ class SessionManager:
                 if pipeline_config
                 else 1.0
             )
-            denoiser = StreamingDenoiser(input_sr=target_sr, strength=strength)
+            denoise_engine_name = (
+                getattr(pipeline_config.preprocessing.denoise, "engine", "rnnoise")
+                if pipeline_config
+                else "rnnoise"
+            )
+            # TASK-507 — engine selector (rnnoise = legacy default).
+            denoiser = (
+                DeepFilterNet3StreamingDenoiser(input_sr=target_sr, strength=strength)
+                if denoise_engine_name == "deepfilternet3"
+                else StreamingDenoiser(input_sr=target_sr, strength=strength)
+            )
             if not denoiser.initialize():
-                denoiser = None  # pyrnnoise unavailable, degrade gracefully
+                denoiser = None  # engine unavailable, degrade gracefully
 
         normalize = (
             pipeline_config.preprocessing.normalize
@@ -1404,6 +1415,31 @@ class SessionManager:
             return await asyncio.to_thread(adapter, samples, sample_rate)
 
         return run_parakeet_inference
+
+    def _make_whisper_cpp_callable(
+        self,
+        loaded_model: Any,
+        inference_config: Any,
+    ) -> StreamingAsrCallable:
+        """whisper.cpp per-utterance streaming callable (TASK-507).
+
+        Per-utterance decode via the pywhispercpp binding — whisper.cpp has no
+        native incremental-streaming API either, so this mirrors
+        ``_make_parakeet_cpp_callable``'s per-utterance re-run style.
+        """
+        from stt_v2.streaming.whisper_cpp_asr import WhisperCppAsrAdapter
+
+        adapter = WhisperCppAsrAdapter(loaded_model, inference_config)
+
+        async def run_whisper_cpp_inference(
+            samples: np.ndarray,
+            sample_rate: int,
+            *,
+            prompt: str | None = None,
+        ) -> dict[str, Any]:
+            return await asyncio.to_thread(adapter, samples, sample_rate, prompt=prompt)
+
+        return run_whisper_cpp_inference
 
     def _make_azure_callable(
         self,

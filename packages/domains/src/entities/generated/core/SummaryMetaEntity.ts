@@ -14,6 +14,10 @@ export interface ISummaryMetaEntity extends IBaseTenantEntity {
   processingTimeMs?: number | null;
   inputTokens?: number | null;
   outputTokens?: number | null;
+  // TASK-509 Phase 1B — AD-1 generation-stats headline fields.
+  stopReason?: string | null;
+  ttftMs?: number | null;
+  tokensPerSecond?: number | null;
   caseNoteIds: string[];
   preSummaryIds: string[];
   previousSummaryIds: string[];
@@ -51,6 +55,9 @@ export class SummaryMetaEntity extends BaseTenantEntity {
   private _processingTimeMs?: ISummaryMetaEntity['processingTimeMs'];
   private _inputTokens?: ISummaryMetaEntity['inputTokens'];
   private _outputTokens?: ISummaryMetaEntity['outputTokens'];
+  private _stopReason?: ISummaryMetaEntity['stopReason'];
+  private _ttftMs?: ISummaryMetaEntity['ttftMs'];
+  private _tokensPerSecond?: ISummaryMetaEntity['tokensPerSecond'];
   private _caseNoteIds: ISummaryMetaEntity['caseNoteIds'];
   private _preSummaryIds: ISummaryMetaEntity['preSummaryIds'];
   private _previousSummaryIds: ISummaryMetaEntity['previousSummaryIds'];
@@ -82,6 +89,9 @@ export class SummaryMetaEntity extends BaseTenantEntity {
     this._processingTimeMs = init.processingTimeMs;
     this._inputTokens = init.inputTokens;
     this._outputTokens = init.outputTokens;
+    this._stopReason = init.stopReason;
+    this._ttftMs = init.ttftMs;
+    this._tokensPerSecond = init.tokensPerSecond;
     this._caseNoteIds = init.caseNoteIds ?? [];
     this._preSummaryIds = init.preSummaryIds ?? [];
     this._previousSummaryIds = init.previousSummaryIds ?? [];
@@ -159,6 +169,32 @@ export class SummaryMetaEntity extends BaseTenantEntity {
 
   set outputTokens(value: ISummaryMetaEntity['outputTokens']) {
     this.setProperty('outputTokens', value);
+  }
+
+  // TASK-509 Phase 1B — AD-1 generation-stats headline fields (normalized stop
+  // reason, time-to-first-token, decode throughput). Additive/nullable.
+  get stopReason(): ISummaryMetaEntity['stopReason'] {
+    return this._stopReason;
+  }
+
+  set stopReason(value: ISummaryMetaEntity['stopReason']) {
+    this.setProperty('stopReason', value);
+  }
+
+  get ttftMs(): ISummaryMetaEntity['ttftMs'] {
+    return this._ttftMs;
+  }
+
+  set ttftMs(value: ISummaryMetaEntity['ttftMs']) {
+    this.setProperty('ttftMs', value);
+  }
+
+  get tokensPerSecond(): ISummaryMetaEntity['tokensPerSecond'] {
+    return this._tokensPerSecond;
+  }
+
+  set tokensPerSecond(value: ISummaryMetaEntity['tokensPerSecond']) {
+    this.setProperty('tokensPerSecond', value);
   }
 
   get caseNoteIds(): ISummaryMetaEntity['caseNoteIds'] {

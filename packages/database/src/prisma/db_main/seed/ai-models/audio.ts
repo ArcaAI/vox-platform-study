@@ -61,14 +61,18 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     },
     {
         // TASK-356 Phase 2 / TASK-505 — faster-whisper whisper-large-v3-turbo,
-        // CTranslate2 int8. D-4 resolved: points at the community deepdml
+        // CTranslate2. D-4 resolved: points at the community deepdml
         // conversion (owner decision D3, 2026-07-16); loads via
         // FasterWhisperLoader at runtime.
+        // TASK-507 — precision bumped int8 → f16 per the refreshed product
+        // matrix. Slug/id kept for pipeline-YAML continuity even though it
+        // still reads "int8" (cosmetic; not renamed to avoid an unrelated
+        // slug-rename churn — see TASK-507 README).
         id: '80000000-0000-0000-0001-000000000007',
         tenantId: SYSTEM_TENANT_ID,
-        name: 'Faster-Whisper Large V3 Turbo (CT2 int8)',
+        name: 'Faster-Whisper Large V3 Turbo (CT2 f16)',
         slug: 'faster-whisper-large-v3-turbo-int8',
-        description: 'whisper-large-v3-turbo converted to CTranslate2 and quantized int8 for faster-whisper (deepdml community conversion). Resolves by slug at runtime.',
+        description: 'whisper-large-v3-turbo converted to CTranslate2 and quantized f16 for faster-whisper (deepdml community conversion). Resolves by slug at runtime.',
         category: ModelCategory.AUDIO,
         taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
         modelType: ModelType.QUANTIZED_MODEL,
@@ -80,11 +84,14 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
         format: AiModelFormat.FASTER_WHISPER,
         provider: 'built-in',
         architecture: 'whisper',
-        memorySizeMb: 1700,
-        computeType: 'int8',
+        memorySizeMb: 3000,
+        // CTranslate2's compute_type vocabulary spells this "float16", not the
+        // ggml-style "f16" shorthand — resolve_ct2_compute_type() hard-rejects
+        // anything outside its validated set (see faster_whisper_asr.py).
+        computeType: 'float16',
         // TASK-361/505 — registered + catalog-visible; production/recommended
         // tags stay off until the CT2 pipeline earns the default via benchmarks.
-        tags: ['multilingual', 'faster-whisper', 'ctranslate2', 'int8'],
+        tags: ['multilingual', 'faster-whisper', 'ctranslate2', 'float16'],
     },
     {
         id: '80000000-0000-0000-0001-000000000010',
@@ -147,6 +154,28 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
         // parakeet.cpp needs the GGUF conversion (convert script) staged first.
         tags: ['streaming', 'multilingual', 'ggml', 'parakeet.cpp', 'requires-conversion'],
     },
+    {
+        // TASK-507 — whisper-large-v3-turbo served by the whisper.cpp ggml
+        // runtime (pywhispercpp binding). Pre-converted GGUF repo — unlike
+        // parakeet.cpp, no separate conversion step is required.
+        id: '80000000-0000-0000-0001-000000000014',
+        tenantId: SYSTEM_TENANT_ID,
+        name: 'Whisper Large V3 Turbo (whisper.cpp GGUF)',
+        slug: 'whisper-large-v3-turbo-gguf',
+        description: 'OpenAI Whisper Large V3 Turbo, GGUF-quantized (q8_0) for the whisper.cpp ggml runtime via the pywhispercpp binding.',
+        category: ModelCategory.AUDIO,
+        taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+        modelType: ModelType.QUANTIZED_MODEL,
+        source: AiModelSource.HUGGINGFACE,
+        sourceUri: 'oxide-lab/whisper-large-v3-turbo-GGUF',
+        sourceRevision: 'main',
+        format: AiModelFormat.WHISPER_CPP,
+        provider: 'built-in',
+        architecture: 'whisper',
+        memorySizeMb: 900,
+        computeType: 'q8_0',
+        tags: ['multilingual', 'fast', 'ggml', 'whisper.cpp'],
+    },
 
     // =========================================================================
     // VAD (Voice Activity Detection)
@@ -192,6 +221,32 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
         memorySizeMb: 32,
         computeType: 'float32',
         tags: ['noise-reduction', 'real-time', 'lightweight', 'cpu-friendly'],
+    },
+    {
+        // TASK-507 — reinstates full-band DNN denoising (superseding the
+        // TASK-506-retired `deepfilternet-v3` slug with a fresh row/id, not a
+        // resurrection of the deleted one — keeps the TASK-506 retirement
+        // ledger historically accurate). Served via the `deepfilternet`
+        // Python package (`df.enhance.init_df/enhance`), which auto-downloads
+        // its own pretrained checkpoint — sourceUri is the model NAME passed
+        // to init_df(), not an HF repo.
+        id: '80000000-0000-0000-0003-000000000004',
+        tenantId: SYSTEM_TENANT_ID,
+        name: 'DeepFilterNet3',
+        slug: 'deepfilternet3',
+        description: 'DeepFilterNet3 — full-band (48kHz) deep-filtering noise suppression. Stronger suppression than RNNoise at higher compute cost; block-processed (~1s latency) in streaming.',
+        category: ModelCategory.AUDIO,
+        taskType: ModelTaskType.AUDIO_TO_AUDIO,
+        modelType: ModelType.BASE_MODEL,
+        source: AiModelSource.LOCAL,
+        sourceUri: 'DeepFilterNet3',
+        sourceRevision: 'main',
+        format: AiModelFormat.PYTORCH,
+        provider: 'built-in',
+        architecture: 'deepfilternet',
+        memorySizeMb: 128,
+        computeType: 'float32',
+        tags: ['noise-reduction', 'full-band', 'dnn'],
     },
 
     // =========================================================================

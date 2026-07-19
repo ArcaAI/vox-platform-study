@@ -15,9 +15,14 @@ exercised, keeping the base import light).
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from qdrant_client import models
+# `qdrant_client` is the optional `rag` extra (TASK-508 D1/0.2): imported here only
+# for type annotations (deferred by `from __future__ import annotations`), and
+# lazily inside `_to_sparse` where `models.SparseVector` is actually constructed, so
+# importing this module never requires the extra to be installed.
+if TYPE_CHECKING:
+    from qdrant_client import models
 
 _DEFAULT_MODEL = "Qdrant/bm25"
 
@@ -51,6 +56,8 @@ class SparseBm25Embedder:
 
     @staticmethod
     def _to_sparse(emb: Any) -> models.SparseVector:
+        from qdrant_client import models
+
         # fastembed yields numpy arrays; coerce to JSON-safe native ints/floats.
         return models.SparseVector(
             indices=[int(i) for i in emb.indices],

@@ -273,6 +273,92 @@ describe('SummaryService', () => {
         });
     });
 
+    // ── TASK-509 Phase 1B — persist the AD-1 GenerationStats headline fields ──
+    // The SMR /generate response now carries a `stats` block (stop_reason,
+    // ttft_ms, tokens_per_second, …). generateSummary/generatePreSummary must
+    // persist the three headline fields onto SummaryMeta via the factory/entity
+    // path. `stats` may be null (legacy idempotency-cache hit) → degrade cleanly.
+    describe('TASK-509 — generation stats persistence', () => {
+        const primeGenerateMocks = (data: Record<string, unknown>) => {
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
+            mockContextItemRepository.findTranscripts.mockResolvedValue([{ content: 'transcript text' }]);
+            mockContextItemRepository.findLatestPreSummary.mockResolvedValue(null);
+            mockHttpService.axiosRef.post.mockResolvedValue({ data });
+            mockContextItemRepository.create.mockResolvedValue({ id: 'ctx-new', content: 'S', createdAt: new Date(), updatedAt: new Date() });
+            mockSummaryMetaRepository.create.mockResolvedValue({ id: 'meta-1' });
+        };
+
+        const persistedMeta = () =>
+            mockSummaryMetaRepository.create.mock.calls[0][0] as {
+                stopReason?: string | null;
+                ttftMs?: number | null;
+                tokensPerSecond?: number | null;
+            };
+
+        const POPULATED_STATS = {
+            stop_reason: 'length',
+            stop_reason_raw: 'stopped_limit',
+            total_ms: 1234,
+            ttft_ms: 210,
+            tokens_per_second: 42.5,
+            prompt_tokens: 100,
+            predicted_tokens: 50,
+            total_tokens: 150,
+            provider: 'vllm',
+            model: 'm',
+            engine_native: null,
+        };
+
+        it('persists stopReason/ttftMs/tokensPerSecond from a populated SMR stats block (generateSummary)', async () => {
+            primeGenerateMocks({ summary: 'S', modelName: 'm', stats: POPULATED_STATS });
+
+            await service.generateSummary('c-1', { dnaStyleId: 'style-1' } as any);
+
+            expect(mockSummaryMetaRepository.create).toHaveBeenCalledTimes(1);
+            const meta = persistedMeta();
+            expect(meta.stopReason).toBe('length');
+            expect(meta.ttftMs).toBe(210);
+            expect(meta.tokensPerSecond).toBe(42.5);
+        });
+
+        it('persists stopReason/ttftMs/tokensPerSecond from a populated SMR stats block (generatePreSummary)', async () => {
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
+            mockContextItemRepository.findCaseNotes.mockResolvedValue([{ id: 'cn-1', content: 'case note content' }]);
+            mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm', stats: POPULATED_STATS } });
+            mockContextItemRepository.create.mockResolvedValue({ id: 'ctx-pre', content: 'S', createdAt: new Date(), updatedAt: new Date() });
+            mockSummaryMetaRepository.create.mockResolvedValue({ id: 'meta-1' });
+
+            await service.generatePreSummary('c-1', {} as any);
+
+            const meta = persistedMeta();
+            expect(meta.stopReason).toBe('length');
+            expect(meta.ttftMs).toBe(210);
+            expect(meta.tokensPerSecond).toBe(42.5);
+        });
+
+        it('degrades cleanly when SMR stats is null — no crash, stats fields unset', async () => {
+            primeGenerateMocks({ summary: 'S', modelName: 'm', stats: null });
+
+            await expect(service.generateSummary('c-1', { dnaStyleId: 'style-1' } as any)).resolves.toBeDefined();
+
+            const meta = persistedMeta();
+            expect(meta.stopReason ?? null).toBeNull();
+            expect(meta.ttftMs ?? null).toBeNull();
+            expect(meta.tokensPerSecond ?? null).toBeNull();
+        });
+
+        it('degrades cleanly when SMR omits the stats block entirely', async () => {
+            primeGenerateMocks({ summary: 'S', modelName: 'm' });
+
+            await expect(service.generateSummary('c-1', { dnaStyleId: 'style-1' } as any)).resolves.toBeDefined();
+
+            const meta = persistedMeta();
+            expect(meta.stopReason ?? null).toBeNull();
+            expect(meta.ttftMs ?? null).toBeNull();
+            expect(meta.tokensPerSecond ?? null).toBeNull();
+        });
+    });
+
     // ===========================================================================
     // extractEntities — Core Persistence Behavior (GAP-5)
     // ===========================================================================

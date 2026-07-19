@@ -9,6 +9,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { DataNotFoundException } from '@arcaai/exceptions';
 import { HarnessAdminController } from '../harness-admin.controller';
 
 type Ctx = { user?: { roles?: string[] | null; tenantId?: string } | null; tenantId?: string };
@@ -28,6 +29,7 @@ function makeController(ctx: Ctx) {
     listEvalRuns: vi.fn().mockResolvedValue({ items: [] }),
     getEvalRun: vi.fn(),
     gateQueue: vi.fn().mockResolvedValue({ items: [] }),
+    getEditBurden: vi.fn(),
   };
   const opsClient = {
     listWorkflows: vi.fn().mockResolvedValue({ items: [] }),
@@ -152,6 +154,87 @@ describe('HarnessAdminController — read tenant scoping', () => {
   it('requires a global-admin to pass ?tenantId when there is no CLS tenant', async () => {
     const { controller } = makeController({ user: SUPER });
     await expect(controller.gateQueue({})).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+// TASK-508 Phase 0 D3 — expose HarnessObservabilityService#getEditBurden.
+// The real service signature is `getEditBurden(tenantId, consultationId)` —
+// a single-consultation lookup, not a `from`/`to` date range.
+describe('HarnessAdminController — edit burden (TASK-508 D3)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const BURDEN = {
+    consultationId: 'c1',
+    editDistance: 3,
+    editDistanceRatio: 0.1,
+    deferralRate: 0.5,
+    gateDecisionTotal: 2,
+    deferralCount: 1,
+    timeToSignSeconds: 1800,
+    deliveredAt: '2026-07-10T10:00:00.000Z',
+    signedAt: '2026-07-10T10:30:00.000Z',
+  };
+
+  const EMPTY_BURDEN = {
+    consultationId: 'c-missing',
+    editDistance: null,
+    editDistanceRatio: null,
+    deferralRate: null,
+    gateDecisionTotal: 0,
+    deferralCount: 0,
+    timeToSignSeconds: null,
+    deliveredAt: null,
+    signedAt: null,
+  };
+
+  it('delegates to the service with the resolved tenantId and the query consultationId', async () => {
+    const { controller, observabilityService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    observabilityService.getEditBurden.mockResolvedValue(BURDEN);
+
+    const result = await controller.getEditBurden({ consultationId: 'c1' } as never);
+
+    expect(observabilityService.getEditBurden).toHaveBeenCalledWith('t1', 'c1');
+    expect(result).toBe(BURDEN);
+  });
+
+  it('rejects a tenant admin targeting another tenant via ?tenantId', async () => {
+    const { controller, observabilityService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    await expect(controller.getEditBurden({ consultationId: 'c1', tenantId: 't2' } as never)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(observabilityService.getEditBurden).not.toHaveBeenCalled();
+  });
+
+  it('lets a global-admin target any tenant via ?tenantId', async () => {
+    const { controller, observabilityService } = makeController({ user: SUPER });
+    observabilityService.getEditBurden.mockResolvedValue({ ...BURDEN, consultationId: 'c9' });
+
+    await controller.getEditBurden({ consultationId: 'c9', tenantId: 't9' } as never);
+
+    expect(observabilityService.getEditBurden).toHaveBeenCalledWith('t9', 'c9');
+  });
+
+  // TASK-508 Phase 0-F — a zeroed aggregate is NOT a not-found heuristic: a valid,
+  // in-tenant consultation that simply has no recorded activity yet returns this
+  // same shape and must surface as a normal 200, not a 404.
+  it('returns a zeroed-but-valid edit-burden response as a normal 200 (no activity yet is not not-found)', async () => {
+    const { controller, observabilityService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    observabilityService.getEditBurden.mockResolvedValue(EMPTY_BURDEN);
+
+    await expect(controller.getEditBurden({ consultationId: 'c-no-activity' } as never)).resolves.toBe(EMPTY_BURDEN);
+  });
+
+  // Existence/tenancy is now the SERVICE's decision (it throws `DataNotFoundException`
+  // for both an absent and a cross-tenant consultationId); the controller just lets
+  // it propagate to the global `DataNotFoundExceptionFilter`, which maps it to 404.
+  it('surfaces the service not-found exception as a 404 for an absent/cross-tenant consultationId', async () => {
+    const { controller, observabilityService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    observabilityService.getEditBurden.mockRejectedValue(new DataNotFoundException('Consultation', 'c-missing'));
+
+    await expect(controller.getEditBurden({ consultationId: 'c-missing' } as never)).rejects.toBeInstanceOf(DataNotFoundException);
+  });
+
+  it('carries the manage:HarnessPolicy permission metadata', () => {
+    const proto = HarnessAdminController.prototype;
+    expect(Reflect.getMetadata('required_permissions', proto.getEditBurden)).toEqual([{ action: 'manage', subject: 'HarnessPolicy' }]);
   });
 });
 

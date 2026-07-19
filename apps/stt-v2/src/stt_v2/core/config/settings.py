@@ -225,6 +225,17 @@ class Settings(BaseSettings):
         description="CPU threads for parakeet.cpp inference",
     )
 
+    # whisper.cpp — ggml runtime for GGUF whisper-large-v3-turbo (TASK-507,
+    # engine WHISPER_CPP), via the maintained `pywhispercpp` binding.
+    whisper_cpp_library_path: str | None = Field(
+        default=None,
+        description="Optional path to a prebuilt libwhisper shared library (env WHISPER_CPP_LIBRARY_PATH)",
+    )
+    whisper_cpp_num_threads: int = Field(
+        default=4,
+        description="CPU threads for whisper.cpp inference",
+    )
+
     # VAD — Silero v5 ONNX
     vad_model_path: str | None = Field(
         default=None,

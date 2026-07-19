@@ -140,6 +140,54 @@ class TestAssemble:
         assert result.prompt_template_id == "tmpl-1"
         assert result.prompt_version == "3"
         assert result.resolved_from == "department"
+        # Absent segmentCitations ⇒ empty list (additive-optional, replay-safe).
+        assert result.segment_citations == []
+
+    @pytest.mark.asyncio
+    async def test_assemble_maps_segment_citations_camel_response(self):
+        # TASK-519 live-path — apps/api returns camelCase PHI-safe refs; the
+        # client maps them onto AssembleResponse.segment_citations for the
+        # workflow to thread into GenerateInput.
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "userPrompt": "USER",
+                    "systemPrompt": "SYS",
+                    "hyperparameters": {},
+                    "responseFormat": None,
+                    "promptTemplateId": "tmpl-1",
+                    "promptVersion": "3",
+                    "resolvedFrom": "department",
+                    "segmentCitations": [
+                        {
+                            "id": "seg-a",
+                            "idx": 0,
+                            "speaker": "CLINICIAN",
+                            "t0Ms": 0,
+                            "t1Ms": 1200,
+                        },
+                        {
+                            "id": "seg-b",
+                            "idx": 1,
+                            "speaker": "PATIENT",
+                            "t0Ms": 1200,
+                            "t1Ms": 3400,
+                        },
+                    ],
+                },
+            )
+
+        client = _client(handler)
+        result = await client.assemble("c-1", tenant_id="t-1")
+
+        assert [c.id for c in result.segment_citations] == ["seg-a", "seg-b"]
+        assert result.segment_citations[0].speaker == "CLINICIAN"
+        assert result.segment_citations[0].idx == 0
+        assert result.segment_citations[0].t0_ms == 0
+        assert result.segment_citations[0].t1_ms == 1200
+        # PHI posture: structural hints only.
+        assert not hasattr(result.segment_citations[0], "text")
 
 
 class TestPersistDraft:
@@ -723,3 +771,137 @@ class TestConfigurablePrefix:
             str(seen["request"].url)
             == "http://api:8868/api/v1/internal/harness/consultations/c-1/entities"
         )
+
+
+class TestReportTrajectory:
+    """TASK-510 (Phase 2C) — batched ordered-trajectory step reporting.
+
+    Mirrors ``report_progress``/``record_escalation``: POSTs to the NEW gateway
+    route ``/internal/harness/trajectory`` with the shared service token, a
+    ``{"steps": [...]}`` body of camelCase ``TrajectoryStepInput`` wire objects
+    (None pruned), and an optional ``Idempotency-Key`` header. Raises
+    ``ApiServiceError`` on upstream failure (the ACTIVITY is the fire-and-forget
+    swallow layer, like ``report_progress``).
+    """
+
+    @pytest.mark.asyncio
+    async def test_report_trajectory_posts_batched_steps_with_token(self):
+        from harness.services.api_client import TrajectoryStepInput
+
+        seen: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["request"] = request
+            return httpx.Response(200, json={"accepted": 2})
+
+        client = _client(handler)
+        steps = [
+            TrajectoryStepInput(
+                tenant_id="t-1",
+                consultation_id="c-1",
+                session_id="wf-1",
+                run_id="run-1",
+                seq=0,
+                step_type="PHASE",
+                name="fetch_policy",
+                status="OK",
+                started_at="2026-07-19T00:00:00+00:00",
+                ended_at="2026-07-19T00:00:00.100000+00:00",
+                duration_ms=100.0,
+                stats={"version": 3},
+                correlation_id="corr-1",
+            ),
+            TrajectoryStepInput(
+                tenant_id="t-1",
+                consultation_id="c-1",
+                session_id="wf-1",
+                run_id="run-1",
+                seq=32,
+                step_type="LLM_CALL",
+                name="generate",
+                status="OK",
+                started_at="2026-07-19T00:00:01+00:00",
+            ),
+        ]
+
+        result = await client.report_trajectory(steps, idempotency_key="run-1:act:traj")
+
+        req = seen["request"]
+        assert req.method == "POST"
+        assert str(req.url) == "http://api:8868/internal/harness/trajectory"
+        assert req.headers["X-Service-Token"] == "svc-token"
+        assert req.headers["Idempotency-Key"] == "run-1:act:traj"
+        body = json.loads(req.content)
+        assert [s["seq"] for s in body["steps"]] == [0, 32]
+        first = body["steps"][0]
+        # camelCase wire shape (the apps/api wave must accept exactly this).
+        assert first["tenantId"] == "t-1"
+        assert first["consultationId"] == "c-1"
+        assert first["sessionKind"] == "HARNESS_DOC"
+        assert first["sessionId"] == "wf-1"
+        assert first["runId"] == "run-1"
+        assert first["stepType"] == "PHASE"
+        assert first["name"] == "fetch_policy"
+        assert first["status"] == "OK"
+        assert first["startedAt"] == "2026-07-19T00:00:00+00:00"
+        assert first["endedAt"] == "2026-07-19T00:00:00.100000+00:00"
+        assert first["durationMs"] == 100.0
+        assert first["stats"] == {"version": 3}
+        assert first["correlationId"] == "corr-1"
+        # None-valued optionals are pruned (strict apps/api DTO validation).
+        second = body["steps"][1]
+        assert "endedAt" not in second
+        assert "durationMs" not in second
+        assert "stats" not in second
+        assert result.accepted == 2
+
+    @pytest.mark.asyncio
+    async def test_report_trajectory_omits_header_when_no_key(self):
+        from harness.services.api_client import TrajectoryStepInput
+
+        seen: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["request"] = request
+            return httpx.Response(200, json={"accepted": 1})
+
+        client = _client(handler)
+        await client.report_trajectory(
+            [
+                TrajectoryStepInput(
+                    tenant_id="t-1",
+                    session_id="wf-1",
+                    run_id="run-1",
+                    seq=0,
+                    step_type="PHASE",
+                    name="fetch_policy",
+                    status="OK",
+                    started_at="2026-07-19T00:00:00+00:00",
+                )
+            ]
+        )
+        assert "Idempotency-Key" not in seen["request"].headers
+
+    @pytest.mark.asyncio
+    async def test_report_trajectory_raises_on_upstream_error(self):
+        from harness.services.api_client import TrajectoryStepInput
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, json={"error": "down"})
+
+        client = _client(handler)
+        with pytest.raises(ApiServiceError):
+            await client.report_trajectory(
+                [
+                    TrajectoryStepInput(
+                        tenant_id="t-1",
+                        session_id="wf-1",
+                        run_id="run-1",
+                        seq=0,
+                        step_type="PHASE",
+                        name="fetch_policy",
+                        status="OK",
+                        started_at="2026-07-19T00:00:00+00:00",
+                    )
+                ]
+            )

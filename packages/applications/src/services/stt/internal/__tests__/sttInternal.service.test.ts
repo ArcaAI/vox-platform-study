@@ -244,6 +244,12 @@ const mockAudioRecordingRepository = {
     getNextSequenceNumber: vi.fn(),
 };
 
+// TASK-519 — segment writer (optional trailing dep on the service).
+const mockTranscriptSegmentRepository = {
+    create: vi.fn(),
+    findByContextItem: vi.fn(),
+};
+
 describe('SttInternalService', () => {
     let service: SttInternalService;
 
@@ -259,6 +265,8 @@ describe('SttInternalService', () => {
             }
         });
 
+        mockTranscriptSegmentRepository.create.mockImplementation(async (entity: any) => entity);
+
         service = new SttInternalService(
             mockJobRepository as any,
             mockContextItemRepository as any,
@@ -266,6 +274,8 @@ describe('SttInternalService', () => {
             mockAudioRecordingRepository as any,
             mockEventEmitter as any,
             mockClsService as any,
+            undefined, // secretsService (optional)
+            mockTranscriptSegmentRepository as any,
         );
     });
 
@@ -335,6 +345,106 @@ describe('SttInternalService', () => {
             });
 
             expect(result.contextItemId).toBe('new-context-item-id');
+        });
+    });
+
+    // =========================================================================
+    // TASK-519 — segment-level transcript. STT emits ordered segments (diarized
+    // turns) alongside a finalized transcript; the ingest persists them as
+    // TranscriptSegment rows with offsets resolved from the segment text (the
+    // text itself is NOT persisted — it is a slice of the encrypted transcript).
+    // =========================================================================
+    describe('createTranscript segment persistence (TASK-519)', () => {
+        it('persists one TranscriptSegment per segment with offsets resolved from the text', async () => {
+            const job = createBehavioralJobEntity({ id: 'job-seg', consultationId: 'c-seg', tenantId: 'tenant-seg' });
+            const contextItem = createMockContextItemEntity({ id: 'ctx-seg', tenantId: 'tenant-seg' });
+            mockJobRepository.findById.mockResolvedValue(job);
+            mockContextItemRepository.create.mockResolvedValue(contextItem);
+            mockJobRepository.update.mockImplementation(async (_id: any, e: any) => e);
+
+            await service.createTranscript({
+                jobId: 'job-seg',
+                transcriptText: 'Patient reports chest pain. No shortness of breath.',
+                segments: [
+                    { speaker: 'doctor', text: 'Patient reports chest pain.', t0Ms: 0, t1Ms: 1500 },
+                    { speaker: 'doctor', text: 'No shortness of breath.', t0Ms: 1500, t1Ms: 3000 },
+                ],
+            } as any);
+
+            expect(mockTranscriptSegmentRepository.create).toHaveBeenCalledTimes(2);
+            const first = mockTranscriptSegmentRepository.create.mock.calls[0][0];
+            expect(first.contextItemId).toBe('ctx-seg');
+            expect(first.idx).toBe(0);
+            expect(first.charStart).toBe(0);
+            expect(first.charEnd).toBe(27);
+            expect(first.speaker).toBe('doctor');
+            // The PHI text is NOT persisted on the segment row.
+            expect((first as any).text).toBeUndefined();
+
+            const second = mockTranscriptSegmentRepository.create.mock.calls[1][0];
+            expect(second.idx).toBe(1);
+            expect(second.charStart).toBe(28);
+        });
+
+        it('falls back to metadata.segments (D8: stop dropping metadata)', async () => {
+            const job = createBehavioralJobEntity({ id: 'job-md', consultationId: 'c-md', tenantId: 'tenant-md' });
+            const contextItem = createMockContextItemEntity({ id: 'ctx-md', tenantId: 'tenant-md' });
+            mockJobRepository.findById.mockResolvedValue(job);
+            mockContextItemRepository.create.mockResolvedValue(contextItem);
+            mockJobRepository.update.mockImplementation(async (_id: any, e: any) => e);
+
+            await service.createTranscript({
+                jobId: 'job-md',
+                transcriptText: 'alpha beta',
+                metadata: { segments: [{ text: 'alpha' }, { text: 'beta' }] },
+            } as any);
+
+            expect(mockTranscriptSegmentRepository.create).toHaveBeenCalledTimes(2);
+        });
+
+        it('persists no segments when none are supplied (regression)', async () => {
+            const job = createBehavioralJobEntity({ id: 'job-none', consultationId: 'c-none' });
+            const contextItem = createMockContextItemEntity({ id: 'ctx-none' });
+            mockJobRepository.findById.mockResolvedValue(job);
+            mockContextItemRepository.create.mockResolvedValue(contextItem);
+            mockJobRepository.update.mockImplementation(async (_id: any, e: any) => e);
+
+            await service.createTranscript({ jobId: 'job-none', transcriptText: 'no segments here' });
+
+            expect(mockTranscriptSegmentRepository.create).not.toHaveBeenCalled();
+        });
+
+        it('does not fail the ingest when segment persistence throws (best-effort)', async () => {
+            const job = createBehavioralJobEntity({ id: 'job-err', consultationId: 'c-err' });
+            const contextItem = createMockContextItemEntity({ id: 'ctx-err' });
+            mockJobRepository.findById.mockResolvedValue(job);
+            mockContextItemRepository.create.mockResolvedValue(contextItem);
+            mockJobRepository.update.mockImplementation(async (_id: any, e: any) => e);
+            mockTranscriptSegmentRepository.create.mockRejectedValueOnce(new Error('db down'));
+
+            const result = await service.createTranscript({
+                jobId: 'job-err',
+                transcriptText: 'alpha',
+                segments: [{ text: 'alpha' }],
+            } as any);
+
+            expect(result.contextItemId).toBe('ctx-err');
+        });
+
+        it('persists segments on the no-job streaming path too', async () => {
+            const contextItem = createMockContextItemEntity({ id: 'ctx-stream-seg', tenantId: 'tenant-stream-seg' });
+            mockContextItemRepository.findTranscripts.mockResolvedValue([]);
+            mockContextItemRepository.create.mockResolvedValue(contextItem);
+
+            await service.createTranscript({
+                consultationId: 'c-stream-seg',
+                tenantId: 'tenant-stream-seg',
+                transcriptText: 'hello world',
+                transcriptionSource: 'streaming',
+                segments: [{ text: 'hello' }, { text: 'world' }],
+            } as any);
+
+            expect(mockTranscriptSegmentRepository.create).toHaveBeenCalledTimes(2);
         });
     });
 

@@ -316,6 +316,84 @@ describe('LiveDocumentationService', () => {
     });
   });
 
+  // ------------------------------------------------------------------
+  // TASK-509 Phase 1B — AD-1 generation stats on the live-summary SSE payload.
+  // The SMR /generate response now carries a `stats` block; each flush must
+  // surface it as `metadata.stats` on the published payload so the console /
+  // gateway wave can render TTFT / tok-s / stop-reason live. Null / missing
+  // stats (legacy idempotency-cache hit) must degrade cleanly — no metadata,
+  // feed still publishes.
+  // ------------------------------------------------------------------
+  describe('generation stats on the SSE payload (TASK-509)', () => {
+    function statsHttpMock(stats: unknown) {
+      return {
+        axiosRef: {
+          post: vi.fn().mockImplementation((url: string) => {
+            if (url.includes('/classify/tokens')) return Promise.resolve({ data: { entities: [] } });
+            if (url.includes('/generate')) return Promise.resolve({ data: { summary: 'Running note.', stats } });
+            return Promise.resolve({ data: {} });
+          }),
+        },
+      };
+    }
+
+    const POPULATED_STATS = {
+      stop_reason: 'stop',
+      stop_reason_raw: 'stop',
+      total_ms: 900,
+      ttft_ms: 120,
+      tokens_per_second: 33.3,
+      prompt_tokens: 80,
+      predicted_tokens: 40,
+      total_tokens: 120,
+      provider: 'vllm',
+      model: 'live-medgemma',
+      engine_native: null,
+    };
+
+    it('attaches AD-1 stats to metadata.stats on the flush payload', async () => {
+      const { service } = buildDeps(statsHttpMock(POPULATED_STATS));
+      service.start({ consultationId: CID, tenantId: TENANT });
+      service.ingestSegment(CID, { text: 'hello', isFinal: true, segmentId: 's1' });
+
+      const payload = await service.flush(CID);
+
+      expect(payload!.metadata?.stats).toMatchObject({
+        stop_reason: 'stop',
+        ttft_ms: 120,
+        tokens_per_second: 33.3,
+        prompt_tokens: 80,
+        predicted_tokens: 40,
+        total_tokens: 120,
+        provider: 'vllm',
+        model: 'live-medgemma',
+      });
+    });
+
+    it('publishes the stats to the live-summary channel', async () => {
+      const { service, cacheService } = buildDeps(statsHttpMock(POPULATED_STATS));
+      service.start({ consultationId: CID, tenantId: TENANT });
+      service.ingestSegment(CID, { text: 'hello', isFinal: true, segmentId: 's1' });
+
+      await service.flush(CID);
+
+      const published = JSON.parse(cacheService.publish.mock.calls[0][1] as string);
+      expect(published.metadata.stats.stop_reason).toBe('stop');
+      expect(published.metadata.stats.tokens_per_second).toBe(33.3);
+    });
+
+    it('degrades cleanly when SMR omits stats — no metadata.stats, feed still publishes', async () => {
+      const { service, cacheService } = buildDeps(statsHttpMock(null));
+      service.start({ consultationId: CID, tenantId: TENANT });
+      service.ingestSegment(CID, { text: 'hello', isFinal: true, segmentId: 's1' });
+
+      const payload = await service.flush(CID);
+
+      expect(payload!.metadata?.stats ?? null).toBeNull();
+      expect(cacheService.publish).toHaveBeenCalledWith(CHANNEL, expect.any(String));
+    });
+  });
+
   describe('stop', () => {
     it('persists a PRE_SUMMARY snapshot when requested and tears the session down', async () => {
       const { service, contextItemRepository, cacheService } = buildDeps();

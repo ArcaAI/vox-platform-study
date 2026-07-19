@@ -11,6 +11,7 @@ import redis.asyncio as aioredis
 import structlog.contextvars
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
+from opentelemetry import trace
 
 from smr_v2.core.config import Settings
 from smr_v2.core.dependencies import (
@@ -58,14 +59,22 @@ from smr_v2.core.metrics import (
     QUEUE_WAIT_TIME,
     RATE_LIMIT_REJECTIONS,
     SERVICE_NAME,
+    STOP_REASON_TOTAL,
+    TOKENS_PER_SECOND,
     TOKENS_TOTAL,
 )
+from smr_v2.core.observability import set_generation_span_attributes
 from smr_v2.models.requests import GenerateRequest
 from smr_v2.models.responses import (
     ErrorResponse,
     GenerateResponse,
     StreamingGenerateResponse,
     TokenUsage,
+)
+from smr_v2.models.stats import (
+    GenerationStats,
+    build_generation_stats,
+    degraded_stats,
 )
 from smr_v2.models.stream import StreamChunk
 from smr_v2.models.task import TaskStatus
@@ -92,6 +101,53 @@ _DEFAULT_TIMEOUT_S = 120.0
 _IDEMPOTENCY_TTL_S = 86_400  # 24h
 
 
+def _extract_usage(result: Any) -> tuple[int, int, int]:
+    """Return ``(prompt, completion, total)`` token counts from a provider result.
+
+    The AD-1 provider contract returns a ``GenerationStats`` as the third tuple
+    element (``predicted_tokens`` = completion). A legacy usage ``dict`` (still
+    produced by some test doubles for the deprecated wire) is tolerated so a
+    dedup/telemetry path never crashes on shape.
+    """
+    if isinstance(result, GenerationStats):
+        return result.prompt_tokens, result.predicted_tokens, result.total_tokens
+    data = result or {}
+    prompt = int(data.get("prompt_tokens", 0) or 0)
+    completion = int(data.get("completion_tokens", 0) or 0)
+    total = data.get("total_tokens")
+    return prompt, completion, int(total) if total is not None else prompt + completion
+
+
+def _coerce_stats(
+    result: Any, *, provider: str, model: str, latency_ms: int
+) -> GenerationStats:
+    """Normalize a provider result into ``GenerationStats``.
+
+    A provider that already returns ``GenerationStats`` (the AD-1 contract) is
+    passed through with its REAL stop reason preserved; only empty identity /
+    timing fields are backfilled from the endpoint. A legacy usage ``dict`` is
+    mapped with the wire-compat ``"stop"`` reason (the pre-AD-1 behavior).
+    """
+    if isinstance(result, GenerationStats):
+        updates: dict[str, Any] = {}
+        if not result.model:
+            updates["model"] = model
+        if result.total_ms == 0:
+            updates["total_ms"] = latency_ms
+        return result.model_copy(update=updates) if updates else result
+    prompt, completion, total = _extract_usage(result)
+    return build_generation_stats(
+        provider=provider,
+        model=model,
+        raw_stop_reason="stop",
+        prompt_tokens=prompt,
+        predicted_tokens=completion,
+        total_tokens=total,
+        total_ms=latency_ms,
+        ttft_ms=None,
+    )
+
+
 def _get_provider_timeout(settings: Settings, provider_name: str) -> float:
     """Get timeout in seconds for the given provider."""
     config_map = {
@@ -99,6 +155,8 @@ def _get_provider_timeout(settings: Settings, provider_name: str) -> float:
         "azure-openai": settings.azure.timeout_s,
         "bedrock": settings.bedrock.timeout_s,
         "lm-studio": settings.openai_compat.timeout_s,
+        "vllm": settings.vllm.timeout_s,
+        "llama-cpp": settings.llama_cpp.timeout_s,
         # Backward-compatible aliases
         "azure": settings.azure.timeout_s,
         "openai_compat": settings.openai_compat.timeout_s,
@@ -330,7 +388,7 @@ async def generate(
 
         for attempt in range(max_retries + 1):
             try:
-                content, reasoning, usage = await asyncio.wait_for(
+                content, reasoning, gen_result = await asyncio.wait_for(
                     provider.generate(request_body),
                     timeout=timeout_s,
                 )
@@ -370,15 +428,42 @@ async def generate(
             raise last_exc
 
         latency_ms = int((time.monotonic() - start) * 1000)
-        total_tokens = usage.get("total_tokens", 0)
+        prompt_tokens, completion_tokens, total_tokens = _extract_usage(gen_result)
+
+        # TASK-509 (AD-1): assemble normalized GenerationStats and thread it onto
+        # the response. STRICTLY best-effort — a stats-mapping failure must never
+        # fail an otherwise-successful, already-billed generation (degrade to a
+        # null-safe, clearly-marked stats object + a warning). The provider now
+        # returns REAL stats (native finish reason surfaced), so the non-stream
+        # stop reason is no longer the frozen wire-compat "stop".
+        stats: GenerationStats
+        try:
+            stats = _coerce_stats(
+                gen_result,
+                provider=request_body.provider,
+                model=model,
+                latency_ms=latency_ms,
+            )
+        except Exception as exc:
+            logger.warning(
+                "generation.stats_degraded", task_id=task.task_id, error=str(exc)
+            )
+            stats = degraded_stats(
+                provider=request_body.provider, model=model, total_ms=latency_ms
+            )
+        # Wire-compat ``finish_reason`` reflects the provider's REAL native stop
+        # reason (falling back to the normalized reason, then "stop") — NOT the
+        # frozen "stop" the pre-AD-1 endpoint always reported.
+        finish_reason = stats.stop_reason_raw or stats.stop_reason or "stop"
+
         await task_manager.update_task(task.task_id, status=TaskStatus.COMPLETED, total_tokens=total_tokens)
 
         GENERATION_TOTAL.labels(provider=request_body.provider, model=model, status="completed").inc()
         GENERATION_LATENCY.labels(provider=request_body.provider, model=model).observe(latency_ms / 1000)
         # TASK-386 — cross-service per-model inference latency (for avg latency).
         MODEL_INFERENCE_LATENCY.labels(service=SERVICE_NAME, model=model).observe(latency_ms / 1000)
-        TOKENS_TOTAL.labels(provider=request_body.provider, model=model, direction="input").inc(usage.get("prompt_tokens", 0))
-        TOKENS_TOTAL.labels(provider=request_body.provider, model=model, direction="output").inc(usage.get("completion_tokens", 0))
+        TOKENS_TOTAL.labels(provider=request_body.provider, model=model, direction="input").inc(prompt_tokens)
+        TOKENS_TOTAL.labels(provider=request_body.provider, model=model, direction="output").inc(completion_tokens)
 
         generation_audit.log_generation(
             GenerationAuditEvent(
@@ -387,13 +472,42 @@ async def generate(
                 provider=request_body.provider,
                 model=model,
                 status="completed",
-                prompt_tokens=usage.get("prompt_tokens", 0),
-                completion_tokens=usage.get("completion_tokens", 0),
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
                 total_tokens=total_tokens,
                 latency_ms=latency_ms,
-                finish_reason="stop",
+                finish_reason=finish_reason,
             )
         )
+
+        # Metric/span stamping is STRICTLY best-effort and must be guarded on its
+        # own: the model already ran and the task is COMPLETED, so a Prometheus
+        # label edge case or an OTel span raise here must NEVER bubble into the
+        # outer ``except`` — that would record a FALSE circuit-breaker failure,
+        # flip the task to FAILED, skip the idempotency cache, and return a 5xx
+        # the harness retries (re-invoking = re-billing). Swallow and continue;
+        # worst case degrades to "not recorded" (same posture as AD-1 stats +
+        # the idempotency-cache write below).
+        try:
+            if stats.tokens_per_second is not None:
+                TOKENS_PER_SECOND.labels(provider=request_body.provider, model=model).observe(
+                    stats.tokens_per_second
+                )
+            STOP_REASON_TOTAL.labels(
+                provider=request_body.provider, model=model, stop_reason=stats.stop_reason
+            ).inc()
+            set_generation_span_attributes(
+                trace.get_current_span(),
+                provider=request_body.provider,
+                model=model,
+                input_tokens=stats.prompt_tokens,
+                output_tokens=stats.predicted_tokens,
+                finish_reasons=[stats.stop_reason],
+            )
+        except Exception as exc:
+            logger.warning(
+                "generation.stats_telemetry_failed", task_id=task.task_id, error=str(exc)
+            )
 
         response = GenerateResponse(
             task_id=task.task_id,
@@ -403,12 +517,13 @@ async def generate(
             provider=request_body.provider,
             model=model,
             usage=TokenUsage(
-                prompt_tokens=usage.get("prompt_tokens", 0),
-                completion_tokens=usage.get("completion_tokens", 0),
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
                 total_tokens=total_tokens,
             ),
             latency_ms=latency_ms,
-            finish_reason="stop",
+            finish_reason=finish_reason,
+            stats=stats,
         )
         # C1-04 (TASK-469): cache the completed generation so a replayed request carrying the
         # same key returns THIS response instead of re-billing the model (bounded TTL). STRICTLY
@@ -522,19 +637,51 @@ async def _run_streaming_generation(
     MODEL_RUNNING_INSTANCES.labels(service=SERVICE_NAME, model=resolved_model).inc()
     start = time.monotonic()
     first_chunk_recorded = False
+    ttft_ms: int | None = None
     total_input_tokens = 0
     total_output_tokens = 0
+    stream_finish_reason: str | None = None
     try:
         async for chunk in provider.generate_stream(request_body):
             if not first_chunk_recorded:
                 ttft = time.monotonic() - start
                 TTFT_SECONDS.labels(provider=resolved_provider, model=resolved_model).observe(ttft)
+                ttft_ms = int(ttft * 1000)
                 first_chunk_recorded = True
             if chunk.type == "usage" and isinstance(chunk.data, dict):
-                total_input_tokens += chunk.data.get("prompt_tokens", 0)
-                total_output_tokens += chunk.data.get("completion_tokens", 0)
+                total_input_tokens += chunk.data.get("prompt_tokens", 0) or 0
+                # accept both wire-compat "completion_tokens" and AD-1 "predicted_tokens"
+                total_output_tokens += (
+                    chunk.data.get("completion_tokens", chunk.data.get("predicted_tokens", 0)) or 0
+                )
+            if chunk.type == "done" and isinstance(chunk.data, dict):
+                stream_finish_reason = chunk.data.get("finish_reason") or stream_finish_reason
             await task_manager.append_chunk(task_id, chunk)
         latency_ms = int((time.monotonic() - start) * 1000)
+        # TASK-509 (AD-1): stamp normalized stop-reason + decode-throughput fleet
+        # metrics from the streamed native finish reason / token counts. Never
+        # allowed to fail the stream (best-effort telemetry).
+        try:
+            stream_stats = build_generation_stats(
+                provider=resolved_provider,
+                model=resolved_model or "",
+                raw_stop_reason=stream_finish_reason or "stop",
+                prompt_tokens=total_input_tokens,
+                predicted_tokens=total_output_tokens,
+                total_ms=latency_ms,
+                ttft_ms=ttft_ms,
+            )
+            if stream_stats.tokens_per_second is not None:
+                TOKENS_PER_SECOND.labels(
+                    provider=resolved_provider, model=resolved_model
+                ).observe(stream_stats.tokens_per_second)
+            STOP_REASON_TOTAL.labels(
+                provider=resolved_provider,
+                model=resolved_model,
+                stop_reason=stream_stats.stop_reason,
+            ).inc()
+        except Exception as exc:  # noqa: BLE001 — telemetry must never fail the stream
+            logger.warning("streaming_generation.stats_degraded", task_id=task_id, error=str(exc))
         await task_manager.update_task(task_id, status=TaskStatus.COMPLETED)
         GENERATION_TOTAL.labels(provider=resolved_provider, model=resolved_model, status="completed").inc()
         GENERATION_LATENCY.labels(provider=resolved_provider, model=resolved_model).observe(latency_ms / 1000)

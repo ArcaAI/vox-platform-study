@@ -16,9 +16,9 @@ const TENANT_ADMIN_RULES: PermissionRule[] = [
 ];
 
 describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playground tier TASK-420/431)', () => {
-    it('covers the full 38-route map across the four tiers (TASK-506 adds the two model-default surfaces)', () => {
-        expect(NAV_ENTRIES).toHaveLength(38);
-        expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(12);
+    it('covers the full 43-route map across the four tiers (TASK-512 adds the agentic global-admin surfaces)', () => {
+        expect(NAV_ENTRIES).toHaveLength(43);
+        expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(17);
         expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(7);
         expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(14);
         expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(5);

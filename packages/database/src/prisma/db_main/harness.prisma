@@ -337,6 +337,25 @@ model HarnessPolicy {
   // no restriction (all tools allowed).
   toolAllowlist Json? @db.JsonB
 
+  // TASK-511 (Phase 3A) — agentic loop knobs the workflow reads. ADDITIVE + NULLABLE:
+  // null ⇒ the harness env/code default applies (per-field fallthrough, mirroring the
+  // smrProvider/smrModel precedent in harness-policy.service.ts). Phase 6 consumes the
+  // behaviour; 3A only makes them DB-editable and threads them onto the effective policy.
+  optimisticDeliveryEnabled Boolean?
+  atomicFactEnabled         Boolean?
+  retrievalEnabled          Boolean?
+  warmStartEnabled          Boolean?
+  nerPriorsEnabled          Boolean?
+  maxEditReruns             Int?
+  regenFeedbackEnabled      Boolean?
+
+  // TASK-516 (Phase 5) — MCP external-tools master switch. ADDITIVE + NULLABLE:
+  // null ⇒ OFF (the harness env/code default is off), so the whole MCP tool path
+  // stays dormant until a global admin explicitly flips this per-tenant knob AND
+  // the referenced McpServer.enabled is true. Same per-field fallthrough as the
+  // TASK-511 knobs above.
+  mcpToolsEnabled Boolean?
+
   // Resource status + Audit (standard fields)
   resourceStatus          ResourceStatusType @default(ENABLED)
   resourceStatusUpdatedAt DateTime?

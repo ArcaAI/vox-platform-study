@@ -12,6 +12,7 @@ Three interchangeable backends, all selected via :class:`~harness.eval.config.Ju
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable
 from functools import partial
 from typing import Any, cast
@@ -29,6 +30,138 @@ def _secret_value(value: object) -> str:
     if isinstance(value, SecretStr):
         return value.get_secret_value()
     return str(value)
+
+
+# ---------------------------------------------------------------------------
+# TASK-509 (AD-1) Phase 1B — generation-stats capture for the judge/sensor LLM
+# clients. These call their OWN LLM endpoints (not SMR), so they can't reuse
+# SMR's ``GenerationStats`` model (a separate uv package); instead they capture
+# the equivalent native fields into an AD-1-shaped dict mirroring the SMR
+# ``stats`` field names, for Phase 2 trajectory ``LLM_CALL`` / ``GUARDRAIL``
+# steps. Every builder is null-safe: a response that omits usage / finish
+# reason must NEVER throw — counts fall back to zero and the stop reason to a
+# null-safe normalized value.
+# ---------------------------------------------------------------------------
+
+# Per-wire raw→normalized stop-reason tables (subset mirroring smr_v2.models.stats
+# for the wires these clients speak: OpenAI-compatible, Ollama, Bedrock converse).
+_OPENAI_WIRE_STOP: dict[str, str] = {
+    "stop": "stop",
+    "eos": "stop",
+    "end_turn": "stop",
+    "length": "length",
+    "max_tokens": "length",
+    "content_filter": "content_filter",
+    "tool_calls": "tool_call",
+    "function_call": "tool_call",
+}
+_OLLAMA_STOP: dict[str, str] = {"stop": "stop", "length": "length", "load": "other", "unload": "other"}
+_BEDROCK_STOP: dict[str, str] = {
+    "end_turn": "stop",
+    "stop_sequence": "stop",
+    "max_tokens": "length",
+    "content_filtered": "content_filter",
+    "guardrail_intervened": "content_filter",
+    "tool_use": "tool_call",
+}
+_STOP_TABLES: dict[str, dict[str, str]] = {
+    "lm-studio": _OPENAI_WIRE_STOP,
+    "lmstudio": _OPENAI_WIRE_STOP,
+    "openai_compat": _OPENAI_WIRE_STOP,
+    "openai": _OPENAI_WIRE_STOP,
+    "vllm": _OPENAI_WIRE_STOP,
+    "azure": _OPENAI_WIRE_STOP,
+    "azure-openai": _OPENAI_WIRE_STOP,
+    "ollama": _OLLAMA_STOP,
+    "bedrock": _BEDROCK_STOP,
+    "llama-cpp": _OPENAI_WIRE_STOP,
+}
+
+
+def _normalize_stop_reason(provider: str, raw: str | None) -> str:
+    """Map a provider-native finish/stop reason onto the AD-1 stop-reason set.
+
+    Case-insensitive; an empty/unknown token normalizes to ``"other"`` so a novel
+    engine reason never crashes the mapper.
+    """
+    if not raw:
+        return "other"
+    table = _STOP_TABLES.get((provider or "").lower(), _OPENAI_WIRE_STOP)
+    return table.get(raw.strip().lower(), "other")
+
+
+def build_llm_call_stats(
+    *,
+    provider: str,
+    model: str,
+    raw_stop_reason: str | None,
+    prompt_tokens: int = 0,
+    predicted_tokens: int = 0,
+    total_tokens: int | None = None,
+    total_ms: int = 0,
+    ttft_ms: int | None = None,
+    tokens_per_second: float | None = None,
+    engine_native: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Assemble an AD-1-shaped stats dict from already-extracted native fields.
+
+    Mirrors ``smr_v2.models.stats.GenerationStats`` field names. ``tokens_per_second``
+    is used verbatim when the engine reports it; otherwise it is computed from client
+    timing (predicted / decode-time), and left ``None`` when nothing can be divided.
+    """
+    prompt = int(prompt_tokens or 0)
+    predicted = int(predicted_tokens or 0)
+    total = int(total_tokens) if total_tokens is not None else prompt + predicted
+    total_ms_int = int(total_ms or 0)
+
+    tps = tokens_per_second
+    if tps is None and predicted and total_ms_int > 0:
+        decode_ms = total_ms_int - ttft_ms if ttft_ms is not None and total_ms_int > ttft_ms else total_ms_int
+        if decode_ms > 0:
+            tps = round(predicted / (decode_ms / 1000.0), 3)
+
+    return {
+        "stop_reason": _normalize_stop_reason(provider, raw_stop_reason),
+        "stop_reason_raw": raw_stop_reason or "",
+        "total_ms": total_ms_int,
+        "ttft_ms": ttft_ms,
+        "tokens_per_second": tps,
+        "prompt_tokens": prompt,
+        "predicted_tokens": predicted,
+        "total_tokens": total,
+        "provider": provider,
+        "model": model,
+        "engine_native": engine_native,
+    }
+
+
+def _openai_usage_dict(usage: Any) -> dict[str, Any] | None:
+    """Coerce an OpenAI-wire ``usage`` (SDK object or dict) to a plain dict, null-safe."""
+    if usage is None:
+        return None
+    if isinstance(usage, dict):
+        return usage
+    return {
+        "prompt_tokens": getattr(usage, "prompt_tokens", 0),
+        "completion_tokens": getattr(usage, "completion_tokens", 0),
+        "total_tokens": getattr(usage, "total_tokens", None),
+    }
+
+
+def _stats_from_openai_response(resp: Any, *, provider: str, model: str, total_ms: int) -> dict[str, Any]:
+    """Build AD-1 stats from an OpenAI-wire chat-completion response (null-safe)."""
+    usage = _openai_usage_dict(getattr(resp, "usage", None)) or {}
+    choices = getattr(resp, "choices", None) or []
+    finish_reason = getattr(choices[0], "finish_reason", None) if choices else None
+    return build_llm_call_stats(
+        provider=provider,
+        model=getattr(resp, "model", None) or model,
+        raw_stop_reason=finish_reason,
+        prompt_tokens=usage.get("prompt_tokens", 0) or 0,
+        predicted_tokens=usage.get("completion_tokens", 0) or 0,
+        total_tokens=usage.get("total_tokens"),
+        total_ms=total_ms,
+    )
 
 
 # Substrings that mark a *transient* backend failure worth retrying (a model
@@ -128,6 +261,9 @@ class OpenAICompatJudgeClient:
 
         self._config = config
         self.model = config.model
+        # TASK-509 (AD-1) Phase 1B: AD-1 stats dict from the most recent ``complete`` call
+        # (None until the first call), read by the Phase 2 trajectory ``LLM_CALL`` emitter.
+        self.last_stats: dict[str, Any] | None = None
         oc = config.openai_compat
         self._client = AsyncOpenAI(
             api_key=_secret_value(oc.api_key) or "not-needed",
@@ -163,6 +299,7 @@ class OpenAICompatJudgeClient:
         # Server-specific reasoning knobs (vLLM/Azure); only sent when configured.
         if self._config.extra_body:
             kwargs["extra_body"] = self._config.extra_body
+        started = time.monotonic()
         try:
             resp = await _create_with_retry(
                 self._client.chat.completions.create,
@@ -173,6 +310,13 @@ class OpenAICompatJudgeClient:
             )
         except Exception as exc:  # transport/API failure (post-retry) → typed error
             raise JudgeConnectionError(f"openai_compat judge call failed: {exc}") from exc
+        # TASK-509 (AD-1): capture the native usage/finish-reason stats for this call.
+        self.last_stats = _stats_from_openai_response(
+            resp,
+            provider=str(self._config.provider),
+            model=self.model,
+            total_ms=int((time.monotonic() - started) * 1000),
+        )
         # Reasoning models can leave ``content`` empty and strand the answer in
         # ``reasoning_content`` (qwen3.5/gemma-4) or ``reasoning`` (gpt-oss); fall
         # back to the reasoning text so the answer is never lost.
@@ -191,6 +335,8 @@ class AzureOpenAIJudgeClient:
         self._config = config
         az = config.azure
         self.model = az.deployment or config.model
+        # TASK-509 (AD-1) Phase 1B: AD-1 stats dict from the most recent ``complete`` call.
+        self.last_stats: dict[str, Any] | None = None
         self._client = AsyncAzureOpenAI(
             api_key=_secret_value(az.api_key),
             azure_endpoint=az.endpoint,
@@ -221,6 +367,7 @@ class AzureOpenAIJudgeClient:
         # Server-specific reasoning knobs (e.g. reasoning_effort); only when configured.
         if self._config.extra_body:
             kwargs["extra_body"] = self._config.extra_body
+        started = time.monotonic()
         try:
             resp = await _create_with_retry(
                 self._client.chat.completions.create,
@@ -231,6 +378,11 @@ class AzureOpenAIJudgeClient:
             )
         except Exception as exc:  # transport/API failure (post-retry) → typed error
             raise JudgeConnectionError(f"azure judge call failed: {exc}") from exc
+        # TASK-509 (AD-1): capture the native usage/finish-reason stats for this call.
+        self.last_stats = _stats_from_openai_response(
+            resp, provider="azure", model=self.model,
+            total_ms=int((time.monotonic() - started) * 1000),
+        )
         # Same reasoning-aware fallback as the OpenAI-compatible client: prefer
         # ``content``, else the reasoning text (``reasoning_content`` / ``reasoning``).
         msg = resp.choices[0].message
@@ -247,6 +399,8 @@ class BedrockJudgeClient:
         self.model = config.model
         self.region = config.bedrock.region
         self._runtime: Any = None  # boto3 client constructed lazily on first call
+        # TASK-509 (AD-1) Phase 1B: AD-1 stats dict from the most recent ``complete`` call.
+        self.last_stats: dict[str, Any] | None = None
 
     def _client(self) -> Any:
         if self._runtime is None:
@@ -287,10 +441,22 @@ class BedrockJudgeClient:
             )
             return cast("dict[str, Any]", response)
 
+        started = time.monotonic()
         try:
             resp = await asyncio.to_thread(_call)
         except Exception as exc:
             raise JudgeConnectionError(f"bedrock judge call failed: {exc}") from exc
+        # TASK-509 (AD-1): map the converse ``usage`` + ``stopReason`` into AD-1 stats.
+        usage = resp.get("usage") or {}
+        self.last_stats = build_llm_call_stats(
+            provider="bedrock",
+            model=self.model,
+            raw_stop_reason=resp.get("stopReason"),
+            prompt_tokens=usage.get("inputTokens", 0) or 0,
+            predicted_tokens=usage.get("outputTokens", 0) or 0,
+            total_tokens=usage.get("totalTokens"),
+            total_ms=int((time.monotonic() - started) * 1000),
+        )
         return cast(str, resp["output"]["message"]["content"][0]["text"])
 
 
@@ -302,8 +468,17 @@ def build_judge_client(config: JudgeConfig | None = None) -> JudgeClient:
         config = get_judge_config()
 
     provider = config.provider
-    # Ollama exposes an OpenAI-compatible ``/v1`` — it shares the openai_compat client.
-    if provider in (JudgeProvider.OPENAI_COMPAT, JudgeProvider.OLLAMA):
+    # Ollama exposes an OpenAI-compatible ``/v1`` — it shares the openai_compat
+    # client. TASK-515: the production engines vLLM and llama.cpp also speak the
+    # OpenAI wire, so they route through the same client (base_url points at the
+    # engine); native stop-reason normalization is provider-aware (see
+    # ``_STOP_TABLES``: both ``vllm`` and ``llama-cpp`` are registered).
+    if provider in (
+        JudgeProvider.OPENAI_COMPAT,
+        JudgeProvider.OLLAMA,
+        JudgeProvider.VLLM,
+        JudgeProvider.LLAMA_CPP,
+    ):
         if not config.openai_compat.base_url:
             raise ValueError("openai_compat judge requires HARNESS_JUDGE_OPENAI_COMPAT_BASE_URL")
         return OpenAICompatJudgeClient(config)

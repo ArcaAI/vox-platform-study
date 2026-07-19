@@ -112,6 +112,48 @@ export class UpdateHarnessPolicyRequest {
   @IsString({ each: true })
   toolAllowlist?: string[] | null;
 
+  // ── TASK-511 (Phase 3A) — agentic loop knobs ──
+  // Every knob is a nullable override: send `null` to clear it back to the
+  // harness env/code default; OMIT to leave unchanged; send a value to override.
+  // These keys sit under the `agentic.*` privilege boundary (GLOBAL_ADMIN only)
+  // enforced at the controller/route layer.
+
+  @ApiPropertyOptional({ description: 'Optimistic-delivery loop toggle (null = harness env default).', nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  optimisticDeliveryEnabled?: boolean | null;
+
+  @ApiPropertyOptional({ description: 'Atomic-fact decomposition toggle (null = harness env default).', nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  atomicFactEnabled?: boolean | null;
+
+  @ApiPropertyOptional({ description: 'Guideline-retrieval toggle (null = harness env default).', nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  retrievalEnabled?: boolean | null;
+
+  @ApiPropertyOptional({ description: 'Warm-start toggle (null = harness env default).', nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  warmStartEnabled?: boolean | null;
+
+  @ApiPropertyOptional({ description: 'NER-priors toggle (null = harness env default).', nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  nerPriorsEnabled?: boolean | null;
+
+  @ApiPropertyOptional({ description: 'Max edit re-runs (non-negative integer; null = harness env default).', minimum: 0, nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  maxEditReruns?: number | null;
+
+  @ApiPropertyOptional({ description: 'Regeneration-feedback toggle (null = harness env default).', nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  regenFeedbackEnabled?: boolean | null;
+
   @ApiPropertyOptional({ description: 'Free-text reason for the edit, recorded on the WORM change row.' })
   @IsOptional()
   @IsString()

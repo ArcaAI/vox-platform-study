@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PATH_METADATA } from '@nestjs/common/constants';
 import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
+import { REQUIRES_IF_MATCH_KEY } from '../../../decorators';
 import { PromptManagementController } from '../prompt-management.controller';
 
 const fakeTemplateEntity = {
@@ -49,6 +51,8 @@ const createMockService = () => ({
     listUsageRecords: vi.fn(),
     softDeletePromptTemplate: vi.fn(),
     assignToDepartment: vi.fn(),
+    // TASK-511 (Phase 3A) — prompt governance approval.
+    approveTemplate: vi.fn(),
 });
 
 describe('PromptManagementController', () => {
@@ -480,6 +484,57 @@ describe('PromptManagementController', () => {
 
             await expect(controller.activateVersion('tpl-1', 1)).rejects.toThrow();
             expect(mockService.updatePromptTemplate).not.toHaveBeenCalled();
+        });
+    });
+
+    // ─── TASK-511 (Phase 3A): prompt governance approval ─────────────────
+
+    describe('POST /prompt-templates/:id/approve (approveTemplate)', () => {
+        const approvedResponse = { ...fakeTemplateEntity, status: 'APPROVED', version: 3 };
+
+        it('delegates to service.approveTemplate with id + body when no If-Match header (body wins)', async () => {
+            mockService.approveTemplate.mockResolvedValue(approvedResponse);
+            const body = { reason: 'Vetted by clinical lead', expectedVersion: 2 };
+
+            await controller.approve('tpl-1', body as any, undefined);
+
+            expect(mockService.approveTemplate).toHaveBeenCalledWith('tpl-1', body);
+        });
+
+        it('folds the If-Match header into expectedVersion (header wins) — OCC parity with update', async () => {
+            mockService.approveTemplate.mockResolvedValue(approvedResponse);
+
+            await controller.approve('tpl-1', { reason: 'ok', expectedVersion: 99 } as any, 7);
+
+            expect(mockService.approveTemplate).toHaveBeenCalledWith(
+                'tpl-1',
+                expect.objectContaining({ reason: 'ok', expectedVersion: 7 }),
+            );
+        });
+
+        it('returns the APPROVED template response from the service', async () => {
+            mockService.approveTemplate.mockResolvedValue(approvedResponse);
+
+            const result = await controller.approve('tpl-1', {} as any, undefined);
+
+            expect(result.status).toBe('APPROVED');
+        });
+
+        it('propagates ForbiddenException (403) when caller is not a GLOBAL_ADMIN', async () => {
+            mockService.approveTemplate.mockRejectedValue(new ForbiddenException('global admins only'));
+
+            await expect(controller.approve('tpl-1', {} as any, 1)).rejects.toBeInstanceOf(ForbiddenException);
+        });
+
+        it('propagates NotFoundException (404) on cross-tenant / unknown template', async () => {
+            mockService.approveTemplate.mockRejectedValue(new NotFoundException('not found'));
+
+            await expect(controller.approve('missing', {} as any, 1)).rejects.toBeInstanceOf(NotFoundException);
+        });
+
+        it('is marked @RequiresIfMatch() so a missing If-Match header is rejected 428 by the guard/param decorator', () => {
+            const flag = Reflect.getMetadata(REQUIRES_IF_MATCH_KEY, PromptManagementController.prototype.approve);
+            expect(flag).toBe(true);
         });
     });
 

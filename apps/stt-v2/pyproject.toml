@@ -11,7 +11,7 @@ authors = [
 ]
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 keywords = ["speech-to-text", "asr", "whisper", "fastapi", "dramatiq"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -133,6 +133,12 @@ ml = [
     # Lazy-imported in stt_v2.models.faster_whisper_loader — only needed at
     # runtime for pipelines with `engine: faster_whisper`.
     "faster-whisper==1.2.1",
+    # whisper.cpp ASR engine (TASK-507). Prebuilt manylinux + macOS wheels,
+    # no torch dependency. Lazy-imported in stt_v2.models.whisper_cpp_loader.
+    "pywhispercpp>=1.5.0",
+    # DeepFilterNet3 denoise engine (TASK-507). Lazy-imported in
+    # stt_v2.processors.denoise_engines.
+    "deepfilternet>=0.5.6",
 ]
 
 nemo = [
@@ -143,10 +149,12 @@ nemo = [
 # Use self-referencing extra to avoid duplication (PEP 685).
 ml-gpu = [
     "stt-v2[ml]",
-    # Override: GPU-accelerated ONNX Runtime (replaces CPU onnxruntime)
-    "onnxruntime-gpu>=1.23.0",
-    # Flash Attention 2 — faster attention for Whisper on CUDA GPUs (Ampere+)
-    "flash-attn>=2.8.3",
+    # Override: GPU-accelerated ONNX Runtime (replaces CPU onnxruntime). CUDA-only
+    # — no macOS wheels exist, so this is Linux-gated (dev machines are darwin).
+    "onnxruntime-gpu>=1.23.0; sys_platform == 'linux'",
+    # Flash Attention 2 — faster attention for Whisper on CUDA GPUs (Ampere+).
+    # CUDA-only (Linux-gated, same reasoning as onnxruntime-gpu above).
+    "flash-attn>=2.8.3; sys_platform == 'linux'",
 ]
 
 # ---------------------------------------------------------------------------
@@ -227,7 +235,7 @@ warn_return_any = true
 # are intentionally NOT listed here so mypy type-checks their usage against the
 # stubs.
 [[tool.mypy.overrides]]
-module = ["transformers", "torch", "torchaudio", "soundfile", "librosa", "scipy.*", "minio", "dramatiq", "nemo_toolkit", "nemo", "nemo.*", "pyannote.*", "azure.*", "speechbrain.*", "optimum.*", "pyrnnoise", "onnxruntime", "cadence", "accelerate", "flash_attn", "faster_whisper"]
+module = ["transformers", "torch", "torchaudio", "soundfile", "librosa", "scipy.*", "minio", "dramatiq", "nemo_toolkit", "nemo", "nemo.*", "pyannote.*", "azure.*", "speechbrain.*", "optimum.*", "pyrnnoise", "onnxruntime", "cadence", "accelerate", "flash_attn", "faster_whisper", "pywhispercpp", "pywhispercpp.*", "deepfilterlib", "df", "df.*"]
 ignore_missing_imports = true
 
 # pytest configuration

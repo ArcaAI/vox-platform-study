@@ -15,6 +15,21 @@ class TextPosition(BaseModel):
     end: int = Field(..., description="End character position")
 
 
+class AssertionStatus(StrEnum):
+    """TASK-518 — the claim an entity mention makes about the patient.
+
+    ConText/NegEx-style assertion axis. Mirrors the ``NamedEntity.assertion``
+    column so the polarity round-trips NLP → API → DB. ``PRESENT`` is the safe
+    default (an un-triggered mention is a positive assertion about the patient).
+    """
+
+    PRESENT = "PRESENT"
+    ABSENT = "ABSENT"
+    HISTORICAL = "HISTORICAL"
+    FAMILY = "FAMILY"
+    HYPOTHETICAL = "HYPOTHETICAL"
+
+
 class Entity(BaseModel):
     id: str = Field(..., description="Unique entity identifier")
     text: str = Field(..., description="Original text of the entity")
@@ -31,6 +46,15 @@ class Entity(BaseModel):
     rxnorm_code: str | None = Field(default=None, description="RxNorm RxCUI")
     icd_code: str | None = Field(default=None, description="ICD-10-CM code")
     loinc_code: str | None = Field(default=None, description="LOINC code")
+
+    # TASK-518 — negation/assertion polarity. Defaults to PRESENT so any entity
+    # constructed outside the assertion pass is still a well-defined positive
+    # claim. Downstream faithfulness/concept-F1 sensors exclude ABSENT entities
+    # from positive-claim checks.
+    assertion: AssertionStatus = Field(
+        default=AssertionStatus.PRESENT,
+        description="Assertion status (PRESENT/ABSENT/HISTORICAL/FAMILY/HYPOTHETICAL)",
+    )
 
     # Metadata
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

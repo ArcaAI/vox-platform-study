@@ -24,10 +24,16 @@ forward-compat but is not passed to this API version.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from pydantic import BaseModel, ConfigDict
-from qdrant_client import QdrantClient, models
+
+# `qdrant_client` is the optional `rag` extra (TASK-508 D1/0.2): imported here only
+# for type annotations (deferred by `from __future__ import annotations`), and
+# lazily inside the methods below that actually construct/use it, so importing
+# this module never requires the extra to be installed.
+if TYPE_CHECKING:
+    from qdrant_client import QdrantClient, models
 
 # Named vectors + payload keys — MUST match infrastructure/docker/scripts/init-qdrant-collections.py.
 DENSE_VECTOR_NAME = "dense"
@@ -74,14 +80,19 @@ class KnowledgeQdrantStore:
         self._collection = collection
         self._dense_name = dense_name
         self._sparse_name = sparse_name
-        self._client = (
-            client if client is not None else QdrantClient(url=url, timeout=cast(int, timeout))
-        )
+        if client is not None:
+            self._client = client
+        else:
+            from qdrant_client import QdrantClient
+
+            self._client = QdrantClient(url=url, timeout=cast(int, timeout))
 
     def upsert_chunks(self, items: list[UpsertItem]) -> int:
         """Upsert one named dense+sparse point per chunk; returns the count."""
         if not items:
             return 0
+        from qdrant_client import models
+
         points = [
             models.PointStruct(
                 id=item.point_id,
@@ -103,6 +114,8 @@ class KnowledgeQdrantStore:
         with_payload: bool = True,
     ) -> list[RetrievedPoint]:
         """Run the dense+sparse RRF hybrid, tenant + APPROVED scoped, return hits."""
+        from qdrant_client import models
+
         flt = self._tenant_approved_filter(tenant_id)
         response = self._client.query_points(
             collection_name=self._collection,
@@ -118,6 +131,8 @@ class KnowledgeQdrantStore:
 
     @staticmethod
     def _tenant_approved_filter(tenant_id: str) -> models.Filter:
+        from qdrant_client import models
+
         return models.Filter(
             must=[
                 models.FieldCondition(key="tenant_id", match=models.MatchValue(value=tenant_id)),

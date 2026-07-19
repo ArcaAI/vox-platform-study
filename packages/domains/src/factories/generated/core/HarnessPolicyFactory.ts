@@ -32,6 +32,16 @@ export const HARNESS_POLICY_DEFAULTS = {
   gateSlaSeconds: 86400,
   gateEscalationSeconds: 43200,
   toolAllowlist: null as IHarnessPolicyEntity['toolAllowlist'],
+  // TASK-511 (Phase 3A) — agentic loop knobs default to null so the harness
+  // env/code default applies (per-field fallthrough). Only an explicit non-null
+  // policy value overrides the runtime default.
+  optimisticDeliveryEnabled: null as boolean | null,
+  atomicFactEnabled: null as boolean | null,
+  retrievalEnabled: null as boolean | null,
+  warmStartEnabled: null as boolean | null,
+  nerPriorsEnabled: null as boolean | null,
+  maxEditReruns: null as number | null,
+  regenFeedbackEnabled: null as boolean | null,
 } as const;
 
 export interface CreateHarnessPolicyProps extends BaseEntityFactoryCreateProps {
@@ -54,6 +64,13 @@ export interface CreateHarnessPolicyProps extends BaseEntityFactoryCreateProps {
   gateSlaSeconds?: IHarnessPolicyEntity['gateSlaSeconds'];
   gateEscalationSeconds?: IHarnessPolicyEntity['gateEscalationSeconds'];
   toolAllowlist?: IHarnessPolicyEntity['toolAllowlist'];
+  optimisticDeliveryEnabled?: IHarnessPolicyEntity['optimisticDeliveryEnabled'];
+  atomicFactEnabled?: IHarnessPolicyEntity['atomicFactEnabled'];
+  retrievalEnabled?: IHarnessPolicyEntity['retrievalEnabled'];
+  warmStartEnabled?: IHarnessPolicyEntity['warmStartEnabled'];
+  nerPriorsEnabled?: IHarnessPolicyEntity['nerPriorsEnabled'];
+  maxEditReruns?: IHarnessPolicyEntity['maxEditReruns'];
+  regenFeedbackEnabled?: IHarnessPolicyEntity['regenFeedbackEnabled'];
 
   createdAt?: IHarnessPolicyEntity['createdAt'];
   updatedAt?: IHarnessPolicyEntity['updatedAt'];
@@ -100,6 +117,13 @@ export class HarnessPolicyFactory {
       gateSlaSeconds: props.gateSlaSeconds ?? d.gateSlaSeconds,
       gateEscalationSeconds: props.gateEscalationSeconds ?? d.gateEscalationSeconds,
       toolAllowlist: props.toolAllowlist ?? d.toolAllowlist,
+      optimisticDeliveryEnabled: props.optimisticDeliveryEnabled ?? d.optimisticDeliveryEnabled,
+      atomicFactEnabled: props.atomicFactEnabled ?? d.atomicFactEnabled,
+      retrievalEnabled: props.retrievalEnabled ?? d.retrievalEnabled,
+      warmStartEnabled: props.warmStartEnabled ?? d.warmStartEnabled,
+      nerPriorsEnabled: props.nerPriorsEnabled ?? d.nerPriorsEnabled,
+      maxEditReruns: props.maxEditReruns ?? d.maxEditReruns,
+      regenFeedbackEnabled: props.regenFeedbackEnabled ?? d.regenFeedbackEnabled,
 
       tenantId: props.tenantId,
       Tenant: props.Tenant ?? null,

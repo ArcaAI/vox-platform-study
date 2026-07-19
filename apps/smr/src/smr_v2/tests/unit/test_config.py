@@ -112,6 +112,11 @@ class TestCircuitBreakerConfig:
         assert cfg.failure_threshold == 5
         assert cfg.recovery_timeout_s == 30.0
         assert cfg.count_rate_limits is True
+        # TASK-508 D6: None is the deliberate "no-op" sentinel — it preserves
+        # CircuitBreaker's pre-wiring behavior (unlimited HALF_OPEN calls, no
+        # failure-count decay) on an unconfigured deployment.
+        assert cfg.half_open_max_calls is None
+        assert cfg.reset_timeout_s is None
 
 
 class TestQueueConfig:

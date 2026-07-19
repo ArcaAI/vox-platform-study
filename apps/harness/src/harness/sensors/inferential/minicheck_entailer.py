@@ -126,8 +126,8 @@ def _make_llama_logit_fn(llama: object) -> LogitFn:
     wiring end-to-end on the host before the entailer is used. (Mirrors the guardrail
     TASK-479 scorer; the two services can't share a package.)
     """
-    import numpy as np  # local imports — only when a real model is loaded
     import llama_cpp
+    import numpy as np  # local imports — only when a real model is loaded
     from llama_cpp._internals import LlamaBatch
 
     model = llama._model  # type: ignore[attr-defined]  # _LlamaModel
@@ -185,7 +185,7 @@ def load_minicheck_entailer(
     if cached is not None:
         return cached
 
-    from llama_cpp import Llama  # type: ignore[import-not-found]
+    from llama_cpp import Llama
 
     llama = Llama(
         model_path=model_path,

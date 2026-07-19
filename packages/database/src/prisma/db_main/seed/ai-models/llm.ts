@@ -38,7 +38,8 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
         provider: 'lm-studio',
         architecture: 'granite',
         memorySizeMb: 4900,
-        computeType: 'quantized',
+        // TASK-507 — precision refresh (owner-specified exact quant scheme).
+        computeType: 'q4_k_s',
         tags: ['guardrail', 'safety', 'granite'],
     },
 
@@ -61,7 +62,8 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
         provider: 'ollama',
         architecture: 'gemma4',
         memorySizeMb: 8192,
-        computeType: 'float16',
+        // TASK-507 — precision refresh (owner-specified exact quant scheme).
+        computeType: 'nvfp4',
         tags: ['llm', 'ollama'],
     },
     {
@@ -80,7 +82,8 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
         provider: 'ollama',
         architecture: 'gemma4',
         memorySizeMb: 2048,
-        computeType: 'int8',
+        // TASK-507 — precision refresh (owner-specified exact quant scheme).
+        computeType: 'Q4_0',
         tags: ['llm', 'ollama'],
     },
     {
@@ -99,7 +102,8 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
         provider: 'ollama',
         architecture: 'qwen3.5',
         memorySizeMb: 1536,
-        computeType: 'int8',
+        // TASK-507 — precision refresh (owner-specified exact quant scheme).
+        computeType: 'Q8_0',
         tags: ['llm', 'ollama'],
     },
 
@@ -122,7 +126,8 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
         provider: 'lm-studio',
         architecture: 'gemma4',
         memorySizeMb: 2048,
-        computeType: 'int8',
+        // TASK-507 — precision refresh (owner-specified exact quant scheme).
+        computeType: 'q4_0',
         tags: ['llm', 'lm-studio', 'default', 'summarization'],
     },
     {
@@ -141,7 +146,8 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
         provider: 'lm-studio',
         architecture: 'gemma4',
         memorySizeMb: 3072,
-        computeType: 'int8',
+        // TASK-507 — precision refresh (owner-specified exact quant scheme).
+        computeType: 'q4_0',
         tags: ['llm', 'lm-studio'],
     },
     {
@@ -160,7 +166,8 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
         provider: 'lm-studio',
         architecture: 'gemma4',
         memorySizeMb: 3072,
-        computeType: 'int8',
+        // TASK-507 — precision refresh (owner-specified exact quant scheme).
+        computeType: 'q5_k_m',
         tags: ['llm', 'lm-studio', 'medical'],
     },
     {
@@ -179,7 +186,8 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
         provider: 'lm-studio',
         architecture: 'gemma4',
         memorySizeMb: 8192,
-        computeType: 'int8',
+        // TASK-507 — precision refresh (owner-specified exact quant scheme).
+        computeType: 'q4_0',
         tags: ['llm', 'lm-studio'],
     },
     {
@@ -198,7 +206,8 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
         provider: 'lm-studio',
         architecture: 'gemma3',
         memorySizeMb: 3072,
-        computeType: 'int8',
+        // TASK-507 — precision refresh (owner-specified exact quant scheme).
+        computeType: 'q5_k_xl',
         tags: ['llm', 'lm-studio', 'medical'],
     },
 
@@ -225,5 +234,54 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
         computeType: 'cloud',
         tags: ['llm', 'cloud', 'azure'],
         metaData: { azureDeployment: '' },
+    },
+
+    // =========================================================================
+    // vLLM provider (TASK-515 / TASK-508 Phase 4B — production self-host GPU
+    // tier, AD-4). OpenAI-compatible `/v1` wire; prefix-cache + structured
+    // `json_schema` output. Additive-only seed rows.
+    // =========================================================================
+    {
+        id: '80000000-0000-0000-0007-000000000020',
+        tenantId: SYSTEM_TENANT_ID,
+        name: 'MedGemma 1.5 27B IT (vLLM)',
+        slug: 'vllm-medgemma-1.5-27b-it',
+        description: 'MedGemma 1.5 27B instruction-tuned served by vLLM — production self-host GPU tier (AD-4). OpenAI-compatible `/v1` wire with prefix caching + structured json_schema output.',
+        category: ModelCategory.NLP,
+        taskType: ModelTaskType.TEXT_GENERATION,
+        modelType: ModelType.BASE_MODEL,
+        source: AiModelSource.LOCAL,
+        sourceUri: 'google/medgemma-1.5-27b-it',
+        sourceRevision: 'main',
+        format: AiModelFormat.SAFETENSOR,
+        provider: 'vllm',
+        architecture: 'gemma3',
+        memorySizeMb: 55296,
+        computeType: 'bf16',
+        tags: ['llm', 'vllm', 'medical', 'self-host'],
+    },
+
+    // =========================================================================
+    // llama.cpp provider (TASK-515 / TASK-508 Phase 4C — production self-host
+    // GGUF tier, AD-4). OpenAI-compatible `/v1` wire (`cache_prompt`). Additive.
+    // =========================================================================
+    {
+        id: '80000000-0000-0000-0007-000000000021',
+        tenantId: SYSTEM_TENANT_ID,
+        name: 'MedGemma 1.5 4B IT (llama.cpp)',
+        slug: 'llama-cpp-medgemma-1.5-4b-it',
+        description: 'MedGemma 1.5 4B instruction-tuned served by the llama.cpp server — production self-host GGUF tier (AD-4). OpenAI-compatible `/v1` wire with `cache_prompt` prefix caching + structured json_schema output.',
+        category: ModelCategory.NLP,
+        taskType: ModelTaskType.TEXT_GENERATION,
+        modelType: ModelType.QUANTIZED_MODEL,
+        source: AiModelSource.LOCAL,
+        sourceUri: 'medgemma-1.5-4b-it-Q5_K_M.gguf',
+        sourceRevision: 'main',
+        format: AiModelFormat.GGUF,
+        provider: 'llama-cpp',
+        architecture: 'gemma3',
+        memorySizeMb: 3584,
+        computeType: 'q5_k_m',
+        tags: ['llm', 'llama-cpp', 'medical', 'self-host'],
     },
 ];

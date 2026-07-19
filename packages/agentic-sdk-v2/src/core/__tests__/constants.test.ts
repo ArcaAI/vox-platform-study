@@ -461,8 +461,8 @@ describe('constants', () => {
         expect(DEFAULT_NER_CONFIG.autoExtract).toBe(false);
       });
 
-      it('should have model default', () => {
-        expect(DEFAULT_NER_CONFIG.model).toBe('default');
+      it('should default to the clinical preset (TASK-508 Phase 0 0.8 / D7 — matches DEFAULT_MED_NER_OPTIONS in @arcaai/med-ner)', () => {
+        expect(DEFAULT_NER_CONFIG.model).toBe('clinical');
       });
 
       it('should have threshold 0.5', () => {

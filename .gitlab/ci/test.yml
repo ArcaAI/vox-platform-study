@@ -476,6 +476,71 @@ test-harness:
       when: never
     - !reference [.rules-harness, rules]
 
+# ── Harness eval gate (PDSQI-9 / faithfulness / promptfoo contract) ────────
+#
+# TASK-508 Phase 0 (0.4) / SOTA gap review D4-E1 — "Wire the eval gates into
+# CI": `harness.eval.ci` (PDSQI-9 + RAGAS-style faithfulness + ICC>=0.8) and
+# the promptfoo output-contract check were documented as release-blocking but
+# only ever ran as manual commands / in the (separate) GitHub Actions mirror
+# `.github/workflows/harness-eval.yml` — never in GitLab CI. Two checks:
+#   1) `python -m harness.eval.ci` over the curated_v1 golden set (18 cases:
+#      12 quality-lane + 6 calibration-lane — see apps/harness/eval/README.md).
+#      Needs a live, model-agnostic judge backend (HARNESS_JUDGE_* env; LM
+#      Studio/vLLM/Azure/Bedrock) — none is wired into this runner yet, so
+#      this step currently fails closed (connection error) rather than
+#      producing a real PASS/FAIL verdict.
+#   2) promptfoo PDSQI-9 output-contract gate — hermetic by default (offline
+#      deterministic mock provider, no network/secrets; see
+#      apps/harness/eval/promptfoo/provider.py) and CAN pass today.
+#
+# allow_failure: true is deliberate, per TASK-508 Phase 0 plan: this gate
+# only becomes hard-blocking once TASK-521 (clinician golden-set program)
+# delivers the real clinician-rated golden set AND a CI-reachable judge
+# backend — see docs/implementation/TASK-508-Agentic-SOTA-Program/README.md
+# Phase 6 (TASK-521). Until then this job is diagnostic/wiring-only.
+
+harness-eval-gate:
+  stage: test
+  image: python:3.11-slim
+  tags: [test]
+  allow_failure: true
+  needs:
+    - job: lint-python
+      optional: true
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+    PROMPTFOO_DISABLE_TELEMETRY: "1"
+    PROMPTFOO_DISABLE_UPDATE: "1"
+    PROMPTFOO_DISABLE_SHARING: "1"
+  cache:
+    - key: pip-harness-eval-gate
+      paths:
+        - .pip-cache/
+      policy: pull-push
+      fallback_keys:
+        - pip-harness
+        - pip-$CI_DEFAULT_BRANCH
+  script:
+    - cd apps/harness
+    - pip install --quiet --retries 5 --timeout 120 ".[test,eval]"
+    - echo "── 1/2 — harness.eval.ci PDSQI-9/faithfulness/ICC gate (curated_v1, needs a live judge backend) ──"
+    - python -m harness.eval.ci --golden-set src/harness/eval/golden/fixtures/curated_v1.json --output ../../eval-report.json
+    - echo "── 2/2 — promptfoo PDSQI-9 output-contract gate (offline mock provider) ──"
+    - apt-get update -qq && apt-get install -y --no-install-recommends nodejs npm >/dev/null
+    - cd eval/promptfoo
+    - PROMPTFOO_PYTHON=python npx --yes promptfoo@0.121.15 eval -c promptfooconfig.yaml --no-cache --no-table
+  artifacts:
+    when: always
+    paths:
+      - eval-report.json
+    expire_in: 30 days
+  rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_PY == "true"
+      when: never
+    - !reference [.rules-harness, rules]
+
 # ── API E2E tests (Playwright) ──────────────────────────────────────────────
 #
 # Boots the NestJS API against the shared test database + Redis and exercises

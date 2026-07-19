@@ -154,6 +154,9 @@ class TokenClassificationConfig(BaseSettings):
     # NER specific settings
     aggregation_strategy: str = Field(default="simple")  # simple, first, max, average
     ignore_labels: list[str] = Field(default_factory=lambda: ["O"])
+    # TASK-518 — negation/assertion pass over recognized spans (ConText/NegEx).
+    # Default ON; deterministic + offline. Disable to skip the pass entirely.
+    assertion_enabled: bool = Field(default=True)
 
     # Performance settings
     use_gpu: bool = Field(default=True)

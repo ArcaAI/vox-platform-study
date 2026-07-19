@@ -26,7 +26,9 @@ class EntityFaithfulnessSensor:
         self.threshold = threshold
 
     def run(self, ctx: SensorContext) -> SensorResult:
-        checked = [e for e in ctx.note_entities if e.normalized]
+        # TASK-518 — exclude ABSENT (negated) note entities: "no chest pain" is
+        # not a positive claim that must be grounded as PRESENT in the transcript.
+        checked = [e for e in ctx.note_entities if e.normalized and not e.is_absent]
         if not checked:
             return SensorResult(
                 name=NAME,

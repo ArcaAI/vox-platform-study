@@ -319,7 +319,7 @@ describe('KnowledgePipeline', () => {
       await expect(pipeline.triggerNER()).rejects.toThrow('No text provided for NER extraction');
     });
 
-    it('should throw when location is backend (API gateway does not proxy /nlp/*)', async () => {
+    it('should throw when location is backend (not yet wired in this SDK, even though the gateway now exposes POST /api/v1/ai/nlp/entities)', async () => {
       const pipeline = new KnowledgePipeline(
         { ner: { enabled: true, location: 'backend', triggerMode: 'manual' } },
         mockApiClient as AgenticClient,
@@ -329,7 +329,7 @@ describe('KnowledgePipeline', () => {
       await pipeline.init();
 
       await expect(pipeline.triggerNER('Patient has diabetes')).rejects.toThrow(
-        'Backend NER is not supported via the API gateway',
+        'Backend NER is not yet wired in this SDK',
       );
       expect(mockApiClient.post).not.toHaveBeenCalled();
     });
@@ -522,7 +522,7 @@ describe('KnowledgePipeline', () => {
 
       await pipeline.init();
       await expect(pipeline.triggerNER('Patient has diabetes')).rejects.toThrow(
-        'Backend NER is not supported via the API gateway',
+        'Backend NER is not yet wired in this SDK',
       );
       expect(mockApiClient.post).not.toHaveBeenCalled();
     });
@@ -540,7 +540,7 @@ describe('KnowledgePipeline', () => {
 
       await pipeline.init();
       await expect(pipeline.triggerNER('test text')).rejects.toThrow(
-        'Backend NER is not supported via the API gateway',
+        'Backend NER is not yet wired in this SDK',
       );
 
       expect(mockApiClient.post).not.toHaveBeenCalledWith(
@@ -558,7 +558,7 @@ describe('KnowledgePipeline', () => {
 
       await pipeline.init();
       await expect(pipeline.triggerNER('no entities here')).rejects.toThrow(
-        'Backend NER is not supported via the API gateway',
+        'Backend NER is not yet wired in this SDK',
       );
       expect(mockApiClient.post).not.toHaveBeenCalled();
     });
@@ -575,7 +575,7 @@ describe('KnowledgePipeline', () => {
 
       await pipeline.init();
       await expect(pipeline.triggerNER('test')).rejects.toThrow(
-        'Backend NER is not supported via the API gateway',
+        'Backend NER is not yet wired in this SDK',
       );
       expect(errorHandler).not.toHaveBeenCalled();
     });
@@ -589,7 +589,7 @@ describe('KnowledgePipeline', () => {
 
       await pipeline.init();
       await expect(pipeline.triggerNER('test')).rejects.toThrow(
-        'Backend NER is not supported via the API gateway'
+        'Backend NER is not yet wired in this SDK'
       );
     });
 

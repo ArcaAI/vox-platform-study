@@ -21,7 +21,12 @@ import {
   ConsultationStatus,
   HarnessAuditAction,
   JsonValue,
+  AgentSessionKind,
+  AgentStepStatus,
+  AgentStepType,
 } from '@arcaai/domains';
+import { IAgentTrajectoryService } from '../../agent-trajectory/IAgentTrajectoryService';
+import type { CreateAgentTrajectoryStepInput } from '../../agent-trajectory/dto';
 import { HarnessAuditService } from '../../harness-audit';
 import { ConfigResolver } from '../../config-resolver';
 import { diffContent } from './content-diff.util';
@@ -38,6 +43,19 @@ import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
 import { namedEntityPropsFromNlp, type NlpNamedEntity } from '../shared/namedEntityFromNlp';
+
+/**
+ * TASK-509 Phase 1B — the AD-1 GenerationStats headline fields the summary
+ * paths persist onto `SummaryMeta`. A narrow view of the SMR `/generate`
+ * `stats` block: only the three headline fields are read here (predicted/total
+ * token counts are derivable from the existing `inputTokens`/`outputTokens`).
+ * All optional — never fabricated; a field the engine omitted stays null.
+ */
+interface SmrGenerationStats {
+  stop_reason?: string | null;
+  ttft_ms?: number | null;
+  tokens_per_second?: number | null;
+}
 
 @Injectable()
 export class SummaryService extends BaseService implements ISummaryService {
@@ -90,6 +108,11 @@ export class SummaryService extends BaseService implements ISummaryService {
     // TASK-392 (Phase 3, M3) — optional (append-only DI); enforces the plan
     // `monthlySummaries` meter on generation (kill-switch-gated, → 429 over cap).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
+    // TASK-510 §2C — one LLM_CALL trajectory step per generate/pre-summary.
+    // Optional + trailing so existing positional test fixtures compile;
+    // production DI (SummaryServiceModule) supplies it. Fire-and-forget: a
+    // trajectory failure never rolls back the (delivered) summary.
+    @Optional() @Inject(IAgentTrajectoryService) private readonly trajectoryService?: IAgentTrajectoryService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -177,6 +200,16 @@ export class SummaryService extends BaseService implements ISummaryService {
       promptResolvedFrom: assembledPrompt.resolvedFrom,
       resolvedPromptId: assembledPrompt.promptId,
     });
+    // TASK-509 Phase 1B — persist the AD-1 GenerationStats headline fields when
+    // SMR returned them. Set via the entity setters (change-tracked, same path
+    // as `contextItem.currentVersionNumber = 1` above); the factory does not yet
+    // expose these props. Null/absent stats (legacy idempotency-cache hit) leaves
+    // the columns null — never fabricated.
+    if (smrResponse.stats) {
+      summaryMeta.stopReason = smrResponse.stats.stop_reason ?? null;
+      summaryMeta.ttftMs = smrResponse.stats.ttft_ms ?? null;
+      summaryMeta.tokensPerSecond = smrResponse.stats.tokens_per_second ?? null;
+    }
     await this.encryptBestEffort('SummaryMeta', () =>
       this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!),
     );
@@ -187,6 +220,16 @@ export class SummaryService extends BaseService implements ISummaryService {
       responsibleEntityId: userId ?? undefined,
       createdAt: savedContext.createdAt,
       data: { consultationId, type: 'pre_summary' },
+    });
+
+    // TASK-510 §2C — one SUMMARY_JOB LLM_CALL step for this generation (non-fatal).
+    await this.recordSummaryTrajectory({
+      tenantId,
+      consultationId,
+      summaryId: savedContext.id,
+      name: 'pre-summary',
+      stats: smrResponse.stats,
+      durationMs: smrResponse.processingTimeMs,
     });
 
     return SummaryDtoMapper.toResponse(savedContext);
@@ -288,6 +331,16 @@ export class SummaryService extends BaseService implements ISummaryService {
       promptResolvedFrom: assembledPrompt.resolvedFrom,
       resolvedPromptId: assembledPrompt.promptId,
     });
+    // TASK-509 Phase 1B — persist the AD-1 GenerationStats headline fields when
+    // SMR returned them. Set via the entity setters (change-tracked, same path
+    // as `contextItem.currentVersionNumber = 1` above); the factory does not yet
+    // expose these props. Null/absent stats (legacy idempotency-cache hit) leaves
+    // the columns null — never fabricated.
+    if (smrResponse.stats) {
+      summaryMeta.stopReason = smrResponse.stats.stop_reason ?? null;
+      summaryMeta.ttftMs = smrResponse.stats.ttft_ms ?? null;
+      summaryMeta.tokensPerSecond = smrResponse.stats.tokens_per_second ?? null;
+    }
     await this.encryptBestEffort('SummaryMeta', () =>
       this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!),
     );
@@ -306,7 +359,61 @@ export class SummaryService extends BaseService implements ISummaryService {
     // failure must never roll back the (delivered) draft.
     await this.captureAiDraftSnapshot(savedContext);
 
+    // TASK-510 §2C — one SUMMARY_JOB LLM_CALL step for this generation (non-fatal).
+    await this.recordSummaryTrajectory({
+      tenantId,
+      consultationId,
+      summaryId: savedContext.id,
+      name: 'generate',
+      stats: smrResponse.stats,
+      durationMs: smrResponse.processingTimeMs,
+    });
+
     return SummaryDtoMapper.toResponse(savedContext);
+  }
+
+  /**
+   * TASK-510 §2C — emit ONE LLM_CALL trajectory step for a summary generation.
+   * sessionKind=SUMMARY_JOB, sessionId=the generated summary's contextItem id
+   * (stable job id), runId="" (non-Temporal sentinel), seq=0 (one step per job).
+   * Fire-and-forget: any failure is swallowed + logged so telemetry never rolls
+   * back the delivered summary. No-op when the emitter is not wired.
+   */
+  private async recordSummaryTrajectory(params: {
+    tenantId: string;
+    consultationId: string;
+    summaryId: string;
+    name: 'generate' | 'pre-summary';
+    stats: SmrGenerationStats | null;
+    durationMs?: number | null;
+  }): Promise<void> {
+    if (!this.trajectoryService) return;
+    try {
+      const now = Date.now();
+      const durationMs = params.durationMs ?? undefined;
+      const step: CreateAgentTrajectoryStepInput = {
+        tenantId: params.tenantId,
+        consultationId: params.consultationId,
+        sessionKind: AgentSessionKind.SUMMARY_JOB,
+        sessionId: params.summaryId,
+        runId: '',
+        seq: 0,
+        stepType: AgentStepType.LLM_CALL,
+        name: params.name,
+        status: AgentStepStatus.OK,
+        startedAt: new Date(durationMs ? now - durationMs : now),
+        endedAt: new Date(now),
+        durationMs,
+        stats: (params.stats ?? undefined) as CreateAgentTrajectoryStepInput['stats'],
+      };
+      await this.trajectoryService.recordSteps([step]);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to record summary trajectory (non-fatal)',
+        consultationId: params.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**
@@ -796,7 +903,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     };
     options?: Record<string, unknown>;
     context?: Record<string, unknown>;
-  }): Promise<LegacySmrSummaryResponse> {
+  }): Promise<LegacySmrSummaryResponse & { stats: SmrGenerationStats | null }> {
     try {
       // TASK-356 D-7 — SMR is a stateless gateway with no model default; resolve
       // the tenant's effective {provider, model} and merge it in as the base so a
@@ -814,10 +921,30 @@ export class SummaryService extends BaseService implements ISummaryService {
           'X-Service-Token': smrServiceToken,
         },
       });
-      return mapSmrGenerateResponse(response.data);
+      return { ...mapSmrGenerateResponse(response.data), stats: SummaryService.parseGenerationStats(response.data) };
     } catch (error) {
       throw new BadRequestException(`Failed to call SMR service: ${error}`);
     }
+  }
+
+  /**
+   * TASK-509 Phase 1B — read the AD-1 GenerationStats headline fields off the
+   * SMR `/generate` response. Returns `null` when the `stats` block is absent
+   * (legacy response) or null (idempotency-cache hit) so the caller persists
+   * nothing extra. Null-safe per field — never throws over missing/odd stats.
+   */
+  private static parseGenerationStats(data: unknown): SmrGenerationStats | null {
+    const raw = (data as { stats?: unknown } | null | undefined)?.stats;
+    if (!raw || typeof raw !== 'object') {
+      return null;
+    }
+    const stats = raw as Record<string, unknown>;
+    return {
+      stop_reason: typeof stats.stop_reason === 'string' ? stats.stop_reason : null,
+      ttft_ms: typeof stats.ttft_ms === 'number' && Number.isFinite(stats.ttft_ms) ? stats.ttft_ms : null,
+      tokens_per_second:
+        typeof stats.tokens_per_second === 'number' && Number.isFinite(stats.tokens_per_second) ? stats.tokens_per_second : null,
+    };
   }
 
   private resolveConversationLanguage(options?: Record<string, unknown>): string {

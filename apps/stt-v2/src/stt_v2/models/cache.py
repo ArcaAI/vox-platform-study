@@ -18,6 +18,7 @@ from .huggingface_loader import HuggingFaceLoader
 from .nemo_loader import NeMoLoader
 from .onnx_loader import ONNXLoader
 from .parakeet_cpp_loader import ParakeetCppLoader
+from .whisper_cpp_loader import WhisperCppLoader
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +114,8 @@ class ModelCache:
             # TASK-505 P3 — new engines (both lazy at load time).
             AiModelFormat.AZURE_FOUNDRY: AzureFoundryLoader(),
             AiModelFormat.PARAKEET_CPP: ParakeetCppLoader(),
+            # TASK-507 — whisper.cpp (lazy at load time).
+            AiModelFormat.WHISPER_CPP: WhisperCppLoader(),
         }
 
         logger.info(

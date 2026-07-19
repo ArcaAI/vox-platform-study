@@ -26,6 +26,8 @@ export class NamedEntity extends BaseTenantDataModel {
   public transcriptEndOffset: number | null;
   public startOffset: number | null;
   public endOffset: number | null;
+  // TASK-518 — negation/assertion polarity (PRESENT|ABSENT|HISTORICAL|FAMILY|HYPOTHETICAL).
+  public assertion: string | null;
   public confidence: number | null;
   public aiModelId: string | null;
   public aiModelVersion: string | null;
@@ -54,6 +56,7 @@ export class NamedEntity extends BaseTenantDataModel {
     this.transcriptEndOffset = data.transcriptEndOffset;
     this.startOffset = data.startOffset;
     this.endOffset = data.endOffset;
+    this.assertion = data.assertion;
     this.confidence = data.confidence;
     this.aiModelId = data.aiModelId;
     this.aiModelVersion = data.aiModelVersion;

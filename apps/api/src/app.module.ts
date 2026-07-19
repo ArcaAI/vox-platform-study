@@ -1,4 +1,5 @@
 import {
+  AgentTrajectoryRetentionServiceModule,
   AuditLogServiceModule,
   AuditRetentionServiceModule,
   AuthServiceModule,
@@ -54,6 +55,11 @@ import { DnaWritingStyleModule } from './modules/dna-writing-style/dna-writing-s
 import { EntitlementsApiModule } from './modules/entitlements/entitlements.module';
 // TASK-330 Phase 6 — harness administration & observability console (/admin/harness/*).
 import { HarnessAdminModule } from './modules/harness-admin/harness-admin.module';
+// TASK-510 Phase 2D — ordered agentic-session trajectory read plane (/admin/agent-trajectory/*).
+import { AgentTrajectoryModule } from './modules/agent-trajectory/agent-trajectory.module';
+// TASK-511 Phase 3A item 6 — read-only agentic instruction inventory (/admin/agentic/*).
+import { AgenticAdminModule } from './modules/agentic-admin/agentic-admin.module';
+import { McpAdminModule } from './modules/mcp-admin/mcp-admin.module';
 // TASK-356 Phase 5 — realtime-pipeline toggle cascade admin (/admin/harness/pipeline-policy).
 import { PipelinePolicyAdminModule } from './modules/pipeline-policy-admin/pipeline-policy-admin.module';
 import { TenantTtsConfigModule } from './modules/tenant-tts-config/tenant-tts-config.module';
@@ -228,6 +234,7 @@ const common = [
   ObservabilityModule,
   AuditLogServiceModule, // Event-driven audit logging (replaces Kafka audit topics)
   AuditRetentionServiceModule, // TASK-336 OB-05 — scheduled AuditLog retention purge (bounds growth)
+  AgentTrajectoryRetentionServiceModule, // TASK-510 — scheduled AgentTrajectoryStep hard-retention prune (opt-in)
   JwtAuthGuardModule, // JWT guard — before AuthorizationModule
   AuthorizationModule, // Policy-based authorization (RBAC)
   // TASK-302 Phase 5 Task 5.6 (Stream B) — Vault prisma factory.
@@ -287,6 +294,12 @@ const featureModules: any[] = [
   PromptManagementModule,
   // TASK-330 Phase 6 — /admin/harness/* (policy, observe, workflow ops).
   HarnessAdminModule,
+  // TASK-510 Phase 2D — /admin/agent-trajectory/* (ordered session trajectory read plane).
+  AgentTrajectoryModule,
+  // TASK-511 Phase 3A item 6 — /admin/agentic/* (read-only effective instruction inventory).
+  AgenticAdminModule,
+  // TASK-516 Phase 5 — /admin/mcp-servers/* (MCP external-tools registry; global-admin CRUD + registry read).
+  McpAdminModule,
   // TASK-356 Phase 5 — /admin/harness/pipeline-policy (realtime-toggle cascade admin).
   PipelinePolicyAdminModule,
   // TASK-496 — /admin/tts-config (per-tenant TTS spec + BYO provider credentials).

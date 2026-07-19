@@ -74,6 +74,22 @@ class TestEntityFaithfulness:
         assert result.passed is False
         assert set(result.claims_flagged) == {"hypertension", "lisinopril"}
 
+    def test_absent_note_entity_excluded_from_positive_claim_check(self):
+        # TASK-518 — an ABSENT (negated) note entity ("metformin" the patient is
+        # NOT on) is not a positive claim, so it must not be required to be
+        # grounded in the transcript and must not fail faithfulness.
+        ctx = _ctx(
+            note_entities=[
+                ner("hypertension", "CONDITION"),
+                ner("lisinopril", "MEDICATION"),
+                ner("metformin", "MEDICATION", assertion="ABSENT"),
+            ]
+        )
+        result = EntityFaithfulnessSensor().run(ctx)
+        assert result.passed is True
+        assert result.score == pytest.approx(1.0)
+        assert "metformin" not in result.claims_flagged
+
     def test_threshold_is_configurable(self):
         # 3/4 grounded == 0.75; passes at 0.7, fails at the zero-tolerance default.
         ctx = _ctx(

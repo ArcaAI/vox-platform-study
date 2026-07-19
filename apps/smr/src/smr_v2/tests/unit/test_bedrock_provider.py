@@ -46,9 +46,11 @@ class TestBedrockGenerate:
         with patch("smr_v2.providers.bedrock.boto3") as mock_boto3:
             mock_boto3.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
-            content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hi", provider="bedrock"))
+            from smr_v2.models.stats import GenerationStats
+
+            content, _reasoning, stats = await provider.generate(GenerateRequest(prompt="hi", provider="bedrock"))
             assert content == "Bedrock says hi!"
-            assert isinstance(usage, dict)
+            assert isinstance(stats, GenerationStats)
 
     @pytest.mark.asyncio
     async def test_generate_sends_messages(self, bedrock_config):

@@ -1,6 +1,56 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsObject, IsNumber, IsUUID, IsIn, Min, Max } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsObject, IsNumber, IsUUID, IsIn, Min, Max, IsArray, ValidateNested, IsInt } from 'class-validator';
+import { Type } from 'class-transformer';
 import { JsonValue } from '@arcaai/domains';
+
+/**
+ * TASK-519 — one ordered transcript segment (a diarized turn / VAD segment) as
+ * emitted by STT alongside a finalized transcript. `text` is used ONLY to
+ * resolve the segment's character offsets into the transcript and is NOT
+ * persisted (it is a slice of the already-encrypted transcript content); the
+ * durable row keeps only the ordinal, timings, speaker label, and offsets.
+ */
+export class TranscriptSegmentInput {
+  @ApiPropertyOptional({ description: '0-based ordinal within the transcript (defaults to array position)' })
+  @IsInt()
+  @IsOptional()
+  @Min(0)
+  idx?: number;
+
+  @ApiPropertyOptional({ description: 'Segment start time in milliseconds from the recording start' })
+  @IsInt()
+  @IsOptional()
+  @Min(0)
+  t0Ms?: number;
+
+  @ApiPropertyOptional({ description: 'Segment end time in milliseconds from the recording start' })
+  @IsInt()
+  @IsOptional()
+  @Min(0)
+  t1Ms?: number;
+
+  @ApiPropertyOptional({ description: 'Diarization / speaker label (e.g. "SPEAKER_00", "doctor")' })
+  @IsString()
+  @IsOptional()
+  speaker?: string;
+
+  @ApiPropertyOptional({ description: 'Segment text slice — used only to resolve offsets; NOT persisted' })
+  @IsString()
+  @IsOptional()
+  text?: string;
+
+  @ApiPropertyOptional({ description: 'Explicit character offset start into the transcript (wins over text-search)' })
+  @IsInt()
+  @IsOptional()
+  @Min(0)
+  charStart?: number;
+
+  @ApiPropertyOptional({ description: 'Explicit character offset end into the transcript' })
+  @IsInt()
+  @IsOptional()
+  @Min(0)
+  charEnd?: number;
+}
 
 /**
  * Request from STT-v2 service to create a transcript context item
@@ -31,6 +81,22 @@ export class CreateTranscriptRequest {
   @IsObject()
   @IsOptional()
   metadata?: JsonValue;
+
+  // TASK-519 — segment-level structure of the transcript. STT sends ordered
+  // segments (diarized turns / VAD segments) with timings + text; the ingest
+  // persists them as TranscriptSegment rows (offsets resolved from the text).
+  // Falls back to `metadata.segments` (D8: stop dropping metadata) when this
+  // typed field is absent, so an STT payload that embeds segments in metadata
+  // is still captured.
+  @ApiPropertyOptional({
+    description: 'Ordered transcript segments (diarized turns) with timings; persisted as TranscriptSegment rows.',
+    type: [TranscriptSegmentInput],
+  })
+  @IsArray()
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => TranscriptSegmentInput)
+  segments?: TranscriptSegmentInput[];
 
   @ApiPropertyOptional({
     description: 'Consultation ID to add the transcript to. Required when jobId is absent.',
