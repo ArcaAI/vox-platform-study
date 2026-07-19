@@ -327,6 +327,7 @@ class TestAzureGenAISpans:
 
         mock_choice = MagicMock()
         mock_choice.message.content = "Azure says hi"
+        mock_choice.finish_reason = "stop"
 
         mock_response = MagicMock()
         mock_response.choices = [mock_choice]
@@ -358,6 +359,7 @@ class TestAzureGenAISpans:
 
         mock_choice = MagicMock()
         mock_choice.message.content = "Azure says hi"
+        mock_choice.finish_reason = "stop"
 
         mock_response = MagicMock()
         mock_response.choices = [mock_choice]

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 HOPE - Qdrant Collection Initialization Script
-Creates collections for speaker embeddings and context item embeddings
+Creates collections for speaker embeddings and institutional-knowledge chunks
 """
 
 import os
@@ -26,10 +26,6 @@ QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", None)
 STT_COLLECTION_NAME = "stt_speaker_embeddings"
 STT_VECTOR_SIZE = 512  # Pyannote embedding dimension
 
-# Context Items Collection (for semantic search)
-CONTEXT_ITEMS_COLLECTION = "context_items"
-CONTEXT_ITEMS_VECTOR_SIZE = 1536  # OpenAI embedding dimension
-
 # Knowledge Chunks Collection (TASK-330 Phase 3 — institutional RAG / hybrid retrieval).
 # Tenant + document + approval-scoped chunks of the institutional knowledge corpus,
 # stored with a NAMED dense vector ("dense") + a NAMED sparse BM25 vector ("bm25")
@@ -42,62 +38,6 @@ KNOWLEDGE_DENSE_VECTOR_NAME = "dense"
 KNOWLEDGE_SPARSE_VECTOR_NAME = "bm25"
 
 DISTANCE_METRIC = Distance.COSINE
-
-
-def create_context_items_collection(client: QdrantClient):
-    """Create collection for context item embeddings"""
-    print()
-    print("=" * 60)
-    print("Creating Context Items Collection")
-    print("=" * 60)
-
-    try:
-        collections = client.get_collections().collections
-        collection_names = [col.name for col in collections]
-
-        if CONTEXT_ITEMS_COLLECTION in collection_names:
-            print(f"✓ Collection '{CONTEXT_ITEMS_COLLECTION}' already exists")
-            collection_info = client.get_collection(CONTEXT_ITEMS_COLLECTION)
-            print(f"  - Vectors count: {collection_info.vectors_count}")
-            print(f"  - Points count: {collection_info.points_count}")
-            return
-
-        # Create collection
-        client.create_collection(
-            collection_name=CONTEXT_ITEMS_COLLECTION,
-            vectors_config=VectorParams(
-                size=CONTEXT_ITEMS_VECTOR_SIZE,
-                distance=DISTANCE_METRIC
-            )
-        )
-        print(f"✓ Collection '{CONTEXT_ITEMS_COLLECTION}' created")
-
-        # Create payload indexes for filtering
-        client.create_payload_index(
-            collection_name=CONTEXT_ITEMS_COLLECTION,
-            field_name="tenant_id",
-            field_schema=PayloadSchemaType.KEYWORD
-        )
-        client.create_payload_index(
-            collection_name=CONTEXT_ITEMS_COLLECTION,
-            field_name="consultation_id",
-            field_schema=PayloadSchemaType.KEYWORD
-        )
-        client.create_payload_index(
-            collection_name=CONTEXT_ITEMS_COLLECTION,
-            field_name="type",
-            field_schema=PayloadSchemaType.KEYWORD
-        )
-        client.create_payload_index(
-            collection_name=CONTEXT_ITEMS_COLLECTION,
-            field_name="context_item_id",
-            field_schema=PayloadSchemaType.KEYWORD
-        )
-        print("✓ Payload indexes created for context_items")
-
-    except Exception as e:
-        print(f"✗ Failed to create context_items collection: {e}")
-        raise
 
 
 def create_knowledge_chunks_collection(client: QdrantClient):
@@ -305,9 +245,6 @@ def main():
     except Exception as e:
         print(f"⚠ Search test failed: {e}")
 
-    # Create context items collection
-    create_context_items_collection(client)
-
     # Create knowledge chunks collection (TASK-330 Phase 3 institutional RAG)
     create_knowledge_chunks_collection(client)
 
@@ -318,9 +255,8 @@ def main():
     print()
     print("Collections Created:")
     print(f"  1. {STT_COLLECTION_NAME} (Vector: {STT_VECTOR_SIZE})")
-    print(f"  2. {CONTEXT_ITEMS_COLLECTION} (Vector: {CONTEXT_ITEMS_VECTOR_SIZE})")
     print(
-        f"  3. {KNOWLEDGE_CHUNKS_COLLECTION} "
+        f"  2. {KNOWLEDGE_CHUNKS_COLLECTION} "
         f"(dense: {KNOWLEDGE_CHUNKS_VECTOR_SIZE} + sparse bm25)"
     )
     print(f"  - Distance Metric: {DISTANCE_METRIC}")

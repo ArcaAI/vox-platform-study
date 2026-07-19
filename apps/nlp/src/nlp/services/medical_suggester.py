@@ -40,7 +40,9 @@ class MedicalSuggester:
                 "text-classification",
                 model=model,
                 tokenizer=tokenizer,
-                device=0 if torch.cuda.is_available() else -1,
+                # TASK-508 D6: config.use_gpu (default True) now gates GPU use;
+                # default preserves today's auto-detect-when-available behavior.
+                device=0 if (self.config.use_gpu and torch.cuda.is_available()) else -1,
             )
 
             # Initialize token classifier for entity extraction

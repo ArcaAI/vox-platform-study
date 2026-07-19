@@ -154,12 +154,14 @@ class TestAzureEdgeCases:
         from smr_v2.providers.azure_openai import AzureOpenAIProvider
         mock_choice = MagicMock()
         mock_choice.message.content = None
+        mock_choice.finish_reason = "stop"
         mock_completion = MagicMock()
         mock_completion.choices = [mock_choice]
+        mock_completion.usage = MagicMock(prompt_tokens=1, completion_tokens=0, total_tokens=1)
         provider = AzureOpenAIProvider(config=azure_config)
         provider._client = AsyncMock()
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
-        content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hi", provider="azure_openai"))
+        content, _reasoning, _stats = await provider.generate(GenerateRequest(prompt="hi", provider="azure_openai"))
         assert content == ""
 
     @pytest.mark.asyncio
@@ -167,8 +169,10 @@ class TestAzureEdgeCases:
         from smr_v2.providers.azure_openai import AzureOpenAIProvider
         mock_choice = MagicMock()
         mock_choice.message.content = "ok"
+        mock_choice.finish_reason = "stop"
         mock_completion = MagicMock()
         mock_completion.choices = [mock_choice]
+        mock_completion.usage = MagicMock(prompt_tokens=1, completion_tokens=1, total_tokens=2)
         provider = AzureOpenAIProvider(config=azure_config)
         provider._client = AsyncMock()
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)

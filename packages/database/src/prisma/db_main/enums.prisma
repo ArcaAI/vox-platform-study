@@ -304,6 +304,7 @@ enum AiModelFormat {
   AZURE_FOUNDRY // TASK-505 — Cloud, Azure AI Foundry MAI-Transcribe (preview)
   PARAKEET_CPP // TASK-505 — parakeet.cpp ggml runtime (Parakeet/Nemotron)
   CLOUD_API // TASK-506 — generic cloud-API engine (Sarvam TTS, Azure OpenAI catalog rows)
+  WHISPER_CPP // TASK-507 — whisper.cpp ggml runtime (whisper-large-v3-turbo GGUF)
 
   @@schema("core")
 }

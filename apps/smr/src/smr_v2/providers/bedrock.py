@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
@@ -15,6 +16,7 @@ from smr_v2.core.defaults import resolve_request_defaults
 from smr_v2.core.telemetry import get_tracer
 from smr_v2.models.provider import ModelInfo, ProviderInfo
 from smr_v2.models.requests import GenerateRequest
+from smr_v2.models.stats import GenerationStats, stats_from_bedrock
 from smr_v2.models.stream import StreamChunk
 
 if TYPE_CHECKING:
@@ -83,20 +85,23 @@ class BedrockProvider:
 
         return params
 
-    async def generate(self, request: GenerateRequest) -> tuple[str, dict[str, Any]]:
+    async def generate(self, request: GenerateRequest) -> tuple[str, str, GenerationStats]:
         resolved = resolve_request_defaults(request)
+        resolved_model = self._resolve_model(request)
         with _get_tracer().start_as_current_span(
             "gen_ai.generate",
             attributes={
                 "gen_ai.system": "aws_bedrock",
-                "gen_ai.request.model": self._resolve_model(request) or "",
+                "gen_ai.request.model": resolved_model or "",
                 "gen_ai.operation.name": "generate",
                 "gen_ai.request.temperature": resolved["temperature"],
                 "gen_ai.request.max_tokens": resolved["max_tokens"],
             },
         ) as span:
             params = self._build_converse_params(request)
+            start = time.monotonic()
             response = await asyncio.to_thread(self._client.converse, **params)
+            total_ms = int((time.monotonic() - start) * 1000)
 
             stop_reason = response.get("stopReason", "")
             if stop_reason == "guardrail_intervened":
@@ -108,18 +113,26 @@ class BedrockProvider:
 
             content_blocks = response["output"]["message"]["content"]
             content = "".join(block.get("text", "") for block in content_blocks)
-            reasoning = "".join(block.get("reasoningContent", {}).get("text", "") for block in content_blocks)
+            # ReasoningContentBlockOutputTypeDef nests the text under "reasoningText"
+            # (unlike the streaming delta variant, which has a flat "text" field).
+            reasoning = "".join(
+                block.get("reasoningContent", {}).get("reasoningText", {}).get("text", "")
+                for block in content_blocks
+            )
 
-            raw_usage = response.get("usage", {})
-            usage = {
-                "prompt_tokens": raw_usage.get("inputTokens", 0),
-                "completion_tokens": raw_usage.get("outputTokens", 0),
-                "total_tokens": raw_usage.get("inputTokens", 0) + raw_usage.get("outputTokens", 0),
-            }
-            span.set_attribute("gen_ai.usage.input_tokens", usage["prompt_tokens"])
-            span.set_attribute("gen_ai.usage.output_tokens", usage["completion_tokens"])
+            raw_usage: dict[str, Any] = dict(response.get("usage", {}))
+            stats = stats_from_bedrock(
+                provider="bedrock",
+                model=resolved_model or "",
+                usage=raw_usage,
+                stop_reason=stop_reason,
+                total_ms=total_ms,
+                engine_native={"usage": raw_usage, "stopReason": stop_reason},
+            )
+            span.set_attribute("gen_ai.usage.input_tokens", stats.prompt_tokens)
+            span.set_attribute("gen_ai.usage.output_tokens", stats.predicted_tokens)
             span.set_attribute("gen_ai.response.finish_reason", stop_reason or "stop")
-            return content, reasoning, usage
+            return content, reasoning, stats
 
     async def generate_stream(self, request: GenerateRequest) -> AsyncIterator[StreamChunk]:
         resolved = resolve_request_defaults(request)
@@ -134,6 +147,7 @@ class BedrockProvider:
             },
         ) as span:
             params = self._build_converse_params(request)
+            resolved_model = self._resolve_model(request)
 
             loop = asyncio.get_running_loop()
             queue: asyncio.Queue[Any] = asyncio.Queue()
@@ -151,6 +165,16 @@ class BedrockProvider:
 
             thread_future = loop.run_in_executor(None, _iterate_stream)
 
+            # DRAIN to completion (AD-1): the ``messageStop`` (stopReason) event
+            # arrives BEFORE the ``metadata`` (usage) event, so yielding ``done``
+            # at ``messageStop`` emits done→usage (wrong order) and drops usage
+            # from the stats. Accumulate stop reason + usage across the whole
+            # stream, measure TTFT at the first content/reasoning delta, then emit
+            # ONE ``usage`` chunk (full AD-1 stats) followed by ``done``.
+            start = time.monotonic()
+            ttft_ms: int | None = None
+            stop_reason: str | None = None
+            raw_usage: dict[str, Any] = {}
             try:
                 while True:
                     event = await queue.get()
@@ -163,26 +187,37 @@ class BedrockProvider:
                         delta = event["contentBlockDelta"]["delta"]
                         reasoning_text = delta.get("reasoningContent", {}).get("text", "")
                         if reasoning_text:
+                            if ttft_ms is None:
+                                ttft_ms = int((time.monotonic() - start) * 1000)
                             yield StreamChunk(type="reasoning", content=reasoning_text)
                         text = delta.get("text", "")
                         if text:
+                            if ttft_ms is None:
+                                ttft_ms = int((time.monotonic() - start) * 1000)
                             yield StreamChunk(type="chunk", content=text)
                     elif "messageStop" in event:
-                        reason = event["messageStop"].get("stopReason", "stop")
-                        span.set_attribute("gen_ai.response.finish_reason", reason)
-                        yield StreamChunk(type="done", data={"finish_reason": reason})
+                        stop_reason = event["messageStop"].get("stopReason", stop_reason)
                     elif "metadata" in event:
-                        raw_usage = event["metadata"].get("usage", {})
-                        if raw_usage:
-                            span.set_attribute("gen_ai.usage.input_tokens", raw_usage.get("inputTokens", 0))
-                            span.set_attribute("gen_ai.usage.output_tokens", raw_usage.get("outputTokens", 0))
-                            yield StreamChunk(type="usage", data={
-                                "prompt_tokens": raw_usage.get("inputTokens", 0),
-                                "completion_tokens": raw_usage.get("outputTokens", 0),
-                                "total_tokens": raw_usage.get("inputTokens", 0) + raw_usage.get("outputTokens", 0),
-                            })
+                        raw_usage = event["metadata"].get("usage", {}) or {}
             finally:
                 await thread_future
+
+            total_ms = int((time.monotonic() - start) * 1000)
+            stats = stats_from_bedrock(
+                provider="bedrock",
+                model=resolved_model or "",
+                usage=raw_usage,
+                stop_reason=stop_reason,
+                total_ms=total_ms,
+                ttft_ms=ttft_ms,
+                engine_native={"usage": raw_usage, "stopReason": stop_reason} if raw_usage or stop_reason else None,
+            )
+            if raw_usage:
+                span.set_attribute("gen_ai.usage.input_tokens", raw_usage.get("inputTokens", 0))
+                span.set_attribute("gen_ai.usage.output_tokens", raw_usage.get("outputTokens", 0))
+            span.set_attribute("gen_ai.response.finish_reason", stop_reason or "stop")
+            yield StreamChunk(type="usage", data=stats.model_dump())
+            yield StreamChunk(type="done", data={"finish_reason": stop_reason or "stop"})
 
     async def health_check(self) -> bool:
         try:

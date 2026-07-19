@@ -131,3 +131,21 @@ register_processor(
     traits=("word_timestamps", "phrase_list"),
     metadata={"aliases": ("foundry", "mai")},
 )
+
+# TASK-507 — whisper.cpp (GGUF whisper-large-v3-turbo), via pywhispercpp.
+
+register_processor(
+    kind="asr",
+    name="whisper_cpp",
+    lazy_target="stt_v2.processors.asr_engines:WhisperCppEngine",
+    capabilities=[
+        # ggml runtime: CPU everywhere; Metal (mps) and CUDA when pywhispercpp
+        # is built with those backends.
+        Capability(device="cpu", compute=("q4_k", "q5_k", "q6_k", "q8_0", "f16", "f32")),
+        Capability(device="mps", compute=("q4_k", "q5_k", "q8_0", "f16")),
+        Capability(device="cuda", compute=("q4_k", "q5_k", "q8_0", "f16", "f32")),
+    ],
+    # Per-utterance streaming (single inference pass) + batch, mirroring the
+    # faster-whisper precedent — whisper (unlike RNNT) supports both well.
+    traits=("initial_prompt", "word_timestamps"),
+)

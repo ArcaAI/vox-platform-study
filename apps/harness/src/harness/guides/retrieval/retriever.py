@@ -19,16 +19,21 @@ concrete clients.
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from pydantic import BaseModel, ConfigDict
-from qdrant_client import models
 
 from harness.core.logging import get_logger
 from harness.guides.retrieval.qdrant_store import RetrievedPoint
 from harness.sensors.base import NEREntity
 from harness.services.reranker_client import RerankResult
 from harness.temporal.claim_check import ClaimCheckRef
+
+# `qdrant_client` is the optional `rag` extra (TASK-508 D1/0.2): only used here for
+# type annotations (deferred by `from __future__ import annotations`), so import it
+# under TYPE_CHECKING — this module never requires the extra to be installed.
+if TYPE_CHECKING:
+    from qdrant_client import models
 
 logger = get_logger(__name__)
 

@@ -68,6 +68,12 @@ describe('PromptResolutionService', () => {
     beforeEach(() => {
         vi.clearAllMocks();
 
+        // TASK-511 (Phase 3A) — prompt-resolution now gates clinical-flow templates
+        // to status=APPROVED. Default: any looked-up template resolves APPROVED, so
+        // the pre-existing preferred/department resolution behaviour is preserved.
+        // Tests that exercise the gate override this with a DRAFT/PUBLISHED status.
+        mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, status: 'APPROVED' }));
+
         service = new PromptResolutionService(
             mockDepartmentRepository as never,
             mockPromptTemplateRepository as never,
@@ -310,7 +316,7 @@ describe('PromptResolutionService', () => {
             mockDepartmentRepository.findById.mockResolvedValue(
                 createMockDepartment({ defaultSummaryTemplate: 'SOAP', newPatientPromptId: 'dept-prompt' }),
             );
-            mockPromptTemplateRepository.findById.mockResolvedValue({ id: 'preferred-tpl', name: 'My SOAP' });
+            mockPromptTemplateRepository.findById.mockResolvedValue({ id: 'preferred-tpl', name: 'My SOAP', status: 'APPROVED' });
 
             const result = await service.resolve({
                 departmentId: 'dept-001',
@@ -328,7 +334,10 @@ describe('PromptResolutionService', () => {
             mockDepartmentRepository.findById.mockResolvedValue(
                 createMockDepartment({ defaultSummaryTemplate: 'SOAP', newPatientPromptId: 'dept-prompt' }),
             );
-            mockPromptTemplateRepository.findById.mockResolvedValue(null);
+            // The preferred id is missing; the (APPROVED) department template resolves.
+            mockPromptTemplateRepository.findById.mockImplementation(async (id: string) =>
+                id === 'missing-tpl' ? null : { id, status: 'APPROVED' },
+            );
 
             const result = await service.resolve({
                 departmentId: 'dept-001',
@@ -371,7 +380,7 @@ describe('PromptResolutionService', () => {
             mockDepartmentRepository.findById.mockResolvedValue(
                 createMockDepartment({ defaultSummaryTemplate: 'SOAP', newPatientPromptId: 'dept-prompt' }),
             );
-            mockPromptTemplateRepository.findById.mockResolvedValue({ id: 'preferred-tpl' });
+            mockPromptTemplateRepository.findById.mockResolvedValue({ id: 'preferred-tpl', status: 'APPROVED' });
 
             const result = await service.resolve({
                 departmentId: 'dept-001',
@@ -396,6 +405,65 @@ describe('PromptResolutionService', () => {
             const result = await service.resolve({});
 
             expect(result.resolvedFrom).toBe('default');
+        });
+    });
+
+    // =========================================================================
+    // TASK-511 (Phase 3A) — prompt governance: APPROVED gating at resolution time
+    // =========================================================================
+    describe('resolve — APPROVED gating (TASK-511)', () => {
+        it('skips a DRAFT department template and falls through to the APPROVED default', async () => {
+            mockDepartmentRepository.findById.mockResolvedValue(
+                createMockDepartment({ newPatientPromptId: 'draft-dept-tpl' }),
+            );
+            // The department template is DRAFT (not yet approved) → must be skipped.
+            mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, status: 'DRAFT' }));
+
+            const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+
+            expect(result.promptId).toBe(SYSTEM_DEFAULTS.promptId);
+            expect(result.resolutionTrace.usedDefaults).toContain('promptId');
+        });
+
+        it('skips a PUBLISHED-but-not-APPROVED department template and falls through to default', async () => {
+            mockDepartmentRepository.findById.mockResolvedValue(
+                createMockDepartment({ newPatientPromptId: 'published-dept-tpl' }),
+            );
+            mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, status: 'PUBLISHED' }));
+
+            const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+
+            expect(result.promptId).toBe(SYSTEM_DEFAULTS.promptId);
+        });
+
+        it('uses an APPROVED department template', async () => {
+            mockDepartmentRepository.findById.mockResolvedValue(
+                createMockDepartment({ newPatientPromptId: 'approved-dept-tpl' }),
+            );
+            mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, status: 'APPROVED' }));
+
+            const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+
+            expect(result.promptId).toBe('approved-dept-tpl');
+        });
+
+        it('skips a DRAFT preferred template and falls through to the (APPROVED) department tier', async () => {
+            mockDepartmentRepository.findById.mockResolvedValue(
+                createMockDepartment({ newPatientPromptId: 'dept-prompt' }),
+            );
+            mockPromptTemplateRepository.findById.mockImplementation(async (id: string) =>
+                id === 'draft-preferred' ? { id, status: 'DRAFT' } : { id, status: 'APPROVED' },
+            );
+
+            const result = await service.resolve({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                preferredPromptTemplateId: 'draft-preferred',
+            });
+
+            expect(result.promptId).toBe('dept-prompt');
+            expect(result.resolvedFrom).toBe('department');
+            expect(result.resolutionTrace.preferredPromptId).toBeNull();
         });
     });
 });

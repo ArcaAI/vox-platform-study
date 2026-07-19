@@ -299,6 +299,36 @@ class TestGenerate:
         assert fake.kwargs["model"] == "gpt-4o"
 
     @pytest.mark.asyncio
+    async def test_threads_smr_stats_onto_activity_result(self, env, monkeypatch):
+        """TASK-509 (AD-1) Phase 1B — the generate activity result carries the SMR
+        ``stats`` block (additive field on ``SmrGenerationResult``; command-neutral —
+        no new workflow command). Phase 2 trajectory emitters read it off the result."""
+        stats = {
+            "stop_reason": "stop",
+            "stop_reason_raw": "stop",
+            "total_ms": 950,
+            "ttft_ms": 60,
+            "tokens_per_second": 33.0,
+            "prompt_tokens": 25,
+            "predicted_tokens": 12,
+            "total_tokens": 37,
+            "provider": "openai_compat",
+            "model": "m",
+            "engine_native": None,
+        }
+
+        class _StatsSmr:
+            async def generate(self, **kwargs: Any) -> SmrGenerationResult:
+                return SmrGenerationResult(
+                    content="DRAFT", model="m", finish_reason="stop", stats=stats
+                )
+
+        monkeypatch.setattr(activities, "_smr_client", lambda s: _StatsSmr())
+        result = await env.run(activities.generate, GenerateInput(prompt="P"))
+        assert result.content == "DRAFT"
+        assert result.stats == stats
+
+    @pytest.mark.asyncio
     async def test_passes_stable_idempotency_key_across_reruns(self, env, monkeypatch):
         """C1-04 (TASK-469): the generate activity supplies a deterministic Idempotency-Key
         (``workflow_run:activity_id`` via ``_idempotency_key``) so a worker-crash re-delivery

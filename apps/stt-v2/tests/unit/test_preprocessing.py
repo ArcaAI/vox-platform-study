@@ -1091,6 +1091,131 @@ class TestApplyDenoise:
         assert result_sr == 48000
 
 
+class TestApplyDenoiseDeepFilterNet3:
+    """TASK-507 — tests for _apply_denoise_deepfilternet3 (DeepFilterNet3)."""
+
+    @pytest.fixture
+    def preprocessor(self):
+        return AudioPreprocessor()
+
+    @pytest.mark.asyncio
+    async def test_denoise_returns_tuple_on_import_error(self, preprocessor):
+        """Real fallback path — deepfilternet unavailable in this env — must
+        still return a 2-tuple, not a bare ndarray."""
+        samples = np.sin(np.linspace(0, 2 * np.pi * 440, 16000)).astype(np.float32)
+
+        result = await preprocessor._apply_denoise_deepfilternet3(samples, 16000, 0.8)
+
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        np.testing.assert_array_equal(result[0], samples)
+        assert result[1] == 16000
+
+    @pytest.mark.asyncio
+    async def test_denoise_strength_zero_bypasses(self, preprocessor):
+        samples = np.sin(np.linspace(0, 2 * np.pi * 440, 16000)).astype(np.float32)
+
+        result_samples, result_sr = await preprocessor._apply_denoise_deepfilternet3(
+            samples, 16000, 0.0
+        )
+
+        np.testing.assert_array_equal(result_samples, samples)
+        assert result_sr == 16000
+
+    @pytest.mark.asyncio
+    async def test_denoise_exception_returns_original(self, preprocessor):
+        """If enhance() raises, should return original audio."""
+        samples = np.sin(np.linspace(0, 2 * np.pi * 440, 16000)).astype(np.float32)
+
+        mock_df_module = MagicMock()
+        mock_df_module.init_df.side_effect = RuntimeError("model load crash")
+
+        with patch.dict("sys.modules", {"df.enhance": mock_df_module}):
+            result_samples, result_sr = await preprocessor._apply_denoise_deepfilternet3(
+                samples, 16000, 0.8
+            )
+
+        np.testing.assert_array_equal(result_samples, samples)
+        assert result_sr == 16000
+
+    @pytest.mark.asyncio
+    async def test_denoise_applies_model_output(self, preprocessor):
+        """A successful enhance() call blends the DF3 output at 48kHz."""
+        import torch
+
+        samples = np.sin(np.linspace(0, 2 * np.pi * 440, 16000)).astype(np.float32)
+
+        mock_df_module = MagicMock()
+        mock_df_module.init_df.return_value = (MagicMock(), MagicMock(), "suffix", 1)
+        mock_df_module.enhance.return_value = torch.zeros((1, 48000))
+
+        with patch.dict("sys.modules", {"df.enhance": mock_df_module}):
+            result_samples, result_sr = await preprocessor._apply_denoise_deepfilternet3(
+                samples, 16000, 1.0
+            )
+
+        assert result_sr == 48000
+        assert len(result_samples) == 48000
+        np.testing.assert_array_almost_equal(result_samples, np.zeros(48000, dtype=np.float32))
+
+
+class TestDenoiseEngineDispatch:
+    """TASK-507 — preprocessing.denoise.engine selects the RNNoise vs
+    DeepFilterNet3 implementation in AudioPreprocessor.process()."""
+
+    @pytest.fixture
+    def preprocessor(self):
+        return AudioPreprocessor()
+
+    @pytest.mark.asyncio
+    async def test_rnnoise_used_by_default(self, preprocessor):
+        config = MagicMock()
+        config.normalize = False
+        config.denoise.enabled = True
+        config.denoise.scope = "full"
+        config.denoise.strength = 0.8
+        config.denoise.engine = "rnnoise"
+        config.vad.enabled = False
+        config.target_sample_rate = 16000
+        config.resample_enabled = True
+
+        preprocessor._apply_denoise = AsyncMock(return_value=(np.zeros(100, dtype=np.float32), 48000))
+        preprocessor._apply_denoise_deepfilternet3 = AsyncMock()
+        preprocessor._load_audio = MagicMock(
+            return_value=(np.zeros(1600, dtype=np.float32), 16000)
+        )
+
+        await preprocessor.process(b"fake", config)
+
+        preprocessor._apply_denoise.assert_called_once()
+        preprocessor._apply_denoise_deepfilternet3.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_deepfilternet3_selected_by_engine(self, preprocessor):
+        config = MagicMock()
+        config.normalize = False
+        config.denoise.enabled = True
+        config.denoise.scope = "full"
+        config.denoise.strength = 0.8
+        config.denoise.engine = "deepfilternet3"
+        config.vad.enabled = False
+        config.target_sample_rate = 16000
+        config.resample_enabled = True
+
+        preprocessor._apply_denoise = AsyncMock()
+        preprocessor._apply_denoise_deepfilternet3 = AsyncMock(
+            return_value=(np.zeros(100, dtype=np.float32), 48000)
+        )
+        preprocessor._load_audio = MagicMock(
+            return_value=(np.zeros(1600, dtype=np.float32), 16000)
+        )
+
+        await preprocessor.process(b"fake", config)
+
+        preprocessor._apply_denoise_deepfilternet3.assert_called_once()
+        preprocessor._apply_denoise.assert_not_called()
+
+
 # =============================================================================
 # PREPROCESSING EDGE CASES — COMBINED FEATURES (TASK-009)
 # =============================================================================

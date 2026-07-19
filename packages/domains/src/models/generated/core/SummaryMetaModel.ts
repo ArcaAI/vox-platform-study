@@ -15,6 +15,10 @@ export class SummaryMeta extends BaseTenantDataModel {
   public processingTimeMs: number | null;
   public inputTokens: number | null;
   public outputTokens: number | null;
+  // TASK-509 Phase 1B — AD-1 generation-stats headline fields.
+  public stopReason: string | null;
+  public ttftMs: number | null;
+  public tokensPerSecond: number | null;
   public cacheHit: boolean | null;
   public qualityScore: number | null;
   public caseNoteIds: string[];
@@ -51,6 +55,9 @@ export class SummaryMeta extends BaseTenantDataModel {
     this.processingTimeMs = data.processingTimeMs;
     this.inputTokens = data.inputTokens;
     this.outputTokens = data.outputTokens;
+    this.stopReason = data.stopReason;
+    this.ttftMs = data.ttftMs;
+    this.tokensPerSecond = data.tokensPerSecond;
     this.cacheHit = data.cacheHit;
     this.qualityScore = data.qualityScore;
     this.caseNoteIds = data.caseNoteIds ?? [];

@@ -227,6 +227,44 @@ class ClaimCheckConfig(BaseSettings):
         return v
 
 
+class McpConfig(BaseSettings):
+    """MCP external-tools client config (TASK-516 Phase 5 — default OFF).
+
+    The whole MCP tool path is DORMANT unless the per-tenant
+    ``HarnessPolicy.mcpToolsEnabled`` flag is set AND the referenced
+    ``McpServer.enabled`` is true (defense in depth); this config only supplies
+    the client TUNING (timeout / bounded retry / result size cap). READ-ONLY
+    tools only in this ticket. Credentials are resolved from Vault at call time
+    by the server's ``authRef`` PATH — never stored or logged here.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="HARNESS_MCP_")
+
+    # Per-call wall-clock timeout for a single MCP tool invocation.
+    timeout_s: float = 20.0
+    # Bounded transport retries inside the client for a transient/5xx error before
+    # the activity degrades (never crashes the loop).
+    max_attempts: int = 2
+    # Result size cap (utf-8 BYTES). A tool result above this is claim-checked
+    # (offloaded, keeping the blob OUT of Temporal history) when claim-check is
+    # enabled, else truncated to the cap. Mirrors the claim-check threshold.
+    max_result_bytes: int = 65_536
+
+    @field_validator("max_attempts")
+    @classmethod
+    def _positive_max_attempts(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("max_attempts must be >= 1")
+        return v
+
+    @field_validator("max_result_bytes")
+    @classmethod
+    def _positive_max_result_bytes(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("max_result_bytes must be a positive integer")
+        return v
+
+
 class Settings(BaseSettings):
     """Root harness application settings."""
 
@@ -373,6 +411,9 @@ class Settings(BaseSettings):
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     # TASK-483 claim-check: out-of-band blob store for the Temporal history budget.
     claim_check: ClaimCheckConfig = Field(default_factory=ClaimCheckConfig)
+    # TASK-516 (Phase 5) — MCP external-tools client tuning (default OFF; the path is
+    # gated on HarnessPolicy.mcpToolsEnabled + McpServer.enabled + workflow.patched).
+    mcp: McpConfig = Field(default_factory=McpConfig)
 
     @field_validator("log_level")
     @classmethod

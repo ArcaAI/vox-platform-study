@@ -227,3 +227,28 @@ class TestReplayCompatibility:
             data_converter=pydantic_data_converter,
         )
         await replayer.replay_workflow(_history("doc_workflow_post_task483_claim_check_history"))
+
+    @pytest.mark.asyncio
+    async def test_post_task516_mcp_history_replays_on_current_definition(self):
+        """Forward guard for the TASK-516 (Phase 5) MCP external-tools era.
+
+        The fixture is a happy-path history recorded with the MCP tool path ARMED — the
+        policy enables ``mcpToolsEnabled`` and registers an enabled terminology server, so
+        the workflow took the patch-gated branch: it carries the ``task-516-mcp-tools``
+        patch marker AND the new ``call_mcp_tool`` command (after the transcript NER, before
+        retrieval) that validates the extracted entity codes against the FHIR terminology
+        server.
+
+        Replaying it through the current definition proves an in-flight MCP-armed execution
+        survives a redeploy, and forward-guards the command-sequence change: any FUTURE
+        ungated change to the MCP path fails this replay with a non-determinism error unless
+        gated behind its own ``workflow.patched()``. The default-OFF fixtures above (which
+        NEVER call ``workflow.patched("task-516-mcp-tools")`` — the ``and`` short-circuit)
+        also stay green, proving the feature is command-neutral when the flag is off.
+        Recapture alongside every new patch gate (see ``_capture_replay_fixture.py --mcp``).
+        """
+        replayer = Replayer(
+            workflows=[HarnessDocWorkflow],
+            data_converter=pydantic_data_converter,
+        )
+        await replayer.replay_workflow(_history("doc_workflow_post_task516_mcp_history"))

@@ -33,6 +33,14 @@ export interface IHarnessPolicyEntity extends IBaseTenantEntity {
   gateSlaSeconds: number;
   gateEscalationSeconds: number;
   toolAllowlist?: JsonValue | null;
+  // TASK-511 (Phase 3A) — agentic loop knobs. null ⇒ harness env/code default.
+  optimisticDeliveryEnabled?: boolean | null;
+  atomicFactEnabled?: boolean | null;
+  retrievalEnabled?: boolean | null;
+  warmStartEnabled?: boolean | null;
+  nerPriorsEnabled?: boolean | null;
+  maxEditReruns?: number | null;
+  regenFeedbackEnabled?: boolean | null;
 }
 
 export class HarnessPolicyEntity extends BaseTenantEntity {
@@ -52,6 +60,13 @@ export class HarnessPolicyEntity extends BaseTenantEntity {
   private _gateSlaSeconds: IHarnessPolicyEntity['gateSlaSeconds'];
   private _gateEscalationSeconds: IHarnessPolicyEntity['gateEscalationSeconds'];
   private _toolAllowlist?: IHarnessPolicyEntity['toolAllowlist'];
+  private _optimisticDeliveryEnabled?: IHarnessPolicyEntity['optimisticDeliveryEnabled'];
+  private _atomicFactEnabled?: IHarnessPolicyEntity['atomicFactEnabled'];
+  private _retrievalEnabled?: IHarnessPolicyEntity['retrievalEnabled'];
+  private _warmStartEnabled?: IHarnessPolicyEntity['warmStartEnabled'];
+  private _nerPriorsEnabled?: IHarnessPolicyEntity['nerPriorsEnabled'];
+  private _maxEditReruns?: IHarnessPolicyEntity['maxEditReruns'];
+  private _regenFeedbackEnabled?: IHarnessPolicyEntity['regenFeedbackEnabled'];
 
   constructor(init: IHarnessPolicyEntity) {
     super(init);
@@ -71,6 +86,13 @@ export class HarnessPolicyEntity extends BaseTenantEntity {
     this._gateSlaSeconds = init.gateSlaSeconds;
     this._gateEscalationSeconds = init.gateEscalationSeconds;
     this._toolAllowlist = init.toolAllowlist;
+    this._optimisticDeliveryEnabled = init.optimisticDeliveryEnabled;
+    this._atomicFactEnabled = init.atomicFactEnabled;
+    this._retrievalEnabled = init.retrievalEnabled;
+    this._warmStartEnabled = init.warmStartEnabled;
+    this._nerPriorsEnabled = init.nerPriorsEnabled;
+    this._maxEditReruns = init.maxEditReruns;
+    this._regenFeedbackEnabled = init.regenFeedbackEnabled;
   }
 
   get entityFaithfulnessThreshold(): IHarnessPolicyEntity['entityFaithfulnessThreshold'] {
@@ -201,6 +223,62 @@ export class HarnessPolicyEntity extends BaseTenantEntity {
     this.setProperty('toolAllowlist', value);
   }
 
+  get optimisticDeliveryEnabled(): IHarnessPolicyEntity['optimisticDeliveryEnabled'] {
+    return this._optimisticDeliveryEnabled;
+  }
+
+  set optimisticDeliveryEnabled(value: IHarnessPolicyEntity['optimisticDeliveryEnabled']) {
+    this.setProperty('optimisticDeliveryEnabled', value);
+  }
+
+  get atomicFactEnabled(): IHarnessPolicyEntity['atomicFactEnabled'] {
+    return this._atomicFactEnabled;
+  }
+
+  set atomicFactEnabled(value: IHarnessPolicyEntity['atomicFactEnabled']) {
+    this.setProperty('atomicFactEnabled', value);
+  }
+
+  get retrievalEnabled(): IHarnessPolicyEntity['retrievalEnabled'] {
+    return this._retrievalEnabled;
+  }
+
+  set retrievalEnabled(value: IHarnessPolicyEntity['retrievalEnabled']) {
+    this.setProperty('retrievalEnabled', value);
+  }
+
+  get warmStartEnabled(): IHarnessPolicyEntity['warmStartEnabled'] {
+    return this._warmStartEnabled;
+  }
+
+  set warmStartEnabled(value: IHarnessPolicyEntity['warmStartEnabled']) {
+    this.setProperty('warmStartEnabled', value);
+  }
+
+  get nerPriorsEnabled(): IHarnessPolicyEntity['nerPriorsEnabled'] {
+    return this._nerPriorsEnabled;
+  }
+
+  set nerPriorsEnabled(value: IHarnessPolicyEntity['nerPriorsEnabled']) {
+    this.setProperty('nerPriorsEnabled', value);
+  }
+
+  get maxEditReruns(): IHarnessPolicyEntity['maxEditReruns'] {
+    return this._maxEditReruns;
+  }
+
+  set maxEditReruns(value: IHarnessPolicyEntity['maxEditReruns']) {
+    this.setProperty('maxEditReruns', value);
+  }
+
+  get regenFeedbackEnabled(): IHarnessPolicyEntity['regenFeedbackEnabled'] {
+    return this._regenFeedbackEnabled;
+  }
+
+  set regenFeedbackEnabled(value: IHarnessPolicyEntity['regenFeedbackEnabled']) {
+    this.setProperty('regenFeedbackEnabled', value);
+  }
+
   /**
    * Range-checks the safety-critical knobs (defense in depth — these values
    * drive the clinical gate). Thresholds are fractions in [0, 1]; the regen
@@ -218,6 +296,11 @@ export class HarnessPolicyEntity extends BaseTenantEntity {
     this.assertNonNegativeInt('maxRegen', this._maxRegen);
     this.assertNonNegativeInt('gateSlaSeconds', this._gateSlaSeconds);
     this.assertNonNegativeInt('gateEscalationSeconds', this._gateEscalationSeconds);
+
+    // TASK-511 — the agentic knobs are nullable overrides; only range-check when set.
+    if (this._maxEditReruns !== null && this._maxEditReruns !== undefined) {
+      this.assertNonNegativeInt('maxEditReruns', this._maxEditReruns);
+    }
 
     if (!this._safetyProvider || this._safetyProvider.trim().length === 0) {
       throw new BusinessException('HarnessPolicy safetyProvider is required.');

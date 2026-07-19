@@ -34,6 +34,7 @@ describe('HarnessInternalController', () => {
             undefined as any,
             undefined as any,
             undefined as any,
+            undefined as any,
         );
     });
 
@@ -231,6 +232,98 @@ describe('HarnessInternalController', () => {
                 HarnessInternalController.prototype.reportAssuranceClaim,
             ) as number | undefined;
             expect(statusCode).toBe(200);
+        });
+    });
+
+    // TASK-510 Phase 2D — the harness `report_trajectory` batch ingest.
+    describe('POST internal/harness/trajectory (ordered-trajectory ingest)', () => {
+        const mockTrajectoryService = { recordSteps: vi.fn() };
+        // The ingest re-establishes CLS from the batch tenantId (like /policy),
+        // so cls.run must invoke the callback and cls.set must be observable.
+        const mockCls = { run: vi.fn((fn: () => unknown) => fn()), set: vi.fn() };
+
+        const buildController = () =>
+            new HarnessInternalController(
+                mockService as any,
+                undefined as any, // harnessPolicyService (unused by trajectory)
+                mockCls as any,
+                undefined as any, // harnessProgressService (unused)
+                undefined as any, // harnessAssuranceService (unused)
+                mockTrajectoryService as any,
+            );
+
+        it('maps the harness batch (ISO → Date) and delegates to recordSteps, acking 202-style', async () => {
+            mockTrajectoryService.recordSteps.mockResolvedValue(undefined);
+            const dto = {
+                steps: [
+                    {
+                        tenantId: 't-1',
+                        consultationId: 'consult-1',
+                        sessionKind: 'HARNESS_DOC',
+                        sessionId: 'wf-1',
+                        runId: 'run-1',
+                        seq: 0,
+                        stepType: 'PHASE',
+                        name: 'init',
+                        status: 'OK',
+                        startedAt: '2026-07-19T00:00:00.000Z',
+                        endedAt: '2026-07-19T00:00:01.000Z',
+                        durationMs: 1000,
+                    },
+                ],
+            };
+
+            const result = await buildController().reportTrajectory(dto as any, 'run-1:phase-init');
+
+            expect(mockTrajectoryService.recordSteps).toHaveBeenCalledTimes(1);
+            const passed = mockTrajectoryService.recordSteps.mock.calls[0][0] as any[];
+            expect(passed[0].startedAt).toBeInstanceOf(Date);
+            expect(passed[0].endedAt).toBeInstanceOf(Date);
+            expect(passed[0].tenantId).toBe('t-1');
+            expect(passed[0].sessionKind).toBe('HARNESS_DOC');
+            expect(result).toEqual({ accepted: 1 });
+            // CLS re-established from the batch tenantId for the tenant-scope extension.
+            expect(mockCls.set).toHaveBeenCalledWith('tenantId', 't-1');
+        });
+
+        it('B1: floors a fractional durationMs into the Int column instead of dropping the batch', async () => {
+            mockTrajectoryService.recordSteps.mockResolvedValue(undefined);
+            const dto = {
+                steps: [
+                    {
+                        tenantId: 't-1',
+                        sessionKind: 'HARNESS_DOC',
+                        sessionId: 'wf-1',
+                        runId: 'run-1',
+                        seq: 0,
+                        stepType: 'LLM_CALL',
+                        name: 'generate',
+                        status: 'OK',
+                        startedAt: '2026-07-19T00:00:00.000Z',
+                        durationMs: 12.7,
+                    },
+                ],
+            };
+
+            await buildController().reportTrajectory(dto as any, 'run-1:llm');
+
+            const passed = mockTrajectoryService.recordSteps.mock.calls[0][0] as any[];
+            expect(passed[0].durationMs).toBe(12);
+        });
+
+        it('is resilient to an empty batch — no-op ack, never touches the service or 5xxs', async () => {
+            const result = await buildController().reportTrajectory({ steps: [] } as any);
+
+            expect(mockTrajectoryService.recordSteps).not.toHaveBeenCalled();
+            expect(result).toEqual({ accepted: 0 });
+        });
+
+        it('responds 202 (accepted, async ingest) rather than the default POST 201', () => {
+            const statusCode = Reflect.getMetadata(
+                HTTP_CODE_METADATA,
+                HarnessInternalController.prototype.reportTrajectory,
+            ) as number | undefined;
+            expect(statusCode).toBe(202);
         });
     });
 });

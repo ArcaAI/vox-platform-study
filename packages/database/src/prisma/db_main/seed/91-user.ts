@@ -918,6 +918,7 @@ export const seedUser = async (client: CorePrismaClient) => {
     // pointed this at the CT2 int8 pipeline (…0403), whose model carries a
     // non-resolving placeholder sourceUri (D-4); the CT2 pipeline stays
     // registered but must not be the default until the artifact is published.
+    // TASK-507 — flipped to the new whisper.cpp GGUF default pipeline (…0404).
     await client.globalSetting.upsert({
         where: {
             GlobalSetting_tenantId_name_key_unique: {
@@ -927,7 +928,7 @@ export const seedUser = async (client: CorePrismaClient) => {
             },
         },
         update: {
-            value: '81000000-0000-0000-0001-000000000401',
+            value: '81000000-0000-0000-0001-000000000404',
             description: 'Default ASR pipeline for all doctors when using remote workflow mode',
         },
         create: {
@@ -936,8 +937,8 @@ export const seedUser = async (client: CorePrismaClient) => {
             namespace: 'arcaai-sdk',
             name: 'stt-pipeline',
             key: 'default-stt-pipeline',
-            value: '81000000-0000-0000-0001-000000000401',
-            defaultValue: '81000000-0000-0000-0001-000000000401',
+            value: '81000000-0000-0000-0001-000000000404',
+            defaultValue: '81000000-0000-0000-0001-000000000404',
             dataType: ValueType.String,
             description: 'Default ASR pipeline for all doctors when using remote workflow mode',
         },

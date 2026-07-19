@@ -31,6 +31,14 @@ export class HarnessPolicy extends BaseTenantDataModel {
   public gateSlaSeconds: number;
   public gateEscalationSeconds: number;
   public toolAllowlist: JsonValue | null;
+  // TASK-511 (Phase 3A) — agentic loop knobs. null ⇒ harness env/code default.
+  public optimisticDeliveryEnabled: boolean | null;
+  public atomicFactEnabled: boolean | null;
+  public retrievalEnabled: boolean | null;
+  public warmStartEnabled: boolean | null;
+  public nerPriorsEnabled: boolean | null;
+  public maxEditReruns: number | null;
+  public regenFeedbackEnabled: boolean | null;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
@@ -53,6 +61,13 @@ export class HarnessPolicy extends BaseTenantDataModel {
     this.gateSlaSeconds = data.gateSlaSeconds;
     this.gateEscalationSeconds = data.gateEscalationSeconds;
     this.toolAllowlist = data.toolAllowlist;
+    this.optimisticDeliveryEnabled = data.optimisticDeliveryEnabled;
+    this.atomicFactEnabled = data.atomicFactEnabled;
+    this.retrievalEnabled = data.retrievalEnabled;
+    this.warmStartEnabled = data.warmStartEnabled;
+    this.nerPriorsEnabled = data.nerPriorsEnabled;
+    this.maxEditReruns = data.maxEditReruns;
+    this.regenFeedbackEnabled = data.regenFeedbackEnabled;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;

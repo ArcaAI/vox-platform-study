@@ -34,6 +34,8 @@ export const AiModelFormat = {
     PARAKEET_CPP: 'PARAKEET_CPP',
     // TASK-506 — generic cloud-API engine (Sarvam TTS, Azure OpenAI catalog rows).
     CLOUD_API: 'CLOUD_API',
+    // TASK-507 — whisper.cpp ggml runtime (whisper-large-v3-turbo GGUF).
+    WHISPER_CPP: 'WHISPER_CPP',
 } as const;
 
 export const ModelCategory = {
@@ -75,6 +77,11 @@ export const AI_MODEL_PROVIDERS = [
     'bedrock',
     'built-in',
     'sarvam',
+    // TASK-515 (TASK-508 Phase 4B/4C deferred wiring) — production self-host
+    // engines (AD-4 engine matrix). OpenAI-compatible `/v1` wire; free-string
+    // provider values, no Prisma enum migration (the column is a plain string).
+    'vllm',
+    'llama-cpp',
 ] as const;
 
 export type AiModelProvider = (typeof AI_MODEL_PROVIDERS)[number];

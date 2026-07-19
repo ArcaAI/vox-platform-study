@@ -34,6 +34,15 @@ members = [
 # `--extra nemo`) instead of trying to co-resolve them and failing.
 # `ml-gpu` self-references `ml`, so ml and ml-gpu are NOT mutually conflicting.
 [tool.uv]
+# Docker images are Linux (`python-base`/Dockerfiles), local dev is macOS
+# (conda `arcaenv`) — this workspace never runs on Windows. Without this, uv
+# also resolves a hypothetical win32 split, which re-surfaces the same
+# nemo-toolkit (transformers<4.58) vs guardrail (transformers>=5.0) conflict
+# under a different marker.
+environments = [
+    "sys_platform == 'darwin'",
+    "sys_platform == 'linux'",
+]
 conflicts = [
     [
         { package = "stt-v2", extra = "ml" },
@@ -43,4 +52,18 @@ conflicts = [
         { package = "stt-v2", extra = "ml-gpu" },
         { package = "stt-v2", extra = "nemo" },
     ],
+    [
+        { package = "guardrail" },
+        { package = "stt-v2", extra = "nemo" },
+    ],
 ]
+
+# deepfilternet 0.5.6 (TASK-507, latest release on PyPI) declares
+# numpy>=1.22,<2.0, but stt-v2's base dependencies require numpy>=2.0.0 (shared
+# with the rest of the `ml` extra: torch 2.8, scipy 1.17, librosa). deepfilternet
+# has no numpy-2.x-compatible release upstream, so the <2.0 pin is overridden
+# here to unblock resolution. deepfilterlib is a compiled (PyO3) extension and
+# numpy 2.0 made a C-API/ABI break — this override has NOT been runtime-verified.
+# Manually smoke-test the DeepFilterNet3 denoise path before relying on it
+# (see docs/implementation/TASK-507-ASR-Pipeline-Model-Catalog-Refresh/README.md).
+override-dependencies = ["numpy>=2.0.0"]

@@ -86,6 +86,8 @@ from harness.temporal.models import (
     EditSignal,
     HarnessDocWorkflowInput,
     HarnessGateConfig,
+    HarnessPolicy,
+    McpServerConfig,
 )
 from harness.temporal.workflows import HarnessDocWorkflow
 from harness.tests.unit.temporal._harness_stubs import (
@@ -122,6 +124,30 @@ async def capture(out_path: Path, *, scenario: str = "happy") -> None:
         # TASK-481 (E2): optimistic delivery, then the assurance pass FLAGs (UNSAFE) so the
         # delivered draft is RETRACTED (records the task-481-optimistic-retraction marker).
         config = StubConfig(verdicts=["PASS"], inferential_verdicts=["UNSAFE"])
+    elif scenario == "mcp":
+        # TASK-516 (Phase 5): the MCP tool path ARMED — the policy enables mcpToolsEnabled
+        # and registers an enabled terminology server whose allowlist includes the
+        # validate_codes tool. The workflow records the ``task-516-mcp-tools`` patch marker
+        # + the new ``call_mcp_tool`` command (after the transcript NER, before retrieval).
+        # This is the forward-guard fixture for the MCP command-sequence change.
+        config = StubConfig(
+            verdicts=["PASS"],
+            inferential_verdicts=["SAFE"],
+            policy=HarnessPolicy(
+                mcp_tools_enabled=True,
+                tool_allowlist=["validate_codes"],
+                mcp_servers=[
+                    McpServerConfig(
+                        id="srv-term",
+                        name="fhir-term",
+                        base_url="http://terminology.local/mcp",
+                        tool_allowlist=["validate_codes"],
+                        phi_boundary="in-boundary",
+                        enabled=True,
+                    )
+                ],
+            ),
+        )
     elif scenario == "claim-check":
         # TASK-483: happy path with the generate + assemble stubs returning OFFLOADED
         # results (content/prompt emptied + a ClaimCheckRef), so the recorded history
@@ -221,13 +247,14 @@ if __name__ == "__main__":
         "--edit-cap",
         "--retract",
         "--claim-check",
+        "--mcp",
     )
     if args and args[0] in _scenarios:
         scenario, args = args[0].lstrip("-"), args[1:]
     if len(args) != 1:
         raise SystemExit(
             "usage: python -m ..._capture_replay_fixture "
-            "[--failure|--optimistic|--regen|--gate-abandon|--edit-cap|--retract|--claim-check]"
+            "[--failure|--optimistic|--regen|--gate-abandon|--edit-cap|--retract|--claim-check|--mcp]"
             " <output.json>"
         )
     asyncio.run(capture(Path(args[0]), scenario=scenario))

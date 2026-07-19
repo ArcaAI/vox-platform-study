@@ -11,7 +11,7 @@ authors = [
 ]
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 keywords = ["clinical", "harness", "temporal", "fastapi", "durable-workflow"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -82,6 +82,16 @@ test = [
 # (or `pip install '.[atomic-fact]'`) + set HARNESS_ATOMIC_FACT_MODEL_PATH.
 atomic-fact = [
     "llama-cpp-python>=0.3.2",
+]
+
+# TASK-516 (Phase 5) — MCP external-tools client (official python SDK, streamable-HTTP
+# transport). OPTIONAL: the whole MCP path is feature-flagged OFF (per-tenant
+# HarnessPolicy.mcpToolsEnabled + per-server McpServer.enabled), and `mcp_client.py`
+# lazy-imports the SDK so base installs / the hermetic test suite skip it. Enable on a
+# host that talks to a registered MCP server with `uv sync --extra mcp-tools`
+# (or `pip install '.[mcp-tools]'`).
+mcp-tools = [
+    "mcp>=1.2.0",
 ]
 
 # Evaluation harness (TASK-330 Phase 0): PDSQI-9 LLM-as-judge, RAGAS-style

@@ -24,10 +24,11 @@ degrade-closed; it is never swallowed into a silent unredacted egress.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from harness.guards.phi.redactor import PhiRedactor
+from harness.guards.phi.redactor import PhiEgressBlocked, PhiRedactor
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from harness.core.config import Settings
@@ -65,6 +66,59 @@ def ensure_egress_safe(
             update={"phi": settings.phi.model_copy(update={"fail_closed": phi_fail_closed})}
         )
     return redactor.ensure_safe_for_cloud(text, provider=provider, settings=effective)
+
+
+def _serialize_mcp_args(args: dict[str, Any]) -> str:
+    """Deterministic, PHI-detectable serialization of the outbound tool args.
+
+    Sorted keys + ``default=str`` so any nested value is flattened to text the
+    analyzer can scan (a non-JSON value never silently escapes the screen).
+    """
+    return json.dumps(args, sort_keys=True, ensure_ascii=False, default=str)
+
+
+def ensure_mcp_args_safe(
+    args: dict[str, Any],
+    *,
+    phi_boundary: str,
+    phi_enabled: bool,
+    phi_fail_closed: bool,
+    server: str = "mcp",
+    redactor: PhiRedactor | None = None,
+) -> dict[str, Any]:
+    """Fail-closed PHI screen for OUTBOUND MCP tool args to an EXTERNAL server (TASK-516).
+
+    * ``phi_enabled`` False OR an ``in-boundary`` (self-hosted) server ⇒ pass-through —
+      an in-boundary tool call is not a cloud egress, so it is never screened.
+    * ``external`` server ⇒ detect PHI in the serialized args. Any detected PHI span —
+      OR a redactor failure (e.g. the Presidio extra is missing on an external run) —
+      **BLOCKS** the call by raising :class:`PhiEgressBlocked` when ``phi_fail_closed``
+      (the default). Clean args pass through UNCHANGED.
+
+    Unlike the LLM-prompt egress (redact-and-send), tool args are BLOCKED-if-PHI, never
+    silently redacted: a READ-ONLY external tool (e.g. FHIR terminology validation) must
+    carry only codes/terms, so PHI in its args is a defect that must fail closed, not a
+    payload to sanitize. When ``phi_fail_closed`` is False the guard degrades OPEN
+    (returns the args) — an explicit per-tenant opt-out, mirroring the prompt guard.
+    """
+    if not phi_enabled or phi_boundary != "external":
+        return args
+
+    redactor = redactor if redactor is not None else PhiRedactor()
+    serialized = _serialize_mcp_args(args)
+    try:
+        result = redactor.redact(serialized)
+    except Exception as exc:  # noqa: BLE001 — fail closed on ANY analyzer failure
+        if phi_fail_closed:
+            raise PhiEgressBlocked(provider=server, reason=f"redaction failed: {exc}") from exc
+        return args
+
+    if result.entities and phi_fail_closed:
+        raise PhiEgressBlocked(
+            provider=server,
+            reason=f"PHI detected in tool args ({len(result.entities)} spans)",
+        )
+    return args
 
 
 def ensure_inferential_egress_safe(

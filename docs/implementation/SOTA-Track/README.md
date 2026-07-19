@@ -1,8 +1,9 @@
 # SOTA Enhancement Track — Harness-Loop Modernization (strategic, post-remediation)
 
-- **Status**: Pending (planning track — no ticket executed here; each theme spawns its own `TASK-XXX` when scheduled)
+- **Status**: Themes A–E (TASK-470–483) scaffolded / largely executed; **Agentic follow-on** in [TASK-508 Agentic SOTA Program](../TASK-508-Agentic-SOTA-Program/README.md) (P0–P6 eng 2026-07-19 — see [AUDIT](../TASK-508-Agentic-SOTA-Program/AUDIT-2026-07-19.md))
 - **Type**: infrastructure (program planning) — child tickets are `feature` / `refactor`
-- **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · the strategic track that follows Wave 3
+- **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · this track (470–483) · **Agentic program** [TASK-508](../TASK-508-Agentic-SOTA-Program/README.md)
+- **External gap input**: [2026-07-18 external SOTA report gap review](./2026-07-18-external-sota-report-gap-review.md)
 - **Source**: the SOTA research + gap analysis in [TASK-448 §SOTA Research & Gap Analysis](../TASK-448-Harness-Loop-Quality-Review/README.md#sota-research--gap-analysis) (S1 streaming ASR · S2 clinical NER/guardrails · S3 summarization/orchestration/eval — every claim carries a dated 2024–2026 citation there)
 - **Owner surfaces**: planning only — this doc owns NO source files. Every code change belongs to a child ticket with its own exclusive file-ownership manifest.
 

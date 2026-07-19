@@ -74,6 +74,46 @@ class OpenAICompatConfig(BaseSettings):
     organization: str | None = None
 
 
+class VllmConfig(OpenAICompatConfig):
+    """vLLM provider configuration (TASK-513).
+
+    vLLM serves the OpenAI wire, so this extends ``OpenAICompatConfig`` (the
+    ``VllmProvider`` composes the same async client). ``base_url`` points at the
+    ``/v1`` OpenAI surface; ``/health`` and ``/metrics`` live at the server
+    root, derived by stripping the ``/v1`` suffix.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="SMR_V2_VLLM_")
+
+    base_url: str = "http://localhost:8000/v1"
+    default_model: str = ""
+    max_concurrent: int = 8
+    # Structured-output routing: vLLM >= 0.8 accepts the native OpenAI
+    # ``response_format={"type":"json_schema",...}``. Older builds only support
+    # the ``extra_body.guided_json`` path — flip this on for those.
+    use_guided_json: bool = False
+    # Optional Prometheus scrape target for the prefix-cache hit rate. Empty ⇒
+    # derived from ``base_url`` (root + ``/metrics``).
+    metrics_url: str = ""
+
+
+class LlamaCppConfig(BaseSettings):
+    """llama.cpp server provider configuration (TASK-514).
+
+    Targets the native ``/completion`` endpoint (richer than llama.cpp's OpenAI
+    shim): engine-native ``timings`` + ``stopped_*`` flags feed AD-1 stats, and
+    GBNF ``grammar`` / ``json_schema`` structured output are first-class.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="SMR_V2_LLAMA_CPP_")
+
+    enabled: bool = False
+    base_url: str = "http://localhost:8080"
+    default_model: str = ""
+    timeout_s: int = 300
+    max_concurrent: int = 4
+
+
 class ExternalGuardrailConfig(BaseSettings):
     """Input moderation posture for /generate (TASK-338, TASK-478).
 
@@ -124,8 +164,15 @@ class CircuitBreakerConfig(BaseSettings):
 
     failure_threshold: int = 5
     recovery_timeout_s: float = 30.0
-    half_open_max_calls: int = 3
-    reset_timeout_s: float = 120.0
+    # TASK-508 D6 (dead-config sweep): these three fields were previously never
+    # read by CircuitBreaker. ``None`` preserves the pre-wiring behavior exactly
+    # (unlimited HALF_OPEN trial calls / no time-based failure-count decay) — a
+    # non-null literal default (the previous 3 / 120.0) would have silently
+    # started capping/decaying on every unconfigured deployment now that these
+    # are actually wired. Operators opt in via SMR_V2_CB_HALF_OPEN_MAX_CALLS /
+    # SMR_V2_CB_RESET_TIMEOUT_S.
+    half_open_max_calls: int | None = None
+    reset_timeout_s: float | None = None
     count_rate_limits: bool = True
 
 
@@ -177,6 +224,8 @@ class Settings(BaseSettings):
     azure: AzureOpenAIConfig = Field(default_factory=AzureOpenAIConfig)
     bedrock: BedrockConfig = Field(default_factory=BedrockConfig)
     openai_compat: OpenAICompatConfig = Field(default_factory=OpenAICompatConfig)
+    vllm: VllmConfig = Field(default_factory=VllmConfig)
+    llama_cpp: LlamaCppConfig = Field(default_factory=LlamaCppConfig)
     external_guardrail: ExternalGuardrailConfig = Field(default_factory=ExternalGuardrailConfig)
     redis: RedisConfig = Field(default_factory=RedisConfig)
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)

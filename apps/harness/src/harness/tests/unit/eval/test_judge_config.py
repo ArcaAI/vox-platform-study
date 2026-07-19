@@ -71,6 +71,24 @@ class TestProviderSelection:
         with pytest.raises((ValueError, TypeError)):
             build_judge_client(JudgeConfig(provider="totally-not-a-provider"))  # type: ignore[arg-type]
 
+    # TASK-515 — production engines: vllm / llama-cpp are first-class judge
+    # providers, both served over the OpenAI-compatible client (they speak the
+    # OpenAI wire). Selected via HARNESS_JUDGE_PROVIDER + HARNESS_JUDGE_* config.
+    @pytest.mark.parametrize("provider", ["vllm", "llama-cpp"])
+    def test_build_vllm_and_llama_cpp_use_openai_compat_client(self, provider):
+        cfg = JudgeConfig(provider=JudgeProvider(provider), model="google/gemma-4-e4b")
+        cfg.openai_compat.base_url = "http://localhost:8000/v1"
+        client = build_judge_client(cfg)
+        assert isinstance(client, OpenAICompatJudgeClient)
+        assert str(cfg.provider) in ("vllm", "llama-cpp")
+
+    def test_env_selects_vllm_judge(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("HARNESS_JUDGE_PROVIDER", "vllm")
+        monkeypatch.setenv("HARNESS_JUDGE_OPENAI_COMPAT_BASE_URL", "http://localhost:8000/v1")
+        cfg = get_judge_config()
+        assert cfg.provider == JudgeProvider.VLLM
+        assert isinstance(build_judge_client(cfg), OpenAICompatJudgeClient)
+
 
 class TestFailClosed:
     def test_azure_without_endpoint_fails_closed(self):

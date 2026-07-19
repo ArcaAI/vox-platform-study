@@ -1,0 +1,124 @@
+# hope-llama-cpp — production GGUF-tier engine (TASK-508 Phase 4 / TASK-514).
+# Serves the native /completion endpoint SMR's first-class `llama-cpp` provider
+# targets (engine-native `timings` → AD-1 stats, GBNF grammars, JSON schema).
+# Reached at SMR_V2_LLAMA_CPP_BASE_URL=http://hope-llama-cpp:8080.
+#
+# The GGUF tier is CPU/edge-oriented (small utility models, MiniCheck GGUF path),
+# so this runs WITHOUT a GPU reservation. The model is a PRE-STAGED GGUF on a PVC
+# (an operator copies it once into `hope-llama-cpp-models`); no weights are pulled
+# by the pod. `--slots` exposes /slots for per-slot occupancy visibility. Image is
+# a third-party pinned tag (not rewritten by the registry component, not `latest`).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hope-llama-cpp-models
+  labels:
+    app: hope-llama-cpp
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hope-llama-cpp
+  labels:
+    app: hope-llama-cpp
+    app.kubernetes.io/part-of: project-hope
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: hope-llama-cpp
+  template:
+    metadata:
+      labels:
+        app: hope-llama-cpp
+    spec:
+      containers:
+        - name: llama-cpp
+          image: ghcr.io/ggml-org/llama.cpp:server-b9853
+          imagePullPolicy: IfNotPresent
+          args:
+            - "-m"
+            - "/models/$(LLAMA_CPP_MODEL)"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "8080"
+            - "-c"
+            - "$(LLAMA_CPP_CTX_SIZE)"
+            # Expose /slots (per-slot state) for the healthcheck + ops visibility.
+            - "--slots"
+          ports:
+            - containerPort: 8080
+          env:
+            # Overlay-patchable; the staged GGUF filename + context window.
+            - name: LLAMA_CPP_MODEL
+              value: "model.gguf"
+            - name: LLAMA_CPP_CTX_SIZE
+              value: "8192"
+            - name: LLAMA_ARG_HOST
+              value: "0.0.0.0"
+            - name: LLAMA_ARG_PORT
+              value: "8080"
+          volumeMounts:
+            - name: models
+              mountPath: /models
+              readOnly: true
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            # /slots requires --slots; it reports per-slot occupancy (200 when up).
+            httpGet:
+              path: /slots
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "2"
+              memory: "4Gi"
+            limits:
+              cpu: "4"
+              memory: "16Gi"
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: hope-llama-cpp-models
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hope-llama-cpp
+  labels:
+    app: hope-llama-cpp
+spec:
+  selector:
+    app: hope-llama-cpp
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP

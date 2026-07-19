@@ -10,7 +10,11 @@ Public API:
   the policy-aware egress chokepoint the activities enforce before cloud LLM calls.
 """
 
-from harness.guards.phi.egress import ensure_egress_safe, ensure_inferential_egress_safe
+from harness.guards.phi.egress import (
+    ensure_egress_safe,
+    ensure_inferential_egress_safe,
+    ensure_mcp_args_safe,
+)
 from harness.guards.phi.redactor import (
     DEFAULT_SPACY_MODEL,
     PhiEgressBlocked,
@@ -27,4 +31,5 @@ __all__ = [
     "RedactionResult",
     "ensure_egress_safe",
     "ensure_inferential_egress_safe",
+    "ensure_mcp_args_safe",
 ]

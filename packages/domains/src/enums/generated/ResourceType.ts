@@ -47,4 +47,5 @@ export enum ResourceType {
   TenantIdentityProvider = 'TenantIdentityProvider',
   FederatedIdentity = 'FederatedIdentity',
   AiTaskDefault = 'AiTaskDefault',
+  McpServer = 'McpServer',
 }

@@ -124,6 +124,57 @@ class TestSmrClient:
         assert "idempotency-key" not in seen["request"].headers
 
 
+class TestSmrClientStats:
+    """TASK-509 (AD-1) Phase 1B — the client captures the SMR ``stats`` block onto the
+    parsed result as an additive, backward-compatible field. ``stats`` may be null on a
+    legacy cache hit — the client must degrade to ``None`` and never throw."""
+
+    @pytest.mark.asyncio
+    async def test_captures_stats_block_from_response(self):
+        stats = {
+            "stop_reason": "length",
+            "stop_reason_raw": "max_tokens",
+            "total_ms": 1200,
+            "ttft_ms": 80,
+            "tokens_per_second": 42.5,
+            "prompt_tokens": 30,
+            "predicted_tokens": 10,
+            "total_tokens": 40,
+            "provider": "vllm",
+            "model": "x",
+            "engine_native": {"timings": {"predicted_per_second": 42.5}},
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "task_id": "t-1",
+                    "status": "completed",
+                    "content": "{}",
+                    "provider": "vllm",
+                    "model": "x",
+                    "usage": {"prompt_tokens": 30, "completion_tokens": 10, "total_tokens": 40},
+                    "latency_ms": 1200,
+                    "finish_reason": "length",
+                    "stats": stats,
+                },
+            )
+
+        client = SmrClient("http://smr:8862", transport=httpx.MockTransport(handler))
+        result = await client.generate(prompt="hi")
+        assert result.stats == stats
+
+    @pytest.mark.asyncio
+    async def test_stats_is_none_when_absent(self):
+        # Legacy cache-hit path: SMR returns no ``stats`` block → the client degrades
+        # to None (never raises over missing stats).
+        _seen, handler = _capture()
+        client = SmrClient("http://smr:8862", transport=httpx.MockTransport(handler))
+        result = await client.generate(prompt="hi")
+        assert result.stats is None
+
+
 class TestGenerateLostResponseNoReinvoke:
     """C1-04 (TASK-458): a lost response AFTER the request was delivered (the model
     may have run) must NOT be re-POSTed by the endpoint governor — a re-send is a

@@ -988,11 +988,18 @@ export const DEFAULT_STT_CONFIG = {
 
 /**
  * Default NER configuration
+ *
+ * TASK-508 Phase 0 (0.8) / SOTA gap review D7 — default to the medical
+ * ('clinical') preset, matching `DEFAULT_MED_NER_OPTIONS` in `@arcaai/med-ner`.
+ * 'default' remains a selectable preset for callers that explicitly want the
+ * generic Xenova/bert-base-NER model; it is just no longer the implicit
+ * fallback, since D7 would otherwise be defeated for SDK consumers relying on
+ * this constant (see PluginManager.initializeNER / buildKnowledgePipelineConfig).
  */
 export const DEFAULT_NER_CONFIG = {
   enabled: false,
   autoExtract: false,
-  model: 'default' as const,
+  model: 'clinical' as const,
   threshold: 0.5,
   dtype: 'q8' as const,
 };

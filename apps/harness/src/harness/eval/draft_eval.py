@@ -162,7 +162,11 @@ def candidate_concepts_for_case(case: GoldenCase) -> list[ConceptCode]:
     tree, so concept-F1 skips clean.
     """
     raw = case.metadata.get("candidate_concepts") or []
-    return [ConceptCode.model_validate(item) for item in raw]
+    concepts = [ConceptCode.model_validate(item) for item in raw]
+    # TASK-518 — exclude ABSENT (negated) concepts from the positive-claim
+    # recall check: a note that correctly says "no metformin" must not be scored
+    # as HAVING the metformin concept. None/other polarities stay in.
+    return [c for c in concepts if (c.assertion or "PRESENT").upper() != "ABSENT"]
 
 
 def concept_f1_for_case(case: GoldenCase) -> ConceptF1Result | None:

@@ -446,12 +446,16 @@ export class KnowledgePipeline {
       return [];
     }
 
-    // API gateway no longer proxies NLP endpoints (TASK-216).
-    // If caller configured backend NER, fail fast with a clear error.
+    // TASK-508 Phase 0 (0.8) — the API gateway DOES expose NER now
+    // (`POST /api/v1/ai/nlp/entities`, AiInferenceController, TASK-446/506);
+    // this KnowledgePipeline just hasn't been wired to call it yet. Fail fast
+    // with that accurate limitation rather than the previous (now false)
+    // claim that no such gateway endpoint exists.
     if (stage.location === 'backend') {
       throw new Error(
-        'Backend NER is not supported via the API gateway: /nlp/* endpoints are not available. ' +
-          'Set KnowledgePipeline ner.location to "browser" (recommended) or disable NER.',
+        'Backend NER is not yet wired in this SDK (the API gateway does expose ' +
+          'POST /api/v1/ai/nlp/entities). Set KnowledgePipeline ner.location to ' +
+          '"browser" (recommended) or disable NER.',
       );
     }
 

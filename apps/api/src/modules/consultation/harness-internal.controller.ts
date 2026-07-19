@@ -1,4 +1,5 @@
 import {
+  CreateAgentTrajectoryStepInput,
   HarnessAssembleRequest,
   HarnessAssuranceAck,
   HarnessAssuranceEventRequest,
@@ -16,12 +17,132 @@ import {
   HarnessProgressRequest,
   HarnessProgressService,
   IActiveUserContext,
+  IAgentTrajectoryService,
 } from '@arcaai/applications';
-import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Param, Post, Query, UseGuards } from '@nestjs/common';
-import { ApiExcludeController, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
+import { AgentSessionKind, AgentStepStatus, AgentStepType, JsonValue } from '@arcaai/domains';
+import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Inject, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiExcludeController, ApiOperation, ApiParam, ApiProperty, ApiPropertyOptional, ApiQuery } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsEnum,
+  IsInt,
+  IsISO8601,
+  IsNotEmpty,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 import { ClsService } from 'nestjs-cls';
 import { Public } from '../../decorators';
 import { HarnessServiceTokenGuard } from './harness-service-token.guard';
+
+/**
+ * TASK-510 Phase 2D — one ordered trajectory step in the harness `report_trajectory`
+ * batch contract. Whitelisted by the global `forbidNonWhitelisted` pipe, so a
+ * malformed/oversized batch fails cleanly (4xx) and never 5xxs the clinical loop.
+ * `payloadRef` is a claim-check / encrypted pointer only — never plaintext PHI.
+ */
+class HarnessTrajectoryStepInput {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  tenantId: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  consultationId?: string;
+
+  @ApiProperty({ enum: AgentSessionKind })
+  @IsEnum(AgentSessionKind)
+  sessionKind: AgentSessionKind;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  sessionId: string;
+
+  @ApiPropertyOptional({ description: 'Temporal runId; "" sentinel otherwise (default).' })
+  @IsOptional()
+  @IsString()
+  runId?: string;
+
+  @ApiProperty({ description: 'Per-(sessionId, runId) monotonic sequence.' })
+  @IsInt()
+  @Min(0)
+  seq: number;
+
+  @ApiProperty({ enum: AgentStepType })
+  @IsEnum(AgentStepType)
+  stepType: AgentStepType;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @ApiProperty({ enum: AgentStepStatus })
+  @IsEnum(AgentStepStatus)
+  status: AgentStepStatus;
+
+  @ApiProperty({ description: 'Step start (ISO-8601).' })
+  @IsISO8601()
+  startedAt: string;
+
+  @ApiPropertyOptional({ description: 'Step end (ISO-8601).' })
+  @IsOptional()
+  @IsISO8601()
+  endedAt?: string;
+
+  // Accept any number (emitters may compute fractional ms); the mapping floors
+  // it into the `Int` column. Rejecting a fractional value here would 400 the
+  // whole batch, which the harness fire-and-forget then silently drops.
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsNumber()
+  durationMs?: number;
+
+  @ApiPropertyOptional({ nullable: true, description: 'AD-1 GenerationStats on LLM_CALL steps.' })
+  @IsOptional()
+  @IsObject()
+  stats?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Claim-check ref / encrypted pointer — never plaintext content.' })
+  @IsOptional()
+  @IsObject()
+  payloadRef?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  errorCode?: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  correlationId?: string;
+}
+
+/** TASK-510 Phase 2D — the `POST /internal/harness/trajectory` batch body. */
+class ReportTrajectoryRequest {
+  @ApiProperty({ type: [HarnessTrajectoryStepInput] })
+  @IsArray()
+  @ArrayMaxSize(500)
+  @ValidateNested({ each: true })
+  @Type(() => HarnessTrajectoryStepInput)
+  steps: HarnessTrajectoryStepInput[];
+}
+
+/** TASK-510 Phase 2D — best-effort ingest ack. */
+class ReportTrajectoryAck {
+  @ApiProperty({ description: 'Number of steps accepted for idempotent persistence.' })
+  accepted: number;
+}
 
 /**
  * HarnessInternalController (TASK-330 Phase 1 — Lane G).
@@ -56,6 +177,8 @@ export class HarnessInternalController {
     // TASK-355 Phase D Slice 5d — live per-claim assurance feed; ephemeral Redis
     // publish, no CLS needed (carries no PHI, only ids/sensor keys/verdict labels).
     private readonly harnessAssuranceService: HarnessAssuranceService,
+    // TASK-510 Phase 2D — ordered-trajectory batch ingest (idempotent, tenant-scoped).
+    @Inject(IAgentTrajectoryService) private readonly agentTrajectoryService: IAgentTrajectoryService,
   ) {}
 
   @Get('policy')
@@ -178,5 +301,56 @@ export class HarnessInternalController {
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   async reportProgress(@Param('id') id: string, @Body() dto: HarnessProgressRequest): Promise<HarnessProgressAck> {
     return this.harnessProgressService.reportProgress(id, dto);
+  }
+
+  // TASK-510 Phase 2D — the harness `report_trajectory` activity POSTs the
+  // ordered step batch here (fire-and-forget, batched at phase boundaries).
+  // `recordSteps` is IDEMPOTENT on the composite unique
+  // `(tenantId, sessionId, runId, seq)`, so a re-delivered batch (or the
+  // optional `Idempotency-Key` retry) persists nothing new — the header is
+  // accepted for wire-compat but the dedup is built into the write.
+  //
+  // Resilient by contract (a trajectory outage must never break the clinical
+  // loop): a malformed/oversized batch is rejected by the global ValidationPipe
+  // (4xx, never 5xx) and an empty batch is a no-op ack. 202 Accepted — the write
+  // is idempotent async telemetry, not a created resource.
+  @Post('trajectory')
+  @HttpCode(202)
+  @ApiOperation({ summary: 'Batch-ingest ordered agentic-trajectory steps from the harness (idempotent, tenant-scoped)' })
+  async reportTrajectory(@Body() dto: ReportTrajectoryRequest, @Headers('Idempotency-Key') _idempotencyKey?: string): Promise<ReportTrajectoryAck> {
+    const steps = dto.steps ?? [];
+    if (steps.length === 0) {
+      return { accepted: 0 };
+    }
+
+    // Single-tenant batch (recordSteps enforces this too). Re-establish CLS from
+    // the batch tenantId — these service-token routes run outside the API-edge
+    // ClsModule middleware, so the tenant-scope extension needs the context.
+    const tenantId = steps[0].tenantId;
+    const mapped: CreateAgentTrajectoryStepInput[] = steps.map((step) => ({
+      tenantId: step.tenantId,
+      consultationId: step.consultationId ?? undefined,
+      sessionKind: step.sessionKind,
+      sessionId: step.sessionId,
+      runId: step.runId ?? undefined,
+      seq: step.seq,
+      stepType: step.stepType,
+      name: step.name,
+      status: step.status,
+      startedAt: new Date(step.startedAt),
+      endedAt: step.endedAt ? new Date(step.endedAt) : undefined,
+      durationMs: step.durationMs != null ? Math.floor(step.durationMs) : undefined,
+      stats: (step.stats ?? undefined) as JsonValue | undefined,
+      payloadRef: (step.payloadRef ?? undefined) as JsonValue | undefined,
+      errorCode: step.errorCode ?? undefined,
+      correlationId: step.correlationId ?? undefined,
+    }));
+
+    await this.cls.run(async () => {
+      this.cls.set('tenantId', tenantId);
+      await this.agentTrajectoryService.recordSteps(mapped);
+    });
+
+    return { accepted: steps.length };
   }
 }

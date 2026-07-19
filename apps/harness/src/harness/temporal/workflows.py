@@ -32,6 +32,7 @@ with workflow.unsafe.imports_passed_through():
         PingInput,
         PingResult,
         assemble_prompt,
+        call_mcp_tool,
         escalate_gate,
         extract_entities,
         fetch_policy,
@@ -58,6 +59,7 @@ with workflow.unsafe.imports_passed_through():
         HARNESS_PROGRESS_TERMINAL_STAGE,
         ApprovalSignal,
         AssembleInput,
+        CallMcpToolInput,
         EditSignal,
         EscalateInput,
         ExtractEntitiesInput,
@@ -71,13 +73,16 @@ with workflow.unsafe.imports_passed_through():
         PersistDraftInput,
         PersistEntitiesInput,
         RecordGateInput,
+        RegenFeedback,
         ReportProgressInput,
         RetractDraftInput,
         RetrieveContextInput,
         RetrievedContext,
         RunInferentialSensorsInput,
         RunSensorsInput,
+        TrajectoryContext,
     )
+    from harness.temporal.prompt_cache import build_regen_feedback
 
 # Retry / timeout budgets. NLP failures are tolerated (degrade -> human review),
 # so its retries are bounded short; everything else gets the standard budget. The
@@ -117,6 +122,46 @@ _PROGRESS_RETRY = RetryPolicy(maximum_attempts=1)
 _PROGRESS_ORDINALS = {key: i + 1 for i, (key, _label) in enumerate(HARNESS_PROGRESS_STAGES)}
 _PROGRESS_LABELS = dict(HARNESS_PROGRESS_STAGES)
 _PROGRESS_TOTAL = len(HARNESS_PROGRESS_STAGES)
+# TASK-510 (Phase 2C): stride between per-activity trajectory-seq bases. > the max steps
+# any single activity emits (``generate`` emits 2: LLM_CALL + THINKING), so bases never
+# collide while the global sequence stays monotonic.
+_SEQ_STRIDE = 16
+
+# TASK-516 (Phase 5) — MCP external-tools. Bounded budget for the READ-ONLY tool call;
+# the activity does its own client-side retry + degrades (never raises) on a server
+# error, so the Temporal retry only covers infra blips before the workflow degrades.
+_MCP_TIMEOUT = timedelta(seconds=30)
+_MCP_RETRY = RetryPolicy(maximum_attempts=1)
+# The first MCP integration: FHIR terminology validation of the extracted entity codes.
+MCP_TERMINOLOGY_TOOL = "validate_codes"
+
+
+def _select_mcp_server(servers: list, tool: str):  # -> McpServerConfig | None
+    """First ENABLED server whose allowlist carries ``tool`` (deterministic, replay-safe).
+
+    Pure selection over the policy-carried registry snapshot — no I/O, so it runs in
+    the deterministic workflow body. Returns ``None`` when no server offers the tool
+    (⇒ the MCP step is skipped entirely).
+    """
+    for server in servers:
+        if server.enabled and tool in (server.tool_allowlist or []):
+            return server
+    return None
+
+
+def _terminology_args(entities: list) -> dict:
+    """Build the READ-ONLY terminology-validation args from the extracted entities.
+
+    Sends the resolved ontology codes + the surface terms so a self-hosted FHIR
+    terminology server can validate them. Deterministic (stable order from the
+    entity list) — replay-safe.
+    """
+    codes: list[str] = []
+    for e in entities:
+        for code in (e.snomed_code, e.icd_code, e.rxnorm_code, e.loinc_code, e.umls_cui):
+            if code:
+                codes.append(code)
+    return {"codes": codes, "terms": [e.text for e in entities]}
 
 
 @workflow.defn
@@ -155,6 +200,13 @@ class HarnessDocWorkflow:
     def __init__(self) -> None:
         self._approval: ApprovalSignal | None = None
         self._phase: str = "INIT"
+        # TASK-510 (Phase 2C): workflow-owned, DETERMINISTIC trajectory sequence counter.
+        # ``_next_seq`` allocates a monotonic base per activity (strided so an activity that
+        # emits >1 step — ``generate`` → LLM_CALL + THINKING — offsets locally without
+        # colliding with the next activity's base). Pure local-state mutation in the
+        # deterministic body ⇒ adds NO workflow command (replay-safe, no ``patched()``
+        # marker); the (non-deterministic) emission lives entirely in the activities.
+        self._seq: int = 0
         # TASK-355 Phase D (Slice 4b) — clinician-edit signal state for the
         # optimistic assurance loop. ``_edited`` is a per-pass latch (an edit
         # arrived; consumed at the loop top to re-bind + re-run). ``_ever_edited``
@@ -170,6 +222,24 @@ class HarnessDocWorkflow:
         # ``_edited_content``, into the assurance pass's note_text/note_text_ref.
         self._edited_content_ref: ClaimCheckRef | None = None
         self._edited_version_id: str | None = None
+
+    def _next_seq(self) -> int:
+        """Allocate the next monotonic trajectory-seq BASE (strided; deterministic)."""
+        seq = self._seq
+        self._seq += _SEQ_STRIDE
+        return seq
+
+    def _traj(
+        self, inp: HarnessDocWorkflowInput, *, is_regen: bool = False
+    ) -> TrajectoryContext:
+        """Build the ADDITIVE trajectory context for one activity call (workflow-owned seq)."""
+        return TrajectoryContext(
+            tenant_id=inp.tenant_id,
+            consultation_id=inp.consultation_id,
+            correlation_id=inp.correlation_id,
+            seq=self._next_seq(),
+            is_regen=is_regen,
+        )
 
     @workflow.signal
     async def approval(self, payload: ApprovalSignal) -> None:
@@ -278,7 +348,7 @@ class HarnessDocWorkflow:
         try:
             policy = await workflow.execute_activity(
                 fetch_policy,
-                FetchPolicyInput(tenant_id=inp.tenant_id),
+                FetchPolicyInput(tenant_id=inp.tenant_id, trajectory=self._traj(inp)),
                 start_to_close_timeout=_ACTIVITY_TIMEOUT,
                 retry_policy=_API_RETRY,
             )
@@ -294,17 +364,26 @@ class HarnessDocWorkflow:
                 max_regen=policy.max_regen,
                 gate_sla_seconds=policy.gate_sla_seconds,
                 gate_escalation_seconds=policy.gate_escalation_seconds,
-                # TASK-355 Phase D (R-7): the optimistic kill-switch is NOT a policy knob.
-                # Carry the value snapshotted at workflow start (document:start -> input)
-                # over the policy merge so it actually governs ``use_optimistic`` below.
-                # Read from the deterministic workflow input (never env) ⇒ replay-safe, and
-                # it adds no new command, so no ``workflow.patched()`` marker is required.
-                optimistic_delivery_enabled=inp.gate.optimistic_delivery_enabled,
-                # C1-02 (TASK-458): the gate/edit safety bounds are loop-safety knobs, not
-                # policy knobs — carry them from the input over the policy merge (same
-                # rationale as the optimistic flag; data-only ⇒ replay-safe).
+                # TASK-355 Phase D (R-7): the optimistic kill-switch is snapshotted at
+                # workflow start (document:start -> input). TASK-511 (Phase 3A) makes it a
+                # policy-overridable knob: the effective policy value wins WHEN NON-NULL,
+                # else the input-snapshotted default governs (per-field fallthrough, same
+                # rationale as ``smr_provider``). Both are read from deterministic
+                # workflow state (never env) ⇒ replay-safe; no new command / patch marker.
+                optimistic_delivery_enabled=(
+                    policy.optimistic_delivery_enabled
+                    if policy.optimistic_delivery_enabled is not None
+                    else inp.gate.optimistic_delivery_enabled
+                ),
+                # C1-02 (TASK-458): the gate/edit safety bounds are loop-safety knobs.
+                # ``gate_max_escalations`` stays input-only; TASK-511 lets the policy
+                # override ``max_edit_reruns`` when non-null (else the input default).
                 gate_max_escalations=inp.gate.gate_max_escalations,
-                max_edit_reruns=inp.gate.max_edit_reruns,
+                max_edit_reruns=(
+                    policy.max_edit_reruns
+                    if policy.max_edit_reruns is not None
+                    else inp.gate.max_edit_reruns
+                ),
             )
             sensor_thresholds = policy.to_sensor_thresholds()
             groundedness_threshold = policy.groundedness_threshold
@@ -316,6 +395,21 @@ class HarnessDocWorkflow:
             # The workflow input wins over the policy default when it specifies a model.
             smr_provider = inp.smr_provider or policy.smr_provider
             smr_model = inp.smr_model or policy.smr_model
+            # TASK-511 (Phase 3A) — activity-consumed agentic knobs threaded onto the
+            # activity inputs below. None ⇒ the activity falls through to its env default
+            # (per-field fallthrough); a non-null policy value is the override.
+            ner_priors_enabled = policy.ner_priors_enabled
+            retrieval_enabled = policy.retrieval_enabled
+            atomic_fact_enabled = policy.atomic_fact_enabled
+            # TASK-517 — critique-informed regen. Default ON: only an explicit
+            # policy `regenFeedbackEnabled=false` disables it (None ⇒ enabled).
+            regen_feedback_enabled = policy.regen_feedback_enabled is not False
+            # TASK-516 (Phase 5) — MCP external tools. NULL ⇒ OFF; only an explicit
+            # `mcpToolsEnabled=true` arms the (patch-gated) tool path. The enabled
+            # SYSTEM-shared registry rows come from the policy snapshot.
+            mcp_tools_enabled = policy.mcp_tools_enabled is True
+            mcp_servers = policy.mcp_servers
+            mcp_tool_allowlist = policy.tool_allowlist
         else:
             gate = inp.gate
             sensor_thresholds = None
@@ -326,6 +420,16 @@ class HarnessDocWorkflow:
             phi_fail_closed = True
             smr_provider = inp.smr_provider
             smr_model = inp.smr_model
+            # TASK-511 (Phase 3A) — no policy ⇒ no override; activities use their env defaults.
+            ner_priors_enabled = None
+            retrieval_enabled = None
+            atomic_fact_enabled = None
+            # TASK-517 — no policy ⇒ critique-informed regen defaults ON.
+            regen_feedback_enabled = True
+            # TASK-516 (Phase 5) — no policy ⇒ MCP tools OFF (fail-safe default).
+            mcp_tools_enabled = False
+            mcp_servers = []
+            mcp_tool_allowlist = None
 
         # 1) Transcript NER. NLP down -> degrade (force human review), don't crash.
         # TASK-480 Half-B — NER-priors reuse: seed the transcript pass with
@@ -352,8 +456,11 @@ class HarnessDocWorkflow:
                     text_ref=inp.transcript_ref,
                     language=inp.conversation_language,
                     reuse_priors=True,
+                    # TASK-511 (Phase 3A): policy NER-priors override (None ⇒ env default).
+                    ner_priors_enabled=ner_priors_enabled,
                     consultation_id=inp.consultation_id,
                     tenant_id=inp.tenant_id,
+                    trajectory=self._traj(inp),
                 ),
                 start_to_close_timeout=_ACTIVITY_TIMEOUT,
                 retry_policy=_NLP_RETRY,
@@ -378,10 +485,51 @@ class HarnessDocWorkflow:
                     context_item_id=inp.context_item_id,
                     entities=transcript_entities,
                     user_id=inp.user_id,
+                    trajectory=self._traj(inp),
                 ),
                 start_to_close_timeout=_ACTIVITY_TIMEOUT,
                 retry_policy=_API_RETRY,
             )
+
+        # 1a) MCP terminology validation (TASK-516 Phase 5 — feature-flagged OFF).
+        # OPT-IN per loop: gated on the effective ``mcpToolsEnabled`` policy knob AND a
+        # ``workflow.patched()`` marker, because adding the ``call_mcp_tool`` command is a
+        # command-sequence change. The ``and`` short-circuit means a default-OFF run NEVER
+        # calls ``workflow.patched()`` — so no marker is recorded and the recorded command
+        # sequence is byte-identical to pre-516 history (every existing replay fixture stays
+        # green). READ-ONLY: the FHIR terminology server validates the extracted entity
+        # codes; the call is best-effort — a server error / allowlist-or-PHI block degrades
+        # the run to reduced assurance (never crashes the loop).
+        mcp_degraded = False
+        if (
+            mcp_tools_enabled
+            and transcript_entities
+            and workflow.patched("task-516-mcp-tools")
+        ):
+            mcp_server = _select_mcp_server(mcp_servers, MCP_TERMINOLOGY_TOOL)
+            if mcp_server is not None:
+                try:
+                    mcp_result = await workflow.execute_activity(
+                        call_mcp_tool,
+                        CallMcpToolInput(
+                            server=mcp_server,
+                            tool=MCP_TERMINOLOGY_TOOL,
+                            args=_terminology_args(transcript_entities),
+                            policy_tool_allowlist=mcp_tool_allowlist,
+                            # Snapshotted PHI egress policy — the args are screened
+                            # fail-closed inside the activity when the server is external.
+                            phi_enabled=phi_enabled,
+                            phi_fail_closed=phi_fail_closed,
+                            trajectory=self._traj(inp),
+                        ),
+                        start_to_close_timeout=_MCP_TIMEOUT,
+                        retry_policy=_MCP_RETRY,
+                    )
+                    mcp_degraded = mcp_result.degraded
+                except ActivityError:
+                    # Allowlist / PHI block (non-retryable raise) or infra failure — the
+                    # tool call is best-effort, so degrade rather than crash the loop.
+                    mcp_degraded = True
 
         # 1b) Institutional RAG (Phase 3, flag-gated). JIT hybrid retrieval is
         # entity-triggered and stable across regens, so it runs ONCE here (before the
@@ -393,11 +541,18 @@ class HarnessDocWorkflow:
         await self._report_progress(inp, "assembling_context")
         # C1-06: seed reduced assurance from the policy-fetch degrade (a relaxed stricter
         # policy is an assurance degrade); retrieval/inferential degrades OR it in below.
-        reduced_assurance = policy_degraded
+        # TASK-516: a degraded MCP terminology validation also reduces assurance.
+        reduced_assurance = policy_degraded or mcp_degraded
         try:
             retrieved = await workflow.execute_activity(
                 retrieve_context,
-                RetrieveContextInput(tenant_id=inp.tenant_id, entities=transcript_entities),
+                RetrieveContextInput(
+                    tenant_id=inp.tenant_id,
+                    entities=transcript_entities,
+                    # TASK-511 (Phase 3A): policy retrieval override (None ⇒ env default).
+                    retrieval_enabled=retrieval_enabled,
+                    trajectory=self._traj(inp),
+                ),
                 start_to_close_timeout=_ACTIVITY_TIMEOUT,
                 retry_policy=_RETRIEVAL_RETRY,
             )
@@ -439,6 +594,9 @@ class HarnessDocWorkflow:
         assembled = None
         sensors = None
         comp_verdict = None
+        # TASK-517 — the prior iteration's critique, threaded into the next regen's
+        # generate call (None on the first iteration ⇒ byte-identical prompt).
+        regen_feedback: RegenFeedback | None = None
         guardrail_decisions: dict[str, Any] = {}
         rag_triad_score: float | None = None
         # TASK-359 WS-1 — workflow-threaded, data-only per-claim verdict cache (L2). Carried
@@ -460,6 +618,7 @@ class HarnessDocWorkflow:
                     template=inp.template,
                     dna_style_id=inp.dna_style_id,
                     conversation_language=inp.conversation_language,
+                    trajectory=self._traj(inp),
                 ),
                 start_to_close_timeout=_ACTIVITY_TIMEOUT,
                 retry_policy=_API_RETRY,
@@ -482,6 +641,13 @@ class HarnessDocWorkflow:
                     model=smr_model,
                     phi_enabled=phi_enabled,
                     phi_fail_closed=phi_fail_closed,
+                    # TASK-517 — critique from the prior iteration (None on the
+                    # first pass ⇒ byte-identical prompt, replay-safe).
+                    regen_feedback=regen_feedback,
+                    # TASK-519 — PHI-safe segment refs from assemble (empty ⇒
+                    # no StrictCitations block, byte-identical prompt).
+                    segment_citations=list(assembled.segment_citations),
+                    trajectory=self._traj(inp, is_regen=regens_used > 0),
                 ),
                 start_to_close_timeout=_ACTIVITY_TIMEOUT,
                 retry_policy=_GENERATE_RETRY,
@@ -496,6 +662,7 @@ class HarnessDocWorkflow:
                         # TASK-483: thread the offloaded-note ref (None ⇒ inline note).
                         text_ref=generated.content_ref,
                         language=inp.conversation_language,
+                        trajectory=self._traj(inp),
                     ),
                     start_to_close_timeout=_ACTIVITY_TIMEOUT,
                     retry_policy=_NLP_RETRY,
@@ -520,6 +687,7 @@ class HarnessDocWorkflow:
                     transcript_context_item_id=inp.context_item_id,
                     retrieved_chunk_ids=retrieved_chunk_ids,
                     thresholds=sensor_thresholds,
+                    trajectory=self._traj(inp),
                 ),
                 start_to_close_timeout=_ACTIVITY_TIMEOUT,
                 retry_policy=_API_RETRY,
@@ -534,6 +702,9 @@ class HarnessDocWorkflow:
                 expected=list(COMPUTATIONAL_SENSOR_NAMES),
             )
             if comp_verdict.decision == GateDecision.REGEN and regens_used < gate.max_regen:
+                # TASK-517 — capture the failed computational sensors as the next
+                # iteration's corrective critique (gated on regenFeedbackEnabled).
+                regen_feedback = build_regen_feedback(sensors.results, enabled=regen_feedback_enabled)
                 regens_used += 1
                 continue
 
@@ -563,11 +734,14 @@ class HarnessDocWorkflow:
                         knowledge_chunks_ref=knowledge_chunks_ref,
                         groundedness_threshold=groundedness_threshold,
                         safety_enabled=safety_enabled,
+                        # TASK-511 (Phase 3A): policy atomic-fact override (None ⇒ env default).
+                        atomic_fact_enabled=atomic_fact_enabled,
                         phi_enabled=phi_enabled,
                         phi_fail_closed=phi_fail_closed,
                         # TASK-359 WS-1 — carry the prior passes' verdicts so unchanged
                         # claims reuse the cache (data-only; no new command / patch marker).
                         prior_verdicts=verdict_cache,
+                        trajectory=self._traj(inp),
                     ),
                     start_to_close_timeout=_INFERENTIAL_TIMEOUT,
                     heartbeat_timeout=_INFERENTIAL_HEARTBEAT_TIMEOUT,
@@ -597,6 +771,12 @@ class HarnessDocWorkflow:
                 expected=list(COMPUTATIONAL_SENSOR_NAMES) + inferential_expected,
             )
             if verdict.decision == GateDecision.REGEN and regens_used < gate.max_regen:
+                # TASK-517 — critique from the full (computational + inferential)
+                # sensor pass for the next regen iteration.
+                regen_feedback = build_regen_feedback(
+                    list(sensors.results) + inferential_results,
+                    enabled=regen_feedback_enabled,
+                )
                 regens_used += 1
                 continue
             break
@@ -644,6 +824,7 @@ class HarnessDocWorkflow:
                         gate_decision=None,
                         is_auto_generated=True,
                         phase=HARNESS_DRAFT_PHASE_EARLY,
+                        trajectory=self._traj(inp),
                     ),
                     start_to_close_timeout=_ACTIVITY_TIMEOUT,
                     retry_policy=_API_RETRY,
@@ -667,6 +848,7 @@ class HarnessDocWorkflow:
                         template=inp.template,
                         dna_style_id=inp.dna_style_id,
                         conversation_language=inp.conversation_language,
+                        trajectory=self._traj(inp),
                     ),
                     start_to_close_timeout=_ACTIVITY_TIMEOUT,
                     retry_policy=_API_RETRY,
@@ -687,6 +869,13 @@ class HarnessDocWorkflow:
                         model=smr_model,
                         phi_enabled=phi_enabled,
                         phi_fail_closed=phi_fail_closed,
+                        # TASK-517 — critique from the pre-regen verdict (set by the
+                        # Q1 branch before this helper runs; None ⇒ byte-identical).
+                        regen_feedback=regen_feedback,
+                        # TASK-519 — PHI-safe segment refs from assemble (empty ⇒
+                        # no StrictCitations block, byte-identical prompt).
+                        segment_citations=list(asm_.segment_citations),
+                        trajectory=self._traj(inp, is_regen=True),
                     ),
                     start_to_close_timeout=_ACTIVITY_TIMEOUT,
                     retry_policy=_GENERATE_RETRY,
@@ -700,6 +889,7 @@ class HarnessDocWorkflow:
                             text=gen_.content,
                             text_ref=gen_.content_ref,
                             language=inp.conversation_language,
+                            trajectory=self._traj(inp),
                         ),
                         start_to_close_timeout=_ACTIVITY_TIMEOUT,
                         retry_policy=_NLP_RETRY,
@@ -720,6 +910,7 @@ class HarnessDocWorkflow:
                         transcript_context_item_id=inp.context_item_id,
                         retrieved_chunk_ids=retrieved_chunk_ids,
                         thresholds=sensor_thresholds,
+                        trajectory=self._traj(inp),
                     ),
                     start_to_close_timeout=_ACTIVITY_TIMEOUT,
                     retry_policy=_API_RETRY,
@@ -784,6 +975,8 @@ class HarnessDocWorkflow:
                             knowledge_chunks_ref=knowledge_chunks_ref,
                             groundedness_threshold=groundedness_threshold,
                             safety_enabled=safety_enabled,
+                            # TASK-511 (Phase 3A): policy atomic-fact override (None ⇒ env default).
+                            atomic_fact_enabled=atomic_fact_enabled,
                             phi_enabled=phi_enabled,
                             phi_fail_closed=phi_fail_closed,
                             # TASK-355 Phase D Slice 5d (Q5) — the optimistic ASSURANCE
@@ -798,6 +991,7 @@ class HarnessDocWorkflow:
                             # TASK-359 WS-1 — carry prior verdicts across assurance regen
                             # passes (data-only; no new command / patch marker).
                             prior_verdicts=verdict_cache,
+                            trajectory=self._traj(inp),
                         ),
                         start_to_close_timeout=_INFERENTIAL_TIMEOUT,
                         heartbeat_timeout=_INFERENTIAL_HEARTBEAT_TIMEOUT,
@@ -855,6 +1049,11 @@ class HarnessDocWorkflow:
                     and regens_used < gate.max_regen
                     and not self._ever_edited
                 ):
+                    # TASK-517 — critique from the settled verdict feeds the Q1 regen.
+                    regen_feedback = build_regen_feedback(
+                        list(sensors.results) + inferential_results,
+                        enabled=regen_feedback_enabled,
+                    )
                     regens_used += 1
                     assembled, generated, sensors, regen_degraded = await _regen_compute()
                     if regen_degraded:
@@ -902,6 +1101,7 @@ class HarnessDocWorkflow:
                         guardrail_decisions=guardrail_decisions or None,
                         reduced_assurance=reduced_assurance,
                         rag_triad_score=rag_triad_score,
+                        trajectory=self._traj(inp),
                     ),
                     start_to_close_timeout=_ACTIVITY_TIMEOUT,
                     retry_policy=_API_RETRY,
@@ -946,6 +1146,7 @@ class HarnessDocWorkflow:
                     model_name=generated.model or None,
                     prompt_template_id=assembled.prompt_template_id,
                     prompt_version=assembled.prompt_version,
+                    trajectory=self._traj(inp),
                 ),
                 start_to_close_timeout=_ACTIVITY_TIMEOUT,
                 retry_policy=_API_RETRY,
@@ -986,6 +1187,7 @@ class HarnessDocWorkflow:
                     dna_style_id=inp.dna_style_id,
                     gate_decision=decision,
                     is_auto_generated=True,
+                    trajectory=self._traj(inp),
                 ),
                 start_to_close_timeout=_ACTIVITY_TIMEOUT,
                 retry_policy=_API_RETRY,
@@ -1065,6 +1267,7 @@ class HarnessDocWorkflow:
                 context_item_version_id=approval.context_item_version_id,
                 attestation_hash=approval.attestation_hash,
                 clinician_id=approval.clinician_id,
+                trajectory=self._traj(inp),
             ),
             start_to_close_timeout=_ACTIVITY_TIMEOUT,
             retry_policy=_API_RETRY,

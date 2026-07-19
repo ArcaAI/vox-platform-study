@@ -45,8 +45,11 @@ describe('MedNERProcessor', () => {
 
   describe('constructor', () => {
     it('should create processor with default options', () => {
+      // TASK-508 Phase 0 (0.8) / SOTA gap review D7 — default preset is now
+      // 'clinical' (samrawal/bert-base-uncased_clinical-ner), not the generic
+      // Xenova/bert-base-NER.
       expect(processor.name).toBe('med-ner-processor');
-      expect(processor.getModelId()).toBe('Xenova/bert-base-NER');
+      expect(processor.getModelId()).toBe('samrawal/bert-base-uncased_clinical-ner');
     });
 
     it('should accept custom options', () => {

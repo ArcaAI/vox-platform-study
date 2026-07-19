@@ -42,8 +42,14 @@ def valid_soap() -> dict[str, str]:
     }
 
 
-def ner(text: str, type_: str = "", start: int = 0, end: int = 0) -> NEREntity:
-    return NEREntity(text=text, type=type_, start=start, end=end)
+def ner(
+    text: str,
+    type_: str = "",
+    start: int = 0,
+    end: int = 0,
+    assertion: str | None = None,
+) -> NEREntity:
+    return NEREntity(text=text, type=type_, start=start, end=end, assertion=assertion)
 
 
 def claim(

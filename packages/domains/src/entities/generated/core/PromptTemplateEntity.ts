@@ -16,7 +16,8 @@ export interface IPromptTemplateEntity extends IBaseTaggedEntity {
   description?: string | null;
   content?: string | null;
   category?: string | null;
-  status?: 'DRAFT' | 'PUBLISHED' | null;
+  // TASK-511 (Phase 3A) — `APPROVED` gates resolution for clinical flows.
+  status?: 'DRAFT' | 'PUBLISHED' | 'APPROVED' | null;
   variables?: Record<string, unknown> | null;
   currentVersionNumber?: number | null;
   departmentId?: string | null;

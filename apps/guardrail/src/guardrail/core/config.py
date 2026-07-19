@@ -118,6 +118,32 @@ class BedrockConfig(OpenAICompatConfig):
     api_key: SecretStr = SecretStr("")
 
 
+class VLLMConfig(OpenAICompatConfig):
+    """vLLM engine (production self-host, AD-4). OpenAI-compatible wire.
+
+    Point ``base_url`` at the vLLM server (``/v1``) serving a guardian-capable
+    model (Granite Guardian). Disabled by default — enable it and select via
+    ``GUARDRAIL_V2_PROVIDER=vllm``. Config prefix ``GUARDRAIL_VLLM_``.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="GUARDRAIL_VLLM_")
+
+    enabled: bool = False
+    base_url: str = "http://localhost:8000/v1"
+
+
+class LlamaCppConfig(OpenAICompatConfig):
+    """llama.cpp server engine (production self-host, AD-4). OpenAI-compatible
+    ``/v1`` wire. GGUF tier; select via ``GUARDRAIL_V2_PROVIDER=llama-cpp``.
+    Config prefix ``GUARDRAIL_LLAMA_CPP_``.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="GUARDRAIL_LLAMA_CPP_")
+
+    enabled: bool = False
+    base_url: str = "http://localhost:8080/v1"
+
+
 class GlinerConfig(BaseSettings):
     """GLiNER ONNX provider configuration for content safety/adversarial/PII."""
 
@@ -269,7 +295,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_V2_")
 
-    # LLM engine selector: lm-studio (default) | ollama | azure | bedrock
+    # LLM engine selector: lm-studio (default) | ollama | vllm | llama-cpp | azure | bedrock
     provider: str = "lm-studio"
 
     # Application
@@ -302,6 +328,9 @@ class Settings(BaseSettings):
     # Sub-configs
     openai_compat: OpenAICompatConfig = Field(default_factory=OpenAICompatConfig)
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
+    # TASK-515 — production self-host engines (AD-4), OpenAI-compatible wire.
+    vllm: VLLMConfig = Field(default_factory=VLLMConfig)
+    llama_cpp: LlamaCppConfig = Field(default_factory=LlamaCppConfig)
     azure: AzureOpenAIConfig = Field(default_factory=AzureOpenAIConfig)
     bedrock: BedrockConfig = Field(default_factory=BedrockConfig)
     gliner: GlinerConfig = Field(default_factory=GlinerConfig)
@@ -318,7 +347,7 @@ class Settings(BaseSettings):
     @field_validator("provider")
     @classmethod
     def _validate_provider(cls, v: str) -> str:
-        allowed = {"lm-studio", "ollama", "azure", "bedrock"}
+        allowed = {"lm-studio", "ollama", "vllm", "llama-cpp", "azure", "bedrock"}
         normalized = v.strip().lower()
         if normalized not in allowed:
             raise ValueError(f"provider must be one of {sorted(allowed)}, got {v!r}")
@@ -334,6 +363,8 @@ class Settings(BaseSettings):
         engines: dict[str, OpenAICompatConfig | OllamaConfig] = {
             "lm-studio": self.openai_compat,
             "ollama": self.ollama,
+            "vllm": self.vllm,
+            "llama-cpp": self.llama_cpp,
             "azure": self.azure,
             "bedrock": self.bedrock,
         }

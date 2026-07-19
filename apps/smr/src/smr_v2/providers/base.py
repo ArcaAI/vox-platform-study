@@ -7,6 +7,7 @@ from typing import Protocol, runtime_checkable
 
 from smr_v2.models.provider import ProviderInfo
 from smr_v2.models.requests import GenerateRequest
+from smr_v2.models.stats import GenerationStats
 from smr_v2.models.stream import StreamChunk
 
 
@@ -18,10 +19,11 @@ class ProviderNotFoundError(KeyError):
 class LLMProvider(Protocol):
     """Contract that every LLM provider must satisfy."""
 
-    # NOTE: usage dict is intentionally unparameterized here — the public
-    # contract is asserted as tuple[str, str, dict] by the protocol-contract test.
-    async def generate(self, request: GenerateRequest) -> tuple[str, str, dict]:  # type: ignore[type-arg]
-        """Non-streaming generation. Returns (content, reasoning, usage_dict)."""
+    # TASK-508 AD-1: the third element is a normalized ``GenerationStats`` (real
+    # stop reason + token counts + engine-native blob), NOT a bare usage dict —
+    # every provider (incl. the vLLM / llama.cpp wave) must return exactly this.
+    async def generate(self, request: GenerateRequest) -> tuple[str, str, GenerationStats]:
+        """Non-streaming generation. Returns (content, reasoning, GenerationStats)."""
         ...
 
     def generate_stream(self, request: GenerateRequest) -> AsyncIterator[StreamChunk]:

@@ -32,10 +32,18 @@ export * from './config-resolver';
 export * from './settings-registry';
 // TASK-506 — per-tenant AI task-model defaults (guardrail/NLP), tenant → SYSTEM cascade.
 export * from './ai-task-default';
+// TASK-516 — MCP external-tools registry admin (global-admin CRUD + registry reads).
+export * from './mcp-server';
 // TASK-356 Phase 5 — editable realtime-pipeline policy (cascade admin surface).
 export * from './pipeline-policy';
 // TASK-330 Phase 6 — read-only observability projections (audit/eval/gate-queue).
 export * from './harness-observability';
+// TASK-510 Phase 2B — ordered session trajectory (ingest + read + retention prune).
+export * from './agent-trajectory';
+// TASK-510 S2 follow-up — nightly AgentTrajectoryStep hard-retention prune.
+export * from './agent-trajectory-retention';
+// TASK-511 Phase 3A item 6 — read-only effective agentic instruction inventory.
+export * from './agentic-instructions';
 export * from './prompt-management';
 export * from './dna-writing-style';
 export * from './smr';

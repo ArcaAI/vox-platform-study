@@ -11,6 +11,7 @@ import { HarnessAuditServiceModule } from '../../harness-audit';
 import { HarnessGatewayServiceModule } from '../harness/harness-gateway.service.module';
 import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
 import { EntitlementsServiceModule } from '../../entitlements/entitlements.service.module';
+import { AgentTrajectoryServiceModule } from '../../agent-trajectory/agent-trajectory.service.module';
 
 @Module({
   // TASK-330 Phase 1 — HarnessAuditServiceModule supplies the WORM audit trail
@@ -28,6 +29,9 @@ import { EntitlementsServiceModule } from '../../entitlements/entitlements.servi
     HarnessGatewayServiceModule,
     HarnessPolicyServiceModule,
     EntitlementsServiceModule,
+    // TASK-510 §2C/§2D — resolves the @Optional IAgentTrajectoryService emitter
+    // dep so a summary generation records its LLM_CALL trajectory step.
+    AgentTrajectoryServiceModule,
   ],
   providers: [
     {

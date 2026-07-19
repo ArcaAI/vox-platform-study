@@ -139,6 +139,23 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'TenantIdentityProvider',
   'FederatedIdentity',
   'TenantIdentityProviderDomain',
+  // agent-trajectory.prisma (1) — TASK-510 Phase 2A ordered session trajectory.
+  // Tenant-scoped ops telemetry (per-session step stream). NOT SYSTEM-shared —
+  // a tenant's trajectory is never visible cross-tenant. It is soft-delete
+  // EXEMPT (retention-pruned, no resourceStatus column) — see
+  // MODELS_WITHOUT_SOFT_DELETE in client.ts.
+  'AgentTrajectoryStep',
+  // mcp-server.prisma (TASK-516) — external-tools registry. A STANDARD tenant-
+  // scoped config model (tenantId + resourceStatus soft-delete + _version OCC +
+  // audit). SYSTEM-tenant rows are the shared registry every tenant's harness
+  // run READS to resolve a server (also a SYSTEM-shared read model below);
+  // WRITES stay SYSTEM-only (global-admin, service layer).
+  'McpServer',
+  // consultation.prisma (TASK-519) — segment-level transcript structure. A
+  // per-transcript annotation table (like NamedEntity / AudioRecording),
+  // tenant-scoped and soft-delete EXEMPT (no resourceStatus column; segments
+  // live/die with their parent transcript) — see MODELS_WITHOUT_SOFT_DELETE.
+  'TranscriptSegment',
 ]);
 
 /**
@@ -210,6 +227,13 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // [caller, SYSTEM]; WRITES are NOT widened (guardrail.* keys are additionally
   // global-admin-only at the service layer).
   'AiTaskDefault',
+  // TASK-516 — the MCP external-tools registry: server rows are registered by a
+  // global admin under the SYSTEM tenant and every tenant's harness run must
+  // READ the shared registry to resolve a server it references (server metadata
+  // only — `authRef` is a Vault PATH, never secret material). READS widen to
+  // [caller, SYSTEM]; WRITES are NOT widened (registry mutation is global-admin
+  // only at the service layer, the guardrail.* precedent).
+  'McpServer',
   // Platform infrastructure settings (S3/MinIO endpoint + credentials, STT
   // pipeline slugs/queues, …) are seeded under the SYSTEM tenant in
   // `seed/06-stt.ts`, alongside the SYSTEM-owned AsrPipeline/AiModel catalog.

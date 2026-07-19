@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from typing import Any, cast
 
 import httpx
@@ -27,8 +28,13 @@ from guardrail.core.config import OpenAICompatConfig
 from guardrail.core.logging import get_logger
 from guardrail.core.metrics import track_model_inference
 from guardrail.providers._granite import GRANITE_CRITERIA, build_guardian_block, parse_score
+from guardrail.providers.stats import GuardrailCallStats, stats_from_openai_response
 
 logger = get_logger(__name__)
+
+# Engine identity stamped onto per-call stats (AD-1). The OpenAI-compat wire
+# fronts LM Studio (default) / Azure / Bedrock — all normalize via the OpenAI table.
+_PROVIDER_NAME = "openai_compat"
 
 _ISSUE_BY_TYPE = {
     "content_safety": "harmful_content",
@@ -85,8 +91,10 @@ class OpenAICompatProvider:
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.api_key}"}
 
-    async def _chat(self, model: str, messages: list[dict[str, str]]) -> str:
-        """POST a chat completion and return the assistant message content."""
+    async def _chat(
+        self, model: str, messages: list[dict[str, str]]
+    ) -> tuple[str, GuardrailCallStats]:
+        """POST a chat completion; return the content and AD-1 per-call stats."""
         payload = {
             "model": model,
             "messages": messages,
@@ -94,6 +102,7 @@ class OpenAICompatProvider:
             "max_tokens": self.settings.max_tokens,
             "stream": False,
         }
+        start = time.perf_counter()
         response = await self.http_client.post(
             f"{self.base_url}/chat/completions",
             json=payload,
@@ -102,7 +111,12 @@ class OpenAICompatProvider:
         )
         response.raise_for_status()
         data = response.json()
-        return (data["choices"][0]["message"]["content"] or "").strip()
+        total_ms = int((time.perf_counter() - start) * 1000)
+        content = (data["choices"][0]["message"]["content"] or "").strip()
+        stats = stats_from_openai_response(
+            provider=_PROVIDER_NAME, model=model, data=data, total_ms=total_ms
+        )
+        return content, stats
 
     async def analyze_content(
         self,
@@ -151,7 +165,7 @@ class OpenAICompatProvider:
             {"role": "assistant", "content": text},
             {"role": "user", "content": build_guardian_block(criteria)},
         ]
-        content = await self._chat(model, messages)
+        content, stats = await self._chat(model, messages)
         score = parse_score(content)
 
         if score is None:
@@ -160,13 +174,19 @@ class OpenAICompatProvider:
                 guardrail_type=guardrail_type,
                 content=content[:100],
             )
-            return {"safe": True, "issues": ["invalid_response"], "confidence": 0.0}
+            return {
+                "safe": True,
+                "issues": ["invalid_response"],
+                "confidence": 0.0,
+                "stats": stats.to_dict(),
+            }
 
         unsafe = score == "yes"
         return {
             "safe": not unsafe,
             "issues": [_ISSUE_BY_TYPE[guardrail_type]] if unsafe else [],
             "confidence": 0.9,
+            "stats": stats.to_dict(),
         }
 
     async def _analyze_generic(self, text: str, guardrail_type: str) -> dict[str, Any]:
@@ -177,8 +197,10 @@ class OpenAICompatProvider:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": text},
         ]
-        content = await self._chat(model, messages)
-        return self._parse_binary_response(content, guardrail_type)
+        content, stats = await self._chat(model, messages)
+        result = self._parse_binary_response(content, guardrail_type)
+        result["stats"] = stats.to_dict()
+        return result
 
     async def _analyze_comprehensive(self, text: str) -> dict[str, Any]:
         """Combined pass: run the three checks and merge their verdicts."""
@@ -339,6 +361,7 @@ class OpenAICompatGuardianProvider:
             }
 
             # TASK-386 — per-model running gauge + inference latency.
+            start = time.perf_counter()
             with track_model_inference(self.model):
                 response = await self.http_client.post(
                     f"{self.base_url}/chat/completions",
@@ -349,9 +372,14 @@ class OpenAICompatGuardianProvider:
                 response.raise_for_status()
 
             data = response.json()
+            total_ms = int((time.perf_counter() - start) * 1000)
             content = (data["choices"][0]["message"]["content"] or "").strip()
 
             validation_result = self._parse_validation_response(content)
+            # TASK-509 Phase 1B — AD-1 per-call stats on the judge result (additive).
+            validation_result["stats"] = stats_from_openai_response(
+                provider=_PROVIDER_NAME, model=self.model, data=data, total_ms=total_ms
+            ).to_dict()
 
             if validation_result["confidence"] < self.guardian_min_confidence:
                 logger.warning(

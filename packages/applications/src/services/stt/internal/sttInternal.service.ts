@@ -11,6 +11,8 @@ import {
   ResourceType,
   SysEventType,
   TranscriptionJobRepository,
+  TranscriptSegmentFactory,
+  TranscriptSegmentRepository,
 } from '@arcaai/domains';
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -22,6 +24,10 @@ import { ConsultationPipelineEvent, TranscriptionCreatedPayload } from '../../co
 import { TranscriptionJobResponse } from '../job/dto';
 import { TranscriptionJobDtoMapper } from '../job/transcriptionJob.dto.mapper';
 import { ISttInternalService } from './ISttInternalService';
+import {
+  computeSegmentOffsets,
+  type TranscriptSegmentInputShape,
+} from '../../consultation/lib/transcript-segments';
 import {
   AudioRecordResponse,
   CreateAudioRecordRequest,
@@ -47,8 +53,56 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     // keep their arity; when wired, the completed job's resultText/resultMetadata
     // are encrypted before persist (dual-write soak).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-519 — optional + trailing (same arity-preserving reason) so the
+    // ingest can persist per-transcript segments when the repo is wired.
+    @Optional()
+    @Inject(TranscriptSegmentRepository)
+    private readonly transcriptSegmentRepository?: TranscriptSegmentRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.TranscriptionJob);
+  }
+
+  /**
+   * TASK-519 — persist the ordered transcript segments emitted by STT as
+   * TranscriptSegment rows. `text` on each input is used ONLY to resolve the
+   * [charStart, charEnd) offsets into the transcript content and is NOT stored
+   * (the durable row keeps offsets + timings + speaker, never the PHI text).
+   *
+   * Segments arrive either on the typed `dto.segments` field or (D8: stop
+   * dropping metadata) embedded as `metadata.segments`. Best-effort: a failure
+   * here must not fail the transcript ingest, so it is guarded + logged.
+   */
+  private async persistTranscriptSegments(
+    contextItem: ContextItemEntity,
+    dto: CreateTranscriptRequest,
+  ): Promise<void> {
+    if (!this.transcriptSegmentRepository) return;
+
+    const metaSegments = (dto.metadata as { segments?: TranscriptSegmentInputShape[] } | undefined)?.segments;
+    const rawSegments = dto.segments ?? metaSegments;
+    if (!Array.isArray(rawSegments) || rawSegments.length === 0) return;
+
+    try {
+      const resolved = computeSegmentOffsets(dto.transcriptText ?? '', rawSegments);
+      for (const seg of resolved) {
+        const entity = TranscriptSegmentFactory.CreateTranscriptSegment({
+          tenantId: contextItem.tenantId ?? dto.tenantId ?? '',
+          contextItemId: contextItem.id,
+          idx: seg.idx,
+          t0Ms: seg.t0Ms,
+          t1Ms: seg.t1Ms,
+          speaker: seg.speaker,
+          charStart: seg.charStart,
+          charEnd: seg.charEnd,
+          createdBy: contextItem.createdBy ?? undefined,
+        });
+        await this.transcriptSegmentRepository.create(entity);
+      }
+    } catch (error) {
+      this.logger.error(
+        `TranscriptSegment persist skipped for contextItem ${contextItem.id}: ${(error as Error).message}`,
+      );
+    }
   }
 
   private readonly logger = new Logger(SttInternalService.name);
@@ -96,6 +150,9 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     });
 
     const savedContextItem = await this.contextItemRepository.create(contextItem);
+
+    // TASK-519 — persist ordered transcript segments (offsets resolved from text).
+    await this.persistTranscriptSegments(savedContextItem, dto);
 
     // Update job with context item ID
     job.setContextItem(savedContextItem.id);
@@ -158,6 +215,9 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     });
 
     const savedContextItem = await this.contextItemRepository.create(contextItem);
+
+    // TASK-519 — persist ordered transcript segments (offsets resolved from text).
+    await this.persistTranscriptSegments(savedContextItem, dto);
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: savedContextItem.id,

@@ -155,3 +155,30 @@ def shutdown_opentelemetry(app: FastAPI) -> None:
 def get_tracer(name: str = "smr_v2") -> trace.Tracer:
     """Get a tracer instance for creating spans."""
     return trace.get_tracer(name, _TRACER_VERSION)
+
+
+def set_generation_span_attributes(
+    span: Any,
+    *,
+    provider: str,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    finish_reasons: list[str],
+) -> None:
+    """Stamp OpenTelemetry GenAI semantic-convention attributes on a generation
+    span (TASK-509 / OTel ``gen_ai.*``).
+
+    No-op when there is no recording span (invalid/no-op span, OTel disabled),
+    so it is always safe to call from the request path.
+    """
+    if span is None:
+        return
+    is_recording = getattr(span, "is_recording", None)
+    if callable(is_recording) and not is_recording():
+        return
+    span.set_attribute("gen_ai.system", provider)
+    span.set_attribute("gen_ai.request.model", model)
+    span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
+    span.set_attribute("gen_ai.usage.output_tokens", output_tokens)
+    span.set_attribute("gen_ai.response.finish_reasons", finish_reasons)

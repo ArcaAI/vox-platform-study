@@ -1,4 +1,5 @@
 import {
+  EditBurdenResponse,
   EvalRunDetailResponse,
   EvalRunListResponse,
   EvalService,
@@ -26,7 +27,7 @@ import { ClsService } from 'nestjs-cls';
 import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 import { resolveScopedTenantId, resolveScopedTenantIdOptional } from '../../shared/tenant-scope';
 import { HarnessOpsClient, HarnessWorkflowActionResult, HarnessWorkflowDetail, HarnessWorkflowListResult } from './harness-ops.client';
-import { CreateGoldenCaseRequest, CreateGoldenSetRequest, SignalWorkflowRequest, WorkflowActionRequest } from './dto';
+import { CreateGoldenCaseRequest, CreateGoldenSetRequest, EditBurdenQuery, SignalWorkflowRequest, WorkflowActionRequest } from './dto';
 
 /**
  * HarnessAdminController (TASK-330 Phase 6) — the admin surface for the clinical
@@ -294,6 +295,30 @@ export class HarnessAdminController {
   async gateQueue(@Query() query: { tenantId?: string }): Promise<GateQueueResponse> {
     const tenantId = this.resolveReadTenantId(query.tenantId);
     return this.observabilityService.gateQueue(tenantId);
+  }
+
+  // TASK-508 Phase 0 D3 — the signal existed in `HarnessObservabilityService`
+  // (TASK-482 E3) unexposed; this wires it to the admin surface. The real
+  // service signature is `getEditBurden(tenantId, consultationId)` — a
+  // single-consultation lookup, not a date-range aggregate.
+  @Get('edit-burden')
+  @Authorize(['manage', 'HarnessPolicy'])
+  @ApiOperation({
+    summary: 'Derived clinician edit-burden telemetry for one consultation (edit distance, deferral rate, time-to-sign)',
+    description:
+      'Composes over already-persisted WORM audit rows + summary versions — read-only, no new capture, no workflow change. ' +
+      'PHI hygiene: only derived scalars are returned; the note text itself never leaves the service.',
+  })
+  @ApiQuery({ name: 'consultationId', required: true, description: 'Consultation to derive edit-burden telemetry for.' })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant. Tenant admins are pinned to their own tenant.' })
+  @ApiResponse({ status: 200, type: EditBurdenResponse })
+  @ApiResponse({ status: 404, description: 'No edit-burden telemetry recorded for this consultation (absent or belongs to another tenant).' })
+  async getEditBurden(@Query() query: EditBurdenQuery): Promise<EditBurdenResponse> {
+    const tenantId = this.resolveReadTenantId(query.tenantId);
+    // `getEditBurden` verifies consultation existence/tenancy itself and throws
+    // `DataNotFoundException` (mapped globally to 404) for both an absent and a
+    // cross-tenant consultationId — a zeroed-but-existing result is a normal 200.
+    return this.observabilityService.getEditBurden(tenantId, query.consultationId);
   }
 
   // ───────────────────────── Operate (Temporal proxy) ─────────────────────────

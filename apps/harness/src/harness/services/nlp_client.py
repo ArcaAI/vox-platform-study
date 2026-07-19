@@ -70,4 +70,7 @@ class NlpClient:
             rxnorm_code=raw.get("rxnorm_code"),
             icd_code=raw.get("icd_code"),
             loinc_code=raw.get("loinc_code"),
+            # TASK-518 — carry the assertion polarity so it reaches the sensors
+            # and the persisted NamedEntity rows (None ⇒ PRESENT default).
+            assertion=raw.get("assertion"),
         )

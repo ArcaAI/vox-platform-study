@@ -48,6 +48,10 @@ const sampleRow = (overrides: Partial<SummaryMeta> = {}): SummaryMeta =>
     guardrailDecisions: null,
     attestationRef: null,
     modelName: 'gemma3:latest',
+    // TASK-509 Phase 1B — AD-1 generation stats headline fields.
+    stopReason: null,
+    ttftMs: null,
+    tokensPerSecond: null,
     ...overrides,
   } as SummaryMeta);
 
@@ -74,5 +78,38 @@ describe('SummaryMetaEntityMapper — versionless persistence (TASK-330)', () =>
     expect(persisted).toMatchObject({ contextItemId: 'ci-1', promptVersion: '1' });
     expect(persisted).toHaveProperty('createdAt');
     expect(persisted).toHaveProperty('updatedAt');
+  });
+
+  // TASK-509 Phase 1B — AD-1 generation-stats headline fields (stopReason /
+  // ttftMs / tokensPerSecond). predicted/total tokens are derivable from the
+  // existing inputTokens/outputTokens, so they are intentionally NOT added.
+  describe('generation-stats fields round-trip (TASK-509)', () => {
+    it('toDomainEntity carries stopReason / ttftMs / tokensPerSecond from the row', () => {
+      const entity = mapper.toDomainEntity(
+        sampleRow({ stopReason: 'length', ttftMs: 120, tokensPerSecond: 42.5 }),
+      );
+      expect(entity.stopReason).toBe('length');
+      expect(entity.ttftMs).toBe(120);
+      expect(entity.tokensPerSecond).toBe(42.5);
+    });
+
+    it('toPersistence writes stopReason / ttftMs / tokensPerSecond back to the row', () => {
+      const entity = mapper.toDomainEntity(
+        sampleRow({ stopReason: 'content_filter', ttftMs: 87, tokensPerSecond: 15.25 }),
+      );
+      const persisted = mapper.toPersistence(entity);
+      expect(persisted).toMatchObject({
+        stopReason: 'content_filter',
+        ttftMs: 87,
+        tokensPerSecond: 15.25,
+      });
+    });
+
+    it('tolerates null generation-stats (fields optional/additive)', () => {
+      const entity = mapper.toDomainEntity(sampleRow());
+      expect(entity.stopReason).toBeNull();
+      expect(entity.ttftMs).toBeNull();
+      expect(entity.tokensPerSecond).toBeNull();
+    });
   });
 });

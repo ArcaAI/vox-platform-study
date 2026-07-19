@@ -2585,6 +2585,34 @@ class BatchTranscriptionService:
             segments=result.get("segments", []),
         )
 
+    async def _run_whisper_cpp_inference(
+        self,
+        samples: np.ndarray,
+        sample_rate: int,
+        model: LoadedModel,
+        config: Any,
+        progress_callback: Callable[[float], None] | None = None,
+        *,
+        prompt: str | None = None,
+    ) -> RawTranscription:
+        """Run inference via whisper.cpp (ggml, pywhispercpp) — TASK-507."""
+        import asyncio
+
+        from stt_v2.streaming.whisper_cpp_asr import WhisperCppAsrAdapter
+
+        adapter = WhisperCppAsrAdapter(model, config)
+        result = await asyncio.to_thread(adapter, samples, sample_rate, prompt=prompt)
+
+        if progress_callback:
+            progress_callback(1.0)
+
+        return RawTranscription(
+            text=result.get("text", ""),
+            language=result.get("language"),
+            word_timestamps=result.get("word_timestamps", []),
+            segments=result.get("segments", []),
+        )
+
     async def _run_azure_foundry_inference(
         self,
         samples: np.ndarray,

@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from harness.sensors.base import NEREntity, normalize_text
 from harness.temporal.claim_check import ClaimCheckRef
+from harness.temporal.models import SegmentCitationRef
 
 
 class ApiServiceError(RuntimeError):
@@ -51,6 +52,10 @@ class AssembleResponse(BaseModel):
     prompt_template_id: str | None = None
     prompt_version: str | None = None
     resolved_from: str = ""
+    # TASK-519 — PHI-safe segment citation refs from apps/api assemble (id/idx/
+    # speaker/t0/t1 only). Empty (default, and every legacy response) ⇒ generate
+    # folds no segment StrictCitations block ⇒ byte-identical prompt, replay-safe.
+    segment_citations: list[SegmentCitationRef] = Field(default_factory=list)
 
 
 class DraftResponse(BaseModel):
@@ -105,6 +110,72 @@ class AssuranceEventResponse(BaseModel):
     ok: bool = False
 
 
+class TrajectoryStepInput(BaseModel):
+    """One ordered trajectory step (TASK-510 Phase 2C) — snake_case on the Python
+    side, camelCase on the wire (:meth:`to_wire`).
+
+    The harness emits a batch of these per phase boundary via
+    :meth:`ApiClient.report_trajectory`; the (later) apps/api wave persists them to
+    ``AgentTrajectoryStep`` (AD-2). ``session_id``/``run_id`` are the Temporal
+    workflow/run ids; ``seq`` is the workflow-owned monotonic order. Stats-first /
+    payload-by-reference (PHI posture): ``stats`` carries AD-1 ``GenerationStats``
+    on ``LLM_CALL`` steps, ``payload_ref`` stays null unless a capture-payload policy
+    flag is on (not yet).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: str
+    consultation_id: str | None = None
+    session_kind: str = "HARNESS_DOC"
+    session_id: str
+    run_id: str
+    seq: int
+    step_type: str
+    name: str
+    status: str
+    started_at: str
+    ended_at: str | None = None
+    # Integer milliseconds — the apps/api ingest DTO validates `durationMs` as an
+    # int (column is `Int?`); the emitter rounds before constructing this.
+    duration_ms: int | None = None
+    stats: dict[str, Any] | None = None
+    payload_ref: dict[str, Any] | None = None
+    error_code: str | None = None
+    correlation_id: str | None = None
+
+    def to_wire(self) -> dict[str, Any]:
+        """camelCase wire object with ``None`` optionals pruned (strict apps/api DTO)."""
+        return _prune(
+            {
+                "tenantId": self.tenant_id,
+                "consultationId": self.consultation_id,
+                "sessionKind": self.session_kind,
+                "sessionId": self.session_id,
+                "runId": self.run_id,
+                "seq": self.seq,
+                "stepType": self.step_type,
+                "name": self.name,
+                "status": self.status,
+                "startedAt": self.started_at,
+                "endedAt": self.ended_at,
+                "durationMs": self.duration_ms,
+                "stats": self.stats,
+                "payloadRef": self.payload_ref,
+                "errorCode": self.error_code,
+                "correlationId": self.correlation_id,
+            }
+        )
+
+
+class TrajectoryReportResponse(BaseModel):
+    """apps/api ack for a batched trajectory report (TASK-510 Phase 2C)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    accepted: int = 0
+
+
 def _entity_payload(entity: NEREntity, context_item_id: str | None) -> dict[str, Any]:
     """Map a Lane H ``NEREntity`` to Lane G's camelCase ``HarnessEntityItem``.
 
@@ -134,6 +205,8 @@ def _entity_payload(entity: NEREntity, context_item_id: str | None) -> dict[str,
         ("rxnormCode", entity.rxnorm_code),
         ("icdCode", entity.icd_code),
         ("loincCode", entity.loinc_code),
+        # TASK-518 — forward the assertion polarity (omit None ⇒ PRESENT default).
+        ("assertion", entity.assertion),
     ):
         if value is not None:
             payload[wire_key] = value
@@ -162,6 +235,7 @@ def _entity_from_payload(item: dict[str, Any]) -> NEREntity:
         rxnorm_code=item.get("rxnormCode"),
         icd_code=item.get("icdCode"),
         loinc_code=item.get("loincCode"),
+        assertion=item.get("assertion"),
     )
 
 
@@ -296,6 +370,25 @@ class ApiClient:
             }
         )
         data = await self._post(f"/consultations/{consultation_id}/assemble", body)
+        raw_segs = data.get("segmentCitations") or []
+        segment_citations: list[SegmentCitationRef] = []
+        if isinstance(raw_segs, list):
+            for item in raw_segs:
+                if not isinstance(item, dict):
+                    continue
+                seg_id = item.get("id")
+                if not isinstance(seg_id, str) or not seg_id:
+                    continue
+                idx_raw = item.get("idx")
+                segment_citations.append(
+                    SegmentCitationRef(
+                        id=seg_id,
+                        speaker=item.get("speaker"),
+                        t0_ms=item.get("t0Ms"),
+                        t1_ms=item.get("t1Ms"),
+                        idx=idx_raw if isinstance(idx_raw, int) else None,
+                    )
+                )
         return AssembleResponse(
             user_prompt=data.get("userPrompt", ""),
             system_prompt=data.get("systemPrompt", ""),
@@ -304,6 +397,7 @@ class ApiClient:
             prompt_template_id=data.get("promptTemplateId"),
             prompt_version=data.get("promptVersion"),
             resolved_from=data.get("resolvedFrom", ""),
+            segment_citations=segment_citations,
         )
 
     async def persist_draft(
@@ -618,3 +712,23 @@ class ApiClient:
             idempotency_key=idempotency_key,
         )
         return AssuranceEventResponse(ok=bool(data.get("ok", False)))
+
+    async def report_trajectory(
+        self,
+        steps: Sequence[TrajectoryStepInput],
+        *,
+        idempotency_key: str | None = None,
+    ) -> TrajectoryReportResponse:
+        """Publish a BATCH of ordered trajectory steps (TASK-510 Phase 2C).
+
+        POSTs ``{"steps": [...]}`` to the NEW gateway route
+        ``POST {internal_prefix}/trajectory`` (service-token auth, like every other
+        method). Raises :class:`ApiServiceError` on transport/HTTP error; the harness
+        ACTIVITY is the fire-and-forget swallow layer (a trajectory/gateway outage must
+        NEVER fail the clinical loop — same posture as ``report_progress``), and it
+        batches at phase boundaries to bound the call count. The optional
+        ``Idempotency-Key`` lets apps/api dedup a retried/redelivered batch.
+        """
+        body = {"steps": [s.to_wire() for s in steps]}
+        data = await self._post("/trajectory", body, idempotency_key=idempotency_key)
+        return TrajectoryReportResponse(accepted=int(data.get("accepted", 0)))

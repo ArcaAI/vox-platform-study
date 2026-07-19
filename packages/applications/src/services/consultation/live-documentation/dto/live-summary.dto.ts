@@ -109,6 +109,61 @@ export class LiveSummaryGroundednessDto {
 }
 
 /**
+ * AD-1 generation statistics for one live-summary flush (TASK-509 Phase 1B).
+ *
+ * A near-verbatim passthrough of the SMR `/generate` `stats` block (the program's
+ * single normalized GenerationStats contract), minus `engine_native` (the raw
+ * per-provider timings/usage blob is kept server-side, never streamed to the
+ * browser). Field names mirror the SMR wire contract (snake_case) so the console
+ * / gateway wave consumes the same shape SMR emits. All fields are optional +
+ * nullable: today the non-stream `stop_reason` is often `"stop"` and only the
+ * token counts are populated; per-provider fidelity (ttft/tok-s) fills in later
+ * engine waves. Never fabricated — a field the engine omitted stays null/absent.
+ */
+export class LiveSummaryStatsDto {
+  @ApiPropertyOptional({ description: 'Normalized stop reason: stop | length | content_filter | tool_call | abort | error | other' })
+  stop_reason?: string | null;
+
+  @ApiPropertyOptional({ description: 'Provider-native stop reason, verbatim (e.g. "eosFound", "stopped_limit")' })
+  stop_reason_raw?: string | null;
+
+  @ApiPropertyOptional({ description: 'Total generation time in ms (request start → last byte)' })
+  total_ms?: number | null;
+
+  @ApiPropertyOptional({ description: 'Time-to-first-token in ms (stream first content/reasoning token, or engine-native)' })
+  ttft_ms?: number | null;
+
+  @ApiPropertyOptional({ description: 'Decode throughput (predicted tokens / decode time); engine-native preferred' })
+  tokens_per_second?: number | null;
+
+  @ApiPropertyOptional({ description: 'Prompt (input) token count' })
+  prompt_tokens?: number | null;
+
+  @ApiPropertyOptional({ description: 'Predicted (completion) token count' })
+  predicted_tokens?: number | null;
+
+  @ApiPropertyOptional({ description: 'Total token count' })
+  total_tokens?: number | null;
+
+  @ApiPropertyOptional({ description: 'Serving provider (e.g. "vllm", "llama-cpp", "openai_compat")' })
+  provider?: string | null;
+
+  @ApiPropertyOptional({ description: 'Model id used for the generation' })
+  model?: string | null;
+}
+
+/**
+ * Optional per-flush metadata envelope on the live-summary payload (TASK-509).
+ * Currently carries the AD-1 generation {@link LiveSummaryStatsDto | stats};
+ * kept as a nested envelope so future per-flush telemetry (trajectory refs,
+ * etc.) can be added without reshaping the top-level event.
+ */
+export class LiveSummaryMetadataDto {
+  @ApiPropertyOptional({ description: 'AD-1 generation stats for this flush (absent on a legacy idempotency-cache hit)', type: LiveSummaryStatsDto })
+  stats?: LiveSummaryStatsDto | null;
+}
+
+/**
  * Live-summary SSE event payload.
  *
  * Published to the Redis pub/sub channel `consultation:live-summary:{consultationId}`
@@ -138,6 +193,13 @@ export class LiveSummaryEventDto {
     type: LiveSummaryGroundednessDto,
   })
   groundedness?: LiveSummaryGroundednessDto;
+
+  @ApiPropertyOptional({
+    description:
+      'Per-flush metadata (TASK-509). Carries the AD-1 generation stats under `metadata.stats`; absent when the SMR call produced no stats (legacy idempotency-cache hit).',
+    type: LiveSummaryMetadataDto,
+  })
+  metadata?: LiveSummaryMetadataDto;
 
   @ApiProperty({ description: 'ISO-8601 timestamp of when this snapshot was produced' })
   updatedAt: string;

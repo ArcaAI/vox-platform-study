@@ -16,8 +16,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import itertools
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from temporalio import activity
@@ -25,6 +26,7 @@ from temporalio.exceptions import ApplicationError
 
 from harness.core.config import Settings, get_runtime_judge_config, get_settings
 from harness.core.logging import get_logger
+from harness.core.metrics import inc_gate_decision, inc_regen, observe_step_duration
 from harness.eval.judge.base import JudgeClient
 from harness.eval.judge.providers import build_judge_client
 from harness.guards.phi import (
@@ -32,6 +34,7 @@ from harness.guards.phi import (
     PhiRedactor,
     ensure_egress_safe,
     ensure_inferential_egress_safe,
+    ensure_mcp_args_safe,
 )
 from harness.guides.retrieval.prompt import build_strict_citations_block
 from harness.guides.retrieval.qdrant_store import KnowledgeQdrantStore
@@ -64,6 +67,7 @@ from harness.services.api_client import (
     PersistEntitiesResponse,
     RecordGateResponse,
     RetractDraftResponse,
+    TrajectoryStepInput,
 )
 from harness.services.embeddings_client import EmbeddingsClient
 from harness.services.nlp_client import NlpClient
@@ -78,6 +82,7 @@ from harness.temporal.claim_check import (
 )
 from harness.temporal.models import (
     AssembleInput,
+    CallMcpToolInput,
     EntitiesResult,
     EscalateInput,
     EscalateResult,
@@ -87,6 +92,7 @@ from harness.temporal.models import (
     GenerateInput,
     HarnessPolicy,
     InferentialRunOutput,
+    McpToolCallResult,
     PersistDraftInput,
     PersistEntitiesInput,
     RecordGateInput,
@@ -97,9 +103,32 @@ from harness.temporal.models import (
     RetrievedContext,
     RunInferentialSensorsInput,
     RunSensorsInput,
+    TrajectoryContext,
 )
+from harness.temporal.prompt_cache import (
+    assemble_generation_prompt,
+    build_segment_citations_block,
+)
+from harness.tools.mcp_client import McpClientError, McpToolClient
 
 logger = get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# TASK-510 (Phase 2C) — trajectory step types (the ordered spine vocabulary)
+# ---------------------------------------------------------------------------
+STEP_PHASE = "PHASE"
+STEP_TOOL_CALL = "TOOL_CALL"
+STEP_RETRIEVAL = "RETRIEVAL"
+STEP_LLM_CALL = "LLM_CALL"
+STEP_SENSOR = "SENSOR"
+STEP_GUARDRAIL = "GUARDRAIL"
+STEP_THINKING = "THINKING"
+STEP_GATE = "GATE"
+# Terminal step statuses (STARTED is reserved for a future streaming variant; the
+# harness emits terminal spans carrying startedAt+endedAt to bound the call count).
+STATUS_OK = "OK"
+STATUS_ERROR = "ERROR"
+STATUS_SKIPPED = "SKIPPED"
 
 
 @dataclass
@@ -181,6 +210,140 @@ def _progress_api_client(settings: Settings) -> ApiClient:
     )
 
 
+# TASK-510 (Phase 2C): trajectory reporting is fire-and-forget (like progress) —
+# a short HTTP timeout so a wedged gateway never holds a phase boundary hostage.
+_TRAJECTORY_HTTP_TIMEOUT_S = 5.0
+
+
+def _trajectory_api_client(settings: Settings) -> ApiClient:
+    return ApiClient(
+        settings.api_base_url,
+        internal_prefix=settings.api_internal_prefix,
+        service_token=settings.service_token.get_secret_value(),
+        timeout=min(_TRAJECTORY_HTTP_TIMEOUT_S, settings.api_timeout_s),
+    )
+
+
+def _reasoning_tokens(stats: dict[str, Any] | None) -> int:
+    """Best-effort reasoning-token count from an AD-1 ``GenerationStats`` dict.
+
+    ``SmrGenerationResult`` has no dedicated reasoning field yet, so we read it
+    defensively from the stats block (top-level ``reasoning_tokens`` or the
+    engine-native OpenAI-wire ``completion_tokens_details.reasoning_tokens``). A
+    positive count is the "SMR returned non-empty reasoning" signal for the
+    ``THINKING`` step; everything is null-safe (missing ⇒ 0 ⇒ no THINKING step).
+    """
+    if not stats:
+        return 0
+    direct = stats.get("reasoning_tokens")
+    if direct:
+        return int(direct)
+    engine_native = stats.get("engine_native")
+    if isinstance(engine_native, dict):
+        native = engine_native.get("reasoning_tokens")
+        if native:
+            return int(native)
+        details = engine_native.get("completion_tokens_details")
+        if isinstance(details, dict) and details.get("reasoning_tokens"):
+            return int(details["reasoning_tokens"])
+    return 0
+
+
+class _TrajectoryBatch:
+    """Collects a phase-boundary's trajectory steps and flushes them ONCE.
+
+    TASK-510 (Phase 2C). ``record`` appends one terminal span (status + start/end
+    timing + stats) AND always observes the ``harness_step_duration_seconds`` metric
+    (metrics are useful even without a session context). ``flush`` posts the batch
+    via :meth:`ApiClient.report_trajectory` fire-and-forget: a trajectory/gateway
+    outage is swallowed+logged so it can NEVER fail the clinical loop (the same
+    posture as ``report_progress``). When the activity input carried no
+    ``TrajectoryContext`` (a legacy / pre-510 call) no step is built and no POST is
+    made (metrics still fire).
+    """
+
+    def __init__(self, settings: Settings, ctx: TrajectoryContext | None) -> None:
+        self._settings = settings
+        self._ctx = ctx
+        self._steps: list[TrajectoryStepInput] = []
+
+    def record(
+        self,
+        *,
+        step_type: str,
+        name: str,
+        status: str,
+        started: datetime,
+        stats: dict[str, Any] | None = None,
+        payload_ref: dict[str, Any] | None = None,
+        error_code: str | None = None,
+        offset: int = 0,
+    ) -> None:
+        ended = datetime.now(UTC)
+        elapsed_ms = max(0.0, (ended - started).total_seconds() * 1000.0)
+        observe_step_duration(step_type, name, elapsed_ms / 1000.0)
+        # The apps/api ingest DTO validates `durationMs` as an integer (the column
+        # is `Int?`) under a strict global ValidationPipe — a fractional value
+        # 400s the whole batch, which fire-and-forget then silently swallows. Emit
+        # a rounded int so real (fractional) durations persist.
+        duration_ms = round(elapsed_ms)
+        if self._ctx is None:
+            return
+        info = activity.info()
+        self._steps.append(
+            TrajectoryStepInput(
+                tenant_id=self._ctx.tenant_id,
+                consultation_id=self._ctx.consultation_id,
+                session_id=str(info.workflow_id),
+                run_id=str(info.workflow_run_id),
+                seq=self._ctx.seq + offset,
+                step_type=step_type,
+                name=name,
+                status=status,
+                started_at=started.isoformat(),
+                ended_at=ended.isoformat(),
+                duration_ms=duration_ms,
+                stats=stats,
+                payload_ref=payload_ref,
+                error_code=error_code,
+                correlation_id=self._ctx.correlation_id,
+            )
+        )
+
+    async def flush(self) -> None:
+        if not self._steps:
+            return
+        steps: Sequence[TrajectoryStepInput] = self._steps
+        try:
+            await _trajectory_api_client(self._settings).report_trajectory(
+                steps, idempotency_key=_idempotency_key("traj")
+            )
+        except Exception as exc:  # noqa: BLE001 — trajectory is fire-and-forget, never raise
+            activity.logger.warning(
+                "harness.report_trajectory.failed",
+                extra={"steps": len(steps), "error": str(exc)},
+            )
+        finally:
+            self._steps = []
+
+
+def _now() -> datetime:
+    """Activity-side wall clock (non-deterministic — activities may read it)."""
+    return datetime.now(UTC)
+
+
+def _resolve_flag(policy_value: bool | None, *, env_default: bool) -> bool:
+    """TASK-511 (Phase 3A) — per-field policy/env fallthrough for a boolean knob.
+
+    The effective (DB-backed) ``HarnessPolicy`` carries the seven agentic loop
+    knobs as NULLABLE overrides threaded onto the activity inputs. ``None`` means
+    "no override" ⇒ fall through to the harness env/code default; a non-null value
+    is the explicit override and wins. Keeps the null-means-env-default contract
+    identical everywhere the knobs are consumed.
+    """
+    return env_default if policy_value is None else policy_value
+
+
 def _build_runtime_judge() -> JudgeClient:
     """Build the calibrated runtime judge (reuses the eval ``HARNESS_JUDGE_*`` config).
 
@@ -233,6 +396,46 @@ def _phi_redactor() -> PhiRedactor:
     and the tests can monkeypatch it with a stub.
     """
     return PhiRedactor()
+
+
+def _mcp_client(settings: Settings) -> McpToolClient:
+    """Build the streamable-HTTP MCP tool client (TASK-516; SDK lazy-imported).
+
+    Factored out like the other client factories so ``call_mcp_tool`` builds it once
+    per invocation and the tests can monkeypatch it with a stub (the hermetic suite
+    never touches the real ``mcp`` SDK / network).
+    """
+    return McpToolClient(timeout_s=settings.mcp.timeout_s, max_attempts=settings.mcp.max_attempts)
+
+
+def _resolve_mcp_token(settings: Settings, auth_ref: str | None) -> str | None:
+    """Resolve an MCP server credential from Vault by its ``authRef`` PATH (TASK-504).
+
+    ``auth_ref`` is a Vault PATH — NEVER secret bytes in the DB/policy. Returns None
+    when no ``authRef`` is configured. The secret is only ever handed to the client as
+    the ``Authorization`` bearer header (:class:`McpToolClient`) and is NEVER logged,
+    echoed into a result, or written to the trajectory. Production wires the platform
+    secrets client (TASK-504) here; until that is threaded into harness settings an
+    unresolved ``authRef`` yields no token (the server must be public / in-boundary),
+    never a silent leak. Monkeypatched in tests to inject + assert scrubbing.
+    """
+    if not auth_ref:
+        return None
+    return None
+
+
+def _effective_mcp_allowlist(
+    policy_allowlist: list[str] | None, server_allowlist: list[str] | None
+) -> set[str]:
+    """The tool allowlist a call must satisfy: ``policy ∩ server`` (deny-all default).
+
+    An MCP server with NO allowlist can call NOTHING (fail-safe empty set); the tenant
+    ``policy_allowlist`` (``None`` ⇒ no tenant restriction) narrows the server's set.
+    """
+    allowed = set(server_allowlist or [])
+    if policy_allowlist is None:
+        return allowed
+    return allowed & set(policy_allowlist)
 
 
 def _hybrid_retriever(settings: Settings) -> HybridRetriever:
@@ -312,8 +515,19 @@ async def fetch_policy(payload: FetchPolicyInput) -> HarnessPolicy:
     degrades to the code defaults (fail-safe — never crash the loop).
     """
     settings = get_settings()
+    started = _now()
     data = await _api_client(settings).get_policy(payload.tenant_id)
-    return HarnessPolicy.from_api(data)
+    policy = HarnessPolicy.from_api(data)
+    batch = _TrajectoryBatch(settings, payload.trajectory)
+    batch.record(
+        step_type=STEP_PHASE,
+        name="fetch_policy",
+        status=STATUS_OK,
+        started=started,
+        stats={"version": policy.version},
+    )
+    await batch.flush()
+    return policy
 
 
 def _has_ontology_code(entity: NEREntity) -> bool:
@@ -360,21 +574,219 @@ async def extract_entities(payload: ExtractEntitiesInput) -> EntitiesResult:
     regresses). The note-NER calls leave ``reuse_priors`` unset ⇒ always cold.
     """
     settings = get_settings()
-    if payload.reuse_priors and settings.ner_priors_enabled:
+    started = _now()
+    batch = _TrajectoryBatch(settings, payload.trajectory)
+    # TASK-511 (Phase 3A) — the policy override (when non-null) wins over the env
+    # kill-switch; None falls through to ``HARNESS_NER_PRIORS_ENABLED``.
+    ner_priors_enabled = _resolve_flag(payload.ner_priors_enabled, env_default=settings.ner_priors_enabled)
+    if payload.reuse_priors and ner_priors_enabled:
         priors = await _load_coded_priors(settings, payload)
         if priors:
+            batch.record(
+                step_type=STEP_TOOL_CALL,
+                name="nlp.extract_entities",
+                status=STATUS_OK,
+                started=started,
+                stats={"entity_count": len(priors), "reused": True},
+            )
+            await batch.flush()
             return EntitiesResult(entities=priors, reused=True)
     # TASK-483: resolve the (possibly offloaded) note/transcript before the cold NER pass.
     text = await _resolve_ref(settings, payload.text, payload.text_ref)
     entities = await _nlp_client(settings).classify_tokens(text, language=payload.language)
+    batch.record(
+        step_type=STEP_TOOL_CALL,
+        name="nlp.extract_entities",
+        status=STATUS_OK,
+        started=started,
+        stats={"entity_count": len(entities), "reused": False},
+    )
+    await batch.flush()
     return EntitiesResult(entities=entities)
+
+
+@activity.defn
+async def call_mcp_tool(payload: CallMcpToolInput) -> McpToolCallResult:
+    """Call a READ-ONLY MCP tool on a registered external server (TASK-516 — default OFF).
+
+    Enforcement order (security-critical — everything before the network call is
+    fail-closed and BLOCKS without any egress):
+
+    1. **Allowlist** — the tool MUST be in ``policy_tool_allowlist ∩ server.tool_allowlist``
+       (deny-all when the server has no allowlist). A denial raises BEFORE any network
+       call (non-retryable); the workflow catches it and degrades (never crashes).
+    2. **PHI egress guard** — for a ``phi_boundary="external"`` server the outbound
+       ``args`` are screened FAIL-CLOSED; PHI (or a redactor failure) raises
+       :class:`PhiEgressBlocked` BEFORE any network call.
+    3. **Bounded call** — the credential is resolved from Vault (never logged) and the
+       client makes the bounded-timeout/retry tool call. A server/transport/tool error
+       records an ``ERROR`` step and returns a DEGRADED result (no raise) so the
+       workflow degrades to reduced assurance and never crashes.
+    4. **Size cap + claim-check** — a result over ``settings.mcp.max_result_bytes`` is
+       offloaded (claim-checked, kept OUT of Temporal history) when claim-check is on,
+       else truncated. A ``TOOL_CALL`` trajectory step is emitted (secret-free stats).
+    """
+    settings = get_settings()
+    started = _now()
+    batch = _TrajectoryBatch(settings, payload.trajectory)
+    server = payload.server
+    tool = payload.tool
+    step_name = f"mcp.{tool}"
+
+    # (0) Defense-in-depth: a disabled server never calls out (the workflow gates on this
+    # too). Recorded SKIPPED + degraded so the caller OR-s it into reduced assurance.
+    if not server.enabled:
+        batch.record(
+            step_type=STEP_TOOL_CALL,
+            name=step_name,
+            status=STATUS_SKIPPED,
+            started=started,
+            stats={"server": server.name, "tool": tool, "reason": "server_disabled"},
+        )
+        await batch.flush()
+        return McpToolCallResult(
+            ok=False, server=server.name, tool=tool, degraded=True, error_code="server_disabled"
+        )
+
+    # (1) Allowlist — BEFORE any network call. Denial raises (non-retryable).
+    allowed = _effective_mcp_allowlist(payload.policy_tool_allowlist, server.tool_allowlist)
+    if tool not in allowed:
+        batch.record(
+            step_type=STEP_TOOL_CALL,
+            name=step_name,
+            status=STATUS_ERROR,
+            started=started,
+            stats={"server": server.name, "tool": tool},
+            error_code="tool_not_allowed",
+        )
+        await batch.flush()
+        raise ApplicationError(
+            f"MCP tool not in effective allowlist: {tool}",
+            type="McpToolNotAllowed",
+            non_retryable=True,
+        )
+
+    # (2) PHI egress guard — fail-closed for an external server, BEFORE any network call.
+    try:
+        ensure_mcp_args_safe(
+            payload.args,
+            phi_boundary=server.phi_boundary,
+            phi_enabled=payload.phi_enabled,
+            phi_fail_closed=payload.phi_fail_closed,
+            server=f"mcp:{server.name}",
+            redactor=_phi_redactor(),
+        )
+    except PhiEgressBlocked as exc:
+        activity.logger.warning(
+            "harness.mcp.phi_egress.blocked",
+            extra={"server": server.name, "tool": tool, "reason": exc.reason},
+        )
+        batch.record(
+            step_type=STEP_TOOL_CALL,
+            name=step_name,
+            status=STATUS_ERROR,
+            started=started,
+            stats={"server": server.name, "tool": tool},
+            error_code="phi_egress_blocked",
+        )
+        await batch.flush()
+        raise
+
+    # (3) Bounded tool call. The Vault-resolved credential is NEVER logged/echoed.
+    token = _resolve_mcp_token(settings, server.auth_ref)
+    try:
+        tool_result = await _mcp_client(settings).call_tool(
+            base_url=server.base_url, tool=tool, args=payload.args, auth_token=token
+        )
+    except McpClientError as exc:
+        error_code = (
+            "server_error" if exc.is_server_error else "timeout" if exc.is_timeout else "client_error"
+        )
+        activity.logger.warning(
+            "harness.mcp.call_failed",
+            extra={
+                "server": server.name,
+                "tool": tool,
+                "error_code": error_code,
+                "status": exc.status,
+            },
+        )
+        batch.record(
+            step_type=STEP_TOOL_CALL,
+            name=step_name,
+            status=STATUS_ERROR,
+            started=started,
+            stats={"server": server.name, "tool": tool},
+            error_code=error_code,
+        )
+        await batch.flush()
+        return McpToolCallResult(
+            ok=False, server=server.name, tool=tool, degraded=True, error_code=error_code
+        )
+
+    # A tool that returned its own error result is a degraded (not fatal) outcome.
+    if tool_result.is_error:
+        batch.record(
+            step_type=STEP_TOOL_CALL,
+            name=step_name,
+            status=STATUS_ERROR,
+            started=started,
+            stats={"server": server.name, "tool": tool},
+            error_code="tool_error",
+        )
+        await batch.flush()
+        return McpToolCallResult(
+            ok=False, server=server.name, tool=tool, degraded=True, error_code="tool_error"
+        )
+
+    # (4) Size cap + claim-check. A result over the cap is offloaded (claim-check on) or
+    # truncated (claim-check off) so a huge tool payload never bloats Temporal history.
+    content = tool_result.content
+    result_bytes = len(content.encode("utf-8"))
+    cap = settings.mcp.max_result_bytes
+    content_ref: ClaimCheckRef | None = None
+    truncated = False
+    if result_bytes > cap:
+        cc = settings.claim_check
+        if cc.enabled:
+            content, content_ref = await maybe_offload(
+                content, store=build_blob_store(cc), bucket=cc.bucket, min_bytes=cap
+            )
+        else:
+            content = content.encode("utf-8")[:cap].decode("utf-8", "ignore")
+            truncated = True
+
+    batch.record(
+        step_type=STEP_TOOL_CALL,
+        name=step_name,
+        status=STATUS_OK,
+        started=started,
+        stats={
+            "server": server.name,
+            "tool": tool,
+            "result_bytes": result_bytes,
+            "offloaded": content_ref is not None,
+            "truncated": truncated,
+        },
+        payload_ref=content_ref.model_dump() if content_ref is not None else None,
+    )
+    await batch.flush()
+    return McpToolCallResult(
+        ok=True,
+        server=server.name,
+        tool=tool,
+        content=content,
+        content_ref=content_ref,
+        truncated=truncated,
+    )
 
 
 @activity.defn
 async def persist_entities(payload: PersistEntitiesInput) -> PersistEntitiesResponse:
     """Persist extracted NamedEntity rows via the apps/api internal endpoint."""
     settings = get_settings()
-    return await _api_client(settings).persist_entities(
+    started = _now()
+    result = await _api_client(settings).persist_entities(
         payload.consultation_id,
         tenant_id=payload.tenant_id,
         context_item_id=payload.context_item_id,
@@ -382,12 +794,23 @@ async def persist_entities(payload: PersistEntitiesInput) -> PersistEntitiesResp
         user_id=payload.user_id,
         idempotency_key=_idempotency_key(),
     )
+    batch = _TrajectoryBatch(settings, payload.trajectory)
+    batch.record(
+        step_type=STEP_TOOL_CALL,
+        name="persist_entities",
+        status=STATUS_OK,
+        started=started,
+        stats={"saved_count": result.saved_count},
+    )
+    await batch.flush()
+    return result
 
 
 @activity.defn
 async def assemble_prompt(payload: AssembleInput) -> AssembleResponse:
     """Resolve the prompt tier + assemble the SMR payload via apps/api."""
     settings = get_settings()
+    started = _now()
     resp = await _api_client(settings).assemble(
         payload.consultation_id,
         tenant_id=payload.tenant_id,
@@ -401,22 +824,33 @@ async def assemble_prompt(payload: AssembleInput) -> AssembleResponse:
     # inline (refs None) and the response is unchanged.
     user_inline, user_ref = await _offload_text(settings, resp.user_prompt)
     sys_inline, sys_ref = await _offload_text(settings, resp.system_prompt)
-    if user_ref is None and sys_ref is None:
-        return resp
-    return resp.model_copy(
-        update={
-            "user_prompt": user_inline,
-            "user_prompt_ref": user_ref,
-            "system_prompt": sys_inline,
-            "system_prompt_ref": sys_ref,
-        }
+    out = resp
+    if user_ref is not None or sys_ref is not None:
+        out = resp.model_copy(
+            update={
+                "user_prompt": user_inline,
+                "user_prompt_ref": user_ref,
+                "system_prompt": sys_inline,
+                "system_prompt_ref": sys_ref,
+            }
+        )
+    batch = _TrajectoryBatch(settings, payload.trajectory)
+    batch.record(
+        step_type=STEP_TOOL_CALL,
+        name="assemble_prompt",
+        status=STATUS_OK,
+        started=started,
+        stats={"resolved_from": resp.resolved_from, "prompt_version": resp.prompt_version},
     )
+    await batch.flush()
+    return out
 
 
 @activity.defn
 async def generate(payload: GenerateInput) -> SmrGenerationResult:
     """Generate the SOAP draft synchronously via the SMR service."""
     settings = get_settings()
+    started = _now()
     hp = payload.hyperparameters or {}
 
     # TASK-483: resolve the (possibly offloaded) prompts inline-or-ref, then fold in the
@@ -424,8 +858,23 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
     # the small prompt REF instead of the concatenated blob). The PHI-egress guard below
     # then screens the FULLY-assembled prompt, exactly as before.
     user_prompt = await _resolve_ref(settings, payload.prompt, payload.prompt_ref)
-    if payload.prompt_block:
-        user_prompt = f"{user_prompt}\n\n{payload.prompt_block}"
+    # TASK-515 Phase 4D.1 — assemble in a stable prefix ordering (invariant
+    # template+transcript prefix, then the RAG StrictCitations block) so the
+    # engine prefix-cache is reused across regen iterations. Byte-identical to
+    # the prior inline concatenation → command-neutral for Temporal replay.
+    # TASK-517 — on a regen iteration the prior iteration's failed-sensor critique
+    # is appended as a trailing corrective suffix (None on the first iteration /
+    # when regenFeedbackEnabled is off ⇒ byte-identical to before).
+    # TASK-519 — when segment citation refs are supplied, fold a PHI-safe
+    # ``[[seg:<id>]]`` StrictCitations block after the RAG block (empty/absent
+    # ⇒ byte-identical to before; additive-optional ⇒ replay-safe).
+    segment_block = build_segment_citations_block(payload.segment_citations)
+    user_prompt = assemble_generation_prompt(
+        user_prompt,
+        payload.prompt_block,
+        payload.regen_feedback,
+        segment_block=segment_block or None,
+    )
     if payload.system_prompt_ref is not None:
         system_prompt_in: str | None = await _resolve_ref(
             settings, payload.system_prompt or "", payload.system_prompt_ref
@@ -504,9 +953,36 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
     # history; on offload the inline ``content`` is emptied and the workflow threads
     # ``content_ref`` to the consumers (note-NER / sensors / persist) that resolve it.
     content_inline, content_ref = await _offload_text(settings, result.content)
-    if content_ref is None:
-        return result
-    return result.model_copy(update={"content": content_inline, "content_ref": content_ref})
+    out = result if content_ref is None else result.model_copy(
+        update={"content": content_inline, "content_ref": content_ref}
+    )
+
+    # TASK-510 (Phase 2C): LLM_CALL step embeds the AD-1 ``stats`` (TASK-509) verbatim;
+    # a bounded-regen generation bumps ``harness_regen_total``. When SMR returned
+    # non-empty reasoning, emit a stats-only THINKING step (payloadRef stays null until
+    # a capture-payload policy flag is on — which it is not yet).
+    batch = _TrajectoryBatch(settings, payload.trajectory)
+    batch.record(
+        step_type=STEP_LLM_CALL,
+        name="generate",
+        status=STATUS_OK,
+        started=started,
+        stats=result.stats,
+    )
+    reasoning = _reasoning_tokens(result.stats)
+    if reasoning > 0:
+        batch.record(
+            step_type=STEP_THINKING,
+            name="reasoning",
+            status=STATUS_OK,
+            started=started,
+            stats={"reasoning_tokens": reasoning},
+            offset=1,
+        )
+    if payload.trajectory is not None and payload.trajectory.is_regen:
+        inc_regen()
+    await batch.flush()
+    return out
 
 
 @activity.defn
@@ -520,7 +996,20 @@ async def retrieve_context(payload: RetrieveContextInput) -> RetrievedContext:
     durable loop. Returns the reranked chunks + the ready-to-append StrictCitations block.
     """
     settings = get_settings()
-    if not settings.retrieval.enabled:
+    started = _now()
+    batch = _TrajectoryBatch(settings, payload.trajectory)
+    # TASK-511 (Phase 3A) — the policy override (when non-null) wins over the env
+    # kill-switch; None falls through to ``HARNESS_RETRIEVAL_ENABLED``.
+    retrieval_enabled = _resolve_flag(payload.retrieval_enabled, env_default=settings.retrieval.enabled)
+    if not retrieval_enabled:
+        batch.record(
+            step_type=STEP_RETRIEVAL,
+            name="retrieve_context",
+            status=STATUS_SKIPPED,
+            started=started,
+            stats={"enabled": False, "chunk_count": 0},
+        )
+        await batch.flush()
         return RetrievedContext()
 
     query = build_query(payload.entities)
@@ -535,6 +1024,14 @@ async def retrieve_context(payload: RetrieveContextInput) -> RetrievedContext:
         chunks.append(
             chunk.model_copy(update={"text": inline, "text_ref": ref}) if ref is not None else chunk
         )
+    batch.record(
+        step_type=STEP_RETRIEVAL,
+        name="retrieve_context",
+        status=STATUS_OK,
+        started=started,
+        stats={"enabled": True, "chunk_count": len(chunks), "degraded": result.degraded},
+    )
+    await batch.flush()
     return RetrievedContext(chunks=chunks, degraded=result.degraded, prompt_block=prompt_block)
 
 
@@ -547,9 +1044,10 @@ async def run_sensors(payload: RunSensorsInput) -> SensorRunOutput:
     """
     # TASK-483: resolve the (possibly offloaded) note + transcript inline-or-ref.
     settings = get_settings()
+    started = _now()
     note_text = await _resolve_ref(settings, payload.note_text, payload.note_text_ref)
     transcript_text = await _resolve_ref(settings, payload.transcript_text, payload.transcript_text_ref)
-    return run_computational_sensors(
+    output = run_computational_sensors(
         note_text=note_text,
         transcript_text=transcript_text,
         note_entities=payload.note_entities,
@@ -559,6 +1057,16 @@ async def run_sensors(payload: RunSensorsInput) -> SensorRunOutput:
         retrieved_chunk_ids=payload.retrieved_chunk_ids,
         thresholds=payload.thresholds,
     )
+    batch = _TrajectoryBatch(settings, payload.trajectory)
+    batch.record(
+        step_type=STEP_SENSOR,
+        name="run_sensors",
+        status=STATUS_OK,
+        started=started,
+        stats={"sensor_count": len(output.results), "scores": output.scores},
+    )
+    await batch.flush()
+    return output
 
 
 def _groundedness_decision(result: SensorResult) -> dict[str, Any]:
@@ -777,7 +1285,22 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
     whole pass. Returns the raw results + a guardrailDecisions map + ragTriadScore.
     """
     settings = get_settings()
+    started = _now()
+    batch = _TrajectoryBatch(settings, payload.trajectory)
     judge_config = get_runtime_judge_config()
+
+    async def _emit(out: InferentialRunOutput) -> InferentialRunOutput:
+        # GUARDRAIL step for the (once-per-loop) inferential pass; degrade is carried in
+        # stats (the pass returns an output on every path — it never raises into the loop).
+        batch.record(
+            step_type=STEP_GUARDRAIL,
+            name="run_inferential_sensors",
+            status=STATUS_OK,
+            started=started,
+            stats={"degraded": out.degraded, "rag_triad_score": out.rag_triad_score},
+        )
+        await batch.flush()
+        return out
 
     # TASK-359 WS-1 — seed the per-claim verdict cache from earlier passes (the L2 carrier).
     # The sensors reuse a cached verdict for an unchanged claim and re-judge only cache-missing
@@ -827,7 +1350,7 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
         ]
         if payload.safety_enabled:
             degraded.append(degraded_result(SAFETY_NAME, reason))
-        return _assemble_inferential_output(degraded, verdict_cache)
+        return await _emit(_assemble_inferential_output(degraded, verdict_cache))
 
     ctx = SensorContext(
         note_text=note_text,
@@ -852,7 +1375,7 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
             # Phase 6: a disabled safety guard contributes no safety result at all.
             if payload.safety_enabled:
                 degraded.append(degraded_result(SAFETY_NAME, reason))
-            return _assemble_inferential_output(degraded, verdict_cache)
+            return await _emit(_assemble_inferential_output(degraded, verdict_cache))
 
         thresholds = SensorThresholds()
         # Phase 6: the groundedness pass threshold is policy-driven; the safety screen
@@ -892,12 +1415,14 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
         # kill-switch (default OFF). It uses a SELF-HOSTED NLI (NOT the judge), so it adds
         # no cloud egress; a degraded backend degrades (never auto-PASS). Read at runtime
         # here — not the workflow — so it adds no new workflow command (replay-safe).
-        if settings.atomic_fact_enabled:
+        # TASK-511 (Phase 3A) — the policy override (when non-null) wins over the env
+        # kill-switch; None falls through to ``HARNESS_ATOMIC_FACT_ENABLED``.
+        if _resolve_flag(payload.atomic_fact_enabled, env_default=settings.atomic_fact_enabled):
             tasks.append(
                 _run_atomic_fact_sensor(settings, ctx, thresholds.atomic_fact_threshold)
             )
         results = list(await asyncio.gather(*tasks))
-        return _assemble_inferential_output(results, verdict_cache)
+        return await _emit(_assemble_inferential_output(results, verdict_cache))
     finally:
         heartbeat.cancel()
         with contextlib.suppress(asyncio.CancelledError):
@@ -913,10 +1438,11 @@ async def persist_draft(payload: PersistDraftInput) -> DraftResponse:
     (legacy) keeps the single-shot persist (full scores, straight to PENDING_REVIEW).
     """
     settings = get_settings()
+    started = _now()
     # TASK-483: resolve the (possibly offloaded) draft content — apps/api still receives
     # the fully-materialized note (the persist contract is unchanged).
     content = await _resolve_ref(settings, payload.content, payload.content_ref)
-    return await _api_client(settings).persist_draft(
+    result = await _api_client(settings).persist_draft(
         payload.consultation_id,
         tenant_id=payload.tenant_id,
         content=content,
@@ -939,6 +1465,21 @@ async def persist_draft(payload: PersistDraftInput) -> DraftResponse:
         phase=payload.phase,
         idempotency_key=_idempotency_key(),
     )
+    # TASK-510 (Phase 2D): count the gate verdict EXACTLY ONCE per completed session.
+    # The single-shot (legacy) persist carries the verdict; the optimistic early persist
+    # withholds it (``gate_decision is None`` ⇒ no count here — finalize/retract counts it).
+    if payload.gate_decision is not None:
+        inc_gate_decision(payload.gate_decision)
+    batch = _TrajectoryBatch(settings, payload.trajectory)
+    batch.record(
+        step_type=STEP_PHASE,
+        name="persist_draft",
+        status=STATUS_OK,
+        started=started,
+        stats={"context_item_id": result.context_item_id, "phase": payload.phase},
+    )
+    await batch.flush()
+    return result
 
 
 @activity.defn
@@ -952,7 +1493,8 @@ async def finalize_assurance(payload: FinalizeAssuranceInput) -> FinalizeAssuran
     re-stamps the same verdict without regressing state).
     """
     settings = get_settings()
-    return await _api_client(settings).finalize_assurance(
+    started = _now()
+    result = await _api_client(settings).finalize_assurance(
         payload.consultation_id,
         tenant_id=payload.tenant_id,
         context_item_id=payload.context_item_id,
@@ -971,6 +1513,20 @@ async def finalize_assurance(payload: FinalizeAssuranceInput) -> FinalizeAssuran
         prompt_version=payload.prompt_version,
         idempotency_key=_idempotency_key(),
     )
+    # TASK-510 (Phase 2D): the optimistic path counts the gate verdict HERE (the early
+    # persist withheld it), so the counter still fires exactly once per completed session.
+    if payload.gate_decision is not None:
+        inc_gate_decision(payload.gate_decision)
+    batch = _TrajectoryBatch(settings, payload.trajectory)
+    batch.record(
+        step_type=STEP_PHASE,
+        name="finalize_assurance",
+        status=STATUS_OK,
+        started=started,
+        stats={"gate_decision": payload.gate_decision},
+    )
+    await batch.flush()
+    return result
 
 
 @activity.defn
@@ -987,7 +1543,8 @@ async def retract_draft(payload: RetractDraftInput) -> RetractDraftResponse:
     workflow retries under ``_API_RETRY``.
     """
     settings = get_settings()
-    return await _api_client(settings).retract_draft(
+    started = _now()
+    result = await _api_client(settings).retract_draft(
         payload.consultation_id,
         tenant_id=payload.tenant_id,
         context_item_id=payload.context_item_id,
@@ -1003,13 +1560,28 @@ async def retract_draft(payload: RetractDraftInput) -> RetractDraftResponse:
         job_id=payload.job_id,
         idempotency_key=_idempotency_key(),
     )
+    # TASK-510 (Phase 2D): a retraction is a terminal FLAG verdict — count it once here
+    # (the early persist withheld it), and emit a GATE step for the retraction event.
+    if payload.gate_decision is not None:
+        inc_gate_decision(payload.gate_decision)
+    batch = _TrajectoryBatch(settings, payload.trajectory)
+    batch.record(
+        step_type=STEP_GATE,
+        name="retract_draft",
+        status=STATUS_OK,
+        started=started,
+        stats={"gate_decision": payload.gate_decision, "reason": payload.reason},
+    )
+    await batch.flush()
+    return result
 
 
 @activity.defn
 async def record_gate_decision(payload: RecordGateInput) -> RecordGateResponse:
     """Record the clinician GATE_DECISION (WORM audit) via apps/api."""
     settings = get_settings()
-    return await _api_client(settings).record_gate_decision(
+    started = _now()
+    result = await _api_client(settings).record_gate_decision(
         payload.consultation_id,
         tenant_id=payload.tenant_id,
         decision=payload.decision,
@@ -1020,6 +1592,16 @@ async def record_gate_decision(payload: RecordGateInput) -> RecordGateResponse:
         clinician_id=payload.clinician_id,
         idempotency_key=_idempotency_key(),
     )
+    batch = _TrajectoryBatch(settings, payload.trajectory)
+    batch.record(
+        step_type=STEP_GATE,
+        name="record_gate_decision",
+        status=STATUS_OK,
+        started=started,
+        stats={"decision": payload.decision, "gate_decision": payload.gate_decision},
+    )
+    await batch.flush()
+    return result
 
 
 @activity.defn
@@ -1098,6 +1680,7 @@ async def escalate_gate(payload: EscalateInput) -> EscalateResult:
 DOCUMENT_ACTIVITIES: list[Callable[..., Any]] = [
     fetch_policy,
     extract_entities,
+    call_mcp_tool,
     persist_entities,
     assemble_prompt,
     retrieve_context,

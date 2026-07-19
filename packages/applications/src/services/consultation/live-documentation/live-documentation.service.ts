@@ -3,8 +3,10 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import { Observable, type Subscription, finalize, interval, map, merge, takeWhile } from 'rxjs';
-import { ContextItemEntity, ContextItemFactory, ContextItemRepository } from '@arcaai/domains';
+import { AgentSessionKind, AgentStepStatus, AgentStepType, ContextItemEntity, ContextItemFactory, ContextItemRepository } from '@arcaai/domains';
 import { IRedisCacheService } from '../../baseServices/redis';
+import { IAgentTrajectoryService } from '../../agent-trajectory/IAgentTrajectoryService';
+import type { CreateAgentTrajectoryStepInput } from '../../agent-trajectory/dto';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
 import { StreamingAudioBridgeService } from '../../stt/streaming/streamingAudioBridge.service';
@@ -19,8 +21,15 @@ import {
   LiveSummaryEventDto,
   LiveSummaryGroundednessDto,
   LiveSummaryGroundednessSegmentDto,
+  LiveSummaryStatsDto,
 } from './dto';
 import { LIVE_SOAP_RESPONSE_FORMAT, buildRunningSummary, parseSoapJson, parseSoapSections } from './soap-parser';
+import { generateJsonWithRepair, looksLikeJsonObject } from '../shared/bounded-json-repair';
+import type { LiveSummarySectionDto } from './dto';
+import {
+  AGENTIC_CONTEXT_DEFAULTS,
+  type AgenticTranscriptMode,
+} from '../../settings-registry/descriptors/agentic-context.descriptors';
 
 /** Shared SOAP output instruction — describes the four sections for prose-only providers. */
 const SOAP_OUTPUT_INSTRUCTION =
@@ -32,12 +41,30 @@ const SOAP_OUTPUT_INSTRUCTION =
   'Leave a section blank after its header if there is nothing yet. Do not invent details or add other sections.';
 
 /**
+ * TASK-515 Phase 4D.1 — stable, prefix-cache-friendly lead-in for the live SMR
+ * user prompt. This block is BYTE-IDENTICAL on every flush of a session (first
+ * flush AND every subsequent update flush), so a prefix-cache engine (vLLM /
+ * llama.cpp `cache_prompt`) reuses the KV cache of the stable prefix instead of
+ * re-prefilling a mode-specific directive. `buildSmrUserPrompt` emits the blocks
+ * in the order `[stable system] + [transcript-so-far] + [current note] +
+ * [delta instruction]`, keeping the variable, mode-specific directive LAST.
+ */
+export const LIVE_SOAP_STABLE_SYSTEM_PREFIX =
+  'You are assisting a clinician during a live consultation, maintaining a concise, factual ' +
+  'running clinical note structured as SOAP. ' +
+  SOAP_OUTPUT_INSTRUCTION;
+
+/**
  * Safety cap on the transcript delta sent per flush (sliding-window fallback,
  * TASK-340 P0-B): the incremental prompt only sends new transcript since the
  * last successful flush, but if SMR keeps failing the un-flushed delta grows —
  * this bounds it so a busy/failing session can't send an unbounded prompt.
+ *
+ * TASK-511 (Phase 3A) — this former hardcoded constant is now the
+ * `agentic.context.liveDelta.maxChars` settings-registry knob. The value is
+ * resolved onto `this.contextLiveDeltaMaxChars` in the constructor (env override
+ * → registry code default) so the cap is admin-controllable.
  */
-const MAX_DELTA_CHARS = 12000;
 
 /**
  * Atomic single-owner lock scripts (TASK-459 C5-06). Redis serialises each Lua
@@ -73,6 +100,20 @@ export interface LiveTranscriptSegment {
   text: string;
   isFinal: boolean;
   segmentId?: string;
+}
+
+/**
+ * One SMR `/generate` call result for the bounded JSON auto-repair coordinator
+ * (TASK-515 Phase 4D.3). `structured` reflects whether `response_format:
+ * json_schema` was actually sent (false for engines like Ollama that ignore it,
+ * so a corrective retry is skipped); `latencyMs` is captured per-call so both the
+ * original and the repair are recorded as ordered LLM_CALL trajectory steps.
+ */
+interface LiveSoapCall {
+  text: string;
+  stats: LiveSummaryStatsDto | null;
+  structured: boolean;
+  latencyMs: number;
 }
 
 /** Parameters to begin a per-consultation watcher session. */
@@ -129,6 +170,17 @@ interface LiveSession {
   truncatedDeltaCount: number;
   /** Epoch ms when the watcher session started — surfaced in the admin stats snapshot (TASK-341 B1). */
   startedAt: number;
+  /**
+   * TASK-510 §2C — stable, per-instance trajectory session id used as the
+   * `sessionId` on every emitted step. Distinct across stop→restart of the same
+   * consultation so the `(tenantId, sessionId, runId, seq)` composite-unique key
+   * never collides (which would make `skipDuplicates` silently drop the restarted
+   * session's steps). Set once at creation and NEVER reassigned when a later STT
+   * stream attaches, so grouping stays stable for the session's whole lifetime.
+   */
+  trajectorySessionId: string;
+  /** TASK-510 §2C — monotonic trajectory-step sequence within this LIVE_DOC session. */
+  trajectorySeq: number;
 }
 
 /**
@@ -185,6 +237,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private readonly segmentThreshold: number;
   private readonly debounceMs: number;
   private readonly heartbeatMs: number;
+  // TASK-511 (Phase 3A) — agentic.context.* effective knobs (env override →
+  // settings-registry code default). `contextLiveDeltaMaxChars` replaces the
+  // former `MAX_DELTA_CHARS = 12000` constant.
+  private readonly contextLiveDeltaMaxChars: number;
+  private readonly contextClaimCheckMinBytes: number;
+  private readonly contextTranscriptMode: AgenticTranscriptMode;
+  private readonly contextTokenBudgetPerRun: number;
   private readonly enabled: boolean;
   private readonly minIntervalMs: number;
   private readonly durableSnapshotMs: number;
@@ -212,11 +271,37 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // fixtures and non-DI construction paths compile; when unset an empty token is
     // sent (the guardrail's empty-token dev bypass, TASK-465).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-510 §2C — ordered per-flush trajectory emitter. Optional + trailing so
+    // existing positional test fixtures and non-DI paths compile; production DI
+    // (apps/api consultation module) supplies it. A trajectory failure is
+    // fire-and-forget and can NEVER break the live flush (see recordFlushTrajectory).
+    @Optional() @Inject(IAgentTrajectoryService) private readonly trajectoryService?: IAgentTrajectoryService,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
-    this.segmentThreshold = Number(this.configService.get('LIVE_DOC_SEGMENT_THRESHOLD') ?? 3);
-    this.debounceMs = Number(this.configService.get('LIVE_DOC_DEBOUNCE_MS') ?? 5000);
+    // TASK-511 (Phase 3A) — agentic.context.* effective resolution: an explicit
+    // env override wins, else the settings-registry code default. `LIVE_DOC_*`
+    // env keys are retained as the operational override lane (kill-switch aware);
+    // `agentic.context.*` is the canonical registry namespace surfaced via the
+    // control plane.
+    this.segmentThreshold = Number(
+      this.configService.get('LIVE_DOC_SEGMENT_THRESHOLD') ?? AGENTIC_CONTEXT_DEFAULTS['liveFlush.segmentThreshold'],
+    );
+    this.debounceMs = Number(this.configService.get('LIVE_DOC_DEBOUNCE_MS') ?? AGENTIC_CONTEXT_DEFAULTS['liveFlush.idleMs']);
+    this.contextLiveDeltaMaxChars = Number(
+      this.configService.get('AGENTIC_CONTEXT_LIVE_DELTA_MAX_CHARS') ?? AGENTIC_CONTEXT_DEFAULTS['liveDelta.maxChars'],
+    );
+    this.contextClaimCheckMinBytes = Number(
+      this.configService.get('AGENTIC_CONTEXT_CLAIM_CHECK_MIN_BYTES') ?? AGENTIC_CONTEXT_DEFAULTS['claimCheck.minBytes'],
+    );
+    this.contextTranscriptMode = (String(
+      this.configService.get('AGENTIC_CONTEXT_TRANSCRIPT_MODE') ?? AGENTIC_CONTEXT_DEFAULTS['transcript.mode'],
+    ) === 'windowed'
+      ? 'windowed'
+      : 'whole') as AgenticTranscriptMode;
+    this.contextTokenBudgetPerRun = Number(
+      this.configService.get('AGENTIC_CONTEXT_TOKEN_BUDGET_PER_RUN') ?? AGENTIC_CONTEXT_DEFAULTS['tokenBudget.perRun'],
+    );
     this.heartbeatMs = Number(this.configService.get('LIVE_DOC_HEARTBEAT_MS') ?? 15000);
     // Kill-switch (P2): any value other than the literal 'false' keeps it on.
     this.enabled = String(this.configService.get('LIVE_DOC_ENABLED') ?? 'true') !== 'false';
@@ -303,6 +388,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    const startedAt = Date.now();
     const session: LiveSession = {
       consultationId: params.consultationId,
       tenantId: params.tenantId,
@@ -315,11 +401,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       generation: 0,
       flushedTranscriptCount: 0,
       lastFlushAt: 0,
-      lastDurableAt: Date.now(),
+      lastDurableAt: startedAt,
       flushCount: 0,
       staleDropCount: 0,
       truncatedDeltaCount: 0,
-      startedAt: Date.now(),
+      startedAt,
+      trajectorySessionId: params.sessionId ?? `${params.consultationId}:${startedAt}`,
+      trajectorySeq: 0,
     };
     this.sessions.set(params.consultationId, session);
 
@@ -540,9 +628,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       const part = session.transcriptParts[i];
       const separator = deltaSegments.length > 0 ? 1 : 0; // the joining space
       // The `deltaSegments.length > 0` guard always admits the FIRST segment so the
-      // cursor can always advance (no stall). Consequence (M-4): MAX_DELTA_CHARS is a
+      // cursor can always advance (no stall). Consequence (M-4): the cap is a
       // SOFT per-flush bound — a single segment larger than the cap is still sent whole.
-      if (deltaSegments.length > 0 && deltaLen + separator + part.length > MAX_DELTA_CHARS) {
+      if (deltaSegments.length > 0 && deltaLen + separator + part.length > this.contextLiveDeltaMaxChars) {
         deltaTruncated = true;
         break; // stop at the head boundary — the rest carries forward
       }
@@ -573,12 +661,50 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     let runningSummary = priorNote;
     let smrFailed = false;
     let smrLatencyMs = 0;
-    const smrStartedAt = Date.now();
+    // TASK-509 Phase 1B — AD-1 generation stats for this flush (null unless SMR
+    // returned a stats block); surfaced on the payload as `metadata.stats`.
+    let smrStats: LiveSummaryStatsDto | null = null;
+    // TASK-515 Phase 4D.3 — bounded JSON auto-repair telemetry. When the first
+    // structured response is not valid SOAP JSON we do EXACTLY ONE corrective
+    // retry; the repair SMR call is recorded as its own ordered LLM_CALL step.
+    let smrRepaired = false;
+    let repairLatencyMs = 0;
+    let repairStats: LiveSummaryStatsDto | null = null;
     try {
-      const smrText = await this.callSmr(promptText, session.tenantId, signal);
-      smrLatencyMs = Date.now() - smrStartedAt;
+      // Bounded JSON auto-repair: the strict parser is `parseSoapJson` (null on a
+      // JSON/shape failure); the tolerant `parseSoapSections` regex parser is the
+      // final fallback. A retry only runs when `response_format` was actually
+      // sent (structured) — an engine that ignores it returns prose by design, so
+      // a retry could never yield JSON and is skipped. The corrective instruction
+      // is appended (not prepended) to keep the prefix-cache-stable lead-in intact.
+      const outcome = await generateJsonWithRepair<LiveSummarySectionDto[], LiveSoapCall>({
+        generate: async (corrective) => {
+          const startedAt = Date.now();
+          const { text, stats, structured } = await this.callSmr(promptText, session.tenantId, signal, corrective);
+          return { text, stats, structured, latencyMs: Date.now() - startedAt };
+        },
+        parseStrict: (text) => {
+          const parsed = parseSoapJson(text);
+          return parsed && parsed.length > 0 ? parsed : null;
+        },
+        parseTolerant: (text) => parseSoapSections(text),
+        // Retry only a genuine malformed-JSON attempt: structured output was
+        // requested AND the text opens a JSON object. Clean prose (no leading
+        // `{`) is served by the tolerant regex parser with no wasted regen.
+        shouldRepair: (first) => first.structured && looksLikeJsonObject(first.text),
+      });
       if (isStale()) return this.dropStale(session);
-      const parsed = parseSoapJson(smrText) ?? parseSoapSections(smrText);
+
+      const [firstCall, repairCall] = outcome.calls;
+      smrLatencyMs = firstCall.latencyMs;
+      smrStats = firstCall.stats;
+      smrRepaired = outcome.repaired;
+      if (repairCall) {
+        repairLatencyMs = repairCall.latencyMs;
+        repairStats = repairCall.stats;
+      }
+
+      const parsed = outcome.value;
       if (parsed.length > 0) {
         sections = parsed;
         runningSummary = buildRunningSummary(parsed);
@@ -644,6 +770,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       entities,
       lastSegmentId: session.lastSegmentId,
       ...(groundedness ? { groundedness } : {}),
+      // TASK-509 Phase 1B — attach the AD-1 stats when present; omit the envelope
+      // entirely on a stats-less flush (SMR failure / legacy cache hit) so the
+      // feed degrades cleanly rather than publishing an empty metadata block.
+      ...(smrStats ? { metadata: { stats: smrStats } } : {}),
       updatedAt: new Date().toISOString(),
     };
 
@@ -684,7 +814,143 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       sectionCount: sections.length,
       summaryChars: runningSummary.length,
     });
+
+    // TASK-510 §2C — emit the ordered per-flush trajectory. Non-fatal: a
+    // trajectory failure NEVER breaks the live flush (recordFlushTrajectory
+    // swallows + logs). Runs after the payload is published/persisted.
+    await this.recordFlushTrajectory(session, {
+      smrStats,
+      smrFailed,
+      smrLatencyMs,
+      smrRepaired,
+      repairStats,
+      repairLatencyMs,
+      nlpRan: !!nerSourceText,
+      nlpFailed,
+      nlpLatencyMs,
+      groundedness,
+      groundednessLatencyMs,
+    });
+
     return payload;
+  }
+
+  /**
+   * TASK-510 §2C — record the ordered trajectory for one flush:
+   *   [LLM_CALL:flush, TOOL_CALL:nlp.classify-tokens (when NLP ran),
+   *    GUARDRAIL:groundedness (when the gate ran), PHASE:publish].
+   * sessionKind=LIVE_DOC, runId="" (non-Temporal sentinel), consultationId set,
+   * seq monotonic within the session. Fire-and-forget: wrapped in try/catch so a
+   * telemetry failure can never break the live flush the clinician depends on.
+   */
+  private async recordFlushTrajectory(
+    session: LiveSession,
+    ctx: {
+      smrStats: LiveSummaryStatsDto | null;
+      smrFailed: boolean;
+      smrLatencyMs: number;
+      /** TASK-515 Phase 4D.3 — whether the bounded JSON auto-repair retry ran. */
+      smrRepaired: boolean;
+      repairStats: LiveSummaryStatsDto | null;
+      repairLatencyMs: number;
+      nlpRan: boolean;
+      nlpFailed: boolean;
+      nlpLatencyMs: number;
+      groundedness?: LiveSummaryGroundednessDto;
+      groundednessLatencyMs: number;
+    },
+  ): Promise<void> {
+    if (!this.trajectoryService) return;
+    try {
+      const now = Date.now();
+      const common = {
+        tenantId: session.tenantId,
+        consultationId: session.consultationId,
+        sessionKind: AgentSessionKind.LIVE_DOC,
+        sessionId: session.trajectorySessionId,
+        runId: '',
+      } as const;
+
+      const steps: CreateAgentTrajectoryStepInput[] = [];
+
+      // 1) LLM_CALL — the SMR running-summary generation for this flush.
+      steps.push({
+        ...common,
+        seq: session.trajectorySeq++,
+        stepType: AgentStepType.LLM_CALL,
+        name: 'flush',
+        status: ctx.smrFailed ? AgentStepStatus.ERROR : AgentStepStatus.OK,
+        startedAt: new Date(now - ctx.smrLatencyMs),
+        endedAt: new Date(now),
+        durationMs: ctx.smrLatencyMs,
+        stats: (ctx.smrStats ?? undefined) as CreateAgentTrajectoryStepInput['stats'],
+      });
+
+      // 1b) LLM_CALL — the bounded JSON auto-repair retry (TASK-515 Phase 4D.3),
+      // recorded only when the corrective retry actually ran so the trajectory
+      // reflects EXACTLY the SMR calls this flush made (original + at most one repair).
+      if (ctx.smrRepaired) {
+        steps.push({
+          ...common,
+          seq: session.trajectorySeq++,
+          stepType: AgentStepType.LLM_CALL,
+          name: 'flush.repair',
+          status: AgentStepStatus.OK,
+          startedAt: new Date(now - ctx.repairLatencyMs),
+          endedAt: new Date(now),
+          durationMs: ctx.repairLatencyMs,
+          stats: (ctx.repairStats ?? undefined) as CreateAgentTrajectoryStepInput['stats'],
+        });
+      }
+
+      // 2) TOOL_CALL — NLP token classification (only when it ran).
+      if (ctx.nlpRan) {
+        steps.push({
+          ...common,
+          seq: session.trajectorySeq++,
+          stepType: AgentStepType.TOOL_CALL,
+          name: 'nlp.classify-tokens',
+          status: ctx.nlpFailed ? AgentStepStatus.ERROR : AgentStepStatus.OK,
+          startedAt: new Date(now - ctx.nlpLatencyMs),
+          endedAt: new Date(now),
+          durationMs: ctx.nlpLatencyMs,
+        });
+      }
+
+      // 3) GUARDRAIL — output groundedness gate (only when enabled/ran).
+      if (ctx.groundedness) {
+        steps.push({
+          ...common,
+          seq: session.trajectorySeq++,
+          stepType: AgentStepType.GUARDRAIL,
+          name: 'groundedness',
+          status: AgentStepStatus.OK,
+          startedAt: new Date(now - ctx.groundednessLatencyMs),
+          endedAt: new Date(now),
+          durationMs: ctx.groundednessLatencyMs,
+          payloadRef: { verdict: ctx.groundedness.verdict },
+        });
+      }
+
+      // 4) PHASE — publish to the live feed.
+      steps.push({
+        ...common,
+        seq: session.trajectorySeq++,
+        stepType: AgentStepType.PHASE,
+        name: 'publish',
+        status: AgentStepStatus.OK,
+        startedAt: new Date(now),
+        endedAt: new Date(now),
+      });
+
+      await this.trajectoryService.recordSteps(steps);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to record live-doc flush trajectory (non-fatal)',
+        consultationId: session.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /** A superseded generation finished late — count it and publish nothing (P0-A). */
@@ -1030,24 +1296,32 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    */
   private buildSmrUserPrompt(priorNote: string, delta: string, notes: string): string {
     const notesBlock = notes ? `\n\nClinician notes / labs:\n${notes}` : '';
-    if (priorNote.trim()) {
-      return (
-        'You are assisting a clinician during a live consultation. Update the existing SOAP note below using ONLY the new transcript since the last update; keep prior content unless it is contradicted. ' +
-        SOAP_OUTPUT_INSTRUCTION +
-        `\n\nCurrent SOAP note so far:\n${priorNote}` +
-        `\n\nNew transcript since last update:\n${delta}` +
-        notesBlock
-      );
-    }
-    return (
-      'You are assisting a clinician during a live consultation. From the transcript and any clinician notes/labs so far, produce a concise, factual running clinical note structured as SOAP. ' +
-      SOAP_OUTPUT_INSTRUCTION +
-      `\n\nTranscript so far:\n${delta}` +
-      notesBlock
-    );
+    const hasPriorNote = priorNote.trim().length > 0;
+
+    // TASK-515 Phase 4D.1 — prefix-cache-friendly ordering:
+    //   [stable system] + [transcript-so-far] + [current note] + [delta instruction]
+    // The leading stable-system block is identical across the first flush and
+    // every update flush (see LIVE_SOAP_STABLE_SYSTEM_PREFIX), so the engine
+    // reuses the cached KV of that prefix. The mode-specific directive that
+    // used to LEAD the prompt (breaking the shared prefix between first/update
+    // flushes) is now the trailing block.
+    const transcriptBlock = hasPriorNote
+      ? `\n\nNew transcript since last update:\n${delta}`
+      : `\n\nTranscript so far:\n${delta}`;
+    const currentNoteBlock = hasPriorNote ? `\n\nCurrent SOAP note so far:\n${priorNote}` : '';
+    const deltaInstruction = hasPriorNote
+      ? '\n\nUpdate the existing SOAP note above using ONLY the new transcript since the last update; keep prior content unless it is contradicted.'
+      : '\n\nFrom the transcript and any clinician notes/labs above, produce the running SOAP note now.';
+
+    return LIVE_SOAP_STABLE_SYSTEM_PREFIX + transcriptBlock + currentNoteBlock + deltaInstruction + notesBlock;
   }
 
-  private async callSmr(promptText: string, tenantId: string, signal?: AbortSignal): Promise<string> {
+  private async callSmr(
+    promptText: string,
+    tenantId: string,
+    signal?: AbortSignal,
+    corrective?: string,
+  ): Promise<{ text: string; stats: LiveSummaryStatsDto | null; structured: boolean }> {
     // TASK-356 D-7 — SMR is a stateless gateway with no model default. Resolve the
     // tenant's effective {provider, model} via the HarnessPolicy cascade (NOT the
     // legacy LIVE_DOC_SMR_PROVIDER/MODEL env); fall back to env only when the
@@ -1061,8 +1335,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // deterministic SOAP object (parsed by parseSoapJson); ollama ignores it so we
     // omit it there and fall back to the prose regex parse (P0-C).
     const includeResponseFormat = (provider ?? '').toLowerCase() !== 'ollama';
+    // TASK-515 Phase 4D.3 — the bounded auto-repair retry appends the corrective
+    // instruction AFTER the stable prompt so the prefix-cache-friendly lead-in
+    // (Phase 4D.1) stays byte-identical between the original and repair calls.
     const payload = {
-      prompt: promptText,
+      prompt: corrective ? `${promptText}${corrective}` : promptText,
       system_prompt:
         'You are a clinical documentation assistant generating an in-progress, structured SOAP running note. Be concise and faithful to the transcript; never fabricate findings.',
       provider,
@@ -1076,7 +1353,23 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       headers: { 'Content-Type': 'application/json' },
       signal,
     });
-    return mapSmrGenerateResponse(response.data).summary;
+    return { text: mapSmrGenerateResponse(response.data).summary, stats: this.parseGenerationStats(response.data), structured: includeResponseFormat };
+  }
+
+  /**
+   * TASK-509 Phase 1B — extract the AD-1 GenerationStats block from the SMR
+   * `/generate` response for the SSE payload. Passes the normalized headline
+   * fields through near-verbatim (snake_case, matching the SMR contract) minus
+   * `engine_native` (the raw per-provider blob stays server-side, off the
+   * browser stream). Returns `null` when the `stats` block is absent (legacy
+   * response) or null (idempotency-cache hit) so the flush omits `metadata`.
+   */
+  private parseGenerationStats(data: unknown): LiveSummaryStatsDto | null {
+    const raw = (data as { stats?: unknown } | null | undefined)?.stats;
+    if (!raw || typeof raw !== 'object') return null;
+    const rest = { ...(raw as Record<string, unknown>) };
+    delete rest.engine_native;
+    return rest as LiveSummaryStatsDto;
   }
 
   private async callNlp(text: string, signal?: AbortSignal): Promise<LiveSummaryEntityDto[]> {
@@ -1465,6 +1758,15 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       source: this.engineEnabledOverride === null ? 'env-default' : 'redis-override',
       updatedAt: this.engineConfigUpdatedAt ?? undefined,
       updatedBy: this.engineConfigUpdatedBy ?? undefined,
+      // TASK-511 (Phase 3A) — the effective agentic.context.* knobs the loop reads.
+      contextSettings: {
+        'liveDelta.maxChars': this.contextLiveDeltaMaxChars,
+        'liveFlush.segmentThreshold': this.segmentThreshold,
+        'liveFlush.idleMs': this.debounceMs,
+        'claimCheck.minBytes': this.contextClaimCheckMinBytes,
+        'transcript.mode': this.contextTranscriptMode,
+        'tokenBudget.perRun': this.contextTokenBudgetPerRun,
+      },
     };
   }
 

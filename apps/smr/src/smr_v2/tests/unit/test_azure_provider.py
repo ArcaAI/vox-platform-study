@@ -40,20 +40,23 @@ class TestAzureProviderInit:
 class TestAzureGenerate:
     @pytest.mark.asyncio
     async def test_generate_returns_text(self, azure_config):
+        from smr_v2.models.stats import GenerationStats
         from smr_v2.providers.azure_openai import AzureOpenAIProvider
 
         mock_choice = MagicMock()
         mock_choice.message.content = "Azure response!"
+        mock_choice.finish_reason = "stop"
         mock_completion = MagicMock()
         mock_completion.choices = [mock_choice]
+        mock_completion.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
 
         provider = AzureOpenAIProvider(config=azure_config)
         provider._client = AsyncMock()
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
-        content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hi", provider="azure_openai"))
+        content, _reasoning, stats = await provider.generate(GenerateRequest(prompt="hi", provider="azure_openai"))
         assert content == "Azure response!"
-        assert isinstance(usage, dict)
+        assert isinstance(stats, GenerationStats)
 
     @pytest.mark.asyncio
     async def test_generate_sends_messages(self, azure_config):
@@ -61,8 +64,10 @@ class TestAzureGenerate:
 
         mock_choice = MagicMock()
         mock_choice.message.content = "ok"
+        mock_choice.finish_reason = "stop"
         mock_completion = MagicMock()
         mock_completion.choices = [mock_choice]
+        mock_completion.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
 
         provider = AzureOpenAIProvider(config=azure_config)
         provider._client = AsyncMock()
@@ -160,8 +165,10 @@ class TestAzureStructuredOutput:
 
         mock_choice = MagicMock()
         mock_choice.message.content = '{"key": "value"}'
+        mock_choice.finish_reason = "stop"
         mock_completion = MagicMock()
         mock_completion.choices = [mock_choice]
+        mock_completion.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
 
         provider = AzureOpenAIProvider(config=azure_config)
         provider._client = AsyncMock()
@@ -183,8 +190,10 @@ class TestAzureStructuredOutput:
 
         mock_choice = MagicMock()
         mock_choice.message.content = '{"name": "test"}'
+        mock_choice.finish_reason = "stop"
         mock_completion = MagicMock()
         mock_completion.choices = [mock_choice]
+        mock_completion.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
 
         provider = AzureOpenAIProvider(config=azure_config)
         provider._client = AsyncMock()
@@ -284,6 +293,76 @@ class TestAzureStructuredOutput:
 
         call_kwargs = provider._client.chat.completions.create.call_args.kwargs
         assert "response_format" not in call_kwargs
+
+
+class TestAzureDeploymentName:
+    """TASK-508 D6 (dead-config sweep) — ``AzureOpenAIConfig.deployment_name``
+    was defined but never read; Azure OpenAI routes requests by *deployment
+    name*, not model name, so an operator-configured deployment must win over
+    the caller-supplied ``request.model``. When unset (the "" default), today's
+    behavior — forwarding ``request.model`` unchanged — must be preserved.
+    """
+
+    @pytest.mark.asyncio
+    async def test_generate_uses_deployment_name_when_configured(self, azure_config):
+        """RED: deployment_name (="gpt-4" on the fixture) is currently never
+        read, so the caller-supplied request.model is sent to Azure even when
+        an explicit deployment is configured."""
+        from smr_v2.providers.azure_openai import AzureOpenAIProvider
+
+        mock_choice = MagicMock()
+        mock_choice.message.content = "ok"
+        mock_choice.finish_reason = "stop"
+        mock_completion = MagicMock()
+        mock_completion.choices = [mock_choice]
+        mock_completion.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
+
+        provider = AzureOpenAIProvider(config=azure_config)
+        provider._client = AsyncMock()
+        provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
+
+        req = GenerateRequest(prompt="hi", provider="azure_openai", model="some-other-caller-model")
+        await provider.generate(req)
+
+        call_kwargs = provider._client.chat.completions.create.call_args.kwargs
+        assert call_kwargs["model"] == "gpt-4"
+
+    @pytest.mark.asyncio
+    async def test_generate_falls_back_to_request_model_when_deployment_name_unset(self):
+        """Default deployment_name ("") must preserve today's behavior: the
+        caller-supplied request.model is forwarded unchanged to Azure.
+
+        deployment_name="" is passed explicitly (not relied on as an implicit
+        pydantic default) so this test is deterministic regardless of ambient
+        SMR_V2_AZURE_DEPLOYMENT_NAME env state (e.g. the e2e conftest's
+        module-level os.environ mutation from the monorepo-root .env)."""
+        from smr_v2.providers.azure_openai import AzureOpenAIProvider
+
+        config = AzureOpenAIConfig(
+            api_key="test-key",
+            endpoint="https://test.openai.azure.com",
+            api_version="2024-06-01",
+            default_model="gpt-4",
+            deployment_name="",
+        )
+        assert config.deployment_name == ""
+
+        mock_choice = MagicMock()
+        mock_choice.message.content = "ok"
+        mock_choice.finish_reason = "stop"
+        mock_completion = MagicMock()
+        mock_completion.choices = [mock_choice]
+        mock_completion.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
+
+        provider = AzureOpenAIProvider(config=config)
+        provider._client = AsyncMock()
+        provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
+
+        req = GenerateRequest(prompt="hi", provider="azure_openai", model="caller-model")
+        await provider.generate(req)
+
+        call_kwargs = provider._client.chat.completions.create.call_args.kwargs
+        assert call_kwargs["model"] == "caller-model"
 
 
 class TestAzureHealthCheck:

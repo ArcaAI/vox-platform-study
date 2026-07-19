@@ -26,8 +26,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class JudgeProvider(StrEnum):
     """Selects which backend serves the LLM-as-judge."""
 
-    OPENAI_COMPAT = "openai_compat"  # LM Studio / vLLM / any OpenAI-compatible server
+    OPENAI_COMPAT = "openai_compat"  # LM Studio / any OpenAI-compatible server
     OLLAMA = "ollama"  # Ollama via its OpenAI-compatible ``/v1`` (parity option)
+    # TASK-515 — production self-host engines (AD-4). Both speak the OpenAI wire,
+    # so they reuse the OpenAI-compatible judge client; configured via the shared
+    # ``HARNESS_JUDGE_OPENAI_COMPAT_*`` block pointed at the engine's base_url.
+    VLLM = "vllm"
+    LLAMA_CPP = "llama-cpp"
     AZURE = "azure"
     BEDROCK = "bedrock"
 

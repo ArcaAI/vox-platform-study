@@ -116,7 +116,7 @@ class TestBindingResolution:
         assert set(payload["asr_engines"]) == {
             "safetensor", "onnx", "onnx_optimum", "nemo",
             "faster_whisper", "azure_speech",
-            "parakeet_cpp", "azure_foundry",
+            "parakeet_cpp", "azure_foundry", "whisper_cpp",
         }
         assert payload["asr_engines"]["onnx"]["streaming"] == "unsupported"
         assert payload["asr_engines"]["safetensor"]["batch"]["device"] == "cpu"
@@ -356,6 +356,90 @@ class TestP3NewEngines:
                     await service._run_azure_foundry_inference(
                         np.zeros(160, dtype=np.float32), 16000, model, MagicMock(language=None),
                     )
+
+
+class TestP507WhisperCppEngine:
+    """TASK-507 — WHISPER_CPP engine (pywhispercpp binding)."""
+
+    def test_new_format_exists_and_maps(self):
+        from stt_v2.processors.asr_engines import WhisperCppEngine
+
+        assert ASR_FORMAT_TO_NAME[AiModelFormat.WHISPER_CPP] == "whisper_cpp"
+        assert isinstance(resolve_asr_engine(AiModelFormat.WHISPER_CPP), WhisperCppEngine)
+
+    def test_provider_shorthand(self):
+        from stt_v2.pipeline.dto import ModelRef
+
+        ref = ModelRef.from_value(
+            "whisper.cpp :: oxide-lab/whisper-large-v3-turbo-GGUF"
+        )
+        assert ref.inline.engine == AiModelFormat.WHISPER_CPP
+        assert ref.inline.hf_model_id == "oxide-lab/whisper-large-v3-turbo-GGUF"
+
+    def test_streaming_and_batch_supported(self):
+        # Unlike azure_foundry (batch-only), whisper.cpp supports both modes.
+        from stt_v2.processors import get_registry
+
+        spec = get_registry().spec("asr", "whisper_cpp")
+        assert any(c.streaming for c in spec.capabilities)
+        assert any(c.batch for c in spec.capabilities)
+
+    def test_adapter_contract(self):
+        # pywhispercpp's Model.transcribe() returns segment-level Segment
+        # objects (t0/t1 in 10ms units, no per-word breakdown) — the adapter
+        # forces near-word segmentation (split_on_word + max_len=1) to get
+        # real per-word timing from a single inference pass.
+        import numpy as np
+
+        from stt_v2.models.base_loader import LoadedModel
+        from stt_v2.streaming.whisper_cpp_asr import WhisperCppAsrAdapter
+
+        class FakeSegment:
+            def __init__(self, t0, t1, text, probability=1.0):
+                self.t0 = t0
+                self.t1 = t1
+                self.text = text
+                self.probability = probability
+
+        class FakeModel:
+            def transcribe(self, media, **params):
+                assert params.get("split_on_word") is True
+                assert params.get("max_len") == 1
+                assert params.get("token_timestamps") is True
+                return [
+                    FakeSegment(0, 40, "hello"),
+                    FakeSegment(40, 90, "world"),
+                ]
+
+        loaded = LoadedModel(
+            model_id="m",
+            model_slug="whisper-large-v3-turbo-gguf",
+            model=FakeModel(),
+            format=AiModelFormat.WHISPER_CPP,
+        )
+        from unittest.mock import MagicMock
+
+        adapter = WhisperCppAsrAdapter(loaded, MagicMock(language="en"))
+        out = adapter(np.zeros(16000, dtype=np.float32), 16000)
+
+        assert out["text"] == "hello world"
+        assert len(out["word_timestamps"]) == 2
+        assert out["word_timestamps"][0] == {
+            "word": "hello", "start": 0.0, "end": 0.4, "confidence": 1.0,
+        }
+        assert out["word_timestamps"][1]["start"] == 0.4
+        assert out["segments"][0]["end"] == 0.9
+
+    def test_adapter_rejects_wrong_format(self):
+        from stt_v2.models.base_loader import LoadedModel
+        from stt_v2.streaming.whisper_cpp_asr import WhisperCppAsrAdapter
+
+        loaded = LoadedModel(
+            model_id="m", model_slug="s", model=object(),
+            format=AiModelFormat.FASTER_WHISPER,
+        )
+        with pytest.raises(ValueError, match="WHISPER_CPP"):
+            WhisperCppAsrAdapter(loaded, object())
 
 
 class TestP4EmbeddingDim:

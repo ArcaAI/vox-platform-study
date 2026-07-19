@@ -127,15 +127,21 @@ class TestOpenAICompatProvider:
         p._client = mock_client
         return p
 
-    # -- 3. generate returns content and usage --
+    # -- 3. generate returns content and AD-1 stats --
     @pytest.mark.asyncio
     async def test_generate_returns_content_and_usage(self, provider, mock_client):
+        from smr_v2.models.stats import GenerationStats
+
         mock_client.chat.completions.create.return_value = _mock_completion_response()
 
-        content, _reasoning, usage = await provider.generate(_make_request())
+        content, _reasoning, stats = await provider.generate(_make_request())
 
         assert content == "Hello world"
-        assert usage == {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+        assert isinstance(stats, GenerationStats)
+        assert stats.prompt_tokens == 10
+        assert stats.predicted_tokens == 5
+        assert stats.total_tokens == 15
+        assert stats.stop_reason == "stop"
         mock_client.chat.completions.create.assert_awaited_once()
 
     # -- 4. generate with system prompt --
@@ -212,25 +218,33 @@ class TestOpenAICompatProvider:
         assert results[0].content == "Hello"
         assert results[1].type == "chunk"
         assert results[1].content == " world"
-        assert results[2].type == "done"
-        assert results[2].data == {"finish_reason": "stop"}
+        # drain contract: a usage chunk (full AD-1 stats) then done, done last.
+        assert results[-1].type == "done"
+        assert results[-1].data == {"finish_reason": "stop"}
+        assert [r.type for r in results].count("usage") == 1
+        assert [r.type for r in results].index("usage") < len(results) - 1
 
-    # -- 7. generate_stream handles empty choices with usage --
+    # -- 7. generate_stream drains the trailing usage-only chunk --
     @pytest.mark.asyncio
     async def test_generate_stream_handles_empty_choices(self, provider, mock_client):
+        # REAL OpenAI-wire ordering: the finish chunk arrives BEFORE the
+        # ``stream_options`` usage-only chunk (choices == []). The provider must
+        # drain to completion and still surface that trailing usage.
+        content_chunk = MagicMock()
+        content_chunk.choices = [MagicMock()]
+        content_chunk.choices[0].delta.content = "Hi"
+        content_chunk.choices[0].delta.reasoning_content = None
+        content_chunk.choices[0].delta.reasoning = None
+        content_chunk.choices[0].finish_reason = "stop"
+
         usage_chunk = MagicMock()
         usage_chunk.choices = []
         usage_chunk.usage = MagicMock(
             prompt_tokens=10, completion_tokens=5, total_tokens=15
         )
 
-        content_chunk = MagicMock()
-        content_chunk.choices = [MagicMock()]
-        content_chunk.choices[0].delta.content = "Hi"
-        content_chunk.choices[0].finish_reason = "stop"
-
         mock_client.chat.completions.create.return_value = _async_stream_chunks(
-            [usage_chunk, content_chunk]
+            [content_chunk, usage_chunk]
         )
 
         results: list[StreamChunk] = []
@@ -240,6 +254,11 @@ class TestOpenAICompatProvider:
         usage_chunks = [r for r in results if r.type == "usage"]
         assert len(usage_chunks) == 1
         assert usage_chunks[0].data["total_tokens"] == 15
+        assert usage_chunks[0].data["predicted_tokens"] == 5
+        # usage precedes done, done is last (drained past finish)
+        types = [r.type for r in results]
+        assert types.index("usage") < types.index("done")
+        assert types[-1] == "done"
 
     # -- 8. health_check returns True when healthy --
     @pytest.mark.asyncio

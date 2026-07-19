@@ -79,7 +79,9 @@ class TransformerTextClassifier(TextClassifier):
                 "text-classification",
                 model=self.model,
                 tokenizer=self.tokenizer,
-                device=0 if torch.cuda.is_available() else -1,
+                # TASK-508 D6: config.use_gpu (default True) now gates GPU use;
+                # default preserves today's auto-detect-when-available behavior.
+                device=0 if (self.config.use_gpu and torch.cuda.is_available()) else -1,
             )
 
             # self.label_mapping = self.model.config.id2label

@@ -3,6 +3,7 @@ import { ClsModule } from 'nestjs-cls';
 import { CoreUnitOfWorkService } from '../../unitsOfWork/core/core.unitOfWork';
 import { CoreDatabaseService, VAULT_PRISMA_FACTORY, type VaultPrismaFactory } from './core.database.service';
 
+import { AgentTrajectoryStepRepository } from '../../../repositories/generated/core/AgentTrajectoryStepRepository';
 import { AiModelRepository } from '../../../repositories/generated/core/AiModelRepository';
 import { AiTaskDefaultRepository } from '../../../repositories/generated/core/AiTaskDefaultRepository';
 import { ApiKeyRepository } from '../../../repositories/generated/core/ApiKeyRepository';
@@ -29,6 +30,7 @@ import { HarnessPolicyRepository } from '../../../repositories/generated/core/Ha
 import { HighlightRepository } from '../../../repositories/generated/core/HighlightRepository';
 import { KnowledgeChunkRepository } from '../../../repositories/generated/core/KnowledgeChunkRepository';
 import { KnowledgeDocumentRepository } from '../../../repositories/generated/core/KnowledgeDocumentRepository';
+import { McpServerRepository } from '../../../repositories/generated/core/McpServerRepository';
 import { MediaRepository } from '../../../repositories/generated/core/MediaRepository';
 import { NamedEntityRepository } from '../../../repositories/generated/core/NamedEntityRepository';
 import { NotificationRepository } from '../../../repositories/generated/core/NotificationRepository';
@@ -57,6 +59,7 @@ import { TenantTtsConfigRepository } from '../../../repositories/generated/core/
 import { TenantTtsProviderCredentialRepository } from '../../../repositories/generated/core/TenantTtsProviderCredentialRepository';
 import { TenantUsageMeterRepository } from '../../../repositories/generated/core/TenantUsageMeterRepository';
 import { TranscriptionJobRepository } from '../../../repositories/generated/core/TranscriptionJobRepository';
+import { TranscriptSegmentRepository } from '../../../repositories/generated/core/TranscriptSegmentRepository';
 import { UserDepartmentRepository } from '../../../repositories/generated/core/UserDepartmentRepository';
 import { UserMediaRepository } from '../../../repositories/generated/core/UserMediaRepository';
 import { UserProfileRepository } from '../../../repositories/generated/core/UserProfileRepository';
@@ -95,10 +98,13 @@ const repositories = [
   AudioRecordingRepository,
   SummaryMetaRepository,
   NamedEntityRepository,
+  // TASK-519 — segment-level transcript structure (per-transcript annotation)
+  TranscriptSegmentRepository,
   // TASK-344 Workstream B — manual doctor highlighting
   HighlightRepository,
   // Core domain
   GlobalSettingRepository,
+  McpServerRepository,
   MediaRepository,
   NotificationRepository,
   PermissionRepository,
@@ -156,6 +162,9 @@ const repositories = [
   EvalRunRepository,
   EvalScoreRepository,
   HarnessAuditEventRepository,
+  // Agentic SOTA ordered session trajectory (TASK-510 Phase 2A) — tenant-scoped
+  // ops telemetry, soft-delete + sys-event exempt (see repository/entity docs).
+  AgentTrajectoryStepRepository,
   // Harness Administration Console — editable runtime policy (TASK-330 Phase 6)
   HarnessPolicyRepository,
   HarnessPolicyChangeRepository,

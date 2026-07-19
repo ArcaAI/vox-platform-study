@@ -10,13 +10,34 @@ Covers the two scoring paths:
 from __future__ import annotations
 
 from harness.eval.draft_eval import (
+    candidate_concepts_for_case,
     harness_draft_to_golden_case,
     score_draft_with_sensors,
     score_golden_set_with_sensors,
 )
 from harness.eval.golden.sources import default_golden_set_source
+from harness.eval.models import GoldenCase
 from harness.sensors.base import NEREntity
 from harness.sensors.registry import COMPUTATIONAL_SENSOR_NAMES
+
+
+class TestCandidateConceptPolarity:
+    def test_absent_candidate_concept_excluded_from_concept_f1_set(self):
+        # TASK-518 — a note that correctly says "no metformin" (ABSENT) must not
+        # contribute the metformin concept to the positive-claim recall check.
+        case = GoldenCase(
+            case_id="polarity-1",
+            source_documents=["x"],
+            generated_note="{}",
+            metadata={
+                "candidate_concepts": [
+                    {"cui": "C0004057"},  # PRESENT (assertion omitted ⇒ PRESENT)
+                    {"cui": "C0025598", "assertion": "ABSENT"},  # negated metformin
+                ]
+            },
+        )
+        keys = {c.cui for c in candidate_concepts_for_case(case)}
+        assert keys == {"C0004057"}
 
 
 class TestHarnessDraftToGoldenCase:

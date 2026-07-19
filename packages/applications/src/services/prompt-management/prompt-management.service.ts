@@ -32,6 +32,7 @@ import {
   CreatePromptTemplateRequest,
   UpdatePromptTemplateRequest,
   AssignDepartmentPromptRequest,
+  ApprovePromptTemplateRequest,
   TestPromptTemplateRequest,
   PromptTestResultResponse,
   PromptUsageAnalyticsResponse,
@@ -54,6 +55,7 @@ import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { IUserProfileService } from '../user/userProfile/IUserProfileService';
 import { DepartmentResponse } from '../department/dto';
 import { BaseService } from '../../common';
+import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 
 const SCOPE_TENANT_DEFAULT = 'TENANT_DEFAULT';
@@ -399,6 +401,64 @@ export class PromptManagementService extends BaseService implements IPromptManag
         previousVersion,
         newVersion: updated.version,
       },
+    });
+
+    return PromptManagementDtoMapper.toTemplateResponse(updated);
+  }
+
+  /**
+   * TASK-511 (Phase 3A) — prompt governance approval (GLOBAL_ADMIN only).
+   *
+   * Flips the template to `status = APPROVED` (the gate `prompt-resolution`
+   * requires for clinical flows), PINS a `PromptVersion` snapshot of the
+   * approved content, and emits the audit sys-event — the version-pin + the OCC
+   * compare-and-set commit (or roll back) together in a single interactive
+   * transaction (mirrors `updatePromptTemplate`). Idempotent: approving an
+   * already-APPROVED template is a no-op that returns the current row.
+   *
+   * GLOBAL_ADMIN is a privilege rule → `ForbiddenException` (403), not the
+   * 404-over-403 cross-tenant posture (cross-tenant existence is still hidden by
+   * `assertOwnedByTenant`, which runs first for a global admin scoped to a tenant).
+   *
+   * @throws ForbiddenException — caller is not a global admin (403).
+   * @throws OptimisticConcurrencyException — version drift; HTTP 412.
+   */
+  async approveTemplate(id: string, dto: ApprovePromptTemplateRequest): Promise<PromptTemplateResponse> {
+    if (!isSuperAdmin(this.requestUser)) {
+      throw new ForbiddenException('Prompt-template approval is managed by global administrators only.');
+    }
+
+    const template = await this.promptTemplateRepository.findById(id);
+    if (!template) throw new NotFoundException(`Prompt template ${id} not found`);
+    this.assertOwnedByTenant(template, id);
+
+    // Idempotent — already approved: no version-pin, no audit noise.
+    if (template.status === 'APPROVED') {
+      return PromptManagementDtoMapper.toTemplateResponse(template);
+    }
+
+    template.status = 'APPROVED';
+    const previousVersion = template.version;
+    const userId = this.requestUserId;
+
+    const updated = await this.databaseService.baseClient.$transaction(async (tx) => {
+      const maxVersionNumber = await this.promptVersionRepository.findMaxVersionNumber(id, tx);
+      const version = PromptVersionFactory.CreatePromptVersion({
+        tenantId: template.tenantId,
+        promptTemplateId: id,
+        versionNumber: maxVersionNumber + 1,
+        content: template.content,
+        variables: template.variables,
+        changeReason: dto.reason ?? 'Approved for clinical use (TASK-511)',
+        changedBy: userId ?? null,
+      });
+      await this.promptVersionRepository.create(version, tx);
+      return this.promptTemplateRepository.updateWithVersion(id, template, dto.expectedVersion, tx);
+    });
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: id,
+      data: { action: 'approve', status: 'APPROVED', previousVersion, newVersion: updated.version, reason: dto.reason ?? null },
     });
 
     return PromptManagementDtoMapper.toTemplateResponse(updated);

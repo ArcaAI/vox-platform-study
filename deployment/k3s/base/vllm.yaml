@@ -1,0 +1,124 @@
+# hope-vllm — production primary chat/summarization engine (TASK-508 Phase 4 /
+# TASK-513). vLLM serves the OpenAI wire (continuous batching, automatic prefix
+# caching, native structured outputs, Prometheus /metrics); SMR reaches it via
+# its first-class `vllm` provider at SMR_V2_VLLM_BASE_URL=http://hope-vllm:8000/v1.
+#
+# A StatefulSet (like hope-ollama) so the HuggingFace weights cache persists on a
+# PVC across restarts instead of re-downloading multi-GB safetensors. Requires a
+# GPU node with the NVIDIA device plugin + `nvidia` runtimeClass. The image is a
+# third-party pinned tag (NOT rewritten by the registry component, NOT `latest`);
+# bump to a build validated on the target hardware (see docs/operations/inference).
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: hope-vllm
+  labels:
+    app: hope-vllm
+    app.kubernetes.io/part-of: project-hope
+spec:
+  serviceName: hope-vllm
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hope-vllm
+  template:
+    metadata:
+      labels:
+        app: hope-vllm
+    spec:
+      runtimeClassName: nvidia
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:v0.11.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--model"
+            - "$(VLLM_MODEL)"
+            - "--served-model-name"
+            - "$(VLLM_MODEL)"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "8000"
+            - "--max-model-len"
+            - "$(VLLM_MAX_MODEL_LEN)"
+            - "--gpu-memory-utilization"
+            - "$(VLLM_GPU_MEM_UTIL)"
+          ports:
+            - containerPort: 8000
+          env:
+            # Overlay-patchable; the served model + engine sizing per hardware tier.
+            - name: VLLM_MODEL
+              value: "Qwen/Qwen3-8B"
+            - name: VLLM_MAX_MODEL_LEN
+              value: "8192"
+            - name: VLLM_GPU_MEM_UTIL
+              value: "0.90"
+            - name: HF_HOME
+              value: "/data"
+            # Optional: a gated-model download token. Ungated models ignore it.
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hope-secrets
+                  key: HF_TOKEN
+                  optional: true
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          # Weights download on first boot, so the startup probe is generous.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            failureThreshold: 120
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 10
+          resources:
+            requests:
+              cpu: "2"
+              memory: "8Gi"
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "8"
+              memory: "32Gi"
+              nvidia.com/gpu: "1"
+  volumeClaimTemplates:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 100Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hope-vllm
+  labels:
+    app: hope-vllm
+spec:
+  clusterIP: None
+  selector:
+    app: hope-vllm
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000

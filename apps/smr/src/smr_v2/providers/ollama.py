@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
 import structlog
@@ -14,6 +15,7 @@ from smr_v2.core.defaults import resolve_request_defaults
 from smr_v2.core.telemetry import get_tracer
 from smr_v2.models.provider import ModelInfo, ProviderInfo
 from smr_v2.models.requests import GenerateRequest
+from smr_v2.models.stats import GenerationStats, stats_from_ollama_response
 from smr_v2.models.stream import StreamChunk
 
 if TYPE_CHECKING:
@@ -26,8 +28,10 @@ def _get_tracer() -> Tracer:
     return get_tracer(__name__)
 
 
-def _split_inline_think(text: str, in_think: bool) -> tuple[list[tuple[str, str]], bool]:
-    segments: list[tuple[str, str]] = []
+def _split_inline_think(
+    text: str, in_think: bool
+) -> tuple[list[tuple[Literal["chunk", "reasoning"], str]], bool]:
+    segments: list[tuple[Literal["chunk", "reasoning"], str]] = []
     remaining = text
     while remaining:
         tag = "</think>" if in_think else "<think>"
@@ -83,13 +87,14 @@ class OllamaProvider:
 
         return payload
 
-    async def generate(self, request: GenerateRequest) -> tuple[str, dict[str, Any]]:
+    async def generate(self, request: GenerateRequest) -> tuple[str, str, GenerationStats]:
         resolved = resolve_request_defaults(request)
+        resolved_model = self._resolve_model(request)
         with _get_tracer().start_as_current_span(
             "gen_ai.generate",
             attributes={
                 "gen_ai.system": "ollama",
-                "gen_ai.request.model": self._resolve_model(request) or "",
+                "gen_ai.request.model": resolved_model or "",
                 "gen_ai.operation.name": "generate",
                 "gen_ai.request.temperature": resolved["temperature"],
                 "gen_ai.request.max_tokens": resolved["max_tokens"],
@@ -97,18 +102,24 @@ class OllamaProvider:
         ) as span:
             url = f"{self._base_url}/api/generate"
             payload = self._build_payload(request, stream=False)
+            start = time.monotonic()
             resp = await self._http.post(url, json=payload)
             resp.raise_for_status()
             data = resp.json()
-            usage = {
-                "prompt_tokens": data.get("prompt_eval_count", 0),
-                "completion_tokens": data.get("eval_count", 0),
-                "total_tokens": data.get("prompt_eval_count", 0) + data.get("eval_count", 0),
-            }
-            span.set_attribute("gen_ai.usage.input_tokens", usage["prompt_tokens"])
-            span.set_attribute("gen_ai.usage.output_tokens", usage["completion_tokens"])
-            span.set_attribute("gen_ai.response.finish_reason", "stop")
-            return data.get("response", ""), data.get("thinking", ""), usage
+            total_ms = int((time.monotonic() - start) * 1000)
+            # Ollama reports the real ``done_reason`` + nanosecond durations; the
+            # builder normalizes the stop reason and keeps the raw blob in
+            # ``engine_native`` (engine-preferred throughput from eval durations).
+            stats = stats_from_ollama_response(
+                provider="ollama",
+                model=resolved_model or "",
+                data=data,
+                total_ms=total_ms,
+            )
+            span.set_attribute("gen_ai.usage.input_tokens", stats.prompt_tokens)
+            span.set_attribute("gen_ai.usage.output_tokens", stats.predicted_tokens)
+            span.set_attribute("gen_ai.response.finish_reason", stats.stop_reason_raw or "stop")
+            return data.get("response", ""), data.get("thinking", ""), stats
 
     async def generate_stream(self, request: GenerateRequest) -> AsyncIterator[StreamChunk]:
         resolved = resolve_request_defaults(request)
@@ -124,7 +135,10 @@ class OllamaProvider:
         ) as span:
             url = f"{self._base_url}/api/generate"
             payload = self._build_payload(request, stream=True)
+            resolved_model = self._resolve_model(request)
             in_inline_think = False
+            start = time.monotonic()
+            ttft_ms: int | None = None
 
             async with self._http.stream("POST", url, json=payload) as resp:
                 resp.raise_for_status()
@@ -133,23 +147,33 @@ class OllamaProvider:
                         continue
                     data = json.loads(line)
                     if data.get("done"):
-                        usage = {
-                            "prompt_tokens": data.get("prompt_eval_count", 0),
-                            "completion_tokens": data.get("eval_count", 0),
-                            "total_tokens": data.get("prompt_eval_count", 0) + data.get("eval_count", 0),
-                        }
-                        span.set_attribute("gen_ai.usage.input_tokens", usage["prompt_tokens"])
-                        span.set_attribute("gen_ai.usage.output_tokens", usage["completion_tokens"])
-                        span.set_attribute("gen_ai.response.finish_reason", "stop")
-                        yield StreamChunk(type="usage", data=usage)
-                        yield StreamChunk(type="done", data={"finish_reason": "stop"})
+                        # Final Ollama object carries the real ``done_reason`` +
+                        # durations. Build full AD-1 stats and emit ONE usage chunk
+                        # then done (drain-complete: no early-return mid-stream).
+                        total_ms = int((time.monotonic() - start) * 1000)
+                        stats = stats_from_ollama_response(
+                            provider="ollama",
+                            model=resolved_model or "",
+                            data=data,
+                            total_ms=total_ms,
+                            ttft_ms=ttft_ms,
+                        )
+                        span.set_attribute("gen_ai.usage.input_tokens", stats.prompt_tokens)
+                        span.set_attribute("gen_ai.usage.output_tokens", stats.predicted_tokens)
+                        span.set_attribute("gen_ai.response.finish_reason", stats.stop_reason_raw or "stop")
+                        yield StreamChunk(type="usage", data=stats.model_dump())
+                        yield StreamChunk(type="done", data={"finish_reason": stats.stop_reason_raw or "stop"})
                         return
                     thinking = data.get("thinking", "")
                     if thinking:
+                        if ttft_ms is None:
+                            ttft_ms = int((time.monotonic() - start) * 1000)
                         yield StreamChunk(type="reasoning", content=thinking)
                     text = data.get("response", "")
                     if not text:
                         continue
+                    if ttft_ms is None:
+                        ttft_ms = int((time.monotonic() - start) * 1000)
                     if not thinking:
                         segments, in_inline_think = _split_inline_think(text, in_inline_think)
                         for chunk_type, chunk_text in segments:

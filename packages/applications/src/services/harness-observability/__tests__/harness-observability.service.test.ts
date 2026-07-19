@@ -17,7 +17,7 @@ const TENANT = 'tenant-1';
 const auditRepository = { getChainForTenant: vi.fn(), getByConsultation: vi.fn() };
 const evalRunRepository = { count: vi.fn(), findAll: vi.fn() };
 const evalScoreRepository = { getByEvalRun: vi.fn() };
-const consultationRepository = { findPendingReviewForTenant: vi.fn() };
+const consultationRepository = { findPendingReviewForTenant: vi.fn(), findAll: vi.fn() };
 const policyRepository = { findActiveForTenant: vi.fn() };
 const contextItemRepository = {
   findLatestRawSummary: vi.fn(),
@@ -261,10 +261,76 @@ describe('HarnessObservabilityService', () => {
     });
   });
 
-  describe('getEditBurden (TASK-482 E3 — S3-F7)', () => {
+  describe('getEditBurden (TASK-482 E3 — S3-F7; tenancy fix TASK-508 0-F)', () => {
     const CONSULTATION = 'consult-1';
     const delivered = new Date('2026-07-10T10:00:00.000Z');
     const signed = new Date('2026-07-10T10:30:00.000Z');
+
+    beforeEach(() => {
+      // Default: the consultation exists in-tenant. Tests that need the
+      // not-found path override this per-case.
+      consultationRepository.findAll.mockResolvedValue([{ id: CONSULTATION, tenantId: TENANT }]);
+    });
+
+    it('verifies the consultation exists in-tenant via the repository before computing burden', async () => {
+      auditRepository.getByConsultation.mockResolvedValue([]);
+
+      const service = makeServiceWithEditBurden();
+      await service.getEditBurden(TENANT, CONSULTATION);
+
+      expect(consultationRepository.findAll).toHaveBeenCalledWith({ filters: { tenantId: TENANT, id: CONSULTATION }, limit: 1 });
+    });
+
+    it('returns a normal 200 zeroed response for an in-tenant consultation with no recorded activity yet (does NOT throw)', async () => {
+      consultationRepository.findAll.mockResolvedValue([{ id: CONSULTATION, tenantId: TENANT }]);
+      auditRepository.getByConsultation.mockResolvedValue([]);
+
+      const service = makeServiceWithEditBurden();
+      const result = await service.getEditBurden(TENANT, CONSULTATION);
+
+      expect(result.consultationId).toBe(CONSULTATION);
+      expect(result.gateDecisionTotal).toBe(0);
+      expect(result.deliveredAt).toBeNull();
+      expect(result.signedAt).toBeNull();
+    });
+
+    it('throws DataNotFoundException for a nonexistent consultationId', async () => {
+      consultationRepository.findAll.mockResolvedValue([]);
+
+      const service = makeServiceWithEditBurden();
+      await expect(service.getEditBurden(TENANT, 'nonexistent')).rejects.toBeInstanceOf(DataNotFoundException);
+      // The audit trail must never be queried once existence fails.
+      expect(auditRepository.getByConsultation).not.toHaveBeenCalled();
+    });
+
+    it('throws the SAME not-found exception for a consultation belonging to another tenant — no distinguishable signal from "nonexistent"', async () => {
+      // The repository call is tenant-filtered (`filters: { tenantId, id }`), so a
+      // row that exists but belongs to a different tenant yields the same empty
+      // result as a truly nonexistent id — this IS the 404-over-403 mechanism.
+      consultationRepository.findAll.mockResolvedValue([]);
+      const service = makeServiceWithEditBurden();
+
+      let nonexistentError: unknown;
+      try {
+        await service.getEditBurden(TENANT, 'nonexistent');
+      } catch (error) {
+        nonexistentError = error;
+      }
+
+      let crossTenantError: unknown;
+      try {
+        await service.getEditBurden(TENANT, 'belongs-to-another-tenant');
+      } catch (error) {
+        crossTenantError = error;
+      }
+
+      expect(nonexistentError).toBeInstanceOf(DataNotFoundException);
+      expect(crossTenantError).toBeInstanceOf(DataNotFoundException);
+      // Identical exception class AND persistence error code — cross-tenant is
+      // indistinguishable from missing.
+      expect((crossTenantError as Error).constructor).toBe((nonexistentError as Error).constructor);
+      expect((crossTenantError as DataNotFoundException).code).toBe((nonexistentError as DataNotFoundException).code);
+    });
 
     it('derives edit distance, deferral rate, and time-to-sign from persisted rows', async () => {
       auditRepository.getByConsultation.mockResolvedValue([

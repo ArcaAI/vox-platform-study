@@ -13,6 +13,8 @@ export interface INamedEntityEntity extends IBaseTenantEntity {
   normalizedText?: string | null;
   startOffset?: number | null;
   endOffset?: number | null;
+  // TASK-518 — negation/assertion polarity (PRESENT|ABSENT|HISTORICAL|FAMILY|HYPOTHETICAL).
+  assertion?: string | null;
   confidence?: number | null;
   aiModelId?: string | null;
   aiModelVersion?: string | null;
@@ -46,6 +48,7 @@ export class NamedEntityEntity extends BaseTenantEntity {
   private _normalizedText?: INamedEntityEntity['normalizedText'];
   private _startOffset?: INamedEntityEntity['startOffset'];
   private _endOffset?: INamedEntityEntity['endOffset'];
+  private _assertion?: INamedEntityEntity['assertion'];
   private _confidence?: INamedEntityEntity['confidence'];
   private _aiModelId?: INamedEntityEntity['aiModelId'];
   private _aiModelVersion?: INamedEntityEntity['aiModelVersion'];
@@ -73,6 +76,7 @@ export class NamedEntityEntity extends BaseTenantEntity {
     this._normalizedText = init.normalizedText;
     this._startOffset = init.startOffset;
     this._endOffset = init.endOffset;
+    this._assertion = init.assertion;
     this._confidence = init.confidence;
     this._aiModelId = init.aiModelId;
     this._aiModelVersion = init.aiModelVersion;
@@ -143,6 +147,15 @@ export class NamedEntityEntity extends BaseTenantEntity {
 
   set endOffset(value: INamedEntityEntity['endOffset']) {
     this.setProperty('endOffset', value);
+  }
+
+  // TASK-518 — negation/assertion polarity. Read as PRESENT when null.
+  get assertion(): INamedEntityEntity['assertion'] {
+    return this._assertion;
+  }
+
+  set assertion(value: INamedEntityEntity['assertion']) {
+    this.setProperty('assertion', value);
   }
 
   get confidence(): INamedEntityEntity['confidence'] {

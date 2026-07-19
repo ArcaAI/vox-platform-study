@@ -80,7 +80,7 @@ function captureExtensionConfig(opts: {
 // ---------------------------------------------------------------------------
 
 describe('TENANT_SCOPED_MODELS allow-list', () => {
-  it('contains the 51 tenant-scoped models currently defined in db_main/*.prisma', () => {
+  it('contains the 54 tenant-scoped models currently defined in db_main/*.prisma', () => {
     // The allow-list tracks SCHEMA TRUTH (every model here has a tenantId
     // scalar), not the audit's 30-name wish-list. The User* identity tables
     // are intentionally excluded — `User` is global by design (§B6 /
@@ -103,9 +103,13 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // TASK-498 added the tenant-scoped external OIDC identity provider
     // TenantIdentityProvider + FederatedIdentity + TenantIdentityProviderDomain
     // → 50. TASK-506 added the per-tenant task-default selector AiTaskDefault
-    // → 51. (The drift guard below is the durable check; this count stays as
-    // a quick human-readable tripwire.)
-    expect(TENANT_SCOPED_MODELS.size).toBe(51);
+    // → 51. TASK-510 Phase 2A added the ordered session-trajectory telemetry
+    // AgentTrajectoryStep → 52. TASK-519 added the segment-level transcript
+    // annotation TranscriptSegment → 53. TASK-516 Phase 5 added the MCP
+    // external-tools registry McpServer (SYSTEM-shared read; global-admin
+    // writes) → 54. (The drift guard below is the durable check; this count
+    // stays as a quick human-readable tripwire.)
+    expect(TENANT_SCOPED_MODELS.size).toBe(54);
   });
 
   it('includes every PHI-bearing model', () => {
@@ -255,6 +259,9 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
       // TASK-506 — AiTaskDefault's SYSTEM-tenant rows are the platform default
       // model per AI task (guardrail.validate / nlp.*) every tenant's
       // getEffective merges under its own row; writes are NOT widened.
+      // TASK-516 — McpServer's SYSTEM-tenant rows are the shared external-tools
+      // registry every tenant's harness run reads to resolve a server; writes
+      // are NOT widened (registry mutation is global-admin only).
       new Set([
         'AsrPipeline',
         'AiModel',
@@ -263,6 +270,7 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         'GlobalSetting',
         'TenantTtsConfig',
         'AiTaskDefault',
+        'McpServer',
       ]),
     );
   });

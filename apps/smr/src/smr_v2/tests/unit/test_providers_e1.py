@@ -110,11 +110,11 @@ class TestOllamaTokenUsage:
         mock_resp.raise_for_status = MagicMock()
         mock_http.post = AsyncMock(return_value=mock_resp)
 
-        content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hello"))
+        content, _reasoning, stats = await provider.generate(GenerateRequest(prompt="hello"))
         assert content == "Hello!"
-        assert usage["prompt_tokens"] == 10
-        assert usage["completion_tokens"] == 20
-        assert usage["total_tokens"] == 30
+        assert stats.prompt_tokens == 10
+        assert stats.predicted_tokens == 20
+        assert stats.total_tokens == 30
 
     @pytest.mark.asyncio
     async def test_generate_handles_missing_usage_fields(self):
@@ -124,11 +124,11 @@ class TestOllamaTokenUsage:
         mock_resp.raise_for_status = MagicMock()
         mock_http.post = AsyncMock(return_value=mock_resp)
 
-        content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hello"))
+        content, _reasoning, stats = await provider.generate(GenerateRequest(prompt="hello"))
         assert content == "Hi"
-        assert usage["prompt_tokens"] == 0
-        assert usage["completion_tokens"] == 0
-        assert usage["total_tokens"] == 0
+        assert stats.prompt_tokens == 0
+        assert stats.predicted_tokens == 0
+        assert stats.total_tokens == 0
 
 
 # ── Azure OpenAI Provider ──
@@ -152,7 +152,7 @@ class TestAzurePayloadDefaults:
     async def test_none_hyperparams_get_defaults(self):
         provider = self._make_provider()
         mock_resp = MagicMock()
-        mock_resp.choices = [MagicMock(message=MagicMock(content="Hi"))]
+        mock_resp.choices = [MagicMock(message=MagicMock(content="Hi"), finish_reason="stop")]
         mock_resp.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
         provider._client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
@@ -168,7 +168,7 @@ class TestAzurePayloadDefaults:
     async def test_explicit_hyperparams_preserved(self):
         provider = self._make_provider()
         mock_resp = MagicMock()
-        mock_resp.choices = [MagicMock(message=MagicMock(content="Hi"))]
+        mock_resp.choices = [MagicMock(message=MagicMock(content="Hi"), finish_reason="stop")]
         mock_resp.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
         provider._client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
@@ -200,7 +200,7 @@ class TestAzureResponseFormat:
         provider = self._make_provider()
         schema = {"type": "object", "properties": {"plan": {"type": "string"}}, "title": "ClinicalNote"}
         mock_resp = MagicMock()
-        mock_resp.choices = [MagicMock(message=MagicMock(content='{"plan":"rest"}'))]
+        mock_resp.choices = [MagicMock(message=MagicMock(content='{"plan":"rest"}'), finish_reason="stop")]
         mock_resp.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
         provider._client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
@@ -221,7 +221,7 @@ class TestAzureResponseFormat:
     async def test_no_response_format_omits_param(self):
         provider = self._make_provider()
         mock_resp = MagicMock()
-        mock_resp.choices = [MagicMock(message=MagicMock(content="Hi"))]
+        mock_resp.choices = [MagicMock(message=MagicMock(content="Hi"), finish_reason="stop")]
         mock_resp.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
         provider._client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
@@ -250,15 +250,15 @@ class TestAzureTokenUsage:
     async def test_generate_returns_tuple_with_usage(self):
         provider = self._make_provider()
         mock_resp = MagicMock()
-        mock_resp.choices = [MagicMock(message=MagicMock(content="Summary here"))]
+        mock_resp.choices = [MagicMock(message=MagicMock(content="Summary here"), finish_reason="stop")]
         mock_resp.usage = MagicMock(prompt_tokens=50, completion_tokens=100, total_tokens=150)
         provider._client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
-        content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hello"))
+        content, _reasoning, stats = await provider.generate(GenerateRequest(prompt="hello"))
         assert content == "Summary here"
-        assert usage["prompt_tokens"] == 50
-        assert usage["completion_tokens"] == 100
-        assert usage["total_tokens"] == 150
+        assert stats.prompt_tokens == 50
+        assert stats.predicted_tokens == 100
+        assert stats.total_tokens == 150
 
 
 # ── Bedrock Provider ──
@@ -341,11 +341,11 @@ class TestBedrockTokenUsage:
             "usage": {"inputTokens": 25, "outputTokens": 50},
         }
 
-        content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hello"))
+        content, _reasoning, stats = await provider.generate(GenerateRequest(prompt="hello"))
         assert content == "Summary"
-        assert usage["prompt_tokens"] == 25
-        assert usage["completion_tokens"] == 50
-        assert usage["total_tokens"] == 75
+        assert stats.prompt_tokens == 25
+        assert stats.predicted_tokens == 50
+        assert stats.total_tokens == 75
 
     @pytest.mark.asyncio
     async def test_generate_handles_missing_usage(self):
@@ -354,7 +354,7 @@ class TestBedrockTokenUsage:
             "output": {"message": {"content": [{"text": "Hi"}]}},
         }
 
-        content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hello"))
+        content, _reasoning, stats = await provider.generate(GenerateRequest(prompt="hello"))
         assert content == "Hi"
-        assert usage["prompt_tokens"] == 0
-        assert usage["completion_tokens"] == 0
+        assert stats.prompt_tokens == 0
+        assert stats.predicted_tokens == 0

@@ -218,6 +218,11 @@ const createMockRedisCache = () => {
     };
 };
 
+// TASK-519 — transcript-segment reader for assemble StrictCitations refs.
+const createMockTranscriptSegmentRepository = () => ({
+    findByContextItem: vi.fn().mockResolvedValue([]),
+});
+
 describe('HarnessInternalService', () => {
     let service: HarnessInternalService;
     let cls: ReturnType<typeof createMockClsService>;
@@ -247,11 +252,14 @@ describe('HarnessInternalService', () => {
     // TASK-466 (C1-03) — optional `redisCache` (16th arg) so the idempotency-dedup
     // tests wire a real cache-behaving stub; existing fixtures pass 15 args and the
     // trailing @Optional() ctor param stays undefined (dedup no-ops, exact prior path).
+    // TASK-519 — optional `transcriptSegmentRepository` (17th arg) for assemble
+    // segment-citation refs + citationsMap enrichment; unwired ⇒ empty refs.
     const buildService = (
         warmStartEnabled = false,
         configResolver?: ReturnType<typeof createMockConfigResolver>,
         withSecrets = true,
         redisCache?: ReturnType<typeof createMockRedisCache>,
+        transcriptSegmentRepository?: ReturnType<typeof createMockTranscriptSegmentRepository>,
     ) => {
         configService = createMockConfigService(warmStartEnabled);
         return new HarnessInternalService(
@@ -271,6 +279,7 @@ describe('HarnessInternalService', () => {
             contextItemVersionRepository as any,
             withSecrets ? (secretsService as any) : undefined,
             redisCache as any,
+            transcriptSegmentRepository as any,
         );
     };
 
@@ -705,6 +714,74 @@ describe('HarnessInternalService', () => {
 
             const call = (promptAssemblyService.assemble as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
             expect(call.dnaStyleId).toBeUndefined();
+        });
+
+        // ── TASK-519 — PHI-safe segment citation refs on assemble ────────────
+        it('returns PHI-safe segmentCitations when a single transcript has segments', async () => {
+            const transcriptSegmentRepository = createMockTranscriptSegmentRepository();
+            transcriptSegmentRepository.findByContextItem.mockResolvedValue([
+                {
+                    id: 'seg-a',
+                    idx: 0,
+                    speaker: 'CLINICIAN',
+                    t0Ms: 0,
+                    t1Ms: 1200,
+                    charStart: 0,
+                    charEnd: 20,
+                },
+                {
+                    id: 'seg-b',
+                    idx: 1,
+                    speaker: 'PATIENT',
+                    t0Ms: 1200,
+                    t1Ms: 3400,
+                    charStart: 20,
+                    charEnd: 40,
+                },
+            ]);
+            service = buildService(false, undefined, true, undefined, transcriptSegmentRepository);
+
+            const result = await service.assemble('consultation-1', { tenantId: 'tenant-1' });
+
+            expect(transcriptSegmentRepository.findByContextItem).toHaveBeenCalledWith('tenant-1', 'tx-1');
+            expect(result.segmentCitations).toEqual([
+                { id: 'seg-a', idx: 0, speaker: 'CLINICIAN', t0Ms: 0, t1Ms: 1200 },
+                { id: 'seg-b', idx: 1, speaker: 'PATIENT', t0Ms: 1200, t1Ms: 3400 },
+            ]);
+            // PHI posture: structural hints only — never char offsets or plaintext.
+            for (const ref of result.segmentCitations ?? []) {
+                expect(ref).not.toHaveProperty('charStart');
+                expect(ref).not.toHaveProperty('charEnd');
+                expect(ref).not.toHaveProperty('text');
+                expect(ref).not.toHaveProperty('content');
+            }
+        });
+
+        it('returns empty segmentCitations when consultation has multiple transcripts', async () => {
+            contextItemRepository.findTranscripts.mockResolvedValue([
+                { id: 'tx-1', content: 'first' },
+                { id: 'tx-2', content: 'second' },
+            ]);
+            const transcriptSegmentRepository = createMockTranscriptSegmentRepository();
+            transcriptSegmentRepository.findByContextItem.mockResolvedValue([
+                { id: 'seg-a', idx: 0, speaker: 'CLINICIAN', t0Ms: 0, t1Ms: 500 },
+            ]);
+            service = buildService(false, undefined, true, undefined, transcriptSegmentRepository);
+
+            const result = await service.assemble('consultation-1', { tenantId: 'tenant-1' });
+
+            expect(result.segmentCitations).toEqual([]);
+            expect(transcriptSegmentRepository.findByContextItem).not.toHaveBeenCalled();
+        });
+
+        it('returns empty segmentCitations when no segments persisted (or repo unwired)', async () => {
+            const withEmptyRepo = createMockTranscriptSegmentRepository();
+            service = buildService(false, undefined, true, undefined, withEmptyRepo);
+            expect((await service.assemble('consultation-1', { tenantId: 'tenant-1' })).segmentCitations).toEqual([]);
+
+            // Unwired (default buildService) — same empty-list contract.
+            service = buildService(false);
+            expect((await service.assemble('consultation-1', { tenantId: 'tenant-1' })).segmentCitations).toEqual([]);
         });
     });
 

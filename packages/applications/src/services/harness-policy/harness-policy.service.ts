@@ -12,8 +12,23 @@ import {
   SYSTEM_TENANT_ID,
 } from '@arcaai/domains';
 import { IActiveUserContext } from '../../interfaces';
+import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { HarnessPolicyResponse, HarnessPolicySource, UpdateHarnessPolicyRequest } from './dto';
+
+/**
+ * TASK-511 (Phase 3A) — the two SMR routing tasks the loop discriminates on:
+ *  - `live`     → the live-documentation delta summariser (`smr.live`).
+ *  - `finalize` → the final/comprehensive summary generator (`smr.finalize`).
+ * `resolveSmrSelection` consults the matching `AiTaskDefault` key FIRST, then
+ * falls back to the legacy `HarnessPolicy.smrProvider/smrModel` cascade.
+ */
+export type SmrRoutingTask = 'live' | 'finalize';
+
+const SMR_TASK_KEY: Record<SmrRoutingTask, string> = {
+  live: 'smr.live',
+  finalize: 'smr.finalize',
+};
 
 /** Ciphertext payloads threaded into the change factory (TASK-369 Phase 3D). */
 interface EncryptedChangePayloads {
@@ -23,9 +38,14 @@ interface EncryptedChangePayloads {
 }
 
 /**
- * The 16 runtime knobs the clinical loop reads. Decoupled from the entity (whose
+ * The runtime knobs the clinical loop reads. Decoupled from the entity (whose
  * getters are non-enumerable) and from the DTO (sparse) so merge / snapshot /
  * apply operate on a single, fully-populated value shape.
+ *
+ * TASK-511 (Phase 3A) appended the seven agentic loop knobs. They are NULLABLE
+ * overrides: null ⇒ the harness env/code default applies (per-field
+ * fallthrough), so the harness only overrides a runtime default when the policy
+ * carries an explicit non-null value.
  */
 export interface HarnessPolicyKnobs {
   entityFaithfulnessThreshold: number;
@@ -44,6 +64,14 @@ export interface HarnessPolicyKnobs {
   gateSlaSeconds: number;
   gateEscalationSeconds: number;
   toolAllowlist: string[] | null;
+  // TASK-511 (Phase 3A) — agentic loop knobs (null ⇒ harness env/code default).
+  optimisticDeliveryEnabled: boolean | null;
+  atomicFactEnabled: boolean | null;
+  retrievalEnabled: boolean | null;
+  warmStartEnabled: boolean | null;
+  nerPriorsEnabled: boolean | null;
+  maxEditReruns: number | null;
+  regenFeedbackEnabled: boolean | null;
 }
 
 const KNOB_KEYS = Object.keys(HARNESS_POLICY_DEFAULTS) as (keyof HarnessPolicyKnobs)[];
@@ -67,6 +95,13 @@ function entityToKnobs(e: HarnessPolicyEntity): HarnessPolicyKnobs {
     gateSlaSeconds: e.gateSlaSeconds,
     gateEscalationSeconds: e.gateEscalationSeconds,
     toolAllowlist: (e.toolAllowlist as string[] | null) ?? null,
+    optimisticDeliveryEnabled: e.optimisticDeliveryEnabled ?? null,
+    atomicFactEnabled: e.atomicFactEnabled ?? null,
+    retrievalEnabled: e.retrievalEnabled ?? null,
+    warmStartEnabled: e.warmStartEnabled ?? null,
+    nerPriorsEnabled: e.nerPriorsEnabled ?? null,
+    maxEditReruns: e.maxEditReruns ?? null,
+    regenFeedbackEnabled: e.regenFeedbackEnabled ?? null,
   };
 }
 
@@ -122,6 +157,10 @@ export class HarnessPolicyService {
     // TASK-369 Phase 3D — optional so fixtures keep their 4-arg construction and
     // non-Vault deployments degrade to plaintext WORM change rows.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-511 (Phase 3A) — optional so existing fixtures keep their 4/5-arg
+    // construction; when absent, `resolveSmrSelection` uses only the legacy
+    // HarnessPolicy cascade (the AiTaskDefault-first path is a no-op).
+    @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
   ) {}
 
   /**
@@ -194,14 +233,40 @@ export class HarnessPolicyService {
    *
    * Throws when the cascade yields no provider/model so the admin-managed
    * default can never be silently bypassed (SMR itself also fail-closes with a
-   * 422). Phase 5 may later re-point this at the generalized `ConfigResolver`
-   * without touching any caller.
+   * 422).
+   *
+   * TASK-511 (Phase 3A) — model-routing precedence (TRACKER D-11): the
+   * `AiTaskDefault` key for the task (`smr.live` / `smr.finalize`) is consulted
+   * FIRST. When it resolves to an ENABLED model, its `{ provider, sourceUri }`
+   * wins (sourceUri is the provider-native identifier actually sent to SMR).
+   * The legacy `HarnessPolicy.smrProvider/smrModel` cascade is the documented
+   * fallback for tenants that have not migrated to AiTaskDefault. D-10 holds:
+   * SMR stays a stateless gateway; the caller model resolved here is authority.
    */
-  async resolveSmrSelection(tenantId?: string): Promise<{ provider: string; model: string }> {
+  async resolveSmrSelection(tenantId?: string, task: SmrRoutingTask = 'finalize'): Promise<{ provider: string; model: string }> {
+    // Precedence 1 — AiTaskDefault (when wired). A resolved model's sourceUri is
+    // the provider-native id SMR expects; provider is the canonical runtime.
+    if (this.aiTaskDefaultService) {
+      try {
+        const eff = await this.aiTaskDefaultService.getEffective(SMR_TASK_KEY[task], tenantId);
+        const model = eff.model;
+        if (model?.provider && model.sourceUri) {
+          return { provider: model.provider, model: model.sourceUri };
+        }
+      } catch (error) {
+        // A misconfigured/unknown task key must not sink the legacy path.
+        this.logger.warn({
+          message: `AiTaskDefault SMR routing lookup failed for '${SMR_TASK_KEY[task]}' — falling back to HarnessPolicy cascade`,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    // Precedence 2 — legacy HarnessPolicy.smrProvider/smrModel cascade.
     const effective = await this.getEffectivePolicy(tenantId);
     if (!effective.smrProvider || !effective.smrModel) {
       throw new BadRequestException(
-        'No SMR model is configured for this tenant. Set HarnessPolicy.smrProvider/smrModel on the tenant or the SYSTEM default.',
+        'No SMR model is configured for this tenant. Configure the AiTaskDefault `smr.finalize`/`smr.live` key or set HarnessPolicy.smrProvider/smrModel on the tenant or the SYSTEM default.',
       );
     }
     return { provider: effective.smrProvider, model: effective.smrModel };

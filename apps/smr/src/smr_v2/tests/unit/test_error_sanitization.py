@@ -273,9 +273,10 @@ class TestProtocolContract:
         assert isinstance(_FakeProvider(), LLMProvider)
 
     def test_protocol_signature_matches_implementations(self):
+        from smr_v2.models.stats import GenerationStats
         from smr_v2.providers.base import LLMProvider
 
         hints = get_type_hints(LLMProvider.generate)
-        assert hints["return"] == tuple[str, str, dict], (
-            f"Expected tuple[str, str, dict], got {hints['return']}"
+        assert hints["return"] == tuple[str, str, GenerationStats], (
+            f"Expected tuple[str, str, GenerationStats], got {hints['return']}"
         )

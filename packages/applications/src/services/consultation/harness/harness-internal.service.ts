@@ -16,7 +16,9 @@ import {
   HarnessAuditAction,
   HighlightRepository,
   ContextItemEntity,
+  TranscriptSegmentRepository,
 } from '@arcaai/domains';
+import { attachSegmentEvidence, type SegmentOffsetRef } from '../lib/transcript-segments';
 import { HarnessAuditService } from '../../harness-audit';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../../baseServices/redis';
@@ -41,6 +43,7 @@ import type {
   HarnessGateDecisionResponse,
   HarnessPersistEntitiesRequest,
   HarnessPersistEntitiesResponse,
+  HarnessSegmentCitationRef,
 } from './dto';
 
 /**
@@ -124,6 +127,14 @@ export class HarnessInternalService {
     // via RedisCacheModule. Absent (or a Redis hiccup) ⇒ best-effort fall-through to
     // normal processing (mirrors TASK-299 D-10).
     @Optional() @Inject(IRedisCacheService) private readonly redisCache?: IRedisCacheService,
+    // TASK-519 — optional + trailing (arity-preserving) segment reader. When
+    // wired, the persisted transcript segments enrich `SummaryMeta.citationsMap`
+    // with sentence-level segment provenance (each evidence span gets the
+    // `segmentId` whose char span contains its transcript offset). Best-effort:
+    // absent repo, no segments, or >1 transcript ⇒ citationsMap is left as-is.
+    @Optional()
+    @Inject(TranscriptSegmentRepository)
+    private readonly transcriptSegmentRepository?: TranscriptSegmentRepository,
   ) {
     const raw = String(this.configService?.get('HARNESS_WARM_START_ENABLED') ?? '')
       .trim()
@@ -177,6 +188,8 @@ export class HarnessInternalService {
             startOffset: entity.startOffset,
             endOffset: entity.endOffset,
             confidence: entity.confidence,
+            // TASK-518 — persist the assertion polarity the harness NER carries.
+            assertion: entity.assertion,
             // TASK-476 C1 — persist the ontology codes the harness NER carries.
             umlsCui: entity.umlsCui,
             snomedCode: entity.snomedCode,
@@ -339,6 +352,11 @@ export class HarnessInternalService {
         promptVersion = template?.currentVersionNumber != null ? String(template.currentVersionNumber) : null;
       }
 
+      // TASK-519 — PHI-safe segment refs for harness finalize StrictCitations.
+      // Same single-transcript gate as citationsMap enrichment; empty when
+      // ambiguous / absent so the prompt stays byte-identical to before.
+      const segmentCitations = await this.loadSegmentCitations(tenantId, transcripts);
+
       return {
         userPrompt: assembled.userPrompt,
         systemPrompt: assembled.systemPrompt,
@@ -347,6 +365,7 @@ export class HarnessInternalService {
         promptTemplateId,
         promptVersion,
         resolvedFrom: assembled.resolvedFrom,
+        segmentCitations,
       };
     });
   }
@@ -407,6 +426,11 @@ export class HarnessInternalService {
         // Gated behind the kill-switch (default OFF): when disabled we skip the
         // lookup and record empty provenance (exact pre-Phase-C behavior).
         const liveSnapshot = this.warmStartEnabled ? await this.loadLiveSoapSnapshot(consultationId) : null;
+        // TASK-519 — enrich the verdict's citation map with per-segment provenance
+        // (LEGACY path only; EARLY withholds citationsMap until finalizeAssurance).
+        const enrichedCitationsMap = isEarly
+          ? null
+          : await this.enrichCitationsWithSegments(consultationId, tenantId, dto.citationsMap ?? null);
         // EARLY: withhold the inferential scores + verdict + assurance marker (they
         // don't exist yet — finalizeAssurance backfills them). LEGACY: full meta +
         // `assuranceCompletedAt` stamped now so the sign-off guard treats the
@@ -419,7 +443,7 @@ export class HarnessInternalService {
           entityFaithfulnessScore: dto.entityFaithfulnessScore ?? null,
           coverageScore: dto.coverageScore ?? null,
           ragTriadScore: isEarly ? null : (dto.ragTriadScore ?? null),
-          citationsMap: (isEarly ? null : (dto.citationsMap ?? null)) as never,
+          citationsMap: (isEarly ? null : (enrichedCitationsMap ?? null)) as never,
           guardrailDecisions: (isEarly ? null : (dto.guardrailDecisions ?? null)) as never,
           gateDecision: isEarly ? null : (dto.gateDecision ?? null),
           assuranceCompletedAt: isEarly ? null : new Date(),
@@ -566,7 +590,14 @@ export class HarnessInternalService {
           );
         }
         meta.ragTriadScore = dto.ragTriadScore ?? null;
-        meta.citationsMap = (dto.citationsMap ?? null) as never;
+        // TASK-519 — enrich the (now-arriving) verdict citation map with segment
+        // provenance before it is persisted + encrypted.
+        const enrichedCitationsMap = await this.enrichCitationsWithSegments(
+          consultationId,
+          tenantId,
+          dto.citationsMap ?? null,
+        );
+        meta.citationsMap = (enrichedCitationsMap ?? null) as never;
         meta.guardrailDecisions = (dto.guardrailDecisions ?? null) as never;
         meta.gateDecision = dto.gateDecision ?? null;
         meta.assuranceCompletedAt = new Date();
@@ -942,6 +973,75 @@ export class HarnessInternalService {
   private extractClaims(citationsMap?: Record<string, unknown> | null): unknown[] {
     const claims = citationsMap?.claims;
     return Array.isArray(claims) ? claims : [];
+  }
+
+  /**
+   * TASK-519 — load PHI-safe segment citation refs for the assemble → generate
+   * StrictCitations path. Returns `[]` when the segment repo is unwired, the
+   * consultation has ≠1 transcript (same ambiguity gate as enrichment), or no
+   * segments are persisted — so callers that omit/empty keep the prior prompt.
+   */
+  private async loadSegmentCitations(
+    tenantId: string,
+    transcripts: Array<{ id: string }>,
+  ): Promise<HarnessSegmentCitationRef[]> {
+    if (!this.transcriptSegmentRepository || transcripts.length !== 1) return [];
+    try {
+      const segments = await this.transcriptSegmentRepository.findByContextItem(tenantId, transcripts[0].id);
+      return segments.map((s) => ({
+        id: s.id,
+        idx: s.idx,
+        speaker: s.speaker ?? null,
+        t0Ms: s.t0Ms ?? null,
+        t1Ms: s.t1Ms ?? null,
+      }));
+    } catch (error) {
+      this.logger.warn({
+        message: 'TASK-519 assemble segmentCitations skipped (best-effort)',
+        tenantId,
+        contextItemId: transcripts[0]?.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+  }
+
+  /**
+   * TASK-519 — annotate each citation evidence span with the transcript
+   * `segmentId` whose [charStart, charEnd) span contains its transcript
+   * `startOffset`, so `SummaryMeta.citationsMap` carries sentence-level segment
+   * provenance (a future console click-to-source can seek the audio via t0/t1).
+   *
+   * Best-effort + non-destructive: returns the map unchanged when the segment
+   * repo is absent, the consultation has no (or >1) transcript (offsets are
+   * per-transcript, so a single unambiguous transcript is required to map by
+   * offset alone), or no segments are persisted.
+   */
+  private async enrichCitationsWithSegments(
+    consultationId: string,
+    tenantId: string,
+    citationsMap?: Record<string, unknown> | null,
+  ): Promise<Record<string, unknown> | null | undefined> {
+    if (!citationsMap || !this.transcriptSegmentRepository) return citationsMap;
+    try {
+      const transcripts = await this.contextItemRepository.findTranscripts(consultationId);
+      if (transcripts.length !== 1) return citationsMap;
+      const segments = await this.transcriptSegmentRepository.findByContextItem(tenantId, transcripts[0].id);
+      if (segments.length === 0) return citationsMap;
+      const refs: SegmentOffsetRef[] = segments.map((s) => ({
+        id: s.id,
+        charStart: s.charStart ?? null,
+        charEnd: s.charEnd ?? null,
+      }));
+      return attachSegmentEvidence(citationsMap, refs);
+    } catch (error) {
+      this.logger.warn({
+        message: 'TASK-519 citationsMap segment enrichment skipped (best-effort)',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return citationsMap;
+    }
   }
 
   /**

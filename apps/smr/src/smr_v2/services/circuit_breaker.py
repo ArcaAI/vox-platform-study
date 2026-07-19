@@ -13,20 +13,47 @@ class CircuitState(StrEnum):
 
 
 class CircuitBreaker:
-    """Simple circuit breaker with failure threshold and recovery timeout."""
+    """Simple circuit breaker with failure threshold and recovery timeout.
 
-    def __init__(self, failure_threshold: int = 5, recovery_timeout: float = 30.0) -> None:
+    ``half_open_max_calls``, ``reset_timeout_s`` and ``count_rate_limits`` wire
+    ``CircuitBreakerConfig`` (TASK-508 D6 dead-config sweep — these three fields
+    were previously defined but never read). Their defaults (``None``, ``None``,
+    ``True``) reproduce this class's exact pre-wiring behavior: unlimited trial
+    calls while HALF_OPEN, no time-based failure-count decay, and every failure
+    (rate-limit or not) counts toward the threshold.
+    """
+
+    def __init__(
+        self,
+        failure_threshold: int = 5,
+        recovery_timeout: float = 30.0,
+        half_open_max_calls: int | None = None,
+        reset_timeout_s: float | None = None,
+        count_rate_limits: bool = True,
+    ) -> None:
         self._failure_threshold = failure_threshold
         self._recovery_timeout = recovery_timeout
+        self._half_open_max_calls = half_open_max_calls
+        self._reset_timeout_s = reset_timeout_s
+        self._count_rate_limits = count_rate_limits
         self._failure_count = 0
         self._last_failure_time: float = 0.0
         self._state = CircuitState.CLOSED
+        self._half_open_calls = 0
 
     @property
     def state(self) -> CircuitState:
         if self._state == CircuitState.OPEN:
             if time.monotonic() - self._last_failure_time >= self._recovery_timeout:
                 self._state = CircuitState.HALF_OPEN
+                self._half_open_calls = 0
+        elif (
+            self._state == CircuitState.CLOSED
+            and self._reset_timeout_s is not None
+            and self._failure_count > 0
+            and time.monotonic() - self._last_failure_time >= self._reset_timeout_s
+        ):
+            self._failure_count = 0
         return self._state
 
     @property
@@ -35,13 +62,22 @@ class CircuitBreaker:
 
     def allow_request(self) -> bool:
         current = self.state
-        return current in (CircuitState.CLOSED, CircuitState.HALF_OPEN)
+        if current == CircuitState.OPEN:
+            return False
+        if current == CircuitState.HALF_OPEN and self._half_open_max_calls is not None:
+            if self._half_open_calls >= self._half_open_max_calls:
+                return False
+            self._half_open_calls += 1
+        return True
 
     def record_success(self) -> None:
         self._failure_count = 0
         self._state = CircuitState.CLOSED
+        self._half_open_calls = 0
 
-    def record_failure(self) -> None:
+    def record_failure(self, *, is_rate_limit: bool = False) -> None:
+        if is_rate_limit and not self._count_rate_limits:
+            return
         self._failure_count += 1
         self._last_failure_time = time.monotonic()
         if self._state == CircuitState.HALF_OPEN:
@@ -53,3 +89,4 @@ class CircuitBreaker:
         self._failure_count = 0
         self._state = CircuitState.CLOSED
         self._last_failure_time = 0.0
+        self._half_open_calls = 0

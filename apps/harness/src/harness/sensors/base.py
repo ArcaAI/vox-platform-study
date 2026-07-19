@@ -69,11 +69,30 @@ class NEREntity(BaseModel):
     rxnorm_code: str | None = None
     icd_code: str | None = None
     loinc_code: str | None = None
+    # TASK-518 — negation/assertion polarity from the NLP assertion pass
+    # (PRESENT|ABSENT|HISTORICAL|FAMILY|HYPOTHETICAL). None ⇒ PRESENT (safe
+    # default). Sensors exclude ABSENT spans from positive-claim checks.
+    assertion: str | None = None
 
     @property
     def normalized(self) -> str:
         """Normalized surface form used for matching across note/transcript."""
         return normalize_text(self.text)
+
+    @property
+    def is_absent(self) -> bool:
+        """True when this mention is explicitly negated (ABSENT)."""
+        return (self.assertion or "").upper() == "ABSENT"
+
+    @property
+    def is_positive_assertion(self) -> bool:
+        """True when the mention makes a positive claim about the patient now.
+
+        Excludes ABSENT (negated), FAMILY (about a relative) and HYPOTHETICAL
+        (conditional) — none should be checked as a positive patient claim.
+        HISTORICAL is still positive (it happened, in the past). None ⇒ PRESENT.
+        """
+        return (self.assertion or "PRESENT").upper() not in {"ABSENT", "FAMILY", "HYPOTHETICAL"}
 
 
 class SensorContext(BaseModel):

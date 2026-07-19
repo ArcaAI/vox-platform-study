@@ -74,6 +74,29 @@ export class HarnessPolicyResponse {
   @ApiPropertyOptional({ description: 'Allow-listed tool ids the loop may call (null = all tools allowed).', type: [String], nullable: true })
   toolAllowlist: string[] | null;
 
+  // ── TASK-511 (Phase 3A) — agentic loop knobs (null ⇒ harness env/code default) ──
+
+  @ApiPropertyOptional({ description: 'Optimistic-delivery loop toggle (null = harness env default).', nullable: true })
+  optimisticDeliveryEnabled: boolean | null;
+
+  @ApiPropertyOptional({ description: 'Atomic-fact decomposition toggle (null = harness env default).', nullable: true })
+  atomicFactEnabled: boolean | null;
+
+  @ApiPropertyOptional({ description: 'Guideline-retrieval toggle (null = harness env default).', nullable: true })
+  retrievalEnabled: boolean | null;
+
+  @ApiPropertyOptional({ description: 'Warm-start toggle (null = harness env default).', nullable: true })
+  warmStartEnabled: boolean | null;
+
+  @ApiPropertyOptional({ description: 'NER-priors toggle (null = harness env default).', nullable: true })
+  nerPriorsEnabled: boolean | null;
+
+  @ApiPropertyOptional({ description: 'Max edit re-runs (null = harness env default).', nullable: true })
+  maxEditReruns: number | null;
+
+  @ApiPropertyOptional({ description: 'Regeneration-feedback toggle (null = harness env default).', nullable: true })
+  regenFeedbackEnabled: boolean | null;
+
   @ApiPropertyOptional({ description: 'Last update timestamp (ISO-8601; null for code-default).', nullable: true })
   updatedAt: string | null;
 

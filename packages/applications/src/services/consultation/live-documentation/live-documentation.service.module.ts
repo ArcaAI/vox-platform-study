@@ -9,6 +9,7 @@ import { StreamingSessionServiceModule } from '../../stt/streaming/streamingSess
 import { LiveDocumentationService } from './live-documentation.service';
 import { OcrEnrichmentProcessor } from '../ocr/ocr-enrichment.processor';
 import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
+import { AgentTrajectoryServiceModule } from '../../agent-trajectory/agent-trajectory.service.module';
 
 /**
  * Live Documentation Service Module (Clinical Workflow Playground — WS1).
@@ -29,7 +30,18 @@ import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.
  * IBlobStorageService + ClsService are global), so no new module is needed.
  */
 @Module({
-  imports: [HttpModule, ConfigModule, CoreDatabaseModule, EventEmitterModule, RedisCacheModule.register(), StreamingSessionServiceModule, HarnessPolicyServiceModule],
+  // TASK-510 §2C/§2D — AgentTrajectoryServiceModule resolves the @Optional
+  // IAgentTrajectoryService emitter dep so the per-flush trajectory goes live.
+  imports: [
+    HttpModule,
+    ConfigModule,
+    CoreDatabaseModule,
+    EventEmitterModule,
+    RedisCacheModule.register(),
+    StreamingSessionServiceModule,
+    HarnessPolicyServiceModule,
+    AgentTrajectoryServiceModule,
+  ],
   providers: [LiveDocumentationService, RedisSubscriberService, OcrEnrichmentProcessor],
   exports: [LiveDocumentationService],
 })

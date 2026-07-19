@@ -59,6 +59,30 @@ TTFT_SECONDS = Histogram(
     buckets=[0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0],
 )
 
+# TASK-509 (AD-1) — decode throughput and normalized stop-reason fleet aggregates.
+TOKENS_PER_SECOND = Histogram(
+    "smr_v2_tokens_per_second",
+    "Predicted tokens per second (decode throughput) per generation",
+    ["provider", "model"],
+    buckets=[1, 2.5, 5, 10, 25, 50, 75, 100, 150, 200, 300, 500],
+)
+
+STOP_REASON_TOTAL = Counter(
+    "smr_v2_stop_reason_total",
+    "Generations by normalized AD-1 stop reason",
+    ["provider", "model", "stop_reason"],
+)
+
+# TASK-513/515 (AD-4) — production-engine prefix/prompt cache visibility. Scraped
+# from the engine's own ``/metrics`` (vLLM prefix-cache counters) and re-exported
+# here as a single SMR-owned gauge so the 4D cache-friendliness dashboard reads
+# one metric name regardless of engine.
+SMR_ENGINE_CACHE_HIT_RATE = Gauge(
+    "smr_engine_cache_hit_rate",
+    "Prefix/prompt cache hit rate of the backing inference engine (0.0-1.0).",
+    ["engine"],
+)
+
 QUEUE_SIZE = Gauge(
     "smr_v2_queue_size",
     "Current queue size per provider",

@@ -26,6 +26,7 @@ from harness.temporal.models import (
     HarnessDocWorkflowInput,
     HarnessGateConfig,
     HarnessPolicy,
+    SegmentCitationRef,
 )
 from harness.temporal.workflows import HarnessDocWorkflow
 from harness.tests.unit.temporal._harness_stubs import (
@@ -149,6 +150,108 @@ class TestBoundedRegen:
         assert recorder.calls["run_sensors"] == 3  # initial + 2 regens
         assert recorder.calls["generate"] == 3
         assert recorder.calls["persist_draft"] == 1
+
+    @pytest.mark.asyncio
+    async def test_regen_iteration_receives_prior_failed_sensor_findings(self):
+        # TASK-517 — the FIRST generate carries no feedback; the REGEN iteration's
+        # generate input carries the prior iteration's failed-sensor critique
+        # (sensor name + the flagged claims), built from the aggregator verdict.
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["REGEN", "PASS"])
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(gate=HarnessGateConfig(max_regen=2)),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        assert recorder.calls["generate"] == 2
+        # First iteration: no critique.
+        assert recorder.generate_inputs[0].regen_feedback is None
+        # Regen iteration: carries the prior iteration's failed-sensor findings.
+        fb = recorder.generate_inputs[1].regen_feedback
+        assert fb is not None
+        sensors = {f.sensor for f in fb.findings}
+        assert "coverage_omission" in sensors  # the regen-fixable sensor that failed
+        finding = next(f for f in fb.findings if f.sensor == "coverage_omission")
+        assert finding.failing_claims == ["omitted-dx"]
+        assert finding.expected_fix  # a non-empty corrective instruction
+
+    @pytest.mark.asyncio
+    async def test_generate_receives_segment_citations_from_assemble(self):
+        # TASK-519 live-path — when assemble returns PHI-safe segment refs, both
+        # GenerateInput sites (main loop + regen helper) must receive them so
+        # ``generate`` can fold the StrictCitations block into the prod prompt.
+        seg_refs = [
+            SegmentCitationRef(id="seg-a", speaker="CLINICIAN", t0_ms=0, t1_ms=1200, idx=0),
+            SegmentCitationRef(id="seg-b", speaker="PATIENT", t0_ms=1200, t1_ms=3400, idx=1),
+        ]
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"], segment_citations=seg_refs)
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        assert recorder.calls["generate"] >= 1
+        cited = recorder.generate_inputs[0].segment_citations
+        assert [c.id for c in cited] == ["seg-a", "seg-b"]
+        assert cited[0].speaker == "CLINICIAN"
+        assert cited[0].idx == 0
+        assert cited[0].t0_ms == 0
+        assert cited[0].t1_ms == 1200
+
+    @pytest.mark.asyncio
+    async def test_regen_feedback_disabled_by_policy_sends_no_critique(self):
+        # TASK-517 — gate on regenFeedbackEnabled: policy False ⇒ the regen prompt
+        # stays byte-identical (no critique) even though a sensor failed.
+        recorder = StubRecorder()
+        policy = HarnessPolicy(max_regen=2, regen_feedback_enabled=False)
+        config = StubConfig(verdicts=["REGEN", "PASS"], policy=policy)
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(gate=HarnessGateConfig(max_regen=2)),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        assert recorder.calls["generate"] == 2
+        assert recorder.generate_inputs[1].regen_feedback is None
 
     @pytest.mark.asyncio
     async def test_regen_budget_exhausted_flags(self):

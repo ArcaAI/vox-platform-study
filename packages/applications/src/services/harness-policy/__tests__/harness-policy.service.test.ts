@@ -57,6 +57,24 @@ function makeService(): HarnessPolicyService {
   );
 }
 
+// TASK-511 (Phase 3A) — service with the AiTaskDefault-first SMR routing wired.
+const aiTaskDefaultService = {
+  getEffective: vi.fn(),
+  getRow: vi.fn(),
+  upsertRow: vi.fn(),
+};
+
+function makeServiceWithAiTaskDefault(): HarnessPolicyService {
+  return new HarnessPolicyService(
+    policyRepository as never,
+    policyChangeRepository as never,
+    databaseService as never,
+    cls as never,
+    undefined, // secretsService
+    aiTaskDefaultService as never,
+  );
+}
+
 /** A SYSTEM global-default entity (the inherited platform default). */
 function systemDefaultEntity() {
   return HarnessPolicyFactory.CreateHarnessPolicy({
@@ -212,6 +230,120 @@ describe('HarnessPolicyService', () => {
       policyRepository.findSystemDefault.mockResolvedValue(null);
 
       await expect(service.resolveSmrSelection()).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  // TASK-511 (Phase 3A) — AiTaskDefault-first SMR routing (TRACKER D-11).
+  describe('resolveSmrSelection — AiTaskDefault precedence', () => {
+    it('consults the smr.finalize AiTaskDefault FIRST and returns its {provider, sourceUri}', async () => {
+      const svc = makeServiceWithAiTaskDefault();
+      aiTaskDefaultService.getEffective.mockResolvedValue({
+        taskKey: 'smr.finalize',
+        modelSlug: 'lms-gemma-4-e2b-it-qat',
+        source: 'system',
+        model: { provider: 'lm-studio', sourceUri: 'gemma-4-e2b-it-qat' },
+      });
+
+      const result = await svc.resolveSmrSelection('tenant-1');
+
+      expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith('smr.finalize', 'tenant-1');
+      expect(result).toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat' });
+      // AiTaskDefault won — the legacy policy cascade must not be consulted.
+      expect(policyRepository.findForExactTenant).not.toHaveBeenCalled();
+    });
+
+    it('maps the live task to the smr.live key', async () => {
+      const svc = makeServiceWithAiTaskDefault();
+      aiTaskDefaultService.getEffective.mockResolvedValue({
+        model: { provider: 'lm-studio', sourceUri: 'gemma-4-e2b-it-qat' },
+      });
+
+      await svc.resolveSmrSelection('tenant-1', 'live');
+
+      expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith('smr.live', 'tenant-1');
+    });
+
+    it('falls back to the legacy HarnessPolicy cascade when AiTaskDefault resolves no model', async () => {
+      const svc = makeServiceWithAiTaskDefault();
+      aiTaskDefaultService.getEffective.mockResolvedValue({ model: null });
+      const sys = HarnessPolicyFactory.CreateHarnessPolicy({
+        tenantId: SYSTEM_TENANT_ID,
+        smrProvider: 'lm-studio',
+        smrModel: 'legacy-model',
+      });
+      policyRepository.findForExactTenant.mockResolvedValue(null);
+      policyRepository.findSystemDefault.mockResolvedValue(sys);
+
+      const result = await svc.resolveSmrSelection('tenant-1');
+
+      expect(result).toEqual({ provider: 'lm-studio', model: 'legacy-model' });
+    });
+
+    it('falls back to the legacy cascade when the AiTaskDefault lookup throws', async () => {
+      const svc = makeServiceWithAiTaskDefault();
+      aiTaskDefaultService.getEffective.mockRejectedValue(new Error('unknown task key'));
+      const sys = HarnessPolicyFactory.CreateHarnessPolicy({
+        tenantId: SYSTEM_TENANT_ID,
+        smrProvider: 'ollama',
+        smrModel: 'granite4:latest',
+      });
+      policyRepository.findForExactTenant.mockResolvedValue(null);
+      policyRepository.findSystemDefault.mockResolvedValue(sys);
+
+      const result = await svc.resolveSmrSelection('tenant-1');
+
+      expect(result).toEqual({ provider: 'ollama', model: 'granite4:latest' });
+    });
+  });
+
+  // TASK-511 (Phase 3A) — agentic loop knob cascade (null ⇒ env default).
+  describe('agentic loop knobs', () => {
+    it('defaults every agentic knob to null on the code-default response', async () => {
+      policyRepository.findForExactTenant.mockResolvedValue(null);
+      policyRepository.findSystemDefault.mockResolvedValue(null);
+
+      const effective = await service.getEffectivePolicy(TENANT);
+
+      expect(effective.source).toBe('code-default');
+      expect(effective.optimisticDeliveryEnabled).toBeNull();
+      expect(effective.atomicFactEnabled).toBeNull();
+      expect(effective.retrievalEnabled).toBeNull();
+      expect(effective.warmStartEnabled).toBeNull();
+      expect(effective.nerPriorsEnabled).toBeNull();
+      expect(effective.maxEditReruns).toBeNull();
+      expect(effective.regenFeedbackEnabled).toBeNull();
+    });
+
+    it('surfaces an explicit tenant-row knob override on the effective policy', async () => {
+      const own = HarnessPolicyFactory.CreateHarnessPolicy({
+        tenantId: TENANT,
+        smrProvider: 'lm-studio',
+        smrModel: 'm',
+        optimisticDeliveryEnabled: true,
+        maxEditReruns: 3,
+        retrievalEnabled: false,
+      });
+      policyRepository.findForExactTenant.mockResolvedValue(own);
+
+      const effective = await service.getEffectivePolicy(TENANT);
+
+      expect(effective.source).toBe('tenant');
+      expect(effective.optimisticDeliveryEnabled).toBe(true);
+      expect(effective.maxEditReruns).toBe(3);
+      expect(effective.retrievalEnabled).toBe(false);
+      // An unset knob stays null (⇒ harness env default).
+      expect(effective.warmStartEnabled).toBeNull();
+    });
+
+    it('applies a sparse agentic-knob patch through updatePolicy', async () => {
+      const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, smrProvider: 'lm-studio', smrModel: 'm' });
+      policyRepository.findForExactTenant.mockResolvedValue(own);
+
+      const result = await service.updatePolicy({ atomicFactEnabled: true, maxEditReruns: 5, expectedVersion: 1 } as never, 1);
+
+      expect(result.atomicFactEnabled).toBe(true);
+      expect(result.maxEditReruns).toBe(5);
+      expect(policyChangeRepository.create).toHaveBeenCalledTimes(1);
     });
   });
 
