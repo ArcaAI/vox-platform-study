@@ -212,6 +212,7 @@ function ConsultationsScreenBody() {
             },
             {
                 id: 'type',
+                accessorFn: (row) => visitTypeOf(row),
                 header: 'Type',
                 enableSorting: false,
                 enableHiding: false,

@@ -156,6 +156,7 @@ function DetailSkeleton() {
 function DoctorMeta({ report }: { report: DnaReport }) {
     return (
         <>
+            <span className="text-muted-foreground">Report ID</span>
             <span className="font-mono break-all">{report.id}</span>
             <CopyButton value={report.id} label="Copy report id" />
             <span aria-hidden>&middot;</span>
@@ -233,14 +234,14 @@ export function DoctorDetailDrawer({
                 </div>
 
                 <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between gap-2">
-                        <h3 className="text-xs font-semibold">Style text</h3>
-                        {!editing ? (
+                    {!editing ? (
+                        <div className="flex items-center justify-between gap-2">
+                            <h3 className="text-xs font-semibold">Style text</h3>
                             <Button variant="outline" size="sm" onClick={() => setEditing(true)} disabled={!etag}>
                                 Edit
                             </Button>
-                        ) : null}
-                    </div>
+                        </div>
+                    ) : null}
                     {editing && etag ? (
                         <ReportEditor report={payload} etag={etag} onDone={() => setEditing(false)} onReload={() => void report.refetch()} />
                     ) : (

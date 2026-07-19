@@ -90,6 +90,32 @@ class TestLifespan:
                 assert app.state.provider_registry is not None
 
     @pytest.mark.asyncio
+    async def test_lifespan_registers_lm_studio_compatibility_alias(self):
+        from smr_v2.core.config import OpenAICompatConfig
+        from smr_v2.main import create_app
+
+        settings = Settings(
+            host="127.0.0.1",
+            port=5099,
+            debug=True,
+            log_level="debug",
+            metrics_enabled=False,
+            openai_compat=OpenAICompatConfig(enabled=True),
+        )
+        mock_redis = AsyncMock()
+        mock_redis.aclose = AsyncMock()
+
+        with patch("smr_v2.main.aioredis") as mock_aioredis:
+            mock_aioredis.from_url.return_value = mock_redis
+            app = create_app(settings_override=settings)
+
+            async with app.router.lifespan_context(app):
+                registry = app.state.provider_registry
+                assert "openai_compat" in registry.list_providers()
+                assert "lm-studio" in registry.list_providers()
+                assert registry.get("lm-studio") is registry.get("openai_compat")
+
+    @pytest.mark.asyncio
     async def test_lifespan_preserves_injected_state(self, settings):
         """When task_manager/registry are pre-set (in tests), lifespan should not overwrite them."""
         from smr_v2.main import create_app

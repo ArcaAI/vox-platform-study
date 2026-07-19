@@ -93,12 +93,12 @@
     {
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
       "id": 6,
-      "title": "HTTP request rate (req/s by job)",
+      "title": "HTTP request rate (req/s by service)",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
-      "description": "sum by (job) (rate(http_requests_total[5m])). Covers api-gateway/stt/smr/harness. NLP HTTP is nlp_http_* (see contract §6); guardrail has no http_*.",
+      "description": "sum by (service) (rate(http_requests_total[5m])). Covers api-gateway/stt/smr/harness/guardrail/nlp — all Python/NestJS services now emit un-namespaced http_requests_total with a service label (added at scrape time for the Python services).",
       "targets": [
-        { "expr": "sum by (job) (rate(http_requests_total[5m]))", "legendFormat": "{{job}}", "refId": "A" }
+        { "expr": "sum by (service) (rate(http_requests_total[5m]))", "legendFormat": "{{service}}", "refId": "A" }
       ],
       "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
     },
@@ -108,10 +108,10 @@
       "title": "API per-service request p95 (s)",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
-      "description": "histogram_quantile(0.95, sum by (le, service) (rate(http_request_duration_seconds_bucket[5m]))) — uses the API gateway's own service label (METRIC-CONTRACT §9).",
+      "description": "histogram_quantile(0.95, sum by (le, service) (rate(http_request_duration_seconds_bucket{job=\"api-gateway\"}[5m]))) — restricted to the API gateway while retaining service grouping (METRIC-CONTRACT §9).",
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (le, service) (rate(http_request_duration_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, service) (rate(http_request_duration_seconds_bucket{job=\"api-gateway\"}[5m])))",
           "legendFormat": "{{service}}",
           "refId": "A"
         }

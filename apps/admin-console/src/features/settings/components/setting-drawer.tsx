@@ -352,7 +352,7 @@ function SettingDetailBody({
     }
 
     return (
-        <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
+        <Tabs value={tab} onValueChange={setTab} className="contents">
             <DetailDrawer
                 open
                 onOpenChange={(open) => {
@@ -471,7 +471,9 @@ export function SettingDetailDrawer({ settingId, onClose, onDelete }: { settingI
     const detail = useGlobalSetting(settingId);
     const loaded = detail.data?.data ?? null;
 
-    if (detail.isPending || detail.error || !loaded) {
+    if (detail.isPending) return null;
+
+    if (detail.error || !loaded) {
         return (
             <DetailDrawer
                 open
@@ -479,7 +481,7 @@ export function SettingDetailDrawer({ settingId, onClose, onDelete }: { settingI
                     if (!open) onClose();
                 }}
                 size="lg"
-                title={detail.isPending ? <Skeleton className="h-5 w-40" /> : <span className="font-mono">Setting</span>}
+                title={<span className="font-mono">Setting</span>}
             >
                 {detail.error ? <ErrorState error={detail.error} onRetry={() => void detail.refetch()} /> : (
                     <div className="flex flex-col gap-3">
@@ -546,7 +548,7 @@ export function SettingCreateDrawer({ onClose }: { onClose: () => void }) {
     }
 
     return (
-        <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
+        <Tabs value={tab} onValueChange={setTab} className="contents">
             <DetailDrawer
                 open
                 onOpenChange={(open) => {

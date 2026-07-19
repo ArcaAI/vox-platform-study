@@ -147,7 +147,8 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
         throw await toGatewayError(response);
     }
 
-    const etag = response.headers.get('etag');
+    const responseEtag = response.headers.get('etag');
+    const etag = responseEtag && !responseEtag.startsWith('W/') ? responseEtag : null;
     if (response.status === 204) {
         return { data: undefined as T, etag };
     }

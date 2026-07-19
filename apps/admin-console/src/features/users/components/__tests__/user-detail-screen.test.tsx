@@ -183,7 +183,15 @@ function stubDetailFetch(overrides?: (url: string, init?: RequestInit) => Respon
         if (method === 'GET' && url === '/api/hope/admin/users/u-1/api-keys') return Response.json({ data: [API_KEY], count: 1, limit: 25, page: 0 });
         // Shared id -> name catalogs (TASK-424): tenants (Paginated), rbac roles ({data,total,page,pageSize}), departments (plain array).
         if (method === 'GET' && url.startsWith('/api/hope/admin/tenants')) {
-            return Response.json({ data: [{ id: 't-1', name: 'Acme Clinic', key: 'acme' }], count: 1, limit: 500, page: 0 });
+            return Response.json({
+                data: [
+                    { id: '00000000-0000-0000-0000-000000000000', name: 'Global', key: 'SYSTEM' },
+                    { id: 't-1', name: 'Acme Clinic', key: 'acme' },
+                ],
+                count: 2,
+                limit: 500,
+                page: 0,
+            });
         }
         if (method === 'GET' && url.startsWith('/api/hope/admin/rbac/roles')) {
             return Response.json({
@@ -320,7 +328,7 @@ describe('UserDetailScreen', () => {
         expect(screen.getByText('t-1')).toBeDefined();
     });
 
-    it('assigns a role by selecting from the catalog and posts without a tenant for a global scope', async () => {
+    it('assigns a role by selecting from the catalog and posts the system tenant for a global scope', async () => {
         const calls = stubDetailFetch();
         renderWithProviders(<UserDetailScreen id="u-1" />);
 
@@ -330,12 +338,12 @@ describe('UserDetailScreen', () => {
 
         // The role field is now a catalog-fed select offering the "Clinician" option.
         await selectOption(within(dialog).getByLabelText(/^role/i), 'Clinician');
-        // Tenant defaults to the first "Global (cross-tenant)" option -> tenantId omitted.
+        // Tenant defaults to the catalog's real SYSTEM tenant row.
         fireEvent.click(within(dialog).getByRole('button', { name: /^assign$/i }));
 
         await waitFor(() => {
             const post = calls.find((call) => call.method === 'POST' && call.url === '/api/hope/admin/users/u-1/roles');
-            expect(post?.body).toEqual({ roleId: 'role-clinician' });
+            expect(post?.body).toEqual({ roleId: 'role-clinician', tenantId: '00000000-0000-0000-0000-000000000000' });
         });
     });
 
@@ -426,6 +434,17 @@ describe('UserDetailScreen', () => {
             const patch = calls.find((call) => call.method === 'PATCH' && call.url === '/api/hope/admin/users/u-1/settings/ui/theme');
             expect(patch?.body).toEqual({ value: 'light' });
         });
+    });
+
+    it('renders an empty profile form when the user has no profile', async () => {
+        stubDetailFetch((url, init) => {
+            if (init?.method === 'GET' && url === '/api/hope/admin/users/u-1/profile') return new Response(null, { status: 204 });
+            return undefined;
+        });
+        renderWithProviders(<UserDetailScreen id="u-1" />, { searchParams: '?tab=profile' });
+
+        expect((await screen.findByLabelText('First name') as HTMLInputElement).value).toBe('');
+        expect(screen.getByText(/no profile yet/i)).toBeDefined();
     });
 
     it('saves the profile form through the upsert PATCH', async () => {

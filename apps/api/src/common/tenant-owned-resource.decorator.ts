@@ -1,15 +1,6 @@
 /**
  * `@TenantOwnedResource` — TASK-307 W3.1 / AC-7.
  *
- * Marks a controller handler that takes a tenant-owned resource id (or name)
- * as a route param. The companion `TenantOwnedResourceInterceptor` reads the
- * metadata, resolves the resource via the matching repository / service, and
- * `404`s the request (no existence leak) when the resource's tenant does not
- * match the caller's CLS tenant.
- *
- * Mirrors the DEF-C3 "no existence leak" posture from TASK-306 W5.2 — the
- * decorator is uniformly 404-on-mismatch with no `@PlatformAdmin()` bypass.
- *
  * Usage:
  *   @Get(':id')
  *   @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id' })
@@ -62,24 +53,7 @@ export interface TenantOwnedResourceOptions {
    *                        (StreamSession only — TASK-310 W7.A.9 / AC-3)
    */
   lookup?: 'id' | 'name' | 'session';
-  /**
-   * Ownership scope (TASK-308 AC-1):
-   *   - `'tenant'` (default) → only the tenant boundary is enforced. Any
-   *     authenticated user in the same tenant may proceed.
-   *   - `'creator'`          → in addition to the tenant check, the resolved
-   *     resource's `userId` must equal the caller's `cls.user.id`. Used on
-   *     mutating routes whose semantics belong to the original creator
-   *     (e.g. cancel-my-job) so a same-tenant peer cannot mutate via id
-   *     enumeration. Resolution still 404s on mismatch (DEF-C3) — there is
-   *     no 403, by design.
-   *
-   * Only `ConsultationJob` carries a `userId` today, so `'creator'` is a
-   * no-op for the other model names (the tenant check still runs). Add new
-   * `userId`-carrying models to the switch in
-   * `TenantOwnedResourceInterceptor.assertOwnership` if/when they grow a
-   * creator-scoped route.
-   */
-  scope?: 'tenant' | 'creator';
+  scope?: 'tenant' | 'creator' | 'global-admin';
 }
 
 export const TenantOwnedResource = (opts: TenantOwnedResourceOptions): MethodDecorator => SetMetadata(TENANT_OWNED_RESOURCE_KEY, opts);
