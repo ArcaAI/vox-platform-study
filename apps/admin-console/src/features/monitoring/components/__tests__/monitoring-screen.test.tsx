@@ -165,6 +165,17 @@ describe('MonitoringScreen', () => {
         await waitFor(() => expect(callsTo(fetchMock, 'monitoring/uptime')).toBe(2));
     });
 
+    it('renders uptime samples in the response chart when service health fails', async () => {
+        installFetch({
+            health: () => Response.json({ statusCode: 503, message: 'Service unavailable' }, { status: 503 }),
+        });
+        renderWithProviders(<MonitoringScreen />);
+
+        const chart = await screen.findByRole('table');
+        expect(within(chart).getByText('smr')).toBeDefined();
+        expect(within(chart).getByText('210 ms')).toBeDefined();
+    });
+
     it('surfaces the dev:doctor hint when a service is genuinely down (not-listening)', async () => {
         installFetch({
             health: () =>

@@ -190,6 +190,43 @@ describe('TASK-307 W3.2 — TenantOwnedResourceInterceptor', () => {
       expect(harness.next.handle).not.toHaveBeenCalled();
     });
 
+    it('allows an unscoped global admin on explicitly global-admin scoped routes', async () => {
+      const harness = buildHarness({
+        reflectorReturns: { modelName: 'TenantBucket', paramName: 'id', scope: 'global-admin' },
+        clsState: { user: { roles: ['GLOBAL_ADMIN'] } },
+        params: { id: 'bucket-1' },
+      });
+
+      const result = await firstValueFrom(await harness.interceptor.intercept(harness.ctx, harness.next));
+
+      expect(result).toBe(NEXT_VALUE);
+      expect(harness.repos.tenantBucket.findById).not.toHaveBeenCalled();
+      expect(harness.next.handle).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps global-admin scoped routes tenant-scoped when global admin selected a tenant', async () => {
+      const harness = buildHarness({
+        reflectorReturns: { modelName: 'TenantBucket', paramName: 'id', scope: 'global-admin' },
+        clsState: { tenantId: SENTINEL_TENANT_A, user: { roles: ['GLOBAL_ADMIN'] } },
+        params: { id: 'bucket-1' },
+      });
+      harness.repos.tenantBucket.findById.mockResolvedValueOnce({ id: 'bucket-1', tenantId: SENTINEL_TENANT_B });
+
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
+      expect(harness.next.handle).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unscoped non-global admin on explicitly global-admin scoped routes', async () => {
+      const harness = buildHarness({
+        reflectorReturns: { modelName: 'TenantBucket', paramName: 'id', scope: 'global-admin' },
+        clsState: { user: { roles: ['TENANT_ADMIN'] } },
+        params: { id: 'bucket-1' },
+      });
+
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
+      expect(harness.next.handle).not.toHaveBeenCalled();
+    });
+
     it('throws 404 when the route param is missing or empty', async () => {
       const harness = buildHarness({
         reflectorReturns: { modelName: 'TenantBucket', paramName: 'id' },

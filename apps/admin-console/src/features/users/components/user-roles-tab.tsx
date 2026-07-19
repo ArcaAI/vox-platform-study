@@ -43,9 +43,6 @@ function roleLabel(assignment: UserRoleAssignment): string {
     return assignment.roleName ?? assignment.roleId;
 }
 
-/** Radix Select reserves '', so an omitted (global) tenant maps through a sentinel. */
-const GLOBAL_TENANT = '__global__';
-
 /**
  * Role-assignment dialog: the role and tenant scope come from the shared
  * catalogs (id → name), so assignment is a pick-by-name flow. A caller that
@@ -57,17 +54,16 @@ function AssignRoleDialog({ userId, open, onOpenChange }: { userId: string; open
     const roles = useRoleOptions();
     const tenantCatalog = useTenantCatalog();
     const [roleId, setRoleId] = useState('');
-    const [tenantChoice, setTenantChoice] = useState(GLOBAL_TENANT);
+    const [tenantChoice, setTenantChoice] = useState(SYSTEM_TENANT_ID);
     const [tenantText, setTenantText] = useState('');
 
     const roleFallback = roles.isError || (!roles.isLoading && roles.options.length === 0);
     const tenants = tenantCatalog.data ?? [];
     const tenantFallback = tenantCatalog.isError || (!tenantCatalog.isLoading && tenants.length === 0);
-
     function handleOpenChange(next: boolean) {
         if (!next) {
             setRoleId('');
-            setTenantChoice(GLOBAL_TENANT);
+            setTenantChoice(SYSTEM_TENANT_ID);
             setTenantText('');
             assignRole.reset();
         }
@@ -78,7 +74,7 @@ function AssignRoleDialog({ userId, open, onOpenChange }: { userId: string; open
         event.preventDefault();
         const role = roleId.trim();
         if (!role) return;
-        const tenantId = tenantFallback ? tenantText.trim() : tenantChoice === GLOBAL_TENANT ? '' : tenantChoice;
+        const tenantId = tenantFallback ? tenantText.trim() : tenantChoice;
         assignRole.mutate(
             { id: userId, body: { roleId: role, ...(tenantId ? { tenantId } : {}) } },
             {
@@ -146,7 +142,6 @@ function AssignRoleDialog({ userId, open, onOpenChange }: { userId: string; open
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value={GLOBAL_TENANT}>Global (cross-tenant)</SelectItem>
                                     {tenants.map((tenant) => (
                                         <SelectItem key={tenant.id} value={tenant.id}>
                                             {tenant.name || tenant.key || tenant.id}

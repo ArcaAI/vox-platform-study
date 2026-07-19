@@ -42,7 +42,7 @@ import { Reflector } from '@nestjs/core';
 import { ClsService } from 'nestjs-cls';
 import { Observable } from 'rxjs';
 import { DataNotFoundException } from '@arcaai/exceptions';
-import { IConsultationJobService, type IActiveUserContext } from '@arcaai/applications';
+import { IConsultationJobService, type IActiveUserContext, isSuperAdmin } from '@arcaai/applications';
 import {
   ConsultationRepository,
   TenantBucketRepository,
@@ -106,13 +106,17 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
     }
 
     const callerTenantId = this.cls.get('tenantId');
-    if (!callerTenantId || typeof callerTenantId !== 'string') {
-      throw new NotFoundException(RESOURCE_NOT_FOUND);
-    }
-
     const request = context.switchToHttp().getRequest<{ params?: Record<string, string> }>();
     const paramValue = request?.params?.[opts.paramName];
     if (!paramValue || typeof paramValue !== 'string') {
+      throw new NotFoundException(RESOURCE_NOT_FOUND);
+    }
+
+    if (!callerTenantId && opts.scope === 'global-admin' && isSuperAdmin(this.cls.get('user'))) {
+      return;
+    }
+
+    if (!callerTenantId || typeof callerTenantId !== 'string') {
       throw new NotFoundException(RESOURCE_NOT_FOUND);
     }
 

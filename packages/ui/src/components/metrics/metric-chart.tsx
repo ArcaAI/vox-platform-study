@@ -144,7 +144,16 @@ export function MetricChart(props: MetricChartProps) {
   }
 
   const grid = showGrid ? <CartesianGrid vertical={false} /> : null;
-  const xAxis = <XAxis dataKey={xKey} tickLine={false} axisLine={false} tickMargin={8} />;
+  const xAxis = (
+    <XAxis
+      dataKey={xKey}
+      tickLine={false}
+      axisLine={false}
+      tickMargin={8}
+      interval="preserveStartEnd"
+      tickFormatter={(value: string) => (value.length > 12 ? `${value.slice(0, 11)}\u2026` : value)}
+    />
+  );
   const yAxis = <YAxis tickLine={false} axisLine={false} width={40} tickFormatter={valueFormatter ? (v) => valueFormatter(Number(v)) : undefined} />;
   const tooltip = <ChartTooltip content={<ChartTooltipContent />} />;
   const legend = showLegend ? <ChartLegend content={<ChartLegendContent />} /> : null;

@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { MicrosoftGraphIntegration } from '../../baseServices/integrations/microsoftGraph/microsoftGraph.integration';
-import { IPasswordResetMailer, LoggingPasswordResetMailer, PasswordResetMailPayload } from './IPasswordResetMailer';
+import { DEFAULT_PASSWORD_RESET_BASE_URL, IPasswordResetMailer, LoggingPasswordResetMailer, PasswordResetMailPayload } from './IPasswordResetMailer';
 import { DevOutboxPasswordResetMailer } from './dev-outbox-mailer';
 
 /**
@@ -15,7 +15,7 @@ import { DevOutboxPasswordResetMailer } from './dev-outbox-mailer';
  *   MSGRAPH_TENANT_ID     — Azure AD tenant id
  *   MSGRAPH_SENDER        — mailbox to send from (user id or UPN; needs Mail.Send)
  *   PASSWORD_RESET_BASE_URL — public admin-app origin used to absolutize the
- *                             reset link (default http://localhost:5174)
+ *                             reset link (default http://localhost:5176)
  *
  * All four MSGRAPH_* present → `MsGraphPasswordResetMailer`; anything missing →
  * `LoggingPasswordResetMailer` (dev transport: logs, reports not-sent, never
@@ -24,7 +24,6 @@ import { DevOutboxPasswordResetMailer } from './dev-outbox-mailer';
 
 export const MSGRAPH_REQUIRED_ENV_VARS = ['MSGRAPH_CLIENT_ID', 'MSGRAPH_CLIENT_SECRET', 'MSGRAPH_TENANT_ID', 'MSGRAPH_SENDER'] as const;
 
-const DEFAULT_RESET_BASE_URL = 'http://localhost:5174';
 const GRAPH_SCOPES = ['https://graph.microsoft.com/.default'];
 
 export type PasswordResetMailerConfig =
@@ -49,7 +48,7 @@ export function resolvePasswordResetMailerConfig(env: Record<string, string | un
     clientSecret: env.MSGRAPH_CLIENT_SECRET!.trim(),
     tenantId: env.MSGRAPH_TENANT_ID!.trim(),
     sender: env.MSGRAPH_SENDER!.trim(),
-    baseUrl: env.PASSWORD_RESET_BASE_URL?.trim() || DEFAULT_RESET_BASE_URL,
+    baseUrl: env.PASSWORD_RESET_BASE_URL?.trim() || DEFAULT_PASSWORD_RESET_BASE_URL,
   };
 }
 

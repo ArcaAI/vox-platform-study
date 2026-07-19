@@ -60,7 +60,7 @@ test.describe('tenants list (frame 12)', () => {
             const body = (await res.json()) as { data?: Array<{ id: string; username: string }> };
             return body.data?.[0] ?? null;
         });
-        test.skip(!existingUser, 'no seeded users — cannot exercise the existing-user admin path');
+        expect(existingUser).not.toBeNull();
 
         await page.getByRole('button', { name: 'New tenant' }).first().click();
         const dialog = page.getByRole('dialog', { name: 'New tenant' });
@@ -76,7 +76,7 @@ test.describe('tenants list (frame 12)', () => {
 
         await expect(dialog.getByText('Step 3 of 3')).toBeVisible();
         await dialog.getByRole('radio', { name: 'Use an existing user' }).check();
-        await dialog.getByRole('combobox', { name: /search by username/i }).click();
+        await dialog.getByRole('combobox', { name: 'User' }).click();
         await page.getByPlaceholder('Search users by username…').fill((existingUser as { username: string }).username);
         await page.getByRole('option', { name: (existingUser as { username: string }).username }).click();
         await dialog.getByRole('button', { name: 'Create tenant' }).click();
@@ -123,10 +123,10 @@ test.describe('tenants list (frame 12)', () => {
         await waitForListSettled(page);
         const rows = dataRows(page);
         const rowCount = await rows.count();
-        test.skip(rowCount === 0, 'no tenants seeded — the list is empty');
+        expect(rowCount).toBeGreaterThan(0);
         const firstName = (await rows.first().locator('[role="gridcell"]').first().innerText()).trim();
 
-        await page.getByLabel('Search tenants').fill(firstName);
+        await page.getByLabel('Search').fill(firstName);
         await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(0);
         const filteredRows = dataRows(page);
         await expect(filteredRows.first()).toContainText(firstName);
@@ -142,7 +142,7 @@ test.describe('tenants list (frame 12)', () => {
         await page.goto('/tenants');
         await waitForListSettled(page);
         const rowCount = await dataRows(page).count();
-        test.skip(rowCount === 0, 'no tenants seeded — the list is empty');
+        expect(rowCount).toBeGreaterThan(0);
 
         await page.getByRole('button', { name: 'Filters' }).click();
         await page.getByRole('option', { name: 'Suspended' }).click();
@@ -158,7 +158,7 @@ test.describe('tenants list (frame 12)', () => {
         await waitForListSettled(page);
         const rows = dataRows(page);
         const rowCount = await rows.count();
-        test.skip(rowCount === 0, 'no tenants seeded — the list is empty');
+        expect(rowCount).toBeGreaterThan(0);
 
         const tenantName = (await rows.first().locator('[role="gridcell"]').first().innerText()).trim();
         await rows.first().getByRole('button', { name: `Open actions for ${tenantName}` }).click();
@@ -167,7 +167,7 @@ test.describe('tenants list (frame 12)', () => {
 
         const reversibleAction = page.getByRole('menuitem', { name: /^(Suspend|Restore|Archive)$/ });
         const actionCount = await reversibleAction.count();
-        test.skip(actionCount === 0, 'no reversible lifecycle action available for this tenant status');
+        expect(actionCount).toBeGreaterThan(0);
         const actionLabel = (await reversibleAction.first().innerText()).trim();
         await reversibleAction.first().click();
         const dialog = page.getByRole('alertdialog', { name: `${actionLabel} ${tenantName}?` });
@@ -181,7 +181,7 @@ test.describe('tenant detail (frame 12.1)', () => {
     test('opens the first tenant and renders the header, tabs and overview', async ({ page }) => {
         await page.goto('/tenants');
         await waitForListSettled(page);
-        test.skip((await dataRows(page).count()) === 0, 'no tenants seeded — the list is empty');
+        expect(await dataRows(page).count()).toBeGreaterThan(0);
 
         await dataRows(page).first().click();
         await page.waitForURL('**/tenants/**');
@@ -198,7 +198,7 @@ test.describe('tenant detail (frame 12.1)', () => {
     test('switching to the usage tab syncs the URL and loads the stats', async ({ page }) => {
         await page.goto('/tenants');
         await waitForListSettled(page);
-        test.skip((await dataRows(page).count()) === 0, 'no tenants seeded — the list is empty');
+        expect(await dataRows(page).count()).toBeGreaterThan(0);
 
         await dataRows(page).first().click();
         await page.waitForURL('**/tenants/**');
@@ -210,7 +210,7 @@ test.describe('tenant detail (frame 12.1)', () => {
     test('the configs, tags and frontend config tabs render real content', async ({ page }) => {
         await page.goto('/tenants');
         await waitForListSettled(page);
-        test.skip((await dataRows(page).count()) === 0, 'no tenants seeded — the list is empty');
+        expect(await dataRows(page).count()).toBeGreaterThan(0);
 
         await dataRows(page).first().click();
         await page.waitForURL('**/tenants/**');
@@ -233,7 +233,7 @@ test.describe('tenant detail (frame 12.1)', () => {
     test('adds and removes a tag on the tags tab', async ({ page }) => {
         await page.goto('/tenants');
         await waitForListSettled(page);
-        test.skip((await dataRows(page).count()) === 0, 'no tenants seeded — the list is empty');
+        expect(await dataRows(page).count()).toBeGreaterThan(0);
 
         await dataRows(page).first().click();
         await page.waitForURL('**/tenants/**');
@@ -253,7 +253,7 @@ test.describe('tenant detail (frame 12.1)', () => {
         await page.goto('/tenants');
         await waitForListSettled(page);
         const rows = dataRows(page);
-        test.skip((await rows.count()) === 0, 'no tenants seeded — the list is empty');
+        expect(await rows.count()).toBeGreaterThan(0);
 
         await rows.first().click();
         await page.waitForURL('**/tenants/**');
@@ -262,7 +262,7 @@ test.describe('tenant detail (frame 12.1)', () => {
 
         const reversibleAction = page.getByRole('button', { name: /^(Suspend|Restore|Archive)$/ });
         const actionCount = await reversibleAction.count();
-        test.skip(actionCount === 0, 'no reversible lifecycle action available for this tenant status');
+        expect(actionCount).toBeGreaterThan(0);
         const actionLabel = (await reversibleAction.first().innerText()).trim();
         await reversibleAction.first().click();
         const dialog = page.getByRole('alertdialog', { name: `${actionLabel} ${tenantName}?` });

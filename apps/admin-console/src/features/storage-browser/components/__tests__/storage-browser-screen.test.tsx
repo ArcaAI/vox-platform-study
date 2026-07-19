@@ -102,11 +102,11 @@ describe('StorageBrowserScreen', () => {
         stubStorageBrowser();
         renderWithProviders(<StorageBrowserScreen />);
 
-        // Toolbar: bucket select naming the active bucket + the upload zone label.
         const bucketSelect = await screen.findByRole('combobox', { name: /bucket/i });
         await waitFor(() => expect(bucketSelect.textContent).toContain('consult-audio'));
-        expect(screen.getByLabelText('Upload to consult-audio')).toBeDefined();
-
+        // Upload is initiated from the page actions; the toolbar has no second upload control.
+        expect(screen.getByLabelText('Upload files to consult-audio')).toBeDefined();
+        expect(screen.queryByRole('button', { name: /^upload$/i })).toBeNull();
         // Breadcrumb: root chip = bucket name.
         const breadcrumb = screen.getByRole('navigation', { name: 'Object prefix' });
         expect(within(breadcrumb).getByRole('button', { name: 'consult-audio' })).toBeDefined();
@@ -182,7 +182,7 @@ describe('StorageBrowserScreen', () => {
         expect(within(drawer).getByRole('button', { name: /download/i })).toBeDefined();
     });
 
-    it('uploads the chosen file as multipart FormData and resets the picker', async () => {
+    it('uploads a chosen file from the header action and resets the picker', async () => {
         const calls = stubStorageBrowser((call) => {
             if (call.method === 'POST' && call.url.includes('/storage/buckets/consult-audio/files')) {
                 return Response.json({ key: 'note.txt', size: 13, contentType: 'text/plain' });
@@ -191,15 +191,13 @@ describe('StorageBrowserScreen', () => {
         });
         renderWithProviders(<StorageBrowserScreen />);
 
-        const input = (await screen.findByLabelText('Upload to consult-audio')) as HTMLInputElement;
+        const input = (await screen.findByLabelText('Upload files to consult-audio')) as HTMLInputElement;
+        const inputClick = vi.spyOn(input, 'click');
+        fireEvent.click(screen.getByRole('button', { name: 'Upload files' }));
+        expect(inputClick).toHaveBeenCalledTimes(1);
+
         const file = new File(['clinical note'], 'note.txt', { type: 'text/plain' });
         fireEvent.change(input, { target: { files: [file] } });
-
-        // Rule 11 §9: the chosen file shows name + size before submitting.
-        expect(await screen.findByText('note.txt')).toBeDefined();
-        expect(screen.getByText('13 B')).toBeDefined();
-
-        fireEvent.click(screen.getByRole('button', { name: /^upload$/i }));
 
         await waitFor(() => {
             const post = calls.find((call) => call.method === 'POST' && call.url.includes('/files'));
@@ -208,10 +206,10 @@ describe('StorageBrowserScreen', () => {
             const part = (post?.rawBody as FormData).get('file');
             expect((part as File).name).toBe('note.txt');
         });
-        await waitFor(() => expect(screen.queryByText('13 B')).toBeNull());
+        await waitFor(() => expect(input.value).toBe(''));
     });
 
-    it('shows the empty state with an upload CTA when the bucket has no objects', async () => {
+    it('shows the empty state with upload actions that open the same picker', async () => {
         stubStorageBrowser((call) => {
             if (call.method === 'GET' && new URL(call.url, 'http://test.local').pathname === '/api/hope/storage/buckets/consult-audio/files') {
                 return Response.json([]);
@@ -221,8 +219,15 @@ describe('StorageBrowserScreen', () => {
         renderWithProviders(<StorageBrowserScreen />);
 
         expect(await screen.findByText('No objects here')).toBeDefined();
-        expect(screen.getAllByRole('button', { name: /upload files/i }).length).toBeGreaterThanOrEqual(2);
+        const uploadActions = screen.getAllByRole('button', { name: 'Upload files' });
+        expect(uploadActions).toHaveLength(2);
+
+        const input = (screen.getByLabelText('Upload files to consult-audio') as HTMLInputElement);
+        const inputClick = vi.spyOn(input, 'click');
+        fireEvent.click(uploadActions[1]);
+        expect(inputClick).toHaveBeenCalledTimes(1);
     });
+
 
     it('renders the block error state and retries the failing listing', async () => {
         const calls = stubStorageBrowser((call) => {

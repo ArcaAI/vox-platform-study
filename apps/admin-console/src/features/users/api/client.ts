@@ -122,8 +122,8 @@ export function resetPassword(id: string, body: ResetPasswordRequest): Promise<R
     return postJson(`${userPath(id)}/reset-password`, body);
 }
 
-export function getUserProfile(id: string): Promise<UserProfile | null> {
-    return getJson(`${userPath(id)}/profile`);
+export async function getUserProfile(id: string): Promise<UserProfile | null> {
+    return (await getJson(`${userPath(id)}/profile`)) ?? null;
 }
 
 export function updateUserProfile(id: string, body: UpdateUserProfileRequest): Promise<UserProfile> {

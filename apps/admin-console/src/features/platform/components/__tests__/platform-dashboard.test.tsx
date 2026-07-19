@@ -124,7 +124,8 @@ describe('PlatformDashboard', () => {
         const requestsChart = screen.getByRole('table');
         expect(within(requestsChart).getByText('Summarization')).toBeDefined();
         expect(within(requestsChart).getByText('Guardrail')).toBeDefined();
-        expect(within(requestsChart).getByText('0')).toBeDefined();
+        expect(within(requestsChart).getByText('Clinical Documentation Harness')).toBeDefined();
+        expect(within(requestsChart).getAllByText('0')).toHaveLength(2);
         expect(screen.getByText('(degraded · queue depth 117)')).toBeDefined();
         expect(screen.getByText('(down · ECONNREFUSED)')).toBeDefined();
     });
@@ -161,6 +162,17 @@ describe('PlatformDashboard', () => {
 
         fireEvent.click(within(alerts[0]).getByRole('button', { name: /retry/i }));
         await waitFor(() => expect(callsTo(fetchMock, 'admin/platform/metrics')).toBe(2));
+    });
+
+    it('renders platform metrics by service when service health fails', async () => {
+        installFetch({
+            health: () => Response.json({ statusCode: 503, message: 'Service unavailable' }, { status: 503 }),
+        });
+        renderWithProviders(<PlatformDashboard />);
+
+        const chart = await screen.findByRole('table');
+        expect(within(chart).getByText('smr')).toBeDefined();
+        expect(within(chart).getByText('480')).toBeDefined();
     });
 
     it('renders empty states when the platform has no traffic or activity yet', async () => {

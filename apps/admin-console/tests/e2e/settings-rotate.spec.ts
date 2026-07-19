@@ -12,8 +12,8 @@ import { loginAsAdmin, selectWorkingTenant } from './helpers/auth';
 import { ADMIN_CREDENTIALS, API_DOWN_MESSAGE, APP_DOWN_MESSAGE, apiAvailable, appAvailable } from './helpers/stack';
 
 test.beforeEach(async ({ page }) => {
-    test.skip(!(await appAvailable()), APP_DOWN_MESSAGE);
-    test.skip(!(await apiAvailable()), API_DOWN_MESSAGE);
+    expect(await appAvailable(), APP_DOWN_MESSAGE).toBe(true);
+    expect(await apiAvailable(), API_DOWN_MESSAGE).toBe(true);
     await loginAsAdmin(page);
     // The fixture secret is created through the BFF, which scopes writes to the
     // elevated session's working tenant — select one first (GlobalSetting rows
@@ -21,12 +21,7 @@ test.beforeEach(async ({ page }) => {
     await selectWorkingTenant(page);
 });
 
-/**
- * Creates a convention-named secret setting through the BFF (in-page fetch so
- * the session cookie applies). Returns null when the stack refuses creation —
- * callers skip rather than fail (parity with settings.spec.ts's defensive skips).
- */
-async function createFixtureSecret(page: Page): Promise<{ id: string; key: string } | null> {
+async function createFixtureSecret(page: Page): Promise<{ id: string; key: string }> {
     const key = `secrets.e2e-rotate-${Date.now()}`;
     return page.evaluate(async (settingKey) => {
         const response = await fetch('/api/hope/admin/settings', {
@@ -41,7 +36,9 @@ async function createFixtureSecret(page: Page): Promise<{ id: string; key: strin
                 description: 'Temporary fixture for the TASK-445 rotate e2e — safe to delete.',
             }),
         });
-        if (!response.ok) return null;
+        if (!response.ok) {
+            throw new Error(`fixture secret create failed (${response.status}): ${await response.text()}`);
+        }
         const body = (await response.json()) as { id: string };
         return { id: body.id, key: settingKey };
     }, key);
@@ -65,9 +62,7 @@ async function openSecretDrawer(page: Page, key: string): Promise<void> {
 
 test.describe('secret rotation (TASK-445)', () => {
     test('rotates a secret through the endpoint: step-up dialog, success toast, version bump, no plaintext', async ({ page }) => {
-        const fixture = await createFixtureSecret(page);
-        test.skip(!fixture, 'stack refused the fixture secret create');
-        const { id, key } = fixture!;
+        const { id, key } = await createFixtureSecret(page);
 
         try {
             await openSecretDrawer(page, key);
@@ -99,9 +94,7 @@ test.describe('secret rotation (TASK-445)', () => {
     });
 
     test('rejects a wrong step-up password in-dialog and keeps the dialog open', async ({ page }) => {
-        const fixture = await createFixtureSecret(page);
-        test.skip(!fixture, 'stack refused the fixture secret create');
-        const { id, key } = fixture!;
+        const { id, key } = await createFixtureSecret(page);
 
         try {
             await openSecretDrawer(page, key);
