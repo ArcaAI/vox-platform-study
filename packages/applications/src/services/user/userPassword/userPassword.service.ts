@@ -16,7 +16,7 @@ import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { ICryptoService } from '../../crypto/ICryptoService';
 import { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSettingsService';
-import { IPasswordResetMailer } from './IPasswordResetMailer';
+import { DEFAULT_PASSWORD_RESET_BASE_URL, IPasswordResetMailer } from './IPasswordResetMailer';
 import { resolvePasswordPolicy, validatePasswordComplexity, PasswordPolicy } from './password-policy';
 
 /**
@@ -131,7 +131,7 @@ export class UserPasswordService extends BaseService {
       data: { kind: 'password-reset', mode: 'reset-link', emailSent },
     });
 
-    return { token: raw, resetPath, expiresInSeconds: RESET_EXPIRES_IN_SECONDS, emailSent };
+    return { token: raw, resetPath: UserPasswordService.absolutize(resetPath), expiresInSeconds: RESET_EXPIRES_IN_SECONDS, emailSent };
   }
 
   /**
@@ -298,6 +298,11 @@ export class UserPasswordService extends BaseService {
 
   private static hashToken(raw: string): string {
     return createHash('sha256').update(raw).digest('hex');
+  }
+
+  private static absolutize(resetPath: string): string {
+    const baseUrl = (process.env.PASSWORD_RESET_BASE_URL?.trim() || DEFAULT_PASSWORD_RESET_BASE_URL).replace(/\/$/, '');
+    return `${baseUrl}${resetPath}`;
   }
 
   private static digest(value: string): string {

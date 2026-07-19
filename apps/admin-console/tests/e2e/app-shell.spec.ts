@@ -25,9 +25,10 @@ test.describe('app shell chrome (frame 07)', () => {
         const breadcrumb = page.getByRole('navigation', { name: 'breadcrumb' });
         await expect(breadcrumb).toBeInViewport();
 
-        const scrolled = await page.evaluate(() => {
-            window.scrollTo(0, document.scrollingElement?.scrollHeight ?? 0);
-            return window.scrollY;
+        const scrollContainer = page.getByRole('grid', { name: 'Users' });
+        const scrolled = await scrollContainer.evaluate((el) => {
+            el.scrollTop = el.scrollHeight;
+            return el.scrollTop;
         });
         test.skip(scrolled === 0, 'page does not scroll at a 480px viewport — nothing to assert');
 

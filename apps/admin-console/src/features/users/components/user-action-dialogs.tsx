@@ -45,7 +45,7 @@ function ResetResultDialog({ result, onClose }: { result: ResetPasswordResult | 
                     </DialogDescription>
                 </DialogHeader>
                 <div className="bg-muted/50 flex items-center gap-1 rounded-md border p-2">
-                    <code className="min-w-0 flex-1 truncate font-mono text-xs">{secret ?? '\u2014'}</code>
+                    <code className="min-w-0 flex-1 break-all font-mono text-xs">{secret ?? '\u2014'}</code>
                     {secret ? <CopyButton value={secret} label="Copy reset secret" /> : null}
                 </div>
                 <DialogFooter>

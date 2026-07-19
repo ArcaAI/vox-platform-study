@@ -109,11 +109,13 @@ function RequestsByServiceCard({
     health: ReturnType<typeof useServicesHealth>;
 }) {
     const isLoading = metrics.isPending || (metrics.isError && metrics.isFetching);
-    const chartData = (metrics.data?.services ?? []).map((service) => {
-        const name = health.data?.services[service.key]?.service;
+    const metricsByKey = new Map((metrics.data?.services ?? []).map((service) => [service.key, service]));
+    const serviceKeys = new Set([...Object.keys(health.data?.services ?? {}), ...metricsByKey.keys()]);
+    const chartData = Array.from(serviceKeys).map((key) => {
+        const name = health.data?.services[key]?.service;
         return {
-            service: name && name !== service.key ? name : service.key,
-            requests: service.requestsPerMinute ?? 0,
+            service: name && name !== key ? name : key,
+            requests: metricsByKey.get(key)?.requestsPerMinute ?? 0,
         };
     });
     return (

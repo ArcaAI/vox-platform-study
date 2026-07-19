@@ -42,8 +42,8 @@ export function getTenantEntitlements(tenantId: string): Promise<EntitlementCapa
     return getJson(`${BASE}/tenants/${encodeURIComponent(tenantId)}`);
 }
 
-export function getTenantOverride(tenantId: string): Promise<TenantEntitlement | null> {
-    return getJson(`${BASE}/tenants/${encodeURIComponent(tenantId)}/override`);
+export async function getTenantOverride(tenantId: string): Promise<TenantEntitlement | null> {
+    return (await getJson(`${BASE}/tenants/${encodeURIComponent(tenantId)}/override`)) ?? null;
 }
 
 /** Upsert — pass expectedVersion only when a row already exists. */

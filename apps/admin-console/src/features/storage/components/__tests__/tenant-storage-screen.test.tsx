@@ -197,6 +197,24 @@ describe('TenantStorageScreen', () => {
         expect(screen.getByText('Acme Hospital')).toBeDefined();
     });
 
+    it('opens a bucket from the unscoped elevated list', async () => {
+        stubStorage((call) => {
+            const path = new URL(call.url, 'http://test.local').pathname;
+            if (path === '/api/auth/session') return Response.json(session({ workingTenantId: null }));
+            if (path === '/api/hope/admin/tenants/storage/buckets') {
+                return Response.json([bucket({ id: 'b-9', tenantId: 't-2', name: 'Acme audio', slug: 'acme-audio' })]);
+            }
+            if (path.endsWith('/admin/tenants/storage/buckets/b-9/objects')) return Response.json(OBJECTS);
+            return undefined;
+        });
+        renderWithProviders(<TenantStorageScreen />);
+
+        fireEvent.click(await screen.findByText('Acme audio'));
+
+        const sheet = await screen.findByRole('dialog');
+        expect(await within(sheet).findByText('readme.txt')).toBeDefined();
+    });
+
     it('narrows the bucket list with the tenant faceted filter', async () => {
         stubStorage((call) => {
             const path = new URL(call.url, 'http://test.local').pathname;

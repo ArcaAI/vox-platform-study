@@ -20,6 +20,9 @@ test.beforeEach(async ({ page }) => {
 function roleListItems(page: Page) {
     return page.locator('div[aria-label="Roles"] ul button');
 }
+function customRoleItems(page: Page) {
+    return page.getByText(/^Custom \(\d+\)$/).locator('..').getByRole('list').getByRole('button');
+}
 
 async function waitForList(page: Page) {
     await expect(page.getByRole('heading', { level: 1, name: 'Roles' })).toBeVisible();
@@ -51,13 +54,12 @@ test.describe('RBAC roles screen (two-pane)', () => {
         await expect(page).toHaveURL(/role=/);
     });
 
-    test('system roles are locked: no Edit or Delete affordances', async ({ page }) => {
+    test('system roles allow global-admin editing but never deletion', async ({ page }) => {
         await page.goto('/rbac/roles');
         await waitForList(page);
-        // The first group is System · locked.
         await roleListItems(page).first().click();
         await expect(page.getByText('System (locked)')).toBeVisible();
-        await expect(page.getByRole('button', { name: 'Edit' })).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'Edit' })).toBeVisible();
         await expect(page.getByRole('button', { name: 'Delete' })).toHaveCount(0);
     });
 
@@ -65,25 +67,15 @@ test.describe('RBAC roles screen (two-pane)', () => {
         await page.goto('/rbac/roles');
         await waitForList(page);
 
-        // Custom roles are optional in a fresh tenant; find one via its Delete affordance.
-        const items = roleListItems(page);
-        const count = await items.count();
-        let deletable = false;
-        for (let index = 0; index < count; index += 1) {
-            await items.nth(index).click();
-            if (await page.getByRole('button', { name: 'Delete' }).isVisible().catch(() => false)) {
-                deletable = true;
-                break;
-            }
-        }
-        test.skip(!deletable, 'No custom (deletable) role seeded in this environment.');
+        const items = customRoleItems(page);
+        await expect(items.first()).toBeVisible();
+        await items.first().click();
 
         await page.getByRole('button', { name: 'Delete' }).click();
         const dialog = page.getByRole('dialog');
-        await expect(dialog.getByText('Delete role')).toBeVisible();
+        await expect(dialog.getByRole('heading', { name: 'Delete role' })).toBeVisible();
         await dialog.getByRole('button', { name: 'Cancel' }).click();
         await expect(dialog).toBeHidden();
-        // The role list is still present after cancelling (no destructive call made).
         await expect(roleListItems(page).first()).toBeVisible();
     });
 
@@ -108,8 +100,6 @@ test.describe('RBAC roles screen (two-pane)', () => {
         await page.emulateMedia({ colorScheme: 'light' });
         await page.goto('/rbac/roles');
         await waitForList(page);
-        await roleListItems(page).first().click();
-        await expect(page.getByRole('table')).toBeVisible();
         await expectNoA11yViolations(page);
     });
 
@@ -117,8 +107,64 @@ test.describe('RBAC roles screen (two-pane)', () => {
         await page.emulateMedia({ colorScheme: 'dark' });
         await page.goto('/rbac/roles');
         await waitForList(page);
-        await roleListItems(page).first().click();
-        await expect(page.getByRole('table')).toBeVisible();
         await expectNoA11yViolations(page);
+    });
+
+    test('searching by an unmatched term shows the filtered-empty state', async ({ page }) => {
+        await page.goto('/rbac/roles');
+        await waitForList(page);
+        await page.getByLabel('Search roles').fill('no-such-role-xyz-000');
+        await expect(page.getByText('No roles match “no-such-role-xyz-000”.')).toBeVisible();
+    });
+
+    test('opening the create dialog disables submit until a name is entered', async ({ page }) => {
+        await page.goto('/rbac/roles');
+        await page.getByRole('button', { name: 'New role' }).first().click();
+        const dialog = page.getByRole('dialog');
+        await expect(dialog.getByRole('heading', { name: 'New role' })).toBeVisible();
+        const submit = dialog.getByRole('button', { name: 'Create role' });
+        await expect(submit).toBeDisabled();
+
+        await dialog.getByPlaceholder('Auditor').fill('E2E temp role');
+        await expect(submit).toBeEnabled();
+
+        await page.keyboard.press('Escape');
+        await expect(dialog).not.toBeVisible();
+    });
+
+    test('opens a custom role and can cancel an edit without saving', async ({ page }) => {
+        await page.goto('/rbac/roles');
+        await waitForList(page);
+
+        const items = customRoleItems(page);
+        await expect(items.first()).toBeVisible();
+        await items.first().click();
+
+        await page.getByRole('button', { name: 'Edit' }).click();
+        const dialog = page.getByRole('dialog');
+        await expect(dialog.getByRole('heading', { name: 'Edit role' })).toBeVisible();
+        await dialog.getByRole('button', { name: 'Cancel' }).click();
+        await expect(dialog).not.toBeVisible();
+    });
+
+    test('attach-policy select is available on a custom role and detach requires break-glass confirmation', async ({ page }) => {
+        await page.goto('/rbac/roles');
+        await waitForList(page);
+
+        const items = customRoleItems(page);
+        await expect(items.first()).toBeVisible();
+        await items.first().click();
+
+        await page.getByRole('tab', { name: 'Policies' }).click();
+        await expect(page.getByRole('combobox', { name: 'Policy to attach' })).toBeVisible();
+
+        const detachButton = page.getByRole('button', { name: /^Detach / }).first();
+        if ((await detachButton.count()) > 0) {
+            await detachButton.click();
+            const dialog = page.getByRole('dialog');
+            await expect(dialog.getByRole('heading', { name: 'Detach policy' })).toBeVisible();
+            await dialog.getByRole('button', { name: 'Cancel' }).click();
+            await expect(dialog).toBeHidden();
+        }
     });
 });

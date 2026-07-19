@@ -101,13 +101,7 @@ export interface StreamingWsClientLike {
  * Duck-typed surface of `@arcaai/vox`'s `StreamingSessionManager`.
  */
 export interface StreamingSessionLike {
-  createSession(req: {
-    pipelineId: string;
-    consultationId?: string;
-    sampleRate?: number;
-    language?: string;
-    microphoneId?: string;
-  }): Promise<{
+  createSession(req: { pipelineId: string; consultationId?: string; sampleRate?: number; language?: string; microphoneId?: string }): Promise<{
     sessionId: string;
     wsUrl: string;
     ticket?: string;
