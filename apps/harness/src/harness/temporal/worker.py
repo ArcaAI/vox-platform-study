@@ -12,6 +12,7 @@ for the dev stack, started via ``--profile temporal``).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import functools
 import signal
 from datetime import timedelta
@@ -27,6 +28,43 @@ from harness.temporal.workflows import HarnessDocWorkflow, HarnessPingWorkflow
 logger = get_logger(__name__)
 
 _SHUTDOWN_SIGNALS = (signal.SIGINT, signal.SIGTERM)
+
+# TASK-530 (D-08) — how often the worker releases idle-expired model weights.
+# The MiniCheck entailer is loaded by an ACTIVITY, so its GGUF lives in THIS
+# process; the FastAPI app could never sweep it. One minute is well below the
+# 60 s minimum idle TTL, so the sweep never becomes the binding constraint.
+_MODEL_CACHE_SWEEP_INTERVAL_S = 60.0
+
+
+async def _sweep_model_caches_once() -> int:
+    """Release idle-expired model weights; returns how many. NEVER raises.
+
+    The sweep is blocking (it runs unload hooks), so it goes to a thread — and a
+    failure is logged rather than propagated: retention housekeeping must never
+    take the worker down mid-poll.
+    """
+    from harness.sensors.inferential import minicheck_entailer
+
+    try:
+        return await asyncio.to_thread(minicheck_entailer.sweep_entailer_cache)
+    except Exception as exc:  # noqa: BLE001 — housekeeping never breaks the worker
+        logger.warning(
+            "harness.worker.model_cache_sweep_failed",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+        return 0
+
+
+async def _sweep_model_caches_forever(
+    interval_s: float = _MODEL_CACHE_SWEEP_INTERVAL_S,
+) -> None:
+    """Periodic sweep loop; cancelled when the worker shuts down."""
+    while True:
+        await asyncio.sleep(interval_s)
+        released = await _sweep_model_caches_once()
+        if released:
+            logger.info("harness.worker.model_cache_swept", released=released)
 
 
 async def run_worker() -> None:
@@ -76,8 +114,14 @@ async def run_worker() -> None:
         task_queue=settings.temporal.task_queue,
         graceful_shutdown_timeout_s=settings.temporal.graceful_shutdown_timeout_s,
     )
-    async with worker:
-        await interrupt_event.wait()
+    sweeper = asyncio.create_task(_sweep_model_caches_forever())
+    try:
+        async with worker:
+            await interrupt_event.wait()
+    finally:
+        sweeper.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await sweeper
     logger.info("harness.worker.stopped")
 
 

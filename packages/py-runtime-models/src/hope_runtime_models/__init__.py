@@ -10,6 +10,7 @@ from .cache import (
     MetricsSink,
     ModelCache,
     ModelUnavailableError,
+    SyncModelCache,
     clamp_cache_ttl_seconds,
 )
 from .metrics import (
@@ -37,6 +38,7 @@ __all__ = [
     "ModelUnavailableError",
     "NullMetricsSink",
     "PrometheusMetricsSink",
+    "SyncModelCache",
     "clamp_cache_ttl_seconds",
     "make_vram_probe",
     "reset_nvml_detection",

@@ -83,7 +83,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             from tts_v2.providers.indic_parler import IndicParlerProvider
 
             await register_local_provider(
-                registry, "indic_parler", IndicParlerProvider(settings.indic_parler), warmup=warmup, logger=logger
+                registry,
+                "indic_parler",
+                IndicParlerProvider(settings.indic_parler, ttl_seconds=settings.model_cache_ttl_seconds),
+                warmup=warmup,
+                logger=logger,
             )
 
         # IndicF5 — EXPERIMENTAL, prod enablement NO-GO pending license review (TASK-494).
@@ -91,7 +95,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             from tts_v2.providers.indic_f5 import IndicF5Provider
 
             await register_local_provider(
-                registry, "indic_f5", IndicF5Provider(settings.indic_f5), warmup=warmup, logger=logger
+                registry,
+                "indic_f5",
+                IndicF5Provider(settings.indic_f5, ttl_seconds=settings.model_cache_ttl_seconds),
+                warmup=warmup,
+                logger=logger,
             )
 
     logger.info("tts_v2.started", providers=registry.list_providers())

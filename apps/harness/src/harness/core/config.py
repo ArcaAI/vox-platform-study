@@ -366,6 +366,18 @@ class Settings(BaseSettings):
     # Per-claim entailment decision: P(entailed) >= this ⇒ grounded.
     atomic_fact_entail_threshold: float = 0.5
 
+    # TASK-530 (D-08) — MiniCheck entailer retention. Before this ticket the
+    # entailer sat in a module dict with no TTL, no bound and no unload, so a
+    # worker that verified one document pinned the GGUF for its whole life.
+    #
+    # BOOTSTRAP FALLBACK ONLY — the runtime value comes from the control plane
+    # (`harness.modelCache.{ttlSeconds,maxModels}`), applied by
+    # `sensors.inferential.minicheck_entailer.configure_entailer_cache`. Env:
+    # HARNESS_MODEL_CACHE_TTL_SECONDS / HARNESS_MODEL_CACHE_MAX_MODELS. The
+    # 600 s default is OD-5; maxModels 1 preserves today's residency exactly.
+    model_cache_ttl_seconds: int = 600
+    model_cache_max_models: int = 1
+
     # SMR generation defaults (None => let the SMR service choose).
     smr_provider: str | None = None
     smr_model: str | None = None

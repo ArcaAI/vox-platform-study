@@ -268,6 +268,7 @@ authoritative list (safety/PHI/retrieval/claim-check each have their own sub-pre
 | `HARNESS_NER_PRIORS_ENABLED` | `false` | Reuse persisted, ontology-coded NER priors instead of a cold transcript pass |
 | `HARNESS_RETRIEVAL_ENABLED` | `false` | Institutional RAG retrieval |
 | `HARNESS_ATOMIC_FACT_ENABLED` | `false` | Deterministic reference-free atomic-fact sensor |
+| `HARNESS_MODEL_CACHE_TTL_SECONDS` / `HARNESS_MODEL_CACHE_MAX_MODELS` | `600` / `1` | Idle TTL + residency bound for the MiniCheck entailer. **Bootstrap fallbacks only** — the runtime values come from the control plane (`harness.modelCache.*`); the TTL is clamped to `[60, 3600]` |
 | `HARNESS_SAFETY_PROVIDER` / `HARNESS_SAFETY_MODEL` | `lm-studio` / `granite-guardian-4.1-8b` | Safety-screen engine + model |
 | `HARNESS_PHI_ENABLED` / `HARNESS_PHI_FAIL_CLOSED` | `true` / `true` | PHI egress guard toggle + fail-closed posture |
 | `HARNESS_CLAIM_CHECK_ENABLED` / `HARNESS_CLAIM_CHECK_STORE` | `true` / `memory` | Claim-check toggle + backend (`memory` \| `s3`) |
@@ -275,6 +276,31 @@ authoritative list (safety/PHI/retrieval/claim-check each have their own sub-pre
 | `TEMPORAL_ADDRESS` / `TEMPORAL_NAMESPACE` / `TEMPORAL_TASK_QUEUE` | `localhost:7233` / `default` / `harness-task-queue` | Temporal frontend |
 
 ---
+
+### Model retention (TASK-530, D-08)
+
+The MiniCheck-Flan-T5 GGUF entailer is **not** immortal. It sits behind the shared
+`hope_runtime_models.SyncModelCache` (`cache="harness_minicheck"`): loaded on first use,
+re-calibrated on every load including reloads, and released once idle past
+`harness.modelCache.ttlSeconds`. Before TASK-530 it lived in a module dict with no TTL,
+no bound and no unload, so a worker that verified one document pinned the GGUF for its
+whole life.
+
+Two facts an operator needs:
+
+- **It lives in the Temporal WORKER process**, not the FastAPI app — the entailer is built
+  inside an activity. The worker runs a 60 s periodic sweep so an idle entailer is released
+  even when no further verification arrives. Restarting only the FastAPI app frees nothing.
+- **The cache is synchronous on purpose.** `_atomic_fact_entailer` (`temporal/activities.py`)
+  is a plain `def` and a `llama_cpp.Llama` construction is a blocking CPU/GPU call, not
+  awaited I/O — so the entailer path stays sync and uses the thread-locked sibling of the
+  shared cache. Policy, metrics and reason labels are identical to the asyncio one.
+
+A build or calibration failure still falls back to the safe `DeterministicOverlapEntailer`
+(never an auto-PASS) — including when a *reload* fails, not just a first load.
+
+Operator runbook: [`docs/operations/inference/model-retention.md`](../../docs/operations/inference/model-retention.md).
+
 
 ## API endpoints
 

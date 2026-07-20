@@ -8,10 +8,18 @@ sharing (stt-v2 / guardrail / nlp) and two services had no lifecycle management
 at all (harness held an immortal module dict, tts-v2 loaded eagerly at boot and
 never unloaded). This package is the single implementation of that policy.
 
-It is a **contract, not a framework**: one generic cache plus the two optional
+It is a **contract, not a framework**: one policy engine plus the two optional
 hooks it needs (metrics sink, VRAM probe). Service-specific concerns — the
 stt-v2 loader map, the tts pipeline handles, the harness llama handle — stay in
 their own services and are passed in as `factory` / `unload` callables.
+
+**Two concurrency skins, one policy.** `ModelCache` (asyncio) and
+`SyncModelCache` (threads) both derive from the same private policy core, so the
+eviction order, pin semantics, clamp, `CacheStats` and metric labels are shared
+code — not parallel implementations that can drift. Use `SyncModelCache` only
+when the consumer is genuinely synchronous and the load is a blocking CPU/GPU
+call rather than awaited I/O (TASK-530's motivating case: the harness MiniCheck
+entailer, whose sole call site is a plain `def`).
 
 ## Contract
 
@@ -28,9 +36,18 @@ ModelCache[T](factory, *, unload=None, max_size, max_bytes_estimate=None,
   .stats() -> CacheStats
   .configure(...)         # hot re-configuration from an effective-config refresh
 clamp_cache_ttl_seconds(v)  # hard product clamp [60, 3600]
+
+SyncModelCache[T](...)      # SAME constructor and SAME method names, all sync:
+                            # threading.Lock + a per-key Event for single-flight.
+                            # `factory` and `unload` are plain callables — an
+                            # async unload hook cannot be honoured (no loop to
+                            # await on) and is refused with a warning.
+                            # No background task: sweeps lazily on get(), plus
+                            # sweep() for the host's own periodic sweeper.
 ```
 
-Clauses (each has a conformance test in `tests/test_cache_contract.py`):
+Clauses (each has a conformance test in `tests/test_cache_contract.py`,
+**parameterized over BOTH cache classes** so the two cannot drift):
 
 1. **Single-flight** — concurrent `get(k)` performs exactly one factory call;
    waiters share the result; a waiter's cancellation cannot cancel the shared
@@ -48,6 +65,16 @@ Clauses (each has a conformance test in `tests/test_cache_contract.py`):
    dropping resident entries.
 8. **Min-residency floor** — an entry is never TTL-evicted younger than
    `_TTL_MIN_SECONDS` (60 s) idle, regardless of settings (anti-thrash).
+9. **Every eviction path releases the weights, exactly once** — `unload` is
+   called once per evicted key on ALL SIX paths (explicit `evict`, lazy TTL on
+   `get`, TTL `sweep`, LRU overflow, VRAM pressure, `clear`) for BOTH cache
+   classes. TASK-529's TDD caught two real defects here (LRU-overflow and
+   lazy-TTL eviction dropped entries *without* calling `unload`, so the cache
+   reported an eviction, freed nothing, and its byte budget silently stopped
+   meaning anything). TASK-530 generalized those spot fixes into this
+   path-parameterized clause so a new eviction path cannot regress it.
+10. **Identical stats surface** — `stats()` returns the same `CacheStats`
+   field-for-field from both classes, so one Grafana dashboard reads both.
 
 ## Consuming it
 
