@@ -1044,75 +1044,25 @@ export const GLOBAL_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
 // =============================================================================
 
 export const DEFAULT_STT_SETTINGS = [
-    // Model Cache Settings
-    {
-        id: '82000000-0000-0000-0001-000000000001',
-        tenantId: DEFAULT_TENANT_ID,
-        namespace: 'stt.config',
-        name: 'model_cache',
-        key: 'max_models',
-        value: '5',
-        defaultValue: '5',
-        dataType: ValueType.Integer,
-        description: 'Maximum number of AI models to keep in memory cache',
-    },
-    {
-        id: '82000000-0000-0000-0001-000000000002',
-        tenantId: DEFAULT_TENANT_ID,
-        namespace: 'stt.config',
-        name: 'model_cache',
-        key: 'ttl_seconds',
-        value: '3600',
-        defaultValue: '3600',
-        dataType: ValueType.Integer,
-        description: 'Time-to-live for cached models in seconds',
-    },
-    {
-        id: '82000000-0000-0000-0001-000000000003',
-        tenantId: DEFAULT_TENANT_ID,
-        namespace: 'stt.config',
-        name: 'model_cache',
-        key: 'max_memory_mb',
-        value: '16384',
-        defaultValue: '16384',
-        dataType: ValueType.Integer,
-        description: 'Maximum memory for model cache in MB',
-    },
-
-    // Worker Settings
-    {
-        id: '82000000-0000-0000-0002-000000000001',
-        tenantId: DEFAULT_TENANT_ID,
-        namespace: 'stt.config',
-        name: 'workers',
-        key: 'concurrency',
-        value: '4',
-        defaultValue: '4',
-        dataType: ValueType.Integer,
-        description: 'Number of concurrent Dramatiq workers',
-    },
-    {
-        id: '82000000-0000-0000-0002-000000000002',
-        tenantId: DEFAULT_TENANT_ID,
-        namespace: 'stt.config',
-        name: 'workers',
-        key: 'batch_queue',
-        value: 'stt_batch',
-        defaultValue: 'stt_batch',
-        dataType: ValueType.String,
-        description: 'Queue name for batch transcription jobs',
-    },
-    {
-        id: '82000000-0000-0000-0002-000000000003',
-        tenantId: DEFAULT_TENANT_ID,
-        namespace: 'stt.config',
-        name: 'workers',
-        key: 'streaming_queue',
-        value: 'stt_streaming',
-        defaultValue: 'stt_streaming',
-        dataType: ValueType.String,
-        description: 'Queue name for streaming transcription jobs',
-    },
+    // TASK-525 — the `model_cache` (max_models / ttl_seconds / max_memory_mb) and
+    // `workers` (concurrency / batch_queue / streaming_queue) rows were REMOVED here.
+    //
+    // They were never read by anything: stt-v2's only GlobalSetting reader was the
+    // `GlobalSettingRead` SQLAlchemy mapping, which had zero callers and is now
+    // deleted (D-11). Their replacements are registered settings keys served over
+    // `GET /api/v1/internal/effective-config?service=stt-v2`:
+    //     stt.modelCache.{maxModels,ttlSeconds,maxMemoryMb}
+    //     stt.workers.concurrency
+    // (packages/applications/src/services/settings-registry/descriptors/service-runtime.descriptors.ts)
+    //
+    // `workers.batch_queue` / `workers.streaming_queue` have NO replacement because
+    // they had no consumer either: the queue names are hardcoded (`stt_batch`,
+    // `default`) in worker.py and the actor's `queue_name`.
+    //
+    // NOTE the descriptor for maxMemoryMb defaults to 10000, NOT the 16384 this
+    // seed carried: 16384 was never in force (no reader), while the running code
+    // has always used the 10000 ctor fallback in models/cache.py. Preserving 16384
+    // would have silently raised the cache ceiling 64% on first deploy.
 
     // Storage Settings
     {

@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _SERVICE_ROOT = Path(__file__).resolve().parents[4]  # …/apps/stt-v2
@@ -129,9 +129,14 @@ class Settings(BaseSettings):
     api_gateway_timeout: int = 30
 
     # Model Cache
+    # TASK-525 — the two fields below are BOOTSTRAP FALLBACKS; their runtime
+    # values come from the control plane (effective-config → ModelCache.apply_retention).
     model_cache_max_models: int = Field(
         default=5,
-        description="Maximum number of models in LRU cache",
+        description=(
+            "Maximum number of models in LRU cache. Bootstrap fallback — the runtime "
+            "value comes from the control plane (effective-config)."
+        ),
     )
     model_cache_ttl_seconds: int = Field(
         default=3600,
@@ -140,7 +145,9 @@ class Settings(BaseSettings):
         description=(
             "Idle TTL for cached models in seconds (product clamp: "
             "min 60s / max 3600s). Active sessions pin models so TTL applies "
-            "only after the last release."
+            "only after the last release. Bootstrap fallback — the runtime value "
+            "comes from the control plane (effective-config); the clamp is "
+            "re-applied to whatever is served."
         ),
     )
 
@@ -152,6 +159,32 @@ class Settings(BaseSettings):
     huggingface_token: str | None = Field(
         default=None,
         description="HuggingFace API token (optional)",
+    )
+
+    # TASK-527 — bootstrap credentials for `s3://` model sources (MinIO-compatible).
+    # All optional: unset simply means an `s3://` source_uri errors cleanly rather
+    # than silently falling back. This `Settings` class carries NO env_prefix, so
+    # the documented `STT_V2_MODEL_S3_*` names are wired via explicit aliases —
+    # every service shares one env file, and un-prefixed names would collide.
+    model_s3_endpoint: str | None = Field(
+        default=None,
+        validation_alias="STT_V2_MODEL_S3_ENDPOINT",
+        description="S3/MinIO endpoint (host:port) backing s3:// model sources",
+    )
+    model_s3_access_key: SecretStr | None = Field(
+        default=None,
+        validation_alias="STT_V2_MODEL_S3_ACCESS_KEY",
+        description="Access key for s3:// model sources",
+    )
+    model_s3_secret_key: SecretStr | None = Field(
+        default=None,
+        validation_alias="STT_V2_MODEL_S3_SECRET_KEY",
+        description="Secret key for s3:// model sources",
+    )
+    model_s3_secure: bool = Field(
+        default=True,
+        validation_alias="STT_V2_MODEL_S3_SECURE",
+        description="Use TLS for the s3:// model endpoint (set false for local MinIO)",
     )
 
     @field_validator("huggingface_cache_dir", mode="before")
@@ -311,7 +344,12 @@ class Settings(BaseSettings):
     )
     worker_concurrency: int = Field(
         default=4,
-        description="Number of Dramatiq worker threads (alias for worker_threads)",
+        description=(
+            "DEPRECATED ALIAS — has no read sites anywhere in the service; "
+            "`worker_threads` is the field that actually reaches Worker(...). "
+            "The control-plane worker ceiling (effective-config) feeds "
+            "`worker_threads`, not this. Retained only for env-compatibility."
+        ),
     )
     worker_poll_timeout_ms: int = Field(
         default=1000,
@@ -418,7 +456,9 @@ class Settings(BaseSettings):
         default=0,
         description=(
             "Maximum number of concurrent streaming sessions. "
-            "0 = auto-detect from ExecutionProfile based on hardware."
+            "0 = auto-detect from ExecutionProfile based on hardware. "
+            "Bootstrap fallback — the runtime value comes from the control plane "
+            "(effective-config), applied after hardware detection."
         ),
     )
     streaming_max_batch_size: int = Field(

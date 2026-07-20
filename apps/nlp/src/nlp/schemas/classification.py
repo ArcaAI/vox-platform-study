@@ -14,6 +14,9 @@ class TextClassificationRequest(BaseModel):
     # TASK-506 — optional per-request model override (gateway-injected from the
     # AiTaskDefault registry). None → the startup default instance, unchanged.
     model_name: str | None = Field(default=None, description="Optional HF model id overriding the default classifier")
+    # TASK-527 (D-12) — gateway-injected `AiModel.localPath`. Registry-derived,
+    # never caller-chosen; absent ⇒ load by `model_name` exactly as before.
+    model_path: str | None = Field(default=None, description="Optional local weights directory (gateway-injected AiModel.localPath)")
 
 
 class TextClassificationResponse(BaseModel):
@@ -33,6 +36,8 @@ class TokenClassificationRequest(BaseModel):
     # TASK-506 — optional per-request model override (gateway-injected from the
     # AiTaskDefault registry). None → the startup default instance, unchanged.
     model_name: str | None = Field(default=None, description="Optional HF model id overriding the default NER model")
+    # TASK-527 (D-12) — gateway-injected `AiModel.localPath`.
+    model_path: str | None = Field(default=None, description="Optional local weights directory (gateway-injected AiModel.localPath)")
 
 
 class TokenClassificationResponse(BaseModel):

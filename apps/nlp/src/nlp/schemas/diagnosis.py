@@ -21,6 +21,8 @@ class DiagnosisSuggestionRequest(BaseModel):
     # TASK-506 — overrides ONLY the suggester's disease-classification model;
     # its internal NER stays the default token classifier.
     model_name: str | None = Field(default=None, description="Optional HF model id overriding the classification model")
+    # TASK-527 (D-12) — gateway-injected `AiModel.localPath`.
+    model_path: str | None = Field(default=None, description="Optional local weights directory (gateway-injected AiModel.localPath)")
 
 
 class DiagnosisSuggestionResponse(BaseModel):

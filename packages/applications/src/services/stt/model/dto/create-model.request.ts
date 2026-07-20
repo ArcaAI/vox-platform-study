@@ -62,7 +62,7 @@ export class CreateModelRequest {
   modelType: ModelType;
 
   @ApiProperty({
-    description: 'Model source',
+    description: 'Model source. S3 = S3/MinIO-compatible object storage (OD-4: s3:// only; azure-blob:// is out of scope).',
     enum: AiModelSource,
     example: AiModelSource.HUGGINGFACE,
   })
@@ -70,7 +70,12 @@ export class CreateModelRequest {
   source: AiModelSource;
 
   @ApiProperty({
-    description: 'Source URI (HuggingFace repo ID, GitHub URL, MLFlow URI, or local path)',
+    description:
+      'Source URI. Scheme grammar honoured by every service resolver: ' +
+      '`hf:<org>/<repo>` or a bare HuggingFace id (Hub snapshot, honours HF_HUB_OFFLINE) · ' +
+      '`file:///abs/path` (verified in place, never copied) · ' +
+      '`s3://bucket/prefix` (downloaded once into the service cache, single-flight + SHA256-verified). ' +
+      'Any other scheme is rejected — there is no silent fallback.',
     example: 'openai/whisper-large-v3',
   })
   @IsString()

@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from nlp.core.concurrency import ResizableSemaphore
 from nlp.core.logging import get_logger
-from nlp.dependencies import pinned_text_classifier, pinned_token_classifier
+from nlp.dependencies import get_inference_bound, pinned_text_classifier, pinned_token_classifier
 from nlp.schemas.classification import (
     TextClassificationRequest,
     TextClassificationResponse,
@@ -15,7 +16,10 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/classify", tags=["NLP REST Classify"])
 
 @router.post("/text", response_model=TextClassificationResponse)
-async def classify_text(request: TextClassificationRequest) -> TextClassificationResponse:
+async def classify_text(
+    request: TextClassificationRequest,
+    inference_bound: ResizableSemaphore = Depends(get_inference_bound),
+) -> TextClassificationResponse:
     """
     Classify medical text into document categories
 
@@ -28,11 +32,15 @@ async def classify_text(request: TextClassificationRequest) -> TextClassificatio
         raise HTTPException(status_code=503, detail="Text classification model not available")
 
     try:
-        async with pinned_text_classifier(request.model_name) as service:
+        async with pinned_text_classifier(request.model_name, request.model_path) as service:
             if not service.is_initialized:
                 raise HTTPException(status_code=503, detail="Text classification model not available")
 
-            result = await service.process(request)
+            # TASK-525 (GAP-L4) — bound concurrent inference. The semaphore wraps
+            # only the model call, NOT the pin: waiting for capacity must not hold
+            # the model-cache pin longer than necessary.
+            async with inference_bound:
+                result = await service.process(request)
             logger.info(f"Text classified with confidence {result.confidence:.3f}")
             return result
     except ModelUnavailableError as e:
@@ -46,7 +54,10 @@ async def classify_text(request: TextClassificationRequest) -> TextClassificatio
 
 
 @router.post("/tokens", response_model=TokenClassificationResponse)
-async def classify_tokens(request: TokenClassificationRequest) -> TokenClassificationResponse:
+async def classify_tokens(
+    request: TokenClassificationRequest,
+    inference_bound: ResizableSemaphore = Depends(get_inference_bound),
+) -> TokenClassificationResponse:
     """
     Classify tokens and extract medical entities
 
@@ -59,11 +70,13 @@ async def classify_tokens(request: TokenClassificationRequest) -> TokenClassific
         raise HTTPException(status_code=503, detail="Token classification model not available")
 
     try:
-        async with pinned_token_classifier(request.model_name) as service:
+        async with pinned_token_classifier(request.model_name, request.model_path) as service:
             if not service.is_initialized:
                 raise HTTPException(status_code=503, detail="Token classification model not available")
 
-            result = await service.process(request)
+            # TASK-525 (GAP-L4) — bound concurrent inference.
+            async with inference_bound:
+                result = await service.process(request)
             logger.info(f"Token classification extracted {len(result.entities)} entities")
             return result
     except ModelUnavailableError as e:

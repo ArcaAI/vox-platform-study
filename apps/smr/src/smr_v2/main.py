@@ -5,7 +5,6 @@ FastAPI application with lifespan-managed shared resources.
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
@@ -210,12 +209,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "vllm": settings.vllm,
             "llama-cpp": settings.llama_cpp,
         }
-        sems: dict[str, asyncio.Semaphore] = {}
+        # TASK-525 — ResizableSemaphore, not asyncio.Semaphore: an admin changing
+        # `maxConcurrent` must move the ceiling of the LIVE object rather than
+        # swap in a new one (which would strand in-flight permits and waiters).
+        from smr_v2.services.resizable_semaphore import ResizableSemaphore
+
+        sems: dict[str, ResizableSemaphore] = {}
         for name in registry.list_providers():
             cfg = provider_configs.get(name)
             max_conc = getattr(cfg, "max_concurrent", 10) if cfg else 10
-            sems[name] = asyncio.Semaphore(max_conc)
+            sems[name] = ResizableSemaphore(max_conc)
         app.state.provider_semaphores = sems
+
+    # TASK-525 — the control-plane pull client. Construction performs NO I/O, so
+    # boot never blocks on (or fails because of) the gateway; the first request
+    # triggers the first fetch, and a failure negative-caches into env behaviour.
+    if getattr(app.state, "effective_config_client", None) is None:
+        from smr_v2.core.effective_config import EffectiveConfigClient
+
+        app.state.effective_config_client = EffectiveConfigClient(
+            base_url=settings.gateway_url,
+            token=settings.service_token.get_secret_value(),
+            service="smr",
+        )
 
     if app.state.shutdown_manager is None:
         from smr_v2.services.shutdown_manager import ShutdownManager
@@ -272,6 +288,9 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.state.provider_queues = {}
     app.state.shutdown_manager = None
     app.state.provider_semaphores = {}
+    # TASK-525 — control-plane overrides; empty ⇒ every provider keeps its env timeout.
+    app.state.provider_timeouts = {}
+    app.state.effective_config_client = None
     app.state.tracer_provider = None
     app.state.logger_provider = None
 

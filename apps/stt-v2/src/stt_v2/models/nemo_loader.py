@@ -6,9 +6,11 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError
 from ..pipeline.dto import AiModelConfig, AiModelFormat
 from .base_loader import BaseModelLoader, LoadedModel
+from .source_resolver import resolve_weights_or_hf_id
 
 logger = logging.getLogger(__name__)
 
@@ -41,18 +43,17 @@ class NeMoLoader(BaseModelLoader):
                     "pip install 'nemo_toolkit[asr]>=2.0.0,<3.0.0'"
                 ) from e
 
-            if model_config.local_path and Path(model_config.local_path).exists():
-                logger.info(
-                    "Loading NeMo model from local checkpoint: %s",
-                    model_config.local_path,
-                )
-                model = ASRModel.restore_from(model_config.local_path)
+            # TASK-527 — one resolver contract. `local_path` (operator override)
+            # still wins, and `file://` / `s3://` sources are now materialised
+            # locally too; a bare HuggingFace id keeps NeMo's own
+            # `from_pretrained` download path unchanged.
+            resolved = await resolve_weights_or_hf_id(model_config, get_settings())
+            if resolved and Path(resolved).exists():
+                logger.info("Loading NeMo model from local checkpoint: %s", resolved)
+                model = ASRModel.restore_from(resolved)
             else:
-                logger.info(
-                    "Loading NeMo model from pretrained: %s",
-                    model_config.source_uri,
-                )
-                model = ASRModel.from_pretrained(model_name=model_config.source_uri)
+                logger.info("Loading NeMo model from pretrained: %s", resolved)
+                model = ASRModel.from_pretrained(model_name=resolved)
 
             model = model.to(device)
             model.eval()

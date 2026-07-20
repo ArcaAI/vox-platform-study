@@ -16,7 +16,8 @@ import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
-from smr_v2.core.dependencies import get_provider_registry, get_redis
+from smr_v2.core.dependencies import get_effective_config_client, get_provider_registry, get_redis
+from smr_v2.core.effective_config import EffectiveConfigClient
 from smr_v2.core.metrics import HEALTH_CHECK_LATENCY, PROVIDER_HEALTH
 from smr_v2.providers.base import ProviderRegistry
 
@@ -50,6 +51,7 @@ async def _check_redis(redis_client: aioredis.Redis | None) -> dict[str, Any]:
 async def health_check(
     registry: ProviderRegistry = Depends(get_provider_registry),
     redis_client: aioredis.Redis = Depends(get_redis),
+    effective_config: EffectiveConfigClient | None = Depends(get_effective_config_client),
 ) -> dict[str, Any]:
     """Detailed health check with per-provider component status."""
     checks: dict[str, dict[str, Any]] = {}
@@ -80,7 +82,7 @@ async def health_check(
     else:
         overall = "degraded"
 
-    return {
+    payload: dict[str, Any] = {
         "status": overall,
         "service": _SERVICE_NAME,
         "version": _SERVICE_VERSION,
@@ -88,6 +90,16 @@ async def health_check(
         "timestamp": datetime.now(UTC).isoformat(),
         "checks": checks,
     }
+
+    # TASK-525 §3.7 — which config lane is live, so operators can see per-group
+    # whether the control plane or env is in force. Health is auth-exempt, so
+    # this carries SOURCE LABELS and timestamps only — never resolved values.
+    # Deliberately does not affect `overall`: a config-plane outage degrades to
+    # env values, which is a healthy state.
+    if effective_config is not None:
+        payload["effective_config"] = effective_config.diagnostics()
+
+    return payload
 
 
 @router.get("/health/live")

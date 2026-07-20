@@ -23,6 +23,7 @@ from smr_v2.core.dependencies import (
     get_provider_semaphores,
     get_rate_limiters,
     get_redis,
+    get_runtime_limits,
     get_shutdown_manager,
     get_task_manager,
 )
@@ -87,6 +88,7 @@ from smr_v2.services.external_guardrail import (
 from smr_v2.services.generation_audit import GenerationAuditEvent, GenerationAuditLogger
 from smr_v2.services.provider_queue import ProviderQueue, QueueFullError
 from smr_v2.services.rate_limiter import RateLimitTracker, estimate_tokens
+from smr_v2.services.resizable_semaphore import ResizableSemaphore
 from smr_v2.services.retry_handler import calculate_backoff, should_retry
 from smr_v2.services.shutdown_manager import ShutdownManager
 from smr_v2.services.task_manager import TaskManager
@@ -189,7 +191,10 @@ async def generate(
     circuit_breakers: dict[str, CircuitBreaker] = Depends(get_circuit_breakers),
     shutdown_manager: ShutdownManager | None = Depends(get_shutdown_manager),
     provider_queues: dict[str, ProviderQueue] = Depends(get_provider_queues),
-    provider_semaphores: dict[str, asyncio.Semaphore] = Depends(get_provider_semaphores),
+    provider_semaphores: dict[str, ResizableSemaphore] = Depends(get_provider_semaphores),
+    # TASK-525 — refreshes control-plane limits (cached, so ~free inside the TTL
+    # window) and yields per-provider timeout overrides; empty ⇒ env value wins.
+    runtime_timeouts: dict[str, int] = Depends(get_runtime_limits),
     settings: Settings = Depends(get_dep_settings),
     guardrail_client: ExternalGuardrailClient | None = Depends(get_guardrail_client),
     redis_client: aioredis.Redis | None = Depends(get_redis),

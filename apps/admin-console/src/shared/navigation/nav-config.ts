@@ -308,11 +308,15 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
   },
-  // TASK-506 — AI model defaults are GLOBAL_ADMIN-only; this tenant entry now renders a
-  // static EmptyState explaining that, pending the M-05 rebuild (TASK-526).
+  // TASK-526 (M-05/M-11/D-18) — the tenant AI surface, rebuilt from the static
+  // EmptyState dead-end into read-only effective-model visibility for all 9 task
+  // keys plus the tenant's OWN bring-your-own cloud credentials. Model selection
+  // remains GLOBAL_ADMIN-only (owner expectation E3); the route was renamed
+  // `/ai-configuration` because "model defaults" advertised a capability this
+  // screen does not have. `/ai-model-defaults` redirects for one release.
   {
-    route: '/ai-model-defaults',
-    label: 'AI model defaults',
+    route: '/ai-configuration',
+    label: 'AI Configuration',
     tier: '30-49',
     icon: IconTargetArrow,
     required: [

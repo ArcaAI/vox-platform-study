@@ -76,7 +76,7 @@ async def health_check() -> dict[str, Any]:
 
     uptime = (datetime.utcnow() - _startup_time).total_seconds()
 
-    return {
+    payload: dict[str, Any] = {
         "status": overall_status.value,
         "service": settings.app_name,
         "version": settings.app_version,
@@ -84,6 +84,20 @@ async def health_check() -> dict[str, Any]:
         "timestamp": datetime.utcnow().isoformat(),
         "checks": checks,
     }
+
+    # TASK-525 §3.7 — which config lane is live, mirroring the binding-health
+    # precedent above. Health is auth-exempt, so this carries SOURCE LABELS and
+    # timestamps only, never resolved values. Deliberately does not affect
+    # `overall_status`: a config-plane outage degrades to env values, which is a
+    # healthy state.
+    try:
+        from stt_v2.core.effective_config import get_effective_config_client
+
+        payload["effective_config"] = get_effective_config_client().diagnostics()
+    except Exception as exc:  # noqa: BLE001 — diagnostics must never break /health
+        payload["effective_config"] = {"error": type(exc).__name__}
+
+    return payload
 
 
 @router.get("/health/live")

@@ -6,6 +6,12 @@ every request; SMR only needs each provider's CONNECTION config (base_url /
 api_key / region / tuning). There is deliberately NO ``*_ENABLED`` selection
 flag — a provider is available iff its connection config is present, and it is
 instantiated lazily on first use (see ``main.py`` / ``ProviderRegistry``).
+
+TASK-525: the SERVICE-LEVEL knobs below (``max_concurrent``, ``timeout_s``) are
+bootstrap fallbacks — their runtime values come from the control plane via
+``core/effective_config.py`` and are applied by ``services/runtime_limits.py``.
+The selection contract above is UNCHANGED: effective-config carries capacity and
+timeouts only, never a provider or model choice.
 """
 
 from __future__ import annotations
@@ -21,6 +27,8 @@ class OllamaConfig(BaseSettings):
 
     base_url: str = "http://localhost:11434"
     default_model: str = "google/gemma-4-e4b"
+    # TASK-525 — bootstrap fallback; runtime value comes from the control plane
+    # (effective-config). Applies to `timeout_s` and `max_concurrent` below.
     timeout_s: int = 300
     max_concurrent: int = 4
     queue_backoff_s: float = 2.0
@@ -36,6 +44,7 @@ class AzureOpenAIConfig(BaseSettings):
     api_version: str = "2024-12-01-preview"
     deployment_name: str = ""
     default_model: str = "gpt-5-mini"
+    # TASK-525 — bootstrap fallbacks; runtime values come from the control plane.
     timeout_s: int = 120
     max_concurrent: int = 10
     tpm_limit: int = 80_000
@@ -51,6 +60,7 @@ class BedrockConfig(BaseSettings):
 
     region: str = "us-east-1"
     default_model: str = "anthropic.claude-3-5-haiku-20241022-v1:0"
+    # TASK-525 — bootstrap fallbacks; runtime values come from the control plane.
     timeout_s: int = 120
     max_concurrent: int = 10
     max_pool_connections: int = 150
@@ -69,6 +79,7 @@ class OpenAICompatConfig(BaseSettings):
     base_url: str = "http://localhost:1234/v1"
     api_key: SecretStr = SecretStr("not-needed")
     default_model: str = "google/gemma-4-e4b"
+    # TASK-525 — bootstrap fallbacks; runtime values come from the control plane.
     timeout_s: int = 300
     max_concurrent: int = 4
     organization: str | None = None
@@ -87,6 +98,7 @@ class VllmConfig(OpenAICompatConfig):
 
     base_url: str = "http://localhost:8000/v1"
     default_model: str = ""
+    # TASK-525 — bootstrap fallback; runtime value comes from the control plane.
     max_concurrent: int = 8
     # Structured-output routing: vLLM >= 0.8 accepts the native OpenAI
     # ``response_format={"type":"json_schema",...}``. Older builds only support
@@ -109,6 +121,7 @@ class LlamaCppConfig(BaseSettings):
 
     base_url: str = "http://localhost:8080"
     default_model: str = ""
+    # TASK-525 — bootstrap fallbacks; runtime values come from the control plane.
     timeout_s: int = 300
     max_concurrent: int = 4
 
@@ -204,6 +217,12 @@ class Settings(BaseSettings):
 
     # Inter-service authentication (empty = auth disabled for local dev)
     service_token: SecretStr = SecretStr("")
+
+    # TASK-525 — where the control plane lives. This is BOOTSTRAP TRANSPORT (the
+    # address of the config source), NOT config authority: service-level knobs
+    # themselves come from the effective-config route this URL points at.
+    # Env var: SMR_V2_GATEWAY_URL.
+    gateway_url: str = "http://localhost:8868/api/v1"
 
     # Connection pooling
     httpx_max_connections: int = 200

@@ -23,10 +23,15 @@ export class ModelResponse {
   @ApiProperty({ description: 'Model type', enum: ModelType })
   modelType: ModelType;
 
-  @ApiProperty({ description: 'Model source', enum: AiModelSource })
+  @ApiProperty({
+    description: 'Model source. S3 = S3/MinIO-compatible object storage (OD-4: s3:// only).',
+    enum: AiModelSource,
+  })
   source: AiModelSource;
 
-  @ApiProperty({ description: 'Source URI' })
+  @ApiProperty({
+    description: 'Source URI. Scheme grammar: `hf:<org>/<repo>` or a bare HuggingFace id · `file:///abs/path` · `s3://bucket/prefix`.',
+  })
   sourceUri: string;
 
   @ApiPropertyOptional({ description: 'Source revision' })
@@ -50,7 +55,11 @@ export class ModelResponse {
   @ApiProperty({ description: 'Download status', enum: AiModelDownloadStatus })
   downloadStatus: AiModelDownloadStatus;
 
-  @ApiPropertyOptional({ description: 'Local file path after download' })
+  @ApiPropertyOptional({
+    description:
+      'Operator/admin weight-directory override — HIGHEST precedence in every service resolver, ahead of ' +
+      '`sourceUri` scheme dispatch. Set-but-missing falls through with a warning. Also populated by download bookkeeping.',
+  })
   localPath?: string | null;
 
   @ApiPropertyOptional({ description: 'Download timestamp' })

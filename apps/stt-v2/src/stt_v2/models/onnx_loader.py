@@ -9,6 +9,7 @@ from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError
 from ..pipeline.dto import AiModelConfig, AiModelFormat
 from .base_loader import BaseModelLoader, LoadedModel
+from .source_resolver import resolve_weights_or_hf_id
 
 logger = logging.getLogger(__name__)
 
@@ -66,17 +67,18 @@ class ONNXLoader(BaseModelLoader):
         try:
             import onnxruntime as ort
 
-            # Model path (must be local)
-            model_path = model_config.local_path
+            # TASK-527 — local_path (operator override) and the file:// / s3://
+            # schemes are materialised by the shared resolver; a bare HuggingFace
+            # id still goes through `_download_onnx_model`, whose `allow_patterns`
+            # selective fetch saves tens of GB over a full snapshot.
+            model_path = await resolve_weights_or_hf_id(model_config, get_settings())
             if not model_path:
-                # Try to download from HuggingFace if source_uri is set
-                if model_config.source_uri:
-                    model_path = await self._download_onnx_model(model_config)
-                else:
-                    raise ModelLoadError(
-                        f"ONNX model {model_config.slug} has no local path. "
-                        "ONNX models must be downloaded first."
-                    )
+                raise ModelLoadError(
+                    f"ONNX model {model_config.slug} has no local path. "
+                    "ONNX models must be downloaded first."
+                )
+            if not Path(model_path).exists():
+                model_path = await self._download_onnx_model(model_config)
 
             model_path_obj = Path(model_path)
             if model_path_obj.is_dir():

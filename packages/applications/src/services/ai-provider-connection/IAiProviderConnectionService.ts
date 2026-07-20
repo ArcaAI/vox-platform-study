@@ -15,6 +15,22 @@ export interface ResolvedProviderConnection {
   source: 'tenant' | 'system';
 }
 
+/**
+ * TASK-526 — one decrypted tenant BYO credential in the shape the SMR service
+ * consumes. snake_case matches the frozen wire contract (and the TTS
+ * `provider_overrides` precedent); TASK-525 owns the Python-side consumption.
+ */
+export interface LlmProviderOverrideEntry {
+  api_key: string;
+  base_url?: string;
+  region?: string;
+  api_version?: string;
+  deployment_name?: string;
+}
+
+/** `provider → override`, keyed by the serving provider identifier. */
+export type LlmProviderOverrides = Record<string, LlmProviderOverrideEntry>;
+
 export const IAiProviderConnectionService = Symbol('IAiProviderConnectionService');
 
 export interface IAiProviderConnectionService {
@@ -40,4 +56,18 @@ export interface IAiProviderConnectionService {
 
   /** Raw entity accessor for gateway resolution paths that need the row itself. */
   findRow(provider: string, tenantId: string): Promise<AiProviderConnectionEntity | null>;
+
+  /**
+   * TASK-526 — decrypt a tenant's ENABLED **cloud BYO** connections into the
+   * injectable `provider_overrides` map the gateway folds into the SMR generate
+   * body. Gateway-only: the result carries plaintext key material and is NEVER
+   * returned by any read API.
+   *
+   * FAILS OPEN PER CREDENTIAL, on decrypt error only: a credential whose
+   * ciphertext will not decrypt (Vault down, key rotated badly, corrupt bytes)
+   * is skipped with a non-secret `warn` so the request proceeds on the
+   * SYSTEM/env platform credentials. Model/provider SELECTION stays fail-closed
+   * elsewhere — these are different failure classes.
+   */
+  resolveTenantCloudOverrides(tenantId: string): Promise<LlmProviderOverrides>;
 }

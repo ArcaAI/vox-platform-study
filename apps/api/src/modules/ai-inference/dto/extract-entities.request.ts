@@ -27,7 +27,15 @@ export class ExtractEntitiesRequest {
 
   // TASK-506 — explicit model override (the AiModel row's sourceUri, an HF id).
   // When omitted, the gateway injects the tenant's effective `nlp.ner` default.
-  @ApiPropertyOptional({ description: 'Explicit HF model id overriding the tenant nlp.ner default (forwarded as model_name).' })
+  // TASK-527 (D-12): there is deliberately NO caller-supplied `modelPath`. The
+  // upstream `model_path` is derived from the MATCHED registry row's `localPath`
+  // (default lane and override lane alike), so a caller can never point the
+  // clinical NLP service at an arbitrary filesystem path. Admins change the
+  // weight location by PATCHing the `AiModel` row, not by sending a request field.
+  @ApiPropertyOptional({
+    description:
+      'Explicit HF model id overriding the tenant nlp.ner default (forwarded as model_name). The weight path is taken from the matched registry row, never from the request.',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(256)

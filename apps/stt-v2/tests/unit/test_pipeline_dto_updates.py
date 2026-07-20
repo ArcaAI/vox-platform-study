@@ -342,6 +342,12 @@ class TestAiModelSource:
         assert AiModelSource.KSERVE.value == "KSERVE"
         assert AiModelSource.LOCAL.value == "LOCAL"
 
+    def test_s3_enum_value_exists(self):
+        """TASK-527: S3/MinIO-compatible object storage source."""
+        assert hasattr(AiModelSource, "S3")
+        assert AiModelSource.S3.value == "S3"
+        assert AiModelSource.S3 == "S3"
+
     def test_kserve_is_string_enum(self):
         """Test that KSERVE can be compared as string."""
         assert AiModelSource.KSERVE == "KSERVE"

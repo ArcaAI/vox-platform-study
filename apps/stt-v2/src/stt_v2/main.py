@@ -147,6 +147,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Configure CPU threading BEFORE any model loading
     _configure_torch_threading()
 
+    # TASK-525 — install the control-plane retention refresher. The ModelCache
+    # keeps NO hard dependency on HTTP; this is what opts a running app into the
+    # pull, so unit tests and non-served contexts stay network-free. Performs no
+    # I/O here: the first model load triggers the first (TTL-cached, fail-safe)
+    # fetch, and an unreachable gateway simply leaves env values in force.
+    from stt_v2.core.runtime_limits import refresh_model_cache_retention
+    from stt_v2.models.cache import set_retention_refresher
+
+    set_retention_refresher(refresh_model_cache_retention)
+
     # Startup — infrastructure
     await initialize_database()
     await initialize_redis()

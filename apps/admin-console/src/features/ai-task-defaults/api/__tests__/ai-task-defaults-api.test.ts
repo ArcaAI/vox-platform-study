@@ -38,8 +38,21 @@ afterEach(() => {
 });
 
 describe('task keys', () => {
-  it('exposes the three platform task keys (all global-admin-only) and the SYSTEM tenant id', () => {
-    expect(AI_TASK_KEYS).toEqual(['guardrail.validate', 'nlp.ner', 'nlp.classification']);
+  // TASK-526 (D-18) — this mirror had drifted to 3 keys while the backend
+  // carried 9. It must stay in lockstep with AI_TASK_KEYS in
+  // packages/applications/src/services/ai-task-default/constants.ts.
+  it('mirrors all nine backend task keys and the SYSTEM tenant id', () => {
+    expect(AI_TASK_KEYS).toEqual([
+      'guardrail.validate',
+      'guardrail.safety',
+      'guardrail.groundedness',
+      'nlp.ner',
+      'nlp.classification',
+      'nlp.diagnosis',
+      'smr.live',
+      'smr.finalize',
+      'harness.judge',
+    ]);
     expect(SYSTEM_TENANT_ID).toBe('00000000-0000-0000-0000-000000000000');
   });
 });

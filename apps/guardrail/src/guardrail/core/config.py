@@ -182,8 +182,15 @@ class GroundednessConfig(BaseSettings):
     # clinical gate). >500 docs/min live-loop target; Q6 quant is CPU-friendly.
     model_id: str = "nvhf/MiniCheck-Flan-T5-Large-Q6_K-GGUF"
     model_file: str = "minicheck-flan-t5-large-q6_k.gguf"
-    # Explicit local .gguf path — REQUIRED to enable (fail-closed unless staged locally).
+    # Explicit local .gguf path.
+    # TASK-527 (D-12) — BOOTSTRAP FALLBACK ONLY. The runtime value now comes from
+    # the `AiModel` registry row (`minicheck-flan-t5-large`): `localPath` first,
+    # then a resolvable `file://` / `s3://` `sourceUri`. This env var is used when
+    # the registry carries no path, which keeps pre-TASK-527 deployments working
+    # byte-for-byte. Unset in BOTH places ⇒ fail-closed to 'unverified', unchanged.
     model_path: str | None = None
+    # Cache dir for weights materialised from an `s3://` source_uri.
+    model_cache_dir: str = "/models/guardrail-cache"
     # llama.cpp runtime knobs (CPU-default: the Q6 quant needs no GPU).
     # n_ctx = 512 matches Flan-T5's training context (`n_ctx_train`); MiniCheck itself
     # windows long documents to ~512-token chunks, so a larger context only wastes the
@@ -297,6 +304,14 @@ class Settings(BaseSettings):
 
     # LLM engine selector: lm-studio (default) | ollama | vllm | llama-cpp | azure | bedrock
     provider: str = "lm-studio"
+
+    # TASK-527 — bootstrap credentials for `s3://` model sources (MinIO-compatible).
+    # All optional: unset simply means an `s3://` source_uri errors cleanly and the
+    # caller falls back to its env path. Env names: GUARDRAIL_V2_MODEL_S3_*.
+    model_s3_endpoint: str | None = None
+    model_s3_access_key: SecretStr | None = None
+    model_s3_secret_key: SecretStr | None = None
+    model_s3_secure: bool = True
 
     # Application
     host: str = "0.0.0.0"

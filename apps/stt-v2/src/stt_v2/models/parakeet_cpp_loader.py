@@ -24,6 +24,7 @@ from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError
 from ..pipeline.dto import AiModelConfig, AiModelFormat
 from .base_loader import BaseModelLoader, LoadedModel
+from .source_resolver import ModelSourceError, resolve_for_model_config
 
 logger = logging.getLogger(__name__)
 
@@ -51,22 +52,16 @@ class ParakeetCppLoader(BaseModelLoader):
         settings = get_settings()
 
         # 1) Fetch (or locate) the GGUF weights.
-        model_path = model_config.local_path
-        if not model_path:
-            try:
-                from huggingface_hub import snapshot_download
-
-                model_path = await asyncio.to_thread(
-                    snapshot_download,
-                    repo_id=model_config.source_uri,
-                    revision=model_config.source_revision or "main",
-                    cache_dir=settings.huggingface_cache_dir,
-                    token=settings.huggingface_token,
-                )
-            except Exception as exc:
-                raise ModelLoadError(
-                    f"Failed to fetch parakeet.cpp weights '{model_config.source_uri}': {exc}"
-                ) from exc
+        # TASK-527 — the one resolver contract replaces the local_path-or-HF
+        # branch: local_path (operator override) -> hf: / file:// / s3://.
+        # parakeet.cpp needs a real directory on disk, so every scheme is
+        # materialised here rather than passed through.
+        try:
+            model_path = str(await resolve_for_model_config(model_config, settings))
+        except ModelSourceError as exc:
+            raise ModelLoadError(
+                f"Failed to resolve parakeet.cpp weights for '{model_config.slug}': {exc}"
+            ) from exc
 
         # 2) Resolve the runtime binding (lazy — never at module import).
         handle = await asyncio.to_thread(self._resolve_binding, model_path)

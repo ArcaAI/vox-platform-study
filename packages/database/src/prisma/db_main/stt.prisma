@@ -118,8 +118,18 @@ model AiModel {
   modelType ModelType // BASE_MODEL, FINETUNED_MODEL, QUANTIZED_MODEL
 
   // Model source and location
-  source         AiModelSource // HUGGINGFACE, GITHUB, MLFLOW, LOCAL
-  sourceUri      String // e.g., "openai/whisper-large-v3" or MLFlow URI
+  //
+  // TASK-527 — `sourceUri` scheme grammar honoured by every service's
+  // `resolve_model_dir` (stt-v2, guardrail, nlp, harness):
+  //   hf:<org>/<repo> | <org>/<repo>  HuggingFace Hub snapshot (bare id also
+  //                                   accepted); honours HF_HUB_OFFLINE
+  //   file:///abs/path                verified in place, never copied
+  //   s3://bucket/prefix              downloaded once into the service cache,
+  //                                   single-flight + SHA256-verified
+  // Anything else is a hard `ModelSourceError` — never a silent fallback.
+  // OD-4: `s3://` only this program; `azure-blob://` is deferred.
+  source         AiModelSource // HUGGINGFACE, GITHUB, MLFLOW, LOCAL, S3
+  sourceUri      String // e.g., "openai/whisper-large-v3", "s3://models/minicheck", "file:///opt/models/x"
   sourceRevision String? // Git revision, MLFlow version, etc.
 
   // Model format for loader selection
@@ -135,11 +145,21 @@ model AiModel {
   computeType  String? // float32, float16, int8
 
   // Download/cache status
+  // TASK-527 — `downloadStatus`/`downloadedAt` are manual registry bookkeeping
+  // this program (no write-back automation yet).
   downloadStatus AiModelDownloadStatus @default(NOT_DOWNLOADED)
-  localPath      String? // Local cache path after download
+  // Operator/admin override — HIGHEST precedence in every service's
+  // `resolve_model_dir`, ahead of `sourceUri` scheme dispatch. Use it for
+  // air-gapped hosts and pre-staged NFS mounts. Set-but-missing falls THROUGH
+  // to scheme dispatch with a structlog warning (never a hard failure).
+  localPath      String?
   downloadedAt   DateTime?
   fileSizeMb     Int?
-  checksum       String? // SHA256 for verification
+  // SHA256 for verification. When set, single-file artifacts (GGUF/ONNX) are
+  // verified after download and on first use of a pre-existing cache entry;
+  // a mismatch is a HARD error and the model is never served. On directory
+  // snapshots (HF) it is a documented no-op with a warning.
+  checksum       String?
 
   // Resource status + Audit
   resourceStatus          ResourceStatusType @default(ENABLED)

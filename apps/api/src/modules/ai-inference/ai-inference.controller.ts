@@ -74,12 +74,19 @@ export class AiInferenceController {
     // registry provider for an arbitrary override, so profile injection applies
     // to the resolved-default path only.
     let modelName: string;
+    // TASK-527 (D-12) — the registry row's operator weight override. Always
+    // registry-derived (never caller-supplied), and OMITTED when absent so the
+    // payload stays byte-for-byte identical to pre-527 for every existing row.
+    let modelPath: string | null = null;
     let runtimeParams: Record<string, unknown> = {};
     if (body.modelName) {
-      modelName = await this.resolveValidatedModelOverride(body.modelName);
+      const override = await this.resolveValidatedModelOverride(body.modelName);
+      modelName = override.sourceUri;
+      modelPath = override.localPath;
     } else {
       const selection = await this.resolveDefaultModelSelection('nlp.ner');
       modelName = selection.sourceUri;
+      modelPath = selection.localPath;
       runtimeParams = await this.resolveRuntimeParams(selection.provider, selection.modelSlug);
     }
 
@@ -88,6 +95,7 @@ export class AiInferenceController {
       aggregation_strategy: body.aggregationStrategy ?? 'simple',
       ...(body.language ? { language: body.language } : {}),
       ...(modelName ? { model_name: modelName } : {}),
+      ...(modelPath ? { model_path: modelPath } : {}),
       ...runtimeParams,
     });
   }
@@ -107,6 +115,8 @@ export class AiInferenceController {
       ...(body.minConfidence !== undefined ? { min_confidence: body.minConfidence } : {}),
       ...(body.language ? { language: body.language } : {}),
       ...(selection.sourceUri ? { model_name: selection.sourceUri } : {}),
+      // TASK-527 (D-12) — omitted when the row carries no localPath.
+      ...(selection.localPath ? { model_path: selection.localPath } : {}),
       ...runtimeParams,
     });
   }
@@ -123,7 +133,7 @@ export class AiInferenceController {
    * an unvalidatable override is never forwarded (unlike the fail-open
    * default injection below, which only ever forwards registry-derived ids).
    */
-  private async resolveValidatedModelOverride(requested: string): Promise<string> {
+  private async resolveValidatedModelOverride(requested: string): Promise<{ sourceUri: string; localPath: string | null }> {
     const rejection = () =>
       new BadRequestException(
         `modelName '${requested}' is not an ENABLED TOKEN_CLASSIFICATION model in the registry (expected a registry slug or sourceUri).`,
@@ -145,7 +155,12 @@ export class AiInferenceController {
     if (!match) {
       throw rejection();
     }
-    return match.sourceUri;
+    // TASK-527 — the weight path comes from the MATCHED REGISTRY ROW, never
+    // from the caller, so an override cannot point NLP at an arbitrary path.
+    return {
+      sourceUri: match.sourceUri,
+      localPath: (match as { localPath?: string | null }).localPath ?? null,
+    };
   }
 
   /**
@@ -164,7 +179,7 @@ export class AiInferenceController {
    */
   private async resolveDefaultModelSelection(
     taskKey: 'nlp.ner' | 'nlp.diagnosis',
-  ): Promise<{ sourceUri: string; provider: string | null; modelSlug: string | null }> {
+  ): Promise<{ sourceUri: string; provider: string | null; modelSlug: string | null; localPath: string | null }> {
     if (!this.aiTaskDefaultService) {
       throw new ServiceUnavailableException(`SYSTEM AiTaskDefault for '${taskKey}' is unavailable (AiTaskDefaultService not wired).`);
     }
@@ -178,6 +193,8 @@ export class AiInferenceController {
         sourceUri,
         provider: (effective.model as { provider?: string } | null)?.provider ?? null,
         modelSlug: effective.modelSlug ?? null,
+        // TASK-527 (D-12) — operator weight override from the registry row.
+        localPath: (effective.model as { localPath?: string | null } | null)?.localPath ?? null,
       };
     } catch (err) {
       if (err instanceof ServiceUnavailableException) throw err;

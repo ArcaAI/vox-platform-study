@@ -1,12 +1,18 @@
 # TASK-526 — BYO Cloud Provider Credentials + Tenant AI Configuration Screen
 
-- **Status**: Pending
+- **Status**: Review
 - **Type**: feature
 - **Program**: Agentic Platform Program Phase 1 — [program plan](../SOTA-Track/2026-07-20-agentic-platform-program-plan.md) §4 Phase 1 · [findings review](../SOTA-Track/2026-07-20-agentic-platform-review-findings.md) (E5-cloud, GAP-C1 tenant lane, M-05, M-11, E3-D1/D-16/D-18 residue)
 - **Ticket number**: TASK-526 is the program plan's suggested number (plan §Numbering: confirm at open time per the CLAUDE.md ticket workflow — highest allocated in `docs/` + git history was TASK-522; 523–534 are program-reserved).
 - **Size**: M · **Lanes**: B (applications/api) + C (admin-console)
 - **Dependencies**: **TASK-524** (Config-Plane Core) MUST have landed — this ticket extends the `AiProviderConnection` table/service/controller that 524 creates. The AD-2 contract (plan §3) is FROZEN; this README builds against it, and the child re-verifies 524's actual file/route names at implementation start (the folder `docs/implementation/TASK-524-Config-Plane-Core/` exists but is being authored in parallel).
 - **Preconditions** (rule 12 design gate): the tenant "AI Configuration" screen needs an **approved Figma frame OR a recorded owner waiver** (frame inventory or waiver text + date recorded in this README) before any screen code is written. The TASK-512 wave precedent was an explicit waiver (plan §2.3).
+
+### Design-gate waiver (recorded 2026-07-20, BEFORE screen code)
+
+> **Owner waiver, 2026-07-20** — the rule 12 design gate for the TASK-526 tenant "AI Configuration" screen is **explicitly waived** in lieu of a Figma frame, following the TASK-512 wave precedent. The screen is to be built by composing already-approved, already-shipped patterns: `ScreenTemplate` (frame 09 contract), `WorkingTenantGate` + `TenantScopeBanner`, the `CredentialCard` interaction from `features/tenant-tts-config/components/tts-credentials-tab.tsx`, and the `EffectiveLine` treatment from `features/ai-task-defaults/components/task-default-card.tsx`. No new visual pattern is introduced. All other gates (rule 10 skeletons, rule 11 a11y with axe 0 violations, both themes) remain in force.
+
+Recorded verbatim per the rule 12 gate; screen implementation (Phase C) started only after this entry existed.
 
 ---
 
@@ -249,11 +255,139 @@ pnpm lint          # only-warn in packages/* treated as errors
 
 ## 9. Implementation Summary
 
-_Pending_
+**Status: implemented (Phases A–D), all gates green.** Implemented 2026-07-20 on `fix/2605-review`, uncommitted.
+
+### 9.1 TASK-524 re-verification — what had ALREADY landed
+
+The §4 manifest was written before 524 landed and guessed several names. Actual landed surface (re-verified at implementation start):
+
+| Ticket assumption | Reality |
+|---|---|
+| `apps/api/src/modules/ai-provider/ai-provider-admin.controller.ts` | `apps/api/src/modules/ai-provider-connection/ai-provider-connection.controller.ts` |
+| `ITenantAiProviderConnectionService` additions needed | `IAiProviderConnectionService` exists; extended in place |
+| `set-provider-credential.request.ts` / `provider-credential.response.ts` to be created | `UpsertAiProviderConnectionRequest` / `AiProviderConnectionResponse` already exist and already carry `expectedVersion` + the masked `hasKey`/`keyVersion` shape |
+| The four §3.6 tenant routes to be added | **Already present** at `admin/ai-providers` — with tenant pinning (`resolveScopedTenantId`), cloud-only 403, Vault-gate, `@RequiresIfMatch()` OCC, and a `version: 0` placeholder GET |
+
+**Decision D-1 — no `/tenant/*` route aliases.** 524's landed `admin/ai-providers` routes already satisfy every semantic behavior frozen in §3.6, including the tenant lane: `resolveScopedTenantId` pins a tenant admin to its own CLS tenant (a foreign `?tenantId=` → 403), `assertWriteAllowed` rejects self-host providers with 403, and the PUT is `If-Match`-guarded. Adding a parallel `/tenant/*` family would be a *redundant implementation* — precisely what the §2.5 Completion & Cleanup Doctrine says to converge, not create. AD-2 semantics are unchanged; only the ticket's guessed path strings differ, which the ticket itself flags as non-frozen. **The console calls the landed routes.**
+
+Auth check performed before adopting them: `TENANT_ADMIN`'s seeded `tenant-full-access` policy already grants `manage GlobalSetting` scoped to `${context.tenantId}` (`packages/database/src/prisma/db_main/seed/01-policy.ts:109`), so the controller's `@CanRead('GlobalSetting')` / `@CanManage('GlobalSetting')` decorators admit tenant admins on their own tenant. No RBAC seed change was needed.
+
+### 9.2 What this ticket actually built
+
+**Phase A — applications** (`packages/applications/src/services/ai-provider-connection/`)
+
+- `IAiProviderConnectionService.ts` — added `LlmProviderOverrideEntry` / `LlmProviderOverrides` (snake_case, the frozen TASK-525 wire contract) and the `resolveTenantCloudOverrides(tenantId)` method contract.
+- `ai-provider-connection.service.ts` — implemented `resolveTenantCloudOverrides`: decrypts only ENABLED **cloud BYO** rows that carry key material, via the single audited `decryptSecretField` path. Fails open per credential on decrypt error only, logging `{message, tenantId, provider, keyVersion}` and nothing else — the deliberate improvement over the TTS exemplar's silent `catch { continue; }` (`tenant-tts-config.service.ts:423`, left untouched as out of scope). Added a `Logger` to the service.
+- **Decision D-2** — `deleteRow` on an absent row now throws `NotFoundException` (was `ArgumentInvalidException` → 400). §3.6 freezes "404 when absent"; this also matches `TenantTtsConfigService.removeCredential` and the house 404-over-403 posture. No existing test asserted the old status.
+
+**Phase B — api**
+
+- `apps/api/src/modules/streaming/smr-proxy.controller.ts` — new private `applyTenantProviderOverrides`, called from `applySmrModelSelection` (which now awaits `applySmrRuntimeProfile` then folds in credentials). **Decision D-3**: hooking the single `applySmrModelSelection` chokepoint covers BOTH forward sites (`generate()` and the assembled path) plus any future one, instead of two parallel call sites as the manifest suggested — audited: those are the only two `/api/v1/generate` forwards. Three invariants, all test-locked: cloud-only (a self-host provider does not even trigger a lookup), **minimal exposure** (only the resolved provider's entry is forwarded, never a tenant's unused second key), and fail-open (a throwing resolver forwards without overrides + warn). Model-identity selection remains fail-closed — separately asserted.
+- `provider_overrides` added to the forwarded `SmrGenerateRequest` interface (documented as gateway-injected, never client-accepted).
+- `streaming.module.ts` — imports `AiProviderConnectionServiceModule`.
+
+**Phase C — admin console** (design-gate waiver recorded above, before any screen code)
+
+- `features/ai-task-defaults/api/` — new `providers-types.ts`, `providers-client.ts`, `providers-keys.ts`, `providers-hooks.ts` (append-only barrel update). OCC via `getWithEtag` + `If-Match`, `"0"` on create.
+- `api/types.ts` — `AI_TASK_KEYS` widened **3 → 9** to match the backend (the D-18 mirror drift); its api test now asserts all nine.
+- `components/effective-models-table.tsx` — read-only 9-row table (task key · model · provider · resolved-by badge) from ONE `GET admin/ai-task-defaults`. No pickers: the E3 global-admin-only write posture is untouched.
+- `components/byo-credential-card.tsx` — Azure OpenAI + Amazon Bedrock cards on the TTS `CredentialCard` pattern, with the OCC divergence (`OccConflictAlert` reload-merge on 412).
+- `components/tenant-ai-configuration-screen.tsx` — `WorkingTenantGate` → nuqs `Tabs` → `ScreenTemplate`; `TenantScopeBanner` in `statusBanner` **on the mutating tab only**.
+- Route `/(tenant)/ai-configuration/{page,loading}.tsx`; `/(tenant)/ai-model-defaults/page.tsx` reduced to `permanentRedirect('/ai-configuration')` (its `loading.tsx` deleted); `ai-model-defaults-tenant-screen.tsx` **deleted** (§2.5: the incorrect implementation is removed with the fix, not left beside it).
+- `nav-config.ts` — entry now `/ai-configuration` / "AI Configuration", stale TASK-506 comment replaced (the D-18 nav leg; TASK-523 had not landed it).
+- Tests: new `tenant-ai-configuration-screen.test.tsx` (13 cases incl. vitest-axe 0 violations per tab and a dark-theme pass); `nav-config.test.ts` locks the rename AND asserts the old route is gone from nav; the old screens test lost its tenant-screen block and its now-partial `OPTIONS` fixture was retyped.
+
+**Phase D — evidence**
+
+- `apps/api/tests/e2e/task-526-ai-provider-byo-cross-tenant.spec.ts` — authored, executed in P7. Deep-key secret scan (no `apikey`/`encryptedapikey`/`ciphertext` at any depth, no `vault:v` in the raw body) on list/read/write, no-reveal-route probe, self-host 403, cross-tenant, 428/412 matrix. Typechecks under `apps/api`.
+- `docs/traceability-matrix.md` — new rows 38 (provider connections + BYO injection) and 39 (the console screen).
+
+### 9.3 Security posture as shipped
+
+| Requirement | How it is enforced | Test |
+|---|---|---|
+| Key write-only, no reveal ever | No DTO carries key material (524's mapper); no reveal route exists | 524 deep-key test + e2e no-reveal probe + e2e deep scan |
+| Vault-gate, no plaintext-at-rest | `encryptKey` throws without `SecretsService` | 524 service test |
+| Fail-open per credential ON DECRYPT ERROR ONLY | `resolveTenantCloudOverrides` per-row try/catch | tenant-lane test: broken credential skipped, healthy one survives |
+| Warn carries no secret material | Log arg allow-list `{message, tenantId, provider, keyVersion}` | tenant-lane test asserts exact key set + absence of `vault:`/plaintext substrings |
+| Selection stays fail-closed | `applySmrModelSelection` rethrows | smr-proxy BYO test |
+| Self-host → 403 · cross-tenant → 404 · OCC 428/412 | Service + controller (524) | 524 tests + e2e |
+| Minimal exposure on the wire | Only the resolved provider's entry is forwarded | smr-proxy BYO test asserts the unused key never appears |
+
+### 9.4 Gate evidence (actual output)
+
+RED first, in both TDD units:
+
+```
+# packages/applications — before implementing resolveTenantCloudOverrides
+$ pnpm --filter @arcaai/applications test -- ai-provider-connection.tenant-lane
+Error: The vi.spyOn() function could not find an object to spy upon. The first argument must be defined.
+ ❯ makeService .../ai-provider-connection.tenant-lane.test.ts:79:19
+ Test Files  1 failed | 314 passed | 1 skipped (316)
+      Tests  8 failed | 6506 passed | 4 skipped (6518)
+
+# apps/api — before implementing applyTenantProviderOverrides
+$ npx vitest run apps/api/src/modules/streaming/__tests__/smr-proxy-tenant-byo.controller.test.ts
+ FAIL  ... > folds the tenant azure credential into the forwarded body
+ FAIL  ... > forwards ONLY the resolved provider entry, never the unused one
+TypeError: Cannot convert undefined or null to object
+ Test Files  1 failed (1)
+      Tests  2 failed | 4 passed (6)
+
+# admin-console — before the screen existed
+$ npx vitest run src/features/ai-task-defaults/components/__tests__/tenant-ai-configuration-screen.test.tsx
+Error: Failed to resolve import "../tenant-ai-configuration-screen"
+ Test Files  1 failed (1)
+      Tests  no tests
+```
+
+GREEN gates:
+
+```
+$ pnpm --filter @arcaai/applications build      # (the ticket's combined `build test` is not a valid
+> rimraf dist tsconfig.tsbuildinfo && tsc       #  pnpm invocation — `tsc test` errors TS6231; run separately)
+   (clean)
+$ pnpm --filter @arcaai/applications test
+ Test Files  315 passed | 1 skipped (316)
+      Tests  6516 passed | 4 skipped (6520)
+
+$ pnpm build:api
+ Tasks:    8 successful, 8 total
+  Time:    17.772s
+$ pnpm test:unit
+ Test Files  944 passed | 2 skipped (946)
+      Tests  16659 passed | 4 skipped | 9 todo (16672)
+
+$ pnpm --filter @arcaai/admin-console build
+✓ Compiled successfully in 12.5s
+├ ƒ /ai-configuration
+├ ƒ /ai-model-defaults          # redirect page
+$ pnpm --filter @arcaai/admin-console lint
+> eslint src --max-warnings 0
+   (clean, 0 problems)
+$ pnpm --filter @arcaai/admin-console test
+ Test Files  135 passed (135)
+      Tests  1003 passed (1003)
+
+$ pnpm lint
+ Tasks:    29 successful, 29 total
+  Time:    26.574s
+```
+
+### 9.5 Honest notes / open items
+
+- **`pnpm lint` reports 145 pre-existing prettier warnings in `packages/applications` (0 errors).** They are treated as errors by rule 01, but **none are in TASK-526-owned files** — `npx eslint src/services/ai-provider-connection` exits 0 with no output. They live in untouched files (live-documentation, user*, tenant-idp-config, …) and pre-date this ticket; fixing them repo-wide is out of this ticket's ownership manifest.
+- **Transient cross-agent noise**: one intermediate `pnpm --filter @arcaai/applications test` run showed 2 failures in `src/services/stt/model/__tests__/aiModel.service.test.ts` — files owned by the concurrently-running TASK-527 agent (confirmed `M` in `git status`). They were green on re-run and in the final `pnpm test:unit` (16659 passed). Not touched by this ticket.
+- **e2e not executed** — `task-526-*.spec.ts` is authored and typechecks, but needs a live gateway (`pnpm test:api:up`) + seeded DB; per §4 it runs in P7.
+- **Runtime browser verification not performed.** The `next-dev-loop` skill's floor needs a running `next dev` + `agent-browser`; this session verified the screen through the production build, lint, and 13 jsdom tests (incl. axe in both themes) only. A headed pass remains for the P7 design-QA step.
+- **Not fixed (out of scope, flagged)**: `ai-task-defaults-platform-screen.tsx` still hardcodes only **3** of the 9 task keys, so six platform defaults have no global-admin editor. This is a real gap surfaced by the 3→9 widening, but the platform screen belongs to TASK-532's file-rename/hub wave — recorded here rather than silently expanded into.
+- SMR Python consumption of `provider_overrides` is TASK-525; the injected field is inert until then (SMR ignores unknown body fields), exactly as TASK-496 phased TTS.
 
 ## 10. Change History
 
 | Date | Change |
 |---|---|
 | 2026-07-20 | Ticket README authored (execution-ready): code-verified current state, frozen AD-2-aligned endpoint contract, injection-point + naming decisions, ordered plan with ownership manifest, RED-first TDD plan. Status Pending — awaits TASK-524 landing + design frame/waiver. |
+| 2026-07-20 | **Design-gate waiver recorded** (owner, in lieu of a Figma frame; TASK-512 precedent) before any screen code — see the Preconditions block. |
+| 2026-07-20 | **Implemented, Phases A–D; status Pending → Review.** TASK-524 re-verified: its landed `admin/ai-providers` routes already satisfied the whole §3.6 endpoint contract, so no `/tenant/*` aliases were created (decision D-1, §2.5 redundancy doctrine); the ticket's guessed file/route names were adapted to the landed ones. Built: `resolveTenantCloudOverrides` (fail-open per credential on decrypt error only, non-secret structured warn), the smr-proxy `provider_overrides` fold-in at the single `applySmrModelSelection` chokepoint (decision D-3), the tenant `/ai-configuration` screen (9-key read-only effective table + Azure/Bedrock BYO cards with OCC), `AI_TASK_KEYS` 3→9 (D-18), the `/ai-model-defaults` → `/ai-configuration` redirect + nav rename, the dead EmptyState screen deleted, an authored e2e secret/OCC/cross-tenant spec, and traceability rows 38–39. `deleteRow` absent-row now 404 not 400 (decision D-2). RED evidence and all four gate outputs pasted in §9.4; §9.5 records the pre-existing `packages/applications` prettier warnings (none in owned files), the un-run e2e, the missing headed-browser pass, and the out-of-scope platform-screen 3-of-9-keys gap. |
 | 2026-07-20 | Program plan §2.5 **Completion & Cleanup Doctrine** adopted as BINDING for this ticket (owner directive): incorrect implementations in the owned surface are removed completely with the fix; partial implementations are finished end-to-end (or explicitly retired); redundant implementations are converged and deleted. Reviewer enforces the §2.5 classification table, plan-conformance (deviations = recorded decision rows), full-closure traceability of the claimed GAP/D/M IDs, and the performance gates. |

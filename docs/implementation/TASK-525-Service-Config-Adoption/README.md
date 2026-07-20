@@ -1,6 +1,6 @@
 # TASK-525 — Service Config Adoption: env → Effective-Config Pull Path
 
-- **Status**: Pending
+- **Status**: Review — implementation COMPLETE (steps 4.1–4.6), every static gate green (§9.6). Owner takes runtime verification (§9.9).
 - **Type**: refactor / feature
 - **Program**: Phase 1 of the [Agentic Platform Program plan (2026-07-20)](../SOTA-Track/2026-07-20-agentic-platform-program-plan.md) (§3 AD-1, §4 Phase 1); findings source: [2026-07-20 review](../SOTA-Track/2026-07-20-agentic-platform-review-findings.md) (E2 §3, E6 §3, D-07, D-11, GAP-C2)
 - **Suggested number**: TASK-525 per the program plan's allocation (highest allocated is TASK-522 + program children 523/524 — confirm at open time per the CLAUDE.md ticket workflow)
@@ -282,11 +282,199 @@ Hermetic throughout: the gateway is stubbed with a local fixture HTTP server (pe
 
 ## 9. Implementation Summary
 
-_Pending_
+**Status: COMPLETE — all steps 4.1–4.6 implemented TDD-first; every static gate green (§9.6).**
+Runtime verification (live gateway + services, real tokens) is taken by the owner.
+
+### 9.1 Step 4.1 — gateway route + guard + read service (lane B)
+
+| File | Action |
+|---|---|
+| `packages/applications/src/services/settings-registry/descriptors/service-runtime.descriptors.ts` | **NEW** — registers `stt.modelCache.{maxModels,ttlSeconds,maxMemoryMb}`, `stt.workers.concurrency`, `stt.streaming.maxConcurrent`, `nlp.inference.maxConcurrent` (see decision **DR-1**) |
+| `packages/applications/src/services/settings-registry/registry.ts` | UPDATE — append `SERVICE_RUNTIME_SETTINGS` |
+| `packages/applications/src/services/effective-config/IEffectiveConfigService.ts` | **NEW** — the frozen §3.2 contract as types |
+| `packages/applications/src/services/effective-config/effective-config.service.ts` | **NEW** — per-service subset resolution + `source` stamping |
+| `packages/applications/src/services/effective-config/effective-config.service.module.ts`, `index.ts` | **NEW** — DI module + barrel |
+| `packages/applications/src/services/index.ts` | UPDATE — barrel export (append-only) |
+| `apps/api/src/modules/internal/internal-service-token.guard.ts` | **NEW** — generalized per-service token guard |
+| `apps/api/src/modules/internal/effective-config.controller.ts` | **NEW** — `@Controller('internal/effective-config')` |
+| `apps/api/src/modules/internal/internal.module.ts` | UPDATE — register controller + guard + service module |
+
+Tests (RED observed before each implementation): `effective-config.service.test.ts` (13), `internal-service-token.guard.test.ts` (13), `effective-config.controller.test.ts` (6).
+
+### 9.2 Gate evidence (step 4.1)
+
+```
+pnpm --filter @arcaai/applications build   → tsc, no output (success)
+pnpm --filter @arcaai/applications test    → Test Files 314 passed | 1 skipped (315)
+                                             Tests 6506 passed | 4 skipped (6510)     [baseline 6493 → +13]
+pnpm build:api                             → Tasks: 8 successful, 8 total (15.6s)
+pnpm test:unit                             → Test Files 942 passed | 2 skipped (944)
+                                             Tests 16643 passed | 4 skipped | 9 todo (16656)
+pnpm --filter @arcaai/api lint             → clean (0 errors)
+pnpm --filter @arcaai/applications lint    → 142 warnings (was 158); ZERO in files owned by this ticket
+```
+
+RED evidence: `Cannot find module '../effective-config.service'` and `Cannot find module '../internal-service-token.guard'` — both observed failing before implementation.
+
+### 9.3 Decision rows (deviations from the plan, per §Completion & Cleanup Doctrine)
+
+| ID | Deviation | Rationale |
+|---|---|---|
+| **DR-1** | §4.4 assumed **TASK-524 had registered the `stt.config.*` keys**; it had not (verified: `descriptors/` had six files, none `stt.*`; zero `stt.config` registry hits). This ticket authors `service-runtime.descriptors.ts` instead. | Owner-approved 2026-07-20. Alternative (reading the raw `stt.config` GlobalSetting rows) was rejected — it perpetuates the "two registries drift" risk in program plan §7. Note the legacy seed rows are keyed by the bare `key` column (`max_models`, `concurrency`), so they are **not** addressable by dotted registry keys; they remain untouched (seeds are not this ticket's ownership). |
+| **DR-2** | `stt.modelCache.maxMemoryMb` default is **10000, not the seed's 16384**. | The seed row never had a reader (D-11); the running code uses the `10000` ctor fallback (`models/cache.py:101`). Adopting 16384 would silently raise the memory ceiling 64% on first deploy — exactly the D-07 failure mode the §7 risk table forbids. Reconciling/retiring the legacy row belongs to the seed owner. |
+| **DR-3** | Guard resolves **`SMR_V2_SERVICE_TOKEN`** for `service=smr` (ticket §3.2 flagged this name "unverified"). | Confirmed: SMR reads `settings.service_token` under the `SMR_V2_` pydantic prefix (`core/config.py:206`), so that is the name it presents. The gateway's *outbound* proxying separately resolves `SMR_SERVICE_TOKEN`; the two are distinct secret names holding the same value by deployment convention. Owner-approved. |
+| **DR-4** | Unknown `service` returns **400 only for an authenticated caller**; an unauthenticated one gets 401. | Guards run before controllers, so a pure 400 would make the route an unauthenticated service-name oracle. The guard admits any caller holding a valid service token (controller then answers the contract's 400) and rejects everyone else. Satisfies the §3.2 contract without weakening fail-closed. |
+| **DR-5** | `EffectiveSettingsService` exposes **no `db`/`env-fallback` stamp** — it returns `sourceScope: string` with a tier-dependent vocabulary. | Derived in the read service as `sourceScope === 'code-default' ? 'env-fallback' : 'db'` rather than extending the TASK-524-owned facade. |
+| **DR-6** | A control-plane read failure **degrades to `env-fallback` + null values** instead of failing the request. | Mirrors §3.1's deterministic-degradation posture on the server side: a cold/broken override lane leaves services on exactly their env behaviour rather than breaking their config pull. Locked by a test. |
+
+### 9.4 Owner acknowledgements obtained
+
+- **New bootstrap env vars** (`SMR_V2_GATEWAY_URL`, `NLP_GATEWAY_URL`) — §3.6 deviation **acked** 2026-07-20. Not yet added (they land with steps 4.2/4.3).
+
+### 9.5 Steps 4.2–4.6 — service adoption
+
+**Re-verified as still true** before implementation: D-11 (`GlobalSettingRead` had exactly two references — the class definition and the `__init__` re-export, zero callers) and GAP-L4 (zero `asyncio.Semaphore` under `apps/nlp/src`).
+
+#### 4.2 SMR (lane E)
+
+| File | Action |
+|---|---|
+| `apps/smr/src/smr_v2/services/resizable_semaphore.py` | **NEW** — `ResizableSemaphore` (§3.4) |
+| `apps/smr/src/smr_v2/core/effective_config.py` | **NEW** — pull client (§3.3) |
+| `apps/smr/src/smr_v2/services/runtime_limits.py` | **NEW** — applies snapshot → semaphores + timeouts |
+| `apps/smr/src/smr_v2/main.py` | UPDATE — semaphores built as `ResizableSemaphore`; client + `provider_timeouts` on `app.state` |
+| `apps/smr/src/smr_v2/core/config.py` | UPDATE — `gateway_url`; module + field docstring deltas (§4.6) |
+| `apps/smr/src/smr_v2/core/dependencies.py` | UPDATE — `get_effective_config_client`, `get_runtime_limits` |
+| `apps/smr/src/smr_v2/api/endpoints/generate.py` | UPDATE — route dependency drives the refresh |
+| `apps/smr/src/smr_v2/api/endpoints/health.py` | UPDATE — `effective_config` diagnostics block (§3.7) |
+
+Tests: `test_resizable_semaphore.py` (15), `test_effective_config_client.py` (20), `test_effective_config_wiring.py` (14).
+
+#### 4.3 NLP (lane E)
+
+| File | Action |
+|---|---|
+| `apps/nlp/src/nlp/core/concurrency.py` | **NEW** — mirrored `ResizableSemaphore` + module singleton + `refresh_inference_limit` |
+| `apps/nlp/src/nlp/core/effective_config.py` | **NEW** — pull client (mirror) |
+| `apps/nlp/src/nlp/core/config.py` | UPDATE — `gateway_url`, `inference_max_concurrent` (both annotated) |
+| `apps/nlp/src/nlp/dependencies.py` | UPDATE — `get_inference_bound` route dependency |
+| `apps/nlp/src/nlp/api/v1/rest/{classify,diagnosis}.py` | UPDATE — the 3 REST inference calls bounded |
+| `apps/nlp/src/nlp/api/v1/ws/classify.py` | UPDATE — `_bounded()` wraps the 2 streaming `process` callables |
+| `apps/nlp/src/nlp/{lifespan.py,api/v1/rest/monitoring.py}` | UPDATE — client wiring + health block |
+
+Tests: `test_inference_semaphore.py` (12), `test_effective_config_client.py` (9).
+
+#### 4.4 stt-v2 (lane D)
+
+| File | Action |
+|---|---|
+| `apps/stt-v2/src/stt_v2/core/effective_config.py` | **NEW** — pull client reusing `api_gateway_url`/`api_gateway_key` |
+| `apps/stt-v2/src/stt_v2/core/runtime_limits.py` | **NEW** — retention/worker/streaming resolution |
+| `apps/stt-v2/src/stt_v2/core/database/{models.py,__init__.py}` | UPDATE — **`GlobalSettingRead` DELETED** (D-11) + re-export dropped |
+| `apps/stt-v2/src/stt_v2/models/cache.py` | UPDATE — `apply_retention()` (clamp re-applied), injectable refresher |
+| `apps/stt-v2/src/stt_v2/main.py` | UPDATE — installs the refresher at startup |
+| `apps/stt-v2/src/stt_v2/worker.py` | UPDATE — worker-thread ceiling from the control plane (see **DR-7**) |
+| `apps/stt-v2/src/stt_v2/streaming/_runtime.py` | UPDATE — streaming ceiling applied after hardware detection |
+| `apps/stt-v2/src/stt_v2/core/config/settings.py` | UPDATE — docstring deltas (§4.6) |
+| `apps/stt-v2/src/stt_v2/health/api/routes.py` | UPDATE — health block |
+
+Tests: `test_effective_config_client.py` (14, incl. the clamp cases), `test_database_exports.py` (7).
+
+#### 4.5 Guardrail (lane E, small)
+
+`apps/guardrail/src/guardrail/core/tenant_config.py` — `AiRuntimeProfileRead` mapping + `_load_runtime_profile()` folded into the existing cache entry (no extra TTL window); `resolve_guardian_engine` applies `temperature`/`max_tokens`/`timeout_s` via the existing `model_copy` path, now **independently of** the model override. Transport unchanged (AD-1); `local_path` deferred (D-12 → TASK-527). Tests: `test_tenant_config_runtime_profile.py` (9); the 31 existing `test_tenant_config.py` tests were extended-around, not weakened.
+
+#### 4.6 Docstrings + env deltas
+
+Field-level "bootstrap fallback — runtime value comes from the control plane" annotations on every adopted pydantic field (SMR's six provider configs, NLP's two new fields, stt-v2's `model_cache_*` / `streaming_max_concurrent`); module-docstring notes on `smr_v2/core/config.py` and `guardrail/core/tenant_config.py`. The two acked bootstrap vars added to `turbo.json#globalEnv` + `.env.example` + `.env.dev`, each with a comment stating they are transport, not authority. `uv.lock` untouched (no new dependencies — `httpx` and `structlog` were already present everywhere).
+
+### 9.6 Gate evidence (final, full sweep)
+
+```
+# TypeScript
+pnpm --filter @arcaai/applications build   → tsc, clean
+pnpm build:api                             → Tasks: 8 successful, 8 total (14.9s)
+pnpm test:unit                             → Test Files 942 passed | 2 skipped (944)
+                                             Tests 16643 passed | 4 skipped | 9 todo (16656)
+pnpm --filter @arcaai/api lint             → clean (0 errors)
+pnpm --filter @arcaai/applications lint    → 142 warnings (baseline 158); ZERO in files owned by this ticket
+
+# Python — tests
+apps/smr        → 923 passed, 32 deselected
+apps/nlp        → 141 passed
+apps/stt-v2     → 2397 passed, 1 skipped   (unit)
+apps/guardrail  → 137 passed
+
+# Python — lint (ruff) + typecheck (mypy)
+py:smr-v2:lint|typecheck     → All checks passed / Success: no issues found in 51 source files
+py:nlp:lint|typecheck        → All checks passed / Success: no issues found in 43 source files
+py:stt-v2:lint|typecheck     → All checks passed / Success: no issues found in 121 source files
+py:guardrail:lint|typecheck  → All checks passed / Success: no issues found in 29 source files
+```
+
+RED evidence observed before each implementation: `Cannot find module '../effective-config.service'` · `'../internal-service-token.guard'` · `No module named 'smr_v2.services.resizable_semaphore'` · `'smr_v2.core.effective_config'` · `'smr_v2.services.runtime_limits'` · `'nlp.core.concurrency'` (+ client) · `'stt_v2.core.effective_config'` · 6 failing guardrail profile assertions.
+
+### 9.7 Bugs the tests caught during implementation (kept, not papered over)
+
+1. **`or {}` on an empty dict** (`smr_v2/services/runtime_limits.py`) — `provider_timeouts={}` is falsy, so `or {}` substituted a throwaway dict and the first timeout override never reached `app.state`. An empty dict is the NORMAL initial state, so this would have silently disabled timeout overrides in production. Replaced with an `isinstance` narrowing that preserves identity.
+2. **Flaky diagnostics assertion** (mine, in both the SMR and NLP client tests) — `assert "9" not in str(diag)` also matches digits inside the ISO `last_refresh_at` timestamp. It passed in isolation only because that run's timestamp happened to lack a `9`, and failed in the full suite. Replaced with an exact key-set assertion, which is what actually pins the "labels and timestamps only" contract.
+3. **`__init__` truncation** (`stt_v2/models/cache.py`) — an insertion landed mid-`__init__`, orphaning the stats counters and loader table (`AttributeError: no attribute '_misses'` across 26 existing tests). Methods moved after `__init__`.
+4. **Model cache took a hard HTTP dependency** — the first cut called the pull client directly from `get_or_load`, making 26 unit tests attempt real network I/O. Replaced with an injectable refresher that is UNSET by default and installed at app startup, so the cache never hard-depends on HTTP.
+
+### 9.8 Decision rows added during service adoption
+
+| ID | Deviation | Rationale |
+|---|---|---|
+| **DR-7** | stt-v2's control-plane worker ceiling feeds **`settings.worker_threads`, not `settings.worker_concurrency`**. | `worker_concurrency` is documented as an "alias" but has **zero read sites** anywhere in the service (verified by grep over `apps/stt-v2/src`); `worker_threads` is what actually reaches `Worker(...)` in `worker.py`. Wiring the control plane to the alias would have produced an admin knob that silently does nothing — the exact D-07 failure class. The alias's field description now says so explicitly. **SUPERSEDED BY DR-12 — see §9.10: the `worker.py` path this row describes is itself dead in the shipped image.** |
+| **DR-8** | `ResizableSemaphore` admits capacity by comparing `in_flight` against the **current limit** on each acquire, rather than the "shrink deficit" bookkeeping described in §3.4. | Same guarantees with less state, and it fixes a case the deficit design gets wrong: shrinking while idle. With a deficit counter the already-free permits stay claimable, so a shrink from 4→2 with nothing in flight would still admit 4. Locked by `test_shrink_with_idle_capacity_takes_effect_immediately`. |
+| **DR-9** | The SMR/NLP/stt-v2 refresh is driven by a **route/DI dependency**, not a background poller. | Matches §3.3's "read-triggered, not a background task": no new lifecycle, and a service that never serves never polls. Cost inside the TTL window is a dict lookup. |
+| **DR-10** | stt-v2's ModelCache refresher is **injected at app startup** rather than imported directly by the cache. | Keeps the cache free of a hard HTTP dependency so unit tests and non-served contexts do zero network I/O (see §9.7 item 4). |
+| **DR-11** | Guardrail applies profile tuning **even when no model override is present**. | The original early-return skipped tuning whenever `model` was unset, which would have made `temperature`/`timeout` silently inert for any provider still on its env model. |
+
+## 9.10 Concurrency audit + DR-7 correction (post-review)
+
+Prompted by the owner's question — *"does any implemented logic indicate it can handle requests in parallel, especially for realtime transcription?"* — the stt-v2 concurrency story was audited end-to-end rather than assumed. Findings, with verdicts:
+
+| Ceiling | Verdict | Evidence |
+|---|---|---|
+| **Realtime streaming** `max_concurrent_streams` | **ENFORCED — was already correct** | `CapacityGuard` (`streaming/capacity_guard.py:49-74`) is an `asyncio.Lock`-protected admission gate. `SessionManager.create_session` calls `try_acquire` *first* (`session_manager.py:795`), returns `None` when full, and the route turns that into **HTTP 503 + `Retry-After: 5`** (`streaming/api/routes.py:101-107`). Release is symmetric (`:1038-1046`) with a periodic orphan-slot reconciler (`:3386-3395`). Covered by real tests incl. a 6th-session rejection through the live path (`tests/unit/test_streaming.py:1293-1309`). **This ticket's control-plane override lands in `_runtime.py` BEFORE `SessionManager` construction, so the served value becomes the guard's real ceiling.** |
+| **Realtime hot path** (parallelism quality) | **Best practice followed** | Every ASR backend is offloaded off the event loop via `asyncio.to_thread` — Transformers `:1680`, faster-whisper `:1577`, NeMo `:1456`, parakeet.cpp `:1513`, whisper.cpp `:1538`, Azure `:1835`, Sortformer diarization `inference.py:898`. The C/C++ engines (CTranslate2, whisper.cpp, parakeet.cpp) and PyTorch kernels release the GIL during decode, so audio ingestion and inference genuinely overlap. |
+| **Batch worker** `worker_threads` | **WAS NOT ENFORCED — defect found in this ticket's own 4.4 work; now fixed** | See DR-12. |
+| `batch_scheduler_max_wait_ms` | **NOT ENFORCED (pre-existing, out of scope)** | Set per hardware tier and reported at `session_manager.py:3416`, but **no `BatchScheduler` implementation exists** — zero read sites. Dead configuration, unrelated to this ticket. Logged for the owner (§9.9). |
+
+| ID | Correction | Rationale |
+|---|---|---|
+| **DR-12** | **DR-7's original wiring was dead code in production, and is replaced by an in-actor gate.** New `apps/stt-v2/src/stt_v2/core/job_concurrency.py` (`ResizableThreadGate`) acquired inside the `transcribe_file` actor. | The shipped image runs `python3.11 -m dramatiq stt_v2.worker --processes 2 --threads 4` (`apps/stt-v2/docker/Dockerfile:242`). The dramatiq CLI **imports** the module (`importlib.import_module`) rather than executing it as `__main__`, then builds its own `Worker` from its own `--threads` flag — so `worker.py:main()` never runs and the value DR-7 fed into it reached nothing. That is the identical "wiring a dead field" failure (D-07) this ticket exists to close, committed by this ticket. The gate binds inside the actor, so it holds under **any** launch mode: dramatiq CLI, `worker.py:main()`, or a direct test call. `worker.py:main()` keeps its wiring for the non-CLI path. |
+
+**Scope of the gate (documented, not hidden):** `--threads` remains the OUTER bound (how many jobs a process can attempt); the gate is the INNER, operator-adjustable bound, so setting it above `--threads` has no effect. It is **per-process** — `--processes N` gives N independent gates, so the fleet ceiling is `N x limit`, the same caveat the streaming `CapacityGuard` carries. A fleet-wide bound needs a shared Redis counter and belongs with TASK-529. A test asserts the docstring states this, so the caveat cannot be quietly dropped.
+
+Tests: `apps/stt-v2/tests/unit/test_job_concurrency.py` (12) — real threads, asserts the ceiling is saturated but never exceeded, that throttling never drops a job, that a failing job releases its slot, that a shrink never revokes a running transcription, and that an idle shrink binds immediately.
+
+## 9.11 Seed convergence (owner-requested, done in this ticket)
+
+The legacy `stt.config` GlobalSetting rows this ticket supersedes are now **deleted** rather than left as a dormant second config lane (Completion & Cleanup Doctrine §2.5):
+
+- **Removed (6 rows)** from `DEFAULT_STT_SETTINGS` (`seed/06-stt.ts`): `model_cache.{max_models,ttl_seconds,max_memory_mb}` and `workers.{concurrency,batch_queue,streaming_queue}`. The first four are replaced by the registered keys `stt.modelCache.*` / `stt.workers.concurrency`; `batch_queue`/`streaming_queue` get **no** replacement because they had no consumer either — the queue names are hardcoded (`stt_batch`, `default`) in `worker.py` and the actor's `queue_name`.
+- **The DR-2 divergence is resolved by the deletion**: the seed's `max_memory_mb: 16384` is gone, and the descriptor's `10000` (the value actually in force via the `models/cache.py` ctor fallback) is now the single source of truth. No behaviour change on deploy.
+- **Seed tests updated to lock the removal** (`packages/database/src/__tests__/seed.test.ts`): the two "should include …" assertions became "should NOT carry …", so re-introducing a dormant lane fails the suite. `pnpm --filter @arcaai/database test` → 819 passed.
+- **Deliberately NOT removed**: the `storage` / `api_gateway` / `defaults` rows in the same array. They are equally unread as GlobalSetting rows (stt-v2's only reader was `GlobalSettingRead`, now deleted) — their values are duplicated in pydantic settings fields such as `minio_audio_bucket` — but this ticket provides **no replacement lane** for them, so deleting them would be removal without convergence. Recorded in §9.9 with the evidence.
+
+### 9.9 Residual items for the owner / follow-up tickets
+
+- **Runtime verification** (owner-taken): live gateway + each service with real tokens, end-to-end pull, and a live semaphore resize under load.
+- ~~Legacy `stt.config.*` GlobalSetting rows~~ — **DONE in this ticket at the owner's request; see §9.11.** The 6 superseded rows are deleted and the removal is locked by tests.
+- **Remaining unread `stt.config` rows** (`storage`, `api_gateway`, `defaults` groups in `DEFAULT_STT_SETTINGS`): also never read (stt-v2's only GlobalSetting reader is gone), with their values duplicated in pydantic settings fields (e.g. `minio_audio_bucket`). Left in place because this ticket offers no replacement lane for them — deleting them would be removal without convergence. Candidate for TASK-529.
+- **`batch_scheduler_max_wait_ms` is dead configuration** (pre-existing, unrelated to this ticket): set per hardware tier in `ExecutionProfile` and reported at `session_manager.py:3416`, but no `BatchScheduler` implementation exists anywhere in `apps/stt-v2/src`. Either implement cross-session batching or retire the field.
+- **Fleet-wide concurrency**: both the streaming `CapacityGuard` and the new batch gate are **per-process**. Today's k3s base runs `replicas: 1` for each, so the per-process ceiling *is* the fleet ceiling — but raising replicas without a shared (Redis) counter would let each pod admit its own full quota. Worth deciding before scaling out.
+- **`uv lock`** untouched — no Python dependency was added.
+- Shared-package extraction of the three mirrored clients + `ResizableSemaphore` remains **TASK-529 OD-3** (deliberately not preempted, per §3.3).
 
 ## 10. Change History
 
 | Date | Change |
 |---|---|
 | 2026-07-20 | Ticket README authored (execution-ready): code-verified current state, frozen endpoint contract, semaphore-resize design, ordered per-service plan, RED-first TDD list, env-var deviation flagged (SMR/NLP gateway URL vars). Status Pending — awaiting owner approval + TASK-524. |
+| 2026-07-20 | **Post-review concurrency audit + seed convergence** (§9.10–9.11), both owner-prompted. Audit verdict: realtime streaming concurrency was ALREADY correctly enforced (`CapacityGuard` admission control → HTTP 503 + `Retry-After`, inference offloaded off the event loop via `asyncio.to_thread` on every backend), and this ticket's control-plane override correctly feeds that guard. But **DR-7's own batch-worker wiring was found to be dead code in the shipped image** — the Dockerfile runs the dramatiq CLI, which imports `stt_v2.worker` instead of executing `main()` — i.e. this ticket had itself committed the D-07 failure it exists to close. Corrected by **DR-12**: a new in-actor `ResizableThreadGate` (`core/job_concurrency.py`, 12 tests) that binds under any launch mode, with its per-process scope documented and test-locked. Seeds: the 6 superseded `stt.config` rows deleted and the removal locked by updated seed tests (§9.11), which also resolves the DR-2 `max_memory_mb` divergence. |
+| 2026-07-20 | **Steps 4.2–4.6 implemented TDD-first and gated** (§9.5–9.6): SMR `ResizableSemaphore` + pull client + live resize wiring; NLP's first-ever inference bound (GAP-L4) across all 5 inference entry points incl. the two streaming callables; stt-v2 pull client, **`GlobalSettingRead` deleted** (D-11), model-cache retention adoption with the clamp double-enforced, and worker/streaming ceilings; guardrail's SQL resolver extended with `AiRuntimeProfile` tuning; docstring + env deltas. Five further decision rows DR-7…DR-11 (§9.8) — notably **DR-7**: stt-v2's `worker_concurrency` has ZERO read sites, so the control plane feeds the real `worker_threads` field instead of the dead alias. Four bugs the tests caught are recorded in §9.7. Status → Review. |
+| 2026-07-20 | **Step 4.1 implemented TDD-first and gated** (§9.1–9.2): internal `GET /api/v1/internal/effective-config` route, generalized `InternalServiceTokenGuard`, `EffectiveConfigService` read service, and the `service-runtime` settings descriptors. Six deviations recorded as decision rows DR-1…DR-6 (§9.3) — most consequentially **DR-1**: TASK-524 never registered the `stt.config.*` keys this ticket's §4.4 assumed it would, so the descriptors are authored here (owner-approved), and **DR-2**: the descriptor default deliberately keeps the code's 10000 rather than the seed's divergent 16384. Status remains Pending — steps 4.2–4.6 (all Python lanes) not started. |
 | 2026-07-20 | Program plan §2.5 **Completion & Cleanup Doctrine** adopted as BINDING for this ticket (owner directive): incorrect implementations in the owned surface are removed completely with the fix; partial implementations are finished end-to-end (or explicitly retired); redundant implementations are converged and deleted. Reviewer enforces the §2.5 classification table, plan-conformance (deviations = recorded decision rows), full-closure traceability of the claimed GAP/D/M IDs, and the performance gates. |

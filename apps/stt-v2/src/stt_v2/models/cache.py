@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from collections import OrderedDict
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -26,6 +27,17 @@ logger = logging.getLogger(__name__)
 # Product policy: idle TTL ∈ [60s, 3600s].
 _TTL_MIN_SECONDS = 60
 _TTL_MAX_SECONDS = 3600
+
+
+# TASK-525 — control-plane retention refresher, installed at app startup so the
+# cache never hard-depends on HTTP (see `ModelCache._refresh_retention`).
+_retention_refresher: Callable[[], Awaitable[None]] | None = None
+
+
+def set_retention_refresher(refresher: Callable[[], Awaitable[None]] | None) -> None:
+    """Install (or clear, with None) the control-plane retention refresher."""
+    global _retention_refresher
+    _retention_refresher = refresher
 
 
 def clamp_cache_ttl_seconds(ttl_seconds: int) -> int:
@@ -98,6 +110,11 @@ class ModelCache:
         """
         settings = get_settings()
 
+        # TASK-525 — these three are BOOTSTRAP FALLBACKS; their runtime values
+        # come from the control plane via `apply_retention` below. Note
+        # `max_memory_mb` has no settings field at all — this literal is the only
+        # default it has ever had, and the registry descriptor deliberately
+        # mirrors it rather than the divergent seed row (see DR-2).
         self._max_memory_mb = max_memory_mb or 10000  # Default 10GB
         self._max_models = max_models or settings.model_cache_max_models
         raw_ttl = ttl_seconds if ttl_seconds is not None else settings.model_cache_ttl_seconds
@@ -141,6 +158,42 @@ class ModelCache:
             f"ModelCache initialized: max_models={self._max_models}, "
             f"max_memory_mb={self._max_memory_mb}, ttl_seconds={self._ttl_seconds}"
         )
+
+    def apply_retention(self, retention: dict[str, int]) -> None:
+        """TASK-525 — adopt control-plane retention values.
+
+        Every read site consults `self._X` rather than a captured local, so a
+        reassignment here takes effect on the next eviction pass without
+        rebuilding the cache or disturbing resident models.
+
+        An ABSENT key keeps the current (env/bootstrap) value — so a gateway
+        outage leaves behaviour byte-identical to today. The product clamp
+        [60, 3600] is re-applied here as well as server-side: a bad DB value must
+        not be able to push the cache outside its supported window.
+        """
+        ttl_seconds = retention.get("ttl_seconds")
+        if ttl_seconds is not None:
+            self._ttl_seconds = clamp_cache_ttl_seconds(ttl_seconds)
+
+        max_models = retention.get("max_models")
+        if max_models is not None and max_models > 0:
+            self._max_models = max_models
+
+        max_memory_mb = retention.get("max_memory_mb")
+        if max_memory_mb is not None and max_memory_mb > 0:
+            self._max_memory_mb = max_memory_mb
+
+    async def _refresh_retention(self) -> None:
+        """Pull + apply control-plane retention, if a refresher is installed.
+
+        UNSET by default and installed at app startup (`set_retention_refresher`),
+        so the cache itself never depends on HTTP: unit tests and any non-served
+        context exercise the cache with zero network I/O, and only a running app
+        opts into the control-plane pull.
+        """
+        if _retention_refresher is None:
+            return
+        await _retention_refresher()
 
     async def get(self, model_slug: str) -> LoadedModel | None:
         """
@@ -203,6 +256,12 @@ class ModelCache:
             LoadedModel
         """
         slug = model_config.slug
+
+        # TASK-525 — read-triggered control-plane refresh. Cached inside the
+        # client's TTL window (so this is ~free), never raises, and runs BEFORE
+        # the eviction pass below so a freshly-served retention value applies to
+        # this load rather than the next one.
+        await self._refresh_retention()
 
         async with self._lock:
             cached = await self._get_locked(slug)

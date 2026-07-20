@@ -10,7 +10,7 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from nlp.core.config import settings
@@ -39,7 +39,7 @@ _MODELS = {
 
 
 @router.get("/health")
-async def health_check() -> dict[str, Any]:
+async def health_check(request: Request) -> dict[str, Any]:
     """Detailed health check with per-model component status."""
     checks: dict[str, dict[str, Any]] = {}
     overall = "healthy"
@@ -58,7 +58,7 @@ async def health_check() -> dict[str, Any]:
         if status == "unhealthy":
             overall = "unhealthy" if overall == "unhealthy" else "degraded"
 
-    return {
+    payload: dict[str, Any] = {
         "status": overall,
         "service": _SERVICE_NAME,
         "version": _SERVICE_VERSION,
@@ -66,6 +66,16 @@ async def health_check() -> dict[str, Any]:
         "timestamp": datetime.now(UTC).isoformat(),
         "checks": checks,
     }
+
+    # TASK-525 §3.7 — which config lane is live. Health is auth-exempt, so this
+    # carries SOURCE LABELS and timestamps only, never resolved values. It never
+    # affects `overall`: a config-plane outage degrades to env values, which is
+    # a healthy state.
+    effective_config = getattr(request.app.state, "effective_config_client", None)
+    if effective_config is not None:
+        payload["effective_config"] = effective_config.diagnostics()
+
+    return payload
 
 
 @router.get("/health/live")

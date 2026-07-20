@@ -35,6 +35,8 @@ export * from './ai-task-default';
 // TASK-524 — config-plane core (provider connections + runtime profiles).
 export * from './ai-provider-connection';
 export * from './ai-runtime-profile';
+// TASK-525 — the read side: per-service effective-config for the Python pull clients.
+export * from './effective-config';
 // MCP external-tools registry admin (global-admin CRUD + registry reads).
 export * from './mcp-server';
 // TASK-356 Phase 5 — editable realtime-pipeline policy (cascade admin surface).

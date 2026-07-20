@@ -1,5 +1,6 @@
 import {
   AiModelServiceModule,
+  AiProviderConnectionServiceModule,
   AiRuntimeProfileServiceModule,
   AiTaskDefaultServiceModule,
   EntitlementsServiceModule,
@@ -44,6 +45,9 @@ import { TranscriptionJobController } from './transcription-job.controller';
     // TASK-524 — hyperparameter profile resolver for the SMR proxy's
     // caller-wins, fail-open parameter injection.
     AiRuntimeProfileServiceModule,
+    // TASK-526 — tenant BYO cloud-credential resolver for the SMR proxy's
+    // cloud-only, minimal-exposure, fail-open `provider_overrides` injection.
+    AiProviderConnectionServiceModule,
     // TASK-386 (#5/#17): provides `ISocketRegistryService` so `SttWsGateway`
     // publishes its per-instance open-socket count for the platform aggregate.
     PlatformMetricsServiceModule,
