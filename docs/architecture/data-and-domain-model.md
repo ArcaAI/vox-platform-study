@@ -90,7 +90,7 @@ Grouped by owning module (schema file → API/service ownership). "Module" names
 
 | Model | Purpose | Key relations | Owning module |
 |---|---|---|---|
-| `AsrPipeline` / `AsrPipelineVersion` | Named ASR pipeline configs (model chain, VAD/diarization settings) with versioning | version → pipeline | `pipeline` (`audio/pipelines`), stt-v2 config reader |
+| `AsrPipeline` / `AsrPipelineVersion` | Named ASR pipeline configs (model chain, VAD/diarization settings) with versioning. **Template lineage (TASK-531)**: the 9 SYSTEM-tenant rows are TEMPLATES, cloned into every tenant at provisioning; each copy records `sourceTemplateSlug` (provenance, survives clone chains) and `templateLocked = true`, which makes it read-only for content edits + delete (403 "clone to customize") while leaving enable/disable and set-default available. Tenants clone a copy to customize it; a resync reconciler fast-forwards pristine locked copies to the template's current config and never touches unlocked rows. | version → pipeline; copy → template by slug (no FK) | `pipeline` (`audio/pipelines`), stt-v2 config reader |
 | `AiModel` | AI model registry (source/format/download status; STT + LLM entries) | referenced by pipelines / SummaryMeta.aiModelId | `ai-model` |
 | `TranscriptionJob` | Batch/streaming transcription job lifecycle (`TranscriptionJobStatus`, `TranscriptionJobType`, `TranscriptionMode`) | soft refs consultation/media | `streaming`, stt-v2 worker |
 

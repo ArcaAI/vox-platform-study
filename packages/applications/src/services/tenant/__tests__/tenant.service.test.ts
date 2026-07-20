@@ -646,6 +646,24 @@ describe('TenantService', () => {
                 expect(defaultCall[1]).toBe(productionClone.id);
             });
 
+            // TASK-531 — provisioned clones ARE template copies: they carry the
+            // template's slug as provenance and start locked, so a tenant admin
+            // clones one to customize rather than editing it in place (E4).
+            it('stamps template lineage on every provisioned clone (TASK-531)', async () => {
+                const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
+                mockTenantRepository.create.mockResolvedValue(newTenant);
+                mockAsrPipelineRepository.findEnabledPipelines.mockResolvedValue(makeSystemCatalog());
+                mockAsrPipelineRepository.isSlugUnique.mockResolvedValue(true);
+
+                await service.create({ key: 'NEW', name: 'New' });
+
+                expect(mockAsrPipelineRepository.create).toHaveBeenCalledTimes(3);
+                mockAsrPipelineRepository.create.mock.calls.forEach(([created]) => {
+                    expect(created.templateLocked).toBe(true);
+                    expect(created.sourceTemplateSlug).toBe(created.slug);
+                });
+            });
+
             it('clones each source pipeline current version (carrying its YAML) as the tenant pipeline v1', async () => {
                 const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
                 mockTenantRepository.create.mockResolvedValue(newTenant);

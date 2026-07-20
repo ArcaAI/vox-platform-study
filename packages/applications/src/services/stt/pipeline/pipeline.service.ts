@@ -6,7 +6,7 @@ import {
   ResourceType,
   SysEventType,
 } from '@arcaai/domains';
-import { BadRequestException, Injectable, NotFoundException, Inject, Optional } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Inject, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { parse } from 'yaml';
@@ -14,8 +14,15 @@ import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { IPipelineService } from './IPipelineService';
-import { CreatePipelineRequest, PaginatedPipelineResponse, PipelineResponse, PipelineVersionResponse, UpdatePipelineRequest } from './dto';
+import { ClonePipelineRequest, CreatePipelineRequest, PaginatedPipelineResponse, PipelineResponse, PipelineVersionResponse, UpdatePipelineRequest } from './dto';
 import { PipelineDtoMapper } from './pipeline.dto.mapper';
+
+/**
+ * TASK-531 — the single source of the locked-copy refusal text. The console
+ * surfaces it verbatim as the disabled-control reason (rule 11 §5), and the
+ * e2e/unit suites assert it, so it must not drift between call sites.
+ */
+export const TEMPLATE_LOCKED_MESSAGE = 'Template copies are read-only — clone to customize';
 
 @Injectable()
 export class PipelineService extends BaseService implements IPipelineService {
@@ -108,6 +115,16 @@ export class PipelineService extends BaseService implements IPipelineService {
       throw new NotFoundException(`Pipeline ${id} not found`);
     }
 
+    // TASK-531 (GAP-T1) — locked template copies are read-only for content.
+    // Ordering is load-bearing: the ownership guard above runs FIRST, so a
+    // cross-tenant probe gets 404 and never sees this 403 (which would confirm
+    // the row exists). Same-tenant, though, the caller can already see this row
+    // in their own list — there is no existence to hide, and answering 404
+    // would be a lie that breaks the console UX. So we return an honest,
+    // actionable 403, matching the same-tenant error precedents (OCC 412,
+    // quota 409). `toggle`/`setDefault` are deliberately NOT guarded (OD-1).
+    this.assertNotTemplateLocked(existing);
+
     if (dto.slug && dto.slug !== existing.slug) {
       const isUnique = await this.pipelineRepository.isSlugUnique(tenantId, dto.slug, id);
       if (!isUnique) {
@@ -159,6 +176,104 @@ export class PipelineService extends BaseService implements IPipelineService {
     });
 
     return PipelineDtoMapper.toResponse(updated);
+  }
+
+  /**
+   * TASK-531 (GAP-T1) — reject content mutations on a locked template copy.
+   *
+   * Call ONLY after the caller's ownership of the row has been established, so
+   * this 403 can never confirm the existence of another tenant's pipeline.
+   */
+  private assertNotTemplateLocked(pipeline: { templateLocked?: boolean }): void {
+    if (pipeline.templateLocked) {
+      throw new ForbiddenException(TEMPLATE_LOCKED_MESSAGE);
+    }
+  }
+
+  /**
+   * TASK-531 (GAP-T2) — Clone a pipeline into a new, editable copy.
+   *
+   * This is the sanctioned way to customize a locked template copy (owner
+   * expectation E4: tenant admins "can clone/copy or create their own"). The
+   * clone is always UNLOCKED, and it inherits everything but its identity from
+   * the source, including:
+   *
+   *  - `sourceTemplateSlug`, carried verbatim so provenance survives clone
+   *    chains. A copy-of-a-copy still reports the template it ultimately came
+   *    from; a clone of a wholly hand-made pipeline keeps `null` (README §3.5).
+   *  - the source's CURRENT config, written as the clone's own v1 version
+   *    snapshot so the copy starts with an honest version history rather than
+   *    an empty one (mirrors `TenantService.provisionTenantPipelineCatalog`).
+   *
+   * The SOURCE is resolved through the tenant ownership guard, so a tenant
+   * clones their OWN copy of a template — not the SYSTEM row directly (which
+   * `findById` can see through the shared-read widening). That matches E4:
+   * every tenant already holds a copy of every template.
+   */
+  async clone(id: string, dto: ClonePipelineRequest): Promise<PipelineResponse> {
+    const tenantId = this.tenantId;
+    const userId = this.requestUserId;
+
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const source = await this.pipelineRepository.findById(id);
+    // Cross-tenant / missing both surface as 404 (see `update`).
+    if (!source || source.tenantId !== tenantId) {
+      throw new NotFoundException(`Pipeline ${id} not found`);
+    }
+
+    // A clone is a NEW row, so it consumes plan quota exactly like `create`.
+    if (this.entitlements?.isEnforcementEnabled()) {
+      const currentCount = await this.pipelineRepository.count({ where: { tenantId } });
+      await this.entitlements.assertQuantityQuota(tenantId, 'maxAsrPipelines', currentCount);
+    }
+
+    const isUnique = await this.pipelineRepository.isSlugUnique(tenantId, dto.slug);
+    if (!isUnique) {
+      throw new BadRequestException(`Pipeline with slug '${dto.slug}' already exists`);
+    }
+
+    // The source's CURRENT config: newest version snapshot if it has any,
+    // otherwise the pipeline-level YAML (rows provisioned by the seed carry no
+    // version history — `seedAsrPipelines` writes none).
+    const sourceVersions = await this.versionRepository.findByPipeline(source.id);
+    const currentConfigYaml = sourceVersions[0]?.configYaml ?? source.configYaml;
+
+    const clone = AsrPipelineFactory.CreateAsrPipeline({
+      tenantId,
+      name: dto.name,
+      slug: dto.slug,
+      description: source.description ?? undefined,
+      configYaml: currentConfigYaml,
+      tags: source.tags,
+      // The copy is the customizable one — never locked, whatever the source is.
+      templateLocked: false,
+      sourceTemplateSlug: source.sourceTemplateSlug ?? null,
+      createdBy: userId ?? undefined,
+    });
+
+    const saved = await this.pipelineRepository.create(clone);
+
+    await this.snapshotVersion(
+      saved,
+      `Cloned from pipeline '${source.slug}' (TASK-531)`,
+      userId ?? undefined,
+    );
+
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: saved.id,
+      createdAt: saved.createdAt,
+      data: {
+        slug: saved.slug,
+        name: saved.name,
+        clonedFrom: source.id,
+        sourceTemplateSlug: saved.sourceTemplateSlug ?? null,
+      },
+    });
+
+    return PipelineDtoMapper.toResponse(saved);
   }
 
   /**
@@ -460,6 +575,12 @@ export class PipelineService extends BaseService implements IPipelineService {
     if (!existing || existing.tenantId !== tenantId) {
       throw new NotFoundException(`Pipeline ${id} not found`);
     }
+
+    // TASK-531 (GAP-T1) — same guard order as `update`: ownership 404 first,
+    // then the lock 403. Deleting a template copy would silently shrink the
+    // tenant's catalog below the SYSTEM baseline; clone-and-delete-your-own is
+    // the supported path.
+    this.assertNotTemplateLocked(existing);
 
     // TASK-326 (soft-delete consistency): use the repository's dedicated
     // `softDelete` so the OCC version bump + DELETED status are applied the same

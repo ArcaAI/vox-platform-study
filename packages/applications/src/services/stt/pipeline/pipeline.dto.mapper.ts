@@ -12,6 +12,10 @@ export class PipelineDtoMapper {
       resourceStatus: entity.resourceStatus,
       // TASK-328 A6 — tenant default flag.
       isDefault: entity.isDefault ?? false,
+      // TASK-531 — template lineage (drives the console's Template badge and
+      // read-only detail state).
+      sourceTemplateSlug: entity.sourceTemplateSlug ?? null,
+      templateLocked: entity.templateLocked ?? false,
       tags: entity.tags || [],
       tenantId: entity.tenantId || '',
       createdAt: entity.createdAt,

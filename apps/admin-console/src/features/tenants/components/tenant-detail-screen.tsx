@@ -20,6 +20,7 @@ import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
 import { useTenant } from '../api/hooks';
 import type { Tenant } from '../api/types';
 import { TenantPlanBadge } from './plan-badge';
+import { ResyncPipelineTemplatesAction } from './resync-pipeline-templates-action';
 import { TenantConfigsTab } from './tenant-configs-tab';
 import { TenantFrontendConfigTab } from './tenant-frontend-config-tab';
 import { TenantLifecycleDialogs, type LifecycleRequest } from './tenant-lifecycle-dialogs';
@@ -163,6 +164,9 @@ export function TenantDetailScreen({ id }: { id: string }) {
                                         Archive
                                     </Button>
                                 ) : null}
+                                {/* TASK-531 — reconcile this tenant's pipeline
+                                    catalog against the SYSTEM templates. */}
+                                <ResyncPipelineTemplatesAction tenant={tenant} />
                                 <Button variant="destructive" onClick={() => setLifecycle({ action: 'delete', tenant })}>
                                     <IconTrash aria-hidden />
                                     Delete

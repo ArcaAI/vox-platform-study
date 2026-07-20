@@ -11,6 +11,19 @@ export interface Pipeline {
     resourceStatus: ResourceStatus;
     /** Exactly one pipeline per tenant carries true (TASK-328 A6). */
     isDefault: boolean;
+    /**
+     * TASK-531 — the SYSTEM template this pipeline descends from; null when it
+     * is not template-derived. Survives clone chains, so a copy-of-a-copy still
+     * reports its original template.
+     */
+    sourceTemplateSlug?: string | null;
+    /**
+     * TASK-531 — true for a pristine template copy. The gateway answers PATCH
+     * and DELETE on such a row with 403; enable/disable and set-default still
+     * work. The console renders these rows read-only with a Clone action rather
+     * than letting the user discover the 403 by hitting Save.
+     */
+    templateLocked: boolean;
     tags: string[];
     tenantId: string;
     createdAt: string;
@@ -64,6 +77,15 @@ export interface UpdatePipelineRequest {
     tags?: string[];
     /** Recorded on the version snapshot when configYaml changes. */
     changeReason?: string;
+}
+
+/**
+ * POST /admin/audio/pipelines/:id/clone body (ClonePipelineRequest).
+ * Only the new copy's identity — everything else is inherited from the source.
+ */
+export interface ClonePipelineRequest {
+    name: string;
+    slug: string;
 }
 
 /** POST /admin/audio/pipelines/validate result (ValidateYamlResponse). */

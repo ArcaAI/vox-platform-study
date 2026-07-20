@@ -25,6 +25,10 @@ function pipeline(overrides: Partial<Pipeline> = {}): Pipeline {
         configYaml: 'models:\n  asr: whisper-large-v4\n',
         resourceStatus: 'ENABLED',
         isDefault: true,
+        // TASK-531 — hand-created pipeline by default; the template-copy cases
+        // opt in explicitly.
+        sourceTemplateSlug: null,
+        templateLocked: false,
         tags: [],
         tenantId: 'tnt-1',
         createdAt: '2026-06-01T10:00:00.000Z',

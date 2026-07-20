@@ -9,6 +9,7 @@ import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, request, ver
 import type { WithEtag } from '@/shared/api';
 import type {
     AssignTenantResult,
+    ClonePipelineRequest,
     CreatePipelineRequest,
     PaginatedPipelines,
     Pipeline,
@@ -49,6 +50,15 @@ export async function updatePipeline(id: string, patch: UpdatePipelineRequest, e
 
 export function deletePipeline(id: string): Promise<void> {
     return deleteJson(`${BASE}/${encodeURIComponent(id)}`);
+}
+
+/**
+ * TASK-531 — clone into a NEW editable copy. Allowed even when the source is a
+ * locked template copy: this is how a tenant customizes one. No If-Match — it
+ * creates a row rather than editing one.
+ */
+export function clonePipeline(id: string, body: ClonePipelineRequest): Promise<Pipeline> {
+    return postJson(`${BASE}/${encodeURIComponent(id)}/clone`, body);
 }
 
 /** Preflight the YAML before saving (never mutates). */

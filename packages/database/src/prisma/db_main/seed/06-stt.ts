@@ -724,6 +724,10 @@ interface AsrPipelineSeed {
     configYaml: string;
     isDefault?: boolean;
     tags: string[];
+    // TASK-531 — template lineage. Omitted on the SYSTEM rows (they ARE the
+    // templates); stamped on every tenant copy by `asTemplateCopies` below.
+    sourceTemplateSlug?: string | null;
+    templateLocked?: boolean;
 }
 
 export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
@@ -834,6 +838,29 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     // matrix of 9 (soft-disabled by retireRetiredAsrPipelines).
 ];
 
+/**
+ * TASK-531 — the slugs of the 9 SYSTEM template pipelines, derived so the list
+ * can never drift from the catalog above.
+ *
+ * A tenant row carrying one of these slugs is a copy of that template. The
+ * lineage backfill migration inlines the same set as a SQL literal (migrations
+ * cannot import TypeScript); `task-531-pipeline-template-lineage-migration.test.ts`
+ * asserts the two stay set-equal.
+ */
+export const ASR_TEMPLATE_SLUGS: readonly string[] = DEFAULT_ASR_PIPELINES.map((p) => p.slug);
+
+/**
+ * TASK-531 — stamp template lineage onto a tenant's catalog rows.
+ *
+ * Every seeded tenant pipeline is provisioned FROM the SYSTEM template of the
+ * same slug, so its provenance is that slug and it starts locked: tenant admins
+ * clone a copy to customize it rather than editing it in place (owner
+ * expectation E4). SYSTEM rows never pass through here — they are the templates,
+ * and stay unlocked with null provenance.
+ */
+const asTemplateCopies = (rows: AsrPipelineSeed[]): AsrPipelineSeed[] =>
+    rows.map((row) => ({ ...row, sourceTemplateSlug: row.slug, templateLocked: true }));
+
 /** Slugs removed from the product matrix; soft-disable on re-seed. */
 export const RETIRED_ASR_PIPELINE_SLUGS = [
     'lightweight-whisper-small',
@@ -850,6 +877,13 @@ export const RETIRED_ASR_PIPELINE_SLUGS = [
  * referenced by other seeds (91-user `default-stt-pipeline`, 09-consultation
  * job seeds); the REMAINING SYSTEM pipelines are derived here so the customer
  * catalogs can never drift from DEFAULT_ASR_PIPELINES.
+ *
+ * TASK-531 lineage: because every customer row mirrors a SYSTEM template, all of
+ * them (hand-authored and derived alike) are stamped `sourceTemplateSlug = slug`
+ * + `templateLocked = true` by `asTemplateCopies`. Tenant admins therefore get
+ * the full catalog as READ-ONLY copies and clone one to customize (owner
+ * expectation E4); the SYSTEM rows themselves stay unlocked — they are the
+ * templates the copies descend from.
  *
  * Derived IDs reuse the `81000000-…-0001-…` block with the tenant discriminator
  * in the hundreds slot (SYSTEM=0xx, ArcaAI=1xx, Global=4xx) and a sequence
@@ -903,7 +937,7 @@ const EXPLICIT_TENANT_PIPELINE_SLUGS = new Set([
     'production-whisper-large-v3-turbo-gguf',
 ]);
 
-export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
+export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = asTemplateCopies([
     // --- ArcaAI ---
     {
         id: '81000000-0000-0000-0001-000000000101',
@@ -957,7 +991,7 @@ export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
         'ArcaAI',
         EXPLICIT_TENANT_PIPELINE_SLUGS,
     ),
-];
+]);
 
 // =============================================================================
 // GLOBAL CUSTOMER-TENANT ASR PIPELINES (TASK-336 IC-03)
@@ -982,7 +1016,7 @@ export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
 // customer tenant. Exported for testing + reuse by transcription-job seeds.
 // =============================================================================
 
-export const GLOBAL_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
+export const GLOBAL_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = asTemplateCopies([
     {
         id: '81000000-0000-0000-0001-000000000401',
         tenantId: SEED_TENANT_ID,
@@ -1037,7 +1071,7 @@ export const GLOBAL_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
         'Global',
         EXPLICIT_TENANT_PIPELINE_SLUGS,
     ),
-];
+]);
 
 // =============================================================================
 // GLOBAL SETTINGS FOR STT SERVICE
@@ -1478,6 +1512,12 @@ export const seedAsrPipelines = async (client: CorePrismaClient) => {
                     description: pipelineData.description,
                     configYaml: pipelineData.configYaml,
                     tags: pipelineData.tags,
+                    // TASK-531 — lineage is a property of the seed declaration,
+                    // not admin state, so (unlike `isDefault`) it IS refreshed
+                    // on re-seed. This branch already restores `configYaml` to
+                    // the seed value, so the row is pristine by definition.
+                    sourceTemplateSlug: pipelineData.sourceTemplateSlug ?? null,
+                    templateLocked: pipelineData.templateLocked ?? false,
                 },
             });
         } else {

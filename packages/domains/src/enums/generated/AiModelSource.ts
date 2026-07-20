@@ -7,4 +7,5 @@ export enum AiModelSource {
   GITHUB = 'GITHUB',
   MLFLOW = 'MLFLOW',
   LOCAL = 'LOCAL',
+  S3 = 'S3',
 }

@@ -3,11 +3,21 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ClsModule } from 'nestjs-cls';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { PipelineService } from './pipeline.service';
+import { PipelineTemplateResyncService } from './pipeline-template-resync.service';
+import { PipelineTemplateResyncCronService } from './pipeline-template-resync.cron.service';
 import { EntitlementsServiceModule } from '../../entitlements/entitlements.service.module';
+import { CommonServiceModule } from '../../baseServices';
 
+/**
+ * TASK-531 — the module additionally registers the template-resync reconciler
+ * and its self-scheduling cron. Like `AgentTrajectoryRetentionServiceModule`,
+ * the cron relies on the app-level `ScheduleModule.forRoot()` (SchedulerRegistry)
+ * and `EventEmitterModule.forRoot()` (@OnEvent) globals; `CommonServiceModule`
+ * supplies `IAppSettingsService` (the enabled/cron keys, default OFF).
+ */
 @Module({
-  imports: [CoreDatabaseModule, EventEmitterModule, ClsModule, EntitlementsServiceModule],
-  providers: [PipelineService],
-  exports: [PipelineService],
+  imports: [CoreDatabaseModule, EventEmitterModule, ClsModule, EntitlementsServiceModule, CommonServiceModule],
+  providers: [PipelineService, PipelineTemplateResyncService, PipelineTemplateResyncCronService],
+  exports: [PipelineService, PipelineTemplateResyncService],
 })
 export class PipelineServiceModule {}

@@ -13,6 +13,8 @@ export class AsrPipeline extends BaseTenantDataModel {
   public description: string | null;
   public configYaml: string;
   public isDefault: boolean;
+  public sourceTemplateSlug: string | null;
+  public templateLocked: boolean;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
@@ -29,6 +31,8 @@ export class AsrPipeline extends BaseTenantDataModel {
     this.description = data.description;
     this.configYaml = data.configYaml;
     this.isDefault = data.isDefault ?? false;
+    this.sourceTemplateSlug = data.sourceTemplateSlug;
+    this.templateLocked = data.templateLocked;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;

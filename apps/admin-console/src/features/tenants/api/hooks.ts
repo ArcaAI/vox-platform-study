@@ -19,6 +19,7 @@ import {
     listTenantConfigs,
     listTenants,
     provisionTenant,
+    resyncTenantPipelineTemplates,
     restoreTenant,
     setTenantTags,
     suspendTenant,
@@ -97,6 +98,18 @@ export function useDeleteTenant() {
 export function useSuspendTenant() {
     const invalidate = useInvalidateTenants();
     return useMutation({ mutationFn: (id: string) => suspendTenant(id), onSuccess: invalidate });
+}
+
+/**
+ * TASK-531 — global-admin SYSTEM-template resync for one tenant.
+ *
+ * No tenant-cache invalidation: the run mutates the target tenant's ASR
+ * pipelines, not the tenant record itself, and that catalog belongs to a
+ * different feature's cache (which may not even be the working tenant).
+ * The summary toast is the feedback.
+ */
+export function useResyncTenantPipelineTemplates() {
+    return useMutation({ mutationFn: (id: string) => resyncTenantPipelineTemplates(id) });
 }
 
 export function useArchiveTenant() {

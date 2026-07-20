@@ -21,6 +21,7 @@ import { useCreatePipeline, usePipeline } from '../api';
 import type { Pipeline } from '../api';
 import { PipelineConfigTab } from './config-editor-card';
 import { PipelineStatusBadge } from './pipeline-status-badge';
+import { ClonePipelineDialog, TemplateBadge } from './template-lock';
 import { PipelineLifecycleTab, PipelineVersionsTab } from './versions-lifecycle-panel';
 
 type PipelineTab = 'config' | 'versions' | 'lifecycle';
@@ -189,6 +190,7 @@ export function PipelineDetailDrawer({
     const [tab, setTab] = usePipelineTab();
     const detail = usePipeline(pipelineId);
     const pipeline = pipelineId ? (detail.data?.data ?? null) : null;
+    const [cloneOpen, setCloneOpen] = useState(false);
 
     // Create mode: a single form, no tabs, no detail read.
     if (creating) {
@@ -200,6 +202,7 @@ export function PipelineDetailDrawer({
     }
 
     return (
+        <>
         <Tabs value={tab} onValueChange={(next) => void setTab(next as PipelineTab)}>
             <DetailDrawer
                 open={open}
@@ -210,6 +213,8 @@ export function PipelineDetailDrawer({
                     pipeline ? (
                         <>
                             <PipelineStatusBadge status={pipeline.resourceStatus} />
+                            {/* TASK-531 — a locked SYSTEM template copy. */}
+                            {pipeline.templateLocked ? <TemplateBadge /> : null}
                             {pipeline.isDefault ? (
                                 <Badge variant="secondary" className="gap-1">
                                     <IconStarFilled aria-hidden className="text-warning size-3" />
@@ -232,7 +237,11 @@ export function PipelineDetailDrawer({
                 ) : (
                     <>
                         <TabsContent value="config" className="mt-0 flex min-h-0 flex-1 flex-col">
-                            <PipelineConfigTab detail={detail.data} onReload={() => void detail.refetch()} />
+                            <PipelineConfigTab
+                                detail={detail.data}
+                                onReload={() => void detail.refetch()}
+                                onClone={() => setCloneOpen(true)}
+                            />
                         </TabsContent>
                         <TabsContent value="versions" className="mt-0">
                             <PipelineVersionsTab pipelineId={pipeline.id} />
@@ -243,11 +252,16 @@ export function PipelineDetailDrawer({
                                 isElevated={isElevated}
                                 onReload={() => void detail.refetch()}
                                 onDeleted={() => onOpenChange(false)}
+                                onClone={() => setCloneOpen(true)}
                             />
                         </TabsContent>
                     </>
                 )}
             </DetailDrawer>
         </Tabs>
+        {/* Outside the Tabs/DetailDrawer tree so the dialog is not unmounted
+            when the drawer closes on a successful clone. */}
+        <ClonePipelineDialog source={pipeline} open={cloneOpen} onOpenChange={setCloneOpen} onCloned={onCreated} />
+        </>
     );
 }

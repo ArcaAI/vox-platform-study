@@ -15,6 +15,13 @@ export interface IAsrPipelineEntity extends IBaseTaggedEntity {
   // TASK-328 A6 — frozen-schema `isDefault` column. Optional on the
   // interface so the factory (create path) can omit it (DB default = false).
   isDefault?: boolean;
+  // TASK-531 — template lineage. `sourceTemplateSlug` records which SYSTEM
+  // template this row descends from (null = not template-derived);
+  // `templateLocked` marks a pristine template copy, which the application
+  // layer treats as read-only for content edits + delete. Optional on the
+  // interface for the same reason as `isDefault` (DB defaults cover creates).
+  sourceTemplateSlug?: string | null;
+  templateLocked?: boolean;
   TranscriptionJobs?: Entities.TranscriptionJobEntity[] | null;
 }
 
@@ -24,6 +31,8 @@ export class AsrPipelineEntity extends BaseTaggedEntity {
   private _description?: IAsrPipelineEntity['description'];
   private _configYaml: IAsrPipelineEntity['configYaml'];
   private _isDefault: boolean;
+  private _sourceTemplateSlug?: IAsrPipelineEntity['sourceTemplateSlug'];
+  private _templateLocked: boolean;
   private _TranscriptionJobs?: IAsrPipelineEntity['TranscriptionJobs'];
 
   constructor(init: IAsrPipelineEntity) {
@@ -33,6 +42,8 @@ export class AsrPipelineEntity extends BaseTaggedEntity {
     this._description = init.description;
     this._configYaml = init.configYaml;
     this._isDefault = init.isDefault ?? false;
+    this._sourceTemplateSlug = init.sourceTemplateSlug ?? null;
+    this._templateLocked = init.templateLocked ?? false;
     this._TranscriptionJobs = init.TranscriptionJobs;
   }
 
@@ -74,6 +85,22 @@ export class AsrPipelineEntity extends BaseTaggedEntity {
 
   set isDefault(value: boolean) {
     this.setProperty('isDefault', value);
+  }
+
+  get sourceTemplateSlug(): IAsrPipelineEntity['sourceTemplateSlug'] {
+    return this._sourceTemplateSlug;
+  }
+
+  set sourceTemplateSlug(value: IAsrPipelineEntity['sourceTemplateSlug']) {
+    this.setProperty('sourceTemplateSlug', value);
+  }
+
+  get templateLocked(): boolean {
+    return this._templateLocked;
+  }
+
+  set templateLocked(value: boolean) {
+    this.setProperty('templateLocked', value);
   }
 
   get TranscriptionJobs(): IAsrPipelineEntity['TranscriptionJobs'] {

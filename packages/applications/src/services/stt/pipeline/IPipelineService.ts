@@ -1,4 +1,4 @@
-import { CreatePipelineRequest, UpdatePipelineRequest, PipelineResponse, PaginatedPipelineResponse, PipelineVersionResponse } from './dto';
+import { ClonePipelineRequest, CreatePipelineRequest, UpdatePipelineRequest, PipelineResponse, PaginatedPipelineResponse, PipelineVersionResponse } from './dto';
 
 export interface IPipelineService {
   /**
@@ -10,6 +10,15 @@ export interface IPipelineService {
    * Update an existing pipeline
    */
   update(id: string, dto: UpdatePipelineRequest): Promise<PipelineResponse>;
+
+  /**
+   * TASK-531 (GAP-T2) — Clone a pipeline into a new, editable copy.
+   *
+   * The sanctioned way to customize a locked template copy: the clone is always
+   * unlocked, keeps the source's template provenance (`sourceTemplateSlug`), and
+   * starts with the source's current config as its own v1 version snapshot.
+   */
+  clone(id: string, dto: ClonePipelineRequest): Promise<PipelineResponse>;
 
   /**
    * IC-04 (TASK-336) — Assign a pipeline within its owning tenant.
