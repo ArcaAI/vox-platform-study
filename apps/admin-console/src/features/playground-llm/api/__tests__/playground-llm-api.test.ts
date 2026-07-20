@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cancelTask, generateAssembled, generateText, getTask, listGuardrailProviders, listProviders, taskStreamProxyUrl } from '../client';
+import { cancelTask, generateAssembled, generateText, getTask, listGuardrailProviders, listProviders, taskStreamPath, taskStreamScope } from '../client';
 import { playgroundLlmKeys } from '../keys';
 import { isStreamingAck } from '../types';
 
@@ -101,9 +101,12 @@ describe('playground-llm client', () => {
         ]);
     });
 
-    it('builds the SAME-ORIGIN BFF-proxied SSE URL (this route has no @StreamScope — tickets are rejected)', () => {
-        expect(taskStreamProxyUrl('t-5531')).toBe('/api/hope/text/tasks/t-5531/stream');
-        expect(taskStreamProxyUrl('t 1')).toBe('/api/hope/text/tasks/t%201/stream');
+    it('builds the gateway stream path + ticket scope (never a BFF-proxied stream URL)', () => {
+        expect(taskStreamPath('t-5531')).toBe('text/tasks/t-5531/stream');
+        expect(taskStreamPath('t 1')).toBe('text/tasks/t%201/stream');
+        // Must match @StreamScope({ namespace: 'smr_task', param: 'taskId' }).
+        expect(taskStreamScope('t-5531')).toBe('smr_task:t-5531');
+        expect(taskStreamPath('t-5531')).not.toContain('/api/hope/');
     });
 });
 

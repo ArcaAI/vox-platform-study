@@ -67,10 +67,7 @@ function getCacheKeys(userId: string | null | undefined, tenantId: string | null
   };
 }
 
-async function writeCache(
-  cacheKeys: { storageKey: string; passphrase: string } | null,
-  profiles: VoiceProfile[],
-): Promise<void> {
+async function writeCache(cacheKeys: { storageKey: string; passphrase: string } | null, profiles: VoiceProfile[]): Promise<void> {
   if (!cacheKeys) return;
   try {
     await SecureStorage.setItemWithPassphrase(cacheKeys.storageKey, cacheKeys.passphrase, JSON.stringify(profiles));
@@ -102,8 +99,8 @@ function assertAllAudio(fileList: ReadonlyArray<File | Blob>): void {
 export function useVoiceEmbedding(): UseVoiceEmbeddingReturn {
   const { execute, isLoading, error, apiClient } = useApiOperation('useVoiceEmbedding');
   const store = useAgenticStore();
-  const userId = ((store as unknown as { authUser?: { id?: string } | null }).authUser?.id) ?? null;
-  const tenantId = ((store as unknown as { config?: { api?: { tenantId?: string } } | null }).config?.api?.tenantId) ?? null;
+  const userId = (store as unknown as { authUser?: { id?: string } | null }).authUser?.id ?? null;
+  const tenantId = (store as unknown as { config?: { api?: { tenantId?: string } } | null }).config?.api?.tenantId ?? null;
   // Stable across renders for the same (userId, tenantId) tuple, so downstream
   // useCallback identities don't churn — guards against infinite re-render loops
   // when a consumer (e.g. useVoiceEnrollmentStatus) depends on list().
@@ -204,9 +201,7 @@ export function useVoiceEmbedding(): UseVoiceEmbeddingReturn {
     (profileId: string) =>
       execute<void>('deactivate', async (client) => {
         await client.patch(VOICE_EMBEDDING_ENDPOINTS.deactivate(profileId));
-        const next = profilesRef.current.map((p) =>
-          p.id === profileId ? { ...p, isActive: false } : p,
-        );
+        const next = profilesRef.current.map((p) => (p.id === profileId ? { ...p, isActive: false } : p));
         applyProfiles(next);
         await writeCache(cacheKeys, next);
       }),

@@ -2693,7 +2693,6 @@ export {
   MediaPlayerPortal,
   MediaPlayerTooltip,
   //
-  useMediaSelector as useMediaPlayer,
   useStore as useMediaPlayerStore,
   //
   type MediaPlayerProps,

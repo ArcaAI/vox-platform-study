@@ -8,13 +8,6 @@
 export const AI_TASK_KEYS = ['guardrail.validate', 'nlp.ner', 'nlp.classification'] as const;
 export type AiTaskKey = (typeof AI_TASK_KEYS)[number];
 
-/**
- * The tenant-editable subset. `guardrail.validate` is GLOBAL-ADMIN-ONLY
- * (owner directive 2026-07-17): the gateway 403s tenant-admin writes, and the
- * tenant screen must not render it at all — not even read-only.
- */
-export const NLP_TASK_KEYS = ['nlp.ner', 'nlp.classification'] as const satisfies readonly AiTaskKey[];
-
 /** Reserved SYSTEM tenant owning the platform-default rows. */
 export const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 

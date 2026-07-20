@@ -356,7 +356,16 @@ export type {
 // Types - DNA Writing Style (SDK-207 WS-4)
 // =============================================================================
 
-export type { DnaGenerateInput, DnaJobResult, DnaJobStatus, DnaReport, DnaReportData, DnaReportWithFallback, DnaStyleVersion, DnaUpdateInput } from './types';
+export type {
+  DnaGenerateInput,
+  DnaJobResult,
+  DnaJobStatus,
+  DnaReport,
+  DnaReportData,
+  DnaReportWithFallback,
+  DnaStyleVersion,
+  DnaUpdateInput,
+} from './types';
 
 // TASK-328 A5 — DNA aggregate dashboard types
 export type { DnaDashboard, DnaDashboardDailyCount, DnaDashboardRecentActivity, DnaDashboardUsageEntry } from './types';
@@ -457,13 +466,7 @@ export type {
 export { ConfigConflictError } from './types';
 
 // Frontend pipeline config types (TASK-328 A6; CaptureMode/TranscriptionMode TASK-356 Phase 4)
-export type {
-  CaptureMode,
-  FrontendPipelineConfigJson,
-  TenantFrontendConfig,
-  TranscriptionMode,
-  UpsertTenantFrontendConfigInput,
-} from './types';
+export type { CaptureMode, FrontendPipelineConfigJson, TenantFrontendConfig, TranscriptionMode, UpsertTenantFrontendConfigInput } from './types';
 
 // =============================================================================
 // Types - Global-admin ops surfaces (TASK-403)
@@ -628,12 +631,7 @@ export { PersonalizationManager, type PreferencesChangeCallback } from './core/P
 // "quick test" = cosine similarity vs the enrolled embedding(s).
 
 export { useLocalVoiceEmbedding } from './hooks';
-export type {
-  UseLocalVoiceEmbeddingReturn,
-  UseLocalVoiceEmbeddingOptions,
-  LocalVoiceEmbeddingRecord,
-  LocalVoiceStatus,
-} from './hooks';
+export type { UseLocalVoiceEmbeddingReturn, UseLocalVoiceEmbeddingOptions, LocalVoiceEmbeddingRecord, LocalVoiceStatus } from './hooks';
 
 export {
   createLocalVoiceEmbedder,

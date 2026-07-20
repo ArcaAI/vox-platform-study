@@ -292,7 +292,8 @@ export function useEntitlements(): UseEntitlementsReturn {
   );
 
   const runTrialExpiry = useCallback(
-    () => execute<TrialExpiryReport>('runTrialExpiry', (client) => client.post<TrialExpiryReport>(ENTITLEMENTS_ENDPOINTS.TRIAL_EXPIRY_RUN, undefined)),
+    () =>
+      execute<TrialExpiryReport>('runTrialExpiry', (client) => client.post<TrialExpiryReport>(ENTITLEMENTS_ENDPOINTS.TRIAL_EXPIRY_RUN, undefined)),
     [execute],
   );
 

@@ -40,11 +40,19 @@ export function cancelTask(taskId: string): Promise<SmrTask> {
 }
 
 /**
- * SAME-ORIGIN BFF-proxied SSE URL, consumed with cookie auth. Deliberately
- * NOT useEventStream: the gateway route `GET text/tasks/:taskId/stream`
- * declares no @StreamScope, and JwtAuthGuard.handleTicketAuth rejects
- * `?ticket=` on scope-less routes — a minted ticket would just 401.
+ * Gateway SSE path (relative to /api/v1) for a task stream — fed to
+ * `useEventStream`, which connects DIRECTLY to the gateway with a single-use
+ * ticket. Streams never traverse the BFF proxy.
  */
-export function taskStreamProxyUrl(taskId: string): string {
-    return `/api/hope/text/tasks/${encodeURIComponent(taskId)}/stream`;
+export function taskStreamPath(taskId: string): string {
+    return `text/tasks/${encodeURIComponent(taskId)}/stream`;
+}
+
+/**
+ * Ticket scope for a task stream. Must match the route's `@StreamScope`
+ * declaration (`{ namespace: 'smr_task', param: 'taskId' }`) or the gateway
+ * rejects the minted ticket.
+ */
+export function taskStreamScope(taskId: string): string {
+    return `smr_task:${taskId}`;
 }

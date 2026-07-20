@@ -238,12 +238,17 @@ class TestModelCache:
     @pytest.mark.asyncio
     async def test_ttl_expiration(self):
         """Test TTL expiration."""
-        # Create cache with 1 second TTL
+        # `ModelCache` clamps the idle TTL to the product window [60s, 3600s]
+        # (`clamp_cache_ttl_seconds`), so use the smallest representable TTL and
+        # an entry idle well beyond it. A sub-60s TTL would be silently clamped
+        # and the entry would never expire.
+        ttl_seconds = 60
         cache = ModelCache(
             max_memory_mb=5000,
             max_models=10,
-            ttl_seconds=1,
+            ttl_seconds=ttl_seconds,
         )
+        idle_for = timedelta(seconds=ttl_seconds * 2)
 
         model = LoadedModel(
             model_id="m-1",
@@ -252,14 +257,14 @@ class TestModelCache:
             format=AiModelFormat.SAFETENSOR,
             memory_mb=100,
             device="cpu",
-            loaded_at=datetime.utcnow() - timedelta(seconds=2),  # Already expired
+            loaded_at=datetime.utcnow() - idle_for,  # Already expired
         )
 
         # Manually add to cache with old timestamp
         cache._cache["test"] = CacheEntry(
             model=model,
-            loaded_at=datetime.utcnow() - timedelta(seconds=2),
-            last_accessed=datetime.utcnow() - timedelta(seconds=2),
+            loaded_at=datetime.utcnow() - idle_for,
+            last_accessed=datetime.utcnow() - idle_for,
         )
 
         # Should return None due to TTL expiration

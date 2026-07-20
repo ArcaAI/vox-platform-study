@@ -441,8 +441,12 @@ test-guardrail:
 # hermetic (no DB/Redis; Temporal, LLM, and reranker clients are stubbed;
 # Qdrant runs via the qdrant-client in-memory local mode), so no external test
 # infra is wired. On top of the `.[test,eval]` CI install documented in
-# apps/harness/pyproject.toml, the `rag` extra is required at collection time
-# (unguarded `qdrant_client` test imports).
+# apps/harness/pyproject.toml, two more extras are required to RUN the suite:
+#   - `rag`        — unguarded `qdrant_client` test imports (collection-time)
+#   - `guardrails` — the PHI-redactor tests exercise real Presidio redaction;
+#                    without it `_build_analyzer` raises ModuleNotFoundError and
+#                    `test_phi_redactor.py` fails 4 tests (TASK-523). No spaCy
+#                    model download is needed, so the suite stays hermetic.
 
 test-harness:
   stage: test
@@ -462,7 +466,7 @@ test-harness:
         - pip-$CI_DEFAULT_BRANCH
   script:
     - cd apps/harness
-    - pip install --quiet --retries 5 --timeout 120 ".[test,eval,rag]"
+    - pip install --quiet --retries 5 --timeout 120 ".[test,eval,rag,guardrails]"
     - PYTHONPATH=src python -m pytest src/harness/tests/ -v --tb=short --junitxml=../../junit-harness.xml -x
   artifacts:
     when: always

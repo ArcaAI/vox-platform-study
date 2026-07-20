@@ -434,7 +434,13 @@ install_dependencies() {
     local harness_dir="$PROJECT_ROOT/apps/harness"
     if [[ -f "$harness_dir/pyproject.toml" ]]; then
         print_step "Installing harness dependencies..."
-        "${CR[@]}" pip install -e "${harness_dir}[dev,test]"
+        # Extras must match the `test-harness` CI job (.gitlab/ci/test.yml):
+        #   - eval/rag   — deepeval / qdrant_client / fastembed are imported at
+        #                  MODULE level by test modules, so their absence fails
+        #                  COLLECTION (6 errors) rather than skipping.
+        #   - guardrails — the PHI-redactor tests exercise real Presidio redaction.
+        # `[dev,test]` alone left local envs unable to run the suite at all.
+        "${CR[@]}" pip install -e "${harness_dir}[dev,test,eval,rag,guardrails]"
         print_ok "harness installed"
     else
         print_warn "harness pyproject.toml not found at $harness_dir — skipping"

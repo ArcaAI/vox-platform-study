@@ -562,18 +562,12 @@ export class PluginManager {
     // display-friendly "Doctor" instead of the lowercase magic constant — the
     // value flows through `LocalSpeakerDiarizer` straight to the transcript UI
     // badge, so a humane string matters.
-    const hasVoiceProfileData =
-      !!activeVoiceProfile?.id ||
-      typeof voiceProfilePrefs?.similarityThreshold === 'number';
+    const hasVoiceProfileData = !!activeVoiceProfile?.id || typeof voiceProfilePrefs?.similarityThreshold === 'number';
     const resolvedReservedSpeakerId = PluginManager.resolveReservedSpeakerId(activeVoiceProfile?.label);
     const voiceProfile = hasVoiceProfileData
       ? {
-          ...(activeVoiceProfile?.id
-            ? { id: activeVoiceProfile.id, reservedSpeakerId: resolvedReservedSpeakerId }
-            : {}),
-          ...(typeof voiceProfilePrefs?.similarityThreshold === 'number'
-            ? { similarityThreshold: voiceProfilePrefs.similarityThreshold }
-            : {}),
+          ...(activeVoiceProfile?.id ? { id: activeVoiceProfile.id, reservedSpeakerId: resolvedReservedSpeakerId } : {}),
+          ...(typeof voiceProfilePrefs?.similarityThreshold === 'number' ? { similarityThreshold: voiceProfilePrefs.similarityThreshold } : {}),
         }
       : undefined;
 
@@ -625,10 +619,7 @@ export class PluginManager {
    * transient states (initializing, running, stopping) when a preference
    * change lands.
    */
-  private async propagateUserPreferenceDelta(
-    previous: UserPreferences | undefined,
-    next: UserPreferences | undefined,
-  ): Promise<void> {
+  private async propagateUserPreferenceDelta(previous: UserPreferences | undefined, next: UserPreferences | undefined): Promise<void> {
     const pipeline = this.transcriptionPipeline;
     if (!pipeline) return;
 
@@ -639,9 +630,9 @@ export class PluginManager {
     const nextLevel = nextLocal?.noiseCancellation?.level;
     const prevLevel = prevLocal?.noiseCancellation?.level;
     if (nextLevel && nextLevel !== prevLevel) {
-      const proc = pipeline.getProcessor('noiseFilter') as
-        | { updateOptions?: (opts: { noiseCancellationLevel: 'low' | 'medium' | 'high' }) => Promise<void> | void }
-        | null;
+      const proc = pipeline.getProcessor('noiseFilter') as {
+        updateOptions?: (opts: { noiseCancellationLevel: 'low' | 'medium' | 'high' }) => Promise<void> | void;
+      } | null;
       try {
         await proc?.updateOptions?.({ noiseCancellationLevel: nextLevel });
       } catch (error) {
@@ -657,9 +648,9 @@ export class PluginManager {
     const nextSensitivity = nextLocal?.vad?.sensitivity;
     const prevSensitivity = prevLocal?.vad?.sensitivity;
     if (typeof nextSensitivity === 'number' && nextSensitivity !== prevSensitivity) {
-      const proc = pipeline.getProcessor('vad') as
-        | { updateThresholds?: (opts: { positiveSpeechThreshold: number; negativeSpeechThreshold: number }) => void | Promise<void> }
-        | null;
+      const proc = pipeline.getProcessor('vad') as {
+        updateThresholds?: (opts: { positiveSpeechThreshold: number; negativeSpeechThreshold: number }) => void | Promise<void>;
+      } | null;
       try {
         // Mirror TranscriptionPipeline.getVADNegativeThreshold: 0.7× the positive threshold.
         const negative = Math.max(0, nextSensitivity * 0.7);
@@ -677,9 +668,7 @@ export class PluginManager {
     const nextLanguage = next?.language;
     const prevLanguage = previous?.language;
     if (nextLanguage && nextLanguage !== prevLanguage) {
-      const proc = pipeline.getProcessor('stt') as
-        | { setLanguage?: (lang: string) => Promise<void> | void }
-        | null;
+      const proc = pipeline.getProcessor('stt') as { setLanguage?: (lang: string) => Promise<void> | void } | null;
       try {
         await proc?.setLanguage?.(nextLanguage);
       } catch (error) {
@@ -699,9 +688,7 @@ export class PluginManager {
     const nextProfileId = next?.activeVoiceProfile?.id;
     const prevProfileId = previous?.activeVoiceProfile?.id;
     if (nextProfileId && nextProfileId !== prevProfileId) {
-      const proc = pipeline.getProcessor('stt') as
-        | { setReservedSpeakerId?: (id: string | undefined) => void }
-        | null;
+      const proc = pipeline.getProcessor('stt') as { setReservedSpeakerId?: (id: string | undefined) => void } | null;
       try {
         proc?.setReservedSpeakerId?.(PluginManager.resolveReservedSpeakerId(next?.activeVoiceProfile?.label));
       } catch (error) {

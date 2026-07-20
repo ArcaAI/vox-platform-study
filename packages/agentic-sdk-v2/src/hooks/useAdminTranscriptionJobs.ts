@@ -66,7 +66,9 @@ export function useAdminTranscriptionJobs(): UseAdminTranscriptionJobsReturn {
 
   const byStatus = useCallback(
     (status: string) =>
-      execute<AdminTranscriptionJob[]>('byStatus', (client) => client.get<AdminTranscriptionJob[]>(ADMIN_TRANSCRIPTION_JOB_ENDPOINTS.BY_STATUS(status))),
+      execute<AdminTranscriptionJob[]>('byStatus', (client) =>
+        client.get<AdminTranscriptionJob[]>(ADMIN_TRANSCRIPTION_JOB_ENDPOINTS.BY_STATUS(status)),
+      ),
     [execute],
   );
 

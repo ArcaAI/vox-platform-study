@@ -29,10 +29,7 @@ export function generateIdempotencyKey(): string {
  * Merge an idempotency key into a POST body. If the caller already
  * supplied one we honor it; otherwise we mint a fresh UUID.
  */
-export function withIdempotencyKey<T extends Record<string, unknown> | undefined>(
-  body: T,
-  explicitKey?: string,
-): T & { idempotencyKey: string } {
+export function withIdempotencyKey<T extends Record<string, unknown> | undefined>(body: T, explicitKey?: string): T & { idempotencyKey: string } {
   const idempotencyKey = explicitKey ?? generateIdempotencyKey();
   const base = (body ?? {}) as Record<string, unknown>;
   // Do not overwrite a key already present in the body.

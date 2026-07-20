@@ -741,10 +741,8 @@ export const ADMIN_USER_ROLES_ENDPOINTS = {
 export const ADMIN_USER_DEPARTMENTS_ENDPOINTS = {
   LIST: (userId: string) => `/admin/users/${encodeURIComponent(userId)}/departments`,
   ASSIGN: (userId: string) => `/admin/users/${encodeURIComponent(userId)}/departments`,
-  UPDATE: (userId: string, assignmentId: string) =>
-    `/admin/users/${encodeURIComponent(userId)}/departments/${encodeURIComponent(assignmentId)}`,
-  REMOVE: (userId: string, assignmentId: string) =>
-    `/admin/users/${encodeURIComponent(userId)}/departments/${encodeURIComponent(assignmentId)}`,
+  UPDATE: (userId: string, assignmentId: string) => `/admin/users/${encodeURIComponent(userId)}/departments/${encodeURIComponent(assignmentId)}`,
+  REMOVE: (userId: string, assignmentId: string) => `/admin/users/${encodeURIComponent(userId)}/departments/${encodeURIComponent(assignmentId)}`,
 } as const;
 
 /**

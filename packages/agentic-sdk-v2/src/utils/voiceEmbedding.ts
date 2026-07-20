@@ -142,10 +142,7 @@ export function isVoiceEnrollmentProvider(x: unknown): x is VoiceEnrollmentProvi
  * `local` preference is only honored when in-browser extraction is supported;
  * everything else fails safe to {@link DEFAULT_VOICE_ENROLLMENT_PROVIDER}.
  */
-export function resolveVoiceEnrollmentProvider(opts: {
-  preferred?: string | null;
-  localSupported: boolean;
-}): VoiceEnrollmentProvider {
+export function resolveVoiceEnrollmentProvider(opts: { preferred?: string | null; localSupported: boolean }): VoiceEnrollmentProvider {
   const { preferred, localSupported } = opts;
   if (preferred === 'local') {
     return localSupported ? 'local' : 'backend';

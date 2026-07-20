@@ -312,10 +312,10 @@ Required environment variables:
 SUMMARY_AGENT_LLM_PROVIDER=azure_openai
 
 # Azure OpenAI (if using Azure)
-AZURE_OPENAI_API_KEY=your_api_key_here
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
-AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4
-AZURE_OPENAI_MODEL=gpt-4
+SMR_V2_AZURE_API_KEY=your_api_key_here
+SMR_V2_AZURE_ENDPOINT=https://your-resource.openai.azure.com/
+SMR_V2_AZURE_DEPLOYMENT_NAME=gpt-4
+SMR_V2_AZURE_DEFAULT_MODEL=gpt-5-mini
 
 # Ollama (if using Ollama)
 OLLAMA_BASE_URL=http://localhost:11434
@@ -413,16 +413,17 @@ python run_celery_worker.py
 
 ```bash
 SUMMARY_AGENT_LLM_PROVIDER=azure_openai
-AZURE_OPENAI_API_KEY=your_api_key
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
-AZURE_OPENAI_API_VERSION=2024-02-01
-AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4
-AZURE_OPENAI_MODEL=gpt-4
-AZURE_OPENAI_TEMPERATURE=0.0
-AZURE_OPENAI_MAX_TOKENS=8192
-AZURE_OPENAI_TOP_P=1.0
-AZURE_OPENAI_FREQUENCY_PENALTY=0.0
-AZURE_OPENAI_PRESENCE_PENALTY=0.0
+SMR_V2_AZURE_API_KEY=your_api_key
+SMR_V2_AZURE_ENDPOINT=https://your-resource.openai.azure.com/
+SMR_V2_AZURE_API_VERSION=2024-12-01-preview
+SMR_V2_AZURE_DEPLOYMENT_NAME=gpt-4
+SMR_V2_AZURE_DEFAULT_MODEL=gpt-5-mini
+SMR_V2_AZURE_TIMEOUT_S=120
+SMR_V2_AZURE_MAX_CONCURRENT=10
+SMR_V2_AZURE_TPM_LIMIT=80000
+SMR_V2_AZURE_RPM_LIMIT=480
+SMR_V2_AZURE_ADAPTIVE_LIMITS=true
+SMR_V2_AZURE_CONTENT_FILTER_SEVERITY=medium
 ```
 
 ##### Ollama
@@ -1023,8 +1024,8 @@ For detailed observability documentation, see [05-observability-guide.md](docs/0
 ```bash
 # For Azure OpenAI
 # 1. Verify API key and endpoint
-curl -X POST "${AZURE_OPENAI_ENDPOINT}/openai/deployments/${AZURE_OPENAI_DEPLOYMENT_NAME}/chat/completions?api-version=2024-02-01" \
-  -H "api-key: ${AZURE_OPENAI_API_KEY}" \
+curl -X POST "${SMR_V2_AZURE_ENDPOINT}/openai/deployments/${SMR_V2_AZURE_DEPLOYMENT_NAME}/chat/completions?api-version=${SMR_V2_AZURE_API_VERSION}" \
+  -H "api-key: ${SMR_V2_AZURE_API_KEY}" \
   -H "Content-Type: application/json"
 
 # For Ollama

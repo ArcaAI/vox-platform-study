@@ -82,6 +82,17 @@ export interface CreateStreamingSessionRequest {
   sampleRate?: number;
   /** ISO 639-1 language code (e.g., "en", "th") */
   language?: string;
+  /**
+   * Allow mid-utterance language switching.
+   *
+   * Maps to `InferenceConfig.code_switching` in stt-v2 (default `false`), which is
+   * normally resolved from the pipeline YAML rather than per-session.
+   *
+   * NOTE: the gateway body DTO (`CreateStreamSessionRequest`) does not yet whitelist
+   * this field, so a value set here is rejected by the global `forbidNonWhitelisted`
+   * validation pipe. Wiring it end-to-end is tracked separately.
+   */
+  codeSwitching?: boolean;
   /** Microphone device identifier */
   microphoneId?: string;
 }

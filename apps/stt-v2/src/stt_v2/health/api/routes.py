@@ -72,15 +72,7 @@ async def health_check() -> dict[str, Any]:
     streaming_info = _check_streaming()
     checks["streaming"] = streaming_info
 
-    # TASK-505 P1 — registered ASR engines + their resolved (device, compute)
-    # bindings on this host, so silent downgrades (e.g. CPU fallback) are
-    # visible. Purely informational; never affects overall status.
-    try:
-        from stt_v2.processors.binding import asr_processor_health
-
-        checks["processors"] = asr_processor_health()
-    except Exception as exc:  # noqa: BLE001 — health must never crash on this
-        checks["processors"] = {"error": str(exc)}
+    checks["processors"] = _check_processors()
 
     uptime = (datetime.utcnow() - _startup_time).total_seconds()
 
@@ -249,6 +241,34 @@ def _check_streaming() -> dict[str, Any]:
         return {
             "status": "degraded",
             "duration_ms": 0,
+            "message": str(exc)[:200],
+        }
+
+
+def _check_processors() -> dict[str, Any]:
+    """Registered ASR engines + their resolved (device, compute) bindings.
+
+    TASK-505 P1 — surfaces silent downgrades (e.g. faster-whisper MPS -> CPU).
+    Purely informational: never raises and never affects overall status, but it
+    still honours the ``checks`` component contract ({status, duration_ms} plus
+    an optional ``message``) so consumers can iterate the map uniformly. The
+    engine detail is nested under ``engines``.
+    """
+    start = time.monotonic()
+    try:
+        from stt_v2.processors.binding import asr_processor_health
+
+        engines = asr_processor_health()
+        return {
+            "status": HealthStatus.HEALTHY.value,
+            "duration_ms": round((time.monotonic() - start) * 1000, 2),
+            "engines": engines,
+        }
+    except Exception as exc:  # noqa: BLE001 — health must never crash on this
+        logger.warning("ASR processor health check failed", error=str(exc))
+        return {
+            "status": HealthStatus.DEGRADED.value,
+            "duration_ms": round((time.monotonic() - start) * 1000, 2),
             "message": str(exc)[:200],
         }
 

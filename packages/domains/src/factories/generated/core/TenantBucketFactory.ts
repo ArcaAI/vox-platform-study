@@ -2,6 +2,18 @@ import { TenantBucketEntity } from '../../../entities/generated/core/TenantBucke
 import { TenantBucketPurpose, TenantBucketType } from '../../../enums';
 import { generateId } from '../../../utils';
 
+/**
+ * Default system buckets provisioned for every tenant:
+ *   - `attachments` — files uploaded by users while working (consultation
+ *     documents, lab results, any files).
+ *   - `recordings`  — audio recordings captured during live transcription
+ *     (raw pre-normalization and processed post-normalization variants).
+ *     Replaces the legacy `audio` slug; keeps the AUDIO purpose so
+ *     streaming/batch bucket resolution is unchanged.
+ *
+ * `misc` is deliberately NOT a default (TASK-426): MISC remains an assignable
+ * purpose, but no misc bucket is auto-provisioned.
+ */
 export const SYSTEM_BUCKET_SLUGS = {
   ATTACHMENTS: 'attachments',
   RECORDINGS: 'recordings',

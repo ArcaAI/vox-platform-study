@@ -33,11 +33,13 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
  *
  * Tenant admins are pinned to their CLS tenant; global admins act cross-tenant
  * — incl. the SYSTEM-tenant platform default — via `?tenantId=`. GOVERNANCE
- * (owner directive 2026-07-17): `guardrail.*` writes are GLOBAL-ADMIN-ONLY —
- * the SERVICE enforces it with a `ForbiddenException` (a deliberate 403, not
- * the 404-over-403 tenancy posture: it is a privilege rule on a key the caller
- * can already read, not a cross-tenant existence probe). `nlp.*` writes remain
- * tenant-admin grantable via `manage:AiTaskDefault`.
+ * (owner directive 2026-07-17): writes under EVERY task-key prefix —
+ * `guardrail.`, `smr.`, `nlp.`, `harness.` (GLOBAL_ADMIN_ONLY_TASK_PREFIXES in
+ * `@arcaai/applications`) — are GLOBAL-ADMIN-ONLY. The SERVICE enforces it
+ * with a `ForbiddenException` (a deliberate 403, not the 404-over-403 tenancy
+ * posture: it is a privilege rule on a key the caller can already read, not a
+ * cross-tenant existence probe). Tenant admins may READ the effective default
+ * but cannot write any task key; runtime resolution uses the SYSTEM row only.
  */
 @ApiBearerAuth()
 @ApiTags('admin-ai-task-defaults')

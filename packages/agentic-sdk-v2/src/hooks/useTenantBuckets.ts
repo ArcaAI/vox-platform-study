@@ -115,7 +115,9 @@ export function useTenantBuckets(): UseTenantBucketsReturn {
 
   const presignedUrl = useCallback(
     (id: string, key: string) =>
-      execute<{ url: string }>('presignedUrl', (client) => client.get<{ url: string }>(appendFilters(TENANT_BUCKET_ENDPOINTS.PRESIGNED_URL(id), { key }))),
+      execute<{ url: string }>('presignedUrl', (client) =>
+        client.get<{ url: string }>(appendFilters(TENANT_BUCKET_ENDPOINTS.PRESIGNED_URL(id), { key })),
+      ),
     [execute],
   );
 

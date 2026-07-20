@@ -198,9 +198,7 @@ export class TranscriptionPipeline {
                 voiceProfile: {
                   ...(voiceProfile.id ? { id: voiceProfile.id } : {}),
                   ...(voiceProfile.reservedSpeakerId ? { reservedSpeakerId: voiceProfile.reservedSpeakerId } : {}),
-                  ...(typeof voiceProfile.similarityThreshold === 'number'
-                    ? { similarityThreshold: voiceProfile.similarityThreshold }
-                    : {}),
+                  ...(typeof voiceProfile.similarityThreshold === 'number' ? { similarityThreshold: voiceProfile.similarityThreshold } : {}),
                 },
               }
             : {}),

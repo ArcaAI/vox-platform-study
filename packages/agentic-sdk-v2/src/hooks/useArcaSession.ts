@@ -12,7 +12,16 @@
 
 import { useMemo, useCallback, useEffect, useRef } from 'react';
 import { useAgenticStore } from '../store';
-import type { Consultation, OpenSessionInput, SessionState, SessionActions, AddContextInput, ContextItem, SummaryResponse, UpdateConsultationInput } from '../types';
+import type {
+  Consultation,
+  OpenSessionInput,
+  SessionState,
+  SessionActions,
+  AddContextInput,
+  ContextItem,
+  SummaryResponse,
+  UpdateConsultationInput,
+} from '../types';
 import { CONSULTATION_ENDPOINTS, CONTEXT_ENDPOINTS, SUMMARY_ENDPOINTS } from '../core/constants';
 import { SimpleCrossTabSync, createCrossTabSync } from '../core/SimpleCrossTabSync';
 import type { ISDKLogger } from '../core/logger';

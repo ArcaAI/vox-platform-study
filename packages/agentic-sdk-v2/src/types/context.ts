@@ -52,15 +52,7 @@ export interface ContextItem {
  * Values MUST match the API's ContextItemType enum (uppercase, underscore-separated).
  */
 export type ContextItemType =
-  | 'CASE_NOTE'
-  | 'TRANSCRIPT'
-  | 'RAW_SUMMARY'
-  | 'MODIFIED_SUMMARY'
-  | 'PRE_SUMMARY'
-  | 'AUDIO_RECORDING'
-  | 'WORKNOTE'
-  | 'NAMED_ENTITY'
-  | 'ATTACHMENT';
+  'CASE_NOTE' | 'TRANSCRIPT' | 'RAW_SUMMARY' | 'MODIFIED_SUMMARY' | 'PRE_SUMMARY' | 'AUDIO_RECORDING' | 'WORKNOTE' | 'NAMED_ENTITY' | 'ATTACHMENT';
 
 /**
  * Context item source.

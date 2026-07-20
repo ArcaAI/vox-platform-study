@@ -126,7 +126,18 @@ warn_return_any = true
 exclude = "/tests/"
 
 [[tool.mypy.overrides]]
-module = ["prometheus_client", "prometheus_fastapi_instrumentator", "gliner2_onnx", "llama_cpp"]
+
+# `llama_cpp.*` (not just `llama_cpp`): the MiniCheck scorer drives llama.cpp's
+# encoder-decoder path via `llama_cpp._internals.LlamaBatch`, which the high-level
+# completion API omits for T5 graphs. That private handle is version-sensitive by
+# design and is validated end-to-end on the host by `verify_calibration()`.
+module = [
+    "prometheus_client",
+    "prometheus_fastapi_instrumentator",
+    "gliner2_onnx",
+    "llama_cpp",
+    "llama_cpp.*",
+]
 ignore_missing_imports = true
 
 # pytest configuration

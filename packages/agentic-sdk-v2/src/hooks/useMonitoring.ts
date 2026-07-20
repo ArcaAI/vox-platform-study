@@ -24,7 +24,8 @@ function normalizeSessionCounts(raw: Record<string, unknown> | null | undefined)
   const rawServices = (raw && typeof raw === 'object' ? (raw as { services?: unknown }).services : null) ?? {};
   const readActive = (key: string): ServiceSessionCount => {
     const entry = (rawServices as Record<string, unknown>)[key];
-    const active = entry && typeof entry === 'object' && typeof (entry as { active?: unknown }).active === 'number' ? (entry as { active: number }).active : 0;
+    const active =
+      entry && typeof entry === 'object' && typeof (entry as { active?: unknown }).active === 'number' ? (entry as { active: number }).active : 0;
     return { active };
   };
 
@@ -37,7 +38,8 @@ function normalizeSessionCounts(raw: Record<string, unknown> | null | undefined)
   };
 
   const totalUsers = raw && typeof (raw as { totalUsers?: unknown }).totalUsers === 'number' ? (raw as { totalUsers: number }).totalUsers : 0;
-  const refreshedAt = raw && typeof (raw as { refreshedAt?: unknown }).refreshedAt === 'string' ? (raw as { refreshedAt: string }).refreshedAt : undefined;
+  const refreshedAt =
+    raw && typeof (raw as { refreshedAt?: unknown }).refreshedAt === 'string' ? (raw as { refreshedAt: string }).refreshedAt : undefined;
 
   const activeSessions = services.stt.active;
   const processingJobs = services.smr.active + services.nlp.active + services.guardrail.active + services.harness.active;

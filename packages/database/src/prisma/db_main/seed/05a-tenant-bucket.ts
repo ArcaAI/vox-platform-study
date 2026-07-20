@@ -28,30 +28,39 @@ import type { CorePrismaClient } from '../../../client';
 import { SYSTEM_USER_ID } from './00-constants';
 import { ALL_TENANTS } from './05-tenant';
 
+/**
+ * The default system buckets, mirroring
+ * `TenantBucketFactory.CreateDefaultSystemBuckets` (the authoritative contract —
+ * it is what the runtime/admin `provisionSystemBuckets` path uses). Keep the two
+ * in sync: a slug added here but not there is provisioned by the seed and never
+ * by the app.
+ *
+ * `misc` is deliberately absent (TASK-426). `TenantBucketPurpose.MISC` survives
+ * only as an ASSIGNABLE purpose an admin grants to an existing bucket via
+ * `TenantBucketService.setDefaultBuckets`; the API models it as nullable.
+ */
 export const SYSTEM_BUCKET_SLUGS = {
   ATTACHMENTS: 'attachments',
   RECORDINGS: 'recordings',
-  MISC: 'misc',
 } as const;
 
+/** Legacy slugs converged away by this seed (see module doc). */
 const LEGACY_AUDIO_SLUG = 'audio';
+const LEGACY_MISC_SLUG = 'misc';
 
 const SYSTEM_BUCKET_DESCRIPTIONS: Record<string, string> = {
   [SYSTEM_BUCKET_SLUGS.ATTACHMENTS]: 'Tenant attachment storage (consultation documents, lab results, user-uploaded files)',
   [SYSTEM_BUCKET_SLUGS.RECORDINGS]: 'Tenant audio recordings from live transcription (raw and processed)',
-  [SYSTEM_BUCKET_SLUGS.MISC]: 'Tenant misc assets (background, avatars, images)',
 };
 
 const SYSTEM_BUCKET_PATH_PATTERNS: Record<string, string> = {
   [SYSTEM_BUCKET_SLUGS.ATTACHMENTS]: '{yyyy}/{MM}/{dd}',
   [SYSTEM_BUCKET_SLUGS.RECORDINGS]: '{yyyy}/{MM}',
-  [SYSTEM_BUCKET_SLUGS.MISC]: '{category}',
 };
 
-const SYSTEM_BUCKET_PURPOSES: Record<string, 'AUDIO' | 'ATTACHMENTS' | 'MISC'> = {
+const SYSTEM_BUCKET_PURPOSES: Record<string, 'AUDIO' | 'ATTACHMENTS'> = {
   [SYSTEM_BUCKET_SLUGS.ATTACHMENTS]: 'ATTACHMENTS',
   [SYSTEM_BUCKET_SLUGS.RECORDINGS]: 'AUDIO',
-  [SYSTEM_BUCKET_SLUGS.MISC]: 'MISC',
 };
 
 function sanitizeBucketName(input: string): string {
@@ -107,6 +116,29 @@ async function convergeLegacyBuckets(client: CorePrismaClient, tenant: { id: str
       },
     });
     console.log(`  Soft-deleted redundant legacy 'audio' bucket for tenant ${tenant.key}`);
+  }
+
+  // `misc` stopped being a default in TASK-426. Retire the SYSTEM row that older
+  // seeds provisioned. Scoped to bucketType SYSTEM so a bucket an admin created
+  // and assigned the MISC purpose to (a CUSTOM row) is never touched — MISC
+  // remains a valid assignable purpose, it is just not provisioned by default.
+  const retiredMisc = await client.tenantBucket.updateMany({
+    where: {
+      tenantId: tenant.id,
+      slug: LEGACY_MISC_SLUG,
+      bucketType: 'SYSTEM',
+      resourceStatus: { not: 'DELETED' },
+    },
+    data: {
+      resourceStatus: 'DELETED',
+      resourceStatusUpdatedAt: new Date(),
+      resourceStatusUpdatedBy: SYSTEM_USER_ID,
+      updatedBy: SYSTEM_USER_ID,
+      version: { increment: 1 },
+    },
+  });
+  if (retiredMisc.count > 0) {
+    console.log(`  Soft-deleted legacy 'misc' system bucket for tenant ${tenant.key}`);
   }
 }
 

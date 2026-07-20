@@ -86,10 +86,7 @@ function getCacheKeys(userId: string | null | undefined, tenantId: string | null
   };
 }
 
-async function writeCache(
-  cacheKeys: { storageKey: string; passphrase: string } | null,
-  records: LocalVoiceEmbeddingRecord[],
-): Promise<void> {
+async function writeCache(cacheKeys: { storageKey: string; passphrase: string } | null, records: LocalVoiceEmbeddingRecord[]): Promise<void> {
   if (!cacheKeys) return;
   try {
     await SecureStorage.setItemWithPassphrase(cacheKeys.storageKey, cacheKeys.passphrase, JSON.stringify(records));
@@ -108,8 +105,8 @@ export function useLocalVoiceEmbedding(options: UseLocalVoiceEmbeddingOptions = 
   const { enroll: backendEnroll } = useVoiceEmbedding();
 
   const store = useAgenticStore();
-  const userId = ((store as unknown as { authUser?: { id?: string } | null }).authUser?.id) ?? null;
-  const tenantId = ((store as unknown as { config?: { api?: { tenantId?: string } } | null }).config?.api?.tenantId) ?? null;
+  const userId = (store as unknown as { authUser?: { id?: string } | null }).authUser?.id ?? null;
+  const tenantId = (store as unknown as { config?: { api?: { tenantId?: string } } | null }).config?.api?.tenantId ?? null;
   const cacheKeys = useMemo(() => getCacheKeys(userId, tenantId), [userId, tenantId]);
 
   const matchThreshold = options.matchThreshold ?? DEFAULT_VOICE_MATCH_THRESHOLD;

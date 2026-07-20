@@ -27,7 +27,7 @@
  * `pnpm test:api:up` + `pnpm test:e2e`). The spec creates a throwaway SYSTEM
  * registry row and soft-deletes it in `afterAll` — no seed rows are mutated.
  */
-import { test, expect, APIRequestContext } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
 const BASE = '/api/v1/admin/mcp-servers';

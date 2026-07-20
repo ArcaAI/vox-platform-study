@@ -54,9 +54,7 @@ export interface VoiceEnrollmentChecker {
  * Decoupled from React so non-hook consumers (STT provider initialization,
  * jobs, plugins) can use it without `renderHook`.
  */
-export function createVoiceEnrollmentChecker(apiClient: {
-  get: <T = unknown>(endpoint: string) => Promise<T>;
-}): VoiceEnrollmentChecker {
+export function createVoiceEnrollmentChecker(apiClient: { get: <T = unknown>(endpoint: string) => Promise<T> }): VoiceEnrollmentChecker {
   return {
     async checkHasActiveProfile(): Promise<boolean> {
       try {
