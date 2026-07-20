@@ -6,11 +6,13 @@ import time
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
+import httpx
 import structlog
 from openai import APIConnectionError, APIError, APITimeoutError, AsyncOpenAI
 
 from smr_v2.core.config import OpenAICompatConfig
 from smr_v2.core.defaults import resolve_request_defaults
+from smr_v2.core.retention import DEFAULT_RETENTION_TTL_S, clamp_cache_ttl_seconds
 from smr_v2.core.telemetry import get_tracer
 from smr_v2.models.provider import ModelInfo, ProviderInfo
 from smr_v2.models.requests import GenerateRequest
@@ -21,6 +23,22 @@ if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
 
 logger = structlog.get_logger(__name__)
+
+# TASK-528 R4 — `main.py` registers the LM Studio instance under BOTH keys with
+# the DEFAULT `provider_name`, so the native-REST enrichment below is attempted
+# for both. Engine subclasses (vLLM) carry their own `provider_name` and are
+# excluded — they have no `/api/v0` surface.
+_LM_STUDIO_PROVIDER_NAMES = frozenset({"lm-studio", "openai_compat"})
+
+# Short, self-contained budget for the OPTIONAL native listing probe. The
+# endpoint-level `asyncio.wait_for` caps the whole `get_info`; this keeps the
+# enrichment from consuming that entire budget and losing the `/v1` result.
+_NATIVE_PROBE_TIMEOUT_S = 3.0
+
+
+def _native_probe_client() -> httpx.AsyncClient:
+    """Factory for the native-probe transport (patched in tests)."""
+    return httpx.AsyncClient(timeout=_NATIVE_PROBE_TIMEOUT_S)
 
 
 def _get_tracer() -> Tracer:
@@ -43,12 +61,37 @@ class OpenAICompatProvider:
         # /get_info carry the real engine name, not the generic wire name.
         self._provider_name = provider_name
         self._display_name = display_name
+        # TASK-529 (D-10) — bootstrap retention hint; replaced by the
+        # control-plane value on the first effective-config refresh.
+        self._retention_ttl_s = clamp_cache_ttl_seconds(DEFAULT_RETENTION_TTL_S)
         self._client = AsyncOpenAI(
             api_key=config.api_key.get_secret_value(),
             base_url=config.base_url,
             organization=config.organization,
             timeout=float(config.timeout_s),
         )
+
+    def apply_retention(self, retention: dict[str, int]) -> None:
+        """TASK-529 (D-10) — adopt the control-plane idle-retention TTL.
+
+        An absent key keeps the current (env/bootstrap) value; the product clamp
+        [60, 3600] is re-applied here as well as registry-side.
+        """
+        ttl_seconds = retention.get("ttl_seconds")
+        if ttl_seconds is not None:
+            self._retention_ttl_s = clamp_cache_ttl_seconds(ttl_seconds)
+
+    def _apply_retention_hint(self, kwargs: dict[str, Any]) -> None:
+        """Attach LM Studio's JIT `ttl`, and ONLY for LM Studio.
+
+        This class is shared with vLLM and generic OpenAI-compatible endpoints,
+        which reject unknown body fields — so the hint is gated on the engine
+        identity, not merely "is openai-compatible". `extra_body` is the OpenAI
+        SDK's sanctioned ride-along for non-standard fields.
+        """
+        if self._provider_name != "lm-studio":
+            return
+        kwargs["extra_body"] = {"ttl": self._retention_ttl_s}
 
     def _resolve_model(self, request: GenerateRequest) -> str | None:
         # D-7 (TASK-356): no in-gateway default — the caller-supplied model is
@@ -106,6 +149,7 @@ class OpenAICompatProvider:
             }
 
             self._apply_response_format(kwargs, request)
+            self._apply_retention_hint(kwargs)
 
             start = time.monotonic()
             response = await self._client.chat.completions.create(**kwargs)
@@ -163,6 +207,7 @@ class OpenAICompatProvider:
             }
 
             self._apply_response_format(kwargs, request)
+            self._apply_retention_hint(kwargs)
 
             # DRAIN the stream to completion (AD-1): the finish chunk arrives
             # BEFORE the ``stream_options.include_usage`` usage-only chunk, so an
@@ -226,6 +271,31 @@ class OpenAICompatProvider:
             logger.error("health_check.unexpected_error", provider=self._provider_name, error=str(exc))
             return False
 
+    async def _lm_studio_native_models(self) -> dict[str, dict[str, Any]]:
+        """TASK-528 R4 — LM Studio's native REST listing, keyed by model id.
+
+        `/v1/models` (OpenAI wire) carries no load state, but LM Studio also
+        serves `GET {root}/api/v0/models` with `state` / `quantization` /
+        `max_context_length` on the SAME host — the AsyncOpenAI client cannot
+        reach it (it prefixes `/v1`), so this uses a plain httpx call against
+        `base_url` minus its trailing `/v1`.
+
+        ANY failure returns `{}`: enrichment is strictly best-effort and must
+        never degrade or fail the `/v1/models` listing.
+        """
+        root = self._config.base_url.rstrip("/")
+        if root.endswith("/v1"):
+            root = root[: -len("/v1")].rstrip("/")
+        try:
+            async with _native_probe_client() as client:
+                resp = await client.get(f"{root}/api/v0/models")
+            if resp.status_code != 200:
+                return {}
+            return {m["id"]: m for m in resp.json().get("data", []) if m.get("id")}
+        except Exception as exc:  # noqa: BLE001 — best-effort enrichment
+            logger.warning("get_info.native_probe_failed", provider=self._provider_name, error=str(exc))
+            return {}
+
     async def get_info(self) -> ProviderInfo:
         models: list[ModelInfo] = []
         status = "unavailable"
@@ -234,8 +304,22 @@ class OpenAICompatProvider:
             for m in model_list.data:
                 models.append(ModelInfo(name=m.id, supports_streaming=True))
             status = "available"
-        except Exception:
-            pass
+        except (APIError, APIConnectionError, APITimeoutError, ConnectionError, OSError) as exc:
+            # TASK-528 — was `except Exception: pass`, which swallowed every
+            # diagnostic. Mirrors `health_check` above.
+            logger.warning("get_info.failed", provider=self._provider_name, error=str(exc))
+        except Exception as exc:
+            logger.error("get_info.unexpected_error", provider=self._provider_name, error=str(exc))
+
+        if models and self._provider_name in _LM_STUDIO_PROVIDER_NAMES:
+            native = await self._lm_studio_native_models()
+            for model in models:
+                meta = native.get(model.name)
+                if not meta:
+                    continue
+                model.state = meta.get("state")
+                model.engine_native = meta
+
         return ProviderInfo(
             name=self._provider_name,
             display_name=self._display_name,

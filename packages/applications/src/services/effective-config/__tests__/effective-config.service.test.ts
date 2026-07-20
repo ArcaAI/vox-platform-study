@@ -6,6 +6,7 @@
 // preserved verbatim, so a regression here would break that house constraint.
 
 import { ArgumentInvalidException } from '@arcaai/exceptions';
+import { SERVICE_RUNTIME_DEFAULTS } from '../../settings-registry/descriptors/service-runtime.descriptors';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
 import type { IAiRuntimeProfileService } from '../../ai-runtime-profile/IAiRuntimeProfileService';
@@ -62,15 +63,11 @@ function settingsStub(overrides: Record<string, unknown> = {}) {
   } as unknown as EffectiveSettingsService;
 }
 
-// The code defaults the STT descriptors must carry (today's Python values).
-const DEFAULTS: Record<string, unknown> = {
-  'stt.modelCache.maxModels': 5,
-  'stt.modelCache.ttlSeconds': 3600,
-  'stt.modelCache.maxMemoryMb': 10000,
-  'stt.workers.concurrency': 4,
-  'stt.streaming.maxConcurrent': 0,
-  'nlp.inference.maxConcurrent': 4,
-};
+// The registry's own defaults — imported, NOT transcribed. A local copy silently
+// drifts from the descriptors (it did: it still read 3600 after OD-5 moved the
+// TTL default to 600), which is the exact failure mode the descriptor file warns
+// about. Importing makes the stub definitionally correct.
+const DEFAULTS: Record<string, unknown> = SERVICE_RUNTIME_DEFAULTS;
 
 function serviceWith(settings: EffectiveSettingsService, profiles: Array<AiRuntimeProfileResponse> = []): EffectiveConfigService {
   const runtimeProfiles = {
@@ -95,7 +92,12 @@ describe('EffectiveConfigService', () => {
   });
 
   describe('per-service subset filtering', () => {
-    it('serves smr runtimeProfiles and NOT retention (service-level knobs only)', async () => {
+    // TASK-529 (D-10) — smr now ALSO carries `retention.ttlSeconds`. That is not
+    // a cache bound: smr holds no weights, and forwards this value to the
+    // server-managed engine (Ollama `keep_alive` / LM Studio `ttl`). The
+    // service-level-knobs-only contract is intact — this is a capacity/residency
+    // knob, never per-request model selection.
+    it('serves smr runtimeProfiles plus the engine-retention TTL', async () => {
       const svc = serviceWith(settingsStub(), [profile()]);
       const res = await svc.resolveForService('smr');
 
@@ -106,7 +108,8 @@ describe('EffectiveConfigService', () => {
         timeoutS: 120,
         source: 'db',
       });
-      expect(res.retention).toBeUndefined();
+      // Engine-retention hint only — no cache-shaped fields for a stateless gateway.
+      expect(res.retention).toMatchObject({ ttlSeconds: 600, maxModels: null, maxMemoryMb: null, vramBudgetMb: null });
     });
 
     it('serves nlp runtimeProfiles plus concurrency.maxConcurrent', async () => {
@@ -115,25 +118,37 @@ describe('EffectiveConfigService', () => {
 
       expect(res.runtimeProfiles).toHaveLength(1);
       expect(res.concurrency?.maxConcurrent).toBe(4);
-      expect(res.retention).toBeUndefined();
+      // TASK-529 (D-07) — nlp retention is now admin-controlled too.
+      expect(res.retention).toMatchObject({ ttlSeconds: 600, maxModels: 3 });
     });
 
     it('serves stt-v2 retention + worker/streaming concurrency, and NO runtimeProfiles', async () => {
       const svc = serviceWith(settingsStub(), [profile()]);
       const res = await svc.resolveForService('stt-v2');
 
-      expect(res.retention).toMatchObject({ ttlSeconds: 3600, maxModels: 5, maxMemoryMb: 10000 });
+      // TASK-529 / OD-5 — the ttl DEFAULT moved 3600 → 600 (the [60,3600] window
+      // is unchanged). Deliberate, owner-approved behaviour change.
+      expect(res.retention).toMatchObject({ ttlSeconds: 600, maxModels: 5, maxMemoryMb: 10000 });
       expect(res.concurrency).toMatchObject({ workerConcurrency: 4, streamingMaxConcurrent: 0 });
       expect(res.runtimeProfiles).toBeUndefined();
     });
 
-    it.each(['guardrail', 'harness', 'tts-v2'])('serves %s a reserved (empty) subset', async (name) => {
+    // TASK-529 — the subsets TASK-525 deliberately RESERVED are now filled.
+    // Fields appeared; none changed meaning, so clients already polling these
+    // services are unaffected (the frozen-contract promise in
+    // IEffectiveConfigService).
+    it.each([
+      ['guardrail', 2],
+      ['harness', 1],
+      ['tts-v2', 2],
+    ])('serves %s its model-cache retention subset', async (name, expectedMaxModels) => {
       const svc = serviceWith(settingsStub(), [profile()]);
       const res = await svc.resolveForService(name);
 
       expect(res.service).toBe(name);
+      expect(res.retention).toMatchObject({ ttlSeconds: 600, maxModels: expectedMaxModels });
+      // Still no runtime profiles / concurrency for these three.
       expect(res.runtimeProfiles).toBeUndefined();
-      expect(res.retention).toBeUndefined();
       expect(res.concurrency).toBeUndefined();
     });
   });

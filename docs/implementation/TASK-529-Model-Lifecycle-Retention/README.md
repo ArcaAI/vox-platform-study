@@ -1,6 +1,6 @@
 # TASK-529 — Unified Model Lifecycle & Admin-Controlled Retention
 
-- **Status**: Pending
+- **Status**: Blocked — see §9.4 (steps 4.3 stt-v2 convergence and 4.6 harness D-08 not implemented; all delivered work is green)
 - **Type**: feature / refactor (Phase 3 of the 2026-07-20 agentic platform program)
 - **Program**: [2026-07-20 program plan](../SOTA-Track/2026-07-20-agentic-platform-program-plan.md) §4 Phase 3, frozen design §3 **AD-4** · [2026-07-20 findings review](../SOTA-Track/2026-07-20-agentic-platform-review-findings.md) §3-E6, GAP-L1…L4, D-07…D-11
 - **Suggested number**: TASK-529 per the program's TASK-523…534 allocation — **confirm at open time** against `docs/implementation/` + `docs/archive/` (CLAUDE.md ticket workflow; highest committed number was TASK-522 when the plan was authored)
@@ -200,14 +200,14 @@ House constraints binding here: fake clocks only (no `sleep`); NVML/pynvml alway
 
 ## 6. Acceptance & Definition of Done
 
-- [ ] Contract conformance suite green against **all five** adopting caches (template instantiated per service).
-- [ ] All RED tests of §5 shown failing first, then green; parity gates passed before policy wiring (stt-v2 pre-existing cache tests unmodified).
-- [ ] `models.retention.*` keys registered, `globalOnly`, clamped; a TTL change through the control plane reaches every service within one refresh window (integration-stub test) — **no redeploy**.
-- [ ] D-07, D-08, D-09, D-10, D-11 demonstrably closed (nlp configurable; MiniCheck evictable; tts lazy + `TTS_WARMUP_ENABLED` default off; Ollama `keep_alive` sent; `GlobalSettingRead` + seed rows deleted).
-- [ ] VRAM probe feature-detected; CI has zero GPU/NVML dependence; eviction reasons labeled `ttl|lru|vram`.
-- [ ] Metrics live in all five services; `infrastructure/grafana/dashboards/model-retention.json` committed; runbook `docs/operations/inference/model-retention.md` committed.
-- [ ] Gates green with pasted output: `pnpm py:{stt-v2,smr-v2,guardrail,nlp,harness,tts-v2}:test|lint|typecheck` · `pnpm --filter @arcaai/applications build test` · seed tests (`pnpm --filter @arcaai/database test`) · `uv lock` clean diff · one Docker build proof for a consuming service.
-- [ ] Comment-delta ledger (§4) fully applied; the OD-5 600 s default change is called out in the MR description for owner sign-off.
+- [ ] Contract conformance suite green against **all five** adopting caches. — **Partial**: 33-clause suite green in the shared package and composed by guardrail/nlp/tts-v2 (their own suites pass against it). stt-v2 and harness do not compose it yet (§9.4).
+- [x] All RED tests of §5 shown failing first, then green. Evidence: shared cache `ModuleNotFoundError` → 33 passed; smr 9 failed → 16 passed; nlp 9 failed → 173 passed; tts 8 failed → 155 passed. **Parity gate honoured**: `apps/nlp/tests/test_model_cache.py` passes **unmodified** against the shared cache (12 passed).
+- [x] Retention keys registered, `globalOnly`, system-scoped, clamped, and **served** to every service subset (guardrail/harness/tts-v2 subsets filled). Applied within one refresh window via each service's existing pull path — no redeploy. Registered under `<svc>.modelCache.*` per **DR-1**, not `models.retention.*`.
+- [ ] D-07…D-11 closed. — **D-07 ✅** (nlp configurable + reconfigurable), **D-09 ✅** (tts lazy, `TTS_WARMUP_ENABLED` default off), **D-10 ✅** (Ollama `keep_alive` + LM Studio `ttl`), **D-11 ✅** (already closed by TASK-525 — verified, see DR-2b). **D-08 ✗ not implemented** (§9.4).
+- [x] VRAM probe feature-detected; CI has zero GPU/NVML dependence (proven in-image: `make_vram_probe()` → `None`); eviction reasons labelled `ttl|lru|vram` and asserted by conformance tests.
+- [x] Metrics live in all five services (import-verified); dashboard `infrastructure/grafana/dashboards/model-retention.json` and runbook `docs/operations/inference/model-retention.md` committed and indexed.
+- [x] Gates green with pasted output — see §9.3. Python gates were run with a worktree `PYTHONPATH` pin (**DR-6**), not the bare `pnpm py:*` aliases, which would have tested the main checkout.
+- [ ] Comment-delta ledger fully applied. — **Partial** (§9.4): the `minicheck_entailer.py` comment is untouched because 4.6 was not implemented. **The OD-5 600 s default change IS called out** — §3.2 callout retained, restated in the runbook §2 and in §9 above for owner sign-off.
 
 ## 7. Risks & Rollback
 
@@ -230,11 +230,97 @@ House constraints binding here: fake clocks only (no `sleep`); NVML/pynvml alway
 
 ## 9. Implementation Summary
 
-_Pending_
+### 9.1 What shipped
+
+**The shared contract (step 4.1 — the hard gate, PASSED)**
+
+`packages/py-runtime-models` (`hope_runtime_models`), a **dependency-free** uv
+workspace member holding the one `ModelCache` every service composes, plus the
+feature-detected NVML probe and the Prometheus sink adapter. 33 conformance
+tests cover all eight contract clauses.
+
+> **§2.4 question answered empirically.** `uv sync --frozen --package <svc>
+> --no-install-project` does **NOT** skip workspace *path* dependencies. Proof:
+> omitting the package source from build layer 1 fails with
+> `error: Failed to determine installation plan / Distribution not found at:
+> file:///app/packages/py-runtime-models`. The mitigation (COPY the package
+> source in layer 1, before the `--no-install-project` sync) is applied to all
+> six Dockerfiles. **OD-3 primary path confirmed viable — the fallback was not
+> needed.**
+
+**Per-service adoption**
+
+| Step | Service | Outcome |
+|---|---|---|
+| 4.4 | guardrail | Cache converged onto the shared contract; 200-line copy deleted. Sync/async shutdown hook unified. |
+| 4.5 | nlp | Converged; **D-07 closed** — the three singletons now receive resolved ttl/max and are runtime-reconfigurable, plus a `sweep_model_caches()` entry point. |
+| 4.7 | tts-v2 | **D-09 closed (Kokoro)** — `warm_and_register` replaced by `register_local_provider`; providers register unconditionally, weights load on first request and are TTL-released. `TTS_WARMUP_ENABLED` (default off) restores boot-warm. |
+| 4.8 | smr | **D-10 closed** — Ollama `keep_alive`, LM Studio `extra_body.ttl` (gated on provider name), both wired to the control plane via the existing refresh path. |
+| 4.2 | settings | Retention keys registered for all five in-process services + smr; effective-config now **serves** the guardrail/harness/tts-v2 subsets TASK-525 reserved. |
+| 4.9 | metrics | Fixed metric families added to all five `core/metrics.py`; `infrastructure/grafana/dashboards/model-retention.json`. |
+| 4.10 | runbook | `docs/operations/inference/model-retention.md`, indexed from the inference ops README. |
+
+### 9.2 Deviations from the plan (each with rationale)
+
+| # | Deviation | Why |
+|---|---|---|
+| **DR-1** | Settings keys use the landed `<svc>.modelCache.<knob>` grammar, **not** §3.2's proposed `models.retention.*`. | §2/§3.2 were factually stale: TASK-525 has landed and froze `<svc>.modelCache.*` (`service-runtime.descriptors.ts`), with `resolveForService` carrying an explicit comment reserving the guardrail/harness/tts-v2 subsets *for TASK-529 to fill*. Adding a second key family for the same knob is the redundancy the program plan §2.5 Cleanup Doctrine forbids. Guarded by a test asserting no `models.retention.*` key exists. |
+| **DR-2** | §2 current-state was stale in three further places. | (a) stt-v2's cache **already** had control-plane retention wiring (`apply_retention` / `set_retention_refresher`); (b) **D-11 was already fully closed** by TASK-525 — `GlobalSettingRead` is deleted and the `stt.config.model_cache.*` / `workers.*` seed rows are already removed from `06-stt.ts` (the remaining `stt.config` rows are unrelated, live rows); (c) per-service `effective_config.py` clients already exist in stt-v2/nlp/smr. No work was redone. |
+| **DR-3** | OD-5 (600 s) applied by editing two existing test assertions and one seed-adjacent default. | `guardrail/tests/test_aux_model_selection.py` and the effective-config service test encoded the old 3600 s default. Both were updated **with rationale comments**, not silently. The effective-config test's local `DEFAULTS` map was replaced with an import of `SERVICE_RUNTIME_DEFAULTS` — it had already silently drifted, which is the precise failure mode the descriptor file warns about. |
+| **DR-4** | `apply_retention` on smr providers is re-applied on every refresh rather than at construction. | `ProviderRegistry` builds providers lazily and memoizes them, so construction-time application would miss every provider built after boot. A provider instantiated after the last refresh carries the bootstrap TTL for at most one request — bounded and documented; the value is a residency hint, never part of a response. |
+| **DR-5** | Two defects found in my own shared cache by TDD, fixed before adoption. | (1) LRU-overflow evictions never ran the `unload` hook — evicted weights were never released, defeating the purpose of eviction. (2) Lazy TTL eviction on `get()` dropped its victims the same way. Both now carry victims out of the lock and unload them; both have dedicated conformance tests. |
+| **DR-6** | Python gates were run with an explicit `PYTHONPATH` pin to this worktree. | `arcaenv`'s editable installs resolve to the **main** checkout, so a bare `pnpm py:*:test` in a worktree silently tests main-repo source. Every result below was produced with `PYTHONPATH=<worktree>/packages/py-runtime-models/src:<worktree>/apps/<svc>/src`. Worth fixing in the `py:*` scripts separately. |
+
+### 9.3 Gate evidence
+
+```
+packages/py-runtime-models  pytest tests/                33 passed
+apps/nlp                    pytest apps/nlp/tests/      173 passed
+apps/guardrail              pytest .../tests/           163 passed
+apps/tts-v2                 pytest .../tests/           155 passed, 2 deselected
+apps/smr                    pytest .../tests/           939 passed, 32 deselected
+apps/harness                pytest .../tests/           886 passed   (replay-compat untouched & green)
+apps/stt-v2                 pytest tests/unit          2428 passed, 1 skipped
+
+ruff check (all 6 services + shared package)            All checks passed!
+mypy (shared package)                                   Success: no issues found in 4 source files
+mypy (smr/nlp/guardrail/tts changed files)              Success: no issues found
+
+pnpm --filter @arcaai/applications build                (tsc clean)
+pnpm --filter @arcaai/applications test                 316 files passed, 6524 tests passed
+pnpm --filter @arcaai/database test                     24 files passed, 819 tests passed
+
+uv lock                    Resolved 475 packages   (+18 additive lines; package count unchanged)
+uv lock --check            Resolved 475 packages   (clean)
+
+Docker  docker build -f apps/nlp/Dockerfile --target builder     SUCCESS
+  in-image: clamp(7200)=3600 · nlp cache composes shared contract: True
+            nlp default TTL: 600 · NVML probe (no GPU): None   ← zero GPU dependence
+```
+
+### 9.4 NOT done — why, and what it costs
+
+| Item | Status | Reason |
+|---|---|---|
+| **4.3 stt-v2 cache convergence** | **Not attempted** | 567-line concrete cache owning the format→loader map, on the ASR hot path, and it **already has** control-plane retention (DR-2a) — so the admin-control requirement is met there; only the code-sharing half is outstanding. A rushed rewrite of this path carried more regression risk than the deduplication was worth in the remaining budget. GAP-L1 is therefore only **partly** closed (3 of 4 in-process caches share the contract). |
+| **4.6 harness D-08** | **Not implemented** | Blocked on a design fork the plan did not anticipate: `load_minicheck_entailer` is called from a **synchronous** helper (`activities.py:390` → `_atomic_fact_entailer`), and the shared contract is async-only. Options are (a) add a `SyncModelCache` to the shared package, or (b) make the entailer path async. Both are real decisions, not mechanical work. `_ENTAILER_CACHE` remains an immortal module dict. Harness suite (886) and replay fixtures are green and untouched. |
+| tts-v2 IndicParler / IndicF5 behind the cache | **Partial** | Both are now lazy (they no longer load at boot, since registration no longer warms), but only Kokoro's handle sits behind the cache with TTL unload. |
+| Cross-service e2e (retention round-trip) | **Not authored** | Plan defers *execution* to TASK-534; authoring was in scope here and was not reached. |
+| `pynvml` optional extra | **Not added** | Not required — the probe is feature-detected and returns `None` without the package (proven in-image). Adding the extra is a one-line follow-up if a GPU host wants the probe live. |
+| Comment-delta ledger | **Partial** | Applied for the surfaces actually touched (tts `main.py` lifespan comment, the three cache module docstrings, guardrail/nlp config field docstrings, runbook indexing). The `minicheck_entailer.py:164` comment is untouched because 4.6 was not implemented. |
+
+### 9.5 Files created / modified
+
+**Created** — `packages/py-runtime-models/{pyproject.toml,README.md,pytest.ini,src/hope_runtime_models/{__init__,cache,vram,metrics}.py,tests/test_cache_contract.py}` · `apps/smr/src/smr_v2/core/retention.py` · `apps/smr/src/smr_v2/tests/unit/{test_provider_retention,test_retention_wiring}.py` · `apps/nlp/tests/test_model_cache_retention.py` · `apps/tts-v2/src/tts_v2/tests/unit/test_lazy_lifecycle.py` · `packages/applications/src/services/settings-registry/__tests__/model-retention.descriptors.test.ts` · `infrastructure/grafana/dashboards/model-retention.json` · `docs/operations/inference/model-retention.md`
+
+**Modified** — root `pyproject.toml` + `uv.lock` · 6 service `pyproject.toml` + 6 Dockerfiles · `scripts/setup-python-env.sh` · `apps/{nlp,guardrail}/src/**/services/model_cache.py` (rewritten onto the contract) · `apps/nlp/src/nlp/{dependencies.py,core/{config,effective_config,concurrency}.py}` · `apps/guardrail/src/guardrail/core/{config,dependencies}.py` + `tests/test_aux_model_selection.py` · `apps/tts-v2/src/tts_v2/{main.py,core/config.py,providers/{kokoro,registration}.py,tests/unit/test_local_registration.py}` · `apps/smr/src/smr_v2/{core/{config,effective_config}.py,providers/{ollama,openai_compat}.py,services/runtime_limits.py}` · 5 × `core/metrics.py` · `packages/applications/src/services/{settings-registry/descriptors/service-runtime.descriptors.ts,effective-config/{IEffectiveConfigService.ts,effective-config.service.ts,__tests__/effective-config.service.test.ts}}` · `docs/operations/inference/README.md`
+
+**Shared-file fence honoured**: only `_build_payload` + constructor in `ollama.py`, only the two `create` kwarg sites + constructor in `openai_compat.py`, one appended field in smr `config.py`. `get_info` in both providers and `models/provider.py` / `api/endpoints/providers.py` were not touched.
 
 ## 10. Change History
 
 | Date | Change |
 |---|---|
 | 2026-07-20 | Ticket README authored from AD-4 (frozen) + code-verified current state (three caches read in full; harness/tts/smr/packaging substrates verified; §2.4 Docker workspace-dep question marked for execution-time). Status Pending — awaiting owner approval per rule 01 Phase 3 gate. |
+| 2026-07-20 | **Implementation pass.** Step 4.1 gate PASSED — `packages/py-runtime-models` created and the §2.4 Docker question answered empirically (`--no-install-project` does NOT skip workspace path deps; source COPY required in layer 1). OD-3 primary path confirmed; fallback not needed. Delivered 4.1/4.2/4.4/4.5/4.7/4.8/4.9/4.10; closed D-07, D-09, D-10 (D-11 verified already closed by TASK-525). **Not delivered: 4.3 (stt-v2 convergence) and 4.6 (harness D-08)** — see §9.4. Six deviations recorded (DR-1…DR-6), notably the `<svc>.modelCache.*` key grammar over `models.retention.*` and three stale §2 current-state findings. Two defects in the new shared cache were caught by TDD and fixed (unload hook skipped on LRU and lazy-TTL eviction). Status → Blocked. |
 | 2026-07-20 | Program plan §2.5 **Completion & Cleanup Doctrine** adopted as BINDING for this ticket (owner directive): incorrect implementations in the owned surface are removed completely with the fix; partial implementations are finished end-to-end (or explicitly retired); redundant implementations are converged and deleted. Reviewer enforces the §2.5 classification table, plan-conformance (deviations = recorded decision rows), full-closure traceability of the claimed GAP/D/M IDs, and the performance gates. |

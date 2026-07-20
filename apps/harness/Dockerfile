@@ -50,6 +50,11 @@ COPY apps/nlp/pyproject.toml ./apps/nlp/
 COPY apps/smr/pyproject.toml ./apps/smr/
 COPY apps/stt-v2/pyproject.toml ./apps/stt-v2/
 COPY apps/tts-v2/pyproject.toml ./apps/tts-v2/
+# TASK-529 — shared model-lifecycle package. `--no-install-project` skips only
+# the TARGET package, not its workspace path dependencies (verified: omitting
+# this COPY fails layer 1 with "Distribution not found"). Dependency-free and
+# rarely changed, so it costs no meaningful layer-cache churn.
+COPY packages/py-runtime-models ./packages/py-runtime-models
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --package harness --no-dev --extra rag --extra guardrails --extra atomic-fact \
         --no-install-project --no-editable

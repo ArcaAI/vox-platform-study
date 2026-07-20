@@ -43,7 +43,12 @@ dependencies = [
     "opentelemetry-instrumentation-httpx>=0.60b1",
     "opentelemetry-exporter-otlp-proto-grpc>=1.39.0",
     "opentelemetry-instrumentation-logging>=0.60b1",
+    # --- Shared runtime contracts (TASK-529) ---
+    "hope-runtime-models",
 ]
+
+[tool.uv.sources]
+hope-runtime-models = { workspace = true }
 
 [project.optional-dependencies]
 dev = [

@@ -54,29 +54,44 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         registry.register("sarvam", SarvamProvider(settings.sarvam))
         logger.info("tts_v2.provider_registered", provider="sarvam", model=settings.sarvam.model)
 
-    # Local engines register only after their model warms successfully — a load
-    # failure leaves them unregistered (degraded, not dead).
+    # TASK-529 (D-09) — local engines register UNCONDITIONALLY and load their
+    # weights on the first synth request; an idle model is then released by the
+    # cache's TTL sweep. Before this, `warm_and_register` loaded every enabled
+    # engine at boot and nothing ever unloaded it.
+    #
+    # Health-semantics shift: a broken model now surfaces as a first-request 503
+    # instead of a missing provider. TTS_WARMUP_ENABLED=true restores boot-warm
+    # for operators who prefer to fail at boot (the provider still registers).
+    # See docs/operations/inference/model-retention.md.
     if settings.kokoro.enabled or settings.indic_parler.enabled or settings.indic_f5.enabled:
-        from tts_v2.providers.registration import warm_and_register
+        from tts_v2.providers.registration import register_local_provider
+
+        warmup = settings.warmup_enabled
 
         if settings.kokoro.enabled and "kokoro" not in registry:
             from tts_v2.providers.kokoro import KokoroProvider
 
-            await warm_and_register(registry, "kokoro", KokoroProvider(settings.kokoro), logger=logger)
+            await register_local_provider(
+                registry,
+                "kokoro",
+                KokoroProvider(settings.kokoro, ttl_seconds=settings.model_cache_ttl_seconds),
+                warmup=warmup,
+                logger=logger,
+            )
 
         if settings.indic_parler.enabled and "indic_parler" not in registry:
             from tts_v2.providers.indic_parler import IndicParlerProvider
 
-            await warm_and_register(
-                registry, "indic_parler", IndicParlerProvider(settings.indic_parler), logger=logger
+            await register_local_provider(
+                registry, "indic_parler", IndicParlerProvider(settings.indic_parler), warmup=warmup, logger=logger
             )
 
         # IndicF5 — EXPERIMENTAL, prod enablement NO-GO pending license review (TASK-494).
         if settings.indic_f5.enabled and "indic_f5" not in registry:
             from tts_v2.providers.indic_f5 import IndicF5Provider
 
-            await warm_and_register(
-                registry, "indic_f5", IndicF5Provider(settings.indic_f5), logger=logger
+            await register_local_provider(
+                registry, "indic_f5", IndicF5Provider(settings.indic_f5), warmup=warmup, logger=logger
             )
 
     logger.info("tts_v2.started", providers=registry.list_providers())

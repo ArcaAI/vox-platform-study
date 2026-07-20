@@ -35,11 +35,20 @@ export interface EffectiveRuntimeProfile {
   source: EffectiveConfigSource;
 }
 
-/** Model-cache retention knobs (stt-v2 today; harness/tts-v2 reserved). */
+/**
+ * Model-cache retention knobs. TASK-525 served stt-v2 only; TASK-529 fills the
+ * remaining in-process services (nlp/guardrail/harness/tts-v2) plus smr, whose
+ * `ttlSeconds` is forwarded to server-managed engines rather than a cache.
+ *
+ * Every field is nullable BY CONTRACT: null/omitted means "the service keeps its
+ * own env/bootstrap value". `maxMemoryMb` is stt-v2-only (its historical MB
+ * budget); `vramBudgetMb` is the generalized, opt-in VRAM bound (0/null = unset).
+ */
 export interface EffectiveRetention {
   ttlSeconds: number | null;
   maxModels: number | null;
   maxMemoryMb: number | null;
+  vramBudgetMb: number | null;
   source: EffectiveConfigSource;
 }
 

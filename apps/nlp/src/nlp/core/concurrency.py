@@ -146,6 +146,14 @@ async def refresh_inference_limit(client: Any) -> ResizableSemaphore:
 
     try:
         snapshot = await client.get()
+
+        # TASK-529 (D-07) — same refresh, same fail-safe posture: retention
+        # rides the existing pull rather than opening a second poll loop.
+        # Imported here to avoid a dependencies↔concurrency import cycle.
+        from nlp.dependencies import apply_model_cache_retention
+
+        apply_model_cache_retention(snapshot.retention())
+
         limit = snapshot.max_concurrent()
         if limit is not None and limit != semaphore.limit:
             previous = semaphore.limit

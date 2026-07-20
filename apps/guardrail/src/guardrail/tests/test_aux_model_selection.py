@@ -111,7 +111,10 @@ def test_ttl_is_clamped_to_product_window() -> None:
     assert clamp_cache_ttl_seconds(5) == 60  # below floor
     assert clamp_cache_ttl_seconds(120) == 120  # within window
     assert clamp_cache_ttl_seconds(999_999) == 3600  # above ceiling
-    assert DEFAULT_TTL_SECONDS == 3600
+    # TASK-529 / OD-5: the bootstrap default moved 3600 → 600. The product
+    # WINDOW is unchanged (a 1 h maximum is still enforced above); only the
+    # default inside it changed. Deliberate, owner-approved behaviour change.
+    assert DEFAULT_TTL_SECONDS == 600
 
 
 async def test_cache_loads_lazily_and_caches() -> None:

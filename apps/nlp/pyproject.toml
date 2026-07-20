@@ -70,7 +70,12 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.60b1",
     "opentelemetry-instrumentation-logging>=0.60b1",
     "opentelemetry-exporter-otlp-proto-grpc>=1.39.0",
+    # --- Shared runtime contracts (TASK-529) ---
+    "hope-runtime-models",
 ]
+
+[tool.uv.sources]
+hope-runtime-models = { workspace = true }
 # CONDA-MANAGED PACKAGES (installed via conda, not pip):
 #   ffmpeg 6.1.2, av 13.1.0, numpy 2.4.2, scipy 1.17.1, libiconv 1.18
 # av (PyAV) is a transitive dependency of transformers (video_classification

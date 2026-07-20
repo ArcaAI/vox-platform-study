@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=75.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hope-runtime-models"
+version = "0.1.0"
+description = "Shared model-lifecycle contract (idle-TTL / LRU / pin / VRAM) for the HOPE Python services"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11,<3.12"
+
+# Deliberately DEPENDENCY-FREE. This package is imported by every Python
+# service, so any dependency it declared would be forced onto all of them and
+# would have to co-resolve inside the single root `uv.lock`. The cache contract
+# needs nothing beyond the stdlib; Prometheus metrics and the NVML probe are
+# injected by the host service (see `metrics.py` / `vram.py`).
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]

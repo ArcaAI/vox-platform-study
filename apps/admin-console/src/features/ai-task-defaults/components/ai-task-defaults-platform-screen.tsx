@@ -1,5 +1,8 @@
 'use client';
 
+import Link from 'next/link';
+import { IconExternalLink } from '@tabler/icons-react';
+import { Button } from '@arcaai/ui/components/shadcn/button';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
@@ -25,6 +28,17 @@ export function AiTaskDefaultsPlatformScreen() {
         <PageHeader
           title="AI task defaults (platform)"
           meta={<span>SYSTEM-tenant platform defaults &mdash; global-admin-only; tenants receive the platform default</span>}
+          // TASK-528 — the pickers below only offer models that exist in the
+          // registry; this is the way out to add one (incl. discovering what the
+          // serving engines already host).
+          actions={
+            <Button asChild variant="outline">
+              <Link href="/ai-models">
+                <IconExternalLink aria-hidden />
+                Manage models
+              </Link>
+            </Button>
+          }
         />
       }
       footer={

@@ -77,7 +77,12 @@ dependencies = [
     "azure-cognitiveservices-speech>=1.47.0",
     # --- Cadence punctuation runtime compatibility (Gemma3 bidirectional mask path) ---
     "cadence-punctuation>=1.1.0",
+    # --- Shared runtime contracts (TASK-529) ---
+    "hope-runtime-models",
 ]
+
+[tool.uv.sources]
+hope-runtime-models = { workspace = true }
 
 [project.optional-dependencies]
 # ---------------------------------------------------------------------------

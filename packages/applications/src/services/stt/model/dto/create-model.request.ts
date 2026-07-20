@@ -2,8 +2,23 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsOptional, IsArray, IsEnum, IsIn, IsNumber, Matches, MaxLength, MinLength, Min } from 'class-validator';
 import { ModelCategory, ModelTaskType, ModelType, AiModelSource, AiModelFormat } from '@arcaai/domains';
 
-/** TASK-506 — canonical runtime provider ids for registry rows. */
-export const AI_MODEL_PROVIDERS = ['ollama', 'lm-studio', 'azure', 'bedrock', 'built-in', 'sarvam'] as const;
+/**
+ * TASK-506 — canonical runtime provider ids for registry rows.
+ *
+ * TASK-528 §2.5: this list MUST stay identical to the seed's canonical list in
+ * `packages/database/src/prisma/db_main/seed/ai-models/shared.ts` — it drifted
+ * (missing `vllm`/`llama-cpp`), so a seeded or discovered vLLM/llama.cpp model
+ * could not be written through the API at all. Pinned by
+ * `tests/contracts/ai-model-providers.contract.test.ts`.
+ */
+export const AI_MODEL_PROVIDERS = ['ollama', 'lm-studio', 'azure', 'bedrock', 'built-in', 'sarvam', 'vllm', 'llama-cpp'] as const;
+
+/**
+ * TASK-528 §3.5 — the subset of providers whose models live on a server we can
+ * ENUMERATE (`admin/ai-models/discovery`). Cloud providers have nothing to
+ * "discover", so the register action refuses them.
+ */
+export const DISCOVERABLE_AI_MODEL_PROVIDERS = ['ollama', 'lm-studio', 'vllm', 'llama-cpp'] as const;
 
 export class CreateModelRequest {
   @ApiProperty({

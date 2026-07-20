@@ -154,6 +154,17 @@ class Settings(BaseSettings):
     indic_parler: IndicParlerConfig = Field(default_factory=IndicParlerConfig)
     indic_f5: IndicF5Config = Field(default_factory=IndicF5Config)
 
+    # TASK-529 (D-09) — local engines are LAZY by default: they register at boot
+    # but load their weights on the first synth request and are TTL-evicted when
+    # idle. Set TTS_WARMUP_ENABLED=true to restore the pre-TASK-529 boot-warm
+    # behaviour (fail-at-boot rather than first-request 503) — see
+    # docs/operations/inference/model-retention.md.
+    warmup_enabled: bool = False
+
+    # Idle TTL for local engine weights. BOOTSTRAP FALLBACK ONLY — the runtime
+    # value comes from the control plane (`tts.modelCache.ttlSeconds`).
+    model_cache_ttl_seconds: int = 600
+
     @field_validator("log_level")
     @classmethod
     def _normalise_log_level(cls, v: str) -> str:

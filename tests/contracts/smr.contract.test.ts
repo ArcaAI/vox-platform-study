@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { z } from 'zod';
 import {
   SmrHealthResponseSchema,
   SmrSyncSummaryRequestSchema,
@@ -490,5 +491,96 @@ describe('SMR Service Contract', () => {
       const result = SmrSummaryResponseSchema.safeParse(missingRequiredField);
       expect(result.success).toBe(false);
     });
+  });
+});
+
+/**
+ * TASK-528 §3.3 / §5.3 — `GET /api/v1/providers` probe contract.
+ *
+ * The SMR-side additions are ADDITIVE and OPTIONAL: the gateway's transition
+ * fallback mapper (`smr-proxy.controller.ts#getProviders`) spreads the payload
+ * untouched, so a pre-TASK-528 SMR (no probe fields) must still validate.
+ */
+describe('SMR Providers Listing Contract (TASK-528)', () => {
+  const ModelInfoSchema = z.object({
+    name: z.string(),
+    supports_streaming: z.boolean().optional(),
+    context_window: z.number().nullable().optional(),
+    // Additive (TASK-528): engine-reported load state + engine-native extras.
+    state: z.enum(['loaded', 'not-loaded']).nullable().optional(),
+    engine_native: z.record(z.string(), z.unknown()).nullable().optional(),
+  });
+
+  const ProviderInfoSchema = z.object({
+    name: z.string(),
+    display_name: z.string(),
+    status: z.string(),
+    default_model: z.string(),
+    models: z.array(ModelInfoSchema),
+    supports_streaming: z.boolean().optional(),
+    // Additive (TASK-528): per-provider probe outcome.
+    probe_status: z.enum(['ok', 'timeout', 'error', 'skipped']).nullable().optional(),
+    probe_latency_ms: z.number().nullable().optional(),
+    probe_error: z.string().nullable().optional(),
+  });
+
+  it('accepts a legacy payload with no probe fields (backward compatible)', () => {
+    const legacy = {
+      name: 'ollama',
+      display_name: 'Ollama (Self-Hosted)',
+      status: 'available',
+      default_model: 'llama3.1:8b',
+      models: [{ name: 'llama3.1:8b', supports_streaming: true }],
+      supports_streaming: true,
+    };
+    expect(ProviderInfoSchema.safeParse(legacy).success).toBe(true);
+  });
+
+  it('accepts the enriched payload the discovery merge consumes', () => {
+    const enriched = {
+      name: 'lm-studio',
+      display_name: 'OpenAI Compatible',
+      status: 'available',
+      default_model: '',
+      models: [
+        {
+          name: 'qwen3-8b',
+          supports_streaming: true,
+          state: 'loaded',
+          engine_native: { quantization: 'Q4_K_M', max_context_length: 32768 },
+        },
+      ],
+      supports_streaming: true,
+      probe_status: 'ok',
+      probe_latency_ms: 42,
+      probe_error: null,
+    };
+    expect(ProviderInfoSchema.safeParse(enriched).success).toBe(true);
+  });
+
+  it('accepts a timed-out provider entry (partial failure, never a 500)', () => {
+    const timedOut = {
+      name: 'vllm',
+      display_name: 'vllm',
+      status: 'unavailable',
+      default_model: '',
+      models: [],
+      probe_status: 'timeout',
+      probe_latency_ms: 5001,
+      probe_error: 'probe exceeded 5.0s',
+    };
+    expect(ProviderInfoSchema.safeParse(timedOut).success).toBe(true);
+  });
+
+  it('rejects an unknown probe status (typo guard)', () => {
+    const bad = {
+      name: 'ollama',
+      display_name: 'Ollama',
+      status: 'available',
+      default_model: '',
+      models: [],
+      probe_status: 'okay',
+    };
+    expect(ProviderInfoSchema.safeParse(bad).success).toBe(false);
   });
 });
