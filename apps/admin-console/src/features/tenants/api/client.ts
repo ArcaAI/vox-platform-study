@@ -7,6 +7,7 @@ import { deleteJson, getJson, getWithEtag, patchJson, patchWithEtag, postJson, p
 import type { ListParams, Paginated, WithEtag } from '@/shared/api';
 import type {
     CreateTenantRequest,
+    PipelineResyncSummary,
     ProvisionTenantRequest,
     Tenant,
     TenantConfig,
@@ -66,6 +67,16 @@ export function archiveTenant(id: string): Promise<Tenant> {
 
 export function restoreTenant(id: string): Promise<Tenant> {
     return postJson(`${BASE}/${encodeURIComponent(id)}/restore`);
+}
+
+/**
+ * TASK-531 — reconcile this tenant's ASR pipeline catalog against the SYSTEM
+ * templates. Global-admin only (`manage:Tenant`). Missing templates are cloned
+ * in as locked copies and pristine locked copies are fast-forwarded; customized
+ * (unlocked) pipelines are never touched. Idempotent.
+ */
+export function resyncTenantPipelineTemplates(id: string): Promise<PipelineResyncSummary> {
+    return postJson(`${BASE}/${encodeURIComponent(id)}/pipelines/resync`);
 }
 
 export function getTenantUsage(id: string): Promise<TenantUsage> {

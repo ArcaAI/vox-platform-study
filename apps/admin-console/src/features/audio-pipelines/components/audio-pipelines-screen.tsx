@@ -21,6 +21,7 @@ import { usePipelines } from '../api';
 import type { Pipeline } from '../api';
 import { PipelineDetailDrawer } from './pipeline-detail';
 import { PipelineStatusBadge } from './pipeline-status-badge';
+import { TemplateBadge } from './template-lock';
 
 const EM_DASH = '—';
 
@@ -161,6 +162,25 @@ function AudioPipelinesBody() {
                             <IconStarFilled aria-hidden className="text-warning size-4" />
                             <span className="sr-only">Tenant default</span>
                         </span>
+                    ) : (
+                        <span aria-hidden className="text-muted-foreground">
+                            {EM_DASH}
+                        </span>
+                    ),
+            },
+            {
+                // TASK-531 — locked SYSTEM template copies are read-only for
+                // content edits; surfacing that in the grid stops an admin
+                // opening a row expecting to edit it.
+                id: 'template',
+                header: 'Template',
+                enableSorting: false,
+                enableHiding: false,
+                size: 120,
+                meta: { label: 'Template' },
+                cell: ({ row }) =>
+                    row.original.templateLocked ? (
+                        <TemplateBadge />
                     ) : (
                         <span aria-hidden className="text-muted-foreground">
                             {EM_DASH}

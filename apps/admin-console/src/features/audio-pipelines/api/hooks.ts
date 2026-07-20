@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     assignPipelineTenant,
+    clonePipeline,
     createPipeline,
     deletePipeline,
     getPipeline,
@@ -14,7 +15,7 @@ import {
     validatePipelineConfig,
 } from './client';
 import { audioPipelineKeys } from './keys';
-import type { CreatePipelineRequest, UpdatePipelineRequest } from './types';
+import type { ClonePipelineRequest, CreatePipelineRequest, UpdatePipelineRequest } from './types';
 
 export function usePipelines() {
     return useQuery({ queryKey: audioPipelineKeys.list(), queryFn: listPipelines });
@@ -50,6 +51,15 @@ export function useUpdatePipeline() {
 export function useDeletePipeline() {
     const invalidate = useInvalidatePipelines();
     return useMutation({ mutationFn: (id: string) => deletePipeline(id), onSuccess: invalidate });
+}
+
+/** TASK-531 — clone a pipeline (the customization path for locked copies). */
+export function useClonePipeline() {
+    const invalidate = useInvalidatePipelines();
+    return useMutation({
+        mutationFn: ({ id, body }: { id: string; body: ClonePipelineRequest }) => clonePipeline(id, body),
+        onSuccess: invalidate,
+    });
 }
 
 /** Preflight-only — no cache invalidation on purpose (nothing changed). */

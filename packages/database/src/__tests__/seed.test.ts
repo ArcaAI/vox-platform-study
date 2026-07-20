@@ -40,6 +40,7 @@ import {
     ModelType,
     backfillCustomerTenantAiModels,
     CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL,
+    ASR_TEMPLATE_SLUGS,
 } from '../prisma/db_main/seed/06-stt';
 import { ALL_SETTINGS } from '../prisma/db_main/seed/11-global-setting';
 import {
@@ -1313,6 +1314,40 @@ describe('STT Seed Data', () => {
                 expect(slugs).not.toContain('code-switching-en-vi-template');
                 expect(slugs).not.toContain('asr-en-template');
                 expect(slugs).not.toContain('asr-ml-template');
+            });
+
+            // =================================================================
+            // TASK-531 — template lineage (GAP-T1). The 9 SYSTEM rows ARE the
+            // templates; every tenant row seeded from them is a locked copy.
+            // =================================================================
+
+            it('DB-3a: ASR_TEMPLATE_SLUGS set-equals the SYSTEM catalog slugs', () => {
+                expect([...ASR_TEMPLATE_SLUGS].sort()).toEqual(
+                    DEFAULT_ASR_PIPELINES.map((p) => p.slug).sort(),
+                );
+            });
+
+            it('DB-2: SYSTEM template rows are never locked and carry no lineage', () => {
+                DEFAULT_ASR_PIPELINES.forEach((pipeline) => {
+                    expect(pipeline.templateLocked ?? false).toBe(false);
+                    expect(pipeline.sourceTemplateSlug ?? null).toBeNull();
+                });
+            });
+
+            it('DB-1: every seeded tenant pipeline is a locked copy with template lineage', () => {
+                const tenantRows = [
+                    ...CUSTOMER_TENANT_ASR_PIPELINES,
+                    ...GLOBAL_TENANT_ASR_PIPELINES,
+                ];
+                expect(tenantRows.length).toBeGreaterThan(0);
+
+                tenantRows.forEach((pipeline) => {
+                    expect(pipeline.templateLocked).toBe(true);
+                    expect(ASR_TEMPLATE_SLUGS).toContain(pipeline.sourceTemplateSlug);
+                    // Lineage points at the template the row was cloned from,
+                    // which is the row's own slug for seed-provisioned copies.
+                    expect(pipeline.sourceTemplateSlug).toBe(pipeline.slug);
+                });
             });
 
             it('should include the TASK-505 matrix pipelines', () => {

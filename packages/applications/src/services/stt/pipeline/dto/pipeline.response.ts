@@ -25,6 +25,26 @@ export class PipelineResponse {
   @ApiProperty({ description: "Whether this pipeline is the tenant's default", example: false })
   isDefault: boolean;
 
+  // TASK-531 — template lineage. `sourceTemplateSlug` is the SYSTEM template
+  // this pipeline descends from (null when it is not template-derived);
+  // `templateLocked` marks a pristine template copy, which is READ-ONLY for
+  // content edits and delete (403 "Template copies are read-only — clone to
+  // customize"). Enable/disable and set-default remain available on a locked
+  // copy. The console reads these to badge the row and render its detail
+  // drawer read-only with a Clone action. Response-only: neither field is
+  // accepted on any request DTO.
+  @ApiPropertyOptional({
+    description: 'Slug of the SYSTEM template this pipeline descends from (null when not template-derived)',
+    example: 'production-whisper-large-v3-turbo-gguf',
+  })
+  sourceTemplateSlug?: string | null;
+
+  @ApiProperty({
+    description: 'Whether this is a locked template copy (read-only for content edits and delete; clone to customize)',
+    example: false,
+  })
+  templateLocked: boolean;
+
   @ApiProperty({ description: 'Tags', type: [String] })
   tags: string[];
 

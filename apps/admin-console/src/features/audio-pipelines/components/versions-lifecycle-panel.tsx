@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { IconArrowsExchange, IconPower, IconStar, IconTrash } from '@tabler/icons-react';
+import { IconArrowsExchange, IconCopy, IconPower, IconStar, IconTrash } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@arcaai/ui/components/shadcn/dialog';
@@ -16,6 +16,7 @@ import { formatDateTime } from '@/shared/format';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { useAssignPipelineTenant, useDeletePipeline, usePipelineVersions, useSetDefaultPipeline, useTogglePipeline } from '../api';
 import type { Pipeline } from '../api';
+import { TEMPLATE_LOCKED_REASON } from './template-lock';
 
 function toastGatewayError(error: unknown, fallback: string) {
     toast.error(error instanceof GatewayError ? error.message : fallback);
@@ -152,6 +153,7 @@ export function PipelineLifecycleTab({
     isElevated,
     onReload,
     onDeleted,
+    onClone,
 }: {
     detail: WithEtag<Pipeline>;
     /** Gates the cross-tenant assign action (frame 34: global-admin-only). */
@@ -160,6 +162,8 @@ export function PipelineLifecycleTab({
     onReload: () => void;
     /** Clears the grid selection / closes the drawer after a successful delete. */
     onDeleted: () => void;
+    /** TASK-531 — opens the clone dialog; replaces Delete on a locked copy. */
+    onClone?: () => void;
 }) {
     const setDefault = useSetDefaultPipeline();
     const toggle = useTogglePipeline();
@@ -238,11 +242,24 @@ export function PipelineLifecycleTab({
                             Assign tenant
                         </Button>
                     ) : null}
-                    <Button variant="destructive" size="sm" onClick={() => setConfirming('delete')}>
-                        <IconTrash aria-hidden />
-                        Delete
-                    </Button>
+                    {/* TASK-531 — set-default and enable/disable stay available on a
+                        locked template copy (OD-1); only Delete is withheld, since the
+                        gateway answers it with 403. Clone is offered in its place. */}
+                    {pipeline.templateLocked ? (
+                        <Button variant="outline" size="sm" onClick={onClone}>
+                            <IconCopy aria-hidden />
+                            Clone to customize
+                        </Button>
+                    ) : (
+                        <Button variant="destructive" size="sm" onClick={() => setConfirming('delete')}>
+                            <IconTrash aria-hidden />
+                            Delete
+                        </Button>
+                    )}
                 </div>
+                {pipeline.templateLocked ? (
+                    <p className="text-muted-foreground text-sm">{TEMPLATE_LOCKED_REASON}</p>
+                ) : null}
             </section>
 
             <ConfirmDialog

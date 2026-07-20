@@ -307,6 +307,10 @@ export class TenantService extends BaseService implements ITenantService {
    *    copies the source's *current* version (newest by `versionNumber`) as the
    *    clone's v1; when a source has no version rows, v1 is synthesized from the
    *    pipeline-level `configYaml`.
+   *  - TASK-531: stamps template lineage on every clone — `sourceTemplateSlug`
+   *    (the SYSTEM template it descends from) and `templateLocked: true`, which
+   *    makes the copy read-only for content edits/delete. Tenant admins clone a
+   *    copy to customize it; enable/disable and set-default stay available.
    *  - Marks the clone of the SYSTEM default (`isDefault`) as the tenant default
    *    atomically via `setDefaultForTenant` (preserves one-default-per-tenant).
    *  - Per-row failure-isolated (one bad clone never aborts the others or tenant
@@ -340,6 +344,12 @@ export class TenantService extends BaseService implements ITenantService {
           description: source.description ?? undefined,
           configYaml: source.configYaml,
           tags: source.tags,
+          // TASK-531 — the clone IS a template copy: it records which SYSTEM
+          // template it descends from and starts LOCKED, so the tenant admin
+          // clones it to customize rather than editing it in place (owner
+          // expectation E4). `PipelineService.update/delete` enforce the lock.
+          sourceTemplateSlug: source.slug,
+          templateLocked: true,
           createdBy: this.requestUser?.id,
         });
 

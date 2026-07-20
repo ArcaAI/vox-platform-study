@@ -30,6 +30,17 @@ model AsrPipeline {
   // Per-tenant default backend pipeline assignment (TASK-328 A6)
   isDefault Boolean @default(false)
 
+  // Template lineage (TASK-531 / AD-6). The SYSTEM-tenant catalog rows ARE the
+  // templates: they carry `sourceTemplateSlug = null` and `templateLocked = false`.
+  // A tenant copy cloned from a template records the template's slug here
+  // (provenance survives clone chains) and is `templateLocked = true`, which the
+  // application layer treats as read-only for content edits + delete — tenant
+  // admins clone it to customize. `templateLocked` is deliberately absent from
+  // every request DTO, so the gateway's whitelist pipe rejects attempts to flip
+  // it over the API. No FK: pipelines already reference each other by slug.
+  sourceTemplateSlug String?
+  templateLocked     Boolean @default(false)
+
   // Resource status + Audit
   resourceStatus          ResourceStatusType @default(ENABLED)
   resourceStatusUpdatedAt DateTime?
@@ -50,6 +61,8 @@ model AsrPipeline {
   @@unique([tenantId, slug], name: "AsrPipeline_tenant_slug_unique")
   @@index([tenantId], name: "AsrPipeline_tenantId_idx")
   @@index([resourceStatus], name: "AsrPipeline_status_idx")
+  // TASK-531 — resync/backfill scan predicate (per-tenant locked-copy sweep).
+  @@index([tenantId, templateLocked], name: "AsrPipeline_tenant_locked_idx")
   @@schema("core")
 }
 

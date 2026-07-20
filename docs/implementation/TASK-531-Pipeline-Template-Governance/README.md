@@ -1,6 +1,6 @@
 # TASK-531 — Pipeline Template Governance: Lineage, Locked Clones, Clone & Resync
 
-- **Status**: Pending
+- **Status**: Review — all three lanes (A/B/C) implemented TDD and gate-verified (§9). E2E specs authored; execution deferred to TASK-534 per program §2.2.
 - **Type**: feature
 - **Program**: Phase 4 of the [2026-07-20 agentic-platform program plan](../SOTA-Track/2026-07-20-agentic-platform-program-plan.md) (§3 AD-6 frozen design, §4 Phase 4, §8 OD-1) · findings: [2026-07-20 review](../SOTA-Track/2026-07-20-agentic-platform-review-findings.md) §3-E4 table, GAP-T1/T2/T3, D-13
 - **Suggested number**: TASK-531 per the program plan's allocation (TASK-523…534; **TASK-530 is reserved/unallocated** — this ticket is 531). Confirm at open time per the CLAUDE.md ticket workflow.
@@ -199,11 +199,93 @@ Comment deltas (binding, program §2.3): `06-stt.ts:845-859` policy block gains 
 
 ## 9. Implementation Summary
 
-_Pending_
+Implemented TDD across all three lanes on `fix/2605-review`. RED captured before every behavioural change; gates re-run green (§9.5).
+
+### 9.1 Dependency + design gates
+
+- **TASK-523 row 0.10 confirmed LANDED** before this ticket started (`pipeline.service.ts` `update()`/`delete()` already carry the `existing.tenantId !== tenantId → NotFoundException` guard). The `pipeline.service.ts` handoff in §4.3 therefore applied as written — the lock check was inserted AFTER the existing ownership guard, no ownership work absorbed, no concurrent edit.
+- **Design gate (§4.6): WAIVER RECORDED, owner-approved 2026-07-20.** Lane C adds no new screen or layout — only additive affordances to the approved frame 34 (a `Badge variant="outline"` on locked grid rows, a read-only state of the existing `DetailDrawer`, a short `Dialog` for clone, and one header action on tenant detail), all composed from already-approved `@arcaai/ui` primitives. Owner selected "record a waiver, build now" over waiting for a Figma frame. Rules 10/11 were applied directly (skeletons unchanged, badge variant per §7, disabled/withheld controls carry a visible reason per §5), and the a11y gate was met with an axe scan (0 violations) plus both-theme token-only styling.
+
+### 9.2 Evidence-forced decisions (deviations from the plan, recorded per program §2.5)
+
+- **DEC-1 — §3.3's open question resolved: `seedAsrPipelines` writes NO `AsrPipelineVersion` rows** (verified at `seed/06-stt.ts`; the upsert touches `AsrPipeline` only). So for every seeded tenant row the backfill's *primary* predicate (byte-equality against the clone-time v1 snapshot) is inapplicable and the **SYSTEM-current fallback is the operative branch**, exactly as §3.3 anticipated. The dev-DB dry run confirmed it: all 18 tenant rows matched via the fallback, 0 ambiguous.
+- **DEC-2 — the backfill sets `sourceTemplateSlug` on ALL slug-matched tenant rows, not only the locked subset.** §3.3 specified the lock predicate but was silent on provenance. Recording lineage on a customized row is harmless (lineage alone confers no lock; resync only ever touches `templateLocked` rows) and is precisely what §3.5/§7 want it for — enumerating "which tenants diverged from template X". `templateLocked` remains gated on the full double predicate.
+- **DEC-3 — resync fast-forwards to the SYSTEM template ROW's `configYaml`, not its newest version snapshot.** The first implementation routed the target through `findByPipeline(template.id)[0]`, mirroring `provisionTenantPipelineCatalog`. A RED test caught it: §3.4 says "fast-forward to SYSTEM's current YAML", and the row's `configYaml` *is* the authoritative live value the STT runtime resolves (its version rows are history derived from it). The indirection could only ever disagree when the template itself drifted, in which case the row must win. Removed, along with a redundant repository read.
+- **DEC-4 — the resync "pristine" predicate is self-consistency, not clone-time equality.** §3.4(ii) reads "YAML equals clone-time version"; taken literally that is not idempotent (after one fast-forward the row no longer equals its v1, so a second run would refuse forever). Implemented as intended instead: a locked copy is fast-forwarded when its `configYaml` still matches its OWN latest snapshot (i.e. it has not been edited out-of-band). Rows with no version history at all are treated as consistent — the lock was only ever granted to a provably-pristine row. A locked copy that drifted from its own history is skipped and logged, never overwritten. Idempotency is covered by an explicit test.
+- **DEC-5 — the console resync action lives in the `tenants` feature, not `audio-pipelines`.** Rule 13 forbids features importing each other, and the trigger renders on the tenant detail screen. The client/hook/type therefore sit in `features/tenants`; no cross-feature cache invalidation is performed (the run targets an arbitrary tenant whose pipeline catalog is not necessarily the working tenant's — the summary toast is the feedback).
+- **DEC-6 — no sr-only duplicate of the lock reason.** The first draft gave the read-only textarea an `aria-describedby` pointing at a visually-hidden copy of the message already visible in the banner. A test surfaced the duplicate text; the `aria-describedby` now points at the visible banner paragraph itself — one announcement, not two.
+
+### 9.3 Lane A — schema, migrations, domain, seed
+
+- `stt.prisma` `AsrPipeline`: `sourceTemplateSlug String?` + `templateLocked Boolean @default(false)` + `@@index([tenantId, templateLocked], name: "AsrPipeline_tenant_locked_idx")`. Additive only.
+- `20260720140000_task_531_pipeline_template_lineage` (columns + index) and `20260720140100_task_531_pipeline_template_lineage_backfill` (data). Both reviewed, dry-run inside a rolled-back transaction, then applied to the dev DB via `psql` (never `migrate reset`, per the house db-push constraint).
+- `pnpm gen:model` regenerated `AsrPipelineModel` (only that file changed). Entity + factory **hand-authored** per rule 03; `gen:entity` + `gen:factory` re-run and reported success (schema-coverage check passes with the new columns surfaced). `gen:mapper` NOT run — `AutoClassMapper` carries the new fields with zero mapper edits, as §4.2 predicted.
+- Seed: `ASR_TEMPLATE_SLUGS` exported (derived from `DEFAULT_ASR_PIPELINES`, so it cannot drift); an `asTemplateCopies()` helper stamps `sourceTemplateSlug = slug` + `templateLocked = true` on both tenant catalogs (`CUSTOMER_TENANT_ASR_PIPELINES`, `GLOBAL_TENANT_ASR_PIPELINES`) — hand-authored and derived rows alike. SYSTEM rows stay unlocked with null provenance. `seedAsrPipelines` now persists lineage on both create and update branches. Policy-comment block updated (§4.7 comment delta).
+
+Backfill result on the dev DB:
+
+```
+NOTICE:  TASK-531 backfill complete: 18 rows given provenance, 18 locked as pristine template copies, 0 left unlocked for review.
+
+               tenantId               | locked | unlocked | with_lineage
+--------------------------------------+--------+----------+--------------
+ 00000000-0000-0000-0000-000000000000 |      0 |        9 |            0   ← SYSTEM: the templates
+ 50000000-0000-0000-0000-000000000000 |      9 |        0 |            9
+ 50000000-0000-0000-0000-000000000001 |      9 |        0 |            9
+```
+
+### 9.4 Lane B — services + API
+
+- `PipelineService`: `assertNotTemplateLocked()` inserted AFTER the ownership guard in `update()` and `delete()` → `ForbiddenException(TEMPLATE_LOCKED_MESSAGE)`. `toggle()`/`setDefault()` deliberately untouched (OD-1). The message is exported as a single constant so the console, the unit suites and the e2e specs cannot drift from it.
+- `PipelineService.clone(id, dto)`: ownership 404 → quota precheck → slug uniqueness → factory build with `templateLocked: false` and `sourceTemplateSlug` carried from the source (propagates through clone chains; null for hand-made sources) → source's current config written as the clone's v1 snapshot → `ResourceCreated` with `clonedFrom`/`sourceTemplateSlug`.
+- `ClonePipelineRequest` DTO: `{ name, slug }` only — whitelist-enforced, so `templateLocked` cannot be smuggled in.
+- `PipelineTemplateResyncService.resyncTenant(tenantId)` → `{ added, fastForwarded, skipped }`, per-row failure isolated, idempotent, never touching unlocked rows. Tenant-context strategy verified against `provisionTenantPipelineCatalog`: global admins authenticate with an empty `tenantId`, so `ClsTenantContextProvider.getTenantId()` returns `undefined` and the tenant-scope extension takes its elevated pass-through — the same path provisioning already uses to write into a non-caller tenant. The target tenant is always explicit, never read from CLS.
+- `PipelineTemplateResyncCronService`: `pipeline.templateResync.enabled` (**default false**) + `pipeline.templateResync.cron` (default `0 3 * * *`), cloned from the `AgentTrajectoryRetentionService` pattern; sweeps every non-SYSTEM tenant with per-tenant failure isolation.
+- `PipelineResponse` + DTO mapper carry both lineage fields; provisioning (`tenant.service.ts`) stamps them on all 9 clones; module + barrels updated.
+- Routes: `POST admin/audio/pipelines/:id/clone` (201, no If-Match) and `POST admin/tenants/:id/pipelines/resync` on a new `TenantPipelineResyncController` gated `@CanManage('Tenant')`. 403 response rows documented on PATCH and DELETE.
+
+### 9.5 Lane C — admin console
+
+`Pipeline` type + client/hooks gain clone; `features/tenants` gains resync (DEC-5). Grid: a "Template" `variant="outline"` badge column (lock icon + text — never color alone). Detail drawer: `TemplateBadge` in the header; the Config tab renders a lock banner naming the reason plus a "Clone to customize" action, the YAML textarea is `readOnly` and `aria-describedby` the banner, and **Save is absent rather than disabled**; the Lifecycle tab keeps enable/disable and set-default (OD-1) and replaces Delete with Clone. Clone dialog prefills `<name> copy` / `<slug>-copy`. Deep-linking `?pipeline=<locked id>` renders the read-only detail, never a 404 (tested).
+
+### 9.6 Gate evidence
+
+| Gate | Result |
+|---|---|
+| `pnpm --filter @arcaai/database test` | `Test Files 25 passed (25)` · `Tests 832 passed (832)` |
+| `pnpm --filter @arcaai/domains build test` | build clean · `Test Files 116 passed \| 2 skipped (118)` · `Tests 1368 passed (1379)` |
+| `pnpm --filter @arcaai/applications build test` | build clean · `Test Files 319 passed \| 1 skipped (320)` · `Tests 6557 passed (6561)` |
+| `pnpm build:api` | `Tasks: 8 successful, 8 total` |
+| `pnpm --filter @arcaai/admin-console build lint test` | build clean · lint clean (`--max-warnings 0`) · `Test Files 137 passed (137)` · `Tests 1031 passed (1031)` |
+| `pnpm test:unit` (whole monorepo) | `Test Files 953 passed \| 2 skipped (955)` · `Tests 16760 passed \| 4 skipped \| 9 todo (16773)` |
+| `pnpm lint` (whole monorepo) | `Tasks: 29 successful, 29 total` — zero warnings, incl. `packages/*` only-warn |
+
+RED runs captured before implementing: DB/migration suite `Tests 12 failed | 820 passed` → green; `pipeline.service.task531.test.ts` `12 failed` (`service.clone is not a function` + missing lock guards) → green; resync + cron suites failed on missing modules → green; provisioning lineage `× stamps template lineage on every provisioned clone` → green; API route suite failed on the missing controller → green.
+
+### 9.7 Runtime verification — PARTIAL (environment-blocked)
+
+Rule 13's "verified in a running app" gate is **not fully met**, and the blocker is environmental rather than code:
+
+- ✅ `next dev` (Turbopack, port 5176) starts clean; the app compiles and serves with **zero server errors and zero browser console errors**.
+- ❌ The `/audio-pipelines` screen could not be exercised against real data. It redirects to sign-in, and login requires the API gateway, which **refuses to start**: `VaultSecretsProvider.boot() FATAL: cannot authenticate to Vault (http://localhost:8200) — permission denied`. The dev AppRole credentials in `.env.dev` are stale. `SECRETS_PROVIDER=env` is not a workaround here — `.env.dev` carries no `JWT_SECRET_KEY` (secrets live only in Vault).
+- **To unblock**: run `scripts/refresh-vault-creds.sh` (mints a fresh reusable AppRole secret_id into `.env.dev`, per rule 09), restart `pnpm dev:api`, then walk the locked-copy flow: open a seeded template row → confirm the Template badge, the read-only YAML, the absent Save and the lock reason → Clone → confirm the copy is editable → check both themes.
+
+Until then the console behaviour is covered by the jsdom suite (13 TASK-531 cases incl. the axe scan and the deep-link case) rather than a real browser.
+
+### 9.8 Open items for the owner
+
+1. **E2E execution** — `task-531-pipeline-template-governance.spec.ts` and `task-531-pipeline-clone-resync-cross-tenant.spec.ts` are authored but NOT executed (deferred to TASK-534 per program §2.2). They require the live stack + seed.
+2. **Production backfill** — the migration pair is applied to the dev DB only. On any environment with real tenant data, review the `RAISE NOTICE` output: rows reported as "left UNLOCKED for review" are pipelines whose config matches neither their clone-time snapshot nor the SYSTEM template, and an operator must decide whether each is a customization (leave unlocked) or a drifted copy (lock manually).
+3. **Nightly resync stays OFF** — `pipeline.templateResync.enabled` defaults to false by design. Enabling it is an operator decision; the admin trigger is the primary path.
+4. **Re-seed note** — re-running `pnpm db:seed` now re-locks tenant catalog rows (lineage is a seed declaration, not admin state). This matches the existing behaviour of that branch, which already restores `configYaml`.
+5. **Runtime verification** — see §9.7; blocked on refreshing the local Vault AppRole credentials.
+6. **Incidental fix, out of scope — please review separately.** `pnpm gen:model` also regenerated `packages/domains/src/enums/generated/AiModelSource.ts`, adding the missing `S3 = 'S3'` member. This is PRE-EXISTING drift from TASK-527 (commit `84417988`), which added `S3` to the Prisma enum and shipped the `…_task_527_ai_model_source_s3` migration but never regenerated the domain enum — meaning the CI `generate-data-model-check` drift gate was already failing on this branch. The one-line regeneration is kept (reverting it would leave that gate red), but it belongs to TASK-527, not this ticket.
+7. **One §4.7 doc delta not applied** — the pipelines row in `TASK-415-Hope-Admin-Console/capabilities-matrix.md`. That ticket has since been archived (`docs/archive/…`) and the file is read-blocked in this environment, so the screen-contract note (Template badge / clone / resync) was not added. The architecture delta in `docs/architecture/data-and-domain-model.md` §5.4 WAS applied.
 
 ## 10. Change History
 
 | Date | Change |
 |---|---|
 | 2026-07-20 | Ticket authored (execution-ready): code-verified current state, AD-6 architecture rationale (lineage columns, 403-with-guidance, backfill safety, default-OFF resync cron), layered implementation plan with TASK-523 handoff, RED-first TDD list, risks/rollback. Status Pending — awaiting owner approval (rule 01 Phase 3 gate) and OD-1 confirmation (default recorded). |
+| 2026-07-20 | **Executed all three lanes TDD; status Pending → Review.** RED captured before every behavioural change; all gates green (§9.6: 16760 monorepo unit tests, `pnpm lint` 29/29, API + console builds). TASK-523 row 0.10 confirmed landed, so the §4.3 handoff applied as written. Design gate closed by an owner-approved **waiver** (§9.1) — additive affordances on approved frame 34, no new screen. Six evidence-forced decisions recorded (§9.2): **DEC-1** `seedAsrPipelines` writes no version rows, so the backfill's SYSTEM-current fallback is the operative branch (18/18 rows locked, 0 ambiguous on the dev DB); **DEC-2** provenance is stamped on all slug-matched tenant rows, the lock only on provably-pristine ones; **DEC-3** resync fast-forwards to the template ROW's `configYaml`, not its newest snapshot (caught by a RED test — §3.4 says "SYSTEM's current YAML"); **DEC-4** the pristine predicate is self-consistency against the row's own latest snapshot, since §3.4(ii) read literally is not idempotent; **DEC-5** the console resync action lives in the `tenants` feature (rule 13 forbids cross-feature imports); **DEC-6** the lock reason is announced once via the visible banner, not a duplicated sr-only copy. Open: E2E execution (TASK-534), production backfill review, and full runtime verification — blocked on stale local Vault credentials (§9.7). |
 | 2026-07-20 | Program plan §2.5 **Completion & Cleanup Doctrine** adopted as BINDING for this ticket (owner directive): incorrect implementations in the owned surface are removed completely with the fix; partial implementations are finished end-to-end (or explicitly retired); redundant implementations are converged and deleted. Reviewer enforces the §2.5 classification table, plan-conformance (deviations = recorded decision rows), full-closure traceability of the claimed GAP/D/M IDs, and the performance gates. |

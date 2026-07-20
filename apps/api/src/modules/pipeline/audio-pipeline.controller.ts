@@ -1,4 +1,5 @@
 import {
+  ClonePipelineRequest,
   CreatePipelineRequest,
   HttpMethod,
   PaginatedPipelineResponse,
@@ -104,6 +105,10 @@ export class AudioPipelineController {
   })
   @ApiParam({ name: 'id', description: 'Pipeline ID', type: String })
   @ApiResponse({ status: 400, description: 'Bad request - invalid YAML or duplicate slug' })
+  @ApiResponse({
+    status: 403,
+    description: 'Template copy is read-only — clone it to customize (TASK-531). Enable/disable and set-default remain available on a locked copy.',
+  })
   @ApiResponse({ status: 404, description: 'Pipeline not found' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
@@ -126,9 +131,38 @@ export class AudioPipelineController {
     by: ['id'],
   })
   @ApiParam({ name: 'id', description: 'Pipeline ID', type: String })
+  @ApiResponse({ status: 403, description: 'Template copy is read-only — clone it to customize (TASK-531).' })
   @ApiResponse({ status: 404, description: 'Pipeline not found' })
   async delete(@Param('id') id: string): Promise<void> {
     return this.pipelineService.delete(id);
+  }
+
+  /**
+   * TASK-531 (GAP-T2) — clone a pipeline into a new, editable copy.
+   *
+   * This is the tenant admin's way to customize a locked template copy: the
+   * clone is unlocked, keeps the source's template provenance, and inherits the
+   * source's current config as its own v1 snapshot. The class-level
+   * `@Authorize(['manage','AsrPipeline'])` already scopes this to pipeline
+   * admins, which matches owner expectation E4 ("can clone/copy or create their
+   * own") — cloning is allowed even though the SOURCE may be locked.
+   */
+  @Post(':id/clone')
+  @ApiOperation({
+    summary: 'Clone a pipeline into a new editable copy (TASK-531)',
+    description:
+      'Creates a NEW pipeline from an existing one. The copy is never ' +
+      '`templateLocked`, carries the source `sourceTemplateSlug` forward, and ' +
+      "starts with the source's current config as its v1 version snapshot. " +
+      'Counts against the `maxAsrPipelines` plan quota like any other create.',
+  })
+  @ApiParam({ name: 'id', description: 'Source pipeline ID', type: String })
+  @ApiResponse({ status: 201, description: 'Clone created', type: PipelineResponse })
+  @ApiResponse({ status: 400, description: 'Bad request - duplicate slug or invalid name/slug' })
+  @ApiResponse({ status: 404, description: 'Source pipeline not found' })
+  @ApiResponse({ status: 409, description: 'Plan quota exceeded (maxAsrPipelines)' })
+  async clone(@Param('id') id: string, @Body() request: ClonePipelineRequest): Promise<PipelineResponse> {
+    return this.pipelineService.clone(id, request);
   }
 
   @ApiEndpoint({
