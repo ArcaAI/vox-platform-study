@@ -4,7 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     getGlobalAgenticPolicy,
     getLiveEngineConfig,
+    getRegistrySetting,
     getSettingsCatalog,
+    putRegistrySetting,
     updateGlobalAgenticPolicy,
     updateLiveEngineConfig,
 } from './client';
@@ -22,6 +24,39 @@ export function useLiveEngineConfig(enabled: boolean) {
 
 export function useSettingsCatalog(enabled: boolean) {
     return useQuery({ queryKey: agenticPolicyKeys.catalog(), queryFn: getSettingsCatalog, enabled });
+}
+
+/**
+ * TASK-533 B2 — one registry setting's effective value + ETag.
+ *
+ * Kept per-key rather than batched: the gateway's registry lane is key-addressed
+ * and each key carries its OWN version, so a batched read would have no single
+ * ETag to precondition writes with.
+ */
+export function useRegistrySetting(key: string, enabled: boolean) {
+    return useQuery({
+        queryKey: agenticPolicyKeys.registrySetting(key),
+        queryFn: () => getRegistrySetting(key),
+        enabled,
+    });
+}
+
+/**
+ * TASK-533 B2 — write one registry setting under OCC.
+ *
+ * Invalidates that key AND the live-engine config, because the loop reports its
+ * effective `agentic.context.*` knobs there — leaving it stale would show the
+ * admin the pre-edit values right after a successful save.
+ */
+export function usePutRegistrySetting() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: ({ key, value, etag }: { key: string; value: unknown; etag: string | null }) => putRegistrySetting(key, value, etag),
+        onSuccess: (_result, variables) => {
+            void queryClient.invalidateQueries({ queryKey: agenticPolicyKeys.registrySetting(variables.key) });
+            void queryClient.invalidateQueries({ queryKey: agenticPolicyKeys.liveConfig() });
+        },
+    });
 }
 
 export function useUpdateGlobalAgenticPolicy() {

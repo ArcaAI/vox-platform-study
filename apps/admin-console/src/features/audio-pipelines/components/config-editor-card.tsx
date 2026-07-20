@@ -71,7 +71,9 @@ export function PipelineConfigTab({
                 <div className="border-border bg-muted/40 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border p-3">
                     <p id={lockedReasonId} className="text-muted-foreground min-w-0 flex-1 text-sm">
                         <IconLock aria-hidden className="mr-1.5 inline size-4 align-text-bottom" />
-                        {TEMPLATE_LOCKED_REASON}
+                        {/* The constant carries no trailing stop (it must match the
+                            gateway's 403 message verbatim), so punctuate here. */}
+                        {TEMPLATE_LOCKED_REASON}.
                         {pipeline.sourceTemplateSlug ? (
                             <>
                                 {' '}

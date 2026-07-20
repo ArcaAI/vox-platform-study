@@ -71,8 +71,7 @@ export class SysEvent {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface ResourceCreatedEventProps extends SysEventProps {}
+export type ResourceCreatedEventProps = SysEventProps;
 
 export class ResourceCreatedEvent extends SysEvent {
   constructor(props: ResourceCreatedEventProps) {
@@ -81,8 +80,7 @@ export class ResourceCreatedEvent extends SysEvent {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface ResourceViewedEventProps extends SysEventProps {}
+export type ResourceViewedEventProps = SysEventProps;
 export class ResourceViewedEvent extends SysEvent {
   constructor(props: ResourceViewedEventProps) {
     super(props);
@@ -90,8 +88,7 @@ export class ResourceViewedEvent extends SysEvent {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface ResourceUpdatedEventProps extends SysEventProps {}
+export type ResourceUpdatedEventProps = SysEventProps;
 export class ResourceUpdatedEvent extends SysEvent {
   constructor(props: ResourceUpdatedEventProps) {
     super(props);
@@ -99,8 +96,7 @@ export class ResourceUpdatedEvent extends SysEvent {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface ResourceDeletedEventProps extends SysEventProps {}
+export type ResourceDeletedEventProps = SysEventProps;
 export class ResourceDeletedEvent extends SysEvent {
   constructor(props: ResourceDeletedEventProps) {
     super(props);

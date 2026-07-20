@@ -155,6 +155,55 @@ describe('BaseEntity', () => {
       });
     });
 
+    // TASK-541 — SUSPENDED is a first-class ResourceStatusType (the operator
+    // "hold" state added by TASK-387), but BaseEntity had no lifecycle method
+    // for it, so `applyChangesToEntity`'s status switch silently no-opped and
+    // a suspend request returned 200 without changing anything.
+    describe('suspend (TASK-541)', () => {
+      it('should set status to SUSPENDED', () => {
+        const entity = createTestEntity({ resourceStatus: ResourceStatusType.ENABLED });
+
+        entity.suspend('user-id');
+
+        expect(entity.resourceStatus).toBe(ResourceStatusType.SUSPENDED);
+        expect(entity.isSuspended).toBe(true);
+      });
+
+      it('should stamp resourceStatusUpdatedAt and the acting user', () => {
+        const entity = createTestEntity({ resourceStatus: ResourceStatusType.ENABLED });
+
+        entity.suspend('operator-1');
+
+        expect(entity.resourceStatusUpdatedAt).toBeInstanceOf(Date);
+        expect(entity.resourceStatusUpdatedBy).toBe('operator-1');
+      });
+
+      it('should track the change so the repository persists it', () => {
+        const entity = createTestEntity({ resourceStatus: ResourceStatusType.ENABLED });
+
+        entity.suspend();
+
+        expect(entity.hasChanges).toBe(true);
+        expect(entity.changes).toMatchObject({ resourceStatus: ResourceStatusType.SUSPENDED });
+      });
+
+      it('should be reversible via enable (a hold, not a tombstone)', () => {
+        const entity = createTestEntity({ resourceStatus: ResourceStatusType.ENABLED });
+
+        entity.suspend().enable();
+
+        expect(entity.isSuspended).toBe(false);
+        expect(entity.isEnabled).toBe(true);
+      });
+
+      it('isSuspended should be false for every other status', () => {
+        expect(createTestEntity({ resourceStatus: ResourceStatusType.ENABLED }).isSuspended).toBe(false);
+        expect(createTestEntity({ resourceStatus: ResourceStatusType.DISABLED }).isSuspended).toBe(false);
+        expect(createTestEntity({ resourceStatus: ResourceStatusType.ARCHIVED }).isSuspended).toBe(false);
+        expect(createTestEntity({ resourceStatus: ResourceStatusType.DELETED }).isSuspended).toBe(false);
+      });
+    });
+
     describe('archive', () => {
       it('should set status to ARCHIVED', () => {
         const entity = createTestEntity();
@@ -671,7 +720,6 @@ describe('BaseEntity', () => {
     it('version is not tracked in entity.changes when internal field is poked', () => {
       const entity = createTestEntity();
       // even if a buggy caller force-pokes the internal:
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (entity as any)._version = 99;
       expect(entity.hasChanges).toBe(false);
     });

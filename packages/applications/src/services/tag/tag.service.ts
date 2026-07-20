@@ -75,8 +75,7 @@ export class TagService extends BaseService implements ITagService {
   }
 
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<TagEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { limit, page, search } = props;
+    const { limit, page } = props;
     const tags = await this.tagRepository.findAll(withFormattedPaginatedProps(props, TAG_FILTER_MODEL));
 
     const count = await this.tagRepository.count(withFormattedCountProps(props, TAG_FILTER_MODEL));
@@ -95,8 +94,7 @@ export class TagService extends BaseService implements ITagService {
   }
 
   async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<TagEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { tenantId, limit, page, search } = props;
+    const { tenantId, limit, page } = props;
     const tags = await this.tagRepository.findAll({
       ...withFormattedPaginatedProps(props, TAG_FILTER_MODEL),
       where: {
@@ -125,8 +123,7 @@ export class TagService extends BaseService implements ITagService {
   }
 
   async fetchAllCreatedByUser(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<TagEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { userId, limit, page, search } = props;
+    const { userId, limit, page } = props;
     const tags = await this.tagRepository.findAll({
       ...withFormattedPaginatedProps(props, TAG_FILTER_MODEL),
       where: {

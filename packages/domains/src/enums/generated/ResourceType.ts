@@ -52,4 +52,7 @@ export enum ResourceType {
   // audit.prisma; see resourceType.enum-parity.test.ts).
   AiProviderConnection = 'AiProviderConnection',
   AiRuntimeProfile = 'AiRuntimeProfile',
+  // TASK-533 B6 — gate-edit mining store (parity with audit.prisma; see
+  // resourceType.enum-parity.test.ts).
+  GateEditExemplar = 'GateEditExemplar',
 }

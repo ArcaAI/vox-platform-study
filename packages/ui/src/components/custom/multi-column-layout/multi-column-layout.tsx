@@ -84,7 +84,6 @@ function useSyncedHeaderHeight(count: number) {
       ro.disconnect();
       for (const el of elements) el.style.removeProperty('min-height');
     };
-    // eslint-disable-next-line
   }, [count]);
 
   return { setRef };
@@ -274,11 +273,6 @@ function DetailSkeleton({ count = 4 }: { count?: number }) {
 // ---------------------------------------------------------------------------
 // Type guard helpers
 // ---------------------------------------------------------------------------
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function isListColumn(col: AnyColumnConfig): col is MultiColumnConfig {
-  return 'keyExtractor' in col && 'renderItem' in col;
-}
 
 function isContentColumn(col: AnyColumnConfig): col is MultiColumnContentConfig {
   return 'type' in col && col.type === 'content';

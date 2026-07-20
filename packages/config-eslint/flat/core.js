@@ -21,6 +21,7 @@
  *     `prefer-namespace-keyword` (zero findings on the current tree).
  */
 const arcaaiInternal = require('eslint-plugin-arcaai-internal');
+const eslintComments = require('@eslint-community/eslint-plugin-eslint-comments');
 const prettierRecommended = require('eslint-plugin-prettier/recommended');
 const tseslint = require('typescript-eslint');
 
@@ -67,6 +68,40 @@ module.exports = [
         name: 'arcaai/arcaai-internal-plugin',
         plugins: {
             'arcaai-internal': arcaaiInternal,
+        },
+    },
+    {
+        // TASK-540 — every eslint-disable comment must carry a `-- reason`
+        // (ESLint's native description syntax) so a suppression is
+        // reviewable without re-deriving why it exists. `no-unused-disable`
+        // is a free correctness check: a disable that no longer suppresses
+        // anything gets flagged instead of rotting in place.
+        //
+        // Severity is 'warn' repo-wide for now — TASK-540 is remediating the
+        // pre-existing backlog of un-justified disables package by package;
+        // flipping to 'error' before a package's backlog is clean would
+        // just break CI on old debt. `flat/nestjs.js` (apps/api) overrides
+        // this to 'error' once its backlog is clear (see that file); the
+        // plan is to do the same here once every package is clean.
+        name: 'arcaai/eslint-comments',
+        plugins: {
+            'eslint-comments': eslintComments,
+        },
+        rules: {
+            'eslint-comments/require-description': ['warn', { ignore: [] }],
+            'eslint-comments/no-unlimited-disable': 'error',
+            'eslint-comments/no-unused-disable': 'warn',
+        },
+    },
+    {
+        // Vendored third-party registry components (`shadcn`-style CLI
+        // installs under packages/ui) are never hand-edited to add
+        // justifications — turn the hygiene rule off there entirely instead
+        // of leaving permanent unfixable noise. Other lint rules still run.
+        name: 'arcaai/eslint-comments-vendored-override',
+        files: ['**/components/registries/**'],
+        rules: {
+            'eslint-comments/require-description': 'off',
         },
     },
     {

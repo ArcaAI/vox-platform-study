@@ -11,6 +11,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     activateVersion,
+    approveTemplate,
     assignDepartment,
     createTemplate,
     deleteTemplate,
@@ -100,6 +101,19 @@ export function useActivateVersion() {
     const invalidate = useInvalidateAgents();
     return useMutation({
         mutationFn: ({ id, versionNumber }: { id: string; versionNumber: number }) => activateVersion(id, versionNumber),
+        onSuccess: invalidate,
+    });
+}
+
+/**
+ * TASK-532 (M-03/OD-6) — clinical approval, ported from `/prompt-studio`.
+ * Invalidates the whole agents root: an approval flips `status` on the row AND
+ * pins a new PromptVersion, so list, detail and versions all go stale.
+ */
+export function useApproveTemplate() {
+    const invalidate = useInvalidateAgents();
+    return useMutation({
+        mutationFn: ({ id, reason, etag }: { id: string; reason?: string; etag: string }) => approveTemplate(id, reason, etag),
         onSuccess: invalidate,
     });
 }

@@ -70,8 +70,10 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'ResourceSubscription',
   // tag.prisma (1)
   'Tag',
-  // apikey.prisma (1)
-  'ApiKey',
+  // apikey.prisma — `ApiKey` is NOT here; it is INTENTIONALLY_UNSCOPED (see
+  // the drift-guard test). API-key AUTHENTICATION must read the row by
+  // keyHash before any principal — and therefore any tenant — exists, the
+  // same pre-auth shape that already exempts `TenantEntitlement`.
   // globalSetting.prisma (1)
   'GlobalSetting',
   // stt.prisma (4)
@@ -168,6 +170,12 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // tenant-scoped and soft-delete EXEMPT (no resourceStatus column; segments
   // live/die with their parent transcript) — see MODELS_WITHOUT_SOFT_DELETE.
   'TranscriptSegment',
+  // harness.prisma — TASK-533 B6 gate-edit mining store. A derived, append-only
+  // learning corpus. Tenant-scoped and NOT SYSTEM-shared: one tenant's mined
+  // exemplars must never surface in another tenant's few-shot retrieval. It is
+  // soft-delete EXEMPT (no resourceStatus column) — see
+  // MODELS_WITHOUT_SOFT_DELETE in client.ts.
+  'GateEditExemplar',
 ]);
 
 /**
@@ -494,7 +502,6 @@ export function applyTenantScopeExtension(
   return prisma.$extends({
     name: 'tenantScopeFilter',
     query: {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       $allModels: handlers as any,
     },
   });

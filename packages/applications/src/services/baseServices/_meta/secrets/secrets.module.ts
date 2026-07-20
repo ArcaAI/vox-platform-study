@@ -33,7 +33,7 @@ export interface SecretsModuleOptions {
    * is injectable. NestJS awaits async factories before instantiating
    * dependent providers, so consumers that read the cache
    * synchronously in their constructor (e.g. `JwtStrategy`,
-   * `GatewayJwtStrategy`, the `OPENID_CLIENT` factory) observe a
+   * the `OPENID_CLIENT` factory) observe a
    * warm cache — closes the boot-order gap left by the previous
    * design where `secretsService.boot()` ran in `main.ts` AFTER
    * `NestFactory.create(AppModule)` had already wired the strategy.

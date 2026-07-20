@@ -24,7 +24,7 @@ const sdk = vi.hoisted(() => ({
     arcaSession: null as any,
     storeApi: null as any,
 }));
-/* eslint-enable @typescript-eslint/no-explicit-any */
+/* eslint-enable @typescript-eslint/no-explicit-any -- end of the SDK-double block opened above */
 
 vi.mock('@arcaai/vox', () => ({
     AgenticProvider: ({ children }: { children: ReactNode }) => children,

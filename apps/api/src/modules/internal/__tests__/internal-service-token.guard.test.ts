@@ -11,7 +11,6 @@ import { InternalServiceTokenGuard } from '../internal-service-token.guard';
 const makeContext = (headers: Record<string, string>, query: Record<string, string> = {}) =>
   ({
     switchToHttp: () => ({ getRequest: () => ({ headers, query }) }),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   }) as any;
 
 const SECRETS: Record<string, string> = {
@@ -27,7 +26,6 @@ const createSecretsService = (secrets: Record<string, string> = SECRETS) => ({
   getSecretOptional: vi.fn(async (name: string) => secrets[name]),
 });
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const guardWith = (secrets?: Record<string, string>) => new InternalServiceTokenGuard(createSecretsService(secrets) as any);
 
 describe('InternalServiceTokenGuard', () => {

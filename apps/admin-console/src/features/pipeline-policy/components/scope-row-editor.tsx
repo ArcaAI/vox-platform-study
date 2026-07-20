@@ -13,6 +13,8 @@ import { GatewayError } from '@/shared/api';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { usePutPipelinePolicyRow, type PipelinePolicyRow, type PipelinePolicyScope, type PipelineToggleKey, type UpdatePipelinePolicyRequest } from '../api';
 import {
+    GLOBAL_ONLY_TOGGLE_HINT,
+    GLOBAL_ONLY_TOGGLE_KEYS,
     pinToTri,
     previewResolution,
     toggleLabel,
@@ -47,6 +49,7 @@ export function ScopeRowEditor({
     context,
     onReloadLatest,
     onClose,
+    isElevated,
 }: {
     scope: PipelinePolicyScope;
     scopeId: string | null;
@@ -56,6 +59,14 @@ export function ScopeRowEditor({
     rows: CascadeRows;
     previewSubject: string;
     context: { department: string | null; doctor: string | null };
+    /**
+     * TASK-532 (E3-L2) — GLOBAL_ADMIN callers may write the governed toggles
+     * (`harnessEnabled`, `autoNerEnabled`); everyone else sees them read-only,
+     * because `PipelinePolicyService.upsertRow` 403s on those keys for a
+     * non-elevated caller. The server remains the authority — this only avoids
+     * offering a control that cannot succeed.
+     */
+    isElevated: boolean;
     onReloadLatest: () => void;
     onClose: () => void;
 }) {
@@ -134,6 +145,8 @@ export function ScopeRowEditor({
                 {TOGGLE_COLUMNS.map((column) => {
                     // harnessEnabled has a registered max scope of DEPARTMENT.
                     const beyondMaxScope = column.key === 'harnessEnabled' && scope === 'DOCTOR';
+                    // TASK-532 (E3-L2): governed toggles are global-admin-only.
+                    const globalOnly = GLOBAL_ONLY_TOGGLE_KEYS.includes(column.key) && !isElevated;
                     return (
                         <div key={column.key} className="flex flex-col gap-1.5">
                             <span className="text-muted-foreground text-xs font-medium">{column.label}</span>
@@ -147,7 +160,7 @@ export function ScopeRowEditor({
                                     // Radix reports '' when the active item is re-clicked; a pin always has a state.
                                     if (next) setDrafts((current) => ({ ...current, [column.key]: next as TriState }));
                                 }}
-                                disabled={beyondMaxScope}
+                                disabled={beyondMaxScope || globalOnly}
                             >
                                 {TRI_STATES.map((tri) => (
                                     <ToggleGroupItem key={tri} value={tri} className="font-mono text-xs">
@@ -158,6 +171,7 @@ export function ScopeRowEditor({
                             {beyondMaxScope ? (
                                 <p className="text-muted-foreground text-xs">Routing cannot be pinned per-doctor (max scope DEPARTMENT).</p>
                             ) : null}
+                            {globalOnly ? <p className="text-muted-foreground text-xs">{GLOBAL_ONLY_TOGGLE_HINT}</p> : null}
                         </div>
                     );
                 })}

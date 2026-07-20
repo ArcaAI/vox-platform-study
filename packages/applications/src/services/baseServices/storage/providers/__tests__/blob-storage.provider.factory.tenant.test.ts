@@ -32,7 +32,6 @@ function makeSecrets(secrets: Record<string, string> = {}) {
   return { getSecretOptional: vi.fn(async (key: string) => secrets[key]) };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function cfg(partial: Record<string, unknown>): any {
   return {
     topology: StorageTopologyType.DEDICATED,
@@ -51,15 +50,11 @@ function cfg(partial: Record<string, unknown>): any {
 function build(opts: {
   settings?: Record<string, unknown>;
   secrets?: Record<string, string>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   configRepo?: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   bucketRepo?: any;
 }): BlobStorageProviderFactory {
   return new BlobStorageProviderFactory(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     makeAppSettings(opts.settings ?? {}) as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     opts.secrets === undefined ? undefined : (makeSecrets(opts.secrets) as any),
     opts.configRepo,
     opts.bucketRepo,

@@ -120,7 +120,12 @@ def _wire(monkeypatch, *, client, cap, settings=None, token=None, redactor=None)
     monkeypatch.setattr(activities, "get_settings", lambda: settings or Settings())
     monkeypatch.setattr(activities, "_mcp_client", lambda s: client)
     monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
-    monkeypatch.setattr(activities, "_resolve_mcp_token", lambda s, ref: token)
+    # TASK-533 D-24 — the resolver is async now (it round-trips to the gateway
+    # instead of returning a hardcoded None), so the stub must be awaitable.
+    async def _token(_settings, _ref):
+        return token
+
+    monkeypatch.setattr(activities, "_resolve_mcp_token", _token)
     monkeypatch.setattr(activities, "_phi_redactor", lambda: redactor or _FakeRedactor())
 
 

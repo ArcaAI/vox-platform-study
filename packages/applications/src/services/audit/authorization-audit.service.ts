@@ -208,8 +208,7 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
           createdAt: entry.timestamp,
         },
       });
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    } catch (error) {
+    } catch {
       // AuditLog model might not exist yet
       this.logger.debug('AuditLog model not available, skipping database logging');
     }
@@ -294,8 +293,7 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ipAddress: (log.metadata as any)?.ipAddress,
       }));
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    } catch (error) {
+    } catch {
       this.logger.debug('AuditLog model not available');
       return [];
     }
@@ -348,8 +346,7 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ipAddress: (log.metadata as any)?.ipAddress,
       }));
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    } catch (error) {
+    } catch {
       this.logger.debug('AuditLog model not available');
       return [];
     }

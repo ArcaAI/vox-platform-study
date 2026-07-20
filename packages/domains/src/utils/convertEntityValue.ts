@@ -18,7 +18,7 @@ import { Decimal } from 'decimal.js';
  *          - Plain objects are recursively converted, with each property processed using this function.
  *          - Primitives (e.g., numbers, strings) are returned as-is.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- genuinely polymorphic in/out (Date/Decimal/array/BaseEntity/BaseValueObject/plain object/primitive); tried `unknown` and it broke every production caller and test that reads a property off the converted result without narrowing first
 export function convertEntityValue(value: any): any {
   if (value instanceof Date) {
     return value.toISOString();
@@ -32,7 +32,7 @@ export function convertEntityValue(value: any): any {
   } else if (value instanceof BaseEntity) {
     return value.toObject();
   } else if (typeof value === 'object' && value !== null) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- accumulator for the recursively-converted plain-object branch; same any-in/any-out contract as the function itself
     const newObj: Record<string, any> = {};
     Object.keys(value).forEach((key) => {
       newObj[key] = convertEntityValue(value[key]);

@@ -27,10 +27,10 @@ export function formatFindAllProps<T = DefaultDbFieldType>({ page, limit, filter
       [field]: { contains: search, mode: 'insensitive' },
     }));
     if (whereConditions.AND) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- `searchConditions` is built from a runtime `searchFields` string array, so its shape can't be checked against the generic `DbFilters<T>` at this call site
       whereConditions.AND.push({ OR: searchConditions } as any);
     } else {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- same reason as the branch above
       whereConditions.AND = [{ OR: searchConditions } as any];
     }
   }
@@ -46,7 +46,7 @@ export function formatFindAllProps<T = DefaultDbFieldType>({ page, limit, filter
   return {
     skip,
     take: limit,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- this generic helper's `T` isn't concrete enough to guarantee `whereConditions` matches Prisma's generated per-model where-input shape at the call site
     where: whereConditions as any,
     orderBy: sortOptions.length > 0 ? sortOptions : undefined,
   };

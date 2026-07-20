@@ -70,7 +70,6 @@ let lastMockWs: MockWebSocket | null = null;
 
 beforeEach(() => {
   lastMockWs = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (globalThis as any).WebSocket = class extends MockWebSocket {
     constructor(url: string) {
       super(url);

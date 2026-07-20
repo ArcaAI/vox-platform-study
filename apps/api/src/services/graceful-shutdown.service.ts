@@ -48,9 +48,7 @@ export class GracefulShutdownService implements OnModuleInit, OnModuleDestroy, B
 
   constructor() {
     // Parse shutdown timeout from environment, default to 30 seconds
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
     this.shutdownTimeoutMs = parseInt(process.env.SHUTDOWN_TIMEOUT_MS || '30000', 10);
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
     const drainDelayMs = parseInt(process.env.SHUTDOWN_DRAIN_DELAY_MS || '5000', 10);
     this.logger.log({
       message: 'Service initialized',
@@ -76,7 +74,6 @@ export class GracefulShutdownService implements OnModuleInit, OnModuleDestroy, B
    * This is the first phase of shutdown - stop accepting new work.
    */
   async onModuleDestroy(): Promise<void> {
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
     const drainDelayMs = parseInt(process.env.SHUTDOWN_DRAIN_DELAY_MS || '5000', 10);
 
     this.logger.log({

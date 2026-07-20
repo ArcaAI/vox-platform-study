@@ -321,8 +321,7 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
             message: 'Stopped existing cache refresh job',
           });
         }
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      } catch (error) {
+      } catch (_error) {
         // Job doesn't exist, which is fine
       }
 

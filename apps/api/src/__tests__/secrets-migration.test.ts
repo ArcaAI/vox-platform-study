@@ -23,7 +23,7 @@ describe('Phase 3 — secrets migration grep', () => {
   // SecretsModule.forRoot async useFactory (driven by
   // COMMON_SERVICE_WARMUP_KEYS) so NestJS awaits the warmup before
   // any provider that reads the cache synchronously (JwtStrategy,
-  // GatewayJwtStrategy, OPENID_CLIENT factory) is instantiated.
+  // OPENID_CLIENT factory) is instantiated.
   // The previous `secretsService.boot()` call in main.ts ran AFTER
   // NestFactory.create(AppModule) had already wired those providers
   // against an empty cache, which is why the strategy threw on every

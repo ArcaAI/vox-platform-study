@@ -2,15 +2,7 @@
  * Base transport class that provides common functionality for all transports
  */
 
-// eslint-disable-next-line prettier/prettier
-import {
-  type BaseTransportConfig,
-  type ILogTransport,
-  type LogEntry,
-  type LogLevel,
-  type TransportState,
-  shouldLogLevel,
-} from './types';
+import { type BaseTransportConfig, type ILogTransport, type LogEntry, type LogLevel, type TransportState, shouldLogLevel } from './types';
 
 /**
  * Abstract base class for log transports

@@ -18,6 +18,7 @@ export * from './DnaWritingStyleVersionEntityMapper';
 export * from './EvalRunEntityMapper';
 export * from './EvalScoreEntityMapper';
 export * from './FederatedIdentityEntityMapper';
+export * from './GateEditExemplarEntityMapper';
 export * from './GlobalSettingEntityMapper';
 export * from './GoldenCaseEntityMapper';
 export * from './GoldenSetEntityMapper';

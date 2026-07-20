@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { AiTaskDefaultServiceModule } from '../ai-task-default/ai-task-default.service.module';
 import { HarnessPolicyService } from './harness-policy.service';
+import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
 
 /**
  * HarnessPolicyService DI module (TASK-330 Phase 6). Imports CoreDatabaseModule
@@ -14,7 +15,10 @@ import { HarnessPolicyService } from './harness-policy.service';
  * `resolveSmrSelection` (the injection is @Optional, so this is additive).
  */
 @Module({
-  imports: [CoreDatabaseModule, AiTaskDefaultServiceModule],
+  // TASK-533 B4 — EffectiveSettingsModule supplies the settings-registry read
+  // facade so the effective policy can carry `agentic.context.tokenBudget.perRun`
+  // to the worker in the single policy fetch it already makes.
+  imports: [CoreDatabaseModule, AiTaskDefaultServiceModule, EffectiveSettingsModule],
   providers: [HarnessPolicyService],
   exports: [HarnessPolicyService],
 })

@@ -312,6 +312,15 @@ export class PromptManagementController {
 
   // ─── prompt governance approval ─────────────────
   //
+  // AUTH-NOTE(TASK-532): this route carries NO handler-level permission
+  // decorator ON PURPOSE. It inherits the class-level
+  // `@Authorize(['manage','PromptTemplate'])` (so the deny-by-default boot audit
+  // is satisfied), and the additional GLOBAL_ADMIN restriction is IMPERATIVE in
+  // the service rather than declarative here — the permission system has no
+  // "global admins only" subject to express it with. Reading only the decorator
+  // therefore understates the gate. See `.claude/rules/05-nestjs-api.md`
+  // §"Imperative privilege checks" for the two sanctioned patterns.
+  //
   // Flips the template to `status = APPROVED` — the gate `prompt-resolution`
   // requires for clinical flows — pins a `PromptVersion` snapshot, and writes a
   // WORM-style change row via the existing sys-event. GLOBAL_ADMIN only: the

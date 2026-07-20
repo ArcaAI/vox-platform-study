@@ -176,7 +176,6 @@ export class RefreshTokenService implements IRefreshTokenService {
   private readonly ttlSeconds: number;
 
   constructor(@Inject(IRedisCacheService) private readonly cache: IRedisCacheService) {
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
     const rawTtl = process.env.REFRESH_TOKEN_TTL_SECONDS;
     const parsed = rawTtl ? Number(rawTtl) : NaN;
     this.ttlSeconds = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : DEFAULT_TTL_SECONDS;

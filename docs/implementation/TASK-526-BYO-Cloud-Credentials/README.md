@@ -383,6 +383,25 @@ $ pnpm lint
 - **Not fixed (out of scope, flagged)**: `ai-task-defaults-platform-screen.tsx` still hardcodes only **3** of the 9 task keys, so six platform defaults have no global-admin editor. This is a real gap surfaced by the 3→9 widening, but the platform screen belongs to TASK-532's file-rename/hub wave — recorded here rather than silently expanded into.
 - SMR Python consumption of `provider_overrides` is TASK-525; the injected field is inert until then (SMR ignores unknown body fields), exactly as TASK-496 phased TTS.
 
+### 9.6 Post-reset re-verification (2026-07-20, after the owner reset databases + secrets)
+
+Every gate was **re-run from scratch** against the reset dev/test stacks rather than inherited from the implementation pass — a DB + Vault reset is exactly the event that would expose a test leaning on prior state. All green:
+
+```
+pnpm test:unit         953 files | 16760 passed, 4 skipped, 9 todo, 0 failed
+admin-console          build ok · eslint --max-warnings 0 clean · 1031 passed
+pnpm build:api         8/8 tasks successful
+pnpm lint              29/29 tasks successful
+```
+
+Nothing in the applications/api/console lanes regressed across the reset. The prettier-warning count in §9.5 re-measured at **157** (was 145 — drift from later commits, not this ticket); re-confirmed that **zero** of them fall under `services/ai-provider-connection/`, so the §9.5 conclusion stands unchanged.
+
+Still open, unchanged by this pass:
+
+- **e2e not executed** — owner has explicitly deferred all end-to-end work (2026-07-20 directive); the authored spec stands ready for P7.
+- **Runtime browser verification still not performed.** This needs the full stack (next dev + BFF + gateway + seeded DB) to render anything data-bearing, which places it in the same deferred bucket as e2e. It remains the one DoD line this ticket cannot close from static gates — and it carries more weight than usual here, because the design gate was satisfied by an owner **waiver** rather than an approved Figma frame, so no visual reference exists to check the built screen against.
+- The `ai-task-defaults-platform-screen.tsx` 3-of-9 gap (TASK-532's file) is untouched and still recorded above.
+
 ## 10. Change History
 
 | Date | Change |
@@ -391,3 +410,4 @@ $ pnpm lint
 | 2026-07-20 | **Design-gate waiver recorded** (owner, in lieu of a Figma frame; TASK-512 precedent) before any screen code — see the Preconditions block. |
 | 2026-07-20 | **Implemented, Phases A–D; status Pending → Review.** TASK-524 re-verified: its landed `admin/ai-providers` routes already satisfied the whole §3.6 endpoint contract, so no `/tenant/*` aliases were created (decision D-1, §2.5 redundancy doctrine); the ticket's guessed file/route names were adapted to the landed ones. Built: `resolveTenantCloudOverrides` (fail-open per credential on decrypt error only, non-secret structured warn), the smr-proxy `provider_overrides` fold-in at the single `applySmrModelSelection` chokepoint (decision D-3), the tenant `/ai-configuration` screen (9-key read-only effective table + Azure/Bedrock BYO cards with OCC), `AI_TASK_KEYS` 3→9 (D-18), the `/ai-model-defaults` → `/ai-configuration` redirect + nav rename, the dead EmptyState screen deleted, an authored e2e secret/OCC/cross-tenant spec, and traceability rows 38–39. `deleteRow` absent-row now 404 not 400 (decision D-2). RED evidence and all four gate outputs pasted in §9.4; §9.5 records the pre-existing `packages/applications` prettier warnings (none in owned files), the un-run e2e, the missing headed-browser pass, and the out-of-scope platform-screen 3-of-9-keys gap. |
 | 2026-07-20 | Program plan §2.5 **Completion & Cleanup Doctrine** adopted as BINDING for this ticket (owner directive): incorrect implementations in the owned surface are removed completely with the fix; partial implementations are finished end-to-end (or explicitly retired); redundant implementations are converged and deleted. Reviewer enforces the §2.5 classification table, plan-conformance (deviations = recorded decision rows), full-closure traceability of the claimed GAP/D/M IDs, and the performance gates. |
+| 2026-07-20 | **Post-reset re-verification (§9.6).** After the owner reset databases + secrets, all four gates re-run from scratch — `pnpm test:unit` 16760 passed, admin-console build/lint/1031 tests, `build:api` 8/8, `pnpm lint` 29/29. No regression across the reset; the pre-existing prettier-warning finding re-confirmed as outside this ticket's files. E2E and the headed browser pass remain deferred per owner directive. |

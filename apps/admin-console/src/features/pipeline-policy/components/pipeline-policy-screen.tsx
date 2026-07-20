@@ -341,6 +341,7 @@ export function PipelinePolicyScreen() {
                                 rows={rows}
                                 previewSubject={previewSubject}
                                 context={{ department: department || null, doctor: doctor || null }}
+                                isElevated={isElevated}
                                 onReloadLatest={() => {
                                     void selectedQuery.refetch();
                                     void effectiveQuery.refetch();

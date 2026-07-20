@@ -150,12 +150,7 @@ class RNNoiseWorkletProcessor extends AudioWorkletProcessor {
     this.sendMessage({ type: 'ready' });
   }
 
-  process(
-    inputs: Float32Array[][],
-    outputs: Float32Array[][],
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _parameters: Record<string, Float32Array>,
-  ): boolean {
+  process(inputs: Float32Array[][], outputs: Float32Array[][], _parameters: Record<string, Float32Array>): boolean {
     const input = inputs[0]?.[0];
     const output = outputs[0]?.[0];
 

@@ -14,7 +14,6 @@ describe('TenantStorageConfigAdminController', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     controller = new TenantStorageConfigAdminController(mockService as any);
   });
 
@@ -45,7 +44,6 @@ describe('TenantStorageConfigAdminController', () => {
     it('delegates the request body to the service', async () => {
       const body = { provider: 'AWS_S3', topology: 'SHARED' };
       mockService.upsertConfig.mockResolvedValue({ id: 'c1', ...body });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await controller.upsertConfig(body as any);
       expect(result).toMatchObject({ id: 'c1' });
       expect(mockService.upsertConfig).toHaveBeenCalledWith(body);

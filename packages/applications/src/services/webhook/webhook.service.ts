@@ -77,8 +77,7 @@ export class WebhookService extends BaseService implements IWebhookService {
    * Mirrors the W3.2 NotificationService.fetchAll posture.
    */
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<WebhookEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { limit, page, search } = props;
+    const { limit, page } = props;
     const baseWhere = this.isSuperAdmin() ? {} : { tenantId: this.tenantId };
     const paginatedProps = withFormattedPaginatedProps(props, WEBHOOK_FILTER_MODEL);
     const countProps = withFormattedCountProps(props, WEBHOOK_FILTER_MODEL);
@@ -114,8 +113,7 @@ export class WebhookService extends BaseService implements IWebhookService {
    * `fetchAllByTenantId` posture).
    */
   async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<WebhookEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { tenantId, limit, page, search } = props;
+    const { tenantId, limit, page } = props;
 
     if (tenantId !== this.tenantId && !this.isSuperAdmin()) {
       throw new NotFoundException('Resource not found');
@@ -149,8 +147,7 @@ export class WebhookService extends BaseService implements IWebhookService {
   }
 
   async fetchAllCreatedByUser(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<WebhookEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { userId, limit, page, search } = props;
+    const { userId, limit, page } = props;
     const webhooks = await this.webhookRepository.findAll({
       ...withFormattedPaginatedProps(props, WEBHOOK_FILTER_MODEL),
       where: {

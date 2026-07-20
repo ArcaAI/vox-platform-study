@@ -77,6 +77,24 @@ export function activateVersion(id: string, versionNumber: number): Promise<Prom
 }
 
 /**
+ * Approve for clinical use — ported from the retired `/prompt-studio` feature
+ * by TASK-532 (M-03/OD-6); the Governance tab is now the only surface for it.
+ *
+ * GLOBAL_ADMIN only, enforced SERVER-SIDE (imperative `isSuperAdmin` check in
+ * the service, not a decorator — see the AUTH-NOTE on the route). If-Match is
+ * REQUIRED: missing → 428, drift → 412, non-global-admin → 403. Idempotent —
+ * approving an already-approved row returns it unchanged.
+ */
+export async function approveTemplate(id: string, reason: string | undefined, etag: string): Promise<PromptTemplate> {
+    const response = await request<PromptTemplate>(`${templatePath(id)}/approve`, {
+        method: 'POST',
+        body: { expectedVersion: versionFromEtag(etag), ...(reason ? { reason } : {}) },
+        etag,
+    });
+    return response.data;
+}
+
+/**
  * Test run — an OCC WRITE with PATCH parity (persists score/output): If-Match
  * required, expectedVersion folded into the body from the same ETag. The
  * result carries the row's NEW version so the caller can continue without a

@@ -16,14 +16,14 @@ import { GracefulShutdownService } from './services';
 // TASK-310 E-8 (AC-8): Swagger config extracted so the security-scheme
 // list (bearer + api-key) is unit-testable.
 import { buildSwaggerConfig } from './swagger.config';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- express-session ships an `export =` CJS module; `import session = require(...)` is the correct TS interop form, not an ESM default import
 import session = require('express-session');
 
 export { isOriginAllowed };
 
 async function bootstrap() {
   // Disable colors in NestJS built-in logger
-  // eslint-disable-next-line turbo/no-undeclared-env-vars
+  // eslint-disable-next-line turbo/no-undeclared-env-vars -- this WRITES the standard NO_COLOR convention var to steer a third-party logger; it is not an external config input, so it does not belong in turbo.json#globalEnv
   process.env.NO_COLOR = '1';
 
   // Helper function to parse log levels
@@ -41,7 +41,6 @@ async function bootstrap() {
   // In development, forceCloseConnections helps with hot reloading
   // In production, we want graceful shutdown to complete ongoing requests
   const app = await NestFactory.create(AppModule, {
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
     logger: getLogLevels(process.env.LOG_LEVEL || 'info'),
     bufferLogs: true,
     rawBody: true,
@@ -78,7 +77,7 @@ async function bootstrap() {
   // async useFactory (driven by COMMON_SERVICE_WARMUP_KEYS in
   // packages/applications/src/services/baseServices/common.service.module.ts).
   // NestJS awaits the factory before instantiating any dependent
-  // provider, so JwtStrategy / GatewayJwtStrategy / the OPENID_CLIENT
+  // provider, so JwtStrategy / the OPENID_CLIENT
   // factory / AuthController already observe a warm cache by the
   // time NestFactory.create() returns. The previous `secretsService
   // .boot(...)` call here ran AFTER those constructors and could
@@ -139,14 +138,11 @@ async function bootstrap() {
   app.enableShutdownHooks();
 
   // Get the graceful shutdown service to log configuration
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const shutdownService = app.get(GracefulShutdownService);
+  app.get(GracefulShutdownService);
   loggingService.info(
     'Graceful shutdown enabled',
     {
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       shutdownTimeoutMs: parseInt(process.env.SHUTDOWN_TIMEOUT_MS || '30000', 10),
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       drainDelayMs: parseInt(process.env.SHUTDOWN_DRAIN_DELAY_MS || '5000', 10),
     },
     'Bootstrap',
@@ -204,7 +200,6 @@ async function bootstrap() {
   });
 
   // Log CORS configuration
-  // eslint-disable-next-line turbo/no-undeclared-env-vars
   const customOrigins = process.env.CORS_ALLOWED_ORIGINS;
   loggingService.info(
     'CORS configuration',

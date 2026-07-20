@@ -76,6 +76,16 @@ export class PromptTemplateController {
   }
 
   // ─── TASK-356 Phase 6 (S1) — personal CRUD (caller-ownership) ────────
+  //
+  // AUTH-NOTE(TASK-532): the three routes below are WRITES declared with
+  // `@Authorize(['read','PromptTemplate'])`, which looks wrong and is not.
+  // These are clinician SELF-SERVICE routes over USER_PERSONAL prompts: `read`
+  // is the "may use prompts at all" ability that clinicians hold, and the real
+  // gate is OWNERSHIP, enforced imperatively in the service (non-personal or
+  // non-owned → 403; cross-tenant id → 404). Promoting these to
+  // `create`/`update:PromptTemplate` would lock every clinician out of their own
+  // prompts, since that ability is an admin grant. See
+  // `.claude/rules/05-nestjs-api.md` §"Imperative privilege checks".
   @Post()
   @Authorize(['read', 'PromptTemplate'])
   @ApiOperation({

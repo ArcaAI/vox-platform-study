@@ -4,9 +4,7 @@ import { IStorageAccessKeyService } from '../IStorageAccessKeyService';
 import { StorageAccessKeyServiceModule } from '../storage-access-key.service.module';
 
 describe('StorageAccessKeyServiceModule (F-4b)', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const providers: any[] = Reflect.getMetadata('providers', StorageAccessKeyServiceModule) ?? [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const exports: any[] = Reflect.getMetadata('exports', StorageAccessKeyServiceModule) ?? [];
 
   it('registers the service exactly once via the interface token (no duplicate provider)', () => {

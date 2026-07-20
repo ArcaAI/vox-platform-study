@@ -3,6 +3,7 @@ import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
 import {
   EvalServiceModule,
+  GateEditMiningServiceModule,
   HarnessObservabilityServiceModule,
   HarnessPolicyServiceModule,
   LiveDocumentationServiceModule,
@@ -29,6 +30,9 @@ import { HarnessOpsClient } from './harness-ops.client';
     HarnessObservabilityServiceModule,
     LiveDocumentationServiceModule,
     EvalServiceModule,
+    // TASK-533 B6 — backs `/admin/harness/gate-edit-exemplars` (SME-gated
+    // eval regression-corpus export from the gate-edit learning loop).
+    GateEditMiningServiceModule,
   ],
   controllers: [HarnessAdminController],
   providers: [HarnessOpsClient],

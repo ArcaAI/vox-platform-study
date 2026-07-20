@@ -37,6 +37,7 @@ export * from './EvalScoreRepository';
 // TASK-369 Phase 3C — sibling that patches EvalScoreRepository.prototype.
 export * from './EvalScoreRepository.encryption';
 export * from './FederatedIdentityRepository';
+export * from './GateEditExemplarRepository';
 export * from './GlobalSettingRepository';
 export * from './GoldenCaseRepository';
 // TASK-369 Phase 3C — sibling that patches GoldenCaseRepository.prototype.

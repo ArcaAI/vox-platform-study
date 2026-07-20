@@ -220,13 +220,6 @@ export class QueryBuilder<DataModel> {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function getKey<DataModel, K extends keyof DataModel>(keyFn: (x: DataModel) => DataModel[K]): K {
-  const match = keyFn.toString().match(/return\s+([a-zA-Z0-9_]+)/);
-  const key = match ? match[1] : null;
-  return key as K;
-}
-
 function buildNestedRelationFilter(path: string, filter: Predicate<any>): Predicate<any> {
   const parts = path.split('.');
   return parts.reduceRight((acc, part) => {

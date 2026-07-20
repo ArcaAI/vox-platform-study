@@ -427,20 +427,40 @@ def _mcp_client(settings: Settings) -> McpToolClient:
     return McpToolClient(timeout_s=settings.mcp.timeout_s, max_attempts=settings.mcp.max_attempts)
 
 
-def _resolve_mcp_token(settings: Settings, auth_ref: str | None) -> str | None:
-    """Resolve an MCP server credential from Vault by its ``authRef`` PATH (TASK-504).
+async def _resolve_mcp_token(settings: Settings, auth_ref: str | None) -> str | None:
+    """Resolve an MCP server credential by its ``authRef`` PATH (TASK-533 D-24).
 
-    ``auth_ref`` is a Vault PATH — NEVER secret bytes in the DB/policy. Returns None
-    when no ``authRef`` is configured. The secret is only ever handed to the client as
-    the ``Authorization`` bearer header (:class:`McpToolClient`) and is NEVER logged,
-    echoed into a result, or written to the trajectory. Production wires the platform
-    secrets client (TASK-504) here; until that is threaded into harness settings an
-    unresolved ``authRef`` yields no token (the server must be public / in-boundary),
-    never a silent leak. Monkeypatched in tests to inject + assert scrubbing.
+    ``auth_ref`` is a PATH — NEVER secret bytes in the DB/policy. Resolution goes
+    through the GATEWAY (``GET /internal/harness/mcp-token``), not a harness-side
+    Vault client: ticket §3.1 freezes that design so secret material stays on the
+    side of the boundary that already holds a secrets backend. The gateway
+    allowlists the ref against registered, ENABLED ``McpServer`` rows, so this is
+    not an arbitrary secret-path read. (This supersedes the TASK-504 "Vault seam
+    stub", which returned None unconditionally and made every authenticated MCP
+    server permanently uncallable.)
+
+    Called from INSIDE the activity that performs the MCP call, so the token is an
+    activity local: it is handed to :class:`McpToolClient` as the ``Authorization``
+    bearer header and then dropped. It is NEVER logged, echoed into a result,
+    written to the trajectory, put in a heartbeat, or placed in an activity input —
+    Temporal history is durable storage, so a token in an input is a token on disk.
+
+    Returns None when no ``authRef`` is configured, when the gateway declines to
+    resolve it, or on any transport failure — the server must then be public /
+    in-boundary. A bounded tool call must never take the loop down.
     """
     if not auth_ref:
         return None
-    return None
+    try:
+        return await _api_client(settings).resolve_mcp_token(auth_ref)
+    except Exception as exc:  # noqa: BLE001 - degrade to unauthenticated, never crash the loop
+        # Logs the REF (a path) and the error TYPE only — never the response body,
+        # which on some secrets backends echoes fragments of the requested value.
+        activity.logger.warning(
+            "harness.mcp.token_resolution_failed",
+            extra={"auth_ref": auth_ref, "error_type": type(exc).__name__},
+        )
+        return None
 
 
 def _effective_mcp_allowlist(
@@ -711,8 +731,9 @@ async def call_mcp_tool(payload: CallMcpToolInput) -> McpToolCallResult:
         await batch.flush()
         raise
 
-    # (3) Bounded tool call. The Vault-resolved credential is NEVER logged/echoed.
-    token = _resolve_mcp_token(settings, server.auth_ref)
+    # (3) Bounded tool call. The gateway-resolved credential is NEVER logged/echoed,
+    # and never leaves this activity frame (TASK-533 D-24).
+    token = await _resolve_mcp_token(settings, server.auth_ref)
     try:
         tool_result = await _mcp_client(settings).call_tool(
             base_url=server.base_url, tool=tool, args=payload.args, auth_token=token

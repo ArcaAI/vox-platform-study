@@ -4,7 +4,7 @@ import 'reflect-metadata';
 import { ClsServiceManager } from 'nestjs-cls';
 
 export function InjectActiveUser(): ClassDecorator {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type -- lib.es5.d.ts's `ClassDecorator` is `<TFunction extends Function>(target: TFunction) => ...`; a narrower constructor type here isn't contravariantly assignable to that generic parameter, so `Function` is required, not just tolerated
   return (target: Function) => {
     const original = target;
 

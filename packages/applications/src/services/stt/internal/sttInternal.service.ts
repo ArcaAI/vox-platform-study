@@ -83,7 +83,30 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     if (!Array.isArray(rawSegments) || rawSegments.length === 0) return;
 
     try {
-      const resolved = computeSegmentOffsets(dto.transcriptText ?? '', rawSegments);
+      // TASK-533 D-22 — report (never silently swallow) a segment that resolved to
+      // nothing but its ordinal. That was the defect's whole signature: the batch
+      // producer sent a text-less, seconds-based, snake_case shape, every field
+      // coerced to null, and the ingest wrote ungroundable rows without a murmur.
+      // `computeSegmentOffsets` now normalizes both shapes, so reaching this log
+      // means a producer sent something genuinely unusable — alert on it.
+      const unusable: number[] = [];
+      const resolved = computeSegmentOffsets(dto.transcriptText ?? '', rawSegments, (report) => {
+        if (unusable.length === 0) {
+          this.logger.error(
+            `stt.transcript.segment_shape_unusable — contextItem ${contextItem.id}: segment ` +
+              `#${report.position} carries no timing, speaker or offsets after normalization ` +
+              `(keys: ${report.keys.join(',') || 'none'}). Evidence grounding will find no source ` +
+              `for this transcript; check the stt-v2 producer payload shape.`,
+          );
+        }
+        unusable.push(report.position);
+      });
+      if (unusable.length > 0) {
+        this.logger.error(
+          `stt.transcript.segment_shape_unusable_total — contextItem ${contextItem.id}: ` +
+            `${unusable.length}/${resolved.length} segments unusable.`,
+        );
+      }
       for (const seg of resolved) {
         const entity = TranscriptSegmentFactory.CreateTranscriptSegment({
           tenantId: contextItem.tenantId ?? dto.tenantId ?? '',

@@ -7,11 +7,13 @@ export * from './auth.service';
 export * from './createJwt';
 export * from './jwt.strategy';
 export * from './jwt-revocation.service';
+export * from './jwt-revocation.module';
 export * from './refresh-token.service';
 export * from './oidc.strategy';
 export * from './session.serializer';
 export * from './registration';
 
-// API Gateway specific exports
-export * from './gateway-auth.strategy';
-export * from './gateway-auth.guard';
+// TASK-541 A2 — the `gateway-jwt` passport strategy, its guard, and the
+// gateway-only decorators were RETIRED here. They were wired to zero routes:
+// `UnifiedAuthGuard` (TASK-343) is the single mandated enforcement point, and
+// keeping a second strategy meant keeping it security-equivalent by hand.

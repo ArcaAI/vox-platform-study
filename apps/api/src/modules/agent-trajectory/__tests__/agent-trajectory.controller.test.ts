@@ -41,11 +41,14 @@ function makeController(ctx: Ctx) {
 describe('AgentTrajectoryController', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('is class-gated by @CanManage(HarnessPolicy) (HarnessPolicy-family permission)', () => {
+  // TASK-532 (M-12) — the borrowed `HarnessPolicy` subject is retired in favour
+  // of the dedicated read-only `AgentTrajectory` subject. `read` not `manage`:
+  // this controller exposes no mutation.
+  it('is class-gated by @CanRead(AgentTrajectory), not the borrowed HarnessPolicy subject', () => {
     const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, AgentTrajectoryController) as
       | { action: string; subject: string }[]
       | undefined;
-    expect(meta).toEqual([{ action: 'manage', subject: 'HarnessPolicy' }]);
+    expect(meta).toEqual([{ action: 'read', subject: 'AgentTrajectory' }]);
   });
 
   describe('GET admin/agent-trajectory/sessions', () => {
@@ -148,11 +151,11 @@ describe('AgentTrajectoryController', () => {
       });
     });
 
-    it('inherits class-level @CanManage(HarnessPolicy) (same gate as sessions)', () => {
+    it('inherits class-level @CanRead(AgentTrajectory) (same gate as sessions)', () => {
       const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, AgentTrajectoryController) as
         | { action: string; subject: string }[]
         | undefined;
-      expect(meta).toEqual([{ action: 'manage', subject: 'HarnessPolicy' }]);
+      expect(meta).toEqual([{ action: 'read', subject: 'AgentTrajectory' }]);
     });
   });
 });

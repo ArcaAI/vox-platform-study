@@ -48,6 +48,7 @@ import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import type { StreamStatus } from '@/shared/streams';
+import type { ConsultationJobStatus } from '../api';
 import {
     consultationJobStateLabel,
     useAudioPipelines,
@@ -281,7 +282,7 @@ function DemoScreen() {
     const cancelJob = useCancelConsultationJob();
 
     const jobProgress = useSummaryJobProgress(jobId, {
-        onTerminal: useCallback((job) => {
+        onTerminal: useCallback((job: ConsultationJobStatus) => {
             if (job.status.toUpperCase() === 'COMPLETED') {
                 toast.success('Summary job completed — the draft is ready for review');
                 return;

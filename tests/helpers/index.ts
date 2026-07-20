@@ -77,6 +77,7 @@ export {
   SEEDED_USERS,
   SEEDED_API_KEY,
   SEEDED_API_KEY_DOCTOR2,
+  SEEDED_API_KEY_SERVICE_ACCOUNT,
   createTestDataRegistry,
   loginUser,
   loginSeededUsers,

@@ -117,7 +117,6 @@ export class TenantBucketRepository extends Repository<TenantBucketEntity, Tenan
    * owns the null-vs-Number presentation.
    */
   async sumConfiguredQuotaBytes(tenantId: string | null): Promise<bigint | null> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (this as any).db.aggregate({
       _sum: { quotaBytes: true },
       where: { ...(tenantId ? { tenantId } : {}), quotaBytes: { not: null } },

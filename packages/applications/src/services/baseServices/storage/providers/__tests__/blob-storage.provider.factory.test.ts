@@ -37,9 +37,7 @@ function makeSecrets(secrets: Record<string, string> = {}) {
 
 // Constructor args are not statically typed here on purpose — the fakes only
 // implement the slice of IAppSettingsService / SecretsService the factory uses.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function build(settings: Record<string, unknown>, secrets?: Record<string, string>): BlobStorageProviderFactory {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return new BlobStorageProviderFactory(makeAppSettings(settings) as any, secrets === undefined ? undefined : (makeSecrets(secrets) as any));
 }
 
@@ -138,7 +136,6 @@ describe('BlobStorageProviderFactory', () => {
   describe('secret resolution', () => {
     it('resolves S3 credentials via SecretsService', async () => {
       const secrets = makeSecrets({ S3_ACCESS_KEY: 'ak', S3_SECRET_KEY: 'sk' });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const factory = new BlobStorageProviderFactory(makeAppSettings({}) as any, secrets as any);
 
       await factory.getProvider();

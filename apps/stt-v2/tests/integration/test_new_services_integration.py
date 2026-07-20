@@ -10,7 +10,7 @@ Tests are designed to work with TEST_PLATFORM=cpu (no ML libraries imported).
 """
 
 from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
@@ -171,9 +171,13 @@ class TestVADPreprocessingIntegration:
             audio_duration=1.0,
         )
 
-        # Mock VAD service
+        # Mock VAD service. `_apply_vad_smart` awaits `initialize()` (lazy load on
+        # first use), so it must be an AsyncMock — a plain MagicMock returns a
+        # non-awaitable and the await raises into the branch's `except Exception`,
+        # silently skipping detect_speech.
         mock_vad_service = MagicMock()
         mock_vad_service.is_loaded = True
+        mock_vad_service.initialize = AsyncMock()
         mock_vad_service.detect_speech.return_value = vad_result
 
         with patch("stt_v2.vad.silero_service.get_vad_service", return_value=mock_vad_service):

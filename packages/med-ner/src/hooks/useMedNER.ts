@@ -207,7 +207,6 @@ export function useMedNER(options: UseMedNEROptions = {}): UseMedNERReturn {
       }
     };
     // Only create processor once with initial options
-    // eslint-disable-next-line
   }, []);
 
   // Handle data events from processor

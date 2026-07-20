@@ -12,7 +12,7 @@ import {
   UserRepository,
   UserRoleAssignmentRepository,
 } from '@arcaai/domains';
-import { ArgumentInvalidException, InternalServerErrorException } from '@arcaai/exceptions';
+import { ArgumentInvalidException, DataNotFoundException, InternalServerErrorException } from '@arcaai/exceptions';
 import { ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional, UnauthorizedException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash, createHmac, randomBytes } from 'crypto';
@@ -259,7 +259,6 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
       await this.entitlements.assertQuantityQuota(effectiveTenantId, 'maxApiKeys', currentCount);
     }
 
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
     const maxLifetimeDays = process.env.API_KEY_MAX_LIFETIME_DAYS ? parseInt(process.env.API_KEY_MAX_LIFETIME_DAYS, 10) : null;
 
     let expiresAt = request.expiresAt ? new Date(request.expiresAt) : null;
@@ -342,8 +341,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
    * `assertKeyAccess`'s by-id owner gate.
    */
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<ApiKeyEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { limit, page, search } = props;
+    const { limit, page } = props;
     const ownerScope = this.callerCanManageAllKeys() ? undefined : { userId: this.requestUserId };
     const tenantScopedWhere = this.buildTenantWhere(ownerScope);
 
@@ -384,8 +382,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
    * `fetchAll` above.
    */
   async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<ApiKeyEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { tenantId, limit, page, search } = props;
+    const { tenantId, limit, page } = props;
 
     if (tenantId !== this.tenantId && !this.isSuperAdmin()) {
       throw new NotFoundException('Resource not found');
@@ -686,6 +683,16 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
 
   /**
    * Find API key by hashing the provided key and looking up the hash.
+   *
+   * TASK-539 finding S-3 — this used to `catch { return null }`, which mapped
+   * EVERY failure onto "no such key" → 401 Invalid API key. That masked a real
+   * infrastructure fault for as long as it existed: the tenant-scope extension
+   * threw `TenantScope: tenant context required for model ApiKey` on this very
+   * lookup (it runs pre-auth, so CLS is active but empty), and the bare catch
+   * turned that into a credential error. Only `DataNotFoundException` — the
+   * repository's genuine "no row matched" signal — may become `null`; anything
+   * else is a fault and must propagate so it surfaces as a 500 with a real
+   * stack instead of silently rejecting valid credentials.
    */
   async getByKeyHash(rawKey: string): Promise<ApiKeyEntity | null> {
     const keyHash = await this.hashKeyForStorage(rawKey);
@@ -694,8 +701,16 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
       return await this.apiKeyRepository.findFirst({
         where: { keyHash },
       });
-    } catch {
-      return null;
+    } catch (error) {
+      if (error instanceof DataNotFoundException) {
+        return null;
+      }
+      this.logger.error({
+        message: 'API key lookup failed for a reason other than "not found" — this is a fault, not a bad key',
+        keyPrefix: ApiKeyService.extractPrefix(rawKey),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
   }
 
@@ -902,7 +917,6 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
       (request.headers['x-internal-service-key'] as string);
 
     if (!apiKey && request.query?.apiKey) {
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       const allowQueryParam = process.env.API_KEY_ALLOW_QUERY_PARAM === 'true';
       if (!allowQueryParam) {
         this.logger.warn({

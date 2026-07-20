@@ -29,20 +29,17 @@ interface Node {
   createdAt: Date;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const makeUow = (delegateByModel: Record<string, any>) => ({ getDatabaseService: () => delegateByModel });
 
 const makeDelegate = (nodes: Record<string, Node>) => {
   const all = Object.values(nodes);
   return {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     findFirst: vi.fn(({ where }: any) => {
       const n = all.find((x) => x.id === where.id);
       if (!n) return Promise.resolve(null);
       if (where.resourceStatus && n.resourceStatus !== where.resourceStatus) return Promise.resolve(null);
       return Promise.resolve(n);
     }),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     findMany: vi.fn(({ where }: any) => {
       const parentIds: string[] = where.parentConsultationId.in;
       const status: ResourceStatusType | undefined = where.resourceStatus;
@@ -58,7 +55,6 @@ const makeDelegate = (nodes: Record<string, Node>) => {
   };
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const buildRepo = async (delegate: any) => {
   const { ConsultationRepository } = await import('../ConsultationRepository');
   return new ConsultationRepository(makeUow({ consultation: delegate }) as never);

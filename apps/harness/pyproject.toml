@@ -35,12 +35,11 @@ dependencies = [
     "temporalio>=1.28.0",
     "prometheus-client>=0.24.1",
     "prometheus-fastapi-instrumentator>=7.1.0",
+    # TASK-533 D-27: the SDK/exporter/instrumentation packages were dropped — nothing
+    # in the service ever imported them (no TracerProvider was ever constructed). Only
+    # the API remains, for the inert `_add_otel_context` structlog processor in
+    # core/logging.py, which stamps trace ids IF some future code installs a provider.
     "opentelemetry-api>=1.39.1",
-    "opentelemetry-sdk>=1.39.1",
-    "opentelemetry-instrumentation-fastapi>=0.60b1",
-    "opentelemetry-instrumentation-httpx>=0.60b1",
-    "opentelemetry-exporter-otlp-proto-grpc>=1.39.0",
-    "opentelemetry-instrumentation-logging>=0.60b1",
     # Claim-check payload offload (TASK-483): S3BlobStore keeps large workflow
     # payloads out of Temporal history. Lazy-imported (claim_check.py, inside
     # S3BlobStore only) and gated behind HARNESS_CLAIM_CHECK_STORE=s3 (default

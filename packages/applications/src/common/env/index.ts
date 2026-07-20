@@ -72,7 +72,6 @@ const ENV_FILE_MAP: Record<Environment, string> = {
  * Check if running in a CI environment
  */
 export function isCI(): boolean {
-  // eslint-disable-next-line turbo/no-undeclared-env-vars
   return process.env.CI === 'true' || process.env.CI === '1';
 }
 

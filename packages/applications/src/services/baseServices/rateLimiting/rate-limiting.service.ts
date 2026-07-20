@@ -1,6 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Redis } from 'ioredis';
-import { RateLimitOptions } from '../../../decorators/gateway-decorators';
+
+/**
+ * Rate limit configuration.
+ *
+ * TASK-541 A2 — relocated here from the retired `decorators/gateway-decorators`
+ * module. This service is its only consumer, and the shape never depended on
+ * the gateway guard that module annotated.
+ */
+export interface RateLimitOptions {
+  requests: number;
+  windowMs: number;
+  message?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- caller-supplied request predicate; the service never inspects the request itself
+  skipIf?: (request: any) => boolean;
+}
 
 /**
  * Rate limit result interface
@@ -61,8 +75,6 @@ export class RateLimitingService {
         throw new Error('Redis pipeline execution failed');
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const currentCount = parseInt(results[0]?.[1]?.toString() || '0');
       const previousCount = parseInt(results[1]?.[1]?.toString() || '0');
       const newCount = parseInt(results[2]?.[1]?.toString() || '1');
 

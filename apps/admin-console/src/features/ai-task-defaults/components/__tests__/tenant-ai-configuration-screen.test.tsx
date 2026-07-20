@@ -16,14 +16,12 @@
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
-import * as axeMatchers from 'vitest-axe/matchers';
 import { renderWithProviders } from '@/test/render';
 import { AI_TASK_KEYS } from '../../api/types';
 import type { EffectiveAiTaskDefault } from '../../api/types';
 import type { ProviderConnection } from '../../api/providers-types';
 import { TenantAiConfigurationScreen } from '../tenant-ai-configuration-screen';
 
-expect.extend(axeMatchers);
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 

@@ -178,7 +178,6 @@ test.describe('TASK-455 AC-2 — resume-after-drop (C3-01 baseline)', () => {
         contentType: 'application/json',
       });
       // Also to stdout so the `list` reporter surfaces the baseline inline.
-      // eslint-disable-next-line no-console
       console.log('\n[TASK-455 AC-2] resume-after-drop baseline:\n' + JSON.stringify(baseline, null, 2));
 
       // Stable invariant ONLY — whether the gateway answers the resume, replays,

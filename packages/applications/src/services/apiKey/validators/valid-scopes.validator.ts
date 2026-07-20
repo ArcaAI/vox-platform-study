@@ -3,7 +3,6 @@ import { isValidScope, API_KEY_SCOPE_REGISTRY } from '../apikey-scopes.registry'
 
 @ValidatorConstraint({ name: 'validScopes', async: false })
 export class ValidScopesConstraint implements ValidatorConstraintInterface {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   validate(scopes: string[], _args: ValidationArguments): boolean {
     if (!Array.isArray(scopes)) return false;
     if (scopes.length === 0) return true;

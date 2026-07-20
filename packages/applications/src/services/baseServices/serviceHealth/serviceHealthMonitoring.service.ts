@@ -75,7 +75,6 @@ export class ServiceHealthMonitoringService implements IServiceHealthMonitoringS
       {
         key: 'smr',
         name: 'Summarization',
-        // eslint-disable-next-line turbo/no-undeclared-env-vars
         url: process.env.SMR_SERVICE_URL || process.env.SMR_URL || 'http://localhost:8862',
         healthEndpoint: '/api/v1/health',
       },

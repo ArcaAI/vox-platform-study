@@ -129,7 +129,6 @@ function PromptInputTextarea({ className, onKeyDown, disableAutosize = false, ..
     } else {
       el.style.height = `min(${el.scrollHeight}px, ${maxHeight})`;
     }
-    // eslint-disable-next-line
   }, [value, maxHeight, disableAutosize]);
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {

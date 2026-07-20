@@ -95,7 +95,6 @@ export class PromptTemplateRepository extends Repository<PromptTemplateEntity, P
     page: number,
     limit: number,
   ): Promise<{ data: PromptTemplateEntity[]; count: number }> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = (this as any).db;
     const [models, count] = await Promise.all([
       db.findMany({

@@ -24,7 +24,6 @@ const fakeChain = [
 
 describe('useConsultationChain (TASK-329 P2)', () => {
   let mockLogger: ReturnType<typeof createMockLogger>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockStore: any;
   const mockGet = vi.fn();
 
@@ -32,7 +31,6 @@ describe('useConsultationChain (TASK-329 P2)', () => {
     mockLogger = createMockLogger();
     mockGet.mockReset();
     mockStore = { apiClient: { get: mockGet, post: vi.fn(), patch: vi.fn(), delete: vi.fn() }, logger: mockLogger };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (useAgenticStore as any).mockReturnValue(mockStore);
   });
 

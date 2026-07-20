@@ -18,6 +18,7 @@ export * from './DnaWritingStyleVersionEntity';
 export * from './EvalRunEntity';
 export * from './EvalScoreEntity';
 export * from './FederatedIdentityEntity';
+export * from './GateEditExemplarEntity';
 export * from './GlobalSettingEntity';
 export * from './GoldenCaseEntity';
 export * from './GoldenSetEntity';

@@ -33,7 +33,6 @@ describe('RedisSamlCacheProvider', () => {
 
   beforeEach(() => {
     cache = makeCache();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     provider = new RedisSamlCacheProvider(cache as any, 'saml-authn-request:', 300);
   });
 

@@ -298,7 +298,6 @@ export class ContextService extends BaseService implements IContextService {
     // TASK-369 Phase 3B — never surface the ciphertext columns in the audit
     // payload (defense-in-depth; also avoids serialising a raw Buffer into the
     // SysEvent). The plaintext `content` change is unchanged from prior behavior.
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { encryptedContent: _encryptedContent, contentKeyVersion: _contentKeyVersion, ...auditableChanges } =
       contextItem.changes as Record<string, unknown>;
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
@@ -1091,8 +1090,7 @@ export class ContextService extends BaseService implements IContextService {
   /**
    * Add transcription (alias for addTranscript for backward compatibility)
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async addTranscription(consultationId: string, content: string, structuredData?: Record<string, unknown>): Promise<ContextItemResponse> {
+  async addTranscription(consultationId: string, content: string, _structuredData?: Record<string, unknown>): Promise<ContextItemResponse> {
     return this.addTranscript(consultationId, content);
   }
 

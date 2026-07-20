@@ -24,21 +24,23 @@ const LOGIN_ROUTE = '/api/v1/auth/login';
 
 test.describe('UnifiedAuthGuard Behavior', () => {
   let superAdminToken: string;
-  let apiKeyWorks: boolean;
 
   test.beforeAll(async ({ request }) => {
     const result = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
     superAdminToken = result?.token ?? '';
 
-    // Probe whether the seeded API key is accepted so tests can skip gracefully
-    if (SEEDED_API_KEY) {
-      const probe = await request.get(PROTECTED_ROUTE, {
-        headers: { 'X-API-Key': SEEDED_API_KEY, Accept: 'application/json' },
-      });
-      apiKeyWorks = probe.status() !== 401;
-    } else {
-      apiKeyWorks = false;
-    }
+    // TASK-539 finding S-3 — this used to be a soft probe
+    // (`apiKeyWorks = probe.status() !== 401`) that made every API-key test
+    // below call `test.skip()` when it failed. That turned a total outage of
+    // API-key authentication into a silent green run: the tenant-scope
+    // extension threw on the pre-auth `ApiKey` lookup, EVERY key on the
+    // platform 401'd, and this suite reported success by skipping.
+    // The probe is now an assertion — if API-key auth breaks, this suite MUST
+    // go red rather than evaporate. Do NOT re-introduce a skip here.
+    const probe = await request.get(PROTECTED_ROUTE, {
+      headers: { 'X-API-Key': SEEDED_API_KEY, Accept: 'application/json' },
+    });
+    expect(probe.status(), 'Seeded API key was rejected — API-key authentication is broken (TASK-539 S-3)').not.toBe(401);
   });
 
   // ==========================================================================
@@ -47,11 +49,6 @@ test.describe('UnifiedAuthGuard Behavior', () => {
 
   test.describe('API Key vs JWT Priority', () => {
     test('should prioritize API key when both API key and JWT are present', async ({ request }) => {
-      if (!apiKeyWorks) {
-        test.skip();
-        return;
-      }
-
       const response = await request.get(PROTECTED_ROUTE, {
         headers: {
           'X-API-Key': SEEDED_API_KEY,
@@ -95,11 +92,6 @@ test.describe('UnifiedAuthGuard Behavior', () => {
 
   test.describe('API Key Header Variants', () => {
     test('should accept API key via x-api-key header', async ({ request }) => {
-      if (!apiKeyWorks) {
-        test.skip();
-        return;
-      }
-
       const response = await request.get(PROTECTED_ROUTE, {
         headers: {
           'x-api-key': SEEDED_API_KEY,
@@ -111,11 +103,6 @@ test.describe('UnifiedAuthGuard Behavior', () => {
     });
 
     test('should accept API key via api-key header', async ({ request }) => {
-      if (!apiKeyWorks) {
-        test.skip();
-        return;
-      }
-
       const response = await request.get(PROTECTED_ROUTE, {
         headers: {
           'api-key': SEEDED_API_KEY,
@@ -127,11 +114,6 @@ test.describe('UnifiedAuthGuard Behavior', () => {
     });
 
     test('should accept API key via apikey header', async ({ request }) => {
-      if (!apiKeyWorks) {
-        test.skip();
-        return;
-      }
-
       const response = await request.get(PROTECTED_ROUTE, {
         headers: {
           apikey: SEEDED_API_KEY,

@@ -34,7 +34,6 @@ const buildService = (userProfileRepository?: { findAll: ReturnType<typeof vi.fn
 
 // Private seam — invoked indirectly by generate(Pre)Summary; tested directly here.
 const resolve = (svc: SummaryService, doctorId: string | null) =>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (svc as any).resolvePreferredPromptTemplateId(doctorId) as Promise<string | null>;
 
 describe('SummaryService.resolvePreferredPromptTemplateId (TASK-329 P2 Tier-0)', () => {

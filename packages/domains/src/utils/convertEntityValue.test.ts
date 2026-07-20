@@ -305,7 +305,6 @@ describe('convertEntityValue', () => {
     it('should handle circular reference prevention (if implemented)', () => {
       // Note: The current implementation doesn't handle circular references
       // This test documents the expected behavior
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const _obj: Record<string, unknown> = { name: 'Test' };
       // Uncomment to test circular reference handling if implemented
       // _obj.self = _obj;

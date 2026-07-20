@@ -12,7 +12,7 @@ import { BaseEngine } from './BaseEngine.js';
 import { isWebGPUSupported, isWebAssemblySupported } from '../utils/browserSupport.js';
 
 // Dynamic import for transformers.js to allow tree-shaking
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- the pipeline type is only reachable through the dynamic `import('@huggingface/transformers')` below; naming its real type here would defeat the tree-shaking this dynamic import exists for
 type Pipeline = any;
 
 /**

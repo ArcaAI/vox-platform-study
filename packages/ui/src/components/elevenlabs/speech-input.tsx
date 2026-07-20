@@ -203,7 +203,6 @@ const SpeechInput = forwardRef<HTMLDivElement, SpeechInputProps>(function Speech
     } catch {
       // Error is handled by onError callback
     }
-    // eslint-disable-next-line
   }, [getToken, scribe, onStart, microphone]);
 
   const stop = () => {

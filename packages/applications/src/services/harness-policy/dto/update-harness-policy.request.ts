@@ -154,6 +154,21 @@ export class UpdateHarnessPolicyRequest {
   @IsBoolean()
   regenFeedbackEnabled?: boolean | null;
 
+  /**
+   * TASK-533 D-24 — master gate for the MCP external-tools path. GLOBAL_ADMIN
+   * only (see `GLOBAL_ADMIN_ONLY_POLICY_KEYS`): a tenant PATCH carrying it is
+   * rejected 403. `null ⇒ OFF`; arming it additionally requires the referenced
+   * `McpServer.enabled` to be true, so this alone cannot open an egress path.
+   *
+   * Its absence here is what made the knob unpatchable: the global validation
+   * pipe runs `forbidNonWhitelisted`, so the field was stripped before it could
+   * ever reach `mergeKnobs`.
+   */
+  @ApiPropertyOptional({ description: 'MCP external-tools master switch (null = OFF). Global-admin only.', nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  mcpToolsEnabled?: boolean | null;
+
   @ApiPropertyOptional({ description: 'Free-text reason for the edit, recorded on the WORM change row.' })
   @IsOptional()
   @IsString()

@@ -49,18 +49,12 @@ function buildService(httpMock: unknown) {
   const configService = { get: vi.fn().mockImplementation((k: string) => ({ LIVE_DOC_MIN_INTERVAL_MS: '0' } as Record<string, unknown>)[k]) };
   const harnessPolicyService = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'vllm', model: 'gemma-4-e4b' }) };
   return new LiveDocumentationService(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     httpMock as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     configService as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     cacheService as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     redisSubscriber as any,
     undefined,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     undefined as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     harnessPolicyService as any,
   );
 }

@@ -20,7 +20,6 @@ const DEV_LOCALHOST_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
  * `cors` middleware directly.
  */
 function logCorsDecision(origin: string | undefined, allowed: boolean, reason: string): boolean {
-  // eslint-disable-next-line turbo/no-undeclared-env-vars
   if (process.env.LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
     corsLogger.debug({
       message: 'CORS decision',
@@ -43,7 +42,6 @@ export function isOriginAllowed(origin: string | undefined, nodeEnv: string): bo
   }
 
   if (nodeEnv === 'production') {
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
     const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS;
     if (allowedOrigins) {
       const originList = allowedOrigins.split(',').map((o) => o.trim());

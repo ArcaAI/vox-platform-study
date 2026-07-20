@@ -100,7 +100,6 @@ export function isTransformersJsSupported(): boolean {
   if (!isWebAssemblySupported()) return false;
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
     new Function('async () => {}');
   } catch {
     return false;

@@ -7,7 +7,17 @@
 import type { ResourceStatus } from '@/shared/api';
 
 export type PromptTemplateCategory = 'SYSTEM' | 'SUMMARY' | 'DNA_ANALYSIS' | 'CUSTOM';
-export type PromptTemplateStatus = 'DRAFT' | 'PUBLISHED';
+/**
+ * Mirrors the `PromptTemplateStatus` Prisma enum
+ * (`packages/database/src/prisma/db_main/prompt-template.prisma`).
+ *
+ * TASK-532: `APPROVED` was MISSING here — the retired `/prompt-studio` feature
+ * declared all three while this copy stopped at PUBLISHED, so an approved row
+ * coming back from the list endpoint was already outside the declared type. The
+ * governance fold made it load-bearing (the approve write returns APPROVED), so
+ * the type is corrected rather than worked around.
+ */
+export type PromptTemplateStatus = 'DRAFT' | 'PUBLISHED' | 'APPROVED';
 export type PromptTemplateScope = 'TENANT_DEFAULT' | 'DEPARTMENT_DEFAULT' | 'USER_PERSONAL';
 
 /**

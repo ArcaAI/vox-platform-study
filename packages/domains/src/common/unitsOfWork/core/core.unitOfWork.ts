@@ -5,7 +5,7 @@ import { ClsService } from 'nestjs-cls';
 import { CoreDatabaseService } from '../../databaseServices/core/core.database.service';
 
 // Type for database context - either extended client or transaction client
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- union of ExtendedCorePrismaClient and Prisma.TransactionClient; per the W5.5.3 note below this imperative wrapper has zero production callers, so precisely naming the union isn't worth the risk on effectively-dead code
 type DatabaseContext = any;
 
 /**

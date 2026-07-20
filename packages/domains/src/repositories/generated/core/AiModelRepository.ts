@@ -26,7 +26,6 @@ export class AiModelRepository extends Repository<AiModelEntity, AiModel> {
    * `AiTaskDefaultService`), so the tenant-scope extension never rewrites the
    * explicit tenant filter. Without `tx` behaviour is unchanged.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async findBySlug(tenantId: string, slug: string, tx?: Prisma.TransactionClient | any): Promise<AiModelEntity | null> {
     const where = {
       tenantId,
@@ -35,7 +34,6 @@ export class AiModelRepository extends Repository<AiModelEntity, AiModel> {
     };
 
     if (tx) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const model = await (tx as Record<string, any>).aiModel.findFirst({ where });
       return model ? AiModelEntityMapper.getInstance().toDomainEntity(model) : null;
     }
@@ -87,7 +85,6 @@ export class AiModelRepository extends Repository<AiModelEntity, AiModel> {
    * throws on non-string `tenantId` values. The legacy `findByTaskType`
    * (exact-tenant pin) stays untouched for its existing callers.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async findByTaskTypeSharedRead(taskType: ModelTaskType, tx?: Prisma.TransactionClient | any): Promise<AiModelEntity[]> {
     const args = {
       where: {
@@ -96,7 +93,6 @@ export class AiModelRepository extends Repository<AiModelEntity, AiModel> {
       },
       orderBy: { name: 'asc' as const },
     };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const delegate = tx ? (tx as Record<string, any>).aiModel : (this as any).db;
     const models = await delegate.findMany(args);
     return models.map((model: AiModel) => AiModelEntityMapper.getInstance().toDomainEntity(model));

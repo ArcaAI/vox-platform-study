@@ -306,6 +306,26 @@ class ApiClient:
         """
         return await self._get("/policy", {"tenantId": tenant_id})
 
+    async def resolve_mcp_token(self, auth_ref: str) -> str | None:
+        """Resolve an MCP server credential by its registered ``authRef`` (TASK-533 D-24).
+
+        The harness holds NO Vault client by design (ticket §3.1) — secret material
+        stays on the gateway side of the boundary, which already has one. The
+        gateway allowlists ``auth_ref`` against registered, ENABLED ``McpServer``
+        rows, so this is not an arbitrary secret-path read.
+
+        Returns ``None`` when the gateway declines to resolve the ref (unregistered,
+        disabled, or unreadable). Callers treat that as "no credential" and call the
+        server unauthenticated — the pre-D-24 behaviour, not a hard failure.
+
+        Raises :class:`ApiServiceError` on transport/HTTP failure; the caller in
+        ``activities`` degrades that to ``None`` so a bounded tool call can never
+        take the loop down.
+        """
+        response = await self._get("/mcp-token", {"authRef": auth_ref})
+        token = response.get("token")
+        return token if isinstance(token, str) and token else None
+
     async def persist_entities(
         self,
         consultation_id: str,

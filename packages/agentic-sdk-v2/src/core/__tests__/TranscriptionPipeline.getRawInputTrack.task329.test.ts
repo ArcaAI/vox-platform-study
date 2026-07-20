@@ -21,7 +21,6 @@ describe('TranscriptionPipeline.getRawInputTrack (TASK-329 P2)', () => {
     const pipeline = new TranscriptionPipeline();
     const rawTrack = { id: 'raw', kind: 'audio' } as unknown as MediaStreamTrack;
     // White-box: set the current input the same way the pipeline does on process().
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (pipeline as any).currentInput = { track: rawTrack };
     expect(pipeline.getRawInputTrack()).toBe(rawTrack);
   });

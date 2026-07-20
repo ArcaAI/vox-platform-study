@@ -155,8 +155,7 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
   }
 
   async fetchAll(props: PaginatedQuery & { secretsOnly?: boolean }): Promise<FetchResponse<GlobalSettingEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { limit, page, search, secretsOnly } = props;
+    const { limit, page, secretsOnly } = props;
     // TASK-443 — 'GlobalSetting' opts the list into model-aware filter
     // coercion: `dataType` (enum ValueType) member-validates with a 400 on an
     // unknown member instead of a Prisma server-side error.
@@ -185,8 +184,7 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
   }
 
   async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string; secretsOnly?: boolean }): Promise<FetchResponse<GlobalSettingEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { tenantId, limit, page, search, secretsOnly } = props;
+    const { tenantId, limit, page, secretsOnly } = props;
     // TASK-443 — with the secretsOnly facet the tenant scope moves INSIDE the
     // AND group (formatFindAllProps drops sibling keys next to `where.AND`);
     // without it the bare `{ tenantId }` shape is kept byte-for-byte.
@@ -215,8 +213,7 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
   }
 
   async fetchAllCreatedByUser(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<GlobalSettingEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { userId, limit, page, search } = props;
+    const { userId, limit, page } = props;
     const globalSettings = await this.globalSettingRepository.findAll({
       ...withFormattedPaginatedProps(props),
       where: {

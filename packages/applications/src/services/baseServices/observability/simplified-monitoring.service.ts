@@ -19,7 +19,6 @@ export class SimplifiedMonitoringService implements IMonitoringService, OnModule
   private connectionsGauge: any;
 
   constructor(@Inject(IMetricsService) private readonly metricsService: IMetricsService) {
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
     this.serviceName = process.env.OTEL_SERVICE_NAME || 'hope-service';
     this.environment = process.env.NODE_ENV || 'development';
     this.logger.log({
@@ -58,7 +57,6 @@ export class SimplifiedMonitoringService implements IMonitoringService, OnModule
         });
 
       // Start system metrics collection
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       const intervalMs = parseInt(process.env.METRICS_COLLECT_INTERVAL || '15000');
       this.collectInterval = setInterval(() => {
         this.collectAndUpdateSystemMetrics().catch((error) =>
@@ -249,8 +247,7 @@ export class SimplifiedMonitoringService implements IMonitoringService, OnModule
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async getKpiHistory(metricName: string, startTime: Date, endTime: Date, aggregation?: 'avg' | 'sum' | 'max' | 'min'): Promise<KpiDataPoint[]> {
+  async getKpiHistory(metricName: string, startTime: Date, endTime: Date, _aggregation?: 'avg' | 'sum' | 'max' | 'min'): Promise<KpiDataPoint[]> {
     // For historical data, we'll recommend using Prometheus queries through Grafana
     // This is more scalable than storing data locally
     this.logger.warn({
@@ -287,9 +284,7 @@ export class SimplifiedMonitoringService implements IMonitoringService, OnModule
         lastChecked: new Date(),
         latency: 0,
         details: {
-          // eslint-disable-next-line turbo/no-undeclared-env-vars
           level: process.env.LOG_LEVEL || 'info',
-          // eslint-disable-next-line turbo/no-undeclared-env-vars
           fileEnabled: process.env.LOG_FILE_ENABLED || 'false',
         },
       });
@@ -306,8 +301,7 @@ export class SimplifiedMonitoringService implements IMonitoringService, OnModule
     return integrations;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  subscribeToMetric(metricName: string, callback: (data: KpiDataPoint) => void): string {
+  subscribeToMetric(metricName: string, _callback: (data: KpiDataPoint) => void): string {
     // For real-time monitoring, recommend using Grafana alerts or Prometheus alerting
     const subscriptionId = `${metricName}_${Date.now()}`;
 

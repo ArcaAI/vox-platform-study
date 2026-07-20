@@ -73,7 +73,6 @@ function makeEntity(overrides: Partial<GlobalSettingEntityShape> = {}): GlobalSe
 }
 
 const toResponse = (entity: GlobalSettingEntityShape): TenantConfigResponse =>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   TenantConfigDtoMapper.ToResponse(entity as any);
 
 describe('TenantConfigDtoMapper', () => {

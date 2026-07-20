@@ -96,5 +96,4 @@ ruleTester.run('no-direct-downstream-url-env', rule, {
   ],
 });
 
-// eslint-disable-next-line no-console
 console.log('no-direct-downstream-url-env: RuleTester passes (TASK-310 E-5 / AC-5)');

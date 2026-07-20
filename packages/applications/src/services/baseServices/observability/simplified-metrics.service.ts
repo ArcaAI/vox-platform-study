@@ -10,11 +10,9 @@ export class SimplifiedMetricsService implements IMetricsService, OnModuleInit, 
   private readonly metricsPrefix: string;
 
   constructor() {
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
     this.serviceName = process.env.OTEL_SERVICE_NAME || 'hope-service';
     // Sanitize service name for Prometheus metric naming (replace hyphens with underscores)
     const sanitizedServiceName = this.serviceName.replace(/-/g, '_');
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
     this.metricsPrefix = process.env.METRICS_PREFIX || `${sanitizedServiceName}_`;
     this.logger.log({
       message: 'Service created',
@@ -32,7 +30,6 @@ export class SimplifiedMetricsService implements IMetricsService, OnModuleInit, 
         prefix: this.metricsPrefix,
         labels: {
           service: this.serviceName,
-          // eslint-disable-next-line turbo/no-undeclared-env-vars
           version: process.env.OTEL_SERVICE_VERSION || '1.0.0',
           environment: process.env.NODE_ENV || 'development',
         },

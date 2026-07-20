@@ -219,6 +219,58 @@ class TranscriptionResult:
     processed_audio_uri: str | None = None
     transcript_uri: str | None = None
 
+    def build_transcript_segments(self) -> list[dict[str, Any]]:
+        """Build consumer-shaped transcript segments for the gateway (TASK-533 D-22).
+
+        Shape matches ``TranscriptSegmentInput`` on the NestJS side: camelCase,
+        milliseconds as ints, ``speaker`` (not ``speaker_id``), and — critically —
+        ``text``, which the consumer needs to resolve char offsets.
+
+        Two sources have to be joined because neither is sufficient alone:
+
+        * ``sentence_timestamps`` carries the TEXT and its timing, but no speaker;
+        * ``segments`` (VAD/diarization) carries the SPEAKER, but no text.
+
+        The pre-D-22 producer sent the second one raw — snake_case, seconds, no text
+        — so ``computeSegmentOffsets`` coerced every field to null and the rows it
+        wrote were useless for grounding. Here each sentence takes the speaker of
+        the VAD segment it overlaps most, and a sentence overlapping nothing gets a
+        null speaker rather than a wrong one.
+
+        No ``charStart``/``charEnd``: unlike the streaming path, this method does not
+        own the assembly of ``self.text`` (the ASR engine does), so guessing offsets
+        risks silent misattribution. The consumer resolves them by text search, which
+        is its designed path.
+        """
+        segments: list[dict[str, Any]] = []
+        for sentence in self.sentence_timestamps:
+            text = (sentence.text or "").strip()
+            if not text:
+                continue
+            segments.append(
+                {
+                    "idx": len(segments),
+                    "t0Ms": int(round(sentence.start_time * 1000)),
+                    "t1Ms": int(round(sentence.end_time * 1000)),
+                    "speaker": self._dominant_speaker(sentence.start_time, sentence.end_time),
+                    "text": text,
+                }
+            )
+        return segments
+
+    def _dominant_speaker(self, start_time: float, end_time: float) -> str | None:
+        """Speaker of the VAD segment overlapping ``[start_time, end_time)`` most."""
+        best_speaker: str | None = None
+        best_overlap = 0.0
+        for seg in self.segments:
+            if not seg.speaker_id:
+                continue
+            overlap = min(end_time, seg.end_time) - max(start_time, seg.start_time)
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best_speaker = seg.speaker_id
+        return best_speaker
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         # Serialize timing metrics if present
@@ -265,6 +317,12 @@ class TranscriptionResult:
                 }
                 for seg in self.segments
             ],
+            # TASK-533 D-22 — the consumer-shaped segments, ADDITIVE alongside the
+            # legacy VAD `segments` above (blob-storage/metadata consumers still read
+            # that one). The gateway call sends this list on the typed top-level
+            # `segments` field; it is mirrored here so the archived metadata blob
+            # records exactly what was ingested.
+            "transcript_segments": self.build_transcript_segments(),
             "metadata": metadata_serializable,
         }
         # Include storage URIs when present

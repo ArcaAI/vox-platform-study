@@ -305,6 +305,13 @@ describe('AgentTrajectoryService', () => {
           { reason: 'length', count: 1 },
           { reason: 'stop', count: 1 },
         ],
+        // TASK-533 B4 — token/$ fields are ADDITIVE and null here: these fixtures
+        // carry no token counts, so the pre-B4 semantics are unchanged.
+        promptTokensTotal: null,
+        completionTokensTotal: null,
+        totalTokens: null,
+        estimatedCost: null,
+        currency: null,
       });
       expect(result.ttftP95Ms).toBeGreaterThanOrEqual(160);
     });
@@ -371,6 +378,13 @@ describe('AgentTrajectoryService', () => {
         ttftP95Ms: null,
         tokensPerSecondAvg: null,
         stopReasons: [],
+        // TASK-533 B4 — token/$ fields are ADDITIVE and null here: these fixtures
+        // carry no token counts, so the pre-B4 semantics are unchanged.
+        promptTokensTotal: null,
+        completionTokensTotal: null,
+        totalTokens: null,
+        estimatedCost: null,
+        currency: null,
       });
     });
   });

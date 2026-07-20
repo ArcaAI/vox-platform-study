@@ -145,7 +145,6 @@ export class SchedulerAdminService {
 
   private validateCronExpression(expression: string): void {
     try {
-      // eslint-disable-next-line no-new
       new CronJob(expression, () => {});
     } catch {
       throw new BadRequestException(`Invalid cron expression: '${expression}'`);

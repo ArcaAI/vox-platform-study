@@ -7,11 +7,9 @@
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { axe } from 'vitest-axe';
-import * as axeMatchers from 'vitest-axe/matchers';
 import type { PermissionMatrix as PermissionMatrixData } from '../../lib/permission-matrix';
 import { PermissionMatrix } from '../permission-matrix';
 
-expect.extend(axeMatchers);
 
 afterEach(cleanup);
 

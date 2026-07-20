@@ -8,12 +8,10 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
-import * as axeMatchers from 'vitest-axe/matchers';
 import { renderWithProviders } from '@/test/render';
 import type { McpServer, McpServerListResponse } from '../../api/types';
 import { ToolsMcpScreen } from '../tools-mcp-screen';
 
-expect.extend(axeMatchers);
 
 vi.mock('sonner', () => ({
     toast: { success: vi.fn(), error: vi.fn() },

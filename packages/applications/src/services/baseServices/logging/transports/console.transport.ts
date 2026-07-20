@@ -171,7 +171,6 @@ export class ConsoleTransport extends BaseTransport {
    */
   private formatMetaPretty(meta: Record<string, unknown>): string {
     // Filter out empty or undefined values
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const filtered = Object.entries(meta).filter(([_, value]) => value !== undefined && value !== null && value !== '');
 
     if (filtered.length === 0) {

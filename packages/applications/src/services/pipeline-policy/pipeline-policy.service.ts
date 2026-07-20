@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import {
   CoreDatabaseService,
@@ -11,9 +11,11 @@ import {
   PipelinePolicyScope,
   SYSTEM_TENANT_ID,
 } from '@arcaai/domains';
+import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { ConfigResolver, PIPELINE_SETTING_DESCRIPTORS, PipelineToggleKey } from '../config-resolver';
+import { HOPE_SETTINGS_REGISTRY } from '../settings-registry';
 import { PipelinePolicyEffectiveResponse, PipelinePolicyResponse, PipelinePolicySource, UpdatePipelinePolicyRequest } from './dto';
 
 /** Ciphertext payloads threaded into the change factory (TASK-369 Phase 3D). */
@@ -170,6 +172,7 @@ export class PipelinePolicyService {
     const { tenantId, scope, dto, expectedVersion } = params;
     const scopeId = scope === PipelinePolicyScope.TENANT ? null : params.scopeId ?? null;
 
+    this.assertGlobalOnlyToggles(dto);
     this.assertWithinMaxScope(scope, dto);
 
     const changedBy = this.callerUserId;
@@ -401,6 +404,41 @@ export class PipelinePolicyService {
    * row's scope (e.g. `harnessEnabled` pinned at DOCTOR). This is the write-side
    * guard that complements the `ConfigResolver` read-side clamp (§7).
    */
+  /**
+   * TASK-532 (E3-L2, OD-2) — PRIVILEGE boundary, descriptor-driven.
+   *
+   * Reject any supplied toggle whose registry descriptor carries
+   * `globalOnly: true` when the caller is not a GLOBAL_ADMIN. Today that is
+   * `harnessEnabled` (guardrail's primary caller) and `autoNerEnabled` (NLP
+   * auto-extraction) — but this method deliberately holds NO key list: adding
+   * `globalOnly` to a `pipeline.*` descriptor is the only edit needed to govern
+   * another toggle (AD-1, the single enforcement point).
+   *
+   * 403 not 404: the caller may still READ these toggles and their pinned rows;
+   * only the write is gated. That mirrors `GLOBAL_ADMIN_ONLY_TASK_PREFIXES` in
+   * `AiTaskDefaultService` and the MCP write path — it is a privilege boundary,
+   * NOT the 404-over-403 cross-tenant posture.
+   *
+   * Runs BEFORE `assertWithinMaxScope` so an unprivileged caller never learns
+   * the cascade shape from a 400 they were not allowed to attempt anyway.
+   *
+   * NOTE: this mirrors step 3 of `SettingsRegistryWriteService.write`
+   * (TASK-524's write lane), which refuses `db-config` tier keys like these
+   * pending exactly this adoption. Converge on that helper if it is ever
+   * extracted; the metadata and semantics are already identical.
+   */
+  private assertGlobalOnlyToggles(dto: UpdatePipelinePolicyRequest): void {
+    if (isSuperAdmin(this.clsService.get('user'))) return;
+
+    const present = WRITABLE_TOGGLE_KEYS.filter(
+      (key) =>
+        (dto as Record<string, unknown>)[key] !== undefined && HOPE_SETTINGS_REGISTRY.getOrThrow(`pipeline.${key}`).globalOnly === true,
+    );
+    if (present.length === 0) return;
+
+    throw new ForbiddenException(`Pipeline toggles [${present.join(', ')}] are managed by global administrators only.`);
+  }
+
   private assertWithinMaxScope(scope: PipelinePolicyScope, dto: UpdatePipelinePolicyRequest): void {
     for (const key of WRITABLE_TOGGLE_KEYS) {
       if ((dto as Record<string, unknown>)[key] === undefined) continue;

@@ -592,6 +592,91 @@ export class AuditLogService extends BaseService implements IAuditLogService {
   }
 
   /**
+   * TASK-541 B1 — persist a FAILED authentication attempt.
+   *
+   * Counterpart to `handleUserAuthenticatedEvent`, which is a success-only
+   * bracket. Without this, a rejected login left only a structured warn log,
+   * so credential stuffing and post-termination access attempts were not
+   * reviewable in the audit table — the gap HIPAA §164.312(b) access auditing
+   * is meant to close.
+   *
+   * Shares the success handler's sanctioned direct-write path: a failed login
+   * runs in the unauthenticated request scope (no CLS tenant), so the scoped
+   * repository would reject the tenant-scoped `AuditLog` write. Row-shape
+   * differences from the success path: `success: false`, plus `reason` and
+   * `attemptedUsername` (the only identity signal when the username matched
+   * no account).
+   *
+   * Only whitelisted fields reach the persisted payload — an upstream caller
+   * widening the event must not be able to spill a credential into the row.
+   *
+   * Best-effort by contract: every error is caught, because failing here would
+   * convert a 401 into a 500 and hand attackers an audit-outage oracle.
+   */
+  @OnEvent(EventTypes.UserAuthenticationFailed)
+  async handleUserAuthenticationFailedEvent(event: {
+    userId?: string;
+    attemptedUsername?: string;
+    reason?: string;
+    timestamp?: Date;
+    ip?: string;
+    userAgent?: string;
+    method?: string;
+    endpoint?: string;
+    tenantKey?: string;
+  }): Promise<void> {
+    try {
+      const timestamp = event.timestamp || new Date();
+
+      const auditLog = AuditLogFactory.CreateAuditLog({
+        action: AuditAction.LOGIN,
+        eventType: 'AUTHENTICATION',
+        success: false,
+        responsibleUserId: event.userId ?? null,
+        responsibleIp: event.ip || this.requestIp,
+        // A failed attempt often has no resolved account; the row still points
+        // at the User resource so it lands in the same review surface.
+        resourceId: event.userId ?? null,
+        resourceType: ResourceType.User,
+        data: {
+          reason: event.reason ?? 'unspecified',
+          attemptedUsername: event.attemptedUsername ?? null,
+          endpoint: event.endpoint ?? null,
+          httpMethod: event.method ?? null,
+          tenantKey: event.tenantKey ?? null,
+          timestamp: timestamp.toISOString(),
+          userAgent: event.userAgent || null,
+        },
+        previousData: {},
+        metadata: null,
+        createdBy: null,
+        tenantId: this.tenantId ?? '00000000-0000-0000-0000-000000000000',
+      });
+
+      await this.auditLogEncryption?.encryptIntoEntity(auditLog);
+
+      const persistence = AuditLogEntityMapper.getInstance().toPersistence(auditLog) as unknown as Record<string, unknown>;
+      const data = Object.fromEntries(Object.entries(persistence).filter(([, value]) => value !== null));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- null-stripped persistence record no longer matches Prisma's generated create input; same cast as the success handler
+      await this.databaseService.baseClient.auditLog.create({ data: data as any });
+
+      this.logger.debug({
+        message: 'Failed authentication audit log created',
+        userId: event.userId ?? null,
+        reason: event.reason ?? 'unspecified',
+        endpoint: event.endpoint ?? null,
+      });
+    } catch (error: unknown) {
+      this.logger.error({
+        message: 'Error handling failed authentication event',
+        eventType: EventTypes.UserAuthenticationFailed,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+    }
+  }
+
+  /**
    * TASK-326 X1 — record a privileged/system action audit entry synchronously.
    *
    * Mirrors `handleUserAuthenticatedEvent`'s sanctioned direct-write path: the

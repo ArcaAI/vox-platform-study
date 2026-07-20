@@ -10,7 +10,7 @@ import EventEmitter3 from 'eventemitter3';
  * Generic event map type.
  * Using a mapped type instead of Record to allow interfaces without index signatures.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately generic: any consumer's event-payload shape must satisfy this constraint, so it can't itself be a narrower type
 export type EventMap = { [key: string]: any };
 
 /**
@@ -58,7 +58,7 @@ export class TypedEventEmitter<TEvents extends EventMap> {
    * @returns A function to unsubscribe
    */
   on<K extends keyof TEvents & string>(event: K, handler: EventHandler<TEvents[K]>): () => void {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- eventemitter3's own listener type is untyped; this cast is the boundary between our typed API and its loose one
     this.emitter.on(event, handler as any);
     return () => this.off(event, handler);
   }
@@ -70,7 +70,7 @@ export class TypedEventEmitter<TEvents extends EventMap> {
    * @param handler - The handler function to call when the event is emitted
    */
   once<K extends keyof TEvents & string>(event: K, handler: EventHandler<TEvents[K]>): void {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- same eventemitter3 boundary cast as `on()` above
     this.emitter.once(event, handler as any);
   }
 
@@ -81,7 +81,7 @@ export class TypedEventEmitter<TEvents extends EventMap> {
    * @param handler - The handler function to remove
    */
   off<K extends keyof TEvents & string>(event: K, handler: EventHandler<TEvents[K]>): void {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- same eventemitter3 boundary cast as `on()` above
     this.emitter.off(event, handler as any);
   }
 

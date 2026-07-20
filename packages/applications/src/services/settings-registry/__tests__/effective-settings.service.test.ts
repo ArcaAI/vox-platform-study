@@ -30,7 +30,6 @@ function serviceWith(
   appSettings?: { getValueWithDefault: ReturnType<typeof vi.fn> },
 ): EffectiveSettingsService {
   const configResolver = { resolvePipelineToggles: vi.fn(async () => toggles) } as unknown as ConfigResolver;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return new EffectiveSettingsService(configResolver, aiTaskDefaults as any, appSettings as any);
 }
 

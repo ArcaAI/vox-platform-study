@@ -76,6 +76,17 @@ const SESSION = {
     effectiveTenantId: 'tnt-1' as string | null,
 };
 
+// TASK-532 A-2d — a non-elevated (tenant admin) session. `harnessEnabled` and
+// `autoNerEnabled` became global-admin-only server-side, so this session must
+// see them read-only.
+const TENANT_ADMIN_SESSION = {
+    ...SESSION,
+    user: { ...SESSION.user, username: 'tenant_admin', roles: ['TENANT_ADMIN'] },
+    isElevated: false,
+    effectiveUser: { ...SESSION.effectiveUser, username: 'tenant_admin', roles: ['TENANT_ADMIN'] },
+    effectiveIsElevated: false,
+};
+
 interface RecordedCall {
     url: string;
     method: string;
@@ -253,6 +264,48 @@ describe('PipelinePolicyScreen', () => {
         const routingGroup = await screen.findByRole('radiogroup', { name: 'Harness routing' });
         expect((within(routingGroup).getByText('harness') as HTMLButtonElement).disabled).toBe(true);
         expect(screen.getByText(/max scope DEPARTMENT/)).toBeDefined();
+    });
+
+    /**
+     * TASK-532 A-2d (E3-L2) — the two governed toggles are global-admin-only in
+     * `PipelinePolicyService.upsertRow` (descriptor `globalOnly`). A tenant
+     * admin sees them, and their pinned values, but cannot edit them.
+     */
+    describe('E3-L2 locked pipeline toggles', () => {
+        it.each([
+            ['Harness routing', 'harness'],
+            ['Auto-NER', 'off'],
+        ])('disables the %s pin for a non-elevated session', async (label, option) => {
+            stubFetch({ session: TENANT_ADMIN_SESSION });
+            renderWithProviders(<PipelinePolicyScreen />);
+            const table = await waitFor(() => matrix());
+
+            fireEvent.click(within(table).getByText('tenant'));
+            const group = await screen.findByRole('radiogroup', { name: label });
+            expect((within(group).getByText(option) as HTMLButtonElement).disabled).toBe(true);
+        });
+
+        it('explains why, and leaves auto-summary editable for the same session', async () => {
+            stubFetch({ session: TENANT_ADMIN_SESSION });
+            renderWithProviders(<PipelinePolicyScreen />);
+            const table = await waitFor(() => matrix());
+
+            fireEvent.click(within(table).getByText('tenant'));
+            const summary = await screen.findByRole('radiogroup', { name: 'Auto-summary' });
+            expect((within(summary).getByText('off') as HTMLButtonElement).disabled).toBe(false);
+            expect(screen.getAllByText('Global admins only')).toHaveLength(2);
+        });
+
+        it('keeps both pins editable for an elevated session', async () => {
+            stubFetch();
+            renderWithProviders(<PipelinePolicyScreen />);
+            const table = await waitFor(() => matrix());
+
+            fireEvent.click(within(table).getByText('tenant'));
+            const routing = await screen.findByRole('radiogroup', { name: 'Harness routing' });
+            expect((within(routing).getByText('harness') as HTMLButtonElement).disabled).toBe(false);
+            expect(screen.queryByText('Global admins only')).toBeNull();
+        });
     });
 
     it('shows the empty state with the add-scope-row CTA when nothing is pinned anywhere', async () => {

@@ -9,6 +9,7 @@ import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { ConsultationJobServiceModule } from '../jobs/consultation-job.service.module';
 import { ConfigResolverModule } from '../../config-resolver';
 import { RedisCacheModule } from '../../baseServices/redis';
+import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
 
 /**
  * HarnessInternalService DI module (TASK-330 Phase 1 — Lane G). Wires the
@@ -18,9 +19,10 @@ import { RedisCacheModule } from '../../baseServices/redis';
 @Module({
   imports: [
     CoreDatabaseModule,
-    // TASK-355 Phase C (R-6) — supplies ConfigService for the warm-start
-    // kill-switch (HARNESS_WARM_START_ENABLED) read by both HarnessInternalService
-    // and the PromptAssemblyService provided below.
+    // TASK-355 Phase C (R-6) / TASK-533 D-23 — supplies ConfigService for the
+    // warm-start env FALLBACK (HARNESS_WARM_START_ENABLED). The authority is now
+    // HarnessPolicy.warmStartEnabled via HarnessPolicyServiceModule below; both
+    // HarnessInternalService and the PromptAssemblyService provided here resolve it.
     ConfigModule,
     PromptResolutionServiceModule,
     HarnessAuditServiceModule,
@@ -34,6 +36,10 @@ import { RedisCacheModule } from '../../baseServices/redis';
     // TASK-466 (C1-03) — supplies IRedisCacheService so the WORM/draft callbacks
     // dedup on the harness Idempotency-Key (best-effort; @Optional in the service).
     RedisCacheModule.register(),
+    // TASK-533 D-23 — supplies HarnessPolicyService so the effective
+    // `warmStartEnabled` (not the process-wide env var) governs prior-draft
+    // injection, per tenant and without a redeploy.
+    HarnessPolicyServiceModule,
   ],
   providers: [HarnessInternalService, PromptAssemblyService],
   exports: [HarnessInternalService],

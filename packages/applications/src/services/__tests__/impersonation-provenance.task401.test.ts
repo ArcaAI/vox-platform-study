@@ -21,7 +21,6 @@ import { AuditLogProcessor } from '../auditLog/auditLog.processor';
 // ─── BaseService.broadcastSysEvent ──────────────────────────────────────────
 
 class ProbeService extends BaseService {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     constructor(eventEmitter: any, cls: any) {
         super(eventEmitter, cls, ResourceType.UserSettings);
     }

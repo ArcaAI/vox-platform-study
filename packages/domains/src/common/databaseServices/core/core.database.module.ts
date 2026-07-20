@@ -8,6 +8,7 @@ import { AiModelRepository } from '../../../repositories/generated/core/AiModelR
 import { AiProviderConnectionRepository } from '../../../repositories/generated/core/AiProviderConnectionRepository';
 import { AiRuntimeProfileRepository } from '../../../repositories/generated/core/AiRuntimeProfileRepository';
 import { AiTaskDefaultRepository } from '../../../repositories/generated/core/AiTaskDefaultRepository';
+import { GateEditExemplarRepository } from '../../../repositories/generated/core/GateEditExemplarRepository';
 import { ApiKeyRepository } from '../../../repositories/generated/core/ApiKeyRepository';
 import { AsrPipelineRepository } from '../../../repositories/generated/core/AsrPipelineRepository';
 import { AsrPipelineVersionRepository } from '../../../repositories/generated/core/AsrPipelineVersionRepository';
@@ -136,6 +137,7 @@ const repositories = [
   AiModelRepository,
   // Per-tenant AI task-model defaults (TASK-506)
   AiTaskDefaultRepository,
+  GateEditExemplarRepository,
   // Config-plane core (TASK-524) — provider endpoints/credentials + runtime
   // hyperparameter profiles. Both are SYSTEM-shared read models.
   AiProviderConnectionRepository,

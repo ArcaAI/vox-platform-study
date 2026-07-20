@@ -10,12 +10,39 @@
  * Implements E2 of TASK-222: Wire Variable Substitution.
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ClsService } from 'nestjs-cls';
 import { PromptResolutionService, PromptResolutionTier } from './prompt-resolution.service';
 import { PromptTemplateRepository, DnaWritingStyleReportRepository } from '@arcaai/domains';
+import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
+import { IGateEditExemplarRetriever } from '../../gate-edit-mining/IGateEditExemplarRetriever';
+import { IActiveUserContext } from '../../../interfaces';
 
 const VARIABLE_PATTERN = /\{([a-zA-Z_][\w-]*)\}/g;
+
+/**
+ * TASK-533 B6 — how many approved notes are shown as style examples.
+ *
+ * Small on purpose: each exemplar is a whole clinical note, so the block costs
+ * real prompt budget, and few-shot returns diminish quickly. The mining service
+ * caps this independently — this is the prompt side's own ceiling.
+ */
+const FEW_SHOT_EXEMPLAR_LIMIT = 3;
+
+/**
+ * Stable 32-bit fingerprint of the exemplar set, used only to VERSION the
+ * few-shot block. It lets a cached prefix be attributed to a known exemplar set
+ * (and makes a set change visible in logs) without embedding row ids — which
+ * would leak which encounters were mined.
+ */
+function fingerprintExemplarSet(input: string): string {
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    hash = (hash * 31 + input.charCodeAt(i)) | 0;
+  }
+  return (hash >>> 0).toString(36);
+}
 
 function substituteVariables(template: string, variables: Record<string, string>): string {
   return template.replace(VARIABLE_PATTERN, (match, name: string) => {
@@ -117,6 +144,13 @@ export interface NerEntityForPrompt {
 }
 
 export interface PromptAssemblyParams {
+  /**
+   * TASK-533 D-23 — tenant whose effective `HarnessPolicy.warmStartEnabled` governs
+   * the prior-draft injection below. Optional: callers running inside a CLS context
+   * (API request, harness worker, BullMQ processor) may omit it and the tenant is
+   * read from CLS; absent both, the SYSTEM/global default policy applies.
+   */
+  tenantId?: string;
   departmentId?: string;
   promptType?: 'pre-summary' | 'new-patient' | 'revisit';
   transcript: string;
@@ -176,23 +210,116 @@ export interface AssembledPrompt {
 export class PromptAssemblyService {
   private readonly logger = new Logger(PromptAssemblyService.name);
 
-  // TASK-355 Phase C (R-6) — warm-start kill-switch (HARNESS_WARM_START_ENABLED,
-  // default OFF). Load-bearing gate: when OFF the {pre_summary_text} append-fallback
-  // below does not fire, so neither the harness path nor the legacy
-  // SummaryService.generateSummary() path injects a prior draft (the legacy latent
-  // no-op is preserved). Cached at construction, matching live-documentation/ocr.
-  private readonly warmStartEnabled: boolean;
+  // TASK-355 Phase C (R-6) — warm-start kill-switch. Load-bearing gate: when OFF the
+  // {pre_summary_text} append-fallback below does not fire, so neither the harness
+  // path nor the legacy SummaryService.generateSummary() path injects a prior draft
+  // (the legacy latent no-op is preserved).
+  //
+  // TASK-533 D-23 — the AUTHORITY is now `HarnessPolicy.warmStartEnabled`, resolved
+  // PER CALL. It used to be this env var alone, cached at construction: the policy
+  // column was write-plumbed all the way to the admin console and read by nothing,
+  // so the knob was dead and the real switch needed a redeploy to move and could
+  // never vary per tenant. The env var is retained ONLY as the fallback for a null
+  // policy value, which reproduces the pre-D-23 behaviour byte-for-byte.
+  private readonly warmStartEnvFallback: boolean;
 
   constructor(
     private readonly promptResolutionService: PromptResolutionService,
     private readonly promptTemplateRepository: PromptTemplateRepository,
     private readonly dnaWritingStyleRepository: DnaWritingStyleReportRepository,
     private readonly configService: ConfigService,
+    // Optional + trailing so existing positional test fixtures keep their arity;
+    // production DI (ConsultationServiceModule) always supplies both. Absent ⇒ the
+    // env fallback governs, i.e. exactly the pre-D-23 behaviour.
+    @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
+    @Optional() @Inject(ClsService) private readonly cls?: ClsService<IActiveUserContext>,
+    // TASK-533 B6 — the gate-edit learning loop's READ half. Optional and
+    // trailing for the same reason as the two above: absent ⇒ zero-shot, which
+    // is exactly the pre-B6 prompt.
+    @Optional() @Inject(IGateEditExemplarRetriever) private readonly exemplarRetriever?: IGateEditExemplarRetriever,
   ) {
     const raw = String(this.configService.get('HARNESS_WARM_START_ENABLED') ?? '')
       .trim()
       .toLowerCase();
-    this.warmStartEnabled = raw === 'true' || raw === '1';
+    this.warmStartEnvFallback = raw === 'true' || raw === '1';
+  }
+
+  /**
+   * Effective warm-start decision for the calling tenant (TASK-533 D-23).
+   *
+   * Policy wins; a null policy value means "not configured" and falls through to the
+   * env fallback. Resolved on every call so a global admin's console flip takes
+   * effect without a redeploy. A policy-backend failure degrades to the env value —
+   * prompt assembly is on the generation hot path and must never fail closed on a
+   * governance lookup.
+   */
+  private async resolveWarmStartEnabled(tenantId?: string): Promise<boolean> {
+    if (!this.harnessPolicyService) {
+      return this.warmStartEnvFallback;
+    }
+    try {
+      const effective = await this.harnessPolicyService.getEffectivePolicy(tenantId ?? this.cls?.get('tenantId'));
+      return effective.warmStartEnabled ?? this.warmStartEnvFallback;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Harness policy lookup failed while resolving warmStartEnabled — falling back to env',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return this.warmStartEnvFallback;
+    }
+  }
+
+  /**
+   * The few-shot style block, or `''` when there is nothing to add.
+   *
+   * Three properties this method must never lose:
+   *
+   *  * **Silent degradation.** No retriever, no tenant, no rows, or a throwing
+   *    store all return `''`. A learning-loop outage must not become a
+   *    generation outage (§3.4).
+   *  * **Redacted text only.** `redactedAfter` is the sole field read; it is the
+   *    only one the mining store guarantees is PHI-free.
+   *  * **Framed as style, not history.** The notes belong to OTHER encounters,
+   *    so the header says so explicitly — an unlabelled block is a fabrication
+   *    vector, since the model would be free to read another patient's findings
+   *    as this patient's.
+   */
+  private async buildFewShotExemplarBlock(params: PromptAssemblyParams): Promise<string> {
+    if (!this.exemplarRetriever) return '';
+
+    const tenantId = params.tenantId ?? this.cls?.get('tenantId');
+    if (!tenantId) return '';
+
+    let rows;
+    try {
+      rows = await this.exemplarRetriever.retrieveExemplars({
+        tenantId,
+        departmentId: params.departmentId ?? null,
+        limit: FEW_SHOT_EXEMPLAR_LIMIT,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Gate-edit exemplar retrieval failed; falling back to a zero-shot prompt: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return '';
+    }
+
+    const snippets = (rows ?? [])
+      .map((row) => row?.redactedAfter?.trim())
+      .filter((snippet): snippet is string => !!snippet)
+      .slice(0, FEW_SHOT_EXEMPLAR_LIMIT);
+
+    if (snippets.length === 0) return '';
+
+    const version = fingerprintExemplarSet(snippets.join(' '));
+
+    return (
+      `\n\n--- STYLE REFERENCE — APPROVED NOTES FROM DIFFERENT PATIENTS (set ${version}) ---\n` +
+      `The notes below were written for OTHER patients and are included ONLY as a ` +
+      `reference for house formatting, section order and tone. They are NOT this ` +
+      `patient's history: never carry a clinical fact, finding, or medication across ` +
+      `from them.\n\n${snippets.join('\n\n- - -\n\n')}`
+    );
   }
 
   async assemble(params: PromptAssemblyParams): Promise<AssembledPrompt> {
@@ -213,6 +340,12 @@ export class PromptAssemblyService {
     } else {
       userPrompt = params.transcript;
     }
+
+    // TASK-533 B6 (GAP-A1) — per-department few-shot exemplars, placed with the
+    // template content and BEFORE the per-encounter transcript so the engine's
+    // prefix cache still hits across flushes (§3.4). Empty string when there is
+    // nothing to show, so the zero-shot prompt stays byte-identical.
+    userPrompt += await this.buildFewShotExemplarBlock(params);
 
     if (!userPrompt.includes(params.transcript)) {
       userPrompt += `\n\n--- TRANSCRIPT ---\n${params.transcript}`;
@@ -258,7 +391,7 @@ export class PromptAssemblyService {
     // authoritative: on a scratchpad↔transcript conflict the model follows the transcript.
     // When the flag is OFF this block does not fire, restoring exact pre-Phase-C behavior
     // on the harness AND legacy paths.
-    if (this.warmStartEnabled) {
+    if (await this.resolveWarmStartEnabled(params.tenantId)) {
       const preSummaryBlock = variables.pre_summary_text ?? '';
       if (preSummaryBlock && !userPrompt.includes(preSummaryBlock)) {
         userPrompt +=

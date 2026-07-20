@@ -315,6 +315,48 @@ class StreamSession:
             if r.is_final and r.text and r.text.strip()
         )
 
+    def build_transcript_segments(self) -> list[dict[str, Any]]:
+        """Build consumer-shaped transcript segments for the gateway (TASK-533 D-22).
+
+        The evidence-grounding pillar (harness ``segment_citations`` → clinician
+        click-to-source) needs per-utterance rows with timing, speaker and CHAR
+        SPANS into the persisted transcript. Streaming previously sent none at all,
+        so ``TranscriptSegment`` was empty in production and every grounded claim
+        resolved to no source.
+
+        Shape matches ``TranscriptSegmentInput`` on the NestJS side exactly:
+        camelCase, milliseconds as ints, ``speaker`` (not ``speaker_id``).
+
+        The char offsets are computed here rather than left to the consumer's text
+        search because THIS method owns the same filter/strip/join rule as
+        :meth:`build_transcript_text` — so the spans are exact by construction and
+        stay correct even when an utterance repeats verbatim. Keep the two in
+        lockstep: the invariant ``text[charStart:charEnd] == segment["text"]`` is
+        asserted in ``tests/unit/streaming/test_session_manager_segments.py``.
+        """
+        segments: list[dict[str, Any]] = []
+        cursor = 0
+        for r in self.results:
+            if not (r.is_final and r.text and r.text.strip()):
+                continue
+            text = r.text.strip()
+            if segments:
+                cursor += 1  # the single space `build_transcript_text` joins with
+            char_start = cursor
+            cursor += len(text)
+            segments.append(
+                {
+                    "idx": len(segments),
+                    "t0Ms": int(round(r.start_time * 1000)),
+                    "t1Ms": int(round(r.end_time * 1000)),
+                    "speaker": r.speaker_id or None,
+                    "text": text,
+                    "charStart": char_start,
+                    "charEnd": cursor,
+                }
+            )
+        return segments
+
     def build_transcript_json(self) -> bytes:
         """Build a JSON transcript from accumulated results.
 

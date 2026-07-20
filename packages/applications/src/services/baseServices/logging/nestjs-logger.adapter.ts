@@ -116,8 +116,7 @@ export class NestJSLoggerAdapter implements LoggerService {
    * Set log levels
    * @param levels log levels
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  setLogLevels?(levels: string[]): void {
+  setLogLevels?(_levels: string[]): void {
     // This is a no-op since we handle log levels in our logging service
     // based on configuration
   }

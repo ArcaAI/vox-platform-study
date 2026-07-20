@@ -199,6 +199,31 @@ export class HarnessInternalController {
     });
   }
 
+  /**
+   * TASK-533 D-24 — resolve an MCP server credential for the worker.
+   *
+   * The harness has no Vault client by design (ticket §3.1): secret material stays
+   * on the gateway side of the boundary. The worker calls this INSIDE the activity
+   * that performs the MCP call, uses the token, and discards it — it is never put
+   * into workflow state, activity inputs, or heartbeats, because Temporal history
+   * is durable storage.
+   *
+   * `authRef` is allowlisted in the service against registered, ENABLED `McpServer`
+   * rows, so this is not an arbitrary secret-path read. An unknown ref returns
+   * `{ token: null }` rather than 404: the worker's contract is "no token ⇒ call
+   * the server unauthenticated (it must be public / in-boundary)", and a distinct
+   * status here would let a caller probe which paths exist.
+   */
+  @Get('mcp-token')
+  @ApiOperation({ summary: 'Resolve an MCP server credential by its registered authRef (worker tool-call activity)' })
+  @ApiQuery({ name: 'authRef', required: true, description: 'Vault PATH registered on an enabled McpServer row.' })
+  async resolveMcpToken(@Query('authRef') authRef?: string): Promise<{ token: string | null }> {
+    if (!authRef) {
+      throw new BadRequestException('authRef query parameter is required');
+    }
+    return { token: await this.harnessInternalService.resolveMcpToken(authRef) };
+  }
+
   // TASK-466 (C1-03) — the harness sends a deterministic `Idempotency-Key`
   // (`{run_id}:{activity_id}`) on the WORM/draft callbacks so apps/api can dedup a
   // Temporal activity retry (which would otherwise re-append). The header is

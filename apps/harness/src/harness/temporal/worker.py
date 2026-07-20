@@ -20,7 +20,7 @@ from typing import Any
 
 from temporalio.worker import Worker
 
-from harness.core.config import get_settings
+from harness.core.config import _DEPLOYED_ENVIRONMENTS, Settings, get_settings
 from harness.core.logging import get_logger, setup_logging
 from harness.temporal.activities import DOCUMENT_ACTIVITIES, ping_activity
 from harness.temporal.client import get_temporal_client
@@ -119,6 +119,42 @@ async def _sweep_model_caches_forever(
             logger.info("harness.worker.model_cache_swept", released=released)
 
 
+def _assert_claim_check_store_is_deployable(settings: Settings) -> None:
+    """Refuse to start a deployed worker that would offload blobs to the fake store.
+
+    Independent defence behind the ``Settings`` model validator (TASK-533 D-28): a
+    settings object can be constructed in code or mutated after validation, and the
+    worker is the process that actually dereferences claim-check refs — a
+    cross-worker retry against the per-process in-memory store raises
+    ``ClaimCheckNotFound`` and loses the clinical blob.
+
+    NOTE: this raises, unlike the housekeeping helpers above which deliberately
+    log-and-continue. A misconfigured worker must never register on the task queue
+    and start accepting work; degrading here would lose data silently.
+    """
+    if not settings.claim_check.enabled or settings.claim_check.store != "memory":
+        return
+
+    if settings.environment in _DEPLOYED_ENVIRONMENTS:
+        raise RuntimeError(
+            f"refusing to start: claim-check offload is enabled with the in-memory "
+            f"store in '{settings.environment}'. Set HARNESS_CLAIM_CHECK_STORE=s3 "
+            f"(plus the MinIO endpoint/credentials)."
+        )
+
+    # Single-process dev is the supported case for the in-memory store — but running
+    # a SECOND worker against it silently breaks cross-worker retries, so say so once.
+    logger.warning(
+        "harness.worker.claim_check_memory_store",
+        environment=settings.environment,
+        detail=(
+            "in-memory claim-check store: correct for single-worker local dev, but a "
+            "second worker process will fail cross-worker activity retries with "
+            "ClaimCheckNotFound. Set HARNESS_CLAIM_CHECK_STORE=s3 to run more than one."
+        ),
+    )
+
+
 async def run_worker() -> None:
     """Connect to Temporal and run the harness worker until interrupted.
 
@@ -130,6 +166,7 @@ async def run_worker() -> None:
     """
     settings = get_settings()
     setup_logging(settings.log_level)
+    _assert_claim_check_store_is_deployable(settings)
 
     logger.info(
         "harness.worker.connecting",

@@ -28,8 +28,10 @@ import { generateJsonWithRepair, looksLikeJsonObject } from '../shared/bounded-j
 import type { LiveSummarySectionDto } from './dto';
 import {
   AGENTIC_CONTEXT_DEFAULTS,
+  AGENTIC_CONTEXT_KEY_PREFIX,
   type AgenticTranscriptMode,
 } from '../../settings-registry/descriptors/agentic-context.descriptors';
+import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
 
 /** Shared SOAP output instruction — describes the four sections for prose-only providers. */
 const SOAP_OUTPUT_INSTRUCTION =
@@ -195,6 +197,44 @@ interface LiveSession {
  * that channel verbatim. Optionally persists the last snapshot as a PRE_SUMMARY
  * context item on stop.
  */
+/** The effective `agentic.context.*` knobs for one resolution (TASK-533 B1). */
+export interface AgenticContextKnobs {
+  liveDeltaMaxChars: number;
+  segmentThreshold: number;
+  idleMs: number;
+  claimCheckMinBytes: number;
+  transcriptMode: AgenticTranscriptMode;
+  tokenBudgetPerRun: number;
+}
+
+/** Read a numeric env override, treating unset/blank/non-numeric as "no override". */
+function readNumericEnv(configService: ConfigService, key: string): number | undefined {
+  const raw = configService.get(key);
+  if (raw === undefined || raw === null || String(raw).trim() === '') return undefined;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function toTranscriptMode(raw: unknown): AgenticTranscriptMode {
+  return String(raw) === 'windowed' ? 'windowed' : 'whole';
+}
+
+/**
+ * A registry-STORED numeric value, or undefined when the facade fell through to
+ * the code default (so the caller's env fallback can win) or when the stored value
+ * is unusable. A wrong-typed stored value must never become NaN on the hot path.
+ */
+function storedNumber(result: { value: unknown; sourceScope: string }): number | undefined {
+  if (result.sourceScope === 'code-default') return undefined;
+  const parsed = Number(result.value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function storedMode(result: { value: unknown; sourceScope: string }): AgenticTranscriptMode | undefined {
+  if (result.sourceScope === 'code-default') return undefined;
+  return result.value === 'windowed' || result.value === 'whole' ? result.value : undefined;
+}
+
 @Injectable()
 export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(LiveDocumentationService.name);
@@ -234,16 +274,33 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private readonly nlpServiceUrl: string;
   private readonly smrServiceUrl: string;
   private readonly guardrailServiceUrl: string;
-  private readonly segmentThreshold: number;
-  private readonly debounceMs: number;
   private readonly heartbeatMs: number;
-  // agentic.context.* effective knobs (env override →
-  // settings-registry code default). `contextLiveDeltaMaxChars` replaces the
-  // former `MAX_DELTA_CHARS = 12000` constant.
-  private readonly contextLiveDeltaMaxChars: number;
-  private readonly contextClaimCheckMinBytes: number;
-  private readonly contextTranscriptMode: AgenticTranscriptMode;
-  private readonly contextTokenBudgetPerRun: number;
+  // TASK-533 B1 — `agentic.context.*` env FALLBACKS. These are no longer the
+  // effective values: the authority is the settings registry, resolved per call
+  // through `resolveAgenticContext` (TASK-524's `EffectiveSettingsService`).
+  //
+  // Before B1 these six were read from `env ?? AGENTIC_CONTEXT_DEFAULTS` in the
+  // constructor and frozen there — so a global admin's registry write moved what
+  // `GET /admin/settings/registry` reported and moved NOTHING in the running loop,
+  // and even the env value needed a redeploy. `undefined` here means "no env
+  // override", which lets a stored value or the code default win.
+  private readonly envSegmentThreshold?: number;
+  private readonly envDebounceMs?: number;
+  private readonly envLiveDeltaMaxChars?: number;
+  private readonly envClaimCheckMinBytes?: number;
+  private readonly envTranscriptMode?: AgenticTranscriptMode;
+  private readonly envTokenBudgetPerRun?: number;
+  /**
+   * Most recently resolved knobs, refreshed by every `resolveAgenticContext` call.
+   *
+   * The flush path resolves fresh; the two SYNCHRONOUS consumers (`ingestSegment`'s
+   * threshold check and `scheduleFlush`'s debounce) read this snapshot, because
+   * they cannot await. That yields exactly the contract the control plane promises:
+   * a registry change is picked up by the NEXT flush, and the sync paths follow it
+   * from then on. Seeded from env/defaults so behaviour before the first flush is
+   * identical to pre-B1.
+   */
+  private lastAgenticContext: AgenticContextKnobs;
   private readonly enabled: boolean;
   private readonly minIntervalMs: number;
   private readonly durableSnapshotMs: number;
@@ -276,32 +333,25 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // (apps/api consultation module) supplies it. A trajectory failure is
     // fire-and-forget and can NEVER break the live flush (see recordFlushTrajectory).
     @Optional() @Inject(IAgentTrajectoryService) private readonly trajectoryService?: IAgentTrajectoryService,
+    // TASK-533 B1 — TASK-524's governed read facade for `agentic.context.*`.
+    // Optional + trailing so existing positional fixtures keep their arity; absent
+    // ⇒ env/code-default resolution, i.e. exactly the pre-B1 behaviour.
+    @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
-    // agentic.context.* effective resolution: an explicit
-    // env override wins, else the settings-registry code default. `LIVE_DOC_*`
-    // env keys are retained as the operational override lane (kill-switch aware);
-    // `agentic.context.*` is the canonical registry namespace surfaced via the
-    // control plane.
-    this.segmentThreshold = Number(
-      this.configService.get('LIVE_DOC_SEGMENT_THRESHOLD') ?? AGENTIC_CONTEXT_DEFAULTS['liveFlush.segmentThreshold'],
-    );
-    this.debounceMs = Number(this.configService.get('LIVE_DOC_DEBOUNCE_MS') ?? AGENTIC_CONTEXT_DEFAULTS['liveFlush.idleMs']);
-    this.contextLiveDeltaMaxChars = Number(
-      this.configService.get('AGENTIC_CONTEXT_LIVE_DELTA_MAX_CHARS') ?? AGENTIC_CONTEXT_DEFAULTS['liveDelta.maxChars'],
-    );
-    this.contextClaimCheckMinBytes = Number(
-      this.configService.get('AGENTIC_CONTEXT_CLAIM_CHECK_MIN_BYTES') ?? AGENTIC_CONTEXT_DEFAULTS['claimCheck.minBytes'],
-    );
-    this.contextTranscriptMode = (String(
-      this.configService.get('AGENTIC_CONTEXT_TRANSCRIPT_MODE') ?? AGENTIC_CONTEXT_DEFAULTS['transcript.mode'],
-    ) === 'windowed'
-      ? 'windowed'
-      : 'whole') as AgenticTranscriptMode;
-    this.contextTokenBudgetPerRun = Number(
-      this.configService.get('AGENTIC_CONTEXT_TOKEN_BUDGET_PER_RUN') ?? AGENTIC_CONTEXT_DEFAULTS['tokenBudget.perRun'],
-    );
+    // TASK-533 B1 — capture only the ENV OVERRIDES here. The effective values are
+    // resolved per call in `resolveAgenticContext` so a control-plane write lands
+    // on the next flush with no redeploy. `LIVE_DOC_*` keys stay supported as the
+    // operational lane, but they now LOSE to a stored registry value.
+    this.envSegmentThreshold = readNumericEnv(this.configService, 'LIVE_DOC_SEGMENT_THRESHOLD');
+    this.envDebounceMs = readNumericEnv(this.configService, 'LIVE_DOC_DEBOUNCE_MS');
+    this.envLiveDeltaMaxChars = readNumericEnv(this.configService, 'AGENTIC_CONTEXT_LIVE_DELTA_MAX_CHARS');
+    this.envClaimCheckMinBytes = readNumericEnv(this.configService, 'AGENTIC_CONTEXT_CLAIM_CHECK_MIN_BYTES');
+    this.envTokenBudgetPerRun = readNumericEnv(this.configService, 'AGENTIC_CONTEXT_TOKEN_BUDGET_PER_RUN');
+    const rawMode = this.configService.get('AGENTIC_CONTEXT_TRANSCRIPT_MODE');
+    this.envTranscriptMode = rawMode === undefined || rawMode === null ? undefined : toTranscriptMode(rawMode);
+    this.lastAgenticContext = this.envFallbackContext();
     this.heartbeatMs = Number(this.configService.get('LIVE_DOC_HEARTBEAT_MS') ?? 15000);
     // Kill-switch (P2): any value other than the literal 'false' keeps it on.
     this.enabled = String(this.configService.get('LIVE_DOC_ENABLED') ?? 'true') !== 'false';
@@ -515,7 +565,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     session.segmentCounter += 1;
     session.lastSegmentId = segment.segmentId ?? `seg-${session.segmentCounter}`;
 
-    if (session.pendingSegments >= this.segmentThreshold) {
+    if (session.pendingSegments >= this.lastAgenticContext.segmentThreshold) {
       this.clearTimer(session);
       void this.flush(consultationId);
     } else {
@@ -600,6 +650,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     session.lastFlushAt = Date.now();
     session.pendingSegments = 0;
 
+    // TASK-533 B1 — resolve the effective agentic.context.* knobs for THIS flush.
+    // Refreshing here (rather than at construction) is what makes the control plane
+    // real: a global admin's registry write governs the very next flush, with no
+    // redeploy. It also refreshes the snapshot the synchronous ingest/debounce
+    // paths read.
+    const agenticContext = await this.resolveAgenticContext(session.tenantId);
+
     // Supersede any in-flight generation: abort its HTTP calls and claim a new id.
     const myGeneration = ++session.generation;
     session.abortController?.abort();
@@ -620,38 +677,72 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // length, permanently losing the head. `deltaEnd === flushUpTo` in the common
     // (unbounded) case, so bounded deltas behave exactly as before.
     const flushUpTo = session.transcriptParts.length;
+    const windowed = agenticContext.transcriptMode === 'windowed';
     const deltaSegments: string[] = [];
     let deltaEnd = session.flushedTranscriptCount;
     let deltaLen = 0;
     let deltaTruncated = false;
-    for (let i = session.flushedTranscriptCount; i < flushUpTo; i++) {
-      const part = session.transcriptParts[i];
-      const separator = deltaSegments.length > 0 ? 1 : 0; // the joining space
-      // The `deltaSegments.length > 0` guard always admits the FIRST segment so the
-      // cursor can always advance (no stall). Consequence (M-4): the cap is a
-      // SOFT per-flush bound — a single segment larger than the cap is still sent whole.
-      if (deltaSegments.length > 0 && deltaLen + separator + part.length > this.contextLiveDeltaMaxChars) {
-        deltaTruncated = true;
-        break; // stop at the head boundary — the rest carries forward
+    let elidedParts = 0;
+
+    if (windowed) {
+      // TASK-533 B3 — windowed mode: take the most RECENT segments that fit.
+      //
+      // The prior SOAP note already carries everything older, so on overflow the
+      // oldest backlog largely re-describes what the note has while the NEWEST
+      // content is precisely what it lacks. Walk backwards from the tail, then
+      // restore chronological order for the prompt.
+      //
+      // The cursor advances over the WHOLE backlog (`deltaEnd = flushUpTo`):
+      // unlike `whole` mode there is no carry-forward, because a skipped head
+      // would only get older and lose again on the next flush. That is a real
+      // trade — elided transcript is not re-sent — so the prompt says so
+      // explicitly rather than presenting a partial window as the full encounter.
+      for (let i = flushUpTo - 1; i >= session.flushedTranscriptCount; i--) {
+        const part = session.transcriptParts[i];
+        const separator = deltaSegments.length > 0 ? 1 : 0;
+        if (deltaSegments.length > 0 && deltaLen + separator + part.length > agenticContext.liveDeltaMaxChars) {
+          deltaTruncated = true;
+          break;
+        }
+        deltaSegments.unshift(part);
+        deltaLen += separator + part.length;
       }
-      deltaSegments.push(part);
-      deltaLen += separator + part.length;
-      deltaEnd = i + 1;
+      elidedParts = flushUpTo - session.flushedTranscriptCount - deltaSegments.length;
+      deltaEnd = flushUpTo;
+    } else {
+      for (let i = session.flushedTranscriptCount; i < flushUpTo; i++) {
+        const part = session.transcriptParts[i];
+        const separator = deltaSegments.length > 0 ? 1 : 0; // the joining space
+        // The `deltaSegments.length > 0` guard always admits the FIRST segment so the
+        // cursor can always advance (no stall). Consequence (M-4): the cap is a
+        // SOFT per-flush bound — a single segment larger than the cap is still sent whole.
+        if (deltaSegments.length > 0 && deltaLen + separator + part.length > agenticContext.liveDeltaMaxChars) {
+          deltaTruncated = true;
+          break; // stop at the head boundary — the rest carries forward
+        }
+        deltaSegments.push(part);
+        deltaLen += separator + part.length;
+        deltaEnd = i + 1;
+      }
     }
+
     const delta = deltaSegments.join(' ').trim();
     if (deltaTruncated) {
       session.truncatedDeltaCount += 1;
       // PHI-safe: sizes/counts only — never transcript text.
       this.logger.warn({
-        message: 'Live summary transcript delta truncated — carrying overflow forward (C5-04)',
+        message: windowed
+          ? 'Live summary transcript windowed — older backlog elided (TASK-533 B3)'
+          : 'Live summary transcript delta truncated — carrying overflow forward (C5-04)',
         consultationId,
         truncatedDeltaCount: session.truncatedDeltaCount,
         deltaChars: delta.length,
         carriedForwardParts: flushUpTo - deltaEnd,
+        elidedParts,
       });
     }
     const priorNote = session.lastPayload?.runningSummary ?? '';
-    const promptText = this.buildSmrUserPrompt(priorNote, delta || transcript, notes);
+    const promptText = this.buildSmrUserPrompt(priorNote, delta || transcript, notes, elidedParts > 0);
 
     // SMR first (a structured S/O/A/P running note), then NER over the resulting
     // `runningSummary` (the canonical text the entity highlight offsets index — so it
@@ -1060,7 +1151,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     session.timer = setTimeout(() => {
       session.timer = undefined;
       void this.flush(session.consultationId);
-    }, this.debounceMs);
+    }, this.lastAgenticContext.idleMs);
   }
 
   /**
@@ -1294,9 +1385,17 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * whole transcript, keeping prompt size bounded; the first flush sends the delta
    * as the initial transcript.
    */
-  private buildSmrUserPrompt(priorNote: string, delta: string, notes: string): string {
+  private buildSmrUserPrompt(priorNote: string, delta: string, notes: string, elided = false): string {
     const notesBlock = notes ? `\n\nClinician notes / labs:\n${notes}` : '';
     const hasPriorNote = priorNote.trim().length > 0;
+    // TASK-533 B3 — in windowed mode an over-cap backlog drops its oldest part.
+    // Say so: a partial window presented as the whole encounter would invite the
+    // model to treat absent findings as absent from the visit. Appended AFTER the
+    // stable prefix, and only when something was actually elided, so both the
+    // prefix-cache-stable lead-in and the `whole`-mode prompt stay untouched.
+    const elisionBlock = elided
+      ? '\n\nNOTE: earlier transcript from this update was elided to fit the context window; the SOAP note above already reflects it. Do not treat its absence as new information.'
+      : '';
 
     // prefix-cache-friendly ordering:
     //   [stable system] + [transcript-so-far] + [current note] + [delta instruction]
@@ -1313,7 +1412,79 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       ? '\n\nUpdate the existing SOAP note above using ONLY the new transcript since the last update; keep prior content unless it is contradicted.'
       : '\n\nFrom the transcript and any clinician notes/labs above, produce the running SOAP note now.';
 
-    return LIVE_SOAP_STABLE_SYSTEM_PREFIX + transcriptBlock + currentNoteBlock + deltaInstruction + notesBlock;
+    return LIVE_SOAP_STABLE_SYSTEM_PREFIX + transcriptBlock + currentNoteBlock + elisionBlock + deltaInstruction + notesBlock;
+  }
+
+  /**
+   * Resolve the effective `agentic.context.*` knobs for `tenantId` (TASK-533 B1).
+   *
+   * Precedence, highest first:
+   *   1. a value STORED through the TASK-524 write route (`sourceScope: 'global-kv'`)
+   *   2. a `LIVE_DOC_*` / `AGENTIC_CONTEXT_*` env override
+   *   3. the descriptor code default (`AGENTIC_CONTEXT_DEFAULTS`)
+   *
+   * Env deliberately LOSES to a stored value: the registry is the control plane,
+   * and a knob a global admin can see in the catalog must be the knob that governs.
+   * When nothing is stored, (2)/(3) reproduce the pre-B1 behaviour exactly, so an
+   * untouched deployment is unaffected.
+   *
+   * Resolved PER CALL rather than cached on the instance — that constructor freeze
+   * is precisely what made the control plane decorative. The underlying facade
+   * reads an in-memory snapshot (`AppSettingsService`, refreshed on write and on a
+   * 45s cron), so six lookups per flush cost no I/O. NOTE: because that snapshot is
+   * per-instance, a write is immediate on the writing API instance and converges on
+   * others within one cron tick.
+   *
+   * Never throws: a settings-backend failure degrades to env/defaults, because this
+   * sits on the live flush path.
+   */
+  async resolveAgenticContext(tenantId: string): Promise<AgenticContextKnobs> {
+    const fallback = this.envFallbackContext();
+    if (!this.effectiveSettings) {
+      this.lastAgenticContext = fallback;
+      return fallback;
+    }
+
+    try {
+      const ctx = { tenantId };
+      const [delta, threshold, idle, claimCheck, mode, budget] = await Promise.all([
+        this.effectiveSettings.resolveEffective(`${AGENTIC_CONTEXT_KEY_PREFIX}liveDelta.maxChars`, ctx),
+        this.effectiveSettings.resolveEffective(`${AGENTIC_CONTEXT_KEY_PREFIX}liveFlush.segmentThreshold`, ctx),
+        this.effectiveSettings.resolveEffective(`${AGENTIC_CONTEXT_KEY_PREFIX}liveFlush.idleMs`, ctx),
+        this.effectiveSettings.resolveEffective(`${AGENTIC_CONTEXT_KEY_PREFIX}claimCheck.minBytes`, ctx),
+        this.effectiveSettings.resolveEffective(`${AGENTIC_CONTEXT_KEY_PREFIX}transcript.mode`, ctx),
+        this.effectiveSettings.resolveEffective(`${AGENTIC_CONTEXT_KEY_PREFIX}tokenBudget.perRun`, ctx),
+      ]);
+      const resolved: AgenticContextKnobs = {
+        liveDeltaMaxChars: storedNumber(delta) ?? fallback.liveDeltaMaxChars,
+        segmentThreshold: storedNumber(threshold) ?? fallback.segmentThreshold,
+        idleMs: storedNumber(idle) ?? fallback.idleMs,
+        claimCheckMinBytes: storedNumber(claimCheck) ?? fallback.claimCheckMinBytes,
+        transcriptMode: storedMode(mode) ?? fallback.transcriptMode,
+        tokenBudgetPerRun: storedNumber(budget) ?? fallback.tokenBudgetPerRun,
+      };
+      this.lastAgenticContext = resolved;
+      return resolved;
+    } catch (error) {
+      this.logger.warn({
+        message: 'agentic.context.* resolution failed — falling back to env/code defaults for this flush',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      this.lastAgenticContext = fallback;
+      return fallback;
+    }
+  }
+
+  /** The env-override → code-default knobs, i.e. the pre-B1 resolution. */
+  private envFallbackContext(): AgenticContextKnobs {
+    return {
+      liveDeltaMaxChars: this.envLiveDeltaMaxChars ?? AGENTIC_CONTEXT_DEFAULTS['liveDelta.maxChars'],
+      segmentThreshold: this.envSegmentThreshold ?? AGENTIC_CONTEXT_DEFAULTS['liveFlush.segmentThreshold'],
+      idleMs: this.envDebounceMs ?? AGENTIC_CONTEXT_DEFAULTS['liveFlush.idleMs'],
+      claimCheckMinBytes: this.envClaimCheckMinBytes ?? AGENTIC_CONTEXT_DEFAULTS['claimCheck.minBytes'],
+      transcriptMode: this.envTranscriptMode ?? AGENTIC_CONTEXT_DEFAULTS['transcript.mode'],
+      tokenBudgetPerRun: this.envTokenBudgetPerRun ?? AGENTIC_CONTEXT_DEFAULTS['tokenBudget.perRun'],
+    };
   }
 
   private async callSmr(
@@ -1326,10 +1497,15 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // tenant's effective {provider, model} via the HarnessPolicy cascade (NOT the
     // legacy LIVE_DOC_SMR_PROVIDER/MODEL env); fall back to env only when the
     // resolver is not wired (kept for non-DI construction paths).
+    //
+    // TASK-533 D-26 — this is the LIVE tier: ask for the 'smr.live' routing key so a
+    // global admin can point the low-latency running-note model at something smaller
+    // than the end-of-visit finalize model. Omitting the task argument defaults to
+    // 'finalize', which is what left `smr.live` inert despite being seeded+registered.
     let provider = this.smrProvider;
     let model = this.smrModel;
     if (this.harnessPolicyService) {
-      ({ provider, model } = await this.harnessPolicyService.resolveSmrSelection(tenantId));
+      ({ provider, model } = await this.harnessPolicyService.resolveSmrSelection(tenantId, 'live'));
     }
     // `response_format: json_schema` makes json-schema-capable providers return a
     // deterministic SOAP object (parsed by parseSoapJson); ollama ignores it so we
@@ -1760,12 +1936,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       updatedBy: this.engineConfigUpdatedBy ?? undefined,
       // the effective agentic.context.* knobs the loop reads.
       contextSettings: {
-        'liveDelta.maxChars': this.contextLiveDeltaMaxChars,
-        'liveFlush.segmentThreshold': this.segmentThreshold,
-        'liveFlush.idleMs': this.debounceMs,
-        'claimCheck.minBytes': this.contextClaimCheckMinBytes,
-        'transcript.mode': this.contextTranscriptMode,
-        'tokenBudget.perRun': this.contextTokenBudgetPerRun,
+        'liveDelta.maxChars': this.lastAgenticContext.liveDeltaMaxChars,
+        'liveFlush.segmentThreshold': this.lastAgenticContext.segmentThreshold,
+        'liveFlush.idleMs': this.lastAgenticContext.idleMs,
+        'claimCheck.minBytes': this.lastAgenticContext.claimCheckMinBytes,
+        'transcript.mode': this.lastAgenticContext.transcriptMode,
+        'tokenBudget.perRun': this.lastAgenticContext.tokenBudgetPerRun,
       },
     };
   }

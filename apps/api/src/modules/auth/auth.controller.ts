@@ -33,6 +33,7 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  Logger,
   NotFoundException,
   Post,
   Request,
@@ -79,6 +80,8 @@ const GLOBAL_ADMIN_ROLE = 'GLOBAL_ADMIN';
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(
     @Inject(IUserService) private readonly userService: IUserService,
     @Inject(IAuthService) private readonly authService: IAuthService,
@@ -151,26 +154,53 @@ export class AuthController {
   })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async login(@Body() request: LoginRequest, @Request() req: any): Promise<LoginResponse> {
+    // TASK-541 B1 — the audit row's failure reason. Set immediately before each
+    // throw and emitted once from the catch below, so there is a single
+    // emission site rather than one per rejection branch. Server-side only:
+    // the 401 RESPONSE stays deliberately uniform ('Invalid credentials' for
+    // both unknown-user and bad-password) so it is never an account oracle.
+    let failureReason = 'authentication_failed';
+    let failedUserId: string | undefined;
+
     try {
       if (!request.username || !request.password) {
+        failureReason = 'missing_credentials';
         throw new BadRequestException('Username and password are required');
       }
 
-      const user = await this.userRepository.findFirst({
-        filters: {
-          username: request.username,
-          resourceStatus: { equals: ResourceStatusType.ENABLED },
-        },
-        relations: { UserProfile: true },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any);
+      // TASK-541 B1 — `Repository.findFirst` THROWS `DataNotFoundException` on
+      // a miss (it never returns null), so the unknown-username case used to
+      // land in the catch-all below and answer 'Authentication failed' while a
+      // WRONG PASSWORD answered 'Invalid credentials'. That difference was a
+      // username-enumeration oracle, contradicting the stated intent of the
+      // identical-message rule further down. Normalising here makes both
+      // branches indistinguishable to the client while still recording
+      // distinct audit reasons server-side.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the repository's generic find props aren't narrowed to UserEntity here; the value is immediately guarded by the `if (!user)` below
+      let user: any;
+      try {
+        user = await this.userRepository.findFirst({
+          filters: {
+            username: request.username,
+            resourceStatus: { equals: ResourceStatusType.ENABLED },
+          },
+          relations: { UserProfile: true },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any);
+      } catch {
+        user = null;
+      }
 
       if (!user) {
+        failureReason = 'unknown_or_disabled_user';
         throw new UnauthorizedException('Invalid credentials');
       }
 
+      failedUserId = user.id;
+
       const isPasswordValid = await bcrypt.compare(request.password, user.password);
       if (!isPasswordValid) {
+        failureReason = 'invalid_password';
         throw new UnauthorizedException('Invalid credentials');
       }
 
@@ -179,6 +209,7 @@ export class AuthController {
       // so the response cannot be used as an account-type oracle for guessed
       // credentials, and no lastLoginAt/lastActiveAt stamp is written.
       if (user.isServiceAccount) {
+        failureReason = 'service_account_interactive_login';
         throw new UnauthorizedException('Service accounts cannot sign in interactively');
       }
 
@@ -199,6 +230,7 @@ export class AuthController {
         }
       } else {
         if (!request.tenantKey) {
+          failureReason = 'tenant_key_required';
           throw new BadRequestException('Tenant key is required for non-admin users');
         }
 
@@ -211,6 +243,7 @@ export class AuthController {
         const tenantRoleAssignment = await this.userRoleAssignmentService.findActiveAssignmentForUserInTenant(user.id, resolvedTenantId);
 
         if (!tenantRoleAssignment) {
+          failureReason = 'tenant_access_denied';
           throw new UnauthorizedException('User does not have access to the specified tenant');
         }
 
@@ -224,6 +257,7 @@ export class AuthController {
           const tenantDepartment = await this.userDepartmentService.findActiveDepartmentForUserInTenant(user.id, resolvedTenantId);
 
           if (!tenantDepartment) {
+            failureReason = 'tenant_access_denied';
             throw new UnauthorizedException('User does not have access to the specified tenant');
           }
         }
@@ -320,10 +354,64 @@ export class AuthController {
         ...(passwordExpired ? { passwordExpired } : {}),
       };
     } catch (error) {
+      // TASK-541 B1 — persist the rejected attempt (AuditLogService writes a
+      // LOGIN row with success=false). Fire-and-forget: an audit failure must
+      // never turn a 401 into a 500, and the handler swallows its own errors.
+      this.emitAuthenticationFailed({
+        userId: failedUserId,
+        attemptedUsername: request.username,
+        reason: failureReason,
+        endpoint: '/auth/login',
+        method: 'POST',
+        tenantKey: request.tenantKey,
+        req,
+      });
+
       if (error instanceof UnauthorizedException || error instanceof BadRequestException) {
         throw error;
       }
       throw new UnauthorizedException('Authentication failed');
+    }
+  }
+
+  /**
+   * TASK-541 B1 — emit the failed-authentication audit event.
+   *
+   * Deliberately carries only whitelisted, non-secret fields: the attempted
+   * username (never the password), a stable machine-readable reason slug
+   * (never the raw exception message, which could leak internals into the
+   * persisted row), and request provenance.
+   */
+  private emitAuthenticationFailed(params: {
+    userId?: string;
+    attemptedUsername?: string;
+    reason: string;
+    endpoint: string;
+    method: string;
+    tenantKey?: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Express request; only `.ip` and `.headers['user-agent']` are read, both optional
+    req?: any;
+  }): void {
+    // `EventEmitter2.emit` is SYNCHRONOUS, so a listener (or a downed event
+    // bus) throwing here would replace the caller's 401 with a 500 — turning
+    // an audit outage into an authentication outage, and handing attackers a
+    // way to distinguish failure modes. Contained unconditionally.
+    try {
+      this.eventEmitter?.emit(EventTypes.UserAuthenticationFailed, {
+        userId: params.userId,
+        attemptedUsername: params.attemptedUsername,
+        reason: params.reason,
+        endpoint: params.endpoint,
+        method: params.method,
+        tenantKey: params.tenantKey,
+        ip: params.req?.ip || '127.0.0.1',
+        userAgent: params.req?.headers?.['user-agent'] || 'Unknown',
+        timestamp: new Date(),
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to emit authentication-failure audit event (reason=${params.reason}): ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -715,18 +803,50 @@ export class AuthController {
     //   - returns the ORIGINAL session's userId, tenantId, jti, and family
     //   - deletes the record (single-use) and flags reuse for family-revoke
     //   - throws UnauthorizedException on miss / reuse (let it bubble up)
-    const consumed = await this.refreshTokenService.consume(body.refreshToken);
+    // TASK-541 B1 — a miss/reuse here is the single strongest token-theft
+    // signal the platform emits (RFC 6749 §10.4 family reuse), so it gets an
+    // audit row before the 401 bubbles up.
+    let consumed: Awaited<ReturnType<typeof this.refreshTokenService.consume>>;
+    try {
+      consumed = await this.refreshTokenService.consume(body.refreshToken);
+    } catch (error) {
+      this.emitAuthenticationFailed({
+        reason: 'refresh_token_rejected',
+        endpoint: '/auth/refresh',
+        method: 'POST',
+      });
+      throw error;
+    }
 
-    const user = await this.userRepository.findFirst({
-      filters: {
-        id: consumed.userId,
-        resourceStatus: { equals: ResourceStatusType.ENABLED },
-      },
-      relations: { UserProfile: true },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any);
+    // Same `findFirst`-throws contract as login(): without this the
+    // disabled-account branch below was unreachable, so the request surfaced
+    // a raw DataNotFoundException (mapped to 404) instead of the intended
+    // 401 — and emitted no audit row.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- same as login(): repository find props aren't narrowed to UserEntity, and the value is guarded by the `if (!user)` below
+    let user: any;
+    try {
+      user = await this.userRepository.findFirst({
+        filters: {
+          id: consumed.userId,
+          resourceStatus: { equals: ResourceStatusType.ENABLED },
+        },
+        relations: { UserProfile: true },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+    } catch {
+      user = null;
+    }
 
     if (!user) {
+      // The refresh token was valid but the account has since been disabled or
+      // deleted — the exact window TASK-541 A4's not-before stamp also covers
+      // for access tokens.
+      this.emitAuthenticationFailed({
+        userId: consumed.userId,
+        reason: 'user_disabled_or_missing',
+        endpoint: '/auth/refresh',
+        method: 'POST',
+      });
       throw new UnauthorizedException('User not found or disabled');
     }
 

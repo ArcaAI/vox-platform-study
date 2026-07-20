@@ -47,16 +47,12 @@ function buildHttpMock() {
 interface BuildDepsOpts {
   /** `LIVE_DOC_*` config overrides (read by the constructor via ConfigService.get). */
   config?: Record<string, unknown>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   redisSubscriber?: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   contextItemRepository?: any;
   // Shared cache mock — pass the SAME instance to two services to exercise the
   // cross-instance owner lock (C5-06).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   cacheService?: any;
   // TASK-356 D-7 — HarnessPolicy resolver override (defaults to a passing stub).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   harnessPolicyService?: any;
 }
 
@@ -100,19 +96,12 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
   };
 
   const service = new LiveDocumentationService(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     httpMock as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     configService as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     cacheService as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     redisSubscriber as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     audioBridge as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     contextItemRepository as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     harnessPolicyService as any,
   );
 
@@ -420,7 +409,6 @@ describe('LiveDocumentationService', () => {
       redisSubscriber.subscribeToChannel.mockResolvedValue(channel$.asObservable());
 
       const events: Array<{ data: string }> = [];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sub = service.subscribeToLiveSummary(CID).subscribe((e: any) => events.push(e));
 
       await new Promise((r) => setTimeout(r, 10));
@@ -546,8 +534,9 @@ describe('LiveDocumentationService', () => {
       await service.flush(CID);
 
       // Provider+model come from the policy cascade (keyed by the session tenant),
-      // not LIVE_DOC_SMR_PROVIDER/MODEL env.
-      expect(harnessPolicyService.resolveSmrSelection).toHaveBeenCalledWith(TENANT);
+      // not LIVE_DOC_SMR_PROVIDER/MODEL env. TASK-533 D-26: the live flush must ask
+      // for the LIVE tier ('smr.live'), not the default finalize tier.
+      expect(harnessPolicyService.resolveSmrSelection).toHaveBeenCalledWith(TENANT, 'live');
       const smrCall = httpMock.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/generate'))!;
       const body = smrCall[1] as { max_tokens?: number; provider?: string; model?: string; response_format?: { type?: string } };
       const config = smrCall[2] as { timeout?: number };
@@ -775,11 +764,9 @@ describe('LiveDocumentationService', () => {
      * dedup. Share one across instances.
      */
     function makeSharedRepo() {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rows: any[] = [];
       return {
         rows,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         create: vi.fn().mockImplementation((entity: any) => {
           rows.push(entity);
           return Promise.resolve(entity);

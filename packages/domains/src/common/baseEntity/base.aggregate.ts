@@ -2,11 +2,10 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { BaseEntity, IBaseEntity } from './base.entity';
 import { DomainEvent } from '../domainEvent';
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface BaseAggregateProps extends IBaseEntity {}
+export type BaseAggregateProps = IBaseEntity;
 
 export abstract class BaseAggregate extends BaseEntity {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- holds domain events of heterogeneous concrete prop types across every aggregate subclass; DomainEvent's generic parameter isn't variance-annotated, so `unknown` would reject assigning any concrete DomainEvent<X> into this array
   private _domainEvents: DomainEvent<any>[] = [];
 
   constructor(props: BaseAggregateProps) {
@@ -17,7 +16,7 @@ export abstract class BaseAggregate extends BaseEntity {
    * Adds a domain event to the aggregate root.
    * @param domainEvent Event to be added.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- accepts a DomainEvent of any concrete prop type, same reason as the `_domainEvents` field above
   protected addEvent(domainEvent: DomainEvent<any>): void {
     this._domainEvents.push(domainEvent);
   }

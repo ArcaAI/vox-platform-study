@@ -12,7 +12,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
 import { RateLimitingService, RateLimitResult } from '../rate-limiting.service';
-import type { RateLimitOptions } from '../../../../decorators/gateway-decorators';
+import type { RateLimitOptions } from '../rate-limiting.service';
 
 /**
  * Complete Redis pipeline mock matching ioredis interface.

@@ -1,6 +1,6 @@
 # TASK-533 — Agentic-Loop Completion: Defect Closure, Live Control Plane, Learning Loop & Enablement
 
-- **Status**: Pending
+- **Status**: Review — **533-A COMPLETE** (§9.1/§9.3) · **533-B COMPLETE** (B1–B6, §9.4) · 533-C owner/hardware-gated (C1/C2/C3 remain owner actions)
 - **Type**: feature / bugfix (Phase 6 of the agentic platform program)
 - **Program**: [2026-07-20 program plan](../SOTA-Track/2026-07-20-agentic-platform-program-plan.md) §Phase 6 · [2026-07-20 findings review](../SOTA-Track/2026-07-20-agentic-platform-review-findings.md) §3-E1, §7 GAP-A1…A9, D-22…D-28
 - **Suggested number**: TASK-533 per the program plan's allocation (TASK-523…534); confirm at open time per the CLAUDE.md ticket workflow.
@@ -247,11 +247,165 @@ Per touched lane: `pnpm --filter @arcaai/applications build test` · `pnpm build
 
 ## 9. Implementation Summary
 
-_Pending_
+### 9.1 Sub-scope 533-A — COMPLETE (D-22 … D-28)
+
+All eight items implemented TDD (RED evidence captured per item, §9.3). Zero new
+`workflow.patched` eras; `test_replay_compat` green throughout.
+
+| Item | Outcome | Key files |
+|---|---|---|
+| **A1/A2 · D-22** | **Closed both producer paths.** Streaming gained `StreamSession.build_transcript_segments()` — consumer-shaped `{idx,t0Ms,t1Ms,speaker,text,charStart,charEnd}` built from the SAME filter/strip/join rule as `build_transcript_text()`, so offsets are exact by construction (invariant `text[charStart:charEnd] == text` asserted). Attached at BOTH emit sites plus the outbox payload + re-drive (a queued transcript would otherwise land segment-less). Batch gained `TranscriptionResult.build_transcript_segments()`, joining `sentence_timestamps` (text+timing) to the VAD segments' diarization by **maximum temporal overlap**, sent on the TYPED `segments` field rather than smuggled through untyped `metadata`. Consumer `computeSegmentOffsets` now **normalizes** the legacy snake_case/seconds shape instead of nulling it, and reports genuinely-unusable segments through a new `onUnusable` callback that `persistTranscriptSegments` logs loudly. | `stt_v2/streaming/session.py`, `session_manager.py`, `core/api_client/gateway.py`, `transcription/dto.py`, `workers/transcribe_file.py`, `consultation/lib/transcript-segments.ts`, `stt/internal/sttInternal.service.ts` |
+| **A3 · D-23** | **Policy is now the authority.** Both consumers cached the env var at CONSTRUCTION; both now resolve `HarnessPolicy.warmStartEnabled` per call via `getEffectivePolicy`, with env demoted to the null-fallback (so an untouched deployment behaves byte-for-byte as before). `HarnessInternalService` threads its `tenantId` into `assemble()` so both gates agree. `HarnessPolicyServiceModule` added to `HarnessInternalServiceModule` (the only one of the four providing modules that lacked it). | `prompt/prompt-assembly.service.ts`, `harness/harness-internal.service.ts`, `harness-internal.service.module.ts` |
+| **A4 · D-24** | **All three breaks closed.** (1) `mcpToolsEnabled` added to `HarnessPolicyKnobs`, `entityToKnobs` (the actual leak — `KNOB_KEYS` already carried it at runtime via `HARNESS_POLICY_DEFAULTS`), both DTOs, and `GLOBAL_ADMIN_ONLY_POLICY_KEYS`. (2) `getEffectivePolicy` overlays `mcpServers` from the SYSTEM-shared `McpServer` registry through the existing `McpServerDtoMapper`, which already emitted the exact camelCase shape `McpServerConfig.from_api` parses; degrades to `[]` on registry failure. (3) `_resolve_mcp_token` is now async and calls the NEW gateway route `GET /internal/harness/mcp-token` — **no harness Vault client**, per §3.1. `authRef` is allowlisted against registered ENABLED rows, so it is not an arbitrary secret-path read. Console knob added. Flag stays default-OFF. | `harness-policy.service.ts` + both DTOs, `harness/harness-internal.service.ts`, `api/.../harness-internal.controller.ts`, `harness/services/api_client.py`, `harness/temporal/activities.py`, `agentic-knobs.ts`, `agentic-policy/api/types.ts` |
+| **A5 · D-25** | **Worse than the README recorded, and fixed accordingly.** The finalize path did not merely lack the repair retry — it never parsed JSON *at all*, so a malformed structured response was persisted VERBATIM as the clinical note the clinician signs. `callSmrService` now drives `generateJsonWithRepair` with a generic strict parse; storage semantics are byte-identical in every case except the malformed-JSON one. Cost fields (`inputTokens`/`outputTokens`/`processingTimeMs`) are summed across the ≤2 calls. New shared `parsesAsJsonObject` + `unfence` helper. | `summary/summary.service.ts`, `shared/bounded-json-repair.ts` |
+| **A6 · D-26** | One argument at the live-flush call site. Note the existing test at `live-documentation.service.test.ts:550` **pinned the defect** (`toHaveBeenCalledWith(TENANT)`) and was corrected as the RED step. | `live-documentation/live-documentation.service.ts:1332` |
+| **A7 · D-27** | **Deleted** (owner-approved; §9.2 DR-1). The 7 `otel_*` fields were not merely unread — they were **unreachable**: they required `HARNESS_OTEL_*` env vars, and the repo only ever defined bare `OTEL_*` (for stt-v2/smr). Per Completion Doctrine rule 1 the 5 never-imported OTel packages were dropped from `apps/harness/pyproject.toml` (keeping `opentelemetry-api`, which the inert `_add_otel_context` needs) and `uv lock` re-run — delta confined to the harness block, other services unaffected. | `harness/core/config.py`, `harness/pyproject.toml`, `uv.lock` |
+| **A8 · D-28** | **Guard added; defaults unchanged.** The harness had **no production indicator at all** — `debug` could not be inverted, since its `False` default cannot distinguish a deploy from unconfigured local dev. Added explicit `HARNESS_ENVIRONMENT` (default `development`) + a `@model_validator(mode="after")` on `Settings` (the file's first) that hard-errors on `production|prod|staging` + offload enabled + `store=memory`, plus an independent fail-fast check in `temporal/worker.py` before the Temporal connect, which warns in dev (where a second worker silently breaks cross-worker retries). Pre-existing `test_claim_check_config.py:40` (asserting the `memory` default) stays green — this is a guard, not a default change. | `harness/core/config.py`, `harness/temporal/worker.py`, `.env.example`, `apps/harness/.env.example`, `turbo.json` |
+
+### 9.2 Decision rows (deviations from §4 — recorded per §2.5 plan-conformance)
+
+| # | Decision |
+|---|---|
+| **DR-1** | **D-27 = delete** (§3.5 offered delete vs implement-minimal, "choose in-ticket with the owner"). Owner approved delete. Evidence hardening the choice beyond §2.6: the fields were unreachable by any env var in the repo, and 5 of the 6 installed OTel packages were never imported. Scope extended to those dependencies per Completion Doctrine rule 1. |
+| **DR-2** | **D-25's fix is larger than §4.1 A5 describes.** A5 said "mirror `generateJsonWithRepair`"; the finalize path had no JSON parse at all, so a strict parse + tolerant fallback had to be introduced alongside the retry. Shared helper `parsesAsJsonObject` added rather than duplicating a parse in the service. |
+| **DR-3** | **D-22 `charStart`/`charEnd` are producer-computed on the streaming path only.** §4.1 A1 specified shape `{idx,t0Ms,t1Ms,speaker,text}`; streaming additionally emits exact char offsets because that method owns the join rule, which removes ambiguity when an utterance repeats verbatim. Batch deliberately omits them (the ASR engine assembles that text, so guessing risks misattribution) and relies on the consumer's designed text-search path. |
+| **DR-4** | **D-24 policy plumbing needed `McpServerRepository` in two services, not one.** §4.1 A4 listed only the policy service; `resolveMcpToken` needs the same registry as its authRef allowlist, so `HarnessInternalService` takes it too. Both resolve from the already-imported `CoreDatabaseModule` — no module change required. |
+| **DR-5** | **Python test path deviation.** §5.1 named `apps/harness/src/harness/tests/test_mcp_token_resolver.py`; placed at `tests/unit/temporal/test_mcp_token_resolver.py` to match the existing layout (all temporal-activity tests live there). |
+| **DR-6** | **`_resolve_mcp_token` became async**, which broke 7 pre-existing tests in `test_mcp_tool_activity.py` that monkeypatched it with a sync lambda. Those stubs were updated to awaitables — orphans created by this change, per the surgical-change rule. |
+
+### 9.3 Gate evidence (all captured on the working tree)
+
+| Gate | Result |
+|---|---|
+| `pnpm --filter @arcaai/applications build` | ✅ clean `tsc` |
+| `pnpm --filter @arcaai/applications test` | ✅ **6611 passed**, 4 skipped (324 files) — up from 6575 pre-ticket |
+| `pnpm build:api` | ✅ 8/8 tasks successful |
+| `npx vitest run tests/contracts/` | ✅ **71 passed** (5 files, incl. the new `stt-transcript-segments` lock) |
+| harness `pytest src/harness/tests/` | ✅ **935 passed** (incl. `test_replay_compat` — all era fixtures green) |
+| stt-v2 `pytest tests/unit` | ✅ **2455 passed**, 1 skipped (pyannote absent) |
+| `pnpm py:harness:typecheck` (mypy) | ✅ no issues in 91 source files |
+| harness / stt-v2 `ruff check` | ✅ All checks passed (both) |
+| `pnpm --filter @arcaai/admin-console test` | ✅ **1081 passed** (140 files) |
+| `pnpm --filter @arcaai/admin-console build lint` | ✅ build OK; eslint `--max-warnings 0` clean |
+| `pnpm turbo lint` (applications, api) | ✅ api 0 errors; applications **156 warnings = the pre-existing baseline**. TASK-533 introduced exactly 2 prettier warnings (`transcript-segments.ts` signature, `harness-policy.service.ts` filter chain); both fixed, verified by the 158→156 delta. No package-wide reformat (surgical-change rule). |
+
+**RED-first evidence** (each item's failing run observed before implementing): D-26 `expected ["tenant-abc","live"], actual ["tenant-abc"]` · D-25 3 failed / 3 passed (the 3 passing cases documenting behaviour that had to be preserved) · D-28 9 failed / 11 passed · D-23 prompt-assembly 4 failed / 2 passed, harness-internal 5 failed · D-22 streaming 7 failed → batch 5 failed / 2 passed (streaming contract already matching the fixture) · D-24 policy 9 failed / 1 passed, token service 8 failed, Python resolver 7 failed.
+
+### 9.4 Sub-scope 533-B — B1–B6 COMPLETE
+
+**Status correction (2026-07-21).** This heading previously read "B1 + B4 COMPLETE;
+B2/B3/B5/B6 open" and was WRONG on three of the four: a verification pass over the
+working tree found **B2, B3 and B5 fully implemented with tests**, contradicted only
+by this summary table (the Change History rows below already described them). The
+stale line is recorded rather than quietly deleted, because a status table that
+disagrees with the tree is exactly what caused B6 to be re-planned from scratch
+twice. Evidence for the three:
+
+| Item | Evidence |
+|---|---|
+| **B2** | `agentic-context-tab.tsx:14-15` now documents READ/WRITE; `agentic-context-row.tsx`; `api/client.ts:80 putRegistrySetting` + `:86 putWithEtag`; `api/hooks.ts:53-54` mutation; 10 tests in `__tests__/agentic-context-tab.test.tsx` incl. 412 (`:149`), 428 (`:163`), axe (`:202`) |
+| **B3** | `live-documentation.service.ts:680` `transcriptMode === 'windowed'`, window walk `:687-720`, elision notice `:734-735`; 8 tests incl. the §3.3 byte-identical equivalence assertion (`__tests__/live-documentation.windowed.test.ts:90,99`) |
+| **B5** | new console feature `apps/admin-console/src/features/consultation-review/` + route `(console)/(tenant)/consultation-review/page.tsx`; `lib/transcript-highlights.ts` consumes `citationsMap`/`segmentId`; 8 + 11 tests. `apps/ui-playground` untouched (`git status` clean) |
+
+**Gates after B1+B4**: `@arcaai/applications` build clean, **6636 passed** (326 files) · `pnpm build:api` 8/8 · harness **955 passed** incl. all replay fixtures · mypy clean (91 files) · ruff clean · applications lint **153 warnings, BELOW the 156 pre-ticket baseline** (zero introduced).
+
+**Open decision rows for the remaining 533-B items:**
+
+| # | Decision |
+|---|---|
+| **DR-7** | **B2 ships without OCC (owner-approved).** §4.2 B2 and §5.2 both specify OCC `428/412` on the console write path — but TASK-524's `PUT /admin/settings/registry/:key` carries neither `@RequiresIfMatch()` nor `@ExpectedVersion()` and echoes no version/ETag, so a client cannot participate in conflict detection. It *does* compare-and-set internally, against a version read from a cache that can be up to 45s stale, so concurrent edits race and the loser sees an opaque failure. §4.4 assigns `settings-registry/**` to TASK-524 ("533 consumes only"), so fixing the route is out of this ticket's ownership. **Recommended follow-up on TASK-524**: add `If-Match` + a version echo to the registry write route, then revisit B2's OCC tests. |
+| **DR-7 · SUPERSEDED (2026-07-21)** | The row below states B2 shipped WITHOUT OCC. It shipped WITH client-side OCC: `api/client.ts:86 putWithEtag` sends `If-Match` when a version is known and degrades to a plain PUT when TASK-524's route echoes none, and the tab has 412/428 tests. The underlying TASK-524 gap (registry write route carries neither `@RequiresIfMatch()` nor a version echo) is REAL and the recommended follow-up on TASK-524 still stands — but B2 is not un-guarded. |
+| **DR-9** | **B6's few-shot retrieval consumes a narrow port, not the mining service.** §4.2 B6 says "UPDATE `prompt-assembly.service.ts`"; doing that by importing `GateEditMiningService` would couple prompt assembly to the mining implementation. Added `IGateEditExemplarRetriever` (symbol token, aliased `useExisting` onto the same instance) matching the module's existing `IPhiRedactor`/`IGateEditMiningQueue` port idiom. Absent ⇒ zero-shot, so an unwired deployment produces the pre-B6 prompt byte-for-byte. |
+| **DR-10** | **Corpus export needed a new repository method.** `findTopForRetrieval` requires a `qualitySignal`; a regression corpus needs BOTH signals (the heavily-edited rows are the regressions). Added `findForCorpusExport` with an OPTIONAL signal rather than calling the retrieval query twice. |
+| **DR-11** | **Export PROPAGATES store failures; retrieval swallows them.** Deliberate asymmetry: retrieval sits on the generation path where degrading to zero-shot is correct, but a silent `[]` on an admin export reads as "no candidates to review" — a false negative on a governance surface. |
+| **DR-12** | **B4 was incomplete at a third regen site.** §9.4.1 claimed the budget stop was "an extra conjunct on the two EXISTING branches". `workflows.py` has THREE `regens_used < gate.max_regen` branches; the post-delivery Q1 rerun carried neither the conjunct nor token accounting, so a budget-exhausted run could buy one more generate and under-report its spend. Both fixed, with a structural guard test that fails for any FOURTH regen site added later. Still zero new `workflow.patched` eras — the change only prevents scheduling, and old histories carry no stats (spend 0 ⇒ never stopped). |
+| **DR-8** | **B5 will create a new console screen without an approved Figma frame** (owner override of rule 12 gate 2). §2.8 flagged the target as unverified; there is no production consultation-review screen in `admin-console`. Owner directed a new `(tenant)` feature folder + route. Recorded because the design gate is normally a hard blocker. |
+
+### 9.4.1 B1 + B4 detail
+
+| Item | Outcome |
+|---|---|
+| **B1 · `agentic.context.*` live lane** | **The control plane is now real.** Live-doc resolved all six knobs from `env ?? AGENTIC_CONTEXT_DEFAULTS` **in its constructor**, so a global admin's registry write moved what `GET /admin/settings/registry` reported and moved *nothing* in the running loop — and even the env value needed a redeploy. New `resolveAgenticContext(tenantId)` resolves all six through TASK-524's `EffectiveSettingsService` on **every flush**. Precedence is **stored → env → code default**: env deliberately LOSES to a stored value (§5.2's "env now loses to DB"), while an untouched deployment behaves byte-for-byte as before. The two SYNCHRONOUS consumers (`ingestSegment`'s threshold, `scheduleFlush`'s debounce) read a snapshot refreshed by each resolution — which yields exactly the promised contract: a registry change is picked up by the **next flush**. Degrades to env/defaults on any facade failure (live flush must never block on governance). Wrong-typed stored values are ignored rather than becoming `NaN` on the hot path. 11 new tests. |
+
+**Findings that corrected the plan's assumptions about TASK-524:**
+
+- The facade API is `resolveEffective(key, ctx)` — **single-key, no batch, `tenantId` required**. Six knobs = six lookups; they run `Promise.all` against an in-memory snapshot, so no I/O per flush.
+- **Cross-instance convergence is eventual, not immediate.** The snapshot (`AppSettingsService`) is refreshed explicitly on write — but only on *the writing API instance* — and otherwise by a **45s cron**. TASK-524 broadcasts `ResourceUpdated` on write and **nothing subscribes to it**. So a registry write is instant on one instance and up to ~45s stale on others. This is a TASK-524 property, not something B1 introduced; recorded here because the "no redeploy" promise holds but is not instantaneous fleet-wide. A sys-event subscriber that invalidates the snapshot would close it (suggested follow-up, not owned here).
+- Three of the six knobs (`claimCheck.minBytes`, `transcript.mode`, `tokenBudget.perRun`) still have **no consumer** — they are resolved and reported but govern nothing until B3/B4 land. `getEngineConfig()` previously described all six as "the effective knobs the loop reads", which was inaccurate for those three; it now reports the resolved snapshot.
+
+| **B4 · token/$ budget** | **The numerator already existed and was being discarded.** `SmrGenerationResult.stats` carries token counts, the harness forwards it verbatim onto every LLM_CALL step, and `AgentTrajectoryStep.stats` persists it — but `parseGenerationStats` read only `ttft_ms`/`tokens_per_second`/`stop_reason` and dropped the rest, so a stats block carrying *only* tokens parsed to `null` and the step counted toward nothing. Now: tokens are read (flat, camelCase, and the nested `usage` shape), `aggregateGenerationStats` returns `promptTokensTotal`/`completionTokensTotal`/`totalTokens` + `estimatedCost`/`currency`, and new `getRunTokenSpend` / `checkRunBudget` sum a run keyed by `(tenantId, sessionId, runId)`. $-cost comes from a price book passed as data (`AiModel.metaData.pricing`) — **no migration**, and an unpriced model contributes nothing rather than a fabricated number. Budget is served to the worker on the effective policy (`tokenBudgetPerRun`, resolved from `agentic.context.tokenBudget.perRun`) so the worker needs no second round trip. **Workflow stop is replay-safe by construction**: spend is folded from *recorded activity outputs* (`generated.stats`) and the stop is an extra conjunct on the two EXISTING `regens_used < gate.max_regen` branches — taking an existing branch emits no command, so **zero new `workflow.patched` eras**. `perRun = 0` ⇒ unbounded (the shipped default), and an old history with no stats yields zero spend, so the loop is byte-identical to pre-B4. 14 TS + 20 Python tests. |
+
+**Regression caught by the replay gate:** the first cut of the gate-config wiring referenced `gate.token_budget_per_run` inside the statement *assigning* `gate` — an `UnboundLocalError` that surfaced only as a replay failure (`test_post_mcp_history_replays_on_current_definition`). The house pattern is `inp.gate.*` for per-field fallthrough; corrected. Worth recording because a full-suite run made *before* that edit was green — the replay fixtures are the gate that caught it.
+
+
+### 9.4.2 B6 · gate-edit mining (GAP-A1) — detail
+
+**The loop is closed end to end.** Signal → mining job → redacted store → two
+consumers, with the SME gate in the payload rather than in the docs.
+
+| Piece | Outcome |
+|---|---|
+| **Mining** | `GateEditMiningService.mineFromGateDecision` derives edit-burden scalars via the existing `computeEditBurden`, classifies into `APPROVED_CLEAN` (≤5% edited) / `HEAVILY_EDITED` (≥30%), and deliberately does NOT mine the ambiguous middle band. Idempotent on `(tenantId, consultationId)`; never throws into its caller (a learning-loop failure must not fail a sign-off). |
+| **Redaction (fail-closed)** | `IPhiRedactor` is a narrow port. A redactor that throws, returns empty, OR returns its input unchanged on text still matching a direct-identifier pattern all DROP the candidate. No redactor wired ⇒ nothing is ever mined — the failure mode is an empty store, never an unredacted one. |
+| **Retrieval (consumption b)** | `PromptAssemblyService.buildFewShotExemplarBlock` injects ≤3 `APPROVED_CLEAN` notes as a versioned style block, placed with the template content and BEFORE the transcript so the prefix cache still hits. Framed explicitly as OTHER patients' notes — an unlabelled block is a fabrication vector. No exemplars / retrieval outage / unwired service all yield the byte-identical zero-shot prompt. |
+| **Export (consumption a)** | `exportCorpusCandidates` + `GET /admin/harness/gate-edit-exemplars`. Payload carries `reviewStatus: 'PENDING_SME_REVIEW'` and rows are projected field-by-field (never spread from the entity, so a future column cannot leak into an export). Omitting `qualitySignal` returns both signals. Limit defaulted at the route (100) and hard-capped in the service (500). |
+| **Wiring** | Barrel `services/index.ts` → `./gate-edit-mining`; `GateEditMiningServiceModule` aliases `IGateEditExemplarRetriever` `useExisting` onto the same instance; `HarnessAdminModule` imports it. The mining service was previously unreachable from any running process — exported from nothing, imported by nobody. |
+
+**Constructor-position hazard (recorded because it has bitten twice):**
+`HarnessAdminController` is constructed POSITIONALLY in its unit tests. The new
+service is APPENDED as the last parameter and the test build helper was updated in
+the SAME change; inserting mid-list silently shifts `cls` and fails ~35 unrelated
+specs with `this.cls.get is not a function`. A comment at the constructor says so.
+
+**Recovery note.** The module had been deleted by a concurrent session and was
+recorded here as unrecoverable after git, the index, turbo caches, editor history
+and Trash were all searched. It was recovered verbatim from the Claude Code session
+transcripts (`~/.claude/projects/**/*.jsonl`), which retain every `Write`/`Edit`
+tool input and every `cat > … <<'EOF'` heredoc. Only `exportCorpusCandidates`, the
+export route, the few-shot hook and the wiring were genuinely new work.
+
+**Schema drift — OWNER DECISION OPEN.** The live dev DB carries
+`GateEditExemplar_tenant_consultation_unique` (UNIQUE) plus a
+`tenant_department_idx`, from the migration as originally applied. The migration
+file and `harness.prisma` as they now stand declare only a plain
+`@@index([tenantId, consultationId])`. The miner's idempotency is a read-then-write
+(`findByConsultation`), which is race-safe ONLY under the UNIQUE constraint — two
+concurrent jobs for one consultation can both miss and both insert without it.
+Recommend restoring `@@unique([tenantId, consultationId])` to the schema so it
+matches the deployed database.
+
+**Gates (this pass):** `@arcaai/domains` build clean · **1373 passed** ·
+`@arcaai/applications` build clean · **6669 passed** (331 files) · `pnpm build:api`
+8/8 · `pnpm test:unit` **16947 passed** (969 files) · harness **957 passed** incl.
+every `test_replay_compat` era fixture · ruff clean · mypy clean (91 files) ·
+turbo lint 0 errors, and 0 warnings attributable to this ticket's files (the
+applications total moved 153 → 350 because the in-flight
+TASK-540-Eslint-Suppression-Debt added `eslint-comments/require-description`; the
+three directives flagged in `prompt-assembly.service.ts` are present verbatim in
+`HEAD`).
+
+**RED-first evidence:** few-shot 3 failed → 6662 passed · corpus export 7 failed →
+6669 passed · export route 4 failed / 53 passed → 58 passed · B4 third-branch guard
+2 failed (`_regen_compute() at line(s) [1133] does not accumulate tokens_used`)
+→ 957 passed after the fix.
+
+### 9.5 Not done in 533-A (carried)
+
+- **533-C (C1/C2/C3)** — unchanged: owner/hardware-gated. C1's eval-CI hard-fail flip needs a green `harness-eval-gate` on a real judge backend; C2 is the SME assignment; C3 is the per-flag enablement matrix, one measurement gate per flip.
+- **`agentic.context.claimCheck.minBytes` still has NO consumer.** §9.4.1 listed three consumerless knobs; `transcript.mode` (B3) and `tokenBudget.perRun` (B4) now govern real behaviour, but `minBytes` is resolved (`live-documentation.service.ts:1462`) and only reported (`:1942`). It is a knob a global admin can move that changes nothing — the same defect class as D-23. Not in any 533 sub-scope; needs its own ticket or an explicit removal.
+- **B6 few-shot measurement gate.** The block is wired and default-ON when exemplars exist. §6's measurement discipline (edit-burden / groundedness unchanged-or-better) has NOT been run for it — no mined corpus exists yet on any environment. Recommend treating the first tenant enablement as a measured flip.
+- **`test_token_budget.py` path deviation** — §5.2 names `apps/harness/src/harness/tests/test_token_budget.py`; it lives at `tests/unit/temporal/test_token_budget.py`, matching the layout DR-5 already established for temporal tests.
+- **Runtime proof of the D-22 chain against live infra** (§6 bullet 2: "demonstrated once against local live infra") is **owner-taken** — it needs a real streamed consultation through Postgres + Redis + the harness worker. The contract chain is locked statically end-to-end (Python producer → shared fixture → TS consumer → `resolveSegmentIdForOffset`), but no live run was performed in this session.
+- **D-23/D-24/D-26 console-toggle-without-redeploy proof** (§6 bullet 3) likewise needs a running stack; the per-call resolution is asserted in unit tests (`getEffectivePolicy` called once per `assemble`, value change observed without reconstruction).
 
 ## 10. Change History
 
 | Date | Change |
 |---|---|
 | 2026-07-20 | Ticket README authored from the 2026-07-20 program review (Phase 6): pre-verified D-22/D-23/D-24 evidence integrated; D-25/D-26/D-27/D-28, 533-B surfaces (agentic-context env fallback, read-only console tab, trajectory GenerationStats, ui-playground click-to-source components, gate-decision/RAW-MODIFIED/edit-burden sources) and 533-C surfaces (eval-gate `allow_failure` :506, golden-set owner unassigned) independently re-verified with file:line. Frozen designs: gateway MCP token resolution, trajectory-spine budget accounting, TS-side windowing, redact-at-write mining store, zero-new-patch-era replay posture. |
+| 2026-07-21 | **533-B B1 + B4 implemented TDD and gate-verified** (§9.4). B1 connected the `agentic.context.*` control plane to the running loop (stored → env → code default, resolved every flush); B4 surfaced token/$ accounting from data already persisted and added a replay-safe per-run budget stop. Decision rows DR-7 (B2 ships without OCC — TASK-524's registry write route is unversioned; follow-up recommended there) and DR-8 (B5 new screen without a Figma frame — owner override of rule 12 gate 2) recorded. Two TASK-524 properties surfaced that the plan did not anticipate: the effective facade is single-key with a required `tenantId` (no batch), and its snapshot converges across API instances only on a 45s cron because the `ResourceUpdated` it broadcasts on write has no subscriber. |
+| 2026-07-21 | **533-A implemented TDD and gate-verified** — D-22…D-28 all closed; summary, decision rows DR-1…DR-6 and gate evidence in §9. Six §2 corrections found during implementation and folded into §9: the harness service path is `consultation/**harness/**harness-internal.service.ts`; the D-27 block is at `config.py:414-422` (not :396-402) and ships 6 installed OTel packages; D-25's finalize path never parsed JSON at all (worse than "lacks the repair fallback"); D-24's unpatchability came from `entityToKnobs`, not `KNOB_KEYS` (which already carried the field at runtime) and `McpServer` lives in `mcp-server.prisma`, not `harness.prisma`; D-28 had NO production indicator to guard on, requiring a new explicit `HARNESS_ENVIRONMENT`; and `live-documentation.service.test.ts:550` actively pinned the D-26 defect. Operational note for future work in this area: `live-documentation.service.ts:1424` contains a literal NUL byte, so ripgrep classifies the file as binary and silently skips it — use `/usr/bin/grep` or `-a`. |
 | 2026-07-20 | Program plan §2.5 **Completion & Cleanup Doctrine** adopted as BINDING for this ticket (owner directive): incorrect implementations in the owned surface are removed completely with the fix; partial implementations are finished end-to-end (or explicitly retired); redundant implementations are converged and deleted. Reviewer enforces the §2.5 classification table, plan-conformance (deviations = recorded decision rows), full-closure traceability of the claimed GAP/D/M IDs, and the performance gates. |
+| 2026-07-21 | **B6 partial RECOVERY after accidental deletion by a concurrent agent.** An agent deleted the `GateEditExemplar` domain layer, the `task_533_gate_edit_exemplar` migration, the `packages/applications/src/services/gate-edit-mining/` module, and reverted the `harness.prisma` model / `ResourceType` / registration edits — none of it staged, so `git fsck` found **zero** dangling objects and git-based recovery was impossible. The **domain layer was recovered near-verbatim from surviving `packages/domains/dist` artifacts** (`.js` + `.d.ts`): exact field list, `validate()` body, both repository query methods (`findByConsultation`, `findTopForRetrieval`), and the mapper's `FIELDS_NOT_WRITABLE = ['version']` OCC guard. Restored in this pass: Prisma model (append-only, soft-delete exempt), migration (enum add is `IF NOT EXISTS` — a prior applied-then-reverted attempt left the label on some dev DBs and Postgres cannot drop enum values), all five domain files + barrels, `CoreDatabaseModule` registration, `TENANT_SCOPED_MODELS` (56) and `MODELS_WITHOUT_SOFT_DELETE`. Verified live: create injects tenantId, reads skip the soft-delete filter, cross-tenant read returns null. Suites green — database 853 · domains 1373 · applications 6633 · api 2389. **STILL OUTSTANDING: the `gate-edit-mining` service module itself is unrecoverable** (absent from git, index, turbo cache, editor history and Trash) and must be re-implemented from §3.4/B6 — mining job, PHI redactor (fail-closed), queue wiring, corpus-export route, and few-shot retrieval in `prompt-assembly.service.ts`. |
+| 2026-07-21 | **B6 mining module FULLY RECOVERED from session transcripts** — supersedes the "unrecoverable" verdict in the row above. The prior pass searched git, index, turbo cache, editor history and Trash, but not the Claude Code JSONL transcripts under `~/.claude/projects/`, which retain every `Write`/`Edit` tool input and every `cat > … <<'EOF'` heredoc verbatim. Recovered and re-staged: `gate-edit-mining.service.ts`, `.processor.ts`, `.service.module.ts`, `IPhiRedactor.ts`, `IGateEditMiningQueue.ts`, `index.ts`, `__tests__/gate-edit-mining.service.test.ts` (suite GREEN on restore), plus `live-documentation.windowed.test.ts` (green) and `prompt-assembly.few-shot.test.ts` (RED by design — see below). Also established: the domain trio on disk is byte-identical to the transcript originals, and the `TASK-540-*` doc + `*.task540.test.ts` files were not lost but **renumbered to TASK-541**, so their deletion was correct cleanup, not data loss. **Still genuinely absent (never written, not lost):** the few-shot retrieval in `prompt-assembly.service.ts` and the corpus-export route on `harness-admin.controller.ts` — zero trace in any transcript, so B6 stopped at TDD-red for those. `prompt-assembly.few-shot.test.ts` is therefore a legitimate failing test pending implementation, not a regression. **Schema drift to resolve:** the rewritten `migration.sql` and `harness.prisma` declare `@@index([tenantId, consultationId])`, but the LIVE dev DB carries `GateEditExemplar_tenant_consultation_unique` (UNIQUE) plus a `tenant_department_idx` from the original migration. The recovered miner's idempotency is a read-then-write (`findByConsultation`), which is race-safe only under the UNIQUE constraint — owner decision needed on whether to restore `@@unique`. |
+| 2026-07-21 | **B6 COMPLETED and 533-B closed; §9.4 status table corrected.** Full-ticket review this pass, not a B6-only pass. (1) The mining module was recovered verbatim from Claude Code session transcripts (see §9.4.2) — the earlier "unrecoverable" verdict was a false negative from not searching them. (2) Genuinely NEW work: `exportCorpusCandidates` + `findForCorpusExport` repository query, `GET /admin/harness/gate-edit-exemplars`, the `IGateEditExemplarRetriever` few-shot hook in `prompt-assembly.service.ts`, and the wiring that made the module reachable at all (barrel + module alias + `HarnessAdminModule`) — all TDD, RED evidence in §9.4.2. (3) **§9.4's status line was wrong**: B2, B3 and B5 were already implemented with tests and are now recorded as such, and DR-7 is superseded (B2 DOES carry client-side OCC). (4) **B4 defect found and fixed** (DR-12): a third regen branch (`workflows.py`, post-delivery Q1 rerun) neither consulted `budget_stopped` nor accounted its own tokens, so a budget-exhausted run could buy one more generate and under-report spend; a structural guard now fails for any future regen site that skips the budget. Replay fixtures green throughout, zero new `workflow.patched` eras. (5) Two items surfaced for owner decision: the `GateEditExemplar` UNIQUE-vs-plain-index drift between the live DB and the schema, and `claimCheck.minBytes` still governing nothing. Verification of 533-A (D-22…D-28) and the §4.4 comment ledger re-run this pass: all twelve claim rows and all six comment deltas confirmed present — nothing was lost in the concurrent-session cleanup. |

@@ -30,13 +30,10 @@ vi.mock('../../../../mappers', () => ({
 
 vi.mock('../../../../common/unitsOfWork/core', () => ({ CoreUnitOfWorkService: vi.fn() }));
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const makeUow = (delegateByModel: Record<string, any>) => ({ getDatabaseService: () => delegateByModel });
 
 describe('AudioRecordingRepository.sumDurationForTenant (TASK-414)', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let delegate: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let repo: any;
 
   beforeEach(async () => {
@@ -65,9 +62,7 @@ describe('AudioRecordingRepository.sumDurationForTenant (TASK-414)', () => {
 });
 
 describe('SummaryMetaRepository.countGeneratedSince (TASK-414)', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let delegate: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let repo: any;
 
   const since = new Date('2026-01-01T00:00:00.000Z');
@@ -98,9 +93,7 @@ describe('SummaryMetaRepository.countGeneratedSince (TASK-414)', () => {
 });
 
 describe('MediaRepository.sumSizeForTenant (TASK-414)', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let delegate: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let repo: any;
 
   beforeEach(async () => {
@@ -129,9 +122,7 @@ describe('MediaRepository.sumSizeForTenant (TASK-414)', () => {
 });
 
 describe('TenantBucketRepository.sumConfiguredQuotaBytes (TASK-414)', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let delegate: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let repo: any;
 
   beforeEach(async () => {

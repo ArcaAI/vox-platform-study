@@ -13,13 +13,11 @@
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { axe } from 'vitest-axe';
-import * as axeMatchers from 'vitest-axe/matchers';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 import type { Pipeline } from '../../api/types';
 import { AudioPipelinesScreen } from '../audio-pipelines-screen';
 
-expect.extend(axeMatchers);
 
 vi.mock('sonner', () => ({
     toast: { success: vi.fn(), error: vi.fn() },

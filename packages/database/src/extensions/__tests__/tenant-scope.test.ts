@@ -110,6 +110,10 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // writes) → 54. TASK-524 added the config-plane core pair
     // AiProviderConnection (per-(tenant,provider) endpoint + BYO ciphertext)
     // and AiRuntimeProfile (per-(provider,modelSlug) hyperparameters) → 56.
+    // TASK-539 finding S-3 REMOVED ApiKey → 55: it is read pre-auth by the
+    // API-key authentication lookup, so it can never carry a CLS tenant (see
+    // INTENTIONALLY_UNSCOPED below for the full justification).
+    // TASK-533 B6 added the gate-edit mining store GateEditExemplar → 56.
     // (The drift guard below is the durable check; this count
     // stays as a quick human-readable tripwire.)
     expect(TENANT_SCOPED_MODELS.size).toBe(56);
@@ -128,6 +132,35 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     for (const global of ['Tenant', 'User', 'Role', 'Policy', 'RolePolicy']) {
       expect(TENANT_SCOPED_MODELS.has(global)).toBe(false);
     }
+  });
+
+  // TASK-539 finding S-3 — regression guard.
+  //
+  // API-key authentication must read `ApiKey` by keyHash BEFORE any principal
+  // (and therefore any tenant) exists. Inside an HTTP request CLS is active but
+  // empty, so `getTenantId()` is undefined AND `isSuperAdmin()` is false — the
+  // combination that makes `makeReadHandler` THROW. When `ApiKey` was scoped,
+  // that throw was swallowed by `getByKeyHash`'s bare catch and surfaced as
+  // 401 "Invalid API key", breaking every API-key principal in the platform.
+  // Same failure mode as the pre-auth throttler read that made
+  // `TenantEntitlement` INTENTIONALLY_UNSCOPED.
+  it('does NOT scope ApiKey — it is read pre-auth, before any tenant exists', () => {
+    expect(TENANT_SCOPED_MODELS.has('ApiKey')).toBe(false);
+    expect(isTenantScopedModel('apiKey')).toBe(false);
+  });
+
+  it('lets a pre-auth ApiKey lookup through when CLS is active but empty', async () => {
+    // Exactly the API-key auth context: CLS active, no user resolved yet.
+    const cfg = captureExtensionConfig({
+      getTenantId: () => undefined,
+      isSuperAdmin: () => false,
+    });
+    const query = vi.fn().mockResolvedValue({ id: 'key-1' });
+    const args = { where: { keyHash: 'deadbeef' } };
+
+    await expect(cfg.query.$allModels.findFirst!({ model: 'ApiKey', args, query })).resolves.toEqual({ id: 'key-1' });
+    // The where clause must reach Prisma untouched — no tenantId injected.
+    expect(query).toHaveBeenCalledWith({ where: { keyHash: 'deadbeef' } });
   });
 
   it('includes the user↔tenant membership join tables (TASK-305 Phase F)', () => {
@@ -199,6 +232,30 @@ describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
     // `tenantId` (`findByTenant`), the row carries no PHI, and the only
     // write surface is the GLOBAL_ADMIN-gated admin controller.
     'TenantEntitlement',
+    // TASK-539 finding S-3 — API-key AUTHENTICATION reads this table by
+    // `keyHash` before any principal exists, so it can never have a CLS
+    // tenant. Inside an HTTP request CLS is active but empty, which is
+    // `tenantId === undefined` AND `isSuperAdmin() === false` — the exact
+    // combination `makeReadHandler` throws on. `ApiKeyService.getByKeyHash`
+    // swallowed that throw in a bare `catch { return null }`, so EVERY API
+    // key on the platform authenticated as 401 "Invalid API key". Identical
+    // root cause to the pre-auth throttler read above; `User` and `Tenant`
+    // (the password-login equivalents) are unscoped for the same reason,
+    // which is why password login worked while API keys did not.
+    //
+    // Isolation still holds — it is enforced one layer up, in
+    // `apikey.service.ts`, on EVERY read path:
+    //   - list paths go through `buildTenantWhere` (injects the caller's CLS
+    //     tenantId; throws NotFound for a non-super-admin with no tenant),
+    //   - `fetchAllByTenantId` rejects a foreign `tenantId` unless the caller
+    //     is GLOBAL_ADMIN (TASK-305 D.5.2 / audit M-1 — added precisely to
+    //     stop a Tenant-A admin enumerating Tenant-B keys),
+    //   - every `findById` is immediately followed by `assertKeyAccess`,
+    //     which compares `apiKey.tenantId` to the caller's CLS tenant.
+    // The only unguarded read is `getByKeyHash`, which is the authentication
+    // lookup itself: it matches on a unique, cryptographically random secret,
+    // and the row it returns is what ESTABLISHES the tenant context.
+    'ApiKey',
   ]);
 
   /** Every `model X { … tenantId String … }` declared across db_main/*.prisma. */
@@ -525,9 +582,13 @@ describe('Missing tenantId behaviour', () => {
   it('throws on tenant-scoped read when getTenantId returns undefined and isSuperAdmin omitted', async () => {
     const config = captureExtensionConfig({ getTenantId: () => undefined });
 
+    // Uses `Webhook` (a genuinely tenant-scoped model). This assertion used to
+    // name `ApiKey`, which TASK-539 finding S-3 moved to INTENTIONALLY_UNSCOPED
+    // — keeping it here would have asserted the very throw that broke API-key
+    // authentication.
     await expect(
       config.query.$allModels.findFirst({
-        model: 'ApiKey',
+        model: 'Webhook',
         args: { where: {} },
         query: vi.fn(),
       }),

@@ -418,11 +418,35 @@ Gates: `py:harness:test` **886 passed** · lint **All checks passed** · typeche
 
 ### 9.8 Open / not done
 
-- **Test DB `ALTER TYPE` not applied** — server down this session (§9.1). Re-run when the test stack is up, or let `db push` recreate it.
-- **stt-v2 integration-lane MinIO test not authored** (§5.2 mentions one against the real test MinIO on :9002). The test infra was down, so an unrunnable test would have been unverifiable — deliberately not written blind. The hermetic stub-seam suite covers the logic.
-- **E2E specs under `apps/api/tests/e2e/` not authored** (§5.4 marks them "executed in TASK-534"); they were not written this pass.
+- **E2E specs under `apps/api/tests/e2e/` not authored** (§5.4 marks them "executed in TASK-534"); they were not written this pass. Owner has explicitly deferred all end-to-end work (2026-07-20).
 - **`modelWeights` contract** remains TASK-525's to deliver (§9.6).
-- **The `/health` schema test** is TASK-525's to update (§9.3).
+
+### 9.9 Post-infra closure pass (2026-07-20, after the owner reset databases + secrets)
+
+The three infra-gated items from §9.8 were closed once the dev/test stacks were up:
+
+| Item | Resolution | Evidence |
+|---|---|---|
+| Test DB `ALTER TYPE` | **Closed — no patch needed.** The owner's reset re-applied schema from the Prisma files, so both DBs already carry the value. | `AiModelSource` = `HUGGINGFACE,GITHUB,MLFLOW,LOCAL,S3` on dev (`hope`) **and** test (`hope_test`, role `test`), read from `pg_enum` |
+| stt-v2 MinIO integration test (§5.2) | **Authored and passing** against the real test MinIO on :9002 — `apps/stt-v2/tests/integration/test_model_source_resolver_s3.py`, `@pytest.mark.integration`, 4 cases: download-prefix-then-cache-hit (cache proven by deleting the source objects between resolves), checksum match + `.verified` marker, checksum mismatch → hard error leaving no servable entry, empty prefix rejected. | `4 passed in 0.60s`. Non-vacuity checked: pointed at a dead endpoint (`TEST_MINIO_ENDPOINT=localhost:9999`) the suite **hangs on connection retries** instead of passing — it genuinely exercises the `minio` SDK call shapes, which the hermetic stub cannot prove. |
+| `/health` schema test | **Fixed** (TASK-525's key, but it was the red gate in *this* ticket's suite). `expected_keys` now includes `effective_config` with a comment citing TASK-525 §3.7, plus a type assertion. | `apps/stt-v2/tests/e2e/test_health_endpoints_comprehensive.py` — 32 passed |
+
+**One further pre-existing failure found and fixed** (out of scope, test-only, recorded for honesty): `test_new_services_integration.py::test_vad_smart_uses_silero_service_when_available` failed because `_apply_vad_smart` awaits `vad_service.initialize()` while the test supplied a plain `MagicMock` — the non-awaitable raised into the branch's `except Exception`, so `detect_speech` was never reached. It had been invisible because the whole file is infra-gated and **skipped** whenever test infra is down. Fix: `initialize = AsyncMock()`. Not caused by this ticket; unrelated to model-source resolution.
+
+**Full re-verification with infra up** (every gate re-run, not inherited):
+
+```
+stt-v2    2687 passed, 38 skipped, 3 xfailed      ruff: All checks passed   mypy: no issues (123 files)
+guardrail  163 passed
+nlp        173 passed
+harness    901 passed
+pnpm test:unit         953 files | 16760 passed, 4 skipped, 9 todo, 0 failed
+admin-console          build ok · eslint --max-warnings 0 clean · 1031 passed
+pnpm build:api         8/8 tasks successful
+pnpm lint              29/29 tasks successful
+```
+
+Note on `pnpm lint`: `packages/applications` reports **157 prettier warnings, 0 errors** — all pre-existing in files this ticket never touched (`authorization/decorators.ts`, `common/cursorPagination.ts`, …). Verified zero warnings under `services/stt/model/`. Left untouched per the surgical-changes rule rather than folded into this ticket's diff.
 
 ## 10. Change History
 
@@ -431,3 +455,4 @@ Gates: `py:harness:test` **886 passed** · lint **All checks passed** · typeche
 | 2026-07-20 | Ticket README authored (execution-ready): code-verified current state (enum + per-service resolution + S3-client inventory), AD-3 resolver contract with per-service transport analysis (guardrail = extend SQL read; harness = TASK-525 effective-config; nlp = gateway injection), 6-stage plan with exclusive ownership manifest, RED-first TDD plan, OD-4 recorded (`s3://` only). |
 | 2026-07-20 | **All six stages implemented (status → Review).** RED-first TDD with real failing runs captured per stage (§9). Stage 1 enum + hand-authored migration (`db:migrate:create` refused — dev DB drift; psql apply recorded, test DB down). Stage 2 documented the grammar AND closed a blocking defect: `localPath`/`checksum` were unwritable through `UpdateModelRequest`, so `forbidNonWhitelisted` rejected the very PATCH D-12 requires. Stage 3 canonical resolver + 6 loaders (passthrough refinement preserves HF fetch + ONNX selective download). Stage 4 guardrail DB read + clinical-gate DB-first path, hub pulls still blocked. Stage 5 gateway `model_path` (registry-derived only — DTO field deliberately not added) + NLP cache re-keyed on full weight identity. Stage 6 harness env-fallback-first (TASK-525's `modelWeights` verified absent), resolved inside the activity, `workflows.py` untouched. Gates: 16666 unit tests, 4 Python triples, lint 0 errors, minimal `uv lock` diff. Deviations recorded as decision rows in §9; open items in §9.8. |
 | 2026-07-20 | Program plan §2.5 **Completion & Cleanup Doctrine** adopted as BINDING for this ticket (owner directive): incorrect implementations in the owned surface are removed completely with the fix; partial implementations are finished end-to-end (or explicitly retired); redundant implementations are converged and deleted. Reviewer enforces the §2.5 classification table, plan-conformance (deviations = recorded decision rows), full-closure traceability of the claimed GAP/D/M IDs, and the performance gates. |
+| 2026-07-20 | **Post-infra closure pass (§9.9).** After the owner reset databases + secrets, all three infra-gated open items closed: both DBs verified to carry `AiModelSource.S3` (reset re-applied it — no psql patch needed); the §5.2 MinIO integration test authored and green against real MinIO on :9002, with a dead-endpoint check proving it is not vacuously passing; the `/health` schema test updated for TASK-525's `effective_config` key. Also fixed one pre-existing, out-of-scope failure unmasked by infra coming up (stale `MagicMock` where `initialize()` is awaited). Every gate re-run with infra live — all green (§9.9). E2E authoring remains deferred per owner directive. |

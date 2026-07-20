@@ -15,7 +15,6 @@ describe('DepartmentController.updatePromptConfig — DEF-C3 authorization metad
     const getMethodMetadata = (method: string) =>
         Reflect.getMetadata(
             REQUIRED_PERMISSIONS_KEY,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (DepartmentController.prototype as any)[method],
         );
 

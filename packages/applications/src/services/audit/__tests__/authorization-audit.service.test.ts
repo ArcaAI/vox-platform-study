@@ -1318,7 +1318,6 @@ describe('AuthorizationAuditService', () => {
             });
 
             // The per-instance MockLogger.warn captured the skip diagnostic.
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const loggerWarn = (serviceNoCls as any).logger.warn as ReturnType<typeof vi.fn>;
             await vi.waitFor(() => expect(loggerWarn).toHaveBeenCalled());
 

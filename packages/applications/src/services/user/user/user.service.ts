@@ -26,6 +26,7 @@ import { CreateOAuthUserRequest, CreateUserRequest, UpdateUserRequest } from './
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedPaginatedProps, withFormattedCountProps } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { ICryptoService } from '../../crypto/ICryptoService';
+import { IJwtRevocationService } from '../../auth/jwt-revocation.service';
 import { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSettingsService';
 import { resolvePasswordPolicy, validatePasswordComplexity } from '../userPassword/password-policy';
 
@@ -65,8 +66,28 @@ export class UserService extends BaseService implements IUserService {
     // TASK-392 (Phase 3, C2) — optional (append-only DI); enforces the plan
     // `maxUsers` SEAT quota when onboarding a user WITH a role (kill-switch-gated).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
+    // TASK-541 A4 — optional (append-only DI); stamps a per-user not-before so
+    // disabling an account also kills its already-issued access tokens.
+    @Optional() @Inject(IJwtRevocationService) private readonly jwtRevocationService?: IJwtRevocationService,
   ) {
     super(eventEmitter, clsService, ResourceType.User);
+  }
+
+  /**
+   * TASK-541 A4 — invalidate every access token already issued to `userId`.
+   *
+   * Called AFTER the status write commits, so a failed mutation never kills
+   * live sessions. Never throws: `resourceStatus` in the DB is what blocks the
+   * next login/refresh, and losing that write to an audit-adjacent Redis error
+   * would be strictly worse than the token living out its `exp`.
+   */
+  private async revokeLiveTokens(userId: string): Promise<void> {
+    if (!this.jwtRevocationService) return;
+    try {
+      await this.jwtRevocationService.revokeAllForUser(userId);
+    } catch {
+      // Swallowed by contract — JwtRevocationService already logs the failure.
+    }
   }
 
   /**
@@ -385,6 +406,13 @@ export class UserService extends BaseService implements IUserService {
     }
     const updatedUser = await this.userRepository.update(id, user);
 
+    // TASK-541 A4 — a transition AWAY from ENABLED (disable / suspend /
+    // archive / delete) must also kill tokens already in the wild; the
+    // ENABLED filters on login+refresh only gate the NEXT credential.
+    if (request.resourceStatus && request.resourceStatus !== ResourceStatusType.ENABLED) {
+      await this.revokeLiveTokens(String(id));
+    }
+
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updatedUser.id,
       data: user.changes,
@@ -395,6 +423,10 @@ export class UserService extends BaseService implements IUserService {
 
   async deleteById(id: EntityId): Promise<UserEntity> {
     const user = await this.userRepository.softDelete(id);
+
+    // TASK-541 A4 — same reasoning as update(): the soft-deleted user's live
+    // tokens die with the row, not at their own exp.
+    await this.revokeLiveTokens(String(id));
 
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
       resourceId: user.id,

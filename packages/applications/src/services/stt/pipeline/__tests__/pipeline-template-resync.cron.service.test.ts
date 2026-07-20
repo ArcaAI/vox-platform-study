@@ -30,7 +30,6 @@ const createMockAppSettingsService = (overrides: Record<string, unknown> = {}) =
 const createMockSchedulerRegistry = () => {
   const registeredJobs = new Map<string, { stop: ReturnType<typeof vi.fn> }>();
   return {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     addCronJob: vi.fn((name: string, job: any) => { registeredJobs.set(name, job); }),
     deleteCronJob: vi.fn((name: string) => { registeredJobs.delete(name); }),
     getCronJob: vi.fn((name: string) => {

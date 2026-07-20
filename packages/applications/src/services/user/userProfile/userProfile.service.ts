@@ -41,8 +41,7 @@ export class UserProfileService extends BaseService implements IUserProfileServi
   }
 
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<UserProfileEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { limit, page, search } = props;
+    const { limit, page } = props;
     const userProfiles = await this.userProfileRepository.findAll(withFormattedPaginatedProps(props));
 
     const count = await this.userProfileRepository.count(withFormattedCountProps(props));
@@ -60,14 +59,12 @@ export class UserProfileService extends BaseService implements IUserProfileServi
     });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<UserProfileEntity>> {
+  async fetchAllByTenantId(_props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<UserProfileEntity>> {
     throw new NotImplementedException();
   }
 
   async fetchAllCreatedByUser(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<UserProfileEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { userId, limit, page, search } = props;
+    const { userId, limit, page } = props;
     const userProfiles = await this.userProfileRepository.findAll({
       ...withFormattedPaginatedProps(props),
       where: {

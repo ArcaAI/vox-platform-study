@@ -9,14 +9,11 @@ export interface ThrottlerConfig {
 @Injectable()
 export class RateLimitConfigService {
   isEnabled(): boolean {
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
     return process.env.RATE_LIMIT_ENABLED !== 'false';
   }
 
   getThrottlers(): ThrottlerConfig[] {
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
     const defaultLimit = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10);
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
     const defaultWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10);
 
     return [

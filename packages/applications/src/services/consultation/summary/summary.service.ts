@@ -43,6 +43,7 @@ import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
 import { namedEntityPropsFromNlp, type NlpNamedEntity } from '../shared/namedEntityFromNlp';
+import { generateJsonWithRepair, looksLikeJsonObject, parsesAsJsonObject, type JsonRepairCall } from '../shared/bounded-json-repair';
 
 /**
  * the AD-1 GenerationStats headline fields the summary
@@ -55,6 +56,16 @@ interface SmrGenerationStats {
   stop_reason?: string | null;
   ttft_ms?: number | null;
   tokens_per_second?: number | null;
+}
+
+/**
+ * One SMR `/generate` call inside the TASK-533 D-25 bounded auto-repair loop.
+ * Carries the mapped response alongside the raw `text` the repair helper parses,
+ * so the caller can attribute cost across the (at most two) calls.
+ */
+interface SmrRepairCall extends JsonRepairCall {
+  mapped: LegacySmrSummaryResponse;
+  stats: SmrGenerationStats | null;
 }
 
 @Injectable()
@@ -915,13 +926,65 @@ export class SummaryService extends BaseService implements ISummaryService {
       }
       const smrPayload = buildSmrGeneratePayload(payload.assembledPrompt, options, payload.context);
       const smrServiceToken = (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '';
-      const response = await this.httpService.axiosRef.post(`${this.smrServiceUrl}/api/v1/generate`, smrPayload, {
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Service-Token': smrServiceToken,
+
+      // TASK-533 D-25 — the finalize path now carries the SAME bounded corrective
+      // retry as the live-doc flush (Phase 4D.3). Before this, a structured request
+      // that came back as malformed JSON was persisted VERBATIM as the clinical note
+      // — on the HIGHER-stakes path, since this output is what the clinician signs.
+      // The corrective instruction is APPENDED so the prefix-cache-stable lead-in
+      // stays byte-identical between the original and the repair call (Phase 4D.1).
+      const basePrompt = smrPayload.prompt;
+      const structuredRequested = smrPayload.response_format !== undefined;
+
+      const outcome = await generateJsonWithRepair<string, SmrRepairCall>({
+        generate: async (corrective) => {
+          const response = await this.httpService.axiosRef.post(
+            `${this.smrServiceUrl}/api/v1/generate`,
+            { ...smrPayload, prompt: corrective ? `${basePrompt}${corrective}` : basePrompt },
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Service-Token': smrServiceToken,
+              },
+            },
+          );
+          const mapped = mapSmrGenerateResponse(response.data);
+          return { text: mapped.summary, mapped, stats: SummaryService.parseGenerationStats(response.data) };
         },
+        // The summary is opaque JSON we persist verbatim, so the strict parse only
+        // decides WHETHER the structured contract was honoured — the text passes
+        // through unchanged. Storage semantics stay byte-identical to the
+        // pre-repair behaviour in every case except the malformed-JSON one.
+        parseStrict: (text) => (parsesAsJsonObject(text) ? text : null),
+        parseTolerant: (text) => text,
+        // Retry only a genuine malformed-JSON attempt: structured output was
+        // requested AND the text opens a JSON object. Prose (no leading `{`) is
+        // the contract on an unstructured request — retrying could never help.
+        shouldRepair: (first) => structuredRequested && looksLikeJsonObject(first.text),
       });
-      return { ...mapSmrGenerateResponse(response.data), stats: SummaryService.parseGenerationStats(response.data) };
+
+      const finalCall = outcome.calls[outcome.calls.length - 1];
+      if (outcome.repaired) {
+        this.logger.warn({
+          message: 'SMR finalize response failed the structured-output contract; one corrective retry applied',
+          repairSucceeded: parsesAsJsonObject(outcome.value),
+        });
+      }
+      // Cost fields are additive across the (at most two) calls — the repair really
+      // did spend those tokens/that time. Everything else describes the call whose
+      // text became the stored note.
+      const sumAcrossCalls = (pick: (call: SmrRepairCall) => number | undefined): number | undefined => {
+        const values = outcome.calls.map(pick).filter((v): v is number => typeof v === 'number');
+        return values.length > 0 ? values.reduce((a, b) => a + b, 0) : undefined;
+      };
+      return {
+        ...finalCall.mapped,
+        summary: outcome.value,
+        inputTokens: sumAcrossCalls((c) => c.mapped.inputTokens),
+        outputTokens: sumAcrossCalls((c) => c.mapped.outputTokens),
+        processingTimeMs: sumAcrossCalls((c) => c.mapped.processingTimeMs),
+        stats: finalCall.stats,
+      };
     } catch (error) {
       throw new BadRequestException(`Failed to call SMR service: ${error}`);
     }

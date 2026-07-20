@@ -60,7 +60,7 @@ interface WorkerResponse {
 }
 
 // Pipeline instance (lazy loaded)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- holds the untyped @huggingface/transformers pipeline instance, loaded via dynamic import to allow tree-shaking (same reason as WhisperEngine's `Pipeline` type)
 let whisperPipeline: any = null;
 let currentConfig: InitPayload | null = null;
 

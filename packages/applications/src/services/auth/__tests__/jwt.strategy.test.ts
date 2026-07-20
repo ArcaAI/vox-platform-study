@@ -12,8 +12,18 @@ const mockSecretsService = {
 
 const mockJwtRevocationService = {
     isRevoked: vi.fn().mockResolvedValue(false),
+    checkRevoked: vi.fn().mockResolvedValue({ revoked: false, degraded: false }),
     revoke: vi.fn().mockResolvedValue(undefined),
+    revokeAllForUser: vi.fn().mockResolvedValue(undefined),
+    getUserNotBefore: vi.fn().mockResolvedValue({ notBefore: null, degraded: false }),
 };
+
+/** Restore default resolutions wiped by vi.clearAllMocks(). */
+function resetRevocationDefaults(): void {
+    mockJwtRevocationService.checkRevoked.mockResolvedValue({ revoked: false, degraded: false });
+    mockJwtRevocationService.getUserNotBefore.mockResolvedValue({ notBefore: null, degraded: false });
+    mockJwtRevocationService.isRevoked.mockResolvedValue(false);
+}
 
 vi.mock('@nestjs/passport', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@nestjs/passport')>();
@@ -62,6 +72,7 @@ describe('JwtStrategy', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        resetRevocationDefaults();
         strategy = createStrategy();
     });
 
@@ -145,19 +156,19 @@ describe('JwtStrategy', () => {
         });
 
         it('should throw UnauthorizedException when the jti has been revoked (C-4)', async () => {
-            mockJwtRevocationService.isRevoked.mockResolvedValueOnce(true);
+            mockJwtRevocationService.checkRevoked.mockResolvedValueOnce({ revoked: true, degraded: false });
             const payloadWithJti = { ...fullPayload, jti: 'impersonate-admin-007-doctor-001-1234567890' };
 
             await expect(strategy.validate(payloadWithJti)).rejects.toThrowError(
                 /revoked|Unauthorized/i,
             );
-            expect(mockJwtRevocationService.isRevoked).toHaveBeenCalledWith(
+            expect(mockJwtRevocationService.checkRevoked).toHaveBeenCalledWith(
                 'impersonate-admin-007-doctor-001-1234567890',
             );
         });
 
         it('should accept the token when jti has NOT been revoked', async () => {
-            mockJwtRevocationService.isRevoked.mockResolvedValueOnce(false);
+            mockJwtRevocationService.checkRevoked.mockResolvedValueOnce({ revoked: false, degraded: false });
             const payloadWithJti = { ...fullPayload, jti: 'auth-user-001-9999' };
 
             const result = await strategy.validate(payloadWithJti);
@@ -166,7 +177,7 @@ describe('JwtStrategy', () => {
         });
 
         it('should not consult the revocation service when payload has no jti', async () => {
-            mockJwtRevocationService.isRevoked.mockClear();
+            mockJwtRevocationService.checkRevoked.mockClear();
             const { jti, ...payloadNoJti } = { ...fullPayload, jti: undefined } as Record<
                 string,
                 unknown
@@ -175,7 +186,7 @@ describe('JwtStrategy', () => {
 
             await strategy.validate(payloadNoJti);
 
-            expect(mockJwtRevocationService.isRevoked).not.toHaveBeenCalled();
+            expect(mockJwtRevocationService.checkRevoked).not.toHaveBeenCalled();
         });
 
         it('should return the UserSession instance', async () => {
@@ -256,6 +267,74 @@ describe('JwtStrategy', () => {
                     mockJwtRevocationService as any,
                 ),
             ).not.toThrow();
+        });
+    });
+
+    // ─── TASK-541 A3 — degraded-store posture ─────────────────────────────
+
+    describe('TASK-541 A3 — revocation store unavailable', () => {
+        const jtiPayload = { ...fullPayload, jti: 'auth-user-001-9999' };
+
+        it('fails OPEN for an ordinary token so a Redis outage cannot black out the API', async () => {
+            mockJwtRevocationService.checkRevoked.mockResolvedValueOnce({ revoked: false, degraded: true });
+            const result = await strategy.validate(jtiPayload);
+            expect(result.id).toBe('user-001');
+        });
+
+        it('fails CLOSED for an impersonation token — privilege beats availability', async () => {
+            mockJwtRevocationService.checkRevoked.mockResolvedValueOnce({ revoked: false, degraded: true });
+            const impersonated = { ...jtiPayload, impersonatedBy: 'admin-007' };
+            await expect(strategy.validate(impersonated)).rejects.toThrowError(
+                /revocation status unavailable|Unauthorized/i,
+            );
+        });
+
+        it('fails CLOSED for an impersonation token when the not-before lookup degrades', async () => {
+            mockJwtRevocationService.getUserNotBefore.mockResolvedValueOnce({ notBefore: null, degraded: true });
+            const impersonated = { ...jtiPayload, iat: 1_700_000_000, impersonatedBy: 'admin-007' };
+            await expect(strategy.validate(impersonated)).rejects.toThrowError(
+                /revocation status unavailable|Unauthorized/i,
+            );
+        });
+    });
+
+    // ─── TASK-541 A4 — per-user not-before revocation ─────────────────────
+
+    describe('TASK-541 A4 — user-level revocation (deactivation kills live tokens)', () => {
+        it('refuses a token issued BEFORE the user not-before stamp', async () => {
+            mockJwtRevocationService.getUserNotBefore.mockResolvedValueOnce({ notBefore: 1_700_000_500, degraded: false });
+            const staleToken = { ...fullPayload, jti: 'j-1', iat: 1_700_000_000 };
+            await expect(strategy.validate(staleToken)).rejects.toThrowError(/revoked|Unauthorized/i);
+        });
+
+        it('refuses a token issued in the SAME second as the stamp (deny-on-tie)', async () => {
+            mockJwtRevocationService.getUserNotBefore.mockResolvedValueOnce({ notBefore: 1_700_000_000, degraded: false });
+            const sameSecondToken = { ...fullPayload, jti: 'j-1', iat: 1_700_000_000 };
+            await expect(strategy.validate(sameSecondToken)).rejects.toThrowError(/revoked|Unauthorized/i);
+        });
+
+        it('accepts a token issued AFTER the stamp (user re-enabled, fresh login)', async () => {
+            mockJwtRevocationService.getUserNotBefore.mockResolvedValueOnce({ notBefore: 1_700_000_000, degraded: false });
+            const freshToken = { ...fullPayload, jti: 'j-1', iat: 1_700_000_600 };
+            const result = await strategy.validate(freshToken);
+            expect(result.id).toBe('user-001');
+        });
+
+        it('accepts every token when the user has no not-before stamp', async () => {
+            mockJwtRevocationService.getUserNotBefore.mockResolvedValueOnce({ notBefore: null, degraded: false });
+            const token = { ...fullPayload, jti: 'j-1', iat: 1_700_000_000 };
+            const result = await strategy.validate(token);
+            expect(result.id).toBe('user-001');
+        });
+
+        it('consults the not-before stamp by the payload user id', async () => {
+            await strategy.validate({ ...fullPayload, iat: 1_700_000_000 });
+            expect(mockJwtRevocationService.getUserNotBefore).toHaveBeenCalledWith('user-001');
+        });
+
+        it('skips the not-before check for a legacy token carrying no iat claim', async () => {
+            await strategy.validate(fullPayload);
+            expect(mockJwtRevocationService.getUserNotBefore).not.toHaveBeenCalled();
         });
     });
 });

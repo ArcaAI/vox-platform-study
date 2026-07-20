@@ -17,6 +17,8 @@ import {
   HighlightRepository,
   ContextItemEntity,
   TranscriptSegmentRepository,
+  McpServerRepository,
+  SYSTEM_TENANT_ID,
 } from '@arcaai/domains';
 import { attachSegmentEvidence, type SegmentOffsetRef } from '../lib/transcript-segments';
 import { HarnessAuditService } from '../../harness-audit';
@@ -24,6 +26,7 @@ import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { HarnessAssuranceService } from './harness-assurance.service';
 import { ConfigResolver } from '../../config-resolver';
+import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import { PromptAssemblyService, type NerEntityForPrompt } from '../prompt/prompt-assembly.service';
 import { IConsultationJobService } from '../jobs/consultation-job.service';
 import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../../common';
@@ -61,11 +64,14 @@ import type {
 export class HarnessInternalService {
   private readonly logger = new Logger(HarnessInternalService.name);
 
-  // TASK-355 Phase C (R-6) — warm-start kill-switch (HARNESS_WARM_START_ENABLED,
-  // default OFF). When OFF the harness injects no prior draft and records no
-  // preSummaryIds provenance (exact pre-Phase-C behavior); enable for the doc-07
-  // §3 cold-vs-warm A/B. Cached at construction, matching live-documentation/ocr.
-  private readonly warmStartEnabled: boolean;
+  // TASK-355 Phase C (R-6) — warm-start kill-switch. When OFF the harness injects no
+  // prior draft and records no preSummaryIds provenance (exact pre-Phase-C behavior);
+  // enable for the doc-07 §3 cold-vs-warm A/B.
+  //
+  // TASK-533 D-23 — `HarnessPolicy.warmStartEnabled` is now the authority, resolved
+  // per call (see `resolveWarmStartEnabled`). This env var survives only as the
+  // fallback for a null policy value, reproducing the pre-D-23 behaviour exactly.
+  private readonly warmStartEnvFallback: boolean;
 
   // TASK-466 (C1-03) — Idempotency-Key dedup namespace + TTL for the WORM/draft
   // callbacks. The key value is the harness `{run_id}:{activity_id}` (globally
@@ -135,11 +141,88 @@ export class HarnessInternalService {
     @Optional()
     @Inject(TranscriptSegmentRepository)
     private readonly transcriptSegmentRepository?: TranscriptSegmentRepository,
+    // TASK-533 D-23 — effective-policy source for `warmStartEnabled`. Optional +
+    // trailing so existing positional unit fixtures keep their arity; production DI
+    // supplies it. Absent ⇒ the env fallback governs (exact pre-D-23 behaviour).
+    @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
+    // TASK-533 D-24 — the MCP registry, used ONLY as the authRef allowlist for
+    // `resolveMcpToken`. Optional + trailing; absent ⇒ no token resolves (the
+    // fail-closed default: nothing is callable).
+    @Optional() @Inject(McpServerRepository) private readonly mcpServerRepository?: McpServerRepository,
   ) {
     const raw = String(this.configService?.get('HARNESS_WARM_START_ENABLED') ?? '')
       .trim()
       .toLowerCase();
-    this.warmStartEnabled = raw === 'true' || raw === '1';
+    this.warmStartEnvFallback = raw === 'true' || raw === '1';
+  }
+
+  /**
+   * Resolve an MCP server's credential from its `authRef` (TASK-533 D-24).
+   *
+   * The harness deliberately gets NO Vault client — secret material stays on the
+   * side of the boundary that already holds it. The worker calls
+   * `GET /internal/harness/mcp-token?authRef=…` (X-Service-Token guarded) inside
+   * the activity that performs the MCP call, uses the token, and discards it. It
+   * is never persisted in workflow state, activity inputs, or heartbeats:
+   * Temporal history is durable, so a token in an input is a token on disk.
+   *
+   * `authRef` is an ALLOWLIST lookup against registered, ENABLED `McpServer` rows
+   * — never an arbitrary secret-path read. Without that check, anything holding
+   * the service token could read any path the gateway's secrets backend can see.
+   *
+   * Returns null (never throws, never logs the value) for: an empty ref, an
+   * unregistered or disabled ref, an unwired registry/secrets backend, or a
+   * backend failure. Null means "no token" — the server must then be public /
+   * in-boundary, which is the pre-D-24 behaviour rather than a silent leak.
+   */
+  async resolveMcpToken(authRef: string): Promise<string | null> {
+    if (!authRef || !authRef.trim()) return null;
+    if (!this.mcpServerRepository || !this.secretsService) {
+      this.logger.warn('MCP token resolution requested but the registry or secrets backend is unwired');
+      return null;
+    }
+
+    try {
+      const servers = await this.mcpServerRepository.findAll({ where: { tenantId: SYSTEM_TENANT_ID } } as never);
+      const registered = (servers ?? []).some((s) => s.enabled && s.authRef === authRef);
+      if (!registered) {
+        // Log the REF (a path, not a secret) — this is a security-relevant denial.
+        this.logger.warn(`MCP token denied: authRef is not a registered enabled McpServer (${authRef})`);
+        return null;
+      }
+      return await this.secretsService.getSecret(authRef);
+    } catch (error) {
+      // Deliberately does NOT interpolate the error body: a secrets-backend error
+      // can echo the requested path and, on some providers, response fragments.
+      this.logger.error(`MCP token resolution failed for a registered authRef (${authRef})`);
+      void error;
+      return null;
+    }
+  }
+
+  /**
+   * Effective warm-start decision for `tenantId` (TASK-533 D-23).
+   *
+   * Policy wins; a null policy value means "not configured" and falls through to the
+   * env fallback. Resolved on every call so a global admin's console flip takes
+   * effect with no redeploy. A policy-backend failure degrades to the env value —
+   * this sits on the harness generation path and must not fail closed on a
+   * governance lookup.
+   */
+  private async resolveWarmStartEnabled(tenantId: string): Promise<boolean> {
+    if (!this.harnessPolicyService) {
+      return this.warmStartEnvFallback;
+    }
+    try {
+      const effective = await this.harnessPolicyService.getEffectivePolicy(tenantId);
+      return effective.warmStartEnabled ?? this.warmStartEnvFallback;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Harness policy lookup failed while resolving warmStartEnabled — falling back to env',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return this.warmStartEnvFallback;
+    }
   }
 
   /**
@@ -313,7 +396,7 @@ export class HarnessInternalService {
       // {pre_summary_text} so the model refines it. Cold path when absent.
       // Gated behind the kill-switch (default OFF): when disabled we skip the
       // snapshot lookup entirely so nothing is injected (exact pre-Phase-C path).
-      const liveSnapshot = this.warmStartEnabled ? await this.loadLiveSoapSnapshot(consultationId) : null;
+      const liveSnapshot = (await this.resolveWarmStartEnabled(tenantId)) ? await this.loadLiveSoapSnapshot(consultationId) : null;
 
       // TASK-356 Phase 5 (§2.5) — thread the doctor's preferred prompt id (Tier-0)
       // through the async/harness path too. Read-only from UserProfile via the
@@ -331,6 +414,10 @@ export class HarnessInternalService {
       const effectiveDnaStyleId = await this.resolveEffectiveDnaStyleId(tenantId, consultation?.departmentId, consultation?.doctorId, dto.dnaStyleId);
 
       const assembled = await this.promptAssemblyService.assemble({
+        // TASK-533 D-23 — explicit tenant so prompt assembly resolves the SAME
+        // effective warm-start policy this method just gated the snapshot on
+        // (the harness runs outside the API-edge CLS middleware).
+        tenantId,
         departmentId: consultation?.departmentId ?? undefined,
         promptType: consultation?.parentConsultationId ? 'revisit' : 'new-patient',
         transcript,
@@ -425,7 +512,7 @@ export class HarnessInternalService {
         // row via the shared helper (deterministic post-stop) and write its id.
         // Gated behind the kill-switch (default OFF): when disabled we skip the
         // lookup and record empty provenance (exact pre-Phase-C behavior).
-        const liveSnapshot = this.warmStartEnabled ? await this.loadLiveSoapSnapshot(consultationId) : null;
+        const liveSnapshot = (await this.resolveWarmStartEnabled(tenantId)) ? await this.loadLiveSoapSnapshot(consultationId) : null;
         // enrich the verdict's citation map with per-segment provenance
         // (LEGACY path only; EARLY withholds citationsMap until finalizeAssurance).
         const enrichedCitationsMap = isEarly

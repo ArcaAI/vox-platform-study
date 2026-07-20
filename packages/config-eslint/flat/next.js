@@ -26,6 +26,7 @@
  *   7. eslint-config-prettier LAST to disable formatting-conflict rules
  */
 const { fixupPluginRules } = require('@eslint/compat');
+const eslintComments = require('@eslint-community/eslint-plugin-eslint-comments');
 const nextPlugin = require('@next/eslint-plugin-next');
 const prettierConfig = require('eslint-config-prettier');
 const reactPlugin = require('eslint-plugin-react');
@@ -85,6 +86,9 @@ module.exports = [
         // deliberately omitted: it is a packages/* convention, apps fail on
         // errors.
         name: 'arcaai/house-rules',
+        plugins: {
+            'eslint-comments': eslintComments,
+        },
         rules: {
             'no-console': ['warn', { allow: ['warn', 'error'] }],
             // Honor the leading-underscore convention for intentionally-unused
@@ -98,6 +102,13 @@ module.exports = [
                     destructuredArrayIgnorePattern: '^_',
                 },
             ],
+            // TASK-540 — same hygiene rule as the shared core: every
+            // eslint-disable comment must carry a `-- reason`. 'warn' until
+            // this app's backlog is clean (see flat/core.js for the full
+            // rationale).
+            'eslint-comments/require-description': ['warn', { ignore: [] }],
+            'eslint-comments/no-unlimited-disable': 'error',
+            'eslint-comments/no-unused-disable': 'warn',
             // TASK-305 B.5 — Guard the unscoped Prisma client (same guard as
             // the shared core). Server-side Next.js code could import
             // @arcaai/database; the unscoped client bypasses tenant-scope and

@@ -32,12 +32,10 @@ export class AiTaskDefaultRepository extends Repository<AiTaskDefaultEntity, AiT
    * `$transaction` (mirrors the `create(..., tx)` / `updateWithVersion(..., tx)`
    * contract).
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async findByTenantAndTaskKey(tenantId: string, taskKey: string, tx?: Prisma.TransactionClient | any): Promise<AiTaskDefaultEntity | null> {
     const where = { tenantId, taskKey, resourceStatus: ResourceStatusType.ENABLED };
 
     if (tx) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const model = await (tx as Record<string, any>).aiTaskDefault.findFirst({ where });
       return model ? AiTaskDefaultEntityMapper.getInstance().toDomainEntity(model) : null;
     }

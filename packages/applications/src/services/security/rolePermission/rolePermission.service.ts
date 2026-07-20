@@ -41,8 +41,7 @@ export class RolePermissionService extends BaseService implements IRolePermissio
   }
 
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<RolePermissionEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { limit, page, search } = props;
+    const { limit, page } = props;
     const rolePermissions = await this.rolePermissionRepository.findAll(withFormattedPaginatedProps(props));
 
     const count = await this.rolePermissionRepository.count(withFormattedCountProps(props));
@@ -61,8 +60,7 @@ export class RolePermissionService extends BaseService implements IRolePermissio
   }
 
   async fetchAllByRoleId(props: PaginatedQuery & { roleId: EntityId }): Promise<FetchResponse<RolePermissionEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { roleId, limit, page, search } = props;
+    const { roleId, limit, page } = props;
     const rolePermissions = await this.rolePermissionRepository.findAll({
       ...withFormattedPaginatedProps(props),
       where: {

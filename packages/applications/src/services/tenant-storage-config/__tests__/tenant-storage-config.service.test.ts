@@ -30,11 +30,8 @@ function defaultEntity() {
 }
 
 function build(overrides: {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   configRepo?: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   bucketRepo?: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   factory?: any;
   cls?: Record<string, unknown>;
 }) {
@@ -54,15 +51,10 @@ function build(overrides: {
   const cls = makeCls(overrides.cls);
 
   const service = new TenantStorageConfigService(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     configRepo as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     bucketRepo as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     factory as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     eventEmitter as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     cls as any,
   );
   return { service, configRepo, bucketRepo, factory, eventEmitter };

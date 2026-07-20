@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDefined, IsIn, IsOptional, IsString } from 'class-validator';
+import { IsDefined, IsIn, IsInt, IsOptional, IsString, Min } from 'class-validator';
 
 /** The cascade scopes a write may target. Mirrors `SettingScope` in the registry. */
 export const SETTING_SCOPES = ['system', 'tenant', 'department', 'doctor'] as const;
@@ -33,10 +33,30 @@ export class WriteRegistrySettingRequest {
   @IsString()
   @IsIn(SETTING_SCOPES)
   scope?: (typeof SETTING_SCOPES)[number];
+
+  /**
+   * TASK-533 B2 — optimistic-concurrency token: the `version` from the prior GET.
+   * The canonical form carries it in the `If-Match` header (which wins over this
+   * field); service-to-service callers may pass it here. REQUIRED when a stored
+   * value already exists — omitting it is refused 428 rather than silently
+   * overwriting a concurrent edit. Omit on a first write.
+   */
+  @ApiPropertyOptional({ description: 'Version from the prior GET. Required once a value is stored; PUT fails 412 if it drifted.', example: 3 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  expectedVersion?: number;
 }
 
 /** Response for a successful registry write. */
 export class WriteRegistrySettingResponse {
+  /**
+   * TASK-533 B2 — the row version after this write. The `ETagInterceptor` renders
+   * it as `ETag: "<version>"`, so a client can chain edits without re-reading.
+   */
+  @ApiProperty({ description: 'Row version after the write. Echo as the next `If-Match`.', example: 4 })
+  version!: number;
+
   @ApiProperty({ description: 'The registry key that was written.' })
   key!: string;
 

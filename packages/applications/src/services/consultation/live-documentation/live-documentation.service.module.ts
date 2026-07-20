@@ -10,6 +10,7 @@ import { LiveDocumentationService } from './live-documentation.service';
 import { OcrEnrichmentProcessor } from '../ocr/ocr-enrichment.processor';
 import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
 import { AgentTrajectoryServiceModule } from '../../agent-trajectory/agent-trajectory.service.module';
+import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 
 /**
  * Live Documentation Service Module (Clinical Workflow Playground — WS1).
@@ -41,6 +42,10 @@ import { AgentTrajectoryServiceModule } from '../../agent-trajectory/agent-traje
     StreamingSessionServiceModule,
     HarnessPolicyServiceModule,
     AgentTrajectoryServiceModule,
+    // TASK-533 B1 — EffectiveSettingsModule resolves the @Optional
+    // EffectiveSettingsService so `agentic.context.*` is governed by the control
+    // plane (TASK-524's registry) rather than by constructor-frozen env values.
+    EffectiveSettingsModule,
   ],
   providers: [LiveDocumentationService, RedisSubscriberService, OcrEnrichmentProcessor],
   exports: [LiveDocumentationService],

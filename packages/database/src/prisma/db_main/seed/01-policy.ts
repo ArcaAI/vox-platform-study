@@ -155,6 +155,15 @@ export const DEFAULT_POLICIES = [
             // implies `read` (used by the GET routes). Tenant-scoped; the controller
             // pins every read/write to the caller's tenant.
             { action: 'manage', subject: 'PipelinePolicy', conditions: { tenantId: '${context.tenantId}' } },
+            // TASK-532 (M-12) — the MCP registry and the agent-trajectory read
+            // plane no longer borrow `manage:HarnessPolicy`; these explicit
+            // grants preserve exactly the access this role had before the
+            // subject swap. MCP WRITES remain global-admin-only regardless —
+            // `McpServerAdminService` throws 403 for a tenant admin (defense in
+            // depth), so `manage` here buys the registry READ this role already
+            // had. `AgentTrajectory` is read-only by design.
+            { action: 'manage', subject: 'McpServer', conditions: { tenantId: '${context.tenantId}' } },
+            { action: 'read', subject: 'AgentTrajectory', conditions: { tenantId: '${context.tenantId}' } },
             // TASK-496 — tenant admins manage their own tenant's TTS config + BYO
             // provider credentials. Tenant-scoped; the controller pins every op to
             // the caller's tenant. `manage` implies `read` (used by the GET routes).
@@ -425,6 +434,11 @@ export const DEFAULT_POLICIES = [
             // TASK-356 Phase 5 — platform-wide realtime-pipeline cascade admin
             // (incl. the SYSTEM-tenant global-default row). `manage` implies `read`.
             { action: 'manage', subject: 'PipelinePolicy' },
+            // TASK-532 (M-12) — dedicated subjects for the MCP registry and the
+            // agent-trajectory read plane (previously reached via
+            // `manage:HarnessPolicy`). Unconditional at platform scope.
+            { action: 'manage', subject: 'McpServer' },
+            { action: 'read', subject: 'AgentTrajectory' },
         ],
     },
     {
@@ -446,6 +460,12 @@ export const DEFAULT_POLICIES = [
             // TASK-356 Phase 5 — tenant-scoped realtime-pipeline cascade admin.
             // `manage` implies `read`; the controller pins every op to the tenant.
             { action: 'manage', subject: 'PipelinePolicy', conditions: { tenantId: '${context.tenantId}' } },
+            // TASK-532 (M-12) — dedicated subjects for the MCP registry and the
+            // agent-trajectory read plane (previously reached via
+            // `manage:HarnessPolicy`). Tenant-scoped; MCP writes stay
+            // global-admin-only in the service.
+            { action: 'manage', subject: 'McpServer', conditions: { tenantId: '${context.tenantId}' } },
+            { action: 'read', subject: 'AgentTrajectory', conditions: { tenantId: '${context.tenantId}' } },
         ],
     },
 ];

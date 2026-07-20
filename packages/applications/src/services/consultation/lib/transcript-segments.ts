@@ -19,6 +19,24 @@
  * and reused across the STT ingest + the harness persist paths.
  */
 
+/**
+ * The LEGACY per-segment shape the batch producer used to emit via the untyped
+ * `metadata.segments` fallback (TASK-533 D-22): snake_case, SECONDS as floats,
+ * `speaker_id`, and no text at all.
+ *
+ * `apps/stt-v2` now emits the camelCase consumer shape on the typed `segments`
+ * field, but this is retained deliberately: (a) in-flight/queued payloads and any
+ * archived metadata blob still carry it, and (b) normalizing is strictly better
+ * than the old behaviour, which silently coerced every field to null and wrote
+ * rows carrying nothing but an ordinal — the defect itself.
+ */
+export interface LegacyTranscriptSegmentShape {
+  start_time?: number | null;
+  end_time?: number | null;
+  speaker_id?: string | null;
+  text?: string | null;
+}
+
 /** Raw per-segment metadata as emitted by STT (camelCase at the API boundary). */
 export interface TranscriptSegmentInputShape {
   /** 0-based ordinal within the transcript; defaults to array position. */
@@ -66,11 +84,13 @@ export interface SegmentOffsetRef {
  */
 export function computeSegmentOffsets(
   transcriptText: string,
-  segments: readonly TranscriptSegmentInputShape[],
+  segments: readonly (TranscriptSegmentInputShape | LegacyTranscriptSegmentShape)[],
+  onUnusable?: (report: UnusableSegmentReport) => void,
 ): ResolvedTranscriptSegment[] {
   const text = transcriptText ?? '';
   let cursor = 0;
-  return segments.map((seg, position) => {
+  return segments.map((raw, position) => {
+    const seg = normalizeSegmentShape(raw);
     let charStart = seg.charStart ?? null;
     let charEnd = seg.charEnd ?? null;
 
@@ -86,7 +106,7 @@ export function computeSegmentOffsets(
       cursor = Math.max(cursor, charEnd);
     }
 
-    return {
+    const resolved: ResolvedTranscriptSegment = {
       idx: seg.idx ?? position,
       t0Ms: seg.t0Ms ?? null,
       t1Ms: seg.t1Ms ?? null,
@@ -94,7 +114,51 @@ export function computeSegmentOffsets(
       charStart,
       charEnd,
     };
+
+    // TASK-533 D-22 — a segment carrying NOTHING but its ordinal is the exact
+    // signature of the defect: it persists a row that can never ground a claim
+    // (`resolveSegmentIdForOffset` skips null offsets). It used to happen
+    // silently on every batch transcript. Report it so the caller can log loudly
+    // rather than let a producer regression hide behind a green ingest.
+    if (onUnusable && resolved.charStart === null && resolved.t0Ms === null && resolved.speaker === null) {
+      onUnusable({ position, keys: Object.keys((raw ?? {}) as Record<string, unknown>) });
+    }
+
+    return resolved;
   });
+}
+
+/** Describes a segment that resolved to nothing usable (see `onUnusable`). */
+export interface UnusableSegmentReport {
+  /** Array position of the offending segment. */
+  position: number;
+  /** The keys actually present on the raw input — the diagnostic that matters. */
+  keys: string[];
+}
+
+/**
+ * Coerce either accepted wire shape into the canonical camelCase/ms one.
+ *
+ * Normalization, NOT replacement: a payload already in the consumer shape passes
+ * through untouched, so this is transparent for the fixed producers.
+ */
+function normalizeSegmentShape(raw: TranscriptSegmentInputShape | LegacyTranscriptSegmentShape): TranscriptSegmentInputShape {
+  const seg = (raw ?? {}) as TranscriptSegmentInputShape & LegacyTranscriptSegmentShape;
+
+  // Already canonical on a given axis ⇒ keep it; otherwise fall back to the legacy
+  // key, converting seconds → integer milliseconds.
+  const t0Ms = seg.t0Ms ?? (typeof seg.start_time === 'number' ? Math.round(seg.start_time * 1000) : null);
+  const t1Ms = seg.t1Ms ?? (typeof seg.end_time === 'number' ? Math.round(seg.end_time * 1000) : null);
+
+  return {
+    idx: seg.idx,
+    t0Ms,
+    t1Ms,
+    speaker: seg.speaker ?? seg.speaker_id ?? null,
+    text: seg.text ?? null,
+    charStart: seg.charStart,
+    charEnd: seg.charEnd,
+  };
 }
 
 /**

@@ -8,7 +8,7 @@ import {
 import { Controller, Get, Inject, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { CanManage } from '../../decorators';
+import { CanRead } from '../../decorators';
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
 import { AggregateGenerationMetricsQuery, ListAgentTrajectorySessionsQuery, ListAgentTrajectoryStepsQuery } from './dto';
 
@@ -17,10 +17,15 @@ import { AggregateGenerationMetricsQuery, ListAgentTrajectorySessionsQuery, List
  * for the ordered session trajectory, mounted at `/admin/agent-trajectory/*`
  * (global prefix → `/api/v1/admin/agent-trajectory/*`).
  *
- * Gated at the class level by `@CanManage('HarnessPolicy')` — the plan's
- * "HarnessPolicy-family permission" (a dedicated `AgentTrajectory` ResourceType
- * is a Prisma-enum migration, deferred as a future refinement, see the ticket
- * README). Tenant scoping mirrors `HarnessAdminController`: tenant admins are
+ * Gated at the class level by `@CanRead('AgentTrajectory')` (TASK-532 M-12).
+ * Two things changed from the original borrowed `@CanManage('HarnessPolicy')`:
+ * the subject is now this controller's own, and the action is `read` — nothing
+ * here mutates, so `manage` was overkill. No Prisma migration was required: the
+ * audit `ResourceType` enum only needs values for subjects that emit audit
+ * rows, and this read-only surface broadcasts no mutation sys-event. A later
+ * ticket adding trajectory writes appends the enum value then.
+ *
+ * Tenant scoping mirrors `HarnessAdminController`: tenant admins are
  * pinned to their CLS tenant; global-admins act cross-tenant via `?tenantId=`.
  *
  * The read projections deliberately NEVER carry `payloadRef` — the service maps
@@ -31,7 +36,7 @@ import { AggregateGenerationMetricsQuery, ListAgentTrajectorySessionsQuery, List
 @ApiBearerAuth()
 @ApiTags('admin-agent-trajectory')
 @Controller('admin/agent-trajectory')
-@CanManage('HarnessPolicy')
+@CanRead('AgentTrajectory')
 export class AgentTrajectoryController {
   constructor(
     @Inject(IAgentTrajectoryService)

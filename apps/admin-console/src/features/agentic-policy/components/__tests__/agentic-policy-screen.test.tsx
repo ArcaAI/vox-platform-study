@@ -8,12 +8,10 @@
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
-import * as axeMatchers from 'vitest-axe/matchers';
 import { renderWithProviders } from '@/test/render';
 import type { AgenticPolicy, SettingCatalog } from '../../api/types';
 import { AgenticPolicyScreen } from '../agentic-policy-screen';
 
-expect.extend(axeMatchers);
 
 vi.mock('sonner', () => ({
     toast: { success: vi.fn(), error: vi.fn() },

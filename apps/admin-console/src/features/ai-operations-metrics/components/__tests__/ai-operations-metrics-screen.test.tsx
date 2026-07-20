@@ -8,11 +8,9 @@
 import { cleanup, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
-import * as axeMatchers from 'vitest-axe/matchers';
 import { renderWithProviders } from '@/test/render';
 import { AiOperationsMetricsScreen } from '../ai-operations-metrics-screen';
 
-expect.extend(axeMatchers);
 
 const SESSION = {
     user: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['GLOBAL_ADMIN'] },

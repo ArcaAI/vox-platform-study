@@ -6,6 +6,7 @@ import { CommonServiceModule } from '../../baseServices';
 import { UserProfileServiceModule } from '../userProfile/userProfile.service.module';
 import { EntitlementsServiceModule } from '../../entitlements/entitlements.service.module';
 import { CryptoServiceModule } from '../../crypto/crypto.service.module';
+import { JwtRevocationModule } from '../../auth/jwt-revocation.module';
 
 // TODO: Implement this
 
@@ -16,7 +17,10 @@ import { CryptoServiceModule } from '../../crypto/crypto.service.module';
   // TASK-402 — CryptoServiceModule supplies ICryptoService so creation/update
   // passwords are bcrypt-hashed (IAppSettingsService comes from the @Global
   // AppSettingsModule).
-  imports: [CommonServiceModule, CoreDatabaseModule, UserProfileServiceModule, EntitlementsServiceModule, CryptoServiceModule],
+  // TASK-541 A4 — JwtRevocationModule supplies IJwtRevocationService so
+  // disabling/deleting a user also kills their already-issued access tokens.
+  // (Standalone module, NOT AuthServiceModule — that would be circular.)
+  imports: [CommonServiceModule, CoreDatabaseModule, UserProfileServiceModule, EntitlementsServiceModule, CryptoServiceModule, JwtRevocationModule],
   providers: [
     {
       provide: IUserService,

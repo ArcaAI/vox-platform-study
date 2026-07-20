@@ -90,11 +90,9 @@ class MockEventSource {
 
 beforeEach(() => {
   created.length = 0;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (globalThis as any).EventSource = class extends MockEventSource {
     constructor(url: string) {
       super(url);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       created.push(this as any as InstrumentedEventSource);
     }
   };
@@ -203,7 +201,6 @@ describe('TASK-264 W2-1: SSEClient listener leak fix', () => {
         expect(beforeCount).toBeLessThanOrEqual(2);
 
         // Trigger error → reconnect.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (current as any).onerror?.(new Event('error'));
         await vi.advanceTimersByTimeAsync(60_000);
       }

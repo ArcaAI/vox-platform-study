@@ -84,6 +84,37 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
         expect(playground.every((entry) => entry.required.length === 0)).toBe(true);
     });
 
+    /**
+     * TASK-532 (M-03/OD-6, M-08, M-09) — console IA cleanup. The tier-10-19
+     * count is unchanged at 17: `/prompt-studio` folded into `/agents` and
+     * `/ai-services` took its slot; `/pstudio` was renamed, not added.
+     */
+    describe('console IA cleanup (TASK-532)', () => {
+        it('retires /prompt-studio (governance moved into the /agents Governance tab)', () => {
+            expect(NAV_ENTRIES.some((entry) => entry.route === '/prompt-studio')).toBe(false);
+        });
+
+        it('renames /pstudio to /db-studio with unambiguous copy (M-08)', () => {
+            expect(NAV_ENTRIES.some((entry) => entry.route === '/pstudio')).toBe(false);
+            const dbStudio = NAV_ENTRIES.find((entry) => entry.route === '/db-studio');
+            expect(dbStudio?.label).toBe('Database Studio');
+            expect(dbStudio?.tier).toBe('10-19');
+            expect(dbStudio?.implemented).toBe(true);
+        });
+
+        it('adds /ai-services as a global-admin surface over the unused backends (M-09)', () => {
+            const aiServices = NAV_ENTRIES.find((entry) => entry.route === '/ai-services');
+            expect(aiServices?.tier).toBe('10-19');
+            expect(aiServices?.required).toEqual([['manage', 'all']]);
+            expect(aiServices?.implemented).toBe(true);
+        });
+
+        it('keeps every route unique after the rename', () => {
+            const routes = NAV_ENTRIES.map((entry) => entry.route);
+            expect(new Set(routes).size).toBe(routes.length);
+        });
+    });
+
     it('ships a unique icon per entry (the icon-collapsed rail renders icons only)', () => {
         for (const entry of NAV_ENTRIES) {
             expect(entry.icon, `${entry.route} is missing an icon`).toBeDefined();

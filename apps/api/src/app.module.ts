@@ -340,7 +340,6 @@ const featureModules: any[] = [
 // production-capable but fail-closed — the module registers only when the
 // operator explicitly sets ENABLE_PRISMA_STUDIO=true, and every route is
 // additionally guarded by the dedicated `manage:PrismaStudio` permission.
-// eslint-disable-next-line turbo/no-undeclared-env-vars
 if (shouldEnablePrismaStudio({ NODE_ENV: process.env.NODE_ENV, ENABLE_PRISMA_STUDIO: process.env.ENABLE_PRISMA_STUDIO })) {
   featureModules.push(PrismaStudioModule);
 }

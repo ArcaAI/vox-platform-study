@@ -189,7 +189,6 @@ export function useNoiseFilter(options: UseNoiseFilterOptions): UseNoiseFilterRe
       }
     };
     // Only create processor once with initial options
-    // eslint-disable-next-line
   }, []);
 
   // Handle processor events

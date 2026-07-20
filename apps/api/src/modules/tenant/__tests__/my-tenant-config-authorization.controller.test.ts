@@ -16,7 +16,6 @@ describe('MyTenantController.updateMyConfig — BUG-005 authorization metadata',
     const getMethodMetadata = (method: string) =>
         Reflect.getMetadata(
             REQUIRED_PERMISSIONS_KEY,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (MyTenantController.prototype as any)[method],
         );
 

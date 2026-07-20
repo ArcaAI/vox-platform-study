@@ -25,10 +25,8 @@ vi.mock('../../../../mappers', () => ({
 
 vi.mock('../../../../common/unitsOfWork/core', () => ({ CoreUnitOfWorkService: vi.fn() }));
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const makeUow = (delegateByModel: Record<string, any>) => ({ getDatabaseService: () => delegateByModel });
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const buildRepo = async (delegate: any) => {
   const { NamedEntityRepository } = await import('../NamedEntityRepository');
   return new NamedEntityRepository(makeUow({ namedEntity: delegate }) as never);

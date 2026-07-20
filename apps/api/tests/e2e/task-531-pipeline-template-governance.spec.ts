@@ -27,6 +27,20 @@ import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/h
 /** The refusal text is a product surface — the console renders it verbatim. */
 const LOCK_MESSAGE = 'Template copies are read-only — clone to customize';
 
+/**
+ * PATCH the house way: the `If-Match` header AND the body's `expectedVersion`.
+ *
+ * `UpdatePipelineRequest.expectedVersion` is a REQUIRED field, so the global
+ * validation pipe rejects a header-only body with 400 BEFORE the controller
+ * folds `If-Match` over it — the request never reaches the service, and the
+ * lock guard never runs. The admin console's client already sends both
+ * (`updatePipeline` in the console api client); a header-only PATCH is simply
+ * malformed, so these specs must send both to test what they claim to test.
+ */
+function patchBody<T extends Record<string, unknown>>(body: T, version: number) {
+  return { ...body, expectedVersion: version };
+}
+
 /** Seeded SYSTEM template slug every tenant holds a locked copy of. */
 const TEMPLATE_SLUG = 'production-whisper-large-v3-turbo-gguf';
 
@@ -68,7 +82,7 @@ test.describe('TASK-531 — locked template copies are read-only', () => {
 
     const patch = await request.patch(`/api/v1/admin/audio/pipelines/${pipeline.id}`, {
       headers: { ...auth(token), 'If-Match': `"${pipeline.version}"` },
-      data: { name: 'Renamed by a tenant admin' },
+      data: patchBody({ name: 'Renamed by a tenant admin' }, pipeline.version),
     });
 
     expect(patch.status()).toBe(403);
@@ -126,8 +140,11 @@ test.describe('TASK-531 — locked template copies are read-only', () => {
     const pipeline = (await detail.json()) as { id: string; version: number };
 
     const patch = await request.patch(`/api/v1/admin/audio/pipelines/${pipeline.id}`, {
+      // Every REQUIRED field is supplied, so the only thing wrong with this
+      // body is the smuggled `templateLocked` — the 400 can therefore only be
+      // the whitelist rejecting it.
       headers: { ...auth(token), 'If-Match': `"${pipeline.version}"` },
-      data: { templateLocked: false },
+      data: patchBody({ templateLocked: false }, pipeline.version),
     });
 
     // 400 from the pipe (unknown field) — never 200.
@@ -169,7 +186,7 @@ test.describe('TASK-531 — clone is the customization path', () => {
     // And — the whole point — it is editable.
     const edited = await request.patch(`/api/v1/admin/audio/pipelines/${clone.id}`, {
       headers: { ...auth(token), 'If-Match': `"${clone.version}"` },
-      data: { name: 'TASK-531 clone (edited)' },
+      data: patchBody({ name: 'TASK-531 clone (edited)' }, clone.version),
     });
     expect(edited.status()).toBe(200);
 

@@ -18,6 +18,7 @@ export * from './DnaWritingStyleVersionFactory';
 export * from './EvalRunFactory';
 export * from './EvalScoreFactory';
 export * from './FederatedIdentityFactory';
+export * from './GateEditExemplarFactory';
 export * from './GlobalSettingFactory';
 export * from './GoldenCaseFactory';
 export * from './GoldenSetFactory';

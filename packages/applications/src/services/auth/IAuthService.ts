@@ -12,19 +12,23 @@ export interface AuthenticationTrackingData {
 }
 
 /**
- * User validation response
- */
-export interface UserValidationResponse {
-  id: string;
-  email: string;
-  isActive: boolean;
-  departmentId?: string;
-  lastLoginAt?: Date;
-}
-
-/**
  * IAuthService is an interface that defines the authentication service methods.
  * It provides a contract for implementing authentication-related functionalities.
+ *
+ * TASK-541 — `isTokenRevoked()`, `validateUser()` and the `UserValidationResponse`
+ * shape were REMOVED here. Both methods existed solely for the `gateway-jwt`
+ * strategy retired in this ticket (A2), leaving them with zero callers, and both
+ * were actively misleading:
+ *
+ *  - `isTokenRevoked` was a façade over the real authority. Revocation is owned by
+ *    `IJwtRevocationService` (Redis-backed, consulted by `JwtStrategy` under
+ *    `UnifiedAuthGuard`); inject that directly rather than reintroducing a second
+ *    way to ask the same question — the exact drift A2 set out to end.
+ *  - `validateUser` reported `isActive: !user.isDeleted`, and `isDeleted` only means
+ *    `resourceStatus === DELETED`. A DISABLED or SUSPENDED user therefore came back
+ *    as ACTIVE — the same class of silent lie as the old `isTokenRevoked` stub. Any
+ *    future caller needing liveness must read `resourceStatus` (and the per-user
+ *    not-before stamp), not resurrect this.
  */
 export interface IAuthService {
   /**
@@ -35,20 +39,6 @@ export interface IAuthService {
    * @returns A promise that resolves to an OAuthUserResponse object, which contains the user's information.
    */
   getOrCreateOidcUser(request: CreateOAuthUserRequest): Promise<OAuthUserResponse>;
-
-  /**
-   * Check if a JWT token has been revoked
-   * @param tokenId - The JWT token ID (jti claim)
-   * @returns Promise<boolean> - true if token is revoked, false otherwise
-   */
-  isTokenRevoked(tokenId: string): Promise<boolean>;
-
-  /**
-   * Validate a user by ID and return user information
-   * @param userId - The user ID to validate
-   * @returns Promise<UserValidationResponse | null> - User data if valid, null otherwise
-   */
-  validateUser(userId: string): Promise<UserValidationResponse | null>;
 
   /**
    * Track successful authentication for audit purposes

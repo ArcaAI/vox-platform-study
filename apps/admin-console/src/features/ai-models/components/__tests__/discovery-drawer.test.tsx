@@ -8,13 +8,11 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
-import * as axeMatchers from 'vitest-axe/matchers';
 import { toast } from 'sonner';
 import { renderWithProviders } from '@/test/render';
 import type { DiscoveryResponse } from '../../api/types';
 import { DiscoveryDrawer } from '../discovery-drawer';
 
-expect.extend(axeMatchers);
 
 vi.mock('sonner', () => ({
     toast: { success: vi.fn(), error: vi.fn() },

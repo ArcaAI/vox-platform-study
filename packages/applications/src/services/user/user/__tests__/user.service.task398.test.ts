@@ -40,23 +40,14 @@ const mockAppSettings = { getValueWithDefault: vi.fn(<T,>(_key: string, defaultV
 
 function buildService() {
   return new UserService(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockUserRepository as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockUserRoleAssignmentRepository as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockUserDepartmentRepository as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockEventEmitter as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockClsService as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockDatabaseService as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockUserProfileService as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockCryptoService as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockAppSettings as any,
   );
 }

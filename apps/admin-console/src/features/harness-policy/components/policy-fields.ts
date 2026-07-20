@@ -21,6 +21,38 @@ export interface PolicyFieldGroup {
     fields: PolicyField[];
 }
 
+/**
+ * TASK-532 (E3-L1) — knobs the TENANT editor renders read-only.
+ *
+ * The gateway rejects a tenant PATCH carrying any of these with 403 (they joined
+ * `GLOBAL_ADMIN_ONLY_POLICY_KEYS`, which also overlays the SYSTEM value at read
+ * time). Disabling them here is the console half of that contract: the server is
+ * still the authority, this only stops the user aiming at a control that cannot
+ * succeed. The GLOBAL editor passes no locked keys — it may write all of them.
+ *
+ * Keep in step with `GLOBAL_ADMIN_ONLY_POLICY_KEYS` in
+ * `packages/applications/src/services/harness-policy/harness-policy.service.ts`.
+ * This list is the INTERSECTION of that one with the fields the tenant tab
+ * actually renders — the remaining locked keys (SMR routing, agentic loop
+ * knobs) have no tenant-tab control, so there is nothing to disable.
+ *
+ * `safetyProvider`/`safetyModel` were locked server-side long before TASK-532,
+ * but the tenant tab still rendered them as editable text inputs whose save
+ * could only ever 403. An e2e spec had even encoded that impossible save as
+ * expected behaviour. Adding them here fixes the same defect class A-1c was
+ * written for, and is why that spec now edits a genuinely tenant-writable field.
+ */
+export const TENANT_LOCKED_POLICY_KEYS = [
+    'safetyEnabled',
+    'phiEnabled',
+    'phiFailClosed',
+    'safetyProvider',
+    'safetyModel',
+] as const satisfies readonly PolicyField['key'][];
+
+/** The copy shown under every locked control (rule 11 §5: visible reason). */
+export const LOCKED_FIELD_HINT = 'Global admins only';
+
 export const POLICY_FIELD_GROUPS: PolicyFieldGroup[] = [
     {
         title: 'Sensor thresholds',
