@@ -2,7 +2,14 @@
 
 import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, versionFromEtag } from '@/shared/api';
 import type { ListParams, WithEtag } from '@/shared/api';
-import type { AiModel, CreateModelRequest, PaginatedModels, UpdateModelRequest } from './types';
+import type {
+    AiModel,
+    CreateModelRequest,
+    DiscoveryResponse,
+    PaginatedModels,
+    RegisterDiscoveredModelRequest,
+    UpdateModelRequest,
+} from './types';
 
 const BASE = 'admin/ai-models';
 
@@ -35,4 +42,19 @@ export function updateModel(id: string, patch: UpdateModelRequest, etag: string)
 
 export function deleteModel(id: string): Promise<void> {
     return deleteJson(`${BASE}/${encodeURIComponent(id)}`);
+}
+
+/**
+ * TASK-528 — merge the registry with the live engine listings. Probes run
+ * upstream (SMR aggregates them under a per-provider timeout), so this call can
+ * take a couple of seconds: it is fired lazily when the drawer opens, never on
+ * page load.
+ */
+export function discoverModels(provider?: string): Promise<DiscoveryResponse> {
+    return getJson(`${BASE}/discovery`, provider ? { provider } : undefined);
+}
+
+/** Explicit `discovered` → `registered` transition; the only mutating discovery path. */
+export function registerDiscoveredModel(body: RegisterDiscoveredModelRequest): Promise<AiModel> {
+    return postJson(`${BASE}/discovery/register`, body);
 }

@@ -228,3 +228,16 @@ describe('AiTaskDefaultsPlatformScreen', () => {
     expect(screen.getByRole('button', { name: 'Reload latest' })).toBeDefined();
   });
 });
+
+// =============================================================================
+// TASK-528 — the platform screen links out to the AI-models hub
+// =============================================================================
+describe('AiTaskDefaultsPlatformScreen — Manage models link (TASK-528)', () => {
+  it('links "Manage models" to /ai-models', async () => {
+    stubFetch();
+    renderWithProviders(<AiTaskDefaultsPlatformScreen />);
+
+    const link = await screen.findByRole('link', { name: /manage models/i });
+    expect(link.getAttribute('href')).toBe('/ai-models');
+  });
+});

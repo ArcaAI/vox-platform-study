@@ -87,3 +87,46 @@ export interface UpdateModelRequest {
     computeType?: string;
     tags?: string[];
 }
+
+// =============================================================================
+// TASK-528 — discovery (GET admin/ai-models/discovery)
+// =============================================================================
+
+/** How an entry relates to the two sides of the merge (§3.1). */
+export type DiscoveryEntryStatus = 'registered' | 'discovered' | 'registered-missing-on-server';
+/** Engine-reported load state; `unknown` whenever the engine does not say. */
+export type DiscoveryLoadState = 'loaded' | 'not-loaded' | 'unknown';
+export type DiscoveryProbeStatus = 'ok' | 'timeout' | 'error' | 'skipped';
+
+export interface DiscoveryEntry {
+    /** SMR provider registry key, rendered verbatim (`lm-studio`, not `lmstudio`). */
+    provider: string;
+    modelName: string;
+    status: DiscoveryEntryStatus;
+    loadState: DiscoveryLoadState;
+    registeredModel?: { id: string; slug: string; resourceStatus: string };
+    engineMeta?: Record<string, unknown>;
+}
+
+export interface DiscoveryProbe {
+    provider: string;
+    probeStatus: DiscoveryProbeStatus;
+    latencyMs?: number;
+    error?: string;
+}
+
+export interface DiscoveryResponse {
+    entries: DiscoveryEntry[];
+    probes: DiscoveryProbe[];
+    /** ISO timestamp the probe completed — feeds the staleness indicator. */
+    probedAt: string;
+}
+
+/** POST admin/ai-models/discovery/register body. */
+export interface RegisterDiscoveredModelRequest {
+    provider: string;
+    modelName: string;
+    slug?: string;
+    name?: string;
+    description?: string;
+}

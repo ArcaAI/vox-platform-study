@@ -24,6 +24,7 @@ conflicts = [[
 members = [
     "guardrail",
     "harness",
+    "hope-runtime-models",
     "nlp",
     "smr-v2",
     "stt-v2",
@@ -1653,6 +1654,7 @@ dependencies = [
     { name = "asyncpg", marker = "(sys_platform == 'darwin' and extra == 'extra-6-stt-v2-ml') or (sys_platform == 'darwin' and extra == 'extra-6-stt-v2-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-6-stt-v2-nemo') or (sys_platform == 'linux' and extra == 'extra-6-stt-v2-ml') or (sys_platform == 'linux' and extra == 'extra-6-stt-v2-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "fastapi", marker = "(sys_platform == 'darwin' and extra == 'extra-6-stt-v2-ml') or (sys_platform == 'darwin' and extra == 'extra-6-stt-v2-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-6-stt-v2-nemo') or (sys_platform == 'linux' and extra == 'extra-6-stt-v2-ml') or (sys_platform == 'linux' and extra == 'extra-6-stt-v2-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "gliner2-onnx", marker = "(sys_platform == 'darwin' and extra == 'extra-6-stt-v2-ml') or (sys_platform == 'darwin' and extra == 'extra-6-stt-v2-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-6-stt-v2-nemo') or (sys_platform == 'linux' and extra == 'extra-6-stt-v2-ml') or (sys_platform == 'linux' and extra == 'extra-6-stt-v2-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
+    { name = "hope-runtime-models", marker = "(sys_platform == 'darwin' and extra == 'extra-6-stt-v2-ml') or (sys_platform == 'darwin' and extra == 'extra-6-stt-v2-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-6-stt-v2-nemo') or (sys_platform == 'linux' and extra == 'extra-6-stt-v2-ml') or (sys_platform == 'linux' and extra == 'extra-6-stt-v2-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "httpx", marker = "(sys_platform == 'darwin' and extra == 'extra-6-stt-v2-ml') or (sys_platform == 'darwin' and extra == 'extra-6-stt-v2-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-6-stt-v2-nemo') or (sys_platform == 'linux' and extra == 'extra-6-stt-v2-ml') or (sys_platform == 'linux' and extra == 'extra-6-stt-v2-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "minio", marker = "(sys_platform == 'darwin' and extra == 'extra-6-stt-v2-ml') or (sys_platform == 'darwin' and extra == 'extra-6-stt-v2-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-6-stt-v2-nemo') or (sys_platform == 'linux' and extra == 'extra-6-stt-v2-ml') or (sys_platform == 'linux' and extra == 'extra-6-stt-v2-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "onnxruntime", marker = "(sys_platform == 'darwin' and extra == 'extra-6-stt-v2-ml') or (sys_platform == 'darwin' and extra == 'extra-6-stt-v2-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-6-stt-v2-nemo') or (sys_platform == 'linux' and extra == 'extra-6-stt-v2-ml') or (sys_platform == 'linux' and extra == 'extra-6-stt-v2-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
@@ -1704,6 +1706,7 @@ requires-dist = [
     { name = "fakeredis", extras = ["lua"], marker = "extra == 'test'", specifier = ">=2.21.0" },
     { name = "fastapi", specifier = ">=0.133.0" },
     { name = "gliner2-onnx" },
+    { name = "hope-runtime-models", editable = "packages/py-runtime-models" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.28.1" },
     { name = "llama-cpp-python", marker = "extra == 'groundedness'", specifier = ">=0.3.2" },
@@ -1764,6 +1767,7 @@ source = { editable = "apps/harness" }
 dependencies = [
     { name = "boto3", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "fastapi", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
+    { name = "hope-runtime-models", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "httpx", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "jsonschema", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "opentelemetry-api", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
@@ -1851,6 +1855,7 @@ requires-dist = [
     { name = "deepeval", marker = "extra == 'eval'", specifier = ">=4.0,<5" },
     { name = "fastapi", specifier = ">=0.133.0" },
     { name = "fastembed", marker = "extra == 'rag'", specifier = ">=0.4" },
+    { name = "hope-runtime-models", editable = "packages/py-runtime-models" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.28.1" },
     { name = "jsonschema", specifier = ">=4.23.0" },
@@ -1929,6 +1934,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/66/a9/cdfda214af93eeb9f93a83a099d06f26ae5569f188209ddc8a7c977ed446/hiredis-3.4.0-cp311-cp311-musllinux_1_2_s390x.whl", hash = "sha256:44660a91e0fbc803c29b337c1a9194c8d7b4cd3a3868d28f747cbec2df165483", size = 330103, upload-time = "2026-06-03T16:22:12.935Z" },
     { url = "https://files.pythonhosted.org/packages/87/05/cdc7e2e07b56c716426db4644b917b260a4f6fdc8d16cc3bbac4b27d0a17/hiredis-3.4.0-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:a315009b441a0105a373a9a780ebb1c6f7d9ead88ac6ea5f2a15791353c6f590", size = 309582, upload-time = "2026-06-03T16:22:14.157Z" },
 ]
+
+[[package]]
+name = "hope-runtime-models"
+version = "0.1.0"
+source = { editable = "packages/py-runtime-models" }
 
 [[package]]
 name = "hpack"
@@ -3381,6 +3391,7 @@ source = { editable = "apps/nlp" }
 dependencies = [
     { name = "aiofiles", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "fastapi", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
+    { name = "hope-runtime-models", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "httpx", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "minio", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
@@ -3440,6 +3451,7 @@ requires-dist = [
     { name = "black", marker = "extra == 'dev'", specifier = ">=26.1.0" },
     { name = "black", marker = "extra == 'lint'", specifier = ">=26.1.0" },
     { name = "fastapi", specifier = ">=0.133.0" },
+    { name = "hope-runtime-models", editable = "packages/py-runtime-models" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.28.1" },
     { name = "minio", specifier = ">=7.2.20" },
@@ -5894,6 +5906,7 @@ source = { editable = "apps/smr" }
 dependencies = [
     { name = "boto3", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "fastapi", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
+    { name = "hope-runtime-models", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "httpx", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "openai", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "opentelemetry-api", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
@@ -5958,6 +5971,7 @@ requires-dist = [
     { name = "botocore-stubs", marker = "extra == 'lint'", specifier = ">=1.42.0" },
     { name = "fakeredis", extras = ["lua"], marker = "extra == 'test'", specifier = ">=2.21.0" },
     { name = "fastapi", specifier = ">=0.133.0" },
+    { name = "hope-runtime-models", editable = "packages/py-runtime-models" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.28.1" },
     { name = "locust", marker = "extra == 'load'", specifier = ">=2.32.0" },
@@ -6261,6 +6275,7 @@ dependencies = [
     { name = "cadence-punctuation", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "dramatiq", extra = ["redis"], marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "fastapi", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
+    { name = "hope-runtime-models", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "httpx", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "minio", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
@@ -6375,6 +6390,7 @@ requires-dist = [
     { name = "faster-whisper", marker = "extra == 'ml'", specifier = "==1.2.1" },
     { name = "flash-attn", marker = "sys_platform == 'linux' and extra == 'ml-gpu'", specifier = ">=2.8.3" },
     { name = "freezegun", marker = "extra == 'test'", specifier = ">=1.5.0" },
+    { name = "hope-runtime-models", editable = "packages/py-runtime-models" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "huggingface-hub", marker = "extra == 'ml'", specifier = ">=0.28.0" },
     { name = "librosa", marker = "extra == 'ml'", specifier = ">=0.11.0" },
@@ -6941,6 +6957,7 @@ source = { editable = "apps/tts-v2" }
 dependencies = [
     { name = "azure-cognitiveservices-speech", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "fastapi", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
+    { name = "hope-runtime-models", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "httpx", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "orjson", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
     { name = "prometheus-client", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-6-stt-v2-ml' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-ml-gpu' and extra == 'extra-6-stt-v2-nemo') or (extra == 'extra-6-stt-v2-nemo' and extra == 'project-9-guardrail')" },
@@ -7001,6 +7018,7 @@ requires-dist = [
     { name = "black", marker = "extra == 'dev'", specifier = ">=26.1.0" },
     { name = "black", marker = "extra == 'lint'", specifier = ">=26.1.0" },
     { name = "fastapi", specifier = ">=0.133.0" },
+    { name = "hope-runtime-models", editable = "packages/py-runtime-models" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.28.1" },
     { name = "kokoro", marker = "extra == 'local'", specifier = ">=0.9.4" },

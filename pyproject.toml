@@ -24,6 +24,10 @@ members = [
     "apps/harness",
     "apps/stt-v2",
     "apps/tts-v2",
+    # TASK-529 — shared model-lifecycle contract consumed by the five
+    # in-process services. Dependency-free by design, so adding it as a member
+    # cannot perturb the resolution of anything else in this lock.
+    "packages/py-runtime-models",
 ]
 
 # stt-v2's `nemo` extra pulls nemo-toolkit, which hard-requires transformers

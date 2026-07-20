@@ -383,6 +383,16 @@ install_dependencies() {
     print_step "Upgrading pip..."
     "${CR[@]}" pip install --upgrade pip setuptools wheel
 
+    # --- shared runtime contracts (TASK-529) ---
+    # Installed FIRST: every service below declares it as a workspace
+    # dependency, and pip would otherwise try to resolve `hope-runtime-models`
+    # from PyPI (where it does not exist). Dependency-free, so this is instant.
+    local runtime_models_dir="$PROJECT_ROOT/packages/py-runtime-models"
+    if [[ -f "$runtime_models_dir/pyproject.toml" ]]; then
+        print_step "Installing hope-runtime-models (shared model-lifecycle contract)..."
+        "${CR[@]}" pip install -e "${runtime_models_dir}"
+    fi
+
     # --- stt-v2 ---
     print_header "  4a: stt-v2 (Speech-to-Text v2)"
     local stt_v2_dir="$PROJECT_ROOT/apps/stt-v2"

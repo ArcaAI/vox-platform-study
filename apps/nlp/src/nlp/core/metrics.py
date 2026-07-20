@@ -16,8 +16,9 @@ import time
 from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 
+from hope_runtime_models import PrometheusMetricsSink
 from opentelemetry import metrics
-from prometheus_client import Gauge, Histogram
+from prometheus_client import Counter, Gauge, Histogram
 
 
 class NLPMetrics:
@@ -145,3 +146,45 @@ def track_model_inference(model: str, service: str = SERVICE_NAME) -> Iterator[N
             time.perf_counter() - start
         )
         MODEL_RUNNING_INSTANCES.labels(service=service, model=model).dec()
+
+
+# ---------------------------------------------------------------------------
+# Model-cache retention metrics (TASK-529 §3.5)
+# ---------------------------------------------------------------------------
+# FIXED CONTRACT: names and label sets are identical across all five HOPE
+# services so one Grafana dashboard
+# (`infrastructure/grafana/dashboards/model-retention.json`) reads them all.
+# Do not rename these or add labels without updating that dashboard.
+MODEL_CACHE_LOADS_TOTAL = Counter(
+    "model_cache_loads_total",
+    "Model loads performed by an in-process model cache",
+    ["cache"],
+)
+
+MODEL_CACHE_EVICTIONS_TOTAL = Counter(
+    "model_cache_evictions_total",
+    "Model evictions by reason (ttl = idle expiry, lru = capacity, vram = GPU pressure)",
+    ["cache", "reason"],
+)
+
+MODEL_CACHE_RESIDENT_MODELS = Gauge(
+    "model_cache_resident_models",
+    "Models currently resident in an in-process model cache",
+    ["cache"],
+)
+
+MODEL_CACHE_RESIDENT_BYTES_ESTIMATE = Gauge(
+    "model_cache_resident_bytes_estimate",
+    "Estimated resident bytes of models held by an in-process model cache",
+    ["cache"],
+)
+
+
+def build_model_cache_metrics_sink() -> PrometheusMetricsSink:
+    """The metrics sink to hand to `hope_runtime_models.ModelCache(metrics=...)`."""
+    return PrometheusMetricsSink(
+        loads_total=MODEL_CACHE_LOADS_TOTAL,
+        evictions_total=MODEL_CACHE_EVICTIONS_TOTAL,
+        resident_models=MODEL_CACHE_RESIDENT_MODELS,
+        resident_bytes_estimate=MODEL_CACHE_RESIDENT_BYTES_ESTIMATE,
+    )

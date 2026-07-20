@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
-import { IconCpu, IconFilterOff, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconCpu, IconFilterOff, IconPencil, IconPlus, IconRadar, IconTrash } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { type ColumnDef, type SortRule } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
@@ -19,6 +19,7 @@ import { EmptyState } from '@/shared/state/empty-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
 import { useDeleteModel, useModelsPaginated } from '../api/hooks';
 import type { AiModel } from '../api/types';
+import { DiscoveryDrawer } from './discovery-drawer';
 import { ModelFormSheet } from './model-form-sheet';
 import { CATEGORY_OPTIONS, RUNTIME_PROVIDER_OPTIONS, SOURCE_LABELS, SOURCE_OPTIONS, humanizeEnum } from './model-meta';
 
@@ -52,10 +53,16 @@ function ModelRowActions({ model, onEdit, onDelete }: { model: AiModel; onEdit: 
 }
 
 /**
- * Frame 15 — AI Model Registry (/ai-models, tier 10-19). Server-driven
+ * Frame 15 — AI Models hub (/ai-models, tier 10-19). Server-driven
  * AdminDataGrid (omni search over name/slug + provider/capability/status typed
  * filters + sortable name/updated + pager), register/edit drawer (OCC If-Match)
  * and destructive delete with confirm.
+ *
+ * TASK-528 turns the registry screen into the hub: the header also opens the
+ * DISCOVERY drawer, which merges these rows with the live LM Studio / Ollama /
+ * vLLM / llama.cpp listings. Discovery probes are LAZY (drawer open only) so
+ * this grid never waits on an engine round-trip, and the registry stays
+ * authoritative for task routing — discovery only ever offers a register.
  */
 export function AiModelsScreen() {
     const query = useAdminGridParams({ searchFields: AI_MODEL_SEARCH_FIELDS, defaultSort: AI_MODEL_DEFAULT_SORT });
@@ -64,6 +71,7 @@ export function AiModelsScreen() {
     const totalCount = total ?? 0;
 
     const [sheetOpen, setSheetOpen] = useState(false);
+    const [discoveryOpen, setDiscoveryOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [deleteTarget, setDeleteTarget] = useState<AiModel | null>(null);
     const deleteMutation = useDeleteModel();
@@ -204,10 +212,16 @@ export function AiModelsScreen() {
                         title="AI Model Registry"
                         meta={data ? <span>{formatNumber(totalCount)} models</span> : null}
                         actions={
-                            <Button onClick={openCreate}>
-                                <IconPlus aria-hidden />
-                                Register model
-                            </Button>
+                            <>
+                                <Button variant="outline" onClick={() => setDiscoveryOpen(true)}>
+                                    <IconRadar aria-hidden />
+                                    Discover from servers
+                                </Button>
+                                <Button onClick={openCreate}>
+                                    <IconPlus aria-hidden />
+                                    Register model
+                                </Button>
+                            </>
                         }
                     />
                 }
@@ -262,6 +276,7 @@ export function AiModelsScreen() {
                     }
                 />
             </ScreenTemplate>
+            <DiscoveryDrawer open={discoveryOpen} onOpenChange={setDiscoveryOpen} />
             <ModelFormSheet
                 open={sheetOpen}
                 onOpenChange={(open) => {

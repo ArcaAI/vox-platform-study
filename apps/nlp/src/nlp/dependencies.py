@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import structlog
 from fastapi import Request
@@ -153,21 +153,105 @@ async def _create_medical_suggester(cache_key: str) -> MedicalSuggester:
     return instance
 
 
+# TASK-529 (D-07) — the three singletons are built FROM the resolved retention
+# config instead of silently taking the module defaults, and are reconfigurable
+# at runtime from the control plane.
+_CACHE_GLOBALS = (
+    "_token_classifier_cache_instance",
+    "_text_classifier_cache_instance",
+    "_medical_suggester_cache_instance",
+)
+
+
+# Last retention seen from the control plane. Held here so a cache built AFTER
+# a refresh is born with the current values rather than the bootstrap ones —
+# the caches are lazy, so most are constructed long after the first refresh.
+_current_retention: dict[str, int] = {}
+
+
+def _retention_kwargs() -> dict[str, int]:
+    """Resolved retention: control-plane value when known, else settings."""
+    from nlp.core.config import settings
+    from nlp.core.metrics import build_model_cache_metrics_sink
+
+    return {
+        "ttl_seconds": _current_retention.get(
+            "ttl_seconds", settings.service.model_cache_ttl_seconds
+        ),
+        "max_size": _current_retention.get(
+            "max_models", settings.service.model_cache_max_models
+        ),
+        "metrics": build_model_cache_metrics_sink(),
+    }
+
+
+def _live_caches() -> list[ModelCache[Any]]:
+    """Every INSTANTIATED cache singleton (never forces construction)."""
+    return [cache for name in _CACHE_GLOBALS if (cache := globals().get(name)) is not None]
+
+
+def apply_model_cache_retention(retention: dict[str, int]) -> None:
+    """Adopt control-plane retention across all three caches (D-07).
+
+    An ABSENT key keeps the current value, so a gateway outage leaves behaviour
+    byte-identical. Resident models are never dropped — the new limits take
+    effect on the next sweep or access. The product clamp [60, 3600] is
+    re-applied inside the shared cache.
+    """
+    ttl_seconds = retention.get("ttl_seconds")
+    max_models = retention.get("max_models")
+    if ttl_seconds is None and max_models is None:
+        return
+
+    _current_retention.update(
+        {k: v for k, v in retention.items() if k in ("ttl_seconds", "max_models") and v is not None}
+    )
+
+    for cache in _live_caches():
+        cache.configure(ttl_seconds=ttl_seconds, max_size=max_models)
+
+
+async def sweep_model_caches() -> int:
+    """Release idle-expired models across all three caches; returns how many.
+
+    Driven by a periodic task so an idle model whose key is never requested
+    again is still released — the pre-TASK-529 caches evicted lazily on access
+    only, so such a model was retained forever despite its TTL.
+    """
+    swept = 0
+    for cache in _live_caches():
+        swept += await cache.sweep()
+    return swept
+
+
+def reset_model_caches() -> None:
+    """Drop the cache singletons (tests only — does not unload live models)."""
+    for name in _CACHE_GLOBALS:
+        globals()[name] = None
+    _current_retention.clear()
+
+
 def _token_classifier_cache() -> ModelCache[TokenClassifier]:
     if globals().get("_token_classifier_cache_instance") is None:
-        globals()["_token_classifier_cache_instance"] = ModelCache(factory=_create_token_classifier)
+        globals()["_token_classifier_cache_instance"] = ModelCache(
+            factory=_create_token_classifier, name="nlp_token_classifier", **_retention_kwargs()
+        )
     return cast("ModelCache[TokenClassifier]", globals()["_token_classifier_cache_instance"])
 
 
 def _text_classifier_cache() -> ModelCache[TextClassifier]:
     if globals().get("_text_classifier_cache_instance") is None:
-        globals()["_text_classifier_cache_instance"] = ModelCache(factory=_create_text_classifier)
+        globals()["_text_classifier_cache_instance"] = ModelCache(
+            factory=_create_text_classifier, name="nlp_text_classifier", **_retention_kwargs()
+        )
     return cast("ModelCache[TextClassifier]", globals()["_text_classifier_cache_instance"])
 
 
 def _medical_suggester_cache() -> ModelCache[MedicalSuggester]:
     if globals().get("_medical_suggester_cache_instance") is None:
-        globals()["_medical_suggester_cache_instance"] = ModelCache(factory=_create_medical_suggester)
+        globals()["_medical_suggester_cache_instance"] = ModelCache(
+            factory=_create_medical_suggester, name="nlp_medical_suggester", **_retention_kwargs()
+        )
     return cast("ModelCache[MedicalSuggester]", globals()["_medical_suggester_cache_instance"])
 
 

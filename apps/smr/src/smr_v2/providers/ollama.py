@@ -12,6 +12,7 @@ import structlog
 
 from smr_v2.core.config import OllamaConfig
 from smr_v2.core.defaults import resolve_request_defaults
+from smr_v2.core.retention import DEFAULT_RETENTION_TTL_S, clamp_cache_ttl_seconds
 from smr_v2.core.telemetry import get_tracer
 from smr_v2.models.provider import ModelInfo, ProviderInfo
 from smr_v2.models.requests import GenerateRequest
@@ -56,12 +57,27 @@ class OllamaProvider:
         self._http = http_client
         self._default_model = config.default_model
         self._base_url = config.base_url.rstrip("/")
+        # TASK-529 (D-10) — bootstrap retention hint; `apply_retention` replaces
+        # it with the control-plane value on the first effective-config refresh.
+        self._retention_ttl_s = clamp_cache_ttl_seconds(DEFAULT_RETENTION_TTL_S)
 
     def _resolve_model(self, request: GenerateRequest) -> str | None:
         # D-7 (TASK-356): no in-gateway default — the caller-supplied model is
         # authoritative. ``_default_model`` is retained for the providers
         # listing (informational) only.
         return request.model
+
+    def apply_retention(self, retention: dict[str, int]) -> None:
+        """TASK-529 (D-10) — adopt the control-plane idle-retention TTL.
+
+        An ABSENT key keeps the current (env/bootstrap) value, so a gateway
+        outage leaves behaviour byte-identical. The product clamp [60, 3600] is
+        re-applied here as well as registry-side: a bad DB value must not be
+        able to pin a model in GPU memory for a day.
+        """
+        ttl_seconds = retention.get("ttl_seconds")
+        if ttl_seconds is not None:
+            self._retention_ttl_s = clamp_cache_ttl_seconds(ttl_seconds)
 
     def _build_payload(self, request: GenerateRequest, *, stream: bool) -> dict[str, Any]:
         resolved = resolve_request_defaults(request)
@@ -75,6 +91,10 @@ class OllamaProvider:
                 "top_p": resolved["top_p"],
             },
             "think": True,
+            # TASK-529 (D-10) — Ollama owns residency; this per-request hint
+            # overrides the server's OLLAMA_KEEP_ALIVE (default 5 min idle).
+            # Sent on generate AND stream: both share this builder.
+            "keep_alive": f"{self._retention_ttl_s}s",
         }
         if request.system_prompt:
             payload["system"] = request.system_prompt
@@ -192,6 +212,25 @@ class OllamaProvider:
             logger.error("health_check.unexpected_error", provider="ollama", error=str(exc))
             return False
 
+    async def _running_model_names(self) -> set[str] | None:
+        """TASK-528 — `GET /api/ps` lists the models Ollama currently has resident.
+
+        Returns ``None`` when the probe fails, which the caller renders as an
+        UNKNOWN load state — never as "not loaded" (a transient `/api/ps` miss
+        must not look like an unloaded engine).
+        """
+        try:
+            resp = await self._http.get(f"{self._base_url}/api/ps")
+            if resp.status_code != 200:
+                return None
+            return {m["name"] for m in resp.json().get("models", []) if m.get("name")}
+        except (httpx.HTTPError, httpx.TimeoutException, ConnectionError, OSError) as exc:
+            logger.warning("get_info.ps_failed", provider="ollama", error=str(exc))
+            return None
+        except Exception as exc:
+            logger.error("get_info.ps_unexpected_error", provider="ollama", error=str(exc))
+            return None
+
     async def get_info(self) -> ProviderInfo:
         models: list[ModelInfo] = []
         try:
@@ -203,6 +242,13 @@ class OllamaProvider:
             logger.warning("get_info.failed", provider="ollama", error=str(exc))
         except Exception as exc:
             logger.error("get_info.unexpected_error", provider="ollama", error=str(exc))
+
+        if models:
+            running = await self._running_model_names()
+            if running is not None:
+                for model in models:
+                    model.state = "loaded" if model.name in running else "not-loaded"
+
         return ProviderInfo(
             name="ollama",
             display_name="Ollama (Self-Hosted)",

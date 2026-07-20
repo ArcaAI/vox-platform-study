@@ -250,6 +250,22 @@ class Settings(BaseSettings):
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
     queue: QueueConfig = Field(default_factory=QueueConfig)
 
+    # TASK-528 §3.3 — per-provider cap for the `/providers` LISTING probe only
+    # (never generation). One hung engine must not stall the endpoint: the
+    # shared httpx/AsyncOpenAI clients carry a 300 s generation timeout, which
+    # is far too long for an admin-facing listing.
+    # Env var: SMR_V2_PROVIDER_PROBE_TIMEOUT_S.
+    provider_probe_timeout_s: int = 5
+
+    # TASK-529 (D-10) — model retention hint forwarded to SERVER-MANAGED engines
+    # (Ollama `keep_alive`, LM Studio `ttl`). SMR holds no weights of its own, so
+    # this is propagation, not a cache.
+    #
+    # BOOTSTRAP FALLBACK ONLY — the runtime value comes from the control plane
+    # (`GET /internal/effective-config?service=smr` → `retention.ttlSeconds`).
+    # Env var: SMR_V2_MODEL_RETENTION_TTL_S.
+    model_retention_ttl_s: int = 600
+
     @field_validator("log_level")
     @classmethod
     def _normalise_log_level(cls, v: str) -> str:

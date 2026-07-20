@@ -2,9 +2,19 @@
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ListParams } from '@/shared/api';
-import { createModel, deleteModel, getModel, getModelBySlug, listModels, listModelsPaginated, updateModel } from './client';
+import {
+    createModel,
+    deleteModel,
+    discoverModels,
+    getModel,
+    getModelBySlug,
+    listModels,
+    listModelsPaginated,
+    registerDiscoveredModel,
+    updateModel,
+} from './client';
 import { aiModelKeys } from './keys';
-import type { CreateModelRequest, UpdateModelRequest } from './types';
+import type { CreateModelRequest, RegisterDiscoveredModelRequest, UpdateModelRequest } from './types';
 
 export function useModels() {
     return useQuery({ queryKey: aiModelKeys.all(), queryFn: listModels });
@@ -43,4 +53,32 @@ export function useUpdateModel() {
 export function useDeleteModel() {
     const invalidate = useInvalidateModels();
     return useMutation({ mutationFn: (id: string) => deleteModel(id), onSuccess: invalidate });
+}
+
+/**
+ * TASK-528 — live merge view. `enabled` gates the probe so it fires only when
+ * the drawer is open (the registry grid must never wait on an engine probe);
+ * a 30 s `staleTime` keeps re-opens instant while `probedAt` + the Refresh
+ * button make staleness explicit rather than silent.
+ */
+export function useModelDiscovery(provider: string | undefined, enabled: boolean) {
+    return useQuery({
+        queryKey: aiModelKeys.discovery(provider),
+        queryFn: () => discoverModels(provider),
+        enabled,
+        staleTime: 30_000,
+        retry: false,
+    });
+}
+
+/**
+ * Registering invalidates the whole `ai-models` root, so BOTH the drawer entry
+ * (→ `registered`) and the registry grid behind it refresh — no manual reload.
+ */
+export function useRegisterDiscoveredModel() {
+    const invalidate = useInvalidateModels();
+    return useMutation({
+        mutationFn: (body: RegisterDiscoveredModelRequest) => registerDiscoveredModel(body),
+        onSuccess: invalidate,
+    });
 }

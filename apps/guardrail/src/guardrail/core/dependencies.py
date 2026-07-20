@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import Request
 
+from guardrail.core.metrics import build_model_cache_metrics_sink
 from guardrail.services.model_cache import ModelCache, ModelUnavailableError
 
 if TYPE_CHECKING:
@@ -138,6 +139,7 @@ def get_gliner_cache(app_state: Any) -> ModelCache[GlinerProvider]:
             factory=factory,
             max_size=settings.model_cache_max_models,
             ttl_seconds=settings.model_cache_ttl_s,
+            metrics=build_model_cache_metrics_sink(),
         )
         app_state.gliner_cache = cache
     return cast("ModelCache[GlinerProvider]", cache)
@@ -196,6 +198,7 @@ def get_groundedness_scorer_cache(app_state: Any) -> ModelCache[NliScorer]:
             factory=factory,
             max_size=settings.model_cache_max_models,
             ttl_seconds=settings.model_cache_ttl_s,
+            metrics=build_model_cache_metrics_sink(),
         )
         app_state.groundedness_scorer_cache = cache
     return cast("ModelCache[NliScorer]", cache)

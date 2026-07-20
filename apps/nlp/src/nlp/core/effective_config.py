@@ -52,6 +52,22 @@ class EffectiveConfigSnapshot:
             return None
         return _positive_int(concurrency.get("maxConcurrent"))
 
+    def retention(self) -> dict[str, int]:
+        """TASK-529 (D-07) — model-cache retention knobs with an opinion.
+
+        An omitted key means "keep the env/bootstrap value"; a null or
+        non-positive value is never coerced into a real number.
+        """
+        group = self.raw.get("retention")
+        if not isinstance(group, dict):
+            return {}
+
+        mapping = {
+            "ttl_seconds": group.get("ttlSeconds"),
+            "max_models": group.get("maxModels"),
+        }
+        return {key: value for key, raw in mapping.items() if (value := _positive_int(raw)) is not None}
+
 
 def _positive_int(value: Any) -> int | None:
     # `bool` is an `int` subclass — exclude it, or `True` would become 1.

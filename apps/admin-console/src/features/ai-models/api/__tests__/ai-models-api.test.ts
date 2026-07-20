@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createModel, deleteModel, getModel, getModelBySlug, listModels, listModelsPaginated, updateModel } from '../client';
+import {
+    createModel,
+    deleteModel,
+    discoverModels,
+    getModel,
+    getModelBySlug,
+    listModels,
+    listModelsPaginated,
+    registerDiscoveredModel,
+    updateModel,
+} from '../client';
 import { aiModelKeys } from '../keys';
 
 interface RecordedCall {
@@ -80,5 +90,37 @@ describe('ai-models client', () => {
         expect(calls[0].headers.get('if-match')).toBe('"4"');
         expect(calls[0].body).toEqual({ description: 'updated', expectedVersion: 4 });
         expect(calls[1].method).toBe('DELETE');
+    });
+});
+
+// =============================================================================
+// TASK-528 — discovery client + query keys
+// =============================================================================
+describe('discovery client (TASK-528)', () => {
+    it('GETs admin/ai-models/discovery and passes the provider filter', async () => {
+        const calls = installFetchMock(() => Response.json({ entries: [], probes: [], probedAt: '2026-07-20T10:00:00.000Z' }));
+
+        await discoverModels();
+        await discoverModels('lm-studio');
+
+        expect(calls[0].url).toContain('admin/ai-models/discovery');
+        expect(calls[0].method).toBe('GET');
+        expect(calls[1].url).toContain('provider=lm-studio');
+    });
+
+    it('POSTs the register body to admin/ai-models/discovery/register', async () => {
+        const calls = installFetchMock(() => Response.json({ id: 'm-9', slug: 'mistral-7b' }));
+
+        await registerDiscoveredModel({ provider: 'ollama', modelName: 'mistral:7b' });
+
+        expect(calls[0].method).toBe('POST');
+        expect(calls[0].url).toContain('admin/ai-models/discovery/register');
+        expect(calls[0].body).toEqual({ provider: 'ollama', modelName: 'mistral:7b' });
+    });
+
+    it('keys discovery per provider filter and under the ai-models root', () => {
+        expect(aiModelKeys.discovery()).not.toEqual(aiModelKeys.discovery('ollama'));
+        expect(aiModelKeys.discovery()[0]).toBe('ai-models');
+        expect(aiModelKeys.discovery()).not.toEqual(aiModelKeys.all());
     });
 });

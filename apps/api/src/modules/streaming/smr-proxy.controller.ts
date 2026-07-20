@@ -1064,6 +1064,13 @@ export class SmrProxyController {
   // tenant's effective default still comes from the HarnessPolicy cascade
   // (`applySmrModelSelection` untouched). The live SMR probe survives ONLY as
   // transition safety when the registry has zero rows.
+  //
+  // TASK-528 — that fallback is now scoped to the PLAYGROUND (tier 50-59), the
+  // only surface reaching it. Governing admin surfaces must NOT infer engine
+  // state from this route: the AI-models hub calls
+  // `GET admin/ai-models/discovery` instead, which merges the registry with the
+  // live listing and tags each entry registered / discovered /
+  // registered-missing-on-server without ever mutating a row.
   @Get('providers')
   @Authorize()
   @ApiOperation({
@@ -1123,6 +1130,10 @@ export class SmrProxyController {
   // GUARDRAIL registry rows and marks the effective `guardrail.validate`
   // default (AiTaskDefault tenant→SYSTEM cascade). There is no upstream-service
   // probe: an empty result simply means "not configured".
+  //
+  // TASK-528 re-confirms this fail-CONFIGURED posture and leaves it unchanged:
+  // discovery is deliberately NOT extended to the guardrail listing — a safety
+  // plane must never appear configured because an engine happens to host a model.
   @Get('guardrail-providers')
   @Authorize()
   @ApiOperation({

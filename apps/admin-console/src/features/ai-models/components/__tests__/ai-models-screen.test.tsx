@@ -283,3 +283,40 @@ describe('AiModelsScreen', () => {
         await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
     });
 });
+
+// =============================================================================
+// TASK-528 — the hub header action opening the discovery drawer
+// =============================================================================
+describe('AiModelsScreen discovery action (TASK-528)', () => {
+    it('renders a "Discover from servers" header action', async () => {
+        stubFetch(() => Response.json(envelope([MODEL])));
+        renderWithProviders(<AiModelsScreen />);
+
+        await screen.findByText('Whisper Large v4');
+        expect(screen.getByRole('button', { name: /discover from servers/i })).toBeDefined();
+    });
+
+    it('opens the discovery drawer, which probes the discovery route', async () => {
+        const calls = stubFetch((url) => {
+            if (url.includes('/discovery')) {
+                return Response.json({ entries: [], probes: [], probedAt: '2026-07-20T10:00:00.000Z' });
+            }
+            return Response.json(envelope([MODEL]));
+        });
+        renderWithProviders(<AiModelsScreen />);
+        await screen.findByText('Whisper Large v4');
+
+        fireEvent.click(screen.getByRole('button', { name: /discover from servers/i }));
+
+        await waitFor(() => expect(calls.some((call) => call.url.includes('admin/ai-models/discovery'))).toBe(true));
+        expect(await screen.findByText(/no models found on any server/i)).toBeDefined();
+    });
+
+    it('does NOT probe discovery on page load — probes are lazy (drawer open only)', async () => {
+        const calls = stubFetch(() => Response.json(envelope([MODEL])));
+        renderWithProviders(<AiModelsScreen />);
+
+        await screen.findByText('Whisper Large v4');
+        expect(calls.some((call) => call.url.includes('/discovery'))).toBe(false);
+    });
+});

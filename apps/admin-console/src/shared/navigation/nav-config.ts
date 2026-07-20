@@ -121,8 +121,11 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     implemented: true,
   },
   // Global-admin only per the 2026-07-04 review (backend guard re-pin: TASK-419).
-  // Hidden from the sidebar/palette (route stays reachable by direct URL).
-  { route: '/ai-models', label: 'AI models', tier: '10-19', icon: IconBrain, required: [['manage', 'all']], implemented: false },
+  // TASK-528 — unhidden: the screen is now the AI-models HUB (registry grid +
+  // live LM Studio/Ollama discovery + register), i.e. the surface a global admin
+  // uses to see what the serving engines actually host. It was hidden only while
+  // it was registry-only. The manage:all gate is unchanged.
+  { route: '/ai-models', label: 'AI models', tier: '10-19', icon: IconBrain, required: [['manage', 'all']], implemented: true },
   // TASK-506 — SYSTEM-tenant task-default rows; guardrail config is global-admin-only by owner directive.
   {
     route: '/ai-task-defaults',

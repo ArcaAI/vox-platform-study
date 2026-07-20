@@ -45,7 +45,12 @@ dependencies = [
     # LAZILY inside `core/model_source.py::_make_s3_client`, so a deployment
     # that never declares an s3:// source_uri never imports it.
     "minio>=7.2.20",
+    # --- Shared runtime contracts (TASK-529) ---
+    "hope-runtime-models",
 ]
+
+[tool.uv.sources]
+hope-runtime-models = { workspace = true }
 
 [project.optional-dependencies]
 dev = [

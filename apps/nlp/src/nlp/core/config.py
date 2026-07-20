@@ -125,6 +125,16 @@ class NLPServiceConfig(BaseSettings):
     # bound at all, so this is the first ceiling the service has ever had (GAP-L4).
     inference_max_concurrent: int = Field(default=4, ge=1)
 
+    # TASK-529 (D-07) — model-cache retention. Before this ticket nlp's three
+    # cache singletons were constructed with NO ttl/max argument, so retention
+    # was pinned to the module defaults with not even an env knob.
+    #
+    # BOOTSTRAP FALLBACK ONLY — the runtime value comes from the control plane
+    # (`nlp.modelCache.{ttlSeconds,maxModels}`). Env: NLP_MODEL_CACHE_TTL_SECONDS
+    # / NLP_MODEL_CACHE_MAX_MODELS. The 600 s default is OD-5 (was 3600).
+    model_cache_ttl_seconds: int = Field(default=600, ge=60, le=3600)
+    model_cache_max_models: int = Field(default=3, ge=1)
+
     class Config:
         env_prefix = "NLP_"
 

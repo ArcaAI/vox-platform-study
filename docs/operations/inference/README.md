@@ -1,5 +1,10 @@
 # Production Inference Engines — Operations Runbook
 
+> **Model retention & lifecycle** (when models load, how long they stay
+> resident, and how to change that at runtime) lives in a companion runbook:
+> [`model-retention.md`](./model-retention.md) (TASK-529). Read it before tuning
+> `OLLAMA_KEEP_ALIVE`, LM Studio TTL/Auto-Evict, or any `*.modelCache.*` setting.
+
 vLLM and llama.cpp are the **production** self-host LLM engines for HOPE (AD-4 of
 the [TASK-508 program](../../implementation/TASK-508-Agentic-SOTA-Program/README.md)).
 LM Studio (`openai_compat` / `lm-studio`) and Ollama stay the **local dev/test**

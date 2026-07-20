@@ -35,16 +35,101 @@ import { SettingDescriptor } from '../registry.types';
  */
 export const SERVICE_RUNTIME_DEFAULTS = {
   'stt.modelCache.maxModels': 5,
-  'stt.modelCache.ttlSeconds': 3600,
+  'stt.modelCache.ttlSeconds': 600,
   'stt.modelCache.maxMemoryMb': 10000,
+  'stt.modelCache.vramBudgetMb': 0,
   'stt.workers.concurrency': 4,
   'stt.streaming.maxConcurrent': 0,
   'nlp.inference.maxConcurrent': 4,
+
+  // ── TASK-529 — the remaining in-process caches ───────────────────────────
+  // TASK-525 froze the `<svc>.modelCache.<knob>` grammar and served stt-v2
+  // only, leaving guardrail/harness/tts-v2 as explicitly reserved subsets. This
+  // fills them in the SAME family rather than adding a parallel
+  // `models.retention.*` namespace (see the ticket's DR-1 deviation row):
+  // two key families for one knob is exactly the redundancy the program plan's
+  // §2.5 Completion & Cleanup Doctrine forbids.
+  //
+  // `maxModels` values are transcribed verbatim from each service's own code
+  // default, so residency is behaviour-preserving. `vramBudgetMb: 0` means
+  // "unset" — no VRAM budget, the estimates path applies.
+  'nlp.modelCache.ttlSeconds': 600,
+  'nlp.modelCache.maxModels': 3,
+  'nlp.modelCache.vramBudgetMb': 0,
+  'guardrail.modelCache.ttlSeconds': 600,
+  'guardrail.modelCache.maxModels': 2,
+  'guardrail.modelCache.vramBudgetMb': 0,
+  'harness.modelCache.ttlSeconds': 600,
+  'harness.modelCache.maxModels': 1,
+  'harness.modelCache.vramBudgetMb': 0,
+  'tts.modelCache.ttlSeconds': 600,
+  'tts.modelCache.maxModels': 2,
+  'tts.modelCache.vramBudgetMb': 0,
+  'smr.modelCache.ttlSeconds': 600,
 } as const;
 
 export type ServiceRuntimeKey = keyof typeof SERVICE_RUNTIME_DEFAULTS;
 
-const META: Record<ServiceRuntimeKey, { label: string; description: string }> = {
+/**
+ * The in-process caches TASK-529 governs. `smr` is deliberately ABSENT: it
+ * holds no weights — its `smr.modelCache.ttlSeconds` is forwarded to
+ * server-managed engines (Ollama `keep_alive`, LM Studio `ttl`), so it has no
+ * `maxModels`/`vramBudgetMb` to speak of.
+ */
+export const MODEL_CACHE_SERVICES = ['stt', 'nlp', 'guardrail', 'harness', 'tts'] as const;
+
+export type ModelCacheService = (typeof MODEL_CACHE_SERVICES)[number];
+
+/** Human-facing service names for the generated retention descriptions. */
+const SERVICE_LABEL: Record<ModelCacheService, string> = {
+  stt: 'stt-v2',
+  nlp: 'nlp',
+  guardrail: 'guardrail',
+  harness: 'harness',
+  tts: 'tts-v2',
+};
+
+const TTL_DESCRIPTION = (service: string): string =>
+  `Idle TTL before a cached ${service} model is evicted. The service re-applies its own product clamp ` +
+  '(min 60s / max 3600s) to whatever is served here, so an out-of-range value cannot take effect. ' +
+  'Models pinned by an in-flight request are never evicted, so the TTL applies only after the last release.';
+
+const MAX_MODELS_DESCRIPTION = (service: string): string =>
+  `Maximum number of models held resident in the ${service} LRU cache. Under all-pinned load the cache ` +
+  'deliberately exceeds this ceiling rather than drop a model serving a request.';
+
+const VRAM_DESCRIPTION = (service: string): string =>
+  `Per-service VRAM budget in MB for ${service}. 0 = unset (no VRAM budget — the memory-estimate path ` +
+  'applies). Only takes effect where an NVML probe is available; CPU-only hosts ignore it.';
+
+type KeyMeta = { label: string; description: string };
+
+/**
+ * TASK-529 — retention metadata for the four services added here, generated so
+ * the wording can never drift between them. stt-v2's three pre-existing entries
+ * keep their hand-written text below (they are equivalent in substance).
+ */
+const RETENTION_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = Object.fromEntries(
+  MODEL_CACHE_SERVICES.flatMap((service) => {
+    const label = SERVICE_LABEL[service];
+    return [
+      [
+        `${service}.modelCache.ttlSeconds`,
+        { label: `${label} model cache idle TTL (s)`, description: TTL_DESCRIPTION(label) },
+      ],
+      [
+        `${service}.modelCache.maxModels`,
+        { label: `${label} model cache size`, description: MAX_MODELS_DESCRIPTION(label) },
+      ],
+      [
+        `${service}.modelCache.vramBudgetMb`,
+        { label: `${label} VRAM budget (MB)`, description: VRAM_DESCRIPTION(label) },
+      ],
+    ];
+  }),
+) as Partial<Record<ServiceRuntimeKey, KeyMeta>>;
+
+const HAND_WRITTEN_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = {
   'stt.modelCache.maxModels': {
     label: 'STT model cache size',
     description: 'Maximum number of ASR models held in the stt-v2 LRU cache.',
@@ -74,7 +159,21 @@ const META: Record<ServiceRuntimeKey, { label: string; description: string }> = 
       'Ceiling on concurrent NER/classification/diagnosis inferences. Before TASK-525 the nlp service had ' +
       'no bound of any kind, so concurrent requests piled onto the model unbounded (GAP-L4).',
   },
+  'smr.modelCache.ttlSeconds': {
+    label: 'SMR engine retention TTL (s)',
+    description:
+      'Idle retention forwarded to SERVER-managed LLM engines — Ollama `keep_alive` and LM Studio `ttl`. ' +
+      'SMR holds no weights itself, so this is a per-request hint to the engine rather than a cache bound. ' +
+      'vLLM / llama.cpp-server load one model at launch and stay resident by design; this value does not apply ' +
+      'to them. Clamped to [60s, 3600s] by the service.',
+  },
 };
+
+/** Hand-written entries win; generated retention metadata fills the rest. */
+const META: Record<ServiceRuntimeKey, KeyMeta> = {
+  ...RETENTION_META,
+  ...HAND_WRITTEN_META,
+} as Record<ServiceRuntimeKey, KeyMeta>;
 
 export const SERVICE_RUNTIME_SETTINGS: SettingDescriptor[] = (Object.keys(SERVICE_RUNTIME_DEFAULTS) as ServiceRuntimeKey[]).map<SettingDescriptor>(
   (key) => ({

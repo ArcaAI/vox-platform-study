@@ -338,7 +338,9 @@ class Settings(BaseSettings):
     # NOT model selection. Idle TTL is clamped to the product window [60s, 3600s]
     # so both GLiNER and MiniCheck release when idle. `model_cache_max_models`
     # bounds how many distinct model ids are held per aux cache.
-    model_cache_ttl_s: int = 3600
+    # TASK-529 / OD-5 — bootstrap fallback ONLY; the runtime value comes from the
+    # control plane (`guardrail.modelCache.ttlSeconds`). Default moved 3600 → 600.
+    model_cache_ttl_s: int = 600
     model_cache_max_models: int = 2
 
     # Observability

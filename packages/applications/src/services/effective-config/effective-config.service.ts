@@ -79,28 +79,41 @@ export class EffectiveConfigService implements IEffectiveConfigService {
       case 'smr':
         // Service-level knobs only. temperature/topP/maxTokens still travel
         // per-request via the gateway's profile injection (TASK-524).
-        return { ...base, runtimeProfiles: await this.listProfiles() };
+        // TASK-529 (D-10): `retention.ttlSeconds` is the ONLY retention field
+        // meaningful here — SMR holds no weights, so it forwards this to the
+        // engine (Ollama `keep_alive` / LM Studio `ttl`) instead of caching.
+        return {
+          ...base,
+          runtimeProfiles: await this.listProfiles(),
+          retention: await this.resolveRetention('smr'),
+        };
 
       case 'nlp':
         return {
           ...base,
           runtimeProfiles: await this.listProfiles(),
+          retention: await this.resolveRetention('nlp'),
           concurrency: await this.resolveConcurrency(['nlp.inference.maxConcurrent']),
         };
 
       case 'stt-v2':
         return {
           ...base,
-          retention: await this.resolveRetention(),
+          retention: await this.resolveRetention('stt'),
           concurrency: await this.resolveConcurrency(['stt.workers.concurrency', 'stt.streaming.maxConcurrent']),
         };
 
-      // Reserved subsets — the contract is frozen now so TASK-529 / TASK-533-B
-      // can fill them without a breaking change for clients already polling.
+      // TASK-529 — the subsets TASK-525 reserved are now filled, in the same
+      // shape, so clients already polling them see fields appear rather than
+      // change meaning.
       case 'guardrail':
+        return { ...base, retention: await this.resolveRetention('guardrail') };
+
       case 'harness':
+        return { ...base, retention: await this.resolveRetention('harness') };
+
       case 'tts-v2':
-        return base;
+        return { ...base, retention: await this.resolveRetention('tts') };
     }
   }
 
@@ -127,18 +140,33 @@ export class EffectiveConfigService implements IEffectiveConfigService {
     }));
   }
 
-  private async resolveRetention(): Promise<EffectiveRetention> {
-    const [ttl, maxModels, maxMemoryMb] = await Promise.all([
-      this.resolveKey('stt.modelCache.ttlSeconds'),
-      this.resolveKey('stt.modelCache.maxModels'),
-      this.resolveKey('stt.modelCache.maxMemoryMb'),
+  /**
+   * TASK-529 — resolve one service's retention subset.
+   *
+   * `smr` gets ttlSeconds ONLY: it owns no cache, so `maxModels`/`maxMemoryMb`/
+   * `vramBudgetMb` are meaningless there and stay null rather than being
+   * invented. `maxMemoryMb` remains stt-v2-only (its historical MB budget);
+   * every other service uses the generalized `vramBudgetMb`.
+   */
+  private async resolveRetention(service: 'stt' | 'nlp' | 'guardrail' | 'harness' | 'tts' | 'smr'): Promise<EffectiveRetention> {
+    const ttl = await this.resolveKey(`${service}.modelCache.ttlSeconds` as ServiceRuntimeKey);
+
+    if (service === 'smr') {
+      return { ttlSeconds: ttl.value, maxModels: null, maxMemoryMb: null, vramBudgetMb: null, source: ttl.source };
+    }
+
+    const [maxModels, vramBudgetMb, maxMemoryMb] = await Promise.all([
+      this.resolveKey(`${service}.modelCache.maxModels` as ServiceRuntimeKey),
+      this.resolveKey(`${service}.modelCache.vramBudgetMb` as ServiceRuntimeKey),
+      service === 'stt' ? this.resolveKey('stt.modelCache.maxMemoryMb') : Promise.resolve<ResolvedKey>({ value: null, source: 'env-fallback' }),
     ]);
 
     return {
       ttlSeconds: ttl.value,
       maxModels: maxModels.value,
       maxMemoryMb: maxMemoryMb.value,
-      source: groupSource([ttl, maxModels, maxMemoryMb]),
+      vramBudgetMb: vramBudgetMb.value,
+      source: groupSource([ttl, maxModels, vramBudgetMb, maxMemoryMb]),
     };
   }
 

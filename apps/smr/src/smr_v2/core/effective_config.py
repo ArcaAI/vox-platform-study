@@ -87,6 +87,19 @@ class EffectiveConfigSnapshot:
                 limits[provider] = entry
         return limits
 
+    def retention(self) -> dict[str, int]:
+        """TASK-529 (D-10) — the idle-retention TTL forwarded to engines.
+
+        SMR owns no cache; this value becomes Ollama's `keep_alive` and LM
+        Studio's `ttl`. An omitted/null/non-positive value means "keep the
+        env/bootstrap value" — never coerced into a real number.
+        """
+        group = self.raw.get("retention")
+        if not isinstance(group, dict):
+            return {}
+        ttl_seconds = _positive_int(group.get("ttlSeconds"))
+        return {} if ttl_seconds is None else {"ttl_seconds": ttl_seconds}
+
 
 def _positive_int(value: Any) -> int | None:
     """Coerce a served number to a positive int, or None to keep the env value."""
