@@ -39,6 +39,7 @@ export class HarnessPolicy extends BaseTenantDataModel {
   public nerPriorsEnabled: boolean | null;
   public maxEditReruns: number | null;
   public regenFeedbackEnabled: boolean | null;
+  public mcpToolsEnabled: boolean | null;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
@@ -68,6 +69,7 @@ export class HarnessPolicy extends BaseTenantDataModel {
     this.nerPriorsEnabled = data.nerPriorsEnabled;
     this.maxEditReruns = data.maxEditReruns;
     this.regenFeedbackEnabled = data.regenFeedbackEnabled;
+    this.mcpToolsEnabled = data.mcpToolsEnabled;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;

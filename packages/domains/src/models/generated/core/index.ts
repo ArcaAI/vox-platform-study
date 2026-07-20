@@ -1,5 +1,7 @@
 export * from './AgentTrajectoryStepModel';
 export * from './AiModelModel';
+export * from './AiProviderConnectionModel';
+export * from './AiRuntimeProfileModel';
 export * from './AiTaskDefaultModel';
 export * from './ApiKeyModel';
 export * from './AsrPipelineModel';

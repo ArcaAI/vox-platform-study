@@ -1,5 +1,7 @@
 export * from './AgentTrajectoryStepRepository';
 export * from './AiModelRepository';
+export * from './AiProviderConnectionRepository';
+export * from './AiRuntimeProfileRepository';
 export * from './AiTaskDefaultRepository';
 export * from './ApiKeyRepository';
 export * from './AsrPipelineRepository';

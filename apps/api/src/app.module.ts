@@ -39,6 +39,8 @@ import { ThrottleConfigModule, TieredThrottlerGuard } from './modules/throttle';
 import { RateLimitAdminModule } from './modules/admin-rate-limit/rate-limit-admin.module';
 // TASK-419 item 3 — /admin/ai-services read-only Guardrail/NLP proxy plane.
 import { AiInferenceModule } from './modules/ai-inference/ai-inference.module';
+import { AiProviderConnectionModule } from './modules/ai-provider-connection/ai-provider-connection.module';
+import { AiRuntimeProfileModule } from './modules/ai-runtime-profile/ai-runtime-profile.module';
 import { AiTaskDefaultModule } from './modules/ai-task-default/ai-task-default.module';
 import { AiServiceAdminModule } from './modules/ai-service-admin/ai-service-admin.module';
 import { ApiKeyModule } from './modules/api-key/api-key.module';
@@ -266,6 +268,11 @@ const featureModules: any[] = [
   AiInferenceModule,
   // TASK-506 — /admin/ai-task-defaults (per-tenant default model per AI task key).
   AiTaskDefaultModule,
+  // TASK-524 — the config-plane core surfaces: /admin/ai-providers
+  // (provider endpoints + BYO credentials) and /admin/ai-runtime-profiles
+  // (hyperparameter/context/concurrency profiles, global-admin only).
+  AiProviderConnectionModule,
+  AiRuntimeProfileModule,
   ApiKeyModule,
   AuthModule,
   AuditLogModule,

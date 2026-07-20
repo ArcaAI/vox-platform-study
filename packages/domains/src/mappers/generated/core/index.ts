@@ -1,5 +1,7 @@
 export * from './AgentTrajectoryStepEntityMapper';
 export * from './AiModelEntityMapper';
+export * from './AiProviderConnectionEntityMapper';
+export * from './AiRuntimeProfileEntityMapper';
 export * from './AiTaskDefaultEntityMapper';
 export * from './ApiKeyEntityMapper';
 export * from './AsrPipelineEntityMapper';

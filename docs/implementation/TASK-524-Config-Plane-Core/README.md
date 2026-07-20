@@ -1,6 +1,6 @@
 # TASK-524 — Config-Plane Core: Provider Connections, Runtime Profiles & the Settings Write-Lane
 
-- **Status**: Pending
+- **Status**: Completed (implementation) — **owner-side runtime verification outstanding**: no runtime boot, no live-DB integration/e2e run, no Vault-live round-trip, and the migration is not yet applied to the test DB (§9.8). The owner has taken these gates. Every static gate is green (§9.1).
 - **Type**: feature
 - **Program**: Phase 1 of [Agentic Platform Program Plan](../SOTA-Track/2026-07-20-agentic-platform-program-plan.md) (§3 AD-1/AD-2, §4 P1); findings basis [2026-07-20 review](../SOTA-Track/2026-07-20-agentic-platform-review-findings.md) (GAP-C1/C2/C5/C7, §3-E2)
 - **Ticket number**: Suggested number — confirm at open time (highest allocated is TASK-523 per program plan §Numbering)
@@ -246,14 +246,17 @@ Gate: `pnpm db:generate` → rebuild `@arcaai/database` (vitest reads dist) → 
 | File | NEW/UPDATE | Change |
 |---|---|---|
 | `packages/domains/src/models/generated/core/{AiProviderConnectionModel,AiRuntimeProfileModel}.ts` | NEW | `pnpm gen:model` |
-| `packages/domains/src/entities/generated/core/{AiProviderConnectionEntity,AiRuntimeProfileEntity}.ts` | NEW | `pnpm gen:entity` (extends `BaseTenantEntity`) |
-| `packages/domains/src/factories/generated/core/{AiProviderConnectionFactory,AiRuntimeProfileFactory}.ts` | NEW | `pnpm gen:factory` |
-| `packages/domains/src/mappers/generated/core/{AiProviderConnectionEntityMapper,AiRuntimeProfileEntityMapper}.ts` | NEW | **HAND-AUTHORED** (generator crashes) — follow `AiTaskDefaultEntityMapper`; strip `version` |
-| `packages/domains/src/repositories/generated/core/{AiProviderConnectionRepository,AiRuntimeProfileRepository}.ts` | NEW | **HAND-AUTHORED** — follow `TenantTtsProviderCredentialRepository` (incl. `findByTenantAndProvider`-style helpers) |
+| `packages/domains/src/entities/generated/core/{AiProviderConnectionEntity,AiRuntimeProfileEntity}.ts` | NEW | **HAND-AUTHORED** — `gen:entity` is a barrel reconciler, it never creates files (see the correction note below). Extends `BaseTenantEntity` |
+| `packages/domains/src/factories/generated/core/{AiProviderConnectionFactory,AiRuntimeProfileFactory}.ts` | NEW | **HAND-AUTHORED** — same reason |
+| `packages/domains/src/mappers/generated/core/{AiProviderConnectionEntityMapper,AiRuntimeProfileEntityMapper}.ts` | NEW | **HAND-AUTHORED** — follow `AiTaskDefaultEntityMapper`; strip `version` |
+| `packages/domains/src/repositories/generated/core/{AiProviderConnectionRepository,AiRuntimeProfileRepository}.ts` | NEW | **HAND-AUTHORED** — follow `AiTaskDefaultRepository` (tx dual-path + narrow `DataNotFoundException` catch) |
+| `packages/database/src/prisma/db_main/audit.prisma` + `packages/domains/src/enums/generated/ResourceType.ts` | UPDATE | Add `AiProviderConnection` + `AiRuntimeProfile` to BOTH enums (+ `ALTER TYPE … ADD VALUE` in the migration) — without this every `broadcastSysEvent` fails the AuditLog INSERT and 500s the mutation |
 | `packages/domains/src/common/databaseServices/core/core.database.module.ts` | UPDATE | Register both repositories in providers AND exports |
-| barrels at each level | UPDATE | Append exports (generators keep model/entity/factory barrels; hand-add mapper/repo lines) |
+| barrels at each level | UPDATE | `gen:entity`/`gen:factory` reconcile the entity/factory barrels; hand-add the model/mapper/repo lines |
 
-Gate: `pnpm --filter @arcaai/domains build test`; CI drift gates cover model/entity/factory only — mapper/repo have no drift gate (hand-authored), add unit tests instead. Rebuild `@arcaai/domains` dist.
+> **Correction (applied 2026-07-20 during implementation).** The original plan said `pnpm gen:entity` / `gen:factory` would scaffold these files. They do not — both are barrel RECONCILERS + schema-coverage checkers that reproduce committed files verbatim ("the committed files on disk — not the DMMF — are the source of truth"), so they never create a new artifact. Only `gen:model` scaffolds. **`gen:mapper` must never be run**: it crashes partway and its partial output STRIPS the `FIELDS_NOT_WRITABLE = ['version']` OCC guard (one run clobbered 24 mappers, stripping the guard from 18). `gen:repository` fails on a bad CLI argument. The canonical behaviour table now lives in `.claude/rules/03-domain-layer.md` §Generated Code Discipline.
+
+Gate: `pnpm --filter @arcaai/domains build test`; the three working drift gates (`gen:model`/`gen:entity`/`gen:factory` `:check`) must report "no drift" AND "schema coverage OK" — note the coverage check DOES cover hand-authored entities/factories (it fails if a persisted column is unsurfaced), while mappers/repos have no gate, so cover them with unit tests. Rebuild `@arcaai/domains` dist.
 
 ### Step 3 — Applications
 
@@ -354,11 +357,97 @@ Gate commands: `pnpm db:generate && pnpm --filter @arcaai/database build test` �
 
 ## 9. Implementation Summary
 
-_Pending_
+**Status: Review** — all four layers implemented TDD (RED → GREEN), all gate commands green with output below.
+
+### 9.1 Gate evidence (2026-07-20)
+
+| Gate | Command | Result |
+|---|---|---|
+| Database | `pnpm --filter @arcaai/database test` | **24 files / 819 tests passed** (baseline 806 → +13 new) |
+| Database build | `pnpm --filter @arcaai/database build` | clean |
+| Domains | `pnpm --filter @arcaai/domains build test` | **116 files / 1368 passed**, 2 skipped, 9 todo |
+| Applications | `pnpm --filter @arcaai/applications build test` | **313 files / 6493 passed** (baseline 6444 → +49 new) |
+| API build | `pnpm build:api` | 8/8 turbo tasks successful |
+| Full unit suite | `pnpm test:unit` | **939 files / 16609 passed**, 2 skipped, 9 todo |
+| Lint | `pnpm lint` | 29/29 tasks successful; `@arcaai/api` **0 problems**; all TASK-524 files in `packages/*` warning-free |
+
+Migration applied to the dev DB via `psql` (never `migrate reset` — the dev DB is `db push`-managed and behind migration history); `\d core."AiProviderConnection"` verified all 20 columns, the compound unique and both indexes. The test DB (port 5433) was **not** running, so the migration was not applied there — it must be applied before the integration/e2e run in TASK-534.
+
+### 9.2 What landed, by layer
+
+**Database** — `ai-provider-connection.prisma` + `ai-runtime-profile.prisma` (house field template, named indexes, `@@schema("core")`); migration `20260720000000_task_524_ai_provider_connections_runtime_profiles` (additive + idempotent, every CREATE guarded); both models added to `TENANT_SCOPED_MODELS` and `SYSTEM_SHARED_READ_MODELS` with the §3.1 justification (incl. the secret-bearing caveat on connections); seeds `17-` (8 SYSTEM rows, all `enabled: false`, no key material) and `18-` (deliberately empty) registered in `seed/index.ts`.
+
+**Domains** — `AiProviderConnection*` / `AiRuntimeProfile*` model + entity + factory + mapper + repository, all barrels, both repositories registered in `CoreDatabaseModule`. Both mappers strip `version` (both models are OCC-written). Repositories follow the corrected `AiTaskDefaultRepository` form: `tx` dual-path for the cross-tenant lane and a **narrow `DataNotFoundException` catch** (not the older blanket `catch { return null }`, which would mask a tenant-scope mismatch as an empty read).
+
+**Applications** — `ai-provider-connection/` and `ai-runtime-profile/` service folders per rule 04; `settings-registry-write.service.ts` (the AD-1 single enforcement point); the `global-kv` override lane in `effective-settings.service.ts`; `platform-ops.descriptors.ts`; boot-time `killSwitches()` guard on `EffectiveSettingsModule.onModuleInit`.
+
+**API** — `admin/ai-providers` + `admin/ai-runtime-profiles` controllers with the full OCC chain; `GET/PUT admin/settings/registry/:key` in `SettingsCatalogModule`; caller-wins/fail-open profile injection in `smr-proxy.controller.ts` and `ai-inference.controller.ts`; modules registered in `app.module.ts`. E2E specs authored in `apps/api/tests/e2e/task-524-config-plane.spec.ts` (**executed in TASK-534/P7**, not here).
+
+### 9.3 Deviations from the plan (decision rows)
+
+| # | Plan said | Reality | Resolution |
+|---|---|---|---|
+| D-1 | Step 2 scaffolds entities/factories with `pnpm gen:entity` / `gen:factory` | **Only `gen:model` scaffolds from the DMMF.** The entity and factory generators are barrel *reconcilers* — their own headers state "the committed files on disk, not the DMMF, are the source of truth" and they reproduce existing files verbatim. They create nothing. | Entities, factories, mappers **and** repositories were all hand-authored. `gen:model` was still run (it produced both models). All three drift gates re-verified. |
+| D-2 | Not mentioned | `ResourceType` needed both new members, or every `broadcastSysEvent` would fail the AuditLog INSERT and roll the originating mutation into a 500 (the TASK-366 failure mode). | Added to `audit.prisma` **and** `packages/domains/src/enums/generated/ResourceType.ts`, plus a guarded `ALTER TYPE ... ADD VALUE IF NOT EXISTS` appended to the migration and applied to the dev DB. Parity test green. |
+| D-3 | §3.3 step 7 calls `AppSettingsService.forceRefresh()` | **No such method exists.** The force-refresh method is `refreshCache()`. | Used `refreshCache()`. |
+| D-4 | §5 test 12 keeps the effective-facade stub assertions | The existing test `'throws for a non-secret key with no registered resolver'` used `entitlements.enabled`, which is tier `global-kv` — so the new lane correctly resolves it. That test encoded the very gap GAP-C5 describes. | Updated knowingly: the negative case now uses `entitlements.featureDnaReports` (tier `entitlement`, genuinely resolver-less), and a new `global-kv override lane` describe block covers §5 test 12. |
+| D-5 | §5 test 19 extends the drift guard | The existing `tenant-scope.test.ts` locks both allow-list sets exactly, so it failed as designed. | Updated knowingly (count 54 → 56, both sets extended) with justification comments — the program §5.7 "update in the same MR" rule. |
+| D-6 | §4 Step 1 seeds `baseUrl`/`region` from `.env.production` | `.env.production` carries no ollama/lm-studio/bedrock/sarvam values (only vLLM/llama.cpp); the rest are blank or live in `.env.dev`. | Seeded only the values that genuinely exist, each flagged `metaData.placeholder: true`; the others seed `null` rather than inventing a value. |
+| D-7 | Tenant BYO endpoints deferred to the follow-up ticket | Unchanged — but the controller now carries an explicit ROUTE MAP NOTE saying so, so the omission reads as deliberate. | No action. |
+
+### 9.4 Pre-existing issues found — ALL NOW FIXED (owner-authorised follow-on, 2026-07-20)
+
+These were found during implementation, reported as out-of-manifest, then fixed on owner instruction.
+
+1. **`generate-data-entity:check` / `generate-factory:check` were RED at HEAD.** `HarnessPolicy.mcpToolsEnabled` existed in `harness.prisma` but was surfaced by neither `HarnessPolicyEntity` nor `HarnessPolicyFactory`; `SummaryMetaFactory` lacked `stopReason` / `ttftMs` / `tokensPerSecond` (the entity and mapper already had them, and a mapper test already asserted the round-trip — only the factory was missing). **FIXED**: all four columns surfaced following the neighbouring-knob conventions. Both gates now report *"no drift"* + *"schema coverage OK"* (68 artifacts covering 72 models).
+2. **`generate-data-model:check` was also RED at HEAD** (`ContextItemModel`, `HarnessPolicyModel`, `TranscriptSegmentModel` stale). The mandatory `gen:model` run regenerated them → **GREEN**. Those three files appear in the diff as incidental generator output.
+3. **D-16 residue FIXED.** `seed/16-ai-task-default.ts` carried the stale `nlp.* keys are tenant-admin editable` claim. Root cause: TASK-523's D-16 enumerated **four** sites (`.prisma`, controller Swagger, `seed/01-policy.ts` CASL comment, admin-screen copy) and this seed file was an unlisted **fifth**. The other four were verified correctly fixed. The seed comment now mirrors the corrected `.prisma` wording verbatim.
+4. **Generator documentation corrected repo-wide** (see §9.6).
+
+### 9.5 ⚠️ `pnpm gen:mapper` is DESTRUCTIVE — discovered 2026-07-20
+
+While verifying generator behaviour for §9.6, running `pnpm gen:mapper` **crashed partway through, but only after rewriting the mappers it had already processed** — and its output **drops the `FIELDS_NOT_WRITABLE = ['version']` constant and its `stripNonWritableFields` helper**.
+
+That strip is the only thing preventing `_version` from leaking into Prisma updates. Losing it silently breaks optimistic concurrency on every OCC-written model — the exact class of corruption the TASK-302 Stream D work introduced it to prevent.
+
+Observed blast radius from ONE invocation: **24 mappers rewritten, the `_version` guard stripped from 18 of them.** Fully reverted via `git checkout -- packages/domains/src/mappers/generated/core/ packages/domains/src/repositories/generated/core/`, barrel lines re-added, and all 1368 domain tests plus the three drift gates re-verified green.
+
+Historical note: `docs/archive/TASK-413-.../README.md:352` recorded this crash but characterised the fallout as *"formatting side-effects"* — an understatement that likely explains why the danger was never escalated. It is now documented as destructive in `.claude/rules/03-domain-layer.md` with a do-not-run warning.
+
+`pnpm gen:repository` is separately broken (fails immediately on `--overwrite true` → *"too many arguments"*), but harmlessly — it writes nothing.
+
+### 9.6 Generator documentation corrected (7 files)
+
+The repo-wide claim that `gen:entity`/`gen:factory` scaffold new artifacts was wrong and had propagated into the always-loaded rules. Verified behaviour and corrected:
+
+| File | Correction |
+|---|---|
+| `.claude/rules/03-domain-layer.md` | Full per-command behaviour table, the `gen:mapper` do-not-run warning, and an 8-step new-model checklist (incl. the `ResourceType` dual-enum step) |
+| `.claude/rules/02-database-prisma.md` | "do not hand-write the trio" → hand-authoring IS the workflow; pointer to the table |
+| `docs/development-patterns-and-standards.md` | Same correction in the primary reference |
+| `docs/development-guide.md` | Generator caveat added |
+| `SOTA-Track/2026-07-20-agentic-platform-program-plan.md` | §DB rules corrected — this is what sibling tickets 525–534 inherit |
+| `TASK-531-Pipeline-Template-Governance/README.md` | Step corrected |
+| `TASK-527-Model-Source-Resolution/README.md` | Parenthetical corrected |
+
+TASK-524's own §4 Step 2 table was corrected in place with an inline correction note.
+
+### 9.7 ResourceType parity audit (clean)
+
+Prompted by the latent-500 finding (§9.3 D-2), a scripted audit compared the domain enum, the Prisma enum, and every `ResourceType.X` reference in `packages/applications`: **47 domain members = 47 Prisma members**, and all 41 referenced members exist in both. The one apparent gap (`ResourceType.Policy`) is a false positive — it appears only inside a comment explaining that `ResourceType.Permission` is used *instead*. No other model has this bug.
+
+### 9.8 Not verified (honest gaps)
+
+- **No runtime boot verification.** The API was never started, so the boot-time route audit and the new `onModuleInit` kill-switch guard were not observed firing. Every new route carries a permission decorator and every gate compiles, but "compiles" ≠ "boots".
+- **No live-DB integration or e2e run.** The test DB (5433) was down; the e2e specs are authored but unexecuted, per §5 (executed in TASK-534/P7).
+- **No Vault-live round-trip.** `encryptSecretField` is exercised only against a mocked `SecretsService`.
+- **The migration is not applied to the test DB.** Apply it before the TASK-534 run.
 
 ## 10. Change History
 
 | Date | Change |
 |---|---|
 | 2026-07-20 | Ticket README authored (execution-ready plan; code-verified current state; frozen AD-1/AD-2 contracts refined into final schemas; TDD plan; awaiting owner approval per rule 01 Phase 3 gate). |
+| 2026-07-20 | **Implemented, all four layers, TDD.** Status Pending → Review. RED-first per layer (seed/allow-list suite, both service suites, the write-lane suite, and both gateway-injection suites each observed failing before implementation). Gates: database 819, domains 1368, applications 6493, full unit suite **16609 passed**, `pnpm build:api` 8/8, `pnpm lint` 29/29 (api 0 problems). Seven plan deviations recorded as decision rows in §9.3 — most consequential: `gen:entity`/`gen:factory` are barrel RECONCILERS, not scaffolders, so the entity/factory/mapper/repository layers were all hand-authored; and `ResourceType` required new members in both the Prisma enum and the domain enum (with an `ADD VALUE` migration) or every sys-event broadcast would have failed the AuditLog INSERT. Three pre-existing issues found and deliberately NOT fixed (§9.4): the entity/factory drift gates are red at HEAD on `HarnessPolicy.mcpToolsEnabled` + `SummaryMeta` fields, and the D-16 stale comment survives at `seed/16-ai-task-default.ts:22`. Not verified (§9.5): runtime boot, live-DB integration/e2e, Vault-live round-trip, and the migration is not yet applied to the test DB. |
+| 2026-07-20 | **Owner-authorised follow-on: the four out-of-scope items closed.** (1) Both red drift gates fixed properly — `HarnessPolicy.mcpToolsEnabled` surfaced on entity + factory, `SummaryMeta.{stopReason,ttftMs,tokensPerSecond}` surfaced on the factory; all three generator gates now report "no drift" + "schema coverage OK". (2) `ResourceType` parity audited repo-wide by script: 47 = 47, all 41 referenced members present in both enums, no other latent-500. (3) D-16 residue fixed in `seed/16-ai-task-default.ts`; root cause identified — TASK-523 enumerated four sites and this was an unlisted fifth (the other four verified correct). (4) Generator documentation corrected across 7 files incl. both always-loaded rules. **NEW CRITICAL FINDING (§9.5): `pnpm gen:mapper` is DESTRUCTIVE** — it crashes partway but rewrites already-processed mappers WITHOUT the `FIELDS_NOT_WRITABLE = ['version']` OCC guard; one run clobbered 24 mappers and stripped the guard from 18, which would silently break optimistic concurrency platform-wide. Fully reverted and verified; now documented as do-not-run. Gates after all changes: domains 1368, full unit suite **16609 passed**, `pnpm build:api` 8/8, `pnpm lint` 29/29. |
 | 2026-07-20 | Program plan §2.5 **Completion & Cleanup Doctrine** adopted as BINDING for this ticket (owner directive): incorrect implementations in the owned surface are removed completely with the fix; partial implementations are finished end-to-end (or explicitly retired); redundant implementations are converged and deleted. Reviewer enforces the §2.5 classification table, plan-conformance (deviations = recorded decision rows), full-closure traceability of the claimed GAP/D/M IDs, and the performance gates. |

@@ -32,6 +32,9 @@ export * from './config-resolver';
 export * from './settings-registry';
 // TASK-506 — per-tenant AI task-model defaults (guardrail/NLP), tenant → SYSTEM cascade.
 export * from './ai-task-default';
+// TASK-524 — config-plane core (provider connections + runtime profiles).
+export * from './ai-provider-connection';
+export * from './ai-runtime-profile';
 // MCP external-tools registry admin (global-admin CRUD + registry reads).
 export * from './mcp-server';
 // TASK-356 Phase 5 — editable realtime-pipeline policy (cascade admin surface).

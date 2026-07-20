@@ -42,6 +42,8 @@ export const HARNESS_POLICY_DEFAULTS = {
   nerPriorsEnabled: null as boolean | null,
   maxEditReruns: null as number | null,
   regenFeedbackEnabled: null as boolean | null,
+  // Per-tenant gate for the whole MCP external-tools path. null = OFF.
+  mcpToolsEnabled: null as boolean | null,
 } as const;
 
 export interface CreateHarnessPolicyProps extends BaseEntityFactoryCreateProps {
@@ -71,6 +73,7 @@ export interface CreateHarnessPolicyProps extends BaseEntityFactoryCreateProps {
   nerPriorsEnabled?: IHarnessPolicyEntity['nerPriorsEnabled'];
   maxEditReruns?: IHarnessPolicyEntity['maxEditReruns'];
   regenFeedbackEnabled?: IHarnessPolicyEntity['regenFeedbackEnabled'];
+  mcpToolsEnabled?: IHarnessPolicyEntity['mcpToolsEnabled'];
 
   createdAt?: IHarnessPolicyEntity['createdAt'];
   updatedAt?: IHarnessPolicyEntity['updatedAt'];
@@ -124,6 +127,7 @@ export class HarnessPolicyFactory {
       nerPriorsEnabled: props.nerPriorsEnabled ?? d.nerPriorsEnabled,
       maxEditReruns: props.maxEditReruns ?? d.maxEditReruns,
       regenFeedbackEnabled: props.regenFeedbackEnabled ?? d.regenFeedbackEnabled,
+      mcpToolsEnabled: props.mcpToolsEnabled ?? d.mcpToolsEnabled,
 
       tenantId: props.tenantId,
       Tenant: props.Tenant ?? null,

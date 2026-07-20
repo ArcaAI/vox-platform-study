@@ -175,6 +175,11 @@ enum ResourceType {
   AiTaskDefault
   // MCP external-tools registry.
   McpServer
+  // TASK-524 — config-plane core: provider endpoints/credentials and runtime
+  // hyperparameter profiles. Emitted as audit `resourceType` by
+  // AiProviderConnectionService / AiRuntimeProfileService broadcastSysEvent.
+  AiProviderConnection
+  AiRuntimeProfile
 
   @@schema("core")
 }

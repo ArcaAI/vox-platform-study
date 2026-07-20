@@ -10,6 +10,7 @@ import { AGENTIC_CONTEXT_SETTINGS } from './descriptors/agentic-context.descript
 import { ENTITLEMENT_SETTINGS } from './descriptors/entitlements.descriptors';
 import { MODEL_DEFAULT_SETTINGS } from './descriptors/model-defaults.descriptors';
 import { PIPELINE_SETTINGS } from './descriptors/pipeline.descriptors';
+import { PLATFORM_OPS_SETTINGS } from './descriptors/platform-ops.descriptors';
 import { TTS_SETTINGS } from './descriptors/tts.descriptors';
 import { SettingsRegistry } from './settings-registry';
 
@@ -21,4 +22,8 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   ...MODEL_DEFAULT_SETTINGS,
   // agentic context-management strategy knobs.
   ...AGENTIC_CONTEXT_SETTINGS,
+  // TASK-524 — the formerly orphaned platform-ops keys (rate limiting, audit
+  // retention, agent-trajectory retention). Registered at their CURRENT runtime
+  // defaults, so cataloging them changes no behaviour.
+  ...PLATFORM_OPS_SETTINGS,
 ]);

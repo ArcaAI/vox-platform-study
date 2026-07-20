@@ -78,7 +78,7 @@ Layer order per rule 01. TDD RED first at every step (§5).
 
 ### 4.2 Domain regen (lane A)
 
-- Run `pnpm gen:model && pnpm gen:entity && pnpm gen:factory` (CI drift gates `generate-*-check` re-run these; `gen:mapper`/`gen:repository` crash pre-existingly — hand-author only if the mapper/repo actually need edits; `AutoClassMapper` should carry the new fields with zero mapper edits, verify).
+- Run `pnpm gen:model` (the only true scaffolder), then `pnpm gen:entity && pnpm gen:factory` — note these two are barrel RECONCILERS + schema-coverage checkers, **not** scaffolders: they never create files, so any NEW artifact must be hand-authored. **Never run `gen:mapper`** (destructive — strips the `_version` OCC guard before crashing); `gen:repository` is broken. For this ticket the models already exist, so `AutoClassMapper` should carry new fields with zero mapper edits — but the entity AND factory must both surface every new persisted column or the coverage check fails the build. See `.claude/rules/03-domain-layer.md` §Generated Code Discipline.
 - Inspect generator output before committing: the factory currently **omits** `isDefault` (§2.8) — if the generator likewise omits the new default-valued `templateLocked`, set lineage via entity `setProperty` after `CreateAsrPipeline()` (the `isDefault`/`setDefaultForTenant` precedent) rather than hand-editing generated files (drift gates fail on hand edits). `sourceTemplateSlug` (plain nullable) should appear as an optional factory prop.
 - Rebuild `@arcaai/database` + `@arcaai/domains` (vitest reads dist — house memory).
 

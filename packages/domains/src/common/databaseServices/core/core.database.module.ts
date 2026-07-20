@@ -5,6 +5,8 @@ import { CoreDatabaseService, VAULT_PRISMA_FACTORY, type VaultPrismaFactory } fr
 
 import { AgentTrajectoryStepRepository } from '../../../repositories/generated/core/AgentTrajectoryStepRepository';
 import { AiModelRepository } from '../../../repositories/generated/core/AiModelRepository';
+import { AiProviderConnectionRepository } from '../../../repositories/generated/core/AiProviderConnectionRepository';
+import { AiRuntimeProfileRepository } from '../../../repositories/generated/core/AiRuntimeProfileRepository';
 import { AiTaskDefaultRepository } from '../../../repositories/generated/core/AiTaskDefaultRepository';
 import { ApiKeyRepository } from '../../../repositories/generated/core/ApiKeyRepository';
 import { AsrPipelineRepository } from '../../../repositories/generated/core/AsrPipelineRepository';
@@ -134,6 +136,10 @@ const repositories = [
   AiModelRepository,
   // Per-tenant AI task-model defaults (TASK-506)
   AiTaskDefaultRepository,
+  // Config-plane core (TASK-524) — provider endpoints/credentials + runtime
+  // hyperparameter profiles. Both are SYSTEM-shared read models.
+  AiProviderConnectionRepository,
+  AiRuntimeProfileRepository,
   TranscriptionJobRepository,
   // Audit domain
   AuditLogRepository,

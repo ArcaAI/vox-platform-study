@@ -41,6 +41,11 @@ export interface IHarnessPolicyEntity extends IBaseTenantEntity {
   nerPriorsEnabled?: boolean | null;
   maxEditReruns?: number | null;
   regenFeedbackEnabled?: boolean | null;
+  // Per-tenant gate for the whole MCP external-tools path. `null` = OFF: the
+  // path stays dormant unless a global admin explicitly flips this AND the
+  // referenced `McpServer.enabled` is true. Same per-field fallthrough as the
+  // knobs above (see harness.prisma).
+  mcpToolsEnabled?: boolean | null;
 }
 
 export class HarnessPolicyEntity extends BaseTenantEntity {
@@ -67,6 +72,7 @@ export class HarnessPolicyEntity extends BaseTenantEntity {
   private _nerPriorsEnabled?: IHarnessPolicyEntity['nerPriorsEnabled'];
   private _maxEditReruns?: IHarnessPolicyEntity['maxEditReruns'];
   private _regenFeedbackEnabled?: IHarnessPolicyEntity['regenFeedbackEnabled'];
+  private _mcpToolsEnabled?: IHarnessPolicyEntity['mcpToolsEnabled'];
 
   constructor(init: IHarnessPolicyEntity) {
     super(init);
@@ -93,6 +99,7 @@ export class HarnessPolicyEntity extends BaseTenantEntity {
     this._nerPriorsEnabled = init.nerPriorsEnabled;
     this._maxEditReruns = init.maxEditReruns;
     this._regenFeedbackEnabled = init.regenFeedbackEnabled;
+    this._mcpToolsEnabled = init.mcpToolsEnabled;
   }
 
   get entityFaithfulnessThreshold(): IHarnessPolicyEntity['entityFaithfulnessThreshold'] {
@@ -277,6 +284,14 @@ export class HarnessPolicyEntity extends BaseTenantEntity {
 
   set regenFeedbackEnabled(value: IHarnessPolicyEntity['regenFeedbackEnabled']) {
     this.setProperty('regenFeedbackEnabled', value);
+  }
+
+  get mcpToolsEnabled(): IHarnessPolicyEntity['mcpToolsEnabled'] {
+    return this._mcpToolsEnabled;
+  }
+
+  set mcpToolsEnabled(value: IHarnessPolicyEntity['mcpToolsEnabled']) {
+    this.setProperty('mcpToolsEnabled', value);
   }
 
   /**

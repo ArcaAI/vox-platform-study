@@ -1,0 +1,57 @@
+// ============================================================================
+// AI Provider Connections (TASK-524 — config-plane core, GAP-C1)
+//
+// WHERE a serving provider lives and HOW to authenticate. One row per
+// (tenant, provider); the reserved SYSTEM tenant row is the platform default.
+// Generalizes TenantTtsProviderCredential (TASK-496) to all LLM providers.
+// `provider` is a validated string (AI_MODEL_PROVIDERS — no Prisma enum, per
+// the AiModel.provider convention). Tenant rows are allowed ONLY for cloud API
+// providers (azure, bedrock — service-layer 403 otherwise, mirroring
+// GLOBAL_ADMIN_ONLY_TASK_PREFIXES); self-host engines are SYSTEM-only.
+// `encryptedApiKey` is Vault-Transit ciphertext via secret-field.util —
+// NEVER returned by any read DTO (hasKey boolean only).
+// Resolution: tenant row (enabled) → SYSTEM row → service env fallback.
+//
+// Data class 2 (per-tenant secret as Vault-Transit ciphertext in a DB column).
+// Unlike TenantTtsProviderCredential this model IS a SYSTEM-shared read model —
+// the SYSTEM row is the catalog entry every tenant's resolver must read. The
+// widening is [caller, SYSTEM] only and never exposes another tenant's BYO row.
+// ============================================================================
+
+model AiProviderConnection {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields (SYSTEM row = platform default; tenant row = BYO cloud)
+  tenantId String
+
+  // core fields
+  provider        String // ollama | lm-studio | azure | bedrock | built-in | sarvam | vllm | llama-cpp
+  baseUrl         String? // ollama/lm-studio/vllm/llama-cpp/azure endpoint
+  region          String? // bedrock
+  apiVersion      String? // azure
+  deploymentName  String? // azure
+  encryptedApiKey Bytes? // Vault-Transit ciphertext (secret-field.util); plaintext never stored
+  keyVersion      Int?
+  enabled         Boolean @default(false)
+  extraJson       Json?   @db.JsonB // provider-specific extras (validated per-provider in the DTO)
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // indexing — one connection per (tenant, provider)
+  @@unique([tenantId, provider], name: "AiProviderConnection_tenant_provider_unique")
+  @@index([tenantId], name: "AiProviderConnection_tenantId_idx")
+  @@index([provider], name: "AiProviderConnection_provider_idx")
+  @@schema("core")
+}

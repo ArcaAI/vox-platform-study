@@ -3,6 +3,7 @@ import {
   Authorize,
   HarnessPolicyService,
   IActiveUserContext,
+  IAiRuntimeProfileService,
   IAiTaskDefaultService,
   IBlobStorageService,
   IConfigService,
@@ -160,6 +161,12 @@ export class SmrProxyController {
     // TASK-506 — resolves the effective `guardrail.validate` default for the
     // guardrail listing's default marking.
     @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
+    // TASK-524 — resolves the effective hyperparameter profile for the outgoing
+    // {provider, model}. @Optional so existing positional test fixtures (and
+    // graphs that never proxy to SMR) keep compiling.
+    @Optional()
+    @Inject(IAiRuntimeProfileService)
+    private readonly aiRuntimeProfileService?: IAiRuntimeProfileService,
   ) {}
 
   /**
@@ -169,13 +176,73 @@ export class SmrProxyController {
    * (typically 400) — no silent omit → env fallback.
    */
   private async applySmrModelSelection<T extends { provider?: string; model?: string }>(target: T): Promise<T> {
-    if (target.model || !this.harnessPolicyService) {
+    if (!target.model && this.harnessPolicyService) {
+      const tenantId = this.clsService.get('tenantId');
+      const { provider, model } = await this.harnessPolicyService.resolveSmrSelection(tenantId);
+      target.provider = provider;
+      target.model = model;
+    }
+    // TASK-524 — layer the resolved runtime profile on top of the identity.
+    // Runs for a caller-pinned model too: the caller chose the MODEL, not the
+    // hyperparameters, and any parameter they did send still wins below.
+    return this.applySmrRuntimeProfile(target);
+  }
+
+  /**
+   * TASK-524 — inject the resolved hyperparameter profile into the forwarded
+   * body (GAP-C2).
+   *
+   * Two invariants:
+   *   - CALLER WINS. Only keys the caller did NOT set are filled in, so SDK
+   *     fidelity is preserved exactly as it is for `model`.
+   *   - FAIL-OPEN. A resolver error injects nothing and the request proceeds on
+   *     the service's own env defaults. This deliberately differs from the
+   *     fail-closed model-IDENTITY path above: sending a request to the wrong
+   *     MODEL is a correctness/safety problem, whereas sending it with the
+   *     service's default temperature is the status quo.
+   *
+   * With zero profile rows seeded (the shipped state) `isEmpty` is true and the
+   * body is byte-identical to today's — the ticket §7 silent-change guard.
+   *
+   * Field names are snake_case to match the SMR wire contract; SMR ignores
+   * unknown body fields, so this stays inert until the service consumes them.
+   */
+  private async applySmrRuntimeProfile<T extends { provider?: string; model?: string }>(target: T): Promise<T> {
+    if (!this.aiRuntimeProfileService || !target.provider || !target.model) {
       return target;
     }
-    const tenantId = this.clsService.get('tenantId');
-    const { provider, model } = await this.harnessPolicyService.resolveSmrSelection(tenantId);
-    target.provider = provider;
-    target.model = model;
+
+    try {
+      const profile = await this.aiRuntimeProfileService.resolveProfile(target.provider, target.model);
+      if (profile.isEmpty) {
+        return target;
+      }
+
+      const body = target as Record<string, unknown>;
+      const assign = (key: string, value: unknown): void => {
+        // `undefined` = caller did not set it. An explicit caller value —
+        // including 0 or false — is preserved.
+        if (value !== null && body[key] === undefined) {
+          body[key] = value;
+        }
+      };
+
+      assign('temperature', profile.temperature);
+      assign('top_p', profile.topP);
+      assign('max_tokens', profile.maxTokens);
+      assign('context_length', profile.contextLength);
+      assign('timeout_s', profile.timeoutS);
+      assign('keep_alive_seconds', profile.keepAliveSeconds);
+      assign('extra', profile.extraJson);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Runtime-profile resolution failed; forwarding without injected parameters (fail-open)',
+        provider: target.provider,
+        model: target.model,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     return target;
   }
 

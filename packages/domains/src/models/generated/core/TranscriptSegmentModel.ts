@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { BaseTenantDataModel } from '../../../common';
+import { BaseTenantDataModel, VirtualDbProperty } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Models from './';
@@ -26,6 +26,8 @@ export class TranscriptSegment extends BaseTenantDataModel {
   public speaker: string | null;
   public charStart: number | null;
   public charEnd: number | null;
+  @VirtualDbProperty()
+  public ContextItem: Models.ContextItem | undefined;
 
   constructor(data: TranscriptSegment & BaseTenantDataModel) {
     super(data);
@@ -36,5 +38,6 @@ export class TranscriptSegment extends BaseTenantDataModel {
     this.speaker = data.speaker;
     this.charStart = data.charStart;
     this.charEnd = data.charEnd;
+    this.ContextItem = data.ContextItem;
   }
 }
