@@ -153,8 +153,11 @@ describe('PolicyEngine', () => {
         tenantId: 'tenant-456',
       };
 
+      // Both fields array-valued: CASL raw rules fan an array `action` across an
+      // array `subject`, so this single rule grants read/update/delete/list on
+      // BOTH ApiKey and Secret.
       const mockRole = createMockRole('role-array', 'api-key-owner', [
-        { action: ['read', 'update', 'delete', 'list'], subject: 'ApiKey' },
+        { action: ['read', 'update', 'delete', 'list'], subject: ['ApiKey', 'Secret'] },
       ]);
 
       mockPrismaClient.userRoleAssignment.findMany.mockResolvedValue([

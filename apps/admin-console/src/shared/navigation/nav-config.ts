@@ -308,7 +308,8 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
   },
-  // TASK-506 — tenant overrides for the NLP task defaults (guardrail is deliberately absent here).
+  // TASK-506 — AI model defaults are GLOBAL_ADMIN-only; this tenant entry now renders a
+  // static EmptyState explaining that, pending the M-05 rebuild (TASK-526).
   {
     route: '/ai-model-defaults',
     label: 'AI model defaults',

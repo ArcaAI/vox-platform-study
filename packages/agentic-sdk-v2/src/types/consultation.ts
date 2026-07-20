@@ -19,16 +19,7 @@ import type { ContextItem, AddContextInput } from './context';
  * which map to OPEN, CLOSED, and CANCELLED respectively.
  */
 export type ConsultationStatus =
-  | 'OPEN'
-  | 'RECORDING'
-  | 'TRANSCRIBING'
-  | 'SUMMARIZING'
-  | 'REVIEW'
-  | 'CLOSED'
-  | 'CANCELLED'
-  | 'active'
-  | 'completed'
-  | 'cancelled';
+  'OPEN' | 'RECORDING' | 'TRANSCRIBING' | 'SUMMARIZING' | 'REVIEW' | 'CLOSED' | 'CANCELLED' | 'active' | 'completed' | 'cancelled';
 
 /**
  * Ordered lifecycle phases for progress display.

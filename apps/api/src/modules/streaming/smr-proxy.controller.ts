@@ -45,6 +45,7 @@ import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation, ApiParam, ApiTags } fr
 import type { AxiosError } from 'axios';
 import type { Response } from 'express';
 import { ClsService } from 'nestjs-cls';
+import { StreamScope } from '../auth/decorators/stream-scope.decorator';
 
 interface SmrResponseFormat {
   type: 'text' | 'json' | 'json_schema';
@@ -475,7 +476,12 @@ export class SmrProxyController {
 
   @Get('tasks/:taskId/stream')
   @Authorize()
-  @ApiOperation({ summary: 'Stream task chunks via SSE from SMR v2' })
+  @StreamScope({ namespace: 'smr_task', param: 'taskId' })
+  @ApiOperation({
+    summary: 'Stream task chunks via SSE from SMR v2',
+    description:
+      'Server-Sent Events stream. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `smr_task:<taskId>`.',
+  })
   @ApiParam({ name: 'taskId', description: 'Task ID to stream' })
   async streamTaskEvents(
     @Param('taskId') taskId: string,

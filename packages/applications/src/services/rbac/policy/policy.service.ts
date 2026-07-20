@@ -137,8 +137,14 @@ export class PolicyService extends BaseService implements IPolicyService {
 
       if (!rule.action) {
         errors.push(`Rule ${idx}: 'action' is required`);
-      } else if (!PolicyService.VALID_ACTIONS.includes(rule.action)) {
-        warnings.push(`Rule ${idx}: Unknown action '${rule.action}'`);
+      } else {
+        // `action` may be a single value or a CASL array; validate each member
+        // so an array rule is not reported as one unknown comma-joined action.
+        for (const action of Array.isArray(rule.action) ? rule.action : [rule.action]) {
+          if (!PolicyService.VALID_ACTIONS.includes(action)) {
+            warnings.push(`Rule ${idx}: Unknown action '${action}'`);
+          }
+        }
       }
 
       if (!rule.subject) {

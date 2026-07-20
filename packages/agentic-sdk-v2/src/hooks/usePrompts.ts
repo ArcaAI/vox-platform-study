@@ -265,7 +265,9 @@ export function usePrompts(): UsePromptsReturn {
           ),
         );
         setCurrentPrompt((prev) =>
-          prev && prev.id === id ? { ...prev, lastTestScore: data.score, lastTestOutput: data.output, lastTestAt: data.testedAt, version: data.version } : prev,
+          prev && prev.id === id
+            ? { ...prev, lastTestScore: data.score, lastTestOutput: data.output, lastTestAt: data.testedAt, version: data.version }
+            : prev,
         );
         return data;
       }),

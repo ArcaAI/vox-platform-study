@@ -2293,7 +2293,9 @@ class TestAssemblyWithRealPipelineSpec:
         loaded = MagicMock()
         loaded.format = AiModelFormat.SAFETENSOR
         loaded.model_slug = "whisper-large-v3-turbo"
-        mock_cache = MagicMock()
+        # AsyncMock (not MagicMock): the loader also awaits `pin_many` while
+        # warming/pinning the pipeline's models.
+        mock_cache = AsyncMock()
         mock_cache.get_or_load_from_ref = AsyncMock(return_value=loaded)
         mgr._make_asr_callable = MagicMock(return_value=AsyncMock())
 

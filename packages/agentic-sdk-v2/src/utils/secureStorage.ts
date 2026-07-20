@@ -123,11 +123,7 @@ export class SecureStorage {
     const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
     const key = await deriveKey(passphrase, salt);
     const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
-    const encrypted = await crypto.subtle.encrypt(
-      { name: ALGORITHM, iv },
-      key,
-      new TextEncoder().encode(value),
-    );
+    const encrypted = await crypto.subtle.encrypt({ name: ALGORITHM, iv }, key, new TextEncoder().encode(value));
     const payload = JSON.stringify({
       s: toBase64(salt),
       iv: toBase64(iv),

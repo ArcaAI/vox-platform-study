@@ -162,10 +162,12 @@ export function useRoles(): UseRolesReturn {
 
   const removePolicy = useCallback(
     (roleId: string, policyId: string, breakGlass?: BreakGlassCredentials) =>
-      execute<void>('removePolicy', (client) =>
-        (breakGlass
-          ? client.delete(ROLE_ENDPOINTS.REMOVE_POLICY(roleId, policyId), { data: breakGlass })
-          : client.delete(ROLE_ENDPOINTS.REMOVE_POLICY(roleId, policyId))) as Promise<void>,
+      execute<void>(
+        'removePolicy',
+        (client) =>
+          (breakGlass
+            ? client.delete(ROLE_ENDPOINTS.REMOVE_POLICY(roleId, policyId), { data: breakGlass })
+            : client.delete(ROLE_ENDPOINTS.REMOVE_POLICY(roleId, policyId))) as Promise<void>,
       ),
     [execute],
   );

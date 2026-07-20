@@ -178,7 +178,16 @@ export type {
 } from './citations';
 
 // DNA Writing Style types (SDK-207 WS-4)
-export type { DnaGenerateInput, DnaJobResult, DnaJobStatus, DnaReport, DnaReportData, DnaReportWithFallback, DnaStyleVersion, DnaUpdateInput } from './dna';
+export type {
+  DnaGenerateInput,
+  DnaJobResult,
+  DnaJobStatus,
+  DnaReport,
+  DnaReportData,
+  DnaReportWithFallback,
+  DnaStyleVersion,
+  DnaUpdateInput,
+} from './dna';
 
 // DNA aggregate dashboard types (TASK-328 A5)
 export type { DnaDashboard, DnaDashboardDailyCount, DnaDashboardRecentActivity, DnaDashboardUsageEntry } from './dna';

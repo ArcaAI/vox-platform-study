@@ -45,7 +45,9 @@ export const SttConfigSchema = v.object({
   defaultModel: v.optional(v.string(), 'whisper-tiny'),
   // TASK-329 P3 — default derived from DEFAULT_STT_MODELS (single source of
   // truth) so the presented list can never drift from the registry-loadable set.
-  availableModels: v.optional(v.array(v.object({ id: v.string(), name: v.string(), size: v.optional(v.string()) })), [...DEFAULT_AVAILABLE_STT_MODELS]),
+  availableModels: v.optional(v.array(v.object({ id: v.string(), name: v.string(), size: v.optional(v.string()) })), [
+    ...DEFAULT_AVAILABLE_STT_MODELS,
+  ]),
   language: v.optional(v.string(), 'en'),
   // TASK-333 — resolved REMOTE transcription pipeline id (admin/tenant-assigned).
   // Surfaced through the cascade so consumers (e.g. the consultation recording

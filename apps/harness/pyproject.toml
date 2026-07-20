@@ -205,6 +205,42 @@ exclude = "/tests/"
 module = ["mcp", "mcp.*"]
 ignore_missing_imports = true
 
+# The remaining optional extras are all lazily imported behind flags/try-except and
+# are absent from base installs (and from the hermetic CI suite), so mypy cannot
+# resolve them. Each entry below maps to a declared [project.optional-dependencies]
+# extra — never add an override here for a hard dependency, which would mask a real
+# regression. `warn_unused_ignores` stays on, so an override that stops being needed
+# surfaces as a diagnostic.
+
+# 'rag' extra — qdrant-client + fastembed (guides/retrieval/*, eval/retrieval_eval.py).
+[[tool.mypy.overrides]]
+module = ["qdrant_client", "qdrant_client.*", "fastembed", "fastembed.*"]
+ignore_missing_imports = true
+
+# 'guardrails' extra — Presidio analyzer/anonymizer (guards/phi/redactor.py).
+[[tool.mypy.overrides]]
+module = [
+    "presidio_analyzer",
+    "presidio_analyzer.*",
+    "presidio_anonymizer",
+    "presidio_anonymizer.*",
+]
+ignore_missing_imports = true
+
+# 'eval' extra — DeepEval metric wrappers (eval/metrics/deepeval_metrics.py).
+[[tool.mypy.overrides]]
+module = ["deepeval", "deepeval.*"]
+ignore_missing_imports = true
+
+# 'atomic-fact' extra — llama-cpp-python (sensors/inferential/minicheck_entailer.py).
+# The submodule pattern is required: the entailer drives llama.cpp's encoder-decoder
+# path via `llama_cpp._internals.LlamaBatch`, which the high-level completion API
+# omits for T5 graphs. That private handle is version-sensitive by design and is
+# validated end-to-end on the host by the fail-closed `verify_calibration()` gate.
+[[tool.mypy.overrides]]
+module = ["llama_cpp", "llama_cpp.*"]
+ignore_missing_imports = true
+
 # pytest configuration
 [tool.pytest.ini_options]
 minversion = "9.0"

@@ -28,8 +28,13 @@ export type AppAbility = Ability<[string, string], PrismaQueryOf<PrismaTypeMap<s
  * Policy rule structure (stored in database as JSON)
  */
 export interface PolicyRule {
-  action: string;
-  subject: string;
+  /**
+   * CASL raw rules accept a single value or an array (an array fans the rule
+   * across every combination). Rules are DB-stored JSON and are passed to
+   * `createPrismaAbility` verbatim, so both shapes reach CASL unchanged.
+   */
+  action: string | string[];
+  subject: string | string[];
   conditions?: Record<string, unknown>;
   fields?: string[];
   inverted?: boolean;

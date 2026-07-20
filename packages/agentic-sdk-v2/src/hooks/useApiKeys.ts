@@ -142,8 +142,7 @@ export function useApiKeys(): UseApiKeysReturn {
   );
 
   const rotate = useCallback(
-    (id: string) =>
-      execute<ApiKeyWithRawKey>('rotate', (client) => client.post<ApiKeyWithRawKey>(API_KEY_ENDPOINTS.ROTATE(id), undefined)),
+    (id: string) => execute<ApiKeyWithRawKey>('rotate', (client) => client.post<ApiKeyWithRawKey>(API_KEY_ENDPOINTS.ROTATE(id), undefined)),
     [execute],
   );
 

@@ -71,10 +71,7 @@ export interface UseDnaStyleReturn {
    * historical source items (prior report-version snapshots / context items).
    * Thin wrapper over `generate` that attaches the selected `sourceIds`.
    */
-  generateFromHistory: (
-    sourceIds: string[],
-    extra?: Omit<DnaGenerateInput, 'sourceIds'> & { idempotencyKey?: string },
-  ) => Promise<{ jobId: string }>;
+  generateFromHistory: (sourceIds: string[], extra?: Omit<DnaGenerateInput, 'sourceIds'> & { idempotencyKey?: string }) => Promise<{ jobId: string }>;
   update: (reportId: string, input: DnaUpdateInput) => Promise<DnaReport>;
   /**
    * TASK-329 P5 — Promote a historical report to the doctor's active/default
@@ -141,9 +138,7 @@ export function useDnaStyle(): UseDnaStyleReturn {
       // backend can dedupe duplicate submissions (double-clicks, retries).
       const { idempotencyKey, ...rest } = (input ?? {}) as Record<string, unknown> & { idempotencyKey?: string };
       const body = withIdempotencyKey(rest as Record<string, unknown>, idempotencyKey);
-      return execute<{ jobId: string }>('generate', (client) =>
-        client.post<{ jobId: string }>(DNA_STYLE_ENDPOINTS.GENERATE, body),
-      );
+      return execute<{ jobId: string }>('generate', (client) => client.post<{ jobId: string }>(DNA_STYLE_ENDPOINTS.GENERATE, body));
     },
     [execute],
   );
@@ -153,9 +148,7 @@ export function useDnaStyle(): UseDnaStyleReturn {
     (sourceIds: string[], extra?: Omit<DnaGenerateInput, 'sourceIds'> & { idempotencyKey?: string }): Promise<{ jobId: string }> => {
       const { idempotencyKey, ...rest } = (extra ?? {}) as Record<string, unknown> & { idempotencyKey?: string };
       const body = withIdempotencyKey({ ...rest, sourceIds }, idempotencyKey);
-      return execute<{ jobId: string }>('generateFromHistory', (client) =>
-        client.post<{ jobId: string }>(DNA_STYLE_ENDPOINTS.GENERATE, body),
-      );
+      return execute<{ jobId: string }>('generateFromHistory', (client) => client.post<{ jobId: string }>(DNA_STYLE_ENDPOINTS.GENERATE, body));
     },
     [execute],
   );

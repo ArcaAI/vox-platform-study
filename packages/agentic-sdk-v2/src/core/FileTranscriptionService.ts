@@ -95,7 +95,9 @@ export class FileTranscriptionService {
       formData.append('diarization', String(options.diarization));
     }
 
-    const response = await this.apiClient.postFormData<TranscriptionJobResponse | BatchTranscribeResponse>(STT_V2_ENDPOINTS.TRANSCRIBE, formData, { signal: options.signal });
+    const response = await this.apiClient.postFormData<TranscriptionJobResponse | BatchTranscribeResponse>(STT_V2_ENDPOINTS.TRANSCRIBE, formData, {
+      signal: options.signal,
+    });
 
     const job = this.normalizeJobResponse(response, options.pipelineId);
     this.activeJobId = job.id;
@@ -159,18 +161,14 @@ export class FileTranscriptionService {
       formData.append('diarization', String(options.diarization));
     }
 
-    const response = await this.apiClient.uploadFormData<TranscriptionJobResponse | BatchTranscribeResponse>(
-      STT_V2_ENDPOINTS.TRANSCRIBE,
-      formData,
-      {
-        signal: options.signal,
-        onProgress: options.onProgress,
-        // Default: disable the XHR timeout for batch audio uploads. Arbitrary-length medical
-        // recordings must not be cut off by a 30-second client-wide default. Cancellation is
-        // handled explicitly via `signal`.
-        timeout: options.timeout ?? 0,
-      },
-    );
+    const response = await this.apiClient.uploadFormData<TranscriptionJobResponse | BatchTranscribeResponse>(STT_V2_ENDPOINTS.TRANSCRIBE, formData, {
+      signal: options.signal,
+      onProgress: options.onProgress,
+      // Default: disable the XHR timeout for batch audio uploads. Arbitrary-length medical
+      // recordings must not be cut off by a 30-second client-wide default. Cancellation is
+      // handled explicitly via `signal`.
+      timeout: options.timeout ?? 0,
+    });
 
     const job = this.normalizeJobResponse(response, options.pipelineId);
     this.activeJobId = job.id;

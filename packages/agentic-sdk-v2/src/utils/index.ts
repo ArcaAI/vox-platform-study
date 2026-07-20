@@ -4,7 +4,17 @@
 
 export { formatDate, formatDateTime, getToday, isSameDay, parseDate, formatRelativeTime } from './dateUtils';
 
-export { isAgenticError, getErrorCode, getErrorMessage, wrapError, isNetworkError, isAuthError, isRetriableError, classifyHttpError, classifySmrError } from './errorUtils';
+export {
+  isAgenticError,
+  getErrorCode,
+  getErrorMessage,
+  wrapError,
+  isNetworkError,
+  isAuthError,
+  isRetriableError,
+  classifyHttpError,
+  classifySmrError,
+} from './errorUtils';
 
 // Secure storage (SEC-02)
 export { SecureStorage } from './secureStorage';

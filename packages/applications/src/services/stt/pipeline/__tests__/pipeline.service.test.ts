@@ -339,6 +339,24 @@ describe('PipelineService', () => {
             ).rejects.toThrow(NotFoundException);
         });
 
+        it('should throw NotFoundException when the pipeline belongs to another tenant (404-over-403)', async () => {
+            // `findById` succeeds on a SYSTEM/foreign row via the shared-read
+            // widening, so existence alone is not an ownership proof. Without an
+            // explicit tenant guard the tenant-scoped write 0-matches and leaks as
+            // a 412 (OptimisticConcurrencyException) or a raw Prisma error.
+            const foreign = createBehavioralPipelineEntity({
+                id: 'pipeline-foreign',
+                tenantId: 'tenant-other',
+            });
+            mockPipelineRepository.findById.mockResolvedValue(foreign);
+
+            await expect(
+                service.update('pipeline-foreign', { name: 'Hijack', expectedVersion: 1 } as any),
+            ).rejects.toThrow(NotFoundException);
+
+            expect(mockPipelineRepository.updateWithVersion).not.toHaveBeenCalled();
+        });
+
         it('should validate slug uniqueness when changing slug', async () => {
             const existingPipeline = createBehavioralPipelineEntity({
                 id: 'pipeline-1',
@@ -608,6 +626,18 @@ describe('PipelineService', () => {
             mockPipelineRepository.findById.mockResolvedValue(null);
 
             await expect(service.delete('non-existent')).rejects.toThrow(NotFoundException);
+        });
+
+        it('should throw NotFoundException when the pipeline belongs to another tenant (404-over-403)', async () => {
+            const foreign = createBehavioralPipelineEntity({
+                id: 'pipeline-foreign',
+                tenantId: 'tenant-other',
+            });
+            mockPipelineRepository.findById.mockResolvedValue(foreign);
+
+            await expect(service.delete('pipeline-foreign')).rejects.toThrow(NotFoundException);
+
+            expect(mockPipelineRepository.softDelete).not.toHaveBeenCalled();
         });
     });
 

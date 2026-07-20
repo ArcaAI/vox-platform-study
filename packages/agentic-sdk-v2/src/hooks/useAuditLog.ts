@@ -154,9 +154,7 @@ export function useAuditLog(): UseAuditLogReturn {
     (params?: AuditLogFilterParams) =>
       execute<AuditLogEntry[]>('list', async (client) => {
         const pagination =
-          params && (params.page !== undefined || params.limit !== undefined)
-            ? { page: params.page, limit: params.limit }
-            : undefined;
+          params && (params.page !== undefined || params.limit !== undefined) ? { page: params.page, limit: params.limit } : undefined;
         const url = appendPagination(appendFilters(AUDIT_LOG_ENDPOINTS.LIST, toFilterQuery(params)), pagination);
         const raw = await client.get(url);
         // TASK-331 doc-03 F11 — read the full paginated envelope so we can keep

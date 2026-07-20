@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { ModelTaskType } from '@arcaai/domains';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { STREAM_SCOPE_METADATA } from '../../auth/decorators/stream-scope.decorator';
 import { SmrProxyController } from '../smr-proxy.controller';
 
 const createMockHttpService = () => ({
@@ -1752,5 +1753,17 @@ describe('SmrProxyController - Endpoint Security', () => {
       const descriptor = Object.getOwnPropertyDescriptor(proto, method);
       expect(descriptor).toBeDefined();
     }
+  });
+});
+
+describe('SmrProxyController - SSE stream scope', () => {
+  it('declares @StreamScope on the task stream so single-use tickets can open it', () => {
+    // House SSE convention (TASK-263): every SSE route declares a stream scope so
+    // clients mint `POST auth/stream-ticket` with `<namespace>:<resourceId>` and
+    // connect straight to the gateway. Without this metadata the guard 401s any
+    // presented ticket, which is what forced the console's BFF-tunnel workaround.
+    const scope = Reflect.getMetadata(STREAM_SCOPE_METADATA, SmrProxyController.prototype.streamTaskEvents);
+
+    expect(scope).toEqual({ namespace: 'smr_task', param: 'taskId' });
   });
 });

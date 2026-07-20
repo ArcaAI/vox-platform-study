@@ -150,14 +150,7 @@ export class AgenticClient {
     externalSignal?: AbortSignal,
     isRetry = false,
   ): Promise<T> {
-    const { body: parsed } = await this.requestWithMeta<T>(
-      method,
-      endpoint,
-      body,
-      options,
-      externalSignal,
-      isRetry,
-    );
+    const { body: parsed } = await this.requestWithMeta<T>(method, endpoint, body, options, externalSignal, isRetry);
     return parsed;
   }
 
@@ -475,10 +468,7 @@ export class AgenticClient {
    *   that case OCC is not available for this endpoint and callers
    *   should fall back to the body-field `expectedVersion`.
    */
-  async getWithEtag<T>(
-    endpoint: string,
-    options?: { signal?: AbortSignal },
-  ): Promise<{ body: T; etag: string | undefined }> {
+  async getWithEtag<T>(endpoint: string, options?: { signal?: AbortSignal }): Promise<{ body: T; etag: string | undefined }> {
     const { body, headers } = await this.requestWithMeta<T>('GET', endpoint, undefined, undefined, options?.signal);
     return { body, etag: headers.get('etag') ?? undefined };
   }
@@ -754,19 +744,8 @@ export class AgenticClient {
    * RFC 7232 double quotes (e.g. `"7"`). Pass it through verbatim from
    * `getWithEtag`'s `etag` field.
    */
-  async patchWithIfMatch<T>(
-    endpoint: string,
-    body: unknown,
-    ifMatch: string,
-    options?: { signal?: AbortSignal },
-  ): Promise<T> {
-    return this.request<T>(
-      'PATCH',
-      endpoint,
-      body,
-      { headers: { 'If-Match': ifMatch } },
-      options?.signal,
-    );
+  async patchWithIfMatch<T>(endpoint: string, body: unknown, ifMatch: string, options?: { signal?: AbortSignal }): Promise<T> {
+    return this.request<T>('PATCH', endpoint, body, { headers: { 'If-Match': ifMatch } }, options?.signal);
   }
 
   /**

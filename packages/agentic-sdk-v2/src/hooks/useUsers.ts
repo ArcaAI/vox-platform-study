@@ -320,9 +320,7 @@ export function useUsers(): UseUsersReturn {
   // best-effort). No local state mutation — this is a side-effect action.
   const resetPassword = useCallback(
     (userId: string, input?: ResetPasswordInput) =>
-      execute<ResetPasswordResult>('resetPassword', (client) =>
-        client.post<ResetPasswordResult>(USER_ENDPOINTS.RESET_PASSWORD(userId), input ?? {}),
-      ),
+      execute<ResetPasswordResult>('resetPassword', (client) => client.post<ResetPasswordResult>(USER_ENDPOINTS.RESET_PASSWORD(userId), input ?? {})),
     [execute],
   );
 
@@ -348,28 +346,21 @@ export function useUsers(): UseUsersReturn {
   // caller's job) so the admin app can retain its original session for restore.
   const impersonate = useCallback(
     (userId: string, options?: AdminImpersonateOptions) =>
-      execute<ImpersonateResponse>('impersonate', (client) =>
-        client.post<ImpersonateResponse>(USER_ENDPOINTS.IMPERSONATE(userId), options ?? {}),
-      ),
+      execute<ImpersonateResponse>('impersonate', (client) => client.post<ImpersonateResponse>(USER_ENDPOINTS.IMPERSONATE(userId), options ?? {})),
     [execute],
   );
 
   // TASK-401 — early end: server-side jti revocation via the existing
   // /auth/revoke-impersonation route (called with the impersonation token).
   const endImpersonation = useCallback(
-    () =>
-      execute<{ success: boolean }>('endImpersonation', (client) =>
-        client.post<{ success: boolean }>(AUTH_ENDPOINTS.REVOKE_IMPERSONATION, {}),
-      ),
+    () => execute<{ success: boolean }>('endImpersonation', (client) => client.post<{ success: boolean }>(AUTH_ENDPOINTS.REVOKE_IMPERSONATION, {})),
     [execute],
   );
 
   // TASK-388 #9 — server-side bulk action (one round-trip, per-item results).
   const bulkAction = useCallback(
     (input: BulkUserActionInput) =>
-      execute<BulkUserActionResult>('bulkAction', (client) =>
-        client.post<BulkUserActionResult>(USER_ENDPOINTS.BULK_ACTIONS, input),
-      ),
+      execute<BulkUserActionResult>('bulkAction', (client) => client.post<BulkUserActionResult>(USER_ENDPOINTS.BULK_ACTIONS, input)),
     [execute],
   );
 

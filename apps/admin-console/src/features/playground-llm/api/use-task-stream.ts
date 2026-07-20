@@ -1,28 +1,26 @@
 'use client';
 
 /**
- * SMR task SSE, consumed same-origin through the BFF proxy with cookie auth
- * (see taskStreamProxyUrl for why tickets cannot work on this route).
+ * SMR task SSE, consumed through the house ticket flow: `useEventStream` mints
+ * a single-use ticket per connect and the browser connects DIRECTLY to the
+ * gateway (JWTs never appear in a URL, streams never traverse the BFF proxy).
  *
- * Replay contract: the SMR endpoint reads `last_event_id` from the QUERY
- * STRING only and the BFF proxy forwards neither it nor the Last-Event-ID
- * header, so EVERY (re)connect replays the task's chunk log from 0-0. The
- * hook therefore keys its accumulator by connection (a reconnect discards the
- * previous accumulation and `open` seeds a fresh one), closes the source on
- * transport errors instead of letting EventSource auto-retry (which would
- * re-append the replay), and exposes a manual `reopen()`.
+ * Replay contract: the SMR endpoint reads `last_event_id` from the QUERY STRING
+ * only and nothing forwards it, so EVERY (re)connect replays the task's chunk
+ * log from 0-0. The hook therefore keys its accumulator by connection and
+ * disables the shared hook's automatic reconnect (`maxRetries: 0`) — an
+ * auto-reconnect would silently re-append the whole replay. Recovery is the
+ * explicit `reopen()`, which starts a fresh connection AND a fresh accumulation.
  *
  * `error` events are ambiguous by SSE design: upstream failure FRAMES carry a
  * JSON `data` string ({ type: 'error', data: { error } }); transport drops
- * dispatch a plain Event with no data. `failed` vs `error` status keeps the
- * two apart for the UI.
- *
- * State is only ever written from EventSource callbacks and user actions
- * (never synchronously inside the effect); `idle`/`connecting` are derived.
+ * dispatch a plain Event with no data (surfaced by the shared hook's own
+ * status/error). `failed` vs `error` status keeps the two apart for the UI.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { taskStreamProxyUrl } from './client';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEventStream } from '@/shared/streams/use-event-stream';
+import { taskStreamPath, taskStreamScope } from './client';
 import type { SmrStreamFrame, SmrTokenUsage } from './types';
 
 export type TaskStreamStatus = 'idle' | 'connecting' | 'streaming' | 'done' | 'failed' | 'error' | 'closed';
@@ -60,9 +58,12 @@ interface StreamEventState extends StreamFields {
     status: Exclude<TaskStreamStatus, 'idle' | 'connecting'> | null;
 }
 
-function parseFrame(event: Event): SmrStreamFrame | null {
-    const data = (event as MessageEvent).data as unknown;
-    if (typeof data !== 'string') return null;
+const SMR_EVENTS = ['chunk', 'reasoning', 'usage', 'done', 'error'] as const;
+
+/** Statuses that end the stream — these outrank the live transport status. */
+const TERMINAL_STATUSES = new Set<TaskStreamStatus>(['done', 'failed', 'closed']);
+
+function parseFrame(data: string): SmrStreamFrame | null {
     try {
         return JSON.parse(data) as SmrStreamFrame;
     } catch {
@@ -73,79 +74,108 @@ function parseFrame(event: Event): SmrStreamFrame | null {
 export function useTaskStream(taskId: string | null): TaskStreamState {
     const [generation, setGeneration] = useState(0);
     const [eventState, setEventState] = useState<StreamEventState>({ key: null, status: null, ...EMPTY_FIELDS });
-    const sourceRef = useRef<EventSource | null>(null);
 
+    // Each reopen() bumps the generation, so the key changes and the previous
+    // connection's accumulation is discarded rather than replayed onto.
     const connectionKey = taskId ? `${taskId}#${generation}` : null;
 
-    useEffect(() => {
-        if (!taskId || !connectionKey) return;
-        const key = connectionKey;
+    const path = taskId ? taskStreamPath(taskId) : null;
+    const scope = taskId ? taskStreamScope(taskId) : null;
 
-        const source = new EventSource(taskStreamProxyUrl(taskId));
-        sourceRef.current = source;
 
-        source.onopen = () => {
-            // The (re)connect replays from 0-0 — seed a fresh accumulation.
-            setEventState({ key, status: 'streaming', ...EMPTY_FIELDS });
-        };
-        source.addEventListener('chunk', (event) => {
-            const frame = parseFrame(event);
+    const onEvent = useCallback(
+        (type: string, data: string) => {
+            const key = connectionKey;
+            if (!key) return;
+            const frame = parseFrame(data);
+
+            if (type === 'error') {
+                // A parseable data string marks an upstream failure FRAME; a bare
+                // transport Event is handled by useEventStream's own status.
+                if (!frame) return;
+                const message = typeof frame.data?.error === 'string' ? frame.data.error : 'Generation failed';
+                setEventState((previous) =>
+                    previous.key === key
+                        ? { ...previous, status: 'failed', error: message }
+                        : { key, ...EMPTY_FIELDS, status: 'failed', error: message },
+                );
+                return;
+            }
+
             if (!frame) return;
-            setEventState((previous) =>
-                previous.key === key
-                    ? { ...previous, content: previous.content + (frame.content ?? ''), chunkCount: previous.chunkCount + 1 }
-                    : previous,
-            );
-        });
-        source.addEventListener('reasoning', (event) => {
-            const frame = parseFrame(event);
-            if (!frame) return;
-            setEventState((previous) => (previous.key === key ? { ...previous, reasoning: previous.reasoning + (frame.content ?? '') } : previous));
-        });
-        source.addEventListener('usage', (event) => {
-            const frame = parseFrame(event);
-            if (!frame?.data) return;
-            const usage = frame.data as unknown as SmrTokenUsage;
-            setEventState((previous) => (previous.key === key ? { ...previous, usage } : previous));
-        });
-        source.addEventListener('done', (event) => {
-            const reason = parseFrame(event)?.data?.finish_reason;
-            const finishReason = typeof reason === 'string' ? reason : null;
-            source.close();
-            setEventState((previous) =>
-                previous.key === key
-                    ? { ...previous, status: 'done', finishReason: finishReason ?? previous.finishReason }
-                    : { key, status: 'done', ...EMPTY_FIELDS, finishReason },
-            );
-        });
-        source.addEventListener('error', (event) => {
-            source.close();
-            const frame = parseFrame(event);
-            // A data string marks an upstream failure FRAME; a bare Event is a
-            // transport drop (can fire before `open` on a refused connection).
-            const failure: Pick<StreamEventState, 'status' | 'error'> = frame
-                ? { status: 'failed', error: typeof frame.data?.error === 'string' ? frame.data.error : 'Generation failed' }
-                : { status: 'error', error: 'Stream connection lost' };
-            setEventState((previous) => (previous.key === key ? { ...previous, ...failure } : { key, ...EMPTY_FIELDS, ...failure }));
-        });
 
-        return () => {
-            source.close();
-            sourceRef.current = null;
-        };
-    }, [taskId, connectionKey]);
+            setEventState((previous) => {
+                const base = previous.key === key ? previous : { key, status: 'streaming' as const, ...EMPTY_FIELDS };
+                switch (type) {
+                    case 'chunk':
+                        return { ...base, status: base.status ?? 'streaming', content: base.content + (frame.content ?? ''), chunkCount: base.chunkCount + 1 };
+                    case 'reasoning':
+                        return { ...base, status: base.status ?? 'streaming', reasoning: base.reasoning + (frame.content ?? '') };
+                    case 'usage':
+                        return frame.data ? { ...base, usage: frame.data as unknown as SmrTokenUsage } : base;
+                    case 'done': {
+                        const reason = frame.data?.finish_reason;
+                        return { ...base, status: 'done', finishReason: typeof reason === 'string' ? reason : base.finishReason };
+                    }
+                    default:
+                        return base;
+                }
+            });
 
-    const reopen = useCallback(() => setGeneration((current) => current + 1), []);
-    const close = useCallback(() => {
-        sourceRef.current?.close();
-        setEventState((previous) =>
-            previous.key === connectionKey ? { ...previous, status: 'closed' } : { key: connectionKey, status: 'closed', ...EMPTY_FIELDS },
-        );
-    }, [connectionKey]);
+        },
+        [connectionKey],
+    );
+
+    const stream = useEventStream({
+        path,
+        scope,
+        eventNames: SMR_EVENTS,
+        onEvent,
+        // Replay-from-0-0 makes silent reconnects unsafe; recovery is reopen().
+        maxRetries: 0,
+        enabled: !!taskId,
+    });
 
     // Stale event data (older connection) is ignored via the key mismatch.
     const current = eventState.key === connectionKey ? eventState : null;
-    const status: TaskStreamStatus = !connectionKey ? 'idle' : (current?.status ?? 'connecting');
+
+    // A terminal frame ends the stream — the SMR generator has returned, so the
+    // source is closed from an effect (never during render).
+    const terminal = current?.status === 'done' || current?.status === 'failed';
+    const closeStream = stream.close;
+    useEffect(() => {
+        if (terminal) closeStream();
+    }, [terminal, closeStream]);
+
+    const reopen = useCallback(() => {
+        setGeneration((current) => current + 1);
+        stream.reopen();
+    }, [stream]);
+
+    const close = useCallback(() => {
+        stream.close();
+        setEventState((previous) =>
+            previous.key === connectionKey ? { ...previous, status: 'closed' } : { key: connectionKey, status: 'closed', ...EMPTY_FIELDS },
+        );
+    }, [connectionKey, stream]);
+
+    const status: TaskStreamStatus = useMemo(() => {
+        if (!connectionKey) return 'idle';
+        // Only a TERMINAL event outranks the transport status — a mid-stream
+        // 'streaming' must not mask a subsequent connection drop.
+        if (current?.status && TERMINAL_STATUSES.has(current.status)) return current.status;
+        switch (stream.status) {
+            case 'open':
+                return 'streaming';
+            case 'error':
+                return 'error';
+            case 'closed':
+                return 'closed';
+            default:
+                return 'connecting';
+        }
+    }, [connectionKey, current?.status, stream.status]);
+
     const fields = current ?? EMPTY_FIELDS;
 
     return {
@@ -155,7 +185,8 @@ export function useTaskStream(taskId: string | null): TaskStreamState {
         chunkCount: fields.chunkCount,
         usage: fields.usage,
         finishReason: fields.finishReason,
-        error: fields.error,
+        // A transport failure has no frame — surface the shared hook's message.
+        error: fields.error ?? (stream.status === 'error' ? (stream.error ?? 'Stream connection lost') : null),
         reopen,
         close,
     };

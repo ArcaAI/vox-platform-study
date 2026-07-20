@@ -5,7 +5,7 @@ import { IsNotEmpty, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 
  * TASK-506 — diagnosis suggestions. Proxied to the NLP service
  * `POST /api/v1/diagnosis/suggestions`; the controller maps `minConfidence`
  * to the upstream snake_case `min_confidence` and injects `model_name` from
- * the tenant's effective `nlp.classification` default (fail-open).
+ * the effective `nlp.diagnosis` default (fail-open).
  */
 export class SuggestDiagnosisRequest {
   @ApiProperty({ description: 'Clinical text to derive diagnosis suggestions from.', maxLength: 20_000 })

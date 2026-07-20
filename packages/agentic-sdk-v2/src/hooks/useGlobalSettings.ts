@@ -132,9 +132,7 @@ export function useGlobalSettings(): UseGlobalSettingsReturn {
           // a `@RequiresIfMatch()` route and surface as a confusing
           // AgenticError. Forcing a get() first keeps the OCC contract
           // honest end-to-end.
-          throw new Error(
-            `No ETag cached for setting ${id}. Call get(${id}) before update() so the SDK can replay the strong validator.`,
-          );
+          throw new Error(`No ETag cached for setting ${id}. Call get(${id}) before update() so the SDK can replay the strong validator.`);
         }
         try {
           const data = await client.patchWithIfMatch<GlobalSetting>(GLOBAL_SETTINGS_ENDPOINTS.UPDATE(id), input, etag);
@@ -159,11 +157,7 @@ export function useGlobalSettings(): UseGlobalSettingsReturn {
             if (status === 412) {
               etagCache.delete(id);
               const expectedVersion = Number.parseInt(etag.replace(/"/g, ''), 10);
-              throw new ConfigConflictError(
-                id,
-                expectedVersion,
-                typeof currentVersion === 'number' ? currentVersion : expectedVersion + 1,
-              );
+              throw new ConfigConflictError(id, expectedVersion, typeof currentVersion === 'number' ? currentVersion : expectedVersion + 1);
             }
           }
           throw err;

@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getEffectiveTaskDefault, getEffectiveTaskDefaults, getTaskDefaultRow, getTaskModelOptions, putTaskDefaultRow } from '../client';
 import { aiTaskDefaultKeys } from '../keys';
-import { AI_TASK_KEYS, NLP_TASK_KEYS, SYSTEM_TENANT_ID } from '../types';
+import { AI_TASK_KEYS, SYSTEM_TENANT_ID } from '../types';
 
 interface RecordedCall {
   url: string;
@@ -38,10 +38,8 @@ afterEach(() => {
 });
 
 describe('task keys', () => {
-  it('exposes the three platform task keys and the tenant-editable NLP subset (guardrail is global-admin-only)', () => {
+  it('exposes the three platform task keys (all global-admin-only) and the SYSTEM tenant id', () => {
     expect(AI_TASK_KEYS).toEqual(['guardrail.validate', 'nlp.ner', 'nlp.classification']);
-    expect(NLP_TASK_KEYS).toEqual(['nlp.ner', 'nlp.classification']);
-    expect(NLP_TASK_KEYS).not.toContain('guardrail.validate');
     expect(SYSTEM_TENANT_ID).toBe('00000000-0000-0000-0000-000000000000');
   });
 });

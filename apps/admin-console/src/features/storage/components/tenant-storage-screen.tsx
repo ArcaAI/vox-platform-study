@@ -270,7 +270,7 @@ function ProvisionBucketsDialog({ open, onOpenChange }: { open: boolean; onOpenC
                 <DialogHeader>
                     <DialogTitle>Provision tenant buckets</DialogTitle>
                     <DialogDescription>
-                        Creates the standard system buckets (audio, attachments, misc) for the tenant if they are missing. Existing buckets
+                        Creates the standard system buckets (attachments, recordings) for the tenant if they are missing. Existing buckets
                         are left untouched.
                     </DialogDescription>
                 </DialogHeader>

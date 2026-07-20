@@ -76,9 +76,7 @@ export class DualStreamRecorder {
 
   private makeRecorder(track: MediaStreamTrack, sink: Blob[]): MediaRecorder {
     const stream = new MediaStream([track]);
-    const recorder = this.isMimeSupported(this.mimeType)
-      ? new MediaRecorder(stream, { mimeType: this.mimeType })
-      : new MediaRecorder(stream);
+    const recorder = this.isMimeSupported(this.mimeType) ? new MediaRecorder(stream, { mimeType: this.mimeType }) : new MediaRecorder(stream);
     recorder.ondataavailable = (event: BlobEvent) => {
       if (event.data && event.data.size > 0) sink.push(event.data);
     };

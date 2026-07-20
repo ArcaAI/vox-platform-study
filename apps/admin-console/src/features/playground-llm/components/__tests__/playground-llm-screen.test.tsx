@@ -3,7 +3,8 @@
  * pathname (the api layer has its own tests) and EventSource by a
  * FakeEventSource global. Covers the row 38 contract: providers picker
  * (availability + default preselection), sync generate (content + usage +
- * latency + finish), the streaming flow over the BFF-proxied SSE (chunk
+ * latency + finish), the streaming flow over the ticket-authenticated
+ * gateway SSE (chunk
  * append, done finalize, cancel), the designed 422 fail-closed panel, the
  * assembled debug admin gate, the __GLOBAL__ catalog switch and the NoTenant
  * gate.
@@ -134,7 +135,15 @@ function stubFetch(handler: FetchHandler): RecordedCall[] {
     return calls;
 }
 
+let ticketCounter = 0;
+
 function defaultHandler(call: RecordedCall, parsed: URL): Response | undefined {
+    // SSE now authenticates with a single-use scope-bound ticket minted through
+    // the BFF; the stream itself connects directly to the gateway.
+    if (call.method === 'POST' && parsed.pathname === '/api/auth/stream-ticket') {
+        ticketCounter += 1;
+        return Response.json({ ticket: `tkt-${ticketCounter}`, expiresAt: Date.now() + 30_000, scope: 'smr_task:t-5531' });
+    }
     if (call.method !== 'GET') return undefined;
     const path = parsed.pathname;
     if (path === '/api/auth/session') return Response.json(session());
@@ -159,6 +168,7 @@ function chunk(content: string): string {
 
 beforeEach(() => {
     FakeEventSource.instances = [];
+    ticketCounter = 0;
     vi.stubGlobal('EventSource', FakeEventSource);
 });
 
@@ -259,7 +269,7 @@ describe('PlaygroundLlmScreen', () => {
         expect(screen.getByText('Patient presents with exertional dyspnea.')).toBeDefined();
     });
 
-    it('streams tokens over the BFF-proxied SSE: chunks append live, usage/done finalize', async () => {
+    it('streams tokens over the ticket-authenticated gateway SSE: chunks append live, usage/done finalize', async () => {
         const calls = stubLlm((call, parsed) => {
             if (parsed.pathname === '/api/hope/text/generate' && call.method === 'POST') return Response.json(STREAM_ACK);
             return undefined;
@@ -272,10 +282,13 @@ describe('PlaygroundLlmScreen', () => {
 
         await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
         const source = FakeEventSource.instances[0];
-        // Same-origin BFF proxy with cookie auth; NO stream ticket is minted
-        // (the gateway route has no @StreamScope, tickets would 401).
-        expect(source.url).toBe('/api/hope/text/tasks/t-5531/stream');
-        expect(calls.some((call) => call.url.includes('/api/auth/stream-ticket'))).toBe(false);
+        // House SSE posture: a single-use ticket scoped to the route's
+        // @StreamScope, then a DIRECT gateway connection (never the BFF tunnel).
+        const mint = calls.find((call) => call.url.includes('/api/auth/stream-ticket'));
+        expect(mint?.body).toEqual({ scope: 'smr_task:t-5531' });
+        expect(source.url).toContain('/api/v1/text/tasks/t-5531/stream');
+        expect(source.url).toContain('ticket=');
+        expect(source.url).not.toContain('/api/hope/');
 
         act(() => {
             source.open();

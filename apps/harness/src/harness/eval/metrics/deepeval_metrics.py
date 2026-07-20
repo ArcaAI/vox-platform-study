@@ -197,13 +197,21 @@ def _default_geval_params() -> list[Any]:
 
     Prefer the non-deprecated ``SingleTurnParams`` and fall back to
     ``LLMTestCaseParams`` for older deepeval.
-    """
-    try:
-        from deepeval.test_case import SingleTurnParams as Params
-    except ImportError:  # pragma: no cover - older deepeval
-        from deepeval.test_case import LLMTestCaseParams as Params  # type: ignore[no-redef]
 
-    return [Params.INPUT, Params.ACTUAL_OUTPUT]
+    Resolved with ``getattr`` rather than a try/except ``... as Params`` import
+    pair so there is exactly ONE binding of the name. The two-import form needs
+    a ``# type: ignore[no-redef]`` when deepeval IS installed (real types, so
+    mypy sees the redefinition), but that same ignore is reported as UNUSED
+    under ``warn_unused_ignores`` when it is not (the ``deepeval.*`` override
+    makes both imports ``Any``) — it cannot satisfy both environments.
+    """
+    from deepeval import test_case
+
+    params = getattr(test_case, "SingleTurnParams", None)
+    if params is None:  # pragma: no cover - older deepeval
+        params = test_case.LLMTestCaseParams
+
+    return [params.INPUT, params.ACTUAL_OUTPUT]
 
 
 def build_geval_metric(

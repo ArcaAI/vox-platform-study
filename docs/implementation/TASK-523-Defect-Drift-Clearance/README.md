@@ -1,6 +1,6 @@
 # TASK-523 — Defect & Drift Clearance (Phase 0)
 
-- **Status**: Review
+- **Status**: Completed — all implementation work done and gate-verified (§9.7). Runtime verification of the playground stream (§9.8 item 1) is deferred to the owner's post-all-tickets pass; four owner-decision items are recorded in §9.8 and are out of this ticket's defect scope.
 - **Type**: bugfix / docs
 - **Program**: Phase 0 of the [agentic platform program plan](../SOTA-Track/2026-07-20-agentic-platform-program-plan.md) (§4 Phase 0, rows 0.1–0.10); defect evidence in the [findings review](../SOTA-Track/2026-07-20-agentic-platform-review-findings.md) (§4 D-01…D-06, D-13…D-18, D-20, D-21; §6 M-06/M-07/M-10; §5 gates)
 - **Suggested number**: TASK-523 per the program plan's allocation (TASK-523…534). Confirm at open time per the CLAUDE.md ticket workflow.
@@ -266,11 +266,71 @@ Everything else in §2.8 verified as planned: `SUMMARY_SERVICE_PROVIDER`, both `
 - **Row 0.3 diff verified formatting-only**: every one of the 31 prettier-touched files was diffed; all changes are line joins/wraps and trailing-comma removal, no logic.
 - Row 0.9d left the file's JSDoc (`:9-15`, "ALL THREE task keys", mentions only guardrail's restriction) untouched as it was not in the change table — flagged as a residual understated (not false) site.
 
-### 9.6 Outstanding / owner-gated
+### 9.6 Follow-up pass — residual findings cleared (owner directive, same day)
 
-- **Runtime verification of the playground stream is NOT done** (rule 13 / §7 row 0.7). The migration is green at unit level (992 admin-console tests) but was not exercised against a running gateway + SMR; a headed pass on the playground is required before close.
-- Harness pytest could not run its full suite on this host (missing `rag` extra) — the §5 behavior-preservation gate for 0.5 is unevidenced locally.
-- The `_internals` private-API smell (DEC-1) remains open.
+Everything flagged in the first pass was taken to root cause. **The whole repo is now green except runtime verification, which the owner deferred.**
+
+| # | Finding (from the first pass) | Resolution |
+|---|---|---|
+| F-1 | 6 harness pytest **collection errors** (`ModuleNotFoundError: qdrant_client`) | ROOT CAUSE: `scripts/setup-python-env.sh:437` installed harness as `[dev,test]` while the `test-harness` CI job installs `[test,eval,rag]` — a local/CI drift that left `pnpm py:harness:test` unable to collect at all. Setup script corrected to `[dev,test,eval,rag,guardrails]`. |
+| F-2 | (surfaced by F-1) 4 `test_phi_redactor.py` failures | Once collection succeeded, the PHI tests failed on `ModuleNotFoundError: presidio_analyzer` — the `guardrails` extra is missing from **CI too**, and `test-harness` runs with `-x`, so this job fails there as well. Added `guardrails` to `.gitlab/ci/test.yml` (comment documents why; no spaCy model download, so the suite stays hermetic). Harness now **862 passed, 0 failed**. |
+| F-3 | 5 stt-v2 pytest failures | 3 readiness failures were a **real product defect**: TASK-505 P1 added `checks["processors"] = asr_processor_health()`, whose payload has no `status`/`duration_ms`, breaking the homogeneous `checks` component contract every other entry honors (error path was worse: `{"error": str(exc)}`). Extracted `_check_processors()` mirroring the existing `_check_streaming()` precedent. `test_ttl_expiration` was stale (TTL is clamped to `[60s, 3600s]`, so `ttl_seconds=1` silently became 60 and the test stopped exercising expiry). `test_slug_asr_ref_...` used `MagicMock()` where the file's own convention and the real `async def pin_many` require `AsyncMock()`. **2584 passed, 0 failed.** No external consumer of `checks.processors` exists (verified repo-wide), so the reshape is safe. |
+| F-4 | 2 TS unit failures | Both traced to commit `ad8c21da`, which edited **tests only** and left them red. `tenant-bucket`: the commit flipped `toHaveLength(2)` → `3` and added a `misc` block **without touching `CreateDefaultSystemBuckets`** — `misc` is deliberately not a default (TASK-426); the test was corrected and strengthened to assert the real contract positively. `policy.engine`: the test was **born failing** — named "array-valued action **and subject**" but its fixture granted `subject: 'ApiKey'` as a plain string, so `can('update','Secret')` could never pass. Fixture corrected to `['ApiKey','Secret']`; no assertion weakened. |
+| F-5 | (surfaced by F-4) latent bug in `policy.service.ts` | Widening `PolicyRule.action/subject` to `string \| string[]` (the shape CASL actually accepts, already handled at `permission-check.controller.ts:180`) made the compiler expose `VALID_ACTIONS.includes(rule.action)` at `policy.service.ts:140` — always false for an array, so every array-valued rule emitted a bogus `Unknown action 'read,update,delete,list'` warning. Now validated per member. |
+| F-6 | Row 0.9d residual JSDoc ("ALL THREE task keys", only guardrail's restriction named) | Corrected to name all four global-admin-only prefixes and cite `GLOBAL_ADMIN_ONLY_TASK_PREFIXES`. |
+| F-7 | `AZURE_OPENAI_TEMPERATURE` / `_MAX_TOKENS` zero-reader sub-note (DEC-3) | Re-verified zero readers repo-wide and deleted; the other five keys stay (they ARE read by the smr e2e conftest and the k3s `hope-secrets` key names). Env guard suites re-run: `419 passed`. |
+| F-8 | Row 0.5e `type: ignore[no-redef]` | Installing the extras exposed a genuine two-environment conflict: the ignore is **required** when deepeval is installed (real types → `no-redef`) and **reported unused** when it is not (`deepeval.*` override → both imports `Any`). Neither state satisfies both. Removed the redefinition entirely — `_default_geval_params` now resolves via `getattr(test_case, "SingleTurnParams", None)`, a single binding that typechecks clean in **both** environments. |
+
+### 9.7 Final gate state (all re-run after the follow-up pass)
+
+| Gate | Result |
+|---|---|
+| `pnpm test:unit` | **`Tests 16509 passed \| 0 failed` (933 files)** — first fully-green run |
+| `pnpm py:stt-v2:test` | `2584 passed, 73 skipped, 3 xfailed` |
+| `pnpm py:harness:test` | `862 passed` |
+| `pnpm py:guardrail:test` · `py:smr-v2:test` · `py:nlp:test` | `129 passed` · `874 passed, 32 deselected` · `120 passed` |
+| mypy ×3 (stt-v2 / guardrail / harness) | `Success` ×3 |
+| ruff ×5 | `All checks passed!` ×5 |
+| `pnpm --filter @arcaai/vox typecheck` / `lint` | 0 errors / 0 problems |
+| `pnpm --filter @arcaai/api lint` | 0 problems |
+| `pnpm --filter @arcaai/ui build` | media-store warning absent |
+| `pnpm build:api` | `8 successful, 8 total` |
+| `@arcaai/applications` / `@arcaai/domains` builds | OK |
+| `@arcaai/admin-console` lint / test / build | clean · `992 passed` · OK |
+
+### 9.8 Still open — deliberately NOT actioned
+
+1. **Runtime verification of the migrated playground stream** (rule 13 / §7 row 0.7) — deferred by the owner to a post-all-tickets pass. This is the ONE item standing between this ticket and a fully-evidenced close.
+2. **`llama_cpp._internals` private-API smell (DEC-1)** — left as-is, deliberately. It blocks no gate (D-05 is green), the rewrite is unverifiable here (`llama-cpp-python` is the uninstalled `atomic-fact` extra), and `_make_llama_logit_fn` has **zero test coverage** (DEC-2), so rewriting it would mean changing untested clinical-gate code with no way to prove equivalence. Needs an owner decision + a staged GGUF host.
+3. **`generate-factory-check` / `generate-data-entity-check` are RED on schema coverage** — discovered during this pass, **pre-existing on a clean tree** (`git stash`-verified), and NOT in this ticket's defect list: `HarnessPolicyEntity`/`HarnessPolicyFactory` are missing `mcpToolsEnabled`; `SummaryMetaFactory` is missing `stopReason`, `tokensPerSecond`, `ttftMs`. Note the file-drift half of both gates PASSES ("no drift — 68 generated files match"), meaning the **generator itself does not emit these columns** — so "surface them in the factory layer" would require hand-editing generated files and would then trip the drift half. The realistic resolutions are either a generator change or recording the omissions in `packages/tools/src/utils/schemaCoverage.ts`, and choosing between them requires knowing whether the omissions are intentional (esp. `mcpToolsEnabled`, a feature flag the domain layer currently cannot read). **Owner decision — belongs to the ticket that added those columns, not here.**
+4. ~~**Seed self-contradiction**~~ — **RESOLVED** (owner decision, same day). See §9.9.
+5. `apps/stt-v2/tests/unit/test_session_manager_model_wiring.py` fails `black --check` **on the unmodified file** (stash-verified pre-existing drift). Ruff — the gate actually wired into CI for this service — is clean. Left alone rather than reformatting a 2300-line file inside a bugfix diff.
+
+### 9.9 F-9 — `misc` tenant-bucket seed contradiction (owner-decided, resolved)
+
+**Root cause: commit `ad8c21da` regressed the seed** — the same grab-bag commit behind F-4/F-5. `git show ad8c21da -- .../05a-tenant-bucket.ts` shows it (a) added `MISC` back to `SYSTEM_BUCKET_SLUGS` and the three lookup maps, and (b) **deleted the `LEGACY_MISC_SLUG` constant and the entire misc soft-delete block** from `convergeLegacyBuckets` — while leaving the module header, which documents the removed behavior, untouched. The header was therefore the *original, correct* TASK-426 intent, not stale text.
+
+Net effect before the fix: every `pnpm db:seed` upserted a `misc` SYSTEM row with `update: { resourceStatus: 'ENABLED' }`, **reviving** any previously soft-deleted row, and 05b then created a matching physical `hope-misc-<tenant>` MinIO bucket (it provisions from all non-DELETED rows).
+
+Five independent sources confirmed misc is NOT a default:
+
+| Source | Evidence |
+|---|---|
+| `TenantBucketFactory.CreateDefaultSystemBuckets` | returns exactly `attachments` + `recordings` |
+| `TenantBucketService.provisionSystemBuckets` (runtime/admin path) | builds from that factory → seed and runtime already disagreed |
+| `TenantBucketService.getDefaultBuckets` | returns `misc: … \| null`; `setDefaultBuckets` accepts an optional `miscBucketId` — MISC is an *assignable* purpose |
+| admin-console storage tests | already assert `misc: null` as the expected state |
+| module header + `packages/domains/src/__tests__/tenant-bucket.test.ts` | both state the two-bucket contract |
+
+**Owner decision: Option A — misc is not a default.** Applied:
+- `SYSTEM_BUCKET_SLUGS` and the description/pathPattern/purpose maps reduced to the two defaults (`SYSTEM_BUCKET_PURPOSES` narrowed back to `'AUDIO' \| 'ATTACHMENTS'`), with a new comment naming `TenantBucketFactory` as the authoritative contract to keep in sync — the two constants are **duplicated across `packages/database` and `packages/domains`**, which is how they drifted.
+- `LEGACY_MISC_SLUG` + the scoped soft-delete restored in `convergeLegacyBuckets`. Scoped to `slug='misc' AND bucketType='SYSTEM'`, so a CUSTOM bucket an admin created and assigned the MISC purpose to is never touched. Soft-delete only — no physical MinIO bucket or object is removed.
+- Verified the result is **byte-identical to the pre-`ad8c21da` file** except for two added explanatory comments.
+- Stale operator copy fixed: `tenant-storage-screen.tsx:273` told operators the provision button "Creates the standard system buckets (audio, attachments, misc)" — that button calls `provisionSystemBuckets`, so it was wrong regardless of this decision. Now "(attachments, recordings)".
+
+No test was weakened; the domain test's positive contract assertion (`slugs === ['attachments','recordings']`, no MISC purpose) already locks this and passes unchanged. Verification: `@arcaai/domains` **1368 passed**, `@arcaai/applications` **6418 passed**, `@arcaai/database` build OK, admin-console lint clean + **992 passed**, full `pnpm test:unit` **16509 passed / 0 failed**. No `SYSTEM_BUCKET_SLUGS.MISC` reference remains repo-wide.
+
+**Operational note for the owner:** the next `pnpm db:seed` in any environment seeded since `ad8c21da` will soft-delete its `misc` SYSTEM rows. Objects already written to a `hope-misc-*` bucket stay in MinIO but become unreachable through that bucket row. Worth a glance at dev/staging before seeding if anything was uploaded against a misc bucket in that window.
 
 ## 10 Change History
 
@@ -278,4 +338,6 @@ Everything else in §2.8 verified as planned: `SUMMARY_SERVICE_PROVIDER`, both `
 |---|---|
 | 2026-07-20 | Ticket scaffolded from the program plan (Phase 0 rows 0.1–0.10). All defects independently code-verified against the working tree with fresh gate runs (vox typecheck/lint, ui build, stt-v2/guardrail/harness mypy); corrections to the findings recorded: D-01 gateway-DTO whitelist caveat, D-05 full 15-error inventory (+`fastembed`, +`sparse.py`/`qdrant_store.py`, harness `llama_cpp` override gap), D-06 diagnosis (dead alias re-export, not an unused import), D-15 inverted turbo.json fix direction (retired names are test-guarded — remove from `globalEnv`, don't add to `.env.example`) + `STT_V2_URL` gap + second dead LANGFLOW pair + smr README drift, D-18 nav-config path (`shared/navigation/`), TASK-508 recovery ref (`HEAD~1`, not `HEAD`). Status Pending — awaiting OD-7 (owner commits the tree) and rule 01 Phase 3 approval. |
 | 2026-07-20 | **Executed all ten rows (0.1–0.10) TDD; status Pending → Review.** RED captured before every fix (§9.1), all gates re-run green (§9.2). Three evidence-forced plan corrections recorded as decision rows (§9.4): **DEC-1** the `llama_cpp._internals` rewrite was dropped — the mypy diagnostic is `import-not-found` (the package is an uninstalled optional extra), so the public-API rewrite would not have fixed the gate; the per-module override is the whole fix and both call sites are unchanged. **DEC-2** §5's premise that the `verify_calibration` suites cover that wiring is false — both suites inject a fake `logit_fn` and `_make_llama_logit_fn` has zero coverage. **DEC-3** `AZURE_OPENAI_*` is not zero-reader (smr e2e conftest + k3s `hope-secrets` key names) — block retained and annotated, with the real `SMR_V2_AZURE_*` set added alongside. Row 0.7 additionally rewrote two BFF-asserting test files not listed in §4.1, and the new tests caught a real defect in the first hook draft (mid-stream status masking a transport drop). Pre-existing failures documented and `git stash`-verified (§9.3): 2 TS unit, 5 stt-v2 pytest, 6 harness collection errors (missing `rag` extra). Open: runtime verification of the migrated playground stream (rule 13) — not performed. |
+| 2026-07-20 | **Follow-up pass on owner directive ("fix all those findings"); status Review → Completed.** All eight residual findings cleared to root cause (§9.6): local/CI extras drift in `setup-python-env.sh` (F-1) and the `guardrails` extra missing from `.gitlab/ci/test.yml` — the harness CI job would have failed on the PHI tests under `-x` (F-2); a real stt-v2 health-contract defect from TASK-505 P1 plus two stale tests (F-3); two tests left red by commit `ad8c21da` which edited tests only (F-4) and the latent `policy.service.ts` array-action validation bug their fix exposed (F-5); the row-0.9d JSDoc (F-6); the zero-reader Azure keys (F-7); and the row-0.5e ignore rewritten to typecheck cleanly with AND without the deepeval extra installed (F-8). Full suite green for the first time: **TS 16509 passed / 0 failed**, stt-v2 2584, harness 862, guardrail 129, smr 874, nlp 120; mypy ×3, ruff ×5, vox 0/0, `build:api` 8/8, admin-console 992 + build. Five items deliberately left open with rationale (§9.8): owner-deferred runtime verification; the `_internals` smell (blocks no gate, zero coverage, unverifiable here); **newly discovered pre-existing RED `generate-factory-check`/`generate-data-entity-check` schema-coverage gates** (needs an owner call — the generator itself does not emit the columns); a seed self-contradiction on `misc` buckets; and pre-existing `black --check` drift in one stt-v2 test file. |
+| 2026-07-20 | **F-9 `misc` tenant-bucket seed contradiction resolved** (§9.9), closing §9.8 item 4. Root-caused to commit `ad8c21da` — the same commit behind F-4/F-5 — which re-added `MISC` to the seed's slug maps AND deleted the misc soft-delete block from `convergeLegacyBuckets`, leaving the header that documents it; every seed then revived a misc SYSTEM row (and 05b created a physical `hope-misc-*` MinIO bucket). Five sources confirmed misc is not a default (factory, `provisionSystemBuckets`, nullable service API, admin-console tests asserting `misc: null`, domain test). Owner chose **Option A**: slug maps reduced to the two defaults with a sync note naming the duplicated `TenantBucketFactory` constant as authoritative, and the scoped soft-delete (`slug='misc' AND bucketType='SYSTEM'`) restored so admin-assigned MISC buckets are untouched — result byte-identical to the pre-`ad8c21da` file apart from two comments. Stale operator copy in `tenant-storage-screen.tsx:273` corrected. No test weakened; domains 1368, applications 6418, admin-console 992, full `test:unit` **16509 passed / 0 failed**. Operational note recorded: the next seed soft-deletes existing misc rows. |
 | 2026-07-20 | Program plan §2.5 **Completion & Cleanup Doctrine** adopted as BINDING for this ticket (owner directive): incorrect implementations in the owned surface are removed completely with the fix; partial implementations are finished end-to-end (or explicitly retired); redundant implementations are converged and deleted. Reviewer enforces the §2.5 classification table, plan-conformance (deviations = recorded decision rows), full-closure traceability of the claimed GAP/D/M IDs, and the performance gates. |

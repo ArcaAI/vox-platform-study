@@ -1,12 +1,12 @@
 /**
- * useTaskStream — the SMR task SSE consumed SAME-ORIGIN through the BFF proxy
- * with cookie auth. Deliberate transport choice: the gateway route
- * `GET text/tasks/:taskId/stream` declares NO @StreamScope, and JwtAuthGuard
- * rejects `?ticket=` on scope-less routes, so the shared ticket-minting
- * useEventStream can never authenticate here. These tests also lock the
- * replay contract (every (re)connect replays from 0-0 -> state resets on
- * open) and the `error` event disambiguation (upstream failure frames carry a
- * data string; transport drops do not).
+ * useTaskStream — the SMR task SSE consumed through the house ticket flow:
+ * `useEventStream` mints a single-use scope-bound ticket via the BFF and the
+ * browser connects DIRECTLY to the gateway (`smr_task:<taskId>`, matching the
+ * route's `@StreamScope`). These tests lock that transport (no `/api/hope/`
+ * stream tunnel), the replay contract (every (re)connect replays from 0-0, so
+ * automatic reconnects are disabled and reopen() resets the accumulation), and
+ * the `error` disambiguation (upstream failure frames carry a data string;
+ * transport drops do not).
  */
 
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
@@ -20,7 +20,7 @@ class FakeEventSource {
     readonly listeners = new Map<string, Array<(event: MessageEvent) => void>>();
     onopen: (() => void) | null = null;
     onmessage: ((event: MessageEvent) => void) | null = null;
-    onerror: ((event: Event) => void) | null = null;
+    onerror: ((event?: Event) => void) | null = null;
     closed = false;
 
     constructor(url: string) {
@@ -48,13 +48,25 @@ class FakeEventSource {
         }
     }
 
-    /** Transport-level error — an Event WITHOUT a data payload. */
+    /** Transport-level error — no data payload (useEventStream owns the retry policy). */
     fail(): void {
-        this.onerror?.(new Event('error'));
-        for (const listener of this.listeners.get('error') ?? []) {
-            listener(new Event('error') as unknown as MessageEvent);
-        }
+        this.onerror?.();
     }
+}
+
+let mintCalls: Array<{ url: string; body: unknown }> = [];
+
+function stubTicketMint(): void {
+    mintCalls = [];
+    let counter = 0;
+    vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+            mintCalls.push({ url: String(input), body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined });
+            counter += 1;
+            return Response.json({ ticket: `tkt-${counter}`, expiresAt: Date.now() + 30_000, scope: 'smr_task:x' });
+        }),
+    );
 }
 
 function chunk(content: string): string {
@@ -64,13 +76,7 @@ function chunk(content: string): string {
 beforeEach(() => {
     FakeEventSource.instances = [];
     vi.stubGlobal('EventSource', FakeEventSource);
-    // The hook must not touch the network (no ticket mint, no polling).
-    vi.stubGlobal(
-        'fetch',
-        vi.fn(async () => {
-            throw new Error('useTaskStream must not fetch');
-        }),
-    );
+    stubTicketMint();
 });
 
 afterEach(() => {
@@ -79,14 +85,26 @@ afterEach(() => {
 });
 
 describe('useTaskStream', () => {
-    it('opens the BFF-proxied stream WITHOUT minting a ticket and folds chunk/usage/done frames', async () => {
-        const { result } = renderHook(() => useTaskStream('t-5531'));
+    it('mints an smr_task ticket and connects DIRECTLY to the gateway (never the BFF tunnel)', async () => {
+        renderHook(() => useTaskStream('t-5531'));
 
         await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
         const source = FakeEventSource.instances[0];
-        expect(source.url).toBe('/api/hope/text/tasks/t-5531/stream');
-        expect(vi.mocked(fetch)).not.toHaveBeenCalled();
-        expect(result.current.status).toBe('connecting');
+
+        expect(mintCalls).toHaveLength(1);
+        expect(mintCalls[0].url).toBe('/api/auth/stream-ticket');
+        expect(mintCalls[0].body).toEqual({ scope: 'smr_task:t-5531' });
+
+        expect(source.url).toContain('/api/v1/text/tasks/t-5531/stream');
+        expect(source.url).toContain('ticket=tkt-1');
+        // The BFF stream tunnel is gone — streams go straight to the gateway.
+        expect(source.url).not.toContain('/api/hope/');
+    });
+
+    it('folds chunk/reasoning/usage/done frames', async () => {
+        const { result } = renderHook(() => useTaskStream('t-5531'));
+        await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+        const source = FakeEventSource.instances[0];
 
         act(() => source.open());
         expect(result.current.status).toBe('streaming');
@@ -131,7 +149,7 @@ describe('useTaskStream', () => {
         expect(source.closed).toBe(true);
     });
 
-    it('maps a transport drop (no data) to error; reopen() reattaches and the 0-0 replay resets content', async () => {
+    it('never auto-reconnects on a transport drop (a silent retry would re-append the 0-0 replay)', async () => {
         const { result } = renderHook(() => useTaskStream('t-1'));
         await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
         const first = FakeEventSource.instances[0];
@@ -142,18 +160,36 @@ describe('useTaskStream', () => {
         });
         act(() => first.fail());
 
-        expect(result.current.status).toBe('error');
-        expect(result.current.error).toBe('Stream connection lost');
-        expect(first.closed).toBe(true);
+        await waitFor(() => expect(result.current.status).toBe('error'));
+        expect(result.current.error).toBeTruthy();
+        // maxRetries: 0 — no second source appears on its own.
+        expect(FakeEventSource.instances).toHaveLength(1);
+    });
+
+    it('reopen() mints a FRESH ticket and the 0-0 replay resets the accumulation', async () => {
+        const { result } = renderHook(() => useTaskStream('t-1'));
+        await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+        const first = FakeEventSource.instances[0];
+
+        act(() => {
+            first.open();
+            first.emit('chunk', chunk('partial before drop'));
+        });
+        act(() => first.fail());
+        await waitFor(() => expect(result.current.status).toBe('error'));
 
         act(() => result.current.reopen());
         await waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
+
         const second = FakeEventSource.instances[1];
+        // Tickets are single-use: the reconnect must not replay the consumed one.
+        expect(second.url).toContain('ticket=tkt-2');
+
         act(() => {
             second.open();
             second.emit('chunk', chunk('full replay'));
         });
-        // No duplication: the reconnect replays from 0-0, so open() reset state.
+        // No duplication: the new connection key discarded the prior accumulation.
         expect(result.current.content).toBe('full replay');
         expect(result.current.chunkCount).toBe(1);
         expect(result.current.status).toBe('streaming');
@@ -175,13 +211,14 @@ describe('useTaskStream', () => {
         expect(result.current.content).toBe('to be cancelled');
     });
 
-    it('is idle without a task id and tears the source down when the id clears', async () => {
+    it('is idle without a task id (no ticket minted) and tears the source down when the id clears', async () => {
         const { result, rerender } = renderHook(({ taskId }: { taskId: string | null }) => useTaskStream(taskId), {
             initialProps: { taskId: null as string | null },
         });
 
         expect(result.current.status).toBe('idle');
         expect(FakeEventSource.instances).toHaveLength(0);
+        expect(mintCalls).toHaveLength(0);
 
         rerender({ taskId: 't-9' });
         await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));

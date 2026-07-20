@@ -118,13 +118,13 @@ describe('TenantBucket Domain Layer', () => {
             expect(entity.bucketType).toBe(TenantBucketType.CUSTOM);
         });
 
-        it('should create the three default system buckets for a tenant', async () => {
+        it('should create the two default system buckets (attachments + recordings) for a tenant', async () => {
             const { TenantBucketFactory } = await import('../factories/generated/core/TenantBucketFactory');
             const { TenantBucketType, TenantBucketPurpose } = await import('../enums');
 
             const buckets = TenantBucketFactory.CreateDefaultSystemBuckets('tenant-1', 'arcaai');
 
-            expect(buckets).toHaveLength(3);
+            expect(buckets).toHaveLength(2);
 
             const attachmentsBucket = buckets[0];
             expect(attachmentsBucket.slug).toBe('attachments');
@@ -140,11 +140,12 @@ describe('TenantBucket Domain Layer', () => {
             expect(recordingsBucket.bucketType).toBe(TenantBucketType.SYSTEM);
             expect(recordingsBucket.purpose).toBe(TenantBucketPurpose.AUDIO);
 
-            const miscBucket = buckets[2];
-            expect(miscBucket.slug).toBe('misc');
-            expect(miscBucket.name).toBe('hope-misc-arcaai');
-            expect(miscBucket.bucketType).toBe(TenantBucketType.SYSTEM);
-            expect(miscBucket.purpose).toBe(TenantBucketPurpose.MISC);
+            // TASK-426: `misc` is NOT auto-provisioned as a default system
+            // bucket. MISC survives only as an *assignable* purpose an admin can
+            // hand to an existing bucket (TenantBucketService.setDefaultBuckets),
+            // so the factory must never emit one.
+            expect(buckets.map((b) => b.slug)).toEqual(['attachments', 'recordings']);
+            expect(buckets.some((b) => b.purpose === TenantBucketPurpose.MISC)).toBe(false);
         });
 
         it('should sanitize tenant key in bucket name', async () => {

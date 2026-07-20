@@ -100,7 +100,11 @@ export class PipelineService extends BaseService implements IPipelineService {
     }
 
     const existing = await this.pipelineRepository.findById(id);
-    if (!existing) {
+    // Cross-tenant / missing both surface as 404 so we never leak existence.
+    // `findById` resolves SYSTEM/foreign rows through the shared-read widening,
+    // so existence alone is not an ownership proof — without this guard the
+    // tenant-scoped write 0-matches and leaks as a 412 or a raw Prisma error.
+    if (!existing || existing.tenantId !== tenantId) {
       throw new NotFoundException(`Pipeline ${id} not found`);
     }
 
@@ -447,10 +451,13 @@ export class PipelineService extends BaseService implements IPipelineService {
    * Soft delete a pipeline
    */
   async delete(id: string): Promise<void> {
+    const tenantId = this.tenantId;
     const userId = this.requestUserId;
 
     const existing = await this.pipelineRepository.findById(id);
-    if (!existing) {
+    // Cross-tenant / missing both surface as 404 so we never leak existence
+    // (see `update` — the same shared-read widening applies here).
+    if (!existing || existing.tenantId !== tenantId) {
       throw new NotFoundException(`Pipeline ${id} not found`);
     }
 
