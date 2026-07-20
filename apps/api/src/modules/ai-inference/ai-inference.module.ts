@@ -1,4 +1,4 @@
-import { AiModelServiceModule, AiTaskDefaultServiceModule } from '@arcaai/applications';
+import { AiModelServiceModule, AiRuntimeProfileServiceModule, AiTaskDefaultServiceModule } from '@arcaai/applications';
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { AiInferenceClient } from './ai-inference.client';
@@ -15,7 +15,9 @@ import { AiInferenceController } from './ai-inference.controller';
  * from AiServiceAdminModule so the read-only admin plane stays untouched.
  */
 @Module({
-  imports: [HttpModule, AiTaskDefaultServiceModule, AiModelServiceModule],
+  // TASK-524 — AiRuntimeProfileServiceModule supplies the hyperparameter
+  // profile resolver injected alongside `model_name`.
+  imports: [HttpModule, AiTaskDefaultServiceModule, AiModelServiceModule, AiRuntimeProfileServiceModule],
   controllers: [AiInferenceController],
   providers: [AiInferenceClient],
 })

@@ -36,6 +36,8 @@ export class ContextItem extends BaseTenantDataModel {
   @VirtualDbProperty()
   public Versions: Models.ContextItemVersion[] | undefined;
   @VirtualDbProperty()
+  public TranscriptSegments: Models.TranscriptSegment[] | undefined;
+  @VirtualDbProperty()
   public TranscriptNamedEntities: Models.NamedEntity[] | undefined;
 
   constructor(data: ContextItem & BaseTenantDataModel) {
@@ -58,6 +60,7 @@ export class ContextItem extends BaseTenantDataModel {
     this.SummaryMeta = data.SummaryMeta;
     this.NamedEntities = data.NamedEntities;
     this.Versions = data.Versions;
+    this.TranscriptSegments = data.TranscriptSegments;
     this.TranscriptNamedEntities = data.TranscriptNamedEntities;
   }
 }

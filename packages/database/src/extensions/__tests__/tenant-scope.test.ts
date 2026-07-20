@@ -107,9 +107,12 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // AgentTrajectoryStep → 52. added the segment-level transcript
     // annotation TranscriptSegment → 53. Phase 5 added the MCP
     // external-tools registry McpServer (SYSTEM-shared read; global-admin
-    // writes) → 54. (The drift guard below is the durable check; this count
+    // writes) → 54. TASK-524 added the config-plane core pair
+    // AiProviderConnection (per-(tenant,provider) endpoint + BYO ciphertext)
+    // and AiRuntimeProfile (per-(provider,modelSlug) hyperparameters) → 56.
+    // (The drift guard below is the durable check; this count
     // stays as a quick human-readable tripwire.)
-    expect(TENANT_SCOPED_MODELS.size).toBe(54);
+    expect(TENANT_SCOPED_MODELS.size).toBe(56);
   });
 
   it('includes every PHI-bearing model', () => {
@@ -262,6 +265,14 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
       // McpServer's SYSTEM-tenant rows are the shared external-tools
       // registry every tenant's harness run reads to resolve a server; writes
       // are NOT widened (registry mutation is global-admin only).
+      // TASK-524 — AiProviderConnection's SYSTEM row is the platform-default
+      // provider catalog entry every tenant's resolveConnection cascade reads
+      // (tenant row → SYSTEM row → env); it is the FIRST secret-bearing entry
+      // in this list, which is safe because the widening is [caller, SYSTEM]
+      // only, the ciphertext is inert without Vault-Transit decrypt, and no
+      // read DTO carries it. AiRuntimeProfile's SYSTEM rows are the
+      // hyperparameter defaults every injection cascade reads (no secrets).
+      // Writes are NOT widened for either.
       new Set([
         'AsrPipeline',
         'AiModel',
@@ -271,6 +282,8 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         'TenantTtsConfig',
         'AiTaskDefault',
         'McpServer',
+        'AiProviderConnection',
+        'AiRuntimeProfile',
       ]),
     );
   });

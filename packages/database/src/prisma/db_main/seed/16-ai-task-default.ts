@@ -17,9 +17,14 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * - harness.judge → lms-gemma-4-e4b (TEXT_GENERATION row — )
  *
  * Resolution at runtime (AiTaskDefaultService.getEffective): tenant row →
- * SYSTEM row → consuming service's env fallback. Governance (owner decision
- * 2026-07-17): `guardrail.*` keys are GLOBAL-ADMIN-ONLY at the service layer;
- * `nlp.*` keys are tenant-admin editable via manage:AiTaskDefault.
+ * SYSTEM row → consuming service's env fallback.
+ *
+ * Governance (owner decision 2026-07-17): ALL task-key prefixes are
+ * GLOBAL-ADMIN-ONLY (service-level isSuperAdmin guard on writes) —
+ * `guardrail.`, `smr.`, `nlp.`, `harness.` per GLOBAL_ADMIN_ONLY_TASK_PREFIXES
+ * in packages/applications/src/services/ai-task-default/constants.ts. Tenants
+ * only CONSUME the SYSTEM-row platform default; no task key is tenant-admin
+ * editable, and runtime resolution ignores per-tenant override rows.
  *
  * CREATE-ONLY: an existing (tenantId, taskKey) row is NEVER overwritten — the
  * platform default is admin-tunable at runtime and a re-seed must not clobber

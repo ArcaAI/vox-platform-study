@@ -1,5 +1,6 @@
 import {
   AiModelServiceModule,
+  AiRuntimeProfileServiceModule,
   AiTaskDefaultServiceModule,
   EntitlementsServiceModule,
   HarnessPolicyServiceModule,
@@ -40,6 +41,9 @@ import { TranscriptionJobController } from './transcription-job.controller';
     // resolves the effective `guardrail.validate` default.
     AiModelServiceModule,
     AiTaskDefaultServiceModule,
+    // TASK-524 — hyperparameter profile resolver for the SMR proxy's
+    // caller-wins, fail-open parameter injection.
+    AiRuntimeProfileServiceModule,
     // TASK-386 (#5/#17): provides `ISocketRegistryService` so `SttWsGateway`
     // publishes its per-instance open-socket count for the platform aggregate.
     PlatformMetricsServiceModule,

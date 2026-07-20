@@ -1,4 +1,4 @@
-import { AiModelService, IAiTaskDefaultService } from '@arcaai/applications';
+import { AiModelService, IAiRuntimeProfileService, IAiTaskDefaultService } from '@arcaai/applications';
 import { ModelTaskType } from '@arcaai/domains';
 import { BadRequestException, Body, Controller, Inject, Logger, Optional, Post, ServiceUnavailableException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -41,6 +41,11 @@ export class AiInferenceController {
     // registry. Optional for fixture compatibility, but an OVERRIDE with the
     // service absent is rejected (fail-closed) — see resolveValidatedModelOverride.
     @Optional() @Inject(AiModelService) private readonly aiModelService?: AiModelService,
+    // TASK-524 — resolves the effective hyperparameter profile for the model
+    // being called. Optional; absent = no parameter injection.
+    @Optional()
+    @Inject(IAiRuntimeProfileService)
+    private readonly aiRuntimeProfileService?: IAiRuntimeProfileService,
   ) {}
 
   @Post('guardrail/analyze')
@@ -65,12 +70,25 @@ export class AiInferenceController {
   async extractEntities(@Body() body: ExtractEntitiesRequest): Promise<Record<string, unknown>> {
     // r2605 Finding B — an explicit override is VALIDATED against the registry
     // (fail-closed); only the absent-override default injection stays fail-open.
-    const modelName = body.modelName ? await this.resolveValidatedModelOverride(body.modelName) : await this.resolveDefaultModelName('nlp.ner');
+    // TASK-524 — a caller-supplied override pins only the MODEL, and we have no
+    // registry provider for an arbitrary override, so profile injection applies
+    // to the resolved-default path only.
+    let modelName: string;
+    let runtimeParams: Record<string, unknown> = {};
+    if (body.modelName) {
+      modelName = await this.resolveValidatedModelOverride(body.modelName);
+    } else {
+      const selection = await this.resolveDefaultModelSelection('nlp.ner');
+      modelName = selection.sourceUri;
+      runtimeParams = await this.resolveRuntimeParams(selection.provider, selection.modelSlug);
+    }
+
     return this.client.classifyTokens({
       text: body.text,
       aggregation_strategy: body.aggregationStrategy ?? 'simple',
       ...(body.language ? { language: body.language } : {}),
       ...(modelName ? { model_name: modelName } : {}),
+      ...runtimeParams,
     });
   }
 
@@ -81,12 +99,15 @@ export class AiInferenceController {
   })
   @ApiOkResponse({ description: 'Upstream `{ suggestions[], ... }`, proxied verbatim.' })
   async suggestDiagnosis(@Body() body: SuggestDiagnosisRequest): Promise<Record<string, unknown>> {
-    const modelName = await this.resolveDefaultModelName('nlp.diagnosis');
+    const selection = await this.resolveDefaultModelSelection('nlp.diagnosis');
+    const runtimeParams = await this.resolveRuntimeParams(selection.provider, selection.modelSlug);
+
     return this.client.suggestDiagnosis({
       text: body.text,
       ...(body.minConfidence !== undefined ? { min_confidence: body.minConfidence } : {}),
       ...(body.language ? { language: body.language } : {}),
-      ...(modelName ? { model_name: modelName } : {}),
+      ...(selection.sourceUri ? { model_name: selection.sourceUri } : {}),
+      ...runtimeParams,
     });
   }
 
@@ -133,6 +154,17 @@ export class AiInferenceController {
    * resolver error, or null model → 503 (no silent env bootstrap).
    */
   private async resolveDefaultModelName(taskKey: 'nlp.ner' | 'nlp.diagnosis'): Promise<string> {
+    return (await this.resolveDefaultModelSelection(taskKey)).sourceUri;
+  }
+
+  /**
+   * TASK-524 — the same fail-closed resolution as `resolveDefaultModelName`,
+   * but keeping the `provider` / `modelSlug` the runtime-profile cascade is
+   * keyed on. Split out rather than re-calling `getEffective` a second time.
+   */
+  private async resolveDefaultModelSelection(
+    taskKey: 'nlp.ner' | 'nlp.diagnosis',
+  ): Promise<{ sourceUri: string; provider: string | null; modelSlug: string | null }> {
     if (!this.aiTaskDefaultService) {
       throw new ServiceUnavailableException(`SYSTEM AiTaskDefault for '${taskKey}' is unavailable (AiTaskDefaultService not wired).`);
     }
@@ -142,7 +174,11 @@ export class AiInferenceController {
       if (!sourceUri) {
         throw new ServiceUnavailableException(`SYSTEM AiTaskDefault for '${taskKey}' is missing or has no ENABLED model. Run db:seed.`);
       }
-      return sourceUri;
+      return {
+        sourceUri,
+        provider: (effective.model as { provider?: string } | null)?.provider ?? null,
+        modelSlug: effective.modelSlug ?? null,
+      };
     } catch (err) {
       if (err instanceof ServiceUnavailableException) throw err;
       this.logger.warn({
@@ -151,6 +187,43 @@ export class AiInferenceController {
         error: err instanceof Error ? err.message : String(err),
       });
       throw new ServiceUnavailableException(`SYSTEM AiTaskDefault for '${taskKey}' could not be resolved.`);
+    }
+  }
+
+  /**
+   * TASK-524 — resolve the runtime profile for a (provider, modelSlug) and
+   * project it onto the upstream NLP payload fields.
+   *
+   * FAIL-OPEN, in deliberate contrast to the model-IDENTITY path above: if the
+   * profile cannot be resolved the request proceeds and the NLP service keeps
+   * its own env defaults. Calling the right MODEL is a correctness/safety
+   * property; calling it with the service's default concurrency is the status
+   * quo. Returns `{}` — an empty spread — whenever there is nothing to inject,
+   * so with zero profile rows seeded the payload is byte-identical to today's.
+   */
+  private async resolveRuntimeParams(provider: string | null, modelSlug: string | null): Promise<Record<string, unknown>> {
+    if (!this.aiRuntimeProfileService || !provider) {
+      return {};
+    }
+    try {
+      const profile = await this.aiRuntimeProfileService.resolveProfile(provider, modelSlug ?? '');
+      if (profile.isEmpty) {
+        return {};
+      }
+      return {
+        ...(profile.maxConcurrent !== null ? { max_concurrent: profile.maxConcurrent } : {}),
+        ...(profile.timeoutS !== null ? { timeout_s: profile.timeoutS } : {}),
+        ...(profile.contextLength !== null ? { context_length: profile.contextLength } : {}),
+        ...(profile.extraJson ? { extra: profile.extraJson } : {}),
+      };
+    } catch (err) {
+      this.logger.warn({
+        message: 'Runtime-profile resolution failed; proceeding without injected parameters (fail-open)',
+        provider,
+        modelSlug,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return {};
     }
   }
 }

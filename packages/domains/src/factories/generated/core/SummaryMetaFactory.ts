@@ -13,6 +13,12 @@ export interface CreateSummaryMetaProps extends BaseEntityFactoryCreateProps {
   processingTimeMs?: ISummaryMetaEntity['processingTimeMs'];
   inputTokens?: ISummaryMetaEntity['inputTokens'];
   outputTokens?: ISummaryMetaEntity['outputTokens'];
+  // Generation-stats headline fields, matching the columns the entity and
+  // mapper already surface: `stopReason` is the NORMALIZED stop reason,
+  // `ttftMs` time-to-first-token, `tokensPerSecond` decode throughput.
+  stopReason?: ISummaryMetaEntity['stopReason'];
+  ttftMs?: ISummaryMetaEntity['ttftMs'];
+  tokensPerSecond?: ISummaryMetaEntity['tokensPerSecond'];
   caseNoteIds?: ISummaryMetaEntity['caseNoteIds'];
   preSummaryIds?: ISummaryMetaEntity['preSummaryIds'];
   previousSummaryIds?: ISummaryMetaEntity['previousSummaryIds'];
@@ -60,6 +66,9 @@ export class SummaryMetaFactory {
       processingTimeMs: props.processingTimeMs ?? null,
       inputTokens: props.inputTokens ?? null,
       outputTokens: props.outputTokens ?? null,
+      stopReason: props.stopReason ?? null,
+      ttftMs: props.ttftMs ?? null,
+      tokensPerSecond: props.tokensPerSecond ?? null,
       caseNoteIds: props.caseNoteIds ?? [],
       preSummaryIds: props.preSummaryIds ?? [],
       previousSummaryIds: props.previousSummaryIds ?? [],

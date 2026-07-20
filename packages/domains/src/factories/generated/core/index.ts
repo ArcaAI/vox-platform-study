@@ -1,5 +1,7 @@
 export * from './AgentTrajectoryStepFactory';
 export * from './AiModelFactory';
+export * from './AiProviderConnectionFactory';
+export * from './AiRuntimeProfileFactory';
 export * from './AiTaskDefaultFactory';
 export * from './ApiKeyFactory';
 export * from './AsrPipelineFactory';

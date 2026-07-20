@@ -9,8 +9,8 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService';
+import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { ConfigResolutionContext, ConfigResolver, PipelineToggleKey } from '../config-resolver/config-resolver.service';
-import { AGENTIC_CONTEXT_KEY_PREFIX } from './descriptors/agentic-context.descriptors';
 import { HOPE_SETTINGS_REGISTRY } from './registry';
 
 export interface EffectiveSettingResult {
@@ -29,6 +29,10 @@ export class EffectiveSettingsService {
     // read task-model defaults (and existing unit tests) keep working; an
     // unwired models.* read falls through to the no-resolver error.
     @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
+    // TASK-524 — backs the `global-kv` override lane. Optional so graphs that
+    // never read KV settings (and existing unit tests) keep working; an unwired
+    // resolver simply falls back to the descriptor default.
+    @Optional() @Inject(IAppSettingsService) private readonly appSettings?: IAppSettingsService,
   ) {}
 
   /**
@@ -59,12 +63,23 @@ export class EffectiveSettingsService {
       return { key, tier: descriptor.tier, value: effective.modelSlug, sourceScope: effective.source ?? 'none' };
     }
 
-    // agentic.context.* resolves to its registry code
-    // default (the effective-facade seam). A global override lane (global-kv /
-    // Redis kill-switch) lands here later; today the descriptor default is the
-    // effective value the live-documentation loop reads.
-    if (key.startsWith(AGENTIC_CONTEXT_KEY_PREFIX)) {
-      return { key, tier: descriptor.tier, value: descriptor.default, sourceScope: 'code-default' };
+    // TASK-524 — the `global-kv` override lane (GAP-C5). Every global-kv key,
+    // INCLUDING `agentic.context.*` (which previously short-circuited to the
+    // code default here), now resolves through the AppSettings cache that the
+    // registry write lane populates:
+    //
+    //   GlobalSetting/AppSettings value  →  descriptor.default
+    //   sourceScope: 'global-kv'         →  'code-default'
+    //
+    // This makes the read surface TRUTHFUL: before, a value written to the KV
+    // store was invisible here and the facade always reported the code default.
+    // Live-doc/harness CONSUMPTION of the resolved value is a later ticket;
+    // this only makes the read honest.
+    if (descriptor.tier === 'global-kv') {
+      const stored = this.appSettings?.getValueWithDefault<unknown>(key, null) ?? null;
+      return stored !== null
+        ? { key, tier: descriptor.tier, value: stored, sourceScope: 'global-kv' }
+        : { key, tier: descriptor.tier, value: descriptor.default, sourceScope: 'code-default' };
     }
 
     throw new ArgumentInvalidException(`No effective resolver is registered for setting '${key}'.`);

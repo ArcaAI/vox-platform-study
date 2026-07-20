@@ -124,6 +124,18 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'TenantTtsProviderCredential', // per-(tenant,provider) BYO key; NOT SYSTEM-shared
   // ai-task-default.prisma (1) — TASK-506 per-tenant default model per AI task.
   'AiTaskDefault', // also a SYSTEM-shared read model (platform-default row, below)
+  // ai-provider-connection.prisma (1) — TASK-524 config-plane core. WHERE a
+  // serving provider lives + HOW to authenticate. SYSTEM row = platform
+  // default; tenant rows are BYO cloud credentials (azure/bedrock only,
+  // service-enforced). Secret-bearing (`encryptedApiKey`), and unlike
+  // TenantTtsProviderCredential it IS SYSTEM-shared for reads — see the
+  // justification on the SYSTEM_SHARED_READ_MODELS entry below.
+  'AiProviderConnection',
+  // ai-runtime-profile.prisma (1) — TASK-524 config-plane core. Hyperparameter /
+  // context / concurrency profiles per (provider, modelSlug). SYSTEM-only rows
+  // in this program (global-admin-only per owner expectation E5); tenantId is
+  // carried for the house template + forward compatibility.
+  'AiRuntimeProfile', // also a SYSTEM-shared read model (platform-default row, below)
   // entitlement.prisma (1) — TASK-392 rolling-monthly usage meters. The
   // reconcile job reads/writes these via the UNSCOPED `baseClient` (explicit
   // tenantId filters, no CLS — same escape hatch as the audit-retention
@@ -227,6 +239,23 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // [caller, SYSTEM]; WRITES are NOT widened (guardrail.* keys are additionally
   // global-admin-only at the service layer).
   'AiTaskDefault',
+  // TASK-524 — the provider CONNECTION catalog: the SYSTEM row records where a
+  // serving provider lives and (as Vault-Transit ciphertext) how to auth to it.
+  // Every tenant's `resolveConnection` cascade (tenant row → SYSTEM row → env)
+  // runs under tenant CLS at request time and would otherwise read nothing.
+  // READS widen to [caller, SYSTEM]; WRITES are NOT widened.
+  //
+  // CAVEAT — this is the first SECRET-BEARING model in this list. It is safe
+  // because the widening is [caller, SYSTEM] only (never another tenant's BYO
+  // row), the `encryptedApiKey` ciphertext is inert without gateway-side
+  // Vault-Transit decrypt, and NO read DTO ever carries it (`hasKey` boolean
+  // only). Contrast TenantTtsProviderCredential, which is deliberately absent
+  // above: that model has no SYSTEM row at all, so sharing would buy nothing.
+  'AiProviderConnection',
+  // TASK-524 — hyperparameter/context/concurrency profiles. SYSTEM-only rows,
+  // read by every tenant's injection cascade at request time. No secrets on
+  // the model at all. READS widen to [caller, SYSTEM]; WRITES are NOT widened.
+  'AiRuntimeProfile',
   // the MCP external-tools registry: server rows are registered by a
   // global admin under the SYSTEM tenant and every tenant's harness run must
   // READ the shared registry to resolve a server it references (server metadata

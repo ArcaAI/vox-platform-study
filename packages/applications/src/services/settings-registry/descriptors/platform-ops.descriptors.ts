@@ -1,0 +1,151 @@
+// TASK-524 — platform-operations descriptors (GAP-C5: the orphaned keys).
+//
+// These three families were already live `global-kv` settings — their consuming
+// services read them through `IAppSettingsService.getValueWithDefault` — but
+// none of them was CATALOGED, so they were invisible to
+// `GET /admin/settings/catalog` and unreachable through any write surface.
+//
+// Registering them changes ZERO runtime behaviour: every `default` below is
+// transcribed verbatim from the consuming service's own fallback constant, so
+// a read that misses the DB resolves to exactly the value it resolves to today.
+// The registry lane merely makes them discoverable and writable.
+//
+// Sources of truth for the defaults:
+//   - rate-limit.*        `rate-limit/rate-limit.constants.ts`
+//   - audit-retention.*   `audit-retention/audit-retention.service.ts`
+//   - agentic.trajectory.* `agent-trajectory-retention/agent-trajectory-retention.service.ts`
+
+import { SettingDescriptor } from '../registry.types';
+
+export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
+  // ── Rate limiting ────────────────────────────────────────────────────────
+  {
+    key: 'rate-limit.enabled',
+    tier: 'global-kv',
+    dataType: 'boolean',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'all',
+    globalOnly: true,
+    category: 'Platform Operations',
+    label: 'Rate limiting enabled',
+    description:
+      'Master switch for tiered request rate limiting. NOTE: this is a PROTECTION-ENABLE flag and ' +
+      'therefore defaults ON — the opposite polarity to an enforcement kill-switch. It is deliberately ' +
+      'NOT marked `killSwitch`, because the registry governance invariant requires kill-switches to ' +
+      'default OFF (fail-safe rollout) and turning this OFF REMOVES a protection rather than disabling ' +
+      'an enforcement path. Disabling it lifts all request throttling.',
+    // Matches RATE_LIMIT_GLOBAL_ENABLED_DEFAULT.
+    default: true,
+  },
+
+  // ── Audit-log retention ──────────────────────────────────────────────────
+  {
+    key: 'audit-retention.enabled',
+    tier: 'global-kv',
+    dataType: 'boolean',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'all',
+    globalOnly: true,
+    category: 'Platform Operations',
+    killSwitch: true,
+    label: 'Audit retention sweep enabled',
+    description: 'Enables the scheduled audit-log retention purge. Fail-safe: defaults OFF.',
+    default: false,
+  },
+  {
+    key: 'audit-retention.cron',
+    tier: 'global-kv',
+    dataType: 'string',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'all',
+    globalOnly: true,
+    category: 'Platform Operations',
+    label: 'Audit retention schedule',
+    description: 'Cron expression for the audit-log retention sweep.',
+    default: '0 3 * * *',
+  },
+  {
+    key: 'audit-retention.retention-days',
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'all',
+    globalOnly: true,
+    category: 'Platform Operations',
+    label: 'Audit retention window (days)',
+    description: 'Audit-log rows older than this are purged by the sweep.',
+    default: 365,
+  },
+  {
+    key: 'audit-retention.batch-size',
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'all',
+    globalOnly: true,
+    category: 'Platform Operations',
+    label: 'Audit retention batch size',
+    description: 'Rows deleted per batch by the retention sweep.',
+    default: 1000,
+  },
+  {
+    key: 'audit-retention.max-batches-per-run',
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'all',
+    globalOnly: true,
+    category: 'Platform Operations',
+    label: 'Audit retention max batches per run',
+    description: 'Upper bound on batches processed in a single sweep, bounding its runtime.',
+    default: 1000,
+  },
+
+  // ── Agent-trajectory retention ───────────────────────────────────────────
+  {
+    key: 'agentic.trajectory.enabled',
+    tier: 'global-kv',
+    dataType: 'boolean',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'all',
+    globalOnly: true,
+    category: 'Platform Operations',
+    killSwitch: true,
+    label: 'Agent trajectory retention enabled',
+    description: 'Enables the scheduled agent-trajectory retention purge. Fail-safe: defaults OFF.',
+    default: false,
+  },
+  {
+    key: 'agentic.trajectory.cron',
+    tier: 'global-kv',
+    dataType: 'string',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'all',
+    globalOnly: true,
+    category: 'Platform Operations',
+    label: 'Agent trajectory retention schedule',
+    description: 'Cron expression for the agent-trajectory retention sweep.',
+    default: '0 4 * * *',
+  },
+  {
+    key: 'agentic.trajectory.retentionDays',
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'all',
+    globalOnly: true,
+    category: 'Platform Operations',
+    label: 'Agent trajectory retention window (days)',
+    description: 'Agent-trajectory rows older than this are purged by the sweep.',
+    default: 30,
+  },
+];

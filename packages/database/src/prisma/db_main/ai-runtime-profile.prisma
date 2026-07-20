@@ -1,0 +1,55 @@
+// ============================================================================
+// AI Runtime Profiles (TASK-524 — config-plane core, GAP-C2)
+//
+// Hyperparameters / context / concurrency per provider (modelSlug = "") or per
+// model (modelSlug = AiModel.slug — no FK, house slug-reference convention).
+// GLOBAL-ADMIN-ONLY and SYSTEM-tenant-only in this program (E5: "hyperparameters
+// global-admin-only"); tenantId is kept for the house template + forward compat.
+// `modelSlug` uses the EMPTY-STRING sentinel for "provider-level default"
+// (NOT null): Postgres treats NULLs as distinct in unique indexes, which would
+// allow duplicate provider-default rows and break compound-unique upserts.
+// Cascade at injection time: explicit request params → AiTaskDefault.configJson
+// → profile(modelSlug) → profile(provider default, "") → service env default.
+// All numeric fields nullable = "no opinion, fall through the cascade".
+// ============================================================================
+
+model AiRuntimeProfile {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields (SYSTEM-only rows in this program — service-enforced)
+  tenantId String
+
+  // core fields
+  provider         String
+  modelSlug        String @default("") // "" = provider-level default; else AiModel.slug
+  temperature      Float?
+  topP             Float?
+  maxTokens        Int?
+  contextLength    Int? // n_ctx for GGUF engines; request ctx budget for API engines
+  maxConcurrent    Int?
+  tpmLimit         Int?
+  rpmLimit         Int?
+  timeoutS         Int?
+  keepAliveSeconds Int? // retention hint forwarded to server-managed engines
+  extraJson        Json?  @db.JsonB // engine-specific (n_threads, n_gpu_layers, num_predict, …)
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // indexing — one profile per (tenant, provider, modelSlug)
+  @@unique([tenantId, provider, modelSlug], name: "AiRuntimeProfile_tenant_provider_model_unique")
+  @@index([tenantId], name: "AiRuntimeProfile_tenantId_idx")
+  @@index([provider], name: "AiRuntimeProfile_provider_idx")
+  @@schema("core")
+}

@@ -25,10 +25,13 @@ function resolved(over: Partial<ResolvedPipelineToggles> = {}): ResolvedPipeline
 function serviceWith(
   toggles: ResolvedPipelineToggles,
   aiTaskDefaults?: { getEffective: ReturnType<typeof vi.fn> },
+  // TASK-524 — backs the global-kv override lane. Omitted ⇒ no DB override, so
+  // global-kv keys resolve to their descriptor default.
+  appSettings?: { getValueWithDefault: ReturnType<typeof vi.fn> },
 ): EffectiveSettingsService {
   const configResolver = { resolvePipelineToggles: vi.fn(async () => toggles) } as unknown as ConfigResolver;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return new EffectiveSettingsService(configResolver, aiTaskDefaults as any);
+  return new EffectiveSettingsService(configResolver, aiTaskDefaults as any, appSettings as any);
 }
 
 const CTX = { tenantId: 'tnt-1', departmentId: 'dep-1', doctorId: null };
@@ -54,9 +57,69 @@ describe('EffectiveSettingsService', () => {
     await expect(svc.resolveEffective('nope.key', CTX)).rejects.toThrow(/unknown setting/i);
   });
 
-  it('throws for a non-secret key with no registered resolver', async () => {
+  // TASK-524 — the tier that genuinely has no resolver is `entitlement` (the
+  // plan feature-flag matrix). `entitlements.enabled` USED to land here too,
+  // because no global-kv lane existed — that was GAP-C5, and it now resolves
+  // (see the global-kv describe block below).
+  it('throws for a non-secret key whose tier has no registered resolver', async () => {
     const svc = serviceWith(resolved());
-    await expect(svc.resolveEffective('entitlements.enabled', CTX)).rejects.toThrow(/no effective resolver/i);
+    await expect(svc.resolveEffective('entitlements.featureDnaReports', CTX)).rejects.toThrow(
+      /no effective resolver/i,
+    );
+  });
+
+  // TASK-524 §5 test 12 — the global-kv override lane (GAP-C5). Before this,
+  // `agentic.context.*` short-circuited to the descriptor default and a value
+  // written to the KV store was invisible here, so the read surface lied.
+  describe('global-kv override lane (TASK-524)', () => {
+    it('reports a DB override with sourceScope global-kv', async () => {
+      const appSettings = { getValueWithDefault: vi.fn(() => 9000) };
+      const svc = serviceWith(resolved(), undefined, appSettings);
+
+      await expect(svc.resolveEffective('agentic.context.liveDelta.maxChars', CTX)).resolves.toEqual({
+        key: 'agentic.context.liveDelta.maxChars',
+        tier: 'global-kv',
+        value: 9000,
+        sourceScope: 'global-kv',
+      });
+    });
+
+    it('falls back to the descriptor default with sourceScope code-default', async () => {
+      const appSettings = { getValueWithDefault: vi.fn(() => null) };
+      const svc = serviceWith(resolved(), undefined, appSettings);
+
+      await expect(svc.resolveEffective('agentic.context.liveDelta.maxChars', CTX)).resolves.toEqual({
+        key: 'agentic.context.liveDelta.maxChars',
+        tier: 'global-kv',
+        value: 12000,
+        sourceScope: 'code-default',
+      });
+    });
+
+    it('falls back to the descriptor default when no AppSettings resolver is wired', async () => {
+      const svc = serviceWith(resolved());
+      const res = await svc.resolveEffective('agentic.context.liveDelta.maxChars', CTX);
+      expect(res.sourceScope).toBe('code-default');
+      expect(res.value).toBe(12000);
+    });
+
+    it('now resolves entitlements.enabled (a global-kv key) instead of throwing', async () => {
+      const svc = serviceWith(resolved());
+      const res = await svc.resolveEffective('entitlements.enabled', CTX);
+      expect(res.tier).toBe('global-kv');
+      expect(res.value).toBe(false);
+    });
+
+    it('resolves the newly registered platform-ops keys', async () => {
+      const svc = serviceWith(resolved());
+      await expect(svc.resolveEffective('rate-limit.enabled', CTX)).resolves.toMatchObject({
+        value: true,
+        sourceScope: 'code-default',
+      });
+      await expect(svc.resolveEffective('agentic.trajectory.retentionDays', CTX)).resolves.toMatchObject({
+        value: 30,
+      });
+    });
   });
 
   // TASK-506 — models.* keys delegate to AiTaskDefaultService.getEffective

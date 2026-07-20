@@ -21,6 +21,8 @@ import { seedHarnessPolicy } from './13-harness-policy';
 import { seedPipelinePolicy } from './14-pipeline-policy';
 import { seedEntitlements } from './15-entitlements';
 import { seedAiTaskDefault } from './16-ai-task-default';
+import { seedAiProviderConnection } from './17-ai-provider-connection';
+import { seedAiRuntimeProfile } from './18-ai-runtime-profile';
 import { seedUser } from './91-user';
 
 /**
@@ -107,6 +109,14 @@ export const seed = async () => {
         // TASK-506 — SYSTEM AiTaskDefault platform defaults (guardrail/NLP task
         // models). CREATE-ONLY; needs the AiModel catalog (seedStt above).
         await seedAiTaskDefault(client);
+        console.log('');
+        // TASK-524 — SYSTEM config-plane rows. Connections seed DISABLED and
+        // profiles seed EMPTY, so every resolution still falls through to the
+        // consuming service's env defaults (the §7 silent-change guard).
+        // No FK on either model; ordered after AiTaskDefault for readability.
+        await seedAiProviderConnection(client);
+        console.log('');
+        await seedAiRuntimeProfile(client);
         console.log('');
 
         // Phase 3: Depends on Phase 2 (PromptTemplate.departmentId → Department)
