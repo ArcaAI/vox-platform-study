@@ -8,6 +8,7 @@
 #   - nlp     (Medical NLP)
 #   - harness (Clinical Documentation Harness orchestrator — TASK-330)
 #   - guardrail (AI content-safety / medical-context validation — TASK-338)
+#   - tts-v2  (Realtime multi-provider Text-to-Speech)
 #
 # Usage:
 #   ./scripts/setup-python-env.sh              # Full setup (check + create + install)
@@ -450,6 +451,26 @@ install_dependencies() {
         print_warn "guardrail pyproject.toml not found at $guardrail_dir — skipping"
     fi
 
+    # --- tts-v2 ---
+    print_header "  4f: tts-v2 (Text-to-Speech v2)"
+    local tts_v2_dir="$PROJECT_ROOT/apps/tts-v2"
+    if [[ -f "$tts_v2_dir/pyproject.toml" ]]; then
+        print_step "Installing tts-v2 dependencies..."
+        case "$ML_PLATFORM" in
+            apple|gpu)
+                print_info "Including self-hosted local engine extras ([local]: torch/kokoro)"
+                "${CR[@]}" pip install -e "${tts_v2_dir}[local,dev,test]"
+                ;;
+            *)
+                print_info "Cloud providers only (no [local] engines). Use --apple or --gpu for self-hosted engines."
+                "${CR[@]}" pip install -e "${tts_v2_dir}[dev,test]"
+                ;;
+        esac
+        print_ok "tts-v2 installed"
+    else
+        print_warn "tts-v2 pyproject.toml not found at $tts_v2_dir — skipping"
+    fi
+
     # -----------------------------------------------------------------------
     # Deduplicate OpenMP (libomp) — CRITICAL for macOS
     # -----------------------------------------------------------------------
@@ -595,6 +616,7 @@ print_summary() {
     echo "    ${CYAN}pnpm dev:smr-v2${NC}      — SMR v2 on port 8862"
     echo "    ${CYAN}pnpm dev:guardrail${NC}   — Guardrail on port 8863"
     echo "    ${CYAN}pnpm dev:nlp${NC}         — NLP on port 8864"
+    echo "    ${CYAN}pnpm dev:tts-v2${NC}      — TTS v2 on port 8865"
     echo "    ${CYAN}pnpm dev:harness${NC}     — Harness on port 8866"
     echo ""
     echo "  ${BOLD}Run services directly:${NC}"
@@ -602,6 +624,7 @@ print_summary() {
     echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn smr_v2.main:app --reload --app-dir apps/smr/src${NC}"
     echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn guardrail.main:app --reload --app-dir apps/guardrail/src${NC}"
     echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn nlp.main:app --reload --app-dir apps/nlp/src${NC}"
+    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn tts_v2.main:app --reload --app-dir apps/tts-v2/src${NC}"
     echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn harness.main:app --reload --app-dir apps/harness/src${NC}"
     echo ""
     echo "  ${BOLD}Run tests:${NC}"
@@ -609,6 +632,7 @@ print_summary() {
     echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/smr/src/smr_v2/tests/ -v${NC}"
     echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/guardrail/src/guardrail/tests/ -v${NC}"
     echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/nlp/tests/ -v${NC}"
+    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/tts-v2/src/tts_v2/tests/ -v${NC}"
     echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/harness/src/harness/tests/ -v${NC}"
     echo ""
 

@@ -173,7 +173,7 @@ export class PromptResolutionService {
       }
     }
 
-    // TASK-511 (Phase 3A) — prompt governance: a department template is only
+    // prompt governance: a department template is only
     // resolvable for clinical generation flows once it is APPROVED. A not-yet-
     // approved (DRAFT/PUBLISHED) department template is SKIPPED so resolution
     // falls through to the APPROVED system default (fallback chain otherwise
@@ -229,7 +229,7 @@ export class PromptResolutionService {
 
   /**
    * Tier-0: verify the doctor's preferred prompt template exists AND is APPROVED.
-   * TASK-511 (Phase 3A) — an unapproved (DRAFT/PUBLISHED) preferred template is
+ * an unapproved (DRAFT/PUBLISHED) preferred template is
    * skipped (returns null) so resolution falls through to the department/default
    * tiers. Returns the template id only when it resolves to an APPROVED template.
    */
@@ -251,7 +251,7 @@ export class PromptResolutionService {
   }
 
   /**
-   * TASK-511 (Phase 3A) — a template id is resolvable for a clinical flow only
+ * a template id is resolvable for a clinical flow only
    * when it maps to an APPROVED template. Missing / unapproved / lookup-error →
    * false (the caller then falls through to the APPROVED system default).
    */

@@ -48,7 +48,7 @@ const sampleRow = (overrides: Partial<SummaryMeta> = {}): SummaryMeta =>
     guardrailDecisions: null,
     attestationRef: null,
     modelName: 'gemma3:latest',
-    // TASK-509 Phase 1B — AD-1 generation stats headline fields.
+    // AD-1 generation stats headline fields.
     stopReason: null,
     ttftMs: null,
     tokensPerSecond: null,
@@ -80,10 +80,10 @@ describe('SummaryMetaEntityMapper — versionless persistence (TASK-330)', () =>
     expect(persisted).toHaveProperty('updatedAt');
   });
 
-  // TASK-509 Phase 1B — AD-1 generation-stats headline fields (stopReason /
+  // AD-1 generation-stats headline fields (stopReason /
   // ttftMs / tokensPerSecond). predicted/total tokens are derivable from the
   // existing inputTokens/outputTokens, so they are intentionally NOT added.
-  describe('generation-stats fields round-trip (TASK-509)', () => {
+  describe('generation-stats fields round-trip', () => {
     it('toDomainEntity carries stopReason / ttftMs / tokensPerSecond from the row', () => {
       const entity = mapper.toDomainEntity(
         sampleRow({ stopReason: 'length', ttftMs: 120, tokensPerSecond: 42.5 }),

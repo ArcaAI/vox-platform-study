@@ -8,7 +8,7 @@ import { AgentTrajectoryService } from '../agent-trajectory/agent-trajectory.ser
 const JOB_NAME = 'agent-trajectory-retention';
 
 /**
- * TASK-510 — defaults for the AgentTrajectoryStep retention prune.
+ * defaults for the AgentTrajectoryStep retention prune.
  *
  * `enabled` is OFF by default: retention HARD-DELETES telemetry rows, so an
  * operator must explicitly opt in before any data is removed. Window default
@@ -27,7 +27,7 @@ export interface AgentTrajectoryRetentionConfig {
 }
 
 /**
- * TASK-510 — nightly prune of aged `AgentTrajectoryStep` rows.
+ * nightly prune of aged `AgentTrajectoryStep` rows.
  *
  * Mirrors {@link AuditRetentionService}: self-scheduling via SchedulerRegistry
  * + AppSettings (`@OnEvent('app-settings.cache-refreshed')`). Delegates the

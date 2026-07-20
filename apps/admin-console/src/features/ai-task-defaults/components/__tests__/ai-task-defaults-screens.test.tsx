@@ -238,44 +238,18 @@ describe('AiTaskDefaultsPlatformScreen', () => {
 });
 
 describe('AiModelDefaultsTenantScreen', () => {
-  it('renders ONLY the NLP cards — guardrail is global-admin-governed and absent', async () => {
+  it('shows platform-managed notice — no NLP model pickers for tenant admins', async () => {
     const calls = stubFetch();
     renderWithProviders(<AiModelDefaultsTenantScreen />);
 
     expect(screen.getByRole('heading', { level: 1, name: 'AI model defaults' })).toBeDefined();
-    expect((await screen.findAllByText('Medical NER')).length).toBeGreaterThan(0);
-    expect(screen.getByRole('heading', { name: /classification/i })).toBeDefined();
-    expect(screen.queryByText(/guardrail/i)).toBeNull();
+    expect(await screen.findByText('Platform-managed AI models')).toBeDefined();
+    expect(screen.queryByRole('combobox', { name: /default model for nlp/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /save nlp/i })).toBeNull();
 
-    // Tenant admins are CLS-pinned: no tenantId query param on any call.
+    // No task-default API traffic — pickers are gone.
     const dataCalls = calls.filter((call) => call.url.startsWith('/api/hope/admin/ai-task-defaults'));
-    expect(dataCalls.length).toBeGreaterThan(0);
-    for (const call of dataCalls) {
-      expect(call.url).not.toContain('tenantId=');
-    }
-  });
-
-  it('saves a tenant NLP override with If-Match and expectedVersion', async () => {
-    const calls = stubFetch({
-      rows: { 'nlp.ner': rowOf('nlp.ner', 'tnt-1', { modelSlug: null, version: 0 }) },
-      custom: (call) => {
-        if (call.method === 'PUT') {
-          return Response.json(rowOf('nlp.ner', 'tnt-1', { version: 1 }), { headers: { etag: '"1"' } });
-        }
-        return undefined;
-      },
-    });
-    renderWithProviders(<AiModelDefaultsTenantScreen />);
-
-    const trigger = await screen.findByRole('combobox', { name: /default model for nlp.ner/i });
-    await selectOption(trigger, /Medical NER/);
-    fireEvent.click(screen.getByRole('button', { name: /save nlp.ner default/i }));
-
-    await waitFor(() => expect(calls.some((call) => call.method === 'PUT')).toBe(true));
-    const put = calls.find((call) => call.method === 'PUT');
-    expect(put?.url).toBe('/api/hope/admin/ai-task-defaults/row?taskKey=nlp.ner');
-    expect(put?.headers.get('if-match')).toBe('"0"');
-    expect(put?.body).toEqual({ modelSlug: 'medical-ner', expectedVersion: 0 });
+    expect(dataCalls).toHaveLength(0);
   });
 
   it('gates elevated sessions without a working tenant on the NoTenant empty state', async () => {
@@ -283,6 +257,6 @@ describe('AiModelDefaultsTenantScreen', () => {
     renderWithProviders(<AiModelDefaultsTenantScreen />);
 
     expect(await screen.findByText('Select a working tenant')).toBeDefined();
-    expect(screen.queryAllByText('Medical NER')).toHaveLength(0);
+    expect(screen.queryByText('Platform-managed AI models')).toBeNull();
   });
 });

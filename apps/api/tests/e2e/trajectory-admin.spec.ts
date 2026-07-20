@@ -1,5 +1,5 @@
 /**
- * TASK-510 — AgentTrajectory admin read plane (Phase 7 E2E, TASK-508 Agentic SOTA).
+ * AgentTrajectory admin read plane (Phase 7 E2E, Agentic SOTA).
  *
  * Probes `AgentTrajectoryController` at `/api/v1/admin/agent-trajectory/*`
  * (class-gated by `@CanManage('HarnessPolicy')`; tenant scoping via
@@ -69,7 +69,7 @@ async function listSessions(request: APIRequestContext, token: string, qs = ''):
   return { status: resp.status(), body };
 }
 
-test.describe('TASK-510 — agent-trajectory admin read plane', () => {
+test.describe('agent-trajectory admin read plane', () => {
   let globalAdminToken: string;
   let tenantAdminToken: string;
   let doctorToken: string;
@@ -123,7 +123,7 @@ test.describe('TASK-510 — agent-trajectory admin read plane', () => {
     const { body: sessions } = await listSessions(request, globalAdminToken, '?limit=25');
     const multiStep = sessions.items.find((s) => s.stepCount > 1);
     if (!multiStep) {
-      console.warn('[task-510] no multi-step session in the seed — cursor-advance assertion skipped.');
+      console.warn('[e2e] no multi-step session in the seed — cursor-advance assertion skipped.');
       return;
     }
 
@@ -164,7 +164,7 @@ test.describe('TASK-510 — agent-trajectory admin read plane', () => {
     expect(String((body as { message?: string }).message ?? '')).not.toMatch(/tenant/i);
   });
 
-  test("a tenant admin passing a FOREIGN ?tenantId= is rejected (never 200), no foreign tenant content", async ({ request }) => {
+  test('a tenant admin passing a FOREIGN ?tenantId= is rejected (never 200), no foreign tenant content', async ({ request }) => {
     // Discover the ARCAAI tenant id via the global admin's own session scope
     // isn't guaranteed (empty seed), so probe with a synthetic foreign tenant id.
     const foreignTenantId = '018f0000-0000-7000-8000-0000005100bb';

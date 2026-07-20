@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-# `qdrant_client` is the optional `rag` extra (TASK-508 D1/0.2): imported here only
+# `qdrant_client` is the optional `rag` extra: imported here only
 # for type annotations (deferred by `from __future__ import annotations`), and
 # lazily inside `_to_sparse` where `models.SparseVector` is actually constructed, so
 # importing this module never requires the extra to be installed.

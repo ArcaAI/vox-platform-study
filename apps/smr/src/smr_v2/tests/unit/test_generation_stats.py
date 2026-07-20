@@ -1,4 +1,4 @@
-"""TASK-509 Phase 1A — GenerationStats contract (AD-1).
+"""GenerationStats contract (AD-1).
 
 RED-first TDD: these tests define the normalized per-call generation-stats
 contract (``smr_v2.models.stats``) and its threading into the /generate
@@ -123,7 +123,7 @@ class TestOpenAiCompatMapping:
                 yield c
 
         provider = OpenAICompatProvider(
-            OpenAICompatConfig(enabled=True, default_model="m")
+            OpenAICompatConfig(default_model="m")
         )
         provider._client = MagicMock()
         provider._client.chat.completions.create = AsyncMock(
@@ -369,7 +369,7 @@ def mock_registry(mock_provider):
 def mock_task_manager():
     tm = AsyncMock()
     task_state = MagicMock()
-    task_state.task_id = "test-task-509"
+    task_state.task_id = "test-"
     tm.create_task = AsyncMock(return_value=task_state)
     tm.update_task = AsyncMock()
     tm.append_chunk = AsyncMock()

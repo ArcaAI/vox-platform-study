@@ -1,4 +1,4 @@
-# hope-llama-cpp — production GGUF-tier engine (TASK-508 Phase 4 / TASK-514).
+# hope-llama-cpp — production GGUF-tier engine.
 # Serves the native /completion endpoint SMR's first-class `llama-cpp` provider
 # targets (engine-native `timings` → AD-1 stats, GBNF grammars, JSON schema).
 # Reached at SMR_V2_LLAMA_CPP_BASE_URL=http://hope-llama-cpp:8080.

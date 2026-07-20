@@ -3,7 +3,7 @@ import { Module } from '@nestjs/common';
 import { AgentTrajectoryController } from './agent-trajectory.controller';
 
 /**
- * AgentTrajectoryModule (TASK-510 Phase 2D) — the `/admin/agent-trajectory/*`
+ * AgentTrajectoryModule — the `/admin/agent-trajectory/*`
  * global-admin read plane over the ordered session trajectory.
  *
  * `AgentTrajectoryServiceModule` supplies `IAgentTrajectoryService` (ingest +

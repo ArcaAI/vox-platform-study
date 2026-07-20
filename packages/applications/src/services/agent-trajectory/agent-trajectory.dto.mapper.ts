@@ -6,7 +6,7 @@ function toIso(value: Date | string): string {
 }
 
 /**
- * TASK-510 Phase 2B — entity → response projection. `payloadRef` is
+ * entity → response projection. `payloadRef` is
  * intentionally omitted (claim-check / encrypted pointer, `@Secret` on the
  * entity), so it never leaves the service.
  */

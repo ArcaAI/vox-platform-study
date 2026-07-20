@@ -310,7 +310,7 @@ export class PromptManagementController {
     return this.promptService.testPromptTemplate(id, effectiveRequest);
   }
 
-  // ─── TASK-511 (Phase 3A): prompt governance approval ─────────────────
+  // ─── prompt governance approval ─────────────────
   //
   // Flips the template to `status = APPROVED` — the gate `prompt-resolution`
   // requires for clinical flows — pins a `PromptVersion` snapshot, and writes a
@@ -327,7 +327,7 @@ export class PromptManagementController {
   @HttpCode(200)
   @RequiresIfMatch()
   @ApiOperation({
-    summary: 'Approve a prompt template for clinical use (TASK-511, GLOBAL_ADMIN only)',
+    summary: 'Approve a prompt template for clinical use',
     description:
       'Sets `status = APPROVED` (required by prompt resolution for clinical ' +
       'flows), pins a PromptVersion snapshot, and records a WORM-style audit ' +

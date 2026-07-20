@@ -113,7 +113,7 @@ class ConceptCode(BaseModel):
     rxnorm: str | None = None
     icd: str | None = None
     loinc: str | None = None
-    # TASK-518 — negation/assertion polarity carried from the note NER so the
+    # negation/assertion polarity carried from the note NER so the
     # concept-F1 candidate set can exclude ABSENT (negated) concepts from the
     # positive-claim recall check. None ⇒ PRESENT (safe default).
     assertion: str | None = None

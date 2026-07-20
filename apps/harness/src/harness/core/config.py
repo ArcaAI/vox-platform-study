@@ -228,7 +228,7 @@ class ClaimCheckConfig(BaseSettings):
 
 
 class McpConfig(BaseSettings):
-    """MCP external-tools client config (TASK-516 Phase 5 — default OFF).
+    """MCP external-tools client config.
 
     The whole MCP tool path is DORMANT unless the per-tenant
     ``HarnessPolicy.mcpToolsEnabled`` flag is set AND the referenced
@@ -411,7 +411,7 @@ class Settings(BaseSettings):
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     # TASK-483 claim-check: out-of-band blob store for the Temporal history budget.
     claim_check: ClaimCheckConfig = Field(default_factory=ClaimCheckConfig)
-    # TASK-516 (Phase 5) — MCP external-tools client tuning (default OFF; the path is
+    # MCP external-tools client tuning (default OFF; the path is
     # gated on HarnessPolicy.mcpToolsEnabled + McpServer.enabled + workflow.patched).
     mcp: McpConfig = Field(default_factory=McpConfig)
 

@@ -13,14 +13,14 @@ import { Authorize, CanManage, CanRead, ExpectedVersion, RequiresIfMatch } from 
 import { resolveScopedTenantIdOptional } from '../../shared/tenant-scope';
 
 /**
- * McpAdminController (TASK-516 Phase 5) — the admin surface for the MCP
+ * McpAdminController — the admin surface for the MCP
  * external-tools registry, mounted at `/admin/mcp-servers` (global prefix →
  * `/api/v1/admin/mcp-servers`). Mirrors `AiTaskDefaultAdminController`
  * (`If-Match` OCC, `resolveScoped*` tenant scoping) and reuses the
  * `HarnessPolicy` authorization subject (MCP tooling is a harness capability;
  * the agentic-admin precedent).
  *
- * Reads (list/get) back the TASK-512 console "Tools & MCP" screen — the registry
+ * Reads (list/get) back the console "Tools & MCP" screen — the registry
  * list/read. WRITES are GLOBAL-ADMIN-ONLY: the SERVICE throws a
  * `ForbiddenException` (403) for a tenant admin (the guardrail.* privilege
  * boundary; NOT the 404-over-403 tenancy posture). Cross-tenant reads are 404.

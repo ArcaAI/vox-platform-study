@@ -1,7 +1,11 @@
 """SMR V2 configuration using pydantic-settings.
 
-All provider configs are loaded simultaneously at startup.
-Providers are enabled/disabled via SMR_V2_*_ENABLED flags.
+SMR is a stateless gateway: it does NOT select a provider or model
+from env. The gateway (apps/api) injects ``{provider, model}`` (DB-driven) on
+every request; SMR only needs each provider's CONNECTION config (base_url /
+api_key / region / tuning). There is deliberately NO ``*_ENABLED`` selection
+flag — a provider is available iff its connection config is present, and it is
+instantiated lazily on first use (see ``main.py`` / ``ProviderRegistry``).
 """
 
 from __future__ import annotations
@@ -15,7 +19,6 @@ class OllamaConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="SMR_V2_OLLAMA_")
 
-    enabled: bool = False
     base_url: str = "http://localhost:11434"
     default_model: str = "google/gemma-4-e4b"
     timeout_s: int = 300
@@ -28,7 +31,6 @@ class AzureOpenAIConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="SMR_V2_AZURE_")
 
-    enabled: bool = False
     api_key: SecretStr = SecretStr("")
     endpoint: str = ""
     api_version: str = "2024-12-01-preview"
@@ -47,7 +49,6 @@ class BedrockConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="SMR_V2_BEDROCK_")
 
-    enabled: bool = False
     region: str = "us-east-1"
     default_model: str = "anthropic.claude-3-5-haiku-20241022-v1:0"
     timeout_s: int = 120
@@ -65,7 +66,6 @@ class OpenAICompatConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="SMR_V2_OPENAI_COMPAT_")
 
-    enabled: bool = False
     base_url: str = "http://localhost:1234/v1"
     api_key: SecretStr = SecretStr("not-needed")
     default_model: str = "google/gemma-4-e4b"
@@ -75,7 +75,7 @@ class OpenAICompatConfig(BaseSettings):
 
 
 class VllmConfig(OpenAICompatConfig):
-    """vLLM provider configuration (TASK-513).
+    """vLLM provider configuration.
 
     vLLM serves the OpenAI wire, so this extends ``OpenAICompatConfig`` (the
     ``VllmProvider`` composes the same async client). ``base_url`` points at the
@@ -98,7 +98,7 @@ class VllmConfig(OpenAICompatConfig):
 
 
 class LlamaCppConfig(BaseSettings):
-    """llama.cpp server provider configuration (TASK-514).
+    """llama.cpp server provider configuration.
 
     Targets the native ``/completion`` endpoint (richer than llama.cpp's OpenAI
     shim): engine-native ``timings`` + ``stopped_*`` flags feed AD-1 stats, and
@@ -107,7 +107,6 @@ class LlamaCppConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="SMR_V2_LLAMA_CPP_")
 
-    enabled: bool = False
     base_url: str = "http://localhost:8080"
     default_model: str = ""
     timeout_s: int = 300
@@ -164,7 +163,7 @@ class CircuitBreakerConfig(BaseSettings):
 
     failure_threshold: int = 5
     recovery_timeout_s: float = 30.0
-    # TASK-508 D6 (dead-config sweep): these three fields were previously never
+    # D6 (dead-config sweep): these three fields were previously never
     # read by CircuitBreaker. ``None`` preserves the pre-wiring behavior exactly
     # (unlimited HALF_OPEN trial calls / no time-based failure-count decay) — a
     # non-null literal default (the previous 3 / 120.0) would have silently
@@ -188,8 +187,9 @@ class QueueConfig(BaseSettings):
 class Settings(BaseSettings):
     """Root application settings.
 
-    All provider sub-configs are loaded independently so every provider
-    is available simultaneously at startup.
+    Each provider sub-config carries only CONNECTION settings (no selection
+    flag). A provider is available when its connection config is present and is
+    built lazily on first request.
     """
 
     model_config = SettingsConfigDict(env_prefix="SMR_V2_")

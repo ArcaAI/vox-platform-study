@@ -1,9 +1,9 @@
-"""TASK-508 Phase 4A — shared provider-contract suite (AD-1 dev/prod parity).
+"""shared provider-contract suite (AD-1 dev/prod parity).
 
 Parametrized over EVERY registered SMR provider (LM Studio / generic
 ``openai_compat``, Ollama, Azure OpenAI, Bedrock) with stub fakes, this suite
 locks the invariants every provider MUST hold so the production-inference wave
-(``vllm`` + ``llama_cpp``, TASK-513/514) can be added to ``ADAPTERS`` and must
+(``vllm`` + ``llama_cpp``, /514) can be added to ``ADAPTERS`` and must
 pass UNCHANGED:
 
 1. ``generate`` returns ``(content, reasoning, GenerationStats)`` with a REAL
@@ -113,7 +113,7 @@ def _make_openai_compat() -> Any:
     from smr_v2.core.config import OpenAICompatConfig
     from smr_v2.providers.openai_compat import OpenAICompatProvider
 
-    provider = OpenAICompatProvider(OpenAICompatConfig(enabled=True, default_model="m"))
+    provider = OpenAICompatProvider(OpenAICompatConfig(default_model="m"))
     provider._client = MagicMock()
     provider._client.chat.completions.create = AsyncMock()
     return provider
@@ -269,7 +269,7 @@ def _bedrock_captured_schema(provider: Any) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# vLLM fakes (TASK-513) — OpenAI-wire client, so it reuses the OpenAI-wire
+# vLLM fakes — OpenAI-wire client, so it reuses the OpenAI-wire
 # fakes/stubs above; only the construction differs (its own config prefix +
 # engine identity ``provider="vllm"``).
 # ---------------------------------------------------------------------------
@@ -278,14 +278,14 @@ def _make_vllm() -> Any:
     from smr_v2.core.config import VllmConfig
     from smr_v2.providers.vllm import VllmProvider
 
-    provider = VllmProvider(VllmConfig(enabled=True, default_model="m"))
+    provider = VllmProvider(VllmConfig(default_model="m"))
     provider._client = MagicMock()
     provider._client.chat.completions.create = AsyncMock()
     return provider
 
 
 # ---------------------------------------------------------------------------
-# llama.cpp fakes (TASK-514) — native ``/completion`` over httpx (richer than
+# llama.cpp fakes — native ``/completion`` over httpx (richer than
 # the OpenAI shim): ``timings`` block + ``stopped_*`` flags → exact AD-1 stats.
 # This engine is the REFERENCE for the owner's metric names.
 # ---------------------------------------------------------------------------
@@ -358,7 +358,7 @@ def _llama_cpp_captured_schema(provider: Any) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Adapter registry (add vllm / llama-cpp here in TASK-513/514 — must pass as-is)
+# Adapter registry (add vllm / llama-cpp here /514 — must pass as-is)
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -510,7 +510,7 @@ class TestProviderContract:
 
 
 # ---------------------------------------------------------------------------
-# llama.cpp reference-engine specifics (TASK-514) — the native ``/completion``
+# llama.cpp reference-engine specifics — the native ``/completion``
 # ``timings`` block is the source of truth for AD-1's owner-named metrics, so it
 # gets extra assertions the OpenAI-wire providers cannot make.
 # ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 /**
- * AgentTrajectoryStepRepository — ordered ops-telemetry read/write (TASK-510
+ * AgentTrajectoryStepRepository — ordered ops-telemetry read/write (
  * Phase 2A).
  *
  * `AgentTrajectoryStep` is the ordered, typed per-session step stream. It is
@@ -54,7 +54,7 @@ const row = (overrides: Partial<AgentTrajectoryStep> = {}): AgentTrajectoryStep 
     ...overrides,
   }) as AgentTrajectoryStep;
 
-describe('AgentTrajectoryStepRepository (TASK-510 Phase 2A)', () => {
+describe('AgentTrajectoryStepRepository', () => {
   let findMany: ReturnType<typeof vi.fn>;
   let create: ReturnType<typeof vi.fn>;
   let groupBy: ReturnType<typeof vi.fn>;
@@ -139,7 +139,7 @@ describe('AgentTrajectoryStepRepository (TASK-510 Phase 2A)', () => {
     expect(data).not.toHaveProperty('version');
   });
 
-  describe('listSessionSummaries — DB-level groupBy (TASK-510 S2)', () => {
+  describe('listSessionSummaries — DB-level groupBy', () => {
     it('groups by sessionKind+sessionId+runId with stepCount and first/last timestamps', async () => {
       const first = new Date('2026-07-19T10:00:00.000Z');
       const lastStarted = new Date('2026-07-19T10:00:05.000Z');

@@ -33,7 +33,7 @@ export interface IHarnessPolicyEntity extends IBaseTenantEntity {
   gateSlaSeconds: number;
   gateEscalationSeconds: number;
   toolAllowlist?: JsonValue | null;
-  // TASK-511 (Phase 3A) — agentic loop knobs. null ⇒ harness env/code default.
+  // agentic loop knobs. null ⇒ harness env/code default.
   optimisticDeliveryEnabled?: boolean | null;
   atomicFactEnabled?: boolean | null;
   retrievalEnabled?: boolean | null;
@@ -297,7 +297,7 @@ export class HarnessPolicyEntity extends BaseTenantEntity {
     this.assertNonNegativeInt('gateSlaSeconds', this._gateSlaSeconds);
     this.assertNonNegativeInt('gateEscalationSeconds', this._gateEscalationSeconds);
 
-    // TASK-511 — the agentic knobs are nullable overrides; only range-check when set.
+    // the agentic knobs are nullable overrides; only range-check when set.
     if (this._maxEditReruns !== null && this._maxEditReruns !== undefined) {
       this.assertNonNegativeInt('maxEditReruns', this._maxEditReruns);
     }

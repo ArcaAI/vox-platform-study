@@ -181,23 +181,58 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // VAD (Voice Activity Detection)
     // =========================================================================
     {
+        // reconciled with the STT runtime: the Silero VAD service
+        // loads Silero **v5** from `onnx-community/silero-vad`
+        // (vad/silero_service.py), so the catalog identity/slug are corrected
+        // from the mislabelled "v6"/snakers4 row to the v5 onnx-community model
+        // the code actually resolves. Slug is version-neutral (`silero-vad`) to
+        // avoid colliding with the retired `silero-vad-v5` ledger entry and to
+        // survive future minor-version bumps.
         id: '80000000-0000-0000-0002-000000000004',
         tenantId: SYSTEM_TENANT_ID,
-        name: 'Silero VAD V6',
-        slug: 'silero-vad-v6',
-        description: 'Silero VAD V6 - Latest version with best accuracy and lowest latency. Recommended for production.',
+        name: 'Silero VAD v5',
+        slug: 'silero-vad',
+        description: 'Silero VAD v5 ONNX — the voice-activity detector the stt-v2 runtime loads from onnx-community/silero-vad. Lightweight, low-latency; recommended for production.',
         category: ModelCategory.AUDIO,
         taskType: ModelTaskType.VOICE_ACTIVITY_DETECTION,
         modelType: ModelType.BASE_MODEL,
         source: AiModelSource.HUGGINGFACE,
-        sourceUri: 'snakers4/silero-vad',
-        sourceRevision: 'v6.0',
+        sourceUri: 'onnx-community/silero-vad',
+        sourceRevision: 'main',
         format: AiModelFormat.ONNX,
         provider: 'built-in',
         architecture: 'silero',
         memorySizeMb: 64,
         computeType: 'float32',
-        tags: ['vad', 'lightweight', 'latest', 'recommended'],
+        tags: ['vad', 'lightweight', 'v5', 'recommended'],
+    },
+
+    // =========================================================================
+    // Punctuation restoration
+    // =========================================================================
+    {
+        // the Cadence punctuation/casing model the stt-v2
+        // post-processing stage restores with (settings default
+        // `punctuation_model_name="Cadence"`). A text task (category NLP) served
+        // in-process by the stt-v2 punctuation registry; punctuation restoration
+        // is modelled here as token classification (per-token punct/case labels).
+        id: '80000000-0000-0000-0004-000000000001',
+        tenantId: SYSTEM_TENANT_ID,
+        name: 'Cadence Punctuation (1B)',
+        slug: 'cadence-punctuation',
+        description: 'ai4bharat/Cadence — 1B punctuation & casing restoration model used by the stt-v2 post-processing stage (cadence-punctuation wrapper). Cadence-Fast (270M) is the direct-load variant for pinned transformers 5.x.',
+        category: ModelCategory.NLP,
+        taskType: ModelTaskType.TOKEN_CLASSIFICATION,
+        modelType: ModelType.BASE_MODEL,
+        source: AiModelSource.HUGGINGFACE,
+        sourceUri: 'ai4bharat/Cadence',
+        sourceRevision: 'main',
+        format: AiModelFormat.SAFETENSOR,
+        provider: 'built-in',
+        architecture: null,
+        memorySizeMb: 4096,
+        computeType: 'float32',
+        tags: ['punctuation', 'stt', 'cadence'],
     },
 
     // =========================================================================
@@ -275,5 +310,30 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
         memorySizeMb: 96,
         computeType: 'float32',
         tags: ['diarization', 'speaker-embedding', 'ecapa'],
+    },
+    {
+        // diarization embedding row matching the STT runtime default
+        // (`diarization_hf_model_id` = pyannote/wespeaker-voxceleb-resnet34-LM in
+        // core/config/settings.py). Seeded ALONGSIDE the ECAPA row: the seeded
+        // pipeline YAMLs still pin `speechbrain/spkrec-ecapa-voxceleb` inline, so
+        // ECAPA is kept as an alternative while the catalog now also carries the
+        // code default. Reconciles the catalog-vs-code drift additively.
+        id: '80000000-0000-0000-0001-000000000015',
+        tenantId: SYSTEM_TENANT_ID,
+        name: 'WeSpeaker ResNet34 Speaker Embedding (pyannote)',
+        slug: 'wespeaker-voxceleb-resnet34',
+        description: 'pyannote WeSpeaker ResNet34 VoxCeleb speaker-verification embeddings — the stt-v2 diarization feature-extractor default (diarization_hf_model_id). Reconciles the catalog with the running STT default.',
+        category: ModelCategory.AUDIO,
+        taskType: ModelTaskType.SPEAKER_EMBEDDING,
+        modelType: ModelType.BASE_MODEL,
+        source: AiModelSource.HUGGINGFACE,
+        sourceUri: 'pyannote/wespeaker-voxceleb-resnet34-LM',
+        sourceRevision: 'main',
+        format: AiModelFormat.PYTORCH,
+        provider: 'built-in',
+        architecture: 'wespeaker',
+        memorySizeMb: 96,
+        computeType: 'float32',
+        tags: ['diarization', 'speaker-embedding', 'wespeaker', 'default'],
     },
 ];

@@ -4,11 +4,55 @@ from typing import Any
 
 import dotenv
 from pydantic import Field, SecretStr
-from pydantic_settings import BaseSettings
+from pydantic.fields import FieldInfo
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
 
 from nlp.utils import get_project_root
 
 dotenv.load_dotenv()
+
+
+# model identity (which model to run) is selected from the DB via the
+# gateway-injected request `model_name`, never from environment variables. These
+# fields are dropped from env/dotenv sources so `*_MODEL_NAME` / `*_TOKENIZER_NAME`
+# can no longer *select* a model; all other (tuning) env still applies.
+_MODEL_IDENTITY_FIELDS = frozenset({"model_name", "tokenizer_name", "model_path", "model_version"})
+
+
+class _ModelIdentityFilteredSource(PydanticBaseSettingsSource):
+    """Wrap an env/dotenv settings source, dropping model-identity keys."""
+
+    def __init__(self, wrapped: PydanticBaseSettingsSource) -> None:
+        super().__init__(wrapped.settings_cls)
+        self._wrapped = wrapped
+
+    def get_field_value(self, field: FieldInfo, field_name: str) -> tuple[Any, str, bool]:
+        # Unused: the whole source is materialized via __call__ below.
+        return None, field_name, False
+
+    def __call__(self) -> dict[str, Any]:
+        return {k: v for k, v in self._wrapped().items() if k not in _MODEL_IDENTITY_FIELDS}
+
+
+def _model_identity_filtered_sources(
+    cls: type[BaseSettings],
+    settings_cls: type[BaseSettings],
+    init_settings: PydanticBaseSettingsSource,
+    env_settings: PydanticBaseSettingsSource,
+    dotenv_settings: PydanticBaseSettingsSource,
+    file_secret_settings: PydanticBaseSettingsSource,
+) -> tuple[PydanticBaseSettingsSource, ...]:
+    """`settings_customise_sources` that drops env/dotenv model-identity keys.
+
+    Constructor kwargs (`init_settings`) still set model identity — that is the
+    path the per-request cache factories use to load the DB-selected model.
+    """
+    return (
+        init_settings,
+        _ModelIdentityFilteredSource(env_settings),
+        _ModelIdentityFilteredSource(dotenv_settings),
+        file_secret_settings,
+    )
 
 
 class Environment(StrEnum):
@@ -101,8 +145,9 @@ class NLPServiceConfig(BaseSettings):
 # a placeholder — it would emit emotion labels for clinical text. Until a product owner
 # picks the intended model + taxonomy, the default is this non-functional sentinel so the
 # service refuses to silently run the wrong model and instead reports the feature as
-# unconfigured (see `TransformerTextClassifier.initialize`). Configure a real model via the
-# `TEXT_CLASSIFIER_MODEL_NAME` env var to enable the endpoint.
+# unconfigured (see `TransformerTextClassifier.initialize`). the endpoint is now
+# fail-closed-until-configured driven by the REQUIRED, gateway-injected `model_name` (from a
+# DB AiModel) rather than an env var — configure a real doc-type model in the DB to enable it.
 UNCONFIGURED_DOC_TYPE_CLASSIFIER_MODEL = "__UNCONFIGURED_DOC_TYPE_CLASSIFIER__"
 
 
@@ -131,6 +176,10 @@ class TextClassificationConfig(BaseSettings):
     class Config:
         env_prefix = "TEXT_CLASSIFIER_"
 
+    # model identity comes from the DB (gateway-injected request
+    # `model_name`), never from env; tuning env (thresholds, GPU, etc.) stays.
+    settings_customise_sources = classmethod(_model_identity_filtered_sources)
+
     @property
     def is_configured(self) -> bool:
         """True once a real doc-type model is set (i.e. not the placeholder sentinel)."""
@@ -154,7 +203,7 @@ class TokenClassificationConfig(BaseSettings):
     # NER specific settings
     aggregation_strategy: str = Field(default="simple")  # simple, first, max, average
     ignore_labels: list[str] = Field(default_factory=lambda: ["O"])
-    # TASK-518 — negation/assertion pass over recognized spans (ConText/NegEx).
+    # negation/assertion pass over recognized spans (ConText/NegEx).
     # Default ON; deterministic + offline. Disable to skip the pass entirely.
     assertion_enabled: bool = Field(default=True)
 
@@ -168,6 +217,9 @@ class TokenClassificationConfig(BaseSettings):
 
     class Config:
         env_prefix = "TOKEN_CLASSIFIER_"
+
+    # model identity is DB/gateway-selected, never env-selected.
+    settings_customise_sources = classmethod(_model_identity_filtered_sources)
 
 
 class OntologyLinkerConfig(BaseSettings):
@@ -203,6 +255,9 @@ class MedicalSuggesterConfig(BaseSettings):
 
     class Config:
         env_prefix = "MEDICAL_SUGGESTER_"
+
+    # model identity is DB/gateway-selected, never env-selected.
+    settings_customise_sources = classmethod(_model_identity_filtered_sources)
 
 
 class WebSocketConfig(BaseSettings):

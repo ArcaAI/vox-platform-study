@@ -45,35 +45,56 @@ HARMFUL_LABELS = [
 
 
 class GlinerProvider:
-    """GLiNER ONNX provider — replaces Ollama for all content safety checks."""
+    """GLiNER ONNX provider — replaces Ollama for all content safety checks.
+
+    construction is lightweight and holds NO weights; the ONNX
+    runtime is loaded lazily by :meth:`load` on first use (driven by the aux
+    ``ModelCache``), so a freshly-booted worker carries no GLiNER weights.
+    ``config.model_id`` is the DB-resolved runtime id (``AiModel.sourceUri``);
+    precision / providers / thresholds / thread-pool size stay infra tuning.
+    """
 
     def __init__(self, config: GlinerConfig) -> None:
         self.config = config
+        self.runtime: Any = None
+        self._executor: ThreadPoolExecutor | None = None
+        self._loaded = False
 
-        if not config.enabled:
-            logger.info("gliner.disabled", model_id=config.model_id)
-            self.runtime: Any = None
+    def load(self) -> None:
+        """Load the ONNX runtime (idempotent; blocking — call via to_thread).
+
+        A disabled config loads nothing and leaves ``runtime`` ``None`` so
+        :meth:`analyze_content` answers the disabled contract.
+        """
+        if self._loaded:
+            return
+
+        if not self.config.enabled:
+            logger.info("gliner.disabled", model_id=self.config.model_id)
+            self.runtime = None
             self._executor = None
+            self._loaded = True
             return
 
         from gliner2_onnx import GLiNER2ONNXRuntime
 
         logger.info(
             "gliner.loading",
-            model_id=config.model_id,
-            precision=config.precision,
-            providers=config.providers,
+            model_id=self.config.model_id,
+            precision=self.config.precision,
+            providers=self.config.providers,
         )
         self.runtime = GLiNER2ONNXRuntime.from_pretrained(
-            config.model_id,
-            precision=config.precision,
-            providers=config.providers,
+            self.config.model_id,
+            precision=self.config.precision,
+            providers=self.config.providers,
         )
         self._executor = ThreadPoolExecutor(
-            max_workers=config.max_workers,
+            max_workers=self.config.max_workers,
             thread_name_prefix="gliner",
         )
-        logger.info("gliner.ready", model_id=config.model_id)
+        self._loaded = True
+        logger.info("gliner.ready", model_id=self.config.model_id)
 
     # ── Synchronous inference (runs in thread pool) ───────────────────────
 

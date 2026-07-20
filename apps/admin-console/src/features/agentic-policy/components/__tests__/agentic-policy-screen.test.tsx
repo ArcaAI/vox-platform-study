@@ -1,5 +1,5 @@
 /**
- * TDD screen tests for TASK-512 screen 3 (Agentic Policy): the global-default
+ * TDD screen tests screen 3 (Agentic Policy): the global-default
  * knob editor with If-Match OCC + tri-state overrides, the engine kill-switch,
  * the read-only agentic.* catalog, the GLOBAL_ADMIN-only gate and axe-cleanliness
  * — against a URL-branching fetch stub covering the BFF session route.

@@ -39,7 +39,7 @@ class OpenAICompatProvider:
     ) -> None:
         self._config = config
         self._default_model = config.default_model
-        # Engine identity — subclasses (vLLM, TASK-513) override so stats/spans
+        # Engine identity — subclasses (vLLM, ) override so stats/spans
         # /get_info carry the real engine name, not the generic wire name.
         self._provider_name = provider_name
         self._display_name = display_name

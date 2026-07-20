@@ -1,5 +1,5 @@
 /**
- * `EditBurdenQuery` validation (TASK-508 Phase 0 D3) — driven through the REAL
+ * `EditBurdenQuery` validation — driven through the REAL
  * global ValidationPipe config (main.ts: transform + whitelist +
  * forbidNonWhitelisted + forbidUnknownValues), same style as
  * `ai-inference.dto.test.ts`. `GET admin/harness/edit-burden` delegates to

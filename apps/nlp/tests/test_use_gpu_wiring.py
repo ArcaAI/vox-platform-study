@@ -1,4 +1,4 @@
-"""TASK-508 D6 (dead-config sweep) — ``use_gpu`` on TextClassificationConfig,
+""" D6 (dead-config sweep) — ``use_gpu`` on TextClassificationConfig,
 TokenClassificationConfig and MedicalSuggesterConfig was defined but never
 read; every ``initialize()`` unconditionally auto-detects CUDA
 (``device=0 if torch.cuda.is_available() else -1``), so an operator setting

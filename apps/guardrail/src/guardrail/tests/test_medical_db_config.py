@@ -10,6 +10,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 
 from guardrail.core.config import Settings
 from guardrail.core.dependencies import get_resolved_guardian_provider
@@ -90,7 +91,9 @@ async def test_db_config_enabled_overrides_model_from_tenant() -> None:
 
 
 @pytest.mark.asyncio
-async def test_db_config_enabled_empty_config_returns_env_provider() -> None:
+async def test_db_config_enabled_empty_config_fails_closed_503() -> None:
+    # Fail-closed selection: DB enabled but no SYSTEM guardrail.validate row →
+    # HTTP 503, never a silent env fallback (no model identity from env).
     settings = Settings()
     settings.db.db_config_enabled = True
     env_provider = _env_provider(settings)
@@ -102,13 +105,16 @@ async def test_db_config_enabled_empty_config_returns_env_provider() -> None:
         http_client=object(),
         tenant_config_resolver=resolver,
     )
-    resolved = await get_resolved_guardian_provider(_FakeRequest(state))  # type: ignore[arg-type]
+    with pytest.raises(HTTPException) as exc_info:
+        await get_resolved_guardian_provider(_FakeRequest(state))  # type: ignore[arg-type]
 
-    assert resolved is env_provider
+    assert exc_info.value.status_code == 503
 
 
 @pytest.mark.asyncio
-async def test_db_config_enabled_but_no_resolver_returns_env_provider() -> None:
+async def test_db_config_enabled_but_no_resolver_fails_closed_503() -> None:
+    # DB enabled but the resolver was never wired (e.g. DB unreachable at boot)
+    # → fail closed with 503 rather than falling back to the env engine.
     settings = Settings()
     settings.db.db_config_enabled = True
     env_provider = _env_provider(settings)
@@ -119,6 +125,7 @@ async def test_db_config_enabled_but_no_resolver_returns_env_provider() -> None:
         http_client=object(),
         tenant_config_resolver=None,
     )
-    resolved = await get_resolved_guardian_provider(_FakeRequest(state))  # type: ignore[arg-type]
+    with pytest.raises(HTTPException) as exc_info:
+        await get_resolved_guardian_provider(_FakeRequest(state))  # type: ignore[arg-type]
 
-    assert resolved is env_provider
+    assert exc_info.value.status_code == 503

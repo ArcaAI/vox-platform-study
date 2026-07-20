@@ -126,7 +126,7 @@ warn_return_any = true
 exclude = "/tests/"
 
 [[tool.mypy.overrides]]
-module = ["prometheus_client", "prometheus_fastapi_instrumentator", "gliner2_onnx"]
+module = ["prometheus_client", "prometheus_fastapi_instrumentator", "gliner2_onnx", "llama_cpp"]
 ignore_missing_imports = true
 
 # pytest configuration

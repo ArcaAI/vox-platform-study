@@ -2,7 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { ArrayUnique, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUrl, Matches, MaxLength, Min } from 'class-validator';
 
 /**
- * TASK-516 — sparse patch over a registered MCP server. Every field optional;
+ * sparse patch over a registered MCP server. Every field optional;
  * only supplied fields are written. `expectedVersion` is the OCC token (the
  * controller folds the RFC 7232 `If-Match` header over it). `authRef` stays a
  * Vault PATH only.

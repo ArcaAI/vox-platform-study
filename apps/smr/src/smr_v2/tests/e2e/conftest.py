@@ -54,7 +54,6 @@ def _apply_env_overrides() -> None:
 
     ollama_url = dotenv.get("OLLAMA_BASE_URL", "http://localhost:11434")
     ollama_model = dotenv.get("OLLAMA_MODEL", "gemma3:latest")
-    os.environ["SMR_V2_OLLAMA_ENABLED"] = "true"
     os.environ["SMR_V2_OLLAMA_BASE_URL"] = ollama_url
     os.environ["SMR_V2_OLLAMA_DEFAULT_MODEL"] = ollama_model
     os.environ["SMR_V2_OLLAMA_TIMEOUT_S"] = "120"
@@ -66,7 +65,6 @@ def _apply_env_overrides() -> None:
     azure_api_version = dotenv.get("AZURE_OPENAI_API_VERSION", "2024-02-01")
 
     if azure_key and azure_endpoint:
-        os.environ["SMR_V2_AZURE_ENABLED"] = "true"
         os.environ["SMR_V2_AZURE_API_KEY"] = azure_key
         os.environ["SMR_V2_AZURE_ENDPOINT"] = azure_endpoint
         os.environ["SMR_V2_AZURE_DEFAULT_MODEL"] = azure_model
@@ -76,7 +74,6 @@ def _apply_env_overrides() -> None:
 
     lm_studio_url = dotenv.get("LM_STUDIO_BASE_URL", "http://localhost:1234/v1")
     lm_studio_model = dotenv.get("LM_STUDIO_MODEL", "qwen3.5-4b")
-    os.environ["SMR_V2_OPENAI_COMPAT_ENABLED"] = "true"
     os.environ["SMR_V2_OPENAI_COMPAT_BASE_URL"] = lm_studio_url
     os.environ["SMR_V2_OPENAI_COMPAT_DEFAULT_MODEL"] = lm_studio_model
     os.environ["SMR_V2_OPENAI_COMPAT_TIMEOUT_S"] = "120"
@@ -184,17 +181,18 @@ def _create_e2e_app(redis) -> tuple:
 
     registry = ProviderRegistry()
 
-    if settings.ollama.enabled:
+    # providers are gated by CONNECTION config, not an ENABLE flag.
+    if settings.ollama.base_url:
         from smr_v2.providers.ollama import OllamaProvider
         registry.register("ollama", OllamaProvider(settings.ollama, http_client))
 
-    if settings.azure.enabled:
+    if settings.azure.endpoint and settings.azure.api_key.get_secret_value():
         from smr_v2.providers.azure_openai import AzureOpenAIProvider
         provider_instance = AzureOpenAIProvider(settings.azure)
         registry.register("azure-openai", provider_instance)
         registry.register("azure", provider_instance)
 
-    if settings.openai_compat.enabled:
+    if settings.openai_compat.base_url:
         from smr_v2.providers.openai_compat import OpenAICompatProvider
         provider_instance = OpenAICompatProvider(settings.openai_compat)
         registry.register("lm-studio", provider_instance)

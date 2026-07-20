@@ -1,10 +1,12 @@
-"""Route-level tests for per-request model selection (TASK-506).
+"""Route-level tests for required per-request model selection (TASK-506 / ).
 
 Hermetic: transformers loading is mocked and the FastAPI app is a minimal
 shell mounting only the REST v1 routers (no lifespan → no eager model loads).
-The default (env-configured) instances are injected into the
-``nlp.dependencies`` singleton slots so the no-``model_name`` path can be
-asserted byte-for-byte unchanged.
+
+`model_name` (the gateway-injected `AiModel.sourceUri`) is REQUIRED on
+the classify/diagnosis paths; there is no env-configured default selection. Every
+selected model is loaded lazily on first use through the idle-TTL cache and pinned
+for the request. A missing/unloadable model fails closed with HTTP 503.
 """
 
 from __future__ import annotations
@@ -24,7 +26,6 @@ import nlp.dependencies as deps
 from nlp.api.v1 import rest_api_router_v1
 from nlp.core.config import UNCONFIGURED_DOC_TYPE_CLASSIFIER_MODEL
 from nlp.schemas.classification import TokenClassificationResponse
-from nlp.schemas.diagnosis import DiagnosisSuggestionResponse
 
 _SLOTS = (
     "_text_classifier_instance",
@@ -73,85 +74,39 @@ class _FakeTokenClassifier:
         return TokenClassificationResponse(entities=[], model_version=f"fake:{self.model_name}")
 
 
-class _FakeTextClassifier:
-    """Stands in for the (unconfigured-by-default) doc-type classifier."""
-
-    def __init__(self, model_name: str = UNCONFIGURED_DOC_TYPE_CLASSIFIER_MODEL) -> None:
-        self.model_name = model_name
-        self.is_initialized = False
-
-
-class _FakeSuggester:
-    def __init__(self) -> None:
-        self.is_initialized = True
-        self.requests: list = []
-
-    async def suggest(self, request) -> DiagnosisSuggestionResponse:
-        self.requests.append(request)
-        return DiagnosisSuggestionResponse(
-            suggestions=[], symptoms_analyzed=[], model_version="fake"
-        )
-
-
 # ---------------------------------------------------------------------------
-# Default path — no model_name → the startup singleton, cache never touched
+# Missing model_name → fail-closed 503
 # ---------------------------------------------------------------------------
 
 
-def test_classify_tokens_without_model_name_uses_default_singleton(client, clean_deps) -> None:
-    fake = _FakeTokenClassifier()
-    clean_deps._token_classifier_instance = fake
-
+def test_classify_tokens_without_model_name_returns_503(client, clean_deps) -> None:
     r = client.post("/api/v1/classify/tokens", json={"text": "fever"})
 
-    assert r.status_code == 200
-    assert r.json()["model_version"] == "fake:blaze999/Medical-NER"
-    assert len(fake.processed) == 1
-    assert clean_deps._token_classifier_cache_instance is None  # cache never consulted
+    assert r.status_code == 503
+    # nothing was loaded/cached
+    assert clean_deps._token_classifier_cache_instance is None
 
 
-def test_diagnosis_without_model_name_uses_default_singleton(client, clean_deps) -> None:
-    fake = _FakeSuggester()
-    clean_deps._medical_suggester_instance = fake
+def test_classify_text_without_model_name_returns_503(client, clean_deps) -> None:
+    r = client.post("/api/v1/classify/text", json={"text": "note text"})
 
+    assert r.status_code == 503
+    assert clean_deps._text_classifier_cache_instance is None
+
+
+def test_diagnosis_without_model_name_returns_503(client, clean_deps) -> None:
     r = client.post("/api/v1/diagnosis/suggestions", json={"text": "fever and chills"})
 
-    assert r.status_code == 200
-    assert len(fake.requests) == 1
+    assert r.status_code == 503
     assert clean_deps._medical_suggester_cache_instance is None
 
 
-async def test_resolver_none_returns_default_singleton(clean_deps) -> None:
-    fake = _FakeTokenClassifier()
-    clean_deps._token_classifier_instance = fake
-
-    assert await deps.get_token_classifier_for(None) is fake
-    assert clean_deps._token_classifier_cache_instance is None
-
-
-def test_model_name_matching_default_reuses_singleton(client, clean_deps) -> None:
-    fake = _FakeTokenClassifier("blaze999/Medical-NER")
-    clean_deps._token_classifier_instance = fake
-
-    r = client.post(
-        "/api/v1/classify/tokens",
-        json={"text": "fever", "model_name": "blaze999/Medical-NER"},
-    )
-
-    assert r.status_code == 200
-    assert len(fake.processed) == 1
-    assert clean_deps._token_classifier_cache_instance is None
-
-
 # ---------------------------------------------------------------------------
-# model_name path — cached-or-lazily-created per-model instance
+# model_name path — lazily created, cached, and loaded exactly once
 # ---------------------------------------------------------------------------
 
 
 def test_model_name_creates_and_caches_distinct_instance(client, clean_deps) -> None:
-    default = _FakeTokenClassifier()
-    clean_deps._token_classifier_instance = default
-
     fake_pipe = MagicMock(return_value=[])
     with (
         patch("nlp.services.token_classifier.AutoTokenizer") as tok,
@@ -168,19 +123,16 @@ def test_model_name_creates_and_caches_distinct_instance(client, clean_deps) -> 
         )
 
     assert r1.status_code == 200 and r2.status_code == 200
-    # loaded exactly once (second request served from the cache) …
+    # first request loaded the model exactly once; the second was a cache hit …
     tok.from_pretrained.assert_called_once_with("org/custom-ner")
     mdl.from_pretrained.assert_called_once_with("org/custom-ner")
-    # … and the default singleton was never involved
-    assert default.processed == []
+    # … and the model stays cached (unpinned) after the request completes.
     cache = clean_deps._token_classifier_cache_instance
     assert cache is not None
     assert cache.cached_models() == ["org/custom-ner"]
 
 
 def test_model_load_failure_returns_503(client, clean_deps) -> None:
-    clean_deps._token_classifier_instance = _FakeTokenClassifier()
-
     with (
         patch("nlp.services.token_classifier.AutoTokenizer") as tok,
         patch("nlp.services.token_classifier.AutoModelForTokenClassification"),
@@ -192,11 +144,13 @@ def test_model_load_failure_returns_503(client, clean_deps) -> None:
         )
 
     assert r.status_code == 503
+    # a failed load is not cached — a later request retries
+    cache = clean_deps._token_classifier_cache_instance
+    assert cache is not None
+    assert cache.cached_models() == []
 
 
 def test_classify_text_model_name_loads_custom_model(client, clean_deps) -> None:
-    clean_deps._text_classifier_instance = _FakeTextClassifier()  # sentinel default
-
     fake_pipe = MagicMock(return_value=[{"label": "clinical_note", "score": 0.8}])
     with (
         patch("nlp.services.text_classifier.AutoTokenizer") as tok,
@@ -216,8 +170,6 @@ def test_classify_text_model_name_loads_custom_model(client, clean_deps) -> None
 
 def test_classify_text_sentinel_model_name_rejected_503(client, clean_deps) -> None:
     # Passing the placeholder sentinel as an override must not "load" it.
-    clean_deps._text_classifier_instance = _FakeTextClassifier()
-
     r = client.post(
         "/api/v1/classify/text",
         json={"text": "x", "model_name": UNCONFIGURED_DOC_TYPE_CLASSIFIER_MODEL},
@@ -232,6 +184,8 @@ def test_classify_text_sentinel_model_name_rejected_503(client, clean_deps) -> N
 
 
 def test_diagnosis_model_name_overrides_classifier_only(client, clean_deps) -> None:
+    # The suggester's internal NER stays the default token classifier: preset it
+    # as an already-initialized fake so only the disease classifier is loaded.
     default_token = _FakeTokenClassifier()
     clean_deps._token_classifier_instance = default_token
 
@@ -252,7 +206,7 @@ def test_diagnosis_model_name_overrides_classifier_only(client, clean_deps) -> N
         )
 
     assert r.status_code == 200
-    # the override drove the classification model …
+    # the override drove the disease-classification model (loaded exactly once) …
     cls_tok.from_pretrained.assert_called_once_with("org/custom-classifier")
     cls_mdl.from_pretrained.assert_called_once_with("org/custom-classifier")
     # … while the internal NER stayed the default token classifier

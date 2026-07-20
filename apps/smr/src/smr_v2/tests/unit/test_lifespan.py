@@ -91,6 +91,9 @@ class TestLifespan:
 
     @pytest.mark.asyncio
     async def test_lifespan_registers_lm_studio_compatibility_alias(self):
+        # both keys are AVAILABLE from the connection-gated lazy factory
+        # (LM Studio always has a default base_url), and resolving either key builds
+        # and shares ONE instance.
         from smr_v2.core.config import OpenAICompatConfig
         from smr_v2.main import create_app
 
@@ -100,7 +103,7 @@ class TestLifespan:
             debug=True,
             log_level="debug",
             metrics_enabled=False,
-            openai_compat=OpenAICompatConfig(enabled=True),
+            openai_compat=OpenAICompatConfig(),
         )
         mock_redis = AsyncMock()
         mock_redis.aclose = AsyncMock()
@@ -113,6 +116,8 @@ class TestLifespan:
                 registry = app.state.provider_registry
                 assert "openai_compat" in registry.list_providers()
                 assert "lm-studio" in registry.list_providers()
+                # Lazy: not built until first resolution.
+                assert registry.is_instantiated("lm-studio") is False
                 assert registry.get("lm-studio") is registry.get("openai_compat")
 
     @pytest.mark.asyncio

@@ -98,7 +98,7 @@ const repositories = [
   AudioRecordingRepository,
   SummaryMetaRepository,
   NamedEntityRepository,
-  // TASK-519 — segment-level transcript structure (per-transcript annotation)
+  // segment-level transcript structure (per-transcript annotation)
   TranscriptSegmentRepository,
   // TASK-344 Workstream B — manual doctor highlighting
   HighlightRepository,
@@ -162,7 +162,7 @@ const repositories = [
   EvalRunRepository,
   EvalScoreRepository,
   HarnessAuditEventRepository,
-  // Agentic SOTA ordered session trajectory (TASK-510 Phase 2A) — tenant-scoped
+  // Agentic SOTA ordered session trajectory — tenant-scoped
   // ops telemetry, soft-delete + sys-event exempt (see repository/entity docs).
   AgentTrajectoryStepRepository,
   // Harness Administration Console — editable runtime policy (TASK-330 Phase 6)

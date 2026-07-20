@@ -1,5 +1,5 @@
 /**
- * TASK-515 Phase 4D.3 — shared bounded JSON auto-repair.
+ * shared bounded JSON auto-repair.
  *
  * A structured-output (`response_format: json_schema`) generation can still come
  * back as malformed JSON on engines that only *soft*-honour the schema. This

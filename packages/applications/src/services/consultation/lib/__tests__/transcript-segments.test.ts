@@ -5,7 +5,7 @@ import {
   resolveSegmentIdForOffset,
 } from '../transcript-segments';
 
-describe('TASK-519 transcript-segments (pure helpers)', () => {
+describe('transcript-segments (pure helpers)', () => {
   describe('computeSegmentOffsets', () => {
     it('resolves char offsets by locating each segment text in order', () => {
       const transcript = 'Patient reports chest pain. No shortness of breath.';

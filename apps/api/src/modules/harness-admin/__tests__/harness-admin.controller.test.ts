@@ -157,10 +157,10 @@ describe('HarnessAdminController — read tenant scoping', () => {
   });
 });
 
-// TASK-508 Phase 0 D3 — expose HarnessObservabilityService#getEditBurden.
+// Phase 0 D3 — expose HarnessObservabilityService#getEditBurden.
 // The real service signature is `getEditBurden(tenantId, consultationId)` —
 // a single-consultation lookup, not a `from`/`to` date range.
-describe('HarnessAdminController — edit burden (TASK-508 D3)', () => {
+describe('HarnessAdminController — edit burden', () => {
   beforeEach(() => vi.clearAllMocks());
 
   const BURDEN = {
@@ -212,7 +212,7 @@ describe('HarnessAdminController — edit burden (TASK-508 D3)', () => {
     expect(observabilityService.getEditBurden).toHaveBeenCalledWith('t9', 'c9');
   });
 
-  // TASK-508 Phase 0-F — a zeroed aggregate is NOT a not-found heuristic: a valid,
+  // a zeroed aggregate is NOT a not-found heuristic: a valid,
   // in-tenant consultation that simply has no recorded activity yet returns this
   // same shape and must surface as a normal 200, not a 404.
   it('returns a zeroed-but-valid edit-burden response as a normal 200 (no activity yet is not not-found)', async () => {

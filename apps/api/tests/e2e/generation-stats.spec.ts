@@ -1,9 +1,9 @@
 /**
- * TASK-509 — GenerationStats surface probe (Phase 7 E2E, TASK-508 Agentic SOTA).
+ * GenerationStats surface probe (E2E, Agentic SOTA).
  *
- * WHAT 509 SHIPPED: the AD-1 GenerationStats headline fields — `stopReason`,
- * `ttftMs`, `tokensPerSecond` — are parsed off the SMR response and PERSISTED
- * onto `SummaryMeta` (TASK-509 Phase 1B, migration
+ * AD-1 GenerationStats headline fields — `stopReason`, `ttftMs`,
+ * `tokensPerSecond` — are parsed off the SMR response and PERSISTED onto
+ * `SummaryMeta` (migration
  * `20260719000000_task_509_summary_meta_generation_stats`).
  *
  * ROUTE PROBE (why this spec asserts the trajectory contract, not a summary one):
@@ -15,7 +15,7 @@
  *  - NO dedicated gateway route returns the generation-stats headline fields
  *    directly, so this spec does NOT fabricate one.
  *  - The REAL, existing gateway contract that carries GenerationStats is the
- *    TASK-510 trajectory read plane: `AgentTrajectoryStepResponse.stats`
+ * trajectory read plane: `AgentTrajectoryStepResponse.stats`
  *    (`JsonValue | null`, documented "AD-1 GenerationStats on LLM_CALL steps")
  *    via `GET /admin/agent-trajectory/sessions/:sessionId/steps`. The console's
  *    AI-Operations Metrics screen composes exactly this (sessions → steps with
@@ -70,7 +70,7 @@ async function firstStepsPage(request: APIRequestContext, token: string, session
   return (await resp.json()) as StepsPage;
 }
 
-test.describe('TASK-509 — GenerationStats surfaces via the trajectory step `stats` blob', () => {
+test.describe('GenerationStats surfaces via the trajectory step `stats` blob', () => {
   let globalAdminToken: string;
   let doctorToken: string;
 
@@ -126,7 +126,7 @@ test.describe('TASK-509 — GenerationStats surfaces via the trajectory step `st
     if (!inspectedStep) {
       // Owner-run note: an empty trajectory seed still proves the envelope
       // contract above; there are simply no step rows to inspect.
-      console.warn('[task-509] no trajectory steps in the seed — populated GenerationStats assertions skipped.');
+      console.warn('[e2e] no trajectory steps in the seed — populated GenerationStats assertions skipped.');
     }
   });
 });

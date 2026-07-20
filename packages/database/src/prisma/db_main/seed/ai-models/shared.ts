@@ -77,7 +77,7 @@ export const AI_MODEL_PROVIDERS = [
     'bedrock',
     'built-in',
     'sarvam',
-    // TASK-515 (TASK-508 Phase 4B/4C deferred wiring) — production self-host
+    // production self-host
     // engines (AD-4 engine matrix). OpenAI-compatible `/v1` wire; free-string
     // provider values, no Prisma enum migration (the column is a plain string).
     'vllm',

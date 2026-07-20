@@ -138,7 +138,7 @@ class TestGenerateOffloadsNote:
 
     @pytest.mark.asyncio
     async def test_folds_segment_citations_block_when_refs_provided(self, env, monkeypatch):
-        """TASK-519: generate folds a [[seg:<id>]] StrictCitations block when refs given."""
+        """generate folds a [[seg:<id>]] StrictCitations block when refs given."""
         seg_id = "11111111-1111-1111-1111-111111111111"
         fake = _FakeSmr("small")
         monkeypatch.setattr(activities, "get_settings", lambda: _settings(min_bytes=100_000))

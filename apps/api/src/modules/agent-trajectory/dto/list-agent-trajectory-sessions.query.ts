@@ -4,7 +4,7 @@ import { IsEnum, IsInt, IsISO8601, IsOptional, IsString, Max, Min } from 'class-
 import { AgentSessionKind } from '@arcaai/domains';
 
 /**
- * TASK-510 Phase 2D — query for `GET /admin/agent-trajectory/sessions`.
+ * query for `GET /admin/agent-trajectory/sessions`.
  *
  * Whitelisted (global `forbidNonWhitelisted` pipe): only these params are
  * accepted. `tenantId` is the platform-admin cross-tenant override used by

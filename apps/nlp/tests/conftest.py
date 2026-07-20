@@ -45,10 +45,8 @@ def mock_services():
         patch("nlp.dependencies.get_text_corrector", return_value=fake),
         patch("nlp.dependencies.get_medical_suggester", return_value=fake),
         patch("nlp.dependencies.get_websocket_manager", return_value=fake),
-        patch("nlp.lifespan.get_text_classifier", return_value=fake),
-        patch("nlp.lifespan.get_token_classifier", return_value=fake),
-        patch("nlp.lifespan.get_text_corrector", return_value=fake),
-        patch("nlp.lifespan.get_medical_suggester", return_value=fake),
+        # lifespan no longer eager-loads the ML models; it only
+        # initializes the (weightless) websocket manager.
         patch("nlp.lifespan.get_websocket_manager", return_value=fake),
         patch("nlp.core.observability.setup_opentelemetry"),
         patch("nlp.core.observability.setup_prometheus"),

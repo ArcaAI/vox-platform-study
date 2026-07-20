@@ -4,7 +4,7 @@ import { Type } from 'class-transformer';
 import { JsonValue } from '@arcaai/domains';
 
 /**
- * TASK-519 — one ordered transcript segment (a diarized turn / VAD segment) as
+ * one ordered transcript segment (a diarized turn / VAD segment) as
  * emitted by STT alongside a finalized transcript. `text` is used ONLY to
  * resolve the segment's character offsets into the transcript and is NOT
  * persisted (it is a slice of the already-encrypted transcript content); the
@@ -82,7 +82,7 @@ export class CreateTranscriptRequest {
   @IsOptional()
   metadata?: JsonValue;
 
-  // TASK-519 — segment-level structure of the transcript. STT sends ordered
+  // segment-level structure of the transcript. STT sends ordered
   // segments (diarized turns / VAD segments) with timings + text; the ingest
   // persists them as TranscriptSegment rows (offsets resolved from the text).
   // Falls back to `metadata.segments` (D8: stop dropping metadata) when this

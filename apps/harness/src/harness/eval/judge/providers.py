@@ -33,7 +33,7 @@ def _secret_value(value: object) -> str:
 
 
 # ---------------------------------------------------------------------------
-# TASK-509 (AD-1) Phase 1B — generation-stats capture for the judge/sensor LLM
+# generation-stats capture for the judge/sensor LLM
 # clients. These call their OWN LLM endpoints (not SMR), so they can't reuse
 # SMR's ``GenerationStats`` model (a separate uv package); instead they capture
 # the equivalent native fields into an AD-1-shaped dict mirroring the SMR
@@ -261,7 +261,7 @@ class OpenAICompatJudgeClient:
 
         self._config = config
         self.model = config.model
-        # TASK-509 (AD-1) Phase 1B: AD-1 stats dict from the most recent ``complete`` call
+        # AD-1 stats dict from the most recent ``complete`` call
         # (None until the first call), read by the Phase 2 trajectory ``LLM_CALL`` emitter.
         self.last_stats: dict[str, Any] | None = None
         oc = config.openai_compat
@@ -310,7 +310,7 @@ class OpenAICompatJudgeClient:
             )
         except Exception as exc:  # transport/API failure (post-retry) → typed error
             raise JudgeConnectionError(f"openai_compat judge call failed: {exc}") from exc
-        # TASK-509 (AD-1): capture the native usage/finish-reason stats for this call.
+        # capture the native usage/finish-reason stats for this call.
         self.last_stats = _stats_from_openai_response(
             resp,
             provider=str(self._config.provider),
@@ -335,7 +335,7 @@ class AzureOpenAIJudgeClient:
         self._config = config
         az = config.azure
         self.model = az.deployment or config.model
-        # TASK-509 (AD-1) Phase 1B: AD-1 stats dict from the most recent ``complete`` call.
+        # AD-1 stats dict from the most recent ``complete`` call.
         self.last_stats: dict[str, Any] | None = None
         self._client = AsyncAzureOpenAI(
             api_key=_secret_value(az.api_key),
@@ -378,7 +378,7 @@ class AzureOpenAIJudgeClient:
             )
         except Exception as exc:  # transport/API failure (post-retry) → typed error
             raise JudgeConnectionError(f"azure judge call failed: {exc}") from exc
-        # TASK-509 (AD-1): capture the native usage/finish-reason stats for this call.
+        # capture the native usage/finish-reason stats for this call.
         self.last_stats = _stats_from_openai_response(
             resp, provider="azure", model=self.model,
             total_ms=int((time.monotonic() - started) * 1000),
@@ -399,7 +399,7 @@ class BedrockJudgeClient:
         self.model = config.model
         self.region = config.bedrock.region
         self._runtime: Any = None  # boto3 client constructed lazily on first call
-        # TASK-509 (AD-1) Phase 1B: AD-1 stats dict from the most recent ``complete`` call.
+        # AD-1 stats dict from the most recent ``complete`` call.
         self.last_stats: dict[str, Any] | None = None
 
     def _client(self) -> Any:
@@ -446,7 +446,7 @@ class BedrockJudgeClient:
             resp = await asyncio.to_thread(_call)
         except Exception as exc:
             raise JudgeConnectionError(f"bedrock judge call failed: {exc}") from exc
-        # TASK-509 (AD-1): map the converse ``usage`` + ``stopReason`` into AD-1 stats.
+        # map the converse ``usage`` + ``stopReason`` into AD-1 stats.
         usage = resp.get("usage") or {}
         self.last_stats = build_llm_call_stats(
             provider="bedrock",
@@ -469,7 +469,7 @@ def build_judge_client(config: JudgeConfig | None = None) -> JudgeClient:
 
     provider = config.provider
     # Ollama exposes an OpenAI-compatible ``/v1`` — it shares the openai_compat
-    # client. TASK-515: the production engines vLLM and llama.cpp also speak the
+    # client. the production engines vLLM and llama.cpp also speak the
     # OpenAI wire, so they route through the same client (base_url points at the
     # engine); native stop-reason normalization is provider-aware (see
     # ``_STOP_TABLES``: both ``vllm`` and ``llama-cpp`` are registered).

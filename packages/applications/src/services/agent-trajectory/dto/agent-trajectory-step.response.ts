@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { JsonValue } from '@arcaai/domains';
 
 /**
- * TASK-510 Phase 2B — one ordered trajectory step projected for read APIs and
+ * one ordered trajectory step projected for read APIs and
  * the live-view Redis republish. `payloadRef` is DELIBERATELY not exposed: it
  * is a claim-check / encrypted pointer to session working data (`@Secret` on
  * the entity), so it never leaves the service in a projection.

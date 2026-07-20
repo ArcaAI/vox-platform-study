@@ -1,4 +1,4 @@
-"""vLLM LLM provider (TASK-513) — first-class engine over the OpenAI wire.
+"""vLLM LLM provider — first-class engine over the OpenAI wire.
 
 vLLM speaks the OpenAI chat-completions wire, so ``VllmProvider`` composes the
 same async client as ``OpenAICompatProvider`` but carries a distinct engine

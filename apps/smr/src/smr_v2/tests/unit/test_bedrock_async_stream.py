@@ -71,7 +71,7 @@ def _make_provider():
     """Create a BedrockProvider with mocked boto3 clients."""
     from smr_v2.providers.bedrock import BedrockProvider
 
-    config = BedrockConfig(enabled=True, region="us-east-1")
+    config = BedrockConfig(region="us-east-1")
     with patch("boto3.client"):
         provider = BedrockProvider(config)
     provider._client = MagicMock()

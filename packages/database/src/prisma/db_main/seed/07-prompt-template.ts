@@ -18,7 +18,7 @@ import { SEED_CUSTOMER_TENANT_IDS, SEED_DEPARTMENT_IDS } from './00-constants';
  * so leaving them DRAFT keeps DNA working while still demonstrating a mixed
  * draft/published catalog in the admin console.
  */
-// TASK-511 (Phase 3A) — clinical-flow resolution is now approval-gated
+// clinical-flow resolution is now approval-gated
 // (`prompt-resolution.service` only resolves APPROVED templates). Seed clinician-
 // facing templates directly as APPROVED so a freshly-seeded dev DB resolves the
 // built-in catalog; DNA_ANALYSIS stays DRAFT (not a clinical generation flow).

@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import {
   CoreDatabaseService,
@@ -17,7 +17,7 @@ import { SecretsService } from '../baseServices/_meta/secrets';
 import { HarnessPolicyResponse, HarnessPolicySource, UpdateHarnessPolicyRequest } from './dto';
 
 /**
- * TASK-511 (Phase 3A) — the two SMR routing tasks the loop discriminates on:
+ * the two SMR routing tasks the loop discriminates on:
  *  - `live`     → the live-documentation delta summariser (`smr.live`).
  *  - `finalize` → the final/comprehensive summary generator (`smr.finalize`).
  * `resolveSmrSelection` consults the matching `AiTaskDefault` key FIRST, then
@@ -29,6 +29,26 @@ const SMR_TASK_KEY: Record<SmrRoutingTask, string> = {
   live: 'smr.live',
   finalize: 'smr.finalize',
 };
+
+/**
+ * the SYSTEM-only AiTaskDefault key that selects the harness
+ * LLM-as-judge. GLOBAL_ADMIN-managed (the `harness.` prefix is global-admin-only
+ * in {@link GLOBAL_ADMIN_ONLY_TASK_PREFIXES}); tenants can only USE the platform
+ * default, so `getEffective` resolves the SYSTEM row regardless of tenant.
+ */
+const JUDGE_TASK_KEY = 'harness.judge';
+
+/**
+ * map an `AiModel.provider` to a harness `JudgeProvider` value.
+ * LM Studio is served over the OpenAI-compatible wire, so it maps to
+ * `openai_compat` (the harness JudgeProvider enum has no `lm-studio` member).
+ * Every other provider the judge supports already matches its enum value
+ * (`ollama` / `vllm` / `llama-cpp` / `azure` / `bedrock`), so it passes through.
+ * Mirrors the `azure → azure-openai` alias `resolveSmrSelection` applies.
+ */
+function toJudgeProvider(provider: string): string {
+  return provider === 'lm-studio' ? 'openai_compat' : provider;
+}
 
 /** Ciphertext payloads threaded into the change factory (TASK-369 Phase 3D). */
 interface EncryptedChangePayloads {
@@ -42,7 +62,7 @@ interface EncryptedChangePayloads {
  * getters are non-enumerable) and from the DTO (sparse) so merge / snapshot /
  * apply operate on a single, fully-populated value shape.
  *
- * TASK-511 (Phase 3A) appended the seven agentic loop knobs. They are NULLABLE
+ * (Phase 3A) appended the seven agentic loop knobs. They are NULLABLE
  * overrides: null ⇒ the harness env/code default applies (per-field
  * fallthrough), so the harness only overrides a runtime default when the policy
  * carries an explicit non-null value.
@@ -64,7 +84,7 @@ export interface HarnessPolicyKnobs {
   gateSlaSeconds: number;
   gateEscalationSeconds: number;
   toolAllowlist: string[] | null;
-  // TASK-511 (Phase 3A) — agentic loop knobs (null ⇒ harness env/code default).
+  // agentic loop knobs (null ⇒ harness env/code default).
   optimisticDeliveryEnabled: boolean | null;
   atomicFactEnabled: boolean | null;
   retrievalEnabled: boolean | null;
@@ -73,6 +93,25 @@ export interface HarnessPolicyKnobs {
   maxEditReruns: number | null;
   regenFeedbackEnabled: boolean | null;
 }
+
+/**
+ * Selection + agentic knobs are GLOBAL_ADMIN / SYSTEM-only.
+ * Tenant admins may still patch clinical thresholds (faithfulness, coverage, …)
+ * and PHI toggles; they must not set model/provider routing or agentic loop knobs.
+ */
+const GLOBAL_ADMIN_ONLY_POLICY_KEYS = [
+  'safetyProvider',
+  'safetyModel',
+  'smrProvider',
+  'smrModel',
+  'optimisticDeliveryEnabled',
+  'atomicFactEnabled',
+  'retrievalEnabled',
+  'warmStartEnabled',
+  'nerPriorsEnabled',
+  'maxEditReruns',
+  'regenFeedbackEnabled',
+] as const satisfies readonly (keyof HarnessPolicyKnobs)[];
 
 const KNOB_KEYS = Object.keys(HARNESS_POLICY_DEFAULTS) as (keyof HarnessPolicyKnobs)[];
 
@@ -157,7 +196,7 @@ export class HarnessPolicyService {
     // TASK-369 Phase 3D — optional so fixtures keep their 4-arg construction and
     // non-Vault deployments degrade to plaintext WORM change rows.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // TASK-511 (Phase 3A) — optional so existing fixtures keep their 4/5-arg
+    // optional so existing fixtures keep their 4/5-arg
     // construction; when absent, `resolveSmrSelection` uses only the legacy
     // HarnessPolicy cascade (the AiTaskDefault-first path is a no-op).
     @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
@@ -200,29 +239,69 @@ export class HarnessPolicyService {
     const tid = tenantId ?? this.callerTenantId;
     if (!tid) throw new BadRequestException('Tenant ID is required');
 
+    // the judge provider/model come from the SYSTEM-only
+    // `harness.judge` AiTaskDefault, independent of which policy row wins. Resolve
+    // once and overlay onto whichever response we return (mirrors the SYSTEM
+    // selection-knob overlay below). Null when unconfigured ⇒ the harness falls
+    // back to its env/code judge default.
+    const judge = await this.resolveJudgeSelection(tid);
+
     const own = await this.policyRepository.findForExactTenant(tid);
     if (own) {
       const resp = toResponse(own, 'tenant');
-      // TASK-356 D-7 (B1): field-level fallthrough for the two SMR fields ONLY.
-      // A tenant row created before Phase 2 (when the SYSTEM default was null)
-      // can carry null smrProvider/smrModel; fill them from the SYSTEM default
-      // so the effective SMR selection is never null when a platform default
-      // exists. The harness benefits with zero apps/harness change (it reads
-      // this via the worker-facing endpoint). All other knobs stay row-level.
-      if (resp.smrProvider === null || resp.smrModel === null) {
-        const sys = await this.policyRepository.findSystemDefault();
-        if (sys) {
-          if (resp.smrProvider === null) resp.smrProvider = sys.smrProvider ?? null;
-          if (resp.smrModel === null) resp.smrModel = sys.smrModel ?? null;
+      // Selection + agentic knobs always come from SYSTEM (tenant
+      // override rows for those fields are ignored at runtime). Clinical
+      // thresholds remain tenant-overridable on the own row.
+      const sys = await this.policyRepository.findSystemDefault();
+      if (sys) {
+        const sysKnobs = entityToKnobs(sys);
+        for (const key of GLOBAL_ADMIN_ONLY_POLICY_KEYS) {
+          (resp as unknown as Record<string, unknown>)[key] = sysKnobs[key];
         }
       }
+      resp.judgeProvider = judge.judgeProvider;
+      resp.judgeModel = judge.judgeModel;
       return resp;
     }
 
     const sys = await this.policyRepository.findSystemDefault();
-    if (sys) return toResponse(sys, 'system-default');
+    if (sys) {
+      const resp = toResponse(sys, 'system-default');
+      resp.judgeProvider = judge.judgeProvider;
+      resp.judgeModel = judge.judgeModel;
+      return resp;
+    }
 
-    return codeDefaultResponse(tid);
+    const resp = codeDefaultResponse(tid);
+    resp.judgeProvider = judge.judgeProvider;
+    resp.judgeModel = judge.judgeModel;
+    return resp;
+  }
+
+  /**
+ * resolve the SYSTEM-only `harness.judge` AiTaskDefault into a
+   * harness-consumable `{ judgeProvider, judgeModel }`. `judgeModel` is the
+   * model's `sourceUri` (the id the judge client sends); `judgeProvider` is the
+   * model's provider normalised to a `JudgeProvider` value. Best-effort: a
+   * missing/misconfigured key (or an un-wired AiTaskDefault service in fixtures)
+   * yields `{ null, null }` so the harness falls back to its env/code default —
+   * never sinks the effective-policy read (mirrors `resolveSmrSelection`).
+   */
+  private async resolveJudgeSelection(tenantId?: string): Promise<{ judgeProvider: string | null; judgeModel: string | null }> {
+    if (!this.aiTaskDefaultService) return { judgeProvider: null, judgeModel: null };
+    try {
+      const eff = await this.aiTaskDefaultService.getEffective(JUDGE_TASK_KEY, tenantId);
+      const model = eff.model;
+      if (model?.provider && model.sourceUri) {
+        return { judgeProvider: toJudgeProvider(model.provider), judgeModel: model.sourceUri };
+      }
+    } catch (error) {
+      this.logger.warn({
+        message: `AiTaskDefault judge lookup failed for '${JUDGE_TASK_KEY}' — harness will use its env/code judge default`,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return { judgeProvider: null, judgeModel: null };
   }
 
   /**
@@ -235,7 +314,7 @@ export class HarnessPolicyService {
    * default can never be silently bypassed (SMR itself also fail-closes with a
    * 422).
    *
-   * TASK-511 (Phase 3A) — model-routing precedence (TRACKER D-11): the
+ * model-routing precedence (TRACKER D-11): the
    * `AiTaskDefault` key for the task (`smr.live` / `smr.finalize`) is consulted
    * FIRST. When it resolves to an ENABLED model, its `{ provider, sourceUri }`
    * wins (sourceUri is the provider-native identifier actually sent to SMR).
@@ -251,7 +330,9 @@ export class HarnessPolicyService {
         const eff = await this.aiTaskDefaultService.getEffective(SMR_TASK_KEY[task], tenantId);
         const model = eff.model;
         if (model?.provider && model.sourceUri) {
-          return { provider: model.provider, model: model.sourceUri };
+          // Catalog seeds `azure`; SMR registers `azure-openai`.
+          const provider = model.provider === 'azure' ? 'azure-openai' : model.provider;
+          return { provider, model: model.sourceUri };
         }
       } catch (error) {
         // A misconfigured/unknown task key must not sink the legacy path.
@@ -283,7 +364,20 @@ export class HarnessPolicyService {
   async updatePolicy(dto: UpdateHarnessPolicyRequest, expectedVersion?: number): Promise<HarnessPolicyResponse> {
     const tid = this.callerTenantId;
     if (!tid) throw new BadRequestException('Tenant ID is required');
+    this.assertNoGlobalAdminOnlyPolicyWrites(dto);
     return this.upsert(tid, 'tenant', dto, expectedVersion);
+  }
+
+  /**
+   * Tenant PATCH must not touch selection / agentic knobs
+   * (GLOBAL_ADMIN edits those via `updateGlobalDefault`).
+   */
+  private assertNoGlobalAdminOnlyPolicyWrites(dto: UpdateHarnessPolicyRequest): void {
+    const present = GLOBAL_ADMIN_ONLY_POLICY_KEYS.filter((key) => (dto as Record<string, unknown>)[key] !== undefined);
+    if (present.length === 0) return;
+    throw new ForbiddenException(
+      `HarnessPolicy fields [${present.join(', ')}] are managed by global administrators only.`,
+    );
   }
 
   /** Edit the SYSTEM-tenant GLOBAL-DEFAULT policy row (platform-only). */
@@ -388,6 +482,10 @@ function toResponse(e: HarnessPolicyEntity, source: HarnessPolicySource): Harnes
     tenantId: e.tenantId,
     source,
     ...entityToKnobs(e),
+    // judge selection is overlaid by `getEffectivePolicy` from the
+    // SYSTEM `harness.judge` AiTaskDefault; null here (not a policy-row field).
+    judgeProvider: null,
+    judgeModel: null,
     updatedAt: e.updatedAt ? e.updatedAt.toISOString() : null,
     version: e.version,
   };
@@ -404,6 +502,9 @@ function codeDefaultResponse(tenantId: string): HarnessPolicyResponse {
     tenantId,
     source: 'code-default',
     ...(HARNESS_POLICY_DEFAULTS as unknown as HarnessPolicyKnobs),
+    // see `toResponse`: judge selection is overlaid by the caller.
+    judgeProvider: null,
+    judgeModel: null,
     updatedAt: null,
     version: 0,
   };

@@ -624,6 +624,8 @@ class TestApplyVadSmartPriority:
 
         mock_vad_service = MagicMock()
         mock_vad_service.is_loaded = True
+        # The fallback now lazily inits the VAD service on first use.
+        mock_vad_service.initialize = AsyncMock()
         mock_vad_service.detect_speech.return_value = VADResult(
             segments=[SpeechSegment(0.0, 0.5, probability=0.95)],
             speech_duration=0.5,
@@ -642,6 +644,7 @@ class TestApplyVadSmartPriority:
         assert applied is True
         assert len(segments) == 1
         assert segments[0].start_time == 0.0
+        mock_vad_service.initialize.assert_awaited_once()
         mock_vad_service.detect_speech.assert_called_once()
 
     @pytest.mark.asyncio
@@ -655,6 +658,7 @@ class TestApplyVadSmartPriority:
 
         mock_vad_service = MagicMock()
         mock_vad_service.is_loaded = True
+        mock_vad_service.initialize = AsyncMock()
         mock_vad_service.detect_speech.return_value = VADResult(
             segments=[SpeechSegment(0.0, 0.5, probability=0.9)],
             speech_duration=0.5,
@@ -699,10 +703,10 @@ class TestApplyVadSmartPriority:
         assert segments == []
 
     @pytest.mark.asyncio
-    async def test_silero_not_loaded_returns_empty(self, preprocessor, vad_config, audio_samples):
-        """Silero service exists but model not loaded returns empty."""
+    async def test_silero_init_failure_returns_empty(self, preprocessor, vad_config, audio_samples):
+        """When the lazy VAD load fails, the fallback returns empty."""
         mock_vad_service = MagicMock()
-        mock_vad_service.is_loaded = False
+        mock_vad_service.initialize = AsyncMock(side_effect=RuntimeError("load failed"))
 
         with patch(
             "stt_v2.vad.silero_service.get_vad_service",
@@ -714,6 +718,7 @@ class TestApplyVadSmartPriority:
 
         assert applied is False
         assert segments == []
+        mock_vad_service.detect_speech.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_silero_returns_no_speech_still_applied(
@@ -724,6 +729,7 @@ class TestApplyVadSmartPriority:
 
         mock_vad_service = MagicMock()
         mock_vad_service.is_loaded = True
+        mock_vad_service.initialize = AsyncMock()
         mock_vad_service.detect_speech.return_value = VADResult(
             segments=[],
             speech_duration=0.0,
@@ -780,6 +786,7 @@ class TestApplyVadSmartPriority:
 
         mock_vad_service = MagicMock()
         mock_vad_service.is_loaded = True
+        mock_vad_service.initialize = AsyncMock()
         mock_vad_service.detect_speech.return_value = VADResult(
             segments=[SpeechSegment(0.0, 0.5, probability=0.9)],
             speech_duration=0.5,

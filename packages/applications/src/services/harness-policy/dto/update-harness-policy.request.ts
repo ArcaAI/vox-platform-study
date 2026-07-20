@@ -112,7 +112,7 @@ export class UpdateHarnessPolicyRequest {
   @IsString({ each: true })
   toolAllowlist?: string[] | null;
 
-  // ── TASK-511 (Phase 3A) — agentic loop knobs ──
+  // ── agentic loop knobs ──
   // Every knob is a nullable override: send `null` to clear it back to the
   // harness env/code default; OMIT to leave unchanged; send a value to override.
   // These keys sit under the `agentic.*` privilege boundary (GLOBAL_ADMIN only)

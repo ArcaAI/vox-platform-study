@@ -244,7 +244,7 @@ const mockAudioRecordingRepository = {
     getNextSequenceNumber: vi.fn(),
 };
 
-// TASK-519 — segment writer (optional trailing dep on the service).
+// segment writer (optional trailing dep on the service).
 const mockTranscriptSegmentRepository = {
     create: vi.fn(),
     findByContextItem: vi.fn(),
@@ -349,12 +349,12 @@ describe('SttInternalService', () => {
     });
 
     // =========================================================================
-    // TASK-519 — segment-level transcript. STT emits ordered segments (diarized
+    // segment-level transcript. STT emits ordered segments (diarized
     // turns) alongside a finalized transcript; the ingest persists them as
     // TranscriptSegment rows with offsets resolved from the segment text (the
     // text itself is NOT persisted — it is a slice of the encrypted transcript).
     // =========================================================================
-    describe('createTranscript segment persistence (TASK-519)', () => {
+    describe('createTranscript segment persistence', () => {
         it('persists one TranscriptSegment per segment with offsets resolved from the text', async () => {
             const job = createBehavioralJobEntity({ id: 'job-seg', consultationId: 'c-seg', tenantId: 'tenant-seg' });
             const contextItem = createMockContextItemEntity({ id: 'ctx-seg', tenantId: 'tenant-seg' });

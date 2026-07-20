@@ -29,7 +29,7 @@ import { AgentTrajectoryServiceModule } from '../../agent-trajectory/agent-traje
     HarnessGatewayServiceModule,
     HarnessPolicyServiceModule,
     EntitlementsServiceModule,
-    // TASK-510 §2C/§2D — resolves the @Optional IAgentTrajectoryService emitter
+    // §2C/§2D — resolves the @Optional IAgentTrajectoryService emitter
     // dep so a summary generation records its LLM_CALL trajectory step.
     AgentTrajectoryServiceModule,
   ],

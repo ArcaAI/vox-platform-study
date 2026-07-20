@@ -26,7 +26,7 @@ export class NamedEntity extends BaseTenantDataModel {
   public transcriptEndOffset: number | null;
   public startOffset: number | null;
   public endOffset: number | null;
-  // TASK-518 — negation/assertion polarity (PRESENT|ABSENT|HISTORICAL|FAMILY|HYPOTHETICAL).
+  // negation/assertion polarity (PRESENT|ABSENT|HISTORICAL|FAMILY|HYPOTHETICAL).
   public assertion: string | null;
   public confidence: number | null;
   public aiModelId: string | null;

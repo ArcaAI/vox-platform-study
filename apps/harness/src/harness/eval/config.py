@@ -28,7 +28,7 @@ class JudgeProvider(StrEnum):
 
     OPENAI_COMPAT = "openai_compat"  # LM Studio / any OpenAI-compatible server
     OLLAMA = "ollama"  # Ollama via its OpenAI-compatible ``/v1`` (parity option)
-    # TASK-515 — production self-host engines (AD-4). Both speak the OpenAI wire,
+    # production self-host engines (AD-4). Both speak the OpenAI wire,
     # so they reuse the OpenAI-compatible judge client; configured via the shared
     # ``HARNESS_JUDGE_OPENAI_COMPAT_*`` block pointed at the engine's base_url.
     VLLM = "vllm"

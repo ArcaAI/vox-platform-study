@@ -64,6 +64,11 @@ def _app(*, enabled: bool = True, seed_stub_scorer: bool = False, token: str = "
     app = create_app()
     app.state.settings.service_token = SecretStr(token)
     app.state.settings.groundedness = GroundednessConfig(enabled=enabled)
+    # Hermetic: no DB. the db_config_enabled=False dev escape hatch
+    # uses the env model id so these tests exercise the scorer degrade/verdict
+    # contracts without a live AiTaskDefault registry (DB selection + 503 have
+    # dedicated tests in test_aux_model_selection.py).
+    app.state.settings.db.db_config_enabled = False
     if seed_stub_scorer:
         app.state.groundedness_verifier = GroundednessNliVerifier(
             app.state.settings.groundedness, scorer=KeywordOverlapScorer()

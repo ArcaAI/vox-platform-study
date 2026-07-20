@@ -10,14 +10,10 @@ import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags }
 import { ClsService } from 'nestjs-cls';
 import { CanManage } from '../../decorators';
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
-import {
-  AggregateGenerationMetricsQuery,
-  ListAgentTrajectorySessionsQuery,
-  ListAgentTrajectoryStepsQuery,
-} from './dto';
+import { AggregateGenerationMetricsQuery, ListAgentTrajectorySessionsQuery, ListAgentTrajectoryStepsQuery } from './dto';
 
 /**
- * AgentTrajectoryController (TASK-510 Phase 2D) — the global-admin read plane
+ * AgentTrajectoryController — the global-admin read plane
  * for the ordered session trajectory, mounted at `/admin/agent-trajectory/*`
  * (global prefix → `/api/v1/admin/agent-trajectory/*`).
  *
@@ -53,9 +49,7 @@ export class AgentTrajectoryController {
   @ApiQuery({ name: 'to', required: false, description: 'Inclusive upper bound on createdAt (ISO-8601 instant).' })
   @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant.' })
   @ApiResponse({ status: 200, type: GenerationMetricsAggregateResponse })
-  async aggregateGenerationStats(
-    @Query() query: AggregateGenerationMetricsQuery,
-  ): Promise<GenerationMetricsAggregateResponse> {
+  async aggregateGenerationStats(@Query() query: AggregateGenerationMetricsQuery): Promise<GenerationMetricsAggregateResponse> {
     const tenantId = this.resolveReadTenantId(query.tenantId);
     return this.trajectoryService.aggregateGenerationStats(tenantId, {
       consultationId: query.consultationId,

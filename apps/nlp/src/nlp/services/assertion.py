@@ -1,4 +1,4 @@
-"""TASK-518 — negation / assertion detection.
+"""negation / assertion detection.
 
 A deterministic, offline ConText/NegEx-style rule engine that labels each
 recognized clinical entity with an :class:`AssertionStatus` describing the

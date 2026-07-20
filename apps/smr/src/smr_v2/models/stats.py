@@ -1,7 +1,7 @@
-"""TASK-509 (AD-1) — one normalized generation-stats contract for every LLM call.
+"""One normalized generation-stats contract for every LLM call.
 
-``GenerationStats`` is the single shape ask 1 of the Agentic SOTA program
-(TASK-508) relies on everywhere: SMR responses, trajectory ``LLM_CALL`` steps,
+``GenerationStats`` is the single shape the Agentic SOTA program relies on
+everywhere: SMR responses, trajectory ``LLM_CALL`` steps,
 Prometheus aggregates, and OTel GenAI spans. It captures stop reason (normalized
 + raw), total time, time-to-first-token, tokens/second, token counts, provider
 identity, and a raw engine-native timings/usage blob for audit.

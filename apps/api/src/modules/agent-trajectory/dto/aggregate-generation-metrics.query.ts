@@ -2,7 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsISO8601, IsOptional, IsString } from 'class-validator';
 
 /**
- * TASK-509 follow-up — query for
+ * query for
  * `GET /admin/agent-trajectory/metrics/generation`.
  *
  * Whitelisted (global `forbidNonWhitelisted` pipe). When `from`/`to` are both

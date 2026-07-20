@@ -84,7 +84,7 @@ export class LiveDocEngineConfigResponse {
   @ApiPropertyOptional({ description: 'User id that last toggled the runtime override' })
   updatedBy?: string;
 
-  // TASK-511 (Phase 3A) — the effective agentic.context.* knobs the live loop
+  // the effective agentic.context.* knobs the live loop
   // reads (settings-registry namespace; env override → registry code default).
   @ApiPropertyOptional({
     description: 'Effective agentic.context.* knobs the live-documentation loop reads.',

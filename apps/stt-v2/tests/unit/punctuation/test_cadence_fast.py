@@ -27,11 +27,13 @@ def _reset_service_state():
     service._default_model_name = None
     service._enabled = True
     service._suppression_warned = False
+    service._init_done = False
     yield
     service._models.clear()
     service._default_model_name = None
     service._enabled = True
     service._suppression_warned = False
+    service._init_done = False
 
 
 def _make_settings(cache_dir=None):
@@ -259,6 +261,12 @@ class TestPunctuateLazyLoadOffLoop:
     async def test_lazy_load_does_not_block_event_loop(self):
         model = MagicMock()
         model.punctuate.return_value = ["Hello."]
+
+        # Punctuation is already active (default resolved lazily on a
+        # prior call); this exercises a *pipeline-requested* model loading
+        # lazily on first use. The load must still happen off the loop thread.
+        service._enabled = True
+        service._init_done = True
 
         def slow_load(name):
             time.sleep(0.4)

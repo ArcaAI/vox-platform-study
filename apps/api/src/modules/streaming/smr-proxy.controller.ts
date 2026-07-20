@@ -162,24 +162,19 @@ export class SmrProxyController {
   ) {}
 
   /**
-   * TASK-356 D-7 — SDK fidelity: a caller-supplied model is forwarded untouched.
-   * When the model is absent, fall back to the tenant's effective {provider, model}
-   * via the HarnessPolicy cascade. If the cascade is also unresolved we forward as
-   * is and let `apps/smr` fail-closed with 422 (the single source of truth for the
-   * "no model" contract) rather than masking it with an in-proxy 4xx.
+   * TASK-356 D-7 / SDK fidelity: a caller-supplied model is forwarded
+   * untouched. When the model is absent, resolve SYSTEM `{provider, model}` via
+   * AiTaskDefault / HarnessPolicy. FAIL CLOSED: unresolved selection rethrows
+   * (typically 400) — no silent omit → env fallback.
    */
   private async applySmrModelSelection<T extends { provider?: string; model?: string }>(target: T): Promise<T> {
     if (target.model || !this.harnessPolicyService) {
       return target;
     }
-    try {
-      const tenantId = this.clsService.get('tenantId');
-      const { provider, model } = await this.harnessPolicyService.resolveSmrSelection(tenantId);
-      target.provider = provider;
-      target.model = model;
-    } catch {
-      // Unresolved → forward without a model so SMR returns its fail-closed 422.
-    }
+    const tenantId = this.clsService.get('tenantId');
+    const { provider, model } = await this.harnessPolicyService.resolveSmrSelection(tenantId);
+    target.provider = provider;
+    target.model = model;
     return target;
   }
 

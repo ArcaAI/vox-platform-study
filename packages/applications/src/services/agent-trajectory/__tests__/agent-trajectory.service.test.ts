@@ -1,5 +1,5 @@
 /**
- * AgentTrajectoryService unit tests (TASK-510 Phase 2B).
+ * AgentTrajectoryService unit tests.
  *
  *  - recordSteps: IDEMPOTENT batch insert (createMany + skipDuplicates), NO
  *    sys-event, and per-consultation republish to `consultation:trajectory:{id}`.
@@ -275,7 +275,7 @@ describe('AgentTrajectoryService', () => {
     });
   });
 
-  describe('aggregateGenerationStats — TASK-509 follow-up', () => {
+  describe('aggregateGenerationStats — follow-up', () => {
     it('rolls LLM_CALL stats (snake_case AD-1) into GenerationAggregate panels', async () => {
       const { service, repository } = buildDeps();
       repository.findAll.mockResolvedValue([

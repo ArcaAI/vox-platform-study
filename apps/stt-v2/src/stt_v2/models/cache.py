@@ -23,6 +23,16 @@ from .whisper_cpp_loader import WhisperCppLoader
 logger = logging.getLogger(__name__)
 
 
+# Product policy: idle TTL ∈ [60s, 3600s].
+_TTL_MIN_SECONDS = 60
+_TTL_MAX_SECONDS = 3600
+
+
+def clamp_cache_ttl_seconds(ttl_seconds: int) -> int:
+    """Clamp idle TTL to the product window [60, 3600]."""
+    return max(_TTL_MIN_SECONDS, min(_TTL_MAX_SECONDS, int(ttl_seconds)))
+
+
 @dataclass
 class CacheEntry:
     """Cache entry with metadata."""
@@ -31,6 +41,7 @@ class CacheEntry:
     loaded_at: datetime
     last_accessed: datetime
     access_count: int = 0
+    pin_count: int = 0
 
     @property
     def age_seconds(self) -> float:
@@ -41,6 +52,11 @@ class CacheEntry:
     def idle_seconds(self) -> float:
         """Get time since last access in seconds."""
         return (datetime.utcnow() - self.last_accessed).total_seconds()
+
+    @property
+    def is_pinned(self) -> bool:
+        """True while at least one active session/job holds a pin."""
+        return self.pin_count > 0
 
 
 @dataclass
@@ -84,11 +100,14 @@ class ModelCache:
 
         self._max_memory_mb = max_memory_mb or 10000  # Default 10GB
         self._max_models = max_models or settings.model_cache_max_models
-        self._ttl_seconds = ttl_seconds or settings.model_cache_ttl_seconds
+        raw_ttl = ttl_seconds if ttl_seconds is not None else settings.model_cache_ttl_seconds
+        self._ttl_seconds = clamp_cache_ttl_seconds(raw_ttl)
 
         # LRU cache (ordered dict maintains insertion order)
         self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
         self._lock = asyncio.Lock()
+        # Slug → pin refcount (may outlive a brief cache miss during reload).
+        self._pins: dict[str, int] = {}
 
         # TASK-351 P0-3 (H1) — single-flight: slug → future of the load in
         # progress. Concurrent get_or_load callers for the same slug await
@@ -143,10 +162,15 @@ class ModelCache:
             return None
 
         entry = self._cache[model_slug]
+        pin_count = self._pins.get(model_slug, 0)
+        entry.pin_count = pin_count
 
-        # Check TTL
-        if entry.age_seconds > self._ttl_seconds:
-            logger.info(f"Model {model_slug} expired (age={entry.age_seconds:.0f}s)")
+        # Idle TTL only after last pin release; pinned models stay.
+        if pin_count == 0 and entry.idle_seconds > self._ttl_seconds:
+            logger.info(
+                f"Model {model_slug} idle-expired "
+                f"(idle={entry.idle_seconds:.0f}s, ttl={self._ttl_seconds}s)"
+            )
             await self._evict_entry(model_slug)
             self._misses += 1
             return None
@@ -297,6 +321,44 @@ class ModelCache:
                 f"total_cached={len(self._cache)})"
             )
 
+    async def pin(self, model_slug: str) -> None:
+        """Increment pin refcount so TTL/LRU cannot evict ``model_slug``."""
+        async with self._lock:
+            self._pins[model_slug] = self._pins.get(model_slug, 0) + 1
+            if model_slug in self._cache:
+                self._cache[model_slug].pin_count = self._pins[model_slug]
+            logger.debug(f"Pinned model {model_slug} (pins={self._pins[model_slug]})")
+
+    async def unpin(self, model_slug: str) -> None:
+        """Decrement pin refcount; idle TTL applies after the last release."""
+        async with self._lock:
+            current = self._pins.get(model_slug, 0)
+            if current <= 1:
+                self._pins.pop(model_slug, None)
+                new_count = 0
+            else:
+                new_count = current - 1
+                self._pins[model_slug] = new_count
+            if model_slug in self._cache:
+                entry = self._cache[model_slug]
+                entry.pin_count = new_count
+                # Refresh idle clock when the last pin drops so TTL starts now.
+                if new_count == 0:
+                    entry.last_accessed = datetime.utcnow()
+            logger.debug(f"Unpinned model {model_slug} (pins={new_count})")
+
+    async def pin_many(self, model_slugs: list[str]) -> None:
+        """Pin every slug in ``model_slugs`` (pipeline use)."""
+        for slug in model_slugs:
+            if slug:
+                await self.pin(slug)
+
+    async def unpin_many(self, model_slugs: list[str]) -> None:
+        """Unpin every slug in ``model_slugs`` (session/job end)."""
+        for slug in model_slugs:
+            if slug:
+                await self.unpin(slug)
+
     async def evict(self, model_slug: str) -> bool:
         """
         Evict specific model from cache.
@@ -308,6 +370,9 @@ class ModelCache:
             True if model was evicted
         """
         async with self._lock:
+            if self._pins.get(model_slug, 0) > 0:
+                logger.info(f"Refusing to evict pinned model {model_slug}")
+                return False
             return await self._evict_entry(model_slug)
 
     async def clear(self) -> int:
@@ -365,9 +430,10 @@ class ModelCache:
         Args:
             required_memory_mb: Memory needed for new model
         """
-        # Check model count limit
+        # Check model count limit (never evict pinned)
         while len(self._cache) >= self._max_models:
-            await self._evict_oldest()
+            if not await self._evict_oldest():
+                break
 
         # Check memory limit
         current_memory = sum(e.model.memory_mb for e in self._cache.values())
@@ -378,25 +444,32 @@ class ModelCache:
             else:
                 break
 
-        # Evict expired entries
+        # Evict idle-expired unpinned entries
         expired = [
-            slug for slug, entry in self._cache.items() if entry.age_seconds > self._ttl_seconds
+            slug
+            for slug, entry in self._cache.items()
+            if self._pins.get(slug, 0) == 0 and entry.idle_seconds > self._ttl_seconds
         ]
         for slug in expired:
             await self._evict_entry(slug)
 
     async def _evict_oldest(self) -> bool:
-        """Evict oldest (least recently used) entry."""
+        """Evict oldest unpinned (least recently used) entry."""
         if not self._cache:
             return False
 
-        # Get oldest entry (first in OrderedDict)
-        oldest_slug = next(iter(self._cache))
-        return await self._evict_entry(oldest_slug)
+        for slug in list(self._cache.keys()):
+            if self._pins.get(slug, 0) > 0:
+                continue
+            return await self._evict_entry(slug)
+        logger.warning("Cannot LRU-evict: all cached models are pinned")
+        return False
 
     async def _evict_entry(self, model_slug: str) -> bool:
-        """Evict specific entry and unload model."""
+        """Evict specific entry and unload model. Caller must not pass pinned slugs."""
         if model_slug not in self._cache:
+            return False
+        if self._pins.get(model_slug, 0) > 0:
             return False
 
         entry = self._cache.pop(model_slug)
@@ -412,7 +485,7 @@ class ModelCache:
 
         logger.info(
             f"Evicted model {model_slug} (memory={entry.model.memory_mb}MB, "
-            f"age={entry.age_seconds:.0f}s)"
+            f"idle={entry.idle_seconds:.0f}s)"
         )
         return True
 

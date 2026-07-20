@@ -41,7 +41,7 @@ function TrajectoryTab() {
 }
 
 /**
- * AI Operations — Runs (/ai-operations/runs, tier 10-19). The TASK-510
+ * AI Operations — Runs (/ai-operations/runs, tier 10-19). The
  * trajectory read plane: distinct agentic sessions → the ordered step timeline
  * with per-step GenerationStats, live SSE updates, and cancel/signal wired to
  * the harness-admin workflow-ops for HARNESS_DOC runs; plus the clinician gate

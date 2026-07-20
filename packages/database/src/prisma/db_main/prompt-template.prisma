@@ -23,7 +23,7 @@ enum PromptTemplateScope {
 enum PromptTemplateStatus {
   DRAFT
   PUBLISHED
-  // TASK-511 (Phase 3A) — governance gate. A template is only resolvable for
+  // governance gate. A template is only resolvable for
   // clinical generation flows once a GLOBAL_ADMIN has APPROVED it (prompt
   // publishing becomes approval-gated at resolution time).
   APPROVED

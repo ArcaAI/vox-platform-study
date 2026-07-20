@@ -68,7 +68,7 @@ describe('PromptResolutionService', () => {
     beforeEach(() => {
         vi.clearAllMocks();
 
-        // TASK-511 (Phase 3A) — prompt-resolution now gates clinical-flow templates
+        // prompt-resolution now gates clinical-flow templates
         // to status=APPROVED. Default: any looked-up template resolves APPROVED, so
         // the pre-existing preferred/department resolution behaviour is preserved.
         // Tests that exercise the gate override this with a DRAFT/PUBLISHED status.
@@ -409,9 +409,9 @@ describe('PromptResolutionService', () => {
     });
 
     // =========================================================================
-    // TASK-511 (Phase 3A) — prompt governance: APPROVED gating at resolution time
+    // prompt governance: APPROVED gating at resolution time
     // =========================================================================
-    describe('resolve — APPROVED gating (TASK-511)', () => {
+    describe('resolve — APPROVED gating', () => {
         it('skips a DRAFT department template and falls through to the APPROVED default', async () => {
             mockDepartmentRepository.findById.mockResolvedValue(
                 createMockDepartment({ newPatientPromptId: 'draft-dept-tpl' }),

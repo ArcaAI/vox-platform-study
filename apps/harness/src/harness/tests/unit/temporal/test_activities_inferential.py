@@ -133,6 +133,10 @@ def _cited_claim_input(**kw: Any) -> RunInferentialSensorsInput:
     base: dict[str, Any] = {
         "note_text": "Patient has hypertension; continue current plan.",
         "transcript_text": "Patient has hypertension.",
+        # SYSTEM harness.judge selection the workflow snapshots onto the
+        # input; absent ⇒ the pass fails closed before ever building the judge.
+        "judge_provider": "openai_compat",
+        "judge_model": "stub-judge",
         "citations_map": {
             "claims": [
                 {
@@ -155,7 +159,7 @@ class TestPerCallTimeout:
     async def test_hung_judge_call_degrades_judge_sensors_only(self, env, monkeypatch):
         judge = _CreateRetryJudge(delay_s=30)  # never returns within the 0.05s budget
         granite = _FakeGranite(dimensions={"harm": False})
-        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: judge)
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
         monkeypatch.setattr(activities, "_granite_client", lambda s: granite)
 
         # Outer guard: before the fix the hung call burns ~30s; the per-call timeout must
@@ -179,7 +183,7 @@ class TestPerCallTimeout:
             SafetyGuardConfig(harm_criteria=["harm"]), transport=transport
         )
         judge = _StubJudge()
-        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: judge)
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
         monkeypatch.setattr(activities, "_granite_client", lambda s: granite)
 
         result = await asyncio.wait_for(
@@ -201,7 +205,7 @@ class TestPerCallTimeout:
         monkeypatch.setenv("HARNESS_LLM_REQUEST_TIMEOUT_S", "5.0")
         judge = _CreateRetryJudge(delay_s=0.05)
         granite = _FakeGranite(dimensions={"harm": False})
-        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: judge)
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
         monkeypatch.setattr(activities, "_granite_client", lambda s: granite)
 
         result = await asyncio.wait_for(
@@ -218,7 +222,7 @@ class TestHeartbeat:
     @pytest.mark.asyncio
     async def test_emits_heartbeats_during_pass(self, env, monkeypatch):
         monkeypatch.setattr(activities, "_HEARTBEAT_INTERVAL_S", 0.01, raising=False)
-        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: _StubJudge())
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(
             activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
         )
@@ -257,7 +261,7 @@ class TestAtomicFactWiring:
 
     @pytest.mark.asyncio
     async def test_disabled_by_default_no_atomic_fact_signal(self, env, monkeypatch):
-        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: _StubJudge())
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(
             activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
         )
@@ -269,7 +273,7 @@ class TestAtomicFactWiring:
         from harness.core.config import Settings
 
         monkeypatch.setattr(activities, "get_settings", lambda: Settings(atomic_fact_enabled=True))
-        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: _StubJudge())
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(
             activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
         )
@@ -285,7 +289,7 @@ class TestAtomicFactWiring:
         from harness.core.config import Settings
 
         monkeypatch.setattr(activities, "get_settings", lambda: Settings(atomic_fact_enabled=True))
-        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: _StubJudge())
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(
             activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
         )

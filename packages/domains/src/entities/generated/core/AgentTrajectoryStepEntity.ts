@@ -8,7 +8,7 @@ import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
 /**
- * Ordered, typed, per-session trajectory step (TASK-510 Phase 2A).
+ * Ordered, typed, per-session trajectory step.
  *
  * A tenant-scoped OPERATIONAL TELEMETRY row: every AI working session
  * (live-doc / harness / summary job / eval run) emits an ordered sequence of

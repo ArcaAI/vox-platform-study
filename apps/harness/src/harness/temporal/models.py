@@ -159,7 +159,7 @@ class HarnessDocWorkflowResult(BaseModel):
 
 
 class TrajectoryContext(BaseModel):
-    """Workflow-owned, deterministic per-activity trajectory context (TASK-510).
+    """Workflow-owned, deterministic per-activity trajectory context.
 
     Threaded as an ADDITIVE-OPTIONAL field on every activity input so the
     (non-deterministic) emission lives entirely in activity code while the
@@ -190,14 +190,14 @@ class FetchPolicyInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tenant_id: str
-    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (workflow-owned seq
+    # ADDITIVE-OPTIONAL trajectory context (workflow-owned seq
     # + session meta). Default None ⇒ command-neutral / replay-safe (an old input
     # deserializes it to None ⇒ no emission). Same on every activity input below.
     trajectory: TrajectoryContext | None = None
 
 
 class McpServerConfig(BaseModel):
-    """A registered MCP external-tools server, snapshotted onto the policy (TASK-516).
+    """A registered MCP external-tools server, snapshotted onto the policy.
 
     The ``fetch_policy`` activity reads the SYSTEM-shared ``McpServer`` registry
     (server METADATA only) alongside the tenant policy and threads the enabled
@@ -256,11 +256,19 @@ class HarnessPolicy(BaseModel):
     safety_model: str = "granite-guardian-4.1-8b"
     smr_provider: str | None = None
     smr_model: str | None = None
+    # LLM-as-judge selection resolved from the SYSTEM ``AiTaskDefault``
+    # key ``harness.judge`` (GLOBAL_ADMIN-owned). NULLABLE by design (like
+    # ``smr_provider``): ``None`` ⇒ the SYSTEM default is missing/disabled, and the
+    # inferential pass FAILS CLOSED (degrades) rather than falling back to the
+    # env ``HARNESS_JUDGE_PROVIDER``/``HARNESS_JUDGE_MODEL`` selection — env carries
+    # only the judge CONNECTION config (base_url/api_key), never the selection.
+    judge_provider: str | None = None
+    judge_model: str | None = None
     max_regen: int = 2
     gate_sla_seconds: int = 86_400
     gate_escalation_seconds: int = 43_200
     tool_allowlist: list[str] | None = None
-    # TASK-511 (Phase 3A) — the seven additive agentic loop knobs. NULLABLE by
+    # the seven additive agentic loop knobs. NULLABLE by
     # design: ``None`` ⇒ the harness env/code default applies (per-field
     # fallthrough), so the loop overrides a runtime default ONLY when the policy
     # carries an explicit non-null value. Consumed via ``_resolve_flag`` in the
@@ -274,7 +282,7 @@ class HarnessPolicy(BaseModel):
     ner_priors_enabled: bool | None = None
     max_edit_reruns: int | None = None
     regen_feedback_enabled: bool | None = None
-    # TASK-516 (Phase 5) — MCP external-tools master switch. NULLABLE by design:
+    # MCP external-tools master switch. NULLABLE by design:
     # ``None`` ⇒ OFF (the whole MCP tool path stays dormant), so the feature is off
     # by default everywhere until a global admin flips this per-tenant knob AND the
     # referenced ``McpServer.enabled`` is true. ``mcp_servers`` carries the enabled
@@ -314,11 +322,17 @@ class HarnessPolicy(BaseModel):
             # smr_provider/smr_model are intentionally nullable (None => SMR default).
             smr_provider=data.get("smrProvider"),
             smr_model=data.get("smrModel"),
+            # judge selection is nullable pass-through (like smr_*): a
+            # null ``judgeProvider``/``judgeModel`` from apps/api means the SYSTEM
+            # ``harness.judge`` default is missing → the inferential pass fails closed.
+            # NO env fallback here (that would re-introduce env-based selection).
+            judge_provider=data.get("judgeProvider"),
+            judge_model=data.get("judgeModel"),
             max_regen=_get("maxRegen", defaults.max_regen),
             gate_sla_seconds=_get("gateSlaSeconds", defaults.gate_sla_seconds),
             gate_escalation_seconds=_get("gateEscalationSeconds", defaults.gate_escalation_seconds),
             tool_allowlist=data.get("toolAllowlist"),
-            # TASK-511 (Phase 3A) — nullable agentic knobs: pass the value through
+            # nullable agentic knobs: pass the value through
             # verbatim (``data.get`` ⇒ None for missing/explicit-null), so ``None``
             # falls through to the harness env/code default at the consumption site.
             optimistic_delivery_enabled=data.get("optimisticDeliveryEnabled"),
@@ -328,7 +342,7 @@ class HarnessPolicy(BaseModel):
             ner_priors_enabled=data.get("nerPriorsEnabled"),
             max_edit_reruns=data.get("maxEditReruns"),
             regen_feedback_enabled=data.get("regenFeedbackEnabled"),
-            # TASK-516 (Phase 5) — nullable MCP master switch (None ⇒ OFF) + the enabled
+            # nullable MCP master switch (None ⇒ OFF) + the enabled
             # SYSTEM-shared registry rows. ``mcpServers`` is the registry snapshot the
             # fetch_policy activity attaches; missing/empty ⇒ no servers to resolve.
             mcp_tools_enabled=data.get("mcpToolsEnabled"),
@@ -384,12 +398,12 @@ class ExtractEntitiesInput(BaseModel):
     reuse_priors: bool = False
     consultation_id: str | None = None
     tenant_id: str | None = None
-    # TASK-511 (Phase 3A) — per-run NER-priors override threaded from the effective
+    # per-run NER-priors override threaded from the effective
     # policy. None ⇒ the activity falls through to ``HARNESS_NER_PRIORS_ENABLED``
     # (env default). Additive-optional ⇒ replay-safe (an old input ⇒ None ⇒ env path,
     # byte-identical); no new workflow command.
     ner_priors_enabled: bool | None = None
-    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    # ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
     trajectory: TrajectoryContext | None = None
 
 
@@ -406,7 +420,7 @@ class EntitiesResult(BaseModel):
 
 
 class CallMcpToolInput(BaseModel):
-    """Input for the ``call_mcp_tool`` activity (TASK-516 — READ-ONLY MCP tools).
+    """Input for the ``call_mcp_tool`` activity.
 
     The workflow resolves the server from the policy snapshot and threads it here
     with the tenant policy allowlist so the activity enforces the intersection
@@ -458,7 +472,7 @@ class PersistEntitiesInput(BaseModel):
     context_item_id: str | None = None
     entities: list[NEREntity] = Field(default_factory=list)
     user_id: str | None = None
-    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    # ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
     trajectory: TrajectoryContext | None = None
 
 
@@ -471,12 +485,12 @@ class AssembleInput(BaseModel):
     template: str | None = None
     dna_style_id: str | None = None
     conversation_language: str | None = None
-    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    # ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
     trajectory: TrajectoryContext | None = None
 
 
 class RegenFinding(BaseModel):
-    """TASK-517 — one failed sensor's critique for the next regen iteration.
+    """one failed sensor's critique for the next regen iteration.
 
     Carries the sensor ``sensor`` (name), the ``failing_claims`` it flagged, and
     a short, model-readable ``expected_fix`` instruction. Data-only (no PHI note
@@ -491,7 +505,7 @@ class RegenFinding(BaseModel):
 
 
 class RegenFeedback(BaseModel):
-    """TASK-517 — the prior iteration's aggregated critique threaded into regen.
+    """the prior iteration's aggregated critique threaded into regen.
 
     Additive-optional on :class:`GenerateInput`; reconstructed deterministically
     from recorded sensor outputs on replay (absent on legacy histories ⇒ None ⇒
@@ -504,7 +518,7 @@ class RegenFeedback(BaseModel):
 
 
 class SegmentCitationRef(BaseModel):
-    """TASK-519 — one transcript-segment citation ref for finalize StrictCitations.
+    """one transcript-segment citation ref for finalize StrictCitations.
 
     PHI-safe: id + short speaker/time/ordinal hints only — never segment plaintext.
     Threaded as an additive-optional list on :class:`GenerateInput`; empty/absent
@@ -548,18 +562,18 @@ class GenerateInput(BaseModel):
     # no new workflow command, replay-safe (TASK-355 Slice-5d precedent).
     phi_enabled: bool = True
     phi_fail_closed: bool = True
-    # TASK-517 — critique-informed regen. ADDITIVE-OPTIONAL: the prior iteration's
+    # critique-informed regen. ADDITIVE-OPTIONAL: the prior iteration's
     # failed-sensor findings, appended to the prompt as a corrective suffix on a
     # regen iteration. None (the default, and every FIRST iteration) ⇒ the prompt
     # is byte-identical to before ⇒ no new workflow command, replay-safe.
     regen_feedback: RegenFeedback | None = None
-    # TASK-519 — segment StrictCitations. ADDITIVE-OPTIONAL: when the caller
+    # segment StrictCitations. ADDITIVE-OPTIONAL: when the caller
     # supplies transcript-segment refs, ``generate`` folds a ``[[seg:<id>]]``
     # instruction + allowed-id list into the prompt (PHI-safe hints only).
     # Empty (default, and every legacy history) ⇒ byte-identical to before ⇒
     # no new workflow command, replay-safe.
     segment_citations: list[SegmentCitationRef] = Field(default_factory=list)
-    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    # ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
     trajectory: TrajectoryContext | None = None
 
 
@@ -575,11 +589,11 @@ class RetrieveContextInput(BaseModel):
 
     tenant_id: str
     entities: list[NEREntity] = Field(default_factory=list)
-    # TASK-511 (Phase 3A) — per-run retrieval override threaded from the effective
+    # per-run retrieval override threaded from the effective
     # policy. None ⇒ the activity falls through to ``HARNESS_RETRIEVAL_ENABLED``
     # (env default). Additive-optional ⇒ replay-safe; no new workflow command.
     retrieval_enabled: bool | None = None
-    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    # ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
     trajectory: TrajectoryContext | None = None
 
 
@@ -621,7 +635,7 @@ class RunSensorsInput(BaseModel):
     # Phase-6: policy-driven computational thresholds (None => the sensors' own
     # env-driven ``SensorThresholds`` defaults).
     thresholds: SensorThresholds | None = None
-    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    # ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
     trajectory: TrajectoryContext | None = None
 
 
@@ -656,7 +670,15 @@ class RunInferentialSensorsInput(BaseModel):
     # ``safety_enabled=False`` skips the Granite safety screen entirely.
     groundedness_threshold: float = DEFAULT_GROUNDEDNESS_THRESHOLD
     safety_enabled: bool = True
-    # TASK-511 (Phase 3A) — per-run atomic-fact override threaded from the effective
+    # run-effective LLM-as-judge selection, snapshotted from the policy
+    # (``harness.judge`` SYSTEM default) at workflow start so the activity builds the
+    # judge deterministically across replay. NULLABLE: ``None`` ⇒ no SYSTEM judge
+    # selection → the pass FAILS CLOSED (degrades) instead of using the env judge
+    # selection (env carries only base_url/api_key connection config). Additive-
+    # optional defaults ⇒ replay-safe (an old input deserializes them to None).
+    judge_provider: str | None = None
+    judge_model: str | None = None
+    # per-run atomic-fact override threaded from the effective
     # policy. None ⇒ the activity falls through to ``HARNESS_ATOMIC_FACT_ENABLED``
     # (env default). Additive-optional ⇒ replay-safe; no new workflow command.
     atomic_fact_enabled: bool | None = None
@@ -683,7 +705,7 @@ class RunInferentialSensorsInput(BaseModel):
     # ``workflow.patched()``; an old replay history without it defaults to {} (T8). Held only in
     # workflow history (data-only) — never persisted to an external store (L3 is default-OFF, §4.5).
     prior_verdicts: dict[str, bool] = Field(default_factory=dict)
-    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    # ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
     trajectory: TrajectoryContext | None = None
 
 
@@ -750,7 +772,7 @@ class PersistDraftInput(BaseModel):
     # ⇒ early persist: readable draft now, verdict withheld, assurance deferred to
     # ``finalize_assurance``.
     phase: str | None = None
-    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    # ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
     trajectory: TrajectoryContext | None = None
 
 
@@ -789,7 +811,7 @@ class FinalizeAssuranceInput(BaseModel):
     model_version: str | None = None
     prompt_template_id: str | None = None
     prompt_version: str | None = None
-    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    # ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
     trajectory: TrajectoryContext | None = None
 
 
@@ -821,7 +843,7 @@ class RetractDraftInput(BaseModel):
     guardrail_decisions: dict[str, Any] | None = None
     reduced_assurance: bool | None = None
     rag_triad_score: float | None = None
-    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    # ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
     trajectory: TrajectoryContext | None = None
 
 
@@ -836,7 +858,7 @@ class RecordGateInput(BaseModel):
     context_item_version_id: str | None = None
     attestation_hash: str | None = None
     clinician_id: str | None = None
-    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    # ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
     trajectory: TrajectoryContext | None = None
 
 
@@ -847,7 +869,7 @@ class EscalateInput(BaseModel):
     tenant_id: str
     reason: str
     job_id: str | None = None
-    # TASK-510 (Phase 2C): ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    # ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
     trajectory: TrajectoryContext | None = None
 
 

@@ -16,22 +16,21 @@ from __future__ import annotations
 import asyncio
 import time
 from datetime import UTC, datetime
-from typing import cast
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from guardrail.core.config import Settings
+from guardrail.core.dependencies import acquire_groundedness_verifier
 from guardrail.core.logging import get_logger
 from guardrail.services.groundedness_nli import (
     GROUNDED,
     REASON_ERROR,
     UNVERIFIED,
-    GroundednessNliVerifier,
     GroundednessResult,
     SegmentVerdict,
     split_segments,
 )
+from guardrail.services.model_cache import ModelUnavailableError
 
 logger = get_logger(__name__)
 
@@ -87,49 +86,53 @@ class GroundResponse(BaseModel):
     timestamp: str = Field(..., description="Verification timestamp")
 
 
-def get_groundedness_verifier(request: Request) -> GroundednessNliVerifier:
-    """App-state-cached verifier (lazily built from settings; tests may pre-seed a stub)."""
-    verifier = getattr(request.app.state, "groundedness_verifier", None)
-    if verifier is None:
-        settings = cast("Settings", request.app.state.settings)
-        verifier = GroundednessNliVerifier(settings.groundedness)
-        request.app.state.groundedness_verifier = verifier
-    return cast("GroundednessNliVerifier", verifier)
-
-
 @router.post("/guardrail/ground", response_model=GroundResponse)
 async def ground_summary(
     request: GroundRequest,
-    verifier: GroundednessNliVerifier = Depends(get_groundedness_verifier),
+    http_request: Request,
 ) -> GroundResponse:
     """Verify a generated summary against its source transcript (output-side gate).
 
     Call this between building and publishing a live note so ungrounded segments carry
     their mark before the clinician reads them. Degrades fail-closed: an unavailable or
     erroring verifier yields ``unverified`` segments — never silently ``grounded``.
+
+    the MiniCheck model is DB-selected (``guardrail.groundedness``) and
+    loaded lazily on first use; a MISSING DB selection fails closed with HTTP 503,
+    while a configured-but-unstaged model degrades to ``unverified``.
     """
     start_time = time.monotonic()
 
     try:
-        # The scorer is CPU/GPU-bound — keep the event loop responsive (rule 06).
-        result = await asyncio.to_thread(verifier.verify, request.summary, request.transcript)
-    except Exception as exc:
-        # FAIL-CLOSED backstop for an unexpected verifier crash: every segment is
-        # `unverified` — the deliberate inverse of the legacy fail-open branches.
-        # PHI-safe: never log the summary/transcript text.
-        logger.warning(
-            "guardrail.groundedness.verify_crashed",
-            error=type(exc).__name__,
-        )
-        spans = split_segments(request.summary)
-        result = GroundednessResult(
-            segments=[SegmentVerdict(text, UNVERIFIED, start, end) for text, start, end in spans],
-            checked=False,
-            reason=REASON_ERROR,
-            model_id=getattr(verifier, "model_id", ""),
-            elapsed_ms=(time.monotonic() - start_time) * 1000,
-            throughput_docs_per_min=None,
-        )
+        async with acquire_groundedness_verifier(http_request) as verifier:
+            try:
+                # The scorer is CPU/GPU-bound — keep the event loop responsive (rule 06).
+                result = await asyncio.to_thread(
+                    verifier.verify, request.summary, request.transcript
+                )
+            except Exception as exc:
+                # FAIL-CLOSED backstop for an unexpected verifier crash: every segment
+                # is `unverified` — the deliberate inverse of the legacy fail-open
+                # branches. PHI-safe: never log the summary/transcript text.
+                logger.warning(
+                    "guardrail.groundedness.verify_crashed",
+                    error=type(exc).__name__,
+                )
+                spans = split_segments(request.summary)
+                result = GroundednessResult(
+                    segments=[
+                        SegmentVerdict(text, UNVERIFIED, start, end)
+                        for text, start, end in spans
+                    ],
+                    checked=False,
+                    reason=REASON_ERROR,
+                    model_id=getattr(verifier, "model_id", ""),
+                    elapsed_ms=(time.monotonic() - start_time) * 1000,
+                    throughput_docs_per_min=None,
+                )
+    except ModelUnavailableError as exc:
+        # Fail-closed: the groundedness capability has no DB selection at all.
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     processing_time = (time.monotonic() - start_time) * 1000
 

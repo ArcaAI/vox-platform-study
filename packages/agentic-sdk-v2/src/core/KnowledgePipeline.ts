@@ -446,7 +446,7 @@ export class KnowledgePipeline {
       return [];
     }
 
-    // TASK-508 Phase 0 (0.8) — the API gateway DOES expose NER now
+    // Phase 0 (0.8) — the API gateway DOES expose NER now
     // (`POST /api/v1/ai/nlp/entities`, AiInferenceController, TASK-446/506);
     // this KnowledgePipeline just hasn't been wired to call it yet. Fail fast
     // with that accurate limitation rather than the previous (now false)

@@ -1,4 +1,4 @@
-"""TASK-517 — critique-informed regen feedback (RED-first).
+"""critique-informed regen feedback (RED-first).
 
 The bounded regen loop currently re-runs generation with the SAME prompt after a
 sensor REGEN verdict — the model gets no signal about *what* failed, so it tends

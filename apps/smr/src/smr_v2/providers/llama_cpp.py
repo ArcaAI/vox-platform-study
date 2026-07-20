@@ -1,4 +1,4 @@
-"""llama.cpp server LLM provider (TASK-514) — native ``/completion`` client.
+"""llama.cpp server LLM provider — native ``/completion`` client.
 
 llama.cpp is the AD-1 REFERENCE engine for the owner's generation metrics: its
 ``timings`` block (``prompt_n``, ``predicted_n``, ``predicted_ms``,

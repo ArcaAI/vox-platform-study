@@ -235,7 +235,7 @@ describe('HarnessInternalController', () => {
         });
     });
 
-    // TASK-510 Phase 2D — the harness `report_trajectory` batch ingest.
+    // the harness `report_trajectory` batch ingest.
     describe('POST internal/harness/trajectory (ordered-trajectory ingest)', () => {
         const mockTrajectoryService = { recordSteps: vi.fn() };
         // The ingest re-establishes CLS from the batch tenantId (like /policy),

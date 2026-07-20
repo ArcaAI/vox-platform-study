@@ -173,7 +173,7 @@ enum ResourceType {
   FederatedIdentity
   // TASK-506 — per-tenant default model per AI task.
   AiTaskDefault
-  // TASK-516 — MCP external-tools registry.
+  // MCP external-tools registry.
   McpServer
 
   @@schema("core")

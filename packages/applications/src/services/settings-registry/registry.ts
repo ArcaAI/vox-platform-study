@@ -19,6 +19,6 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   ...ENTITLEMENT_SETTINGS,
   // TASK-506 — AI task-model defaults (guardrail/NLP/SMR).
   ...MODEL_DEFAULT_SETTINGS,
-  // TASK-511 (Phase 3A) — agentic context-management strategy knobs.
+  // agentic context-management strategy knobs.
   ...AGENTIC_CONTEXT_SETTINGS,
 ]);

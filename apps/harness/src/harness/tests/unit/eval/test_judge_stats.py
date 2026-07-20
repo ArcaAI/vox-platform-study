@@ -1,4 +1,4 @@
-"""Judge-client generation-stats capture (TASK-509 / AD-1, Phase 1B).
+"""Judge-client generation-stats capture.
 
 The judge backends call their own LLM endpoints (LM Studio / vLLM / Azure /
 Bedrock), NOT SMR, so they capture the equivalent native fields (usage / finish

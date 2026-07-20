@@ -1,5 +1,5 @@
 /**
- * AgenticAdminController unit tests (TASK-511 Phase 3A item 6).
+ * AgenticAdminController unit tests.
  *
  * The `@CanManage('HarnessPolicy')` tuple is exercised by the guard (+ e2e).
  * These specs cover the controller's OWN logic: read-tenant scoping (tenant

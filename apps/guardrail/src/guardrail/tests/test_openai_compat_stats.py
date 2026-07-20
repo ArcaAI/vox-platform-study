@@ -1,4 +1,4 @@
-"""TASK-509 Phase 1B — per-call generation stats capture on guardrail LLM/judge calls.
+"""per-call generation stats capture on guardrail LLM/judge calls.
 
 Guardrail mirrors the AD-1 ``GenerationStats`` field names locally (it must NOT
 import from smr). Stats capture is additive and null-safe: a response missing

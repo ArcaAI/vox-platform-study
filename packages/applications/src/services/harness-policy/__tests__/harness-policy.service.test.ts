@@ -15,7 +15,7 @@
  * factory/entity run so change-tracking + validation are exercised.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { HarnessPolicyFactory, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { HarnessPolicyService } from '../harness-policy.service';
@@ -57,7 +57,7 @@ function makeService(): HarnessPolicyService {
   );
 }
 
-// TASK-511 (Phase 3A) — service with the AiTaskDefault-first SMR routing wired.
+// service with the AiTaskDefault-first SMR routing wired.
 const aiTaskDefaultService = {
   getEffective: vi.fn(),
   getRow: vi.fn(),
@@ -104,6 +104,7 @@ describe('HarnessPolicyService', () => {
         smrModel: 'tenant-model',
       });
       policyRepository.findForExactTenant.mockResolvedValue(own);
+      policyRepository.findSystemDefault.mockResolvedValue(null);
 
       const result = await service.getEffectivePolicy();
 
@@ -111,7 +112,8 @@ describe('HarnessPolicyService', () => {
       expect(result.tenantId).toBe(TENANT);
       expect(result.coverageThreshold).toBe(0.55);
       expect(result.version).toBe(1);
-      expect(policyRepository.findSystemDefault).not.toHaveBeenCalled();
+      // SYSTEM is always consulted to overlay selection/agentic knobs.
+      expect(policyRepository.findSystemDefault).toHaveBeenCalled();
     });
 
     it('falls back to the system default (source=system-default) when no tenant row', async () => {
@@ -165,7 +167,7 @@ describe('HarnessPolicyService', () => {
       expect(result.smrModel).toBe('gemma-4-e2b-it-sft-rlvr-medical');
     });
 
-    it('does NOT override a non-null SMR field on the tenant own row', async () => {
+    it('SYSTEM SMR selection wins over a non-null tenant-row SMR field', async () => {
       const own = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: TENANT,
         smrProvider: 'ollama',
@@ -181,8 +183,66 @@ describe('HarnessPolicyService', () => {
 
       const result = await service.getEffectivePolicy();
 
-      expect(result.smrProvider).toBe('ollama');
-      expect(result.smrModel).toBe('tenant-pinned-model');
+      expect(result.smrProvider).toBe('lm-studio');
+      expect(result.smrModel).toBe('gemma-4-e2b-it-sft-rlvr-medical');
+    });
+  });
+
+  // ── LLM-as-judge selection surfaced on the effective policy ──
+  describe('getEffectivePolicy — judge selection', () => {
+    it('defaults judgeProvider/judgeModel to null when the AiTaskDefault service is not wired', async () => {
+      policyRepository.findForExactTenant.mockResolvedValue(null);
+      policyRepository.findSystemDefault.mockResolvedValue(null);
+
+      // `service` (4-arg) has no AiTaskDefault service injected.
+      const result = await service.getEffectivePolicy();
+
+      expect(result.judgeProvider).toBeNull();
+      expect(result.judgeModel).toBeNull();
+    });
+
+    it('resolves harness.judge from the SYSTEM AiTaskDefault and maps lm-studio → openai_compat', async () => {
+      const svc = makeServiceWithAiTaskDefault();
+      policyRepository.findForExactTenant.mockResolvedValue(null);
+      policyRepository.findSystemDefault.mockResolvedValue(null);
+      aiTaskDefaultService.getEffective.mockResolvedValue({
+        taskKey: 'harness.judge',
+        modelSlug: 'lms-gemma-4-e4b',
+        source: 'system',
+        model: { provider: 'lm-studio', sourceUri: 'google/gemma-4-e4b' },
+      });
+
+      const result = await svc.getEffectivePolicy('tenant-1');
+
+      expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith('harness.judge', 'tenant-1');
+      expect(result.judgeProvider).toBe('openai_compat');
+      expect(result.judgeModel).toBe('google/gemma-4-e4b');
+    });
+
+    it('passes a non-lm-studio judge provider through verbatim (e.g. bedrock)', async () => {
+      const svc = makeServiceWithAiTaskDefault();
+      policyRepository.findForExactTenant.mockResolvedValue(null);
+      policyRepository.findSystemDefault.mockResolvedValue(null);
+      aiTaskDefaultService.getEffective.mockResolvedValue({
+        model: { provider: 'bedrock', sourceUri: 'anthropic.claude-3-5-haiku-20241022-v1:0' },
+      });
+
+      const result = await svc.getEffectivePolicy('tenant-1');
+
+      expect(result.judgeProvider).toBe('bedrock');
+      expect(result.judgeModel).toBe('anthropic.claude-3-5-haiku-20241022-v1:0');
+    });
+
+    it('leaves judge null (fail-safe) when the AiTaskDefault lookup throws', async () => {
+      const svc = makeServiceWithAiTaskDefault();
+      policyRepository.findForExactTenant.mockResolvedValue(null);
+      policyRepository.findSystemDefault.mockResolvedValue(null);
+      aiTaskDefaultService.getEffective.mockRejectedValue(new Error('unknown task key'));
+
+      const result = await svc.getEffectivePolicy('tenant-1');
+
+      expect(result.judgeProvider).toBeNull();
+      expect(result.judgeModel).toBeNull();
     });
   });
 
@@ -233,7 +293,7 @@ describe('HarnessPolicyService', () => {
     });
   });
 
-  // TASK-511 (Phase 3A) — AiTaskDefault-first SMR routing (TRACKER D-11).
+  // AiTaskDefault-first SMR routing (TRACKER D-11).
   describe('resolveSmrSelection — AiTaskDefault precedence', () => {
     it('consults the smr.finalize AiTaskDefault FIRST and returns its {provider, sourceUri}', async () => {
       const svc = makeServiceWithAiTaskDefault();
@@ -296,7 +356,7 @@ describe('HarnessPolicyService', () => {
     });
   });
 
-  // TASK-511 (Phase 3A) — agentic loop knob cascade (null ⇒ env default).
+  // agentic loop knob cascade (null ⇒ env default).
   describe('agentic loop knobs', () => {
     it('defaults every agentic knob to null on the code-default response', async () => {
       policyRepository.findForExactTenant.mockResolvedValue(null);
@@ -314,7 +374,7 @@ describe('HarnessPolicyService', () => {
       expect(effective.regenFeedbackEnabled).toBeNull();
     });
 
-    it('surfaces an explicit tenant-row knob override on the effective policy', async () => {
+    it('overlays SYSTEM agentic knobs over tenant-row values on the effective policy', async () => {
       const own = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: TENANT,
         smrProvider: 'lm-studio',
@@ -323,27 +383,33 @@ describe('HarnessPolicyService', () => {
         maxEditReruns: 3,
         retrievalEnabled: false,
       });
+      const sys = HarnessPolicyFactory.CreateHarnessPolicy({
+        tenantId: SYSTEM_TENANT_ID,
+        optimisticDeliveryEnabled: false,
+        maxEditReruns: 1,
+        retrievalEnabled: true,
+        warmStartEnabled: null,
+      });
       policyRepository.findForExactTenant.mockResolvedValue(own);
+      policyRepository.findSystemDefault.mockResolvedValue(sys);
 
       const effective = await service.getEffectivePolicy(TENANT);
 
       expect(effective.source).toBe('tenant');
-      expect(effective.optimisticDeliveryEnabled).toBe(true);
-      expect(effective.maxEditReruns).toBe(3);
-      expect(effective.retrievalEnabled).toBe(false);
-      // An unset knob stays null (⇒ harness env default).
+      expect(effective.optimisticDeliveryEnabled).toBe(false);
+      expect(effective.maxEditReruns).toBe(1);
+      expect(effective.retrievalEnabled).toBe(true);
       expect(effective.warmStartEnabled).toBeNull();
     });
 
-    it('applies a sparse agentic-knob patch through updatePolicy', async () => {
+    it('rejects a tenant updatePolicy that patches agentic/selection knobs (403)', async () => {
       const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, smrProvider: 'lm-studio', smrModel: 'm' });
       policyRepository.findForExactTenant.mockResolvedValue(own);
 
-      const result = await service.updatePolicy({ atomicFactEnabled: true, maxEditReruns: 5, expectedVersion: 1 } as never, 1);
-
-      expect(result.atomicFactEnabled).toBe(true);
-      expect(result.maxEditReruns).toBe(5);
-      expect(policyChangeRepository.create).toHaveBeenCalledTimes(1);
+      await expect(
+        service.updatePolicy({ atomicFactEnabled: true, maxEditReruns: 5, expectedVersion: 1 } as never, 1),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(policyChangeRepository.create).not.toHaveBeenCalled();
     });
   });
 

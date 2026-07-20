@@ -69,7 +69,7 @@ class NEREntity(BaseModel):
     rxnorm_code: str | None = None
     icd_code: str | None = None
     loinc_code: str | None = None
-    # TASK-518 — negation/assertion polarity from the NLP assertion pass
+    # negation/assertion polarity from the NLP assertion pass
     # (PRESENT|ABSENT|HISTORICAL|FAMILY|HYPOTHETICAL). None ⇒ PRESENT (safe
     # default). Sensors exclude ABSENT spans from positive-claim checks.
     assertion: str | None = None

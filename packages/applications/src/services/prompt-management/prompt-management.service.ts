@@ -407,7 +407,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
-   * TASK-511 (Phase 3A) — prompt governance approval (GLOBAL_ADMIN only).
+ * prompt governance approval (GLOBAL_ADMIN only).
    *
    * Flips the template to `status = APPROVED` (the gate `prompt-resolution`
    * requires for clinical flows), PINS a `PromptVersion` snapshot of the
@@ -449,7 +449,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
         versionNumber: maxVersionNumber + 1,
         content: template.content,
         variables: template.variables,
-        changeReason: dto.reason ?? 'Approved for clinical use (TASK-511)',
+        changeReason: dto.reason ?? 'Approved for clinical use',
         changedBy: userId ?? null,
       });
       await this.promptVersionRepository.create(version, tx);

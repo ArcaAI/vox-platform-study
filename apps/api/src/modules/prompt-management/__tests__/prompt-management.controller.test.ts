@@ -51,7 +51,7 @@ const createMockService = () => ({
     listUsageRecords: vi.fn(),
     softDeletePromptTemplate: vi.fn(),
     assignToDepartment: vi.fn(),
-    // TASK-511 (Phase 3A) — prompt governance approval.
+    // prompt governance approval.
     approveTemplate: vi.fn(),
 });
 
@@ -487,7 +487,7 @@ describe('PromptManagementController', () => {
         });
     });
 
-    // ─── TASK-511 (Phase 3A): prompt governance approval ─────────────────
+    // ─── prompt governance approval ─────────────────
 
     describe('POST /prompt-templates/:id/approve (approveTemplate)', () => {
         const approvedResponse = { ...fakeTemplateEntity, status: 'APPROVED', version: 3 };

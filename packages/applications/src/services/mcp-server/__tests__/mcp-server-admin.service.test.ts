@@ -1,5 +1,5 @@
 /**
- * McpServerAdminService (TASK-516 Phase 5) — unit tests.
+ * McpServerAdminService — unit tests.
  *
  * Mirrors the `ai-task-default` test style: repository, EventEmitter2 and
  * ClsService are mocked. Asserts the GLOBAL-ADMIN-only write governance (403 for

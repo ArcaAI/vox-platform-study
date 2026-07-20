@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * TASK-510 Phase 2B — a distinct working session (grouped by
+ * a distinct working session (grouped by
  * `sessionKind + sessionId + runId`) with its step count and first/last
  * timestamps, for the admin session list.
  */

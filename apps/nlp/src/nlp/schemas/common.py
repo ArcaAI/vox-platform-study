@@ -16,7 +16,7 @@ class TextPosition(BaseModel):
 
 
 class AssertionStatus(StrEnum):
-    """TASK-518 — the claim an entity mention makes about the patient.
+    """the claim an entity mention makes about the patient.
 
     ConText/NegEx-style assertion axis. Mirrors the ``NamedEntity.assertion``
     column so the polarity round-trips NLP → API → DB. ``PRESENT`` is the safe
@@ -47,7 +47,7 @@ class Entity(BaseModel):
     icd_code: str | None = Field(default=None, description="ICD-10-CM code")
     loinc_code: str | None = Field(default=None, description="LOINC code")
 
-    # TASK-518 — negation/assertion polarity. Defaults to PRESENT so any entity
+    # negation/assertion polarity. Defaults to PRESENT so any entity
     # constructed outside the assertion pass is still a well-defined positive
     # claim. Downstream faithfulness/concept-F1 sensors exclude ABSENT entities
     # from positive-claim checks.

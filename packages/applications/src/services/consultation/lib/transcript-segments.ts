@@ -1,5 +1,5 @@
 /**
- * TASK-519 — segment-level transcript helpers (pure, no I/O).
+ * segment-level transcript helpers (pure, no I/O).
  *
  * STT emits per-segment metadata (start/end timestamps, speaker, and a text
  * slice) for a finalized transcript. These helpers:

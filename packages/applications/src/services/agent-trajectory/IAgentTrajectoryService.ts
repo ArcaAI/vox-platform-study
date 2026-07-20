@@ -16,7 +16,7 @@ export interface ListTrajectorySessionsFilters {
   to?: string;
 }
 
-/** Filters for the generation-metrics aggregate (TASK-509 follow-up). */
+/** Filters for the generation-metrics aggregate. */
 export interface AggregateGenerationStatsFilters {
   consultationId?: string;
   /** Inclusive lower bound on `createdAt` (ISO-8601 instant). Defaults to now−7d when both absent. */
@@ -41,7 +41,7 @@ export interface ListTrajectoryStepsOptions {
 }
 
 /**
- * TASK-510 Phase 2B — ingest + read contract for the ordered session
+ * ingest + read contract for the ordered session
  * trajectory. The apps/api wave wires the internal ingest route and the admin
  * read controller to these methods.
  */
@@ -70,7 +70,7 @@ export interface IAgentTrajectoryService {
   ): Promise<AgentTrajectoryStepsPageResponse>;
 
   /**
-   * Bounded rollup of LLM_CALL GenerationStats for admin Metrics (TASK-509).
+ * Bounded rollup of LLM_CALL GenerationStats for admin Metrics.
    * Requires a createdAt window (default last 7 days) and hard-caps scanned rows.
    */
   aggregateGenerationStats(

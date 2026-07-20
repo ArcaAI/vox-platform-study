@@ -59,7 +59,7 @@ export class EffectiveSettingsService {
       return { key, tier: descriptor.tier, value: effective.modelSlug, sourceScope: effective.source ?? 'none' };
     }
 
-    // TASK-511 (Phase 3A) — agentic.context.* resolves to its registry code
+    // agentic.context.* resolves to its registry code
     // default (the effective-facade seam). A global override lane (global-kv /
     // Redis kill-switch) lands here later; today the descriptor default is the
     // effective value the live-documentation loop reads.

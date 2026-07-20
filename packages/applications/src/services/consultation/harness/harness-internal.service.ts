@@ -127,7 +127,7 @@ export class HarnessInternalService {
     // via RedisCacheModule. Absent (or a Redis hiccup) ⇒ best-effort fall-through to
     // normal processing (mirrors TASK-299 D-10).
     @Optional() @Inject(IRedisCacheService) private readonly redisCache?: IRedisCacheService,
-    // TASK-519 — optional + trailing (arity-preserving) segment reader. When
+    // optional + trailing (arity-preserving) segment reader. When
     // wired, the persisted transcript segments enrich `SummaryMeta.citationsMap`
     // with sentence-level segment provenance (each evidence span gets the
     // `segmentId` whose char span contains its transcript offset). Best-effort:
@@ -188,7 +188,7 @@ export class HarnessInternalService {
             startOffset: entity.startOffset,
             endOffset: entity.endOffset,
             confidence: entity.confidence,
-            // TASK-518 — persist the assertion polarity the harness NER carries.
+            // persist the assertion polarity the harness NER carries.
             assertion: entity.assertion,
             // TASK-476 C1 — persist the ontology codes the harness NER carries.
             umlsCui: entity.umlsCui,
@@ -352,7 +352,7 @@ export class HarnessInternalService {
         promptVersion = template?.currentVersionNumber != null ? String(template.currentVersionNumber) : null;
       }
 
-      // TASK-519 — PHI-safe segment refs for harness finalize StrictCitations.
+      // PHI-safe segment refs for harness finalize StrictCitations.
       // Same single-transcript gate as citationsMap enrichment; empty when
       // ambiguous / absent so the prompt stays byte-identical to before.
       const segmentCitations = await this.loadSegmentCitations(tenantId, transcripts);
@@ -426,7 +426,7 @@ export class HarnessInternalService {
         // Gated behind the kill-switch (default OFF): when disabled we skip the
         // lookup and record empty provenance (exact pre-Phase-C behavior).
         const liveSnapshot = this.warmStartEnabled ? await this.loadLiveSoapSnapshot(consultationId) : null;
-        // TASK-519 — enrich the verdict's citation map with per-segment provenance
+        // enrich the verdict's citation map with per-segment provenance
         // (LEGACY path only; EARLY withholds citationsMap until finalizeAssurance).
         const enrichedCitationsMap = isEarly
           ? null
@@ -590,7 +590,7 @@ export class HarnessInternalService {
           );
         }
         meta.ragTriadScore = dto.ragTriadScore ?? null;
-        // TASK-519 — enrich the (now-arriving) verdict citation map with segment
+        // enrich the (now-arriving) verdict citation map with segment
         // provenance before it is persisted + encrypted.
         const enrichedCitationsMap = await this.enrichCitationsWithSegments(
           consultationId,
@@ -976,7 +976,7 @@ export class HarnessInternalService {
   }
 
   /**
-   * TASK-519 — load PHI-safe segment citation refs for the assemble → generate
+ * load PHI-safe segment citation refs for the assemble → generate
    * StrictCitations path. Returns `[]` when the segment repo is unwired, the
    * consultation has ≠1 transcript (same ambiguity gate as enrichment), or no
    * segments are persisted — so callers that omit/empty keep the prior prompt.
@@ -997,7 +997,7 @@ export class HarnessInternalService {
       }));
     } catch (error) {
       this.logger.warn({
-        message: 'TASK-519 assemble segmentCitations skipped (best-effort)',
+        message: 'assemble segmentCitations skipped (best-effort)',
         tenantId,
         contextItemId: transcripts[0]?.id,
         error: error instanceof Error ? error.message : String(error),
@@ -1007,7 +1007,7 @@ export class HarnessInternalService {
   }
 
   /**
-   * TASK-519 — annotate each citation evidence span with the transcript
+   * Annotate each citation evidence span with the transcript
    * `segmentId` whose [charStart, charEnd) span contains its transcript
    * `startOffset`, so `SummaryMeta.citationsMap` carries sentence-level segment
    * provenance (a future console click-to-source can seek the audio via t0/t1).
@@ -1036,7 +1036,7 @@ export class HarnessInternalService {
       return attachSegmentEvidence(citationsMap, refs);
     } catch (error) {
       this.logger.warn({
-        message: 'TASK-519 citationsMap segment enrichment skipped (best-effort)',
+        message: 'citationsMap segment enrichment skipped (best-effort)',
         consultationId,
         error: error instanceof Error ? error.message : String(error),
       });

@@ -224,31 +224,32 @@ class AudioPreprocessor:
             from ..vad.silero_service import get_vad_service
 
             vad_service = get_vad_service()
-            if vad_service.is_loaded:
-                result = vad_service.detect_speech(
-                    samples=samples,
-                    sample_rate=sample_rate,
-                    threshold=vad_config.threshold,
-                    min_speech_duration_ms=vad_config.min_speech_duration_ms,
-                    min_silence_duration_ms=vad_config.min_silence_duration_ms,
-                    speech_pad_ms=vad_config.padding_ms,
+            # Lazy load on first use (no eager boot init).
+            await vad_service.initialize()
+            result = vad_service.detect_speech(
+                samples=samples,
+                sample_rate=sample_rate,
+                threshold=vad_config.threshold,
+                min_speech_duration_ms=vad_config.min_speech_duration_ms,
+                min_silence_duration_ms=vad_config.min_silence_duration_ms,
+                speech_pad_ms=vad_config.padding_ms,
+            )
+            segments = [
+                AudioSegment(
+                    start_time=s.start_time,
+                    end_time=s.end_time,
+                    is_speech=True,
+                    confidence=s.probability,
                 )
-                segments = [
-                    AudioSegment(
-                        start_time=s.start_time,
-                        end_time=s.end_time,
-                        is_speech=True,
-                        confidence=s.probability,
-                    )
-                    for s in result.segments
-                ]
-                logger.debug(
-                    "Silero VAD fallback: %d speech segments, %.1fs speech / %.1fs total",
-                    len(segments),
-                    result.speech_duration,
-                    result.audio_duration,
-                )
-                return segments, True
+                for s in result.segments
+            ]
+            logger.debug(
+                "Silero VAD fallback: %d speech segments, %.1fs speech / %.1fs total",
+                len(segments),
+                result.speech_duration,
+                result.audio_duration,
+            )
+            return segments, True
         except Exception as e:
             logger.debug("Silero VAD service unavailable: %s", e)
 

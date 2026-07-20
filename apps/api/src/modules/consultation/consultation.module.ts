@@ -16,7 +16,7 @@ import {
   HarnessProgressServiceModule,
   // TASK-355 Phase D Slice 5d — live per-claim assurance feed.
   HarnessAssuranceServiceModule,
-  // TASK-510 Phase 2D — ordered-trajectory ingest (internal route) + SSE relay.
+  // ordered-trajectory ingest (internal route) + SSE relay.
   AgentTrajectoryServiceModule,
   RedisSubscriberService,
 } from '@arcaai/applications';
@@ -48,11 +48,11 @@ import { HarnessInternalController } from './harness-internal.controller';
     HarnessProgressServiceModule,
     // TASK-355 Phase D Slice 5d — assurance per-claim publish (internal POST) + SSE relay.
     HarnessAssuranceServiceModule,
-    // TASK-510 Phase 2D — IAgentTrajectoryService for the internal ingest route.
+    // IAgentTrajectoryService for the internal ingest route.
     AgentTrajectoryServiceModule,
   ],
   controllers: [ConsultationController, AdminConsultationController, ConsultationJobController, HarnessInternalController],
-  // TASK-510 Phase 2D — dedicated Redis subscriber connection for the
+  // dedicated Redis subscriber connection for the
   // `:id/trajectory/stream` SSE relay (mirrors the harness-progress module's
   // own RedisSubscriberService provider; IConfigService is @Global).
   providers: [RedisSubscriberService],

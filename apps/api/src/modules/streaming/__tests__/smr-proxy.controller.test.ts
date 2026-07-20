@@ -332,17 +332,13 @@ describe('SmrProxyController', () => {
       expect(body.model).toBe('granite4:latest');
     });
 
-    it('forwards to SMR (the fail-closed 422 authority) when model is omitted and policy is unresolved', async () => {
+    it('FAILS CLOSED (rethrows) when model is omitted and policy is unresolved', async () => {
       const resolver = { resolveSmrSelection: vi.fn().mockRejectedValue(new BadRequestException('unresolved')) };
       const ctrl = buildWithResolver(resolver);
-      mockHttpService.axiosRef.post.mockResolvedValue({ data: { content: 'ok' } });
 
-      await ctrl.generate({ prompt: 'p', stream: false });
-
+      await expect(ctrl.generate({ prompt: 'p', stream: false })).rejects.toBeInstanceOf(BadRequestException);
       expect(resolver.resolveSmrSelection).toHaveBeenCalled();
-      expect(mockHttpService.axiosRef.post).toHaveBeenCalled();
-      const body = mockHttpService.axiosRef.post.mock.calls[0][1];
-      expect(body.model).toBeUndefined();
+      expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
     });
 
     it('generate/assembled resolves provider+model when the caller omits the model', async () => {

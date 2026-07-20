@@ -1,5 +1,5 @@
 /**
- * TASK-511 — Agentic policy governance (Phase 7 E2E, TASK-508 Agentic SOTA).
+ * Agentic policy governance (Phase 7 E2E, Agentic SOTA).
  *
  * Probes the agentic policy control plane across three real gateway surfaces,
  * following the task-506 governance/OCC pattern:
@@ -14,7 +14,7 @@
  *     `assertPlatform`), even with a valid `If-Match` (so the 403 is the
  *     privilege verdict, not the 428 header gate).
  *  C. Prompt governance approval — `POST /api/v1/admin/prompt-templates/:id/approve`
- *     (`PromptManagementController.approve`, TASK-511 Phase 3A, GLOBAL_ADMIN-only,
+ * (`PromptManagementController.approve`, Phase 3A, GLOBAL_ADMIN-only,
  *     `@RequiresIfMatch()`):
  *       - a tenant admin → 403 (service `isSuperAdmin` privilege check);
  *       - missing `If-Match` → 428; stale `If-Match: "999"` → 412;
@@ -58,7 +58,7 @@ interface AgenticInstructions {
   promptTier: { promptId: string; template: string; resolvedFrom: string; promptType: string };
 }
 
-test.describe('TASK-511 — agentic policy governance (OCC + GLOBAL_ADMIN privilege walls)', () => {
+test.describe('agentic policy governance (OCC + GLOBAL_ADMIN privilege walls)', () => {
   /** GLOBAL_ADMIN acting on tenant __GLOBAL__ (same tenant as the tenant admin, so 403s are privilege verdicts). */
   let globalAdminToken: string;
   let tenantAdminToken: string;
@@ -102,7 +102,7 @@ test.describe('TASK-511 — agentic policy governance (OCC + GLOBAL_ADMIN privil
     const nextMaxRegen = before.maxRegen === 2 ? 3 : 2;
     const resp = await request.patch(HARNESS_POLICY, {
       headers: { ...bearer(globalAdminToken), 'If-Match': `"${before.version}"` },
-      data: { maxRegen: nextMaxRegen, reason: `task-511 e2e ${Date.now()}` },
+      data: { maxRegen: nextMaxRegen, reason: `e2e ${Date.now()}` },
     });
     expect(resp.status()).toBe(200);
     const after = (await resp.json()) as HarnessPolicy;
@@ -192,7 +192,7 @@ test.describe('TASK-511 — agentic policy governance (OCC + GLOBAL_ADMIN privil
 
       const resp = await request.post(`${PROMPT_TEMPLATES}/${templateId}/approve`, {
         headers: { ...bearer(globalAdminToken), 'If-Match': ifMatch },
-        data: { reason: 'task-511 e2e approval' },
+        data: { reason: 'e2e approval' },
       });
       expect(resp.status()).toBe(200);
       const approved = (await resp.json()) as PromptTemplate;

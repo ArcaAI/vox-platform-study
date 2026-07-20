@@ -261,7 +261,7 @@ describe('HarnessObservabilityService', () => {
     });
   });
 
-  describe('getEditBurden (TASK-482 E3 — S3-F7; tenancy fix TASK-508 0-F)', () => {
+  describe('getEditBurden (TASK-482 E3 — S3-F7; tenancy fix 0-F)', () => {
     const CONSULTATION = 'consult-1';
     const delivered = new Date('2026-07-10T10:00:00.000Z');
     const signed = new Date('2026-07-10T10:30:00.000Z');

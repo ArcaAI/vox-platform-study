@@ -1,10 +1,10 @@
-"""Prefix-cache-friendly prompt assembly (TASK-515 Phase 4D.1).
+"""Prefix-cache-friendly prompt assembly.
 
 The harness ``generate`` activity folds the RAG ``StrictCitations`` block into
 the assembled user prompt. This helper makes that concatenation an explicit,
 pure function so the ordering is a tested contract: the invariant blocks
 (prompt template + transcript, carried in ``user_prompt``; then the RAG
-StrictCitations block; then the optional TASK-519 segment StrictCitations
+StrictCitations block; then the optional segment StrictCitations
 block) form a **stable prefix** that is byte-identical across regen iterations
 given constant inputs — letting a prefix-cache engine (vLLM / llama.cpp
 ``cache_prompt``) reuse the KV cache of that prefix across the bounded regen
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from harness.temporal.models import RegenFeedback, SegmentCitationRef
 
 
-# TASK-517 — the corrective-retry preamble prepended to the structured findings
+# the corrective-retry preamble prepended to the structured findings
 # block on a regen iteration. Mirrors the intent of the seeded ``CORRECTIVE_RETRY``
 # prompt template (07-prompt-template.ts) but is sensor-findings-driven: it tells
 # the model the previous draft failed specific safety sensors and must be revised.
@@ -63,7 +63,7 @@ _EXPECTED_FIX: dict[str, str] = {
 }
 _GENERIC_FIX = "Revise the flagged content so it is faithful to and grounded in the transcript."
 
-# TASK-519 — segment StrictCitations marker (mirrors RAG ``[[kb:<id>]]``).
+# segment StrictCitations marker (mirrors RAG ``[[kb:<id>]]``).
 SEGMENT_CITATION_MARKER_RE = re.compile(r"\[\[seg:([^\]]+)\]\]")
 
 _SEGMENT_INSTRUCTION = (
@@ -76,7 +76,7 @@ _SEGMENT_INSTRUCTION = (
 
 
 def build_segment_citations_block(segments: Iterable[SegmentCitationRef]) -> str:
-    """Render transcript-segment refs as a StrictCitations block (TASK-519).
+    """Render transcript-segment refs as a StrictCitations block.
 
     PHI-safe: each line carries ``id`` plus optional speaker/time/ordinal hints —
     never segment plaintext (recoverable from the parent transcript via offsets).
@@ -125,12 +125,12 @@ def assemble_generation_prompt(
     ``user_prompt`` (prompt template + transcript, both invariant across a run's
     regen iterations) leads as the stable, cacheable prefix; the RAG
     StrictCitations ``prompt_block`` — also invariant across regens for constant
-    retrieved chunks — is appended; then the optional TASK-519 segment
+    retrieved chunks — is appended; then the optional segment
     StrictCitations ``segment_block`` (invariant for constant segment refs).
     Returns ``user_prompt`` unchanged when there is no RAG/segment block so the
     non-citation path is byte-identical to before.
 
-    TASK-517 — on a regen iteration a ``regen_feedback`` critique is appended as a
+    on a regen iteration a ``regen_feedback`` critique is appended as a
     STRICTLY TRAILING corrective suffix (the stable prefix is preserved verbatim so
     the KV-cache prefix is unaffected). ``None`` (every first iteration + the
     disabled path) ⇒ byte-identical to before.

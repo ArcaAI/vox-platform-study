@@ -2,7 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 /**
- * TASK-511 (Phase 3A) — body for `POST admin/prompt-templates/:id/approve`
+ * body for `POST admin/prompt-templates/:id/approve`
  * (GLOBAL_ADMIN only). Approval flips the template to `status = APPROVED` (the
  * gate `prompt-resolution` requires for clinical flows), pins a `PromptVersion`
  * snapshot, and emits the audit sys-event. `expectedVersion` is the OCC token

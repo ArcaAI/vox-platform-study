@@ -478,7 +478,7 @@ test-harness:
 
 # ── Harness eval gate (PDSQI-9 / faithfulness / promptfoo contract) ────────
 #
-# TASK-508 Phase 0 (0.4) / SOTA gap review D4-E1 — "Wire the eval gates into
+# Phase 0 (0.4) / SOTA gap review D4-E1 — "Wire the eval gates into
 # CI": `harness.eval.ci` (PDSQI-9 + RAGAS-style faithfulness + ICC>=0.8) and
 # the promptfoo output-contract check were documented as release-blocking but
 # only ever ran as manual commands / in the (separate) GitHub Actions mirror
@@ -493,11 +493,11 @@ test-harness:
 #      deterministic mock provider, no network/secrets; see
 #      apps/harness/eval/promptfoo/provider.py) and CAN pass today.
 #
-# allow_failure: true is deliberate, per TASK-508 Phase 0 plan: this gate
-# only becomes hard-blocking once TASK-521 (clinician golden-set program)
-# delivers the real clinician-rated golden set AND a CI-reachable judge
-# backend — see docs/implementation/TASK-508-Agentic-SOTA-Program/README.md
-# Phase 6 (TASK-521). Until then this job is diagnostic/wiring-only.
+# allow_failure: true is deliberate: this gate only becomes hard-blocking
+# once the clinician golden-set program delivers a real clinician-rated
+# golden set AND a CI-reachable judge backend — see
+# docs/implementation/TASK-508-Agentic-SOTA-Program/README.md.
+# Until then this job is diagnostic/wiring-only.
 
 harness-eval-gate:
   stage: test

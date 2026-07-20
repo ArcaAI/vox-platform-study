@@ -1,6 +1,6 @@
 import { AiModelService, IAiTaskDefaultService } from '@arcaai/applications';
 import { ModelTaskType } from '@arcaai/domains';
-import { BadRequestException, Body, Controller, Inject, Logger, Optional, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Inject, Logger, Optional, Post, ServiceUnavailableException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Authorize } from '../../decorators';
 import { AiInferenceClient } from './ai-inference.client';
@@ -17,12 +17,11 @@ import { SuggestDiagnosisRequest } from './dto/suggest-diagnosis.request';
  * are stateless inference calls over caller-supplied text — no tenant-owned
  * resource is read, so there is no by-id/tenancy surface here.
  *
- * TASK-506 — the NLP routes resolve the tenant's effective default model
- * (`nlp.ner` / `nlp.classification` via `AiTaskDefault`) and inject it as the
- * upstream `model_name` (the AiModel row's `sourceUri`, an HF id) when the
- * caller supplies none. Resolution FAILS OPEN: any resolver error forwards the
- * request without `model_name` so NLP falls back to its env bootstrap default
- * (mirrors the speech-proxy fail-open posture).
+ * TASK-506 / the NLP routes resolve the SYSTEM `AiTaskDefault`
+ * (`nlp.ner` for NER / `nlp.diagnosis` for diagnosis suggestions) and inject it
+ * as the upstream `model_name` (the AiModel row's `sourceUri`, an HF id) when the
+ * caller supplies none. Resolution FAILS CLOSED: missing/failed SYSTEM default →
+ * 503 (no env bootstrap fallback for production selection).
  *
  * Contrast: `/admin/ai-services/*` (AiServiceAdminController) is the
  * GLOBAL_ADMIN-only READ-ONLY status/config plane over the same services.
@@ -82,7 +81,7 @@ export class AiInferenceController {
   })
   @ApiOkResponse({ description: 'Upstream `{ suggestions[], ... }`, proxied verbatim.' })
   async suggestDiagnosis(@Body() body: SuggestDiagnosisRequest): Promise<Record<string, unknown>> {
-    const modelName = await this.resolveDefaultModelName('nlp.classification');
+    const modelName = await this.resolveDefaultModelName('nlp.diagnosis');
     return this.client.suggestDiagnosis({
       text: body.text,
       ...(body.minConfidence !== undefined ? { min_confidence: body.minConfidence } : {}),
@@ -129,23 +128,29 @@ export class AiInferenceController {
   }
 
   /**
-   * TASK-506 — resolve the tenant's effective default model for a task key and
-   * return its `sourceUri` (the HF id NLP loads). FAIL OPEN: any error (or a
-   * null resolution) yields `undefined`, so the request forwards without a
-   * `model_name` and the service uses its env bootstrap default.
+   * Resolve the SYSTEM effective default model for a task key and
+   * return its `sourceUri` (the HF id NLP loads). FAIL CLOSED: missing service,
+   * resolver error, or null model → 503 (no silent env bootstrap).
    */
-  private async resolveDefaultModelName(taskKey: 'nlp.ner' | 'nlp.classification'): Promise<string | undefined> {
-    if (!this.aiTaskDefaultService) return undefined;
+  private async resolveDefaultModelName(taskKey: 'nlp.ner' | 'nlp.diagnosis'): Promise<string> {
+    if (!this.aiTaskDefaultService) {
+      throw new ServiceUnavailableException(`SYSTEM AiTaskDefault for '${taskKey}' is unavailable (AiTaskDefaultService not wired).`);
+    }
     try {
       const effective = await this.aiTaskDefaultService.getEffective(taskKey);
-      return effective.model?.sourceUri ?? undefined;
+      const sourceUri = effective.model?.sourceUri;
+      if (!sourceUri) {
+        throw new ServiceUnavailableException(`SYSTEM AiTaskDefault for '${taskKey}' is missing or has no ENABLED model. Run db:seed.`);
+      }
+      return sourceUri;
     } catch (err) {
+      if (err instanceof ServiceUnavailableException) throw err;
       this.logger.warn({
-        message: 'AI task default resolution failed; forwarding without model_name (fail-open)',
+        message: 'AI task default resolution failed (fail-closed)',
         taskKey,
         error: err instanceof Error ? err.message : String(err),
       });
-      return undefined;
+      throw new ServiceUnavailableException(`SYSTEM AiTaskDefault for '${taskKey}' could not be resolved.`);
     }
   }
 }

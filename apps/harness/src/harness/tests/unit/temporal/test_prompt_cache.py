@@ -1,6 +1,6 @@
-"""TASK-515 Phase 4D.1 — harness generation-prompt prefix stability.
+"""harness generation-prompt prefix stability.
 
-TASK-519 — segment StrictCitations (``[[seg:<id>]]``) on the finalize path.
+segment StrictCitations (``[[seg:<id>]]``) on the finalize path.
 """
 
 from __future__ import annotations

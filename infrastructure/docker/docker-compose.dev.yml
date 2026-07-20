@@ -41,7 +41,7 @@ volumes:
   # platform-metrics profile. Provisioning (datasource + dashboards) is mounted
   # read-only from ./configs/grafana, so this only persists runtime UI state.
   grafana-data:
-  # TASK-513/514: HF weights cache for the production-inference `inference`
+ # /514: HF weights cache for the production-inference `inference`
   # profile (vLLM safetensors + TEI bge-m3), so `up` does not re-download on
   # every restart. llama.cpp reads pre-staged GGUFs from a host bind-mount
   # instead (operator-managed), so it needs no named volume.
@@ -355,7 +355,7 @@ services:
       start_period: 15s
 
   # ==========================================================================
-  # Production-inference engines (TASK-508 Phase 4 / TASK-513-514). All three
+ # Production-inference engines. All three
   # are OPT-IN behind the `inference` profile — a plain `docker compose up` and
   # `start-infra.sh --all` do NOT start them (mirrors the vault/temporal/rag
   # opt-in precedent). This profile stages the PRODUCTION engine matrix (AD-4)

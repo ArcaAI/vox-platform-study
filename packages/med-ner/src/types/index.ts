@@ -323,7 +323,7 @@ export interface MedNEROptions {
  * Default options for MedNERProcessor.
  */
 export const DEFAULT_MED_NER_OPTIONS: Required<Omit<MedNEROptions, 'entityTypes' | 'onProgress' | 'dtype' | 'workerFactory'>> = {
-  // TASK-508 Phase 0 (0.8) / SOTA gap review D7 — default to the medical
+  // Phase 0 (0.8) / SOTA gap review D7 — default to the medical
   // ('clinical') preset, not the generic Xenova/bert-base-NER. 'default'
   // remains a selectable preset (see MODEL_MAP) for callers that explicitly
   // want the generic model; it is just no longer the implicit fallback.

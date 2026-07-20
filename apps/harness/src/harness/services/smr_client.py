@@ -77,7 +77,7 @@ class SmrGenerationResult(BaseModel):
     usage: dict[str, Any] = Field(default_factory=dict)
     latency_ms: int = 0
     finish_reason: str = ""
-    # TASK-509 (AD-1) Phase 1B: the normalized ``GenerationStats`` block SMR now returns
+    # the normalized ``GenerationStats`` block SMR now returns
     # (stop reason + raw, total/TTFT ms, tokens/second, token counts, engine-native blob).
     # Captured verbatim as a dict (the SMR wire shape) — the harness does not depend on the
     # smr_v2 model. Additive-optional default None ⇒ replay-safe: an old ``generate`` activity

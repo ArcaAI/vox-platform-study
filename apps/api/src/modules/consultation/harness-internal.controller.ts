@@ -42,7 +42,7 @@ import { Public } from '../../decorators';
 import { HarnessServiceTokenGuard } from './harness-service-token.guard';
 
 /**
- * TASK-510 Phase 2D — one ordered trajectory step in the harness `report_trajectory`
+ * one ordered trajectory step in the harness `report_trajectory`
  * batch contract. Whitelisted by the global `forbidNonWhitelisted` pipe, so a
  * malformed/oversized batch fails cleanly (4xx) and never 5xxs the clinical loop.
  * `payloadRef` is a claim-check / encrypted pointer only — never plaintext PHI.
@@ -128,7 +128,7 @@ class HarnessTrajectoryStepInput {
   correlationId?: string;
 }
 
-/** TASK-510 Phase 2D — the `POST /internal/harness/trajectory` batch body. */
+/** the `POST /internal/harness/trajectory` batch body. */
 class ReportTrajectoryRequest {
   @ApiProperty({ type: [HarnessTrajectoryStepInput] })
   @IsArray()
@@ -138,7 +138,7 @@ class ReportTrajectoryRequest {
   steps: HarnessTrajectoryStepInput[];
 }
 
-/** TASK-510 Phase 2D — best-effort ingest ack. */
+/** best-effort ingest ack. */
 class ReportTrajectoryAck {
   @ApiProperty({ description: 'Number of steps accepted for idempotent persistence.' })
   accepted: number;
@@ -177,7 +177,7 @@ export class HarnessInternalController {
     // TASK-355 Phase D Slice 5d — live per-claim assurance feed; ephemeral Redis
     // publish, no CLS needed (carries no PHI, only ids/sensor keys/verdict labels).
     private readonly harnessAssuranceService: HarnessAssuranceService,
-    // TASK-510 Phase 2D — ordered-trajectory batch ingest (idempotent, tenant-scoped).
+    // ordered-trajectory batch ingest (idempotent, tenant-scoped).
     @Inject(IAgentTrajectoryService) private readonly agentTrajectoryService: IAgentTrajectoryService,
   ) {}
 
@@ -303,7 +303,7 @@ export class HarnessInternalController {
     return this.harnessProgressService.reportProgress(id, dto);
   }
 
-  // TASK-510 Phase 2D — the harness `report_trajectory` activity POSTs the
+  // the harness `report_trajectory` activity POSTs the
   // ordered step batch here (fire-and-forget, batched at phase boundaries).
   // `recordSteps` is IDEMPOTENT on the composite unique
   // `(tenantId, sessionId, runId, seq)`, so a re-delivered batch (or the

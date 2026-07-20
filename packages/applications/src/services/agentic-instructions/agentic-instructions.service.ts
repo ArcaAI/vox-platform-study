@@ -11,7 +11,7 @@ import { AgenticInstructionsResolveOptions } from './IAgenticInstructionsService
 import { AgenticInstructionsResponse, SafetyCriterionResponse, SensorThresholdsResponse } from './dto';
 
 /**
- * TASK-511 (Phase 3A) — the vendored PDSQI-9 LLM-as-judge instrument pin.
+ * the vendored PDSQI-9 LLM-as-judge instrument pin.
  *
  * The judge prompt itself is vendored in the harness (Python — Epic's
  * open-source PDSQI-9 instrument, `apps/harness/.../eval/judge/prompts.py`) and
@@ -47,7 +47,7 @@ export const JUDGE_PROMPT_HASH = createHash('sha256')
   .digest('hex');
 
 /**
- * AgenticInstructionsService (TASK-511 Phase 3A item 6).
+ * AgenticInstructionsService.
  *
  * Read-only inventory of the EFFECTIVE agentic instruction set for one tenant.
  * It composes existing sources — it neither reads Prisma nor mutates anything:

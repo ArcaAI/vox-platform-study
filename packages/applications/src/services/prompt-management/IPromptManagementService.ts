@@ -47,7 +47,7 @@ export abstract class IPromptManagementService {
   abstract deletePersonal(id: string): Promise<PromptTemplateResponse>;
   abstract setPreferredPromptTemplate(templateId: string | null): Promise<PreferredPromptTemplateResponse>;
   abstract updatePromptTemplate(id: string, dto: UpdatePromptTemplateRequest): Promise<PromptTemplateResponse>;
-  // TASK-511 (Phase 3A) — GLOBAL_ADMIN approval gate: flip to APPROVED, pin a
+  // GLOBAL_ADMIN approval gate: flip to APPROVED, pin a
   // PromptVersion snapshot + audit event under OCC.
   abstract approveTemplate(id: string, dto: ApprovePromptTemplateRequest): Promise<PromptTemplateResponse>;
   abstract getPromptTemplate(id: string): Promise<PromptTemplateResponse | null>;

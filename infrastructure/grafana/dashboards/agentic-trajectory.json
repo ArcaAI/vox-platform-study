@@ -685,7 +685,7 @@
   "refresh": "10s",
   "schemaVersion": 39,
   "style": "dark",
-  "tags": ["harness", "agentic", "trajectory", "task-508", "task-510"],
+ "tags": ["harness", "agentic", "trajectory", "", ""],
   "templating": {
     "list": [
       {

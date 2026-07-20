@@ -10,6 +10,7 @@ Key design decisions:
 - Separate batch/streaming APIs to match different usage patterns
 """
 
+import asyncio
 import logging
 from datetime import UTC
 from pathlib import Path
@@ -44,32 +45,44 @@ class SileroVADService:
         self._session: Any = None  # onnxruntime.InferenceSession
         self._model_path = model_path
         self._loaded = False
+        # Single-flight guard so a lazy first-use load happens
+        # exactly once even under concurrent callers.
+        self._init_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 
     async def initialize(self) -> None:
-        """Load the ONNX model. Safe to call multiple times."""
+        """Load the ONNX model lazily. Idempotent and concurrency-safe.
+
+        The model is loaded on first use (not at process boot).
+        The double-checked ``_init_lock`` ensures concurrent first-use
+        callers load the ONNX session exactly once.
+        """
         if self._loaded:
             return
 
-        import onnxruntime
+        async with self._init_lock:
+            if self._loaded:
+                return
 
-        model_path = self._resolve_model_path()
+            import onnxruntime
 
-        opts = onnxruntime.SessionOptions()
-        opts.inter_op_num_threads = 1
-        opts.intra_op_num_threads = 1
-        opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+            model_path = self._resolve_model_path()
 
-        self._session = onnxruntime.InferenceSession(
-            str(model_path),
-            sess_options=opts,
-            providers=["CPUExecutionProvider"],
-        )
-        self._loaded = True
-        logger.info("Silero VAD v5 ONNX model loaded from %s", model_path)
+            opts = onnxruntime.SessionOptions()
+            opts.inter_op_num_threads = 1
+            opts.intra_op_num_threads = 1
+            opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+
+            self._session = onnxruntime.InferenceSession(
+                str(model_path),
+                sess_options=opts,
+                providers=["CPUExecutionProvider"],
+            )
+            self._loaded = True
+            logger.info("Silero VAD v5 ONNX model loaded from %s", model_path)
 
     async def shutdown(self) -> None:
         """Release ONNX session resources."""

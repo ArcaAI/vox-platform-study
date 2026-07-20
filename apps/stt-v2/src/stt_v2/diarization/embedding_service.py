@@ -64,16 +64,27 @@ class EmbeddingService(ABC):
         self._hf_model_id = hf_model_id
         self._loaded = False
         self._lock = threading.Lock()
+        # Single-flight guard so a lazy first-use load happens
+        # exactly once even under concurrent extract callers.
+        self._init_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 
     async def initialize(self) -> None:
-        """Load embedding model. Safe to call multiple times."""
+        """Load embedding model lazily. Idempotent and concurrency-safe.
+
+        The model is loaded on first use (not at process boot).
+        The double-checked ``_init_lock`` ensures concurrent first-use
+        callers load the model exactly once.
+        """
         if self._loaded:
             return
-        await asyncio.to_thread(self._do_load)
+        async with self._init_lock:
+            if self._loaded:
+                return
+            await asyncio.to_thread(self._do_load)
 
     def _do_load(self) -> None:
         if self._loaded:
@@ -117,10 +128,8 @@ class EmbeddingService(ABC):
         end_time: float | None = None,
     ) -> SpeakerEmbedding:
         """Extract embedding from numpy audio samples."""
-        if not self._loaded:
-            raise EmbeddingExtractionError(
-                "EmbeddingService not initialised -- call initialize() first"
-            )
+        # Lazy load on first use instead of eager boot init.
+        await self.initialize()
 
         if end_time is None:
             end_time = len(samples) / sample_rate
@@ -161,10 +170,8 @@ class EmbeddingService(ABC):
         segment_times: list[tuple[float, float]],
     ) -> list[SpeakerEmbedding | None]:
         """Extract embeddings for multiple segments in a single thread dispatch."""
-        if not self._loaded:
-            raise EmbeddingExtractionError(
-                "EmbeddingService not initialised -- call initialize() first"
-            )
+        # Lazy load on first use instead of eager boot init.
+        await self.initialize()
 
         raw = await asyncio.to_thread(self._extract_batch_sync, segment_samples, sample_rate)
 

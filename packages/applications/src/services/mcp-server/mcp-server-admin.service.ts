@@ -11,11 +11,11 @@ import { McpServerDtoMapper } from './mcp-server.dto.mapper';
 import { CreateMcpServerRequest, McpServerListResponse, McpServerResponse, UpdateMcpServerRequest } from './dto';
 
 /**
- * TASK-516 — MCP external-tools registry admin service.
+ * MCP external-tools registry admin service.
  *
  * Registry rows are SYSTEM-owned initially (the shared platform registry).
  * Reads (list/get) are available to tenant admins over the SYSTEM-shared read
- * model (backs the TASK-512 console "Tools & MCP" screen); a cross-tenant read
+ * model (backs the console "Tools & MCP" screen); a cross-tenant read
  * simply misses → 404. WRITES are GLOBAL-ADMIN-ONLY — a tenant-admin write gets
  * a `ForbiddenException` (403), the guardrail.* privilege-boundary precedent
  * (deliberately NOT the 404-over-403 tenancy posture: it is a privilege rule on

@@ -3,12 +3,11 @@
 import sys
 import threading
 import warnings
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
 
-from stt_v2.core.exceptions import EmbeddingExtractionError
 from stt_v2.diarization.dto import (
     DiarizationResult,
     DiarizedSegment,
@@ -125,10 +124,16 @@ class TestEmbeddingService:
         assert embedding.segment_start == 0.0
         assert embedding.segment_end == pytest.approx(1.0, rel=0.01)
 
-    async def test_extract_not_loaded_raises(self):
+    async def test_extract_lazily_initializes_on_first_use(self, mocker):
+        """Extraction lazily loads the model on first use instead of
+        raising when not yet initialized."""
         service = PyannoteEmbeddingService()
-        with pytest.raises(Exception, match="not initialised"):
-            await service.extract_from_samples(np.zeros(16000, dtype=np.float32))
+        init_spy = mocker.patch.object(service, "initialize", new_callable=AsyncMock)
+        mocker.patch.object(service, "_extract_sync", return_value=[0.0] * 8)
+
+        await service.extract_from_samples(np.zeros(16000, dtype=np.float32))
+
+        init_spy.assert_awaited_once()
 
     async def test_extract_from_segments_skips_short(self):
         """Segments shorter than 1 second should be skipped."""
@@ -232,11 +237,16 @@ class TestEmbeddingServiceBatch:
         assert results[1].segment_start == 1.0
         assert results[1].segment_end == 2.5
 
-    async def test_extract_batch_not_loaded_raises(self):
-        """Batch extraction on uninitialized service should raise."""
+    async def test_extract_batch_lazily_initializes_on_first_use(self, mocker):
+        """Batch extraction lazily loads the model on first use
+        instead of raising when not yet initialized."""
         svc = PyannoteEmbeddingService()
-        with pytest.raises(EmbeddingExtractionError, match="not initialised"):
-            await svc.extract_batch([np.zeros(16000, dtype=np.float32)], 16000, [(0.0, 1.0)])
+        init_spy = mocker.patch.object(svc, "initialize", new_callable=AsyncMock)
+        mocker.patch.object(svc, "_extract_batch_sync", return_value=[[0.0] * 8])
+
+        await svc.extract_batch([np.zeros(16000, dtype=np.float32)], 16000, [(0.0, 1.0)])
+
+        init_spy.assert_awaited_once()
 
     async def test_extract_batch_partial_failure_returns_none(self):
         """If inference fails for one segment, that entry should be None."""

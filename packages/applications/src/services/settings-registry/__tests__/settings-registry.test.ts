@@ -104,9 +104,19 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
     expect(ks.maxScope).toBe('system');
   });
 
-  // TASK-506 — task-model default descriptors (models.<taskKey>).
-  it('registers the three AI task-model defaults as db-config strings, maxScope tenant', () => {
-    for (const key of ['models.guardrail.validate', 'models.nlp.ner', 'models.nlp.classification']) {
+  // TASK-506 / task-model default descriptors (models.<taskKey>).
+  it('registers the AI task-model defaults as db-config strings, maxScope tenant', () => {
+    for (const key of [
+      'models.guardrail.validate',
+      'models.guardrail.safety',
+      'models.guardrail.groundedness',
+      'models.nlp.ner',
+      'models.nlp.classification',
+      'models.nlp.diagnosis',
+      'models.smr.live',
+      'models.smr.finalize',
+      'models.harness.judge',
+    ]) {
       expect(HOPE_SETTINGS_REGISTRY.getOrThrow(key)).toMatchObject({
         tier: 'db-config',
         dataType: 'string',
@@ -116,15 +126,25 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
     }
   });
 
-  it('guards the guardrail default behind the global-admin resource; nlp defaults are tenant-editable via AiTaskDefault', () => {
-    const guardrail = HOPE_SETTINGS_REGISTRY.getOrThrow('models.guardrail.validate');
-    expect(guardrail.editableBy).toBe('all');
-    expect(guardrail.globalOnly).toBe(true);
-
-    for (const key of ['models.nlp.ner', 'models.nlp.classification']) {
+  it('flags guardrail.*/smr.*/nlp.*/harness.* task-model defaults as global-admin-only (editableBy all, globalOnly)', () => {
+    // every seeded task-model default is now platform-owned:
+    // guardrail (owner directive), smr, nlp (revoked tenant
+    // writes), and harness.judge. All resolve to the global-admin
+    // resource and carry globalOnly.
+    for (const key of [
+      'models.guardrail.validate',
+      'models.guardrail.safety',
+      'models.guardrail.groundedness',
+      'models.nlp.ner',
+      'models.nlp.classification',
+      'models.nlp.diagnosis',
+      'models.smr.live',
+      'models.smr.finalize',
+      'models.harness.judge',
+    ]) {
       const d = HOPE_SETTINGS_REGISTRY.getOrThrow(key);
-      expect(d.editableBy).toBe('AiTaskDefault');
-      expect(d.globalOnly).not.toBe(true);
+      expect(d.editableBy, key).toBe('all');
+      expect(d.globalOnly, key).toBe(true);
     }
   });
 

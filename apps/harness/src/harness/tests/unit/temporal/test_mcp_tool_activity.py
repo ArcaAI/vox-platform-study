@@ -1,4 +1,4 @@
-"""TASK-516 — ``call_mcp_tool`` activity SECURITY tests (hermetic; no SDK, no network).
+"""``call_mcp_tool`` activity SECURITY tests (hermetic; no SDK, no network).
 
 The five security invariants, each fail-closed / degrade-safe:
 
