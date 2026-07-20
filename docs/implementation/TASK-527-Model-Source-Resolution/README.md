@@ -1,6 +1,6 @@
 # TASK-527 — Model Source & Path Resolution (HF / local / S3)
 
-- **Status**: Pending
+- **Status**: Review
 - **Type**: feature
 - **Program**: Phase 2 of the [2026-07-20 agentic platform program plan](../SOTA-Track/2026-07-20-agentic-platform-program-plan.md) (§3 **AD-3** frozen design, §4 Phase 2, §8 **OD-4**) · findings basis: [2026-07-20 review](../SOTA-Track/2026-07-20-agentic-platform-review-findings.md) §3-E5 (transformer row), §4.B **D-12**, §7 **GAP-C3**
 - **Suggested number**: TASK-527 per the program plan's TASK-523…534 allocation (highest committed number was TASK-522 when the plan was authored) — confirm at open time per the CLAUDE.md ticket workflow.
@@ -273,11 +273,161 @@ S3 double = a **stubbed client object injected at the lazy-import seam** — mat
 
 ## 9. Implementation Summary
 
-_Pending_
+**Status: all six stages implemented, each independently green. Strict RED-first TDD throughout — every RED run below was actually executed and observed before implementation.**
+
+### 9.1 Stage 1 — enum + migration (lane A)
+
+| File | Change |
+|---|---|
+| `packages/database/src/prisma/db_main/enums.prisma` | `AiModelSource` gains `S3` |
+| `packages/database/src/prisma/db_main/migrations/20260720120000_task_527_ai_model_source_s3/migration.sql` | NEW — `ALTER TYPE "core"."AiModelSource" ADD VALUE IF NOT EXISTS 'S3';` |
+| `apps/stt-v2/src/stt_v2/core/database/models.py` | pg-enum mirror gains `"S3"` |
+| `apps/stt-v2/src/stt_v2/pipeline/dto.py` | StrEnum gains `S3 = "S3"` |
+| `apps/stt-v2/tests/unit/test_db_enum_mirrors.py` | NEW `PRISMA_AI_MODEL_SOURCE` + mirror/superset assertions (the §5.1 gap) |
+| `apps/stt-v2/tests/unit/test_pipeline_dto_updates.py` | `TestAiModelSource` gains `test_s3_enum_value_exists` |
+
+**RED observed** (before the mirror/enum edits):
+
+```
+FAILED tests/unit/test_db_enum_mirrors.py::test_ai_model_source_mirror_matches_prisma
+  AssertionError: assert {'GITHUB','HUGGINGFACE','LOCAL','MLFLOW'} == {...,'S3'}
+  Extra items in the right set: 'S3'
+FAILED tests/unit/test_db_enum_mirrors.py::test_ai_model_source_strenum_superset
+FAILED tests/unit/test_pipeline_dto_updates.py::TestAiModelSource::test_s3_enum_value_exists
+  AssertionError: assert False +  where False = hasattr(AiModelSource, 'S3')
+3 failed, 5 passed, 55 deselected in 0.32s
+```
+
+GREEN: `8 passed, 55 deselected in 0.45s`.
+
+**DECISION ROW — migration hand-authored (deviation from §4.1's `pnpm db:migrate:create`).** The documented command was attempted and refused, exactly as repo memory predicted:
+
+```
+$ pnpm db:migrate:create
+[*] Changed the `clients` table … [+] Added unique index on columns (client_id)
+We need to reset the following schemas: "core, public" at "localhost:5432"
+You may use prisma migrate reset to drop the development database. All data will be lost.
+Exit status 130
+```
+
+The dev DB is `db push`-managed and behind migration history, so `migrate diff` produced a full-reset plan. **No reset was run and no migration folder was created by the tool.** The single-statement migration was hand-authored instead, matching the hand-authored convention of every recent migration (round-number timestamps). `ADD VALUE IF NOT EXISTS` makes it idempotent against DBs patched by hand ahead of history.
+
+**psql apply record (§5.4 evidence):**
+
+| DB | Result |
+|---|---|
+| dev — `postgres://postgres@localhost:5432/hope` | ✅ APPLIED. `ALTER TYPE` → verify: `HUGGINGFACE,GITHUB,MLFLOW,LOCAL,S3` |
+| test — `postgresql://test@localhost:5433/hope_test` | ⚠️ NOT APPLIED — server not running (`Connection refused`, test infra down this session). Harmless: the test stack is `db push`-managed and throwaway, so `pnpm docker:test:up` + `pnpm test:db:reset` creates the type with `S3` already present. Re-run the same `ALTER TYPE … IF NOT EXISTS` against a long-lived test DB. |
+
+Gates: `pnpm db:generate` clean · `@arcaai/database` build + **819 tests passed** · `@arcaai/domains` build + **1368 passed / 2 skipped / 9 todo**. No generated-trio drift (an enum value flows through the client only).
+
+### 9.2 Stage 2 — schema comments + Swagger grammar (lanes A + B touchpoint)
+
+`stt.prisma` documents the full scheme grammar on `source`/`sourceUri`, the precedence contract on `localPath` ("operator/admin override — HIGHEST precedence; set-but-missing falls through with a warning"), the checksum semantics, and the manual-bookkeeping note on `downloadStatus`. The three `stt/model/dto/*` files carry the same grammar in `@ApiProperty` descriptions so `admin/ai-models` Swagger tells admins exactly what to enter.
+
+**DEFECT FOUND AND CLOSED (beyond §4.2, required for this ticket's own DoD).** `UpdateModelRequest` had **no `localPath` or `checksum` field**. With the global pipe's `forbidNonWhitelisted`, an admin PATCH carrying `localPath` was **rejected with 400** — so the D-12 acceptance criterion ("editing `AiModel.localPath` changes what loads") was *unreachable through the admin API*. Per the §2.5 Completion & Cleanup Doctrine (partial implementations are finished end-to-end) both fields were added to the update DTO and the service's change-apply block, with an empty string clearing the override.
+
+**RED observed:**
+
+```
+FAILED aiModel.service.test.ts > update() carries localPath + checksum onto the entity and response (D-12)
+  expected null to be '/opt/hope/models/minicheck'
+FAILED aiModel.service.test.ts > update() allows clearing localPath back to empty (D-12)
+  TypeError: Cannot set property localPath of #<Object> which has only a getter
+2 failed | 6514 passed
+```
+
+The second failure exposed a *fidelity gap in the test double*: the real `AiModelEntity` exposes `localPath`/`checksum` setters routed through `setProperty` (`AiModelEntity.ts:218,242`), but `createBehavioralModelEntity` modelled them read-only. Setters were added to the double to match the real entity.
+
+GREEN: `@arcaai/applications` build + **6516 passed / 4 skipped**.
+
+### 9.3 Stage 3 — stt-v2 resolver (lane D)
+
+`apps/stt-v2/src/stt_v2/models/source_resolver.py` (NEW) is the **canonical** implementation of the §3.1 contract: `local_path` → `hf:`/bare-id → `file://` → `s3://` → `ModelSourceError`. Single-flight `asyncio.Lock` per URI, temp-dir + atomic `os.replace`, SHA256 verify on download AND first use of a warm cache entry (`.verified` marker), all blocking I/O under `asyncio.to_thread`, lazy `minio` import behind `_make_s3_client`, structlog `stt_v2.model_source.*` events.
+
+`ModelSourceError` on unknown schemes names OD-4 explicitly. `allow_network=False` blocks HF hub pulls while permitting `s3://`/`file://`/`localPath`.
+
+**RED observed:** `ModuleNotFoundError: No module named 'stt_v2.models.source_resolver'` (collection error, 0 tests run). **GREEN: 16 passed** — the full §5.2 quartet plus single-flight, checksum-match, missing-`file://`, bare-HF-id, allow_network, empty-URI and missing-credentials cases.
+
+Loaders wired: `whisper_cpp_loader` and `parakeet_cpp_loader` use the full resolver (they need a real directory; whisper-cpp keeps its `.gguf` selection tail, now `_select_gguf_file`, and its stale module docstring was rewritten). `faster_whisper`, `huggingface`, `nemo` and `onnx` use a new `resolve_weights_or_hf_id` passthrough.
+
+**DECISION ROW — `resolve_weights_or_hf_id` passthrough (refinement of §4.3).** §4.3 said "replace per-loader branches with the resolver". Done literally, that would force `snapshot_download` for loaders whose runtime does its own hub fetch (`WhisperModel`, `from_pretrained`, NeMo `from_pretrained`) — **changing the fetch mechanism for every existing HuggingFace row**, and in ONNX's case discarding `_download_onnx_model`'s `allow_patterns` selective fetch that "can save tens of GB of bandwidth". So the resolver materialises only what the runtime cannot fetch itself (`localPath`, `file://`, `s3://`) and passes a bare hub id through. Today's HF behaviour is preserved byte-for-byte; the new schemes work everywhere.
+
+New settings: `model_s3_endpoint/_access_key/_secret_key/_secure`. **DECISION ROW:** stt-v2's `Settings` carries no `env_prefix` (its env vars are bare uppercase field names), so the documented `STT_V2_MODEL_S3_*` names are wired via explicit `validation_alias`. Un-prefixed names would collide — all services share one env file.
+
+Gates: `py:stt-v2:lint` **All checks passed** · `py:stt-v2:typecheck` **no issues in 123 source files** · tests **2629 passed / 35 skipped / 3 xfailed, 1 failed**.
+
+⚠️ **The 1 failure is NOT this ticket's** — `test_health_endpoints_comprehensive.py::test_health_returns_200_with_complete_schema`, failing on an extra `effective_config` key in the `/health` payload. That key comes from TASK-525's concurrent edit to `apps/stt-v2/.../health/api/routes.py` (a sibling-owned file). Verified against a clean tree: passes at HEAD, fails with the combined working tree. **Left for TASK-525 to update its own schema test** — not touched here.
+
+### 9.4 Stage 4 — guardrail adoption (lane E)
+
+`AiModelRead` gains `localPath`/`checksum`/`source`/`sourceRevision`; `_load_from_db` selects and returns them; `GuardrailTenantConfig` carries them; a `slug::<slug>` pseudo-task-key lane (`_load_model_by_slug` + `resolve_model_source_by_slug`) serves consumers with no `AiTaskDefault` row. `core/model_source.py` (NEW) mirrors the canonical resolver.
+
+**RED observed:** 4 failed (`test_load_from_db_returns_local_path_and_checksum`, `test_absent_local_path_stays_none`, `test_db_row_edit_picked_up_within_ttl`, `test_resolve_model_source_by_slug_serves_non_task_key_lookups`), then 6 more for the groundedness lane (`ImportError: cannot import name 'resolve_groundedness_model_path'`). GREEN in both cases.
+
+`resolve_groundedness_model_path` + the scorer-cache factory close D-12 for the clinical gate: registry `localPath` → resolvable `file://`/`s3://` → env. `GUARDRAIL_V2_GROUNDEDNESS_MODEL_PATH` demoted to a documented bootstrap fallback. **Every** failure mode degrades to the env path, so weight resolution can never cost a scorer that would otherwise have loaded.
+
+**DECISION ROW (§4.4, default adopted — flagged for owner):** the clinical groundedness gate **keeps HF hub pulls BLOCKED** (`allow_network=False`). `s3://`, `file://` and `localPath` are permitted; an `hf:`-only row degrades to env/`unverified` rather than auto-downloading. `test_hub_pull_blocked_for_clinical_gate` locks this.
+
+**Sibling boundary marker inverted.** TASK-525 shipped `test_tenant_config_runtime_profile.py::TestLocalPathStaysOutOfScope::test_no_local_path_field_is_introduced`, asserting `local_path` does **not** exist and citing "explicitly deferred to TASK-527". That condition is now met, so the marker was inverted (not deleted) to `TestLocalPathScope::test_local_path_landed_with_task_527`, asserting the field exists and defaults to `None`. Leaving it would have been a knowingly false red.
+
+`minio>=7.2.20` added to `apps/guardrail/pyproject.toml` + mypy `ignore_missing_imports`. Gates: **163 passed** · lint **All checks passed** · typecheck **no issues in 30 source files**.
+
+### 9.5 Stage 5 — nlp + gateway DTO (lanes E + B touchpoint)
+
+Gateway: `resolveDefaultModelSelection` and `resolveValidatedModelOverride` now return `localPath`; both NER and diagnosis payloads gain `model_path`, **omitted when absent**. NLP: the three request schemas gain `model_path`; `dependencies.py` gains `_model_cache_key`/`_split_cache_key`/`_weights_source` so the cache slot is keyed on the full `(model_name, model_path)` identity — a path flip is a MISS, not a stale hit — and a set-but-missing path falls through to the hub id with a warning. `core/model_source.py` (NEW) mirrors the resolver.
+
+**RED observed (gateway):** `3 failed | 4 passed` — the 3 injection cases failed; notably the 4 *omission* cases passed from the start, which is the point: they are the byte-for-byte regression guard. **RED (nlp):** `6 failed, 1 passed`.
+
+GREEN: ai-inference **62 passed**; `py:nlp:test` **164 passed**; lint **All checks passed**; typecheck **no issues in 44 source files**.
+
+**DECISION ROW — no caller-supplied `modelPath` on the DTO (deviation from §4.5).** §4.5 proposed an optional `modelPath?` on `ExtractEntitiesRequest`, validated to equal the matched row's `localPath`. Implemented instead as **registry-derived only**: the path always comes from the matched `AiModel` row, on both the default and override lanes. A field the caller must set to exactly the value the server already knows adds attack surface (a filesystem path into a clinical service) for zero capability. Documented in place at the DTO. D-12 is fully satisfied — admins change the path by PATCHing the row.
+
+`minio>=7.2.20` added to `apps/nlp/pyproject.toml` + mypy override.
+
+### 9.6 Stage 6 — harness adoption (lane E; activities only)
+
+**TASK-525 re-verified as instructed:** its effective-config client shipped for nlp/smr/stt-v2, but **the `modelWeights` contract does NOT exist**, and harness has **no** effective-config client at all (`grep -rln effective_config apps/harness/src/` → no matches). So §3.2's env-fallback-first path was implemented exactly as specified, and this is recorded as the expected deviation: the control-plane lane is built and tested against a stub, and degrades to `HARNESS_ATOMIC_FACT_MODEL_PATH` whenever the key or client is absent — which is every deployment today. Flipping it later is one key appearing in the response; no code change.
+
+`apps/harness/src/harness/models/source_resolver.py` (NEW) mirrors the resolver over harness's **existing `boto3`** (no new dependency) via a small `_Boto3MinioAdapter` that presents the same client surface, keeping the resolver body identical across all four services. `resolve_atomic_fact_model_path` resolves by SLUG (harness has no task key). Resolution happens **inside the activity** — `workflows.py` is untouched, so replay compatibility is unaffected; `minicheck_entailer.py`'s cache is untouched (TASK-529 owns it).
+
+**RED observed:** `ModuleNotFoundError: No module named 'harness.models'`. GREEN: 8 passed.
+
+One existing test broke and was fixed **without editing the test**: `test_enabled_adds_deterministic_atomic_fact_signal` patches `_atomic_fact_entailer` with a **one-arg** lambda, so the new two-arg call raised → caught → `DEGRADED`. The call site now uses the incumbent single-arg form unless a path was actually resolved, so the no-registry path is byte-for-byte the pre-527 call.
+
+Gates: `py:harness:test` **886 passed** · lint **All checks passed** · typecheck **no issues in 90 source files**. Hermetic throughout (no Temporal/DB/Redis/network).
+
+### 9.7 Workspace gates
+
+| Gate | Result |
+|---|---|
+| `pnpm db:generate` | ✅ clean |
+| `@arcaai/database` build + test | ✅ 819 passed |
+| `@arcaai/domains` build + test | ✅ 1368 passed / 2 skipped / 9 todo |
+| `@arcaai/applications` build + test | ✅ 6516 passed / 4 skipped |
+| `pnpm build:api` | ✅ 8 tasks successful |
+| `pnpm test:unit` | ✅ **16666 passed / 4 skipped / 9 todo (947 files)** |
+| `pnpm lint` | ✅ 29 tasks successful, **0 errors**; my files produce zero warnings (prettier-formatted) |
+| root `uv lock` | ✅ minimal 4-line diff — `minio` for guardrail + nlp only |
+| `py:stt-v2` test/lint/typecheck | ✅ / ✅ / ✅ (1 pre-existing sibling failure, §9.3) |
+| `py:guardrail` test/lint/typecheck | ✅ 163 / ✅ / ✅ |
+| `py:nlp` test/lint/typecheck | ✅ 164 / ✅ / ✅ |
+| `py:harness` test/lint/typecheck | ✅ 886 / ✅ / ✅ |
+
+`.env.example` gained a TASK-527 block (appended only — never rewritten, a sibling appends concurrently). **`turbo.json` needs no change**: the §4.7 check was performed and no TS task reads any of the new vars (all are Python-side).
+
+### 9.8 Open / not done
+
+- **Test DB `ALTER TYPE` not applied** — server down this session (§9.1). Re-run when the test stack is up, or let `db push` recreate it.
+- **stt-v2 integration-lane MinIO test not authored** (§5.2 mentions one against the real test MinIO on :9002). The test infra was down, so an unrunnable test would have been unverifiable — deliberately not written blind. The hermetic stub-seam suite covers the logic.
+- **E2E specs under `apps/api/tests/e2e/` not authored** (§5.4 marks them "executed in TASK-534"); they were not written this pass.
+- **`modelWeights` contract** remains TASK-525's to deliver (§9.6).
+- **The `/health` schema test** is TASK-525's to update (§9.3).
 
 ## 10. Change History
 
 | Date | Change |
 |---|---|
 | 2026-07-20 | Ticket README authored (execution-ready): code-verified current state (enum + per-service resolution + S3-client inventory), AD-3 resolver contract with per-service transport analysis (guardrail = extend SQL read; harness = TASK-525 effective-config; nlp = gateway injection), 6-stage plan with exclusive ownership manifest, RED-first TDD plan, OD-4 recorded (`s3://` only). |
+| 2026-07-20 | **All six stages implemented (status → Review).** RED-first TDD with real failing runs captured per stage (§9). Stage 1 enum + hand-authored migration (`db:migrate:create` refused — dev DB drift; psql apply recorded, test DB down). Stage 2 documented the grammar AND closed a blocking defect: `localPath`/`checksum` were unwritable through `UpdateModelRequest`, so `forbidNonWhitelisted` rejected the very PATCH D-12 requires. Stage 3 canonical resolver + 6 loaders (passthrough refinement preserves HF fetch + ONNX selective download). Stage 4 guardrail DB read + clinical-gate DB-first path, hub pulls still blocked. Stage 5 gateway `model_path` (registry-derived only — DTO field deliberately not added) + NLP cache re-keyed on full weight identity. Stage 6 harness env-fallback-first (TASK-525's `modelWeights` verified absent), resolved inside the activity, `workflows.py` untouched. Gates: 16666 unit tests, 4 Python triples, lint 0 errors, minimal `uv lock` diff. Deviations recorded as decision rows in §9; open items in §9.8. |
 | 2026-07-20 | Program plan §2.5 **Completion & Cleanup Doctrine** adopted as BINDING for this ticket (owner directive): incorrect implementations in the owned surface are removed completely with the fix; partial implementations are finished end-to-end (or explicitly retired); redundant implementations are converged and deleted. Reviewer enforces the §2.5 classification table, plan-conformance (deviations = recorded decision rows), full-closure traceability of the claimed GAP/D/M IDs, and the performance gates. |

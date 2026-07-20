@@ -120,6 +120,26 @@ async def initialize_streaming() -> None:
 
     # 2. Detect hardware and build execution profile
     _execution_profile = detect_execution_profile()
+
+    # TASK-525 — the control plane may cap concurrent streams above what the
+    # hardware auto-detect chose. Resolved AFTER detection so an unserved value
+    # (or an unreachable gateway) leaves the auto-detected profile untouched;
+    # `settings.streaming_max_concurrent` keeps its 0 = auto-detect meaning.
+    import dataclasses
+
+    from stt_v2.core.runtime_limits import resolve_streaming_max_concurrent
+
+    served_max_concurrent = await resolve_streaming_max_concurrent(0)
+    if served_max_concurrent > 0 and served_max_concurrent != _execution_profile.max_concurrent_streams:
+        logger.info(
+            "Execution profile max_concurrent_streams overridden by control plane",
+            detected=_execution_profile.max_concurrent_streams,
+            effective=served_max_concurrent,
+        )
+        _execution_profile = dataclasses.replace(
+            _execution_profile, max_concurrent_streams=served_max_concurrent
+        )
+
     logger.info(
         "Execution profile detected",
         platform=getattr(_execution_profile.platform, "value", _execution_profile.platform),

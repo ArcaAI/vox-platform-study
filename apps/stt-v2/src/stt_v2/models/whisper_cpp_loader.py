@@ -11,8 +11,10 @@ following the same lazy-import-with-install-hint pattern as
 
 ``pywhispercpp.model.Model`` only auto-downloads its own catalog of official
 ggml model names — a custom GGUF repo (e.g. ``oxide-lab/whisper-large-v3-turbo-GGUF``)
-must be fetched via ``huggingface_hub`` first and the resulting local ``.gguf``
-file path handed to ``Model(model=<path>)``.
+must be materialised locally first and the resulting ``.gguf`` file path handed
+to ``Model(model=<path>)``. TASK-527 moved that fetch into the shared
+``source_resolver`` (``local_path`` override, then ``hf:`` / ``file://`` /
+``s3://`` dispatch); this module keeps only the ``.gguf`` selection tail.
 """
 
 from __future__ import annotations
@@ -23,10 +25,11 @@ import logging
 import os
 from datetime import UTC, datetime
 
-from ..core.config.settings import Settings, get_settings
+from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError
 from ..pipeline.dto import AiModelConfig, AiModelFormat
 from .base_loader import BaseModelLoader, LoadedModel
+from .source_resolver import ModelSourceError, resolve_for_model_config
 
 logger = logging.getLogger(__name__)
 
@@ -51,10 +54,20 @@ class WhisperCppLoader(BaseModelLoader):
 
         settings = get_settings()
 
-        gguf_path = model_config.local_path
-        if not gguf_path or not os.path.exists(gguf_path):
+        # TASK-527 — the one resolver contract supplies the weights directory
+        # (local_path override -> hf: / file:// / s3://); the `.gguf` selection
+        # tail below is whisper.cpp-specific and stays here.
+        try:
+            resolved = str(await resolve_for_model_config(model_config, settings))
+        except ModelSourceError as exc:
+            raise ModelLoadError(
+                f"Failed to resolve whisper.cpp weights for '{model_config.slug}': {exc}"
+            ) from exc
+
+        gguf_path = resolved
+        if os.path.isdir(resolved):
             gguf_path = await asyncio.to_thread(
-                self._fetch_gguf_file, model_config, settings
+                self._select_gguf_file, resolved, model_config
             )
 
         use_gpu = (model_config.device or "auto") != "cpu"
@@ -91,31 +104,18 @@ class WhisperCppLoader(BaseModelLoader):
         )
 
     @staticmethod
-    def _fetch_gguf_file(model_config: AiModelConfig, settings: Settings) -> str:
-        """Download the HF repo and return the path to its ``.gguf`` file.
+    def _select_gguf_file(repo_dir: str, model_config: AiModelConfig) -> str:
+        """Pick the ``.gguf`` file inside an already-resolved weights directory.
 
         Prefers a filename containing the configured quantization (e.g.
-        ``q8_0``) when the repo ships more than one quantized variant.
+        ``q8_0``) when the directory ships more than one quantized variant.
+        Fetching is TASK-527's resolver's job; this is only the selection tail.
         """
-        try:
-            from huggingface_hub import snapshot_download
-
-            repo_dir = snapshot_download(
-                repo_id=model_config.source_uri,
-                revision=model_config.source_revision or "main",
-                cache_dir=settings.huggingface_cache_dir,
-                token=settings.huggingface_token,
-            )
-        except Exception as exc:
-            raise ModelLoadError(
-                f"Failed to fetch whisper.cpp weights '{model_config.source_uri}': {exc}"
-            ) from exc
-
         candidates = sorted(glob.glob(os.path.join(repo_dir, "**", "*.gguf"), recursive=True))
         if not candidates:
             raise ModelLoadError(
-                f"No .gguf file found in downloaded repo '{model_config.source_uri}' "
-                f"(dir={repo_dir})"
+                f"No .gguf file found for whisper.cpp model '{model_config.slug}' "
+                f"(source_uri={model_config.source_uri!r}, dir={repo_dir})"
             )
 
         quant = (model_config.compute_type or "").lower()

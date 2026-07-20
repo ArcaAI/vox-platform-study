@@ -17,6 +17,7 @@ from ...core.exceptions import (
     NotFoundError,
     TranscriptionError,
 )
+from ...core.job_concurrency import get_job_gate, refresh_job_concurrency_limit
 from ...core.messaging.pubsub import TranscriptionEventPublisher
 from ...pipeline.config_reader import get_pipeline_reader
 from ...storage.blob_service import get_blob_service
@@ -78,22 +79,29 @@ def transcribe_file(
             when absent, the global MinIO client and ``audio_bucket_name`` are
             used (unchanged behaviour).
     """
-    # Run async code in event loop
-    asyncio.run(
-        _transcribe_file_async(
-            job_id=job_id,
-            tenant_id=tenant_id,
-            pipeline_id=pipeline_id,
-            audio_uri=audio_uri,
-            consultation_id=consultation_id,
-            media_id=media_id,
-            language=language,
-            code_switching=code_switching,
-            audio_bucket_name=audio_bucket_name,
-            user_id=user_id,
-            storage=storage,
+    # TASK-525 DR-7 — bound concurrent batch jobs HERE, inside the actor, so the
+    # ceiling holds under any launch mode. The dramatiq CLI (the shipped
+    # Dockerfile CMD) imports this module rather than running `worker.py:main()`,
+    # so a Worker(worker_threads=...) value set there would never apply. The
+    # gate's `--threads` outer bound still caps how many jobs a process attempts;
+    # this is the operator-adjustable inner bound. See core/job_concurrency.py.
+    with get_job_gate():
+        # Run async code in event loop
+        asyncio.run(
+            _transcribe_file_async(
+                job_id=job_id,
+                tenant_id=tenant_id,
+                pipeline_id=pipeline_id,
+                audio_uri=audio_uri,
+                consultation_id=consultation_id,
+                media_id=media_id,
+                language=language,
+                code_switching=code_switching,
+                audio_bucket_name=audio_bucket_name,
+                user_id=user_id,
+                storage=storage,
+            )
         )
-    )
 
 
 async def _transcribe_file_async(
@@ -115,6 +123,11 @@ async def _transcribe_file_async(
     publishes real-time events to Redis Pub/Sub so the NestJS API
     Gateway can relay them to clients via SSE.
     """
+    # TASK-525 DR-7 — track the control-plane job ceiling. This job already holds
+    # its slot, so a resize applies to SUBSEQUENT admissions: the bound converges
+    # monotonically instead of disturbing work in flight. Never raises.
+    await refresh_job_concurrency_limit()
+
     _settings = get_settings()
     api_client = get_api_client()
     blob_service = get_blob_service()

@@ -284,6 +284,7 @@ enum AiModelSource {
   GITHUB // GitHub releases/raw files
   MLFLOW // Self-hosted MLFlow registry
   LOCAL // Local filesystem
+  S3 // S3/MinIO-compatible object storage (s3://bucket/prefix; OD-4: s3:// only this program)
 
   @@schema("core")
 }

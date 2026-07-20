@@ -9,6 +9,7 @@ from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError
 from ..pipeline.dto import AiModelConfig, AiModelFormat, ModelTaskType
 from .base_loader import BaseModelLoader, LoadedModel
+from .source_resolver import resolve_weights_or_hf_id
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +43,11 @@ class HuggingFaceLoader(BaseModelLoader):
             device = self._get_device(requested_device)
             torch_dtype = self._get_torch_dtype(model_config.compute_type or "auto")
 
-            # Model source (HuggingFace model ID or local path)
-            model_source = model_config.local_path or model_config.source_uri
+            # TASK-527 — model source via the one resolver contract: local_path
+            # (operator override) first, then file:// / s3:// materialised
+            # locally. A bare HuggingFace id is passed through so transformers'
+            # own `from_pretrained` download path is unchanged.
+            model_source = await resolve_weights_or_hf_id(model_config, settings)
 
             # Set cache directory
             cache_dir = settings.huggingface_cache_dir

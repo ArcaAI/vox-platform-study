@@ -135,9 +135,15 @@ function createBehavioralModelEntity(overrides: {
         set computeType(value: string | null) { _computeType = value; _changes.computeType = value; },
         get downloadStatus() { return _downloadStatus; },
         get localPath() { return _localPath; },
+        // TASK-527 — the real `AiModelEntity` exposes `localPath`/`checksum`
+        // setters routed through `setProperty` (AiModelEntity.ts:218,242); the
+        // double previously modelled them read-only, which understated what the
+        // service can write.
+        set localPath(value: string | null) { _localPath = value; _changes.localPath = value; },
         get downloadedAt() { return _downloadedAt; },
         get fileSizeMb() { return _fileSizeMb; },
         get checksum() { return _checksum; },
+        set checksum(value: string | null) { _checksum = value; _changes.checksum = value; },
         get resourceStatus() { return _resourceStatus; },
         // TASK-302/356 OCC — the `_version` column surfaced as a getter so the
         // service can snapshot it and pass it to `updateWithVersion`.
@@ -461,6 +467,45 @@ describe('AiModelService', () => {
             expect((existingModel as any).architecture).toBe('qwen3.5');
             expect(result.provider).toBe('ollama');
             expect(result.architecture).toBe('qwen3.5');
+        });
+
+        // TASK-527 (D-12) — `localPath` is the operator override with HIGHEST
+        // precedence in every service's `resolve_model_dir`. It was previously
+        // absent from `UpdateModelRequest`, so the global validation pipe
+        // (`forbidNonWhitelisted`) REJECTED any admin PATCH carrying it — the
+        // registry row could never be pointed at a staged weight directory.
+        it('update() carries localPath + checksum onto the entity and response (D-12)', async () => {
+            const existingModel = createBehavioralModelEntity({ id: 'model-1', version: 3 });
+            mockModelRepository.findById.mockResolvedValue(existingModel);
+            mockModelRepository.updateWithVersion.mockImplementation(async (_id: any, entity: any) => entity);
+
+            const result = await service.update('model-1', {
+                localPath: '/opt/hope/models/minicheck',
+                checksum: 'a'.repeat(64),
+                expectedVersion: 3,
+            } as any);
+
+            expect((existingModel as any).localPath).toBe('/opt/hope/models/minicheck');
+            expect((existingModel as any).checksum).toBe('a'.repeat(64));
+            expect(result.localPath).toBe('/opt/hope/models/minicheck');
+            expect(result.checksum).toBe('a'.repeat(64));
+        });
+
+        // Clearing the override must be expressible — an empty string resets the
+        // row to "no operator override" so scheme dispatch resumes.
+        it('update() allows clearing localPath back to empty (D-12)', async () => {
+            const existingModel = createBehavioralModelEntity({ id: 'model-1', version: 3 });
+            (existingModel as any).localPath = '/opt/hope/models/old';
+            mockModelRepository.findById.mockResolvedValue(existingModel);
+            mockModelRepository.updateWithVersion.mockImplementation(async (_id: any, entity: any) => entity);
+
+            const result = await service.update('model-1', {
+                localPath: '',
+                expectedVersion: 3,
+            } as any);
+
+            expect((existingModel as any).localPath).toBe('');
+            expect(result.localPath).toBe('');
         });
     });
 

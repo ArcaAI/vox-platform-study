@@ -14,11 +14,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from pathlib import Path
 
+from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError
 from ..pipeline.dto import AiModelConfig, AiModelFormat
 from .base_loader import BaseModelLoader, LoadedModel
+from .source_resolver import resolve_weights_or_hf_id
 
 logger = logging.getLogger(__name__)
 
@@ -55,9 +56,11 @@ class FasterWhisperLoader(BaseModelLoader):
                 compute_type = self._profile_compute_type()
             compute_type = resolve_ct2_compute_type(compute_type, device)
 
-            model_path = model_config.source_uri
-            if model_config.local_path and Path(model_config.local_path).exists():
-                model_path = model_config.local_path
+            # TASK-527 — one resolver contract: local_path (operator override)
+            # first, then scheme dispatch on source_uri (hf: / file:// / s3://).
+            # faster-whisper also accepts a bare HF id, so a hub source_uri is
+            # handed through unchanged when the resolver reports no local dir.
+            model_path = await resolve_weights_or_hf_id(model_config, get_settings())
 
             logger.info(
                 "Loading faster-whisper model %s (path=%s, device=%s:%d, "

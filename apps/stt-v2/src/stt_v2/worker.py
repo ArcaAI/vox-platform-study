@@ -163,11 +163,19 @@ def main() -> None:
     # Initialize services (database, MinIO, etc.) before starting worker
     asyncio.run(initialize_services())
 
+    # TASK-525 — the worker-thread ceiling, control-plane first with the env
+    # value as fallback. Resolved once at worker start (Dramatiq fixes the thread
+    # pool at construction, so there is no live-resize path here) and never
+    # blocks startup: an unreachable gateway returns the env default.
+    from stt_v2.core.runtime_limits import resolve_worker_concurrency
+
+    worker_threads = asyncio.run(resolve_worker_concurrency(settings.worker_threads))
+
     logger.info(
         "Starting STT V2 Dramatiq workers",
         redis_url=settings.redis_url[:30] + "...",
         queues=["stt_batch", "default"],
-        worker_threads=settings.worker_threads,
+        worker_threads=worker_threads,
     )
 
     # Get the configured broker
@@ -177,7 +185,7 @@ def main() -> None:
     worker = Worker(
         broker=current_broker,
         queues={"stt_batch", "default"},
-        worker_threads=settings.worker_threads,
+        worker_threads=worker_threads,
         worker_timeout=settings.worker_poll_timeout_ms,
     )
 

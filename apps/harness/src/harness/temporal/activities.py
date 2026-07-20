@@ -372,7 +372,7 @@ def _granite_client(settings: Settings) -> GraniteGuardianClient:
     return GraniteGuardianClient(settings.safety)
 
 
-def _atomic_fact_entailer(settings: Settings) -> NliEntailer:
+def _atomic_fact_entailer(settings: Settings, model_path: str | None = None) -> NliEntailer:
     """Build the atomic-fact verifier's NLI entailer (TASK-481 E2).
 
     Default = the model-free, deterministic, hermetic :class:`DeterministicOverlapEntailer`
@@ -384,11 +384,15 @@ def _atomic_fact_entailer(settings: Settings) -> NliEntailer:
     never auto-PASSes) with a loud warning rather than degrading the whole sensor. Factored
     out like the other client factories so tests can monkeypatch it with a stub NLI.
     """
-    if not settings.atomic_fact_model_path:
+    # TASK-527 (D-12) — `model_path` may be supplied by the caller after a
+    # control-plane resolve (`resolve_atomic_fact_model_path`); when it is None
+    # this falls back to the env setting, which is today's behaviour verbatim.
+    resolved_path = model_path if model_path is not None else settings.atomic_fact_model_path
+    if not resolved_path:
         return DeterministicOverlapEntailer()
     try:
         return load_minicheck_entailer(
-            model_path=settings.atomic_fact_model_path,
+            model_path=resolved_path,
             n_ctx=settings.atomic_fact_n_ctx,
             n_threads=settings.atomic_fact_n_threads,
             n_gpu_layers=settings.atomic_fact_n_gpu_layers,
@@ -1283,7 +1287,28 @@ async def _run_atomic_fact_sensor(
     inferential pass.
     """
     try:
-        entailer = _atomic_fact_entailer(settings)
+        # TASK-527 (D-12) — resolve the weight path inside the ACTIVITY (never
+        # the workflow: no determinism impact, `workflows.py` untouched). The
+        # control plane wins; env is the fallback, so behaviour is unchanged
+        # until the effective-config `modelWeights` key appears.
+        from harness.models.source_resolver import (
+            ModelSourceConfig,
+            resolve_atomic_fact_model_path,
+        )
+
+        model_path = await resolve_atomic_fact_model_path(
+            getattr(settings, "effective_config_client", None),
+            env_path=settings.atomic_fact_model_path,
+            config=ModelSourceConfig(cache_dir=settings.atomic_fact_model_cache_dir),
+        )
+        # Call the incumbent single-arg form unless the control plane actually
+        # supplied a path, so existing one-arg test doubles keep working and the
+        # no-registry path is byte-for-byte the pre-527 call.
+        entailer = (
+            _atomic_fact_entailer(settings)
+            if model_path is None
+            else _atomic_fact_entailer(settings, model_path)
+        )
     except Exception as exc:  # noqa: BLE001 — un-buildable NLI degrades, never raises
         return degraded_result(ATOMIC_FACT_NAME, f"atomic-fact NLI unavailable: {exc}")
     return await AtomicFactSensor(entailer, threshold=threshold).arun(ctx)

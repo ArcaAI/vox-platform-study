@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from nlp.core.concurrency import ResizableSemaphore
 from nlp.core.logging import get_logger
-from nlp.dependencies import pinned_medical_suggester
+from nlp.dependencies import get_inference_bound, pinned_medical_suggester
 from nlp.schemas.diagnosis import DiagnosisSuggestionRequest, DiagnosisSuggestionResponse
 from nlp.services.model_cache import ModelUnavailableError
 
@@ -11,7 +12,10 @@ router = APIRouter(prefix="/diagnosis", tags=["NLP REST Diagnosis"])
 
 
 @router.post("/suggestions", response_model=DiagnosisSuggestionResponse)
-async def get_diagnosis_suggestions(request: DiagnosisSuggestionRequest) -> DiagnosisSuggestionResponse:
+async def get_diagnosis_suggestions(
+    request: DiagnosisSuggestionRequest,
+    inference_bound: ResizableSemaphore = Depends(get_inference_bound),
+) -> DiagnosisSuggestionResponse:
     # model_name (gateway-injected AiModel.sourceUri) is required and
     # selects ONLY the suggester's disease-classification model (its internal
     # NER stays the default token classifier). Missing/unloadable → 503.
@@ -19,11 +23,13 @@ async def get_diagnosis_suggestions(request: DiagnosisSuggestionRequest) -> Diag
         raise HTTPException(status_code=503, detail="Medical suggester service not available")
 
     try:
-        async with pinned_medical_suggester(request.model_name) as service:
+        async with pinned_medical_suggester(request.model_name, request.model_path) as service:
             if not service.is_initialized:
                 raise HTTPException(status_code=503, detail="Medical suggester service not available")
 
-            response = await service.suggest(request)
+            # TASK-525 (GAP-L4) — bound concurrent inference.
+            async with inference_bound:
+                response = await service.suggest(request)
             logger.info(f"Diagnosis suggestions: {response}")
             return response
     except ModelUnavailableError as e:

@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Inject, Injectable, Optional } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { ArgumentInvalidException, OptimisticConcurrencyException } from '@arcaai/exceptions';
@@ -15,8 +15,13 @@ import { BaseService } from '../../common';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets/SecretsService';
-import { encryptSecretField } from '../baseServices/_meta/secrets/secret-field.util';
-import { IAiProviderConnectionService, ResolvedProviderConnection } from './IAiProviderConnectionService';
+import { decryptSecretField, encryptSecretField } from '../baseServices/_meta/secrets/secret-field.util';
+import {
+  IAiProviderConnectionService,
+  LlmProviderOverrideEntry,
+  LlmProviderOverrides,
+  ResolvedProviderConnection,
+} from './IAiProviderConnectionService';
 import { AiProviderConnectionDtoMapper } from './ai-provider-connection.dto.mapper';
 import { isCloudByoProvider } from './constants';
 import { AiProviderConnectionResponse, UpsertAiProviderConnectionRequest } from './dto';
@@ -41,6 +46,8 @@ import { AiProviderConnectionResponse, UpsertAiProviderConnectionRequest } from 
  */
 @Injectable()
 export class AiProviderConnectionService extends BaseService implements IAiProviderConnectionService {
+  private readonly logger = new Logger(AiProviderConnectionService.name);
+
   constructor(
     private readonly connectionRepository: AiProviderConnectionRepository,
     // The UNSCOPED base client backing the cross-tenant lane (mirrors
@@ -157,8 +164,11 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
     const tx = this.crossTenantLane(scopedTenantId);
     const existing = await this.connectionRepository.findByTenantAndProvider(scopedTenantId, provider, tx);
     if (!existing) {
-      // Cross-tenant/unknown rows read as absent — 404 posture at the gateway.
-      throw new ArgumentInvalidException(`No connection row for provider '${provider}'.`);
+      // TASK-526: an absent row is a 404, matching the frozen §3.6 contract and
+      // the `TenantTtsConfigService.removeCredential` precedent. A cross-tenant
+      // row reads as absent through the scope extension, so the same 404 hides
+      // existence — the house posture, not a 400 "bad argument".
+      throw new NotFoundException(`No connection row for provider '${provider}'.`);
     }
 
     // `softDelete(id, updatedBy)` takes no tx client — it writes through the
@@ -190,6 +200,52 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
   async findRow(provider: string, tenantId: string): Promise<AiProviderConnectionEntity | null> {
     const tx = this.crossTenantLane(tenantId);
     return this.connectionRepository.findByTenantAndProvider(tenantId, provider, tx);
+  }
+
+  /**
+   * TASK-526 — the BYO injection resolver (see the interface for the full
+   * contract). Mirrors `TenantTtsConfigService.resolveProviderOverrides` with
+   * ONE deliberate improvement: the per-credential catch is not silent.
+   */
+  async resolveTenantCloudOverrides(tenantId: string): Promise<LlmProviderOverrides> {
+    // No Transit provider → nothing is decryptable. The WRITE path already
+    // rejects key writes without Vault, so this is a degraded-runtime case,
+    // not a policy decision: resolve to nothing and let SYSTEM/env serve.
+    if (!this.secretsService) return {};
+
+    const tx = this.crossTenantLane(tenantId);
+    const rows = await this.connectionRepository.findByTenantId(tenantId, tx);
+
+    const out: LlmProviderOverrides = {};
+    for (const row of rows) {
+      // A self-host row must never become a credential override even if one
+      // exists — the tenant lane is cloud-only (AD-2), enforced independently
+      // of the write-side guard.
+      if (!isCloudByoProvider(row.provider)) continue;
+      if (!row.enabled || !row.encryptedApiKey) continue;
+
+      try {
+        const apiKey = await decryptSecretField(this.secretsService, row.encryptedApiKey);
+        const entry: LlmProviderOverrideEntry = { api_key: apiKey };
+        if (row.baseUrl) entry.base_url = row.baseUrl;
+        if (row.region) entry.region = row.region;
+        if (row.apiVersion) entry.api_version = row.apiVersion;
+        if (row.deploymentName) entry.deployment_name = row.deploymentName;
+        out[row.provider] = entry;
+      } catch {
+        // FAIL OPEN for this one credential. The log carries the three
+        // identifying facts and NOTHING else — no ciphertext, no plaintext, and
+        // deliberately not the error message either (a Transit error string can
+        // echo the payload it choked on).
+        this.logger.warn({
+          message: 'Tenant provider credential failed to decrypt; skipping (request falls back to platform credentials)',
+          tenantId,
+          provider: row.provider,
+          keyVersion: row.keyVersion ?? null,
+        });
+      }
+    }
+    return out;
   }
 
   // ────────────────────────────── internals ──────────────────────────────

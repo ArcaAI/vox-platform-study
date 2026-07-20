@@ -41,6 +41,10 @@ dependencies = [
     "gliner2-onnx",
     "transformers>=5.0",
     "onnxruntime>=1.18.0",
+    # TASK-527 — MinIO-compatible client for `s3://` model sources. Imported
+    # LAZILY inside `core/model_source.py::_make_s3_client`, so a deployment
+    # that never declares an s3:// source_uri never imports it.
+    "minio>=7.2.20",
 ]
 
 [project.optional-dependencies]
@@ -137,6 +141,7 @@ module = [
     "gliner2_onnx",
     "llama_cpp",
     "llama_cpp.*",
+    "minio",
 ]
 ignore_missing_imports = true
 

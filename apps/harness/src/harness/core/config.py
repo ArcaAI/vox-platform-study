@@ -347,7 +347,14 @@ class Settings(BaseSettings):
     # MiniCheck NLI; unset (default) keeps the hermetic model-free entailer. `model_id`/
     # `model_file` are provenance only. A build/calibration failure falls back to the safe
     # deterministic entailer (see `_atomic_fact_entailer`). CPU-default (Q6 quant).
+    # TASK-527 (D-12) — BOOTSTRAP FALLBACK ONLY. The runtime value comes from the
+    # control plane's effective-config `modelWeights['minicheck-flan-t5-large']`
+    # (harness holds no DB handle per AD-1). This env var applies when that key is
+    # absent — which is every deployment until TASK-525's `modelWeights` follow-up
+    # lands — so pre-527 behaviour is preserved byte-for-byte.
     atomic_fact_model_path: str | None = None
+    # Cache dir for weights materialised from an `s3://` source_uri.
+    atomic_fact_model_cache_dir: str = "/models/harness-cache"
     atomic_fact_model_id: str = "nvhf/MiniCheck-Flan-T5-Large-Q6_K-GGUF"
     atomic_fact_model_file: str = "minicheck-flan-t5-large-q6_k.gguf"
     # 512 matches Flan-T5's training context (`n_ctx_train`); MiniCheck windows long

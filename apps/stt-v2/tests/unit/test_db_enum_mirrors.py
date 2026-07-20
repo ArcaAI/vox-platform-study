@@ -9,6 +9,15 @@ category/task-type mirrors listed members that do not exist in Prisma at all).
 """
 
 from stt_v2.core.database import models
+from stt_v2.pipeline.dto import AiModelSource as AiModelSourceStrEnum
+
+# TASK-527 — Prisma ``AiModelSource`` values (enums.prisma). ``S3`` added by
+# TASK-527 (OD-4: s3:// only this program; azure-blob:// explicitly deferred).
+PRISMA_AI_MODEL_SOURCE = {"HUGGINGFACE", "GITHUB", "MLFLOW", "LOCAL", "S3"}
+
+# The pipeline StrEnum is a deliberate SUPERSET of Prisma: ``KSERVE`` is
+# reserved for MLFlow Serve + KServe inference and has no Prisma counterpart.
+STRENUM_KNOWN_EXTRAS = {"KSERVE"}
 
 PRISMA_AI_MODEL_FORMAT = {
     "SAFETENSOR",
@@ -85,6 +94,16 @@ PRISMA_MODEL_TASK_TYPE = {
     # Unknown
     "UNKNOWN",
 }
+
+
+def test_ai_model_source_mirror_matches_prisma() -> None:
+    assert set(models.AiModelSourceType.enums) == PRISMA_AI_MODEL_SOURCE
+
+
+def test_ai_model_source_strenum_superset() -> None:
+    strenum_values = {member.value for member in AiModelSourceStrEnum}
+    assert PRISMA_AI_MODEL_SOURCE <= strenum_values
+    assert strenum_values - PRISMA_AI_MODEL_SOURCE == STRENUM_KNOWN_EXTRAS
 
 
 def test_ai_model_format_mirror_matches_prisma() -> None:

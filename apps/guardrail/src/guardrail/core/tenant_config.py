@@ -21,6 +21,15 @@ Selection is DB-only (fail-closed at the dependency layer when the
 resolved config is empty). DB load errors are still negatively cached for one
 TTL window so an unreachable DB costs at most one attempt per tenant per TTL;
 the caller must not fall back to env for provider/model selection.
+
+TASK-525 (AD-1): guardrail KEEPS this SQL resolver rather than adopting the HTTP
+effective-config client the other services use. The read is merely EXTENDED with
+``core."AiRuntimeProfile"`` — the provider-level ``temperature`` / ``maxTokens``
+/ ``timeoutS`` tuning, folded into the same cache entry so it costs no extra TTL
+window. Those TUNING fields fail SAFE to env (absent profile ⇒ env engine config,
+byte-identical to pre-TASK-525); the fail-CLOSED posture above still governs
+provider/model SELECTION. ``local_path`` / model sources stay out of scope (D-12
+→ TASK-527).
 """
 
 from __future__ import annotations
@@ -30,7 +39,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import String, select
+from sqlalchemy import Float, Integer, String, select
 from sqlalchemy.dialects.postgresql import ENUM, JSONB
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -61,6 +70,17 @@ SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 KEY_PROVIDER = "provider"
 KEY_MODEL = "model"
 KEY_AZURE_DEPLOYMENT = "azure-deployment"
+# TASK-525 — provider-level runtime-profile tuning, cached alongside the
+# selection keys so a profile read costs no extra round-trip or TTL window.
+KEY_TEMPERATURE = "temperature"
+KEY_MAX_TOKENS = "max-tokens"
+KEY_TIMEOUT_S = "timeout-s"
+# TASK-527 (D-12) — weight-source keys carried alongside the model identity.
+_SLUG_TASK_KEY_PREFIX = "slug::"
+KEY_LOCAL_PATH = "local-path"
+KEY_CHECKSUM = "checksum"
+KEY_SOURCE = "source"
+KEY_SOURCE_REVISION = "source-revision"
 
 # Provider switch value -> Settings sub-config attr. adds the
 # production self-host engines vllm / llama-cpp (OpenAI-compatible wire).
@@ -120,6 +140,34 @@ class AiModelRead(_Base):
     source_uri: Mapped[str | None] = mapped_column("sourceUri", String)
     meta_data: Mapped[dict[str, Any] | None] = mapped_column("_metadata", JSONB)
     resource_status: Mapped[str] = mapped_column("resourceStatus", _ResourceStatusType)
+    # TASK-527 (D-12) — weight-source columns. Without these the registry row's
+    # `localPath` was dead for guardrail: MiniCheck's path came 100 % from env.
+    local_path: Mapped[str | None] = mapped_column("localPath", String)
+    checksum: Mapped[str | None] = mapped_column(String)
+    source: Mapped[str | None] = mapped_column(String)
+    source_revision: Mapped[str | None] = mapped_column("sourceRevision", String)
+
+
+class AiRuntimeProfileRead(_Base):
+    """Read-only mapping of ``core."AiRuntimeProfile"`` (TASK-525).
+
+    Only the provider-level tuning columns guardrail can act on are mapped;
+    ``local_path`` / model-source concerns stay out of scope (D-12 → TASK-527).
+    """
+
+    __tablename__ = "AiRuntimeProfile"
+    __table_args__ = {"schema": "core"}
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column("tenantId", String)
+    provider: Mapped[str] = mapped_column(String)
+    # '' is the provider-default row; a model-specific row does not set
+    # service-level tuning here.
+    model_slug: Mapped[str] = mapped_column("modelSlug", String)
+    temperature: Mapped[float | None] = mapped_column(Float)
+    max_tokens: Mapped[int | None] = mapped_column("maxTokens", Integer)
+    timeout_s: Mapped[int | None] = mapped_column("timeoutS", Integer)
+    resource_status: Mapped[str] = mapped_column("resourceStatus", _ResourceStatusType)
 
 
 @dataclass(frozen=True)
@@ -131,12 +179,46 @@ class GuardrailTenantConfig:
     azure_deployment: str | None = None
     # The tenant the primary lookup targeted (request tenant or default tenant).
     source_tenant_id: str | None = None
+    # TASK-525 — provider-level runtime profile (``core."AiRuntimeProfile"``).
+    # None on every field means "no opinion": the env engine config wins, so an
+    # absent profile row leaves behaviour byte-identical to pre-TASK-525.
+    temperature: float | None = None
+    max_tokens: int | None = None
+    timeout_s: int | None = None
+    # TASK-527 (D-12) — weight source. `local_path` is the operator override
+    # with highest precedence; None on every field means "no DB opinion", so the
+    # caller's env fallback keeps pre-TASK-527 behaviour byte-identical.
+    local_path: str | None = None
+    checksum: str | None = None
+    source: str | None = None
+    source_revision: str | None = None
 
 
 @dataclass
 class _CacheEntry:
     keys: dict[str, str]
     expires_at: float
+
+
+def _as_float(value: str | None) -> float | None:
+    """Parse a cached profile number; unparseable ⇒ None (keep the env value)."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _as_int(value: str | None) -> int | None:
+    """Parse a cached profile integer; non-positive/unparseable ⇒ None."""
+    if value is None:
+        return None
+    try:
+        parsed = int(float(value))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 def _clean(value: str | None) -> str | None:
@@ -208,6 +290,55 @@ class TenantConfigResolver:
             model=_clean(keys.get(KEY_MODEL)),
             azure_deployment=_clean(keys.get(KEY_AZURE_DEPLOYMENT)),
             source_tenant_id=source,
+            temperature=_as_float(keys.get(KEY_TEMPERATURE)),
+            max_tokens=_as_int(keys.get(KEY_MAX_TOKENS)),
+            timeout_s=_as_int(keys.get(KEY_TIMEOUT_S)),
+            local_path=_clean(keys.get(KEY_LOCAL_PATH)),
+            checksum=_clean(keys.get(KEY_CHECKSUM)),
+            source=_clean(keys.get(KEY_SOURCE)),
+            source_revision=_clean(keys.get(KEY_SOURCE_REVISION)),
+        )
+
+    async def resolve_model_source(
+        self, tenant_id: str | None, task_key: str
+    ) -> Any | None:
+        """TASK-527 — the weight identity behind a task key (`None` if unselected)."""
+        from .model_source import ModelWeightIdentity
+
+        cfg = await self.resolve(tenant_id, task_key)
+        if not cfg.model and not cfg.local_path:
+            return None
+
+        return ModelWeightIdentity(
+            slug=task_key,
+            source_uri=cfg.model or "",
+            source=cfg.source,
+            source_revision=cfg.source_revision,
+            local_path=cfg.local_path,
+            checksum=cfg.checksum,
+        )
+
+    async def resolve_model_source_by_slug(self, slug: str) -> Any | None:
+        """TASK-527 — weight identity for a model SLUG (no task key required).
+
+        Not every weight consumer has an `AiTaskDefault` key: harness's
+        atomic-fact MiniCheck use, for instance, is keyed only by slug. This
+        reuses the same TTL cache so a by-slug read costs no more than a
+        task-key read.
+        """
+        from .model_source import ModelWeightIdentity
+
+        keys = await self._get_for_tenant(SYSTEM_TENANT_ID, f"slug::{slug}")
+        if not keys:
+            return None
+
+        return ModelWeightIdentity(
+            slug=slug,
+            source_uri=_clean(keys.get(KEY_MODEL)) or "",
+            source=_clean(keys.get(KEY_SOURCE)),
+            source_revision=_clean(keys.get(KEY_SOURCE_REVISION)),
+            local_path=_clean(keys.get(KEY_LOCAL_PATH)),
+            checksum=_clean(keys.get(KEY_CHECKSUM)),
         )
 
     async def resolve_model_id(
@@ -267,6 +398,14 @@ class TenantConfigResolver:
         azure deployment ← ``AiModel._metadata->>'azureDeployment'``.
         """
         model_scope = [SYSTEM_TENANT_ID, tenant_id]
+
+        # TASK-527 — `slug::<slug>` is a by-slug pseudo task key for weight
+        # consumers that have no `AiTaskDefault` row (e.g. harness atomic-fact).
+        if task_key.startswith(_SLUG_TASK_KEY_PREFIX):
+            return await self._load_model_by_slug(
+                task_key[len(_SLUG_TASK_KEY_PREFIX) :], model_scope
+            )
+
         async with self._session_factory() as session:
             result = await session.execute(
                 select(
@@ -275,6 +414,11 @@ class TenantConfigResolver:
                     AiModelRead.provider,
                     AiModelRead.source_uri,
                     AiModelRead.meta_data,
+                    # TASK-527 (D-12) — weight source travels with the identity.
+                    AiModelRead.local_path,
+                    AiModelRead.checksum,
+                    AiModelRead.source,
+                    AiModelRead.source_revision,
                 )
                 .join(AiModelRead, AiModelRead.slug == AiTaskDefaultRead.model_slug)
                 .where(
@@ -301,7 +445,109 @@ class TenantConfigResolver:
         deployment = meta.get("azureDeployment")
         if isinstance(deployment, str) and deployment.strip():
             keys[KEY_AZURE_DEPLOYMENT] = deployment
+
+        # TASK-527 (D-12) — weight-source columns. Absent values are simply not
+        # set, so the caller's env fallback still applies.
+        for key, value in (
+            (KEY_LOCAL_PATH, getattr(row, "local_path", None)),
+            (KEY_CHECKSUM, getattr(row, "checksum", None)),
+            (KEY_SOURCE, getattr(row, "source", None)),
+            (KEY_SOURCE_REVISION, getattr(row, "source_revision", None)),
+        ):
+            if isinstance(value, str) and value.strip():
+                keys[key] = value
+
+        # TASK-525 — fold in the provider-level runtime profile. Failures here are
+        # swallowed: profile tuning is an ENHANCEMENT, and losing it must never
+        # cost us the selection keys we already resolved above.
+        if row.provider:
+            try:
+                keys.update(await self._load_runtime_profile(row.provider))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "guardrail.tenant_config.runtime_profile_error",
+                    provider=row.provider,
+                    error=str(exc),
+                )
         return keys
+
+    async def _load_model_by_slug(
+        self, slug: str, model_scope: list[str]
+    ) -> dict[str, str]:
+        """TASK-527 — read one ENABLED `AiModel` row by slug (no task-key join)."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(
+                    AiModelRead.tenant_id.label("model_tenant_id"),
+                    AiModelRead.provider,
+                    AiModelRead.source_uri,
+                    AiModelRead.local_path,
+                    AiModelRead.checksum,
+                    AiModelRead.source,
+                    AiModelRead.source_revision,
+                ).where(
+                    AiModelRead.slug == slug,
+                    AiModelRead.tenant_id.in_(model_scope),
+                    AiModelRead.resource_status == "ENABLED",
+                )
+            )
+            rows = result.all()
+
+        # Prefer the SYSTEM catalog row over a tenant-owned copy of the slug.
+        row = min(
+            rows,
+            key=lambda r: (0 if r.model_tenant_id == SYSTEM_TENANT_ID else 1),
+            default=None,
+        )
+        if row is None:
+            return {}
+
+        keys: dict[str, str] = {}
+        for key, value in (
+            (KEY_MODEL, row.source_uri),
+            (KEY_PROVIDER, row.provider),
+            (KEY_LOCAL_PATH, row.local_path),
+            (KEY_CHECKSUM, row.checksum),
+            (KEY_SOURCE, row.source),
+            (KEY_SOURCE_REVISION, row.source_revision),
+        ):
+            if isinstance(value, str) and value.strip():
+                keys[key] = value
+        return keys
+
+    async def _load_runtime_profile(self, provider: str) -> dict[str, str]:
+        """Read the SYSTEM provider-DEFAULT profile row for ``provider``.
+
+        Only the ``modelSlug == ''`` row carries provider-level tuning; a
+        model-specific row is per-request territory and is ignored here. An
+        absent row returns ``{}``, leaving every engine value on its env default.
+        """
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(
+                    AiRuntimeProfileRead.temperature,
+                    AiRuntimeProfileRead.max_tokens,
+                    AiRuntimeProfileRead.timeout_s,
+                ).where(
+                    AiRuntimeProfileRead.tenant_id == SYSTEM_TENANT_ID,
+                    AiRuntimeProfileRead.provider == provider,
+                    AiRuntimeProfileRead.model_slug == "",
+                    AiRuntimeProfileRead.resource_status == "ENABLED",
+                )
+            )
+            row = result.first()
+
+        if row is None:
+            return {}
+
+        profile: dict[str, str] = {}
+        if row.temperature is not None:
+            profile[KEY_TEMPERATURE] = str(row.temperature)
+        if row.max_tokens is not None:
+            profile[KEY_MAX_TOKENS] = str(row.max_tokens)
+        if row.timeout_s is not None:
+            profile[KEY_TIMEOUT_S] = str(row.timeout_s)
+        return profile
 
     @staticmethod
     def _row_rank(row: Any, tenant_id: str) -> tuple[int, int]:
@@ -337,20 +583,33 @@ def resolve_guardian_engine(
     if provider == "azure" and tenant_cfg.azure_deployment:
         model = tenant_cfg.azure_deployment
 
-    if not model:
+    # TASK-525 — provider-level runtime-profile tuning. Applied INDEPENDENTLY of
+    # the model override: a profile may tune an engine that still uses its env
+    # model. Every field is optional, so an absent profile changes nothing.
+    update: dict[str, Any] = {}
+    if tenant_cfg.temperature is not None:
+        update["temperature"] = tenant_cfg.temperature
+    if tenant_cfg.max_tokens is not None:
+        update["max_tokens"] = tenant_cfg.max_tokens
+    if tenant_cfg.timeout_s is not None:
+        update["timeout_s"] = tenant_cfg.timeout_s
+
+    if model:
+        update.update(
+            {
+                "guardrail_model": model,
+                "content_safety_model": model,
+                "pii_detection_model": model,
+                "prompt_injection_model": model,
+                "comprehensive_model": model,
+                "guardian_model": model,
+            }
+        )
+
+    if not update:
         return provider, base
 
-    engine = base.model_copy(
-        update={
-            "guardrail_model": model,
-            "content_safety_model": model,
-            "pii_detection_model": model,
-            "prompt_injection_model": model,
-            "comprehensive_model": model,
-            "guardian_model": model,
-        }
-    )
-    return provider, engine
+    return provider, base.model_copy(update=update)
 
 
 def build_guardian_provider(

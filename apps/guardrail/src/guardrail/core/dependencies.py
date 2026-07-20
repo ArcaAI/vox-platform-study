@@ -154,7 +154,41 @@ def get_groundedness_scorer_cache(app_state: Any) -> ModelCache[NliScorer]:
                 load_minicheck_scorer,
             )
 
-            cfg = settings.groundedness.model_copy(update={"model_id": model_id})
+            # TASK-527 (D-12) — the weight path is resolved DB-first (registry
+            # `localPath` / file:// / s3://) with the env path as fallback. The
+            # clinical-gate posture is unchanged: `allow_network=False` inside
+            # the resolver means an hf:-only row never auto-downloads.
+            update: dict[str, Any] = {"model_id": model_id}
+            resolver = getattr(app_state, "tenant_config_resolver", None)
+            if resolver is not None:
+                from guardrail.core.model_source import (
+                    ModelSourceConfig,
+                    resolve_groundedness_model_path,
+                )
+
+                resolved_path = await resolve_groundedness_model_path(
+                    resolver,
+                    env_path=settings.groundedness.model_path,
+                    tenant_id=None,
+                    config=ModelSourceConfig(
+                        cache_dir=settings.groundedness.model_cache_dir,
+                        s3_endpoint=settings.model_s3_endpoint,
+                        s3_access_key=(
+                            settings.model_s3_access_key.get_secret_value()
+                            if settings.model_s3_access_key
+                            else None
+                        ),
+                        s3_secret_key=(
+                            settings.model_s3_secret_key.get_secret_value()
+                            if settings.model_s3_secret_key
+                            else None
+                        ),
+                        s3_secure=settings.model_s3_secure,
+                    ),
+                )
+                update["model_path"] = resolved_path
+
+            cfg = settings.groundedness.model_copy(update=update)
             # Loading a GGUF under llama.cpp is blocking — offload it.
             return await asyncio.to_thread(load_minicheck_scorer, cfg)
 

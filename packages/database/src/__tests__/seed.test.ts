@@ -1361,20 +1361,18 @@ describe('STT Seed Data', () => {
         });
 
         describe('Setting Categories', () => {
-            it('should include model cache settings', () => {
-                const cacheSettings = DEFAULT_STT_SETTINGS.filter((s) => s.name === 'model_cache');
-                expect(cacheSettings.length).toBeGreaterThanOrEqual(3);
-                const keys = cacheSettings.map((s) => s.key);
-                expect(keys).toContain('max_models');
-                expect(keys).toContain('ttl_seconds');
-                expect(keys).toContain('max_memory_mb');
+            // TASK-525 — the `model_cache` and `workers` GlobalSetting rows were
+            // removed: they had no reader (stt-v2's `GlobalSettingRead` mapping,
+            // deleted as D-11) and are superseded by the registered settings keys
+            // `stt.modelCache.*` / `stt.workers.concurrency`, served over the
+            // internal effective-config route. These assertions now lock the
+            // REMOVAL, so re-adding a dormant second config lane fails the suite.
+            it('should NOT carry model cache settings (superseded by stt.modelCache.* registry keys)', () => {
+                expect(DEFAULT_STT_SETTINGS.filter((s) => s.name === 'model_cache')).toHaveLength(0);
             });
 
-            it('should include worker settings', () => {
-                const workerSettings = DEFAULT_STT_SETTINGS.filter((s) => s.name === 'workers');
-                expect(workerSettings.length).toBeGreaterThanOrEqual(2);
-                const keys = workerSettings.map((s) => s.key);
-                expect(keys).toContain('concurrency');
+            it('should NOT carry worker settings (superseded by stt.workers.concurrency)', () => {
+                expect(DEFAULT_STT_SETTINGS.filter((s) => s.name === 'workers')).toHaveLength(0);
             });
 
             it('should include storage settings', () => {

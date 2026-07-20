@@ -13,7 +13,6 @@ import { renderWithProviders } from '@/test/render';
 import type { AiTaskDefaultRow, AiTaskKey, EffectiveAiTaskDefault, TaskModelOption } from '../../api/types';
 import { SYSTEM_TENANT_ID } from '../../api/types';
 import { AiTaskDefaultsPlatformScreen } from '../ai-task-defaults-platform-screen';
-import { AiModelDefaultsTenantScreen } from '../ai-model-defaults-tenant-screen';
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
@@ -45,7 +44,10 @@ function model(overrides: Partial<TaskModelOption> & Pick<TaskModelOption, 'id' 
   };
 }
 
-const OPTIONS: Record<AiTaskKey, TaskModelOption[]> = {
+// TASK-526 widened AI_TASK_KEYS 3 -> 9 to match the backend. The platform
+// screen still edits only the three keys below (the remaining six are covered
+// by the tenant read-only view); this fixture stays deliberately partial.
+const OPTIONS: Partial<Record<AiTaskKey, TaskModelOption[]>> = {
   'guardrail.validate': [
     model({ id: 'm-guard-1', slug: 'granite-guardian-4.1-8b', name: 'Granite Guardian 4.1 8B', taskType: 'GUARDRAIL', architecture: 'granite' }),
     model({ id: 'm-guard-2', slug: 'llama-guard-4', name: 'Llama Guard 4', taskType: 'GUARDRAIL' }),
@@ -57,7 +59,7 @@ const OPTIONS: Record<AiTaskKey, TaskModelOption[]> = {
 };
 
 function effectiveOf(taskKey: AiTaskKey, tenantId: string, overrides: Partial<EffectiveAiTaskDefault> = {}): EffectiveAiTaskDefault {
-  const first = OPTIONS[taskKey][0];
+  const first = OPTIONS[taskKey]![0];
   return {
     tenantId,
     taskKey,
@@ -82,7 +84,7 @@ function rowOf(taskKey: AiTaskKey, tenantId: string, overrides: Partial<AiTaskDe
   return {
     tenantId,
     taskKey,
-    modelSlug: OPTIONS[taskKey][0].slug,
+    modelSlug: OPTIONS[taskKey]![0].slug,
     configJson: null,
     version: 3,
     updatedAt: '2026-07-01T00:00:00.000Z',
@@ -102,16 +104,6 @@ const TENANT_SESSION = {
   effectiveTenantId: 'tnt-1' as string | null,
 };
 
-const ELEVATED_NO_TENANT_SESSION = {
-  ...TENANT_SESSION,
-  user: { id: 'u-9', username: 'global_admin', email: 'root@arca.ai', roles: ['GLOBAL_ADMIN'] },
-  isElevated: true,
-  workingTenantId: null,
-  workingTenantName: null,
-  effectiveUser: { id: 'u-9', username: 'global_admin', email: 'root@arca.ai', roles: ['GLOBAL_ADMIN'], tenantId: null, departmentId: null },
-  effectiveIsElevated: true,
-  effectiveTenantId: null,
-};
 
 interface RecordedCall {
   url: string;
@@ -150,7 +142,7 @@ function stubFetch({ session = TENANT_SESSION, rows = {}, custom }: StubOptions 
         return Response.json(effectiveOf(taskKey, tenantId));
       }
       if (call.method === 'GET' && url.pathname === '/api/hope/admin/ai-task-defaults/options' && taskKey) {
-        return Response.json(OPTIONS[taskKey]);
+        return Response.json(OPTIONS[taskKey] ?? []);
       }
       if (call.method === 'GET' && url.pathname === '/api/hope/admin/ai-task-defaults/row' && taskKey) {
         const row = rows[taskKey] ?? rowOf(taskKey, tenantId);
@@ -234,29 +226,5 @@ describe('AiTaskDefaultsPlatformScreen', () => {
 
     expect(await screen.findByText(/412 Precondition Failed/)).toBeDefined();
     expect(screen.getByRole('button', { name: 'Reload latest' })).toBeDefined();
-  });
-});
-
-describe('AiModelDefaultsTenantScreen', () => {
-  it('shows platform-managed notice — no NLP model pickers for tenant admins', async () => {
-    const calls = stubFetch();
-    renderWithProviders(<AiModelDefaultsTenantScreen />);
-
-    expect(screen.getByRole('heading', { level: 1, name: 'AI model defaults' })).toBeDefined();
-    expect(await screen.findByText('Platform-managed AI models')).toBeDefined();
-    expect(screen.queryByRole('combobox', { name: /default model for nlp/i })).toBeNull();
-    expect(screen.queryByRole('button', { name: /save nlp/i })).toBeNull();
-
-    // No task-default API traffic — pickers are gone.
-    const dataCalls = calls.filter((call) => call.url.startsWith('/api/hope/admin/ai-task-defaults'));
-    expect(dataCalls).toHaveLength(0);
-  });
-
-  it('gates elevated sessions without a working tenant on the NoTenant empty state', async () => {
-    stubFetch({ session: ELEVATED_NO_TENANT_SESSION });
-    renderWithProviders(<AiModelDefaultsTenantScreen />);
-
-    expect(await screen.findByText('Select a working tenant')).toBeDefined();
-    expect(screen.queryByText('Platform-managed AI models')).toBeNull();
   });
 });

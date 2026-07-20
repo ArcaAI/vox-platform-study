@@ -24,12 +24,16 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
         expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(5);
     });
 
-    it('tiers the TASK-506 task-default surfaces: platform defaults global-only, NLP overrides tenant-scoped', () => {
+    it('tiers the task-default surfaces: platform defaults global-only, tenant AI configuration tenant-scoped', () => {
         const platform = NAV_ENTRIES.find((entry) => entry.route === '/ai-task-defaults');
         expect(platform?.tier).toBe('10-19');
         expect(platform?.required).toEqual([['manage', 'all']]);
         expect(platform?.implemented).toBe(true);
-        const tenant = NAV_ENTRIES.find((entry) => entry.route === '/ai-model-defaults');
+        // TASK-526 — renamed from `/ai-model-defaults`; the old route now only
+        // serves a redirect and must be gone from the nav.
+        expect(NAV_ENTRIES.some((entry) => entry.route === '/ai-model-defaults')).toBe(false);
+        const tenant = NAV_ENTRIES.find((entry) => entry.route === '/ai-configuration');
+        expect(tenant?.label).toBe('AI Configuration');
         expect(tenant?.tier).toBe('30-49');
         expect(tenant?.required).toEqual([
             ['read', 'AiTaskDefault'],

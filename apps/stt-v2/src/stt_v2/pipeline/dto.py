@@ -26,6 +26,7 @@ class AiModelSource(StrEnum):
     MLFLOW = "MLFLOW"  # Reserved: self-hosted MLFlow model registry
     KSERVE = "KSERVE"  # Reserved: MLFlow Serve + KServe inference
     LOCAL = "LOCAL"
+    S3 = "S3"  # TASK-527: S3/MinIO-compatible object storage (s3://bucket/prefix)
 
 
 class AiModelFormat(StrEnum):

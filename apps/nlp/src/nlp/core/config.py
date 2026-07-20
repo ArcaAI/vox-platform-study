@@ -114,6 +114,17 @@ class NLPServiceConfig(BaseSettings):
     # so local dev / hermetic CI bypass auth; a set value enforces the header.
     service_token: SecretStr = SecretStr("")
 
+    # TASK-525 — where the control plane lives (env NLP_GATEWAY_URL). This is
+    # BOOTSTRAP TRANSPORT (the address of the config source), NOT config
+    # authority: the service-level knobs themselves come from the
+    # effective-config route this URL points at.
+    gateway_url: str = Field(default="http://localhost:8868/api/v1")
+
+    # TASK-525 — bootstrap fallback; the runtime value comes from the control
+    # plane (`nlp.inference.maxConcurrent`). Before TASK-525 nlp had NO inference
+    # bound at all, so this is the first ceiling the service has ever had (GAP-L4).
+    inference_max_concurrent: int = Field(default=4, ge=1)
+
     class Config:
         env_prefix = "NLP_"
 

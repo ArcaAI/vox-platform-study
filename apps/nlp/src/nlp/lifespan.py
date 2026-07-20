@@ -3,6 +3,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from nlp.core.config import settings
+from nlp.core.effective_config import EffectiveConfigClient
 from nlp.core.logging import get_logger
 from nlp.core.observability import setup_opentelemetry, setup_prometheus, shutdown_opentelemetry
 from nlp.dependencies import get_websocket_manager
@@ -19,6 +21,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # holds ZERO ML weights; only the websocket manager (no ML weights) is
     # initialized eagerly here.
     websocket_service = get_websocket_manager()
+
+    # TASK-525 — the control-plane pull client. Construction performs NO I/O, so
+    # boot never blocks on (or fails because of) the gateway; the first inference
+    # triggers the first fetch, and a failure negative-caches into env behaviour.
+    app.state.effective_config_client = EffectiveConfigClient(
+        base_url=settings.service.gateway_url,
+        token=settings.service.service_token.get_secret_value(),
+        service="nlp",
+    )
 
     setup_opentelemetry(app)
     setup_prometheus(app)

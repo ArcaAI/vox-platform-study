@@ -59,7 +59,7 @@ export class UpdateModelRequest {
   modelType?: ModelType;
 
   @ApiPropertyOptional({
-    description: 'Model source',
+    description: 'Model source. S3 = S3/MinIO-compatible object storage (OD-4: s3:// only; azure-blob:// is out of scope).',
     enum: AiModelSource,
   })
   @IsEnum(AiModelSource)
@@ -67,12 +67,45 @@ export class UpdateModelRequest {
   source?: AiModelSource;
 
   @ApiPropertyOptional({
-    description: 'Source URI',
+    description:
+      'Source URI. Scheme grammar honoured by every service resolver: ' +
+      '`hf:<org>/<repo>` or a bare HuggingFace id (Hub snapshot, honours HF_HUB_OFFLINE) · ' +
+      '`file:///abs/path` (verified in place, never copied) · ' +
+      '`s3://bucket/prefix` (downloaded once into the service cache, single-flight + SHA256-verified). ' +
+      'Any other scheme is rejected — there is no silent fallback.',
   })
   @IsString()
   @IsOptional()
   @MaxLength(500)
   sourceUri?: string;
+
+  // TASK-527 (D-12) — the operator override. Previously unwritable through this
+  // DTO, so the global `forbidNonWhitelisted` pipe rejected any PATCH carrying
+  // it and the registry row could never point at a staged weight directory.
+  @ApiPropertyOptional({
+    description:
+      'Operator/admin override for the weight directory — HIGHEST precedence in every service resolver, ' +
+      'ahead of `sourceUri` scheme dispatch. Use for air-gapped hosts and pre-staged NFS mounts. ' +
+      'A set-but-missing path falls THROUGH to scheme dispatch with a warning (never a hard failure). ' +
+      'Send an empty string to clear the override.',
+    example: '/opt/hope/models/minicheck-flan-t5-large',
+  })
+  @IsString()
+  @IsOptional()
+  @MaxLength(1000)
+  localPath?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'SHA256 checksum. When set, single-file artifacts (GGUF/ONNX) are verified after download and on ' +
+      'first use of a pre-existing cache entry; a mismatch is a HARD error and the model is never served. ' +
+      'On directory snapshots (HuggingFace) it is a documented no-op.',
+    example: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+  })
+  @IsString()
+  @IsOptional()
+  @MaxLength(128)
+  checksum?: string;
 
   @ApiPropertyOptional({
     description: 'Source revision',

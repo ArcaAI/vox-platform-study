@@ -122,6 +122,11 @@ export class AiModelService extends BaseService implements IAiModelService {
     if (dto.architecture !== undefined) existing.architecture = dto.architecture;
     if (dto.memorySizeMb !== undefined) existing.memorySizeMb = dto.memorySizeMb;
     if (dto.computeType !== undefined) existing.computeType = dto.computeType;
+    // TASK-527 (D-12) — operator weight override. Highest precedence in every
+    // service's `resolve_model_dir`; an empty string clears it so that scheme
+    // dispatch on `sourceUri` resumes.
+    if (dto.localPath !== undefined) existing.localPath = dto.localPath;
+    if (dto.checksum !== undefined) existing.checksum = dto.checksum;
     if (dto.tags !== undefined) existing.tags = dto.tags;
     existing.updatedBy = userId ?? null;
 

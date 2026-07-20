@@ -3,12 +3,14 @@ import {
   Authorize,
   HarnessPolicyService,
   IActiveUserContext,
+  IAiProviderConnectionService,
   IAiRuntimeProfileService,
   IAiTaskDefaultService,
   IBlobStorageService,
   IConfigService,
   ITenantService,
   ModelResponse,
+  isCloudByoProvider,
   SecretsService,
   isSuperAdmin,
 } from '@arcaai/applications';
@@ -65,6 +67,14 @@ interface SmrGenerateRequest {
   stream?: boolean;
   response_format?: SmrResponseFormat;
   context?: Record<string, unknown>;
+  /**
+   * TASK-526 — gateway-injected tenant BYO credentials, keyed by provider.
+   * NEVER accepted from a client: the strict global ValidationPipe rejects
+   * undeclared fields on the request DTOs, and this interface describes the
+   * body as FORWARDED, after `applyTenantProviderOverrides` populates it.
+   * Consumed by SMR in TASK-525.
+   */
+  provider_overrides?: Record<string, { api_key: string; base_url?: string; region?: string; api_version?: string; deployment_name?: string }>;
 }
 
 type VisitType = 'new_visit' | 'referral';
@@ -167,6 +177,12 @@ export class SmrProxyController {
     @Optional()
     @Inject(IAiRuntimeProfileService)
     private readonly aiRuntimeProfileService?: IAiRuntimeProfileService,
+    // TASK-526 — resolves the caller tenant's BYO cloud credential for the
+    // outgoing provider. @Optional so existing positional test fixtures (and
+    // graphs that never proxy to SMR) keep compiling.
+    @Optional()
+    @Inject(IAiProviderConnectionService)
+    private readonly aiProviderConnectionService?: IAiProviderConnectionService,
   ) {}
 
   /**
@@ -185,7 +201,57 @@ export class SmrProxyController {
     // TASK-524 — layer the resolved runtime profile on top of the identity.
     // Runs for a caller-pinned model too: the caller chose the MODEL, not the
     // hyperparameters, and any parameter they did send still wins below.
-    return this.applySmrRuntimeProfile(target);
+    await this.applySmrRuntimeProfile(target);
+    // TASK-526 — then fold in the caller tenant's BYO cloud credential, if any.
+    return this.applyTenantProviderOverrides(target);
+  }
+
+  /**
+   * TASK-526 — fold the caller tenant's BYO cloud credential into the forwarded
+   * body as `provider_overrides` (GAP-C1 tenant lane).
+   *
+   * Three invariants:
+   *   - CLOUD ONLY. A self-host provider (ollama/lm-studio/vllm/llama-cpp/
+   *     built-in) is platform infrastructure; its endpoint is never a tenant
+   *     credential, and we do not even query for one.
+   *   - MINIMAL EXPOSURE. Only the entry for the RESOLVED provider is
+   *     forwarded, so a tenant holding both azure and bedrock keys never ships
+   *     the unused one to the service.
+   *   - FAIL OPEN. A resolver error injects nothing and the request proceeds on
+   *     the SYSTEM/env platform credentials — a broken BYO key must degrade,
+   *     not take generation down. This deliberately differs from the
+   *     fail-closed model-IDENTITY path above.
+   *
+   * With no tenant credential rows the forwarded body is byte-identical to
+   * today's. TASK-525 owns the SMR-side consumption; until then the field is
+   * inert (the service ignores unknown body fields).
+   */
+  private async applyTenantProviderOverrides<T extends { provider?: string }>(target: T): Promise<T> {
+    const provider = target.provider;
+    if (!this.aiProviderConnectionService || !provider || !isCloudByoProvider(provider)) {
+      return target;
+    }
+    const tenantId = this.clsService.get('tenantId');
+    if (!tenantId) return target;
+
+    try {
+      const overrides = await this.aiProviderConnectionService.resolveTenantCloudOverrides(tenantId);
+      const entry = overrides[provider];
+      if (entry) {
+        (target as Record<string, unknown>).provider_overrides = { [provider]: entry };
+      }
+    } catch (error) {
+      // Non-secret log only. The resolver itself already logs per-credential
+      // decrypt failures with `{tenantId, provider, keyVersion}`; this covers a
+      // whole-lookup failure.
+      this.logger.warn({
+        message: 'Tenant provider-credential resolution failed; forwarding with platform credentials (fail-open)',
+        provider,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    return target;
   }
 
   /**

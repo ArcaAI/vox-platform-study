@@ -36,6 +36,7 @@ AiModelSourceType = ENUM(
     "GITHUB",
     "MLFLOW",
     "LOCAL",
+    "S3",  # TASK-527 — S3/MinIO-compatible object storage (s3://bucket/prefix)
     name="AiModelSource",
     schema="core",
     create_type=False,
@@ -156,25 +157,11 @@ ModelTypeEnum = ENUM(
 )
 
 
-class GlobalSettingRead(Base):
-    """Read-only model for GlobalSetting table."""
-
-    __tablename__ = "GlobalSetting"
-    __table_args__ = {"schema": "core"}
-
-    id: Mapped[str] = mapped_column(String, primary_key=True)
-    tenant_id: Mapped[str | None] = mapped_column("tenantId", String)
-    name: Mapped[str] = mapped_column(String)
-    key: Mapped[str] = mapped_column(String)
-    namespace: Mapped[str | None] = mapped_column(String)
-    value: Mapped[str] = mapped_column(String)
-    default_value: Mapped[str | None] = mapped_column("defaultValue", String)
-    data_type: Mapped[str] = mapped_column("dataType", String)
-    description: Mapped[str | None] = mapped_column(String)
-    resource_status: Mapped[str] = mapped_column("resourceStatus", ResourceStatusType)
-    tags: Mapped[list[str]] = mapped_column(ARRAY(String), default=[])
-    created_at: Mapped[datetime] = mapped_column("createdAt", DateTime)
-    updated_at: Mapped[datetime] = mapped_column("updatedAt", DateTime)
+# TASK-525 (D-11) — `GlobalSettingRead` was removed here. It mirrored the
+# `core.GlobalSetting` table but had ZERO callers: the seed wrote
+# `stt.config.model_cache.*` / `stt.config.workers.*` rows that nothing ever
+# read. Those knobs now arrive over HTTP via `core/effective_config.py`, so the
+# unused mapping is deleted rather than left as a second, dormant config lane.
 
 
 class AsrPipelineRead(Base):
