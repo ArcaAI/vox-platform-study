@@ -140,7 +140,7 @@ function LatencyCard({ generation }: { generation: ReturnType<typeof useGenerati
 
 /**
  * AI Operations — Metrics (/ai-operations/metrics, tier 10-19). TTFT / tok-s /
- * stop-reason from the TASK-509 generation-metrics aggregate; regeneration rate
+ * stop-reason from the generation-metrics aggregate; regeneration rate
  * from the harness gate queue. Tenant-scoped behind the working-tenant gate.
  */
 export function AiOperationsMetricsScreen() {
@@ -210,7 +210,7 @@ function MetricsBody() {
                     </div>
                 )}
                 <p className="text-muted-foreground text-xs">
-                    Generation panels come from GET /admin/agent-trajectory/metrics/generation (TASK-509). Regeneration /
+                    Generation panels come from GET /admin/agent-trajectory/metrics/generation. Regeneration /
                     SLA panels still derive from the gate queue.
                 </p>
             </div>

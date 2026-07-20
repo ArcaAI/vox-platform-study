@@ -1,6 +1,6 @@
 /**
- * Wire types for the AI Operations — Runs surface (TASK-512 screen 1). Shapes
- * mirror the gateway DTOs in @arcaai/applications (AgentTrajectory* — TASK-510)
+ * Wire types for the AI Operations — Runs surface. Shapes
+ * mirror the gateway DTOs in @arcaai/applications (AgentTrajectory* — )
  * plus the harness-admin gate-queue + workflow-ops projections. The console
  * cannot import the server package, so they are re-declared here; features
  * never import one another (rule 13).

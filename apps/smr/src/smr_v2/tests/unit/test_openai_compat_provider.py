@@ -77,7 +77,6 @@ class TestOpenAICompatConfig:
 
         _clear_smr_env(monkeypatch)
         cfg = OpenAICompatConfig()
-        assert cfg.enabled is False
         assert cfg.base_url == "http://localhost:1234/v1"
         assert cfg.default_model == "google/gemma-4-e4b"
         assert cfg.timeout_s == 300
@@ -104,7 +103,6 @@ class TestOpenAICompatProvider:
         from smr_v2.core.config import OpenAICompatConfig
 
         return OpenAICompatConfig(
-            enabled=True,
             base_url="http://localhost:1234/v1",
             api_key=SecretStr("test-key"),
             default_model="test-model",
@@ -460,28 +458,26 @@ class TestOpenAICompatProvider:
 # ---------------------------------------------------------------------------
 
 class TestOpenAICompatRegistration:
-    # -- 18. provider registered when enabled --
+    # -- 18. provider available via lazy factory --
     @pytest.mark.asyncio
-    async def test_provider_registered_when_enabled(self):
+    async def test_provider_available_via_lazy_factory(self):
+        # availability comes from a registered CONNECTION-gated factory
+        # (no ENABLE flag); the instance is built only on the first ``get``.
         from smr_v2.core.config import OpenAICompatConfig
         from smr_v2.providers.base import ProviderRegistry
+        from smr_v2.providers.openai_compat import OpenAICompatProvider
 
-        settings = Settings(
-            openai_compat=OpenAICompatConfig(enabled=True),
+        settings = Settings(openai_compat=OpenAICompatConfig())
+        registry = ProviderRegistry()
+        registry.register_factory(
+            "openai_compat", lambda: OpenAICompatProvider(settings.openai_compat)
         )
 
-        registry = ProviderRegistry()
-
-        if settings.openai_compat.enabled and "openai_compat" not in registry.list_providers():
-            from smr_v2.providers.openai_compat import OpenAICompatProvider
-
-            registry.register(
-                "openai_compat", OpenAICompatProvider(settings.openai_compat)
-            )
-
         assert "openai_compat" in registry.list_providers()
+        assert registry.is_instantiated("openai_compat") is False  # not built yet
         provider = registry.get("openai_compat")
         assert provider is not None
+        assert registry.is_instantiated("openai_compat") is True  # built on demand
 
     # -- 19. timeout map includes openai_compat --
     def test_timeout_map_includes_openai_compat(self):

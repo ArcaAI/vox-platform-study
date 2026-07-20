@@ -1,6 +1,6 @@
 /**
- * AI Operations — Runs client (TASK-512 screen 1). Gateway-relative paths under
- * the /api/hope BFF proxy. Sessions/steps are the TASK-510 trajectory read
+ * AI Operations — Runs client. Gateway-relative paths under
+ * the /api/hope BFF proxy. Sessions/steps are the trajectory read
  * plane (@CanManage('HarnessPolicy')); cancel/signal proxy the harness-admin
  * Temporal workflow-ops (manage HarnessWorkflow); the SSE stream is consumed
  * DIRECTLY off the gateway via the shared ticket-authed useEventStream.

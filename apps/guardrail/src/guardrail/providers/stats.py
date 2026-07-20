@@ -1,4 +1,4 @@
-"""AD-1 per-call generation stats — guardrail-local mirror (TASK-509 Phase 1B).
+"""AD-1 per-call generation stats — guardrail-local mirror.
 
 Guardrail is a SEPARATE service and MUST NOT import from smr, so this module
 mirrors the AD-1 ``GenerationStats`` field names locally. It captures the same

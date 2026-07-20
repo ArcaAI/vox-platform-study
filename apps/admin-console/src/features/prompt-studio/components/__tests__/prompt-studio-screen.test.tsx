@@ -1,5 +1,5 @@
 /**
- * TDD screen tests for TASK-512 screen 4 (Prompt Studio): the template list,
+ * TDD screen tests screen 4 (Prompt Studio): the template list,
  * the detail (score + version history + server diff), the GLOBAL_ADMIN approve
  * action with If-Match OCC (+ 412 conflict), the read-only note for non-global
  * admins, the working-tenant gate and axe-cleanliness — against a URL-branching

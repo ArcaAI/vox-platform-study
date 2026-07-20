@@ -5,7 +5,7 @@ import { IMcpServerAdminService } from './IMcpServerAdminService';
 import { McpServerAdminService } from './mcp-server-admin.service';
 
 /**
- * McpServerAdminServiceModule (TASK-516) — the MCP external-tools registry admin
+ * McpServerAdminServiceModule — the MCP external-tools registry admin
  * service (global-admin CRUD + tenant-admin registry reads). Mirrors
  * `AiTaskDefaultServiceModule`.
  */

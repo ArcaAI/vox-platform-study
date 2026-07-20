@@ -84,7 +84,7 @@ atomic-fact = [
     "llama-cpp-python>=0.3.2",
 ]
 
-# TASK-516 (Phase 5) — MCP external-tools client (official python SDK, streamable-HTTP
+# MCP external-tools client (official python SDK, streamable-HTTP
 # transport). OPTIONAL: the whole MCP path is feature-flagged OFF (per-tenant
 # HarnessPolicy.mcpToolsEnabled + per-server McpServer.enabled), and `mcp_client.py`
 # lazy-imports the SDK so base installs / the hermetic test suite skip it. Enable on a
@@ -198,6 +198,12 @@ warn_return_any = true
 # with no runtime value. Type-check production code only — pytest still runs the
 # full suite (testpaths below) unchanged.
 exclude = "/tests/"
+
+# Optional 'mcp-tools' extra — the `mcp` SDK is lazily imported inside a
+# try/except in tools/mcp_client.py and is absent unless the extra is installed.
+[[tool.mypy.overrides]]
+module = ["mcp", "mcp.*"]
+ignore_missing_imports = true
 
 # pytest configuration
 [tool.pytest.ini_options]

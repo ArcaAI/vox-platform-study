@@ -1,5 +1,5 @@
 /**
- * Agentic Policy client (TASK-512 screen 3). All paths are gateway-relative;
+ * Agentic Policy client. All paths are gateway-relative;
  * the shared core prepends the `/api/hope` BFF proxy mount so nothing here
  * ever hits the gateway directly. Edits target the SYSTEM-tenant GLOBAL-DEFAULT
  * harness policy row (the fallback for every tenant), so no working tenant is

@@ -42,7 +42,7 @@ export class HarnessEntityItem {
   @IsNumber()
   confidence?: number;
 
-  // TASK-518 — negation/assertion polarity from the NLP assertion pass.
+  // negation/assertion polarity from the NLP assertion pass.
   @ApiPropertyOptional({ description: 'Assertion status (PRESENT|ABSENT|HISTORICAL|FAMILY|HYPOTHETICAL)' })
   @IsOptional()
   @IsString()
@@ -157,7 +157,7 @@ export class HarnessAssembleRequest {
 }
 
 /**
- * TASK-519 — PHI-safe transcript-segment citation ref for harness finalize
+ * PHI-safe transcript-segment citation ref for harness finalize
  * StrictCitations. Structural hints only (id / idx / speaker / t0/t1) — never
  * segment plaintext or char offsets (recoverable from the parent transcript).
  */
@@ -178,7 +178,7 @@ export interface HarnessAssembleResponse {
   promptVersion: string | null;
   resolvedFrom: string;
   /**
-   * TASK-519 — PHI-safe segment refs for prompt-level `[[seg:<id>]]` StrictCitations.
+ * PHI-safe segment refs for prompt-level `[[seg:<id>]]` StrictCitations.
    * Empty when the segment repo is unwired, no segments are persisted, or the
    * consultation has ≠1 transcript (same gate as citationsMap enrichment).
    */

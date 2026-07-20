@@ -122,13 +122,13 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // `resourceStatus` column and no soft-delete (rows are immutable; the
   // migration REVOKEs UPDATE/DELETE from the app role).
   'HarnessAuditEvent',
-  // AgentTrajectoryStep (TASK-510 Phase 2A) is high-volume ordered ops
+  // AgentTrajectoryStep is high-volume ordered ops
   // telemetry with HARD RETENTION (a nightly prune job hard-deletes aged rows)
   // rather than the ENABLED/DELETED soft-delete lifecycle. Like the sibling
   // telemetry tables above it carries NO `resourceStatus` column, so the
   // soft-delete filter must skip it and softDelete()/restore() throw.
   'AgentTrajectoryStep',
-  // TranscriptSegment (TASK-519) is a per-transcript annotation table (segment
+  // TranscriptSegment is a per-transcript annotation table (segment
   // structure of a TRANSCRIPT context item). Like its sibling NamedEntity /
   // AudioRecording it has NO `resourceStatus` column — segments live and die
   // with their parent transcript rather than being independently soft-deleted.

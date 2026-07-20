@@ -95,7 +95,7 @@ const PIPELINE_CONFIGS = {
 
 models:
   asr: "whisper-large-v3-turbo-gguf"
-  vad: "silero-vad-v6"
+  vad: "silero-vad"
   denoise: "deepfilternet3"
   embedding:
     hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"   # D1 — ECAPA feature extractor (kept, TASK-507)
@@ -204,7 +204,7 @@ postprocessing:
 
 models:
   asr: "whisper-large-v3-turbo"
-  vad: "silero-vad-v6"
+  vad: "silero-vad"
   embedding:
     hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"
     engine: "pytorch"
@@ -256,7 +256,7 @@ postprocessing:
 
 models:
   asr: "whisper-large-v3-turbo-gguf"
-  vad: "silero-vad-v6"
+  vad: "silero-vad"
   embedding:
     hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"
     engine: "pytorch"
@@ -354,7 +354,7 @@ postprocessing:
 
 models:
   asr: "whisper-large-v3-turbo-gguf"
-  vad: "silero-vad-v6"
+  vad: "silero-vad"
   denoise: "deepfilternet3"
   embedding:
     hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"   # D1 — ECAPA feature extractor (kept, TASK-507)
@@ -417,7 +417,7 @@ postprocessing:
 
 models:
   asr: "whisper-large-v3-turbo-gguf"
-  vad: "silero-vad-v6"
+  vad: "silero-vad"
   embedding:
     hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"
     engine: "pytorch"
@@ -762,15 +762,8 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
         isDefault: true,
         tags: ['production', 'streaming', 'real-time', 'fast', 'recommended'],
     },
-    {
-        id: '81000000-0000-0000-0001-000000000003',
-        tenantId: DEFAULT_TENANT_ID,
-        name: 'Lightweight Pipeline (Whisper Small)',
-        slug: 'lightweight-whisper-small',
-        description: 'Lightweight CPU-friendly pipeline using Whisper Small. Suitable for environments without GPU.',
-        configYaml: PIPELINE_CONFIGS.lightweight,
-        tags: ['cpu', 'lightweight', 'low-resource'],
-    },
+    // Retired from the product matrix of 9 base pipelines:
+    // lightweight-whisper-small (soft-disabled by retireRetiredAsrPipelines).
     // =========================================================================
     // BEST PRACTICE PIPELINES (v1.1 with inline model definitions)
     // =========================================================================
@@ -837,37 +830,17 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
         configYaml: PIPELINE_CONFIGS.parakeet_nemotron_streaming,
         tags: ['matrix', 'streaming', 'parakeet.cpp'],
     },
-    // =========================================================================
-    // CODE-SWITCHING & LANGUAGE-SPECIFIC PIPELINES
-    // =========================================================================
-    {
-        id: '81000000-0000-0000-0001-000000000050',
-        tenantId: DEFAULT_TENANT_ID,
-        name: 'Code-Switching EN-VI Template',
-        slug: 'code-switching-en-vi-template',
-        description: 'Code-switching pipeline template for English-Vietnamese.',
-        configYaml: PIPELINE_CONFIGS.code_switching_en_vi_template,
-        tags: ['code-switching', 'en', 'vi'],
-    },
-    {
-        id: '81000000-0000-0000-0001-000000000051',
-        tenantId: DEFAULT_TENANT_ID,
-        name: 'ASR English Template',
-        slug: 'asr-en-template',
-        description: 'English-only ASR pipeline template.',
-        configYaml: PIPELINE_CONFIGS.asr_en_template,
-        tags: ['asr', 'english'],
-    },
-    {
-        id: '81000000-0000-0000-0001-000000000052',
-        tenantId: DEFAULT_TENANT_ID,
-        name: 'ASR Malayalam Template',
-        slug: 'asr-ml-template',
-        description: 'Malayalam-only ASR pipeline template.',
-        configYaml: PIPELINE_CONFIGS.asr_ml_template,
-        tags: ['asr', 'malayalam'],
-    },
+    // Code-switching / language templates retired from the product
+    // matrix of 9 (soft-disabled by retireRetiredAsrPipelines).
 ];
+
+/** Slugs removed from the product matrix; soft-disable on re-seed. */
+export const RETIRED_ASR_PIPELINE_SLUGS = [
+    'lightweight-whisper-small',
+    'code-switching-en-vi-template',
+    'asr-en-template',
+    'asr-ml-template',
+] as const;
 
 /**
  * TASK-505/356 policy correction (owner directive 2026-07-17): every
@@ -1500,6 +1473,28 @@ export const retireLegacyAiModels = async (
     return { retired, skipped };
 };
 
+/**
+ * Soft-disable pipelines retired from the product matrix of 9.
+ * Idempotent; uses DISABLED (not DELETE) so historical FKs remain intact.
+ */
+export const retireRetiredAsrPipelines = async (client: CorePrismaClient) => {
+    console.log('Retiring ASR pipelines outside the product matrix of 9...');
+    const result = await client.asrPipeline.updateMany({
+        where: {
+            slug: { in: [...RETIRED_ASR_PIPELINE_SLUGS] },
+            resourceStatus: { not: ResourceStatusType.DISABLED },
+        },
+        data: {
+            resourceStatus: ResourceStatusType.DISABLED,
+            resourceStatusUpdatedAt: new Date(),
+            resourceStatusUpdatedBy: SYSTEM_USER_ID,
+            isDefault: false,
+        },
+    });
+    console.log(`  Soft-disabled ${result.count} retired ASR pipeline row(s)`);
+    return { success: true, count: result.count };
+};
+
 export const seedAsrPipelines = async (client: CorePrismaClient) => {
     console.log('Seeding ASR Pipelines...');
 
@@ -1704,6 +1699,10 @@ export const seedStt = async (client: CorePrismaClient) => {
         // isDefault on update, so without this an existing DB would have two
         // defaults per tenant).
         await switchDefaultSttPipelineToGgufTurbo(client);
+        console.log('');
+
+        // Soft-disable pipelines retired from the product matrix of 9.
+        await retireRetiredAsrPipelines(client);
         console.log('');
 
         // TASK-506 — soft-retire the legacy catalog rows across all tenants

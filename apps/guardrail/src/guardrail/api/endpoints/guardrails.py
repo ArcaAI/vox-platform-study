@@ -5,12 +5,14 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from guardrail.core.config import Settings
-from guardrail.core.dependencies import get_gliner_provider, get_job_processor, get_settings
-from guardrail.providers.gliner import GlinerProvider
+from guardrail.core.dependencies import (
+    get_gliner_model_id,
+    get_job_processor,
+    pinned_gliner_provider,
+)
 from guardrail.services.job_processor import JobProcessor
 
 router = APIRouter()
@@ -57,17 +59,28 @@ class BatchGuardrailRequest(BaseModel):
 @router.post("/guardrail/analyze", response_model=GuardrailResponse)
 async def analyze_content(
     request: GuardrailRequest,
-    settings: Settings = Depends(get_settings),
-    gliner_provider: GlinerProvider = Depends(get_gliner_provider),
+    http_request: Request,
+    model_id: str = Depends(get_gliner_model_id),
 ) -> GuardrailResponse:
-    """Analyze content for safety issues in real-time."""
+    """Analyze content for safety issues in real-time.
+
+    the GLiNER model is DB-selected (``guardrail.safety``) and loaded
+    lazily on first use; a missing DB selection fails closed with 503 (raised by
+    ``get_gliner_model_id`` before this body). Runtime load/inference errors keep
+    the historical fail-open posture below.
+    """
     start_time = time.monotonic()
 
     try:
-        result = await gliner_provider.analyze_content(
-            text=request.text,
-            guardrail_type=request.guardrail_type,
-        )
+        async with pinned_gliner_provider(
+            http_request.app.state,
+            http_request.headers.get("X-Tenant-Id"),
+            model_id=model_id,
+        ) as gliner_provider:
+            result = await gliner_provider.analyze_content(
+                text=request.text,
+                guardrail_type=request.guardrail_type,
+            )
 
         processing_time = (time.monotonic() - start_time) * 1000
 
@@ -98,17 +111,22 @@ async def analyze_content(
 @router.post("/guardrail/analyze/batch", response_model=list[GuardrailResponse])
 async def analyze_batch(
     request: BatchGuardrailRequest,
-    settings: Settings = Depends(get_settings),
-    gliner_provider: GlinerProvider = Depends(get_gliner_provider),
+    http_request: Request,
+    model_id: str = Depends(get_gliner_model_id),
 ) -> list[GuardrailResponse]:
-    """Analyze multiple texts for safety issues."""
+    """Analyze multiple texts for safety issues (DB-selected, lazily loaded GLiNER)."""
     start_time = time.monotonic()
 
     try:
-        results = await gliner_provider.batch_analyze(
-            texts=request.texts,
-            guardrail_type=request.guardrail_type,
-        )
+        async with pinned_gliner_provider(
+            http_request.app.state,
+            http_request.headers.get("X-Tenant-Id"),
+            model_id=model_id,
+        ) as gliner_provider:
+            results = await gliner_provider.batch_analyze(
+                texts=request.texts,
+                guardrail_type=request.guardrail_type,
+            )
 
         processing_time = (time.monotonic() - start_time) * 1000
 

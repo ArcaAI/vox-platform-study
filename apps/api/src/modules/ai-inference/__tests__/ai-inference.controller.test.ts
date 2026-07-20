@@ -48,21 +48,32 @@ describe('AiInferenceController — guardrail', () => {
 
 describe('AiInferenceController — NER entities', () => {
   it('maps aggregationStrategy → aggregation_strategy (default simple) and omits language when absent', async () => {
-    const { controller, client } = makeController();
+    const aiTaskDefaults = { getEffective: vi.fn().mockResolvedValue(effectiveWithModel('nlp.ner', 'blaze999/Medical-NER')) };
+    const { controller, client } = makeController(aiTaskDefaults);
     const entities = { entities: [], model_version: 'v1' };
     client.classifyTokens.mockResolvedValue(entities);
 
     const result = await controller.extractEntities({ text: 'aspirin 100mg' });
 
-    expect(client.classifyTokens).toHaveBeenCalledWith({ text: 'aspirin 100mg', aggregation_strategy: 'simple' });
+    expect(client.classifyTokens).toHaveBeenCalledWith({
+      text: 'aspirin 100mg',
+      aggregation_strategy: 'simple',
+      model_name: 'blaze999/Medical-NER',
+    });
     expect(result).toBe(entities);
   });
 
   it('forwards language and a custom aggregation strategy when supplied', async () => {
-    const { controller, client } = makeController();
+    const aiTaskDefaults = { getEffective: vi.fn().mockResolvedValue(effectiveWithModel('nlp.ner', 'blaze999/Medical-NER')) };
+    const { controller, client } = makeController(aiTaskDefaults);
     client.classifyTokens.mockResolvedValue({});
     await controller.extractEntities({ text: 'x', aggregationStrategy: 'max', language: 'vi' });
-    expect(client.classifyTokens).toHaveBeenCalledWith({ text: 'x', aggregation_strategy: 'max', language: 'vi' });
+    expect(client.classifyTokens).toHaveBeenCalledWith({
+      text: 'x',
+      aggregation_strategy: 'max',
+      language: 'vi',
+      model_name: 'blaze999/Medical-NER',
+    });
   });
 
   // TASK-506 — the tenant's effective `nlp.ner` default (AiModel.sourceUri, an
@@ -137,46 +148,45 @@ describe('AiInferenceController — NER entities', () => {
     });
   });
 
-  it('omits model_name when the effective default resolves to no model (null)', async () => {
+  it('FAILS CLOSED: null SYSTEM default → 503, never forwards without model_name', async () => {
+    const { ServiceUnavailableException } = await import('@nestjs/common');
     const aiTaskDefaults = {
       getEffective: vi.fn().mockResolvedValue({ tenantId: 't1', taskKey: 'nlp.ner', modelSlug: null, source: null, configJson: null, model: null }),
     };
     const { controller, client } = makeController(aiTaskDefaults);
-    client.classifyTokens.mockResolvedValue({});
 
-    await controller.extractEntities({ text: 'x' });
-
-    expect(client.classifyTokens).toHaveBeenCalledWith({ text: 'x', aggregation_strategy: 'simple' });
+    await expect(controller.extractEntities({ text: 'x' })).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(client.classifyTokens).not.toHaveBeenCalled();
   });
 
-  it('FAILS OPEN when default resolution throws — forwards without model_name', async () => {
+  it('FAILS CLOSED when default resolution throws → 503', async () => {
+    const { ServiceUnavailableException } = await import('@nestjs/common');
     const aiTaskDefaults = { getEffective: vi.fn().mockRejectedValue(new Error('db down')) };
     const { controller, client } = makeController(aiTaskDefaults);
-    client.classifyTokens.mockResolvedValue({});
 
-    await controller.extractEntities({ text: 'x' });
-
-    expect(client.classifyTokens).toHaveBeenCalledWith({ text: 'x', aggregation_strategy: 'simple' });
+    await expect(controller.extractEntities({ text: 'x' })).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(client.classifyTokens).not.toHaveBeenCalled();
   });
 
-  it('works without the AiTaskDefault service wired (optional dependency)', async () => {
+  it('FAILS CLOSED without the AiTaskDefault service wired → 503', async () => {
+    const { ServiceUnavailableException } = await import('@nestjs/common');
     const { controller, client } = makeController(undefined);
-    client.classifyTokens.mockResolvedValue({});
-    await controller.extractEntities({ text: 'x' });
-    expect(client.classifyTokens).toHaveBeenCalledWith({ text: 'x', aggregation_strategy: 'simple' });
+
+    await expect(controller.extractEntities({ text: 'x' })).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(client.classifyTokens).not.toHaveBeenCalled();
   });
 });
 
 describe('AiInferenceController — diagnosis suggestions (TASK-506)', () => {
-  it('maps minConfidence → min_confidence, forwards language, injects model_name from nlp.classification', async () => {
-    const aiTaskDefaults = { getEffective: vi.fn().mockResolvedValue(effectiveWithModel('nlp.classification', 'shanover/symps_disease_bert_v3_c41')) };
+  it('maps minConfidence → min_confidence, forwards language, injects model_name from nlp.diagnosis', async () => {
+    const aiTaskDefaults = { getEffective: vi.fn().mockResolvedValue(effectiveWithModel('nlp.diagnosis', 'shanover/symps_disease_bert_v3_c41')) };
     const { controller, client } = makeController(aiTaskDefaults);
     const suggestions = { suggestions: [{ diagnosis: 'flu', confidence: 0.8 }] };
     client.suggestDiagnosis.mockResolvedValue(suggestions);
 
     const result = await controller.suggestDiagnosis({ text: 'fever and cough', minConfidence: 0.3, language: 'en' });
 
-    expect(aiTaskDefaults.getEffective).toHaveBeenCalledWith('nlp.classification');
+    expect(aiTaskDefaults.getEffective).toHaveBeenCalledWith('nlp.diagnosis');
     expect(client.suggestDiagnosis).toHaveBeenCalledWith({
       text: 'fever and cough',
       min_confidence: 0.3,
@@ -186,20 +196,26 @@ describe('AiInferenceController — diagnosis suggestions (TASK-506)', () => {
     expect(result).toBe(suggestions);
   });
 
-  it('omits optional fields when absent and fails open on resolution error', async () => {
+  it('FAILS CLOSED on resolution error for diagnosis → 503', async () => {
+    const { ServiceUnavailableException } = await import('@nestjs/common');
     const aiTaskDefaults = { getEffective: vi.fn().mockRejectedValue(new Error('resolver down')) };
     const { controller, client } = makeController(aiTaskDefaults);
-    client.suggestDiagnosis.mockResolvedValue({});
 
-    await controller.suggestDiagnosis({ text: 'headache' });
-
-    expect(client.suggestDiagnosis).toHaveBeenCalledWith({ text: 'headache' });
+    await expect(controller.suggestDiagnosis({ text: 'headache' })).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(client.suggestDiagnosis).not.toHaveBeenCalled();
   });
 
-  it('forwards minConfidence: 0 (falsy but valid)', async () => {
-    const { controller, client } = makeController(undefined);
+  it('forwards minConfidence: 0 (falsy but valid) when SYSTEM default resolves', async () => {
+    const aiTaskDefaults = {
+      getEffective: vi.fn().mockResolvedValue(effectiveWithModel('nlp.diagnosis', 'shanover/symps_disease_bert_v3_c41')),
+    };
+    const { controller, client } = makeController(aiTaskDefaults);
     client.suggestDiagnosis.mockResolvedValue({});
     await controller.suggestDiagnosis({ text: 'x', minConfidence: 0 });
-    expect(client.suggestDiagnosis).toHaveBeenCalledWith({ text: 'x', min_confidence: 0 });
+    expect(client.suggestDiagnosis).toHaveBeenCalledWith({
+      text: 'x',
+      min_confidence: 0,
+      model_name: 'shanover/symps_disease_bert_v3_c41',
+    });
   });
 });

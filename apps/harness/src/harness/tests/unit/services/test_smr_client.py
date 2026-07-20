@@ -125,7 +125,7 @@ class TestSmrClient:
 
 
 class TestSmrClientStats:
-    """TASK-509 (AD-1) Phase 1B — the client captures the SMR ``stats`` block onto the
+    """the client captures the SMR ``stats`` block onto the
     parsed result as an additive, backward-compatible field. ``stats`` may be null on a
     legacy cache hit — the client must degrade to ``None`` and never throw."""
 

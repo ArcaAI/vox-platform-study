@@ -67,7 +67,6 @@ def ollama_config():
 @pytest.fixture
 def azure_config():
     return AzureOpenAIConfig(
-        enabled=True,
         api_key="test-key",
         endpoint="https://test.openai.azure.com",
         deployment_name="gpt-4",
@@ -78,7 +77,6 @@ def azure_config():
 @pytest.fixture
 def bedrock_config():
     return BedrockConfig(
-        enabled=True,
         region="us-east-1",
         default_model="anthropic.claude-3-haiku-20240307-v1:0",
     )

@@ -102,6 +102,10 @@ def _infer_input(**kw: Any) -> RunInferentialSensorsInput:
     base: dict[str, Any] = {
         "note_text": "Patient John Smith stable.",
         "transcript_text": "John Smith has hypertension.",
+        # SYSTEM harness.judge selection (a LOCAL judge here ⇒ the egress
+        # guard redacts only for the cloud SAFETY provider, never for the judge).
+        "judge_provider": "openai_compat",
+        "judge_model": "stub-judge",
         "citations_map": {"claims": []},
     }
     base.update(kw)
@@ -202,7 +206,7 @@ class TestRunInferentialSensorsPhiEgress:
         # T6 (AC-1): cloud Granite ⇒ the note is redacted before the safety screen.
         judge = _StubJudge()
         granite = _FakeGranite(dimensions={"harm": False})
-        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: judge)
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
         monkeypatch.setattr(activities, "_granite_client", lambda s: granite)
         monkeypatch.setattr(
             activities, "get_settings", lambda: _infer_settings(safety_provider="azure")
@@ -233,7 +237,7 @@ class TestRunInferentialSensorsPhiEgress:
         # T6/T7 (AC-2, AC-5): a cloud fail-closed block degrades the pass (reduced
         # assurance) with a PHI reason, never egresses, and logs the block.
         granite = _FakeGranite(dimensions={"harm": False})
-        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: _StubJudge())
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(activities, "_granite_client", lambda s: granite)
         monkeypatch.setattr(
             activities, "get_settings", lambda: _infer_settings(safety_provider="azure")
@@ -263,7 +267,7 @@ class TestRunInferentialSensorsPhiEgress:
         # AC-3: all-local inferential pass ⇒ Granite gets the ORIGINAL note unchanged.
         judge = _StubJudge()
         granite = _FakeGranite(dimensions={"harm": False})
-        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: judge)
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
         monkeypatch.setattr(activities, "_granite_client", lambda s: granite)
         monkeypatch.setattr(
             activities, "get_settings", lambda: _infer_settings(safety_provider="lm-studio")

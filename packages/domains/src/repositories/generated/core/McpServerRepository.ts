@@ -10,7 +10,7 @@ import { McpServerEntityMapper } from '../../../mappers';
 import { McpServer } from '../../../models';
 
 /**
- * MCP external-tools registry repository (TASK-516).
+ * MCP external-tools registry repository.
  *
  * One row per (tenant, name) — enforced by the `McpServer_tenant_name_unique`
  * index. The reserved SYSTEM tenant owns the shared registry rows. `McpServer`

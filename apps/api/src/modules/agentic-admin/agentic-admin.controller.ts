@@ -5,7 +5,7 @@ import { ClsService } from 'nestjs-cls';
 import { Authorize, CanManage } from '../../decorators';
 
 /**
- * AgenticAdminController (TASK-511 Phase 3A item 6) — the global-admin control
+ * AgenticAdminController — the global-admin control
  * plane's read-only agentic instruction inventory, mounted at `/admin/agentic/*`
  * (global prefix → `/api/v1/admin/agentic/*`). Mirrors `HarnessAdminController`'s
  * tenant-scope posture.

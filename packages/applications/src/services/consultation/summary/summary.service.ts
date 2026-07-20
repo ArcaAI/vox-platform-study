@@ -45,7 +45,7 @@ import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
 import { namedEntityPropsFromNlp, type NlpNamedEntity } from '../shared/namedEntityFromNlp';
 
 /**
- * TASK-509 Phase 1B — the AD-1 GenerationStats headline fields the summary
+ * the AD-1 GenerationStats headline fields the summary
  * paths persist onto `SummaryMeta`. A narrow view of the SMR `/generate`
  * `stats` block: only the three headline fields are read here (predicted/total
  * token counts are derivable from the existing `inputTokens`/`outputTokens`).
@@ -108,7 +108,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // TASK-392 (Phase 3, M3) — optional (append-only DI); enforces the plan
     // `monthlySummaries` meter on generation (kill-switch-gated, → 429 over cap).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
-    // TASK-510 §2C — one LLM_CALL trajectory step per generate/pre-summary.
+    // §2C — one LLM_CALL trajectory step per generate/pre-summary.
     // Optional + trailing so existing positional test fixtures compile;
     // production DI (SummaryServiceModule) supplies it. Fire-and-forget: a
     // trajectory failure never rolls back the (delivered) summary.
@@ -200,7 +200,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       promptResolvedFrom: assembledPrompt.resolvedFrom,
       resolvedPromptId: assembledPrompt.promptId,
     });
-    // TASK-509 Phase 1B — persist the AD-1 GenerationStats headline fields when
+    // persist the AD-1 GenerationStats headline fields when
     // SMR returned them. Set via the entity setters (change-tracked, same path
     // as `contextItem.currentVersionNumber = 1` above); the factory does not yet
     // expose these props. Null/absent stats (legacy idempotency-cache hit) leaves
@@ -222,7 +222,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       data: { consultationId, type: 'pre_summary' },
     });
 
-    // TASK-510 §2C — one SUMMARY_JOB LLM_CALL step for this generation (non-fatal).
+    // §2C — one SUMMARY_JOB LLM_CALL step for this generation (non-fatal).
     await this.recordSummaryTrajectory({
       tenantId,
       consultationId,
@@ -331,7 +331,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       promptResolvedFrom: assembledPrompt.resolvedFrom,
       resolvedPromptId: assembledPrompt.promptId,
     });
-    // TASK-509 Phase 1B — persist the AD-1 GenerationStats headline fields when
+    // persist the AD-1 GenerationStats headline fields when
     // SMR returned them. Set via the entity setters (change-tracked, same path
     // as `contextItem.currentVersionNumber = 1` above); the factory does not yet
     // expose these props. Null/absent stats (legacy idempotency-cache hit) leaves
@@ -359,7 +359,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // failure must never roll back the (delivered) draft.
     await this.captureAiDraftSnapshot(savedContext);
 
-    // TASK-510 §2C — one SUMMARY_JOB LLM_CALL step for this generation (non-fatal).
+    // §2C — one SUMMARY_JOB LLM_CALL step for this generation (non-fatal).
     await this.recordSummaryTrajectory({
       tenantId,
       consultationId,
@@ -373,7 +373,7 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
-   * TASK-510 §2C — emit ONE LLM_CALL trajectory step for a summary generation.
+ * §2C — emit ONE LLM_CALL trajectory step for a summary generation.
    * sessionKind=SUMMARY_JOB, sessionId=the generated summary's contextItem id
    * (stable job id), runId="" (non-Temporal sentinel), seq=0 (one step per job).
    * Fire-and-forget: any failure is swallowed + logged so telemetry never rolls
@@ -928,7 +928,7 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
-   * TASK-509 Phase 1B — read the AD-1 GenerationStats headline fields off the
+ * read the AD-1 GenerationStats headline fields off the
    * SMR `/generate` response. Returns `null` when the `stats` block is absent
    * (legacy response) or null (idempotency-cache hit) so the caller persists
    * nothing extra. Null-safe per field — never throws over missing/odd stats.

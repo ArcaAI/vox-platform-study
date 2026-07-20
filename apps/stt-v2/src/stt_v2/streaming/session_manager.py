@@ -145,6 +145,8 @@ class SessionManager:
         self._worker_id = worker_id or f"worker-{uuid.uuid4().hex[:8]}-{os.getpid()}"
         self._capacity_guard = CapacityGuard(profile.max_concurrent_streams)
         self._sessions: dict[str, StreamSession] = {}
+        # session_id → model slugs pinned for the active pipeline.
+        self._session_pinned_models: dict[str, list[str]] = {}
         self._consumers: dict[str, IngestionConsumer] = {}
         self._control_listeners: dict[str, ControlListener] = {}
         self._publishers: dict[str, ResultPublisher] = {}
@@ -1010,6 +1012,19 @@ class SessionManager:
         # already holds its own reference and will no-op on the CLOSED guard).
         self._finalize_locks.pop(session_id, None)
         self._sessions.pop(session_id, None)
+        # Release pipeline model pins so idle TTL can apply.
+        pinned = self._session_pinned_models.pop(session_id, None)
+        if pinned:
+            try:
+                from stt_v2.models import get_model_cache
+
+                await get_model_cache().unpin_many(pinned)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to unpin pipeline models on session removal",
+                    session_id=session_id,
+                    error=str(exc),
+                )
         # TASK-386 — keep the active-streaming-sessions gauge in sync on removal.
         streaming_session_ended(self.active_session_count)
         self._last_snapshot_at.pop(session_id, None)
@@ -1122,6 +1137,76 @@ class SessionManager:
             )
             return None
 
+    async def _warm_and_pin_pipeline_models(
+        self,
+        model_cache: Any,
+        pipeline_config: Any,
+        *,
+        tenant_id: str | None,
+        session_id: str,
+    ) -> list[str]:
+        """Load every model referenced by the pipeline and pin them.
+
+        Failures for optional models (VAD/denoise/embedding) are logged and
+        skipped; ASR is already loaded by the caller.
+        """
+        from stt_v2.pipeline.config_reader import get_model_reader
+        from stt_v2.pipeline.dto import ModelTaskType
+
+        model_refs = pipeline_config.models
+        pinned: list[str] = []
+
+        async def _load_optional(ref: Any, task_type: ModelTaskType, label: str) -> None:
+            if ref is None:
+                return
+            try:
+                db_cfg = None
+                if not (ref.is_inline and ref.inline) and ref.slug:
+                    db_cfg = await get_model_reader().get_model_by_slug(ref.slug, tenant_id)
+                loaded = await model_cache.get_or_load_from_ref(
+                    model_ref=ref, task_type=task_type, db_model_config=db_cfg
+                )
+                slug = loaded.model_slug or (ref.slug if hasattr(ref, "slug") else None)
+                if slug:
+                    pinned.append(slug)
+            except Exception as exc:
+                logger.warning(
+                    f"Failed to warm {label} model for streaming pipeline",
+                    session_id=session_id,
+                    error=str(exc),
+                )
+
+        # ASR is already loaded; still pin its slug.
+        asr_ref = model_refs.asr
+        asr_slug = asr_ref.slug if asr_ref and not (asr_ref.is_inline and asr_ref.inline) else None
+        if asr_slug:
+            pinned.append(asr_slug)
+        elif asr_ref and asr_ref.is_inline and asr_ref.inline:
+            # Inline ASR uses a synthetic slug from the loaded model; pin after load in caller.
+            pass
+
+        await _load_optional(model_refs.vad, ModelTaskType.VOICE_ACTIVITY_DETECTION, "VAD")
+        await _load_optional(model_refs.denoise, ModelTaskType.AUDIO_TO_AUDIO, "denoise")
+        await _load_optional(getattr(model_refs, "embedding", None), ModelTaskType.SPEAKER_EMBEDDING, "embedding")
+
+        # Prefer the cache's view of the ASR slug if inline.
+        if not asr_slug:
+            try:
+                # Already in cache from caller load — find by scanning not needed;
+                # pin inline ASR via its loaded slug if present on cache keys later.
+                pass
+            except Exception:
+                pass
+
+        if pinned:
+            await model_cache.pin_many(pinned)
+            logger.info(
+                "Pinned pipeline models for streaming session",
+                session_id=session_id,
+                slugs=pinned,
+            )
+        return pinned
+
     async def _load_asr_pipeline(
         self,
         pipeline_config: Any,
@@ -1169,6 +1254,19 @@ class SessionManager:
             task_type=ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
             db_model_config=db_model_config,
         )
+
+        # On pipeline use, load ALL referenced models (vad/denoise/
+        # embedding) into the cache and pin them for the active session.
+        pinned_slugs = await self._warm_and_pin_pipeline_models(
+            model_cache, pipeline_config, tenant_id=tenant_id, session_id=session_id
+        )
+        # Always pin the ASR slug that actually loaded (covers inline defs).
+        asr_pin = asr_model.model_slug
+        if asr_pin and asr_pin not in pinned_slugs:
+            await model_cache.pin(asr_pin)
+            pinned_slugs.append(asr_pin)
+        if pinned_slugs:
+            self._session_pinned_models[session_id] = pinned_slugs
 
         # Use pipeline inference config directly
         inference_config = pipeline_config.inference

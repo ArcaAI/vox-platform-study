@@ -125,7 +125,7 @@ async def capture(out_path: Path, *, scenario: str = "happy") -> None:
         # delivered draft is RETRACTED (records the task-481-optimistic-retraction marker).
         config = StubConfig(verdicts=["PASS"], inferential_verdicts=["UNSAFE"])
     elif scenario == "mcp":
-        # TASK-516 (Phase 5): the MCP tool path ARMED — the policy enables mcpToolsEnabled
+        # the MCP tool path ARMED — the policy enables mcpToolsEnabled
         # and registers an enabled terminology server whose allowlist includes the
         # validate_codes tool. The workflow records the ``task-516-mcp-tools`` patch marker
         # + the new ``call_mcp_tool`` command (after the transcript NER, before retrieval).

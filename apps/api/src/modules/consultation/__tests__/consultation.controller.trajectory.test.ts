@@ -1,5 +1,5 @@
 /**
- * ConsultationController — trajectory SSE route (TASK-510 Phase 2D).
+ * ConsultationController — trajectory SSE route.
  *
  * Verifies the `GET :id/trajectory/stream` SSE relay subscribes to the Redis
  * channel `consultation:trajectory:{id}` and carries the same auth metadata as
@@ -22,7 +22,7 @@ function buildController(redisSubscriber: unknown): ConsultationController {
   return controller;
 }
 
-describe('ConsultationController trajectory stream (TASK-510 §2D)', () => {
+describe('ConsultationController trajectory stream', () => {
   it('subscribes to consultation:trajectory:{id} and relays each published step as an SSE event', async () => {
     const channel$ = new Subject<string>();
     const redisSubscriber = { subscribeToChannel: vi.fn().mockResolvedValue(channel$.asObservable()) };

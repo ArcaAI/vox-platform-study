@@ -9,7 +9,7 @@ import { HarnessPolicyService } from './harness-policy.service';
  * `CORE_DATABASE_SERVICE` (interactive transactions). `ClsService` is resolved
  * from the globally-registered `ClsModule`.
  *
- * TASK-511 (Phase 3A) — imports AiTaskDefaultServiceModule so `IAiTaskDefaultService`
+ * imports AiTaskDefaultServiceModule so `IAiTaskDefaultService`
  * is available for the AiTaskDefault-first SMR routing precedence in
  * `resolveSmrSelection` (the injection is @Optional, so this is additive).
  */

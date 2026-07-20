@@ -384,7 +384,7 @@ required at collection time even though `HARNESS_RETRIEVAL_ENABLED` defaults off
 retrieval tests import `qdrant_client` directly. A separate, `allow_failure: true`
 `harness-eval-gate` CI job wires the release-blocking eval commands (`python -m harness.eval.ci`
 + the promptfoo output-contract check, see `eval/README.md`) — it is diagnostic-only until a
-CI-reachable judge backend and the real clinician golden set land (TASK-521).
+CI-reachable judge backend and the real clinician golden set land.
 
 Workflow **replay-compat** tests (`tests/unit/temporal/test_replay_compat.py`) capture fixture
 histories for every `workflow.patched(...)` gate and re-run them against the current workflow

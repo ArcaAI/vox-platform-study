@@ -1,4 +1,4 @@
-"""Live E2E for the vLLM provider (TASK-508 Phase 4 / TASK-513).
+"""Live E2E for the vLLM provider.
 
 OWNER-RUN on GPU hardware only. This whole module is SKIPPED unless
 ``SMR_E2E_VLLM_BASE_URL`` is set (e.g. ``http://localhost:8000/v1``), so it never
@@ -36,7 +36,7 @@ def _provider():
     from smr_v2.core.config import VllmConfig
     from smr_v2.providers.vllm import VllmProvider
 
-    return VllmProvider(VllmConfig(enabled=True, base_url=_BASE_URL or "", default_model=_MODEL))
+    return VllmProvider(VllmConfig(base_url=_BASE_URL or "", default_model=_MODEL))
 
 
 def _request(**overrides):

@@ -296,7 +296,7 @@ class TestAzureStructuredOutput:
 
 
 class TestAzureDeploymentName:
-    """TASK-508 D6 (dead-config sweep) — ``AzureOpenAIConfig.deployment_name``
+    """ D6 (dead-config sweep) — ``AzureOpenAIConfig.deployment_name``
     was defined but never read; Azure OpenAI routes requests by *deployment
     name*, not model name, so an operator-configured deployment must win over
     the caller-supplied ``request.model``. When unset (the "" default), today's

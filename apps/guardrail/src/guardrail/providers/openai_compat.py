@@ -376,7 +376,7 @@ class OpenAICompatGuardianProvider:
             content = (data["choices"][0]["message"]["content"] or "").strip()
 
             validation_result = self._parse_validation_response(content)
-            # TASK-509 Phase 1B — AD-1 per-call stats on the judge result (additive).
+            # AD-1 per-call stats on the judge result (additive).
             validation_result["stats"] = stats_from_openai_response(
                 provider=_PROVIDER_NAME, model=self.model, data=data, total_ms=total_ms
             ).to_dict()

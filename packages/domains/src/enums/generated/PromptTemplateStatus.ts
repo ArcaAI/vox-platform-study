@@ -5,6 +5,6 @@
 export enum PromptTemplateStatus {
   DRAFT = 'DRAFT',
   PUBLISHED = 'PUBLISHED',
-  // TASK-511 (Phase 3A) — governance gate for clinical-flow resolution.
+  // governance gate for clinical-flow resolution.
   APPROVED = 'APPROVED',
 }

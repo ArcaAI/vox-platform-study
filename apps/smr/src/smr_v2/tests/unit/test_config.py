@@ -34,23 +34,21 @@ class TestOllamaConfig:
     def test_defaults(self, monkeypatch):
         _clear_smr_env(monkeypatch)
         cfg = OllamaConfig()
-        assert cfg.enabled is False
         assert cfg.base_url == "http://localhost:11434"
         assert cfg.default_model == "google/gemma-4-e4b"
         assert cfg.timeout_s == 300
         assert cfg.max_concurrent == 4
 
     def test_override(self):
-        cfg = OllamaConfig(enabled=True, base_url="http://gpu:11434", default_model="gemma2:7b")
-        assert cfg.enabled is True
+        cfg = OllamaConfig(base_url="http://gpu:11434", default_model="gemma2:7b")
         assert cfg.base_url == "http://gpu:11434"
         assert cfg.default_model == "gemma2:7b"
 
     def test_env_prefix(self, monkeypatch):
+        # a stale SMR_V2_*_ENABLED env is ignored (no such field now).
         monkeypatch.setenv("SMR_V2_OLLAMA_ENABLED", "true")
         monkeypatch.setenv("SMR_V2_OLLAMA_BASE_URL", "http://remote:11434")
         cfg = OllamaConfig()
-        assert cfg.enabled is True
         assert cfg.base_url == "http://remote:11434"
 
 
@@ -58,7 +56,6 @@ class TestAzureOpenAIConfig:
     def test_defaults(self, monkeypatch):
         _clear_smr_env(monkeypatch)
         cfg = AzureOpenAIConfig()
-        assert cfg.enabled is False
         assert cfg.api_key.get_secret_value() == ""
         assert cfg.endpoint == ""
         assert cfg.default_model == "gpt-5-mini"
@@ -82,7 +79,6 @@ class TestAzureOpenAIConfig:
 class TestBedrockConfig:
     def test_defaults(self):
         cfg = BedrockConfig()
-        assert cfg.enabled is False
         assert cfg.region == "us-east-1"
         assert cfg.max_pool_connections == 150
         assert cfg.tpm_limit == 100_000
@@ -112,7 +108,7 @@ class TestCircuitBreakerConfig:
         assert cfg.failure_threshold == 5
         assert cfg.recovery_timeout_s == 30.0
         assert cfg.count_rate_limits is True
-        # TASK-508 D6: None is the deliberate "no-op" sentinel — it preserves
+        # D6: None is the deliberate "no-op" sentinel — it preserves
         # CircuitBreaker's pre-wiring behavior (unlimited HALF_OPEN calls, no
         # failure-count decay) on an unconfigured deployment.
         assert cfg.half_open_max_calls is None

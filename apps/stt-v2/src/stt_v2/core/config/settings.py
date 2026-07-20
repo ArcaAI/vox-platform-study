@@ -135,7 +135,13 @@ class Settings(BaseSettings):
     )
     model_cache_ttl_seconds: int = Field(
         default=3600,
-        description="TTL for cached models in seconds",
+        ge=60,
+        le=3600,
+        description=(
+            "Idle TTL for cached models in seconds (product clamp: "
+            "min 60s / max 3600s). Active sessions pin models so TTL applies "
+            "only after the last release."
+        ),
     )
 
     # HuggingFace
@@ -353,15 +359,16 @@ class Settings(BaseSettings):
         ),
     )
 
-    # Model preloading at startup
+    # PRELOAD_PIPELINES is deprecated as a selection/control
+    # mechanism. Pipeline models load on first use; leave empty in production.
+    # Retained only as an optional warm-start of known slugs (not routing).
     preload_pipelines: str = Field(
         default="",
         description=(
-            "Comma-separated list of pipeline slugs to preload at "
-            "application startup. Models are downloaded and loaded "
-            "into the cache before the first request, eliminating "
-            "cold-start latency. Example: "
-            "'turbo-whisper-large-v3,production-whisper-large-v3'"
+            "DEPRECATED: optional comma-separated pipeline slugs "
+            "to warm at startup. Not used for provider/model/pipeline "
+            "selection — request-time pipeline_id + DB AsrPipeline is authority. "
+            "Prefer empty; models load on first use."
         ),
     )
 

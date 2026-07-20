@@ -297,7 +297,7 @@ export class HarnessAdminController {
     return this.observabilityService.gateQueue(tenantId);
   }
 
-  // TASK-508 Phase 0 D3 — the signal existed in `HarnessObservabilityService`
+  // Phase 0 D3 — the signal existed in `HarnessObservabilityService`
   // (TASK-482 E3) unexposed; this wires it to the admin surface. The real
   // service signature is `getEditBurden(tenantId, consultationId)` — a
   // single-consultation lookup, not a date-range aggregate.

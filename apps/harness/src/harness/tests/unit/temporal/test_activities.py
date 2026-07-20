@@ -300,7 +300,7 @@ class TestGenerate:
 
     @pytest.mark.asyncio
     async def test_threads_smr_stats_onto_activity_result(self, env, monkeypatch):
-        """TASK-509 (AD-1) Phase 1B — the generate activity result carries the SMR
+        """the generate activity result carries the SMR
         ``stats`` block (additive field on ``SmrGenerationResult``; command-neutral —
         no new workflow command). Phase 2 trajectory emitters read it off the result."""
         stats = {
@@ -749,6 +749,10 @@ def _infer_input(**kw: Any) -> RunInferentialSensorsInput:
     base: dict[str, Any] = {
         "note_text": "Patient stable; continue current plan.",
         "transcript_text": "Patient has hypertension.",
+        # the SYSTEM harness.judge selection the workflow threads onto the
+        # input (a local judge here ⇒ no cloud PHI redaction). Absent ⇒ fail-closed.
+        "judge_provider": "openai_compat",
+        "judge_model": "stub-judge",
         "citations_map": {
             "claims": [
                 {
@@ -773,7 +777,7 @@ class TestRunInferentialSensors:
     async def test_runs_both_sensors_and_assembles_guardrail_decisions(self, env, monkeypatch):
         judge = _StubJudge()
         granite = _FakeGranite(dimensions={"harm": False, "violence": False})
-        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: judge)
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
         monkeypatch.setattr(activities, "_granite_client", lambda s: granite)
 
         result = await env.run(activities.run_inferential_sensors, _infer_input())
@@ -796,7 +800,7 @@ class TestRunInferentialSensors:
 
     @pytest.mark.asyncio
     async def test_unsafe_dimension_marks_safety_flag(self, env, monkeypatch):
-        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: _StubJudge())
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(
             activities,
             "_granite_client",
@@ -816,7 +820,7 @@ class TestRunInferentialSensors:
     @pytest.mark.asyncio
     async def test_ungrounded_claim_marks_groundedness_regen(self, env, monkeypatch):
         judge = _StubJudge(unsupported_markers=("penicillin",))
-        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: judge)
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
         monkeypatch.setattr(
             activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
         )
@@ -845,7 +849,7 @@ class TestRunInferentialSensors:
 
     @pytest.mark.asyncio
     async def test_granite_failure_degrades_safety_without_raising(self, env, monkeypatch):
-        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: _StubJudge())
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(
             activities,
             "_granite_client",
@@ -865,7 +869,7 @@ class TestRunInferentialSensors:
 
     @pytest.mark.asyncio
     async def test_judge_build_failure_degrades_whole_pass(self, env, monkeypatch):
-        def _boom() -> object:
+        def _boom(*_a: Any, **_k: Any) -> object:
             raise RuntimeError("judge unbuildable")
 
         monkeypatch.setattr(activities, "_build_runtime_judge", _boom)
@@ -922,7 +926,7 @@ class TestRunInferentialSensorsLiveAssurance:
     @pytest.mark.asyncio
     async def test_publishes_one_event_per_claim_with_mapped_verdict(self, env, monkeypatch):
         judge = _StubJudge(unsupported_markers=("penicillin",))
-        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: judge)
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
         monkeypatch.setattr(activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False}))
         fake = _FakeAssuranceApi()
         monkeypatch.setattr(activities, "_progress_api_client", lambda s: fake)
@@ -952,7 +956,7 @@ class TestRunInferentialSensorsLiveAssurance:
 
     @pytest.mark.asyncio
     async def test_no_publish_when_live_assurance_disabled(self, env, monkeypatch):
-        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: _StubJudge())
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False}))
         fake = _FakeAssuranceApi()
         monkeypatch.setattr(activities, "_progress_api_client", lambda s: fake)
@@ -966,7 +970,7 @@ class TestRunInferentialSensorsLiveAssurance:
     async def test_publish_failure_never_degrades_the_pass(self, env, monkeypatch):
         from harness.services.api_client import ApiServiceError
 
-        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: _StubJudge())
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False}))
         fake = _FakeAssuranceApi(error=ApiServiceError("redis down"))
         monkeypatch.setattr(activities, "_progress_api_client", lambda s: fake)

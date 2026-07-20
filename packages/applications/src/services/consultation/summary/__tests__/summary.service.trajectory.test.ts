@@ -1,5 +1,5 @@
 /**
- * SummaryService — trajectory emitter (TASK-510 §2C).
+ * SummaryService — trajectory emitter.
  *
  * Each generate / pre-summary emits ONE LLM_CALL trajectory step via the
  * (optional) AgentTrajectoryService: sessionKind=SUMMARY_JOB,
@@ -60,7 +60,7 @@ function buildService(trajectoryOverride?: { recordSteps: ReturnType<typeof vi.f
     harnessPolicyService as never, // harnessPolicyService
     undefined as never, // configResolver
     undefined as never, // entitlements
-    trajectory as never, // TASK-510 trajectory emitter
+    trajectory as never, // trajectory emitter
   );
   return { service, trajectory, contextItemRepository };
 }

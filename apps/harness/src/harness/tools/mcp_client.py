@@ -1,4 +1,4 @@
-"""Streamable-HTTP MCP tool client (TASK-516 Phase 5 — READ-ONLY, default OFF).
+"""Streamable-HTTP MCP tool client.
 
 A thin async wrapper over the official ``mcp`` python SDK's streamable-HTTP client.
 The SDK is imported LAZILY (an optional ``mcp-tools`` extra), so this module imports

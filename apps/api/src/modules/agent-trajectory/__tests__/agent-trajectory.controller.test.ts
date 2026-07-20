@@ -1,5 +1,5 @@
 /**
- * AgentTrajectoryController unit tests (TASK-510 Phase 2D — admin read plane).
+ * AgentTrajectoryController unit tests.
  *
  * The class-level `@CanManage('HarnessPolicy')` tuple + the tenant-owned 404
  * posture are exercised by the guard/interceptor (and e2e). These specs cover

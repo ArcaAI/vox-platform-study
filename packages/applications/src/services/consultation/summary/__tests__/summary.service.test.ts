@@ -273,12 +273,12 @@ describe('SummaryService', () => {
         });
     });
 
-    // ── TASK-509 Phase 1B — persist the AD-1 GenerationStats headline fields ──
+    // ── persist the AD-1 GenerationStats headline fields ──
     // The SMR /generate response now carries a `stats` block (stop_reason,
     // ttft_ms, tokens_per_second, …). generateSummary/generatePreSummary must
     // persist the three headline fields onto SummaryMeta via the factory/entity
     // path. `stats` may be null (legacy idempotency-cache hit) → degrade cleanly.
-    describe('TASK-509 — generation stats persistence', () => {
+    describe('generation stats persistence', () => {
         const primeGenerateMocks = (data: Record<string, unknown>) => {
             mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
             mockContextItemRepository.findTranscripts.mockResolvedValue([{ content: 'transcript text' }]);

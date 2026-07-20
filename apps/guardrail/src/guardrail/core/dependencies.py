@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import Request
+
+from guardrail.services.model_cache import ModelCache, ModelUnavailableError
 
 if TYPE_CHECKING:
     import httpx
@@ -18,6 +23,7 @@ if TYPE_CHECKING:
         OpenAICompatGuardianProvider,
         OpenAICompatProvider,
     )
+    from guardrail.services.groundedness_nli import GroundednessNliVerifier, NliScorer
     from guardrail.services.job_processor import JobProcessor
 
     # The active content/guardian providers depend on the selected LLM engine.
@@ -51,15 +57,15 @@ def get_guardian_provider(request: Request) -> GuardianLike:
 
 
 async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
-    """Resolve the guardian provider for the request tenant (TASK-338, Q3c).
+    """Resolve the guardian provider from SYSTEM AiTaskDefault.
 
-    When ``db_config_enabled`` is false, this returns the env-configured
-    guardian provider unchanged — behavior is identical to before. When enabled
-    (the default since TASK-506), it reads the per-tenant guardrail provider/model
-    from ``core."AiTaskDefault"`` ⋈ ``core."AiModel"`` (via the X-Tenant-Id header,
-    with TTL cache + default-tenant/env fallback) and builds a guardian provider
-    for the resolved engine.
+    When ``db_config_enabled`` is false (dev-only escape hatch), returns the
+    env-configured guardian. When enabled (default), reads
+    ``AiTaskDefault`` ⋈ ``AiModel`` for ``guardrail.validate`` and **fails
+    closed** (HTTP 503) if SYSTEM selection is missing — no silent env fallback.
     """
+    from fastapi import HTTPException
+
     settings = request.app.state.settings
     default_provider: GuardianLike = request.app.state.guardian_provider
 
@@ -68,7 +74,10 @@ async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
 
     resolver = getattr(request.app.state, "tenant_config_resolver", None)
     if resolver is None:
-        return default_provider
+        raise HTTPException(
+            status_code=503,
+            detail="SYSTEM AiTaskDefault for 'guardrail.validate' is unavailable (resolver not wired).",
+        )
 
     from guardrail.core.tenant_config import (
         build_guardian_provider,
@@ -78,9 +87,12 @@ async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
     tenant_id = request.headers.get("X-Tenant-Id")
     tenant_cfg = await resolver.resolve(tenant_id)
 
-    # Nothing admin-configured for this tenant (or its default) — keep env engine.
+    # Fail closed when DB selection is missing (no env fallback).
     if tenant_cfg.provider is None and tenant_cfg.model is None:
-        return default_provider
+        raise HTTPException(
+            status_code=503,
+            detail="SYSTEM AiTaskDefault for 'guardrail.validate' is missing. Run db:seed.",
+        )
 
     provider_name, engine_cfg = resolve_guardian_engine(settings, tenant_cfg)
     return build_guardian_provider(  # type: ignore[return-value]
@@ -88,11 +100,196 @@ async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
     )
 
 
-def get_gliner_provider(request: Request) -> GlinerProvider:
-    """Retrieve GLiNER provider from app.state."""
-    return cast("GlinerProvider", request.app.state.gliner_provider)
-
-
 def get_job_processor(request: Request) -> JobProcessor:
     """Retrieve job processor from app.state."""
     return cast("JobProcessor", request.app.state.job_processor)
+
+
+# ---------------------------------------------------------------------------
+# lazy, DB-selected aux models (GLiNER + MiniCheck) with idle-TTL.
+#
+# GLiNER (content safety) and MiniCheck (groundedness) are NOT loaded in the
+# lifespan. Their runtime model id is resolved per request from the SYSTEM
+# ``AiTaskDefault`` registry (``guardrail.safety`` / ``guardrail.groundedness``)
+# and the instance is loaded on the fly through a bounded, idle-TTL model cache
+# (pinned for the request). Model IDENTITY is DB-only and fails closed — there
+# is no env fallback except the ``db_config_enabled=False`` dev escape hatch
+# (mirrors ``get_resolved_guardian_provider``). Precision / thresholds / thread
+# and staging paths remain infra tuning.
+# ---------------------------------------------------------------------------
+
+
+def get_gliner_cache(app_state: Any) -> ModelCache[GlinerProvider]:
+    """Return (lazily creating) the per-app GLiNER aux-model cache."""
+    cache = getattr(app_state, "gliner_cache", None)
+    if cache is None:
+        settings = app_state.settings
+
+        async def factory(model_id: str) -> GlinerProvider:
+            from guardrail.providers.gliner import GlinerProvider
+
+            cfg = settings.gliner.model_copy(update={"model_id": model_id})
+            provider = GlinerProvider(config=cfg)
+            # ONNX load is blocking/CPU-bound — keep the event loop responsive.
+            await asyncio.to_thread(provider.load)
+            return provider
+
+        cache = ModelCache(
+            factory=factory,
+            max_size=settings.model_cache_max_models,
+            ttl_seconds=settings.model_cache_ttl_s,
+        )
+        app_state.gliner_cache = cache
+    return cast("ModelCache[GlinerProvider]", cache)
+
+
+def get_groundedness_scorer_cache(app_state: Any) -> ModelCache[NliScorer]:
+    """Return (lazily creating) the per-app MiniCheck groundedness scorer cache."""
+    cache = getattr(app_state, "groundedness_scorer_cache", None)
+    if cache is None:
+        settings = app_state.settings
+
+        async def factory(model_id: str) -> NliScorer:
+            from guardrail.services.groundedness_scorer_minicheck import (
+                load_minicheck_scorer,
+            )
+
+            cfg = settings.groundedness.model_copy(update={"model_id": model_id})
+            # Loading a GGUF under llama.cpp is blocking — offload it.
+            return await asyncio.to_thread(load_minicheck_scorer, cfg)
+
+        cache = ModelCache(
+            factory=factory,
+            max_size=settings.model_cache_max_models,
+            ttl_seconds=settings.model_cache_ttl_s,
+        )
+        app_state.groundedness_scorer_cache = cache
+    return cast("ModelCache[NliScorer]", cache)
+
+
+async def _resolve_aux_model_id(app_state: Any, tenant_id: str | None, task_key: str) -> str:
+    """Resolve an aux-model runtime id from the SYSTEM ``AiTaskDefault`` registry.
+
+    Fail-closed: raises :class:`ModelUnavailableError` when DB selection is
+    missing (mapped to HTTP 503 by callers). The ``db_config_enabled=False``
+    dev escape hatch returns the env-configured id (same posture as the guardian
+    resolver); it never applies in the default DB-on deployment.
+    """
+    from guardrail.core.tenant_config import (
+        TASK_KEY_GUARDRAIL_GROUNDEDNESS,
+        TASK_KEY_GUARDRAIL_SAFETY,
+    )
+
+    settings = cast("Settings", app_state.settings)
+
+    if not settings.db.db_config_enabled:
+        if task_key == TASK_KEY_GUARDRAIL_SAFETY:
+            return settings.gliner.model_id
+        if task_key == TASK_KEY_GUARDRAIL_GROUNDEDNESS:
+            return settings.groundedness.model_id
+        raise ModelUnavailableError(f"no env id for task key {task_key!r}")
+
+    resolver = getattr(app_state, "tenant_config_resolver", None)
+    if resolver is None:
+        raise ModelUnavailableError(
+            f"SYSTEM AiTaskDefault for {task_key!r} is unavailable (resolver not wired)."
+        )
+    model_id: str | None = await resolver.resolve_model_id(tenant_id, task_key)
+    if not model_id:
+        raise ModelUnavailableError(
+            f"SYSTEM AiTaskDefault for {task_key!r} is missing. Run db:seed."
+        )
+    return model_id
+
+
+@asynccontextmanager
+async def pinned_gliner_provider(
+    app_state: Any, tenant_id: str | None = None, model_id: str | None = None
+) -> AsyncIterator[GlinerProvider]:
+    """Resolve + lazily load + pin the GLiNER provider for a request/job.
+
+    ``model_id`` may be pre-resolved (e.g. by the ``get_gliner_model_id``
+    dependency) to avoid a second DB lookup; otherwise it is resolved here.
+    Raises :class:`ModelUnavailableError` when the ``guardrail.safety`` DB
+    selection is missing (HTTP endpoints map it to 503; the job processor marks
+    the job failed). The resolved model is pinned so idle-TTL / LRU can't evict
+    it mid-flight, and unpinned when the block exits.
+    """
+    from guardrail.core.tenant_config import TASK_KEY_GUARDRAIL_SAFETY
+
+    if model_id is None:
+        model_id = await _resolve_aux_model_id(app_state, tenant_id, TASK_KEY_GUARDRAIL_SAFETY)
+    cache = get_gliner_cache(app_state)
+    await cache.pin(model_id)
+    try:
+        yield await cache.get(model_id)
+    finally:
+        await cache.unpin(model_id)
+
+
+async def get_gliner_model_id(request: Request) -> str:
+    """FastAPI dependency: DB-resolve the GLiNER model id (fail-closed → 503)."""
+    from fastapi import HTTPException
+
+    from guardrail.core.tenant_config import TASK_KEY_GUARDRAIL_SAFETY
+
+    try:
+        return await _resolve_aux_model_id(
+            request.app.state,
+            request.headers.get("X-Tenant-Id"),
+            TASK_KEY_GUARDRAIL_SAFETY,
+        )
+    except ModelUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@asynccontextmanager
+async def acquire_groundedness_verifier(
+    request: Request,
+) -> AsyncIterator[GroundednessNliVerifier]:
+    """Yield a groundedness verifier, DB-selecting + pinning MiniCheck when enabled.
+
+    Resolution order:
+      1. a pre-seeded ``app.state.groundedness_verifier`` (test seam) is used verbatim;
+      2. a disabled gate builds a verifier that degrades honestly (no DB / no model);
+      3. otherwise the ``guardrail.groundedness`` DB selection drives the model id
+         (fail-closed :class:`ModelUnavailableError` when missing) and the MiniCheck
+         scorer is lazily loaded + pinned via the idle-TTL cache. If the model is
+         configured but not staged/loadable, the verifier degrades to ``unverified``
+         (fail-closed groundedness) rather than 503 — 503 is reserved for a MISSING
+         DB selection.
+    """
+    from guardrail.services.groundedness_nli import GroundednessNliVerifier
+
+    app_state = request.app.state
+    pre_seeded = getattr(app_state, "groundedness_verifier", None)
+    if pre_seeded is not None:
+        yield pre_seeded
+        return
+
+    settings = app_state.settings
+    if not settings.groundedness.enabled:
+        # Dev/CI bypass — degrades to `groundedness_disabled`, no model needed.
+        yield GroundednessNliVerifier(settings.groundedness)
+        return
+
+    from guardrail.core.tenant_config import TASK_KEY_GUARDRAIL_GROUNDEDNESS
+
+    model_id = await _resolve_aux_model_id(
+        app_state, request.headers.get("X-Tenant-Id"), TASK_KEY_GUARDRAIL_GROUNDEDNESS
+    )
+    config = settings.groundedness.model_copy(update={"model_id": model_id})
+    cache = get_groundedness_scorer_cache(app_state)
+    await cache.pin(model_id)
+    try:
+        try:
+            scorer = await cache.get(model_id)
+        except Exception:
+            # DB identity known but the GGUF is not staged/loadable → degrade
+            # fail-closed to `unverified` (the verifier's default factory reports
+            # `nli_model_unavailable`); never a 503 and never `grounded`.
+            yield GroundednessNliVerifier(config)
+            return
+        yield GroundednessNliVerifier(config, scorer=scorer)
+    finally:
+        await cache.unpin(model_id)

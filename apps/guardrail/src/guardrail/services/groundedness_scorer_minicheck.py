@@ -192,7 +192,7 @@ def load_minicheck_scorer(config: GroundednessConfig) -> NliScorer:
         )
 
     try:
-        from llama_cpp import Llama  # type: ignore[import-not-found]
+        from llama_cpp import Llama
     except ImportError as exc:
         raise NliModelUnavailableError(
             "llama-cpp-python is not installed; install the guardrail 'groundedness' extra "

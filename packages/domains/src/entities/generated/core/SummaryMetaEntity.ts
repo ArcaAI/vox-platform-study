@@ -14,7 +14,7 @@ export interface ISummaryMetaEntity extends IBaseTenantEntity {
   processingTimeMs?: number | null;
   inputTokens?: number | null;
   outputTokens?: number | null;
-  // TASK-509 Phase 1B — AD-1 generation-stats headline fields.
+  // AD-1 generation-stats headline fields.
   stopReason?: string | null;
   ttftMs?: number | null;
   tokensPerSecond?: number | null;
@@ -171,7 +171,7 @@ export class SummaryMetaEntity extends BaseTenantEntity {
     this.setProperty('outputTokens', value);
   }
 
-  // TASK-509 Phase 1B — AD-1 generation-stats headline fields (normalized stop
+  // AD-1 generation-stats headline fields (normalized stop
   // reason, time-to-first-token, decode throughput). Additive/nullable.
   get stopReason(): ISummaryMetaEntity['stopReason'] {
     return this._stopReason;

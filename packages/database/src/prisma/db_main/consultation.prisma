@@ -105,7 +105,7 @@ model ContextItem {
   // DNA Writing Style (reference ID, similar to mediaId pattern)
   dnaWritingStyleId String?
 
-  // Qdrant sync status (for semantic search). RESERVED, NO WRITER (TASK-508
+  // Qdrant sync status (for semantic search). RESERVED, NO WRITER (
   // Phase 0 / SOTA gap review D2): the target `context_items` Qdrant
   // collection was never actually provisioned-and-used — its provisioning
   // was removed from infrastructure/docker/scripts/init-qdrant-collections.py
@@ -131,7 +131,7 @@ model ContextItem {
   SummaryMeta     SummaryMeta?
   NamedEntities   NamedEntity[]        @relation("NamedEntityParent")
   Versions        ContextItemVersion[]
-  // TASK-519 — segment-level structure of a TRANSCRIPT context item (turns /
+  // segment-level structure of a TRANSCRIPT context item (turns /
   // diarized segments with time + character-offset anchors). Only populated
   // for TRANSCRIPT items; empty for every other type.
   TranscriptSegments TranscriptSegment[]
@@ -240,7 +240,7 @@ model SummaryMeta {
   inputTokens  Int? // Tokens used for input
   outputTokens Int? // Tokens generated
 
-  // TASK-509 Phase 1B — AD-1 generation-stats headline fields. Persisted per
+  // AD-1 generation-stats headline fields. Persisted per
   // summary alongside the existing token/latency columns. `stopReason` is the
   // NORMALIZED stop reason (stop | length | content_filter | tool_call | abort
   // | error | other); `ttftMs` is time-to-first-token; `tokensPerSecond` is the
@@ -361,7 +361,7 @@ model NamedEntity {
   startOffset Int? // Character offset start
   endOffset   Int? // Character offset end
 
-  // TASK-518 — negation/assertion polarity for this mention (ConText/NegEx).
+  // negation/assertion polarity for this mention (ConText/NegEx).
   // One of PRESENT | ABSENT | HISTORICAL | FAMILY | HYPOTHETICAL. Nullable +
   // additive; a null value is read as PRESENT (the safe default) so existing
   // rows and any writer that does not set it stay positive assertions.
@@ -544,7 +544,7 @@ model Highlight {
 }
 
 // =============================================================================
-// TRANSCRIPT SEGMENT (TASK-519 — segment-level transcript + evidence links)
+// TRANSCRIPT SEGMENT
 // =============================================================================
 // A single ordered segment (a diarized turn / VAD segment) of a TRANSCRIPT
 // context item. STT emits per-segment metadata (start/end timestamps, speaker,

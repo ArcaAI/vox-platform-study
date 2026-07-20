@@ -1,4 +1,4 @@
-// TASK-511 (Phase 3A) — agentic context-management strategy descriptors.
+// agentic context-management strategy descriptors.
 //
 // The `agentic.context.*` namespace consolidates the context-window / flush /
 // claim-check knobs the live-documentation loop reads. They are GLOBAL-ADMIN-ONLY

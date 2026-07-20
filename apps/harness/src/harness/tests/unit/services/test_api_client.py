@@ -145,7 +145,7 @@ class TestAssemble:
 
     @pytest.mark.asyncio
     async def test_assemble_maps_segment_citations_camel_response(self):
-        # TASK-519 live-path — apps/api returns camelCase PHI-safe refs; the
+        # live-path — apps/api returns camelCase PHI-safe refs; the
         # client maps them onto AssembleResponse.segment_citations for the
         # workflow to thread into GenerateInput.
         def handler(request: httpx.Request) -> httpx.Response:
@@ -774,7 +774,7 @@ class TestConfigurablePrefix:
 
 
 class TestReportTrajectory:
-    """TASK-510 (Phase 2C) — batched ordered-trajectory step reporting.
+    """batched ordered-trajectory step reporting.
 
     Mirrors ``report_progress``/``record_escalation``: POSTs to the NEW gateway
     route ``/internal/harness/trajectory`` with the shared service token, a

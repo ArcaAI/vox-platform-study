@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AgenticInstructionsService, JUDGE_PROMPT_INSTRUMENT, JUDGE_PROMPT_HASH } from '../agentic-instructions.service';
 
 /**
- * TASK-511 (Phase 3A) item 6 — the agentic instructions inventory aggregator.
+ * (Phase 3A) item 6 — the agentic instructions inventory aggregator.
  * It is a pure read composition over `HarnessPolicyService.getEffectivePolicy`
  * (thresholds + safety) and `PromptResolutionService.resolve` (the prompt tier),
  * plus the vendored (non-editable) PDSQI judge-prompt pin. These specs mock both

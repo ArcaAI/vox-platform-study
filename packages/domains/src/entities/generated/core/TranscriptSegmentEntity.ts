@@ -9,7 +9,7 @@ import * as Entities from '../../../entities';
 
 /**
  * A single ordered segment (diarized turn / VAD segment) of a TRANSCRIPT
- * context item (TASK-519).
+ * context item.
  *
  * INTENTIONAL posture (mirrors NamedEntity / AudioRecording, differs from the
  * standard clinical models):

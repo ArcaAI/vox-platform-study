@@ -1,5 +1,5 @@
 /**
- * Prompt Studio client (TASK-512 screen 4). Gateway-relative paths under the
+ * Prompt Studio client. Gateway-relative paths under the
  * /api/hope BFF proxy. The approve action is an OCC WRITE requiring If-Match
  * (GLOBAL_ADMIN-only server-side): expectedVersion is folded from the detail
  * read's ETag. Templates are tenant-owned, so the screen runs behind the

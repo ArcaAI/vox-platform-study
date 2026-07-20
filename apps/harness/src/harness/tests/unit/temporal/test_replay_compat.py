@@ -229,8 +229,8 @@ class TestReplayCompatibility:
         await replayer.replay_workflow(_history("doc_workflow_post_task483_claim_check_history"))
 
     @pytest.mark.asyncio
-    async def test_post_task516_mcp_history_replays_on_current_definition(self):
-        """Forward guard for the TASK-516 (Phase 5) MCP external-tools era.
+    async def test_post_mcp_history_replays_on_current_definition(self):
+        """Forward guard for the (Phase 5) MCP external-tools era.
 
         The fixture is a happy-path history recorded with the MCP tool path ARMED — the
         policy enables ``mcpToolsEnabled`` and registers an enabled terminology server, so
@@ -251,4 +251,4 @@ class TestReplayCompatibility:
             workflows=[HarnessDocWorkflow],
             data_converter=pydantic_data_converter,
         )
-        await replayer.replay_workflow(_history("doc_workflow_post_task516_mcp_history"))
+        await replayer.replay_workflow(_history("doc_workflow_post_mcp_history"))

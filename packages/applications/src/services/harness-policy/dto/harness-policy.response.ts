@@ -62,6 +62,18 @@ export class HarnessPolicyResponse {
   @ApiPropertyOptional({ description: 'SMR generation model id (null = let the SMR service choose).', nullable: true })
   smrModel: string | null;
 
+  // ── LLM-as-judge selection (resolved from the SYSTEM-only
+  // `harness.judge` AiTaskDefault; GLOBAL_ADMIN-managed). The harness worker's
+  // `fetch_policy` activity reads these to pick the judge backend; null on both
+  // ⇒ the harness falls back to its env/code judge default. `judgeProvider` is
+  // normalised to a harness `JudgeProvider` value (e.g. `lm-studio` → `openai_compat`). ──
+
+  @ApiPropertyOptional({ description: 'LLM-as-judge provider id (null = harness env/code default).', nullable: true })
+  judgeProvider: string | null;
+
+  @ApiPropertyOptional({ description: 'LLM-as-judge model id (null = harness env/code default).', nullable: true })
+  judgeModel: string | null;
+
   @ApiProperty({ description: 'Bounded-regen budget.', example: 2 })
   maxRegen: number;
 
@@ -74,7 +86,7 @@ export class HarnessPolicyResponse {
   @ApiPropertyOptional({ description: 'Allow-listed tool ids the loop may call (null = all tools allowed).', type: [String], nullable: true })
   toolAllowlist: string[] | null;
 
-  // ── TASK-511 (Phase 3A) — agentic loop knobs (null ⇒ harness env/code default) ──
+  // ── agentic loop knobs (null ⇒ harness env/code default) ──
 
   @ApiPropertyOptional({ description: 'Optimistic-delivery loop toggle (null = harness env default).', nullable: true })
   optimisticDeliveryEnabled: boolean | null;

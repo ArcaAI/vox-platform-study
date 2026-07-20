@@ -1,5 +1,5 @@
 /**
- * Wire types for the global-admin Agentic Policy surface (TASK-512, tier
+ * Wire types for the global-admin Agentic Policy surface (, tier
  * 10-19). Shapes mirror the gateway DTOs in @arcaai/applications
  * (HarnessPolicyResponse / UpdateHarnessPolicyRequest, LiveDocEngineConfig*,
  * SettingCatalog*) — the console cannot import that server package, so the
@@ -14,7 +14,7 @@ export type HarnessPolicySource = 'tenant' | 'system-default' | 'code-default';
 /**
  * GET /admin/harness/policy/global response — the SYSTEM-tenant GLOBAL-DEFAULT
  * agentic loop policy. `version` is the OCC token the ETag interceptor renders
- * as `ETag: "<version>"`. The TASK-511 agentic loop knobs are nullable
+ * as `ETag: "<version>"`. The agentic loop knobs are nullable
  * overrides (null = harness env/code default) and may be absent on older rows.
  */
 export interface AgenticPolicy {
@@ -37,7 +37,7 @@ export interface AgenticPolicy {
     gateSlaSeconds: number;
     gateEscalationSeconds: number;
     toolAllowlist: string[] | null;
-    // TASK-511 agentic loop knobs (nullable overrides; may be undefined on the wire).
+    // agentic loop knobs (nullable overrides; may be undefined on the wire).
     optimisticDeliveryEnabled?: boolean | null;
     atomicFactEnabled?: boolean | null;
     retrievalEnabled?: boolean | null;

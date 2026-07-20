@@ -173,6 +173,7 @@ class BatchTranscriptionService:
         pipeline_start = time.time()
         spec = pipeline_config.spec
         timing = TimingMetrics()
+        pin_slugs: list[str] = []
 
         def update_progress(pct: int) -> None:
             if progress_callback:
@@ -192,6 +193,15 @@ class BatchTranscriptionService:
             asr_model = models.get("asr")
             vad_model = models.get("vad")
             denoise_model = models.get("denoise")
+
+            # Pin all loaded pipeline models for the job duration.
+            pin_slugs = [
+                m.model_slug
+                for m in (asr_model, vad_model, denoise_model)
+                if m is not None and getattr(m, "model_slug", None)
+            ]
+            if pin_slugs:
+                await get_model_cache().pin_many(pin_slugs)
 
             if asr_model is None:
                 raise TranscriptionError(
@@ -552,6 +562,13 @@ class BatchTranscriptionService:
                 error_type=type(e).__name__,
             )
             raise TranscriptionError(f"Transcription failed: {e}") from e
+        finally:
+            # Release pins so idle TTL can apply after the job.
+            if pin_slugs:
+                try:
+                    await get_model_cache().unpin_many(pin_slugs)
+                except Exception:
+                    logger.warning("[%s] Failed to unpin pipeline models", job_id, exc_info=True)
 
     async def _preseed_speaker(
         self,

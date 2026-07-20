@@ -8,9 +8,13 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * non-pipeline AI tasks — the Class-3 generalization of
  * `HarnessPolicy.smrProvider/smrModel`:
  *
- *   - guardrail.validate   → granite-guardian-4.1-8b   (GUARDRAIL row)
- *   - nlp.ner              → medical-ner               (TOKEN_CLASSIFICATION row)
- *   - nlp.classification   → symps-disease-bert-v3-c41 (TEXT_CLASSIFICATION row)
+ *   - guardrail.validate   → granite-guardian-4.1-8b     (GUARDRAIL row)
+ *   - nlp.ner              → medical-ner                 (TOKEN_CLASSIFICATION row)
+ * - nlp.classification → nlp-doc-type-classifier (TEXT_CLASSIFICATION, DISABLED placeholder — )
+ * - nlp.diagnosis → symps-disease-bert-v3-c41 (TEXT_CLASSIFICATION row — )
+ * - guardrail.safety → gliner-guard-uniencoder-onnx (TOKEN_CLASSIFICATION row — )
+ * - guardrail.groundedness → minicheck-flan-t5-large (TEXT_CLASSIFICATION row — )
+ * - harness.judge → lms-gemma-4-e4b (TEXT_GENERATION row — )
  *
  * Resolution at runtime (AiTaskDefaultService.getEffective): tenant row →
  * SYSTEM row → consuming service's env fallback. Governance (owner decision
@@ -44,12 +48,26 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
         modelSlug: 'medical-ner',
     },
     {
+        // repointed at an explicitly DISABLED doc-type placeholder.
+        // `nlp.classification` is the `/classify/text` document-type classifier;
+        // it no longer points at the diagnosis suggester (moved to nlp.diagnosis).
+        // No doc-type model is deployed, so the capability fails closed until a
+        // real classifier is seeded. CREATE-ONLY: existing rows keep the admin's
+        // choice; only a cold seed picks up the corrected slug.
         id: '86000000-0000-0000-0000-000000000003',
         tenantId: SYSTEM_TENANT_ID,
         taskKey: 'nlp.classification',
+        modelSlug: 'nlp-doc-type-classifier',
+    },
+    // the diagnosis suggester is now keyed under `nlp.diagnosis`
+    // (the /diagnosis endpoint), separate from the doc-type classifier.
+    {
+        id: '86000000-0000-0000-0000-000000000009',
+        tenantId: SYSTEM_TENANT_ID,
+        taskKey: 'nlp.diagnosis',
         modelSlug: 'symps-disease-bert-v3-c41',
     },
-    // TASK-511 (Phase 3A) — SMR generation routing, mapped to the CURRENT SMR
+    // SMR generation routing, mapped to the CURRENT SMR
     // default (HarnessPolicy SYSTEM smrProvider/smrModel = lm-studio /
     // gemma-4-e2b-it-qat, registry slug `lms-gemma-4-e2b-it-qat`). Both live and
     // finalize point at the same platform default today; a global admin may
@@ -65,6 +83,28 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
         tenantId: SYSTEM_TENANT_ID,
         taskKey: 'smr.finalize',
         modelSlug: 'lms-gemma-4-e2b-it-qat',
+    },
+    // Guardrail selection moved out of env into the DB control plane
+    // (Phase B). Both keys are GLOBAL-ADMIN-only.
+    {
+        id: '86000000-0000-0000-0000-000000000006',
+        tenantId: SYSTEM_TENANT_ID,
+        taskKey: 'guardrail.safety',
+        modelSlug: 'gliner-guard-uniencoder-onnx',
+    },
+    {
+        id: '86000000-0000-0000-0000-000000000007',
+        tenantId: SYSTEM_TENANT_ID,
+        taskKey: 'guardrail.groundedness',
+        modelSlug: 'minicheck-flan-t5-large',
+    },
+    // Harness LLM-as-judge selection moved out of env into the DB
+    // control plane (Phase C). GLOBAL-ADMIN-only; SYSTEM wins.
+    {
+        id: '86000000-0000-0000-0000-000000000008',
+        tenantId: SYSTEM_TENANT_ID,
+        taskKey: 'harness.judge',
+        modelSlug: 'lms-gemma-4-e4b',
     },
 ];
 

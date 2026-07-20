@@ -1,4 +1,4 @@
-"""TASK-516 — MCP client + fail-closed PHI arg guard (hermetic, no `mcp` SDK, no network).
+"""MCP client + fail-closed PHI arg guard (hermetic, no `mcp` SDK, no network).
 
 Covers the two reusable security primitives the ``call_mcp_tool`` activity composes:
 

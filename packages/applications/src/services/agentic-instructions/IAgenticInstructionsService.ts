@@ -9,7 +9,7 @@ export interface AgenticInstructionsResolveOptions {
 }
 
 /**
- * TASK-511 (Phase 3A) item 6 — read-only aggregator for the effective agentic
+ * (Phase 3A) item 6 — read-only aggregator for the effective agentic
  * instruction set per tenant. Composes the harness policy (thresholds + safety),
  * the prompt-resolution cascade (tier), and the vendored PDSQI judge-prompt pin.
  */

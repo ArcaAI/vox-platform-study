@@ -1,5 +1,5 @@
 /**
- * Wire types for the global Prompt Studio governance surface (TASK-512 screen
+ * Wire types for the global Prompt Studio governance surface ( screen
  * 4). Shapes mirror the prompt-management DTOs in @arcaai/applications
  * (PromptTemplateResponse / PromptVersionResponse / PromptVersionDiffResponse /
  * ApprovePromptTemplateRequest). The console cannot import the server package,
@@ -11,7 +11,7 @@ import type { ResourceStatus } from '@/shared/api';
 
 export type PromptTemplateCategory = 'SYSTEM' | 'SUMMARY' | 'DNA_ANALYSIS' | 'CUSTOM';
 /**
- * The DTO enum is DRAFT|PUBLISHED, but the TASK-511 approve action sets
+ * The DTO enum is DRAFT|PUBLISHED, but the approve action sets
  * `status = APPROVED` — declared here as a superset so the UI renders whichever
  * the gateway returns without a type break.
  */

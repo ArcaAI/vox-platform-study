@@ -1,5 +1,6 @@
 """Unit tests for the PunctuationService module (model registry)."""
 
+import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -14,11 +15,13 @@ def _reset_models():
     service._default_model_name = None
     service._enabled = True
     service._suppression_warned = False
+    service._init_done = False
     yield
     service._models.clear()
     service._default_model_name = None
     service._enabled = True
     service._suppression_warned = False
+    service._init_done = False
 
 
 class TestInitialize:
@@ -217,6 +220,69 @@ class TestInitializeFailure:
             assert await service.punctuate_batch(["hello"]) == ["hello"]
 
         assert mock_load.call_count == 1
+
+
+class TestEnsureInitializedLazy:
+    """The default model loads lazily on first use, exactly once."""
+
+    @staticmethod
+    def _enabled_settings():
+        settings = MagicMock()
+        settings.punctuation_enabled = True
+        settings.punctuation_model_name = "Cadence"
+        settings.punctuation_model_cache_dir = None
+        settings.punctuation_device = "cpu"
+        settings.punctuation_max_length = 300
+        return settings
+
+    @patch("stt_v2.punctuation.service._load_model")
+    @patch("stt_v2.punctuation.service.get_settings")
+    def test_first_use_triggers_exactly_one_init(self, mock_settings, mock_load):
+        mock_settings.return_value = self._enabled_settings()
+        mock_load.return_value = MagicMock()
+
+        assert service._init_done is False
+        assert service.ensure_initialized() is True
+        # Idempotent — a second call does not reload.
+        assert service.ensure_initialized() is True
+
+        mock_load.assert_called_once_with("Cadence")
+        assert service._init_done is True
+
+    @patch("stt_v2.punctuation.service._load_model")
+    @patch("stt_v2.punctuation.service.get_settings")
+    def test_concurrent_first_use_loads_once(self, mock_settings, mock_load):
+        """Many threads racing the first use must load the model exactly once."""
+        mock_settings.return_value = self._enabled_settings()
+        mock_load.return_value = MagicMock()
+
+        threads = [threading.Thread(target=service.ensure_initialized) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert mock_load.call_count == 1
+
+    @patch("stt_v2.punctuation.service._load_model")
+    @patch("stt_v2.punctuation.service.get_settings")
+    def test_disabled_settings_never_load(self, mock_settings, mock_load):
+        settings = MagicMock()
+        settings.punctuation_enabled = False
+        mock_settings.return_value = settings
+
+        assert service.ensure_initialized() is False
+        assert service.ensure_initialized() is False  # no retry
+        mock_load.assert_not_called()
+
+    def test_preloaded_registry_skips_init(self):
+        """A model set directly (e.g. worker warm-up) short-circuits lazy init."""
+        service._default_model_name = "Cadence"
+        service._models["Cadence"] = MagicMock()
+
+        with patch("stt_v2.punctuation.service.initialize") as mock_init:
+            assert service.ensure_initialized() is True
+            mock_init.assert_not_called()
 
 
 class TestPunctuationDisabled:

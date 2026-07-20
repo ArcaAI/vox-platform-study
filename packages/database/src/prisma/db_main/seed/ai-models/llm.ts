@@ -237,7 +237,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     },
 
     // =========================================================================
-    // vLLM provider (TASK-515 / TASK-508 Phase 4B — production self-host GPU
+    // vLLM provider ( / production self-host GPU
     // tier, AD-4). OpenAI-compatible `/v1` wire; prefix-cache + structured
     // `json_schema` output. Additive-only seed rows.
     // =========================================================================
@@ -262,7 +262,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     },
 
     // =========================================================================
-    // llama.cpp provider (TASK-515 / TASK-508 Phase 4C — production self-host
+    // llama.cpp provider ( / production self-host
     // GGUF tier, AD-4). OpenAI-compatible `/v1` wire (`cache_prompt`). Additive.
     // =========================================================================
     {
@@ -283,5 +283,55 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
         memorySizeMb: 3584,
         computeType: 'q5_k_m',
         tags: ['llm', 'llama-cpp', 'medical', 'self-host'],
+    },
+
+    // =========================================================================
+    // AWS Bedrock provider (SMR supports the `bedrock` provider but
+    // the catalog had no row. Region/credentials stay in env/Vault; sourceUri is
+    // the Bedrock model id sent to the converse API.)
+    // =========================================================================
+    {
+        id: '80000000-0000-0000-0007-000000000022',
+        tenantId: SYSTEM_TENANT_ID,
+        name: 'Claude 3.5 Haiku (Bedrock)',
+        slug: 'bedrock-claude-3.5-haiku',
+        description: 'Anthropic Claude 3.5 Haiku via AWS Bedrock — cloud text generation. Matches the SMR Bedrock provider default (SMR_V2_BEDROCK_DEFAULT_MODEL). Region/keys stay in env/Vault.',
+        category: ModelCategory.NLP,
+        taskType: ModelTaskType.TEXT_GENERATION,
+        modelType: ModelType.BASE_MODEL,
+        source: AiModelSource.LOCAL,
+        sourceUri: 'anthropic.claude-3-5-haiku-20241022-v1:0',
+        sourceRevision: 'main',
+        format: AiModelFormat.CLOUD_API,
+        provider: 'bedrock',
+        architecture: 'claude',
+        memorySizeMb: 0,
+        computeType: 'cloud',
+        tags: ['llm', 'cloud', 'bedrock'],
+    },
+
+    // =========================================================================
+    // Harness LLM-as-judge model (the judge is served on an
+    // OpenAI-compatible LM Studio endpoint; sourceUri is the model id sent to
+    // the judge client. Default target for the `harness.judge` AiTaskDefault.)
+    // =========================================================================
+    {
+        id: '80000000-0000-0000-0007-000000000023',
+        tenantId: SYSTEM_TENANT_ID,
+        name: 'Gemma 4 E4B (LM Studio judge)',
+        slug: 'lms-gemma-4-e4b',
+        description: 'Google Gemma 4 E4B served via LM Studio (OpenAI-compatible) — the harness LLM-as-judge default (harness.judge AiTaskDefault; matches HARNESS_JUDGE model google/gemma-4-e4b).',
+        category: ModelCategory.NLP,
+        taskType: ModelTaskType.TEXT_GENERATION,
+        modelType: ModelType.QUANTIZED_MODEL,
+        source: AiModelSource.HUGGINGFACE,
+        sourceUri: 'google/gemma-4-e4b',
+        sourceRevision: 'main',
+        format: AiModelFormat.GGUF,
+        provider: 'lm-studio',
+        architecture: 'gemma4',
+        memorySizeMb: 3072,
+        computeType: 'q4_0',
+        tags: ['llm', 'lm-studio', 'judge'],
     },
 ];

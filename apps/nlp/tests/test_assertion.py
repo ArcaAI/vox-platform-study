@@ -1,4 +1,4 @@
-"""TASK-518 — negation / assertion detection (ConText/NegEx-style).
+"""negation / assertion detection (ConText/NegEx-style).
 
 RED-first: written before ``nlp.services.assertion`` exists. The classifier
 assigns each recognized clinical entity an *assertion status* describing the

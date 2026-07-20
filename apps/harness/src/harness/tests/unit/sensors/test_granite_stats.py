@@ -1,4 +1,4 @@
-"""Granite client generation-stats capture (TASK-509 / AD-1, Phase 1B).
+"""Granite client generation-stats capture.
 
 Granite Guardian runs on its own LM Studio / Ollama endpoint (NOT SMR), so the
 safety-screen client and the groundedness judge capture the equivalent native

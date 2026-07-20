@@ -1,6 +1,5 @@
 /**
  * bounded-json-repair — the shared single-retry JSON auto-repair contract
- * (TASK-515 Phase 4D.3).
  */
 import { describe, it, expect, vi } from 'vitest';
 import { CORRECTIVE_RETRY_INSTRUCTION, generateJsonWithRepair, looksLikeJsonObject } from '../bounded-json-repair';

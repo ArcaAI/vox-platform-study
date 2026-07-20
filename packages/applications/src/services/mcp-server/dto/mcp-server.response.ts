@@ -1,13 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * TASK-516 — a registered MCP external-tools server row.
+ * a registered MCP external-tools server row.
  *
  * SECURITY: this projection carries NO secret material. `authRef` is a Vault
  * PATH ONLY (e.g. `secret/data/mcp/terminology`); the credential itself lives
  * in Vault (TASK-504 secrets flow) and is NEVER stored in the DB nor echoed
  * here. The same object shape backs both the global-admin CRUD surface and the
- * TASK-512 console "Tools & MCP" registry read.
+ * console "Tools & MCP" registry read.
  */
 export class McpServerResponse {
   @ApiProperty({ description: 'Server row id' })
@@ -62,7 +62,7 @@ export class McpServerResponse {
   updatedAt?: string;
 }
 
-/** TASK-516 — list envelope for the registry read (console + admin). */
+/** list envelope for the registry read (console + admin). */
 export class McpServerListResponse {
   @ApiProperty({ type: [McpServerResponse] })
   items!: McpServerResponse[];

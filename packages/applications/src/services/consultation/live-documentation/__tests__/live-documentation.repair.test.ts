@@ -1,5 +1,5 @@
 /**
- * LiveDocumentationService — bounded JSON auto-repair (TASK-515 Phase 4D.3).
+ * LiveDocumentationService — bounded JSON auto-repair.
  *
  * When structured SOAP output (`response_format: json_schema`) comes back as
  * malformed JSON, the flush must do EXACTLY ONE corrective retry (appending the

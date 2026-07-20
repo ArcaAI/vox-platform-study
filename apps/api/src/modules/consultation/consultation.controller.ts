@@ -44,7 +44,7 @@ import {
   HarnessProgressService,
   // TASK-355 Phase D Slice 5d — live per-claim assurance feed.
   HarnessAssuranceService,
-  // TASK-510 Phase 2D — dedicated Redis subscriber for the trajectory SSE relay.
+  // dedicated Redis subscriber for the trajectory SSE relay.
   RedisSubscriberService,
 } from '@arcaai/applications';
 import {
@@ -175,11 +175,11 @@ export class ConsultationController {
     private readonly harnessProgressService: HarnessProgressService,
     // TASK-355 Phase D Slice 5d — live per-claim assurance feed (SSE relay).
     private readonly harnessAssuranceService: HarnessAssuranceService,
-    // TASK-510 Phase 2D — dedicated Redis subscriber for the trajectory SSE relay.
+    // dedicated Redis subscriber for the trajectory SSE relay.
     private readonly redisSubscriber: RedisSubscriberService,
   ) {}
 
-  /** TASK-510 Phase 2D — heartbeat cadence keeping idle trajectory streams alive through proxies. */
+  /** heartbeat cadence keeping idle trajectory streams alive through proxies. */
   private static readonly TRAJECTORY_HEARTBEAT_MS = 15000;
 
   private getDoctorId(): string {
@@ -561,7 +561,7 @@ export class ConsultationController {
     return this.harnessAssuranceService.subscribeToAssurance(id);
   }
 
-  // TASK-510 Phase 2D — relays `consultation:trajectory:{id}` (each step is
+  // relays `consultation:trajectory:{id}` (each step is
   // republished there by AgentTrajectoryService.recordSteps) so an admin/review
   // surface can watch the ordered agentic session live. Ticket-scoped SSE,
   // mirroring the live-summary / harness-progress streams (@TenantOwnedResource

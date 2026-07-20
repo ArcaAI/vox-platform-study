@@ -319,6 +319,13 @@ class Settings(BaseSettings):
     httpx_max_connections: int = 100
     httpx_max_keepalive: int = 50
 
+    # Aux-model cache policy. Infra tuning only — cache-policy bounds,
+    # NOT model selection. Idle TTL is clamped to the product window [60s, 3600s]
+    # so both GLiNER and MiniCheck release when idle. `model_cache_max_models`
+    # bounds how many distinct model ids are held per aux cache.
+    model_cache_ttl_s: int = 3600
+    model_cache_max_models: int = 2
+
     # Observability
     otel_enabled: bool = False
     otel_exporter_endpoint: str = "http://localhost:4317"
@@ -328,7 +335,7 @@ class Settings(BaseSettings):
     # Sub-configs
     openai_compat: OpenAICompatConfig = Field(default_factory=OpenAICompatConfig)
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
-    # TASK-515 — production self-host engines (AD-4), OpenAI-compatible wire.
+    # production self-host engines (AD-4), OpenAI-compatible wire.
     vllm: VLLMConfig = Field(default_factory=VLLMConfig)
     llama_cpp: LlamaCppConfig = Field(default_factory=LlamaCppConfig)
     azure: AzureOpenAIConfig = Field(default_factory=AzureOpenAIConfig)

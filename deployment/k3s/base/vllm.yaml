@@ -1,5 +1,5 @@
-# hope-vllm — production primary chat/summarization engine (TASK-508 Phase 4 /
-# TASK-513). vLLM serves the OpenAI wire (continuous batching, automatic prefix
+# hope-vllm — production primary chat/summarization engine ( Phase 4 /
+# ). vLLM serves the OpenAI wire (continuous batching, automatic prefix
 # caching, native structured outputs, Prometheus /metrics); SMR reaches it via
 # its first-class `vllm` provider at SMR_V2_VLLM_BASE_URL=http://hope-vllm:8000/v1.
 #

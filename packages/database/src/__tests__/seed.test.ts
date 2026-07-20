@@ -1106,11 +1106,14 @@ describe('STT Seed Data', () => {
         });
 
         describe('VAD Models', () => {
-            it('should include the Silero VAD V6 model (only remaining VAD, TASK-506)', () => {
-                const sileroVadV6 = DEFAULT_AI_MODELS.find((m) => m.slug === 'silero-vad-v6');
-                expect(sileroVadV6).toBeDefined();
-                expect(sileroVadV6?.taskType).toBe(ModelTaskType.VOICE_ACTIVITY_DETECTION);
-                // v4/v5/pyannote are retired (soft-DELETED by retireLegacyAiModels).
+            it('should include the Silero VAD model (only remaining VAD; renamed v6→silero-vad to match the v5 runtime)', () => {
+                const silero = DEFAULT_AI_MODELS.find((m) => m.slug === 'silero-vad');
+                expect(silero).toBeDefined();
+                expect(silero?.taskType).toBe(ModelTaskType.VOICE_ACTIVITY_DETECTION);
+                // identity reconciled with the stt-v2 runtime loader.
+                expect(silero?.sourceUri).toBe('onnx-community/silero-vad');
+                // The old mislabelled slug is gone; v4/v5/pyannote stay retired.
+                expect(DEFAULT_AI_MODELS.find((m) => m.slug === 'silero-vad-v6')).toBeUndefined();
                 expect(DEFAULT_AI_MODELS.find((m) => m.slug === 'silero-vad-v4')).toBeUndefined();
                 expect(DEFAULT_AI_MODELS.find((m) => m.slug === 'silero-vad-v5')).toBeUndefined();
                 expect(DEFAULT_AI_MODELS.find((m) => m.slug === 'pyannote-vad')).toBeUndefined();
@@ -1299,11 +1302,17 @@ describe('STT Seed Data', () => {
                 expect(turbo?.tags).toContain('fast');
             });
 
-            it('should include lightweight CPU pipeline', () => {
-                const lightweight = DEFAULT_ASR_PIPELINES.find((p) => p.slug === 'lightweight-whisper-small');
-                expect(lightweight).toBeDefined();
-                expect(lightweight?.tags).toContain('cpu');
-                expect(lightweight?.tags).toContain('lightweight');
+            it('SYSTEM catalog has exactly 9 base pipelines with one isDefault', () => {
+                expect(DEFAULT_ASR_PIPELINES).toHaveLength(9);
+                const defaults = DEFAULT_ASR_PIPELINES.filter((p) => p.isDefault === true);
+                expect(defaults).toHaveLength(1);
+                expect(defaults[0]?.slug).toBe('production-whisper-large-v3-turbo-gguf');
+                // Retired from the product matrix.
+                const slugs = DEFAULT_ASR_PIPELINES.map((p) => p.slug);
+                expect(slugs).not.toContain('lightweight-whisper-small');
+                expect(slugs).not.toContain('code-switching-en-vi-template');
+                expect(slugs).not.toContain('asr-en-template');
+                expect(slugs).not.toContain('asr-ml-template');
             });
 
             it('should include the TASK-505 matrix pipelines', () => {
@@ -2188,9 +2197,14 @@ describe('LLM Models Seed Data (TASK-506 consolidated matrix)', () => {
             expect(ollamaModels.length).toBe(3);
         });
 
-        it('should include exactly 5 LM Studio models', () => {
+        it('should include exactly 6 LM Studio models', () => {
             const lmsModels = llmModels.filter((m) => m.tags.includes('lm-studio'));
-            expect(lmsModels.length).toBe(5);
+            expect(lmsModels.length).toBe(6);
+        });
+
+        it('should include exactly 1 Bedrock model', () => {
+            const bedrockModels = llmModels.filter((m) => m.tags.includes('bedrock'));
+            expect(bedrockModels.length).toBe(1);
         });
 
         it('should include exactly 1 Azure cloud model', () => {
@@ -2198,18 +2212,18 @@ describe('LLM Models Seed Data (TASK-506 consolidated matrix)', () => {
             expect(azureModels.length).toBe(1);
         });
 
-        it('should include exactly 1 vLLM model (TASK-515 self-host tier)', () => {
+        it('should include exactly 1 vLLM model', () => {
             const vllmModels = llmModels.filter((m) => m.tags.includes('vllm'));
             expect(vllmModels.length).toBe(1);
         });
 
-        it('should include exactly 1 llama.cpp model (TASK-515 self-host tier)', () => {
+        it('should include exactly 1 llama.cpp model', () => {
             const llamaCppModels = llmModels.filter((m) => m.tags.includes('llama-cpp'));
             expect(llamaCppModels.length).toBe(1);
         });
 
-        it('should be exactly 11 LLM rows (9 owner-approved matrix + 2 TASK-515 self-host)', () => {
-            expect(llmModels.length).toBe(11);
+        it('should be exactly 13 LLM rows (9 owner-approved matrix + 2 self-host + 2 bedrock/judge)', () => {
+            expect(llmModels.length).toBe(13);
         });
     });
 
@@ -2234,7 +2248,7 @@ describe('LLM Models Seed Data (TASK-506 consolidated matrix)', () => {
         it('should have the llm tag + a canonical provider on all LLM models', () => {
             llmModels.forEach((model) => {
                 expect(model.tags).toContain('llm');
-                expect(['ollama', 'lm-studio', 'azure', 'vllm', 'llama-cpp']).toContain(
+                expect(['ollama', 'lm-studio', 'azure', 'vllm', 'llama-cpp', 'bedrock']).toContain(
                     (model as { provider?: string }).provider,
                 );
             });

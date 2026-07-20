@@ -86,7 +86,7 @@ def ensure_mcp_args_safe(
     server: str = "mcp",
     redactor: PhiRedactor | None = None,
 ) -> dict[str, Any]:
-    """Fail-closed PHI screen for OUTBOUND MCP tool args to an EXTERNAL server (TASK-516).
+    """Fail-closed PHI screen for OUTBOUND MCP tool args to an EXTERNAL server.
 
     * ``phi_enabled`` False OR an ``in-boundary`` (self-hosted) server ⇒ pass-through —
       an in-boundary tool call is not a cloud egress, so it is never screened.

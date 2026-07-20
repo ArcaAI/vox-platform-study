@@ -72,45 +72,56 @@ class TestProviderTimeoutMapping:
 class TestMainLifespanProviderKeys:
     """Lifespan should register providers under tenant-facing keys."""
 
-    def test_azure_provider_registered_as_azure_openai(self):
-        """When azure is enabled, it should be registered as 'azure-openai'."""
-        from smr_v2.core.config import Settings
+    def test_azure_factory_registered_under_tenant_key(self):
+        """a connection-configured Azure registers BOTH the tenant-facing
+        'azure-openai' key and its legacy 'azure' alias as lazy factories."""
+        from smr_v2.core.config import AzureOpenAIConfig, Settings
+        from smr_v2.main import _register_provider_factories
+        from smr_v2.providers.base import ProviderRegistry
 
         settings = Settings(
             _env_file=None,
             host="0.0.0.0",
             port=8862,
+            azure=AzureOpenAIConfig(api_key="k", endpoint="https://x.openai.azure.com"),
         )
-        if settings.azure.enabled:
-            from smr_v2.main import create_app
+        registry = ProviderRegistry()
+        _register_provider_factories(registry, settings, MagicMock())
+        assert "azure-openai" in registry.list_providers()
+        assert "azure" in registry.list_providers()
 
-            app = create_app(settings)
-            registry = app.state.provider_registry
-            if registry is not None:
-                providers = registry.list_providers()
-                assert "azure" not in providers, (
-                    "Provider should be registered as 'azure-openai', not 'azure'"
-                )
-
-    def test_openai_compat_registered_as_lm_studio(self):
-        """When openai_compat is enabled, it should be registered as 'lm-studio'."""
+    def test_openai_compat_factory_registered_under_lm_studio_key(self):
+        """LM Studio always has a default base_url, so the lazy factory is
+        registered under both the 'lm-studio' key and the 'openai_compat' alias."""
         from smr_v2.core.config import Settings
+        from smr_v2.main import _register_provider_factories
+        from smr_v2.providers.base import ProviderRegistry
 
-        settings = Settings(
-            _env_file=None,
-            host="0.0.0.0",
-            port=8862,
-        )
-        if settings.openai_compat.enabled:
-            from smr_v2.main import create_app
+        settings = Settings(_env_file=None, host="0.0.0.0", port=8862)
+        registry = ProviderRegistry()
+        _register_provider_factories(registry, settings, MagicMock())
+        assert "lm-studio" in registry.list_providers()
+        assert "openai_compat" in registry.list_providers()
 
-            app = create_app(settings)
-            registry = app.state.provider_registry
-            if registry is not None:
-                providers = registry.list_providers()
-                assert "openai_compat" not in providers, (
-                    "Provider should be registered as 'lm-studio', not 'openai_compat'"
-                )
+    def test_unconfigured_azure_not_registered_and_env_enable_ignored(self, monkeypatch):
+        """Azure with no endpoint/api_key is NOT available (fail closed),
+        and a stale SMR_V2_AZURE_ENABLED env can no longer force it on."""
+        monkeypatch.setenv("SMR_V2_AZURE_ENABLED", "true")  # inert: no such field now
+        # Hermetic: a real Azure CONNECTION config can leak into os.environ from the
+        # dev .env or the e2e conftest's import-time overrides; scrub it so the
+        # "unconfigured" assertion is deterministic regardless of test order.
+        monkeypatch.delenv("SMR_V2_AZURE_ENDPOINT", raising=False)
+        monkeypatch.delenv("SMR_V2_AZURE_API_KEY", raising=False)
+        from smr_v2.core.config import Settings
+        from smr_v2.main import _register_provider_factories
+        from smr_v2.providers.base import ProviderNotFoundError, ProviderRegistry
+
+        settings = Settings(_env_file=None, host="0.0.0.0", port=8862)
+        registry = ProviderRegistry()
+        _register_provider_factories(registry, settings, MagicMock())
+        assert "azure-openai" not in registry.list_providers()
+        with pytest.raises(ProviderNotFoundError):
+            registry.get("azure-openai")
 
 
 class TestGenerateEndpointWithTenantKeys:

@@ -53,7 +53,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     // keep their arity; when wired, the completed job's resultText/resultMetadata
     // are encrypted before persist (dual-write soak).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // TASK-519 — optional + trailing (same arity-preserving reason) so the
+    // optional + trailing (same arity-preserving reason) so the
     // ingest can persist per-transcript segments when the repo is wired.
     @Optional()
     @Inject(TranscriptSegmentRepository)
@@ -63,7 +63,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
   }
 
   /**
-   * TASK-519 — persist the ordered transcript segments emitted by STT as
+ * persist the ordered transcript segments emitted by STT as
    * TranscriptSegment rows. `text` on each input is used ONLY to resolve the
    * [charStart, charEnd) offsets into the transcript content and is NOT stored
    * (the durable row keeps offsets + timings + speaker, never the PHI text).
@@ -151,7 +151,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
 
     const savedContextItem = await this.contextItemRepository.create(contextItem);
 
-    // TASK-519 — persist ordered transcript segments (offsets resolved from text).
+    // persist ordered transcript segments (offsets resolved from text).
     await this.persistTranscriptSegments(savedContextItem, dto);
 
     // Update job with context item ID
@@ -216,7 +216,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
 
     const savedContextItem = await this.contextItemRepository.create(contextItem);
 
-    // TASK-519 — persist ordered transcript segments (offsets resolved from text).
+    // persist ordered transcript segments (offsets resolved from text).
     await this.persistTranscriptSegments(savedContextItem, dto);
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {

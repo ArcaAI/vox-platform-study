@@ -66,7 +66,9 @@ const KEEPER_SLUGS = [
     'azure-speech-stt',
     'mai-transcribe-1.5',
     'nemotron-3.5-asr-streaming-0.6b',
-    'silero-vad-v6',
+    // renamed from `silero-vad-v6` to match the v5 onnx-community
+    // model the stt-v2 runtime actually loads.
+    'silero-vad',
     'rnnoise',
     'ecapa-tdnn-voxceleb',
     'granite-guardian-4.1-8b',
@@ -84,7 +86,7 @@ const NEW_LLM_SLUGS = [
     'azure-gpt-5.4-mini',
 ] as const;
 
-const NEW_NLP_SLUGS = ['medical-ner', 'symps-disease-bert-v3-c41'] as const;
+const NEW_NLP_SLUGS = ['medical-ner', 'symps-disease-bert-v3-c41', 'gliner-guard-uniencoder-onnx'] as const;
 
 const NEW_TTS_SLUGS = [
     'azure-neural-voices',
@@ -100,9 +102,23 @@ const NEW_TTS_SLUGS = [
 // `deepfilternet-v3`; see EXPECTED_RETIRED_SLUGS below).
 const TASK_507_NEW_SLUGS = ['whisper-large-v3-turbo-gguf', 'deepfilternet3'] as const;
 
-// TASK-515 (TASK-508 Phase 4B/4C deferred wiring) — additive production
+// additive production
 // self-host engine rows: a vLLM (SAFETENSOR/GPU) and a llama.cpp (GGUF) LLM.
 const TASK_515_NEW_SLUGS = ['vllm-medgemma-1.5-27b-it', 'llama-cpp-medgemma-1.5-4b-it'] as const;
+
+// catalog rows for engines the code supports but the seed lacked:
+// a Bedrock LLM, the harness LLM-as-judge (google/gemma-4-e4b), the MiniCheck
+// groundedness fact-checker, the Cadence STT punctuation model, a pyannote
+// WeSpeaker diarization embedding (STT code default), and a DISABLED doc-type
+// classifier placeholder that `nlp.classification` now points at.
+const TASK_524_NEW_SLUGS = [
+    'bedrock-claude-3.5-haiku',
+    'lms-gemma-4-e4b',
+    'minicheck-flan-t5-large',
+    'nlp-doc-type-classifier',
+    'cadence-punctuation',
+    'wespeaker-voxceleb-resnet34',
+] as const;
 
 const EXPECTED_CATALOG_SLUGS = [
     ...KEEPER_SLUGS,
@@ -110,7 +126,8 @@ const EXPECTED_CATALOG_SLUGS = [
     ...NEW_NLP_SLUGS,
     ...NEW_TTS_SLUGS,
     ...TASK_507_NEW_SLUGS,
-    ...TASK_515_NEW_SLUGS,
+...TASK_515_NEW_SLUGS,
+...TASK_524_NEW_SLUGS,
 ] as const;
 
 // The 50 slugs that must be RETIRED (previous 60 minus the 10 keepers).
@@ -182,7 +199,7 @@ const ALLOWED_PROVIDERS = ['ollama', 'lm-studio', 'azure', 'bedrock', 'built-in'
 // The 8 slugs referenced by seeded pipeline `models:` blocks (regression lock).
 const PIPELINE_REFERENCED_SLUGS = [
     'whisper-large-v3-turbo',
-    'silero-vad-v6',
+    'silero-vad',
     'rnnoise',
     'faster-whisper-large-v3-turbo-int8',
     'whisper-small',
@@ -205,11 +222,11 @@ const bySlug = (slug: string) => catalog.find((m) => m.slug === slug);
 // 1. Final catalog shape
 // =============================================================================
 
-describe('TASK-506 — consolidated AI model catalog (26 rows) + TASK-507 (28 rows)', () => {
-    it('is exactly the 30 expected slugs (26 TASK-506 + 2 TASK-507 + 2 TASK-515)', () => {
+describe('TASK-506 — consolidated AI model catalog (26 rows) + TASK-507 extensions', () => {
+    it('is exactly the 37 expected slugs (26 TASK-506 + 2 TASK-507 + 9 extensions)', () => {
         const slugs = catalog.map((m) => m.slug).sort();
         expect(slugs).toEqual([...EXPECTED_CATALOG_SLUGS].sort());
-        expect(catalog.length).toBe(30);
+        expect(catalog.length).toBe(37);
     });
 
     it('has unique ids and unique slugs', () => {
@@ -248,10 +265,13 @@ describe('TASK-506 — consolidated AI model catalog (26 rows) + TASK-507 (28 ro
         });
     });
 
-    it('seeds indic-f5 DISABLED (TASK-494 prod NO-GO) and no other row with a non-default status', () => {
-        expect(bySlug('indic-f5')?.resourceStatus).toBe('DISABLED');
+    it('seeds indic-f5 + the doc-type placeholder DISABLED and no other row with a non-default status', () => {
+        // indic-f5 — TASK-494 prod NO-GO; nlp-doc-type-classifier —
+        // explicit fail-closed placeholder (no doc-type model deployed yet).
+        const disabledSlugs = ['indic-f5', 'nlp-doc-type-classifier'];
+        disabledSlugs.forEach((slug) => expect(bySlug(slug)?.resourceStatus).toBe('DISABLED'));
         catalog
-            .filter((m) => m.slug !== 'indic-f5')
+            .filter((m) => !disabledSlugs.includes(m.slug))
             .forEach((m) => expect(m.resourceStatus).toBeUndefined());
     });
 
@@ -263,7 +283,7 @@ describe('TASK-506 — consolidated AI model catalog (26 rows) + TASK-507 (28 ro
             ['azure-speech-stt', 'azure', null],
             ['mai-transcribe-1.5', 'azure', null],
             ['nemotron-3.5-asr-streaming-0.6b', 'built-in', null],
-            ['silero-vad-v6', 'built-in', 'silero'],
+            ['silero-vad', 'built-in', 'silero'],
             ['rnnoise', 'built-in', null],
             ['ecapa-tdnn-voxceleb', 'built-in', 'ecapa-tdnn'],
             ['granite-guardian-4.1-8b', 'lm-studio', 'granite'],
@@ -392,7 +412,7 @@ describe('TASK-506 — shouldRetireAiModelSlug guard', () => {
     });
 
     it('retires (returns true for) an unreferenced slug', () => {
-        const yamls = ['models:\n  asr: "whisper-large-v3-turbo"\n  vad: "silero-vad-v6"\n'];
+        const yamls = ['models:\n  asr: "whisper-large-v3-turbo"\n  vad: "silero-vad"\n'];
         expect(shouldRetireAiModelSlug!('deepfilternet-v3', yamls)).toBe(true);
     });
 
@@ -497,9 +517,14 @@ describe('TASK-506 — AiTaskDefault SYSTEM seed', () => {
         'guardrail.validate': ModelTaskType.GUARDRAIL,
         'nlp.ner': 'TOKEN_CLASSIFICATION',
         'nlp.classification': 'TEXT_CLASSIFICATION',
-        // TASK-511 (Phase 3A) — SMR generation routing keys.
+        // SMR generation routing keys.
         'smr.live': 'TEXT_GENERATION',
         'smr.finalize': 'TEXT_GENERATION',
+        // guardrail safety/groundedness, harness judge, diagnosis.
+        'guardrail.safety': 'TOKEN_CLASSIFICATION',
+        'guardrail.groundedness': 'TEXT_CLASSIFICATION',
+        'harness.judge': 'TEXT_GENERATION',
+        'nlp.diagnosis': 'TEXT_CLASSIFICATION',
     };
 
     const loadModule = async () =>
@@ -513,22 +538,29 @@ describe('TASK-506 — AiTaskDefault SYSTEM seed', () => {
             seedAiTaskDefault: (client: unknown) => Promise<{ created: number; skipped: number }>;
         }>;
 
-    it('seeds exactly the five SYSTEM task defaults with deterministic ids', async () => {
+    it('seeds exactly the nine SYSTEM task defaults with deterministic ids', async () => {
         const { SYSTEM_AI_TASK_DEFAULTS } = await loadModule();
         const byKey = new Map(SYSTEM_AI_TASK_DEFAULTS.map((r) => [r.taskKey, r]));
-        expect(SYSTEM_AI_TASK_DEFAULTS.length).toBe(5);
+        expect(SYSTEM_AI_TASK_DEFAULTS.length).toBe(9);
         expect(byKey.get('guardrail.validate')?.modelSlug).toBe('granite-guardian-4.1-8b');
         expect(byKey.get('nlp.ner')?.modelSlug).toBe('medical-ner');
-        expect(byKey.get('nlp.classification')?.modelSlug).toBe('symps-disease-bert-v3-c41');
-        // TASK-511 (Phase 3A) — SMR live/finalize routing, both mapped to the
+        // nlp.classification is the doc-type classifier (fail-closed
+        // placeholder); the diagnosis suggester moved to nlp.diagnosis.
+        expect(byKey.get('nlp.classification')?.modelSlug).toBe('nlp-doc-type-classifier');
+        expect(byKey.get('nlp.diagnosis')?.modelSlug).toBe('symps-disease-bert-v3-c41');
+        // SMR live/finalize routing, both mapped to the
         // current SYSTEM SMR default registry slug.
         expect(byKey.get('smr.live')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
         expect(byKey.get('smr.finalize')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
+        // guardrail safety/groundedness + harness judge selection.
+        expect(byKey.get('guardrail.safety')?.modelSlug).toBe('gliner-guard-uniencoder-onnx');
+        expect(byKey.get('guardrail.groundedness')?.modelSlug).toBe('minicheck-flan-t5-large');
+        expect(byKey.get('harness.judge')?.modelSlug).toBe('lms-gemma-4-e4b');
         SYSTEM_AI_TASK_DEFAULTS.forEach((row) => {
             expect(row.tenantId).toBe(SYSTEM_TENANT_ID);
             expect(row.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
         });
-        expect(new Set(SYSTEM_AI_TASK_DEFAULTS.map((r) => r.id)).size).toBe(5);
+        expect(new Set(SYSTEM_AI_TASK_DEFAULTS.map((r) => r.id)).size).toBe(9);
     });
 
     it('references catalog slugs whose taskType matches the task key', async () => {
@@ -551,7 +583,7 @@ describe('TASK-506 — AiTaskDefault SYSTEM seed', () => {
         };
         const result = await seedAiTaskDefault(client as never);
         expect(result.created).toBe(0);
-        expect(result.skipped).toBe(5);
+        expect(result.skipped).toBe(9);
         expect(client.aiTaskDefault.create).not.toHaveBeenCalled();
         expect(client.aiTaskDefault.update).not.toHaveBeenCalled();
     });
@@ -569,7 +601,7 @@ describe('TASK-506 — AiTaskDefault SYSTEM seed', () => {
             },
         };
         const result = await seedAiTaskDefault(client as never);
-        expect(result.created).toBe(5);
+        expect(result.created).toBe(9);
         created.forEach(({ data }) => {
             expect(data.tenantId).toBe(SYSTEM_TENANT_ID);
             expect(data.createdBy).toBe(SYSTEM_USER_ID);

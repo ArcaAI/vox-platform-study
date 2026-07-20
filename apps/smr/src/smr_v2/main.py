@@ -6,8 +6,9 @@ FastAPI application with lifespan-managed shared resources.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING
 
 import httpx
 import redis.asyncio as aioredis
@@ -17,7 +18,82 @@ from fastapi.middleware.cors import CORSMiddleware
 from smr_v2.core.config import Settings, get_settings
 from smr_v2.core.logging import get_logger, setup_logging
 
+if TYPE_CHECKING:
+    from smr_v2.providers.base import LLMProvider, ProviderRegistry
+
 logger = get_logger(__name__)
+
+
+def _register_provider_factories(
+    registry: ProviderRegistry, settings: Settings, http_client: httpx.AsyncClient
+) -> None:
+    """Register LAZY provider factories gated ONLY by connection config.
+
+    SMR selects nothing from env: the gateway injects the DB-resolved
+    ``{provider, model}`` on each request. Here we register a *factory* per
+    provider whose CONNECTION config is present; the (network/SDK-bearing)
+    instance is built on the first request that selects it (``registry.get``),
+    never at startup. A provider with no connection config is never registered,
+    so a request naming it fails closed with a 404 — there is no ENABLE flag.
+
+    Local engines (LM Studio / Ollama / vLLM / llama.cpp) always carry a default
+    ``base_url`` so they are always available; Azure additionally requires an
+    endpoint + api_key; Bedrock requires a region.
+    """
+
+    def _shared(builder: Callable[[], LLMProvider]) -> Callable[[], LLMProvider]:
+        """Memoize a builder so aliased keys resolve to ONE shared instance."""
+        box: dict[str, LLMProvider] = {}
+
+        def factory() -> LLMProvider:
+            if "v" not in box:
+                box["v"] = builder()
+            return box["v"]
+
+        return factory
+
+    def _register(keys: tuple[str, ...], factory: Callable[[], LLMProvider]) -> None:
+        for key in keys:
+            if key not in registry.list_providers():
+                registry.register_factory(key, factory)
+
+    # LM Studio (OpenAI-compatible) — primary local engine; product key + alias.
+    if settings.openai_compat.base_url:
+        from smr_v2.providers.openai_compat import OpenAICompatProvider
+
+        _register(
+            ("lm-studio", "openai_compat"),
+            _shared(lambda: OpenAICompatProvider(settings.openai_compat)),
+        )
+
+    if settings.ollama.base_url:
+        from smr_v2.providers.ollama import OllamaProvider
+
+        _register(("ollama",), lambda: OllamaProvider(settings.ollama, http_client))
+
+    # Azure needs a real endpoint + api_key (no default) to be a usable connection.
+    if settings.azure.endpoint and settings.azure.api_key.get_secret_value():
+        from smr_v2.providers.azure_openai import AzureOpenAIProvider
+
+        _register(
+            ("azure-openai", "azure"),
+            _shared(lambda: AzureOpenAIProvider(settings.azure)),
+        )
+
+    if settings.bedrock.region:
+        from smr_v2.providers.bedrock import BedrockProvider
+
+        _register(("bedrock",), lambda: BedrockProvider(settings.bedrock))
+
+    if settings.vllm.base_url:
+        from smr_v2.providers.vllm import VllmProvider
+
+        _register(("vllm",), lambda: VllmProvider(settings.vllm, http_client))
+
+    if settings.llama_cpp.base_url:
+        from smr_v2.providers.llama_cpp import LlamaCppProvider
+
+        _register(("llama-cpp",), lambda: LlamaCppProvider(settings.llama_cpp, http_client))
 
 
 @asynccontextmanager
@@ -73,58 +149,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.provider_registry = ProviderRegistry()
 
     registry = app.state.provider_registry
-    # LM Studio (OpenAI-compatible) is the primary/default local LLM engine.
-    # Register both keys against one instance (product key + backward-compat alias).
-    if settings.openai_compat.enabled:
-        from smr_v2.providers.openai_compat import OpenAICompatProvider
-
-        if "openai_compat" not in registry.list_providers() and "lm-studio" not in registry.list_providers():
-            lm_provider = OpenAICompatProvider(settings.openai_compat)
-            registry.register("lm-studio", lm_provider)
-            registry.register("openai_compat", lm_provider)
-            logger.info(
-                "smr_v2.provider_registered",
-                provider="lm-studio",
-                base_url=settings.openai_compat.base_url,
-            )
-        elif "openai_compat" not in registry.list_providers():
-            registry.register("openai_compat", registry.get("lm-studio"))
-        elif "lm-studio" not in registry.list_providers():
-            registry.register("lm-studio", registry.get("openai_compat"))
-
-    # Ollama is an optional, lower-priority local LLM engine.
-    if settings.ollama.enabled and "ollama" not in registry.list_providers():
-        from smr_v2.providers.ollama import OllamaProvider
-        registry.register("ollama", OllamaProvider(settings.ollama, http_client))
-        logger.info("smr_v2.provider_registered", provider="ollama", base_url=settings.ollama.base_url, model=settings.ollama.default_model)
-
-    if settings.azure.enabled and "azure-openai" not in registry.list_providers():
-        from smr_v2.providers.azure_openai import AzureOpenAIProvider
-        azure_provider = AzureOpenAIProvider(settings.azure)
-        registry.register("azure-openai", azure_provider)
-        registry.register("azure", azure_provider)  # backward-compatible alias
-        logger.info("smr_v2.provider_registered", provider="azure-openai")
-
-    if settings.bedrock.enabled and "bedrock" not in registry.list_providers():
-        from smr_v2.providers.bedrock import BedrockProvider
-        registry.register("bedrock", BedrockProvider(settings.bedrock))
-        logger.info("smr_v2.provider_registered", provider="bedrock")
-
-    # vLLM — production primary self-host engine (TASK-513). OpenAI-wire, but a
-    # first-class registry key with engine-native stats + /health + cache metrics.
-    if settings.vllm.enabled and "vllm" not in registry.list_providers():
-        from smr_v2.providers.vllm import VllmProvider
-        registry.register("vllm", VllmProvider(settings.vllm, http_client))
-        logger.info("smr_v2.provider_registered", provider="vllm", base_url=settings.vllm.base_url)
-
-    # llama.cpp — production GGUF-tier engine (TASK-514). Native /completion client
-    # with engine-native timings (the AD-1 reference engine).
-    if settings.llama_cpp.enabled and "llama-cpp" not in registry.list_providers():
-        from smr_v2.providers.llama_cpp import LlamaCppProvider
-        registry.register("llama-cpp", LlamaCppProvider(settings.llama_cpp, http_client))
-        logger.info(
-            "smr_v2.provider_registered", provider="llama-cpp", base_url=settings.llama_cpp.base_url
-        )
+    # register LAZY, connection-gated provider factories (no ENABLE
+    # flag, no eager instantiation). The named provider is built on the first
+    # request that selects it; the companion state below is keyed on the set of
+    # AVAILABLE providers (factory-registered), so a request-driven build slots
+    # straight into its rate limiter / queue / breaker / semaphore.
+    _register_provider_factories(registry, settings, http_client)
 
     from smr_v2.services.rate_limiter import RateLimitTracker
 

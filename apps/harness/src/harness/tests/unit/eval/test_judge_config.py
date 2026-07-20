@@ -71,7 +71,7 @@ class TestProviderSelection:
         with pytest.raises((ValueError, TypeError)):
             build_judge_client(JudgeConfig(provider="totally-not-a-provider"))  # type: ignore[arg-type]
 
-    # TASK-515 — production engines: vllm / llama-cpp are first-class judge
+    # production engines: vllm / llama-cpp are first-class judge
     # providers, both served over the OpenAI-compatible client (they speak the
     # OpenAI wire). Selected via HARNESS_JUDGE_PROVIDER + HARNESS_JUDGE_* config.
     @pytest.mark.parametrize("provider", ["vllm", "llama-cpp"])

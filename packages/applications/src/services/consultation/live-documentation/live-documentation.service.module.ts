@@ -30,7 +30,7 @@ import { AgentTrajectoryServiceModule } from '../../agent-trajectory/agent-traje
  * IBlobStorageService + ClsService are global), so no new module is needed.
  */
 @Module({
-  // TASK-510 §2C/§2D — AgentTrajectoryServiceModule resolves the @Optional
+  // §2C/§2D — AgentTrajectoryServiceModule resolves the @Optional
   // IAgentTrajectoryService emitter dep so the per-flush trajectory goes live.
   imports: [
     HttpModule,

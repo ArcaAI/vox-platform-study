@@ -31,7 +31,7 @@ export class HarnessPolicy extends BaseTenantDataModel {
   public gateSlaSeconds: number;
   public gateEscalationSeconds: number;
   public toolAllowlist: JsonValue | null;
-  // TASK-511 (Phase 3A) — agentic loop knobs. null ⇒ harness env/code default.
+  // agentic loop knobs. null ⇒ harness env/code default.
   public optimisticDeliveryEnabled: boolean | null;
   public atomicFactEnabled: boolean | null;
   public retrievalEnabled: boolean | null;

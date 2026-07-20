@@ -10,7 +10,7 @@ export class GenerationStopReasonCount {
 }
 
 /**
- * TASK-509 follow-up — server-side rollup of trajectory LLM_CALL GenerationStats
+ * server-side rollup of trajectory LLM_CALL GenerationStats
  * for the admin Metrics screen. Shape mirrors the console `GenerationAggregate`.
  */
 export class GenerationMetricsAggregateResponse {

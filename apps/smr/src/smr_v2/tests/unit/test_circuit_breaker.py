@@ -101,7 +101,7 @@ class TestCircuitBreakerSuccessResets:
 
 
 class TestCircuitBreakerWiredConfigFields:
-    """TASK-508 D6 (dead-config sweep) — ``CircuitBreakerConfig.half_open_max_calls``,
+    """ D6 (dead-config sweep) — ``CircuitBreakerConfig.half_open_max_calls``,
     ``.reset_timeout_s`` and ``.count_rate_limits`` were defined but never read by
     ``CircuitBreaker``. Defaults (``None``, ``None``, ``True``) must reproduce the
     exact pre-wiring behavior: unlimited trial calls while HALF_OPEN, no

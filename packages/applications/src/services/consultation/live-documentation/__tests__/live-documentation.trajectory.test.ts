@@ -1,5 +1,5 @@
 /**
- * LiveDocumentationService — trajectory emitter (TASK-510 §2C).
+ * LiveDocumentationService — trajectory emitter.
  *
  * Per flush the service must emit an ORDERED trajectory via the (optional)
  * AgentTrajectoryService:
@@ -69,7 +69,7 @@ function buildService(opts: { config?: Record<string, unknown>; trajectory?: unk
     undefined as never, // contextItemRepository
     harnessPolicyService as never,
     undefined as never, // secretsService
-    trajectory as never, // TASK-510 trajectory emitter
+    trajectory as never, // trajectory emitter
   );
   return { service, trajectory, http };
 }

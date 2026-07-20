@@ -16,7 +16,7 @@ class CircuitBreaker:
     """Simple circuit breaker with failure threshold and recovery timeout.
 
     ``half_open_max_calls``, ``reset_timeout_s`` and ``count_rate_limits`` wire
-    ``CircuitBreakerConfig`` (TASK-508 D6 dead-config sweep — these three fields
+    ``CircuitBreakerConfig`` ( D6 dead-config sweep — these three fields
     were previously defined but never read). Their defaults (``None``, ``None``,
     ``True``) reproduce this class's exact pre-wiring behavior: unlimited trial
     calls while HALF_OPEN, no time-based failure-count decay, and every failure

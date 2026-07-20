@@ -8,10 +8,11 @@ The default (env-configured) instance never enters this cache (it lives in the
 from __future__ import annotations
 
 import asyncio
+import time
 
 import pytest
 
-from nlp.services.model_cache import ModelCache
+from nlp.services.model_cache import ModelCache, clamp_cache_ttl_seconds
 
 
 class _Instance:
@@ -102,3 +103,81 @@ async def test_load_failure_propagates_and_is_not_cached() -> None:
     factory.fail_for.clear()
     retried = await cache.get("m-bad")  # a later request retries the load
     assert retried.name == "m-bad"
+
+
+# ---------------------------------------------------------------------------
+# idle TTL clamp [60, 3600] + pin/unpin refcounting
+# ---------------------------------------------------------------------------
+
+
+def test_clamp_cache_ttl_seconds_bounds() -> None:
+    assert clamp_cache_ttl_seconds(1) == 60
+    assert clamp_cache_ttl_seconds(59) == 60
+    assert clamp_cache_ttl_seconds(60) == 60
+    assert clamp_cache_ttl_seconds(1800) == 1800
+    assert clamp_cache_ttl_seconds(3600) == 3600
+    assert clamp_cache_ttl_seconds(99999) == 3600
+
+
+def test_cache_clamps_ttl_in_init() -> None:
+    assert ModelCache(factory=_Factory(), ttl_seconds=5)._ttl_seconds == 60
+    assert ModelCache(factory=_Factory(), ttl_seconds=7200)._ttl_seconds == 3600
+
+
+async def test_idle_entry_is_evicted_and_reloaded_after_ttl() -> None:
+    factory = _Factory()
+    cache = ModelCache(factory=factory, max_size=3, ttl_seconds=60)
+
+    first = await cache.get("m-a")
+    # Age the entry past its idle TTL.
+    cache._entries["m-a"].last_accessed = time.monotonic() - 120
+
+    reloaded = await cache.get("m-a")
+
+    assert factory.calls == ["m-a", "m-a"]  # loaded a second time
+    assert reloaded is not first
+    assert first.shutdowns == 1  # the idle-expired instance was shut down
+
+
+async def test_pinned_entry_skips_idle_ttl() -> None:
+    factory = _Factory()
+    cache = ModelCache(factory=factory, max_size=3, ttl_seconds=60)
+
+    first = await cache.get("m-a")
+    await cache.pin("m-a")
+    cache._entries["m-a"].last_accessed = time.monotonic() - 120
+
+    hit = await cache.get("m-a")
+
+    assert hit is first  # pin keeps the idle-expired entry alive
+    assert factory.calls == ["m-a"]
+
+
+async def test_pinned_entry_skips_lru_eviction() -> None:
+    factory = _Factory()
+    cache = ModelCache(factory=factory, max_size=1, ttl_seconds=60)
+
+    first = await cache.get("m-a")
+    await cache.pin("m-a")
+
+    # LRU pressure would normally evict m-a (max_size=1), but the pin protects it.
+    await cache.get("m-b")
+
+    assert set(cache.cached_models()) == {"m-a", "m-b"}
+    assert first.shutdowns == 0
+
+
+async def test_unpin_re_enables_idle_ttl_eviction() -> None:
+    factory = _Factory()
+    cache = ModelCache(factory=factory, max_size=3, ttl_seconds=60)
+
+    await cache.get("m-a")
+    await cache.pin("m-a")
+    await cache.unpin("m-a")
+    # After the last unpin the idle clock resets; force it past the TTL.
+    cache._entries["m-a"].last_accessed = time.monotonic() - 120
+
+    reloaded = await cache.get("m-a")
+
+    assert factory.calls == ["m-a", "m-a"]
+    assert reloaded is not None

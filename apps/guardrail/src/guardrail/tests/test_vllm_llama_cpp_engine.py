@@ -1,4 +1,4 @@
-"""TASK-515 — guardrail engine selector accepts the production engines.
+"""guardrail engine selector accepts the production engines.
 
 vLLM and llama.cpp are self-hosted OpenAI-compatible engines (AD-4). The
 guardrail engine selector accepts ``GUARDRAIL_V2_PROVIDER=vllm|llama-cpp`` and

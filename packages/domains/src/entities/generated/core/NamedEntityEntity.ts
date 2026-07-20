@@ -13,7 +13,7 @@ export interface INamedEntityEntity extends IBaseTenantEntity {
   normalizedText?: string | null;
   startOffset?: number | null;
   endOffset?: number | null;
-  // TASK-518 — negation/assertion polarity (PRESENT|ABSENT|HISTORICAL|FAMILY|HYPOTHETICAL).
+  // negation/assertion polarity (PRESENT|ABSENT|HISTORICAL|FAMILY|HYPOTHETICAL).
   assertion?: string | null;
   confidence?: number | null;
   aiModelId?: string | null;
@@ -149,7 +149,7 @@ export class NamedEntityEntity extends BaseTenantEntity {
     this.setProperty('endOffset', value);
   }
 
-  // TASK-518 — negation/assertion polarity. Read as PRESENT when null.
+  // negation/assertion polarity. Read as PRESENT when null.
   get assertion(): INamedEntityEntity['assertion'] {
     return this._assertion;
   }

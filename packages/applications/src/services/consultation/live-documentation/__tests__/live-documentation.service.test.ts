@@ -317,14 +317,14 @@ describe('LiveDocumentationService', () => {
   });
 
   // ------------------------------------------------------------------
-  // TASK-509 Phase 1B — AD-1 generation stats on the live-summary SSE payload.
+  // AD-1 generation stats on the live-summary SSE payload.
   // The SMR /generate response now carries a `stats` block; each flush must
   // surface it as `metadata.stats` on the published payload so the console /
   // gateway wave can render TTFT / tok-s / stop-reason live. Null / missing
   // stats (legacy idempotency-cache hit) must degrade cleanly — no metadata,
   // feed still publishes.
   // ------------------------------------------------------------------
-  describe('generation stats on the SSE payload (TASK-509)', () => {
+  describe('generation stats on the SSE payload', () => {
     function statsHttpMock(stats: unknown) {
       return {
         axiosRef: {

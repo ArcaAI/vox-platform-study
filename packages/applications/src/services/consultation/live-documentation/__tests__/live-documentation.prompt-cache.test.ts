@@ -1,5 +1,5 @@
 /**
- * TASK-515 Phase 4D.1 — prefix-cache-friendly live SMR prompt ordering.
+ * prefix-cache-friendly live SMR prompt ordering.
  *
  * The live SMR user prompt is reordered to
  *   [stable system] + [transcript-so-far] + [current note] + [delta instruction]
@@ -65,7 +65,7 @@ function buildService(httpMock: unknown) {
   );
 }
 
-describe('TASK-515 4D.1 — prefix-cache-friendly live prompt ordering', () => {
+describe('4D.1 — prefix-cache-friendly live prompt ordering', () => {
   it('exports a non-trivial stable system prefix carrying the SOAP output instruction', () => {
     expect(typeof LIVE_SOAP_STABLE_SYSTEM_PREFIX).toBe('string');
     expect(LIVE_SOAP_STABLE_SYSTEM_PREFIX.length).toBeGreaterThan(50);

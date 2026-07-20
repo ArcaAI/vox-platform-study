@@ -3,7 +3,7 @@ import { Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 /**
- * TASK-510 Phase 2D — query for
+ * query for
  * `GET /admin/agent-trajectory/sessions/:sessionId/steps`.
  *
  * Keyset (not offset) pagination — this table grows unbounded. Whitelisted by

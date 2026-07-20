@@ -1,6 +1,6 @@
 /**
- * AI Operations — Metrics client (TASK-512 screen 2). Gateway-relative paths
- * under the /api/hope BFF proxy. Generation panels hit the TASK-509 aggregate;
+ * AI Operations — Metrics client. Gateway-relative paths
+ * under the /api/hope BFF proxy. Generation panels hit the aggregate;
  * regeneration / SLA panels still use the harness-admin gate queue.
  */
 
@@ -27,7 +27,7 @@ export function listSteps(sessionId: string, params?: ListStepsParams): Promise<
     return getJson(`${TRAJECTORY}/sessions/${encodeURIComponent(sessionId)}/steps`, params);
 }
 
-/** Server-side GenerationStats rollup (TASK-509). Default window = last 7d. */
+/** Server-side GenerationStats rollup. Default window = last 7d. */
 export function getGenerationMetrics(params?: GenerationMetricsParams): Promise<GenerationAggregateResponse> {
     return getJson(`${TRAJECTORY}/metrics/generation`, params);
 }

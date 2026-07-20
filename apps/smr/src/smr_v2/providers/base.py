@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Protocol, runtime_checkable
 
 from smr_v2.models.provider import ProviderInfo
@@ -19,7 +19,7 @@ class ProviderNotFoundError(KeyError):
 class LLMProvider(Protocol):
     """Contract that every LLM provider must satisfy."""
 
-    # TASK-508 AD-1: the third element is a normalized ``GenerationStats`` (real
+    # AD-1: the third element is a normalized ``GenerationStats`` (real
     # stop reason + token counts + engine-native blob), NOT a bare usage dict —
     # every provider (incl. the vLLM / llama.cpp wave) must return exactly this.
     async def generate(self, request: GenerateRequest) -> tuple[str, str, GenerationStats]:
@@ -40,22 +40,49 @@ class LLMProvider(Protocol):
 
 
 class ProviderRegistry:
-    """Thread-safe registry of named LLMProvider instances."""
+    """Registry of named LLMProviders with LAZY, request-driven instantiation.
+
+    a provider is *available* once its CONNECTION config is present
+    (``register_factory`` at startup), but the (weight/connection-bearing)
+    instance is built only on the first ``get(name)`` for that key and then
+    memoized. A request for a name with neither an instance nor a factory
+    (missing connection config) fails closed with ``ProviderNotFoundError``.
+    Eager ``register`` is retained for tests / direct wiring.
+    """
 
     def __init__(self) -> None:
         self._providers: dict[str, LLMProvider] = {}
+        self._factories: dict[str, Callable[[], LLMProvider]] = {}
 
     def register(self, name: str, provider: LLMProvider) -> None:
+        """Register an already-built provider instance (eager)."""
         self._providers[name] = provider
 
+    def register_factory(self, name: str, factory: Callable[[], LLMProvider]) -> None:
+        """Register a lazy builder; the instance is created on first ``get``."""
+        self._factories[name] = factory
+
     def get(self, name: str) -> LLMProvider:
-        try:
-            return self._providers[name]
-        except KeyError:
-            raise ProviderNotFoundError(f"Provider '{name}' not registered. Available: {list(self._providers)}") from None
+        provider = self._providers.get(name)
+        if provider is not None:
+            return provider
+        factory = self._factories.get(name)
+        if factory is not None:
+            provider = factory()
+            self._providers[name] = provider  # memoize the lazily-built instance
+            return provider
+        raise ProviderNotFoundError(
+            f"Provider '{name}' not registered. Available: {self.list_providers()}"
+        ) from None
 
     def unregister(self, name: str) -> None:
         self._providers.pop(name, None)
+        self._factories.pop(name, None)
 
     def list_providers(self) -> list[str]:
-        return list(self._providers.keys())
+        """All AVAILABLE provider names (instantiated OR lazily registered)."""
+        return list({**self._factories, **self._providers}.keys())
+
+    def is_instantiated(self, name: str) -> bool:
+        """True once the named provider has actually been built (test aid)."""
+        return name in self._providers

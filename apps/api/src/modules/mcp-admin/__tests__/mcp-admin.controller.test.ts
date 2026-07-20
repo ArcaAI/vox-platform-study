@@ -1,5 +1,5 @@
 /**
- * McpAdminController unit tests (TASK-516 Phase 5).
+ * McpAdminController unit tests.
  *
  * CASL `@CanRead/@CanManage` + `If-Match`/`@RequiresIfMatch` are exercised by the
  * guard/interceptor (+ e2e). These specs cover the controller's OWN logic:

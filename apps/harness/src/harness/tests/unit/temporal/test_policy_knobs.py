@@ -1,4 +1,4 @@
-"""TASK-511 (Phase 3A) item C — the seven additive agentic loop knobs.
+""" (Phase 3A) item C — the seven additive agentic loop knobs.
 
 RED-first: the DB-backed ``HarnessPolicy`` (worker snapshot) gains seven nullable
 knobs. ``null ⇒ env default`` (per-field fallthrough): the harness only overrides

@@ -167,7 +167,7 @@ def set_generation_span_attributes(
     finish_reasons: list[str],
 ) -> None:
     """Stamp OpenTelemetry GenAI semantic-convention attributes on a generation
-    span (TASK-509 / OTel ``gen_ai.*``).
+    span.
 
     No-op when there is no recording span (invalid/no-op span, OTel disabled),
     so it is always safe to call from the request path.

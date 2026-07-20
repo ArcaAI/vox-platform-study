@@ -1,7 +1,7 @@
 import { AgentSessionKind, AgentStepStatus, AgentStepType, JsonValue } from '@arcaai/domains';
 
 /**
- * TASK-510 Phase 2B — the ingest shape for one ordered trajectory step.
+ * the ingest shape for one ordered trajectory step.
  *
  * This is an INTERNAL ingest input (emitters call `recordSteps`), not an HTTP
  * request DTO — so it is a plain interface (no class-validator whitelist). The

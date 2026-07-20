@@ -9,7 +9,7 @@ import { AgentSessionKind } from '../../../enums';
 
 /**
  * One distinct working session as returned by
- * {@link AgentTrajectoryStepRepository.listSessionSummaries} (TASK-510 S2).
+ * {@link AgentTrajectoryStepRepository.listSessionSummaries}.
  *
  * Aggregated at the DB via Prisma `groupBy` — callers must NOT re-scan every
  * step row in memory.
@@ -32,7 +32,7 @@ export interface ListSessionSummariesFilters {
 }
 
 /**
- * Ordered session-trajectory repository (TASK-510 Phase 2A).
+ * Ordered session-trajectory repository.
  *
  * `AgentTrajectoryStep` is TENANT-SCOPED operational telemetry. Its posture is
  * DELIBERATELY exempt from two platform conventions:
@@ -77,7 +77,7 @@ export class AgentTrajectoryStepRepository extends Repository<AgentTrajectorySte
   }
 
   /**
-   * Distinct sessions for a tenant (TASK-510 S2), aggregated in the DB.
+ * Distinct sessions for a tenant, aggregated in the DB.
    *
    * Groups by `(sessionKind, sessionId, runId)` via Prisma `groupBy`:
    *   - `stepCount` ← `_count._all`

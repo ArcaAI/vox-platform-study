@@ -5,29 +5,46 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager, nullcontext
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import redis.asyncio as aioredis
 
 from guardrail.core.logging import get_logger
-from guardrail.providers.gliner import GlinerProvider
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from guardrail.providers.gliner import GlinerProvider
 
 logger = get_logger(__name__)
 
 
 class JobProcessor:
-    """Processes guardrail analysis jobs using Redis-backed priority queues."""
+    """Processes guardrail analysis jobs using Redis-backed priority queues.
+
+    the GLiNER provider is loaded lazily and DB-selected. In the
+    running service a ``gliner_provider_resolver`` (a pinned-context factory) is
+    injected so a booted worker holds no GLiNER weights; it acquires + pins the
+    DB-selected provider only while a claimed job runs, and a missing DB
+    selection fails the job closed. Tests may still inject a concrete
+    ``gliner_provider`` directly.
+    """
 
     def __init__(
         self,
         redis: aioredis.Redis,
-        gliner_provider: GlinerProvider,
+        gliner_provider: GlinerProvider | None = None,
         max_concurrent: int = 4,
+        gliner_provider_resolver: Callable[[], AbstractAsyncContextManager[GlinerProvider]]
+        | None = None,
     ) -> None:
         self.redis: Any = redis
         self.gliner_provider = gliner_provider
+        self._gliner_provider_resolver = gliner_provider_resolver
         self.max_concurrent = max_concurrent
         self.processing = False
         self.semaphore = asyncio.Semaphore(max_concurrent)
@@ -287,6 +304,23 @@ class JobProcessor:
 
         return float(priority_score * 10000000000000 - created_at_ms)
 
+    @asynccontextmanager
+    async def _acquire_gliner(self) -> AsyncIterator[GlinerProvider]:
+        """Yield the GLiNER provider for a job — DB-resolved + pinned when wired.
+
+        Uses the injected pinned-context resolver in the running service (lazy,
+        DB-selected, fail-closed) and falls back to a directly-injected provider
+        for tests.
+        """
+        if self._gliner_provider_resolver is not None:
+            async with self._gliner_provider_resolver() as provider:
+                yield provider
+        elif self.gliner_provider is not None:
+            async with nullcontext(self.gliner_provider) as provider:
+                yield provider
+        else:  # pragma: no cover - construction guarantees one is set
+            raise RuntimeError("JobProcessor has no GLiNER provider or resolver configured")
+
     def _create_processing_task(self, job_id: str) -> asyncio.Task[None]:
         """Create a task to process a job."""
 
@@ -316,10 +350,11 @@ class JobProcessor:
                 logger.info("job_processor.job_started", job_id=job_id)
 
                 start_time = time.monotonic()
-                result = await self.gliner_provider.analyze_content(
-                    text=text,
-                    guardrail_type=guardrail_type,
-                )
+                async with self._acquire_gliner() as gliner_provider:
+                    result = await gliner_provider.analyze_content(
+                        text=text,
+                        guardrail_type=guardrail_type,
+                    )
                 processing_time = (time.monotonic() - start_time) * 1000
 
                 result["processing_time_ms"] = processing_time

@@ -153,44 +153,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await initialize_minio()
     await initialize_streaming()
 
-    # Embedding model
-    try:
-        from stt_v2.diarization.embedding_service import get_embedding_service
-
-        embedding_service = get_embedding_service()
-        await embedding_service.initialize()
-        logger.info("Pyannote embedding service initialized")
-    except Exception as exc:
-        logger.warning("Embedding service initialization failed (non-fatal)", error=str(exc))
-
-    # VAD model
-    try:
-        from stt_v2.vad.silero_service import get_vad_service
-
-        vad_service = get_vad_service()
-        await vad_service.initialize()
-        logger.info("Silero VAD service initialized")
-    except Exception as exc:
-        logger.warning("VAD service initialization failed (non-fatal)", error=str(exc))
-
-    # Preload ML models (after DB is ready, since pipeline configs are in DB)
+    # Auxiliary ML models (Silero VAD, Pyannote embedding, Cadence
+    # punctuation) are NOT loaded at boot. Each loads lazily on first use via
+    # its own idempotent, concurrency-safe guard, so a freshly booted process
+    # holds no ML weights until a request needs them. Optional pipeline warm-up
+    # (PRELOAD_PIPELINES, empty by default) remains available below.
     await _preload_pipeline_models()
-
-    # Punctuation model (Cadence)
-    try:
-        import asyncio as _aio
-
-        from stt_v2.punctuation import service as punctuation_service
-
-        if await _aio.to_thread(punctuation_service.initialize):
-            logger.info("Punctuation service initialized")
-    except Exception as exc:
-        logger.warning(
-            "Punctuation service initialization failed (non-fatal); "
-            "continuing without punctuation",
-            error=str(exc),
-        )
-        logger.debug("Punctuation initialization error detail", exc_info=True)
 
     logger.info("STT Service V2 started successfully")
 

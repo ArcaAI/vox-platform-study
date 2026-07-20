@@ -1,7 +1,7 @@
 /**
- * TDD screen tests for TASK-512 screen 2 (AI Operations — Metrics): KPI strip
+ * TDD screen tests screen 2 (AI Operations — Metrics): KPI strip
  * (median TTFT, avg tok/s, regeneration rate, gate pending), stop-reason / TTFT
- * charts from the TASK-509 generation-metrics aggregate, empty state, working-
+ * charts from the generation-metrics aggregate, empty state, working-
  * tenant gate, and axe-cleanliness.
  */
 

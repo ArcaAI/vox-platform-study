@@ -6,16 +6,14 @@ from datetime import UTC, datetime
 from typing import Any
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from guardrail.core.config import Settings
 from guardrail.core.dependencies import (
-    get_gliner_provider,
     get_ollama_provider,
     get_redis,
     get_settings,
 )
-from guardrail.providers.gliner import GlinerProvider
 from guardrail.providers.ollama import OllamaProvider
 from guardrail.providers.openai_compat import OpenAICompatProvider
 
@@ -24,11 +22,23 @@ router = APIRouter()
 ContentProvider = OllamaProvider | OpenAICompatProvider
 
 
+def _gliner_status(request: Request) -> dict[str, Any]:
+    """Report the lazy GLiNER cache state.
+
+    GLiNER is loaded lazily on first `/guardrail/analyze`, so a booted worker
+    intentionally holds no weights — this is NEVER a degraded condition. Report
+    which DB-selected model ids are currently resident.
+    """
+    cache = getattr(request.app.state, "gliner_cache", None)
+    loaded = cache.cached_models() if cache is not None else []
+    return {"status": "lazy", "loaded_models": loaded, "loaded": bool(loaded)}
+
+
 @router.get("/health", response_model=dict[str, Any])
 async def health_check(
+    request: Request,
     settings: Settings = Depends(get_settings),
     ollama_provider: ContentProvider = Depends(get_ollama_provider),
-    gliner_provider: GlinerProvider = Depends(get_gliner_provider),
     redis: aioredis.Redis = Depends(get_redis),
 ) -> dict[str, Any]:
     """Comprehensive health check for all services."""
@@ -61,31 +71,23 @@ async def health_check(
     else:
         health_status["checks"]["llm_engine"] = {"status": "disabled", "provider": settings.provider}
 
-    # Check GLiNER (content safety)
-    gliner_health = gliner_provider.health_check()
-    health_status["checks"]["gliner"] = gliner_health
-    if not gliner_health.get("healthy", False):
-        health_status["status"] = "degraded"
+    # GLiNER is lazy — report cache state without degrading health.
+    health_status["checks"]["gliner"] = _gliner_status(request)
 
     return health_status
 
 
 @router.get("/health/ready", response_model=dict[str, Any])
 async def readiness_check(
-    gliner_provider: GlinerProvider = Depends(get_gliner_provider),
     redis: aioredis.Redis = Depends(get_redis),
 ) -> dict[str, Any]:
-    """Readiness check - service is ready to accept traffic."""
+    """Readiness check - service is ready to accept traffic.
+
+    readiness no longer depends on GLiNER being loaded (it loads
+    lazily on first request); only the Redis dependency is checked.
+    """
     try:
         await redis.ping()
-
-        gliner_health = gliner_provider.health_check()
-        if not gliner_health.get("healthy", False):
-            return {
-                "ready": False,
-                "reason": "GLiNER provider not healthy",
-                "timestamp": datetime.now(UTC).isoformat(),
-            }
 
         return {
             "ready": True,

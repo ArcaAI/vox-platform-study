@@ -42,7 +42,7 @@ class AzureOpenAIProvider:
     def _resolve_model(self, request: GenerateRequest) -> str | None:
         # D-7 (TASK-356): no in-gateway default — the caller-supplied model is
         # authoritative, UNLESS an explicit Azure deployment is configured
-        # (TASK-508 D6): Azure OpenAI routes requests by *deployment name*, not
+        #: Azure OpenAI routes requests by *deployment name*, not
         # model name, so ``deployment_name`` — when set — takes precedence over
         # the caller-supplied model. Default ("") preserves the pre-existing
         # behavior of forwarding ``request.model`` unchanged.

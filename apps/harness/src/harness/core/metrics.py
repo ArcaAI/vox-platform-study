@@ -1,4 +1,4 @@
-"""TASK-510 (Phase 2D) — harness Prometheus metrics for the ordered trajectory.
+"""harness Prometheus metrics for the ordered trajectory.
 
 The harness had no Prometheus registry of its own (only SMR did). These are the
 fleet aggregates for the ordered spine: per-step wall-clock duration (labelled by

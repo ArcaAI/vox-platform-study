@@ -1,5 +1,5 @@
 /**
- * TASK-516 — MCP external-tools registry admin (Phase 7 E2E, TASK-508 Agentic SOTA).
+ * MCP external-tools registry admin (Phase 7 E2E, Agentic SOTA).
  *
  * Probes `McpAdminController` at `/api/v1/admin/mcp-servers` (mirrors the task-506
  * governance/OCC pattern; `@CanRead/@CanManage('HarnessPolicy')`, `If-Match` OCC,
@@ -65,7 +65,7 @@ function assertNoSecretMaterial(server: Record<string, unknown>, expectedAuthRef
   }
 }
 
-test.describe('TASK-516 — MCP registry admin (CRUD + secret hygiene + GLOBAL_ADMIN + OCC)', () => {
+test.describe('MCP registry admin (CRUD + secret hygiene + GLOBAL_ADMIN + OCC)', () => {
   let globalAdminToken: string;
   let tenantAdminToken: string;
 
@@ -154,7 +154,7 @@ test.describe('TASK-516 — MCP registry admin (CRUD + secret hygiene + GLOBAL_A
 
     const resp = await request.patch(`${BASE}/${serverId}`, {
       headers: { ...bearer(globalAdminToken), 'If-Match': `"${before.version}"` },
-      data: { description: `task-516 e2e ${unique}` },
+      data: { description: `e2e ${unique}` },
     });
     expect(resp.status()).toBe(200);
     const after = (await resp.json()) as McpServer;

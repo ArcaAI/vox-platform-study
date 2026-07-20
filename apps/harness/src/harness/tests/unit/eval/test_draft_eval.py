@@ -23,7 +23,7 @@ from harness.sensors.registry import COMPUTATIONAL_SENSOR_NAMES
 
 class TestCandidateConceptPolarity:
     def test_absent_candidate_concept_excluded_from_concept_f1_set(self):
-        # TASK-518 — a note that correctly says "no metformin" (ABSENT) must not
+        # a note that correctly says "no metformin" (ABSENT) must not
         # contribute the metformin concept to the positive-claim recall check.
         case = GoldenCase(
             case_id="polarity-1",

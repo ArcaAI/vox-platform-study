@@ -1,4 +1,4 @@
-"""MCP external-tools client (TASK-516 Phase 5 — feature-flagged OFF).
+"""MCP external-tools client.
 
 The harness calls READ-ONLY MCP tools (streamable-HTTP transport) via the official
 ``mcp`` python SDK. The SDK is an OPTIONAL extra (``harness[mcp-tools]``) imported

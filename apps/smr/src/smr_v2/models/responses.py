@@ -53,7 +53,7 @@ class GenerateResponse(BaseModel):
     usage: TokenUsage = Field(default_factory=TokenUsage)
     latency_ms: int = 0
     finish_reason: str = "stop"
-    # TASK-509 (AD-1): normalized per-call generation statistics. ``usage`` /
+    # normalized per-call generation statistics. ``usage`` /
     # ``finish_reason`` / ``latency_ms`` above are retained for wire-compat but
     # DEPRECATED in favor of ``stats`` (superset: normalized stop reason, TTFT,
     # tokens/second, engine-native blob). Consumers should read ``stats``.

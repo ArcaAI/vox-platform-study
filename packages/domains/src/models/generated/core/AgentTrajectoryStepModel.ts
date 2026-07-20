@@ -8,7 +8,7 @@ import * as Enums from '../../../enums';
 import * as Models from './';
 
 /**
- * Persistence model for the ordered session-trajectory step stream (TASK-510
+ * Persistence model for the ordered session-trajectory step stream (
  * Phase 2A). Extends `BaseTenantDataModel` (id / tenantId / _version /
  * _metadata / createdBy / updatedBy / createdAt / updatedAt). Deliberately has
  * NO `resourceStatus*` columns — the table is high-volume ops telemetry with

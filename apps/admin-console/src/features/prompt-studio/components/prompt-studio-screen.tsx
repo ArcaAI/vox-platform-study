@@ -257,7 +257,7 @@ function TemplateDetail({ id, canApprove }: { id: string; canApprove: boolean })
  * Prompt Studio (/prompt-studio, tier 10-19). Global-admin governance over
  * tenant prompt templates: browse the list, inspect version history + diffs +
  * the last deterministic test score, and APPROVE the current version for
- * clinical use (TASK-511, GLOBAL_ADMIN-only If-Match write). Templates are
+ * clinical use. Templates are
  * tenant-owned, so the screen runs behind the working-tenant gate — a global
  * admin picks the tenant from the top-bar switcher.
  */

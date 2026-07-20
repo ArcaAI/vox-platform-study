@@ -139,7 +139,7 @@ def _azure():
     # module-level os.environ mutation from the monorepo-root .env) so this
     # suite reliably pins the D-7 "no silent default_model substitution"
     # contract, which is orthogonal to deployment_name's own precedence
-    # contract (TASK-508 D6, covered by TestAzureDeploymentName in
+    # contract ( D6, covered by TestAzureDeploymentName in
     # test_azure_provider.py) — when set, deployment_name is *meant* to
     # override request.model.
     return AzureOpenAIProvider(

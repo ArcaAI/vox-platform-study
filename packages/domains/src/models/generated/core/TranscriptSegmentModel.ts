@@ -9,7 +9,7 @@ import * as Models from './';
 
 /**
  * Persistence model for a segment-level slice of a TRANSCRIPT context item
- * (TASK-519). Extends `BaseTenantDataModel` (id / tenantId / _version /
+ *. Extends `BaseTenantDataModel` (id / tenantId / _version /
  * _metadata / createdBy / updatedBy / createdAt / updatedAt). Deliberately has
  * NO `resourceStatus*` columns — segments live and die with their parent
  * transcript (like NamedEntity / AudioRecording), so the model is listed in

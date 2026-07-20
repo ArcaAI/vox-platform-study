@@ -430,7 +430,7 @@ async def generate(
         latency_ms = int((time.monotonic() - start) * 1000)
         prompt_tokens, completion_tokens, total_tokens = _extract_usage(gen_result)
 
-        # TASK-509 (AD-1): assemble normalized GenerationStats and thread it onto
+        # assemble normalized GenerationStats and thread it onto
         # the response. STRICTLY best-effort — a stats-mapping failure must never
         # fail an otherwise-successful, already-billed generation (degrade to a
         # null-safe, clearly-marked stats object + a warning). The provider now
@@ -658,7 +658,7 @@ async def _run_streaming_generation(
                 stream_finish_reason = chunk.data.get("finish_reason") or stream_finish_reason
             await task_manager.append_chunk(task_id, chunk)
         latency_ms = int((time.monotonic() - start) * 1000)
-        # TASK-509 (AD-1): stamp normalized stop-reason + decode-throughput fleet
+        # stamp normalized stop-reason + decode-throughput fleet
         # metrics from the streamed native finish reason / token counts. Never
         # allowed to fail the stream (best-effort telemetry).
         try:

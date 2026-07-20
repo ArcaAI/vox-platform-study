@@ -36,13 +36,19 @@ async def extract_voice_embedding(files: list[UploadFile]) -> ExtractionResponse
     from stt_v2.vad.silero_service import get_vad_service
     from stt_v2.voice_profile.extraction_service import ExtractionService
 
+    # Lazy load on first use (no eager boot init); a load failure
+    # still surfaces as 503 "not available".
     embedding_service = get_embedding_service()
-    if not embedding_service.is_loaded:
-        raise HTTPException(status_code=503, detail="Embedding service not available")
+    try:
+        await embedding_service.initialize()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Embedding service not available") from exc
 
     vad_service = get_vad_service()
-    if not vad_service.is_loaded:
-        raise HTTPException(status_code=503, detail="VAD service not available")
+    try:
+        await vad_service.initialize()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="VAD service not available") from exc
 
     if not files:
         raise HTTPException(status_code=400, detail="At least one audio file is required")

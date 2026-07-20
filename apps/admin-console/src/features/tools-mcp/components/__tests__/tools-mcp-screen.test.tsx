@@ -1,6 +1,6 @@
 /**
- * TDD screen tests for TASK-512 screen 5 (Tools & MCP): MCP external-tools
- * registry (TASK-516 mcp-admin) — list table, create/edit (If-Match OCC),
+ * TDD screen tests screen 5 (Tools & MCP): MCP external-tools
+ * registry — list table, create/edit (If-Match OCC),
  * delete, GLOBAL_ADMIN gate, empty/error/loading, axe 0-violations. Data is a
  * URL-branching fetch stub over GET/POST/PATCH/DELETE /admin/mcp-servers.
  */

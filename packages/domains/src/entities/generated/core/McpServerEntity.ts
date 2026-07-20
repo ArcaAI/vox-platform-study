@@ -4,7 +4,7 @@
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 
-// TASK-516 — MCP external-tools registry row: one server per (tenant, name);
+// MCP external-tools registry row: one server per (tenant, name);
 // the reserved SYSTEM tenant owns the shared registry rows. `authRef` is a
 // Vault PATH ONLY (never secret material). `phiBoundary` records which side of
 // the PHI boundary the server sits on (fail-safe default "external" ⇒ cloud

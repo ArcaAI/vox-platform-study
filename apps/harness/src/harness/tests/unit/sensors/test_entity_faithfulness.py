@@ -75,7 +75,7 @@ class TestEntityFaithfulness:
         assert set(result.claims_flagged) == {"hypertension", "lisinopril"}
 
     def test_absent_note_entity_excluded_from_positive_claim_check(self):
-        # TASK-518 — an ABSENT (negated) note entity ("metformin" the patient is
+        # an ABSENT (negated) note entity ("metformin" the patient is
         # NOT on) is not a positive claim, so it must not be required to be
         # grounded in the transcript and must not fail faithfulness.
         ctx = _ctx(

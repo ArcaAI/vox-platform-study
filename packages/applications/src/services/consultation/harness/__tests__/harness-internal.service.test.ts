@@ -218,7 +218,7 @@ const createMockRedisCache = () => {
     };
 };
 
-// TASK-519 — transcript-segment reader for assemble StrictCitations refs.
+// transcript-segment reader for assemble StrictCitations refs.
 const createMockTranscriptSegmentRepository = () => ({
     findByContextItem: vi.fn().mockResolvedValue([]),
 });
@@ -252,7 +252,7 @@ describe('HarnessInternalService', () => {
     // TASK-466 (C1-03) — optional `redisCache` (16th arg) so the idempotency-dedup
     // tests wire a real cache-behaving stub; existing fixtures pass 15 args and the
     // trailing @Optional() ctor param stays undefined (dedup no-ops, exact prior path).
-    // TASK-519 — optional `transcriptSegmentRepository` (17th arg) for assemble
+    // optional `transcriptSegmentRepository` (17th arg) for assemble
     // segment-citation refs + citationsMap enrichment; unwired ⇒ empty refs.
     const buildService = (
         warmStartEnabled = false,
@@ -716,7 +716,7 @@ describe('HarnessInternalService', () => {
             expect(call.dnaStyleId).toBeUndefined();
         });
 
-        // ── TASK-519 — PHI-safe segment citation refs on assemble ────────────
+        // ── PHI-safe segment citation refs on assemble ────────────
         it('returns PHI-safe segmentCitations when a single transcript has segments', async () => {
             const transcriptSegmentRepository = createMockTranscriptSegmentRepository();
             transcriptSegmentRepository.findByContextItem.mockResolvedValue([

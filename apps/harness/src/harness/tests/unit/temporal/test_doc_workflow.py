@@ -153,7 +153,7 @@ class TestBoundedRegen:
 
     @pytest.mark.asyncio
     async def test_regen_iteration_receives_prior_failed_sensor_findings(self):
-        # TASK-517 — the FIRST generate carries no feedback; the REGEN iteration's
+        # the FIRST generate carries no feedback; the REGEN iteration's
         # generate input carries the prior iteration's failed-sensor critique
         # (sensor name + the flagged claims), built from the aggregator verdict.
         recorder = StubRecorder()
@@ -190,7 +190,7 @@ class TestBoundedRegen:
 
     @pytest.mark.asyncio
     async def test_generate_receives_segment_citations_from_assemble(self):
-        # TASK-519 live-path — when assemble returns PHI-safe segment refs, both
+        # live-path — when assemble returns PHI-safe segment refs, both
         # GenerateInput sites (main loop + regen helper) must receive them so
         # ``generate`` can fold the StrictCitations block into the prod prompt.
         seg_refs = [
@@ -227,7 +227,7 @@ class TestBoundedRegen:
 
     @pytest.mark.asyncio
     async def test_regen_feedback_disabled_by_policy_sends_no_critique(self):
-        # TASK-517 — gate on regenFeedbackEnabled: policy False ⇒ the regen prompt
+        # gate on regenFeedbackEnabled: policy False ⇒ the regen prompt
         # stays byte-identical (no critique) even though a sensor failed.
         recorder = StubRecorder()
         policy = HarnessPolicy(max_regen=2, regen_feedback_enabled=False)

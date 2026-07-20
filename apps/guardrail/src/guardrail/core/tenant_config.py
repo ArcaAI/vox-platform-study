@@ -17,10 +17,10 @@ Cross-worker contract (the seed provides the SYSTEM rows, TASK-506):
     ``AiModel``       — ``slug`` → provider / sourceUri / metaData.azureDeployment
 The model sent to the runtime is the AiModel row's **sourceUri**, not the slug.
 
-DB access is best-effort: any error resolves to an empty config so the endpoint
-transparently falls back to the env-selected engine (fail-safe, never fail-hard).
-Errors are negatively cached for one TTL window — at most one DB attempt per
-tenant per TTL, so an env-only deployment never pays per-request retries.
+Selection is DB-only (fail-closed at the dependency layer when the
+resolved config is empty). DB load errors are still negatively cached for one
+TTL window so an unreachable DB costs at most one attempt per tenant per TTL;
+the caller must not fall back to env for provider/model selection.
 """
 
 from __future__ import annotations
@@ -47,6 +47,13 @@ logger = get_logger(__name__)
 # Cross-worker contract — do NOT rename (seeded by the TS worker, TASK-506).
 TASK_KEY_GUARDRAIL_VALIDATE = "guardrail.validate"
 
+# aux-model selection keys (SYSTEM AiTaskDefault ⋈ AiModel):
+#   guardrail.safety       → GLiNER content-safety detector (TOKEN_CLASSIFICATION)
+#   guardrail.groundedness → MiniCheck NLI groundedness scorer (TEXT_CLASSIFICATION)
+# The runtime model id is the joined AiModel row's sourceUri (never the slug).
+TASK_KEY_GUARDRAIL_SAFETY = "guardrail.safety"
+TASK_KEY_GUARDRAIL_GROUNDEDNESS = "guardrail.groundedness"
+
 # Platform-wide rows live on the SYSTEM tenant (house rule: NULL-tenant is banned).
 SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 
@@ -55,7 +62,7 @@ KEY_PROVIDER = "provider"
 KEY_MODEL = "model"
 KEY_AZURE_DEPLOYMENT = "azure-deployment"
 
-# Provider switch value -> Settings sub-config attr. TASK-515 adds the
+# Provider switch value -> Settings sub-config attr. adds the
 # production self-host engines vllm / llama-cpp (OpenAI-compatible wire).
 _PROVIDER_TO_ATTR = {
     "lm-studio": "openai_compat",
@@ -170,8 +177,16 @@ class TenantConfigResolver:
         self._time = time_func
         self._cache: dict[str, _CacheEntry] = {}
 
-    async def resolve(self, tenant_id: str | None) -> GuardrailTenantConfig:
+    async def resolve(
+        self,
+        tenant_id: str | None,
+        task_key: str = TASK_KEY_GUARDRAIL_VALIDATE,
+    ) -> GuardrailTenantConfig:
         """Resolve config for ``tenant_id`` (header value) with default fallback.
+
+        ``task_key`` selects which SYSTEM ``AiTaskDefault`` row to read —
+        ``guardrail.validate`` (default), ``guardrail.safety`` (GLiNER) or
+        ``guardrail.groundedness`` (MiniCheck),.
 
         Resolution order: request-tenant rows → system/default-tenant rows → env
         (the caller applies env defaults for any field still ``None``). Fallback
@@ -182,10 +197,10 @@ class TenantConfigResolver:
         requested = (tenant_id or "").strip() or None
         primary_tenant = requested or self._default_tenant_id
 
-        keys = await self._get_for_tenant(primary_tenant)
+        keys = await self._get_for_tenant(primary_tenant, task_key)
         source = primary_tenant
         if not keys and primary_tenant != self._default_tenant_id:
-            keys = await self._get_for_tenant(self._default_tenant_id)
+            keys = await self._get_for_tenant(self._default_tenant_id, task_key)
             source = self._default_tenant_id
 
         return GuardrailTenantConfig(
@@ -195,7 +210,21 @@ class TenantConfigResolver:
             source_tenant_id=source,
         )
 
-    async def _get_for_tenant(self, tenant_id: str) -> dict[str, str]:
+    async def resolve_model_id(
+        self,
+        tenant_id: str | None,
+        task_key: str,
+    ) -> str | None:
+        """Resolve just the runtime model id (``AiModel.sourceUri``) for a task key.
+
+        the aux models (GLiNER / MiniCheck) only need the model
+        identity; provider/azure-deployment don't apply. Returns ``None`` when
+        no ENABLED SYSTEM selection exists (the caller fails closed with 503).
+        """
+        cfg = await self.resolve(tenant_id, task_key)
+        return cfg.model
+
+    async def _get_for_tenant(self, tenant_id: str, task_key: str) -> dict[str, str]:
         """Return ``{key: value}`` for a tenant, using/refreshing the TTL cache.
 
         A load error is negatively cached: the empty (fail-open) result is
@@ -204,36 +233,40 @@ class TenantConfigResolver:
         The warning logs on the attempt, not on every cached read.
         """
         now = self._time()
-        entry = self._cache.get(tenant_id)
+        cache_key = f"{task_key}::{tenant_id}"
+        entry = self._cache.get(cache_key)
         if entry is not None and entry.expires_at > now:
             return entry.keys
 
         try:
-            keys = await self._load_from_db(tenant_id)
+            keys = await self._load_from_db(tenant_id, task_key)
         except Exception as exc:  # fail-safe: fall back to env defaults
             logger.warning(
                 "guardrail.tenant_config.db_error",
                 tenant_id=tenant_id,
+                task_key=task_key,
                 error=str(exc),
             )
             keys = {}
 
-        self._cache[tenant_id] = _CacheEntry(keys=keys, expires_at=now + self._cache_ttl_s)
+        self._cache[cache_key] = _CacheEntry(keys=keys, expires_at=now + self._cache_ttl_s)
         return keys
 
-    async def _load_from_db(self, tenant_id: str) -> dict[str, str]:
+    async def _load_from_db(
+        self,
+        tenant_id: str,
+        task_key: str = TASK_KEY_GUARDRAIL_VALIDATE,
+    ) -> dict[str, str]:
         """Resolve this tenant's guardrail model via ``AiTaskDefault ⋈ AiModel``.
 
-        Reads the ENABLED ``guardrail.validate`` task default for
-        ``[tenant, SYSTEM]`` joined to the ENABLED ``AiModel`` row for its
-        ``modelSlug`` in the same scope, preferring the tenant's own task
-        default over SYSTEM's, then the tenant's own model copy over the
-        SYSTEM catalog row. Returns the resolved field map:
-        provider ← ``AiModel.provider`` (may be absent when NULL — the caller
-        keeps the env provider), model ← ``AiModel.sourceUri``, azure
-        deployment ← ``AiModel._metadata->>'azureDeployment'``.
+        SYSTEM-only selection (tenant override rows are ignored).
+        Reads the ENABLED ``task_key`` task default for the SYSTEM tenant joined
+        to an ENABLED ``AiModel`` row for its ``modelSlug`` in
+        ``[SYSTEM, request-tenant]`` (model weights may still be shared-read).
+        Returns: provider ← ``AiModel.provider``, model ← ``AiModel.sourceUri``,
+        azure deployment ← ``AiModel._metadata->>'azureDeployment'``.
         """
-        scope = [tenant_id, SYSTEM_TENANT_ID]
+        model_scope = [SYSTEM_TENANT_ID, tenant_id]
         async with self._session_factory() as session:
             result = await session.execute(
                 select(
@@ -245,16 +278,17 @@ class TenantConfigResolver:
                 )
                 .join(AiModelRead, AiModelRead.slug == AiTaskDefaultRead.model_slug)
                 .where(
-                    AiTaskDefaultRead.task_key == TASK_KEY_GUARDRAIL_VALIDATE,
-                    AiTaskDefaultRead.tenant_id.in_(scope),
+                    AiTaskDefaultRead.task_key == task_key,
+                    AiTaskDefaultRead.tenant_id == SYSTEM_TENANT_ID,
                     AiTaskDefaultRead.resource_status == "ENABLED",
-                    AiModelRead.tenant_id.in_(scope),
+                    AiModelRead.tenant_id.in_(model_scope),
                     AiModelRead.resource_status == "ENABLED",
                 )
             )
             rows = result.all()
 
-        row = min(rows, key=lambda r: self._row_rank(r, tenant_id), default=None)
+        # Prefer SYSTEM catalog model row over a tenant-owned copy of the same slug.
+        row = min(rows, key=lambda r: (0 if r.model_tenant_id == SYSTEM_TENANT_ID else 1), default=None)
         if row is None:
             return {}
 

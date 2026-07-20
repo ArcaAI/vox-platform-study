@@ -163,7 +163,7 @@ def candidate_concepts_for_case(case: GoldenCase) -> list[ConceptCode]:
     """
     raw = case.metadata.get("candidate_concepts") or []
     concepts = [ConceptCode.model_validate(item) for item in raw]
-    # TASK-518 — exclude ABSENT (negated) concepts from the positive-claim
+    # exclude ABSENT (negated) concepts from the positive-claim
     # recall check: a note that correctly says "no metformin" must not be scored
     # as HAVING the metformin concept. None/other polarities stay in.
     return [c for c in concepts if (c.assertion or "PRESENT").upper() != "ABSENT"]

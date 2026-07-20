@@ -1,5 +1,5 @@
 /**
- * Wire types for the Tools & MCP registry (TASK-512 screen 5 → TASK-516
+ * Wire types for the Tools & MCP registry ( screen 5 →
  * mcp-admin). Mirrors `McpServerResponse` / `McpServerListResponse` from
  * `@arcaai/applications`. Features never import one another (rule 13), so the
  * shape is re-declared here.

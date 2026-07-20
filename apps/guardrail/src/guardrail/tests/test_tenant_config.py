@@ -49,7 +49,9 @@ class _StubResolver(TenantConfigResolver):
         self.calls: list[str] = []
         self.raise_on: set[str] = set()
 
-    async def _load_from_db(self, tenant_id: str) -> dict[str, str]:
+    async def _load_from_db(
+        self, tenant_id: str, task_key: str = TASK_KEY_GUARDRAIL_VALIDATE
+    ) -> dict[str, str]:
         self.calls.append(tenant_id)
         if tenant_id in self.raise_on:
             raise RuntimeError("simulated db failure")
@@ -405,15 +407,18 @@ def _db_resolver(rows: list | None = None, exc: Exception | None = None) -> Tena
 
 
 @pytest.mark.asyncio
-async def test_db_tenant_task_default_beats_system() -> None:
+async def test_db_system_task_default_drives_selection() -> None:
+    # SYSTEM-only selection (fail-closed guardrail.validate): the SYSTEM task
+    # default's model is used; tenant-scoped task-default rows are ignored (the
+    # real query filters on tenant_id == SYSTEM).
     rows = [
         _row(SYSTEM_TENANT_ID, SYSTEM_TENANT_ID, "lm-studio", "granite-guardian-4.1-8b"),
         _row(TENANT_A, SYSTEM_TENANT_ID, "ollama", "gemma4:e2b-it-qat"),
     ]
     cfg = await _db_resolver(rows).resolve(TENANT_A)
 
-    assert cfg.provider == "ollama"
-    assert cfg.model == "gemma4:e2b-it-qat"
+    assert cfg.provider == "lm-studio"
+    assert cfg.model == "granite-guardian-4.1-8b"
 
 
 @pytest.mark.asyncio
@@ -426,16 +431,16 @@ async def test_db_system_row_used_when_tenant_has_none() -> None:
 
 
 @pytest.mark.asyncio
-async def test_db_prefers_same_tenant_model_row() -> None:
-    # Same (SYSTEM) task default joined against both the tenant's own AiModel
-    # copy and the SYSTEM catalog row → the tenant's copy wins.
+async def test_db_prefers_system_model_row_over_tenant_copy() -> None:
+    # SYSTEM task default joined against both the SYSTEM catalog row and a
+    # tenant-owned copy of the slug → the SYSTEM catalog row wins (shared-read).
     rows = [
-        _row(SYSTEM_TENANT_ID, SYSTEM_TENANT_ID, "lm-studio", "system-source-uri"),
         _row(SYSTEM_TENANT_ID, TENANT_A, "lm-studio", "tenant-source-uri"),
+        _row(SYSTEM_TENANT_ID, SYSTEM_TENANT_ID, "lm-studio", "system-source-uri"),
     ]
     cfg = await _db_resolver(rows).resolve(TENANT_A)
 
-    assert cfg.model == "tenant-source-uri"
+    assert cfg.model == "system-source-uri"
 
 
 @pytest.mark.asyncio

@@ -32,13 +32,13 @@ import {
 const DEFAULT_SESSION_PAGE = 20;
 const MAX_SESSION_PAGE = 100;
 
-/** Default lookback when callers omit from/to (TASK-509 aggregate). */
+/** Default lookback when callers omit from/to. */
 const DEFAULT_METRICS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 /** Hard cap — never scan unbounded tenant history for metrics. */
 const MAX_GENERATION_METRICS_ROWS = 5000;
 
 /**
- * AgentTrajectoryService (TASK-510 Phase 2B — ordered session trajectory).
+ * AgentTrajectoryService.
  *
  * Ingest + read surface over the `AgentTrajectoryStep` operational-telemetry
  * table. INTENTIONAL posture (differs from clinical CRUD services):
@@ -132,7 +132,7 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
     filters: ListTrajectorySessionsFilters = {},
     options: ListTrajectorySessionsOptions = {},
   ): Promise<AgentTrajectorySessionsListResponse> {
-    // TASK-510 S2 — DB-level groupBy via listSessionSummaries (no full step scan).
+    // S2 — DB-level groupBy via listSessionSummaries (no full step scan).
     const summaryFilters: {
       consultationId?: string;
       sessionKind?: string;

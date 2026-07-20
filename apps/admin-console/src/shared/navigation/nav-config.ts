@@ -133,7 +133,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     implemented: true,
   },
   { route: '/rate-limits', label: 'Rate limits', tier: '10-19', icon: IconGauge, required: [['manage', 'all']], implemented: true },
-  // TASK-512 — Phase 3B agentic global-admin console (all GLOBAL_ADMIN-only).
+  // Phase 3B agentic global-admin console (all GLOBAL_ADMIN-only).
   { route: '/agentic-policy', label: 'Agentic policy', tier: '10-19', icon: IconShieldBolt, required: [['manage', 'all']], implemented: true },
   { route: '/prompt-studio', label: 'Prompt studio', tier: '10-19', icon: IconWritingSign, required: [['manage', 'all']], implemented: true },
   { route: '/ai-operations/runs', label: 'AI operations — runs', tier: '10-19', icon: IconTimeline, required: [['manage', 'all']], implemented: true },

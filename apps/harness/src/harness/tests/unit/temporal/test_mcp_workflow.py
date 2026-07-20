@@ -1,4 +1,4 @@
-"""TASK-516 (Phase 5) — MCP terminology-validation workflow integration (feature-flagged).
+"""MCP terminology-validation workflow integration (feature-flagged).
 
 Full-workflow tests (time-skipping ``WorkflowEnvironment`` + the stub activity set) that
 prove the opt-in, patch-gated MCP path:

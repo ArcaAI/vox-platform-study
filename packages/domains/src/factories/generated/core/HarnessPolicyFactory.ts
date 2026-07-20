@@ -32,7 +32,7 @@ export const HARNESS_POLICY_DEFAULTS = {
   gateSlaSeconds: 86400,
   gateEscalationSeconds: 43200,
   toolAllowlist: null as IHarnessPolicyEntity['toolAllowlist'],
-  // TASK-511 (Phase 3A) — agentic loop knobs default to null so the harness
+  // agentic loop knobs default to null so the harness
   // env/code default applies (per-field fallthrough). Only an explicit non-null
   // policy value overrides the runtime default.
   optimisticDeliveryEnabled: null as boolean | null,

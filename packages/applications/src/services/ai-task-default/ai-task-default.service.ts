@@ -17,16 +17,21 @@ import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 import { IAiTaskDefaultService } from './IAiTaskDefaultService';
 import { AiTaskDefaultDtoMapper } from './ai-task-default.dto.mapper';
-import { AI_TASK_KEYS, AI_TASK_MODEL_TASK_TYPES, AiTaskKey, GLOBAL_ADMIN_ONLY_TASK_PREFIXES } from './constants';
+import {
+  AI_TASK_KEYS,
+  AI_TASK_MODEL_TASK_TYPES,
+  AiTaskKey,
+  GLOBAL_ADMIN_ONLY_TASK_PREFIXES,
+  isGlobalAdminOnlyTaskKey,
+} from './constants';
 import { AiTaskDefaultResponse, EffectiveAiTaskDefaultResponse, UpsertAiTaskDefaultRequest } from './dto';
 
 /**
- * TASK-506 — per-tenant "default model for task X" service, the Class-3
- * cascading-config generalization of `HarnessPolicy.smrProvider/smrModel`:
- * tenant row → SYSTEM row → (consuming service's env bootstrap fallback).
+ * TASK-506 / "default model for task X" service.
  *
- * Governance (owner directive 2026-07-17): `guardrail.*` keys are
- * GLOBAL-ADMIN-ONLY — a tenant-admin write gets a `ForbiddenException` (403).
+ * Effective resolution for GLOBAL_ADMIN-only keys (`guardrail.*`, `smr.*`,
+ * `nlp.*`) is SYSTEM-row-only (tenant override rows are ignored at read time).
+ * Writes to those prefixes require GLOBAL_ADMIN → `ForbiddenException` (403).
  * This is deliberately NOT the 404-over-403 tenancy posture: the rule is a
  * privilege boundary on a key the caller can already read, not a cross-tenant
  * existence probe.
@@ -50,8 +55,14 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
     const scopedTenantId = this.resolveScopedTenantId(tenantId);
     const tx = this.crossTenantLane(scopedTenantId);
 
+    // GLOBAL_ADMIN-only tasks resolve SYSTEM only (orphan tenant
+    // override rows remain harmless but never win at runtime).
+    const systemOnly = isGlobalAdminOnlyTaskKey(taskKey);
+
     const [tenantRow, systemRow] = await Promise.all([
-      scopedTenantId === SYSTEM_TENANT_ID ? Promise.resolve(null) : this.aiTaskDefaultRepository.findByTenantAndTaskKey(scopedTenantId, taskKey, tx),
+      systemOnly || scopedTenantId === SYSTEM_TENANT_ID
+        ? Promise.resolve(null)
+        : this.aiTaskDefaultRepository.findByTenantAndTaskKey(scopedTenantId, taskKey, tx),
       this.aiTaskDefaultRepository.findByTenantAndTaskKey(SYSTEM_TENANT_ID, taskKey, tx),
     ]);
 
@@ -81,7 +92,7 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
   async upsertRow(taskKey: string, dto: UpsertAiTaskDefaultRequest, tenantId?: string): Promise<AiTaskDefaultResponse> {
     this.assertKnownTaskKey(taskKey);
 
-    // GOVERNANCE: guardrail (owner, 2026-07-17) and SMR model routing (TASK-511
+    // GOVERNANCE: guardrail (owner, 2026-07-17) and SMR model routing (
     // Phase 3A) are exclusively global-admin-managed. A privilege rule — 403,
     // not 404 (the caller can already READ these keys; only writes are gated).
     if (GLOBAL_ADMIN_ONLY_TASK_PREFIXES.some((p) => taskKey.startsWith(p)) && !isSuperAdmin(this.requestUser)) {

@@ -7,7 +7,7 @@ import { TranscriptSegment } from '../../../models';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 
 /**
- * Segment-level transcript repository (TASK-519).
+ * Segment-level transcript repository.
  *
  * `TranscriptSegment` is TENANT-SCOPED per-transcript annotation telemetry. Its
  * posture (mirroring NamedEntity / AudioRecording) is DELIBERATELY exempt from

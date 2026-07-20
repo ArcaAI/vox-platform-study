@@ -5,7 +5,7 @@ import { AgentTrajectoryService } from './agent-trajectory.service';
 import { IAgentTrajectoryService } from './IAgentTrajectoryService';
 
 /**
- * AgentTrajectoryService DI module (TASK-510 Phase 2B).
+ * AgentTrajectoryService DI module.
  *
  * - CommonServiceModule → config + globals (the @Global RedisCacheModule supplies
  *   `IRedisCacheService` for the live-view republish; injected @Optional).

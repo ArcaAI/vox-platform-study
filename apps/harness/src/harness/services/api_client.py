@@ -52,7 +52,7 @@ class AssembleResponse(BaseModel):
     prompt_template_id: str | None = None
     prompt_version: str | None = None
     resolved_from: str = ""
-    # TASK-519 — PHI-safe segment citation refs from apps/api assemble (id/idx/
+    # PHI-safe segment citation refs from apps/api assemble (id/idx/
     # speaker/t0/t1 only). Empty (default, and every legacy response) ⇒ generate
     # folds no segment StrictCitations block ⇒ byte-identical prompt, replay-safe.
     segment_citations: list[SegmentCitationRef] = Field(default_factory=list)
@@ -111,7 +111,7 @@ class AssuranceEventResponse(BaseModel):
 
 
 class TrajectoryStepInput(BaseModel):
-    """One ordered trajectory step (TASK-510 Phase 2C) — snake_case on the Python
+    """One ordered trajectory step — snake_case on the Python
     side, camelCase on the wire (:meth:`to_wire`).
 
     The harness emits a batch of these per phase boundary via
@@ -169,7 +169,7 @@ class TrajectoryStepInput(BaseModel):
 
 
 class TrajectoryReportResponse(BaseModel):
-    """apps/api ack for a batched trajectory report (TASK-510 Phase 2C)."""
+    """apps/api ack for a batched trajectory report."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -205,7 +205,7 @@ def _entity_payload(entity: NEREntity, context_item_id: str | None) -> dict[str,
         ("rxnormCode", entity.rxnorm_code),
         ("icdCode", entity.icd_code),
         ("loincCode", entity.loinc_code),
-        # TASK-518 — forward the assertion polarity (omit None ⇒ PRESENT default).
+        # forward the assertion polarity (omit None ⇒ PRESENT default).
         ("assertion", entity.assertion),
     ):
         if value is not None:
@@ -719,7 +719,7 @@ class ApiClient:
         *,
         idempotency_key: str | None = None,
     ) -> TrajectoryReportResponse:
-        """Publish a BATCH of ordered trajectory steps (TASK-510 Phase 2C).
+        """Publish a BATCH of ordered trajectory steps.
 
         POSTs ``{"steps": [...]}`` to the NEW gateway route
         ``POST {internal_prefix}/trajectory`` (service-token auth, like every other

@@ -1,5 +1,5 @@
 // =============================================================================
-// TASK-510 — Agentic SOTA Program, Phase 2A: Ordered session trajectory.
+// Agentic SOTA Program, Phase 2A: Ordered session trajectory.
 //
 // AgentTrajectoryStep is the ordered, typed, per-session step stream (owner
 // ask 2): every AI working session (live-doc session, harness run, summary

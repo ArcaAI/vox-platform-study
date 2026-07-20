@@ -114,7 +114,7 @@ from harness.tools.mcp_client import McpClientError, McpToolClient
 logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# TASK-510 (Phase 2C) — trajectory step types (the ordered spine vocabulary)
+# trajectory step types (the ordered spine vocabulary)
 # ---------------------------------------------------------------------------
 STEP_PHASE = "PHASE"
 STEP_TOOL_CALL = "TOOL_CALL"
@@ -210,7 +210,7 @@ def _progress_api_client(settings: Settings) -> ApiClient:
     )
 
 
-# TASK-510 (Phase 2C): trajectory reporting is fire-and-forget (like progress) —
+# trajectory reporting is fire-and-forget (like progress) —
 # a short HTTP timeout so a wedged gateway never holds a phase boundary hostage.
 _TRAJECTORY_HTTP_TIMEOUT_S = 5.0
 
@@ -252,7 +252,7 @@ def _reasoning_tokens(stats: dict[str, Any] | None) -> int:
 class _TrajectoryBatch:
     """Collects a phase-boundary's trajectory steps and flushes them ONCE.
 
-    TASK-510 (Phase 2C). ``record`` appends one terminal span (status + start/end
+    (Phase 2C). ``record`` appends one terminal span (status + start/end
     timing + stats) AND always observes the ``harness_step_duration_seconds`` metric
     (metrics are useful even without a session context). ``flush`` posts the batch
     via :meth:`ApiClient.report_trajectory` fire-and-forget: a trajectory/gateway
@@ -333,7 +333,7 @@ def _now() -> datetime:
 
 
 def _resolve_flag(policy_value: bool | None, *, env_default: bool) -> bool:
-    """TASK-511 (Phase 3A) — per-field policy/env fallthrough for a boolean knob.
+    """per-field policy/env fallthrough for a boolean knob.
 
     The effective (DB-backed) ``HarnessPolicy`` carries the seven agentic loop
     knobs as NULLABLE overrides threaded onto the activity inputs. ``None`` means
@@ -344,13 +344,28 @@ def _resolve_flag(policy_value: bool | None, *, env_default: bool) -> bool:
     return env_default if policy_value is None else policy_value
 
 
-def _build_runtime_judge() -> JudgeClient:
-    """Build the calibrated runtime judge (reuses the eval ``HARNESS_JUDGE_*`` config).
+def _build_runtime_judge(
+    *, provider: str | None = None, model: str | None = None
+) -> JudgeClient:
+    """Build the calibrated runtime judge from the DB-selected provider/model.
 
-    Factored out (like the other client factories) so the inferential activity can
-    build the judge once and the tests can monkeypatch it with a stub.
+    the SELECTION (provider + model) comes from the SYSTEM
+    ``harness.judge`` policy, threaded here as ``provider``/``model``; env
+    (``HARNESS_JUDGE_*``) supplies only the CONNECTION config (base_url/api_key/
+    tuning), never the selection. When an override is given it wins over the
+    env-config provider/model via ``model_copy`` (the env provider/model are the
+    offline-eval defaults only). Factored out (like the other client factories) so
+    the tests can monkeypatch it with a stub.
     """
-    return build_judge_client(get_runtime_judge_config())
+    config = get_runtime_judge_config()
+    updates: dict[str, str] = {}
+    if provider:
+        updates["provider"] = provider
+    if model:
+        updates["model"] = model
+    if updates:
+        config = config.model_copy(update=updates)
+    return build_judge_client(config)
 
 
 def _granite_client(settings: Settings) -> GraniteGuardianClient:
@@ -399,7 +414,7 @@ def _phi_redactor() -> PhiRedactor:
 
 
 def _mcp_client(settings: Settings) -> McpToolClient:
-    """Build the streamable-HTTP MCP tool client (TASK-516; SDK lazy-imported).
+    """Build the streamable-HTTP MCP tool client.
 
     Factored out like the other client factories so ``call_mcp_tool`` builds it once
     per invocation and the tests can monkeypatch it with a stub (the hermetic suite
@@ -576,7 +591,7 @@ async def extract_entities(payload: ExtractEntitiesInput) -> EntitiesResult:
     settings = get_settings()
     started = _now()
     batch = _TrajectoryBatch(settings, payload.trajectory)
-    # TASK-511 (Phase 3A) — the policy override (when non-null) wins over the env
+    # the policy override (when non-null) wins over the env
     # kill-switch; None falls through to ``HARNESS_NER_PRIORS_ENABLED``.
     ner_priors_enabled = _resolve_flag(payload.ner_priors_enabled, env_default=settings.ner_priors_enabled)
     if payload.reuse_priors and ner_priors_enabled:
@@ -607,7 +622,7 @@ async def extract_entities(payload: ExtractEntitiesInput) -> EntitiesResult:
 
 @activity.defn
 async def call_mcp_tool(payload: CallMcpToolInput) -> McpToolCallResult:
-    """Call a READ-ONLY MCP tool on a registered external server (TASK-516 — default OFF).
+    """Call a READ-ONLY MCP tool on a registered external server.
 
     Enforcement order (security-critical — everything before the network call is
     fail-closed and BLOCKS without any egress):
@@ -858,14 +873,14 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
     # the small prompt REF instead of the concatenated blob). The PHI-egress guard below
     # then screens the FULLY-assembled prompt, exactly as before.
     user_prompt = await _resolve_ref(settings, payload.prompt, payload.prompt_ref)
-    # TASK-515 Phase 4D.1 — assemble in a stable prefix ordering (invariant
+    # assemble in a stable prefix ordering (invariant
     # template+transcript prefix, then the RAG StrictCitations block) so the
     # engine prefix-cache is reused across regen iterations. Byte-identical to
     # the prior inline concatenation → command-neutral for Temporal replay.
-    # TASK-517 — on a regen iteration the prior iteration's failed-sensor critique
+    # on a regen iteration the prior iteration's failed-sensor critique
     # is appended as a trailing corrective suffix (None on the first iteration /
     # when regenFeedbackEnabled is off ⇒ byte-identical to before).
-    # TASK-519 — when segment citation refs are supplied, fold a PHI-safe
+    # when segment citation refs are supplied, fold a PHI-safe
     # ``[[seg:<id>]]`` StrictCitations block after the RAG block (empty/absent
     # ⇒ byte-identical to before; additive-optional ⇒ replay-safe).
     segment_block = build_segment_citations_block(payload.segment_citations)
@@ -957,7 +972,7 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
         update={"content": content_inline, "content_ref": content_ref}
     )
 
-    # TASK-510 (Phase 2C): LLM_CALL step embeds the AD-1 ``stats`` (TASK-509) verbatim;
+    # LLM_CALL step embeds the AD-1 ``stats`` verbatim;
     # a bounded-regen generation bumps ``harness_regen_total``. When SMR returned
     # non-empty reasoning, emit a stats-only THINKING step (payloadRef stays null until
     # a capture-payload policy flag is on — which it is not yet).
@@ -998,7 +1013,7 @@ async def retrieve_context(payload: RetrieveContextInput) -> RetrievedContext:
     settings = get_settings()
     started = _now()
     batch = _TrajectoryBatch(settings, payload.trajectory)
-    # TASK-511 (Phase 3A) — the policy override (when non-null) wins over the env
+    # the policy override (when non-null) wins over the env
     # kill-switch; None falls through to ``HARNESS_RETRIEVAL_ENABLED``.
     retrieval_enabled = _resolve_flag(payload.retrieval_enabled, env_default=settings.retrieval.enabled)
     if not retrieval_enabled:
@@ -1288,6 +1303,14 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
     started = _now()
     batch = _TrajectoryBatch(settings, payload.trajectory)
     judge_config = get_runtime_judge_config()
+    # the judge SELECTION (provider + model) is DB-driven: it comes from
+    # the SYSTEM ``harness.judge`` policy, snapshotted onto the input at workflow
+    # start. Env (``HARNESS_JUDGE_*``) supplies only the CONNECTION config
+    # (base_url/api_key/tuning), never the selection. A missing selection FAILS
+    # CLOSED below (the pass degrades) — it never falls back to an env-selected
+    # judge, so an unverifiable note can never silently auto-PASS.
+    judge_provider = payload.judge_provider
+    judge_model = payload.judge_model
 
     async def _emit(out: InferentialRunOutput) -> InferentialRunOutput:
         # GUARDRAIL step for the (once-per-loop) inferential pass; degrade is carried in
@@ -1323,6 +1346,27 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
     knowledge_chunks_in = await _resolve_knowledge_chunks(
         settings, payload.knowledge_chunks, payload.knowledge_chunks_ref
     )
+
+    # fail closed when the SYSTEM harness.judge selection is absent. The
+    # judge is required for BOTH judge sensors (groundedness + citation-verify), so a
+    # missing selection degrades the whole judge-dependent pass (mirrors the existing
+    # un-buildable-judge degrade) rather than silently using an env-selected judge.
+    # Checked BEFORE the egress guard because that guard's cloud-redaction decision is
+    # keyed on the effective (policy) judge provider.
+    if not judge_provider or not judge_model:
+        reason = "inferential judge unavailable: no SYSTEM harness.judge selection (fail-closed)"
+        activity.logger.warning(
+            "harness.judge.no_policy_selection",
+            extra={"stage": "inferential", "reason": reason},
+        )
+        degraded = [
+            degraded_result(GROUNDEDNESS_NAME, reason),
+            degraded_result(CITATION_VERIFY_NAME, reason),
+        ]
+        if payload.safety_enabled:
+            degraded.append(degraded_result(SAFETY_NAME, reason))
+        return await _emit(_assemble_inferential_output(degraded, verdict_cache))
+
     try:
         note_text, transcript_text, citations_map, knowledge_chunks = (
             ensure_inferential_egress_safe(
@@ -1330,7 +1374,7 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
                 transcript_text=transcript_text_in,
                 citations_map=payload.citations_map,
                 knowledge_chunks=knowledge_chunks_in,
-                judge_provider=str(judge_config.provider),
+                judge_provider=judge_provider,
                 safety_provider=settings.safety.provider if payload.safety_enabled else None,
                 settings=settings,
                 phi_enabled=payload.phi_enabled,
@@ -1365,7 +1409,7 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
     heartbeat = asyncio.create_task(_heartbeat_periodically())
     try:
         try:
-            judge = _build_runtime_judge()
+            judge = _build_runtime_judge(provider=judge_provider, model=judge_model)
         except Exception as exc:  # noqa: BLE001 — un-buildable judge degrades, never raises
             reason = f"inferential judge unavailable: {exc}"
             degraded = [
@@ -1415,7 +1459,7 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
         # kill-switch (default OFF). It uses a SELF-HOSTED NLI (NOT the judge), so it adds
         # no cloud egress; a degraded backend degrades (never auto-PASS). Read at runtime
         # here — not the workflow — so it adds no new workflow command (replay-safe).
-        # TASK-511 (Phase 3A) — the policy override (when non-null) wins over the env
+        # the policy override (when non-null) wins over the env
         # kill-switch; None falls through to ``HARNESS_ATOMIC_FACT_ENABLED``.
         if _resolve_flag(payload.atomic_fact_enabled, env_default=settings.atomic_fact_enabled):
             tasks.append(
@@ -1465,7 +1509,7 @@ async def persist_draft(payload: PersistDraftInput) -> DraftResponse:
         phase=payload.phase,
         idempotency_key=_idempotency_key(),
     )
-    # TASK-510 (Phase 2D): count the gate verdict EXACTLY ONCE per completed session.
+    # count the gate verdict EXACTLY ONCE per completed session.
     # The single-shot (legacy) persist carries the verdict; the optimistic early persist
     # withholds it (``gate_decision is None`` ⇒ no count here — finalize/retract counts it).
     if payload.gate_decision is not None:
@@ -1513,7 +1557,7 @@ async def finalize_assurance(payload: FinalizeAssuranceInput) -> FinalizeAssuran
         prompt_version=payload.prompt_version,
         idempotency_key=_idempotency_key(),
     )
-    # TASK-510 (Phase 2D): the optimistic path counts the gate verdict HERE (the early
+    # the optimistic path counts the gate verdict HERE (the early
     # persist withheld it), so the counter still fires exactly once per completed session.
     if payload.gate_decision is not None:
         inc_gate_decision(payload.gate_decision)
@@ -1560,7 +1604,7 @@ async def retract_draft(payload: RetractDraftInput) -> RetractDraftResponse:
         job_id=payload.job_id,
         idempotency_key=_idempotency_key(),
     )
-    # TASK-510 (Phase 2D): a retraction is a terminal FLAG verdict — count it once here
+    # a retraction is a terminal FLAG verdict — count it once here
     # (the early persist withheld it), and emit a GATE step for the retraction event.
     if payload.gate_decision is not None:
         inc_gate_decision(payload.gate_decision)

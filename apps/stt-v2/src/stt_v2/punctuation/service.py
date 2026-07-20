@@ -24,6 +24,12 @@ _enabled: bool = True
 _suppression_warned: bool = False
 _lock = threading.Lock()
 
+# Lazy first-use init: the default Cadence model is loaded on the
+# first punctuation call (not at process boot). ``_init_done`` + ``_init_lock``
+# make that load a single-flight, at-most-once attempt per process.
+_init_done: bool = False
+_init_lock = threading.Lock()
+
 
 def _warn_suppressed_once() -> None:
     """Warn (once per process) that a pipeline-requested punctuation call was
@@ -137,6 +143,36 @@ def initialize() -> bool:
     return True
 
 
+def ensure_initialized() -> bool:
+    """Lazily load the default punctuation model on first use.
+
+    Idempotent, thread-safe, and single-flight: the default-model load is
+    attempted at most once per process. Returns whether punctuation is
+    active (``_enabled``) so callers can decide to punctuate or pass through.
+
+    Short-circuits without touching ``initialize()`` when a load attempt has
+    already run (``_init_done``), when a prior attempt determined the service
+    is disabled/failed (``not _enabled``), or when a model is already present
+    (``_default_model_name`` / ``_models`` set directly, e.g. by the worker's
+    eager warm-up or in tests).
+    """
+    global _init_done
+    if _init_done or not _enabled or _default_model_name is not None or _models:
+        return _enabled
+    with _init_lock:
+        if _init_done or not _enabled or _default_model_name is not None or _models:
+            return _enabled
+        try:
+            initialize()
+        except Exception:
+            # initialize() already flips the service to disabled on failure;
+            # swallow here so runtime calls degrade to passthrough. The boot
+            # path (worker) logs the failure separately.
+            logger.debug("Lazy punctuation initialization failed", exc_info=True)
+        _init_done = True
+    return _enabled
+
+
 def get_model(model_name: str | None = None) -> Any:
     """Return a loaded model by name. Lazy-loads non-default models on first use."""
     name = model_name or _default_model_name
@@ -163,13 +199,14 @@ async def punctuate(text: str, model_name: str | None = None) -> str:
     streaming worker's ``asyncio.wait_for`` timeout can only fire on time
     if a first-use model load happens off the loop thread).
     """
-    if not _enabled:
-        _warn_suppressed_once()
-        return text
     if not text.strip():
         return text
 
     loop = asyncio.get_running_loop()
+    if not await loop.run_in_executor(None, ensure_initialized):
+        _warn_suppressed_once()
+        return text
+
     results = await loop.run_in_executor(
         None,
         lambda: get_model(model_name).punctuate([text], batch_size=1),
@@ -181,14 +218,15 @@ async def punctuate_batch(
     texts: list[str], batch_size: int = 8, model_name: str | None = None,
 ) -> list[str]:
     """Punctuate a list of texts. Runs sync model in executor."""
-    if not _enabled:
-        _warn_suppressed_once()
-        return texts
     if not texts:
         return texts
 
-    model = get_model(model_name)
     loop = asyncio.get_running_loop()
+    if not await loop.run_in_executor(None, ensure_initialized):
+        _warn_suppressed_once()
+        return texts
+
+    model = get_model(model_name)
     results = await loop.run_in_executor(
         None,
         lambda: model.punctuate(texts, batch_size=batch_size),
@@ -200,10 +238,10 @@ def punctuate_sync(
     texts: list[str], batch_size: int = 8, model_name: str | None = None,
 ) -> list[str]:
     """Punctuate a list of texts synchronously (for batch pipeline)."""
-    if not _enabled:
-        _warn_suppressed_once()
-        return texts
     if not texts:
+        return texts
+    if not ensure_initialized():
+        _warn_suppressed_once()
         return texts
 
     model = get_model(model_name)
@@ -212,6 +250,7 @@ def punctuate_sync(
 
 def shutdown() -> None:
     """Release all punctuation models (called during app shutdown)."""
-    global _default_model_name
+    global _default_model_name, _init_done
     _models.clear()
     _default_model_name = None
+    _init_done = False

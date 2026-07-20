@@ -71,7 +71,7 @@ describe('AiTaskDefaultService — getEffective (TASK-506)', () => {
     ctx = makeService();
   });
 
-  it('tenant row wins over the SYSTEM row (source: tenant)', async () => {
+  it('ignores tenant override rows for GLOBAL_ADMIN-only keys (SYSTEM wins)', async () => {
     ctx.repo.findByTenantAndTaskKey.mockImplementation(async (tenantId: string) =>
       tenantId === SYSTEM_TENANT_ID
         ? makeRow({ tenantId: SYSTEM_TENANT_ID, modelSlug: 'medical-ner' })
@@ -83,13 +83,15 @@ describe('AiTaskDefaultService — getEffective (TASK-506)', () => {
 
     const eff = await ctx.svc.getEffective('nlp.ner');
 
-    expect(eff.source).toBe('tenant');
-    expect(eff.modelSlug).toBe('tenant-custom-ner');
-    expect(eff.model?.slug).toBe('tenant-custom-ner');
-    expect(eff.model?.provider).toBe('lm-studio');
+    expect(eff.source).toBe('system');
+    expect(eff.modelSlug).toBe('medical-ner');
+    expect(eff.model?.slug).toBe('medical-ner');
+    // Tenant row must not be consulted for nlp.* (SYSTEM-only resolution).
+    expect(ctx.repo.findByTenantAndTaskKey).not.toHaveBeenCalledWith(TENANT, 'nlp.ner', undefined);
+    expect(ctx.repo.findByTenantAndTaskKey).toHaveBeenCalledWith(SYSTEM_TENANT_ID, 'nlp.ner', undefined);
   });
 
-  it('falls back to the SYSTEM row when the tenant has none (source: system)', async () => {
+  it('resolves the SYSTEM row for nlp.* (source: system)', async () => {
     ctx.repo.findByTenantAndTaskKey.mockImplementation(async (tenantId: string) =>
       tenantId === SYSTEM_TENANT_ID ? makeRow({ tenantId: SYSTEM_TENANT_ID, modelSlug: 'medical-ner' }) : null,
     );
@@ -113,18 +115,20 @@ describe('AiTaskDefaultService — getEffective (TASK-506)', () => {
     expect(ctx.modelRepo.findBySlug).not.toHaveBeenCalled();
   });
 
-  it('prefers the tenant-owned model row over the SYSTEM one when resolving the slug', async () => {
+  it('resolves the SYSTEM model slug against the tenant-visible registry for nlp.*', async () => {
     ctx.repo.findByTenantAndTaskKey.mockImplementation(async (tenantId: string) =>
-      tenantId === TENANT ? makeRow({ tenantId: TENANT, modelSlug: 'medical-ner' }) : null,
+      tenantId === SYSTEM_TENANT_ID ? makeRow({ tenantId: SYSTEM_TENANT_ID, modelSlug: 'medical-ner' }) : null,
     );
-    const tenantModel = makeModel({ tenantId: TENANT, slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION });
-    ctx.modelRepo.findBySlug.mockImplementation(async (tenantId: string) => (tenantId === TENANT ? tenantModel : null));
+    const systemModel = makeModel({ tenantId: SYSTEM_TENANT_ID, slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION });
+    ctx.modelRepo.findBySlug.mockImplementation(async (tenantId: string) =>
+      tenantId === TENANT || tenantId === SYSTEM_TENANT_ID ? systemModel : null,
+    );
 
     const eff = await ctx.svc.getEffective('nlp.ner');
 
-    expect(eff.model?.id).toBe(tenantModel.id);
+    expect(eff.source).toBe('system');
+    expect(eff.model?.slug).toBe('medical-ner');
     expect(ctx.modelRepo.findBySlug).toHaveBeenCalledWith(TENANT, 'medical-ner', undefined);
-    expect(ctx.modelRepo.findBySlug).not.toHaveBeenCalledWith(SYSTEM_TENANT_ID, 'medical-ner', undefined);
   });
 
   it('rejects an unknown task key', async () => {
@@ -154,14 +158,14 @@ describe('AiTaskDefaultService — getRow', () => {
 
 describe('AiTaskDefaultService — upsertRow validation', () => {
   it('rejects an unknown task key', async () => {
-    const ctx = makeService();
+    const ctx = makeService({ roles: ['GLOBAL_ADMIN'] });
     await expect(ctx.svc.upsertRow('nope.key', { modelSlug: 'x', expectedVersion: 0 })).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 
   it('rejects a slug that resolves to no ENABLED model in [tenant, SYSTEM]', async () => {
     // The repository's findBySlug filters ENABLED-only, so a DISABLED or
     // soft-deleted model resolves to null exactly like an unknown slug.
-    const ctx = makeService();
+    const ctx = makeService({ roles: ['GLOBAL_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(null);
 
     await expect(ctx.svc.upsertRow('nlp.ner', { modelSlug: 'ghost-model', expectedVersion: 0 })).rejects.toBeInstanceOf(
@@ -170,7 +174,7 @@ describe('AiTaskDefaultService — upsertRow validation', () => {
   });
 
   it('rejects a slug whose taskType does not match the task key', async () => {
-    const ctx = makeService();
+    const ctx = makeService({ roles: ['GLOBAL_ADMIN'] });
     // nlp.ner requires TOKEN_CLASSIFICATION; hand it a TEXT_GENERATION model.
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'lms-gemma-4-e2b-it-qat', taskType: ModelTaskType.TEXT_GENERATION }));
 
@@ -180,7 +184,7 @@ describe('AiTaskDefaultService — upsertRow validation', () => {
   });
 });
 
-describe('AiTaskDefaultService — guardrail.* governance (owner directive 2026-07-17)', () => {
+describe('AiTaskDefaultService — GLOBAL_ADMIN-only governance', () => {
   it('rejects a guardrail.* write from a tenant admin with ForbiddenException (privilege rule, not a tenancy probe)', async () => {
     const ctx = makeService({ roles: ['TENANT_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ taskType: ModelTaskType.GUARDRAIL }));
@@ -203,8 +207,16 @@ describe('AiTaskDefaultService — guardrail.* governance (owner directive 2026-
     expect(ctx.repo.create).toHaveBeenCalledTimes(1);
   });
 
-  it('accepts an nlp.* write from a tenant admin (no elevated role)', async () => {
+  it('rejects an nlp.* write from a tenant admin with ForbiddenException', async () => {
     const ctx = makeService({ roles: ['TENANT_ADMIN'] });
+    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
+
+    await expect(ctx.svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 0 })).rejects.toBeInstanceOf(ForbiddenException);
+    expect(ctx.repo.create).not.toHaveBeenCalled();
+  });
+
+  it('accepts an nlp.* write from a GLOBAL_ADMIN', async () => {
+    const ctx = makeService({ roles: ['GLOBAL_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
     ctx.repo.create.mockImplementation(async (e: unknown) => e);
 
@@ -212,11 +224,20 @@ describe('AiTaskDefaultService — guardrail.* governance (owner directive 2026-
 
     expect(res.modelSlug).toBe('medical-ner');
   });
+
+  it('rejects an smr.* write from a tenant admin with ForbiddenException', async () => {
+    const ctx = makeService({ roles: ['TENANT_ADMIN'] });
+    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'lms-gemma-4-e2b-it-qat', taskType: ModelTaskType.TEXT_GENERATION }));
+
+    await expect(
+      ctx.svc.upsertRow('smr.live', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
 });
 
 describe('AiTaskDefaultService — upsertRow OCC + sys-events', () => {
   it('creates the row + broadcasts ResourceCreated when none exists (expectedVersion 0)', async () => {
-    const ctx = makeService();
+    const ctx = makeService({ roles: ['GLOBAL_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
     ctx.repo.create.mockImplementation(async (e: unknown) => e);
@@ -232,7 +253,7 @@ describe('AiTaskDefaultService — upsertRow OCC + sys-events', () => {
   });
 
   it('create with a non-zero expectedVersion is a concurrency conflict', async () => {
-    const ctx = makeService();
+    const ctx = makeService({ roles: ['GLOBAL_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
 
@@ -242,7 +263,7 @@ describe('AiTaskDefaultService — upsertRow OCC + sys-events', () => {
   });
 
   it('updates via compare-and-set + broadcasts ResourceUpdated when a row exists', async () => {
-    const ctx = makeService();
+    const ctx = makeService({ roles: ['GLOBAL_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(
       makeModel({ slug: 'symps-disease-bert-v3-c41', taskType: ModelTaskType.TEXT_CLASSIFICATION }),
     );
@@ -258,7 +279,7 @@ describe('AiTaskDefaultService — upsertRow OCC + sys-events', () => {
   });
 
   it('propagates OCC drift from the repository', async () => {
-    const ctx = makeService();
+    const ctx = makeService({ roles: ['GLOBAL_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
     const row = makeRow({ modelSlug: 'old-slug' });
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(row);
@@ -270,7 +291,7 @@ describe('AiTaskDefaultService — upsertRow OCC + sys-events', () => {
   });
 
   it('throws when there are no changes to write', async () => {
-    const ctx = makeService();
+    const ctx = makeService({ roles: ['GLOBAL_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
     // Same editor + same slug → nothing changes, the guard fires.
     const row = AiTaskDefaultFactory.CreateAiTaskDefault({ tenantId: TENANT, taskKey: 'nlp.ner', modelSlug: 'medical-ner', updatedBy: 'u1' });
@@ -318,10 +339,10 @@ describe('AiTaskDefaultService — cross-tenant base-client lane (r2605 Finding 
     expect(ctx.repo.findByTenantAndTaskKey).toHaveBeenCalledWith(SYSTEM_TENANT_ID, 'nlp.ner', ctx.db.baseClient);
   });
 
-  it('getEffective targeting a foreign tenant routes the cascade reads AND the model resolution through the base client', async () => {
+  it('getEffective targeting a foreign tenant routes SYSTEM-only nlp.* reads AND model resolution through the base client', async () => {
     const ctx = makeService({ roles: ['GLOBAL_ADMIN'], clsTenantId: TENANT });
     ctx.repo.findByTenantAndTaskKey.mockImplementation(async (tenantId: string) =>
-      tenantId === 'tenant-other' ? makeRow({ tenantId: 'tenant-other', modelSlug: 'medical-ner' }) : null,
+      tenantId === SYSTEM_TENANT_ID ? makeRow({ tenantId: SYSTEM_TENANT_ID, modelSlug: 'medical-ner' }) : null,
     );
     ctx.modelRepo.findBySlug.mockImplementation(async (tenantId: string, slug: string) =>
       makeModel({ tenantId, slug, taskType: ModelTaskType.TOKEN_CLASSIFICATION }),
@@ -329,8 +350,8 @@ describe('AiTaskDefaultService — cross-tenant base-client lane (r2605 Finding 
 
     const eff = await ctx.svc.getEffective('nlp.ner', 'tenant-other');
 
-    expect(eff.source).toBe('tenant');
-    expect(ctx.repo.findByTenantAndTaskKey).toHaveBeenCalledWith('tenant-other', 'nlp.ner', ctx.db.baseClient);
+    expect(eff.source).toBe('system');
+    expect(ctx.repo.findByTenantAndTaskKey).not.toHaveBeenCalledWith('tenant-other', 'nlp.ner', ctx.db.baseClient);
     expect(ctx.repo.findByTenantAndTaskKey).toHaveBeenCalledWith(SYSTEM_TENANT_ID, 'nlp.ner', ctx.db.baseClient);
     expect(ctx.modelRepo.findBySlug).toHaveBeenCalledWith('tenant-other', 'medical-ner', ctx.db.baseClient);
   });
@@ -368,16 +389,12 @@ describe('AiTaskDefaultService — cross-tenant base-client lane (r2605 Finding 
     expect(ctx.repo.findByTenantAndTaskKey).toHaveBeenCalledWith(TENANT, 'nlp.ner', ctx.db.baseClient);
   });
 
-  it('a NON-admin caller acting on their own tenant never gets the base-client lane', async () => {
+  it('a NON-admin caller acting on their own tenant never gets the base-client lane (getRow)', async () => {
     const ctx = makeService({ roles: ['TENANT_ADMIN'], clsTenantId: TENANT });
-    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
-    ctx.repo.create.mockImplementation(async (e: unknown) => e);
 
-    await ctx.svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 0 });
+    await ctx.svc.getRow('nlp.ner');
 
     expect(ctx.repo.findByTenantAndTaskKey).toHaveBeenCalledWith(TENANT, 'nlp.ner', undefined);
-    expect(ctx.repo.create).toHaveBeenCalledWith(expect.objectContaining({ tenantId: TENANT }), undefined);
-    expect(ctx.modelRepo.findBySlug).toHaveBeenCalledWith(TENANT, 'medical-ner', undefined);
   });
 });

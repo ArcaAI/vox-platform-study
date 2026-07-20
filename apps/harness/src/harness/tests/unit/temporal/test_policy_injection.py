@@ -50,6 +50,8 @@ _POLICY_JSON: dict[str, Any] = {
     "safetyModel": "granite-guardian-x",
     "smrProvider": "azure",
     "smrModel": "gpt-4o",
+    "judgeProvider": "openai_compat",
+    "judgeModel": "google/gemma-4-e4b",
     "maxRegen": 4,
     "gateSlaSeconds": 3600,
     "gateEscalationSeconds": 1800,
@@ -78,6 +80,9 @@ class TestHarnessPolicyModel:
         assert policy.safety_model == "granite-guardian-x"
         assert policy.smr_provider == "azure"
         assert policy.smr_model == "gpt-4o"
+        # the SYSTEM harness.judge selection maps straight through.
+        assert policy.judge_provider == "openai_compat"
+        assert policy.judge_model == "google/gemma-4-e4b"
         assert policy.max_regen == 4
         assert policy.gate_sla_seconds == 3600
         assert policy.gate_escalation_seconds == 1800
@@ -98,6 +103,9 @@ class TestHarnessPolicyModel:
         policy = HarnessPolicy.from_api({"smrProvider": None, "smrModel": None})
         assert policy.smr_provider is None
         assert policy.smr_model is None
+        # absent judge selection ⇒ None (inferential pass fails closed).
+        assert policy.judge_provider is None
+        assert policy.judge_model is None
         assert policy.safety_enabled is True  # conservative default
         assert policy.tool_allowlist is None
 
@@ -248,13 +256,18 @@ class TestPolicyDrivesInferentialGate:
     @pytest.mark.asyncio
     async def test_default_groundedness_threshold_regens(self, env, monkeypatch):
         judge = _StubJudge(unsupported_markers=("diabetes",))
-        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: judge)
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
         monkeypatch.setattr(activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False}))
 
         result = await env.run(
             activities.run_inferential_sensors,
             RunInferentialSensorsInput(
-                note_text="note", transcript_text="hypertension", citations_map=_TWO_CLAIMS
+                note_text="note",
+                transcript_text="hypertension",
+                citations_map=_TWO_CLAIMS,
+                # SYSTEM harness.judge selection (else the pass fails closed).
+                judge_provider="openai_compat",
+                judge_model="stub-judge",
             ),
         )
         assert result.guardrail_decisions["groundedness"]["decision"] == "REGEN"
@@ -262,7 +275,7 @@ class TestPolicyDrivesInferentialGate:
     @pytest.mark.asyncio
     async def test_lowered_groundedness_threshold_passes(self, env, monkeypatch):
         judge = _StubJudge(unsupported_markers=("diabetes",))
-        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: judge)
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
         monkeypatch.setattr(activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False}))
 
         result = await env.run(
@@ -272,6 +285,9 @@ class TestPolicyDrivesInferentialGate:
                 transcript_text="hypertension",
                 citations_map=_TWO_CLAIMS,
                 groundedness_threshold=0.4,
+                # SYSTEM harness.judge selection (else the pass fails closed).
+                judge_provider="openai_compat",
+                judge_model="stub-judge",
             ),
         )
         assert result.guardrail_decisions["groundedness"]["decision"] == "PASS"
@@ -280,7 +296,7 @@ class TestPolicyDrivesInferentialGate:
     async def test_safety_disabled_skips_safety_screen(self, env, monkeypatch):
         judge = _StubJudge()
         granite = _FakeGranite(dimensions={"harm": True})  # would FLAG if it ran
-        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: judge)
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
         monkeypatch.setattr(activities, "_granite_client", lambda s: granite)
 
         result = await env.run(
@@ -290,8 +306,73 @@ class TestPolicyDrivesInferentialGate:
                 transcript_text="t",
                 citations_map={"claims": []},
                 safety_enabled=False,
+                # SYSTEM harness.judge selection (else the pass fails closed).
+                judge_provider="openai_compat",
+                judge_model="stub-judge",
             ),
         )
         assert "safety" not in result.guardrail_decisions
         assert granite.screened == []  # the safety sensor never ran
         assert result.degraded is False
+
+
+class TestJudgeSelectionFailClosed:
+    """the LLM-as-judge SELECTION comes from the SYSTEM ``harness.judge``
+    policy (threaded as ``judge_provider``/``judge_model``). When it is absent the
+    pass FAILS CLOSED (degrades) — it never falls back to an env-selected judge, so
+    the judge is never even built."""
+
+    @pytest.mark.asyncio
+    async def test_missing_judge_selection_degrades_without_building_judge(
+        self, env, monkeypatch, caplog
+    ):
+        def _must_not_build(*_a: Any, **_k: Any) -> Any:
+            raise AssertionError("judge must NOT be built with no SYSTEM selection")
+
+        granite = _FakeGranite(dimensions={"harm": False})  # would flag if ever run
+        monkeypatch.setattr(activities, "_build_runtime_judge", _must_not_build)
+        monkeypatch.setattr(activities, "_granite_client", lambda s: granite)
+
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            result = await env.run(
+                activities.run_inferential_sensors,
+                RunInferentialSensorsInput(
+                    note_text="note",
+                    transcript_text="hypertension",
+                    citations_map=_TWO_CLAIMS,
+                    # judge_provider/judge_model intentionally omitted (None).
+                ),
+            )
+
+        assert result.degraded is True
+        gd = result.guardrail_decisions
+        assert gd["groundedness"]["decision"] == "DEGRADED"
+        assert gd["citation_verify"]["decision"] == "DEGRADED"
+        assert "harness.judge" in (gd["groundedness"]["reason"] or "").lower()
+        assert granite.screened == []  # never egressed to the safety screen either
+
+    @pytest.mark.asyncio
+    async def test_partial_judge_selection_also_fails_closed(self, env, monkeypatch):
+        # A provider with no model (or vice-versa) is NOT a usable selection ⇒ degrade.
+        monkeypatch.setattr(
+            activities,
+            "_build_runtime_judge",
+            lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not build")),
+        )
+        monkeypatch.setattr(
+            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+        )
+
+        result = await env.run(
+            activities.run_inferential_sensors,
+            RunInferentialSensorsInput(
+                note_text="note",
+                transcript_text="hypertension",
+                citations_map=_TWO_CLAIMS,
+                judge_provider="openai_compat",  # model missing ⇒ unusable
+            ),
+        )
+        assert result.degraded is True
+        assert result.guardrail_decisions["groundedness"]["decision"] == "DEGRADED"

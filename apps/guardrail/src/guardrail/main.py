@@ -86,7 +86,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # lm-studio (default) | vllm | llama-cpp | azure | bedrock run over the
     # OpenAI-compatible chat API; ollama uses its native API. The content
     # provider keeps the historical `ollama_provider` app.state slot so
-    # endpoints/job_processor stay engine-agnostic. TASK-515: the self-host
+    # endpoints/job_processor stay engine-agnostic. the self-host
     # production engines (vllm/llama-cpp) serve Granite Guardian, so the Granite
     # BYOC protocol applies to them as it does for lm-studio.
     _GRANITE_ENGINES = {"lm-studio", "vllm", "llama-cpp"}
@@ -134,22 +134,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             enabled=engine_cfg.guardian_enabled,
         )
 
-    # Initialize GLiNER provider for content safety / adversarial / PII
-    if not hasattr(app.state, "gliner_provider") or app.state.gliner_provider is None:
-        from guardrail.providers.gliner import GlinerProvider
-        app.state.gliner_provider = GlinerProvider(config=settings.gliner)
-        logger.info(
-            "guardrail.gliner_provider_initialized",
-            model_id=settings.gliner.model_id,
-            enabled=settings.gliner.enabled,
-        )
+    # GLiNER is NO LONGER loaded here. Its runtime model id is
+    # DB-selected (SYSTEM `guardrail.safety`) and loaded lazily on first
+    # `/guardrail/analyze` through the idle-TTL aux-model cache, so a freshly
+    # booted worker holds ZERO GLiNER weights. The cache lives on app.state and
+    # is created on first use by the request/job resolvers.
 
     # Initialize job queue processor
     if not hasattr(app.state, "job_processor") or app.state.job_processor is None:
+        from guardrail.core.dependencies import pinned_gliner_provider
         from guardrail.services.job_processor import JobProcessor
+
+        # Jobs carry no tenant; SYSTEM selection resolves regardless of tenant.
+        def _gliner_for_job() -> object:
+            return pinned_gliner_provider(app.state, tenant_id=None)
+
         app.state.job_processor = JobProcessor(
             redis=redis_client,
-            gliner_provider=app.state.gliner_provider,
+            gliner_provider_resolver=_gliner_for_job,  # type: ignore[arg-type]
             max_concurrent=settings.engine.max_concurrent,
         )
 
@@ -168,8 +170,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if hasattr(app.state, "job_processor_task") and app.state.job_processor_task:
         await app.state.job_processor_task
 
-    if hasattr(app.state, "gliner_provider") and app.state.gliner_provider:
-        app.state.gliner_provider.shutdown()
+    # release any lazily-loaded aux models (GLiNER / MiniCheck).
+    if getattr(app.state, "gliner_cache", None) is not None:
+        await app.state.gliner_cache.clear()
+    if getattr(app.state, "groundedness_scorer_cache", None) is not None:
+        await app.state.groundedness_scorer_cache.clear()
 
     if hasattr(app.state, "http_client") and app.state.http_client:
         await app.state.http_client.aclose()

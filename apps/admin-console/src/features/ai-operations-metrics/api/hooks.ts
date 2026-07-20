@@ -39,7 +39,7 @@ export interface GenerationMetrics {
 
 /**
  * TTFT / tok-s / stop-reason panels from the server-side generation-metrics
- * aggregate (TASK-509). `normalizeGenerationStats` remains for Runs StepStats
+ * aggregate. `normalizeGenerationStats` remains for Runs StepStats
  * and the pure client rollup helper used in unit tests.
  */
 export function useGenerationMetrics(enabled: boolean, params?: GenerationMetricsParams): GenerationMetrics {

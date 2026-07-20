@@ -48,7 +48,6 @@ from harness.temporal.models import (
     McpToolCallResult,
     PersistDraftInput,
     PersistEntitiesInput,
-    SegmentCitationRef,
     RecordGateInput,
     ReportProgressInput,
     ReportProgressResult,
@@ -57,6 +56,7 @@ from harness.temporal.models import (
     RetrievedContext,
     RunInferentialSensorsInput,
     RunSensorsInput,
+    SegmentCitationRef,
 )
 
 _OK_NOTE = '{"subjective": "s", "objective": "o", "assessment": "a", "plan": "p"}'
@@ -114,13 +114,13 @@ class StubConfig:
     # the ref-threaded (new-run) command sequence for the replay-compat fixture. The
     # command sequence is identical to the inline happy path — only the payloads differ.
     claim_check: bool = False
-    # TASK-516 (Phase 5): MCP terminology validation. When the policy arms the
+    # MCP terminology validation. When the policy arms the
     # (patch-gated) MCP path, the ``call_mcp_tool`` stub returns this outcome —
     # ``mcp_degraded`` drives the workflow to reduced assurance; ``mcp_fails`` makes
     # the activity raise (allowlist/PHI/infra) which the workflow degrades on.
     mcp_degraded: bool = False
     mcp_fails: bool = False
-    # TASK-519 — PHI-safe segment citation refs returned by ``assemble_prompt``.
+    # PHI-safe segment citation refs returned by ``assemble_prompt``.
     # Empty (default) ⇒ GenerateInput.segment_citations stays empty (byte-identical
     # prompt). Non-empty ⇒ workflow must thread them into both GenerateInput sites.
     segment_citations: list[SegmentCitationRef] = field(default_factory=list)
@@ -149,7 +149,7 @@ class StubRecorder:
     record_inputs: list[RecordGateInput] = field(default_factory=list)
     escalate_inputs: list[EscalateInput] = field(default_factory=list)
     inferential_inputs: list[RunInferentialSensorsInput] = field(default_factory=list)
-    # TASK-516 (Phase 5): the CallMcpToolInput of each MCP terminology validation call.
+    # the CallMcpToolInput of each MCP terminology validation call.
     call_mcp_inputs: list[CallMcpToolInput] = field(default_factory=list)
     retrieve_inputs: list[RetrieveContextInput] = field(default_factory=list)
     generate_inputs: list[GenerateInput] = field(default_factory=list)
@@ -363,7 +363,7 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
             prompt_template_id="tmpl-1",
             prompt_version="3",
             resolved_from="department",
-            # TASK-519 — thread configured refs (default []) so workflow tests
+            # thread configured refs (default []) so workflow tests
             # can assert GenerateInput.segment_citations is populated from assemble.
             segment_citations=list(config.segment_citations),
         )

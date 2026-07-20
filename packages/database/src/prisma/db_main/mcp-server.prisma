@@ -1,5 +1,5 @@
 // =============================================================================
-// TASK-516 — Agentic SOTA Program, Phase 5: MCP external-tools registry.
+// Agentic SOTA Program, Phase 5: MCP external-tools registry.
 //
 // McpServer is the global-admin-managed registry of external tool servers the
 // clinical documentation harness may call out to over the MCP streamable-HTTP

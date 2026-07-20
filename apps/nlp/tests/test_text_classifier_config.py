@@ -69,7 +69,9 @@ async def test_initialize_when_unconfigured_warns_and_stays_uninitialized(
     assert warnings, "expected a loud warning that doc-type classification is unconfigured"
     joined = " ".join(r.getMessage() for r in warnings).lower()
     assert "unconfigured" in joined
-    assert "text_classifier_model_name" in joined
+    # the doc-type classifier is now driven by a required, DB-backed
+    # model_name rather than the TEXT_CLASSIFIER_MODEL_NAME env var.
+    assert "model_name" in joined
 
 
 async def test_initialize_when_configured_loads_model_without_warning(

@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ArrayUnique, IsArray, IsBoolean, IsIn, IsNotEmpty, IsOptional, IsString, IsUrl, Matches, MaxLength } from 'class-validator';
 
 /**
- * TASK-516 — register a new MCP external-tools server.
+ * register a new MCP external-tools server.
  *
  * `authRef` is a Vault PATH ONLY (validated to be path-like — no whitespace, no
  * obvious secret material). Secrets flow through the TASK-504 Vault path, never

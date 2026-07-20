@@ -40,7 +40,7 @@ def _native_stats_fields(
     provider: str, data: dict[str, Any]
 ) -> tuple[int, int, int | None, str | None]:
     """Extract ``(prompt_tokens, predicted_tokens, total_tokens, raw_stop_reason)`` from a
-    guardian/groundedness response envelope, engine-aware and null-safe (TASK-509 / AD-1).
+    guardian/groundedness response envelope, engine-aware and null-safe.
     """
     if provider == "ollama":
         prompt = int(data.get("prompt_eval_count", 0) or 0)
@@ -118,7 +118,7 @@ class GraniteGuardianClient:
         self._no_think = config.no_think
         self._timeout = config.timeout_s
         self._transport = transport
-        # TASK-509 (AD-1) Phase 1B: AD-1 stats dict aggregating the per-dimension screen
+        # AD-1 stats dict aggregating the per-dimension screen
         # calls (None until the first screen), read by the Phase 2 ``GUARDRAIL`` emitter.
         self.last_stats: dict[str, Any] | None = None
 
@@ -159,7 +159,7 @@ class GraniteGuardianClient:
     def _aggregate_stats(
         self, per_call: list[tuple[int, int, int | None, str | None]], *, total_ms: int
     ) -> dict[str, Any]:
-        """Fold the per-dimension native fields into one AD-1 stats dict (TASK-509).
+        """Fold the per-dimension native fields into one AD-1 stats dict.
 
         Token counts sum across the fan-out; a truncation (``length``) on any dimension
         dominates the aggregate stop reason, else the first reported reason.
@@ -228,7 +228,7 @@ class GraniteGuardianClient:
         match = _SCORE_RE.search(content)
         if match is None:
             raise GraniteParseError(f"no <score> verdict for risk {criterion!r}: {content[:120]!r}")
-        # TASK-509 (AD-1): return the per-call native stats fields for screen() to aggregate.
+        # return the per-call native stats fields for screen to aggregate.
         return match.group(1).lower() == "yes", _native_stats_fields(self._provider, data)
 
     def _extract_content(self, data: dict[str, Any]) -> str:
@@ -310,7 +310,7 @@ class GraniteGroundednessJudge:
         self._no_think = config.no_think
         self._timeout = config.timeout_s
         self._transport = transport
-        # TASK-509 (AD-1) Phase 1B: AD-1 stats dict from the most recent ``complete`` call.
+        # AD-1 stats dict from the most recent ``complete`` call.
         self.last_stats: dict[str, Any] | None = None
 
     async def complete(
@@ -354,7 +354,7 @@ class GraniteGroundednessJudge:
         except (httpx.HTTPError, TimeoutError) as exc:
             raise JudgeConnectionError(f"granite groundedness request failed: {exc}") from exc
         data = resp.json()
-        # TASK-509 (AD-1): capture the native usage/finish-reason stats for this call.
+        # capture the native usage/finish-reason stats for this call.
         prompt, predicted, total, raw = _native_stats_fields(self._provider, data)
         self.last_stats = build_llm_call_stats(
             provider=self._provider,

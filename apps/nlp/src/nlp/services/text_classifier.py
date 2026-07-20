@@ -60,10 +60,10 @@ class TransformerTextClassifier(TextClassifier):
             if not self._unconfigured_warning_emitted:
                 logger.warning(
                     "Document-type text classification is UNCONFIGURED: no clinical doc-type "
-                    "classifier model is set via TEXT_CLASSIFIER_MODEL_NAME (the current default "
-                    "is a non-functional placeholder). The /classify/text endpoint will be "
-                    "unavailable (HTTP 503) until a model is configured. See the open decision "
-                    "in nlp.core.config (TASK-330 §3.4)."
+                    "classifier model_name was provided (the current default is a non-functional "
+                    "placeholder). /classify/text requires a DB-configured, "
+                    "gateway-injected model_name and stays unavailable (HTTP 503) until one is "
+                    "set. See the open decision in nlp.core.config (TASK-330 §3.4)."
                 )
                 self._unconfigured_warning_emitted = True
             self.is_initialized = False
@@ -79,7 +79,7 @@ class TransformerTextClassifier(TextClassifier):
                 "text-classification",
                 model=self.model,
                 tokenizer=self.tokenizer,
-                # TASK-508 D6: config.use_gpu (default True) now gates GPU use;
+                # D6: config.use_gpu (default True) now gates GPU use;
                 # default preserves today's auto-detect-when-available behavior.
                 device=0 if (self.config.use_gpu and torch.cuda.is_available()) else -1,
             )

@@ -23,7 +23,7 @@ class TestOllamaPayloadDefaults:
     def _make_provider(self):
         from smr_v2.core.config import OllamaConfig
         from smr_v2.providers.ollama import OllamaProvider
-        config = OllamaConfig(enabled=True, base_url="http://localhost:11434")
+        config = OllamaConfig(base_url="http://localhost:11434")
         http_client = MagicMock()
         return OllamaProvider(config, http_client)
 
@@ -56,7 +56,7 @@ class TestOllamaResponseFormat:
     def _make_provider(self):
         from smr_v2.core.config import OllamaConfig
         from smr_v2.providers.ollama import OllamaProvider
-        config = OllamaConfig(enabled=True, base_url="http://localhost:11434")
+        config = OllamaConfig(base_url="http://localhost:11434")
         return OllamaProvider(config, MagicMock())
 
     def test_no_response_format_no_format_key(self):
@@ -94,7 +94,7 @@ class TestOllamaTokenUsage:
     def _make_provider(self):
         from smr_v2.core.config import OllamaConfig
         from smr_v2.providers.ollama import OllamaProvider
-        config = OllamaConfig(enabled=True, base_url="http://localhost:11434")
+        config = OllamaConfig(base_url="http://localhost:11434")
         mock_http = AsyncMock()
         return OllamaProvider(config, mock_http), mock_http
 
@@ -141,7 +141,7 @@ class TestAzurePayloadDefaults:
         from smr_v2.core.config import AzureOpenAIConfig
         from smr_v2.providers.azure_openai import AzureOpenAIProvider
         config = AzureOpenAIConfig(
-            enabled=True, api_key="test-key", endpoint="https://test.openai.azure.com",
+            api_key="test-key", endpoint="https://test.openai.azure.com",
             deployment_name="gpt-4",
         )
         provider = AzureOpenAIProvider(config)
@@ -188,7 +188,7 @@ class TestAzureResponseFormat:
         from smr_v2.core.config import AzureOpenAIConfig
         from smr_v2.providers.azure_openai import AzureOpenAIProvider
         config = AzureOpenAIConfig(
-            enabled=True, api_key="test-key", endpoint="https://test.openai.azure.com",
+            api_key="test-key", endpoint="https://test.openai.azure.com",
             deployment_name="gpt-4",
         )
         provider = AzureOpenAIProvider(config)
@@ -239,7 +239,7 @@ class TestAzureTokenUsage:
         from smr_v2.core.config import AzureOpenAIConfig
         from smr_v2.providers.azure_openai import AzureOpenAIProvider
         config = AzureOpenAIConfig(
-            enabled=True, api_key="test-key", endpoint="https://test.openai.azure.com",
+            api_key="test-key", endpoint="https://test.openai.azure.com",
             deployment_name="gpt-4",
         )
         provider = AzureOpenAIProvider(config)
@@ -270,7 +270,7 @@ class TestBedrockPayloadDefaults:
     def _make_provider(self):
         from smr_v2.core.config import BedrockConfig
         from smr_v2.providers.bedrock import BedrockProvider
-        config = BedrockConfig(enabled=True, region="us-east-1")
+        config = BedrockConfig(region="us-east-1")
         with patch("boto3.client"):
             return BedrockProvider(config)
 
@@ -297,7 +297,7 @@ class TestBedrockResponseFormat:
     def _make_provider(self):
         from smr_v2.core.config import BedrockConfig
         from smr_v2.providers.bedrock import BedrockProvider
-        config = BedrockConfig(enabled=True, region="us-east-1")
+        config = BedrockConfig(region="us-east-1")
         with patch("boto3.client"):
             return BedrockProvider(config)
 
@@ -327,7 +327,7 @@ class TestBedrockTokenUsage:
     def _make_provider(self):
         from smr_v2.core.config import BedrockConfig
         from smr_v2.providers.bedrock import BedrockProvider
-        config = BedrockConfig(enabled=True, region="us-east-1")
+        config = BedrockConfig(region="us-east-1")
         with patch("boto3.client"):
             provider = BedrockProvider(config)
         provider._client = MagicMock()

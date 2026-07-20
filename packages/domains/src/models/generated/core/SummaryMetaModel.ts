@@ -15,7 +15,7 @@ export class SummaryMeta extends BaseTenantDataModel {
   public processingTimeMs: number | null;
   public inputTokens: number | null;
   public outputTokens: number | null;
-  // TASK-509 Phase 1B — AD-1 generation-stats headline fields.
+  // AD-1 generation-stats headline fields.
   public stopReason: string | null;
   public ttftMs: number | null;
   public tokensPerSecond: number | null;

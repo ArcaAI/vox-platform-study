@@ -1,10 +1,10 @@
 /**
  * The agentic-loop knob descriptors surfaced by the global Agentic Policy
- * editor (TASK-511 loop toggles + the safety/PHI kill-switches on the
+ * editor ( loop toggles + the safety/PHI kill-switches on the
  * HarnessPolicy row). One descriptor list keeps the form and the sparse-patch
  * builder in lockstep, mirroring the harness-policy feature's `policy-fields`.
  *
- * The TASK-511 loop knobs are NULLABLE overrides: `null` = fall back to the
+ * The loop knobs are NULLABLE overrides: `null` = fall back to the
  * harness env/code default. The editor renders them tri-state
  * (default / enabled / disabled); the kill-switches are plain booleans.
  */

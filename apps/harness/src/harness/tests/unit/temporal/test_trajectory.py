@@ -1,4 +1,4 @@
-"""TASK-510 (Phase 2C/2D) — harness trajectory emitters + Prometheus metrics.
+"""harness trajectory emitters + Prometheus metrics.
 
 RED-first: written before ``ApiClient.report_trajectory`` / the activity
 emitters / ``harness.core.metrics`` exist. Two layers, both hermetic:
@@ -188,7 +188,7 @@ class TestActivityEmission:
         step = cap.steps[0]
         assert step.status == "OK"
         assert step.seq == 32
-        # AD-1 (TASK-509) stats embedded verbatim on the LLM_CALL step.
+        # AD-1 stats embedded verbatim on the LLM_CALL step.
         assert step.stats == stats
 
     @pytest.mark.asyncio
@@ -330,7 +330,10 @@ class _FakeSmr:
 
 class _FakeApi:
     async def get_policy(self, tenant_id: str) -> dict[str, Any]:
-        return {}  # code-default policy (safety on, phi on, no custom model)
+        # code-default policy (safety on, phi on, no custom SMR model) but
+        # WITH the SYSTEM harness.judge selection, so the real inferential pass builds
+        # the (stubbed) judge instead of failing closed on a missing selection.
+        return {"judgeProvider": "openai_compat", "judgeModel": "stub-judge"}
 
     async def persist_entities(self, consultation_id: str, **kw: Any) -> PersistEntitiesResponse:
         return PersistEntitiesResponse(saved_count=len(kw.get("entities", [])), entity_ids=["e0"])
@@ -379,7 +382,7 @@ def _patch_real_activity_clients(monkeypatch, cap, *, smr_stats=None, traj=None)
     monkeypatch.setattr(activities, "_nlp_client", lambda s: _FakeNlp())
     monkeypatch.setattr(activities, "_smr_client", lambda s: _FakeSmr(smr_stats))
     monkeypatch.setattr(activities, "_progress_api_client", lambda s: _FakeProgressApi())
-    monkeypatch.setattr(activities, "_build_runtime_judge", lambda: _StubJudge())
+    monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
     monkeypatch.setattr(
         activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
     )

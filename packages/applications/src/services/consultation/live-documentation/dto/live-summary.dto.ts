@@ -109,7 +109,7 @@ export class LiveSummaryGroundednessDto {
 }
 
 /**
- * AD-1 generation statistics for one live-summary flush (TASK-509 Phase 1B).
+ * AD-1 generation statistics for one live-summary flush.
  *
  * A near-verbatim passthrough of the SMR `/generate` `stats` block (the program's
  * single normalized GenerationStats contract), minus `engine_native` (the raw
@@ -153,7 +153,7 @@ export class LiveSummaryStatsDto {
 }
 
 /**
- * Optional per-flush metadata envelope on the live-summary payload (TASK-509).
+ * Optional per-flush metadata envelope on the live-summary payload.
  * Currently carries the AD-1 generation {@link LiveSummaryStatsDto | stats};
  * kept as a nested envelope so future per-flush telemetry (trajectory refs,
  * etc.) can be added without reshaping the top-level event.
@@ -196,7 +196,7 @@ export class LiveSummaryEventDto {
 
   @ApiPropertyOptional({
     description:
-      'Per-flush metadata (TASK-509). Carries the AD-1 generation stats under `metadata.stats`; absent when the SMR call produced no stats (legacy idempotency-cache hit).',
+      'Per-flush metadata. Carries the AD-1 generation stats under `metadata.stats`; absent when the SMR call produced no stats (legacy idempotency-cache hit).',
     type: LiveSummaryMetadataDto,
   })
   metadata?: LiveSummaryMetadataDto;

@@ -1,7 +1,7 @@
 /**
- * Wire types for the AI Operations — Metrics surface (TASK-512 screen 2).
+ * Wire types for the AI Operations — Metrics surface.
  * Generation panels consume `GET admin/agent-trajectory/metrics/generation`
- * (TASK-509 follow-up); regeneration / SLA panels still derive from the
+ *; regeneration / SLA panels still derive from the
  * harness-admin gate queue. Shapes mirror the gateway DTOs; features never
  * import one another (rule 13), so the subset used here is re-declared rather
  * than shared with the Runs feature.

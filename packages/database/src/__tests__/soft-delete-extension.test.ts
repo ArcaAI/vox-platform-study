@@ -160,10 +160,10 @@ describe('modelHasSoftDelete', () => {
       'NamedEntity',
       'TranscriptionJob',
       'HarnessAuditEvent',
-      // TASK-510 Phase 2A — ordered ops-telemetry trajectory: retention-pruned
+      // ordered ops-telemetry trajectory: retention-pruned
       // (hard delete), no resourceStatus column, so soft-delete is skipped.
       'AgentTrajectoryStep',
-      // TASK-519 — per-transcript segment annotation: no resourceStatus column
+      // per-transcript segment annotation: no resourceStatus column
       // (segments live/die with their parent transcript), so soft-delete skips it.
       'TranscriptSegment',
     ];

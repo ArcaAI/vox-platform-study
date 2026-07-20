@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { HarnessPolicySource } from '../../harness-policy/dto';
 
 /**
- * TASK-511 (Phase 3A) item 6 — the effective agentic instruction set for one
+ * (Phase 3A) item 6 — the effective agentic instruction set for one
  * tenant, aggregated read-only from the harness policy (thresholds + safety),
  * the prompt-resolution cascade (tier), and the vendored PDSQI judge-prompt pin.
  * Nothing here is editable through this surface: the policy is edited via
