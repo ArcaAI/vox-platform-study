@@ -26,7 +26,11 @@ from __future__ import annotations
 
 import asyncio
 import math
+import time
 from collections.abc import Callable
+from dataclasses import dataclass
+
+from hope_runtime_models import CacheStats, SyncModelCache
 
 from harness.core.logging import get_logger
 
@@ -161,9 +165,146 @@ def _make_llama_logit_fn(llama: object) -> LogitFn:
     return logit_fn
 
 
-# Process-level cache: the .gguf is loaded once per worker, keyed by model path — the
-# entailer factory runs per activity invocation, but a Llama load is expensive.
-_ENTAILER_CACHE: dict[str, LlamaCppMiniCheckEntailer] = {}
+# ---------------------------------------------------------------------------
+# Process-level entailer cache (TASK-530 D-08)
+# ---------------------------------------------------------------------------
+# Before TASK-530 this was a plain module dict "loaded once per worker, keyed by
+# model path": no TTL, no bound, no unload — a GGUF loaded by one activity stayed
+# resident for the life of the Temporal worker. It is now the shared HOPE cache
+# contract, so retention here means what it means everywhere else (owner
+# expectation E6, no service exempt).
+#
+# The SYNC sibling is deliberate (§2.1): `_atomic_fact_entailer` (activities.py)
+# is a plain `def` and a `llama_cpp.Llama` construction is a blocking CPU/GPU
+# call, not awaited I/O — so wrapping it in an async cache would push `async` up
+# into the clinical activity chain for zero behavioural gain. Policy is shared
+# with `ModelCache`; only the concurrency primitive differs.
+
+
+@dataclass(frozen=True)
+class _EntailerSpec:
+    """The load parameters behind one cache key (the key alone cannot rebuild them)."""
+
+    model_path: str
+    n_ctx: int
+    n_threads: int | None
+    n_gpu_layers: int
+    threshold: float
+
+    @property
+    def key(self) -> str:
+        """The composite cache key — unchanged from the pre-TASK-530 module dict."""
+        return (
+            f"{self.model_path}|{self.n_ctx}|{self.n_threads}"
+            f"|{self.n_gpu_layers}|{self.threshold}"
+        )
+
+
+_SPECS: dict[str, _EntailerSpec] = {}
+_CACHE: SyncModelCache[LlamaCppMiniCheckEntailer] | None = None
+_CACHE_TIME_FUNC: Callable[[], float] = time.monotonic
+
+
+def _build_entailer(spec: _EntailerSpec) -> LlamaCppMiniCheckEntailer:
+    """Construct the llama.cpp handle and its entailer (NOT calibrated yet).
+
+    Factored out like the other client factories so tests can monkeypatch it —
+    everything above this line is hermetic, everything below it needs weights.
+    """
+    from llama_cpp import Llama
+
+    llama = Llama(
+        model_path=spec.model_path,
+        n_ctx=spec.n_ctx,
+        n_threads=spec.n_threads,
+        n_gpu_layers=spec.n_gpu_layers,
+        logits_all=True,
+        verbose=False,
+    )
+    return LlamaCppMiniCheckEntailer(_make_llama_logit_fn(llama), threshold=spec.threshold)
+
+
+def _load_entailer(cache_key: str) -> LlamaCppMiniCheckEntailer:
+    """Cache factory: build + calibrate. Runs on EVERY load, reloads included.
+
+    The calibration gate is inside the factory on purpose: a reloaded entailer
+    that skipped it could silently mis-score the clinical path. A failure raises,
+    is NOT cached by the contract, and `_atomic_fact_entailer` falls back to the
+    safe deterministic entailer.
+    """
+    spec = _SPECS[cache_key]
+    entailer = _build_entailer(spec)
+    entailer.verify_calibration()  # raises MiniCheckCalibrationError if mis-wired / too lossy
+    logger.info("harness.atomic_fact.minicheck_loaded", model_path=spec.model_path)
+    return entailer
+
+
+def _unload_entailer(cache_key: str, _entailer: LlamaCppMiniCheckEntailer) -> None:
+    """Release hook: the cache has dropped its reference; the weights free on GC.
+
+    Deliberately NOT a destructive ``llama.close()`` — an activity that is still
+    scoring holds the entailer, and closing the handle underneath it would fault
+    the clinical path. The llama handle is reachable only through the entailer's
+    logit closure, so the last holder releasing it frees the GGUF.
+    """
+    logger.info("harness.atomic_fact.minicheck_unloaded", cache_key=cache_key)
+
+
+def _entailer_cache() -> SyncModelCache[LlamaCppMiniCheckEntailer]:
+    """The process-wide entailer cache, built on first use from the bootstrap settings."""
+    global _CACHE
+    if _CACHE is None:
+        from harness.core.config import get_settings
+        from harness.core.metrics import build_model_cache_metrics_sink
+
+        settings = get_settings()
+        _CACHE = SyncModelCache(
+            factory=_load_entailer,
+            ttl_seconds=settings.model_cache_ttl_seconds,
+            max_size=settings.model_cache_max_models,
+            unload=_unload_entailer,
+            time_func=_CACHE_TIME_FUNC,
+            metrics=build_model_cache_metrics_sink(),
+            name="harness_minicheck",
+        )
+    return _CACHE
+
+
+def configure_entailer_cache(retention: dict[str, int]) -> None:
+    """Adopt control-plane retention (`harness.modelCache.*`); absent keys hold.
+
+    A gateway outage yields a partial payload, which must leave behaviour
+    byte-identical rather than reset knobs to defaults. Resident entailers are
+    never dropped here — new limits apply on the next sweep or access. The
+    product clamp [60, 3600] is re-applied inside the shared cache.
+    """
+    _entailer_cache().configure(
+        ttl_seconds=retention.get("ttl_seconds"),
+        max_size=retention.get("max_models"),
+    )
+
+
+def sweep_entailer_cache() -> int:
+    """Release the entailer if it has been idle past its TTL; returns how many.
+
+    Lazy eviction on `load_minicheck_entailer` covers a worker that keeps
+    verifying; this covers the one that ran a document and then went quiet — the
+    case where the pre-TASK-530 module dict pinned a GGUF forever.
+    """
+    return _entailer_cache().sweep()
+
+
+def entailer_cache_stats() -> CacheStats:
+    """Cache snapshot — the same shape every other HOPE cache reports."""
+    return _entailer_cache().stats()
+
+
+def reset_entailer_cache(*, time_func: Callable[[], float] | None = None) -> None:
+    """Drop the cache singleton (TESTS ONLY — does not unload a live entailer)."""
+    global _CACHE, _CACHE_TIME_FUNC
+    _CACHE = None
+    _SPECS.clear()
+    _CACHE_TIME_FUNC = time_func if time_func is not None else time.monotonic
 
 
 def load_minicheck_entailer(
@@ -179,24 +320,16 @@ def load_minicheck_entailer(
     Requires an explicit local ``.gguf`` (no network in the clinical path). Missing
     llama-cpp-python, an unloadable model, or a failed calibration self-check raise —
     ``_atomic_fact_entailer`` catches and falls back to the safe deterministic entailer.
+
+    Signature and return type are unchanged by TASK-530: the sole call site stays
+    synchronous, which is the whole reason the cache is the sync sibling.
     """
-    cache_key = f"{model_path}|{n_ctx}|{n_threads}|{n_gpu_layers}|{threshold}"
-    cached = _ENTAILER_CACHE.get(cache_key)
-    if cached is not None:
-        return cached
-
-    from llama_cpp import Llama
-
-    llama = Llama(
+    spec = _EntailerSpec(
         model_path=model_path,
         n_ctx=n_ctx,
         n_threads=n_threads,
         n_gpu_layers=n_gpu_layers,
-        logits_all=True,
-        verbose=False,
+        threshold=threshold,
     )
-    entailer = LlamaCppMiniCheckEntailer(_make_llama_logit_fn(llama), threshold=threshold)
-    entailer.verify_calibration()  # raises MiniCheckCalibrationError if mis-wired / too lossy
-    _ENTAILER_CACHE[cache_key] = entailer
-    logger.info("harness.atomic_fact.minicheck_loaded", model_path=model_path)
-    return entailer
+    _SPECS[spec.key] = spec
+    return _entailer_cache().get(spec.key)

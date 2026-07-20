@@ -27,7 +27,7 @@ def _init_nvml() -> bool:
         return _nvml_ready
 
     try:
-        import pynvml  # noqa: PLC0415 — feature detection must be lazy
+        import pynvml  # type: ignore[import-not-found]  # noqa: PLC0415 — lazy feature detection
 
         pynvml.nvmlInit()
         _nvml_ready = True

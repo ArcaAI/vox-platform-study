@@ -1,6 +1,6 @@
 # TASK-529 — Unified Model Lifecycle & Admin-Controlled Retention
 
-- **Status**: Blocked — see §9.4 (steps 4.3 stt-v2 convergence and 4.6 harness D-08 not implemented; all delivered work is green)
+- **Status**: Review — the two steps this ticket did not implement (4.3 stt-v2 convergence, 4.6 harness D-08) were delivered by [TASK-530](../TASK-530-Lifecycle-Convergence-Tail/README.md); §2/§3.2 errata and the DR-1 ratification are recorded in §10
 - **Type**: feature / refactor (Phase 3 of the 2026-07-20 agentic platform program)
 - **Program**: [2026-07-20 program plan](../SOTA-Track/2026-07-20-agentic-platform-program-plan.md) §4 Phase 3, frozen design §3 **AD-4** · [2026-07-20 findings review](../SOTA-Track/2026-07-20-agentic-platform-review-findings.md) §3-E6, GAP-L1…L4, D-07…D-11
 - **Suggested number**: TASK-529 per the program's TASK-523…534 allocation — **confirm at open time** against `docs/implementation/` + `docs/archive/` (CLAUDE.md ticket workflow; highest committed number was TASK-522 when the plan was authored)
@@ -37,7 +37,7 @@ Decomposed against the gap/defect registers:
 
 | Service | Load-on-request | TTL eviction | Config source | VRAM-aware | Admin-controlled |
 |---|---|---|---|---|---|
-| stt-v2 | ✅ single-flight (`models/cache.py:189-248`) | ✅ lazy on access + sweep in `put()` (`:426-454`) | env-backed pydantic `model_cache_ttl_seconds` default 3600, `ge=60/le=3600` **plus** `clamp_cache_ttl_seconds` (double-enforced) — `core/config/settings.py:132-145`, `models/cache.py:31-33,103-104` | ❌ estimated MB budget only (`max_memory_mb` default 10000, `:101,439-445`) | ❌ |
+| stt-v2 | ✅ single-flight (`models/cache.py:189-248`) | ✅ lazy on access + sweep in `put()` (`:426-454`) | ~~env-only~~ **CORRECTED (TASK-530 errata)**: already control-plane-wired at ticket-open time — `apply_retention()` + `set_retention_refresher()` (TASK-525) with the `[60, 3600]` clamp double-enforced (`core/config/settings.py:132-145`, `models/cache.py:31-45,162-197`). The env values are bootstrap fallbacks only. | ❌ estimated MB budget only (`max_memory_mb` default 10000, `:101,439-445`) | ~~❌~~ **✅** |
 | guardrail (GLiNER + MiniCheck scorer) | ✅ per-key-lock single-flight (`services/model_cache.py:113-134`) | ✅ lazy on access (`:95-111`) | env `model_cache_ttl_s`/`model_cache_max_models` = 3600 s / 2 (`core/config.py:322-327`, `GUARDRAIL_V2_` prefix) | ❌ count-only | ❌ |
 | nlp (×3 singleton caches) | ✅ (`services/model_cache.py:82-126`) | ✅ lazy on access | ❌ **hardcoded**: `ModelCache(factory=…)` constructed with no `ttl_seconds`/`max_size` in all three singletons (`dependencies.py:98-113`) → always 3600 s / 3, **not even an env knob** (= D-07) | ❌ | ❌ |
 | harness MiniCheck entailer | ✅ lazy | ❌ **module dict `_ENTAILER_CACHE`, cached forever, no eviction/unload** (`sensors/inferential/minicheck_entailer.py:164-202`) (= D-08) | env `HARNESS_ATOMIC_FACT_*` | ❌ | ❌ |
@@ -66,6 +66,11 @@ Structurally identical policy (clamp `[60,3600]`, pin/unpin refcounts kept in a 
 The "no background sweeper" delta matters for E6: in guardrail/nlp an idle model whose key is never requested again is retained **forever** despite the TTL. The unified contract adds a periodic sweep task.
 
 ### 2.3 Control-plane residue this ticket consumes/deletes
+
+> **CORRECTED (TASK-530 errata, 2026-07-20).** The D-11 item below — deleting the dead
+> `GlobalSettingRead` model and its `06-stt.ts` seed rows — was **already done before this
+> ticket opened** (TASK-525 removed both). D-11 is therefore **closed on arrival**, not
+> closed by this ticket. Nothing in §4.3 needed to delete it, and nothing did.
 
 - **D-11**: stt-v2 `GlobalSettingRead` SQLAlchemy model (`core/database/models.py:159+`, exported `core/database/__init__.py:9,16`) has **zero query sites**; the seed creates `stt.config.model_cache.*` / `stt.config.workers.*` GlobalSetting rows for it (`packages/database/src/prisma/db_main/seed/06-stt.ts:1046-1116`). Dead scaffold — replaced by the effective-config client; model + seed rows removed (seed-count tests updated in the same MR, plan §5.7).
 - Harness MiniCheck load site: `load_minicheck_entailer` is called from exactly one place — the entailer factory inside `apps/harness/src/harness/temporal/activities.py:390` — i.e. already **activities-only**; workflow code never touches it. Adoption is replay-safe by construction (no `workflow.patched` era needed).
@@ -110,6 +115,17 @@ Contract clauses (each is a conformance test):
 7. **Hot reconfiguration**: `configure()` applies a new (clamped) TTL/limits without dropping resident entries; the next sweep/access enforces the new values.
 
 ### 3.2 Retention settings keys (frozen contract with TASK-524/525)
+
+> **SUPERSEDED (DR-1, ratified by TASK-530 §2.3).** The `models.retention.*` grammar
+> sketched below never shipped. TASK-525 had already frozen `<svc>.modelCache.<knob>`
+> (`stt|nlp|guardrail|harness|tts` × `ttlSeconds|maxModels|vramBudgetMb`, plus
+> `stt.modelCache.maxMemoryMb` and `smr.modelCache.ttlSeconds`) and `resolveForService`
+> carried an explicit comment reserving the guardrail/harness/tts-v2 subsets *for this
+> ticket to fill*. The execution used the landed grammar rather than creating a second key
+> family for one knob — which is what §2.5's Completion & Cleanup Doctrine requires
+> (a `models.retention.ttlSeconds` alongside a `<svc>.modelCache.ttlSeconds` would be
+> exactly the redundant parallel implementation the doctrine forbids). **The live contract
+> is `<svc>.modelCache.*`**; the table below is retained only as the superseded sketch.
 
 All `globalOnly: true`, `tier: 'global-kv'`, registered in the settings registry (lane B):
 
@@ -323,4 +339,7 @@ Docker  docker build -f apps/nlp/Dockerfile --target builder     SUCCESS
 |---|---|
 | 2026-07-20 | Ticket README authored from AD-4 (frozen) + code-verified current state (three caches read in full; harness/tts/smr/packaging substrates verified; §2.4 Docker workspace-dep question marked for execution-time). Status Pending — awaiting owner approval per rule 01 Phase 3 gate. |
 | 2026-07-20 | **Implementation pass.** Step 4.1 gate PASSED — `packages/py-runtime-models` created and the §2.4 Docker question answered empirically (`--no-install-project` does NOT skip workspace path deps; source COPY required in layer 1). OD-3 primary path confirmed; fallback not needed. Delivered 4.1/4.2/4.4/4.5/4.7/4.8/4.9/4.10; closed D-07, D-09, D-10 (D-11 verified already closed by TASK-525). **Not delivered: 4.3 (stt-v2 convergence) and 4.6 (harness D-08)** — see §9.4. Six deviations recorded (DR-1…DR-6), notably the `<svc>.modelCache.*` key grammar over `models.retention.*` and three stale §2 current-state findings. Two defects in the new shared cache were caught by TDD and fixed (unload hook skipped on LRU and lazy-TTL eviction). Status → Blocked. |
+| 2026-07-20 | **DR-1 RATIFIED as the frozen contract** (owner sign-off, recorded by [TASK-530](../TASK-530-Lifecycle-Convergence-Tail/README.md) §2.3/§4.6). The retention key grammar is **`<svc>.modelCache.<knob>`**, superseding the `models.retention.*` sketch in §3.2. Rationale: TASK-525 shipped and froze that grammar, its `resolveForService` explicitly reserved the guardrail/harness/tts-v2 subsets for this ticket to fill, and §2.5's Completion & Cleanup Doctrine forbids a second parallel key family for a single knob. This row converts the execution-time deviation into a recorded decision. |
+| 2026-07-20 | **Errata applied by TASK-530 §4.6.** Three §2 current-state claims were factually stale and are corrected in place: (a) §2.1 stt-v2 "Admin-controlled ❌" — stt-v2 was ALREADY control-plane-wired via `apply_retention`/`set_retention_refresher` with the `[60, 3600]` clamp double-enforced; (b) §2.3 D-11 (dead `GlobalSettingRead` + seed rows) was **closed on arrival** — TASK-525 had already deleted both, so this ticket neither needed to nor did; (c) §3.2's `models.retention.*` grammar is superseded by DR-1 above. |
+| 2026-07-20 | **Residue closed by [TASK-530](../TASK-530-Lifecycle-Convergence-Tail/README.md)**: step 4.3 (stt-v2 convergence, with the two pre-existing test files passing UNMODIFIED as the parity gate) and step 4.6 (harness D-08, resolved as a `SyncModelCache` sibling rather than an async conversion), plus D-09 completion for IndicParler/IndicF5 and a contract-level regression guard for the two unload-hook defects this ticket's TDD caught. Status → Review: every step of this plan is now delivered, here or in its named successor. |
 | 2026-07-20 | Program plan §2.5 **Completion & Cleanup Doctrine** adopted as BINDING for this ticket (owner directive): incorrect implementations in the owned surface are removed completely with the fix; partial implementations are finished end-to-end (or explicitly retired); redundant implementations are converged and deleted. Reviewer enforces the §2.5 classification table, plan-conformance (deviations = recorded decision rows), full-closure traceability of the claimed GAP/D/M IDs, and the performance gates. |

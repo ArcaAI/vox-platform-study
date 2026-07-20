@@ -166,3 +166,159 @@ async def test_idle_model_is_unloaded_and_gauge_returns_to_zero() -> None:
     async for _ in provider.synthesize(_request()):
         pass
     assert _FakePipeline.constructed == 2
+
+
+# ── TASK-530 (D-09 completion) — ALL THREE local engines, not just Kokoro ───
+#
+# TASK-529 made Kokoro/IndicParler/IndicF5 lazy but put only KOKORO behind the
+# shared cache, so IndicParler and IndicF5 loaded on first use and then stayed
+# resident forever — lazy, but never TTL-unloaded. Under §2.5's Completion &
+# Cleanup Doctrine a partial implementation is finished end-to-end, so the same
+# clauses now run against every local engine.
+
+LOCAL_ENGINES = ("kokoro", "indic_parler", "indic_f5")
+
+
+class _LoadCounter:
+    """A model factory that counts how many times the engine was actually loaded."""
+
+    def __init__(self, build) -> None:  # noqa: ANN001 — per-engine builder
+        self.count = 0
+        self._build = build
+
+    def __call__(self):  # noqa: ANN204
+        self.count += 1
+        return self._build()
+
+
+def _fake_generate():  # noqa: ANN202 — parler `(text, description)` / f5 `(text)`
+    import numpy as np
+
+    return lambda *_args: np.zeros(240, dtype=np.float32)
+
+
+def _make_engine(name: str, factory, *, ttl_seconds: int = 600, time_func=None):  # noqa: ANN001,ANN202
+    kwargs = {"ttl_seconds": ttl_seconds}
+    if time_func is not None:
+        kwargs["time_func"] = time_func
+
+    if name == "kokoro":
+        from tts_v2.providers.kokoro import KokoroProvider
+
+        return KokoroProvider(KokoroConfig(), pipeline_factory=factory, **kwargs)
+    if name == "indic_parler":
+        from tts_v2.core.config import IndicParlerConfig
+        from tts_v2.providers.indic_parler import IndicParlerProvider
+
+        return IndicParlerProvider(IndicParlerConfig(), generate_factory=factory, **kwargs)
+
+    from tts_v2.core.config import IndicF5Config
+    from tts_v2.providers.indic_f5 import IndicF5Provider
+
+    return IndicF5Provider(IndicF5Config(), generate_factory=factory, **kwargs)
+
+
+def _engine_factory(name: str) -> _LoadCounter:
+    return _LoadCounter(_FakePipeline if name == "kokoro" else _fake_generate)
+
+
+def _engine_request(name: str) -> SynthesisRequest:
+    locale = "en-US" if name == "kokoro" else "ml-IN"
+    return SynthesisRequest(
+        text="hello", locale=locale, fmt=AudioFormat.PCM, provider_voice=None, sample_rate=24000
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("engine", LOCAL_ENGINES)
+async def test_local_engine_loads_on_first_request_only(engine: str) -> None:
+    from tts_v2.core.metrics import TTS_MODEL_LOADED
+
+    factory = _engine_factory(engine)
+    provider = _make_engine(engine, factory)
+
+    assert factory.count == 0, "constructing the provider must not load weights"
+
+    for _ in range(2):
+        async for _ in provider.synthesize(_engine_request(engine)):
+            pass
+
+    assert factory.count == 1
+    assert TTS_MODEL_LOADED.labels(model=engine)._value.get() == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("engine", LOCAL_ENGINES)
+async def test_local_engine_idle_weights_are_released_and_gauge_zeroed(engine: str) -> None:
+    from tts_v2.core.metrics import TTS_MODEL_LOADED
+
+    clock = {"now": 1000.0}
+    factory = _engine_factory(engine)
+    provider = _make_engine(engine, factory, ttl_seconds=600, time_func=lambda: clock["now"])
+
+    async for _ in provider.synthesize(_engine_request(engine)):
+        pass
+    assert TTS_MODEL_LOADED.labels(model=engine)._value.get() == 1
+
+    clock["now"] += 601
+    assert await provider.sweep() == 1
+    assert TTS_MODEL_LOADED.labels(model=engine)._value.get() == 0
+
+    # ...and it reloads on the next request.
+    async for _ in provider.synthesize(_engine_request(engine)):
+        pass
+    assert factory.count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("engine", LOCAL_ENGINES)
+async def test_local_engine_load_failure_is_not_cached(engine: str) -> None:
+    """A broken load surfaces per-request (→ 503) and the next request retries."""
+    attempts = {"n": 0}
+
+    def flaky():  # noqa: ANN202
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise RuntimeError("weights missing")
+        return (_FakePipeline if engine == "kokoro" else _fake_generate)()
+
+    provider = _make_engine(engine, flaky)
+
+    with pytest.raises(RuntimeError, match="weights missing"):
+        async for _ in provider.synthesize(_engine_request(engine)):
+            pass
+
+    async for _ in provider.synthesize(_engine_request(engine)):
+        pass
+    assert attempts["n"] == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("engine", LOCAL_ENGINES)
+async def test_local_engine_warmup_loads_eagerly_for_fail_at_boot_operators(
+    engine: str,
+) -> None:
+    factory = _engine_factory(engine)
+    provider = _make_engine(engine, factory)
+
+    await provider.warmup()
+
+    assert factory.count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("engine", LOCAL_ENGINES)
+async def test_local_engine_adopts_control_plane_retention(engine: str) -> None:
+    clock = {"now": 1000.0}
+    factory = _engine_factory(engine)
+    provider = _make_engine(engine, factory, ttl_seconds=600, time_func=lambda: clock["now"])
+
+    async for _ in provider.synthesize(_engine_request(engine)):
+        pass
+
+    provider.configure_retention({"ttl_seconds": 3600})
+    clock["now"] += 601
+    assert await provider.sweep() == 0, "the raised TTL keeps the weights resident"
+
+    clock["now"] += 3000
+    assert await provider.sweep() == 1

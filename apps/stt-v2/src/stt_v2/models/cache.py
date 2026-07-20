@@ -1,15 +1,43 @@
-"""Model cache with LRU eviction and TTL support."""
+"""Model cache with LRU eviction and TTL support.
 
-import asyncio
+TASK-530 (R2, completing GAP-L1) — the retention POLICY (single-flight load,
+idle TTL clamped to [60s, 3600s], pin/unpin refcounting, LRU bound, memory
+budget, periodic sweep, VRAM-aware eviction, unload-on-every-eviction-path) now
+lives in the shared contract `hope_runtime_models.ModelCache`, which every HOPE
+service composes. See `packages/py-runtime-models/README.md`.
+
+This module is the stt-v2-facing surface of that contract. It keeps EVERY public
+spelling stt-v2 callers and tests already use — `get()` as a peek, `put()`,
+`get_or_load*()`, the stt-v2 `CacheEntry`/`CacheStats` shapes, `_loaders`,
+`apply_retention` — and nothing else: the ~150-line local copy of the policy is
+gone. TASK-529 deferred this refactor deliberately (567 lines on the ASR hot
+path, late in a large ticket); the parity gate for it is
+`tests/unit/test_model_cache.py` + `test_model_cache_ttl.py` passing UNMODIFIED.
+
+Two spellings differ from the shared contract on purpose, because stt-v2's API
+predates it and its callers depend on them:
+
+* ``get(slug)`` is a PEEK returning ``LoadedModel | None`` — it never loads.
+  The contract's get-or-load path is ``get_or_load(config)``, which is what
+  delegates to the shared single-flight machinery.
+* entries are surfaced through ``_cache`` as `CacheEntry` objects carrying
+  ``datetime`` timestamps; the shared core stores monotonic floats. `_cache` is
+  a live view that converts in both directions, so mutating an entry through it
+  still steers the policy.
+"""
+
 import logging
-from collections import OrderedDict
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
+
+from hope_runtime_models import ModelCache as SharedModelCache
+from hope_runtime_models import clamp_cache_ttl_seconds
 
 from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError
+from ..core.metrics import build_model_cache_metrics_sink
 from ..pipeline.dto import AiModelConfig, AiModelFormat, InlineModelDef, ModelRef, ModelTaskType
 from .azure_foundry_loader import AzureFoundryLoader
 from .azure_speech_loader import AzureSpeechLoader
@@ -24,11 +52,6 @@ from .whisper_cpp_loader import WhisperCppLoader
 logger = logging.getLogger(__name__)
 
 
-# Product policy: idle TTL ∈ [60s, 3600s].
-_TTL_MIN_SECONDS = 60
-_TTL_MAX_SECONDS = 3600
-
-
 # TASK-525 — control-plane retention refresher, installed at app startup so the
 # cache never hard-depends on HTTP (see `ModelCache._refresh_retention`).
 _retention_refresher: Callable[[], Awaitable[None]] | None = None
@@ -38,11 +61,6 @@ def set_retention_refresher(refresher: Callable[[], Awaitable[None]] | None) -> 
     """Install (or clear, with None) the control-plane retention refresher."""
     global _retention_refresher
     _retention_refresher = refresher
-
-
-def clamp_cache_ttl_seconds(ttl_seconds: int) -> int:
-    """Clamp idle TTL to the product window [60, 3600]."""
-    return max(_TTL_MIN_SECONDS, min(_TTL_MAX_SECONDS, int(ttl_seconds)))
 
 
 @dataclass
@@ -91,8 +109,104 @@ class CacheStats:
         return self.hits / total if total > 0 else 0.0
 
 
-class ModelCache:
-    """LRU cache with TTL for loaded models."""
+class _BoundCacheEntry(CacheEntry):
+    """A live `CacheEntry` view of one shared-core entry.
+
+    Reads convert the core's monotonic ``last_accessed`` to a ``datetime``;
+    writes convert back and land on the core entry, so ageing an entry through
+    this view really does make the policy evict it. Instantiated per lookup —
+    it holds no state of its own beyond the two references.
+    """
+
+    def __init__(self, cache: "ModelCache", slug: str, entry: Any) -> None:
+        self._cache = cache
+        self._slug = slug
+        self._entry = entry
+
+    @property
+    def model(self) -> LoadedModel:
+        instance: LoadedModel = self._entry.instance
+        return instance
+
+    @model.setter
+    def model(self, value: LoadedModel) -> None:
+        self._entry.instance = value
+
+    @property
+    def last_accessed(self) -> datetime:
+        return self._cache._as_datetime(self._entry.last_accessed)
+
+    @last_accessed.setter
+    def last_accessed(self, value: datetime) -> None:
+        self._entry.last_accessed = self._cache._as_monotonic(value)
+
+    @property
+    def loaded_at(self) -> datetime:
+        return self._cache._loaded_at.get(self._slug, datetime.utcnow())
+
+    @loaded_at.setter
+    def loaded_at(self, value: datetime) -> None:
+        self._cache._loaded_at[self._slug] = value
+
+    @property
+    def access_count(self) -> int:
+        return self._cache._access_counts.get(self._slug, 0)
+
+    @access_count.setter
+    def access_count(self, value: int) -> None:
+        self._cache._access_counts[self._slug] = value
+
+    @property
+    def pin_count(self) -> int:
+        pins: int = self._entry.pin_count
+        return pins
+
+    @pin_count.setter
+    def pin_count(self, value: int) -> None:
+        self._entry.pin_count = value
+
+
+class _CacheEntryView:
+    """The legacy ``cache._cache`` mapping, backed by the shared core's entries."""
+
+    def __init__(self, cache: "ModelCache") -> None:
+        self._cache = cache
+
+    def __contains__(self, slug: object) -> bool:
+        return slug in self._cache._entries
+
+    def __len__(self) -> int:
+        return len(self._cache._entries)
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._cache._entries)
+
+    def keys(self) -> Iterator[str]:
+        return iter(self._cache._entries)
+
+    def __getitem__(self, slug: str) -> _BoundCacheEntry:
+        return _BoundCacheEntry(self._cache, slug, self._cache._entries[slug])
+
+    def get(self, slug: str, default: Any = None) -> Any:
+        entry = self._cache._entries.get(slug)
+        return default if entry is None else _BoundCacheEntry(self._cache, slug, entry)
+
+    def __setitem__(self, slug: str, entry: CacheEntry) -> None:
+        """Install an entry directly (fixtures / tests): datetimes → monotonic."""
+        self._cache._loaded_at[slug] = entry.loaded_at
+        self._cache._access_counts[slug] = entry.access_count
+        self._cache._memory_estimates[slug] = entry.model.memory_mb
+        self._cache._install_entry(slug, entry.model, entry.last_accessed)
+
+
+class ModelCache(SharedModelCache[LoadedModel]):
+    """LRU cache with TTL for loaded models — stt-v2's skin on the shared policy.
+
+    NOTE the deliberate spelling difference from the shared contract: ``get`` is
+    stt-v2's long-standing PEEK (returns None on a miss, never loads) and
+    ``get_or_load`` is the loading path. Nothing inside the shared core calls
+    ``self.get``, so the override is contained to this class's public API.
+    """
 
     def __init__(
         self,
@@ -115,26 +229,30 @@ class ModelCache:
         # `max_memory_mb` has no settings field at all — this literal is the only
         # default it has ever had, and the registry descriptor deliberately
         # mirrors it rather than the divergent seed row (see DR-2).
-        self._max_memory_mb = max_memory_mb or 10000  # Default 10GB
-        self._max_models = max_models or settings.model_cache_max_models
         raw_ttl = ttl_seconds if ttl_seconds is not None else settings.model_cache_ttl_seconds
-        self._ttl_seconds = clamp_cache_ttl_seconds(raw_ttl)
 
-        # LRU cache (ordered dict maintains insertion order)
-        self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
-        self._lock = asyncio.Lock()
-        # Slug → pin refcount (may outlive a brief cache miss during reload).
-        self._pins: dict[str, int] = {}
+        # Per-slug side tables the shared core does not model: stt-v2 surfaces
+        # `loaded_at` / `access_count` in `/internal/cache/stats`, and the memory
+        # budget is expressed in MB rather than bytes.
+        self._loaded_at: dict[str, datetime] = {}
+        self._access_counts: dict[str, int] = {}
+        self._memory_estimates: dict[str, int] = {}
+        # Slug → the config of a load in flight (the shared factory is keyed by
+        # slug alone and cannot reconstruct one).
+        self._pending_configs: dict[str, AiModelConfig] = {}
 
-        # TASK-351 P0-3 (H1) — single-flight: slug → future of the load in
-        # progress. Concurrent get_or_load callers for the same slug await
-        # the same future instead of each loading their own copy.
-        self._inflight: dict[str, asyncio.Future[LoadedModel]] = {}
+        super().__init__(
+            factory=self._load_by_slug,
+            unload=self._unload_model,
+            ttl_seconds=raw_ttl,
+            max_size=max_models or settings.model_cache_max_models,
+            max_bytes_estimate=max_memory_mb or 10000,  # Default 10GB
+            estimate_bytes=self._memory_estimates.get,  # type: ignore[arg-type]
+            metrics=build_model_cache_metrics_sink(),
+            name="stt_model_cache",
+        )
 
-        # Statistics
-        self._hits = 0
-        self._misses = 0
-        self._evictions = 0
+        self._cache = _CacheEntryView(self)
 
         # Model loaders - map format/engine to appropriate loader
         self._loaders: dict[AiModelFormat, BaseModelLoader] = {
@@ -155,33 +273,111 @@ class ModelCache:
         }
 
         logger.info(
-            f"ModelCache initialized: max_models={self._max_models}, "
-            f"max_memory_mb={self._max_memory_mb}, ttl_seconds={self._ttl_seconds}"
+            f"ModelCache initialized: max_models={self._max_size}, "
+            f"max_memory_mb={self._max_bytes_estimate}, ttl_seconds={self._ttl_seconds}"
         )
+
+    # ── legacy internal spellings ───────────────────────────────────────────
+    # The shared core calls these `_max_size` / `_max_bytes_estimate`. stt-v2's
+    # own names are kept as live aliases so nothing that reads them has to move.
+
+    @property
+    def _max_models(self) -> int:
+        return self._max_size
+
+    @_max_models.setter
+    def _max_models(self, value: int) -> None:
+        self._max_size = value
+
+    @property
+    def _max_memory_mb(self) -> int:
+        return self._max_bytes_estimate or 0
+
+    @_max_memory_mb.setter
+    def _max_memory_mb(self, value: int) -> None:
+        self._max_bytes_estimate = value
+
+    # ── datetime ⇄ monotonic bridge ─────────────────────────────────────────
+
+    def _as_datetime(self, monotonic: float) -> datetime:
+        """The wall-clock instant a monotonic reading corresponds to, now."""
+        return datetime.utcnow() - timedelta(seconds=self._time() - monotonic)
+
+    def _as_monotonic(self, when: datetime) -> float:
+        """The monotonic reading a wall-clock instant corresponds to, now."""
+        return self._time() - (datetime.utcnow() - when).total_seconds()
+
+    def _install_entry(self, slug: str, model: LoadedModel, last_accessed: datetime) -> None:
+        """Seat an entry with an explicit idle age (used by the `_cache` view)."""
+        self._admit_locked(slug, model)
+        self._entries[slug].last_accessed = self._as_monotonic(last_accessed)
+
+    # ── shared-core hooks ───────────────────────────────────────────────────
+
+    def _lookup_locked(self, key: str) -> tuple[LoadedModel | None, list[tuple[str, LoadedModel]]]:
+        hit, victims = super()._lookup_locked(key)
+        if hit is not None:
+            self._access_counts[key] = self._access_counts.get(key, 0) + 1
+            logger.debug(f"Cache hit for model {key}")
+        return hit, victims
+
+    def _admit_locked(
+        self, key: str, instance: LoadedModel
+    ) -> tuple[list[tuple[str, LoadedModel]], int, int]:
+        # The config's `memory_size_mb` is only a hint for pre-load pressure
+        # relief; the loaded model knows its real footprint.
+        self._memory_estimates[key] = instance.memory_mb
+        self._loaded_at[key] = datetime.utcnow()
+        self._access_counts[key] = 1
+        result = super()._admit_locked(key, instance)
+        logger.info(
+            f"Cached model {key} (memory={instance.memory_mb}MB, "
+            f"total_cached={len(self._entries)})"
+        )
+        return result
+
+    def _evict_locked(self, key: str, *, reason: str) -> list[tuple[str, LoadedModel]]:
+        victims = super()._evict_locked(key, reason=reason)
+        if victims:
+            self._loaded_at.pop(key, None)
+            self._access_counts.pop(key, None)
+            self._memory_estimates.pop(key, None)
+        return victims
+
+    async def _load_by_slug(self, slug: str) -> LoadedModel:
+        """Shared-cache factory: resolve the loader for the pending config and load."""
+        model_config = self._pending_configs[slug]
+        loader = self._get_loader(model_config.format)
+        if loader is None:
+            raise ModelLoadError(f"No loader available for format: {model_config.format}")
+
+        logger.info(f"Loading model {slug} (format={model_config.format})")
+        return await loader.load(model_config)
+
+    async def _unload_model(self, slug: str, model: LoadedModel) -> None:
+        """Release an evicted model through its format's loader."""
+        loader = self._get_loader(model.format)
+        if loader is not None:
+            await loader.unload(model)
+        logger.info(f"Evicted model {slug} (memory={model.memory_mb}MB)")
+
+    # ── control-plane retention ─────────────────────────────────────────────
 
     def apply_retention(self, retention: dict[str, int]) -> None:
         """TASK-525 — adopt control-plane retention values.
 
-        Every read site consults `self._X` rather than a captured local, so a
-        reassignment here takes effect on the next eviction pass without
-        rebuilding the cache or disturbing resident models.
-
         An ABSENT key keeps the current (env/bootstrap) value — so a gateway
-        outage leaves behaviour byte-identical to today. The product clamp
-        [60, 3600] is re-applied here as well as server-side: a bad DB value must
-        not be able to push the cache outside its supported window.
+        outage leaves behaviour byte-identical to today. Resident models are
+        never dropped: new limits take effect on the next eviction pass. The
+        product clamp [60, 3600] is re-applied inside the shared cache as well
+        as server-side — a bad DB value must not be able to push the cache
+        outside its supported window.
         """
-        ttl_seconds = retention.get("ttl_seconds")
-        if ttl_seconds is not None:
-            self._ttl_seconds = clamp_cache_ttl_seconds(ttl_seconds)
-
-        max_models = retention.get("max_models")
-        if max_models is not None and max_models > 0:
-            self._max_models = max_models
-
-        max_memory_mb = retention.get("max_memory_mb")
-        if max_memory_mb is not None and max_memory_mb > 0:
-            self._max_memory_mb = max_memory_mb
+        self.configure(
+            ttl_seconds=retention.get("ttl_seconds"),
+            max_size=retention.get("max_models"),
+            max_bytes_estimate=retention.get("max_memory_mb"),
+        )
 
     async def _refresh_retention(self) -> None:
         """Pull + apply control-plane retention, if a refresher is installed.
@@ -195,9 +391,10 @@ class ModelCache:
             return
         await _retention_refresher()
 
-    async def get(self, model_slug: str) -> LoadedModel | None:
-        """
-        Get model from cache, update LRU order.
+    # ── the stt-v2 public surface ───────────────────────────────────────────
+
+    async def get(self, model_slug: str) -> LoadedModel | None:  # type: ignore[override]
+        """Peek the cache and update LRU order — NEVER loads (see class docstring).
 
         Args:
             model_slug: Model slug
@@ -206,43 +403,14 @@ class ModelCache:
             LoadedModel if cached, None otherwise
         """
         async with self._lock:
-            return await self._get_locked(model_slug)
-
-    async def _get_locked(self, model_slug: str) -> LoadedModel | None:
-        """Cache lookup body. Caller MUST hold `self._lock`."""
-        if model_slug not in self._cache:
-            self._misses += 1
-            return None
-
-        entry = self._cache[model_slug]
-        pin_count = self._pins.get(model_slug, 0)
-        entry.pin_count = pin_count
-
-        # Idle TTL only after last pin release; pinned models stay.
-        if pin_count == 0 and entry.idle_seconds > self._ttl_seconds:
-            logger.info(
-                f"Model {model_slug} idle-expired "
-                f"(idle={entry.idle_seconds:.0f}s, ttl={self._ttl_seconds}s)"
-            )
-            await self._evict_entry(model_slug)
-            self._misses += 1
-            return None
-
-        # Update LRU order (move to end)
-        self._cache.move_to_end(model_slug)
-
-        # Update access stats
-        entry.last_accessed = datetime.utcnow()
-        entry.access_count += 1
-        self._hits += 1
-
-        logger.debug(f"Cache hit for model {model_slug}")
-        return entry.model
+            hit, victims = self._lookup_locked(model_slug)
+        await self._run_unloads(victims)
+        return hit
 
     async def get_or_load(self, model_config: AiModelConfig) -> LoadedModel:
         """
         Get model from cache or load it — single-flight per slug
-        (TASK-351 P0-3 / H1).
+        (TASK-351 P0-3 / H1, now the shared contract's single-flight).
 
         The expensive `loader.load()` runs OUTSIDE the cache lock (so cache
         hits for other models are never blocked behind a load), but
@@ -263,48 +431,14 @@ class ModelCache:
         # this load rather than the next one.
         await self._refresh_retention()
 
-        async with self._lock:
-            cached = await self._get_locked(slug)
-            if cached is not None:
-                return cached
-
-            existing = self._inflight.get(slug)
-            if existing is None:
-                future: asyncio.Future[LoadedModel] = asyncio.get_running_loop().create_future()
-                self._inflight[slug] = future
-                is_owner = True
-            else:
-                future = existing
-                is_owner = False
-
-        if not is_owner:
-            # Shield so one waiter's cancellation cannot cancel the shared load.
-            return await asyncio.shield(future)
-
+        self._pending_configs[slug] = model_config
+        # The declared size is the only footprint known BEFORE the load, so it
+        # is what pre-load pressure relief budgets against.
+        self._memory_estimates.setdefault(slug, model_config.memory_size_mb or 0)
         try:
-            loader = self._get_loader(model_config.format)
-            if loader is None:
-                raise ModelLoadError(f"No loader available for format: {model_config.format}")
-
-            logger.info(f"Loading model {slug} (format={model_config.format})")
-            model = await loader.load(model_config)
-
-            # Cache the loaded model
-            await self.put(slug, model)
-        except BaseException as exc:
-            if not future.done():
-                future.set_exception(exc)
-                # Mark the exception as retrieved so the event loop does not
-                # log "exception was never retrieved" when no waiter exists.
-                future.exception()
-            raise
-        else:
-            if not future.done():
-                future.set_result(model)
-            return model
+            return await super().get(slug)
         finally:
-            async with self._lock:
-                self._inflight.pop(slug, None)
+            self._pending_configs.pop(slug, None)
 
     async def get_or_load_from_ref(
         self,
@@ -363,60 +497,15 @@ class ModelCache:
             model_slug: Model slug
             model: Loaded model
         """
+        self._memory_estimates[model_slug] = model.memory_mb
         async with self._lock:
-            # Evict to make room if needed
-            await self._evict_if_needed(model.memory_mb)
+            victims = self._make_room_locked(model_slug)
+        await self._run_unloads(victims)
 
-            # Add to cache
-            self._cache[model_slug] = CacheEntry(
-                model=model,
-                loaded_at=datetime.utcnow(),
-                last_accessed=datetime.utcnow(),
-                access_count=1,
-            )
-
-            logger.info(
-                f"Cached model {model_slug} (memory={model.memory_mb}MB, "
-                f"total_cached={len(self._cache)})"
-            )
-
-    async def pin(self, model_slug: str) -> None:
-        """Increment pin refcount so TTL/LRU cannot evict ``model_slug``."""
         async with self._lock:
-            self._pins[model_slug] = self._pins.get(model_slug, 0) + 1
-            if model_slug in self._cache:
-                self._cache[model_slug].pin_count = self._pins[model_slug]
-            logger.debug(f"Pinned model {model_slug} (pins={self._pins[model_slug]})")
-
-    async def unpin(self, model_slug: str) -> None:
-        """Decrement pin refcount; idle TTL applies after the last release."""
-        async with self._lock:
-            current = self._pins.get(model_slug, 0)
-            if current <= 1:
-                self._pins.pop(model_slug, None)
-                new_count = 0
-            else:
-                new_count = current - 1
-                self._pins[model_slug] = new_count
-            if model_slug in self._cache:
-                entry = self._cache[model_slug]
-                entry.pin_count = new_count
-                # Refresh idle clock when the last pin drops so TTL starts now.
-                if new_count == 0:
-                    entry.last_accessed = datetime.utcnow()
-            logger.debug(f"Unpinned model {model_slug} (pins={new_count})")
-
-    async def pin_many(self, model_slugs: list[str]) -> None:
-        """Pin every slug in ``model_slugs`` (pipeline use)."""
-        for slug in model_slugs:
-            if slug:
-                await self.pin(slug)
-
-    async def unpin_many(self, model_slugs: list[str]) -> None:
-        """Unpin every slug in ``model_slugs`` (session/job end)."""
-        for slug in model_slugs:
-            if slug:
-                await self.unpin(slug)
+            admitted, resident, resident_bytes = self._admit_locked(model_slug, model)
+        await self._run_unloads(admitted)
+        self._report_load(model_slug, resident, resident_bytes)
 
     async def evict(self, model_slug: str) -> bool:
         """
@@ -428,11 +517,7 @@ class ModelCache:
         Returns:
             True if model was evicted
         """
-        async with self._lock:
-            if self._pins.get(model_slug, 0) > 0:
-                logger.info(f"Refusing to evict pinned model {model_slug}")
-                return False
-            return await self._evict_entry(model_slug)
+        return await super().evict(model_slug)
 
     async def clear(self) -> int:
         """
@@ -441,112 +526,41 @@ class ModelCache:
         Returns:
             Number of models cleared
         """
-        async with self._lock:
-            count = len(self._cache)
+        count = await super().clear()
+        logger.info(f"Cleared {count} models from cache")
+        return count
 
-            for slug in list(self._cache.keys()):
-                await self._evict_entry(slug)
-
-            logger.info(f"Cleared {count} models from cache")
-            return count
-
-    def stats(self) -> CacheStats:
-        """Return cache statistics."""
-        total_memory = sum(e.model.memory_mb for e in self._cache.values())
-
+    def stats(self) -> CacheStats:  # type: ignore[override]
+        """Return cache statistics in stt-v2's shape."""
         models = [
             {
                 "slug": slug,
-                "memory_mb": entry.model.memory_mb,
-                "device": entry.model.device,
-                "format": entry.model.format.value,
-                "age_seconds": entry.age_seconds,
-                "idle_seconds": entry.idle_seconds,
-                "access_count": entry.access_count,
+                "memory_mb": entry.instance.memory_mb,
+                "device": entry.instance.device,
+                "format": entry.instance.format.value,
+                "age_seconds": (
+                    datetime.utcnow() - self._loaded_at.get(slug, datetime.utcnow())
+                ).total_seconds(),
+                "idle_seconds": self._time() - entry.last_accessed,
+                "access_count": self._access_counts.get(slug, 0),
             }
-            for slug, entry in self._cache.items()
+            for slug, entry in self._entries.items()
         ]
 
         return CacheStats(
-            total_models=len(self._cache),
-            total_memory_mb=total_memory,
-            max_models=self._max_models,
-            max_memory_mb=self._max_memory_mb,
+            total_models=len(self._entries),
+            total_memory_mb=self._resident_bytes(),
+            max_models=self._max_size,
+            max_memory_mb=self._max_bytes_estimate or 0,
             hits=self._hits,
             misses=self._misses,
-            evictions=self._evictions,
+            evictions=sum(self._evictions.values()),
             models=models,
         )
 
     def _get_loader(self, format: AiModelFormat) -> BaseModelLoader | None:
         """Get loader for model format."""
         return self._loaders.get(format)
-
-    async def _evict_if_needed(self, required_memory_mb: int = 0) -> None:
-        """
-        Evict oldest/expired entries to make room.
-
-        Args:
-            required_memory_mb: Memory needed for new model
-        """
-        # Check model count limit (never evict pinned)
-        while len(self._cache) >= self._max_models:
-            if not await self._evict_oldest():
-                break
-
-        # Check memory limit
-        current_memory = sum(e.model.memory_mb for e in self._cache.values())
-        while current_memory + required_memory_mb > self._max_memory_mb and self._cache:
-            evicted = await self._evict_oldest()
-            if evicted:
-                current_memory = sum(e.model.memory_mb for e in self._cache.values())
-            else:
-                break
-
-        # Evict idle-expired unpinned entries
-        expired = [
-            slug
-            for slug, entry in self._cache.items()
-            if self._pins.get(slug, 0) == 0 and entry.idle_seconds > self._ttl_seconds
-        ]
-        for slug in expired:
-            await self._evict_entry(slug)
-
-    async def _evict_oldest(self) -> bool:
-        """Evict oldest unpinned (least recently used) entry."""
-        if not self._cache:
-            return False
-
-        for slug in list(self._cache.keys()):
-            if self._pins.get(slug, 0) > 0:
-                continue
-            return await self._evict_entry(slug)
-        logger.warning("Cannot LRU-evict: all cached models are pinned")
-        return False
-
-    async def _evict_entry(self, model_slug: str) -> bool:
-        """Evict specific entry and unload model. Caller must not pass pinned slugs."""
-        if model_slug not in self._cache:
-            return False
-        if self._pins.get(model_slug, 0) > 0:
-            return False
-
-        entry = self._cache.pop(model_slug)
-        self._evictions += 1
-
-        # Get loader and unload
-        loader = self._get_loader(entry.model.format)
-        if loader:
-            try:
-                await loader.unload(entry.model)
-            except Exception as e:
-                logger.warning(f"Error unloading model {model_slug}: {e}")
-
-        logger.info(
-            f"Evicted model {model_slug} (memory={entry.model.memory_mb}MB, "
-            f"idle={entry.idle_seconds:.0f}s)"
-        )
-        return True
 
 
 # Singleton instance
@@ -565,3 +579,14 @@ async def clear_model_cache() -> int:
     """Clear the global model cache."""
     cache = get_model_cache()
     return await cache.clear()
+
+
+__all__ = [
+    "CacheEntry",
+    "CacheStats",
+    "ModelCache",
+    "clamp_cache_ttl_seconds",
+    "clear_model_cache",
+    "get_model_cache",
+    "set_retention_refresher",
+]

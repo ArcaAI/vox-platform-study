@@ -14,14 +14,16 @@ production deploy must mirror them into an internal registry (Phase 0 finding).
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import AsyncIterator, Callable
 
 import numpy as np
+from hope_runtime_models import ModelCache
 
 from tts_v2.core.audio import encode_pcm, pcm16_to_mp3, pcm16_to_wav
 from tts_v2.core.config import IndicParlerConfig
 from tts_v2.core.logging import get_logger
-from tts_v2.core.metrics import TTS_MODEL_LOADED
+from tts_v2.core.metrics import TTS_MODEL_LOADED, build_model_cache_metrics_sink
 from tts_v2.providers.base import AudioChunk, AudioFormat, SynthesisRequest
 from tts_v2.routing.chunking import chunk_text
 
@@ -68,9 +70,27 @@ class IndicParlerProvider:
         config: IndicParlerConfig,
         *,
         generate: Callable[[str, str], np.ndarray] | None = None,
+        generate_factory: Callable[[], Callable[[str, str], np.ndarray]] | None = None,
+        ttl_seconds: int | None = None,
+        time_func: Callable[[], float] = time.monotonic,
     ) -> None:
         self._config = config
+        # TASK-530 (D-09 completion) — the model handle now lives behind the
+        # shared model cache, exactly as Kokoro's has since TASK-529, so it loads
+        # on first use and is RELEASED when idle. TASK-529 made this provider
+        # lazy but never unloaded it. An explicitly injected `generate` bypasses
+        # the cache entirely (hermetic tests that want a permanent fake).
         self._generate = generate
+        self._generate_factory = generate_factory
+        self._cache: ModelCache[Callable[[str, str], np.ndarray]] = ModelCache(
+            factory=self._load_generate,
+            ttl_seconds=ttl_seconds if ttl_seconds is not None else 600,
+            max_size=1,
+            unload=self._unload_generate,
+            time_func=time_func,
+            metrics=build_model_cache_metrics_sink(),
+            name="tts_indic_parler",
+        )
 
     def _describe(self, locale: str) -> str:
         speaker = self._config.speaker_ml if locale.startswith("ml") else self._config.speaker_en
@@ -79,12 +99,35 @@ class IndicParlerProvider:
             "pace, with very high quality audio and no background noise."
         )
 
-    def _ensure_loaded(self) -> None:
-        if self._generate is not None:
-            return
-        self._generate = self._load_model()
+    async def _load_generate(self, _key: str) -> Callable[[str, str], np.ndarray]:
+        """Build the generate callable. Runs in a thread — a heavy, blocking load."""
+        builder = self._generate_factory or self._load_model
+        generate = await asyncio.to_thread(builder)
+
         TTS_MODEL_LOADED.labels(model="indic_parler").set(1)
-        logger.info("tts_v2.indic_parler_loaded", device=self._config.device, model=self._config.hf_model)
+        logger.info(
+            "tts_v2.indic_parler_loaded", device=self._config.device, model=self._config.hf_model
+        )
+        return generate
+
+    def _unload_generate(self, _key: str, _generate: object) -> None:
+        """Drop the handle and zero the gauge; the weights free on GC."""
+        TTS_MODEL_LOADED.labels(model="indic_parler").set(0)
+        logger.info("tts_v2.indic_parler_unloaded")
+
+    async def _get_generate(self) -> Callable[[str, str], np.ndarray]:
+        """The generate callable for this request, loading it on demand (single-flight)."""
+        if self._generate is not None:
+            return self._generate
+        return await self._cache.get("indic_parler")
+
+    def configure_retention(self, retention: dict[str, int]) -> None:
+        """Adopt control-plane retention; absent keys keep the current value."""
+        self._cache.configure(ttl_seconds=retention.get("ttl_seconds"))
+
+    async def sweep(self) -> int:
+        """Release the model if it has been idle past its TTL."""
+        return await self._cache.sweep()
 
     def _load_model(self) -> Callable[[str, str], np.ndarray]:
         import torch
@@ -117,22 +160,20 @@ class IndicParlerProvider:
         return _generate
 
     async def warmup(self) -> None:
-        await asyncio.to_thread(self._ensure_loaded)
-        assert self._generate is not None
-        await asyncio.to_thread(self._generate, "warm up", self._describe("en-IN"))
+        generate = await self._get_generate()
+        await asyncio.to_thread(generate, "warm up", self._describe("en-IN"))
 
     async def health(self) -> bool:
         return True
 
     async def synthesize(self, req: SynthesisRequest) -> AsyncIterator[AudioChunk]:
-        self._ensure_loaded()
-        assert self._generate is not None
+        generate = await self._get_generate()
         description = self._describe(req.locale)
         sentences = chunk_text(req.text, req.locale, _MAX_SENTENCE_CHARS)
 
         pcm_parts: list[bytes] = []
         for sentence in sentences:
-            audio = await asyncio.to_thread(self._generate, sentence, description)
+            audio = await asyncio.to_thread(generate, sentence, description)
             pcm = encode_pcm(np.asarray(audio, dtype=np.float32), _NATIVE_RATE, req.sample_rate)
             if req.fmt == AudioFormat.PCM:
                 yield AudioChunk(data=pcm)

@@ -1,6 +1,6 @@
 # TASK-530 — Model-Lifecycle Convergence Tail (harness D-08, stt-v2 adoption, TASK-529 errata)
 
-- **Status**: Pending
+- **Status**: Review
 - **Type**: feature / refactor
 - **Program**: Phase 3 tail of the [2026-07-20 agentic platform program plan](../SOTA-Track/2026-07-20-agentic-platform-program-plan.md) §4 · frozen design **AD-4** · closes the residue of [TASK-529](../TASK-529-Model-Lifecycle-Retention/README.md)
 - **Numbering**: TASK-530 is **reserved by the program plan for exactly this** — plan §325: *"TASK-530 — reserved. Intentionally unallocated… If TASK-529 proves too large in execution, split its concurrency work out under this number."* Verified 2026-07-20: no `TASK-530` directory exists in `docs/implementation/`. Numbering confirmed, not invented.
@@ -171,15 +171,15 @@ House constraints: fake clocks only, no `sleep` (real threads in the sync single
 
 ## 6. Acceptance & Definition of Done
 
-- [ ] `SyncModelCache` passes every contract clause the async cache does; `CacheStats`/reason labels identical
-- [ ] **D-08 closed**: `_ENTAILER_CACHE` gone; entailer evictable; `unload` frees the `Llama` handle; calibration re-verified on reload; fallback survives reload failure
-- [ ] Replay fixtures untouched and green; harness suite still hermetic
-- [ ] stt-v2 parity gate passed with its two pre-existing test files **unmodified**, then contract-conformant
-- [ ] **D-09 fully closed**: all three tts-v2 local engines lazy + TTL-unloaded
-- [ ] R4 guard: `unload` proven called exactly once on all six eviction paths × both cache classes
-- [ ] TASK-529 README errata applied; **DR-1 ratified as a recorded decision row**; its Status flipped to Review
-- [ ] All gates green with pasted real output, **each stating the `PYTHONPATH` pin used**
-- [ ] Runbook + comment deltas complete
+- [x] `SyncModelCache` passes every contract clause the async cache does; `CacheStats`/reason labels identical
+- [x] **D-08 closed**: `_ENTAILER_CACHE` gone; entailer evictable; `unload` frees the `Llama` handle; calibration re-verified on reload; fallback survives reload failure
+- [x] Replay fixtures untouched and green; harness suite still hermetic
+- [x] stt-v2 parity gate passed with its two pre-existing test files **unmodified**, then contract-conformant
+- [x] **D-09 fully closed**: all three tts-v2 local engines lazy + TTL-unloaded
+- [x] R4 guard: `unload` proven called exactly once on all six eviction paths × both cache classes
+- [x] TASK-529 README errata applied; **DR-1 ratified as a recorded decision row**; its Status flipped to Review
+- [x] All gates green with pasted real output, **each stating the `PYTHONPATH` pin used** (§9.2) — with one documented exception: a single stt-v2 e2e health-schema test fails, proven pre-existing at `985ead2d` (§9.6)
+- [x] Runbook + comment deltas complete
 
 ## 7. Risks & Rollback
 
@@ -203,11 +203,88 @@ House constraints: fake clocks only, no `sleep` (real threads in the sync single
 
 ## 9. Implementation Summary
 
-_Pending_
+Delivered end-to-end: 4.1–4.7, all in-scope gates green. Status → **Review**.
+
+### 9.1 What landed
+
+| Step | Outcome |
+|---|---|
+| 4.1 | `SyncModelCache` added. Rather than a copy-with-different-locks, the policy engine was extracted into a private `_CacheCore` that BOTH classes derive from — the ttl→lru→vram ordering, pin refcounts, all-pinned soft ceiling, eviction reason labels, `CacheStats`, clamp and VRAM probe are literally shared code, not parallel implementations. `ModelCache`'s public behaviour is unchanged (its pre-existing conformance suite is the guard). |
+| 4.2 | R4 clause `test_unload_called_exactly_once_per_eviction_path[kind-path]` — 6 paths × 2 classes = 12 cases. Mutation-verified (below). |
+| 4.3 | **D-08 closed.** `_ENTAILER_CACHE` module dict deleted; the entailer lives behind `SyncModelCache` (`cache="harness_minicheck"`), keyed by the same composite key. `load_minicheck_entailer`'s signature and return type are byte-identical, so `_atomic_fact_entailer` is untouched. Calibration moved INSIDE the cache factory, so it re-runs on every load including reloads. `harness.modelCache.*` bootstrap settings added. |
+| 4.4 | **stt-v2 converged.** `models/cache.py` 567 → 470 lines; its ~150-line copy of the policy is gone, replaced by inheritance from the shared async cache. Parity gate passed with both pre-existing files UNMODIFIED. New `tests/unit/test_model_cache_contract.py` locks the injected loader map + `loader.unload()` release hook on every eviction path. |
+| 4.5 | **D-09 fully closed.** IndicParler and IndicF5 joined Kokoro behind the shared cache (lazy load, TTL-unload, gauge→0, `configure_retention`, `sweep`). `main.py` passes `tts.modelCache.ttlSeconds` to all three. |
+| 4.6 | TASK-529's three stale §2/§3.2 claims corrected in place; **DR-1 ratified** as a §10 decision row; its Status flipped Blocked → Review. |
+| 4.7 | Runbook gains a cache inventory (§6a), the sync-vs-async note, the "the entailer lives in the WORKER process" operational fact, and a harness runbook entry. `apps/harness/README.md` gains a Model-retention section + the two new env knobs. The shared package README documents `SyncModelCache` and clauses 9–10. |
+
+### 9.2 Gate evidence (each with the `PYTHONPATH` pin it was run under)
+
+Worktree root `W = /Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/.claude/worktrees/wf_90fdc7c8-c7f-1`.
+Every pin was verified to resolve INSIDE the worktree before the gate ran, e.g.
+
+```
+$ PYTHONPATH=$W/apps/harness/src:$W/packages/py-runtime-models/src python -c "import harness, hope_runtime_models; print(...)"
+resolved: .../wf_90fdc7c8-c7f-1/apps/harness/src/harness/__init__.py | .../wf_90fdc7c8-c7f-1/packages/py-runtime-models/src/hope_runtime_models/__init__.py
+```
+
+| Gate | Pin | Result |
+|---|---|---|
+| `pytest packages/py-runtime-models/tests/` | `$W/packages/py-runtime-models/src` | **74 passed in 0.06s** |
+| `ruff check packages/py-runtime-models/{src,tests}/` | — | `All checks passed!` |
+| `pytest apps/harness/src/harness/tests/` | `$W/apps/harness/src:$W/packages/py-runtime-models/src` | **901 passed, 1 warning in 20.75s** |
+| `pytest .../temporal/test_replay_compat.py` | same | **10 passed** — file untouched |
+| `ruff check apps/harness/src/` · `mypy apps/harness/src/` | `MYPYPATH=$W/packages/py-runtime-models/src` | `All checks passed!` · `Success: no issues found in 90 source files` (baseline: 1 error) |
+| **stt-v2 PARITY** `pytest tests/unit/test_model_cache.py tests/unit/test_model_cache_ttl.py` | `$W/apps/stt-v2/src:$W/packages/py-runtime-models/src` | **40 passed in 0.85s**, both files unmodified |
+| `pytest apps/stt-v2/tests/` | same | **2647 passed, 73 skipped, 3 xfailed, 1 failed** — the single failure is `test_health_endpoints_comprehensive.py::test_health_returns_200_with_complete_schema`, **proven pre-existing** by re-running it on a clean `git stash` of this ticket's changes (fails identically at `985ead2d`; it asserts an exact `/health` key set that TASK-525/529's `effective_config` block already broke). Not in this ticket's surface. |
+| `ruff check apps/stt-v2/{src,tests}/` · `mypy apps/stt-v2/src/` | `MYPYPATH=$W/packages/py-runtime-models/src` | `All checks passed!` · `Success: no issues found in 123 source files` (baseline: 1 error) |
+| `pytest apps/tts-v2/src/tts_v2/tests/` | `$W/apps/tts-v2/src:$W/packages/py-runtime-models/src` | **170 passed, 2 deselected in 0.43s** |
+| `ruff check apps/tts-v2/src/` · `mypy apps/tts-v2/src/` | `MYPYPATH=$W/packages/py-runtime-models/src` | `All checks passed!` · **17 errors, down from a 20-error baseline** — all 17 pre-existing (missing optional ML stubs `kokoro`/`parler_tts`, `aclosing` type-var in `routing/router.py`, one numpy `Any` inside the untouched `_load_model`). Zero new. |
+| `pytest apps/nlp/tests/` (adopter regression) | `$W/apps/nlp/src:$W/packages/py-runtime-models/src` | **173 passed in 0.61s** |
+| `pytest apps/guardrail/src/guardrail/tests/` (adopter regression) | `$W/apps/guardrail/src:$W/packages/py-runtime-models/src` | **163 passed in 1.68s** |
+| `pytest apps/smr/src/smr_v2/tests/` (clamp consumer) | `$W/apps/smr/src:$W/packages/py-runtime-models/src` | **947 passed, 32 deselected in 134.64s** |
+| `uv lock --check` | — | `Resolved 475 packages in 12ms` — clean, no dependency change |
+
+### 9.3 RED evidence (captured, not predicted)
+
+1. **Contract suite** — first run after writing the parameterized clauses:
+   `ImportError: cannot import name 'SyncModelCache' from 'hope_runtime_models'` (1 collection error).
+2. **Harness** — 13 setup errors, `AttributeError: module 'harness.sensors.inferential.minicheck_entailer' has no attribute 'reset_entailer_cache'`.
+3. **Worker sweeper** — 2 failures, `AttributeError: module 'harness.temporal.worker' has no attribute '_sweep_model_caches_once'`.
+4. **tts-v2** — 10 failures / 13 passed: `TypeError: IndicF5Provider.__init__() got an unexpected keyword argument 'generate_factory'`. The `[kokoro]` variant of every parameterized clause passed on the same run, which is what proves the clauses themselves were correct against the reference implementation before Parler/F5 were touched.
+5. **stt-v2** had no RED of its own by design — it is a refactor, and its RED-equivalent is the 40-test parity gate holding across the change (baseline captured green BEFORE the rewrite, re-run green after).
+
+### 9.4 Mutation checks (proving the new guards actually bite)
+
+Both mutations were applied, run, and reverted.
+
+- **R4 guard.** Reintroduced TASK-529's exact defect — `_enforce_size_locked` evicts without returning the victim for unload:
+  `FAILED ...[async-lru_overflow]` and `FAILED ...[sync-lru_overflow]`,
+  `AssertionError: lru_overflow/sync: unload ran 0× for the evicted key`. Caught on **both** classes.
+- **stt-v2 conformance.** Set the injected `unload=None`: **6 conformance clauses failed** (explicit evict, LRU overflow, memory-budget overflow, lazy TTL, sweep, clear) while all **40 parity tests still passed** — which is precisely why the new file exists: the parity suite never asserted that an evicted model is *released*.
+
+### 9.5 Deviations from §3/§4 (with rationale)
+
+| # | Deviation | Rationale |
+|---|---|---|
+| D-a | §3.1 said the sync cache would expose `sweep()` "for the harness FastAPI app's existing async sweeper". **There is no such sweeper, and the FastAPI app is the wrong process.** A periodic sweep was added to `temporal/worker.py` instead (60 s, cancelled on shutdown; body extracted as `_sweep_model_caches_once` so it is testable without sleeps). | The entailer is built inside a Temporal **activity**, so its GGUF is resident in the worker process. A sweeper in the FastAPI app would sweep an empty cache in the wrong process, leaving §3.1's stated goal ("released even when its key is never re-requested") unmet. `worker.py` is outside §4.3's file list but overlaps nothing in TASK-528. |
+| D-b | The `unload` hook does **not** call `llama.close()`. Release is proven by a `weakref` + `gc.collect()` test instead. | An eviction can fire while an activity is still scoring with that entailer (TTL sweep is time-driven, and the sensor bound is 900 s). Closing the handle underneath a live caller would fault the clinical path. The llama handle is reachable only through the entailer's logit closure, so the cache dropping its reference is sufficient — and the weakref test proves the module pins nothing, which is the actual D-08 claim. Same posture as the tts providers ("the weights free on GC"). |
+| D-c | §3.1 described `SyncModelCache` as "a small sibling". Implemented by extracting `_CacheCore` and deriving **both** classes from it. | §3.1 also required "policy is shared; only the concurrency primitive differs" and §7 flagged drift as the top risk. Inheritance from one core makes that structural rather than aspirational — there is no second copy of the policy to drift. |
+| D-d | stt-v2's `ModelCache` **subclasses** the shared async `ModelCache` and overrides `get` to keep its long-standing PEEK semantics (`LoadedModel \| None`, never loads); `get_or_load` delegates to `super().get()` for the contract's single-flight/admission/unload machinery. | stt-v2's public API predates the contract and its callers (`health/api/routes.py`, `batch_service.py`) depend on `get` being a peek. Subclassing reuses the asyncio skin verbatim instead of copying ~80 lines of lock/in-flight code. The override is contained: nothing inside the shared core calls `self.get`. |
+| D-e | `cache._cache` is now a live view (`_CacheEntryView` → `_BoundCacheEntry`) bridging `datetime` ⇄ monotonic, rather than the raw `OrderedDict`. | Mandatory to satisfy the §2.2 hard gate. `test_model_cache_ttl.py` mutates `entry.last_accessed` **in place** and expects the policy to observe it; the shared core stores monotonic floats. A snapshot copy would silently swallow those writes. Cost is ~60 contained lines; benefit is the parity gate passing unmodified, exactly as §2.2 demands. |
+| D-f | `_max_models` / `_max_memory_mb` retained as property aliases over the core's `_max_size` / `_max_bytes_estimate`. | `tests/unit/test_effective_config_client.py::TestModelCacheAdoption` asserts on those private names. It is not in the frozen §2.2 parity gate, but the same rule applies — rework the code, not the test. It now also passes unmodified. |
+| D-g | Added a PEP 561 `py.typed` marker to `packages/py-runtime-models` (+ `package-data` in its pyproject). | Not planned, but it is the root cause of a pre-existing defect: without the marker mypy treats every `from hope_runtime_models import …` as `import-untyped` and degrades everything downstream to `Any`. Fixing it took harness 1→0 and stt-v2 1→0 mypy errors and removed 3 of tts-v2's. Squarely inside this ticket's owned surface. |
+| D-h | `configure_entailer_cache()` (harness) and `configure_retention()`/`sweep()` (IndicParler/IndicF5) ship **without a live caller**. | Harness has no effective-config polling client at all (only the duck-typed `settings.effective_config_client` used for weight-path resolution), and building one is a new subsystem outside the ownership manifest. This is the same posture TASK-529 shipped for nlp's `sweep_model_caches()` and Kokoro's `configure_retention()`. The server side (`resolveForService('harness'\|'tts-v2')` + the `<svc>.modelCache.*` descriptors) already exists; only the Python-side pull is absent. **Recorded as residue, not claimed as closed** — see §9.6. |
+
+### 9.6 Known residue (deliberately not claimed)
+
+1. **No control-plane pull in harness/tts-v2.** The retention *seams* exist and are tested; nothing calls them periodically yet because neither service has an effective-config client loop. Runtime retention therefore uses the bootstrap env values (`HARNESS_MODEL_CACHE_*`, `TTS_MODEL_CACHE_TTL_SECONDS`) until that client lands. E6's "global-admin-controlled" is satisfied for stt-v2/nlp/guardrail/smr; for harness and tts-v2 it is *wired but not yet polled*.
+2. **stt-v2 e2e `test_health_returns_200_with_complete_schema`** fails at the base commit and still fails — a stale exact-key-set assertion vs the `effective_config` block added by TASK-525/529. Out of this ticket's surface; worth a one-line fix in whatever ticket owns that suite.
+3. **`SyncModelCache` refuses async unload hooks** (logs `async_unload_hook_unsupported` and closes the coroutine) rather than supporting them. There is no loop to await on; silently dropping them would be the D-08 failure mode all over again.
 
 ## 10. Change History
 
 | Date | Change |
 |---|---|
 | 2026-07-20 | Ticket authored from the TASK-529 execution outcome. Number confirmed against plan §325's explicit reservation. Scope: D-08 sync/async fork (resolved as `SyncModelCache` with rationale + rejected alternative recorded), stt-v2 convergence with a hard parity gate, D-09 completion, contract-level `unload`-hook guard for the two defects TDD caught in TASK-529, and TASK-529 README errata incl. **DR-1 ratification** of the `<svc>.modelCache.*` key grammar over the superseded §3.2 `models.retention.*`. Status Pending — awaiting owner approval per rule 01 Phase 3 gate. |
+| 2026-07-20 | **Implementation pass — all of 4.1–4.7 delivered; Status → Review.** `SyncModelCache` added by extracting a shared `_CacheCore` both cache classes derive from (policy is shared code, not a second copy). R4's six-path × two-class unload guard added and mutation-verified against TASK-529's exact defect. **D-08 closed**: the harness `_ENTAILER_CACHE` module dict is gone, the entailer is bounded/evictable/re-calibrated-on-reload, `load_minicheck_entailer` keeps its exact sync signature, and a periodic sweep runs in the Temporal **worker** (where the GGUF actually lives — §3.1 assumed the FastAPI app; deviation D-a). **stt-v2 converged** with its two pre-existing test files passing UNMODIFIED (40/40), plus a new conformance file that catches a dropped release hook the parity suite cannot see. **D-09 fully closed**: IndicParler + IndicF5 joined Kokoro under TTL-unload. TASK-529's errata applied and **DR-1 ratified** as a decision row there. Eight deviations recorded in §9.5; two residue items in §9.6 (no control-plane *pull* in harness/tts-v2 yet; one pre-existing stt-v2 e2e failure). |
 | 2026-07-20 | Program plan §2.5 **Completion & Cleanup Doctrine** adopted as BINDING (owner directive): incorrect implementations in the owned surface are removed completely with the fix; partial implementations are finished end-to-end; redundant implementations are converged and deleted. This ticket exists to satisfy that doctrine for TASK-529's residue. |

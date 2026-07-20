@@ -7,6 +7,21 @@ their behaviour is preserved deliberately, including the "soft ceiling under
 all-pinned load" quirk — that is a product decision (never drop a model that is
 serving a request), not a bug to fix.
 
+TASK-530 (R1) added a second concurrency skin. There are now TWO cache classes:
+
+* :class:`ModelCache` — asyncio (``asyncio.Lock`` + in-flight ``Future``), for
+  the FastAPI services.
+* :class:`SyncModelCache` — threads (``threading.Lock`` + in-flight ``Event``),
+  for genuinely synchronous consumers. The harness MiniCheck entailer is one:
+  ``llama_cpp.Llama`` construction is a blocking CPU/GPU call, not I/O awaiting
+  a socket, and its sole call site (``_atomic_fact_entailer``) is a plain ``def``.
+
+**Policy is shared; only the concurrency primitive differs.** Both classes derive
+from :class:`_CacheCore`, which owns the entire policy engine — the ttl → lru →
+vram ordering, the pin refcounts, the all-pinned soft ceiling, the eviction
+reason labels, :class:`CacheStats`. Neither class carries a copy of it, so the
+two cannot drift.
+
 What is NOT here, on purpose: the stt-v2 format→loader map, the tts pipeline
 handles, the harness llama handle. Those are service concerns injected as
 ``factory`` / ``unload`` callables. Contract, not framework.
@@ -17,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import threading
 import time
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
@@ -101,8 +117,13 @@ class _Entry(Generic[T]):
     pin_count: int = 0
 
 
-class ModelCache(Generic[T]):
-    """LRU + idle-TTL + pin cache of lazily-loaded model instances.
+class _CacheCore(Generic[T]):
+    """The policy engine both cache classes share — no locking, no I/O.
+
+    Every method suffixed ``_locked`` assumes the CALLER holds whichever lock its
+    concrete subclass uses, and returns evicted ``(key, instance)`` pairs rather
+    than unloading them: unload hooks may block, await, or touch the GPU, so they
+    always run outside the lock.
 
     Eviction order under pressure is always **ttl → lru → vram** (§3.1 clause 2).
     """
@@ -110,7 +131,7 @@ class ModelCache(Generic[T]):
     def __init__(
         self,
         *,
-        factory: Callable[[str], Awaitable[T]],
+        factory: Any,
         ttl_seconds: int,
         max_size: int,
         unload: Callable[[str, T], Any] | None = None,
@@ -135,12 +156,9 @@ class ModelCache(Generic[T]):
         self._name = name
 
         self._entries: OrderedDict[str, _Entry[T]] = OrderedDict()
-        self._lock = asyncio.Lock()
         # key → pin refcount. Kept OUTSIDE `_entries` so a pin survives a brief
         # cache miss during reload (behaviour inherited from all three caches).
         self._pins: dict[str, int] = {}
-        # key → future of the load in progress (single-flight).
-        self._inflight: dict[str, asyncio.Future[T]] = {}
 
         self._hits = 0
         self._misses = 0
@@ -200,62 +218,10 @@ class ModelCache(Generic[T]):
         if max_bytes_estimate is not None and max_bytes_estimate > 0:
             self._max_bytes_estimate = max_bytes_estimate
 
-    # ── the load path ───────────────────────────────────────────────────────
-
-    async def get(self, key: str) -> T:
-        """Return the instance for ``key``, loading it on miss (single-flight).
-
-        A load failure propagates (routes map it to 503) and is NOT cached, so a
-        later request retries. Concurrent callers for the same key share one
-        load; a waiter's cancellation cannot cancel it.
-        """
-        async with self._lock:
-            hit, expired = self._lookup_locked(key)
-            if hit is not None:
-                return hit
-
-            existing = self._inflight.get(key)
-            if existing is not None:
-                future, is_owner = existing, False
-            else:
-                future = asyncio.get_running_loop().create_future()
-                self._inflight[key] = future
-                is_owner = True
-
-        # Release an idle-expired instance found above, outside the lock.
-        await self._run_unloads(expired)
-
-        if not is_owner:
-            # Shield so one waiter's cancellation cannot cancel the shared load.
-            return await asyncio.shield(future)
-
-        try:
-            # Pressure is relieved BEFORE the load so the incoming model has
-            # room, rather than after it has already been admitted. Unload hooks
-            # run OUTSIDE the lock — they may block, await, or touch the GPU.
-            async with self._lock:
-                victims = self._make_room_locked(key)
-            await self._run_unloads(victims)
-
-            instance = await self._factory(key)
-        except BaseException as exc:
-            if not future.done():
-                future.set_exception(exc)
-                # Retrieve it so the loop does not log "never retrieved" when
-                # no waiter exists.
-                future.exception()
-            raise
-        else:
-            await self._admit(key, instance)
-            if not future.done():
-                future.set_result(instance)
-            return instance
-        finally:
-            async with self._lock:
-                self._inflight.pop(key, None)
+    # ── lookup / admission ──────────────────────────────────────────────────
 
     def _lookup_locked(self, key: str) -> tuple[T | None, list[tuple[str, T]]]:
-        """Cache lookup + lazy TTL eviction. Caller MUST hold ``self._lock``.
+        """Cache lookup + lazy TTL eviction. Caller MUST hold the lock.
 
         Returns ``(hit_or_None, victims)``. Victims are handed back rather than
         unloaded here because unload hooks may block or await, and this runs
@@ -280,108 +246,76 @@ class ModelCache(Generic[T]):
         self._hits += 1
         return entry.instance, []
 
-    async def _admit(self, key: str, instance: T) -> None:
-        """Install a freshly-loaded instance and report it."""
-        async with self._lock:
-            self._entries[key] = _Entry(
-                instance=instance,
-                last_accessed=self._time(),
-                bytes_estimate=self._estimate_for(key),
-                pin_count=self._pins.get(key, 0),
-            )
-            self._loads += 1
-            victims = self._enforce_size_locked()
-            resident, resident_bytes = len(self._entries), self._resident_bytes()
+    def _admit_locked(self, key: str, instance: T) -> tuple[list[tuple[str, T]], int, int]:
+        """Install a freshly-loaded instance. Returns (victims, resident, bytes)."""
+        self._entries[key] = _Entry(
+            instance=instance,
+            last_accessed=self._time(),
+            bytes_estimate=self._estimate_for(key),
+            pin_count=self._pins.get(key, 0),
+        )
+        self._loads += 1
+        victims = self._enforce_size_locked()
+        return victims, len(self._entries), self._resident_bytes()
 
-        await self._run_unloads(victims)
-
+    def _report_load(self, key: str, resident: int, resident_bytes: int) -> None:
         if self._metrics is not None:
             self._metrics.on_load(self._name, key)
             self._metrics.on_resident(self._name, resident, resident_bytes)
 
     # ── pinning ─────────────────────────────────────────────────────────────
 
-    async def pin(self, key: str) -> None:
-        """Increment the pin refcount so TTL/LRU/VRAM cannot evict ``key``."""
-        async with self._lock:
-            self._pins[key] = self._pins.get(key, 0) + 1
-            entry = self._entries.get(key)
-            if entry is not None:
-                entry.pin_count = self._pins[key]
+    def _pin_locked(self, key: str) -> None:
+        self._pins[key] = self._pins.get(key, 0) + 1
+        entry = self._entries.get(key)
+        if entry is not None:
+            entry.pin_count = self._pins[key]
 
-    async def unpin(self, key: str) -> None:
-        """Decrement the pin refcount; the idle clock restarts on the last one."""
-        async with self._lock:
-            current = self._pins.get(key, 0)
-            if current <= 1:
-                self._pins.pop(key, None)
-                new_count = 0
-            else:
-                new_count = current - 1
-                self._pins[key] = new_count
+    def _unpin_locked(self, key: str) -> None:
+        current = self._pins.get(key, 0)
+        if current <= 1:
+            self._pins.pop(key, None)
+            new_count = 0
+        else:
+            new_count = current - 1
+            self._pins[key] = new_count
 
-            entry = self._entries.get(key)
-            if entry is not None:
-                entry.pin_count = new_count
-                if new_count == 0:
-                    entry.last_accessed = self._time()
-
-    async def pin_many(self, keys: list[str]) -> None:
-        for key in keys:
-            if key:
-                await self.pin(key)
-
-    async def unpin_many(self, keys: list[str]) -> None:
-        for key in keys:
-            if key:
-                await self.unpin(key)
+        entry = self._entries.get(key)
+        if entry is not None:
+            entry.pin_count = new_count
+            if new_count == 0:
+                entry.last_accessed = self._time()
 
     # ── explicit eviction / teardown ────────────────────────────────────────
 
-    async def evict(self, key: str) -> bool:
-        """Evict ``key``. Refuses pinned entries; returns whether it evicted."""
-        async with self._lock:
-            if self._pins.get(key, 0) > 0:
-                logger.info("%s.refusing_to_evict_pinned key=%s", self._name, key)
-                return False
-            victims = self._evict_locked(key, reason="lru")
-        await self._run_unloads(victims)
-        return bool(victims)
+    def _evict_request_locked(self, key: str) -> list[tuple[str, T]]:
+        """Body of the public `evict`: refuses pinned entries."""
+        if self._pins.get(key, 0) > 0:
+            logger.info("%s.refusing_to_evict_pinned key=%s", self._name, key)
+            return []
+        return self._evict_locked(key, reason="lru")
 
-    async def sweep(self) -> int:
-        """Evict every idle-expired UNPINNED entry; returns how many.
+    def _sweep_locked(self) -> tuple[list[tuple[str, T]], int, int]:
+        """Body of the public `sweep`. Returns (victims, resident, bytes)."""
+        limit = self._idle_limit()
+        now = self._time()
+        expired = [
+            key
+            for key, entry in self._entries.items()
+            if self._pins.get(key, 0) == 0 and (now - entry.last_accessed) > limit
+        ]
+        victims: list[tuple[str, T]] = []
+        for key in expired:
+            victims.extend(self._evict_locked(key, reason="ttl"))
+        return victims, len(self._entries), self._resident_bytes()
 
-        Called by a periodic task in each service. Without it an idle model
-        whose key is never requested again is retained forever despite the TTL —
-        the concrete gap the pre-TASK-529 guardrail/nlp caches had.
-        """
-        async with self._lock:
-            limit = self._idle_limit()
-            now = self._time()
-            expired = [
-                key
-                for key, entry in self._entries.items()
-                if self._pins.get(key, 0) == 0 and (now - entry.last_accessed) > limit
-            ]
-            victims: list[tuple[str, T]] = []
-            for key in expired:
-                victims.extend(self._evict_locked(key, reason="ttl"))
-            resident, resident_bytes = len(self._entries), self._resident_bytes()
-
-        await self._run_unloads(victims)
-        if self._metrics is not None and victims:
-            self._metrics.on_resident(self._name, resident, resident_bytes)
-        return len(victims)
-
-    async def clear(self) -> int:
-        """Evict everything, pins included (teardown — the process is going)."""
-        async with self._lock:
-            victims: list[tuple[str, T]] = []
-            for key in list(self._entries):
-                self._pins.pop(key, None)
-                victims.extend(self._evict_locked(key, reason="lru"))
-        await self._run_unloads(victims)
-        return len(victims)
+    def _clear_locked(self) -> list[tuple[str, T]]:
+        """Body of the public `clear`: evicts everything, pins included."""
+        victims: list[tuple[str, T]] = []
+        for key in list(self._entries):
+            self._pins.pop(key, None)
+            victims.extend(self._evict_locked(key, reason="lru"))
+        return victims
 
     # ── pressure relief ─────────────────────────────────────────────────────
 
@@ -472,7 +406,12 @@ class ModelCache(Generic[T]):
         return None
 
     def _evict_locked(self, key: str, *, reason: str) -> list[tuple[str, T]]:
-        """Drop ``key`` and return its (key, instance) for out-of-lock unloading."""
+        """Drop ``key`` and return its (key, instance) for out-of-lock unloading.
+
+        Returning the instance is the ONLY way an evicted model's weights ever
+        get released, so every eviction path routes through here and every caller
+        must hand the result to its unload runner (R4).
+        """
         entry = self._entries.pop(key, None)
         if entry is None:
             return []
@@ -482,18 +421,6 @@ class ModelCache(Generic[T]):
         if self._metrics is not None:
             self._metrics.on_evict(self._name, key, reason)
         return [(key, entry.instance)]
-
-    async def _run_unloads(self, victims: list[tuple[str, T]]) -> None:
-        """Best-effort unload of evicted instances — never fails the caller."""
-        for key, instance in victims:
-            if self._unload is None:
-                continue
-            try:
-                result = self._unload(key, instance)
-                if inspect.isawaitable(result):
-                    await result
-            except Exception:
-                logger.warning("%s.unload_failed key=%s", self._name, key, exc_info=True)
 
     # ── sizing helpers ──────────────────────────────────────────────────────
 
@@ -524,3 +451,352 @@ class ModelCache(Generic[T]):
             logger.warning("%s.vram_probe_disabled", self._name, exc_info=True)
             self._vram_probe_enabled = False
             return None
+
+
+class ModelCache(_CacheCore[T]):
+    """LRU + idle-TTL + pin cache of lazily-loaded model instances (asyncio)."""
+
+    def __init__(
+        self,
+        *,
+        factory: Callable[[str], Awaitable[T]],
+        ttl_seconds: int,
+        max_size: int,
+        unload: Callable[[str, T], Any] | None = None,
+        max_bytes_estimate: int | None = None,
+        estimate_bytes: Callable[[str], int] | None = None,
+        time_func: Callable[[], float] = time.monotonic,
+        metrics: MetricsSink | None = None,
+        vram_probe: Callable[[], int] | None = None,
+        vram_headroom_bytes: int = 0,
+        name: str = "model_cache",
+    ) -> None:
+        super().__init__(
+            factory=factory,
+            ttl_seconds=ttl_seconds,
+            max_size=max_size,
+            unload=unload,
+            max_bytes_estimate=max_bytes_estimate,
+            estimate_bytes=estimate_bytes,
+            time_func=time_func,
+            metrics=metrics,
+            vram_probe=vram_probe,
+            vram_headroom_bytes=vram_headroom_bytes,
+            name=name,
+        )
+        self._lock = asyncio.Lock()
+        # key → future of the load in progress (single-flight).
+        self._inflight: dict[str, asyncio.Future[T]] = {}
+
+    # ── the load path ───────────────────────────────────────────────────────
+
+    async def get(self, key: str) -> T:
+        """Return the instance for ``key``, loading it on miss (single-flight).
+
+        A load failure propagates (routes map it to 503) and is NOT cached, so a
+        later request retries. Concurrent callers for the same key share one
+        load; a waiter's cancellation cannot cancel it.
+        """
+        async with self._lock:
+            hit, expired = self._lookup_locked(key)
+            if hit is not None:
+                return hit
+
+            existing = self._inflight.get(key)
+            if existing is not None:
+                future, is_owner = existing, False
+            else:
+                future = asyncio.get_running_loop().create_future()
+                self._inflight[key] = future
+                is_owner = True
+
+        # Release an idle-expired instance found above, outside the lock.
+        await self._run_unloads(expired)
+
+        if not is_owner:
+            # Shield so one waiter's cancellation cannot cancel the shared load.
+            return await asyncio.shield(future)
+
+        try:
+            # Pressure is relieved BEFORE the load so the incoming model has
+            # room, rather than after it has already been admitted. Unload hooks
+            # run OUTSIDE the lock — they may block, await, or touch the GPU.
+            async with self._lock:
+                victims = self._make_room_locked(key)
+            await self._run_unloads(victims)
+
+            instance: T = await self._factory(key)
+        except BaseException as exc:
+            if not future.done():
+                future.set_exception(exc)
+                # Retrieve it so the loop does not log "never retrieved" when
+                # no waiter exists.
+                future.exception()
+            raise
+        else:
+            await self._admit(key, instance)
+            if not future.done():
+                future.set_result(instance)
+            return instance
+        finally:
+            async with self._lock:
+                self._inflight.pop(key, None)
+
+    async def _admit(self, key: str, instance: T) -> None:
+        """Install a freshly-loaded instance and report it."""
+        async with self._lock:
+            victims, resident, resident_bytes = self._admit_locked(key, instance)
+
+        await self._run_unloads(victims)
+        self._report_load(key, resident, resident_bytes)
+
+    # ── pinning ─────────────────────────────────────────────────────────────
+
+    async def pin(self, key: str) -> None:
+        """Increment the pin refcount so TTL/LRU/VRAM cannot evict ``key``."""
+        async with self._lock:
+            self._pin_locked(key)
+
+    async def unpin(self, key: str) -> None:
+        """Decrement the pin refcount; the idle clock restarts on the last one."""
+        async with self._lock:
+            self._unpin_locked(key)
+
+    async def pin_many(self, keys: list[str]) -> None:
+        for key in keys:
+            if key:
+                await self.pin(key)
+
+    async def unpin_many(self, keys: list[str]) -> None:
+        for key in keys:
+            if key:
+                await self.unpin(key)
+
+    # ── explicit eviction / teardown ────────────────────────────────────────
+
+    async def evict(self, key: str) -> bool:
+        """Evict ``key``. Refuses pinned entries; returns whether it evicted."""
+        async with self._lock:
+            victims = self._evict_request_locked(key)
+        await self._run_unloads(victims)
+        return bool(victims)
+
+    async def sweep(self) -> int:
+        """Evict every idle-expired UNPINNED entry; returns how many.
+
+        Called by a periodic task in each service. Without it an idle model
+        whose key is never requested again is retained forever despite the TTL —
+        the concrete gap the pre-TASK-529 guardrail/nlp caches had.
+        """
+        async with self._lock:
+            victims, resident, resident_bytes = self._sweep_locked()
+
+        await self._run_unloads(victims)
+        if self._metrics is not None and victims:
+            self._metrics.on_resident(self._name, resident, resident_bytes)
+        return len(victims)
+
+    async def clear(self) -> int:
+        """Evict everything, pins included (teardown — the process is going)."""
+        async with self._lock:
+            victims = self._clear_locked()
+        await self._run_unloads(victims)
+        return len(victims)
+
+    async def _run_unloads(self, victims: list[tuple[str, T]]) -> None:
+        """Best-effort unload of evicted instances — never fails the caller."""
+        for key, instance in victims:
+            if self._unload is None:
+                continue
+            try:
+                result = self._unload(key, instance)
+                if inspect.isawaitable(result):
+                    await result
+            except Exception:
+                logger.warning("%s.unload_failed key=%s", self._name, key, exc_info=True)
+
+
+class _SyncLoad(Generic[T]):
+    """One in-flight synchronous load: waiters block on ``done`` (never a lock)."""
+
+    __slots__ = ("done", "error", "result")
+
+    def __init__(self) -> None:
+        self.done = threading.Event()
+        self.result: T | None = None
+        self.error: BaseException | None = None
+
+
+class SyncModelCache(_CacheCore[T]):
+    """The same policy as :class:`ModelCache`, driven by threads instead of asyncio.
+
+    For consumers whose load is a blocking CPU/GPU call and whose call site is a
+    plain ``def`` (TASK-530 §2.1). ``factory`` and ``unload`` are ordinary
+    callables; an *async* unload hook cannot be honoured here (there is no loop
+    to await it on) and is refused with a warning rather than silently dropped.
+
+    **Sweeping**: this class owns no background task — the harness has no
+    guaranteed asyncio loop around the entailer. It sweeps lazily on ``get()``
+    like all three original caches, and exposes ``sweep()`` for a host service's
+    existing periodic sweeper to call, so an idle instance whose key is never
+    re-requested is still released.
+    """
+
+    def __init__(
+        self,
+        *,
+        factory: Callable[[str], T],
+        ttl_seconds: int,
+        max_size: int,
+        unload: Callable[[str, T], Any] | None = None,
+        max_bytes_estimate: int | None = None,
+        estimate_bytes: Callable[[str], int] | None = None,
+        time_func: Callable[[], float] = time.monotonic,
+        metrics: MetricsSink | None = None,
+        vram_probe: Callable[[], int] | None = None,
+        vram_headroom_bytes: int = 0,
+        name: str = "model_cache",
+    ) -> None:
+        super().__init__(
+            factory=factory,
+            ttl_seconds=ttl_seconds,
+            max_size=max_size,
+            unload=unload,
+            max_bytes_estimate=max_bytes_estimate,
+            estimate_bytes=estimate_bytes,
+            time_func=time_func,
+            metrics=metrics,
+            vram_probe=vram_probe,
+            vram_headroom_bytes=vram_headroom_bytes,
+            name=name,
+        )
+        self._lock = threading.Lock()
+        # key → the load in progress (single-flight).
+        self._inflight: dict[str, _SyncLoad[T]] = {}
+
+    # ── the load path ───────────────────────────────────────────────────────
+
+    def get(self, key: str) -> T:
+        """Return the instance for ``key``, loading it on miss (single-flight).
+
+        The factory is called with NO lock held, and waiters block on an
+        ``Event`` rather than on the cache lock — so a slow load never blocks a
+        hit for another key, and a nested `get` cannot deadlock.
+        """
+        with self._lock:
+            hit, expired = self._lookup_locked(key)
+            if hit is None:
+                existing = self._inflight.get(key)
+                if existing is not None:
+                    load, is_owner = existing, False
+                else:
+                    load = _SyncLoad[T]()
+                    self._inflight[key] = load
+                    is_owner = True
+
+        # Release an idle-expired instance found above, outside the lock.
+        self._run_unloads(expired)
+        if hit is not None:
+            return hit
+
+        if not is_owner:
+            load.done.wait()
+            if load.error is not None:
+                raise load.error
+            return load.result  # type: ignore[return-value]
+
+        try:
+            # Pressure is relieved BEFORE the load so the incoming model has
+            # room, rather than after it has already been admitted.
+            with self._lock:
+                victims = self._make_room_locked(key)
+            self._run_unloads(victims)
+
+            instance: T = self._factory(key)
+        except BaseException as exc:
+            load.error = exc
+            raise
+        else:
+            self._admit(key, instance)
+            load.result = instance
+            return instance
+        finally:
+            with self._lock:
+                self._inflight.pop(key, None)
+            load.done.set()
+
+    def _admit(self, key: str, instance: T) -> None:
+        """Install a freshly-loaded instance and report it."""
+        with self._lock:
+            victims, resident, resident_bytes = self._admit_locked(key, instance)
+
+        self._run_unloads(victims)
+        self._report_load(key, resident, resident_bytes)
+
+    # ── pinning ─────────────────────────────────────────────────────────────
+
+    def pin(self, key: str) -> None:
+        """Increment the pin refcount so TTL/LRU/VRAM cannot evict ``key``."""
+        with self._lock:
+            self._pin_locked(key)
+
+    def unpin(self, key: str) -> None:
+        """Decrement the pin refcount; the idle clock restarts on the last one."""
+        with self._lock:
+            self._unpin_locked(key)
+
+    def pin_many(self, keys: list[str]) -> None:
+        for key in keys:
+            if key:
+                self.pin(key)
+
+    def unpin_many(self, keys: list[str]) -> None:
+        for key in keys:
+            if key:
+                self.unpin(key)
+
+    # ── explicit eviction / teardown ────────────────────────────────────────
+
+    def evict(self, key: str) -> bool:
+        """Evict ``key``. Refuses pinned entries; returns whether it evicted."""
+        with self._lock:
+            victims = self._evict_request_locked(key)
+        self._run_unloads(victims)
+        return bool(victims)
+
+    def sweep(self) -> int:
+        """Evict every idle-expired UNPINNED entry; returns how many."""
+        with self._lock:
+            victims, resident, resident_bytes = self._sweep_locked()
+
+        self._run_unloads(victims)
+        if self._metrics is not None and victims:
+            self._metrics.on_resident(self._name, resident, resident_bytes)
+        return len(victims)
+
+    def clear(self) -> int:
+        """Evict everything, pins included (teardown — the process is going)."""
+        with self._lock:
+            victims = self._clear_locked()
+        self._run_unloads(victims)
+        return len(victims)
+
+    def _run_unloads(self, victims: list[tuple[str, T]]) -> None:
+        """Best-effort unload of evicted instances — never fails the caller."""
+        for key, instance in victims:
+            if self._unload is None:
+                continue
+            try:
+                result = self._unload(key, instance)
+                if inspect.isawaitable(result):
+                    # No loop to await on. Close the coroutine so Python does
+                    # not warn about it, and say so loudly — an async unload
+                    # hook on this class would silently never free the weights.
+                    close = getattr(result, "close", None)
+                    if close is not None:
+                        close()
+                    logger.warning(
+                        "%s.async_unload_hook_unsupported key=%s", self._name, key
+                    )
+            except Exception:
+                logger.warning("%s.unload_failed key=%s", self._name, key, exc_info=True)

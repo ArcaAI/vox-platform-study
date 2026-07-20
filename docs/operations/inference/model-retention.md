@@ -1,6 +1,6 @@
 # Model Retention & Lifecycle — Operator Runbook
 
-**Owner**: Platform / Inference · **Introduced**: TASK-529 · **Last updated**: 2026-07-20
+**Owner**: Platform / Inference · **Introduced**: TASK-529 · **Completed by**: TASK-530 · **Last updated**: 2026-07-20
 
 How HOPE decides when a model is loaded, how long it stays resident, and how an
 operator changes that at runtime **without a redeploy**.
@@ -59,7 +59,7 @@ Not every "model" is HOPE's to evict. Three different owners:
 
 | Engine | Retention owner | Mechanism |
 |---|---|---|
-| In-process (stt-v2 loaders, GLiNER, NLP transformers, MiniCheck, Kokoro/IndicParler) | **HOPE** | The shared cache: `ttl → lru → vram` eviction, per-service budgets |
+| In-process (stt-v2 loaders, GLiNER, NLP transformers, harness MiniCheck entailer, Kokoro/IndicParler/IndicF5) | **HOPE** | The shared cache: `ttl → lru → vram` eviction, per-service budgets. As of TASK-530 **no in-process engine is exempt** — see §6a. |
 | **Ollama** | The Ollama server, per-request influenced | HOPE sends `keep_alive: <ttl>s` on every generate/stream, overriding the server's `OLLAMA_KEEP_ALIVE` (default 5 min). Cap residents with `OLLAMA_MAX_LOADED_MODELS`. |
 | **LM Studio** | The LM Studio server, per-request influenced | HOPE sends `ttl: <seconds>` via the OpenAI SDK's `extra_body`. JIT-loaded models otherwise default to a 60 min idle TTL. Leave **Auto-Evict ON** so a new JIT load unloads the previous one. |
 | **vLLM / llama.cpp server** | Launch-time; **resident by design** | One model per launch, stays resident. `smr.modelCache.ttlSeconds` does **not** apply. |
@@ -139,6 +139,35 @@ Dashboard: `infrastructure/grafana/dashboards/model-retention.json`.
 
 ---
 
+## 6a. The cache inventory (which `cache=` label is what)
+
+Every in-process cache reports under a `cache` label on the metrics in §6.
+
+| `cache=` | Service | Holds | Notes |
+|---|---|---|---|
+| `stt_model_cache` | stt-v2 | ASR/VAD/diarization models, by slug | The only cache with an **MB budget** (`stt.modelCache.maxMemoryMb`) as well as a count bound |
+| `nlp_model_cache` | nlp | NER / text- and token-classification models | Three singletons share the label |
+| `guardrail_model_cache` | guardrail | GLiNER + the MiniCheck scorer | |
+| `harness_minicheck` | harness **worker** | The MiniCheck-Flan-T5 GGUF entailer | Lives in the **Temporal worker** process, not the FastAPI app — see below |
+| `tts_kokoro` · `tts_indic_parler` · `tts_indic_f5` | tts-v2 | One pipeline/model handle each | `maxModels` is 1 per engine by construction |
+
+**Two cache classes, one policy.** Most services use the asyncio cache
+(`ModelCache`). The harness entailer uses `SyncModelCache` — the same policy
+engine with a thread lock instead of an event loop, because its consumer
+(`_atomic_fact_entailer`) is synchronous and a `llama_cpp.Llama` construction is
+a blocking CPU/GPU call rather than awaited I/O. **Operationally they are
+identical**: same TTL clamp, same `ttl → lru → vram` order, same pin semantics,
+same `CacheStats`, same metric names and reason labels. Nothing in this runbook
+differs between them.
+
+**Where the harness entailer actually lives.** It is loaded by a Temporal
+*activity*, so its weights are resident in the **worker** process
+(`pnpm dev:harness:worker`), not in the harness FastAPI app. The worker runs its
+own periodic sweep (every 60 s) so an idle entailer is released even when no
+further verification arrives. Restarting only the FastAPI app will NOT free it —
+restart the worker.
+
+
 ## 7. tts-v2: the health-semantics change
 
 Local TTS engines (Kokoro, IndicParler, IndicF5) used to load at boot and
@@ -152,6 +181,11 @@ request** for that voice.
 To restore fail-at-boot: set `TTS_WARMUP_ENABLED=true`. The engine warms during
 startup again — but it still registers either way, so a failure is loud in the
 logs rather than silently removing a route.
+
+**TASK-530 completion note.** TASK-529 made all three engines lazy but put only
+**Kokoro** behind the cache, so IndicParler and IndicF5 loaded on first use and
+then stayed resident forever. All three are now TTL-unloaded on the same terms,
+and each zeroes its `tts_model_loaded{model=…}` gauge on release.
 
 ---
 
@@ -174,6 +208,12 @@ set `OLLAMA_MAX_LOADED_MODELS` — HOPE's budgets do not bound the Ollama server
 3. Refresh is read-triggered with a ~60 s TTL — an idle service refreshes on its
    next request, not on a timer.
 
+**"The harness is holding a GGUF and I restarted the service."**
+The MiniCheck entailer lives in the **Temporal worker** process, not the harness
+FastAPI app (§6a). Check `model_cache_resident_models{cache="harness_minicheck"}`
+and restart `pnpm dev:harness:worker` — or just wait: the worker sweeps every
+60 s and releases it once idle past `harness.modelCache.ttlSeconds`.
+
 **"I need a model to stay loaded permanently."**
 Set `ttlSeconds = 3600` (the maximum). There is deliberately no "never evict"
 setting — E6 specifies a 1-hour cap. For a genuinely dedicated model, use a
@@ -184,7 +224,7 @@ launch-time-resident engine (vLLM / llama.cpp server) instead.
 ## 9. Related
 
 - Contract + conformance clauses: `packages/py-runtime-models/README.md`
-- Ticket: `docs/implementation/TASK-529-Model-Lifecycle-Retention/README.md`
+- Tickets: `docs/implementation/TASK-529-Model-Lifecycle-Retention/README.md` (contract + first adoption wave) and `docs/implementation/TASK-530-Lifecycle-Convergence-Tail/README.md` (harness D-08, stt-v2 convergence, D-09 completion)
 - Config plane: `docs/implementation/TASK-525-*` (effective-config read path)
 - Ollama: <https://docs.ollama.com/faq> · LM Studio:
   <https://lmstudio.ai/docs/developer/core/ttl-and-auto-evict>
