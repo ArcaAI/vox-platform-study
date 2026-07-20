@@ -1,10 +1,12 @@
-import type { Metadata } from 'next';
-import { PstudioScreen } from '@/features/pstudio/components/pstudio-screen';
+import { redirect } from 'next/navigation';
 
-export const metadata: Metadata = {
-    title: 'Prisma Studio',
-};
-
-export default function PstudioPage() {
-    return <PstudioScreen />;
+/**
+ * TASK-532 (M-08) — `/pstudio` moved to `/db-studio`.
+ *
+ * Kept for ONE release so existing bookmarks and deep links keep working; the
+ * nav entry already points at the new route. Delete this folder in the release
+ * after the one that ships the rename.
+ */
+export default function PstudioRedirectPage(): never {
+    redirect('/db-studio');
 }

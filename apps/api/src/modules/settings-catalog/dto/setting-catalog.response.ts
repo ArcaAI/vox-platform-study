@@ -60,4 +60,17 @@ export class EffectiveSettingResponse {
 
   @ApiProperty({ description: 'Which cascade tier supplied the value.', example: 'department' })
   sourceScope!: string;
+
+  /**
+   * TASK-533 B2 — version of the backing KV row, or 0 when the value is still a
+   * code default (no row stored). Rendered as `ETag: "<version>"` by the
+   * `ETagInterceptor` for positive values; echo it as `If-Match` on the PUT.
+   *
+   * OPTIONAL because only the key-addressed registry route (`GET
+   * registry/:key`) has a single backing row to version. The generic
+   * `GET effective` cascade trace spans tiers with no such row, so it omits this
+   * rather than reporting a meaningless 0.
+   */
+  @ApiPropertyOptional({ description: 'Backing row version (0 = no stored row yet). Registry route only.', example: 3 })
+  version?: number;
 }

@@ -45,7 +45,6 @@ export async function getPrismaDMMF(prismaClientPath: string): Promise<DMMF> {
       : path.resolve(process.cwd(), prismaClientPath);
 
     // Dynamically import the prisma client
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const prismaClient = (await import(resolvedPath));
 
     if (!prismaClient.Prisma || !prismaClient.Prisma.dmmf) {

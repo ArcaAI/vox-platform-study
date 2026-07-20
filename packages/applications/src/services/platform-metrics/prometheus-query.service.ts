@@ -49,7 +49,6 @@ export class PrometheusQueryService implements IPrometheusQueryService {
   private readonly baseUrl: string;
 
   constructor() {
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
     this.baseUrl = (process.env.PROMETHEUS_URL || DEFAULT_PROMETHEUS_URL).replace(/\/$/, '');
   }
 

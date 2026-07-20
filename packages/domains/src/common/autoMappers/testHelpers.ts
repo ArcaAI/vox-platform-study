@@ -2,7 +2,6 @@ import { Transform } from 'class-transformer';
 import { Decimal } from 'decimal.js';
 
 export function VirtualDbProperty() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return function (target: any, propertyKey: string) {
     if (!target.constructor.__virtualProperties) {
       target.constructor.__virtualProperties = [];

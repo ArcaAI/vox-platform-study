@@ -157,7 +157,7 @@ export class ChainSummaryService extends BaseService {
     const smrInput = await this.composeSmrInput(consultation, sections, aggregatedEntities, request, preferredPromptTemplateId);
 
     // Step 5: Call SMR service
-    const smrResponse = await this.callSmrService(smrInput, request);
+    const smrResponse = await this.callSmrService(smrInput);
 
     // Step 6: Store as ContextItem(RAW_SUMMARY) on the requesting consultation
     const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, smrResponse.summary, request.dnaStyleId, userId ?? 'system');
@@ -523,8 +523,6 @@ export class ChainSummaryService extends BaseService {
       options?: Record<string, unknown>;
       context: Record<string, unknown>;
     },
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    request: ComprehensiveSummaryRequest,
   ): Promise<{
     summary: string;
     llmProvider?: string;

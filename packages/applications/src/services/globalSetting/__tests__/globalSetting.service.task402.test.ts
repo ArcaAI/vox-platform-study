@@ -88,17 +88,11 @@ describe('GlobalSettingService — TASK-402 revive-on-create for soft-deleted ke
       }
     });
     service = new GlobalSettingService(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       mockGlobalSettingRepository as any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       mockUserRepository as any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       mockCryptoService as any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       mockSecretsService as any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       mockEventEmitter as any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       mockClsService as any,
     );
   });
@@ -107,7 +101,6 @@ describe('GlobalSettingService — TASK-402 revive-on-create for soft-deleted ke
     const restored = buildDeletedRow({ resourceStatus: 'ENABLED' });
     mockGlobalSettingRepository.findFirst.mockResolvedValue(buildDeletedRow());
     mockGlobalSettingRepository.restore.mockResolvedValue(restored);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockGlobalSettingRepository.update.mockImplementation(async (_id: string, entity: any) => entity);
 
     const result = await service.create({
@@ -166,7 +159,6 @@ describe('GlobalSettingService — TASK-402 revive-on-create for soft-deleted ke
 
   it('falls back to a plain create when no DELETED row matches', async () => {
     mockGlobalSettingRepository.findFirst.mockRejectedValue(new DataNotFoundException('globalSetting', '{}'));
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockGlobalSettingRepository.create.mockImplementation(async (entity: any) => entity);
 
     const result = await service.create({
@@ -188,7 +180,6 @@ describe('GlobalSettingService — TASK-402 revive-on-create for soft-deleted ke
 
   it('does not probe for DELETED rows when no tenant context is resolvable', async () => {
     mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'admin-1' } : null));
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockGlobalSettingRepository.create.mockImplementation(async (entity: any) => entity);
 
     await service.create({

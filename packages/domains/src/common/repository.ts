@@ -18,16 +18,13 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
   constructor(
     private readonly _unitOfWorkService: CoreUnitOfWorkService,
     protected readonly _modelName: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private readonly _mapper: BaseMapper<DomainEntity, any>,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private readonly _includes?: any,
     private readonly _defaultSearchFields?: string[],
   ) {
     this._databaseContext = this._unitOfWorkService.getDatabaseService();
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   protected get db(): any {
     if (!this._databaseContext) {
       this._databaseContext = this._unitOfWorkService.getDatabaseService();
@@ -60,7 +57,6 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
     // rolls back with the rest on partial failure. Mirrors the existing
     // `updateWithVersion(..., tx)` contract. Without `tx` the cached extended
     // client (`this.db`) is used — behaviour unchanged.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const delegate = tx ? (tx as Record<string, any>)[this._modelName] : this.db;
 
     const model = await delegate.create({
@@ -183,7 +179,6 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
     id: EntityId,
     entity: DomainEntity,
     expectedVersion: number,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     tx?: Prisma.TransactionClient | any,
   ): Promise<DomainEntity> {
     const changes = this._mapper.toPersistenceChanges(entity);
@@ -191,13 +186,11 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
     // `version` is database-owned. Even if a buggy caller put it in the
     // change set, we strip it here as defense in depth on top of the
     // mapper $toPersistence handler and applyChangesToEntity filter.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
     const { version: _v, ...safeChanges } = changes as Record<string, any>;
 
     // When a transaction client is supplied, route writes and the
     // disambiguating re-read through it; otherwise fall back to the
     // cached extended client (`this.db`).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const model: any = tx ? (tx as Record<string, any>)[this._modelName] : this.db;
 
     const result = await model.updateMany({
@@ -231,12 +224,10 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
    * site needs it today; promote to a generic helper if and when a second
    * caller appears.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async findByIdInContext(id: EntityId, tx?: Prisma.TransactionClient | any): Promise<DomainEntity> {
     if (!tx) {
       return this.findById(id);
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const model: any = (tx as Record<string, any>)[this._modelName];
     const found = await model.findUnique({
       where: { id },

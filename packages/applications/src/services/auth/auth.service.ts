@@ -1,6 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { IAuthService, AuthenticationTrackingData, UserValidationResponse } from './IAuthService';
+import { IAuthService, AuthenticationTrackingData } from './IAuthService';
 import { IUserService, CreateOAuthUserRequest } from '../user/user/';
 import { InternalServerErrorException } from '@arcaai/exceptions';
 import { EventTypes } from '@arcaai/domains';
@@ -53,60 +53,31 @@ export class AuthService implements IAuthService {
     return AuthDtoMapper.ToResponse(user);
   }
 
-  /**
-   * Check if a JWT token has been revoked
-   * @param tokenId - The JWT token ID (jti claim)
-   * @returns Promise<boolean> - true if token is revoked, false otherwise
-   */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  public async isTokenRevoked(tokenId: string): Promise<boolean> {
-    // TODO: Implement token revocation checking
-    // This could check against a Redis blacklist or database table
-    // For now, return false (no tokens are revoked)
-    return false;
-  }
+
 
   /**
-   * Validate a user by ID and return user information
-   * @param userId - The user ID to validate
-   * @returns Promise<UserValidationResponse | null> - User data if valid, null otherwise
-   */
-  public async validateUser(userId: string): Promise<UserValidationResponse | null> {
-    try {
-      const user = await this.userService.fetchById(userId);
-      if (!user) {
-        return null;
-      }
-
-      return {
-        id: user.id,
-        email: user.UserProfile?.email || '',
-        isActive: !user.isDeleted,
-        departmentId: undefined,
-        lastLoginAt: user.lastLoginAt,
-      };
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    } catch (error) {
-      return null;
-    }
-  }
-
-  /**
-   * Track successful authentication for audit purposes
+   * Track successful authentication for audit purposes.
+   *
+   * Emission IS the persistence trigger: `AuditLogService`
+   * (`@OnEvent(EventTypes.UserAuthenticated)`) writes the HIPAA LOGIN audit
+   * row synchronously — envelope-encrypted, via the sanctioned unscoped
+   * client, because login runs before CLS tenant context exists. That handler
+   * is the persistence authority; do not add a second write here.
+   *
+   * TASK-541 B2 — replaces a stale TODO claiming no audit trail existed.
+   * The successful-auth trail has been persisted since TASK-314/369; what was
+   * genuinely missing was the FAILED-attempt trail, now carried by
+   * `EventTypes.UserAuthenticationFailed`.
+   *
    * @param userId - The authenticated user ID
    * @param trackingData - Additional tracking information
    * @returns Promise<void>
    */
   public async trackAuthentication(userId: string, trackingData: AuthenticationTrackingData): Promise<void> {
-    // Emit event for audit logging
     this.eventEmitter.emit(EventTypes.UserAuthenticated, {
       userId,
       timestamp: new Date(),
       ...trackingData,
     });
-
-    // TODO: Implement additional tracking logic
-    // This could store authentication events in audit log database
-    // For HIPAA compliance, we need to track all access to medical data
   }
 }

@@ -32,7 +32,6 @@ vi.mock('../../generated/core-prisma-client/client.js', () => ({
   PrismaClient: class MockPrismaClient {
     $extends: (config: any) => any;
     constructor(_opts?: unknown) {
-      // eslint-disable-next-line @typescript-eslint/no-this-alias
       const self = this;
       this.$extends = (config: any) => {
         $extendsCalls.push(config);

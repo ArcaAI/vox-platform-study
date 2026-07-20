@@ -80,8 +80,11 @@ test.describe('TASK-531 cross-tenant — PATCH/DELETE on a foreign locked copy',
     const prober = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, FOREIGN_TENANT_KEY);
 
     const patch = await request.patch(`/api/v1/admin/audio/pipelines/${foreign.id}`, {
+      // Both the header and the body's REQUIRED `expectedVersion` — otherwise
+      // the validation pipe 400s before the ownership guard runs and the 404
+      // assertion below would pass for the wrong reason.
       headers: { ...auth(prober!.token), 'If-Match': `"${foreign.version}"` },
-      data: { name: 'Cross-tenant rename' },
+      data: { name: 'Cross-tenant rename', expectedVersion: foreign.version },
     });
 
     expect(patch.status()).toBe(404);

@@ -24,15 +24,12 @@ vi.mock('../../../../mappers', () => ({
 // module graph resolves without pulling the real DI container.
 vi.mock('../../../../common/unitsOfWork/core', () => ({ CoreUnitOfWorkService: vi.fn() }));
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const makeUow = (delegateByModel: Record<string, any>) => ({
   getDatabaseService: () => delegateByModel,
 });
 
 describe('DnaUsageRecordRepository aggregates (TASK-328 A5)', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let delegate: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let repo: any;
 
   beforeEach(async () => {
@@ -108,9 +105,7 @@ describe('DnaUsageRecordRepository aggregates (TASK-328 A5)', () => {
 });
 
 describe('DnaWritingStyleReportRepository aggregates (TASK-328 A5)', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let delegate: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let repo: any;
 
   beforeEach(async () => {

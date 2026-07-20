@@ -292,8 +292,7 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
   }
 
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<UserRoleAssignmentEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { limit, page, search } = props;
+    const { limit, page } = props;
     const userRoleAssignments = await this.userRoleAssignmentRepository.findAll(withFormattedPaginatedProps(props));
 
     const count = await this.userRoleAssignmentRepository.count(withFormattedCountProps(props));
@@ -312,8 +311,7 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
   }
 
   async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<UserRoleAssignmentEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { tenantId, limit, page, search } = props;
+    const { tenantId, limit, page } = props;
     const userRoleAssignments = await this.userRoleAssignmentRepository.findAll({
       ...withFormattedPaginatedProps(props),
       where: {
@@ -342,8 +340,7 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
   }
 
   async fetchAllCreatedByUser(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<UserRoleAssignmentEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { userId, limit, page, search } = props;
+    const { userId, limit, page } = props;
     const userRoleAssignments = await this.userRoleAssignmentRepository.findAll({
       ...withFormattedPaginatedProps(props),
       where: {
@@ -372,8 +369,7 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
   }
 
   async fetchAllByUserId(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<UserRoleAssignmentEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { userId, limit, page, search } = props;
+    const { userId, limit, page } = props;
     const userRoleAssignments = await this.userRoleAssignmentRepository.findAll({
       ...withFormattedPaginatedProps(props),
       where: {

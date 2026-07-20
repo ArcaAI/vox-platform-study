@@ -8,7 +8,7 @@ import { GracefulShutdownService, IGracefulShutdownService } from '../../service
 import { CanAny } from '../../decorators';
 
 const SERVICE_NAME = 'api';
-// eslint-disable-next-line turbo/no-undeclared-env-vars
+// eslint-disable-next-line turbo/no-undeclared-env-vars -- npm/pnpm auto-injects this from package.json at script runtime; it is not a configurable input, so it does not belong in turbo.json#globalEnv
 const SERVICE_VERSION = process.env.npm_package_version || '0.1.0';
 
 interface DownstreamService {

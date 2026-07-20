@@ -460,8 +460,7 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
     const canRetry = job.incrementRetry();
     if (!canRetry) {
       job.markAsDead();
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const updated = await this.jobRepository.update(id, job);
+      await this.jobRepository.update(id, job);
       throw new BadRequestException(`Job ${id} has exceeded maximum retries`);
     }
 

@@ -196,12 +196,15 @@ describe('HarnessPolicyScreen', () => {
         expect(screen.getByText(/visible to global admins only/)).toBeDefined();
     });
 
-    it('shows the elevated tabs and renders the live-config kill-switch form', async () => {
+    // TASK-532 (M-02): the elevated tabs still MOUNT for an elevated session —
+    // they just read now instead of editing (the editor moved to
+    // /agentic-policy). The kill-switch STATE is still surfaced here.
+    it('shows the elevated tabs and reports the live-engine state read-only', async () => {
         stubFetch();
         renderWithProviders(<HarnessPolicyScreen />, { searchParams: '?tab=live' });
 
         expect(await screen.findByText('Live documentation engine')).toBeDefined();
-        expect(screen.getByLabelText('Engine enabled')).toBeDefined();
+        expect(screen.getByText('Engine enabled')).toBeDefined();
         expect(screen.getByRole('tab', { name: 'Global default' })).toBeDefined();
     });
 
@@ -232,5 +235,84 @@ describe('HarnessPolicyScreen', () => {
 
         fireEvent.click(screen.getByRole('button', { name: /retry/i }));
         expect(await screen.findByText('Effective policy resolve')).toBeDefined();
+    });
+
+    /**
+     * TASK-532 B-1 (M-02) — `/agentic-policy` (tier 10-19) is now the ONE
+     * authoritative editor for the SYSTEM global-default row and the live engine
+     * config. Both screens used to edit the same two backend rows. Here those
+     * tabs demote to read-only summaries with a deep link, so there is no second
+     * form that can race the first.
+     */
+    describe('M-02 demoted Global default / Live config tabs', () => {
+        it('renders the global default as a read-only summary with no save form', async () => {
+            stubFetch();
+            renderWithProviders(<HarnessPolicyScreen />, { searchParams: '?tab=global' });
+
+            await screen.findByRole('heading', { name: /global default/i });
+            expect(screen.queryByRole('form', { name: 'Policy save panel' })).toBeNull();
+            expect(screen.queryByRole('button', { name: /save/i })).toBeNull();
+        });
+
+        it('deep-links the global default tab to the agentic-policy editor', async () => {
+            stubFetch();
+            renderWithProviders(<HarnessPolicyScreen />, { searchParams: '?tab=global' });
+
+            const link = await screen.findByRole('link', { name: /edit in agentic policy/i });
+            expect(link.getAttribute('href')).toBe('/agentic-policy?tab=policy');
+        });
+
+        it('renders the live config as a read-only summary deep-linking to the engine tab', async () => {
+            stubFetch();
+            renderWithProviders(<HarnessPolicyScreen />, { searchParams: '?tab=live' });
+
+            const link = await screen.findByRole('link', { name: /edit in agentic policy/i });
+            expect(link.getAttribute('href')).toBe('/agentic-policy?tab=engine');
+            expect(screen.queryByRole('switch')).toBeNull();
+        });
+    });
+
+    /**
+     * TASK-532 A-1c (E3-L1) — the three safety/PHI switches became
+     * global-admin-only server-side. The TENANT tab must render them disabled
+     * with a visible reason rather than letting a tenant admin flip a switch
+     * that 403s on save (rule 11 §5: a disabled control needs a visible reason).
+     */
+    describe('E3-L1 locked safety/PHI switches', () => {
+        // TASK-532: every key the TENANT route rejects must render read-only.
+        // `Safety provider`/`Safety model` were already in
+        // GLOBAL_ADMIN_ONLY_POLICY_KEYS before this ticket, yet the tenant tab
+        // still offered them as editable inputs whose save could only 403 — the
+        // same defect A-1c fixes for the three toggles.
+        const LOCKED = ['Safety guardrail', 'PHI detection', 'PHI fail-closed', 'Safety provider', 'Safety model'];
+
+        it.each(LOCKED)('renders %s disabled on the tenant tab', async (label) => {
+            stubFetch({ session: TENANT_ADMIN_SESSION });
+            renderWithProviders(<HarnessPolicyScreen />);
+
+            const control = (await screen.findByLabelText(label)) as HTMLInputElement;
+            // Primitive-agnostic: the Radix Switch exposes `data-disabled`,
+            // while a native <input> exposes the `disabled` property. The
+            // assertion is "not editable", not "built from one primitive".
+            const isDisabled = control.disabled === true || control.getAttribute('data-disabled') !== null;
+            expect(isDisabled, `${label} should be read-only for a tenant admin`).toBe(true);
+        });
+
+        it('explains why the locked switches cannot be edited', async () => {
+            stubFetch({ session: TENANT_ADMIN_SESSION });
+            renderWithProviders(<HarnessPolicyScreen />);
+
+            await screen.findByLabelText('Safety guardrail');
+            // One hint per locked field, with the exact copy the form renders.
+            expect(screen.getAllByText('Global admins only')).toHaveLength(LOCKED.length);
+        });
+
+        it('leaves the tenant-writable clinical thresholds editable', async () => {
+            stubFetch({ session: TENANT_ADMIN_SESSION });
+            renderWithProviders(<HarnessPolicyScreen />);
+
+            const coverage = await screen.findByLabelText('Coverage');
+            expect((coverage as HTMLInputElement).disabled).toBe(false);
+        });
     });
 });

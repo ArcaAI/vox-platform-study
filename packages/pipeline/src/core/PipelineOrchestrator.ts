@@ -506,7 +506,6 @@ export class PipelineOrchestrator {
    * the source result is guaranteed to have been captured first
    * (TASK-273 H-4).
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private handlePipelineCompleted(_pipelineName: string, _payload: PipelineEventMap[PipelineEvent.Completed]): void {
     // No-op today — kept for symmetry and future hook points.
   }

@@ -45,6 +45,9 @@ export interface AgenticPolicy {
     nerPriorsEnabled?: boolean | null;
     maxEditReruns?: number | null;
     regenFeedbackEnabled?: boolean | null;
+    // TASK-533 D-24 — MCP external-tools master switch (null = OFF). Global-admin
+    // governed, so the effective value always comes from the SYSTEM row.
+    mcpToolsEnabled?: boolean | null;
     updatedAt: string | null;
     version: number;
 }
@@ -79,6 +82,7 @@ export interface UpdateAgenticPolicyRequest {
     nerPriorsEnabled?: boolean | null;
     maxEditReruns?: number | null;
     regenFeedbackEnabled?: boolean | null;
+    mcpToolsEnabled?: boolean | null;
     reason?: string;
     expectedVersion?: number;
 }
@@ -119,4 +123,27 @@ export interface SettingCatalogItem {
 export interface SettingCatalog {
     items: SettingCatalogItem[];
     categories: string[];
+}
+
+/**
+ * TASK-533 B2 — one registry setting's EFFECTIVE value plus its backing-row
+ * version. `version: 0` (or absent) means the value is still the code default:
+ * no row is stored, so the gateway emits no ETag and a first write needs none.
+ */
+export interface EffectiveSetting {
+    key: string;
+    tier: string;
+    value: unknown;
+    /** Which cascade tier supplied the value (`global-kv` | `code-default` | ...). */
+    sourceScope: string;
+    version?: number;
+}
+
+/** Result of a registry write; `version` is the next `If-Match`. */
+export interface WriteRegistrySettingResult {
+    key: string;
+    tier: string;
+    value: unknown;
+    scope: string;
+    version: number;
 }

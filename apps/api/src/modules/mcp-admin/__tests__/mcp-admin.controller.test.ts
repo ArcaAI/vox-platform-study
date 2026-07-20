@@ -9,6 +9,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ForbiddenException } from '@nestjs/common';
+import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { McpAdminController } from '../mcp-admin.controller';
 
 type Ctx = { user?: { roles?: string[] | null; tenantId?: string } | null; tenantId?: string };
@@ -27,6 +28,35 @@ function makeController(ctx: Ctx) {
   const controller = new McpAdminController(service as never, cls as never);
   return { controller, service };
 }
+
+/**
+ * TASK-532 (M-12) — the MCP registry stops borrowing the `HarnessPolicy`
+ * authorization subject and uses its own `McpServer` subject (already present in
+ * the audit `ResourceType` enum, so no migration is needed). Reads stay `read`,
+ * writes stay `manage`; the service-level GLOBAL-ADMIN 403 on writes is
+ * unchanged (defense in depth), as asserted by the scoping specs below.
+ */
+describe('McpAdminController — authorization subjects', () => {
+  const permsFor = (handler?: string) =>
+    Reflect.getMetadata(
+      REQUIRED_PERMISSIONS_KEY,
+      handler ? (McpAdminController.prototype as never)[handler] : McpAdminController,
+    ) as { action: string; subject: string }[] | undefined;
+
+  it.each(['list', 'get'])('read route %s is gated by @CanRead(McpServer)', (handler) => {
+    expect(permsFor(handler)).toEqual([{ action: 'read', subject: 'McpServer' }]);
+  });
+
+  it.each(['create', 'update', 'remove'])('write route %s is gated by @CanManage(McpServer)', (handler) => {
+    expect(permsFor(handler)).toEqual([{ action: 'manage', subject: 'McpServer' }]);
+  });
+
+  it('no route borrows the HarnessPolicy subject any more', () => {
+    for (const handler of ['list', 'get', 'create', 'update', 'remove']) {
+      expect(permsFor(handler)?.some((p) => p.subject === 'HarnessPolicy'), handler).toBe(false);
+    }
+  });
+});
 
 describe('McpAdminController — scoping', () => {
   beforeEach(() => vi.clearAllMocks());

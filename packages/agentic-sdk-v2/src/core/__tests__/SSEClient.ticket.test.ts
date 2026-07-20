@@ -78,7 +78,6 @@ let ssSetItemSpy: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   lastMockES = null;
   eventSourceCtorSpy = vi.fn<(url: string, init?: EventSourceInit) => void>();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (globalThis as any).EventSource = class extends MockEventSource {
     constructor(url: string, init?: EventSourceInit) {
       super(url, init);
@@ -89,17 +88,13 @@ beforeEach(() => {
 
   lsSetItemSpy = vi.fn();
   ssSetItemSpy = vi.fn();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (globalThis as any).localStorage = { ...originalLocalStorage, setItem: lsSetItemSpy };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (globalThis as any).sessionStorage = { ...originalSessionStorage, setItem: ssSetItemSpy };
 });
 
 afterEach(() => {
   globalThis.EventSource = originalEventSource;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (globalThis as any).localStorage = originalLocalStorage;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (globalThis as any).sessionStorage = originalSessionStorage;
   lastMockES = null;
 });
@@ -316,7 +311,6 @@ describe('TASK-264 W0-1: SSEClient ticket-based auth', () => {
     // pre-migration callers compile, but connect() must surface a clear
     // error. See README §5 Deviations.
     const onError = vi.fn();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const client = new (SSEClient as any)(createMockLogger()) as SSEClient;
     client.onError(onError);
     client.connect('https://api.example.com/stream');

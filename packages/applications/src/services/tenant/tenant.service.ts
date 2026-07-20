@@ -560,8 +560,7 @@ export class TenantService extends BaseService implements ITenantService {
    * @returns Promise resolving to paginated tenant response
    */
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<TenantEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { limit, page, search } = props;
+    const { limit, page } = props;
     const tenants = await this.tenantRepository.findAll(withFormattedPaginatedProps(props, TENANT_FILTER_MODEL));
 
     const count = await this.tenantRepository.count(withFormattedCountProps(props, TENANT_FILTER_MODEL));
@@ -585,8 +584,7 @@ export class TenantService extends BaseService implements ITenantService {
    * @returns Promise resolving to paginated tenant response
    */
   async fetchAllByTenantCodeName(props: PaginatedQuery & { codeName: string }): Promise<FetchResponse<TenantEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { codeName, limit, page, search } = props;
+    const { codeName, limit, page } = props;
     const tenants = await this.tenantRepository.findAll({
       ...withFormattedPaginatedProps(props, TENANT_FILTER_MODEL),
       where: {
@@ -620,8 +618,7 @@ export class TenantService extends BaseService implements ITenantService {
    * @returns Promise resolving to paginated tenant response
    */
   async fetchAllCreatedByUser(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<TenantEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { userId, limit, page, search } = props;
+    const { userId, limit, page } = props;
     const tenants = await this.tenantRepository.findAll({
       ...withFormattedPaginatedProps(props, TENANT_FILTER_MODEL),
       where: {

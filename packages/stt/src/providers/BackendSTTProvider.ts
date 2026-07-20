@@ -176,7 +176,6 @@ export class RemoteSTTProvider extends BaseSTTProvider {
     this.totalAudioProcessed += resampled.length / WHISPER_SAMPLE_RATE;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async transcribeSegment(_audio: Float32Array): Promise<TranscriptionResult> {
     // Remote doesn't support direct segment transcription via WebSocket
     // For file transcription, use the REST API instead

@@ -232,7 +232,6 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async transcribeSegment(_audio: Float32Array): Promise<TranscriptionResult> {
     throw new Error('StreamingBackendSTTProvider does not support direct segment transcription. Use processAudio() for streaming.');
   }

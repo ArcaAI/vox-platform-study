@@ -13,7 +13,7 @@ import { GatewayError } from '@/shared/api';
 import type { WithEtag } from '@/shared/api';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import type { HarnessPolicy, UpdateHarnessPolicyRequest } from '../api';
-import { buildSparsePatch, fieldDraftValue, POLICY_FIELD_GROUPS, type PolicyField } from './policy-fields';
+import { buildSparsePatch, fieldDraftValue, LOCKED_FIELD_HINT, POLICY_FIELD_GROUPS, type PolicyField } from './policy-fields';
 
 export type PolicyMutation = UseMutationResult<WithEtag<HarnessPolicy>, Error, { patch: UpdateHarnessPolicyRequest; etag: string | null }>;
 
@@ -26,16 +26,18 @@ function FieldEditor({
     field,
     value,
     onChange,
+    disabled = false,
 }: {
     id: string;
     field: PolicyField;
     value: string | boolean;
     onChange: (value: string | boolean) => void;
+    disabled?: boolean;
 }) {
     if (field.kind === 'switch') {
         return (
             <div className="flex items-center gap-2">
-                <Switch id={id} checked={Boolean(value)} onCheckedChange={onChange} />
+                <Switch id={id} checked={Boolean(value)} onCheckedChange={onChange} disabled={disabled} />
                 <span className="text-muted-foreground font-mono text-xs">{value ? 'true' : 'false'}</span>
             </div>
         );
@@ -51,11 +53,14 @@ function FieldEditor({
                 step={field.kind === 'fraction' ? 0.05 : 1}
                 value={String(value)}
                 onChange={(event) => onChange(event.target.value)}
+                disabled={disabled}
                 className="h-8 font-mono text-xs"
             />
         );
     }
-    return <Input id={id} value={String(value)} onChange={(event) => onChange(event.target.value)} className="h-8 font-mono text-xs" />;
+    return (
+        <Input id={id} value={String(value)} onChange={(event) => onChange(event.target.value)} disabled={disabled} className="h-8 font-mono text-xs" />
+    );
 }
 
 /**
@@ -70,18 +75,28 @@ export function HarnessPolicyForm({
     mutation,
     onReloadLatest,
     successMessage,
+    lockedKeys,
 }: {
     policy: HarnessPolicy;
     etag: string | null;
     mutation: PolicyMutation;
     onReloadLatest: () => void;
     successMessage: string;
+    /**
+     * TASK-532 (E3-L1) — keys this editor renders read-only. The TENANT tab
+     * passes `TENANT_LOCKED_POLICY_KEYS`; the GLOBAL tab passes nothing (it may
+     * write every key). Locked fields are excluded from the sparse patch too, so
+     * a stale draft can never smuggle one into a save.
+     */
+    lockedKeys?: readonly PolicyField['key'][];
 }) {
     const uid = useId();
     const [drafts, setDrafts] = useState<Record<string, string | boolean>>({});
     const [reason, setReason] = useState('');
 
+    const locked = new Set<string>(lockedKeys ?? []);
     const patch = buildSparsePatch(policy, drafts);
+    for (const key of locked) delete (patch as Record<string, unknown>)[key];
     const dirty = Object.keys(patch).length > 0;
 
     function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -116,6 +131,7 @@ export function HarnessPolicyForm({
                             {group.fields.map((field) => {
                                 const id = `${uid}-${field.key}`;
                                 const value = drafts[field.key] ?? fieldDraftValue(field, policy);
+                                const isLocked = locked.has(field.key);
                                 return (
                                     <div key={field.key} className="flex flex-col gap-1.5">
                                         <Label htmlFor={id} className="text-muted-foreground text-xs font-medium">
@@ -125,8 +141,10 @@ export function HarnessPolicyForm({
                                             id={id}
                                             field={field}
                                             value={value}
+                                            disabled={isLocked}
                                             onChange={(next) => setDrafts((current) => ({ ...current, [field.key]: next }))}
                                         />
+                                        {isLocked ? <p className="text-muted-foreground text-xs">{LOCKED_FIELD_HINT}</p> : null}
                                         {field.hint ? <p className="text-muted-foreground text-xs">{field.hint}</p> : null}
                                     </div>
                                 );

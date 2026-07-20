@@ -30,7 +30,6 @@ describe('GlobalSettingEntity — Phase 0 Item 2 immutable fields', () => {
     (field) => {
       const entity = build();
       expect(() => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (entity as any)[field] = field === 'locked' ? true : 'attacker';
       }).toThrow(/immutable|cannot be modified/i);
     },

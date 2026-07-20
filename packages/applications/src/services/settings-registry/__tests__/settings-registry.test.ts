@@ -98,6 +98,49 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
     expect(HOPE_SETTINGS_REGISTRY.has('tts.credential.sarvam')).toBe(true);
   });
 
+  // TASK-532 work-stream A-2 (E3-L2, OD-2) — the two pipeline toggles that gate
+  // guardrail's primary caller (the harness) and NLP auto-extraction become
+  // global-admin-only. Enforcement reads THIS metadata, so the descriptor is the
+  // contract, not a hand-rolled key list in the service.
+  it('flags pipeline.harnessEnabled + pipeline.autoNerEnabled as globalOnly, leaving the other two tenant-writable', () => {
+    for (const key of ['pipeline.harnessEnabled', 'pipeline.autoNerEnabled']) {
+      expect(HOPE_SETTINGS_REGISTRY.getOrThrow(key).globalOnly, key).toBe(true);
+    }
+    for (const key of ['pipeline.autoSummaryEnabled', 'pipeline.dnaStyleEnabled']) {
+      expect(HOPE_SETTINGS_REGISTRY.getOrThrow(key).globalOnly ?? false, key).toBe(false);
+    }
+  });
+
+  it('leaves the pipeline maxScope cascade untouched by the globalOnly lock', () => {
+    // Only WHO may write changed — the cascade shape must not drift.
+    expect(HOPE_SETTINGS_REGISTRY.getOrThrow('pipeline.harnessEnabled').maxScope).toBe('department');
+    expect(HOPE_SETTINGS_REGISTRY.getOrThrow('pipeline.autoNerEnabled').maxScope).toBe('doctor');
+  });
+
+  // TASK-531 (GAP-T3) — the nightly SYSTEM-template resync sweep. Registering
+  // these makes the sweep discoverable and writable through the admin settings
+  // surface instead of being an unmanageable pair of magic strings read straight
+  // out of AppSettings.
+  it('registers the pipeline template-resync sweep controls', () => {
+    expect(HOPE_SETTINGS_REGISTRY.getOrThrow('pipeline.templateResync.enabled')).toMatchObject({
+      tier: 'global-kv',
+      dataType: 'boolean',
+      maxScope: 'system',
+      globalOnly: true,
+      killSwitch: true,
+      // Governance: a kill-switch defaults OFF. The sweep is turned ON by a
+      // seeded platform VALUE, not by flipping this fail-safe default.
+      default: false,
+    });
+    expect(HOPE_SETTINGS_REGISTRY.getOrThrow('pipeline.templateResync.cron')).toMatchObject({
+      tier: 'global-kv',
+      dataType: 'string',
+      maxScope: 'system',
+      globalOnly: true,
+      default: '0 3 * * *',
+    });
+  });
+
   it('registers the entitlements kill-switch as a global-only flag', () => {
     const ks = HOPE_SETTINGS_REGISTRY.getOrThrow('entitlements.enabled');
     expect(ks.globalOnly).toBe(true);

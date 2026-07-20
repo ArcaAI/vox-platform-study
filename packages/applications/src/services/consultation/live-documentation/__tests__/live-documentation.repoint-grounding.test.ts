@@ -112,19 +112,12 @@ function buildDeps(httpMock = buildHttpMock()) {
   };
 
   const service = new LiveDocumentationService(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     httpMock as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     configService as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     cacheService as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     redisSubscriber as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     audioBridge as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     contextItemRepository as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     harnessPolicyService as any,
   );
 

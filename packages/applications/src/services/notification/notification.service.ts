@@ -152,8 +152,7 @@ export class NotificationService extends BaseService implements INotificationSer
    * everyone else is pinned to CLS `tenantId`.
    */
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<NotificationEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { limit, page, search } = props;
+    const { limit, page } = props;
     const tenantScopedWhere = this.buildTenantWhere();
 
     const [notifications, count] = await Promise.all([
@@ -187,8 +186,7 @@ export class NotificationService extends BaseService implements INotificationSer
    * GLOBAL_ADMIN bypasses for admin-tooling cross-tenant listing.
    */
   async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<NotificationEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { tenantId, limit, page, search } = props;
+    const { tenantId, limit, page } = props;
 
     if (tenantId !== this.tenantId && !this.isSuperAdmin()) {
       throw new NotFoundException('Resource not found');
@@ -227,8 +225,7 @@ export class NotificationService extends BaseService implements INotificationSer
    * never enumerate notifications created by that user in Tenant-B.
    */
   async fetchAllCreatedByUser(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<NotificationEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { userId, limit, page, search } = props;
+    const { userId, limit, page } = props;
     const tenantScopedWhere = this.buildTenantWhere({ createdBy: userId });
 
     const [notifications, count] = await Promise.all([

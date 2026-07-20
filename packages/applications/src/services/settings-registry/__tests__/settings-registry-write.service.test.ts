@@ -33,13 +33,20 @@ function makeService(opts: { roles?: string[]; cached?: any } = {}) {
       k === 'user' ? { id: 'u1', roles: opts.roles ?? ['GLOBAL_ADMIN'] } : k === 'tenantId' ? 'tenant-abc' : undefined,
     ),
   };
+  // TASK-533 B2 — the CAS version now comes from a FRESH repository read, not
+  // from the (45s-stale) AppSettings snapshot. `opts.cached` therefore drives
+  // this repository stub; `getFromCache` is no longer consulted for the write.
+  const globalSettingRepository = {
+    findFirst: vi.fn(async () => opts.cached ?? null),
+  };
   const svc = new SettingsRegistryWriteService(
     appSettings as any,
     globalSettings as any,
     emitter as any,
     cls as any,
+    globalSettingRepository as any,
   );
-  return { svc, appSettings, globalSettings, emitter };
+  return { svc, appSettings, globalSettings, emitter, globalSettingRepository };
 }
 
 beforeEach(() => {
@@ -145,9 +152,13 @@ describe('SettingsRegistryWriteService — gates and persistence (§5 test 11)',
     expect(appSettings.refreshCache).toHaveBeenCalledTimes(1);
   });
 
-  it('UPDATES the existing row under optimistic concurrency when one is cached', async () => {
+  // TASK-533 B2 — a write against an EXISTING row now requires the caller's
+  // observed version (If-Match). Before B2 the service silently supplied the
+  // cached version itself, which is what let two concurrent edits clobber each
+  // other; the precondition is now the caller's to state.
+  it('UPDATES the existing row under optimistic concurrency when the caller supplies its version', async () => {
     const { svc, globalSettings } = makeService({ cached: { id: 'gs-42', version: 7 } });
-    await svc.write('agentic.context.liveDelta.maxChars', 9000);
+    await svc.write('agentic.context.liveDelta.maxChars', 9000, { expectedVersion: 7 });
 
     expect(globalSettings.update).toHaveBeenCalledWith('gs-42', expect.objectContaining({ expectedVersion: 7 }));
     expect(globalSettings.create).not.toHaveBeenCalled();

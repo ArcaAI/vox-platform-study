@@ -38,7 +38,6 @@ const mockClsService = { get: vi.fn(), set: vi.fn() };
 
 /** Minimal entity shape for isSecretEntity parity checks (mapper reads 3 fields). */
 function secretProbe(overrides: { encryptedValue?: Uint8Array | null; namespace?: string | null; key?: string }): never {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return { encryptedValue: null, namespace: 'general', key: 'plain.key', ...overrides } as any;
 }
 
@@ -51,17 +50,11 @@ describe('GlobalSetting list faceting (TASK-443)', () => {
         mockGlobalSettingRepository.count.mockResolvedValue(0);
         mockClsService.get.mockReturnValue(null);
         service = new GlobalSettingService(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             mockGlobalSettingRepository as any,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             mockUserRepository as any,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             mockCryptoService as any,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             mockSecretsService as any,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             mockEventEmitter as any,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             mockClsService as any,
         );
     });

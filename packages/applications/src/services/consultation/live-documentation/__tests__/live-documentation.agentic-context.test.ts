@@ -1,0 +1,221 @@
+/**
+ * LiveDocumentationService — `agentic.context.*` live lane (TASK-533 B1).
+ *
+ * TASK-524 shipped a governed READ facade (`EffectiveSettingsService`) and a
+ * governed WRITE route (`PUT /admin/settings/registry/:key`) — and said so itself:
+ * "Live-doc/harness CONSUMPTION of the resolved value is a later ticket; this only
+ * makes the read honest" (`effective-settings.service.ts:75-77`).
+ *
+ * Until this slice, live-doc resolved the six knobs from
+ * `env ?? AGENTIC_CONTEXT_DEFAULTS` **in its constructor**. Two consequences:
+ *   1. a global admin's registry write changed what `GET /admin/settings/registry`
+ *      reported and changed NOTHING about the running loop, and
+ *   2. even the env value was frozen at construction, so nothing could move
+ *      without a redeploy.
+ *
+ * The contract pinned here (ticket §5.2): a change through the TASK-524 lane is
+ * picked up by the NEXT flush, with no redeploy — and **env now loses to DB**.
+ * Env survives only as the fallback when nothing is stored, which keeps an
+ * untouched deployment behaving byte-for-byte as before.
+ */
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { LiveDocumentationService } from '../live-documentation.service';
+import { AGENTIC_CONTEXT_DEFAULTS } from '../../../settings-registry/descriptors/agentic-context.descriptors';
+
+const CID = 'consultation-ctx-1';
+const TENANT = 'tenant-ctx';
+
+function buildHttpMock() {
+  const post = vi.fn().mockImplementation((url: string) => {
+    if (String(url).includes('/classify/tokens')) return Promise.resolve({ data: { entities: [] } });
+    if (String(url).includes('/generate')) return Promise.resolve({ data: { summary: 'S: ok' } });
+    return Promise.resolve({ data: {} });
+  });
+  return { axiosRef: { post } };
+}
+
+/**
+ * @param stored values present in the registry (the `global-kv` tier)
+ * @param env   `LIVE_DOC_*` / `AGENTIC_CONTEXT_*` env overrides
+ */
+function buildService(stored: Record<string, unknown> = {}, env: Record<string, string> = {}) {
+  const cacheService = {
+    get: vi.fn().mockResolvedValue(null),
+    set: vi.fn().mockResolvedValue(undefined),
+    setex: vi.fn().mockResolvedValue(undefined),
+    publish: vi.fn().mockResolvedValue(undefined),
+    del: vi.fn().mockResolvedValue(undefined),
+    eval: vi.fn().mockResolvedValue(1),
+    sadd: vi.fn().mockResolvedValue(1),
+    srem: vi.fn().mockResolvedValue(1),
+    smembers: vi.fn().mockResolvedValue([]),
+    expire: vi.fn().mockResolvedValue(true),
+  };
+  const redisSubscriber = { subscribeToChannel: vi.fn(), unsubscribeFromChannel: vi.fn() };
+  const configService = { get: vi.fn((key: string) => env[key]) };
+  const harnessPolicyService = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'm' }) };
+
+  // Mirrors the real facade: a stored value reports sourceScope 'global-kv';
+  // otherwise the descriptor default under 'code-default'.
+  const resolveEffective = vi.fn(async (key: string) => {
+    const knob = key.replace('agentic.context.', '') as keyof typeof AGENTIC_CONTEXT_DEFAULTS;
+    return key in stored || knob in stored
+      ? { key, tier: 'global-kv', value: stored[knob] ?? stored[key], sourceScope: 'global-kv' }
+      : { key, tier: 'global-kv', value: AGENTIC_CONTEXT_DEFAULTS[knob], sourceScope: 'code-default' };
+  });
+
+  const service = new LiveDocumentationService(
+    buildHttpMock() as never,
+    configService as never,
+    cacheService as never,
+    redisSubscriber as never,
+    undefined as never,
+    undefined as never,
+    harnessPolicyService as never,
+    undefined as never,
+    undefined as never,
+    { resolveEffective } as never,
+  );
+  return { service, resolveEffective };
+}
+
+describe('LiveDocumentationService — agentic.context.* live lane (TASK-533 B1)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('reads the STORED registry value, not the code default', async () => {
+    const { service } = buildService({ 'liveDelta.maxChars': 999 });
+
+    const knobs = await service.resolveAgenticContext(TENANT);
+
+    expect(knobs.liveDeltaMaxChars).toBe(999);
+  });
+
+  it('DB beats env — a stored value wins over an explicit env override', async () => {
+    const { service } = buildService(
+      { 'liveDelta.maxChars': 999 },
+      { AGENTIC_CONTEXT_LIVE_DELTA_MAX_CHARS: '4321' },
+    );
+
+    const knobs = await service.resolveAgenticContext(TENANT);
+
+    expect(knobs.liveDeltaMaxChars).toBe(999);
+  });
+
+  it('falls back to env when nothing is stored (untouched deployments unchanged)', async () => {
+    const { service } = buildService({}, { AGENTIC_CONTEXT_LIVE_DELTA_MAX_CHARS: '4321', LIVE_DOC_SEGMENT_THRESHOLD: '7' });
+
+    const knobs = await service.resolveAgenticContext(TENANT);
+
+    expect(knobs.liveDeltaMaxChars).toBe(4321);
+    expect(knobs.segmentThreshold).toBe(7);
+  });
+
+  it('falls back to the code default when neither is set', async () => {
+    const { service } = buildService();
+
+    const knobs = await service.resolveAgenticContext(TENANT);
+
+    expect(knobs.liveDeltaMaxChars).toBe(AGENTIC_CONTEXT_DEFAULTS['liveDelta.maxChars']);
+    expect(knobs.segmentThreshold).toBe(AGENTIC_CONTEXT_DEFAULTS['liveFlush.segmentThreshold']);
+    expect(knobs.idleMs).toBe(AGENTIC_CONTEXT_DEFAULTS['liveFlush.idleMs']);
+    expect(knobs.claimCheckMinBytes).toBe(AGENTIC_CONTEXT_DEFAULTS['claimCheck.minBytes']);
+    expect(knobs.transcriptMode).toBe(AGENTIC_CONTEXT_DEFAULTS['transcript.mode']);
+    expect(knobs.tokenBudgetPerRun).toBe(AGENTIC_CONTEXT_DEFAULTS['tokenBudget.perRun']);
+  });
+
+  it('resolves ALL SIX knobs through the facade', async () => {
+    const { service, resolveEffective } = buildService();
+
+    await service.resolveAgenticContext(TENANT);
+
+    const keys = resolveEffective.mock.calls.map((c) => c[0]).sort();
+    expect(keys).toEqual(
+      [
+        'agentic.context.claimCheck.minBytes',
+        'agentic.context.liveDelta.maxChars',
+        'agentic.context.liveFlush.idleMs',
+        'agentic.context.liveFlush.segmentThreshold',
+        'agentic.context.tokenBudget.perRun',
+        'agentic.context.transcript.mode',
+      ].sort(),
+    );
+  });
+
+  it('is NOT frozen at construction — a registry change lands on the next resolution', async () => {
+    const stored: Record<string, unknown> = { 'liveDelta.maxChars': 100 };
+    const { service } = buildService(stored);
+
+    expect((await service.resolveAgenticContext(TENANT)).liveDeltaMaxChars).toBe(100);
+
+    // Global admin writes a new value. Same instance, no redeploy.
+    stored['liveDelta.maxChars'] = 200;
+
+    expect((await service.resolveAgenticContext(TENANT)).liveDeltaMaxChars).toBe(200);
+  });
+
+  it('passes the session tenant into the resolution context', async () => {
+    const { service, resolveEffective } = buildService();
+
+    await service.resolveAgenticContext(TENANT);
+
+    expect(resolveEffective.mock.calls[0][1]).toMatchObject({ tenantId: TENANT });
+  });
+
+  it('degrades to env/defaults when the facade throws — never blocks a flush', async () => {
+    const { service, resolveEffective } = buildService({}, { AGENTIC_CONTEXT_LIVE_DELTA_MAX_CHARS: '4321' });
+    resolveEffective.mockRejectedValue(new Error('settings backend down'));
+
+    const knobs = await service.resolveAgenticContext(TENANT);
+
+    expect(knobs.liveDeltaMaxChars).toBe(4321);
+  });
+
+  it('ignores a stored value of the wrong type rather than producing NaN', async () => {
+    const { service } = buildService({ 'liveDelta.maxChars': 'not-a-number' });
+
+    const knobs = await service.resolveAgenticContext(TENANT);
+
+    expect(knobs.liveDeltaMaxChars).toBe(AGENTIC_CONTEXT_DEFAULTS['liveDelta.maxChars']);
+  });
+
+  it('behaves exactly as before when no facade is wired (arity-preserving fixtures)', async () => {
+    const cacheService = {
+      get: vi.fn().mockResolvedValue(null),
+      set: vi.fn(),
+      setex: vi.fn(),
+      publish: vi.fn(),
+      del: vi.fn(),
+      eval: vi.fn(),
+      sadd: vi.fn(),
+      srem: vi.fn(),
+      smembers: vi.fn().mockResolvedValue([]),
+      expire: vi.fn(),
+    };
+    const service = new LiveDocumentationService(
+      buildHttpMock() as never,
+      { get: vi.fn((k: string) => (k === 'AGENTIC_CONTEXT_LIVE_DELTA_MAX_CHARS' ? '555' : undefined)) } as never,
+      cacheService as never,
+      { subscribeToChannel: vi.fn(), unsubscribeFromChannel: vi.fn() } as never,
+    );
+
+    const knobs = await service.resolveAgenticContext(TENANT);
+
+    expect(knobs.liveDeltaMaxChars).toBe(555);
+  });
+
+  it('the flush actually consumes the resolved delta cap', async () => {
+    // End-to-end proof the lane is connected, not just resolvable: a tiny stored
+    // cap must truncate the delta the flush sends to SMR.
+    const { service } = buildService({ 'liveDelta.maxChars': 20 });
+    service.start({ consultationId: CID, tenantId: TENANT });
+    service.ingestSegment(CID, { text: 'a'.repeat(200), isFinal: true, segmentId: 's1' });
+    service.ingestSegment(CID, { text: 'b'.repeat(200), isFinal: true, segmentId: 's2' });
+
+    await service.flush(CID, { force: true });
+
+    const http = (service as unknown as { httpService: { axiosRef: { post: ReturnType<typeof vi.fn> } } }).httpService;
+    const generate = http.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/generate'));
+    // The soft cap admits the first segment whole, then stops — so 'b' never ships.
+    expect(String((generate![1] as { prompt: string }).prompt)).not.toContain('b'.repeat(200));
+  });
+});

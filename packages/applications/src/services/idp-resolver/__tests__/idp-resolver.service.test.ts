@@ -6,9 +6,7 @@ const discoverMock = vi.fn();
 
 vi.mock('openid-client', () => {
   class FakeClient {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     options: any;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     constructor(options: any) {
       this.options = options;
     }
@@ -25,9 +23,7 @@ const samlConstructorMock = vi.fn();
 
 vi.mock('@node-saml/node-saml', () => {
   class FakeSAML {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     options: any;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     constructor(options: any) {
       this.options = options;
       samlConstructorMock(options);
@@ -48,11 +44,8 @@ const REDIRECT_URI = 'https://api.hope.dev/auth/sso/callback';
 function makeIssuer() {
   return {
     issuer: 'https://acme.okta.com',
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Client: class {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       options: any;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       constructor(options: any) {
         this.options = options;
       }
@@ -82,7 +75,6 @@ function makeService(opts: { withVault?: boolean; withRedis?: boolean } = { with
   const repo = { findEnabledByTenantAndProtocol: vi.fn(), findById: vi.fn() };
   const secrets = opts.withVault !== false ? fakeSecrets() : undefined;
   const redisCache = opts.withRedis ? fakeRedisCache() : undefined;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const svc = new IdpResolverService(repo as any, secrets as any, redisCache as any);
   return { svc, repo, secrets, redisCache };
 }
@@ -126,7 +118,6 @@ describe('IdpResolverService.buildClient (TASK-498)', () => {
     const { svc } = makeService();
     const client = await svc.buildClient('https://acme.okta.com', 'client-abc', 'secret-xyz', REDIRECT_URI);
     expect(discoverMock).toHaveBeenCalledWith('https://acme.okta.com');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((client as any).options).toMatchObject({
       client_id: 'client-abc',
       client_secret: 'secret-xyz',
@@ -163,7 +154,6 @@ describe('IdpResolverService.resolveForTenant (TASK-498, D4 — repository read,
     repo.findEnabledByTenantAndProtocol.mockResolvedValue(enabledProvider());
     const { client, provider } = await svc.resolveForTenant(TENANT, IdpProtocol.OIDC, REDIRECT_URI);
     expect(secrets!.decrypt).toHaveBeenCalledWith('vault:v1:c2VjcmV0');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((client as any).options.client_id).toBe('client-abc');
     expect(provider.tenantId).toBe(TENANT);
   });
@@ -204,7 +194,6 @@ describe('IdpResolverService.resolveByProviderId (TASK-498 — callback path, no
     const provider = enabledProvider();
     repo.findById.mockResolvedValue(provider);
     const { client } = await svc.resolveByProviderId(provider.id, REDIRECT_URI);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((client as any).options.client_id).toBe('client-abc');
     expect(discoverMock).toHaveBeenCalledTimes(1);
   });
@@ -314,7 +303,6 @@ describe('IdpResolverService.resolveSamlForTenant (TASK-499)', () => {
     repo.findEnabledByTenantAndProtocol.mockResolvedValue(enabledSamlProvider());
     const { client, provider } = await svc.resolveSamlForTenant(TENANT, ACS_URL);
     expect(secrets!.decrypt).toHaveBeenCalledWith('vault:v1:c3Bwcml2YXRla2V5');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((client as any).options.issuer).toBe('https://api.hope.dev/saml/acme');
     expect(provider.tenantId).toBe(TENANT);
   });
@@ -334,7 +322,6 @@ describe('IdpResolverService.resolveSamlForTenant (TASK-499)', () => {
       }),
     );
     const { client } = await svc.resolveSamlForTenant(TENANT, ACS_URL);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((client as any).options.privateKey).toBeUndefined();
   });
 

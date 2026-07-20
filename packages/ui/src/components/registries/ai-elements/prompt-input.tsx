@@ -568,7 +568,6 @@ export const PromptInput = ({
         }
       }
     },
-    // eslint-disable-next-line
     [usingProvider],
   );
 

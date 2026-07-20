@@ -47,6 +47,9 @@ export * from './harness-observability';
 export * from './agent-trajectory';
 // S2 follow-up — nightly AgentTrajectoryStep hard-retention prune.
 export * from './agent-trajectory-retention';
+// TASK-533 B6 (GAP-A1) — gate-edit learning loop: mining job, few-shot
+// exemplar retrieval, and the SME-gated eval regression-corpus export.
+export * from './gate-edit-mining';
 // Phase 3A item 6 — read-only effective agentic instruction inventory.
 export * from './agentic-instructions';
 export * from './prompt-management';

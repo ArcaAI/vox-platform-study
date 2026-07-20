@@ -41,8 +41,7 @@ export class PermissionService extends BaseService implements IPermissionService
   }
 
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<PermissionEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { limit, page, search } = props;
+    const { limit, page } = props;
     const permissions = await this.permissionRepository.findAll(withFormattedPaginatedProps(props));
 
     const count = await this.permissionRepository.count(withFormattedCountProps(props));
@@ -60,14 +59,12 @@ export class PermissionService extends BaseService implements IPermissionService
     });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<PermissionEntity>> {
+  async fetchAllByTenantId(_props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<PermissionEntity>> {
     throw new NotImplementedException();
   }
 
   async fetchAllCreatedByUser(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<PermissionEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { userId, limit, page, search } = props;
+    const { userId, limit, page } = props;
     const permissions = await this.permissionRepository.findAll({
       ...withFormattedPaginatedProps(props),
       where: {

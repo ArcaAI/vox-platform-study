@@ -480,7 +480,7 @@ export const ALL_SETTINGS: SettingDef[] = [
 // boot-time duplicate-key invariant). Only GLOBAL_ADMIN can flip it
 // (enforced by the `GlobalSettingService` locked write-guard). Default OFF.
 // =============================================================================
-const PLATFORM_SETTINGS: SettingDef[] = [
+export const PLATFORM_SETTINGS: SettingDef[] = [
     {
         id: SEED_GLOBAL_SETTING_IDS.SYSTEM_FF_LOCAL_RAW_CAPTURE,
         tenantId: SYSTEM_TENANT_ID,
@@ -496,6 +496,44 @@ const PLATFORM_SETTINGS: SettingDef[] = [
         dataType: ValueType.Boolean,
         description:
             'Platform capability for local raw-stream dual-capture (TASK-332). The SDK-facing enablement is this AND the per-tenant TenantFrontendConfig.captureRawAudio toggle. Locked — only GLOBAL_ADMIN may change it.',
+        locked: true,
+    },
+    // TASK-531 (GAP-T3) — turn the nightly SYSTEM-template resync sweep ON.
+    //
+    // The sweep's registry descriptor is a KILL-SWITCH, and the settings
+    // registry refuses at assembly to register a kill-switch that defaults ON
+    // (fail-safe governance, `SettingsRegistry.killSwitches()`). So the sweep is
+    // enabled the sanctioned way: the descriptor default stays OFF and this
+    // platform VALUE turns it on. `defaultValue` stays 'false' so a reset
+    // reverts to the fail-safe, and `locked` keeps the flip GLOBAL_ADMIN-only.
+    //
+    // Safe to run unattended by construction: the reconciler only ever adds
+    // missing templates and fast-forwards copies it can prove are pristine. An
+    // unlocked (customized) pipeline, or a locked copy that drifted from its own
+    // version history, is skipped and logged — never overwritten.
+    {
+        id: SEED_GLOBAL_SETTING_IDS.SYSTEM_PIPELINE_TEMPLATE_RESYNC_ENABLED,
+        tenantId: SYSTEM_TENANT_ID,
+        namespace: 'pipeline',
+        name: 'Enable Pipeline Template Resync',
+        key: 'pipeline.templateResync.enabled',
+        value: 'true',
+        defaultValue: 'false',
+        dataType: ValueType.Boolean,
+        description:
+            "Runs the nightly sweep that reconciles every tenant's ASR pipeline catalog against the SYSTEM templates (TASK-531). Customized pipelines are never touched. Locked — only GLOBAL_ADMIN may change it.",
+        locked: true,
+    },
+    {
+        id: SEED_GLOBAL_SETTING_IDS.SYSTEM_PIPELINE_TEMPLATE_RESYNC_CRON,
+        tenantId: SYSTEM_TENANT_ID,
+        namespace: 'pipeline',
+        name: 'Pipeline Template Resync Schedule',
+        key: 'pipeline.templateResync.cron',
+        value: '0 3 * * *',
+        defaultValue: '0 3 * * *',
+        dataType: ValueType.String,
+        description: 'Cron expression for the nightly SYSTEM-template resync sweep (TASK-531). Locked — only GLOBAL_ADMIN may change it.',
         locked: true,
     },
 ];

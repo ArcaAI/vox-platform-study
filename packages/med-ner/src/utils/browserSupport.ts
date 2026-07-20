@@ -99,7 +99,7 @@ export function getHardwareConcurrency(): number {
   if (!isBrowser()) {
     // In Node.js, use os.cpus()
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires -- this package builds for the browser; a static `import 'os'` would fail bundling there, so the Node-only fallback must stay a runtime require() guarded by the surrounding try/catch
       const os = require('os');
       return os.cpus().length;
     } catch {

@@ -65,10 +65,16 @@ const PLATFORM_WIDE_KEYS = [
   'ENTITLEMENTS_ENABLED',
 ] as const;
 
-// TASK-332 — system-tenant (SYSTEM_TENANT_ID) platform capability, not per-tenant
-// and not part of the rate-limit block. A single locked row for local raw-stream
-// dual-capture, so it falls outside the per-prefix model and is counted separately.
-const SYSTEM_WIDE_KEYS = ['SYSTEM_FF_LOCAL_RAW_CAPTURE'] as const;
+// System-tenant (SYSTEM_TENANT_ID) platform rows: not per-tenant and not part of
+// the rate-limit block, so they fall outside the per-prefix model and are counted
+// separately.
+//   TASK-332 — locked capability flag for local raw-stream dual-capture.
+//   TASK-531 — locked controls for the nightly SYSTEM-template resync sweep.
+const SYSTEM_WIDE_KEYS = [
+  'SYSTEM_FF_LOCAL_RAW_CAPTURE',
+  'SYSTEM_PIPELINE_TEMPLATE_RESYNC_ENABLED',
+  'SYSTEM_PIPELINE_TEMPLATE_RESYNC_CRON',
+] as const;
 
 function suffixesFor(prefix: string) {
   return PREFIXES_WITH_GENERAL.has(prefix)

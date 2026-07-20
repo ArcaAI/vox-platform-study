@@ -165,6 +165,40 @@ def _terminology_args(entities: list[NEREntity]) -> dict[str, list[str]]:
     return {"codes": codes, "terms": [e.text for e in entities]}
 
 
+def _tokens_from_stats(stats: dict[str, Any] | None) -> int:
+    """Total tokens reported by one generate call (TASK-533 B4).
+
+    PURE and deterministic — it only reads a value already recorded in the
+    activity result, so folding it inside the workflow is replay-safe. An old
+    history (or an engine that reports no usage) yields 0, which makes the budget
+    check inert and preserves the pre-B4 command sequence exactly.
+    """
+    if not stats:
+        return 0
+    usage = stats.get("usage") if isinstance(stats.get("usage"), dict) else {}
+    total = 0
+    for key in ("prompt_tokens", "promptTokens", "input_tokens", "inputTokens"):
+        value = stats.get(key, usage.get(key) if usage else None)
+        if isinstance(value, (int, float)):
+            total += int(value)
+            break
+    for key in ("completion_tokens", "completionTokens", "output_tokens", "outputTokens"):
+        value = stats.get(key, usage.get(key) if usage else None)
+        if isinstance(value, (int, float)):
+            total += int(value)
+            break
+    return total
+
+
+def _budget_exhausted(per_run_budget: int, tokens_used: int) -> bool:
+    """True when a per-run token budget is set AND spent (TASK-533 B4).
+
+    ``per_run_budget <= 0`` means UNBOUNDED — the shipped default, so this returns
+    False and the regen loop behaves exactly as it did before B4.
+    """
+    return per_run_budget > 0 and tokens_used >= per_run_budget
+
+
 @workflow.defn
 class HarnessPingWorkflow:
     """Trivial durable workflow that delegates to ``ping_activity``.
@@ -363,6 +397,16 @@ class HarnessDocWorkflow:
         if policy is not None:
             gate = HarnessGateConfig(
                 max_regen=policy.max_regen,
+                # TASK-533 B4 — per-run token budget, governed by
+                # `agentic.context.tokenBudget.perRun` and served on the effective
+                # policy. Per-field fallthrough like the knobs below: None ⇒ keep the
+                # input-snapshotted default (0 = unbounded), so an unset budget leaves
+                # the loop byte-identical to pre-B4.
+                token_budget_per_run=(
+                    policy.token_budget_per_run
+                    if policy.token_budget_per_run is not None
+                    else inp.gate.token_budget_per_run
+                ),
                 gate_sla_seconds=policy.gate_sla_seconds,
                 gate_escalation_seconds=policy.gate_escalation_seconds,
                 # TASK-355 Phase D (R-7): the optimistic kill-switch is snapshotted at
@@ -600,6 +644,14 @@ class HarnessDocWorkflow:
             "task-355-optimistic-delivery"
         )
         regens_used = 0
+        # TASK-533 B4 — running token spend for this run, folded from RECORDED
+        # ACTIVITY OUTPUTS (`generated.stats`). Deriving it this way is what keeps
+        # the budget stop replay-safe: it adds no command, reads no clock/env, and
+        # an old history simply yields no stats -> zero spend -> byte-identical
+        # behaviour. Deriving it from a new activity or workflow.now() would make
+        # this patched era #9 and require a fresh replay fixture.
+        tokens_used = 0
+        budget_stopped = False
         verdict = None
         generated = None
         assembled = None
@@ -712,7 +764,11 @@ class HarnessDocWorkflow:
                 degraded=degraded,
                 expected=list(COMPUTATIONAL_SENSOR_NAMES),
             )
-            if comp_verdict.decision == GateDecision.REGEN and regens_used < gate.max_regen:
+            # Fold this iteration's spend before deciding whether to regen again.
+            tokens_used += _tokens_from_stats(generated.stats)
+            budget_stopped = _budget_exhausted(gate.token_budget_per_run, tokens_used)
+
+            if comp_verdict.decision == GateDecision.REGEN and regens_used < gate.max_regen and not budget_stopped:
                 # capture the failed computational sensors as the next
                 # iteration's corrective critique (gated on regenFeedbackEnabled).
                 regen_feedback = build_regen_feedback(sensors.results, enabled=regen_feedback_enabled)
@@ -785,7 +841,7 @@ class HarnessDocWorkflow:
                 degraded=degraded,
                 expected=list(COMPUTATIONAL_SENSOR_NAMES) + inferential_expected,
             )
-            if verdict.decision == GateDecision.REGEN and regens_used < gate.max_regen:
+            if verdict.decision == GateDecision.REGEN and regens_used < gate.max_regen and not budget_stopped:
                 # critique from the full (computational + inferential)
                 # sensor pass for the next regen iteration.
                 regen_feedback = build_regen_feedback(
@@ -1067,6 +1123,11 @@ class HarnessDocWorkflow:
                     and verdict.decision == GateDecision.REGEN
                     and regens_used < gate.max_regen
                     and not self._ever_edited
+                    # TASK-533 B4 — the per-run token budget binds here too. This
+                    # is the THIRD regen site (post-delivery Q1 rerun); the two
+                    # pre-delivery branches already carried the conjunct, so a
+                    # budget-exhausted run could still buy one more generate here.
+                    and not budget_stopped
                 ):
                     # critique from the settled verdict feeds the Q1 regen.
                     regen_feedback = build_regen_feedback(
@@ -1075,6 +1136,11 @@ class HarnessDocWorkflow:
                     )
                     regens_used += 1
                     assembled, generated, sensors, regen_degraded = await _regen_compute()
+                    # TASK-533 B4 — count what this regen actually spent. Without
+                    # this the Q1 rerun is invisible to the budget, so a run could
+                    # report less spend than it incurred.
+                    tokens_used += _tokens_from_stats(generated.stats)
+                    budget_stopped = _budget_exhausted(gate.token_budget_per_run, tokens_used)
                     if regen_degraded:
                         degraded = True
                     draft = await _deliver_early(

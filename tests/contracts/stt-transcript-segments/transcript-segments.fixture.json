@@ -1,0 +1,90 @@
+{
+  "$comment": "TASK-533 D-22 — the stt-v2 -> apps/api transcript-segment contract. This file is the SHARED TRUTH for both sides: apps/stt-v2/tests/unit/test_transcript_segment_contract.py asserts the Python PRODUCERS emit exactly these payloads, and tests/contracts/stt-transcript-segments/stt-transcript-segments.contract.test.ts asserts the TypeScript CONSUMER (computeSegmentOffsets + persistTranscriptSegments) turns them into fully-populated TranscriptSegment rows. Editing one side without the other fails the opposite suite — which is precisely what did NOT exist when D-22 shipped: the consumer tests hand-fed ideal camelCase fixtures no producer ever emitted, so the pillar was starved in production while every test stayed green.",
+
+  "streaming": {
+    "$comment": "Built by StreamSession.build_transcript_segments(). Partials and whitespace-only finals are excluded; char offsets are exact because the same method owns the join rule used by build_transcript_text().",
+    "transcriptText": "Patient reports chest pain. No shortness of breath. Start amlodipine 5mg daily.",
+    "segments": [
+      {
+        "idx": 0,
+        "t0Ms": 0,
+        "t1Ms": 1500,
+        "speaker": "doctor",
+        "text": "Patient reports chest pain.",
+        "charStart": 0,
+        "charEnd": 27
+      },
+      {
+        "idx": 1,
+        "t0Ms": 1500,
+        "t1Ms": 3000,
+        "speaker": "patient",
+        "text": "No shortness of breath.",
+        "charStart": 28,
+        "charEnd": 51
+      },
+      {
+        "idx": 2,
+        "t0Ms": 3100,
+        "t1Ms": 5000,
+        "speaker": "doctor",
+        "text": "Start amlodipine 5mg daily.",
+        "charStart": 52,
+        "charEnd": 79
+      }
+    ]
+  },
+
+  "batch": {
+    "$comment": "Built by TranscriptionResult.build_transcript_segments() from sentence_timestamps (text + timing) joined to the VAD segments' diarization by maximum temporal overlap. Char offsets are deliberately ABSENT: the batch transcript text is assembled by the ASR engine, not by this method, so the consumer resolves offsets by text search (its designed path) rather than the producer guessing.",
+    "transcriptText": "Patient reports chest pain. No shortness of breath. Start amlodipine 5mg daily.",
+    "segments": [
+      {
+        "idx": 0,
+        "t0Ms": 0,
+        "t1Ms": 1500,
+        "speaker": "doctor",
+        "text": "Patient reports chest pain."
+      },
+      {
+        "idx": 1,
+        "t0Ms": 1500,
+        "t1Ms": 3000,
+        "speaker": "patient",
+        "text": "No shortness of breath."
+      },
+      {
+        "idx": 2,
+        "t0Ms": 3100,
+        "t1Ms": 5000,
+        "speaker": "doctor",
+        "text": "Start amlodipine 5mg daily."
+      }
+    ]
+  },
+
+  "legacyBatchMetadata": {
+    "$comment": "The PRE-D-22 shape the batch path actually sent (TranscriptionResult.to_dict()['segments'], reaching the consumer via the untyped metadata.segments fallback): snake_case, SECONDS, speaker_id, and no text at all. computeSegmentOffsets silently coerced every field to null and wrote rows carrying nothing but an ordinal. The consumer must now normalize this shape instead of nulling it, and must log loudly when a segment is genuinely unusable. Retained here so that normalization stays under test even after the producers are fixed.",
+    "transcriptText": "Patient reports chest pain. No shortness of breath.",
+    "segments": [
+      {
+        "start_time": 0.0,
+        "end_time": 1.5,
+        "duration": 1.5,
+        "is_speech": true,
+        "confidence": 0.98,
+        "speaker_id": "doctor",
+        "speaker_confidence": 0.91
+      },
+      {
+        "start_time": 1.5,
+        "end_time": 3.0,
+        "duration": 1.5,
+        "is_speech": true,
+        "confidence": 0.95,
+        "speaker_id": "patient",
+        "speaker_confidence": 0.88
+      }
+    ]
+  }
+}

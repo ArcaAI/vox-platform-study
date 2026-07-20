@@ -9,6 +9,38 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { SEEDED_API_KEY_SERVICE_ACCOUNT } from '../../../../tests/helpers';
+
+/**
+ * Real RBAC check routes — `@Controller('rbac/check')` in
+ * apps/api/src/modules/rbac/permission-check.controller.ts.
+ *
+ * This spec previously targeted `/rbac/permissions/effective`,
+ * `/rbac/permissions/check-bulk` and `/rbac/permissions/check`, none of which
+ * have ever existed. Every assertion behind them sat inside an
+ * `if (status === 200)` guard, so ~9 tests passed vacuously against a 404.
+ * (TASK-539 finding S-2.)
+ */
+const MY_PERMISSIONS_ROUTE = '/api/v1/rbac/check/my-permissions';
+const CHECK_BULK_ROUTE = '/api/v1/rbac/check/bulk';
+const CHECK_ROUTE = '/api/v1/rbac/check';
+
+interface EffectivePermission {
+  action: string;
+  subject: string;
+  conditions?: Record<string, unknown>;
+}
+
+/**
+ * `my-permissions` collapses multi-action CASL rules into a comma-joined
+ * string (`{ action: 'read,list', subject: 'Consultation' }` — see
+ * permission-check.controller.ts `getMyPermissions`). Exact-equality matching
+ * on `action` therefore silently misses every multi-action rule, so split
+ * before comparing. (TASK-539 finding S-2a.)
+ */
+function hasPermission(permissions: EffectivePermission[], action: string, subject: string): boolean {
+  return permissions.some((p) => p.subject === subject && p.action.split(',').includes(action));
+}
 
 test.describe('Authorization Flow', () => {
   let superAdminToken: string;
@@ -16,7 +48,6 @@ test.describe('Authorization Flow', () => {
   // Healthcare-specific tokens
   let doctorToken: string;
   let nurseToken: string;
-  let serviceAccountToken: string;
 
   test.beforeAll(async ({ request }) => {
     // Login as different users to test various permission levels
@@ -54,13 +85,13 @@ test.describe('Authorization Flow', () => {
     const nurseBody = await nurseLogin.json();
     nurseToken = nurseBody.token;
 
-    // Service Account - API/integration access
-    const serviceAccountLogin = await request.post('/api/v1/auth/login', {
-      data: { username: 'service_account', password: 'password123', tenantKey: '__GLOBAL__' },
-    });
-    expect(serviceAccountLogin.status(), 'service_account login failed').toBe(200);
-    const serviceAccountBody = await serviceAccountLogin.json();
-    serviceAccountToken = serviceAccountBody.token;
+    // Service Account - API/integration access.
+    // TASK-430 (commit c8850f4f) made service accounts API-key-only principals:
+    // auth.controller.ts rejects interactive login with 401 ("Service accounts
+    // cannot sign in interactively"), locked in by
+    // apps/api/src/modules/auth/__tests__/auth.service-account.task430.test.ts.
+    // This principal therefore authenticates with its seeded API key
+    // (SEEDED_API_KEY_SERVICE_ACCOUNT) instead of a password.
   });
 
   // ============================================================================
@@ -124,64 +155,55 @@ test.describe('Authorization Flow', () => {
 
   test.describe('Permission Hierarchy', () => {
     test('super admin should have access to all resources', async ({ request }) => {
-      // Check effective permissions
-      const permResponse = await request.get('/api/v1/rbac/permissions/effective', {
+      const permResponse = await request.post(MY_PERMISSIONS_ROUTE, {
         headers: { Authorization: `Bearer ${superAdminToken}` },
       });
 
-      if (permResponse.status() === 200) {
-        const body = await permResponse.json();
-        // Super admin should have manage:all
-        const hasManageAll = body.permissions.some((p: any) => p.action === 'manage' && p.subject === 'all');
-        expect(hasManageAll).toBe(true);
-      }
+      expect([200, 201]).toContain(permResponse.status());
+      const body = await permResponse.json();
+      expect(hasPermission(body.permissions, 'manage', 'all')).toBe(true);
     });
 
     test('tenant admin should have manage permissions within tenant', async ({ request }) => {
-      const permResponse = await request.get('/api/v1/rbac/permissions/effective', {
+      const permResponse = await request.post(MY_PERMISSIONS_ROUTE, {
         headers: { Authorization: `Bearer ${tenantAdminToken}` },
       });
 
-      if (permResponse.status() === 200) {
-        const body = await permResponse.json();
-        // Should have tenant-scoped permissions
-        expect(body.tenantId).toBeDefined();
-        expect(body.permissions.length).toBeGreaterThan(0);
-      }
+      expect([200, 201]).toContain(permResponse.status());
+      const body = await permResponse.json();
+      // Should have tenant-scoped permissions
+      expect(body.tenantId).toBeTruthy();
+      expect(body.permissions.length).toBeGreaterThan(0);
     });
 
     test('nurse should have limited permissions (read-only clinical)', async ({ request }) => {
-      const permResponse = await request.get('/api/v1/rbac/permissions/effective', {
+      const permResponse = await request.post(MY_PERMISSIONS_ROUTE, {
         headers: { Authorization: `Bearer ${nurseToken}` },
       });
 
-      if (permResponse.status() === 200) {
-        const body = await permResponse.json();
-        // Nurse should NOT have manage:all
-        const hasManageAll = body.permissions.some((p: any) => p.action === 'manage' && p.subject === 'all');
-        expect(hasManageAll).toBe(false);
-
-        // Nurse should have read access to consultations
-        const hasConsultationRead = body.permissions.some((p: any) => p.action === 'read' && p.subject === 'Consultation');
-        expect(hasConsultationRead).toBe(true);
-      }
+      expect([200, 201]).toContain(permResponse.status());
+      const body = await permResponse.json();
+      // Nurse should NOT have manage:all
+      expect(hasPermission(body.permissions, 'manage', 'all')).toBe(false);
+      // Nurse should have read access to consultations
+      expect(hasPermission(body.permissions, 'read', 'Consultation')).toBe(true);
     });
 
+    // Reaches the principal by API key — TASK-430 removed interactive login for
+    // service accounts. This assertion had never actually executed: it sat
+    // behind a 404 status-guard (S-2), and once repointed it still needed the
+    // API-key auth path to work at all (S-3).
     test('service account should have limited integration permissions', async ({ request }) => {
-      const permResponse = await request.get('/api/v1/rbac/permissions/effective', {
-        headers: { Authorization: `Bearer ${serviceAccountToken}` },
+      const permResponse = await request.post(MY_PERMISSIONS_ROUTE, {
+        headers: { 'X-API-Key': SEEDED_API_KEY_SERVICE_ACCOUNT },
       });
 
-      if (permResponse.status() === 200) {
-        const body = await permResponse.json();
-        // Service account should NOT have manage:all
-        const hasManageAll = body.permissions.some((p: any) => p.action === 'manage' && p.subject === 'all');
-        expect(hasManageAll).toBe(false);
-
-        // Service account should have create access to consultations
-        const hasConsultationCreate = body.permissions.some((p: any) => p.action === 'create' && p.subject === 'Consultation');
-        expect(hasConsultationCreate).toBe(true);
-      }
+      expect([200, 201]).toContain(permResponse.status());
+      const body = await permResponse.json();
+      // Service account should NOT have manage:all
+      expect(hasPermission(body.permissions, 'manage', 'all')).toBe(false);
+      // Service account should have create access to consultations
+      expect(hasPermission(body.permissions, 'create', 'Consultation')).toBe(true);
     });
   });
 
@@ -260,7 +282,7 @@ test.describe('Authorization Flow', () => {
   test.describe('Permission Logic (AND/OR)', () => {
     test('should enforce AND logic - all permissions required', async ({ request }) => {
       // Check if nurse has specific permissions
-      const checkResponse = await request.post('/api/v1/rbac/permissions/check-bulk', {
+      const checkResponse = await request.post(CHECK_BULK_ROUTE, {
         headers: { Authorization: `Bearer ${nurseToken}` },
         data: {
           permissions: [
@@ -270,17 +292,15 @@ test.describe('Authorization Flow', () => {
         },
       });
 
-      if (checkResponse.status() === 200) {
-        const body = await checkResponse.json();
-        // Nurse doesn't have manage:Role, so AND fails
-        const allAllowed = body.results.every((r: any) => r.allowed);
-        expect(allAllowed).toBe(false);
-      }
+      expect([200, 201]).toContain(checkResponse.status());
+      const body = await checkResponse.json();
+      // Nurse doesn't have manage:Role, so AND fails
+      expect(body.allAllowed).toBe(false);
     });
 
     test('should support OR logic - any permission sufficient', async ({ request }) => {
       // Check multiple permissions
-      const checkResponse = await request.post('/api/v1/rbac/permissions/check-bulk', {
+      const checkResponse = await request.post(CHECK_BULK_ROUTE, {
         headers: { Authorization: `Bearer ${doctorToken}` },
         data: {
           permissions: [
@@ -290,15 +310,15 @@ test.describe('Authorization Flow', () => {
         },
       });
 
-      if (checkResponse.status() === 200) {
-        const body = await checkResponse.json();
-        // Doctor has create:Consultation, so OR passes
-        const createAllowed = body.results.find((r: any) => r.action === 'create')?.allowed;
-        expect(createAllowed).toBe(true);
-        // Doctor doesn't have manage:all
-        const manageAllAllowed = body.results.find((r: any) => r.action === 'manage')?.allowed;
-        expect(manageAllAllowed).toBe(false);
-      }
+      expect([200, 201]).toContain(checkResponse.status());
+      const body = await checkResponse.json();
+      // Doctor has create:Consultation, so OR passes
+      const createAllowed = body.results.find((r: any) => r.action === 'create')?.allowed;
+      expect(createAllowed).toBe(true);
+      // Doctor doesn't have manage:all
+      const manageAllAllowed = body.results.find((r: any) => r.action === 'manage')?.allowed;
+      expect(manageAllAllowed).toBe(false);
+      expect(body.anyAllowed).toBe(true);
     });
   });
 
@@ -309,34 +329,32 @@ test.describe('Authorization Flow', () => {
   test.describe('Tenant Isolation', () => {
     test('tenant admin should only see tenant-scoped data', async ({ request }) => {
       // Get effective permissions
-      const permResponse = await request.get('/api/v1/rbac/permissions/effective', {
+      const permResponse = await request.post(MY_PERMISSIONS_ROUTE, {
         headers: { Authorization: `Bearer ${tenantAdminToken}` },
       });
 
-      if (permResponse.status() === 200) {
-        const body = await permResponse.json();
+      expect([200, 201]).toContain(permResponse.status());
+      const body = await permResponse.json();
 
-        // Check that permissions have tenant conditions
-        const tenantScopedPerms = body.permissions.filter((p: any) => p.conditions && p.conditions.tenantId);
+      // Check that permissions have tenant conditions
+      const tenantScopedPerms = body.permissions.filter((p: any) => p.conditions && p.conditions.tenantId);
 
-        // Tenant admin should have tenant-scoped permissions
-        expect(tenantScopedPerms.length).toBeGreaterThanOrEqual(0);
-      }
+      // Tenant admin's rules are tenant-bound
+      expect(tenantScopedPerms.length).toBeGreaterThan(0);
     });
 
     test('super admin should have cross-tenant access', async ({ request }) => {
-      const permResponse = await request.get('/api/v1/rbac/permissions/effective', {
+      const permResponse = await request.post(MY_PERMISSIONS_ROUTE, {
         headers: { Authorization: `Bearer ${superAdminToken}` },
       });
 
-      if (permResponse.status() === 200) {
-        const body = await permResponse.json();
+      expect([200, 201]).toContain(permResponse.status());
+      const body = await permResponse.json();
 
-        // Super admin should have manage:all without tenant restrictions
-        const hasUnrestrictedAccess = body.permissions.some((p: any) => p.action === 'manage' && p.subject === 'all' && !p.conditions);
+      // Super admin should have manage:all without tenant restrictions
+      const hasUnrestrictedAccess = body.permissions.some((p: any) => p.action.split(',').includes('manage') && p.subject === 'all' && !p.conditions);
 
-        expect(hasUnrestrictedAccess).toBe(true);
-      }
+      expect(hasUnrestrictedAccess).toBe(true);
     });
   });
 
@@ -437,42 +455,34 @@ test.describe('Authorization Flow', () => {
 
   test.describe('Healthcare Role Authorization', () => {
     test('doctor should have clinical permissions', async ({ request }) => {
-      const permResponse = await request.get('/api/v1/rbac/permissions/effective', {
+      const permResponse = await request.post(MY_PERMISSIONS_ROUTE, {
         headers: { Authorization: `Bearer ${doctorToken}` },
       });
 
-      if (permResponse.status() === 200) {
-        const body = await permResponse.json();
-        // Doctor should have consultation permissions
-        const hasConsultationCreate = body.permissions.some((p: any) => p.action === 'create' && p.subject === 'Consultation');
-        expect(hasConsultationCreate).toBe(true);
-
-        // Doctor should NOT have manage:all
-        const hasManageAll = body.permissions.some((p: any) => p.action === 'manage' && p.subject === 'all');
-        expect(hasManageAll).toBe(false);
-      }
+      expect([200, 201]).toContain(permResponse.status());
+      const body = await permResponse.json();
+      // Doctor should have consultation permissions
+      expect(hasPermission(body.permissions, 'create', 'Consultation')).toBe(true);
+      // Doctor should NOT have manage:all
+      expect(hasPermission(body.permissions, 'manage', 'all')).toBe(false);
     });
 
     test('nurse should have read-only clinical permissions', async ({ request }) => {
-      const permResponse = await request.get('/api/v1/rbac/permissions/effective', {
+      const permResponse = await request.post(MY_PERMISSIONS_ROUTE, {
         headers: { Authorization: `Bearer ${nurseToken}` },
       });
 
-      if (permResponse.status() === 200) {
-        const body = await permResponse.json();
-        // Nurse should have read permissions
-        const hasConsultationRead = body.permissions.some((p: any) => p.action === 'read' && p.subject === 'Consultation');
-        expect(hasConsultationRead).toBe(true);
-
-        // Nurse should NOT have create permissions
-        const hasConsultationCreate = body.permissions.some((p: any) => p.action === 'create' && p.subject === 'Consultation');
-        expect(hasConsultationCreate).toBe(false);
-      }
+      expect([200, 201]).toContain(permResponse.status());
+      const body = await permResponse.json();
+      // Nurse should have read permissions
+      expect(hasPermission(body.permissions, 'read', 'Consultation')).toBe(true);
+      // Nurse should NOT have create permissions
+      expect(hasPermission(body.permissions, 'create', 'Consultation')).toBe(false);
     });
 
     test('doctor should be able to manage own profile', async ({ request }) => {
       // Check user-profile-own policy
-      const checkResponse = await request.post('/api/v1/rbac/permissions/check-bulk', {
+      const checkResponse = await request.post(CHECK_BULK_ROUTE, {
         headers: { Authorization: `Bearer ${doctorToken}` },
         data: {
           permissions: [
@@ -484,17 +494,15 @@ test.describe('Authorization Flow', () => {
         },
       });
 
-      if (checkResponse.status() === 200) {
-        const body = await checkResponse.json();
-        // Should have self-profile permissions
-        const allAllowed = body.results.every((r: any) => r.allowed);
-        expect(allAllowed).toBe(true);
-      }
+      expect([200, 201]).toContain(checkResponse.status());
+      const body = await checkResponse.json();
+      // Should have self-profile permissions
+      expect(body.allAllowed).toBe(true);
     });
 
     test('nurse should be able to manage own profile', async ({ request }) => {
       // Check user-profile-own policy
-      const checkResponse = await request.post('/api/v1/rbac/permissions/check-bulk', {
+      const checkResponse = await request.post(CHECK_BULK_ROUTE, {
         headers: { Authorization: `Bearer ${nurseToken}` },
         data: {
           permissions: [
@@ -505,38 +513,34 @@ test.describe('Authorization Flow', () => {
         },
       });
 
-      if (checkResponse.status() === 200) {
-        const body = await checkResponse.json();
-        // Should have self-profile permissions
-        const allAllowed = body.results.every((r: any) => r.allowed);
-        expect(allAllowed).toBe(true);
-      }
+      expect([200, 201]).toContain(checkResponse.status());
+      const body = await checkResponse.json();
+      // Should have self-profile permissions
+      expect(body.allAllowed).toBe(true);
     });
 
     test('doctor should be able to create API keys', async ({ request }) => {
-      const checkResponse = await request.post('/api/v1/rbac/permissions/check', {
+      const checkResponse = await request.post(CHECK_ROUTE, {
         headers: { Authorization: `Bearer ${doctorToken}` },
         data: { action: 'create', subject: 'ApiKey' },
       });
 
-      if (checkResponse.status() === 200) {
-        const body = await checkResponse.json();
-        // Doctor has api-key-own-manage policy
-        expect(body.allowed).toBe(true);
-      }
+      expect([200, 201]).toContain(checkResponse.status());
+      const body = await checkResponse.json();
+      // Doctor has api-key-own-manage policy
+      expect(body.allowed).toBe(true);
     });
 
     test('nurse should NOT be able to create API keys', async ({ request }) => {
-      const checkResponse = await request.post('/api/v1/rbac/permissions/check', {
+      const checkResponse = await request.post(CHECK_ROUTE, {
         headers: { Authorization: `Bearer ${nurseToken}` },
         data: { action: 'create', subject: 'ApiKey' },
       });
 
-      if (checkResponse.status() === 200) {
-        const body = await checkResponse.json();
-        // Nurse does NOT have api-key-own-manage policy
-        expect(body.allowed).toBe(false);
-      }
+      expect([200, 201]).toContain(checkResponse.status());
+      const body = await checkResponse.json();
+      // Nurse does NOT have api-key-own-manage policy
+      expect(body.allowed).toBe(false);
     });
   });
 });

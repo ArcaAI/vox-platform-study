@@ -42,7 +42,7 @@ import {
     CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL,
     ASR_TEMPLATE_SLUGS,
 } from '../prisma/db_main/seed/06-stt';
-import { ALL_SETTINGS } from '../prisma/db_main/seed/11-global-setting';
+import { ALL_SETTINGS, PLATFORM_SETTINGS } from '../prisma/db_main/seed/11-global-setting';
 import {
     seedHarnessPolicy,
     SYSTEM_HARNESS_POLICY_SMR_DEFAULTS,
@@ -368,6 +368,34 @@ describe('Policy Seed Data', () => {
                 }
             },
         );
+
+        // TASK-532 (M-12) — the MCP registry and the agent-trajectory read plane
+        // stopped borrowing the `HarnessPolicy` subject. The seed grants below
+        // are ADDITIVE grandfathering: every role that could reach those two
+        // surfaces through `manage:HarnessPolicy` keeps exactly today's access
+        // via an explicit grant on the new subject. (Custom, tenant-authored
+        // policies are deliberately NOT auto-migrated — see the ticket README
+        // §7; operators add the grant themselves.)
+        it.each([
+            ['harness-platform-manage', 'McpServer', 'manage'],
+            ['harness-platform-manage', 'AgentTrajectory', 'read'],
+            ['harness-tenant-manage', 'McpServer', 'manage'],
+            ['harness-tenant-manage', 'AgentTrajectory', 'read'],
+            ['tenant-full-access', 'McpServer', 'manage'],
+            ['tenant-full-access', 'AgentTrajectory', 'read'],
+        ])('should grant %s → %s (%s) after the M-12 subject swap (TASK-532)', (policyName, subject, action) => {
+            const policy = DEFAULT_POLICIES.find((p) => p.name === policyName);
+            const rule = policy?.rules.find((r) => r.subject === subject);
+            expect(rule, `${policyName} is missing a ${subject} rule`).toBeDefined();
+            const actions = Array.isArray(rule?.action) ? rule?.action : [rule?.action];
+            expect(actions).toContain(action);
+            // GLOBAL policies grant unconditionally; TENANT policies stay pinned.
+            if (policy?.scope === PolicyScope.TENANT) {
+                expect(JSON.stringify(rule?.conditions)).toContain('${context.tenantId}');
+            } else {
+                expect(rule?.conditions).toBeUndefined();
+            }
+        });
 
         // TASK-356 Phase 5 — realtime-pipeline cascade admin RBAC (a SEPARATE
         // PipelinePolicy subject from HarnessPolicy). Platform = unconditional;
@@ -1647,6 +1675,47 @@ describe('ASR Pipeline isDefault invariant (TASK-331 doc-03 Q2)', () => {
 //   (b) Guardrail → granite-guardian-4.1-8b via AiTaskDefault (keys RETIRED)
 //   (c) STT  → unchanged (CT2 registered; whisper-large-v3-turbo default)
 // =============================================================================
+
+// =============================================================================
+// TASK-531 (GAP-T3) — the nightly SYSTEM-template resync sweep is turned ON by
+// a platform VALUE, not by flipping the registry default.
+//
+// The descriptor is a kill-switch, and the settings registry refuses at
+// assembly to register a kill-switch that defaults ON (fail-safe governance).
+// So the fail-safe default stays `false` and the deployment enables the sweep
+// with a locked platform row — exactly the `enable-local-raw-capture` pattern:
+// `value` is the live setting, `defaultValue` keeps the OFF fallback so a reset
+// reverts to fail-safe, and `locked` restricts the flip to GLOBAL_ADMIN.
+// =============================================================================
+
+describe('TASK-531 — nightly pipeline template resync is enabled by a platform setting', () => {
+    const enabled = () => PLATFORM_SETTINGS.find((s) => s.key === 'pipeline.templateResync.enabled');
+    const cron = () => PLATFORM_SETTINGS.find((s) => s.key === 'pipeline.templateResync.cron');
+
+    it('seeds the sweep ON while keeping the fail-safe default OFF', () => {
+        const row = enabled();
+        expect(row).toBeDefined();
+        expect(row?.value).toBe('true');
+        // A reset must revert to the fail-safe, never to the live value.
+        expect(row?.defaultValue).toBe('false');
+        expect(row?.dataType).toBe('Boolean');
+    });
+
+    it('locks the sweep toggle to GLOBAL_ADMIN and owns it at the platform tenant', () => {
+        expect(enabled()?.locked).toBe(true);
+        expect(enabled()?.tenantId).toBe(SYSTEM_TENANT_ID);
+    });
+
+    it('seeds the schedule matching the service default (03:00 daily)', () => {
+        expect(cron()?.value).toBe('0 3 * * *');
+        expect(cron()?.tenantId).toBe(SYSTEM_TENANT_ID);
+    });
+
+    it('keys are unique across the platform rows (flat-by-key AppSettings cache)', () => {
+        const keys = PLATFORM_SETTINGS.map((s) => s.key);
+        expect(new Set(keys).size).toBe(keys.length);
+    });
+});
 
 describe('TASK-506 — SMR default moved off GlobalSetting (HarnessPolicy is authoritative)', () => {
     it('no longer seeds the default-smr-provider / default-smr-model GlobalSetting keys', () => {

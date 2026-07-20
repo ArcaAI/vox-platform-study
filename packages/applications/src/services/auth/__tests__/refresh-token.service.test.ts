@@ -315,7 +315,6 @@ describe('TASK-307 W1.1 — RefreshTokenService', () => {
 
     it('rejects an empty / missing token', async () => {
       await expect(service.consume('')).rejects.toMatchObject({ status: 401 });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await expect(service.consume(undefined as any)).rejects.toMatchObject({ status: 401 });
     });
 

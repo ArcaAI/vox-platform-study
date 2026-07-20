@@ -3,6 +3,8 @@ import {
   EvalRunDetailResponse,
   EvalRunListResponse,
   EvalService,
+  GateEditMiningService,
+  GateEditCorpusExport,
   GateQueueResponse,
   GoldenCaseListResponse,
   GoldenCaseMetaResponse,
@@ -63,6 +65,10 @@ export class HarnessAdminController {
     private readonly cls: ClsService<IActiveUserContext>,
     private readonly liveDocumentationService: LiveDocumentationService,
     private readonly evalService: EvalService,
+    // TASK-533 B6 — APPENDED, never inserted. This controller is constructed
+    // positionally in its unit tests, so a mid-list insertion silently shifts
+    // `cls` and fails ~35 unrelated specs with "this.cls.get is not a function".
+    private readonly gateEditMiningService: GateEditMiningService,
   ) {}
 
   // ───────────────────────── Policy ─────────────────────────
@@ -319,6 +325,38 @@ export class HarnessAdminController {
     // `DataNotFoundException` (mapped globally to 404) for both an absent and a
     // cross-tenant consultationId — a zeroed-but-existing result is a normal 200.
     return this.observabilityService.getEditBurden(tenantId, query.consultationId);
+  }
+
+  // TASK-533 B6 (GAP-A1) — the learning loop's export half. Mined rows are
+  // PROPOSALS: the golden-set programme's SME review decides what becomes
+  // corpus, and the payload carries `reviewStatus` so no consumer can mistake
+  // this for approved eval data (§3.4 consumption (a)).
+  @Get('gate-edit-exemplars')
+  @Authorize(['manage', 'HarnessPolicy'])
+  @ApiOperation({
+    summary: 'Export gate-edit exemplar candidates for eval regression-corpus review',
+    description:
+      'Derived, PHI-REDACTED-at-write learning-loop rows mined from the clinician approve-vs-edit signal. ' +
+      'Returned as UNREVIEWED candidates (`reviewStatus: PENDING_SME_REVIEW`) — admission to a golden set is a ' +
+      'separate, SME-gated decision. Omitting `qualitySignal` returns both APPROVED_CLEAN and HEAVILY_EDITED, ' +
+      'because a regression corpus needs the failures as well as the successes.',
+  })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant. Tenant admins are pinned to their own tenant.' })
+  @ApiQuery({ name: 'departmentId', required: false, description: 'Narrow to one department.' })
+  @ApiQuery({ name: 'qualitySignal', required: false, description: 'APPROVED_CLEAN | HEAVILY_EDITED. Omit for both.' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Page size (default 100, hard-capped at 500).' })
+  async exportGateEditExemplars(
+    @Query() query: { tenantId?: string; departmentId?: string; qualitySignal?: string; limit?: number },
+  ): Promise<GateEditCorpusExport> {
+    const tenantId = this.resolveReadTenantId(query.tenantId);
+    return this.gateEditMiningService.exportCorpusCandidates({
+      tenantId,
+      departmentId: query.departmentId ?? null,
+      qualitySignal: query.qualitySignal,
+      // Defaulted here rather than left undefined: an omitted limit must not
+      // become an unbounded read of redacted clinical text.
+      limit: Number(query.limit) > 0 ? Number(query.limit) : 100,
+    });
   }
 
   // ───────────────────────── Operate (Temporal proxy) ─────────────────────────

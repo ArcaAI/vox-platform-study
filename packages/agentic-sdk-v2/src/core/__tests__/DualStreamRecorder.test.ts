@@ -12,7 +12,6 @@ class FakeMediaRecorder {
   state = 'inactive';
   ondataavailable: ((e: { data: Blob }) => void) | null = null;
   onstop: (() => void) | null = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(public stream: any, public options?: { mimeType?: string }) {}
   start(_timeslice?: number): void {
     this.state = 'recording';
@@ -25,7 +24,6 @@ class FakeMediaRecorder {
 }
 
 class FakeMediaStream {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(public tracks: any[] = []) {}
 }
 
@@ -34,9 +32,7 @@ const fakeTrack = (id: string) => ({ id, kind: 'audio', stop: vi.fn() }) as unkn
 describe('DualStreamRecorder (TASK-329 P2)', () => {
   beforeEach(() => {
     FakeMediaRecorder.isTypeSupported.mockReturnValue(true);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (globalThis as any).MediaRecorder = FakeMediaRecorder;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (globalThis as any).MediaStream = FakeMediaStream;
   });
 

@@ -16,9 +16,15 @@ import { resolveScopedTenantIdOptional } from '../../shared/tenant-scope';
  * McpAdminController — the admin surface for the MCP
  * external-tools registry, mounted at `/admin/mcp-servers` (global prefix →
  * `/api/v1/admin/mcp-servers`). Mirrors `AiTaskDefaultAdminController`
- * (`If-Match` OCC, `resolveScoped*` tenant scoping) and reuses the
- * `HarnessPolicy` authorization subject (MCP tooling is a harness capability;
- * the agentic-admin precedent).
+ * (`If-Match` OCC, `resolveScoped*` tenant scoping).
+ *
+ * AUTHORIZATION: gated by the registry's OWN `McpServer` subject (TASK-532
+ * M-12). It previously borrowed `HarnessPolicy` — that subject now means
+ * "harness policy", nothing else, so a grant to one no longer silently confers
+ * the other. `McpServer` already exists in the audit `ResourceType` enum, so the
+ * swap needed no migration; the seeded roles gained explicit `manage:McpServer`
+ * grants in the same change, and CUSTOM (tenant-authored) policies that reached
+ * this registry via `manage:HarnessPolicy` must add the new grant.
  *
  * Reads (list/get) back the console "Tools & MCP" screen — the registry
  * list/read. WRITES are GLOBAL-ADMIN-ONLY: the SERVICE throws a
@@ -39,7 +45,7 @@ export class McpAdminController {
   ) {}
 
   @Get()
-  @CanRead('HarnessPolicy')
+  @CanRead('McpServer')
   @ApiOperation({
     summary: 'List registered MCP external-tools servers (registry read — backs the console "Tools & MCP" screen)',
     description:
@@ -54,7 +60,7 @@ export class McpAdminController {
   }
 
   @Get(':id')
-  @CanRead('HarnessPolicy')
+  @CanRead('McpServer')
   @ApiOperation({ summary: 'Get one registered MCP server (registry read)' })
   @ApiParam({ name: 'id', description: 'MCP server id' })
   @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant.' })
@@ -65,7 +71,7 @@ export class McpAdminController {
   }
 
   @Post()
-  @CanManage('HarnessPolicy')
+  @CanManage('McpServer')
   @ApiOperation({
     summary: 'Register a new MCP server (GLOBAL-ADMIN only)',
     description:
@@ -81,7 +87,7 @@ export class McpAdminController {
   }
 
   @Patch(':id')
-  @CanManage('HarnessPolicy')
+  @CanManage('McpServer')
   @RequiresIfMatch()
   @ApiOperation({
     summary: 'Update a registered MCP server under optimistic concurrency (GLOBAL-ADMIN only)',
@@ -112,7 +118,7 @@ export class McpAdminController {
   }
 
   @Delete(':id')
-  @CanManage('HarnessPolicy')
+  @CanManage('McpServer')
   @RequiresIfMatch()
   @ApiOperation({
     summary: 'Soft-delete a registered MCP server under optimistic concurrency (GLOBAL-ADMIN only)',

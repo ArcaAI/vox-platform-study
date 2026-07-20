@@ -26,4 +26,7 @@ export enum JobQueue {
 
   // Tenant-scoped external identity provider — admin-triggered directory pull (TASK-498 P3)
   SyncTenantDirectoryUsers = 'SyncTenantDirectoryUsers',
+
+  // Gate-edit mining — derived learning-loop corpus (TASK-533 B6)
+  MineGateEditExemplar = 'MineGateEditExemplar',
 }

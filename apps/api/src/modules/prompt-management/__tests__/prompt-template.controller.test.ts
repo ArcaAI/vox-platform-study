@@ -77,7 +77,6 @@ describe('PromptTemplateController (TASK-331 doc-09 — end-user plane)', () => 
         it('requires only ["read","PromptTemplate"] on the available route', () => {
             const meta = Reflect.getMetadata(
                 REQUIRED_PERMISSIONS_KEY,
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (PromptTemplateController.prototype as any).available,
             );
             expect(meta).toEqual([{ action: 'read', subject: 'PromptTemplate' }]);
@@ -101,7 +100,6 @@ describe('PromptTemplateController (TASK-331 doc-09 — end-user plane)', () => 
         it('gates on ["read","PromptTemplate"] (clinician plane)', () => {
             const meta = Reflect.getMetadata(
                 REQUIRED_PERMISSIONS_KEY,
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (PromptTemplateController.prototype as any).createPersonal,
             );
             expect(meta).toEqual([{ action: 'read', subject: 'PromptTemplate' }]);
@@ -138,7 +136,6 @@ describe('PromptTemplateController (TASK-331 doc-09 — end-user plane)', () => 
         it('gates on ["read","PromptTemplate"] (clinician plane)', () => {
             const meta = Reflect.getMetadata(
                 REQUIRED_PERMISSIONS_KEY,
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (PromptTemplateController.prototype as any).updatePersonal,
             );
             expect(meta).toEqual([{ action: 'read', subject: 'PromptTemplate' }]);

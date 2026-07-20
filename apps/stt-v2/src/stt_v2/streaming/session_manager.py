@@ -2533,6 +2533,12 @@ class SessionManager:
             )
             return
 
+        # TASK-533 D-22 — build the segments alongside the text, from the SAME
+        # results, so the harness evidence chain has per-utterance provenance
+        # (timing, speaker, char spans). Before this the streaming path sent text
+        # only and TranscriptSegment was empty in production.
+        segments = session.build_transcript_segments()
+
         idempotency_key = self._transcript_idempotency_key(session)
         attempts = self._transcript_persist_max_attempts
         last_error: Exception | None = None
@@ -2545,6 +2551,7 @@ class SessionManager:
                     tenant_id=session.tenant_id,
                     transcription_source="streaming",
                     idempotency_key=idempotency_key,
+                    segments=segments,
                 )
                 logger.info(
                     "Streaming transcript persisted",
@@ -2579,7 +2586,7 @@ class SessionManager:
 
         # Transient failure exhausted the inline retries → durable Redis outbox.
         await self._enqueue_transcript_outbox(
-            session, transcript_text, idempotency_key, last_error
+            session, transcript_text, segments, idempotency_key, last_error
         )
 
     @staticmethod
@@ -2614,6 +2621,7 @@ class SessionManager:
         self,
         session: StreamSession,
         transcript_text: str,
+        segments: list[dict[str, Any]],
         idempotency_key: str,
         last_error: Exception | None,
     ) -> None:
@@ -2625,6 +2633,11 @@ class SessionManager:
             "transcription_source": "streaming",
             "idempotency_key": idempotency_key,
             "attempts": 0,
+            # TASK-533 D-22 — segments ride along so the reaper's re-drive persists
+            # the SAME provenance the inline attempt would have. The session object
+            # is long gone by then; if they were not stored here, every outboxed
+            # transcript would land segment-less and starve evidence grounding.
+            "segments": segments,
         }
         try:
             await self._redis.hset(
@@ -2728,6 +2741,10 @@ class SessionManager:
                 tenant_id=payload.get("tenant_id"),
                 transcription_source=payload.get("transcription_source", "streaming"),
                 idempotency_key=idempotency_key,
+                # TASK-533 D-22 — replay the stored segments. Entries enqueued
+                # before this key existed simply have none (`.get` → None), which
+                # degrades to the pre-D-22 text-only behaviour rather than raising.
+                segments=payload.get("segments"),
             )
         except Exception as exc:
             await self._defer_or_drop_outbox_entry(

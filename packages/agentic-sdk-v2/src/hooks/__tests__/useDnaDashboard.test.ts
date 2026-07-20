@@ -37,7 +37,6 @@ const fakeDashboard = {
 
 describe('useDnaDashboard (TASK-328 A5)', () => {
     let mockLogger: ReturnType<typeof createMockLogger>;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let mockStore: any;
     const mockGet = vi.fn();
 
@@ -48,7 +47,6 @@ describe('useDnaDashboard (TASK-328 A5)', () => {
             apiClient: { get: mockGet, post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
             logger: mockLogger,
         };
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (useAgenticStore as any).mockReturnValue(mockStore);
     });
 
@@ -112,7 +110,6 @@ describe('useDnaDashboard (TASK-328 A5)', () => {
 
         it('throws when apiClient is not available', async () => {
             mockStore.apiClient = null;
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (useAgenticStore as any).mockReturnValue(mockStore);
             const { result } = renderHook(() => useDnaDashboard());
 

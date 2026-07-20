@@ -21,7 +21,6 @@ function makeStream() {
 
 function makeRes() {
   const headers: Record<string, string> = {};
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const res: any = {
     headersSent: false,
     setHeader: vi.fn((k: string, v: string) => {
@@ -46,7 +45,6 @@ describe('SpeechProxyController', () => {
     vi.clearAllMocks();
     http = createMockHttpService();
     config = createMockConfigService();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     controller = new SpeechProxyController(http as any, config as any, createMockSecrets('svc-token') as any);
   });
 
@@ -77,7 +75,6 @@ describe('SpeechProxyController', () => {
       http.axiosRef.post.mockResolvedValue({ headers: { 'content-type': 'audio/pcm' }, data: stream });
       const res = makeRes();
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await controller.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
 
       expect(http.axiosRef.post).toHaveBeenCalledWith(
@@ -100,11 +97,9 @@ describe('SpeechProxyController', () => {
     });
 
     it('omits X-Service-Token when no secret is available (dev fail-open)', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       controller = new SpeechProxyController(http as any, config as any, createMockSecrets(undefined) as any);
       http.axiosRef.post.mockResolvedValue({ headers: {}, data: makeStream() });
       const res = makeRes();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await controller.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
       const callHeaders = http.axiosRef.post.mock.calls[0][2].headers;
       expect(callHeaders['X-Service-Token']).toBeUndefined();
@@ -113,7 +108,6 @@ describe('SpeechProxyController', () => {
     it('returns a generic status and never forwards the upstream body (PHI safety)', async () => {
       http.axiosRef.post.mockRejectedValue({ response: { status: 503, data: { detail: 'internal prompt echo' } } });
       const res = makeRes();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await controller.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
       expect(res.status).toHaveBeenCalledWith(503);
       expect(res.json).toHaveBeenCalledWith({ detail: 'TTS service unavailable' });
@@ -127,7 +121,6 @@ describe('SpeechProxyController', () => {
         .mockRejectedValueOnce({ code: 'ECONNREFUSED' })
         .mockResolvedValueOnce({ headers: { 'content-type': 'audio/pcm' }, data: stream });
       const res = makeRes();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const pending = controller.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
       await vi.runAllTimersAsync();
       await pending;
@@ -138,7 +131,6 @@ describe('SpeechProxyController', () => {
     it('does NOT retry when the upstream responded (request was delivered)', async () => {
       http.axiosRef.post.mockRejectedValue({ response: { status: 500, data: '' } });
       const res = makeRes();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await controller.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
       expect(http.axiosRef.post).toHaveBeenCalledTimes(1);
       expect(res.status).toHaveBeenCalledWith(500);
@@ -169,7 +161,6 @@ describe('SpeechProxyController', () => {
     const makeCls = () => ({ get: vi.fn((key: string) => (key === 'tenantId' ? 't1' : undefined)) });
 
     const buildController = (tenantTtsConfig: unknown) =>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       new SpeechProxyController(http as any, config as any, createMockSecrets('svc-token') as any, tenantTtsConfig as any, makeCls() as any);
 
     it('injects voice_bindings from the effective config when non-empty', async () => {
@@ -178,7 +169,6 @@ describe('SpeechProxyController', () => {
       http.axiosRef.post.mockResolvedValue({ headers: { 'content-type': 'audio/pcm' }, data: makeStream() });
       const res = makeRes();
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
 
       const body = http.axiosRef.post.mock.calls[0][1];
@@ -193,7 +183,6 @@ describe('SpeechProxyController', () => {
       http.axiosRef.post.mockResolvedValue({ headers: { 'content-type': 'audio/pcm' }, data: makeStream() });
       const res = makeRes();
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
 
       const body = http.axiosRef.post.mock.calls[0][1];
@@ -209,7 +198,6 @@ describe('SpeechProxyController', () => {
       http.axiosRef.post.mockResolvedValue({ headers: { 'content-type': 'audio/pcm' }, data: makeStream() });
       const res = makeRes();
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
 
       const body = http.axiosRef.post.mock.calls[0][1];

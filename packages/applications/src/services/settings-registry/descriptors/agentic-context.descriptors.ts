@@ -4,14 +4,19 @@
 // claim-check knobs the live-documentation loop reads. They are GLOBAL-ADMIN-ONLY
 // (the `agentic.*` privilege boundary — a privilege rule → 403, enforced at the
 // service/route layer, not a cross-tenant probe), tier `global-kv`, and each
-// carries its CODE DEFAULT here as the single source of truth. The consumer
-// (`live-documentation.service`) resolves them through an effective facade
-// (env/kill-switch override → this default), replacing the former
-// `MAX_DELTA_CHARS = 12000` constant.
+// carries its CODE DEFAULT here as the single source of truth.
+//
+// TASK-533 B1 — the consumer (`live-documentation.service.resolveAgenticContext`)
+// now resolves these through `EffectiveSettingsService` on EVERY flush, so a write
+// through `PUT /admin/settings/registry/:key` governs the running loop with no
+// redeploy. Precedence is STORED VALUE → env override → the code default below;
+// env deliberately loses to a stored value, since the registry is the control
+// plane. (Before B1 the consumer read `env ?? default` once in its constructor, so
+// these descriptors were catalog-only — D-19/GAP-C7.)
 
 import { SettingDescriptor } from '../registry.types';
 
-/** Canonical transcript-assembly mode. `windowed` lands in a later phase. */
+/** Canonical transcript-assembly mode. */
 export type AgenticTranscriptMode = 'whole' | 'windowed';
 
 /**
@@ -27,11 +32,13 @@ export const AGENTIC_CONTEXT_DEFAULTS = {
   // Idle debounce (ms) before a flush when the segment threshold is not met.
   'liveFlush.idleMs': 5000,
   // Payloads at/above this size (bytes) are stored/passed by reference
-  // (claim-check) rather than inlined. Declared now; enforced with the loop.
+  // (claim-check) rather than inlined. Resolved by the live lane (TASK-533 B1);
+  // the harness-side claim-check threshold is its own HARNESS_CLAIM_CHECK_MIN_BYTES.
   'claimCheck.minBytes': 65536,
-  // Transcript assembly mode. `windowed` lands in a later phase.
+  // Transcript assembly mode. `windowed` is TASK-533 B3 — still default `whole`,
+  // and its flip is measurement-gated.
   'transcript.mode': 'whole' as AgenticTranscriptMode,
-  // Per-run token budget. 0 ⇒ unbounded (enforced once Phase 4 tokenizers land).
+  // Per-run token budget. 0 ⇒ unbounded. Enforcement is TASK-533 B4.
   'tokenBudget.perRun': 0,
 } as const;
 
@@ -61,12 +68,12 @@ const META: Record<AgenticContextKnobKey, { dataType: SettingDescriptor['dataTyp
   'transcript.mode': {
     dataType: 'enum',
     label: 'Transcript mode',
-    description: 'Transcript assembly strategy: whole (current) or windowed (later phase).',
+    description: 'Transcript assembly strategy: whole (default) or windowed.',
   },
   'tokenBudget.perRun': {
     dataType: 'number',
     label: 'Token budget per run',
-    description: 'Per-run token budget. 0 = unbounded (enforced once tokenizers land).',
+    description: 'Per-run token budget. 0 = unbounded.',
   },
 };
 

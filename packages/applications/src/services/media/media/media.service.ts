@@ -65,8 +65,7 @@ export class MediaService extends BaseService implements IMediaService {
   }
 
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<MediaEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { limit, page, search } = props;
+    const { limit, page } = props;
     const medias = await this.mediaRepository.findAll(withFormattedPaginatedProps(props, MEDIA_FILTER_MODEL));
 
     const count = await this.mediaRepository.count(withFormattedCountProps(props, MEDIA_FILTER_MODEL));
@@ -85,8 +84,7 @@ export class MediaService extends BaseService implements IMediaService {
   }
 
   async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<MediaEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { tenantId, limit, page, search } = props;
+    const { tenantId, limit, page } = props;
     const medias = await this.mediaRepository.findAll({
       ...withFormattedPaginatedProps(props, MEDIA_FILTER_MODEL),
       where: {
@@ -115,8 +113,7 @@ export class MediaService extends BaseService implements IMediaService {
   }
 
   async fetchAllCreatedByUser(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<MediaEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { userId, limit, page, search } = props;
+    const { userId, limit, page } = props;
     const medias = await this.mediaRepository.findAll({
       ...withFormattedPaginatedProps(props, MEDIA_FILTER_MODEL),
       where: {

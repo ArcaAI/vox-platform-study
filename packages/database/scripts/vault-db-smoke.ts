@@ -34,7 +34,6 @@
 //   2 — bad invocation (missing required env)
 
 import { VaultPrismaClient } from '../src/vault-client.js';
-// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
 import vault from 'node-vault';
 
 export interface SmokeArgs {

@@ -38,7 +38,7 @@ interface AggregatedTokenResult {
   end: number;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- holds the untyped @huggingface/transformers pipeline instance (see the overload-bypass cast in handleInit below)
 let nerPipeline: any = null;
 let activeConfig: MedNERWorkerInitPayload | null = null;
 let tokenizer: Tokenizer | null = null;
@@ -78,12 +78,12 @@ function normalise(result: RawTokenResult | AggregatedTokenResult): EntitySpan {
 }
 
 function buildTokenizerFromPipeline(pipeline: unknown): Tokenizer | null {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- `tokenizer` isn't part of the pipeline's public type; deliberate duck-typing across library versions
   const tok = (pipeline as any).tokenizer;
   if (!tok) return null;
   return (text: string): ArrayLike<unknown> => {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- `tok`'s shape is duck-typed from the untyped cast above, so its call signature can't be known statically
       const encoded = typeof tok === 'function' ? (tok as any)(text) : tok.encode?.(text);
       if (!encoded) return [];
       const ids = encoded.input_ids ?? encoded;
@@ -140,7 +140,7 @@ async function handleInit(id: string, payload: MedNERWorkerInitPayload): Promise
       pipelineOptions.revision = payload.revision;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- @huggingface/transformers' `pipeline()` factory is overloaded per-task; a dynamic task string here doesn't resolve to one specific overload
     nerPipeline = await (pipeline as any)('token-classification', payload.modelId, pipelineOptions);
     tokenizer = buildTokenizerFromPipeline(nerPipeline);
     activeConfig = payload;

@@ -97,8 +97,7 @@ export class HealthCheckService implements IHealthCheckService, OnModuleInit {
       indicators.push(() => this.memoryHealthIndicator.checkRSS('memory_rss', memoryThreshold));
 
       // Add all custom health indicators
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      Array.from(this.customHealthIndicators.entries()).forEach(([name, check]) => {
+      Array.from(this.customHealthIndicators.entries()).forEach(([, check]) => {
         indicators.push(check);
       });
 

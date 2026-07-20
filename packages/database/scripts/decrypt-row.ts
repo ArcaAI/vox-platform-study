@@ -37,7 +37,6 @@
 import * as crypto from 'crypto';
 // eslint-disable-next-line no-restricted-imports -- TASK-305 B.4 allow-list: scripts/ legitimately bypass tenant-scope for read-only admin tasks
 import { getPlatformAdminPrismaClient_Unscoped } from '../src/client.js';
-// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
 import vault from 'node-vault';
 
 /** One plaintext column and the `Bytes?` ciphertext column it is encrypted into. */

@@ -9,11 +9,16 @@ import {
   HarnessPolicyFactory,
   HarnessPolicyRepository,
   JsonValue,
+  McpServerRepository,
   SYSTEM_TENANT_ID,
 } from '@arcaai/domains';
 import { IActiveUserContext } from '../../interfaces';
 import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService';
 import { SecretsService } from '../baseServices/_meta/secrets';
+import { McpServerDtoMapper } from '../mcp-server/mcp-server.dto.mapper';
+import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
+import { AGENTIC_CONTEXT_KEY_PREFIX } from '../settings-registry/descriptors/agentic-context.descriptors';
+import type { McpServerResponse } from '../mcp-server/dto';
 import { HarnessPolicyResponse, HarnessPolicySource, UpdateHarnessPolicyRequest } from './dto';
 
 /**
@@ -92,12 +97,31 @@ export interface HarnessPolicyKnobs {
   nerPriorsEnabled: boolean | null;
   maxEditReruns: number | null;
   regenFeedbackEnabled: boolean | null;
+  /**
+   * TASK-533 D-24 — master gate for the MCP external-tools path. `null ⇒ OFF`, so
+   * the feature stays dormant until a global admin explicitly flips it AND the
+   * referenced `McpServer.enabled` is true.
+   *
+   * This existed on the entity (and therefore in `KNOB_KEYS`, which derives from
+   * `HARNESS_POLICY_DEFAULTS`) but was missing from this interface, from
+   * `entityToKnobs`, and from the DTOs — so it could never be patched or read,
+   * and the harness's `mcp_tools_enabled` was permanently None.
+   */
+  mcpToolsEnabled: boolean | null;
 }
 
 /**
- * Selection + agentic knobs are GLOBAL_ADMIN / SYSTEM-only.
- * Tenant admins may still patch clinical thresholds (faithfulness, coverage, …)
- * and PHI toggles; they must not set model/provider routing or agentic loop knobs.
+ * Selection + agentic knobs AND the guardrail/PHI on-off switches are
+ * GLOBAL_ADMIN / SYSTEM-only. Tenant admins may patch clinical THRESHOLDS
+ * (faithfulness, coverage, numeric-dose, …) ONLY — they must not set
+ * model/provider routing, agentic loop knobs, or turn the safety and PHI gates
+ * off for their tenant.
+ *
+ * TASK-532 (E3-L1, OD-2) added `safetyEnabled`/`phiEnabled`/`phiFailClosed`:
+ * guardrail and NLP are controlled by global admins only. Because this list
+ * also drives the SYSTEM overlay in `getEffectivePolicy`, pre-existing tenant
+ * rows carrying those three are neutralised at READ time (values are ignored,
+ * not deleted — removing a key here restores the tenant row's effect).
  */
 const GLOBAL_ADMIN_ONLY_POLICY_KEYS = [
   'safetyProvider',
@@ -111,6 +135,12 @@ const GLOBAL_ADMIN_ONLY_POLICY_KEYS = [
   'nerPriorsEnabled',
   'maxEditReruns',
   'regenFeedbackEnabled',
+  'safetyEnabled',
+  'phiEnabled',
+  'phiFailClosed',
+  // TASK-533 D-24 — MCP calls OUT of the platform boundary, so arming it is
+  // global-admin governance, never a tenant-level switch.
+  'mcpToolsEnabled',
 ] as const satisfies readonly (keyof HarnessPolicyKnobs)[];
 
 const KNOB_KEYS = Object.keys(HARNESS_POLICY_DEFAULTS) as (keyof HarnessPolicyKnobs)[];
@@ -141,6 +171,9 @@ function entityToKnobs(e: HarnessPolicyEntity): HarnessPolicyKnobs {
     nerPriorsEnabled: e.nerPriorsEnabled ?? null,
     maxEditReruns: e.maxEditReruns ?? null,
     regenFeedbackEnabled: e.regenFeedbackEnabled ?? null,
+    // TASK-533 D-24 — the line whose absence silently dropped the MCP gate from
+    // every response built off a policy row.
+    mcpToolsEnabled: e.mcpToolsEnabled ?? null,
   };
 }
 
@@ -200,7 +233,64 @@ export class HarnessPolicyService {
     // construction; when absent, `resolveSmrSelection` uses only the legacy
     // HarnessPolicy cascade (the AiTaskDefault-first path is a no-op).
     @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
+    // TASK-533 D-24 — the SYSTEM-shared MCP registry the worker resolves tool
+    // calls against. Optional + trailing so existing fixtures keep their arity;
+    // absent ⇒ `mcpServers: []`, i.e. nothing callable (the safe default).
+    @Optional() @Inject(McpServerRepository) private readonly mcpServerRepository?: McpServerRepository,
+    // TASK-533 B4 — settings-registry read facade for the per-run token budget.
+    // Optional + trailing; absent ⇒ null budget ⇒ the harness stays unbounded.
+    @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
   ) {}
+
+  /**
+   * Per-run token budget from `agentic.context.tokenBudget.perRun` (TASK-533 B4).
+   *
+   * The budget lives in the settings registry (the control plane a global admin
+   * edits), not on `HarnessPolicy` — but the harness only fetches ONE document at
+   * workflow start, so it is served here rather than adding a second round trip
+   * from the worker. Null when unresolvable ⇒ the workflow keeps its snapshotted
+   * default of 0 (unbounded), i.e. pre-B4 behaviour.
+   */
+  private async resolveTokenBudgetPerRun(tenantId: string): Promise<number | null> {
+    if (!this.effectiveSettings) return null;
+    try {
+      const result = await this.effectiveSettings.resolveEffective(`${AGENTIC_CONTEXT_KEY_PREFIX}tokenBudget.perRun`, { tenantId });
+      const parsed = Number(result.value);
+      return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'agentic.context.tokenBudget.perRun lookup failed — the harness will use its unbounded default',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Enabled SYSTEM-shared MCP servers, in the shape `McpServerConfig.from_api`
+   * parses (TASK-533 D-24).
+   *
+   * `fetch_policy` on the harness side reads `mcpServers` straight off this
+   * response — its `models.py` parser was written for exactly this payload and
+   * had been receiving `[]` forever because nothing ever populated it.
+   *
+   * Best-effort by design: a registry read failure yields an empty list rather
+   * than sinking the whole effective-policy read (mirrors `resolveSmrSelection`
+   * and `resolveJudgeSelection`). An empty list simply means nothing is callable.
+   */
+  private async resolveMcpServers(): Promise<McpServerResponse[]> {
+    if (!this.mcpServerRepository) return [];
+    try {
+      const rows = await this.mcpServerRepository.findAll({ where: { tenantId: SYSTEM_TENANT_ID } } as never);
+      return (rows ?? []).filter((entity) => entity.enabled).map((entity) => McpServerDtoMapper.toResponse(entity));
+    } catch (error) {
+      this.logger.warn({
+        message: 'MCP server registry lookup failed — effective policy will carry no callable servers',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+  }
 
   /**
    * TASK-369 Phase 3D — best-effort encrypt the before/after policy snapshots so
@@ -245,6 +335,10 @@ export class HarnessPolicyService {
     // selection-knob overlay below). Null when unconfigured ⇒ the harness falls
     // back to its env/code judge default.
     const judge = await this.resolveJudgeSelection(tid);
+    // TASK-533 D-24 — the MCP registry is SYSTEM-shared and independent of which
+    // policy row wins, so resolve it once and overlay onto every return path
+    // below (same pattern as the judge selection above).
+    const [mcpServers, tokenBudgetPerRun] = await Promise.all([this.resolveMcpServers(), this.resolveTokenBudgetPerRun(tid)]);
 
     const own = await this.policyRepository.findForExactTenant(tid);
     if (own) {
@@ -261,6 +355,8 @@ export class HarnessPolicyService {
       }
       resp.judgeProvider = judge.judgeProvider;
       resp.judgeModel = judge.judgeModel;
+      resp.mcpServers = mcpServers;
+      resp.tokenBudgetPerRun = tokenBudgetPerRun;
       return resp;
     }
 
@@ -269,12 +365,16 @@ export class HarnessPolicyService {
       const resp = toResponse(sys, 'system-default');
       resp.judgeProvider = judge.judgeProvider;
       resp.judgeModel = judge.judgeModel;
+      resp.mcpServers = mcpServers;
+      resp.tokenBudgetPerRun = tokenBudgetPerRun;
       return resp;
     }
 
     const resp = codeDefaultResponse(tid);
     resp.judgeProvider = judge.judgeProvider;
     resp.judgeModel = judge.judgeModel;
+    resp.mcpServers = mcpServers;
+    resp.tokenBudgetPerRun = tokenBudgetPerRun;
     return resp;
   }
 
@@ -486,6 +586,9 @@ function toResponse(e: HarnessPolicyEntity, source: HarnessPolicySource): Harnes
     // SYSTEM `harness.judge` AiTaskDefault; null here (not a policy-row field).
     judgeProvider: null,
     judgeModel: null,
+    // overlaid by `getEffectivePolicy` from the SYSTEM-shared registry (D-24).
+    mcpServers: [],
+    tokenBudgetPerRun: null,
     updatedAt: e.updatedAt ? e.updatedAt.toISOString() : null,
     version: e.version,
   };
@@ -502,9 +605,11 @@ function codeDefaultResponse(tenantId: string): HarnessPolicyResponse {
     tenantId,
     source: 'code-default',
     ...(HARNESS_POLICY_DEFAULTS as unknown as HarnessPolicyKnobs),
-    // see `toResponse`: judge selection is overlaid by the caller.
+    // see `toResponse`: judge selection + MCP registry are overlaid by the caller.
     judgeProvider: null,
     judgeModel: null,
+    mcpServers: [],
+    tokenBudgetPerRun: null,
     updatedAt: null,
     version: 0,
   };

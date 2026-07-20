@@ -43,13 +43,11 @@ export class AiRuntimeProfileRepository extends Repository<AiRuntimeProfileEntit
     tenantId: string,
     provider: string,
     modelSlug: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     tx?: Prisma.TransactionClient | any,
   ): Promise<AiRuntimeProfileEntity | null> {
     const where = { tenantId, provider, modelSlug, resourceStatus: ResourceStatusType.ENABLED };
 
     if (tx) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const model = await (tx as Record<string, any>).aiRuntimeProfile.findFirst({ where });
       return model ? AiRuntimeProfileEntityMapper.getInstance().toDomainEntity(model) : null;
     }
@@ -67,19 +65,16 @@ export class AiRuntimeProfileRepository extends Repository<AiRuntimeProfileEntit
   /** Every ENABLED profile row for one tenant (admin list). */
   async findByTenantId(
     tenantId: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     tx?: Prisma.TransactionClient | any,
   ): Promise<AiRuntimeProfileEntity[]> {
     const where = { tenantId, resourceStatus: ResourceStatusType.ENABLED };
 
     if (tx) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const models = await (tx as Record<string, any>).aiRuntimeProfile.findMany({
         where,
         orderBy: [{ provider: 'asc' }, { modelSlug: 'asc' }],
       });
       const mapper = AiRuntimeProfileEntityMapper.getInstance();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return models.map((m: any) => mapper.toDomainEntity(m));
     }
 

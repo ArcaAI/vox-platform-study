@@ -29,12 +29,10 @@ export class McpServerRepository extends Repository<McpServerEntity, McpServer> 
    * The row owned EXACTLY by `(tenantId, name)`, ENABLED only, or null when no
    * such server exists. Used for the create-time name-uniqueness pre-check.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async findByTenantAndName(tenantId: string, name: string, tx?: Prisma.TransactionClient | any): Promise<McpServerEntity | null> {
     const where = { tenantId, name, resourceStatus: ResourceStatusType.ENABLED };
 
     if (tx) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const model = await (tx as Record<string, any>).mcpServer.findFirst({ where });
       return model ? McpServerEntityMapper.getInstance().toDomainEntity(model) : null;
     }
@@ -59,11 +57,9 @@ export class McpServerRepository extends Repository<McpServerEntity, McpServer> 
    * (global-admin cross-tenant base-client lane) the caller has already scoped
    * the tenant explicitly.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async findEnabledById(id: string, tx?: Prisma.TransactionClient | any): Promise<McpServerEntity | null> {
     const where = { id, resourceStatus: ResourceStatusType.ENABLED };
     if (tx) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const model = await (tx as Record<string, any>).mcpServer.findFirst({ where });
       return model ? McpServerEntityMapper.getInstance().toDomainEntity(model) : null;
     }
@@ -84,15 +80,12 @@ export class McpServerRepository extends Repository<McpServerEntity, McpServer> 
    * guard). With a `tx` (global-admin cross-tenant base-client lane) the caller
    * supplies the explicit `tenantIds` to scope to `[target, SYSTEM]`.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async listEnabled(tenantIds?: string[], tx?: Prisma.TransactionClient | any): Promise<McpServerEntity[]> {
     if (tx) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const models = await (tx as Record<string, any>).mcpServer.findMany({
         where: { tenantId: { in: tenantIds ?? [] }, resourceStatus: ResourceStatusType.ENABLED },
         orderBy: { name: 'asc' },
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return models.map((m: any) => McpServerEntityMapper.getInstance().toDomainEntity(m));
     }
     return this.findAll({ filters: { resourceStatus: ResourceStatusType.ENABLED }, sort: [{ name: 'asc' }] });

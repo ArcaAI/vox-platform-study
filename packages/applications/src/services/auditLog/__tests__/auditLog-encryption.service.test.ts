@@ -39,7 +39,6 @@ function fakeSecrets() {
     getPhiTransitKeyName: () => 'hope-phi',
     encrypt: vi.fn(async (b: Buffer, _k?: string) => `vault:v1:${b.toString('base64')}`),
     decrypt: vi.fn(async (ct: string, _k?: string) => Buffer.from(ct.split(':').pop()!, 'base64')),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any;
 }
 

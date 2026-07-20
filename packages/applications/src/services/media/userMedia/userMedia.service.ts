@@ -41,8 +41,7 @@ export class UserMediaService extends BaseService implements IUserMediaService {
   }
 
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<UserMediaEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { limit, page, search } = props;
+    const { limit, page } = props;
     const userMedias = await this.userMediaRepository.findAll(withFormattedPaginatedProps(props));
 
     const count = await this.userMediaRepository.count(withFormattedCountProps(props));
@@ -60,14 +59,12 @@ export class UserMediaService extends BaseService implements IUserMediaService {
     });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<UserMediaEntity>> {
+  async fetchAllByTenantId(_props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<UserMediaEntity>> {
     throw new NotImplementedException();
   }
 
   async fetchAllCreatedByUser(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<UserMediaEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { userId, limit, page, search } = props;
+    const { userId, limit, page } = props;
     const userMedias = await this.userMediaRepository.findAll({
       ...withFormattedPaginatedProps(props),
       where: {

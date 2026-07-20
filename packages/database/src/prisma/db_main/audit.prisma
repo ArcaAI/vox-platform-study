@@ -180,6 +180,9 @@ enum ResourceType {
   // AiProviderConnectionService / AiRuntimeProfileService broadcastSysEvent.
   AiProviderConnection
   AiRuntimeProfile
+  // TASK-533 B6 — gate-edit mining store; the mining job broadcasts
+  // ResourceCreated per persisted exemplar.
+  GateEditExemplar
 
   @@schema("core")
 }

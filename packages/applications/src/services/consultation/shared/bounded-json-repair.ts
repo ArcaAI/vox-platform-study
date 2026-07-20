@@ -9,11 +9,13 @@
  * instruction appended, then parses that. The tolerant parser is always the final
  * fallback — a repair is best-effort and never blocks the caller.
  *
- * It is deliberately transport-agnostic (both the live-doc flush and the durable
- * summary path can drive it): the caller supplies the `generate` closure (which
- * performs the actual SMR call, measures latency, captures stats, …), the strict
- * parser, and the tolerant fallback. The helper returns every model call it made
- * (in order) so the caller can record an ordered trajectory step per call.
+ * It is deliberately transport-agnostic, and BOTH paths now drive it — the live-doc
+ * flush (Phase 4D.3) and the durable finalize summary (TASK-533 D-25, which until
+ * then persisted a malformed structured response verbatim as the clinical note):
+ * the caller supplies the `generate` closure (which performs the actual SMR call,
+ * measures latency, captures stats, …), the strict parser, and the tolerant
+ * fallback. The helper returns every model call it made (in order) so the caller
+ * can record an ordered trajectory step — or attribute token cost — per call.
  */
 
 /**
@@ -31,18 +33,50 @@ export const CORRECTIVE_RETRY_INSTRUCTION = `\n\nREVISE STRICTLY:
 - Provide a best‑effort concise summary from available information.`;
 
 /**
+ * Strip an optional ```` ```json ```` code fence, returning the bare candidate.
+ * Shared by the shape sniff and the strict parse so both agree on what the engine
+ * "meant" to send.
+ */
+function unfence(text: string): string {
+  let candidate = (text ?? '').trim();
+  const fence = candidate.match(/^```(?:json)?\s*\n?/i);
+  if (fence) {
+    candidate = candidate.slice(fence[0].length).trimStart();
+    const closing = candidate.lastIndexOf('```');
+    if (closing >= 0) {
+      candidate = candidate.slice(0, closing).trimEnd();
+    }
+  }
+  return candidate;
+}
+
+/**
  * True when `text` looks like a JSON *object* attempt (optionally wrapped in a
  * ```` ```json ```` code fence). Used to scope the corrective retry to a genuine
  * malformed-JSON case: an engine that returned clean prose (no leading `{`) is
  * handled by the tolerant parser and must NOT trigger a wasted regeneration.
  */
 export function looksLikeJsonObject(text: string): boolean {
-  let candidate = (text ?? '').trim();
-  const fence = candidate.match(/^```(?:json)?\s*\n?/i);
-  if (fence) {
-    candidate = candidate.slice(fence[0].length).trimStart();
+  return unfence(text).startsWith('{');
+}
+
+/**
+ * True when `text` actually parses as a JSON *object* (not an array/scalar).
+ *
+ * The generic strict check for callers whose payload is opaque JSON they persist
+ * verbatim — they need to know only WHETHER the structured contract was honoured,
+ * not to destructure it. Callers with a domain shape (e.g. the live-doc flush and
+ * its SOAP schema) supply their own richer `parseStrict` instead.
+ */
+export function parsesAsJsonObject(text: string): boolean {
+  const candidate = unfence(text);
+  if (!candidate.startsWith('{')) return false;
+  try {
+    const parsed: unknown = JSON.parse(candidate);
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed);
+  } catch {
+    return false;
   }
-  return candidate.startsWith('{');
 }
 
 /** Minimum shape of a model call result the helper needs (the raw text to parse). */

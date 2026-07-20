@@ -46,17 +46,14 @@ export class AiProviderConnectionRepository extends Repository<
    * without it the tenant-scope extension injects the admin's working tenant
    * and the read silently misses.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async findByTenantAndProvider(
     tenantId: string,
     provider: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     tx?: Prisma.TransactionClient | any,
   ): Promise<AiProviderConnectionEntity | null> {
     const where = { tenantId, provider, resourceStatus: ResourceStatusType.ENABLED };
 
     if (tx) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const model = await (tx as Record<string, any>).aiProviderConnection.findFirst({ where });
       return model ? AiProviderConnectionEntityMapper.getInstance().toDomainEntity(model) : null;
     }
@@ -74,22 +71,18 @@ export class AiProviderConnectionRepository extends Repository<
   }
 
   /** Every ENABLED connection row for one tenant (admin list + BYO resolution). */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async findByTenantId(
     tenantId: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     tx?: Prisma.TransactionClient | any,
   ): Promise<AiProviderConnectionEntity[]> {
     const where = { tenantId, resourceStatus: ResourceStatusType.ENABLED };
 
     if (tx) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const models = await (tx as Record<string, any>).aiProviderConnection.findMany({
         where,
         orderBy: [{ provider: 'asc' }],
       });
       const mapper = AiProviderConnectionEntityMapper.getInstance();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return models.map((m: any) => mapper.toDomainEntity(m));
     }
 

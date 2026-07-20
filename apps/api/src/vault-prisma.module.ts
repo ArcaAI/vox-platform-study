@@ -51,7 +51,6 @@ const SWAP_SAFETY_MARGIN_CAP_SEC = 300;
 const SWAP_SAFETY_MARGIN_FRACTION = 0.25;
 
 function resolveMaxTtlSec(): number {
-  // eslint-disable-next-line turbo/no-undeclared-env-vars
   const raw = process.env.PG_VAULT_MAX_TTL_SEC;
   const parsed = raw ? Number(raw) : NaN;
   return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_TTL_SEC;
@@ -80,15 +79,12 @@ interface LeaseRenewerRegistrar {
  * injects the real SecretsService at runtime.
  */
 export function buildVaultPrismaFactory(secrets: VaultDbSecretsLike): VaultPrismaFactory | null {
-  // eslint-disable-next-line turbo/no-undeclared-env-vars
   const provider = process.env.SECRETS_PROVIDER;
-  // eslint-disable-next-line turbo/no-undeclared-env-vars
   const enabled = process.env.PG_DYNAMIC_CREDS;
   if (provider !== 'vault' || enabled !== 'true') {
     logger.log(`VAULT_PRISMA_FACTORY not enabled (SECRETS_PROVIDER=${provider ?? 'unset'}, PG_DYNAMIC_CREDS=${enabled ?? 'unset'})`);
     return null;
   }
-  // eslint-disable-next-line turbo/no-undeclared-env-vars
   const role = process.env.PG_VAULT_ROLE ?? 'hope-app-role';
   logger.log(`VAULT_PRISMA_FACTORY enabled; will mint short-lived PG credentials via Vault role '${role}'`);
 

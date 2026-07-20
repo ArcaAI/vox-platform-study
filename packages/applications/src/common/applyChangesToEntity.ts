@@ -1,4 +1,44 @@
 import { BaseEntity, ResourceStatusType } from '@arcaai/domains';
+import { ArgumentInvalidException } from '@arcaai/exceptions';
+
+/**
+ * Route a `resourceStatus` write to the entity lifecycle method that owns it.
+ *
+ * TASK-541 — this used to be an inline switch with no `SUSPENDED` branch and
+ * no `default`, so a suspend request fell straight through: the entity was
+ * never touched, no change was tracked, and the caller still got a 200. The
+ * two properties that keep that from recurring:
+ *
+ *  - the `never` assignment below is a COMPILE-time exhaustiveness check —
+ *    adding a `ResourceStatusType` member without a branch here fails the
+ *    build rather than silently no-opping at runtime;
+ *  - the throw is the runtime backstop for values arriving from untyped
+ *    sources, so an unrecognised status is a loud 400 instead of a write that
+ *    reports success and changes nothing.
+ */
+function applyResourceStatus(entity: BaseEntity, status: ResourceStatusType): void {
+  switch (status) {
+    case ResourceStatusType.ENABLED:
+      entity.enable();
+      break;
+    case ResourceStatusType.DISABLED:
+      entity.disable();
+      break;
+    case ResourceStatusType.SUSPENDED:
+      entity.suspend();
+      break;
+    case ResourceStatusType.ARCHIVED:
+      entity.archive();
+      break;
+    case ResourceStatusType.DELETED:
+      entity.delete();
+      break;
+    default: {
+      const unhandled: never = status;
+      throw new ArgumentInvalidException(`Unsupported resourceStatus: ${String(unhandled)}`);
+    }
+  }
+}
 
 export type CustomChangeFieldHandlerProps<T, K> = {
   entity: T;
@@ -90,20 +130,7 @@ export async function applyChangesToEntity<T extends BaseEntity, K extends objec
       }
     } else if (value !== undefined) {
       if (key === 'resourceStatus') {
-        switch (value) {
-          case ResourceStatusType.ENABLED:
-            entity.enable();
-            break;
-          case ResourceStatusType.DISABLED:
-            entity.disable();
-            break;
-          case ResourceStatusType.ARCHIVED:
-            entity.archive();
-            break;
-          case ResourceStatusType.DELETED:
-            entity.delete();
-            break;
-        }
+        applyResourceStatus(entity, value as ResourceStatusType);
       } else {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (entity as any)[key] = value;

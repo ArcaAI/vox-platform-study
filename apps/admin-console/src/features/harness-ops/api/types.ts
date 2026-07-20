@@ -123,6 +123,95 @@ export interface EvalRunListParams {
     [key: string]: string | number | boolean | undefined | null;
 }
 
+/** One golden set (GoldenSetResponse) — TASK-532 B-5. */
+export interface GoldenSet {
+    id: string;
+    tenantId: string;
+    name: string;
+    description: string | null;
+    pinnedVersion: string | null;
+    createdAt: string;
+    updatedAt: string;
+    createdBy: string | null;
+}
+
+export interface GoldenSetList {
+    items: GoldenSet[];
+    total: number;
+}
+
+/** GET golden-sets query — offset-paginated (`page` is 1-based, like eval-runs). */
+export interface GoldenSetListParams {
+    page?: number;
+    limit?: number;
+    [key: string]: string | number | boolean | undefined | null;
+}
+
+/**
+ * One golden case, PHI-SAFE projection (GoldenCaseMetaResponse). The clinical
+ * payload columns (`transcript`, `referenceNote`) are Vault-encrypted PHI and
+ * are NEVER surfaced through the admin read plane — this interface therefore
+ * carries metadata only, and the UI must not render anything beyond it.
+ */
+export interface GoldenCaseMeta {
+    id: string;
+    tenantId: string;
+    goldenSetId: string;
+    label: string | null;
+    createdAt: string;
+    updatedAt: string;
+    createdBy: string | null;
+}
+
+export interface GoldenCaseList {
+    items: GoldenCaseMeta[];
+    total: number;
+}
+
+export interface GoldenCaseListParams {
+    page?: number;
+    limit?: number;
+    [key: string]: string | number | boolean | undefined | null;
+}
+
+/** POST golden-sets body (CreateGoldenSetRequest) — tenant is resolved server-side. */
+export interface CreateGoldenSetBody {
+    name: string;
+    description?: string;
+    pinnedVersion?: string;
+}
+
+/**
+ * POST golden-sets/:id/cases body (CreateGoldenCaseRequest). `transcript` and
+ * `referenceNote` are PHI: WRITE-ONLY through this surface — encrypted at rest
+ * and never echoed back (the response is the metadata projection above).
+ */
+export interface CreateGoldenCaseBody {
+    transcript: string;
+    referenceNote: string;
+    label?: string;
+}
+
+/**
+ * GET edit-burden?consultationId= (EditBurdenResponse) — derived scalars only,
+ * composed over WORM audit rows + summary versions. The note text itself never
+ * leaves the service. 404 = absent OR cross-tenant consultation.
+ */
+export interface EditBurden {
+    consultationId: string;
+    /** Word-level distance between delivered and signed note; null when a version is missing. */
+    editDistance: number | null;
+    /** `editDistance` normalised by delivered word count. */
+    editDistanceRatio: number | null;
+    /** Fraction of gate decisions that were NOT a clean pass; null when there were none. */
+    deferralRate: number | null;
+    gateDecisionTotal: number;
+    deferralCount: number;
+    timeToSignSeconds: number | null;
+    deliveredAt: string | null;
+    signedAt: string | null;
+}
+
 /** One consultation awaiting clinician review (GateQueueItemResponse). */
 export interface GateQueueItem {
     consultationId: string;

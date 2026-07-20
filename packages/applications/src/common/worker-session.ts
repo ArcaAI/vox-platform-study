@@ -24,6 +24,8 @@ export type WorkerSessionKind =
   | 'ocr-enrichment'
   // TASK-392 (Q4/Q10) — trial-expiry + downgrade soft-disable lifecycle job.
   | 'entitlements-lifecycle'
+  // TASK-533 B6 — gate-edit mining worker (derived learning-loop corpus).
+  | 'gate-edit-mining'
   // TASK-498 P3 — admin-triggered tenant external-IdP directory pull (MS Graph / Google Directory).
   | 'directory-sync';
 

@@ -1,6 +1,6 @@
 # TASK-532 — Governance Tightening & Console IA Cleanup
 
-- **Status**: Pending
+- **Status**: Review — implementation complete; all static gates green, runtime verification DONE against a live gateway (§9.4), blast-radius query executed on dev (§9.5). Remaining owner items: re-run the query against PRODUCTION, and OD-2 comms.
 - **Type**: feature (E3 governance locks) / refactor (console IA)
 - **Program**: Phase 5 of the [2026-07-20 agentic platform program plan](../SOTA-Track/2026-07-20-agentic-platform-program-plan.md) (§4 Phase 5, AD-7); findings source: [2026-07-20 review findings](../SOTA-Track/2026-07-20-agentic-platform-review-findings.md) (E3-L1/L2, E3-D1, GAP-G1/G2, M-01…M-14)
 - **Ticket number**: suggested by the program plan (TASK-523…534 block). Highest allocated number is TASK-534 (sibling docs exist for 524/525/526/528/529/531/534) — **confirm at open time** per the CLAUDE.md ticket workflow.
@@ -8,6 +8,8 @@
 - **Dependencies**: **TASK-523** (P0 comment/copy sweep D-16…D-18, D-21 — the stale "tenants may override" copy must be gone before this ticket changes the semantics again) · **TASK-524** (the AD-1 descriptor-driven enforcement point; see §3.1 fallback if 524 has not landed)
 - **Owner decisions recorded** (program plan §8): **OD-2 default adopted — lock all five toggles to global-admin** (`safetyEnabled`, `phiEnabled`, `phiFailClosed`, `pipeline.harnessEnabled`, `pipeline.autoNerEnabled`); **OD-6 default adopted — fold `/prompt-studio` into `/agents` + redirect**. Both are owner-confirmable at plan approval; a reversal shrinks work-stream A/B respectively without restructuring the ticket.
 - **Design-gate preconditions (rule 12 — blocking for the affected screens only)**: the **AI Services panel** (new screen) and the **merged policy editor / demoted harness-policy tabs** (changed screens) each need an approved Figma frame **or a recorded owner waiver** (frame inventory or waiver text + date recorded in this README) before their screen code is written. Precedent: the TASK-512 wave ran on an explicit waiver (plan §2.3). Non-visual work (service locks, RBAC subjects, seed, decorator swaps, rules-doc edits) is never design-gated.
+  - **WAIVER RECORDED — 2026-07-20 (owner)**: no Figma frame exists for B-1 / B-2 / B-4. The owner explicitly waived the rule-12 design gate for all three, on the TASK-512 precedent, and authorised implementation to proceed. The screens are still held to the rule 10/11/13 quality bars (`ScreenTemplate`, `TabsList variant="line"`, content-shaped skeletons, empty/error states, axe 0 violations, both themes) — the waiver removes the *frame*, not the standards. Design QA against a frame, if one is later authored, remains open for the owner.
+- **OD-2 CONFIRMED — 2026-07-20 (owner)**: all five toggles lock to global-admin as planned (`safetyEnabled`, `phiEnabled`, `phiFailClosed`, `pipeline.harnessEnabled`, `pipeline.autoNerEnabled`). The blast-radius query the §7 comms note asks for is in [`affected-tenants.sql`](./affected-tenants.sql).
 
 ---
 
@@ -223,11 +225,105 @@ Two independently reviewable work-streams. Order within each stream is binding; 
 
 ## 9. Implementation Summary
 
-_Pending_
+**Status: Review.** Both work-streams implemented TDD (RED recorded per step before implementation). All static gates green. One gate is open and owner-taken — see §9.4.
+
+### 9.1 Work-stream A — governance locks + RBAC
+
+| Step | Outcome |
+|---|---|
+| A-1a/b | `GLOBAL_ADMIN_ONLY_POLICY_KEYS` extended with `safetyEnabled`/`phiEnabled`/`phiFailClosed`; the stale ":98-100" comment ("tenant admins may still patch … PHI toggles") rewritten. Because the list also drives the SYSTEM overlay in `getEffectivePolicy`, grandfathered tenant rows are neutralised at READ time — locked in by test. |
+| A-1c | Tenant editor renders the three switches disabled with a "Global admins only" hint; `HarnessPolicyForm` gained `lockedKeys`, and locked keys are STRIPPED from the sparse patch so a stale draft cannot smuggle one into a save. Global editor passes none. |
+| A-2a/b/c | `pipeline.harnessEnabled` + `pipeline.autoNerEnabled` descriptors carry `globalOnly: true`; `PipelinePolicyService.assertGlobalOnlyToggles` runs BEFORE the scope clamp and 403s non-elevated callers. **Descriptor-driven — the method holds no key list** (a test flips the descriptor and proves the service follows it). Per §3.1 this is the local-mirror fallback: TASK-524 landed the same check inline in `SettingsRegistryWriteService.write` step 3 but exported no helper. |
+| A-2d | Both governed toggles render disabled + hinted for non-elevated sessions; `autoSummaryEnabled` stays editable. |
+| A-3a/b/c | mcp-admin → `McpServer` (reads `read`, writes `manage`); agent-trajectory class → `@CanRead('AgentTrajectory')` (`read`, not the borrowed `manage`). agentic-admin deliberately KEEPS `HarnessPolicy` with a comment saying why. Additive seed grants in all three roles; no Prisma enum migration needed (confirmed `McpServer` already present, `AgentTrajectory` not required for a read-only surface). |
+| A-4 | `AUTH-NOTE(TASK-532)` markers on the approve route and the three personal-CRUD routes; rule 05 gained §"Imperative Privilege Checks". Decorators unchanged — the review verdict that these are deliberate was confirmed against the code. |
+
+### 9.2 Work-stream B — console IA
+
+| Step | Outcome |
+|---|---|
+| B-1 | `/harness/policy` Global + Live tabs demoted to read-only summaries + "Edit in Agentic policy" deep links (`?tab=policy` / `?tab=engine`). The second `HarnessPolicyForm` mount and the live kill-switch form are gone; the global-default READ stays (the tenant-vs-global comparison needs it). |
+| B-2 | `/agents` gained an elevated-only, URL-addressable Governance tab (list + versions/diff + approve with OCC). `approveTemplate` + its hook ported into the agents feature; `versions-panel.tsx` moved; `features/prompt-studio` DELETED; `/prompt-studio` → `redirect('/agents?tab=governance')`. |
+| B-3 | `features/pstudio` → `features/db-studio`, screen + copy → "Database Studio", route → `/db-studio`, `/pstudio` → `redirect('/db-studio')`. **Gateway `admin/pstudio/*` paths deliberately unchanged** (console-only rename), stated in the screen header. |
+| B-4 | NEW `/ai-services` (Guardrail / NLP / Instructions). Guardrail+NLP shapes are upstream-owned, so rendering is defensive — recognised status fields become badges, everything else falls back to a key/value tree; a test feeds a deliberately wrong shape and asserts it degrades without an alert. |
+| B-5 | `GoldenSetsPanel` (list → `DetailDrawer`, create behind `manage:HarnessEval` via the existing `RequirePermission`) + `EditBurdenCard` (404 → EmptyState, not an error) on the harness observability screen. PHI-safe metadata only — a test feeds rogue `transcript`/`referenceNote` keys and asserts they never reach the DOM. |
+| B-6 | nav: `/prompt-studio` removed, `/pstudio` → `/db-studio` ("Database Studio"), `/ai-services` added (`IconServerCog`). Counts hold at 43 total / 17 in tier 10-19. |
+| B-7 | **No-op.** TASK-526 already landed the tenant rename (`tenant-ai-configuration-screen.tsx` exists); per the plan the platform file name stays as-is. |
+| B-8 | rule 13 §Routing gained the 50-59 row, the "(global) screen + WorkingTenantGate" sub-pattern (documented, not "fixed"), the one-authoritative-editor rule and the one-release redirect rule; rule 12 §3 stale 50-59 row replaced; `.claude/rules/README.md` changelog v6.4.0. |
+
+### 9.3 Findings beyond the plan
+
+- **Latent type bug fixed**: the agents feature declared `PromptTemplateStatus = 'DRAFT' | 'PUBLISHED'` — missing `APPROVED`, which the Prisma enum has and the approve write returns. The agents grid could already receive approved rows outside its declared type; the retired prompt-studio copy had all three. Corrected in `features/agents/api/types.ts` rather than worked around.
+- **Repo-wide axe type gap — ROOT-CAUSED AND FIXED.** `tsc --noEmit` reported `Property 'toHaveNoViolations' does not exist` in all 13 axe-using test files. Cause: `vitest-axe@0.1.0` augments the LEGACY global `Vi` namespace, which **Vitest 4 no longer reads** — v4 composes assertions from the `Matchers<T>` interface exported by `@vitest/expect`. The library's types were therefore inert while the matcher worked at runtime. Fixed with one ambient declaration (`src/test/vitest-axe.d.ts`) augmenting the interface Vitest 4 actually consumes, and `expect.extend(axeMatchers)` moved into the shared `src/test/setup.ts` so the 13 files stopped repeating it (a new a11y test now only needs `import { axe } from 'vitest-axe'`). Types and registration are deliberately co-located — the declaration must not promise a matcher nothing registers.
+- **One more pre-existing `tsc` error, also fixed**: `consultation-demo-screen.tsx:284` had an implicit-`any` (`useCallback` cannot infer a parameter from the surrounding object-literal property, so the hook's declared `(job: ConsultationJobStatus) => void` never reached it). Annotated explicitly. `apps/admin-console` now typechecks clean — note CI's `typecheck` job only runs `tsc --noEmit` for `@arcaai/api`, so neither error was gating anything.
+- Test-fixture consequence of the locks: pipeline-policy specs exercising `harnessEnabled` OCC/WORM mechanics now construct an ELEVATED caller, so they still test encryption/CAS rather than tripping the new 403. Called out so a reader does not read it as weakening the tests.
+
+### 9.4 Gates
+
+| Gate | Result |
+|---|---|
+| `pnpm --filter @arcaai/applications build test` | build OK · **6576 passed**, 1 skipped file |
+| `pnpm --filter @arcaai/database test` | **844 passed** (25 files) |
+| `pnpm build:api` | 8/8 tasks OK |
+| `pnpm test:unit` (full monorepo) | **16801 passed**, 4 skipped, 9 todo (953 files) |
+| `pnpm --filter @arcaai/admin-console build lint test` | build OK (all routes present incl. `/ai-services`, `/db-studio`, both redirects) · lint clean · **1081 passed** (140 files) |
+| `pnpm lint` (monorepo) | 29/29 tasks green (only-warn warnings treated as errors) |
+| Runtime (`next dev` + gateway, rule 13) | **DONE — authenticated pass, see below** |
+| `tsc --noEmit` (admin-console) | **clean** (was 15 errors: 14 axe + 1 implicit-any) |
+
+**Runtime verification — DONE (2026-07-21).** A full authenticated pass against a running `next dev` + gateway, using the repo's own e2e fixture users (`tests/helpers/e2e.helper.ts`), authenticating through the BFF login route rather than typing into the form:
+
+| Surface | Evidence |
+|---|---|
+| `/pstudio` → `/db-studio`, `/prompt-studio` → `/agents?tab=governance` | both redirects land; renamed screen + copy render |
+| `/agents` Governance tab (B-2) | tab visible for elevated session at the redirect target, 38 templates listed, versions + diff + approve panels render |
+| **Approve write (OCC)** | real `POST :id/approve` → gateway **200** with `tenantId` scoping; success toast; cache invalidation refetched list + versions + detail |
+| **E3-L1 lock (A-1a)** | live tenant `PATCH admin/harness/policy {safetyEnabled:false}` → **403** `"HarnessPolicy fields [safetyEnabled] are managed by global administrators only."` |
+| **E3-L2 lock (A-2b)** | as `tenant_admin`: `harnessEnabled` → **403**, `autoNerEnabled` → **403**, `autoSummaryEnabled` → **412** (stale OCC, NOT 403 — proving the unlocked toggle passes the privilege gate and reaches the concurrency layer). As global admin both governed toggles → **200** |
+| **A-1c lock UI** | as `tenant_admin`: all three safety/PHI switches `disabled`, exactly 3 "Global admins only" hints; `Coverage` + `Max regen` still editable |
+| **A-2d lock UI** | as `tenant_admin`: Harness-routing and Auto-NER option groups fully disabled + 2 hints; Auto-summary editable. Elevated session: all editable |
+| **B-1 demotion** | `?tab=global` and `?tab=live`: **0 forms, 0 save buttons, 0 switches**; state rendered as badges; deep links resolve to `/agentic-policy?tab=policy` and `?tab=engine` |
+| **B-4 `/ai-services`** | three tabs render; Instructions tab shows real resolved data (prompt tier, judge pin, thresholds); no console errors |
+| **B-5** | Golden sets + Edit burden panels mount beside the existing audit/evals/gate-queue sections |
+| **B-6 nav** | sidebar shows "AI services" and "Database Studio"; no "Prompt studio" |
+
+**One gap remains, and it is a limitation of the automation harness, not of the app.** The guardrail/NLP panels' ERROR state could not be observed live: those services (8863/8864) were down, so the reads correctly returned 503, but React Query then held the retry at `fetchStatus: 'paused'` forever and the panels stayed on skeletons. Root-caused to `document.visibilityState === 'hidden'` in the headless preview tab — `focusManager.isFocused()` is false, and `query-core`'s `retryer.js:42` gates retry continuation on focus *regardless of `networkMode`*. React Query pauses retries in hidden tabs **by design**, and it self-heals on refocus, so a real user in a visible tab sees the ErrorState the unit tests assert. Recorded here because the symptom (an eternal skeleton) looks exactly like a product bug and will waste someone's afternoon if they hit it in a headless browser.
+
+_A speculative `networkMode: 'always'` fix was written for this and then **reverted**: a runtime probe proved the setting was applied (`nm: "always"`) and the query still paused, confirming focus — not offline — was the gate. Keeping it would have changed platform-wide behaviour on a wrong diagnosis._
+
+**Dev-DB side effects of this pass** (local seed data only, restorable with `pnpm db:seed`): one prompt template re-approved (idempotent — it was already `APPROVED`), and the Global tenant's `PipelinePolicy` TENANT row written (`harnessEnabled`, `autoSummaryEnabled`).
+
+**e2e — AUTHORED AND RUN HERE (2026-07-21), not deferred.** §4 deferred e2e *execution* to TASK-534, but that was too coarse: this ticket changed behaviour that **existing** console specs already encoded, so leaving them would have handed TASK-534 a red suite with no context. Specs that assert behaviour this ticket changed belong in this MR — the same principle as plan §5 rule 7 for seed tests.
+
+| Spec | Change |
+|---|---|
+| `pstudio.spec.ts` → `db-studio.spec.ts` | renamed; console copy/route updated to "Database Studio" / `/db-studio`. Gateway assertions (`/api/hope/admin/pstudio*`) deliberately unchanged, with a header note so the mixed naming does not read as drift. **7 passed** (incl. axe light + dark) |
+| `harness-policy.spec.ts` | the two specs that drove the live-config kill-switch FORM are replaced by one demotion spec (state readable, no switch/reason/save, deep link to `/agentic-policy?tab=engine`); the global-default spec now asserts no save panel + deep link. **11 passed** |
+| NEW `ai-services.spec.ts` | axe light + dark, defensive rendering of an unknown upstream shape, and the 503 → ErrorState + retry path. **5 passed** |
+| NEW `retired-routes.spec.ts` | both redirects resolve to a *working* screen — `/prompt-studio` lands with the Governance tab actually `data-state="active"`, `/pstudio` on Database Studio. **3 passed** |
+
+**Two pre-existing defects this surfaced (fixed here, because they are the same defect class the ticket exists to fix).** `harness-policy.spec.ts` had two specs editing **`Safety provider`** and **`Safety model`** and asserting a successful tenant save. Both keys have been in `GLOBAL_ADMIN_ONLY_POLICY_KEYS` since long before this ticket (verified against `HEAD`), so that tenant PATCH has **always** returned 403 — the specs encoded an impossible save, and the tenant tab was still rendering the two inputs as editable. That is precisely the defect A-1c was written to fix for the three toggles, so `TENANT_LOCKED_POLICY_KEYS` now also covers `safetyProvider`/`safetyModel` (5 locked controls, 5 hints), and the two specs were repointed at genuinely tenant-writable knobs (gate SLA / gate escalation). Vitest and e2e both green.
+
+**Full-suite caveat, recorded so nobody re-chases it.** The console e2e suite cannot complete locally in one pass: the API's tiered throttler starts returning **429** partway through (even on `/health`), after which `apiAvailable()` is false and the remainder SKIPS rather than fails. Every spec this ticket owns was therefore run per-file with `--workers=1` (results above). Two failures outside this ticket's surface remain and are **not** caused by it: `settings-rotate.spec.ts` (throttled — fails the availability assert) and `account.spec.ts:137` "locked transcription mode" (driven by `tenantCfg.transcriptionModeLocked` in `userPreferences.service.ts` — tenant-config seed state, a different subsystem entirely; the file is untouched by this ticket).
+
+**Also not this ticket**: the root `pnpm test:unit` cross-project run reports 14 failures in `agent-trajectory.token-budget.test.ts` — an **untracked, in-flight TASK-533 B4 file**. It passes in isolation (14/14) and in a full `@arcaai/applications` run (325 files / 6636 tests) with this ticket's changes present, so it is a cross-project isolation issue owned by TASK-533.
+
+### 9.5 Owner decisions recorded this session
+
+- **OD-2 confirmed** — all five toggles locked. Blast-radius query delivered as [`affected-tenants.sql`](./affected-tenants.sql) and **executed against the dev DB (2026-07-21)**, which also debugged it — Part 3 originally selected `Policy."tenantId"`, a column that **does not exist** (policies are scoped by the `scope` enum plus `${context.tenantId}` conditions inside `rules`, and `isProtected` is not a seeded/custom discriminator — only 2 seeded rows set it). Rewritten to flag seeded-vs-custom by name against `DEFAULT_POLICIES`. Results on dev:
+  - **Part 1 — 0 rows.** No tenant's effective safety/PHI posture changes on deploy.
+  - **Part 2 — 2 rows**, both platform tenants (SYSTEM `00000000-…`, Global `50000000-…`); no customer tenant loses an editable pin.
+  - **Part 3 — 3 rows, all `seeded = t`** and all already carrying the new `McpServer` + `AgentTrajectory` grants; **0 custom policies need operator action.**
+  - **Caveat on interpreting this run**: the dev DB had already been re-seeded with the updated `01-policy.ts` (policy rows are `_version: 1`, created 16:27 UTC; `pnpm dev:api` does not seed — `turbo` `dev` only depends on `^db:generate`), so Part 3 here reflects post-change state. **This run validates the SQL, not production blast radius** — Parts 1 and 3 must be re-run against production before merge.
+- **Design gate waived** for B-1/B-2/B-4 (recorded in the header). Quality bars were still enforced; design QA against a frame remains open if one is ever authored.
 
 ## 10. Change History
 
 | Date | Change |
 |---|---|
 | 2026-07-20 | Ticket README authored (execution-ready): code-verified current state for every M-item and both E3 locks, two work-streams (A governance / B console IA), descriptor-driven enforcement architecture, additive RBAC grandfathering, TDD plan T-1…T-12, OD-2/OD-6 defaults recorded, design-gate preconditions stated. |
+| 2026-07-20 | **Implemented (TDD).** Work-stream A: E3-L1 harness lock (3 toggles + SYSTEM overlay), E3-L2 descriptor-driven pipeline lock, M-12 RBAC subject swap + additive seed grants, M-13 AUTH-NOTE markers + rule 05 section. Work-stream B: M-02 editor demotion, M-03/OD-6 governance fold + redirect, M-08 `/db-studio` rename + redirect, M-09 `/ai-services` + golden-sets/edit-burden, M-06 nav, M-01/M-14 rules docs. Also fixed a latent bug the fold surfaced: `PromptTemplateStatus` was missing `APPROVED`. Gates: applications 6576 · database 844 · monorepo unit 16801 · admin-console 1081 · lint 29/29 · api+console builds OK. Status → Review. |
+| 2026-07-20 | Owner decisions: **OD-2 confirmed** (all five toggles locked) with the blast-radius query authored as `affected-tenants.sql`; **rule-12 design gate WAIVED** for B-1/B-2/B-4 (no Figma frame; TASK-512 precedent), quality bars still enforced. |
+| 2026-07-21 | **e2e closed in-MR.** Existing specs that encoded changed behaviour were updated rather than deferred: `pstudio.spec.ts` → `db-studio.spec.ts`, the two harness-policy kill-switch specs replaced by demotion specs, plus NEW `ai-services.spec.ts` (incl. the 503 → ErrorState path that jsdom cannot observe) and `retired-routes.spec.ts`. Surfaced and fixed a PRE-EXISTING defect: `safetyProvider`/`safetyModel` were server-locked long before this ticket yet still rendered editable, and two e2e specs asserted the impossible save — both keys added to `TENANT_LOCKED_POLICY_KEYS`, specs repointed at writable knobs. |
+| 2026-07-21 | **Findings closed.** (1) Repo-wide axe type gap root-caused (vitest-axe augments the legacy `Vi` namespace; Vitest 4 reads `@vitest/expect`'s `Matchers`) and fixed via one ambient declaration + centralized `expect.extend` — `tsc --noEmit` now clean for admin-console; also fixed a pre-existing implicit-`any`. (2) Blast-radius query executed on dev — found and fixed a real bug in it (`Policy."tenantId"` does not exist); results: 0 posture changes, 2 platform-only pins, 0 custom policies needing action. (3) Full authenticated runtime pass: both E3 locks verified live (403/403/412 discrimination), approve OCC 200, both lock UIs, B-1 demotion, B-4/B-5/B-6. One gap traced to the headless tab being `visibilityState: hidden` (React Query pauses retries in hidden tabs by design) — a speculative `networkMode` fix was written and reverted once the probe disproved the diagnosis. |
 | 2026-07-20 | Program plan §2.5 **Completion & Cleanup Doctrine** adopted as BINDING for this ticket (owner directive): incorrect implementations in the owned surface are removed completely with the fix; partial implementations are finished end-to-end (or explicitly retired); redundant implementations are converged and deleted. Reviewer enforces the §2.5 classification table, plan-conformance (deviations = recorded decision rows), full-closure traceability of the claimed GAP/D/M IDs, and the performance gates. |

@@ -23,7 +23,6 @@ export class MediaRepository extends Repository<MediaEntity, Media> {
    * null→0 presentation.
    */
   async sumSizeForTenant(tenantId: string | null): Promise<number | null> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (this as any).db.aggregate({
       _sum: { size: true },
       where: tenantId ? { tenantId } : {},

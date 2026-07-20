@@ -23,6 +23,7 @@ import {
   IconMicrophone,
   IconPlugConnected,
   IconRobot,
+  IconServerCog,
   IconRoute,
   IconSettings,
   IconShieldBolt,
@@ -41,7 +42,6 @@ import {
   IconUserShield,
   IconVolume,
   IconWaveSine,
-  IconWritingSign,
   type TablerIcon,
 } from '@tabler/icons-react';
 import { canAny, isElevated, type PermissionRule } from '@/shared/auth/ability';
@@ -138,7 +138,12 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   { route: '/rate-limits', label: 'Rate limits', tier: '10-19', icon: IconGauge, required: [['manage', 'all']], implemented: true },
   // Phase 3B agentic global-admin console (all GLOBAL_ADMIN-only).
   { route: '/agentic-policy', label: 'Agentic policy', tier: '10-19', icon: IconShieldBolt, required: [['manage', 'all']], implemented: true },
-  { route: '/prompt-studio', label: 'Prompt studio', tier: '10-19', icon: IconWritingSign, required: [['manage', 'all']], implemented: true },
+  // TASK-532 (M-03/OD-6): `/prompt-studio` retired — prompt governance folded
+  // into the elevated-only Governance tab of `/agents` (one authoritative
+  // surface per resource). `/prompt-studio` still resolves for one release
+  // via a redirect page. TASK-532 (M-09): `/ai-services` takes the freed slot,
+  // surfacing the guardrail/NLP status + config backends that had no screen.
+  { route: '/ai-services', label: 'AI services', tier: '10-19', icon: IconServerCog, required: [['manage', 'all']], implemented: true },
   { route: '/ai-operations/runs', label: 'AI operations — runs', tier: '10-19', icon: IconTimeline, required: [['manage', 'all']], implemented: true },
   {
     route: '/ai-operations/metrics',
@@ -152,7 +157,9 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   { route: '/queues', label: 'Queues & jobs', tier: '10-19', icon: IconStack2, required: [['manage', 'all']], implemented: true },
   { route: '/schedulers', label: 'Schedulers', tier: '10-19', icon: IconCalendarTime, required: [['manage', 'all']], implemented: true },
   { route: '/audit-logs', label: 'Audit logs', tier: '10-19', icon: IconHistory, required: [['read', 'AuditLog']], implemented: true },
-  { route: '/pstudio', label: 'Prisma Studio', tier: '10-19', icon: IconDatabaseSearch, required: [['manage', 'all']], implemented: true },
+  // TASK-532 (M-08): renamed from `/pstudio` (read as a typo'd "prompt
+  // studio"). Console-only rename — the gateway path stays `/admin/pstudio/*`.
+  { route: '/db-studio', label: 'Database Studio', tier: '10-19', icon: IconDatabaseSearch, required: [['manage', 'all']], implemented: true },
 
   // Tier 20-29 — shared (cross-tenant or tenant-scoped)
   { route: '/users', label: 'Users', tier: '20-29', icon: IconUsers, required: [['manage', 'User']], implemented: true },

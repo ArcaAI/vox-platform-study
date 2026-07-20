@@ -333,6 +333,11 @@ async def _transcribe_file_async(
                     transcript_text=result.text,
                     metadata=result.to_dict(),
                     consultation_id=consultation_id,
+                    # TASK-533 D-22 — on the TYPED field, not smuggled inside
+                    # `metadata`. The metadata path was how the wrong (text-less,
+                    # seconds, snake_case) shape used to slip past validation and
+                    # write all-null segment rows.
+                    segments=result.build_transcript_segments(),
                 )
                 context_item_id = response.get("contextItemId")
                 logger.info(f"[{job_id}] Created context item: {context_item_id}")

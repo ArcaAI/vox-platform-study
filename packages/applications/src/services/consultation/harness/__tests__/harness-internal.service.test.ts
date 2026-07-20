@@ -254,12 +254,16 @@ describe('HarnessInternalService', () => {
     // trailing @Optional() ctor param stays undefined (dedup no-ops, exact prior path).
     // optional `transcriptSegmentRepository` (17th arg) for assemble
     // segment-citation refs + citationsMap enrichment; unwired ⇒ empty refs.
+    // TASK-533 D-23 — optional `harnessPolicyService` (18th arg): the effective
+    // `warmStartEnabled` authority. Unwired ⇒ the env fallback governs, which is the
+    // exact pre-D-23 behaviour every fixture below relies on.
     const buildService = (
         warmStartEnabled = false,
         configResolver?: ReturnType<typeof createMockConfigResolver>,
         withSecrets = true,
         redisCache?: ReturnType<typeof createMockRedisCache>,
         transcriptSegmentRepository?: ReturnType<typeof createMockTranscriptSegmentRepository>,
+        harnessPolicyService?: { getEffectivePolicy: ReturnType<typeof vi.fn> },
     ) => {
         configService = createMockConfigService(warmStartEnabled);
         return new HarnessInternalService(
@@ -280,6 +284,7 @@ describe('HarnessInternalService', () => {
             withSecrets ? (secretsService as any) : undefined,
             redisCache as any,
             transcriptSegmentRepository as any,
+            harnessPolicyService as any,
         );
     };
 
@@ -572,6 +577,67 @@ describe('HarnessInternalService', () => {
             expect(promptAssemblyService.assemble).toHaveBeenCalledWith(
                 expect.objectContaining({ highlights: [] }),
             );
+        });
+
+        // ── Effective warm-start policy beats env (TASK-533 D-23) ──
+        // `HarnessPolicy.warmStartEnabled` was write-plumbed to the admin console and
+        // read by nothing; the real switch was the env var, cached at construction.
+        // Policy is now the authority, resolved per call, env only the null-fallback.
+        describe('effective warmStartEnabled (TASK-533 D-23)', () => {
+            const withPolicy = (warmStartEnabled: boolean | null, env = false) => {
+                const getEffectivePolicy = vi.fn().mockResolvedValue({ warmStartEnabled });
+                const svc = buildService(env, undefined, true, undefined, undefined, { getEffectivePolicy });
+                return { service: svc, getEffectivePolicy };
+            };
+
+            const SNAPSHOT = {
+                id: 'ps-live-1',
+                content: 'S: chest pain O: BP 120/80',
+                metaData: { subType: 'LIVE_SOAP_SNAPSHOT' },
+                createdAt: new Date(),
+            };
+
+            const assembledPreSummary = () =>
+                (promptAssemblyService.assemble as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0].preSummaryText;
+
+            beforeEach(() => {
+                contextItemRepository.findPreSummaries.mockResolvedValue([SNAPSHOT]);
+            });
+
+            it('policy=false beats env=true → no snapshot lookup, no prior draft', async () => {
+                const { service: svc } = withPolicy(false, true);
+                await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
+                expect(contextItemRepository.findPreSummaries).not.toHaveBeenCalled();
+                expect(assembledPreSummary()).toBeUndefined();
+            });
+
+            it('policy=true beats env unset → warm start ON', async () => {
+                const { service: svc } = withPolicy(true, false);
+                await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
+                expect(assembledPreSummary()).toBe(SNAPSHOT.content);
+            });
+
+            it('policy=null falls back to env (pre-D-23 behaviour preserved)', async () => {
+                const { service: svc } = withPolicy(null, true);
+                await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
+                expect(assembledPreSummary()).toBe(SNAPSHOT.content);
+            });
+
+            it('resolves the policy for the request tenant, per call', async () => {
+                const { service: svc, getEffectivePolicy } = withPolicy(true);
+                await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
+                await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
+                expect(getEffectivePolicy).toHaveBeenCalledWith('tenant-1');
+                expect(getEffectivePolicy).toHaveBeenCalledTimes(2);
+            });
+
+            it('threads the tenant into prompt assembly so both gates agree', async () => {
+                const { service: svc } = withPolicy(true);
+                await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
+                expect(promptAssemblyService.assemble).toHaveBeenCalledWith(
+                    expect.objectContaining({ tenantId: 'tenant-1' }),
+                );
+            });
         });
 
         // ── Warm-start from the live SOAP snapshot (TASK-355 Phase C — R-6) ──

@@ -376,15 +376,15 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
   /**
    * NestJS log method (maps to info)
    */
-  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment -- multiple overloads narrowing NestJS's own LoggerService.log signature trip a spurious "duplicate overload" style complaint; @ts-expect-error would itself error if that complaint isn't raised on every TS version
   // @ts-ignore - NestJS LoggerService overload compatibility
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   log(message: any, ...optionalParams: any[]): void;
-  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment -- same overload-compatibility reason as above
   // @ts-ignore
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   log(message: any, context?: string): void;
-  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment -- same overload-compatibility reason as above
   // @ts-ignore
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   log(message: any, contextOrParams?: string | any[]): void {

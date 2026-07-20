@@ -20,12 +20,10 @@ import { SysEventType, SysEventProps, SendContactMessageEvent, EventTypes } from
  * Emitted directly for specific domain events (e.g., authentication, notifications)
  * Each has its own payload type
  */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface SysEventPayload extends Partial<SysEventProps> {
-  // All fields (resourceId, resourceIds, data, previousData, createdAt,
-  // disableAuditLog, forceAuditLog, etc.) are inherited from Partial<SysEventProps>.
-  // No overrides needed — the parent type already defines them correctly.
-}
+// All fields (resourceId, resourceIds, data, previousData, createdAt,
+// disableAuditLog, forceAuditLog, etc.) are inherited from Partial<SysEventProps>.
+// No overrides needed — the parent type already defines them correctly.
+export type SysEventPayload = Partial<SysEventProps>;
 
 /**
  * Authentication event payload emitted by AuthService
@@ -37,6 +35,28 @@ export interface AuthenticationEventPayload {
   ip?: string;
   userAgent?: string;
   method?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * TASK-541 B1 — failed authentication attempt.
+ *
+ * `userId` is present only when the attempt resolved to a real account
+ * (wrong password, disabled account, revoked token). It is absent for an
+ * unknown username, where `attemptedUsername` carries the only identity
+ * signal. `reason` is a stable machine-readable slug — never the raw
+ * exception message, which can leak internals into the audit row.
+ */
+export interface AuthenticationFailedEventPayload {
+  userId?: string;
+  attemptedUsername?: string;
+  reason: string;
+  timestamp?: Date;
+  ip?: string;
+  userAgent?: string;
+  method?: string;
+  endpoint?: string;
+  tenantKey?: string;
   [key: string]: unknown;
 }
 
@@ -67,6 +87,7 @@ export interface HopeEventMap {
 
   // Domain events (handled directly by specific services)
   [EventTypes.UserAuthenticated]: AuthenticationEventPayload;
+  [EventTypes.UserAuthenticationFailed]: AuthenticationFailedEventPayload;
   [EventTypes.AppSettingsUpdated]: Record<string, unknown>;
   [EventTypes.NotificationSend]: Record<string, unknown>;
 }

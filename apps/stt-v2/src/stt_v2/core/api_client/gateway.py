@@ -264,6 +264,7 @@ class APIGatewayClient:
         tenant_id: str | None = None,
         transcription_source: str | None = None,
         idempotency_key: str | None = None,
+        segments: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Create a transcript context item.
 
@@ -289,10 +290,22 @@ class APIGatewayClient:
                 streaming path is already deduped server-side by
                 ``consultationId``; the header is forward-compatible and becomes
                 authoritative once apps/api honors it (see ticket report).
+            segments: Consumer-shaped transcript segments (TASK-533 D-22) —
+                ``{idx, t0Ms, t1Ms, speaker, text, charStart, charEnd}``, camelCase,
+                milliseconds. Maps onto the typed ``CreateTranscriptRequest.segments``
+                field, which is what feeds ``TranscriptSegment`` rows and therefore
+                the harness evidence-grounding chain. Omit (or pass empty) and the
+                gateway persists no segments — the pre-D-22 behaviour.
         """
         payload: dict[str, Any] = {
             "transcriptText": transcript_text,
         }
+        # Sent as a TOP-LEVEL typed field, deliberately NOT inside `metadata`:
+        # metadata is an untyped JsonValue, so a wrong shape there bypasses
+        # class-validator entirely and silently persists null columns (the D-22
+        # batch failure mode). On the typed field a bad shape is a 400.
+        if segments:
+            payload["segments"] = segments
         if job_id:
             payload["jobId"] = job_id
         if metadata is not None:

@@ -28,10 +28,10 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return proto === Object.prototype || proto === null;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- scrubs arbitrary Prisma persistence payloads (every model's `toPersistence()` shape) before an already-`any`-typed dynamic delegate.create() call; `unknown` here wouldn't add real safety, only require a cast at every call site
 export function removeNullValues(obj: Record<string, any>): Record<string, any> {
   // Create a new object to avoid mutating the original object
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- same reason as the parameter/return type above
   const cleanedObject: Record<string, any> = {};
 
   // Iterate over each key in the object

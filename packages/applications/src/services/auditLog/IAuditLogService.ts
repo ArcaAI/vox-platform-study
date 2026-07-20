@@ -131,6 +131,32 @@ export interface IAuditLogService {
   ): Promise<void>;
 
   /**
+   * TASK-541 B1 — handle a FAILED authentication attempt.
+   *
+   * Counterpart to `handleUserAuthenticatedEvent` (which is success-only).
+   * Writes a LOGIN row with `success: false` so rejected access is reviewable
+   * alongside granted access, per HIPAA §164.312(b). Triggered by
+   * `EventTypes.UserAuthenticationFailed`.
+   *
+   * `userId` is absent when the attempt matched no account — `attemptedUsername`
+   * is then the only identity signal. Best-effort: never throws.
+   *
+   * @param event - The failed-authentication event.
+   * @returns A promise that resolves when the audit log write has been attempted.
+   */
+  handleUserAuthenticationFailedEvent(event: {
+    userId?: string;
+    attemptedUsername?: string;
+    reason?: string;
+    timestamp?: Date;
+    ip?: string;
+    userAgent?: string;
+    method?: string;
+    endpoint?: string;
+    tenantKey?: string;
+  }): Promise<void>;
+
+  /**
    * TASK-326 X1 — synchronously record a privileged/system action audit entry
    * via the direct-write path (bypassing the SysEvent → Redis queue pipeline).
    *

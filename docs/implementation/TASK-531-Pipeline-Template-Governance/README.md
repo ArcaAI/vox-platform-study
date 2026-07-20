@@ -258,29 +258,88 @@ NOTICE:  TASK-531 backfill complete: 18 rows given provenance, 18 locked as pris
 | `pnpm build:api` | `Tasks: 8 successful, 8 total` |
 | `pnpm --filter @arcaai/admin-console build lint test` | build clean · lint clean (`--max-warnings 0`) · `Test Files 137 passed (137)` · `Tests 1031 passed (1031)` |
 | `pnpm test:unit` (whole monorepo) | `Test Files 953 passed \| 2 skipped (955)` · `Tests 16760 passed \| 4 skipped \| 9 todo (16773)` |
+| `pnpm test:integration` (live test DB, port 5433) | `Test Files 6 passed (6)` · `Tests 102 passed (102)` — test DB carries both lineage columns |
+| CI drift gates — `generate-data-model:check`, `generate-data-entity:check`, `generate-factory:check` | all three PASS (the hand-authored entity/factory reproduce verbatim and the schema-coverage check accepts the new columns) |
 | `pnpm lint` (whole monorepo) | `Tasks: 29 successful, 29 total` — zero warnings, incl. `packages/*` only-warn |
 
 RED runs captured before implementing: DB/migration suite `Tests 12 failed | 820 passed` → green; `pipeline.service.task531.test.ts` `12 failed` (`service.clone is not a function` + missing lock guards) → green; resync + cron suites failed on missing modules → green; provisioning lineage `× stamps template lineage on every provisioned clone` → green; API route suite failed on the missing controller → green.
 
-### 9.7 Runtime verification — PARTIAL (environment-blocked)
+### 9.7 Runtime verification — COMPLETE (live stack, real browser)
 
-Rule 13's "verified in a running app" gate is **not fully met**, and the blocker is environmental rather than code:
+Performed after the owner reset the dev database and Vault secrets. The reset also re-proved a design property: **a fresh DB needs no backfill** — `seedAsrPipelines` declares the lineage itself, so the seeded catalog came up correctly (SYSTEM 9 unlocked templates; each tenant 9 locked copies with provenance).
 
-- ✅ `next dev` (Turbopack, port 5176) starts clean; the app compiles and serves with **zero server errors and zero browser console errors**.
-- ❌ The `/audio-pipelines` screen could not be exercised against real data. It redirects to sign-in, and login requires the API gateway, which **refuses to start**: `VaultSecretsProvider.boot() FATAL: cannot authenticate to Vault (http://localhost:8200) — permission denied`. The dev AppRole credentials in `.env.dev` are stale. `SECRETS_PROVIDER=env` is not a workaround here — `.env.dev` carries no `JWT_SECRET_KEY` (secrets live only in Vault).
-- **To unblock**: run `scripts/refresh-vault-creds.sh` (mints a fresh reusable AppRole secret_id into `.env.dev`, per rule 09), restart `pnpm dev:api`, then walk the locked-copy flow: open a seeded template row → confirm the Template badge, the read-only YAML, the absent Save and the lock reason → Clone → confirm the copy is editable → check both themes.
+**API contract — 27/27 checks against the running gateway** (lock 403 + guidance text · DELETE 403 with the row surviving · toggle/set-default 200 on a locked copy · whitelist rejecting `templateLocked` · clone 201 unlocked + provenance + config inherited + v1 snapshot + editable afterwards · duplicate slug 400 · clone body whitelist-only · resync 200 + idempotent + SYSTEM self-resync 400 + tenant-admin denied · cross-tenant PATCH/DELETE/clone all 404 with the lock text never appearing in the body).
 
-Until then the console behaviour is covered by the jsdom suite (13 TASK-531 cases incl. the axe scan and the deep-link case) rather than a real browser.
+**Resync mutation branches — 16/16.** The happy-path run only reported `skipped: 9`, so the write branches were driven explicitly by mutating the SYSTEM catalog and restoring it:
+
+| Branch | Result |
+|---|---|
+| (ii) template moves ahead of a pristine locked copy | `fastForwarded: 1`; copy advanced to the template config, **stayed locked**, new version snapshot written; re-run a no-op |
+| (iii) UNLOCKED customized row | untouched, `fastForwarded: 0` |
+| (i) brand-new SYSTEM template | `added: 1`; clone locked + lineage + v1 snapshot; re-run adds nothing |
+| (iv) locked copy edited OUT-OF-BAND | **refused** — `fastForwarded: 0`, the operator's content preserved (the DEC-4 drift guard) |
+
+Branch (iv) was discovered accidentally first: an early cleanup restored a row's `configYaml` by psql without rolling back its version snapshots, which is precisely the "operator edited the DB directly" condition, and the reconciler correctly refused to overwrite it. It is now an explicit test rather than an accident.
+
+**Console — driven in a real browser (Chromium, 1440×900), both themes:**
+
+- Grid: "Template" outline badge (lock icon + text) on all 9 locked copies; the unlocked clone correctly shows `—`.
+- Locked detail: lock banner with provenance, `textarea.readOnly === true`, `aria-describedby` resolving to the **visible** banner (DEC-6), **Save absent** (not merely disabled), Clone offered. Lifecycle keeps Set default + Disable and withholds Delete (OD-1).
+- Clone flow end to end: dialog prefilled `<name> copy` / `<slug>-copy` → `POST …/clone → 201` through the BFF proxy → success toast → grid 9 → 10 → drawer switches to the new copy, which has **no Template badge, Delete restored, `readOnly: false`, Save present**.
+- Resync: visible for the global admin, confirm dialog, summary toast ("Global is already up to date with the SYSTEM templates" — the zero-change branch).
+
+**One defect found and fixed by this pass**: the lock banner rendered two sentences run together — "…clone to customize Derived from `<slug>`." The shared constant deliberately carries no trailing stop (it must match the gateway's 403 verbatim), so the punctuation is now added at the render site. jsdom never caught it because the assertions matched a substring. Console suites re-run green afterwards (137 files / 1031 tests), build + lint clean.
+
+**Test artifacts removed**: the clone created during verification was deleted and the DB confirmed back at exactly the seeded state (SYSTEM 9 unlocked / tenants 9 locked each, version depth 0).
 
 ### 9.8 Open items for the owner
 
 1. **E2E execution** — `task-531-pipeline-template-governance.spec.ts` and `task-531-pipeline-clone-resync-cross-tenant.spec.ts` are authored but NOT executed (deferred to TASK-534 per program §2.2). They require the live stack + seed.
 2. **Production backfill** — the migration pair is applied to the dev DB only. On any environment with real tenant data, review the `RAISE NOTICE` output: rows reported as "left UNLOCKED for review" are pipelines whose config matches neither their clone-time snapshot nor the SYSTEM template, and an operator must decide whether each is a customization (leave unlocked) or a drifted copy (lock manually).
-3. **Nightly resync stays OFF** — `pipeline.templateResync.enabled` defaults to false by design. Enabling it is an operator decision; the admin trigger is the primary path.
+3. **Nightly resync is now ENABLED — owner directive 2026-07-20 ("we don't have any production data … enable the nightly resync").** See §9.9 for how, and why the code default is still `false`.
 4. **Re-seed note** — re-running `pnpm db:seed` now re-locks tenant catalog rows (lineage is a seed declaration, not admin state). This matches the existing behaviour of that branch, which already restores `configYaml`.
-5. **Runtime verification** — see §9.7; blocked on refreshing the local Vault AppRole credentials.
-6. **Incidental fix, out of scope — please review separately.** `pnpm gen:model` also regenerated `packages/domains/src/enums/generated/AiModelSource.ts`, adding the missing `S3 = 'S3'` member. This is PRE-EXISTING drift from TASK-527 (commit `84417988`), which added `S3` to the Prisma enum and shipped the `…_task_527_ai_model_source_s3` migration but never regenerated the domain enum — meaning the CI `generate-data-model-check` drift gate was already failing on this branch. The one-line regeneration is kept (reverting it would leave that gate red), but it belongs to TASK-527, not this ticket.
-7. **One §4.7 doc delta not applied** — the pipelines row in `TASK-415-Hope-Admin-Console/capabilities-matrix.md`. That ticket has since been archived (`docs/archive/…`) and the file is read-blocked in this environment, so the screen-contract note (Template badge / clone / resync) was not added. The architecture delta in `docs/architecture/data-and-domain-model.md` §5.4 WAS applied.
+5. **A latent trap in the authored E2E specs, now fixed — worth knowing generally.** `UpdatePipelineRequest.expectedVersion` is a REQUIRED field, so a PATCH carrying only the `If-Match` header is rejected by the global validation pipe with **400 before the controller folds the header over the body** — the request never reaches the service, so the lock guard never runs. My first live-verification script hit exactly this and mis-reported the lock as broken. The admin console was always correct (its client sends both), and the specs now send both, with the reason documented at the call site. Any future spec touching an OCC PATCH needs the same.
+6. **Incidental fix — CLOSED.** `pnpm gen:model` also regenerated `packages/domains/src/enums/generated/AiModelSource.ts`, adding the missing `S3 = 'S3'` member. This was PRE-EXISTING drift from TASK-527 (commit `84417988`), which added `S3` to the Prisma enum and shipped the `…_task_527_ai_model_source_s3` migration but never regenerated the domain enum — so the CI `generate-data-model-check` gate was already red on this branch before TASK-531 started. The one-line regeneration shipped with this ticket's commit and all three drift gates now pass (§9.6). Flagged here only so the change is attributed to TASK-527 rather than mistaken for TASK-531 scope.
+7. **One §4.7 doc delta deliberately NOT applied** — the pipelines row in `TASK-415-Hope-Admin-Console/capabilities-matrix.md`. When §4.7 was written that file lived under `docs/implementation/`; TASK-415 has since completed and moved to `docs/archive/`, which is denied by permission policy. Two reasons to leave it: the tooling cannot write there, and amending a completed, archived ticket's matrix is the wrong home for a live screen contract anyway. **If the owner wants the contract recorded, the right target is a current doc** — say the TASK-532 Governance-Console-IA ticket, which owns console IA next. The architecture delta in `docs/architecture/data-and-domain-model.md` §5.4 WAS applied and covers the domain-level story.
+
+## 9.9 Enabling the nightly resync (owner directive, 2026-07-20)
+
+The owner asked for the nightly sweep to be ON. Doing that surfaced a real gap and a governance constraint, so the change is larger than a boolean flip.
+
+**The gap.** `pipeline.templateResync.enabled` / `.cron` were read straight out of `IAppSettingsService` but **never registered in the settings registry**. Unregistered keys are invisible to the admin settings surface, carry no type/scope/sensitivity metadata, and cannot be written through `SettingsRegistryWriteService` — they were effectively two magic strings. Both are now registered in `platform-ops.descriptors.ts` alongside the other scheduled sweeps.
+
+**The constraint.** The `enabled` descriptor is honestly a **kill-switch** (same shape as `agentic.trajectory.enabled` and `audit-retention.enabled`: it gates whether a scheduled sweep runs). `SettingsRegistry.killSwitches()` **throws at assembly** if any kill-switch defaults ON — a deliberate fail-safe-rollout invariant. So flipping `DEFAULTS.enabled` to `true` would have crashed the app at boot, and dropping the `killSwitch: true` flag to dodge that would have been gaming the invariant rather than honoring it.
+
+**How it is enabled.** The sanctioned way — a **platform value**, exactly the `enable-local-raw-capture` (TASK-332) pattern:
+
+| Layer | Value | Why |
+|---|---|---|
+| Registry descriptor default | `false` | Fail-safe for an UNCONFIGURED system; satisfies the kill-switch invariant |
+| Service `DEFAULTS.enabled` | `false` | Same — the fallback when no setting row exists |
+| Seeded `GlobalSetting` (SYSTEM tenant, **locked**) | `value: 'true'`, `defaultValue: 'false'` | The deployed posture. `defaultValue` keeps a reset reverting to fail-safe; `locked` restricts the flip to GLOBAL_ADMIN |
+
+This is why the cron service's unit test still asserts "DISABLED by default" — that pins the *fail-safe fallback*, which is unchanged and must stay that way. What changed is the configured value.
+
+**Why unattended operation is safe here** (the concern that drove the original OFF default): the reconciler only ever adds missing templates and fast-forwards copies it can *prove* are pristine. An unlocked/customized pipeline is skipped, and a locked copy that drifted from its own version history is skipped and logged rather than overwritten (DEC-4). All four branches were exercised against a live database (§9.7).
+
+**Runtime evidence.** After seeding, the API logs at boot:
+
+```
+[PipelineTemplateResyncCronService] {"message":"Pipeline template resync cron job scheduled","cron":"0 3 * * *"}
+```
+
+The sweep was then driven for real by temporarily setting the cron to `* * * * *`, which validates the branch unit tests cannot reach: the cron fires with **no CLS context at all**, so the tenant-scope Prisma extension must take its elevated pass-through for the reconciler to read the SYSTEM catalog and write into each target tenant. It did:
+
+```
+[PipelineTemplateResyncCronService] {"message":"Starting scheduled pipeline template resync","tenantCount":2}
+[PipelineTemplateResyncService]     {"message":"Pipeline template resync completed","tenantId":"5000…0000","added":0,"fastForwarded":0,"skipped":9}
+[PipelineTemplateResyncService]     {"message":"Pipeline template resync completed","tenantId":"5000…0001","added":0,"fastForwarded":0,"skipped":9}
+[PipelineTemplateResyncCronService] {"message":"Scheduled pipeline template resync completed","added":0,"fastForwarded":0,"skipped":18}
+```
+
+`tenantCount: 2` confirms the SYSTEM tenant is excluded as a target; no `TenantScope` error appeared, so the elevated pass-through held; and the all-zero mutation counts against an already-current catalog confirm idempotency on the scheduled path. The catalog was re-checked afterwards and is unchanged (SYSTEM 9 unlocked / each tenant 9 locked). Schedule restored to `0 3 * * *`.
+
+**To turn it off**: flip `pipeline.templateResync.enabled` to `false` on the settings surface (GLOBAL_ADMIN only). The cron service re-reads on `app-settings.cache-refreshed` and stops the job without a restart.
 
 ## 10. Change History
 
@@ -288,4 +347,7 @@ Until then the console behaviour is covered by the jsdom suite (13 TASK-531 case
 |---|---|
 | 2026-07-20 | Ticket authored (execution-ready): code-verified current state, AD-6 architecture rationale (lineage columns, 403-with-guidance, backfill safety, default-OFF resync cron), layered implementation plan with TASK-523 handoff, RED-first TDD list, risks/rollback. Status Pending — awaiting owner approval (rule 01 Phase 3 gate) and OD-1 confirmation (default recorded). |
 | 2026-07-20 | **Executed all three lanes TDD; status Pending → Review.** RED captured before every behavioural change; all gates green (§9.6: 16760 monorepo unit tests, `pnpm lint` 29/29, API + console builds). TASK-523 row 0.10 confirmed landed, so the §4.3 handoff applied as written. Design gate closed by an owner-approved **waiver** (§9.1) — additive affordances on approved frame 34, no new screen. Six evidence-forced decisions recorded (§9.2): **DEC-1** `seedAsrPipelines` writes no version rows, so the backfill's SYSTEM-current fallback is the operative branch (18/18 rows locked, 0 ambiguous on the dev DB); **DEC-2** provenance is stamped on all slug-matched tenant rows, the lock only on provably-pristine ones; **DEC-3** resync fast-forwards to the template ROW's `configYaml`, not its newest snapshot (caught by a RED test — §3.4 says "SYSTEM's current YAML"); **DEC-4** the pristine predicate is self-consistency against the row's own latest snapshot, since §3.4(ii) read literally is not idempotent; **DEC-5** the console resync action lives in the `tenants` feature (rule 13 forbids cross-feature imports); **DEC-6** the lock reason is announced once via the visible banner, not a duplicated sr-only copy. Open: E2E execution (TASK-534), production backfill review, and full runtime verification — blocked on stale local Vault credentials (§9.7). |
+| 2026-07-20 | **Runtime verification completed against a live stack after the owner reset the dev DB + Vault (§9.7).** 27/27 API-contract checks and 16/16 resync-branch checks green; the console driven in a real browser in both themes through the full badge → read-only detail → clone → edit journey, plus the global-admin resync trigger. The reset independently confirmed DEC-1: a fresh database needs no backfill because the seed declares the lineage. Two corrections came out of the pass: (a) the lock banner ran two sentences together — punctuation added at the render site, since the shared constant must match the gateway's 403 verbatim; (b) the authored E2E specs (and my first verification script) sent OCC PATCHes with only the `If-Match` header, which the validation pipe 400s before the lock guard can run — `expectedVersion` is a REQUIRED body field, so the specs now send both and say why. Console suites, build and lint re-run green; all test artifacts removed and the DB confirmed back at the seeded state. Status stays **Review**; E2E execution remains deferred to TASK-534 per the owner. |
+| 2026-07-20 | **Nightly resync ENABLED per owner directive (§9.9).** Flipping it surfaced a real gap: the two `pipeline.templateResync.*` keys were read from AppSettings but never registered in the settings registry, so they were invisible to the admin settings surface and unwritable through the registry write service. Both are now registered in `platform-ops.descriptors.ts`. The `enabled` descriptor is classified honestly as a **kill-switch**, which means `SettingsRegistry.killSwitches()` forbids it defaulting ON — so the sweep is enabled the sanctioned way instead: fail-safe defaults stay `false` at BOTH the descriptor and the service, and a **locked SYSTEM-tenant `GlobalSetting`** (`value: 'true'`, `defaultValue: 'false'`) carries the deployed posture, mirroring the TASK-332 `enable-local-raw-capture` precedent. Verified at runtime end to end: the job schedules at boot, and driving it at `* * * * *` proved the cron path works with **no CLS context** (`tenantCount: 2`, SYSTEM excluded, no `TenantScope` error, all-zero idempotent counts) before the schedule was restored to `0 3 * * *`. Seed-ID count lock and registry catalog tests extended; DB/applications suites and repo lint green. |
+| 2026-07-20 | **Findings sweep closed after a second DB reset.** Re-verified the seeded lineage comes up correct with no backfill (SYSTEM 9 unlocked / tenants 9 locked each). Added two gates not previously run: `pnpm test:integration` against the live test DB (6 files / 102 tests green; the test DB carries both lineage columns) and all three CI drift gates (`generate-data-model/entity/factory:check` — all PASS, confirming the hand-authored entity + factory reproduce verbatim and the schema-coverage check accepts the new columns). §9.8 item 6 (AiModelSource `S3` drift) confirmed committed and CLOSED. §9.8 item 7 re-scoped: the capabilities-matrix now lives under `docs/archive/`, which is permission-denied, and amending an archived completed ticket is the wrong home for a live screen contract — recommended target is TASK-532 (Governance Console IA) instead. No code changes in this sweep. |
 | 2026-07-20 | Program plan §2.5 **Completion & Cleanup Doctrine** adopted as BINDING for this ticket (owner directive): incorrect implementations in the owned surface are removed completely with the fix; partial implementations are finished end-to-end (or explicitly retired); redundant implementations are converged and deleted. Reviewer enforces the §2.5 classification table, plan-conformance (deviations = recorded decision rows), full-closure traceability of the claimed GAP/D/M IDs, and the performance gates. |

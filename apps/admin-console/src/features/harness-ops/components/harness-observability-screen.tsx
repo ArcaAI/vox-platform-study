@@ -12,8 +12,10 @@ import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { harnessOpsKeys, useHarnessAudit } from '../api';
 import type { HarnessAuditAction } from '../api';
 import { ChainIntegrityCard } from './chain-integrity-card';
+import { EditBurdenCard } from './edit-burden-card';
 import { EvalRunsPanel } from './eval-runs-panel';
 import { GateQueueCard } from './gate-queue-card';
+import { GoldenSetsPanel } from './golden-sets-panel';
 
 /** HarnessAuditAction enum values — the audit `action` filter is server-side. */
 const AUDIT_ACTIONS: HarnessAuditAction[] = [
@@ -126,6 +128,10 @@ function ObservabilityBody() {
         />
         <EvalRunsPanel />
         <GateQueueCard />
+        {/* TASK-532 B-5 (M-09 tenant leg) — golden datasets + per-consultation
+            edit-burden telemetry; both are PHI-safe metadata/derived scalars. */}
+        <GoldenSetsPanel />
+        <EditBurdenCard />
       </div>
     </ScreenTemplate>
   );

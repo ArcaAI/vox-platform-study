@@ -55,7 +55,6 @@ const server = httpServer.createServer({
 });
 
 server.listen(PORT, HOST, () => {
-  // eslint-disable-next-line no-console
   console.log(
     `[med-ner e2e] serving ${PACKAGE_ROOT} at http://${HOST}:${PORT}/  ` +
       `(COOP=same-origin, COEP=require-corp; / -> ${FIXTURE_PATH})`,

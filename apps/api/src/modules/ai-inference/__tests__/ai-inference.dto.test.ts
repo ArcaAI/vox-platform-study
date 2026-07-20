@@ -15,13 +15,11 @@ import { SuggestDiagnosisRequest } from '../dto/suggest-diagnosis.request';
 
 const PIPE_CFG = { transform: true, whitelist: true, forbidNonWhitelisted: true, forbidUnknownValues: true } as const;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function runPipe(metatype: any, value: unknown): Promise<unknown> {
   const pipe = new ValidationPipe(PIPE_CFG);
   return pipe.transform(value, { type: 'body', metatype } as never);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function expectRejected(metatype: any, value: unknown): Promise<void> {
   await expect(runPipe(metatype, value)).rejects.toBeInstanceOf(BadRequestException);
 }

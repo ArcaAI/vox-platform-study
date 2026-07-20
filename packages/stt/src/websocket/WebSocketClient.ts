@@ -234,7 +234,6 @@ export class WebSocketClient {
           }
         };
 
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         this.socket.onerror = (_event) => {
           this.clearConnectionTimeout();
           const error = new Error('WebSocket error');

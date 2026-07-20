@@ -22,6 +22,7 @@ export * from './FedlClientModel';
 export * from './FedlModelVersionModel';
 export * from './FedlRoundModel';
 export * from './FedlUpdateModel';
+export * from './GateEditExemplarModel';
 export * from './GlobalSettingModel';
 export * from './GoldenCaseModel';
 export * from './GoldenSetModel';

@@ -231,7 +231,54 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
       where,
     });
 
-    return rollupGenerationStats(rows.map((row) => row.stats));
+    return rollupGenerationStats(
+      rows.map((row) => row.stats),
+      filters.pricing,
+    );
+  }
+
+  /**
+   * Token spend for one run, summed from its LLM_CALL steps (TASK-533 B4).
+   *
+   * A "run" is the tuple `(tenantId, sessionId, runId)` — there is no run row in
+   * the schema, and this needs none: the counts are already on the steps. `runId`
+   * is `""` for live-doc / job sessions, which is a real value here, not a wildcard.
+   */
+  async getRunTokenSpend(tenantId: string, sessionId: string, runId: string): Promise<RunTokenSpend> {
+    const rows = await this.agentTrajectoryStepRepository.findAll({
+      page: 1,
+      limit: MAX_GENERATION_METRICS_ROWS,
+      sort: [{ seq: 'asc' }],
+      where: { tenantId, sessionId, runId, stepType: AgentStepType.LLM_CALL },
+    });
+
+    let promptTokens = 0;
+    let completionTokens = 0;
+    for (const row of rows) {
+      const stats = parseGenerationStats(row.stats);
+      promptTokens += stats?.promptTokens ?? 0;
+      completionTokens += stats?.completionTokens ?? 0;
+    }
+    // Zero, never null: a budget comparison needs a number, and "no spend
+    // recorded" and "spent nothing" are the same answer for that purpose.
+    return { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens };
+  }
+
+  /**
+   * Evaluate a run against its per-run token budget (TASK-533 B4).
+   *
+   * `perRunBudget = 0` means UNBOUNDED — the shipped default, and the reason this
+   * check is byte-for-byte inert until a global admin sets a budget through
+   * `agentic.context.tokenBudget.perRun`.
+   */
+  async checkRunBudget(tenantId: string, sessionId: string, runId: string, perRunBudget: number): Promise<RunBudgetStatus> {
+    const spend = await this.getRunTokenSpend(tenantId, sessionId, runId);
+    return {
+      ...spend,
+      usedTokens: spend.totalTokens,
+      perRunBudget,
+      exceeded: perRunBudget > 0 && spend.totalTokens >= perRunBudget,
+    };
   }
 
   async pruneOlderThan(days: number): Promise<number> {
@@ -320,12 +367,51 @@ function parseInstant(value?: string): number | undefined {
   return Number.isNaN(ms) ? undefined : ms;
 }
 
+/** Parsed AD-1 GenerationStats, incl. the token counts B4 surfaced. */
+interface ParsedGenerationStats {
+  ttftMs?: number;
+  tokensPerSecond?: number;
+  stopReason?: string;
+  promptTokens?: number;
+  completionTokens?: number;
+  model?: string;
+}
+
+/**
+ * Per-model prices, keyed by the model id the engine reports in `stats.model`.
+ *
+ * Carried as DATA on `AiModel.metaData.pricing` rather than as schema — prices
+ * change on a vendor's cadence, not a migration's, and no column is needed to
+ * multiply two numbers.
+ */
+export type ModelPriceBook = Record<string, { inputPer1k: number; outputPer1k: number; currency?: string }>;
+
+/** Token spend for one run, as the budget check consumes it (TASK-533 B4). */
+export interface RunTokenSpend {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+/** The budget verdict threaded to the harness on activity results (TASK-533 B4). */
+export interface RunBudgetStatus extends RunTokenSpend {
+  usedTokens: number;
+  perRunBudget: number;
+  exceeded: boolean;
+}
+
 /** Roll AD-1 GenerationStats (snake_case preferred; camelCase tolerated) into panel KPIs. */
-function rollupGenerationStats(statsList: unknown[]): GenerationMetricsAggregateResponse {
+function rollupGenerationStats(statsList: unknown[], pricing?: ModelPriceBook): GenerationMetricsAggregateResponse {
   const ttft: number[] = [];
   const toks: number[] = [];
   const stopReasons = new Map<string, number>();
   let sampleCount = 0;
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let sawTokens = false;
+  let cost = 0;
+  let sawCost = false;
+  let currency: string | null = null;
 
   for (const raw of statsList) {
     const stats = parseGenerationStats(raw);
@@ -335,6 +421,23 @@ function rollupGenerationStats(statsList: unknown[]): GenerationMetricsAggregate
     if (typeof stats.tokensPerSecond === 'number') toks.push(stats.tokensPerSecond);
     if (stats.stopReason) {
       stopReasons.set(stats.stopReason, (stopReasons.get(stats.stopReason) ?? 0) + 1);
+    }
+    if (typeof stats.promptTokens === 'number') {
+      promptTokens += stats.promptTokens;
+      sawTokens = true;
+    }
+    if (typeof stats.completionTokens === 'number') {
+      completionTokens += stats.completionTokens;
+      sawTokens = true;
+    }
+    // $-cost is best-effort and NEVER guessed: an unpriced model contributes
+    // nothing rather than a fabricated number, so a partial price book yields a
+    // partial (and honestly-labelled) cost instead of a wrong total.
+    const price = stats.model ? pricing?.[stats.model] : undefined;
+    if (price) {
+      cost += ((stats.promptTokens ?? 0) / 1000) * price.inputPer1k + ((stats.completionTokens ?? 0) / 1000) * price.outputPer1k;
+      currency ??= price.currency ?? null;
+      sawCost = true;
     }
   }
 
@@ -348,22 +451,44 @@ function rollupGenerationStats(statsList: unknown[]): GenerationMetricsAggregate
     stopReasons: [...stopReasons.entries()]
       .map(([reason, count]) => ({ reason, count }))
       .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason)),
+    // Null (not 0) when nothing reported tokens — "unknown" and "zero" are
+    // different answers for a budget panel.
+    promptTokensTotal: sawTokens ? promptTokens : null,
+    completionTokensTotal: sawTokens ? completionTokens : null,
+    totalTokens: sawTokens ? promptTokens + completionTokens : null,
+    estimatedCost: sawCost ? cost : null,
+    currency,
   };
 }
 
-function parseGenerationStats(
-  raw: unknown,
-): { ttftMs?: number; tokensPerSecond?: number; stopReason?: string } | null {
+function parseGenerationStats(raw: unknown): ParsedGenerationStats | null {
   if (!raw || typeof raw !== 'object') return null;
   const obj = raw as Record<string, unknown>;
   const ttftMs = pickNumber(obj, 'ttft_ms', 'ttftMs');
   const tokensPerSecond = pickNumber(obj, 'tokens_per_second', 'tokensPerSecond');
   const stopReason = pickString(obj, 'stop_reason', 'stopReason');
-  // A sample counts when at least one headline field is present.
-  if (ttftMs === undefined && tokensPerSecond === undefined && stopReason === undefined) {
+  // TASK-533 B4 — token counts were ALREADY being persisted here and thrown away:
+  // the SMR client's `stats`/`usage` carries them, the harness forwards `stats`
+  // verbatim onto every LLM_CALL step, and this parser simply never looked. Read
+  // both the flat and the nested `usage` shape (the SMR wire uses both).
+  const usage = (obj.usage && typeof obj.usage === 'object' ? (obj.usage as Record<string, unknown>) : {}) as Record<string, unknown>;
+  const promptTokens = pickNumber(obj, 'prompt_tokens', 'promptTokens', 'input_tokens', 'inputTokens') ?? pickNumber(usage, 'prompt_tokens', 'promptTokens');
+  const completionTokens =
+    pickNumber(obj, 'completion_tokens', 'completionTokens', 'output_tokens', 'outputTokens') ?? pickNumber(usage, 'completion_tokens', 'completionTokens');
+  const model = pickString(obj, 'model', 'modelName') ?? undefined;
+  // A sample counts when at least one headline field is present. Tokens now
+  // qualify: a stats block carrying only token counts used to parse to null, so
+  // the step was skipped and contributed to NO metric at all.
+  if (
+    ttftMs === undefined &&
+    tokensPerSecond === undefined &&
+    stopReason === undefined &&
+    promptTokens === undefined &&
+    completionTokens === undefined
+  ) {
     return null;
   }
-  return { ttftMs, tokensPerSecond, stopReason };
+  return { ttftMs, tokensPerSecond, stopReason, promptTokens, completionTokens, model };
 }
 
 function pickNumber(raw: Record<string, unknown>, ...keys: string[]): number | undefined {

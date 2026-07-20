@@ -111,7 +111,6 @@ describe.skipIf(!enabled)(
       // If query-event capture isn't wired (driver adapter quirk), guard with
       // a descriptive skip rather than a false failure.
       if (!updateSql) {
-        // eslint-disable-next-line no-console
         console.warn(
           '[B.4] Prisma $on(query) did not capture an UPDATE statement; ' +
             'SQL-capture half of the regression guard is inactive in this environment. ' +

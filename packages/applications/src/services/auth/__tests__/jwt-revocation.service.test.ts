@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { JwtRevocationService, JWT_REVOCATION_KEY_PREFIX } from '../jwt-revocation.service';
+import { JwtRevocationService, JWT_REVOCATION_KEY_PREFIX, USER_NBF_TTL_SECONDS } from '../jwt-revocation.service';
 
 interface MockCache {
     get: ReturnType<typeof vi.fn>;
@@ -139,6 +139,101 @@ describe('JwtRevocationService', () => {
             expect(await service.isRevoked(jti)).toBe(false);
             await service.revoke(jti, futureExpSeconds);
             expect(await service.isRevoked(jti)).toBe(true);
+        });
+    });
+
+    // ─── TASK-541 A3 — degraded-aware revocation check ────────────────────
+
+    describe('checkRevoked (TASK-541 A3)', () => {
+        it('reports revoked=false, degraded=false when the jti is absent', async () => {
+            cache.get.mockResolvedValueOnce(null);
+            await expect(service.checkRevoked('jti-1')).resolves.toEqual({ revoked: false, degraded: false });
+        });
+
+        it('reports revoked=true, degraded=false when the jti is present', async () => {
+            cache.get.mockResolvedValueOnce('1');
+            await expect(service.checkRevoked('jti-1')).resolves.toEqual({ revoked: true, degraded: false });
+        });
+
+        it('reports degraded=true when the backing store throws (caller decides the posture)', async () => {
+            cache.get.mockRejectedValueOnce(new Error('Redis down'));
+            await expect(service.checkRevoked('jti-1')).resolves.toEqual({ revoked: false, degraded: true });
+        });
+
+        it('short-circuits an empty jti without touching Redis', async () => {
+            await expect(service.checkRevoked('')).resolves.toEqual({ revoked: false, degraded: false });
+            expect(cache.get).not.toHaveBeenCalled();
+        });
+
+        it('isRevoked stays a thin wrapper over checkRevoked (back-compat)', async () => {
+            cache.get.mockResolvedValueOnce('1');
+            await expect(service.isRevoked('jti-1')).resolves.toBe(true);
+            cache.get.mockRejectedValueOnce(new Error('Redis down'));
+            await expect(service.isRevoked('jti-1')).resolves.toBe(false);
+        });
+    });
+
+    // ─── TASK-541 A4 — user-level not-before revocation ───────────────────
+
+    describe('revokeAllForUser (TASK-541 A4)', () => {
+        it('stamps the current epoch under auth:user-nbf:<userId> with a bounded TTL', async () => {
+            await service.revokeAllForUser('user-123');
+            const nowSeconds = Math.floor(new Date('2026-05-24T15:00:00.000Z').getTime() / 1000);
+            expect(cache.setex).toHaveBeenCalledWith('auth:user-nbf:user-123', USER_NBF_TTL_SECONDS, String(nowSeconds));
+        });
+
+        it('no-ops on an empty userId', async () => {
+            await service.revokeAllForUser('');
+            expect(cache.setex).not.toHaveBeenCalled();
+        });
+
+        it('never throws when Redis is unavailable — the caller mutation must still commit', async () => {
+            cache.setex.mockRejectedValueOnce(new Error('Redis down'));
+            await expect(service.revokeAllForUser('user-123')).resolves.toBeUndefined();
+        });
+    });
+
+    describe('getUserNotBefore (TASK-541 A4)', () => {
+        it('returns notBefore=null when the user has never been revoked', async () => {
+            cache.get.mockResolvedValueOnce(null);
+            await expect(service.getUserNotBefore('user-123')).resolves.toEqual({ notBefore: null, degraded: false });
+        });
+
+        it('returns the stored epoch when present', async () => {
+            cache.get.mockResolvedValueOnce('1748098800');
+            await expect(service.getUserNotBefore('user-123')).resolves.toEqual({ notBefore: 1748098800, degraded: false });
+        });
+
+        it('treats a malformed stored value as absent rather than as epoch 0', async () => {
+            cache.get.mockResolvedValueOnce('not-a-number');
+            await expect(service.getUserNotBefore('user-123')).resolves.toEqual({ notBefore: null, degraded: false });
+        });
+
+        it('reports degraded=true when the backing store throws', async () => {
+            cache.get.mockRejectedValueOnce(new Error('Redis down'));
+            await expect(service.getUserNotBefore('user-123')).resolves.toEqual({ notBefore: null, degraded: true });
+        });
+
+        it('short-circuits an empty userId without touching Redis', async () => {
+            await expect(service.getUserNotBefore('')).resolves.toEqual({ notBefore: null, degraded: false });
+            expect(cache.get).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('round-trip: revokeAllForUser + getUserNotBefore', () => {
+        it('a token issued before the revoke stamp is identifiably stale (A4 acceptance)', async () => {
+            const store = new Map<string, string>();
+            cache.setex.mockImplementation(async (key: string, _ttl: number, value: string) => {
+                store.set(key, value);
+            });
+            cache.get.mockImplementation(async (key: string) => store.get(key) ?? null);
+
+            const tokenIssuedAt = Math.floor(new Date('2026-05-24T14:59:00.000Z').getTime() / 1000);
+            expect(await service.getUserNotBefore('user-123')).toEqual({ notBefore: null, degraded: false });
+            await service.revokeAllForUser('user-123');
+            const { notBefore } = await service.getUserNotBefore('user-123');
+            expect(notBefore).not.toBeNull();
+            expect(tokenIssuedAt).toBeLessThanOrEqual(notBefore!);
         });
     });
 });

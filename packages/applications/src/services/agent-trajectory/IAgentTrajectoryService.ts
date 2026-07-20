@@ -23,6 +23,12 @@ export interface AggregateGenerationStatsFilters {
   from?: string;
   /** Inclusive upper bound on `createdAt` (ISO-8601 instant). Defaults to now when both absent. */
   to?: string;
+  /**
+   * TASK-533 B4 — per-model prices for the $-cost rollup, keyed by the model id
+   * the engine reports in `stats.model`. Sourced from `AiModel.metaData.pricing`
+   * (data, not schema). Omit and `estimatedCost` stays null: cost is never guessed.
+   */
+  pricing?: Record<string, { inputPer1k: number; outputPer1k: number; currency?: string }>;
 }
 
 /** Offset pagination for the session list. */

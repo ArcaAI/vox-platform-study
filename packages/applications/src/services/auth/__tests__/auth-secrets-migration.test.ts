@@ -16,15 +16,10 @@ function rel(p: string): string {
 }
 
 describe('Phase 3B auth secret migration', () => {
-  describe('Task 3.5 — gateway-auth.strategy.ts: JWT_SECRET_KEY', () => {
-    const src = rel('src/services/auth/gateway-auth.strategy.ts');
-    it('does not read JWT_SECRET_KEY from AppSettings', () => {
-      expect(src).not.toMatch(/appSettingsService\.getValueWithDefault\(['"]JWT_SECRET_KEY['"]/);
-    });
-    it('reads JWT_SECRET_KEY from SecretsService', () => {
-      expect(src).toMatch(/secretsService\.getSecretSync\(['"]JWT_SECRET_KEY['"]\)/);
-    });
-  });
+  // Task 3.5 covered gateway-auth.strategy.ts, RETIRED by TASK-541 A2 (the
+  // `gateway-jwt` strategy was wired to zero routes; UnifiedAuthGuard is the
+  // single enforcement point). Its JWT_SECRET_KEY assertions moved with it —
+  // the remaining secret consumers are pinned below.
 
   describe('Task 3.6 — jwt.strategy.ts: JWT_SECRET_KEY', () => {
     const src = rel('src/services/auth/jwt.strategy.ts');

@@ -1,3 +1,6 @@
+import { expect } from 'vitest';
+import * as axeMatchers from 'vitest-axe/matchers';
+
 // Shared Vitest setup. Server modules derive the session key from
 // ADMIN_SESSION_SECRET at call time; give tests a deterministic value.
 process.env.ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET ?? 'vitest-admin-session-secret-0123456789abcdef';
@@ -32,3 +35,14 @@ if (typeof Element !== 'undefined' && typeof HTMLElement !== 'undefined') {
         Object.defineProperty(HTMLElement.prototype, prop, { configurable: true, get: () => value });
     }
 }
+
+/**
+ * Register the `vitest-axe` matchers ONCE for every test (TASK-532).
+ *
+ * Each a11y test file previously repeated `expect.extend(axeMatchers)` at
+ * module scope. Doing it here means a new screen test only needs
+ * `import { axe } from 'vitest-axe'`. The companion type augmentation lives in
+ * `src/test/vitest-axe.d.ts` — see that file for why the library's own types
+ * do not work under Vitest 4.
+ */
+expect.extend(axeMatchers);

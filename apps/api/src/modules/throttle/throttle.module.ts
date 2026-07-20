@@ -31,29 +31,23 @@ import { TieredThrottlerGuard } from './tiered-throttler.guard';
  */
 
 function isTestEnv(): boolean {
-  // eslint-disable-next-line turbo/no-undeclared-env-vars
   const vitest = process.env.VITEST;
-  // eslint-disable-next-line turbo/no-undeclared-env-vars
   const nodeEnv = process.env.NODE_ENV;
   return Boolean(vitest) || nodeEnv === 'test';
 }
 
 function resolveRedisUrl(): string | undefined {
-  // eslint-disable-next-line turbo/no-undeclared-env-vars
   const url = process.env.REDIS_URL;
   if (url) {
     return url;
   }
 
-  // eslint-disable-next-line turbo/no-undeclared-env-vars
   const host = process.env.REDIS_HOST;
   if (!host) {
     return undefined;
   }
 
-  // eslint-disable-next-line turbo/no-undeclared-env-vars
   const port = process.env.REDIS_PORT ?? '6379';
-  // eslint-disable-next-line turbo/no-undeclared-env-vars
   const pass = process.env.REDIS_PASS;
   const auth = pass ? `:${pass}@` : '';
   return `redis://${auth}${host}:${port}`;

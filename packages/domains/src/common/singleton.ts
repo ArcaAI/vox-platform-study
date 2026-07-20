@@ -1,5 +1,5 @@
 export abstract class Singleton {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- one map holds instances of every unrelated Singleton subclass; `getInstance<T>`'s return type is what gives call sites their real type, `unknown` here would just force an explicit cast at every call site instead
   private static instances: Map<string, any> = new Map();
 
   protected constructor() {}

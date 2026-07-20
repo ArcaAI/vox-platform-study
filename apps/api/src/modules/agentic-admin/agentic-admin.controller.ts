@@ -17,6 +17,14 @@ import { Authorize, CanManage } from '../../decorators';
  * Scoping: tenant admins are pinned to their CLS tenant; a FOREIGN `?tenantId=`
  * is 404 (no-existence-leak posture — this is an admin config surface).
  * Global-admins (`isSuperAdmin`) target any tenant via `?tenantId=`.
+ *
+ * AUTHORIZATION: this controller DELIBERATELY keeps `@CanManage('HarnessPolicy')`
+ * (TASK-532 M-12 swapped the mcp-admin and agent-trajectory controllers to their
+ * own subjects, and deliberately did NOT swap this one). The instructions
+ * document is not a separate resource — it is a READ PROJECTION OF the harness
+ * policy itself (resolved thresholds, safety criteria, prompt tier), so whoever
+ * governs the policy governs this view of it. `manage` rather than `read`
+ * because the aggregate exposes the full resolved platform configuration.
  */
 @ApiBearerAuth()
 @ApiTags('admin-agentic')

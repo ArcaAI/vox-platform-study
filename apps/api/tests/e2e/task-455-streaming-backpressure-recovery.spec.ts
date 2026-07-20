@@ -115,7 +115,6 @@ test.describe('TASK-455 AC-3 — backpressure / overload recovery', () => {
         body: JSON.stringify(report, null, 2),
         contentType: 'application/json',
       });
-      // eslint-disable-next-line no-console
       console.log('\n[TASK-455 AC-3] backpressure/overload baseline:\n' + JSON.stringify(report, null, 2));
 
       socket.close();

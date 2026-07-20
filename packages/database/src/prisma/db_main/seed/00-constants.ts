@@ -579,6 +579,12 @@ export const SEED_GLOBAL_SETTING_IDS = {
     // policies `0001`). Read flat-by-key from the AppSettings boot cache.
     SYSTEM_FF_LOCAL_RAW_CAPTURE: '00000000-0000-0000-0002-000000000001',
 
+    // TASK-531 — platform controls for the nightly SYSTEM-template resync sweep.
+    // Same `0002` system-tenant block as the capability flag above; read flat
+    // by key from the AppSettings boot cache.
+    SYSTEM_PIPELINE_TEMPLATE_RESYNC_ENABLED: '00000000-0000-0000-0002-000000000002',
+    SYSTEM_PIPELINE_TEMPLATE_RESYNC_CRON: '00000000-0000-0000-0002-000000000003',
+
     // TASK-316 — DB-backed rate-limit config (platform tenant only; gateway-wide).
     RATE_LIMIT_ENABLED: '85000000-0000-0000-0000-000000000300',
     RATE_LIMIT_TIER_DEFAULT_LIMIT: '85000000-0000-0000-0000-000000000301',

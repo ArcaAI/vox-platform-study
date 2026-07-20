@@ -137,6 +137,11 @@ export abstract class BaseEntity {
     return this.resourceStatus === ResourceStatusType.ARCHIVED;
   }
 
+  // Check if the resource is suspended (TASK-541)
+  get isSuspended(): boolean {
+    return this.resourceStatus === ResourceStatusType.SUSPENDED;
+  }
+
   /**
    * Returns the data object for marking this entity as deleted.
    * Useful for batch operations or when you need the raw update data.
@@ -236,6 +241,30 @@ export abstract class BaseEntity {
    */
   public disable(updatedBy?: EntityId): this {
     this.setProperty('resourceStatus', ResourceStatusType.DISABLED);
+    this.setProperty('resourceStatusUpdatedAt', new Date());
+    if (updatedBy) {
+      this.setProperty('resourceStatusUpdatedBy', updatedBy);
+    }
+    return this;
+  }
+
+  /**
+   * Suspends the resource, setting its status to `Suspended`.
+   *
+   * TASK-541 — `SUSPENDED` has been a `ResourceStatusType` member since
+   * TASK-387 (the operator "hold" state, distinct from the routine
+   * `DISABLED` on/off toggle) but had no lifecycle method, so
+   * `applyChangesToEntity`'s status switch had nothing to call and a suspend
+   * request silently no-opped.
+   *
+   * Reversible: `enable()` lifts the hold, mirroring the `restore` semantics
+   * documented on the enum.
+   *
+   * @param updatedBy - (Optional) The ID of the user who performed the suspend action.
+   * @returns The current instance of the resource for method chaining.
+   */
+  public suspend(updatedBy?: EntityId): this {
+    this.setProperty('resourceStatus', ResourceStatusType.SUSPENDED);
     this.setProperty('resourceStatusUpdatedAt', new Date());
     if (updatedBy) {
       this.setProperty('resourceStatusUpdatedBy', updatedBy);

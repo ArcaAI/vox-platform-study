@@ -119,7 +119,6 @@ export interface MultiColumnContentConfig {
 // (its `keyExtractor`/`renderItem` consume `T` contravariantly), and the layout
 // erases the item type internally (see `col as MultiColumnConfig<unknown>`), so
 // `any` is correct here while full type-safety is kept at each column's definition.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyColumnConfig = MultiColumnConfig<any> | MultiColumnContentConfig;
 
 // ---------------------------------------------------------------------------

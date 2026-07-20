@@ -348,4 +348,59 @@ describe('AgentsScreen', () => {
         fireEvent.click(screen.getByRole('button', { name: /retry/i }));
         await waitFor(() => expect(calls.filter((call) => pathOf(call) === '/api/hope/admin/prompt-templates').length).toBe(2));
     });
+
+    /**
+     * TASK-532 (M-03 / OD-6) — prompt governance folded in from the retired
+     * `/prompt-studio`. The Governance tab is elevated-only in the CONSOLE;
+     * approve authority stays server-side (GLOBAL_ADMIN 403 in the service)
+     * regardless of what the console renders.
+     */
+    describe('Governance tab', () => {
+        it('is hidden for a non-elevated session', async () => {
+            stubAgents((call) => {
+                if (pathOf(call) === '/api/auth/session') {
+                    const base = session();
+                    return Response.json({
+                        ...base,
+                        user: { ...base.user, roles: ['TENANT_ADMIN'] },
+                        isElevated: false,
+                        effectiveIsElevated: false,
+                    });
+                }
+                return undefined;
+            });
+            renderWithProviders(<AgentsScreen />);
+
+            await screen.findByRole('tab', { name: 'Agents' });
+            expect(screen.queryByRole('tab', { name: 'Governance' })).toBeNull();
+        });
+
+        it('is visible for an elevated session and opens on the redirect target ?tab=governance', async () => {
+            stubAgents();
+            // `/prompt-studio` redirects to exactly this URL, so the tab must be
+            // URL-addressable — asserting via searchParams tests that contract.
+            renderWithProviders(<AgentsScreen />, { searchParams: '?tab=governance' });
+
+            expect(await screen.findByRole('tab', { name: 'Governance' })).toBeDefined();
+            expect(await screen.findByRole('heading', { name: /prompt governance/i })).toBeDefined();
+        });
+
+        it('approves a template as an OCC write carrying If-Match', async () => {
+            const calls = stubAgents((call) => {
+                if (call.method === 'POST' && pathOf(call).endsWith('/approve')) {
+                    return Response.json({ ...TEMPLATES[0], status: 'APPROVED', version: TEMPLATES[0].version + 1 });
+                }
+                return undefined;
+            });
+            renderWithProviders(<AgentsScreen />, { searchParams: '?tab=governance' });
+
+            fireEvent.click(await screen.findByText(TEMPLATES[0].name));
+            fireEvent.click(await screen.findByRole('button', { name: /approve/i }));
+
+            await waitFor(() => expect(calls.some((call) => call.method === 'POST' && pathOf(call).endsWith('/approve'))).toBe(true));
+            const approve = calls.find((call) => call.method === 'POST' && pathOf(call).endsWith('/approve'));
+            expect(approve?.headers['if-match']).toBe(`"${TEMPLATES[0].version}"`);
+            expect((approve?.body as { expectedVersion: number }).expectedVersion).toBe(TEMPLATES[0].version);
+        });
+    });
 });

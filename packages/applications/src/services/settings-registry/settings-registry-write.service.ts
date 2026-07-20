@@ -1,8 +1,9 @@
-import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
+import { ForbiddenException, HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
-import { ResourceType, SysEventType, ValueType } from '@arcaai/domains';
+import { GlobalSettingRepository, ResourceType, SysEventType, ValueType } from '@arcaai/domains';
+import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { BaseService } from '../../common';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
@@ -24,6 +25,14 @@ const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 export interface WriteRegistrySettingOptions {
   /** Scope the value is being set at. Defaults to `system` for global-kv keys. */
   scope?: SettingScope;
+  /**
+   * TASK-533 B2 — the row version the caller last observed, folded from
+   * `If-Match` by the controller (house pattern). REQUIRED when a backing row
+   * already exists: without it the write is refused 428 rather than blindly
+   * overwriting a concurrent edit. Absent on a FIRST write, where there is no
+   * version to match.
+   */
+  expectedVersion?: number;
 }
 
 export interface WriteRegistrySettingResult {
@@ -31,6 +40,12 @@ export interface WriteRegistrySettingResult {
   tier: string;
   value: unknown;
   scope: SettingScope;
+  /**
+   * TASK-533 B2 — the row version AFTER this write. Echoed so the caller can use
+   * it as the next `If-Match`, and so the `ETagInterceptor` renders an ETag on
+   * this response (it keys off a top-level positive-integer `version`).
+   */
+  version: number;
 }
 
 /**
@@ -62,6 +77,12 @@ export class SettingsRegistryWriteService extends BaseService {
     @Inject(IGlobalSettingService) private readonly globalSettings: IGlobalSettingService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-533 B2 — direct repository access for a FRESH row read. The CAS
+    // version must never come from the AppSettings snapshot: that map is rebuilt
+    // on a 45s cron, so two admins editing inside one window would compare
+    // against the same stale number and the second would silently clobber the
+    // first. Reading the row here costs one indexed lookup per write.
+    private readonly globalSettingRepository: GlobalSettingRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.GlobalSetting);
   }
@@ -99,12 +120,98 @@ export class SettingsRegistryWriteService extends BaseService {
     // 6. Type validation against the declared dataType.
     const { serialized, valueType } = this.serialize(descriptor, value);
 
-    // 7. Upsert the backing row + refresh the cache the consumers read.
-    const cached = this.appSettings.getFromCache(key);
-    if (cached) {
-      await this.globalSettings.update(cached.id, { value: serialized, expectedVersion: cached.version });
-    } else {
-      await this.globalSettings.create({
+    // 7. Upsert the backing row under COMPARE-AND-SET, then refresh the read cache.
+    const existing = await this.findBackingRow(key);
+    const persisted = existing
+      ? await this.updateExisting(existing, serialized, options.expectedVersion, key)
+      : await this.createOrRecoverRace(key, descriptor, serialized, valueType);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: persisted.id,
+      data: { key, scope, tier: descriptor.tier, namespace: REGISTRY_SETTING_NAMESPACE, newVersion: persisted.version },
+    });
+
+    await this.appSettings.refreshCache();
+
+    return { key, tier: descriptor.tier, value, scope, version: persisted.version };
+  }
+
+  /**
+   * Current version of the backing row for `key`, or 0 when none is stored yet.
+   *
+   * Public so the READ route can carry it, letting the `ETagInterceptor` render
+   * an ETag the client echoes as `If-Match` on the write. 0 deliberately yields
+   * no ETag — there is nothing to precondition a first write against.
+   */
+  async getBackingRowVersion(key: string): Promise<number> {
+    const row = await this.findBackingRow(key);
+    return row?.version ?? 0;
+  }
+
+  /** The backing KV row for `key`, read FRESH (never the AppSettings snapshot). */
+  private async findBackingRow(key: string): Promise<{ id: string; version: number } | null> {
+    const row = await this.globalSettingRepository.findFirst({
+      where: { key, namespace: REGISTRY_SETTING_NAMESPACE },
+    } as never);
+    return row ? { id: row.id, version: row.version } : null;
+  }
+
+  /**
+   * CAS an existing row. `expectedVersion` is mandatory here — a write with no
+   * precondition against a row that already exists is exactly the blind
+   * overwrite RFC 7232 defines 428 for.
+   */
+  private async updateExisting(
+    existing: { id: string; version: number },
+    serialized: string,
+    expectedVersion: number | undefined,
+    key: string,
+  ): Promise<{ id: string; version: number }> {
+    if (expectedVersion === undefined) {
+      // RFC 6585 §3 — mirrors the shape `extractExpectedVersion` throws at the
+      // HTTP layer, so a caller sees one consistent 428 contract whether the
+      // header was omitted on an annotated route or reached the service unset.
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.PRECONDITION_REQUIRED,
+          code: 'HTTP.PRECONDITION_REQUIRED',
+          message:
+            `Setting '${key}' already has a stored value (version ${existing.version}). ` +
+            `Re-read it and supply If-Match: "<version>" so a concurrent edit cannot be silently overwritten.`,
+        },
+        HttpStatus.PRECONDITION_REQUIRED,
+      );
+    }
+    // Fail the drift here rather than at the repository so the caller gets the
+    // observed-vs-expected pair without a wasted write attempt. The repository's
+    // own `updateWithVersion` remains the authoritative guard against a race
+    // between this read and the update.
+    if (existing.version !== expectedVersion) {
+      // Same exception the repository's `updateWithVersion` raises, so the
+      // global filter renders the identical 412 body (`{expectedVersion,
+      // currentVersion}`) the SDK/UI conflict handler already consumes.
+      throw new OptimisticConcurrencyException('GlobalSetting', existing.id, {
+        expectedVersion,
+        currentVersion: existing.version,
+      });
+    }
+    const updated = await this.globalSettings.update(existing.id, { value: serialized, expectedVersion });
+    return { id: updated.id, version: updated.version };
+  }
+
+  /**
+   * First write. Two writers can both observe "no row", so a unique-constraint
+   * failure is a LOST RACE, not an error: re-read and update instead of handing
+   * the loser a 500.
+   */
+  private async createOrRecoverRace(
+    key: string,
+    descriptor: SettingDescriptor,
+    serialized: string,
+    valueType: ValueType,
+  ): Promise<{ id: string; version: number }> {
+    try {
+      const created = await this.globalSettings.create({
         name: descriptor.label ?? key,
         key,
         value: serialized,
@@ -112,16 +219,13 @@ export class SettingsRegistryWriteService extends BaseService {
         namespace: REGISTRY_SETTING_NAMESPACE,
         tenantId: GLOBAL_TENANT_ID,
       });
+      return { id: created.id, version: created.version };
+    } catch (error) {
+      const winner = await this.findBackingRow(key);
+      if (!winner) throw error;
+      const updated = await this.globalSettings.update(winner.id, { value: serialized, expectedVersion: winner.version });
+      return { id: updated.id, version: updated.version };
     }
-
-    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-      resourceId: cached?.id ?? key,
-      data: { key, scope, tier: descriptor.tier, namespace: REGISTRY_SETTING_NAMESPACE },
-    });
-
-    await this.appSettings.refreshCache();
-
-    return { key, tier: descriptor.tier, value, scope };
   }
 
   // ────────────────────────────── internals ──────────────────────────────

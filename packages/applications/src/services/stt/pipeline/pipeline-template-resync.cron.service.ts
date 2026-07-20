@@ -11,14 +11,19 @@ const JOB_NAME = 'pipeline-template-resync';
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 /**
- * Defaults for the nightly SYSTEM-template resync sweep.
+ * FAIL-SAFE defaults for the nightly SYSTEM-template resync sweep.
  *
- * `enabled` is OFF by default, and that is a deliberate safety posture rather
- * than a placeholder: this job REWRITES tenant pipeline configs with no human
- * in the loop. The admin-triggered endpoint
- * (`POST admin/tenants/:id/pipelines/resync`) is the primary path; an operator
- * must consciously opt into the unattended sweep. Same stance as
- * `AgentTrajectoryRetentionService`, whose nightly prune hard-deletes rows.
+ * `enabled` is OFF here on purpose, and it must stay that way: the registry
+ * descriptor (`pipeline.templateResync.enabled`) is a KILL-SWITCH, and
+ * `SettingsRegistry.killSwitches()` throws at assembly if any kill-switch
+ * defaults ON. These constants are the fallback for an UNCONFIGURED system —
+ * they are not the deployed posture.
+ *
+ * The sweep is turned ON by a platform VALUE instead: a locked SYSTEM-tenant
+ * `GlobalSetting` row seeded in `11-global-setting.ts` (`value: 'true'`,
+ * `defaultValue: 'false'`, so a reset reverts to fail-safe). That keeps the
+ * governance invariant intact while shipping the sweep enabled, and leaves a
+ * GLOBAL_ADMIN able to flip it from the settings surface at any time.
  */
 const DEFAULTS = {
   enabled: false,
@@ -40,9 +45,10 @@ export interface PipelineTemplateResyncCronConfig {
  * and re-syncing whenever the settings cache refreshes so an operator's toggle
  * takes effect without a restart.
  *
- * AppSettings keys:
- *   - `pipeline.templateResync.enabled` (default false)
- *   - `pipeline.templateResync.cron`    (default `0 3 * * *`)
+ * AppSettings keys (both registered in `platform-ops.descriptors.ts`, so they
+ * appear on the admin settings surface and are writable through the registry):
+ *   - `pipeline.templateResync.enabled` — fail-safe default false; SEEDED TRUE
+ *   - `pipeline.templateResync.cron`    — default `0 3 * * *`
  *
  * The sweep runs with no CLS context, which the tenant-context provider treats
  * as elevated/tenant-less — exactly the pass-through the reconciler needs to

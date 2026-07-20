@@ -21,12 +21,28 @@ function mapScope(scope: PipelinePolicyScope): SettingScope {
   }
 }
 
-const META: Record<PipelineToggleKey, { label: string; description: string }> = {
+/**
+ * TASK-532 (E3-L2, OD-2) — `globalOnly` marks the toggles a tenant admin may no
+ * longer write. `harnessEnabled` gates guardrail's primary caller and
+ * `autoNerEnabled` gates NLP auto-extraction; per the owner directive both AI
+ * services are controlled by global admins only. `PipelinePolicyService`
+ * enforces FROM this metadata (AD-1) — do not mirror it into a key list there.
+ *
+ * `autoSummaryEnabled` / `dnaStyleEnabled` stay tenant-writable: they select
+ * clinical convenience behaviour, not whether a governed AI service runs.
+ */
+const META: Record<PipelineToggleKey, { label: string; description: string; globalOnly?: boolean }> = {
   autoSummaryEnabled: { label: 'Auto-summary', description: 'Automatically generate a summary after each consultation.' },
-  autoNerEnabled: { label: 'Auto medical NER', description: 'Automatically extract medical entities during transcription.' },
+  autoNerEnabled: {
+    label: 'Auto medical NER',
+    description: 'Automatically extract medical entities during transcription (global administrators only).',
+    globalOnly: true,
+  },
   harnessEnabled: {
     label: 'Documentation harness',
-    description: 'Route consultations through the clinical documentation harness (rollout knob — capped at department).',
+    description:
+      'Route consultations through the clinical documentation harness (rollout knob — capped at department; global administrators only).',
+    globalOnly: true,
   },
   dnaStyleEnabled: { label: 'DNA writing style', description: "Apply and learn the doctor's DNA writing style." },
 };
@@ -42,4 +58,5 @@ export const PIPELINE_SETTINGS: SettingDescriptor[] = (Object.keys(PIPELINE_SETT
   label: META[key].label,
   description: META[key].description,
   default: PIPELINE_SETTING_DESCRIPTORS[key].codeDefault,
+  ...(META[key].globalOnly ? { globalOnly: true } : {}),
 }));

@@ -19,8 +19,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     private readonly jwtRevocationService?: IJwtRevocationService,
   ) {
     // TASK-302 Phase 3 Task 3.6 — JWT secret now sourced from SecretsService
-    // (cache-warmed at bootstrap by main.ts). See gateway-auth.strategy.ts
-    // for the same pattern.
+    // (cache-warmed at bootstrap by main.ts).
     //
     // TASK-307 W2.1 / W7.A.6 (closes audit C-6) — refuse to start when the
     // resolved JWT secret is missing OR equals the literal placeholder.
@@ -46,16 +45,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async validate(payload: any): Promise<UserSession> {
-    // C-4: refuse tokens whose jti has been revoked. Best-effort — if the
-    // revocation service is unavailable or omitted (tests, bootstrap edge
-    // cases) the check fails open and the token is still subject to all
-    // other JWT validation downstream.
-    if (payload?.jti && this.jwtRevocationService) {
-      const revoked = await this.jwtRevocationService.isRevoked(payload.jti);
-      if (revoked) {
-        throw new UnauthorizedException('Token has been revoked');
-      }
-    }
+    await this.assertNotRevoked(payload);
 
     const userSession = new UserSession({
       id: payload.id,
@@ -82,5 +72,56 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     // a forged `x-tenant-id` header.
     this.clsService.set('tenantId', payload.tenantId);
     return userSession;
+  }
+
+  /**
+   * Two independent revocation axes, both consulted before the session is built.
+   *
+   * - **C-4 per-token**: the `jti` was explicitly revoked (logout,
+   *   revoke-impersonation).
+   * - **TASK-541 A4 per-user**: the user was disabled/suspended/deleted after
+   *   this token was minted, so every `iat` at or before the stamp is dead.
+   *   Comparison is `iat <= notBefore` — a token minted in the same second as
+   *   the deactivation must lose the tie, since the alternative is handing a
+   *   just-disabled user a full token lifetime of access.
+   *
+   * **TASK-541 A3 — posture when the store is unreachable.** An ordinary token
+   * fails OPEN: a Redis outage must not black out every authenticated request,
+   * and the token remains subject to signature + expiry validation. An
+   * IMPERSONATION token fails CLOSED: it is the highest-privilege credential
+   * on the platform (an operator acting as another user), its revoke path is
+   * the one most likely to be exercised under duress, and refusing it costs
+   * only a break-glass session rather than platform availability.
+   *
+   * Both lookups are issued concurrently so the pair costs one round-trip of
+   * wall-clock on this hot path (ioredis pipelines concurrent commands).
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- passport hands the raw decoded JWT claims through untyped; validate() above takes the same shape
+  private async assertNotRevoked(payload: any): Promise<void> {
+    if (!this.jwtRevocationService) return;
+
+    const jti: string | undefined = payload?.jti;
+    const userId: string | undefined = payload?.id;
+    const issuedAt: unknown = payload?.iat;
+    const isImpersonated = Boolean(payload?.impersonatedBy);
+
+    const checkUserNbf = typeof userId === 'string' && userId.length > 0 && typeof issuedAt === 'number';
+
+    const [tokenCheck, userCheck] = await Promise.all([
+      jti ? this.jwtRevocationService.checkRevoked(jti) : Promise.resolve(null),
+      checkUserNbf ? this.jwtRevocationService.getUserNotBefore(userId as string) : Promise.resolve(null),
+    ]);
+
+    if (tokenCheck?.revoked) {
+      throw new UnauthorizedException('Token has been revoked');
+    }
+
+    if (userCheck?.notBefore !== null && userCheck?.notBefore !== undefined && (issuedAt as number) <= userCheck.notBefore) {
+      throw new UnauthorizedException('Token has been revoked');
+    }
+
+    if (isImpersonated && (tokenCheck?.degraded || userCheck?.degraded)) {
+      throw new UnauthorizedException('Token revocation status unavailable');
+    }
   }
 }

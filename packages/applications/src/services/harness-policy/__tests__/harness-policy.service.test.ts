@@ -411,6 +411,41 @@ describe('HarnessPolicyService', () => {
       ).rejects.toBeInstanceOf(ForbiddenException);
       expect(policyChangeRepository.create).not.toHaveBeenCalled();
     });
+
+    // TASK-532 work-stream A-1 (E3-L1, OD-2): the guardrail/PHI ON-OFF switches
+    // join the global-admin-only list. A tenant admin must not be able to
+    // disable the safety gate or the PHI fail-closed posture for their tenant.
+    describe.each(['safetyEnabled', 'phiEnabled', 'phiFailClosed'] as const)('E3-L1 lock — %s', (key) => {
+      it('rejects a tenant updatePolicy patching it (403 naming the key)', async () => {
+        const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT });
+        policyRepository.findForExactTenant.mockResolvedValue(own);
+
+        await expect(service.updatePolicy({ [key]: false } as never, 1)).rejects.toThrow(new RegExp(key));
+        await expect(service.updatePolicy({ [key]: false } as never, 1)).rejects.toBeInstanceOf(ForbiddenException);
+        expect(policyChangeRepository.create).not.toHaveBeenCalled();
+      });
+
+      it('still accepts it on updateGlobalDefault (global editor unaffected)', async () => {
+        const sys = systemDefaultEntity();
+        policyRepository.findForExactTenant.mockResolvedValue(null);
+        policyRepository.findSystemDefault.mockResolvedValue(sys);
+
+        await expect(service.updateGlobalDefault({ [key]: false } as never, sys.version)).resolves.toBeDefined();
+      });
+
+      it('overlays the SYSTEM value over a grandfathered tenant-row value', async () => {
+        // Pre-existing tenant row set it to false; SYSTEM says true.
+        const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, [key]: false } as never);
+        const sys = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: SYSTEM_TENANT_ID, [key]: true } as never);
+        policyRepository.findForExactTenant.mockResolvedValue(own);
+        policyRepository.findSystemDefault.mockResolvedValue(sys);
+
+        const effective = await service.getEffectivePolicy(TENANT);
+
+        expect(effective.source).toBe('tenant');
+        expect((effective as unknown as Record<string, unknown>)[key]).toBe(true);
+      });
+    });
   });
 
   describe('updatePolicy', () => {

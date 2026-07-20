@@ -12,7 +12,6 @@ import { ISecretsProvider, SecretFetchOptions, SecretsHealth } from '../ISecrets
 export class EnvSecretsProvider implements ISecretsProvider {
   // Logger is kept on the instance to allow downstream tests to spy on
   // log lines without surfacing a public API surface.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private readonly logger = new Logger(EnvSecretsProvider.name);
 
   async getSecret(key: string, opts?: SecretFetchOptions): Promise<string> {

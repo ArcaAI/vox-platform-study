@@ -66,8 +66,7 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
    * Mirrors the W3.2 NotificationService.fetchAll posture.
    */
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<ResourceSubscriptionEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { limit, page, search } = props;
+    const { limit, page } = props;
     const baseWhere = this.isSuperAdmin() ? {} : { tenantId: this.tenantId };
     const paginatedProps = withFormattedPaginatedProps(props);
     const countProps = withFormattedCountProps(props);

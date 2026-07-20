@@ -13,6 +13,7 @@ import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { useAdminGridParams } from '@/shared/data/admin-data-grid';
 import { normalizeList } from '@/shared/data/envelopes';
 import type { FilterOption } from '@/shared/data/filter-bar';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { gridPersistence } from '@/shared/data/grid-persistence';
 import { formatNumber } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
@@ -20,10 +21,12 @@ import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
+import { useSession } from '@/shared/auth';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { useDeleteTemplate, useDepartments, useTemplates, useUsageStats } from '../api/hooks';
 import type { ListTemplatesParams, PromptTemplate, PromptTemplateCategory, PromptTemplateStatus } from '../api/types';
 import { AgentDetailDrawer } from './agent-detail';
+import { GovernanceTab } from './governance-tab';
 
 const STATUS_OPTIONS: FilterOption[] = [
     { value: 'DRAFT', label: 'Draft' },
@@ -67,6 +70,12 @@ function AgentsScreenBody() {
     // opens the detail slide-over) stays its own param.
     const query = useAdminGridParams();
     const [selectedParam, setSelectedParam] = useQueryState('template', parseAsString.withDefault(''));
+    // TASK-532 (M-03/OD-6): `?tab=governance` is the redirect target from the
+    // retired `/prompt-studio`, so the tab must be URL-addressable.
+    const [tabParam, setTabParam] = useQueryState('tab', parseAsString);
+    const session = useSession();
+    const isElevated = session.data?.isElevated ?? false;
+    const tab = isElevated && tabParam === 'governance' ? 'governance' : 'agents';
     const [creating, setCreating] = useState(false);
     const [deleting, setDeleting] = useState<PromptTemplate | null>(null);
 
@@ -221,8 +230,26 @@ function AgentsScreenBody() {
 
     return (
         <>
+            {/*
+             * TASK-532 (M-03/OD-6): `/agents` gained the Governance tab that the
+             * retired `/prompt-studio` used to own. Tabs wrap the template so the
+             * shared context reaches both the TabsList (a pinned region) and the
+             * panels (children) — rule 11 §Screen Template.
+             */}
+            <Tabs
+                className="flex min-h-0 flex-1 flex-col"
+                value={tab}
+                onValueChange={(next) => void setTabParam(next === 'agents' ? null : next)}
+            >
             <ScreenTemplate
-                contentMode="fill"
+                contentMode={tab === 'governance' ? 'scroll' : 'fill'}
+                tabs={
+                    <TabsList variant="line">
+                        <TabsTrigger value="agents">Agents</TabsTrigger>
+                        {/* Elevated-only in the console; the 403 is server-side regardless. */}
+                        {isElevated ? <TabsTrigger value="governance">Governance</TabsTrigger> : null}
+                    </TabsList>
+                }
                 header={
                     <PageHeader
                         title="Agents & Prompt Templates"
@@ -246,6 +273,7 @@ function AgentsScreenBody() {
                     />
                 }
             >
+                <TabsContent value="agents" className="flex min-h-0 flex-1 flex-col">
                 <VirtualizedDataGrid<PromptTemplate>
                     aria-label="Prompt templates"
                     columns={columns}
@@ -274,7 +302,14 @@ function AgentsScreenBody() {
                     onRetry={() => void templatesQuery.refetch()}
                     emptyState={empty}
                 />
+                </TabsContent>
+                {isElevated ? (
+                    <TabsContent value="governance" className="flex min-h-0 flex-1 flex-col">
+                        <GovernanceTab />
+                    </TabsContent>
+                ) : null}
             </ScreenTemplate>
+            </Tabs>
 
             <AgentDetailDrawer
                 key={creating ? 'create' : (selectedParam || 'no-template')}

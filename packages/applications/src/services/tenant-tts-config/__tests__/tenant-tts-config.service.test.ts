@@ -34,7 +34,6 @@ function makeService(opts: { withVault?: boolean } = {}) {
     get: vi.fn((k: string) => (k === 'user' ? { id: 'u1' } : k === 'tenantId' ? TENANT : undefined)),
   };
   const secrets = opts.withVault ? fakeSecrets() : undefined;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const svc = new TenantTtsConfigService(repo as any, credRepo as any, modelRepo as any, emitter as any, cls as any, secrets as any);
   return { svc, repo, credRepo, modelRepo, emitter, secrets };
 }

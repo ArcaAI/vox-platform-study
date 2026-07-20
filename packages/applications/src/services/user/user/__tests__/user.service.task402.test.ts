@@ -69,23 +69,14 @@ vi.mock('@arcaai/domains', async () => {
 
 function buildService() {
   return new UserService(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockUserRepository as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockUserRoleAssignmentRepository as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockUserDepartmentRepository as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockEventEmitter as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockClsService as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockDatabaseService as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockUserProfileService as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockCryptoService as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockAppSettings as any,
   );
 }
@@ -106,9 +97,7 @@ describe('UserService — TASK-402 password hashing on the CRUD paths', () => {
           return null;
       }
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockUserRepository.create.mockImplementation(async (entity: any) => entity);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockUserRoleAssignmentRepository.create.mockImplementation(async (entity: any) => entity);
     service = buildService();
   });
@@ -147,7 +136,6 @@ describe('UserService — TASK-402 password hashing on the CRUD paths', () => {
     });
 
     it('hashes on the atomic create-with-membership branch too', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await service.create({ username: 'dave', password: STRONG_PW, roleId: 'role-1' } as any);
 
       expect($transaction).toHaveBeenCalledTimes(1);
@@ -184,7 +172,6 @@ describe('UserService — TASK-402 password hashing on the CRUD paths', () => {
     it('policy-validates + hashes a password update and re-stamps passwordChangedAt', async () => {
       const existing = buildExistingUser();
       mockUserRepository.findById.mockResolvedValue(existing);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       mockUserRepository.update.mockImplementation(async (_id: string, entity: any) => entity);
 
       const NEW_PW = 'NewPassword123!';
@@ -207,7 +194,6 @@ describe('UserService — TASK-402 password hashing on the CRUD paths', () => {
     it('leaves non-password updates untouched by the crypto service', async () => {
       const existing = buildExistingUser();
       mockUserRepository.findById.mockResolvedValue(existing);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       mockUserRepository.update.mockImplementation(async (_id: string, entity: any) => entity);
 
       await service.update('user-9', { username: 'erin2' });

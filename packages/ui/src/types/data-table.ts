@@ -4,13 +4,13 @@ import type { FilterItemSchema } from '@/lib/parsers';
 
 declare module '@tanstack/react-table' {
   // biome-ignore lint/correctness/noUnusedVariables: TData is used in the TableMeta interface
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- module augmentation: the type-parameter NAME must match @tanstack/react-table's own `TableMeta<TData>` declaration or the interfaces stop merging (TS2428). An `_TData` rename silences the lint rule at the cost of breaking the build.
   interface TableMeta<TData extends RowData> {
     queryKeys?: QueryKeys;
   }
 
   // biome-ignore lint/correctness/noUnusedVariables: TData and TValue are used in the ColumnMeta interface
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- same as above: `ColumnMeta<TData, TValue>` must mirror the upstream parameter names exactly for declaration merging (TS2428).
   interface ColumnMeta<TData extends RowData, TValue> {
     label?: string;
     placeholder?: string;

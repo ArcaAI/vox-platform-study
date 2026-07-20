@@ -3,10 +3,19 @@
 import { getJson, postJson } from '@/shared/api';
 import type {
     AuditListParams,
+    CreateGoldenCaseBody,
+    CreateGoldenSetBody,
+    EditBurden,
     EvalRunDetail,
     EvalRunList,
     EvalRunListParams,
     GateQueue,
+    GoldenCaseList,
+    GoldenCaseListParams,
+    GoldenCaseMeta,
+    GoldenSet,
+    GoldenSetList,
+    GoldenSetListParams,
     HarnessAuditList,
     HarnessWorkflowActionResult,
     HarnessWorkflowDetail,
@@ -34,6 +43,43 @@ export function listEvalRuns(params?: EvalRunListParams): Promise<EvalRunList> {
 
 export function getEvalRun(evalRunId: string): Promise<EvalRunDetail> {
     return getJson(`${HARNESS}/eval-runs/${encodeURIComponent(evalRunId)}`);
+}
+
+// ───────────────── Golden sets (TASK-532 B-5 / M-09 tenant leg) ─────────────────
+
+const goldenSetPath = (goldenSetId: string) => `${HARNESS}/golden-sets/${encodeURIComponent(goldenSetId)}`;
+
+/** Newest-first golden-set page. NOTE: `page` is 1-based (as on eval-runs). */
+export function listGoldenSets(params?: GoldenSetListParams): Promise<GoldenSetList> {
+    return getJson(`${HARNESS}/golden-sets`, params);
+}
+
+export function getGoldenSet(goldenSetId: string): Promise<GoldenSet> {
+    return getJson(goldenSetPath(goldenSetId));
+}
+
+/**
+ * A set's cases — PHI-SAFE METADATA ONLY. The gateway never surfaces the
+ * encrypted `transcript`/`referenceNote`, so there is nothing clinical to
+ * render from this response.
+ */
+export function listGoldenCases(goldenSetId: string, params?: GoldenCaseListParams): Promise<GoldenCaseList> {
+    return getJson(`${goldenSetPath(goldenSetId)}/cases`, params);
+}
+
+/** Requires `manage:HarnessEval` (gateway-enforced). */
+export function createGoldenSet(body: CreateGoldenSetBody): Promise<GoldenSet> {
+    return postJson(`${HARNESS}/golden-sets`, body);
+}
+
+/** Requires `manage:HarnessEval`. PHI in, metadata out — the payload is never echoed. */
+export function createGoldenCase(goldenSetId: string, body: CreateGoldenCaseBody): Promise<GoldenCaseMeta> {
+    return postJson(`${goldenSetPath(goldenSetId)}/cases`, body);
+}
+
+/** Derived edit-burden scalars for ONE consultation. 404 = absent or cross-tenant. */
+export function getEditBurden(consultationId: string): Promise<EditBurden> {
+    return getJson(`${HARNESS}/edit-burden`, { consultationId });
 }
 
 export function getGateQueue(): Promise<GateQueue> {

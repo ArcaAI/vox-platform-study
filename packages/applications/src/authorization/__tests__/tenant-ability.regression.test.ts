@@ -20,7 +20,6 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { PolicyEngine } from '../policy.engine';
 // Direct relative imports of the seed source so a regression in either file
 // fails this test deterministically (no compiled-artifact indirection).
@@ -114,7 +113,6 @@ describe('Tenant-ability regression — seeded GLOBAL_ADMIN policy linkage', () 
     mockCacheService.isConnected.mockReturnValue(false);
     mockPrismaClient.userRoleAssignment.findMany.mockResolvedValue([]);
     mockPrismaClient.role.findMany.mockResolvedValue([]);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     policyEngine = new PolicyEngine(
       mockDatabaseService as any,
       mockCacheService as any,

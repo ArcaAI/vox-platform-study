@@ -131,5 +131,4 @@ ruleTester.run('no-controller-direct-prisma', rule, {
   ],
 });
 
-// eslint-disable-next-line no-console
 console.log('no-controller-direct-prisma: RuleTester passes (TASK-307 W6.4)');

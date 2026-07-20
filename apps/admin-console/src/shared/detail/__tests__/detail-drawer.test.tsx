@@ -1,10 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
-import * as axeMatchers from 'vitest-axe/matchers';
 import { DetailDrawer } from '../detail-drawer';
 
-expect.extend(axeMatchers);
 
 function sheetContent(): HTMLElement {
     const el = document.querySelector('[data-slot="sheet-content"]');

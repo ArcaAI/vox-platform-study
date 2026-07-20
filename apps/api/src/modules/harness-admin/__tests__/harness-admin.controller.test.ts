@@ -52,6 +52,14 @@ function makeController(ctx: Ctx) {
     addGoldenCase: vi.fn().mockResolvedValue({ id: 'case-1' }),
   };
   const cls = { get: vi.fn((key: string) => (ctx as Record<string, unknown>)[key]) };
+  const gateEditMiningService = {
+    exportCorpusCandidates: vi.fn().mockResolvedValue({
+      tenantId: 'tenant-1',
+      reviewStatus: 'PENDING_SME_REVIEW',
+      count: 0,
+      candidates: [],
+    }),
+  };
   const controller = new HarnessAdminController(
     policyService as never,
     observabilityService as never,
@@ -59,8 +67,9 @@ function makeController(ctx: Ctx) {
     cls as never,
     liveDocumentationService as never,
     evalService as never,
+    gateEditMiningService as never,
   );
-  return { controller, policyService, observabilityService, opsClient, liveDocumentationService, evalService };
+  return { controller, policyService, observabilityService, opsClient, liveDocumentationService, evalService, gateEditMiningService };
 }
 
 describe('HarnessAdminController — policy', () => {
@@ -382,7 +391,13 @@ describe('HarnessAdminController — golden sets (TASK-419)', () => {
   it('createGoldenSet writes under the resolved tenant, stamping the CLS user as createdBy', async () => {
     const { controller, evalService } = makeController({ user: { roles: ['TENANT_ADMIN'], tenantId: 't1', id: 'user-9' } as never, tenantId: 't1' });
     await controller.createGoldenSet({ name: 'GI set', description: 'gold' } as never, {});
-    expect(evalService.addGoldenSet).toHaveBeenCalledWith({ tenantId: 't1', name: 'GI set', description: 'gold', pinnedVersion: undefined, createdBy: 'user-9' });
+    expect(evalService.addGoldenSet).toHaveBeenCalledWith({
+      tenantId: 't1',
+      name: 'GI set',
+      description: 'gold',
+      pinnedVersion: undefined,
+      createdBy: 'user-9',
+    });
   });
 
   it('createGoldenSet rejects a tenant admin targeting another tenant', async () => {
@@ -413,5 +428,61 @@ describe('HarnessAdminController — golden-set authorization metadata (TASK-419
     expect(Reflect.getMetadata('required_permissions', proto.listGoldenCases)).toEqual([{ action: 'read', subject: 'HarnessEval' }]);
     expect(Reflect.getMetadata('required_permissions', proto.createGoldenSet)).toEqual([{ action: 'manage', subject: 'HarnessEval' }]);
     expect(Reflect.getMetadata('required_permissions', proto.createGoldenCase)).toEqual([{ action: 'manage', subject: 'HarnessEval' }]);
+  });
+});
+
+/**
+ * TASK-533 B6 (GAP-A1) — eval regression-corpus export.
+ *
+ * The route is a thin pass-through by design; what must be locked here is the
+ * TENANT resolution (a global admin may target a tenant, a tenant admin may
+ * not) and the fact that the SME-gate marker survives to the wire.
+ */
+describe('HarnessAdminController — gate-edit corpus export', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('exports for the caller tenant and passes the filters through', async () => {
+    const { controller, gateEditMiningService } = makeController({ user: SUPER, tenantId: 'tenant-1' });
+
+    await controller.exportGateEditExemplars({ departmentId: 'dept-1', qualitySignal: 'APPROVED_CLEAN', limit: 50 });
+
+    expect(gateEditMiningService.exportCorpusCandidates).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: 'tenant-1', departmentId: 'dept-1', qualitySignal: 'APPROVED_CLEAN', limit: 50 }),
+    );
+  });
+
+  it('surfaces the SME-review marker to the caller', async () => {
+    const { controller } = makeController({ user: SUPER, tenantId: 'tenant-1' });
+
+    const result = await controller.exportGateEditExemplars({});
+
+    expect(result.reviewStatus).toBe('PENDING_SME_REVIEW');
+  });
+
+  it('rejects a tenant admin targeting another tenant via ?tenantId (and never reaches the store)', async () => {
+    // House convention on this controller: a foreign ?tenantId= is a 403, not a
+    // silent re-pin — see the sibling audit / edit-burden / golden-set specs.
+    const { controller, gateEditMiningService } = makeController({ user: TENANT_ADMIN('tenant-1'), tenantId: 'tenant-1' });
+
+    await expect(controller.exportGateEditExemplars({ tenantId: 'tenant-elsewhere' })).rejects.toThrow(ForbiddenException);
+    expect(gateEditMiningService.exportCorpusCandidates).not.toHaveBeenCalled();
+  });
+
+  it('pins a tenant admin to their own tenant when no ?tenantId= is given', async () => {
+    const { controller, gateEditMiningService } = makeController({ user: TENANT_ADMIN('tenant-1'), tenantId: 'tenant-1' });
+
+    await controller.exportGateEditExemplars({});
+
+    expect(gateEditMiningService.exportCorpusCandidates).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1' }));
+  });
+
+  it('defaults the limit rather than requesting an unbounded export', async () => {
+    const { controller, gateEditMiningService } = makeController({ user: SUPER, tenantId: 'tenant-1' });
+
+    await controller.exportGateEditExemplars({});
+
+    const [args] = gateEditMiningService.exportCorpusCandidates.mock.calls[0];
+    expect(typeof args.limit).toBe('number');
+    expect(args.limit).toBeGreaterThan(0);
   });
 });

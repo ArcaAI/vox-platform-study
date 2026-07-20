@@ -37,9 +37,7 @@ function buildDeps(opts: { snapshot?: string | null } = {}) {
   };
 
   const service = new HarnessAssuranceService(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     cacheService as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     redisSubscriber as any,
   );
 

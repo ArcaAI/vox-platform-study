@@ -271,7 +271,7 @@ export class PluginManager {
     });
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- @arcaai/med-ner is an OPTIONAL peer dependency (08-vox-sdk.md); casting avoids a hard type dependency on a package that may not be installed in every consumer
       const { createMedNER } = (await import('@arcaai/med-ner')) as any;
 
       const processor = createMedNER({

@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
-import type { EvalRunDetail, EvalRunList, GateQueue, HarnessAuditList } from '../../api/types';
+import type { EvalRunDetail, EvalRunList, GateQueue, GoldenSetList, HarnessAuditList } from '../../api/types';
 import { HarnessObservabilityScreen } from '../harness-observability-screen';
 import { installFetchStub, sessionPayload, type RecordedCall } from './fetch-stub';
 
@@ -122,9 +122,30 @@ const GATE_QUEUE: GateQueue = {
     policySource: 'tenant',
 };
 
+/** TASK-532 B-5 — the board also mounts the golden-sets panel + edit-burden card. */
+const GOLDEN_SETS: GoldenSetList = {
+    items: [
+        {
+            id: 'gs-1',
+            tenantId: 'tnt-1',
+            name: 'GI consultations golden set',
+            description: null,
+            pinnedVersion: 'v2026.07',
+            createdAt: '2026-06-01T00:00:00.000Z',
+            updatedAt: '2026-07-01T00:00:00.000Z',
+            createdBy: 'u-1',
+        },
+    ],
+    total: 1,
+};
+
 function stubRoutes(overrides: { audit?: Response | HarnessAuditList; workingTenantId?: string | null } = {}) {
     return installFetchStub(({ url }: RecordedCall) => {
         if (url === '/api/auth/session') return sessionPayload({ workingTenantId: overrides.workingTenantId });
+        if (url === '/api/hope/rbac/check/my-permissions') {
+            return { userId: 'u-1', tenantId: 'tnt-1', permissions: [{ action: 'manage', subject: 'HarnessEval' }] };
+        }
+        if (url.startsWith('/api/hope/admin/harness/golden-sets')) return GOLDEN_SETS;
         // Best-effort per-user grid-layout persistence (TASK-423): the eval-runs grid
         // loads its layout on mount; no saved layout in tests.
         if (url.includes('/user/me/settings')) return [];
@@ -152,6 +173,15 @@ describe('HarnessObservabilityScreen', () => {
         expect(screen.getByRole('grid', { name: 'WORM audit trail' })).toBeDefined();
         expect(await screen.findByText(/waiting 38 min/)).toBeDefined();
         expect(screen.getByText('Breached SLA')).toBeDefined();
+    });
+
+    it('mounts the TASK-532 B-5 golden-sets panel and edit-burden card', async () => {
+        stubRoutes();
+        renderWithProviders(<HarnessObservabilityScreen />);
+
+        expect(await screen.findByRole('list', { name: 'Golden sets' })).toBeDefined();
+        expect(screen.getByRole('heading', { level: 2, name: 'Edit burden' })).toBeDefined();
+        expect(screen.getByLabelText('Consultation ID')).toBeDefined();
     });
 
     it('renders the broken-chain variant as a destructive banner', async () => {

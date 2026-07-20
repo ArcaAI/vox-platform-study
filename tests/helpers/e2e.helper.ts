@@ -63,6 +63,15 @@ export const SEEDED_API_KEY = 'hope_sk_test_a5c5e56x54c4437fbd6ce7dee9_631238';
 export const SEEDED_API_KEY_DOCTOR2 = 'hope_sk_test_b7d8f67y65d5548gce8df8eef0_742349';
 
 /**
+ * Service-account key (`SEED_API_KEY_RAW.SERVICE_ACCOUNT` in 00-constants.ts).
+ * TASK-430 made service accounts API-key-only principals — they cannot sign in
+ * interactively — so this key is the ONLY way for a test to reach that
+ * principal. (It authenticated for the first time after TASK-539 finding S-3;
+ * before that fix every API key on the platform returned 401.)
+ */
+export const SEEDED_API_KEY_SERVICE_ACCOUNT = 'hope_sa_test_d9f0h89a87f7760ieg0fh0ggh2_964571';
+
+/**
  * Well-known seeded user credentials.
  * These users are created by 91-user.ts and should always exist after pnpm test:db:seed.
  */

@@ -207,7 +207,6 @@ export function useRoles(): UseRolesReturn {
     (userId: string) => {
       if (!getUserRolesWarnedRef.current) {
         getUserRolesWarnedRef.current = true;
-        // eslint-disable-next-line no-console
         console.warn('[useRoles] `getUserRoles` is deprecated; use `listUserRoleAssignments`. (TASK-279)');
       }
       return listUserRoleAssignments(userId);
@@ -219,7 +218,6 @@ export function useRoles(): UseRolesReturn {
     (userId: string, roleId: string, tenantId?: string) => {
       if (!assignRoleWarnedRef.current) {
         assignRoleWarnedRef.current = true;
-        // eslint-disable-next-line no-console
         console.warn('[useRoles] `assignRole` is deprecated; use `assignRoleToUser`. (TASK-279)');
       }
       return assignRoleToUser(userId, roleId, tenantId);
@@ -231,7 +229,6 @@ export function useRoles(): UseRolesReturn {
     (userId: string, assignmentId: string) => {
       if (!removeRoleWarnedRef.current) {
         removeRoleWarnedRef.current = true;
-        // eslint-disable-next-line no-console
         console.warn(
           '[useRoles] `removeRole` is deprecated; use `removeUserRoleAssignment`. ' +
             'Note: the second argument is `assignmentId`, not `roleId`. (TASK-279)',

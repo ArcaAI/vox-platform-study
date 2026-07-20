@@ -74,7 +74,7 @@ export function serializeError(error: unknown): Record<string, unknown> {
     // Handle cause chain
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Error-like objects may have cause.
     if ((error as any).cause) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- same reason as the `.cause` check above: Error-like objects may have a non-standard `cause`
       serialized.cause = serializeError((error as any).cause);
     }
 

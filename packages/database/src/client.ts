@@ -122,6 +122,12 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // `resourceStatus` column and no soft-delete (rows are immutable; the
   // migration REVOKEs UPDATE/DELETE from the app role).
   'HarnessAuditEvent',
+  // GateEditExemplar (TASK-533 B6) is the derived, append-only gate-edit mining
+  // store — no `resourceStatus` column. Rows are pruned/deleted wholesale rather
+  // than soft-deleted, so without this entry the soft-delete extension would
+  // inject `resourceStatus: { not: 'DELETED' }` and Prisma would reject every
+  // read (same failure shape as AsrPipelineVersion in TASK-364).
+  'GateEditExemplar',
   // AgentTrajectoryStep is high-volume ordered ops
   // telemetry with HARD RETENTION (a nightly prune job hard-deletes aged rows)
   // rather than the ENABLED/DELETED soft-delete lifecycle. Like the sibling

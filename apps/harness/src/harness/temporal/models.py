@@ -40,6 +40,11 @@ class HarnessGateConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     max_regen: int = 2
+    # TASK-533 B4 — per-run token budget. 0 ⇒ UNBOUNDED, which is the shipped
+    # default and makes the budget stop inert (byte-identical to pre-B4 history).
+    # Snapshotted at workflow start like every other knob here, so the check stays
+    # deterministic across replay; spend is folded from recorded activity outputs.
+    token_budget_per_run: int = 0
     gate_sla_seconds: float = 86_400.0
     gate_escalation_seconds: float = 43_200.0
     # TASK-355 Phase D (Slice 4a) — optimistic two-phase delivery. Snapshotted at
@@ -279,6 +284,10 @@ class HarnessPolicy(BaseModel):
     atomic_fact_enabled: bool | None = None
     retrieval_enabled: bool | None = None
     warm_start_enabled: bool | None = None
+    # TASK-533 B4 — per-run token budget from `agentic.context.tokenBudget.perRun`,
+    # served on the effective policy. None ⇒ not configured (the gate keeps its
+    # snapshotted default of 0 = unbounded).
+    token_budget_per_run: int | None = None
     ner_priors_enabled: bool | None = None
     max_edit_reruns: int | None = None
     regen_feedback_enabled: bool | None = None
@@ -339,6 +348,7 @@ class HarnessPolicy(BaseModel):
             atomic_fact_enabled=data.get("atomicFactEnabled"),
             retrieval_enabled=data.get("retrievalEnabled"),
             warm_start_enabled=data.get("warmStartEnabled"),
+            token_budget_per_run=data.get("tokenBudgetPerRun"),
             ner_priors_enabled=data.get("nerPriorsEnabled"),
             max_edit_reruns=data.get("maxEditReruns"),
             regen_feedback_enabled=data.get("regenFeedbackEnabled"),

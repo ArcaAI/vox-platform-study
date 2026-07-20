@@ -9,8 +9,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Environments where the in-memory claim-check store is a data-loss bug rather than a
+# convenience (TASK-533 D-28). Anything else — "development", "test", a bare default —
+# is treated as single-process and allowed.
+_DEPLOYED_ENVIRONMENTS = frozenset({"production", "prod", "staging"})
 
 if TYPE_CHECKING:
     from harness.eval.config import JudgeConfig
@@ -189,6 +194,14 @@ class ClaimCheckConfig(BaseSettings):
     ``store=s3`` + the MinIO endpoint/creds, because a cross-worker activity retry
     against the in-memory fake fails LOUD (``ClaimCheckNotFound``). Creds are
     ``SecretStr``, validated at startup (AC-7).
+
+    TASK-533 D-28 — that MUST is ENFORCED, not just documented. ``Settings``
+    carries a ``_reject_memory_claim_check_outside_dev`` model validator that turns
+    ``enabled=True`` + ``store="memory"`` into a hard startup error whenever
+    ``HARNESS_ENVIRONMENT`` names a deployed environment, and
+    ``harness.temporal.worker`` re-asserts it at boot (warning in dev, where a
+    single worker makes the in-memory store legitimate). The defaults below are
+    unchanged: this is a deployment guard, not a default change.
     """
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_CLAIM_CHECK_")
@@ -274,6 +287,11 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8866
     debug: bool = False
+    # Deployment signal (TASK-533 D-28). Deliberately SEPARATE from ``debug``: that
+    # flag defaults False, so "not debug" cannot distinguish a production deploy from
+    # unconfigured local dev — and the claim-check guard below must not fire on the
+    # latter. Production/staging deploys set ``HARNESS_ENVIRONMENT`` explicitly.
+    environment: str = "development"
     log_level: str = "info"
     cors_origins: list[str] = Field(default_factory=list)
     cors_enabled: bool = False
@@ -411,14 +429,12 @@ class Settings(BaseSettings):
         """
         return self.service_token
 
-    # Observability
-    otel_enabled: bool = False
-    otel_exporter_endpoint: str = "http://localhost:4317"
-    otel_service_name: str = "harness"
-    otel_service_namespace: str = "hope"
-    otel_deployment_environment: str = "production"
-    otel_insecure: bool = True
-    otel_logs_enabled: bool = True
+    # Observability. (TASK-533 D-27 removed a seven-field ``otel_*`` block here: it
+    # had zero consumers, no TracerProvider/exporter was ever constructed, and no
+    # env file could even reach it — the repo only ever defined bare ``OTEL_*`` vars
+    # for stt-v2/smr, never the ``HARNESS_OTEL_*`` this prefix required. Prometheus
+    # metrics + the trajectory spine cover the observability need. ``_add_otel_context``
+    # in core/logging.py is kept: it is inert until something installs a provider.)
     metrics_enabled: bool = True
 
     # Sub-configs (loaded from their own env prefixes)
@@ -438,6 +454,42 @@ class Settings(BaseSettings):
     @classmethod
     def _normalise_log_level(cls, v: str) -> str:
         return v.lower()
+
+    @field_validator("environment")
+    @classmethod
+    def _normalise_environment(cls, v: str) -> str:
+        return v.strip().lower()
+
+    @model_validator(mode="after")
+    def _reject_memory_claim_check_outside_dev(self) -> Settings:
+        """Fail fast when a real deploy would offload clinical blobs to the fake store.
+
+        ``ClaimCheckConfig`` defaults to the process-local in-memory store, which is
+        correct for the hermetic suite and single-worker local dev. In a deployed
+        environment it is a data-loss bug: the store is a per-process singleton, so a
+        cross-worker activity retry raises ``ClaimCheckNotFound`` and the offloaded
+        transcript/prompt/note is simply gone. The class docstring has said "a
+        MULTI-worker deploy MUST set store=s3" since TASK-483; this enforces it.
+
+        Cross-field, so it cannot live on ``ClaimCheckConfig`` — the deployment
+        signal belongs to the parent. Development stays silent here; the worker
+        logs a warning at boot instead (see ``harness.temporal.worker``).
+        """
+        if (
+            self.environment in _DEPLOYED_ENVIRONMENTS
+            and self.claim_check.enabled
+            and self.claim_check.store == "memory"
+        ):
+            raise ValueError(
+                f"claim-check offload is enabled with the in-memory store in "
+                f"'{self.environment}'. A deployed harness MUST set "
+                f"HARNESS_CLAIM_CHECK_STORE=s3 (plus the MinIO endpoint/credentials), "
+                f"because the in-memory store is per-process and a cross-worker "
+                f"activity retry would lose the offloaded clinical blob. Set "
+                f"HARNESS_CLAIM_CHECK_ENABLED=false only if you accept unbounded "
+                f"Temporal history growth."
+            )
+        return self
 
 
 def _load_dotenv_into_environ() -> None:

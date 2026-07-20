@@ -23,7 +23,6 @@ describe('AdminConsultationController', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     controller = new AdminConsultationController(mockConsultationService as any);
   });
 
@@ -31,7 +30,6 @@ describe('AdminConsultationController', () => {
     it('delegates to listConsultationsForTenant with parsed pagination + filters (never the caller doctorId)', async () => {
       mockConsultationService.listConsultationsForTenant.mockResolvedValue({ data: [], count: 0, page: 2, limit: 5 });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await controller.list({ page: '2', limit: '5', patientId: 'p-1', doctorId: 'd-1', departmentId: 'dept-1' } as any);
 
       expect(mockConsultationService.listConsultationsForTenant).toHaveBeenCalledWith({
@@ -45,7 +43,6 @@ describe('AdminConsultationController', () => {
 
     it('defaults page=1 / pageSize=10 when query params are absent', async () => {
       mockConsultationService.listConsultationsForTenant.mockResolvedValue({ data: [], count: 0, page: 1, limit: 10 });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await controller.list({} as any);
       expect(mockConsultationService.listConsultationsForTenant).toHaveBeenCalledWith(
         expect.objectContaining({ page: 1, pageSize: 10 }),
@@ -55,7 +52,6 @@ describe('AdminConsultationController', () => {
     // TASK-341 B2 — optional ?status=RECORDING filter (admin live console).
     it('forwards a valid ?status filter (e.g. RECORDING)', async () => {
       mockConsultationService.listConsultationsForTenant.mockResolvedValue({ data: [], count: 0, page: 1, limit: 10 });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await controller.list({ status: 'RECORDING' } as any);
       expect(mockConsultationService.listConsultationsForTenant).toHaveBeenCalledWith(
         expect.objectContaining({ status: ConsultationStatus.RECORDING }),
@@ -63,7 +59,6 @@ describe('AdminConsultationController', () => {
     });
 
     it('rejects an invalid ?status value with BadRequestException', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await expect(controller.list({ status: 'NOPE' } as any)).rejects.toThrow(BadRequestException);
       expect(mockConsultationService.listConsultationsForTenant).not.toHaveBeenCalled();
     });

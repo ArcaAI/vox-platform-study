@@ -52,7 +52,6 @@ export class ConfigService implements IConfigService, OnModuleInit {
 
     // Load environment variables using centralized utility
     // Priority: options.envFilePath > ENV_FILE_PATH env var > auto-detect based on NODE_ENV
-    // eslint-disable-next-line turbo/no-undeclared-env-vars
     const envFilePath = options.envFilePath || process.env['ENV_FILE_PATH'];
 
     // In test environment, don't override existing env vars (they come from dotenv-cli)
@@ -63,7 +62,6 @@ export class ConfigService implements IConfigService, OnModuleInit {
     this.envLoadResult = loadEnv({
       envFilePath,
       override: shouldOverride,
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       debug: process.env['DEBUG'] === 'true',
     });
 
@@ -110,42 +108,28 @@ export class ConfigService implements IConfigService, OnModuleInit {
     this.config = {
       // Application settings
       NODE_ENV: process.env['NODE_ENV'] || 'development',
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       DEBUG: process.env['DEBUG'] === 'true',
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       NEST_DEBUG: process.env['NEST_DEBUG'] === 'true',
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       SERVICE_NAME: process.env.SERVICE_NAME || 'hope-api',
 
       // LOG configuration
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       LOG_LEVEL: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') || 'info',
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       LOG_FILE_ENABLED: process.env.LOG_FILE_ENABLED === 'true',
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       LOG_FILE_PATH: process.env.LOG_FILE_PATH || './logs',
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       LOG_FILE_MAX_SIZE: process.env.LOG_FILE_MAX_SIZE || '10m',
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       LOG_FILE_MAX_FILES: parseInt(process.env.LOG_FILE_MAX_FILES || '1000'),
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       LOG_FILE_DATE_PATTERN: process.env.LOG_FILE_DATE_PATTERN || 'yyyy-MM-dd',
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       LOG_FILE_SEPARATE_ERROR: process.env.LOG_FILE_SEPARATE_ERROR === 'true',
 
       // Auth / Registration
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       REGISTRATION_SELF_SIGNUP_ENABLED: process.env.REGISTRATION_SELF_SIGNUP_ENABLED === 'true',
 
       // Internal Services
       PORT: process.env.PORT || '8868',
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       URL: process.env.URL || 'http://localhost',
       STT_V2_URL: process.env.STT_V2_URL || 'http://localhost:8861',
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       SMR_PORT: process.env.SMR_PORT || '8862',
       SMR_URL: process.env.SMR_URL || 'http://localhost:8862',
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       NLP_PORT: process.env.NLP_PORT || '8864',
       NLP_URL: process.env.NLP_URL || 'http://localhost:8864',
       GUARDRAIL_URL: process.env.GUARDRAIL_URL || 'http://localhost:8863',
@@ -154,13 +138,9 @@ export class ConfigService implements IConfigService, OnModuleInit {
       TTS_URL: process.env.TTS_URL || 'http://localhost:8865',
 
       // MQTT
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       MQTT_HOST: process.env.MQTT_HOST || 'localhost',
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       MQTT_PORT: parseInt(process.env.MQTT_PORT || '1883'),
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       MQTT_USER: process.env.MQTT_USER || '',
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       MQTT_PASS: process.env.MQTT_PASS || '',
 
       // Redis

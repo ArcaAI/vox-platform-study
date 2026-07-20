@@ -117,7 +117,6 @@ let eventSourceConstructorSpy: ReturnType<typeof vi.fn<(url: string, init?: Even
 beforeEach(() => {
   lastMockES = null;
   eventSourceConstructorSpy = vi.fn<(url: string, init?: EventSourceInit) => void>();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (globalThis as any).EventSource = class extends MockEventSource {
     constructor(url: string, init?: EventSourceInit) {
       super(url, init);
@@ -582,7 +581,6 @@ describe('SSEClient', () => {
           reconnectIntervalMs: 1000,
           maxReconnectAttempts: 15,
           maxDelayMs: 10000,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any);
 
         await vi.advanceTimersByTimeAsync(0);
@@ -606,7 +604,6 @@ describe('SSEClient', () => {
   describe('TASK-264 W0-1: legacy authToken option is no longer honored', () => {
     it('does NOT append `?token=` even when caller passes a legacy authToken', async () => {
       client.connect('https://api.example.com/stream', {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ...(({ authToken: 'jwt-token-123' } as unknown) as any),
       });
       await flushMicrotasks();

@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import type { McpServerResponse } from '../../mcp-server/dto';
 
 /**
  * Where the effective policy was resolved from:
@@ -108,6 +109,32 @@ export class HarnessPolicyResponse {
 
   @ApiPropertyOptional({ description: 'Regeneration-feedback toggle (null = harness env default).', nullable: true })
   regenFeedbackEnabled: boolean | null;
+
+  /**
+   * TASK-533 D-24 — MCP external-tools master switch. `null ⇒ OFF`. Global-admin
+   * governed, so `getEffectivePolicy` always serves the SYSTEM value even when a
+   * tenant row wins for the clinical thresholds.
+   */
+  @ApiPropertyOptional({ description: 'MCP external-tools master switch (null = OFF).', nullable: true })
+  mcpToolsEnabled: boolean | null;
+
+  /**
+   * TASK-533 D-24 — enabled SYSTEM-shared MCP servers the worker may call.
+   * Overlaid by `getEffectivePolicy` from the `McpServer` registry; the harness
+   * `McpServerConfig.from_api` parses this exact shape. `authRef` is a Vault PATH,
+   * NEVER secret material — the token itself is resolved out-of-band via
+   * `GET /internal/harness/mcp-token`. Empty ⇒ nothing is callable.
+   */
+  @ApiPropertyOptional({ description: 'Enabled SYSTEM-shared MCP servers (authRef is a Vault path, never a secret).', type: 'array' })
+  mcpServers: McpServerResponse[];
+
+  /**
+   * TASK-533 B4 — per-run token budget from `agentic.context.tokenBudget.perRun`.
+   * Served here so the worker gets it in the single policy fetch it already makes.
+   * Null ⇒ unconfigured; the workflow then keeps its default of 0 (unbounded).
+   */
+  @ApiPropertyOptional({ description: 'Per-run token budget (0 or null = unbounded).', nullable: true })
+  tokenBudgetPerRun: number | null;
 
   @ApiPropertyOptional({ description: 'Last update timestamp (ISO-8601; null for code-default).', nullable: true })
   updatedAt: string | null;

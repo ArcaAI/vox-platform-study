@@ -407,3 +407,68 @@ model HarnessPolicyChange {
   @@index([tenantId, createdAt], name: "HarnessPolicyChange_tenant_createdAt_idx")
   @@schema("core")
 }
+
+/// TASK-533 B6 (§3.4) — gate-edit mining store.
+///
+/// Derived, append-only learning corpus built from the clinician approve-vs-edit
+/// signal: gate decisions live in the WORM `HarnessAuditEvent`, and the
+/// RAW_SUMMARY→MODIFIED_SUMMARY diff supplies the edit stats. Rows here are a
+/// DERIVED projection, never the audit truth — the WORM table remains
+/// authoritative.
+///
+/// PHI posture: content snippets are PHI-**REDACTED AT WRITE** (fail-closed —
+/// a redaction failure drops the candidate rather than persisting it), so this
+/// store never accumulates PHI. It is an ops table, not a WORM one: no
+/// UPDATE/DELETE revoke, and it is deletable wholesale.
+///
+/// Soft-delete EXEMPT (no `resourceStatus` column) — see
+/// MODELS_WITHOUT_SOFT_DELETE in packages/database/src/client.ts.
+model GateEditExemplar {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // Source consultation + retrieval facets. `departmentId` is the retrieval key
+  // for per-department few-shot exemplars; `visitType` narrows it further.
+  consultationId String
+  departmentId   String?
+  visitType      String?
+
+  // The clinician signal. `gateDecision` mirrors the GATE_DECISION audit event;
+  // `qualitySignal` is the mined label (APPROVED_CLEAN | HEAVILY_EDITED) that
+  // retrieval ranks on.
+  gateDecision  String
+  qualitySignal String
+
+  // Edit-burden stats derived from the RAW→MODIFIED diff
+  // (harness-observability/edit-burden.ts).
+  editDistance      Int?
+  editDistanceRatio Float?
+  timeToSignSeconds Int?
+
+  // PHI-redacted before/after snippets. Redaction happens BEFORE persistence.
+  redactedBefore String? @db.Text
+  redactedAfter  String? @db.Text
+
+  // Provenance for corpus export + regression attribution.
+  contextItemId    String?
+  modelName        String?
+  promptTemplateId String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId], name: "GateEditExemplar_tenantId_idx")
+  @@index([tenantId, consultationId], name: "GateEditExemplar_tenant_consultation_idx")
+  // Retrieval path: findTopForRetrieval filters (tenantId, qualitySignal
+  // [, departmentId]) and orders by createdAt desc.
+  @@index([tenantId, departmentId, qualitySignal, createdAt], name: "GateEditExemplar_retrieval_idx")
+  @@schema("core")
+}

@@ -146,7 +146,7 @@ function defaultWorkerUrl(): URL | null {
   // direct `import.meta` access for a package without `"type": "module"`.
   // We isolate the escape hatch here so the rest of the file stays clean.
   try {
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment -- @ts-expect-error would fail the build under module modes where import.meta IS valid; @ts-ignore is required to cover both cases
     // @ts-ignore -- import.meta is provided at runtime by the bundler; see comment above.
     const metaUrl: unknown = typeof import.meta !== 'undefined' ? import.meta.url : undefined;
     if (typeof metaUrl === 'string') {

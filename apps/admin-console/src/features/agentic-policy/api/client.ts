@@ -6,10 +6,12 @@
  * required — the gateway asserts global admin in code.
  */
 
-import { getJson, getWithEtag, patchJson, patchWithEtag, versionFromEtag } from '@/shared/api';
+import { getJson, getWithEtag, patchJson, patchWithEtag, putWithEtag, request, versionFromEtag } from '@/shared/api';
 import type { WithEtag } from '@/shared/api';
 import type {
     AgenticPolicy,
+    EffectiveSetting,
+    WriteRegistrySettingResult,
     LiveDocEngineConfig,
     SettingCatalog,
     UpdateAgenticPolicyRequest,
@@ -51,7 +53,35 @@ export function updateLiveEngineConfig(body: UpdateLiveDocEngineConfigRequest): 
     return patchJson(`${HARNESS}/live/config`, body);
 }
 
-/** RBAC-filtered settings catalog metadata (values live on Settings & secrets). */
+/** RBAC-filtered settings catalog metadata (the governance inventory). */
 export function getSettingsCatalog(): Promise<SettingCatalog> {
     return getJson(`${SETTINGS}/catalog`);
+}
+
+/**
+ * Read one registry setting's EFFECTIVE VALUE plus its backing-row version
+ * (TASK-533 B2). The catalog above is metadata-only; this is the value lane.
+ *
+ * The gateway emits `ETag: "<version>"` when a row exists. A key still on its
+ * code default reports `version: 0` and emits no ETag — correct, since there is
+ * nothing to precondition a first write against.
+ */
+export function getRegistrySetting(key: string): Promise<WithEtag<EffectiveSetting>> {
+    return getWithEtag(`${SETTINGS}/registry/${encodeURIComponent(key)}`);
+}
+
+/**
+ * Write one registry setting under optimistic concurrency (TASK-533 B2).
+ *
+ * `etag` comes from the prior read. When it is null the key has no stored row
+ * yet, so the PUT goes out WITHOUT `If-Match` — the gateway only demands the
+ * precondition once a row exists (428), and drift on an existing row is 412.
+ */
+export function putRegistrySetting(key: string, value: unknown, etag: string | null): Promise<WithEtag<WriteRegistrySettingResult>> {
+    const path = `${SETTINGS}/registry/${encodeURIComponent(key)}`;
+    // A version of 0 means "no stored row", so it is not a usable precondition.
+    // The gateway's ETagInterceptor already withholds the header in that case;
+    // this guards the path where a caller hands us one anyway.
+    const usable = etag && versionFromEtag(etag) > 0 ? etag : null;
+    return usable ? putWithEtag(path, { value }, usable) : request(path, { method: 'PUT', body: { value } });
 }

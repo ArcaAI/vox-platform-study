@@ -37,6 +37,10 @@ export const KNOB_GROUPS: KnobGroup[] = [
             { key: 'warmStartEnabled', label: 'Warm start', kind: 'tristate' },
             { key: 'nerPriorsEnabled', label: 'NER priors', kind: 'tristate' },
             { key: 'regenFeedbackEnabled', label: 'Regeneration feedback', kind: 'tristate' },
+            // TASK-533 D-24 — arming this alone opens nothing: a call also requires
+            // the target McpServer row to be enabled, and its tools to be on the
+            // allowlist. Default stays OFF.
+            { key: 'mcpToolsEnabled', label: 'MCP external tools', kind: 'tristate', hint: 'Lets the loop call registered MCP servers. Also requires the server row to be enabled.' },
         ],
     },
     {

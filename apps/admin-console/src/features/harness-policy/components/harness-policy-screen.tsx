@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useId, useState } from 'react';
-import { IconShieldCheck } from '@tabler/icons-react';
+import { IconExternalLink, IconShieldCheck } from '@tabler/icons-react';
 import { parseAsString, useQueryState } from 'nuqs';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
@@ -20,14 +20,13 @@ import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import {
     useGlobalHarnessPolicy,
     useHarnessPolicy,
-    useUpdateGlobalHarnessPolicy,
     useUpdateHarnessPolicy,
     type HarnessPolicy,
     type HarnessPolicySource,
 } from '../api';
 import { HarnessPolicyForm } from './harness-policy-form';
 import { LiveConfigTab } from './live-config-tab';
-import { fieldDisplayValue, POLICY_FIELDS } from './policy-fields';
+import { fieldDisplayValue, POLICY_FIELDS, TENANT_LOCKED_POLICY_KEYS } from './policy-fields';
 
 const TAB_VALUES = ['policy', 'live', 'global'] as const;
 
@@ -186,6 +185,10 @@ function TenantPolicyTab({ isElevated }: { isElevated: boolean }) {
                         mutation={updateMutation}
                         onReloadLatest={() => void policyQuery.refetch()}
                         successMessage="Tenant harness policy saved"
+                        // TASK-532 (E3-L1): safety/PHI switches are global-only
+                        // server-side; render them read-only rather than let a
+                        // save 403.
+                        lockedKeys={TENANT_LOCKED_POLICY_KEYS}
                     />
                 </section>
             )}
@@ -193,36 +196,59 @@ function TenantPolicyTab({ isElevated }: { isElevated: boolean }) {
     );
 }
 
-/** Global default tab (elevated only): edits the SYSTEM-tenant fallback row. */
+/**
+ * Global default tab (elevated only) — READ-ONLY summary of the SYSTEM-tenant
+ * fallback row.
+ *
+ * TASK-532 (M-02): this tab used to mount a SECOND `HarnessPolicyForm` against
+ * `PATCH /admin/harness/policy/global` — the same row `/agentic-policy` (tier
+ * 10-19) edits. One authoritative editor per backend resource, so the form is
+ * gone and this reads the row and deep-links to the owner. Keeping the READ here
+ * is deliberate: the tenant-vs-global comparison only makes sense side by side.
+ */
 function GlobalDefaultTab() {
     const uid = useId();
     const globalQuery = useGlobalHarnessPolicy(true);
-    const updateMutation = useUpdateGlobalHarnessPolicy();
 
     if (globalQuery.isPending) return <PolicyTabSkeleton />;
     if (globalQuery.error || !globalQuery.data) {
         return <ErrorState error={globalQuery.error} onRetry={() => void globalQuery.refetch()} />;
     }
 
+    const globalPolicy = globalQuery.data.data;
+
     return (
         <section aria-labelledby={`${uid}-global`} className="flex flex-col gap-3">
             <div className="flex flex-col gap-1">
                 <h2 id={`${uid}-global`} className="text-base font-semibold">
-                    Global default editor
+                    Global default
                 </h2>
                 <p className="text-muted-foreground text-sm">
-                    SYSTEM-tenant GLOBAL-DEFAULT row &mdash; the fallback for every tenant without an override.{' '}
-                    <span className="font-mono text-xs">PATCH /admin/harness/policy/global</span> (platform admin asserted in code; tenant admins never
-                    see this editor).
+                    SYSTEM-tenant GLOBAL-DEFAULT row &mdash; the fallback for every tenant without an override. Edited from Agentic policy, which owns
+                    this row.
                 </p>
             </div>
-            <HarnessPolicyForm
-                policy={globalQuery.data.data}
-                etag={globalQuery.data.etag}
-                mutation={updateMutation}
-                onReloadLatest={() => void globalQuery.refetch()}
-                successMessage="Global default policy saved"
-            />
+
+            <Card className="gap-3 p-4">
+                <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
+                    {POLICY_FIELDS.map((field) => (
+                        <div key={field.key} className="flex items-baseline justify-between gap-3 border-b py-1 last:border-b-0">
+                            <dt className="text-muted-foreground text-xs">{field.label}</dt>
+                            <dd className="font-mono text-xs">{fieldDisplayValue(field, globalPolicy)}</dd>
+                        </div>
+                    ))}
+                </dl>
+            </Card>
+
+            <div className="flex justify-end">
+                {/* Plain href, not a cross-feature import (rule 13 isolation). */}
+                <Button variant="outline" asChild>
+                    <a href="/agentic-policy?tab=policy">
+                        <IconExternalLink aria-hidden />
+                        Edit in Agentic policy
+                    </a>
+                </Button>
+            </div>
         </section>
     );
 }

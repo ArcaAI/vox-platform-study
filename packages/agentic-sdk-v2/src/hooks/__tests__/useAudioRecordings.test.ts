@@ -23,7 +23,6 @@ const recordings = [
 
 describe('useAudioRecordings (TASK-329 P2)', () => {
   let mockLogger: ReturnType<typeof createMockLogger>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockStore: any;
   const mockGet = vi.fn();
   const mockPost = vi.fn();
@@ -33,7 +32,6 @@ describe('useAudioRecordings (TASK-329 P2)', () => {
     mockGet.mockReset();
     mockPost.mockReset();
     mockStore = { apiClient: { get: mockGet, post: mockPost, patch: vi.fn(), delete: vi.fn() }, logger: mockLogger };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (useAgenticStore as any).mockReturnValue(mockStore);
   });
 

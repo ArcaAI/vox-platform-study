@@ -38,7 +38,6 @@
 // Exit codes: 0 success · 1 runtime error.
 
 import * as crypto from 'crypto';
-// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
 import vault from 'node-vault';
 
 export interface BenchArgs {

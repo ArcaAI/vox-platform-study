@@ -55,14 +55,12 @@ export class PromptUsageRecordRepository extends Repository<PromptUsageRecordEnt
     const where: Record<string, unknown> = { tenantId };
     if (promptTemplateId) where.promptTemplateId = promptTemplateId;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const results = await (this as any).db.groupBy({
       by: ['departmentId'],
       where,
       _count: { _all: true },
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return results.map((r: any) => ({ departmentId: r.departmentId ?? null, count: r._count._all }));
   }
 
@@ -73,14 +71,12 @@ export class PromptUsageRecordRepository extends Repository<PromptUsageRecordEnt
     const where: Record<string, unknown> = { tenantId };
     if (promptTemplateId) where.promptTemplateId = promptTemplateId;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const results = await (this as any).db.groupBy({
       by: ['doctorId'],
       where,
       _count: { _all: true },
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return results.map((r: any) => ({ doctorId: r.doctorId ?? null, count: r._count._all }));
   }
 
@@ -96,11 +92,9 @@ export class PromptUsageRecordRepository extends Repository<PromptUsageRecordEnt
     const where: Record<string, unknown> = { tenantId };
     if (promptTemplateId) where.promptTemplateId = promptTemplateId;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rows = await (this as any).db.findMany({ where, select: { createdAt: true } });
 
     const buckets = new Map<string, number>();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const row of rows as { createdAt: Date | string }[]) {
       const createdAt = row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt);
       const day = createdAt.toISOString().slice(0, 10);

@@ -38,23 +38,14 @@ const mockAppSettings = { getValueWithDefault: vi.fn(<T,>(_key: string, defaultV
 
 function buildService() {
   return new UserService(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockUserRepository as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockUserRoleAssignmentRepository as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockUserDepartmentRepository as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockEventEmitter as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockClsService as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockDatabaseService as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockUserProfileService as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockCryptoService as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockAppSettings as any,
   );
 }
@@ -74,11 +65,8 @@ describe('UserService — TASK-331 #3 create-with-membership', () => {
     });
     // Repositories echo the entity they were handed (the real factory-built
     // entity carries id/createdAt/toObject()).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockUserRepository.create.mockImplementation(async (entity: any) => entity);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockUserRoleAssignmentRepository.create.mockImplementation(async (entity: any) => entity);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockUserDepartmentRepository.create.mockImplementation(async (entity: any) => entity);
   });
 
@@ -92,7 +80,6 @@ describe('UserService — TASK-331 #3 create-with-membership', () => {
       roleId: 'role-1',
       departmentId: 'dept-1',
       isPrimaryDepartment: true,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
 
     expect($transaction).toHaveBeenCalledTimes(1);
@@ -102,11 +89,8 @@ describe('UserService — TASK-331 #3 create-with-membership', () => {
     expect(mockUserRoleAssignmentRepository.create).toHaveBeenCalledWith(expect.anything(), TX);
     expect(mockUserDepartmentRepository.create).toHaveBeenCalledWith(expect.anything(), TX);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const userArg = mockUserRepository.create.mock.calls[0][0] as any;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const roleArg = mockUserRoleAssignmentRepository.create.mock.calls[0][0] as any;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const deptArg = mockUserDepartmentRepository.create.mock.calls[0][0] as any;
 
     expect(roleArg.toObject()).toMatchObject({ roleId: 'role-1', tenantId: TENANT, userId: userArg.id });
@@ -130,7 +114,6 @@ describe('UserService — TASK-331 #3 create-with-membership', () => {
     const service = buildService();
 
     await expect(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       service.create({ username: 'newuser', password: 'Password123!', roleId: 'role-1', departmentId: 'dept-1' } as any),
     ).rejects.toThrow(/department write failed/);
 
@@ -142,7 +125,6 @@ describe('UserService — TASK-331 #3 create-with-membership', () => {
   it('creates only a role membership when departmentId is omitted', async () => {
     const service = buildService();
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await service.create({ username: 'roleonly', password: 'Password123!', roleId: 'role-1' } as any);
 
     expect($transaction).toHaveBeenCalledTimes(1);
@@ -155,7 +137,6 @@ describe('UserService — TASK-331 #3 create-with-membership', () => {
     const service = buildService();
 
     await expect(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       service.create({ username: 'newuser', password: 'Password123!', roleId: 'role-1' } as any),
     ).rejects.toBeInstanceOf(BadRequestException);
 
@@ -166,7 +147,6 @@ describe('UserService — TASK-331 #3 create-with-membership', () => {
   it('leaves the no-membership create path unchanged (repository.create without a transaction)', async () => {
     const service = buildService();
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await service.create({ username: 'plain', password: 'Password123!' } as any);
 
     expect(mockUserRepository.create).toHaveBeenCalledTimes(1);

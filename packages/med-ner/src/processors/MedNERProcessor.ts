@@ -348,7 +348,7 @@ export class MedNERProcessor {
         pipelineOptions.revision = modelRef.revision;
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- @huggingface/transformers' `pipeline()` factory is overloaded per-task; a dynamic task string here doesn't resolve to one specific overload, so the call must go through `any` before asserting the known return shape
       this.pipeline = (await (pipeline as any)('token-classification', modelRef.id, pipelineOptions)) as TokenClassificationPipeline;
 
       // Adapt the pipeline's tokenizer into our chunker's Tokenizer signature.
@@ -513,7 +513,7 @@ export class MedNERProcessor {
    */
   private buildTokenizer(pipeline: TokenClassificationPipeline | null): Tokenizer | null {
     if (!pipeline) return null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- `tokenizer` isn't part of `TokenClassificationPipeline`'s public type; this is deliberate duck-typing across library versions (see doc comment above)
     const tok = (pipeline as any).tokenizer;
     if (!tok) return null;
 

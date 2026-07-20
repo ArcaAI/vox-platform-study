@@ -77,7 +77,15 @@ test.describe('harness policy & live config \u2014 tenant policy editor (frame 3
         await expect(page.getByRole('form', { name: 'Policy save panel' })).toBeVisible();
     });
 
-    test('editing and reverting a low-risk text field round-trips with no net mutation', async ({ page }) => {
+    /**
+     * TASK-532: this spec used to edit "Safety provider" — a key that has been in
+     * `GLOBAL_ADMIN_ONLY_POLICY_KEYS` since long before this ticket, so the tenant
+     * PATCH it asserts has ALWAYS 403'd. It encoded an impossible save as expected
+     * behaviour and was failing for that reason, not because of the E3 locks. It
+     * now edits a genuinely tenant-writable knob (clinical gate SLA), and the two
+     * safety inputs are rendered read-only alongside the safety/PHI toggles.
+     */
+    test('editing and reverting a tenant-writable field round-trips with no net mutation', async ({ page }) => {
         await page.goto('/harness/policy');
         await waitForSettled(page);
         const emptyStateButton = page.getByRole('button', { name: 'Customize for tenant' });
@@ -104,9 +112,9 @@ test.describe('harness policy & live config \u2014 tenant policy editor (frame 3
 
         const form = page.getByRole('form', { name: 'Policy save panel' });
         await expect(form).toBeVisible();
-        const fieldInput = form.getByLabel('Safety provider');
+        const fieldInput = form.getByLabel('Gate SLA (seconds)');
         const originalValue = await fieldInput.inputValue();
-        const revertedValue = `${originalValue}-e2e-tmp`;
+        const revertedValue = String(Number(originalValue) + 60);
         const saveButton = form.getByRole('button', { name: 'Save \u00b7 If-Match' });
 
         try {
@@ -137,6 +145,12 @@ test.describe('harness policy & live config \u2014 tenant policy editor (frame 3
         await expect(reasonInput).toHaveAttribute('maxlength', '500');
     });
 
+    /**
+     * TASK-532: was driving "Safety model", another long-standing
+     * global-admin-only key that the tenant tab now renders read-only (see the
+     * round-trip spec above). Dirty-state is a property of the FORM, so any
+     * tenant-writable field proves it — this uses the gate-escalation knob.
+     */
     test('the dirty-state indicator appears on edit and clears after reset', async ({ page }) => {
         await page.goto('/harness/policy');
         await waitForSettled(page);
@@ -145,11 +159,11 @@ test.describe('harness policy & live config \u2014 tenant policy editor (frame 3
             await emptyStateButton.click();
         }
         const form = page.getByRole('form', { name: 'Policy save panel' });
-        const fieldInput = form.getByLabel('Safety model');
+        const fieldInput = form.getByLabel('Gate escalation (seconds)');
         const originalValue = await fieldInput.inputValue();
         await expect(form.getByText('Unsaved changes')).toHaveCount(0);
 
-        await fieldInput.fill(`${originalValue}-tmp`);
+        await fieldInput.fill(String(Number(originalValue) + 60));
         await expect(form.getByText('Unsaved changes')).toBeVisible();
 
         await fieldInput.fill(originalValue);
@@ -158,80 +172,47 @@ test.describe('harness policy & live config \u2014 tenant policy editor (frame 3
 });
 
 test.describe('harness policy & live config \u2014 live config tab (frame 36)', () => {
-    test('the kill-switch and audit reason controls are present and interactive', async ({ page }) => {
+    /**
+     * TASK-532 (M-02): this tab USED to carry a second editor for
+     * `PATCH admin/harness/live/config` — the same row `/agentic-policy` edits.
+     * The two specs that drove that kill-switch form (toggle + revert, and the
+     * audit-reason control) are gone with it: `/agentic-policy` is now the one
+     * authoritative editor, so exercising the write here would be testing a
+     * surface that must not exist. What is asserted instead is the demotion
+     * contract — state is still READABLE, but there is nothing to submit.
+     */
+    test('renders the live-engine state read-only, with no editor and a deep link to the owner', async ({ page }) => {
         await page.goto('/harness/policy');
         await waitForSettled(page);
         await page.getByRole('tab', { name: 'Live config' }).click();
         await expect(page).toHaveURL(/tab=live/);
 
-        const switchControl = page.getByRole('switch');
-        const reasonInput = page.getByLabel('Audit reason');
-        await expect(switchControl).toBeVisible();
-        await expect(switchControl).toBeEnabled();
-        await expect(reasonInput).toBeVisible();
-        await expect(reasonInput).toBeEnabled();
-        await expect(reasonInput).toHaveAttribute('maxlength', '500');
-    });
+        // State is still surfaced (a badge, not a control).
+        await expect(page.getByRole('heading', { name: 'Live documentation engine' })).toBeVisible();
+        await expect(page.getByText(/Engine (enabled|disabled)/)).toBeVisible();
 
-    test('toggling the kill-switch and immediately reverting leaves no net mutation', async ({ page }) => {
-        await page.goto('/harness/policy');
-        await waitForSettled(page);
-        await page.getByRole('tab', { name: 'Live config' }).click();
-        await expect(page).toHaveURL(/tab=live/);
+        // The editor is gone: no switch, no audit-reason field, no save.
+        await expect(page.getByRole('switch')).toHaveCount(0);
+        await expect(page.getByLabel('Audit reason')).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'Save live config' })).toHaveCount(0);
 
-        const switchControl = page.getByRole('switch');
-        const reasonInput = page.getByLabel('Audit reason');
-        const saveButton = page.getByRole('button', { name: 'Save live config' });
-        const originalChecked = await switchControl.isChecked();
-
-        try {
-        await switchControl.click();
-        await expect(switchControl).toHaveAttribute('aria-checked', String(!originalChecked));
-        await expect(page.getByText('Unsaved changes')).toBeVisible();
-        await reasonInput.fill('e2e: temporary toggle for coverage, reverting immediately');
-        await saveButton.click();
-        await expect(page.getByText(originalChecked ? 'Kill-switch engaged' : 'Live documentation engine enabled')).toBeVisible();
-        await page.goto('/harness/policy');
-        await waitForSettled(page);
-        await page.getByRole('tab', { name: 'Live config' }).click();
-        await expect(page).toHaveURL(/tab=live/);
-        await expect(switchControl).toHaveAttribute('aria-checked', String(!originalChecked));
-
-        await switchControl.click();
-        await expect(page.getByText('Unsaved changes')).toBeVisible();
-        await reasonInput.fill('e2e: reverting kill-switch back to original state');
-        await saveButton.click();
-        await expect(page.getByText(originalChecked ? 'Live documentation engine enabled' : 'Kill-switch engaged')).toBeVisible();
-        } finally {
-            await page.evaluate(async (enabled) => {
-                const response = await fetch('/api/hope/admin/harness/live/config', {
-                    method: 'PATCH',
-                    headers: { 'content-type': 'application/json' },
-                    body: JSON.stringify({ enabled, reason: 'e2e cleanup: restore original live config' }),
-                });
-                if (!response.ok) throw new Error(`Failed to restore live config (${response.status})`);
-            }, originalChecked);
-        }
-
-        const finalConfig = await page.evaluate(async () => {
-            const res = await fetch('/api/hope/admin/harness/live/config');
-            return res.ok ? ((await res.json()) as { enabled: boolean }).enabled : null;
-        });
-        expect(finalConfig).toBe(originalChecked);
+        // …and the user is pointed at the screen that owns the write.
+        await expect(page.getByRole('link', { name: 'Edit in Agentic policy' })).toHaveAttribute('href', '/agentic-policy?tab=engine');
     });
 });
 
 test.describe('harness policy & live config \u2014 global default tab (frame 36)', () => {
-    test('renders the same form structure as the tenant editor, read-only assertions only', async ({ page }) => {
+    test('renders the global default read-only, with no save panel and a deep link to the owner', async ({ page }) => {
         await page.goto('/harness/policy');
         await waitForSettled(page);
         await page.getByRole('tab', { name: 'Global default' }).click();
         await expect(page).toHaveURL(/tab=global/);
-        await expect(page.getByRole('heading', { name: 'Global default editor' })).toBeVisible();
-        const form = page.getByRole('form', { name: 'Policy save panel' });
-        await expect(form).toBeVisible();
-        await expect(form.getByLabel('Safety guardrail')).toBeVisible();
-        await expect(form.getByLabel('Reason')).toBeVisible();
-        await expect(form.getByRole('button', { name: 'Save \u00b7 If-Match' })).toBeDisabled();
+        await expect(page.getByRole('heading', { name: 'Global default' })).toBeVisible();
+
+        // TASK-532 (M-02): the second `HarnessPolicyForm` mount is gone — the
+        // values are now a summary list, not an editable form.
+        await expect(page.getByRole('form', { name: 'Policy save panel' })).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'Save \u00b7 If-Match' })).toHaveCount(0);
+        await expect(page.getByRole('link', { name: 'Edit in Agentic policy' })).toHaveAttribute('href', '/agentic-policy?tab=policy');
     });
 });

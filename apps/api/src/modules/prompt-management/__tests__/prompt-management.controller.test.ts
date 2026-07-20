@@ -545,7 +545,6 @@ describe('PromptManagementController', () => {
             Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, PromptManagementController);
 
         const getMethodMetadata = (method: string) =>
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, (PromptManagementController.prototype as any)[method]);
 
         // TASK-331 doc-09 D1 — plane separation. The admin read surface is

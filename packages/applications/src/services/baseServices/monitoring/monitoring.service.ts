@@ -395,8 +395,7 @@ export class MonitoringService implements IMonitoringService, OnModuleInit {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  private async checkIntegrationConnection(integrationName: string): Promise<boolean> {
+  private async checkIntegrationConnection(_integrationName: string): Promise<boolean> {
     // Placeholder implementation - replace with actual integration status check
     // This could ping a database, API, or other service
     return true;

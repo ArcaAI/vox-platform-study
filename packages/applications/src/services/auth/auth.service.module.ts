@@ -3,7 +3,6 @@ import { PassportModule } from '@nestjs/passport';
 import { OidcStrategy } from './oidc.strategy';
 import { Issuer } from 'openid-client';
 import { JwtStrategy } from './jwt.strategy';
-import { GatewayJwtStrategy } from './gateway-auth.strategy';
 import { ClsService } from 'nestjs-cls';
 
 import { CoreDatabaseModule } from '@arcaai/domains';
@@ -15,7 +14,7 @@ import { AuthService } from './auth.service';
 import { IAppSettingsService } from '../baseServices/_meta/';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { UserServiceModule } from '../user/user/user.service.module';
-import { JwtRevocationService, IJwtRevocationService } from './jwt-revocation.service';
+import { JwtRevocationModule } from './jwt-revocation.module';
 import { RefreshTokenService, IRefreshTokenService } from './refresh-token.service';
 
 const logger = new Logger('AuthServiceModule');
@@ -30,6 +29,9 @@ const logger = new Logger('AuthServiceModule');
     CoreDatabaseModule,
     UserServiceModule,
     RedisCacheModule.register(),
+    // TASK-541 A1 — the revocation authority now lives in its own module so
+    // UserServiceModule can consume it without a circular import back here.
+    JwtRevocationModule,
   ],
   providers: [
     {
@@ -104,11 +106,6 @@ const logger = new Logger('AuthServiceModule');
       inject: ['OPENID_CLIENT', IAppSettingsService, IAuthService, ClsService, SecretsService],
     },
     JwtStrategy,
-    GatewayJwtStrategy,
-    {
-      provide: IJwtRevocationService,
-      useClass: JwtRevocationService,
-    },
     {
       provide: IRefreshTokenService,
       useClass: RefreshTokenService,
@@ -120,8 +117,11 @@ const logger = new Logger('AuthServiceModule');
     IAuthService,
     OidcStrategy,
     JwtStrategy,
-    GatewayJwtStrategy,
-    IJwtRevocationService,
+    // TASK-541 — the MODULE is re-exported, not the token: Nest rejects
+    // exporting a provider this module no longer declares. Re-exporting the
+    // module carries its own exports through, so existing consumers
+    // (AuthController) keep resolving IJwtRevocationService unchanged.
+    JwtRevocationModule,
     IRefreshTokenService,
   ],
 })

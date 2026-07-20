@@ -25,7 +25,6 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
 });
 
 describe('useAuth — TASK-331 doc-05 impersonate(targetTenantId) + departmentId', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockStore: any;
   const mockPost = vi.fn();
 

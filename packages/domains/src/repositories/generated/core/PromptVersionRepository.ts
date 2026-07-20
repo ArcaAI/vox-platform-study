@@ -78,10 +78,8 @@ export class PromptVersionRepository extends Repository<PromptVersionEntity, Pro
    */
   async findMaxVersionNumber(
     templateId: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     tx?: Prisma.TransactionClient | any,
   ): Promise<number> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const model: any = tx ? (tx as Record<string, any>)[this._modelName] : this.db;
     const result = await model.aggregate({
       where: { promptTemplateId: templateId },

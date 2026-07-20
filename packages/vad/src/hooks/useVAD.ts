@@ -192,7 +192,6 @@ export function useVAD(options: UseVADOptions): UseVADReturn {
       }
     };
     // Only create processor once with initial options
-    // eslint-disable-next-line
   }, []);
 
   // Handle processor events

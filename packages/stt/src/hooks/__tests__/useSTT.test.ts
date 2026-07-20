@@ -38,7 +38,6 @@ vi.mock('../../core/STTProcessor.js', () => ({
     transcribeSegment = vi.fn().mockResolvedValue({ text: '', isFinal: true, language: 'en' });
     setLanguage = vi.fn().mockResolvedValue(undefined);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     eventHandlers = new Map<string, Array<(payload: any) => void>>();
 
     on = vi.fn((event: string, handler: (payload: unknown) => void) => {

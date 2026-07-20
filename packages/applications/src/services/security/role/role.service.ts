@@ -48,8 +48,7 @@ export class RoleService extends BaseService implements IRoleService {
   }
 
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<RoleEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { limit, page, search } = props;
+    const { limit, page } = props;
     const roles = await this.roleRepository.findAll(withFormattedPaginatedProps(props, ROLE_FILTER_MODEL));
 
     const count = await this.roleRepository.count(withFormattedCountProps(props, ROLE_FILTER_MODEL));
@@ -67,14 +66,12 @@ export class RoleService extends BaseService implements IRoleService {
     });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<RoleEntity>> {
+  async fetchAllByTenantId(_props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<RoleEntity>> {
     throw new NotImplementedException();
   }
 
   async fetchAllCreatedByUser(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<RoleEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { userId, limit, page, search } = props;
+    const { userId, limit, page } = props;
     const roles = await this.roleRepository.findAll({
       ...withFormattedPaginatedProps(props, ROLE_FILTER_MODEL),
       where: {

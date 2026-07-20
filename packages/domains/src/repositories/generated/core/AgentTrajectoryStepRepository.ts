@@ -99,7 +99,6 @@ export class AgentTrajectoryStepRepository extends Repository<AgentTrajectorySte
     if (filters.sessionKind) where.sessionKind = filters.sessionKind;
     if (filters.createdAt) where.createdAt = filters.createdAt;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const results = await (this as any).db.groupBy({
       by: ['sessionKind', 'sessionId', 'runId'],
       where,
@@ -108,7 +107,6 @@ export class AgentTrajectoryStepRepository extends Repository<AgentTrajectorySte
       _max: { startedAt: true, endedAt: true, consultationId: true },
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return results.map((r: any) => {
       const firstStepAt = toDate(r._min.startedAt);
       const maxStarted = toDate(r._max.startedAt);

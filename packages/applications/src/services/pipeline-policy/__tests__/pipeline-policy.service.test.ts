@@ -16,9 +16,10 @@
  * REAL domain factory/entity run so change-tracking + validation are exercised.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PipelinePolicyFactory, PipelinePolicyScope, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
+import { HOPE_SETTINGS_REGISTRY } from '../../settings-registry';
 import { PipelinePolicyService } from '../pipeline-policy.service';
 
 const TENANT = 'tenant-1';
@@ -60,6 +61,29 @@ function makeService(): PipelinePolicyService {
     policyChangeRepository as never,
     databaseService as never,
     cls as never,
+    configResolver as never,
+  );
+}
+
+/**
+ * TASK-532 A-2 — a GLOBAL_ADMIN caller. The two locked toggles
+ * (`harnessEnabled`, `autoNerEnabled`) are writable only by this caller shape;
+ * the default `cls` above is a plain tenant admin (no roles).
+ */
+const elevatedCls = {
+  get: vi.fn((key: string) => {
+    if (key === 'tenantId') return TENANT;
+    if (key === 'user') return { id: USER, roles: ['GLOBAL_ADMIN'] };
+    return undefined;
+  }),
+};
+
+function makeElevatedService(): PipelinePolicyService {
+  return new PipelinePolicyService(
+    policyRepository as never,
+    policyChangeRepository as never,
+    databaseService as never,
+    elevatedCls as never,
     configResolver as never,
   );
 }
@@ -146,7 +170,7 @@ describe('PipelinePolicyService', () => {
       policyRepository.findForScope.mockResolvedValue(row);
       policyRepository.updateWithVersion.mockImplementation(async (_id, entity) => entity);
 
-      const result = await service.upsertRow({
+      const result = await makeElevatedService().upsertRow({
         tenantId: TENANT,
         scope: PipelinePolicyScope.TENANT,
         dto: { harnessEnabled: true, reason: 'enable harness' },
@@ -176,7 +200,7 @@ describe('PipelinePolicyService', () => {
       policyRepository.findForScope.mockResolvedValue(row);
       policyRepository.updateWithVersion.mockImplementation(async (_id, entity) => entity);
 
-      const result = await service.upsertRow({
+      const result = await makeElevatedService().upsertRow({
         tenantId: TENANT,
         scope: PipelinePolicyScope.TENANT,
         dto: { harnessEnabled: null },
@@ -191,7 +215,7 @@ describe('PipelinePolicyService', () => {
       const row = PipelinePolicyFactory.CreatePipelinePolicy({ tenantId: TENANT, scope: PipelinePolicyScope.TENANT, harnessEnabled: true });
       policyRepository.findForScope.mockResolvedValue(row);
 
-      const result = await service.upsertRow({
+      const result = await makeElevatedService().upsertRow({
         tenantId: TENANT,
         scope: PipelinePolicyScope.TENANT,
         dto: { harnessEnabled: true },
@@ -245,14 +269,16 @@ describe('PipelinePolicyService', () => {
       );
 
       await expect(
-        service.upsertRow({ tenantId: TENANT, scope: PipelinePolicyScope.TENANT, dto: { harnessEnabled: true }, expectedVersion: 1 }),
+        makeElevatedService().upsertRow({ tenantId: TENANT, scope: PipelinePolicyScope.TENANT, dto: { harnessEnabled: true }, expectedVersion: 1 }),
       ).rejects.toBeInstanceOf(OptimisticConcurrencyException);
       expect(policyChangeRepository.create).not.toHaveBeenCalled();
     });
 
     it('REJECTS pinning harnessEnabled at DOCTOR scope (exceeds its max scope) before any DB write', async () => {
+      // Elevated caller: isolates the SCOPE clamp (400) from the TASK-532
+      // privilege lock (403) — a tenant admin would now fail on the latter first.
       await expect(
-        service.upsertRow({
+        makeElevatedService().upsertRow({
           tenantId: TENANT,
           scope: PipelinePolicyScope.DOCTOR,
           scopeId: DOCTOR,
@@ -269,7 +295,7 @@ describe('PipelinePolicyService', () => {
       policyRepository.findForScope.mockResolvedValue(null);
       policyRepository.create.mockImplementation(async (entity) => entity);
 
-      const result = await service.upsertRow({
+      const result = await makeElevatedService().upsertRow({
         tenantId: TENANT,
         scope: PipelinePolicyScope.DEPARTMENT,
         scopeId: DEPT,
@@ -278,6 +304,81 @@ describe('PipelinePolicyService', () => {
 
       expect(result.harnessEnabled).toBe(true);
       expect(policyRepository.create).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  /**
+   * TASK-532 work-stream A-2 (E3-L2, OD-2) — guardrail's primary caller (the
+   * harness) and NLP auto-extraction may no longer be switched off by a tenant
+   * admin. The check is DESCRIPTOR-DRIVEN (`globalOnly` on the registry
+   * descriptor), not a second hand-rolled key list in this service.
+   */
+  describe('upsertRow — globalOnly toggle lock', () => {
+    beforeEach(() => {
+      policyRepository.findForScope.mockResolvedValue(null);
+      policyRepository.create.mockImplementation(async (entity) => entity);
+    });
+
+    it.each(['harnessEnabled', 'autoNerEnabled'] as const)(
+      'rejects a non-elevated %s write with 403 before any DB read or write',
+      async (key) => {
+        await expect(
+          service.upsertRow({ tenantId: TENANT, scope: PipelinePolicyScope.TENANT, dto: { [key]: false } }),
+        ).rejects.toBeInstanceOf(ForbiddenException);
+
+        expect(policyRepository.findForScope).not.toHaveBeenCalled();
+        expect(policyRepository.create).not.toHaveBeenCalled();
+        expect(policyChangeRepository.create).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(['harnessEnabled', 'autoNerEnabled'] as const)('allows an elevated %s write', async (key) => {
+      const result = await makeElevatedService().upsertRow({
+        tenantId: TENANT,
+        scope: PipelinePolicyScope.TENANT,
+        dto: { [key]: false },
+      });
+
+      expect((result as unknown as Record<string, unknown>)[key]).toBe(false);
+      expect(policyRepository.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves the unlocked autoSummaryEnabled writable by a tenant admin', async () => {
+      const result = await service.upsertRow({
+        tenantId: TENANT,
+        scope: PipelinePolicyScope.TENANT,
+        dto: { autoSummaryEnabled: false },
+      });
+
+      expect(result.autoSummaryEnabled).toBe(false);
+      expect(policyRepository.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('names every offending key when a mixed patch carries both locked toggles', async () => {
+      await expect(
+        service.upsertRow({
+          tenantId: TENANT,
+          scope: PipelinePolicyScope.TENANT,
+          dto: { autoSummaryEnabled: false, harnessEnabled: false, autoNerEnabled: false },
+        }),
+      ).rejects.toThrow(/harnessEnabled[\s\S]*autoNerEnabled|autoNerEnabled[\s\S]*harnessEnabled/);
+    });
+
+    it('reads the lock from registry descriptor metadata, not a local list', async () => {
+      // Flip the descriptor: the service must follow it. This fails loudly if a
+      // hand-rolled key list is reintroduced alongside the descriptor.
+      const descriptor = HOPE_SETTINGS_REGISTRY.getOrThrow('pipeline.harnessEnabled');
+      const spy = vi.spyOn(HOPE_SETTINGS_REGISTRY, 'getOrThrow').mockImplementation((key: string) => {
+        if (key === 'pipeline.harnessEnabled') return { ...descriptor, globalOnly: false };
+        return descriptor;
+      });
+
+      await expect(
+        service.upsertRow({ tenantId: TENANT, scope: PipelinePolicyScope.TENANT, dto: { harnessEnabled: false } }),
+      ).resolves.toBeDefined();
+
+      expect(spy).toHaveBeenCalledWith('pipeline.harnessEnabled');
+      spy.mockRestore();
     });
   });
 

@@ -28,4 +28,24 @@ export class GenerationMetricsAggregateResponse {
 
   @ApiProperty({ type: [GenerationStopReasonCount] })
   stopReasons: GenerationStopReasonCount[];
+
+  // TASK-533 B4 — token + $ accounting. Null (not 0) when nothing in the window
+  // reported the figure: for a budget panel, "unknown" and "zero" differ.
+  @ApiPropertyOptional({ nullable: true, description: 'Summed prompt tokens across samples.' })
+  promptTokensTotal: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Summed completion tokens across samples.' })
+  completionTokensTotal: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Summed prompt + completion tokens across samples.' })
+  totalTokens: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Estimated spend from AiModel.metaData.pricing. Null when no price book was supplied; unpriced models contribute nothing rather than a guess.',
+  })
+  estimatedCost: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Currency of `estimatedCost` (from the price book).' })
+  currency: string | null;
 }

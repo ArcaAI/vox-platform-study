@@ -21,8 +21,7 @@ export function IsDecimal(validationOptions?: ValidationOptions) {
           try {
             new Decimal(value);
             return true;
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          } catch (error) {
+          } catch (_error) {
             return false;
           }
         },

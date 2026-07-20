@@ -193,7 +193,7 @@ describe('SecretsModule', () => {
   // SecretsService provider is an async useFactory that awaits boot()
   // before becoming injectable. NestJS awaits async factories before
   // instantiating dependent providers, so any consumer (JwtStrategy,
-  // GatewayJwtStrategy, AuthController, OPENID_CLIENT, etc.) reading
+  // AuthController, OPENID_CLIENT, etc.) reading
   // the cache via `getSecretSync` observes a warm cache.
   describe('warmupKeys → cache is warm before SecretsService is injectable', () => {
     it('populates the cache so getSecretSync returns the value immediately after compile()', async () => {
