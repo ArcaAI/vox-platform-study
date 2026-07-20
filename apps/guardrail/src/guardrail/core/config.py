@@ -330,6 +330,12 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("GUARDRAIL_SERVICE_TOKEN"),
     )
 
+    # TASK-535 — where the control plane lives (env GUARDRAIL_V2_GATEWAY_URL).
+    # This is BOOTSTRAP TRANSPORT (the address of the config source), NOT config
+    # authority: the retention knobs themselves come from the effective-config
+    # route this URL points at.
+    gateway_url: str = "http://localhost:8868/api/v1"
+
     # Connection pooling
     httpx_max_connections: int = 100
     httpx_max_keepalive: int = 50
@@ -339,7 +345,10 @@ class Settings(BaseSettings):
     # so both GLiNER and MiniCheck release when idle. `model_cache_max_models`
     # bounds how many distinct model ids are held per aux cache.
     # TASK-529 / OD-5 — bootstrap fallback ONLY; the runtime value comes from the
-    # control plane (`guardrail.modelCache.ttlSeconds`). Default moved 3600 → 600.
+    # control plane (`guardrail.modelCache.{ttlSeconds,maxModels}`), consumed via
+    # `core/effective_config.py` since TASK-535. Until then this promise was
+    # unfulfilled and these two values WERE the runtime values.
+    # Default moved 3600 → 600.
     model_cache_ttl_s: int = 600
     model_cache_max_models: int = 2
 

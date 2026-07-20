@@ -9,8 +9,11 @@ from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import Request
 
+from guardrail.core.logging import get_logger
 from guardrail.core.metrics import build_model_cache_metrics_sink
 from guardrail.services.model_cache import ModelCache, ModelUnavailableError
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     import httpx
@@ -120,6 +123,76 @@ def get_job_processor(request: Request) -> JobProcessor:
 # ---------------------------------------------------------------------------
 
 
+# TASK-535 (R1) — retention comes from the control plane, not env.
+#
+# Two halves, both required: a cache built AFTER a refresh is born with the
+# current values (`_retention_kwargs`), and a cache that is ALREADY LIVE adopts
+# later changes (`apply_model_cache_retention`). Applying only at construction
+# would leave the admin knob dead for every resident cache — §3.2.
+_RETENTION_STATE_ATTR = "model_cache_retention"
+_CACHE_ATTRS = ("gliner_cache", "groundedness_scorer_cache")
+
+
+def _retention_kwargs(app_state: Any) -> dict[str, int]:
+    """Resolved retention: the control-plane value when known, else settings."""
+    settings = app_state.settings
+    current: dict[str, int] = getattr(app_state, _RETENTION_STATE_ATTR, None) or {}
+    return {
+        "ttl_seconds": current.get("ttl_seconds", settings.model_cache_ttl_s),
+        "max_size": current.get("max_models", settings.model_cache_max_models),
+    }
+
+
+def _live_caches(app_state: Any) -> list[ModelCache[Any]]:
+    """Every INSTANTIATED aux cache (never forces construction)."""
+    return [cache for attr in _CACHE_ATTRS if (cache := getattr(app_state, attr, None)) is not None]
+
+
+def apply_model_cache_retention(app_state: Any, retention: dict[str, int]) -> None:
+    """Adopt control-plane retention across both aux caches.
+
+    An ABSENT key keeps the current value, so a gateway outage leaves behaviour
+    byte-identical. Resident models are never dropped — the new limits take
+    effect on the next sweep or access. The product clamp [60, 3600] is
+    re-applied inside the shared cache (defense in depth, §3.3).
+    """
+    ttl_seconds = retention.get("ttl_seconds")
+    max_models = retention.get("max_models")
+    if ttl_seconds is None and max_models is None:
+        return
+
+    current: dict[str, int] = dict(getattr(app_state, _RETENTION_STATE_ATTR, None) or {})
+    current.update(
+        {k: v for k, v in retention.items() if k in ("ttl_seconds", "max_models") and v is not None}
+    )
+    setattr(app_state, _RETENTION_STATE_ATTR, current)
+
+    for cache in _live_caches(app_state):
+        cache.configure(ttl_seconds=ttl_seconds, max_size=max_models)
+
+
+async def refresh_model_cache_retention(app_state: Any) -> None:
+    """Pull the control-plane retention (cached; cheap) and apply it.
+
+    NEVER raises: a safety request must not fail because the config plane is
+    unavailable. No client, or no opinion from the control plane, ⇒ the env
+    values stay in force — exactly the pre-TASK-535 behaviour.
+    """
+    client = getattr(app_state, "effective_config_client", None)
+    if client is None:
+        return
+
+    try:
+        snapshot = await client.get()
+        apply_model_cache_retention(app_state, snapshot.retention())
+    except Exception as exc:  # noqa: BLE001 — a config refresh may never break a request
+        logger.warning(
+            "guardrail.effective_config.apply_error",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+
+
 def get_gliner_cache(app_state: Any) -> ModelCache[GlinerProvider]:
     """Return (lazily creating) the per-app GLiNER aux-model cache."""
     cache = getattr(app_state, "gliner_cache", None)
@@ -137,9 +210,8 @@ def get_gliner_cache(app_state: Any) -> ModelCache[GlinerProvider]:
 
         cache = ModelCache(
             factory=factory,
-            max_size=settings.model_cache_max_models,
-            ttl_seconds=settings.model_cache_ttl_s,
             metrics=build_model_cache_metrics_sink(),
+            **_retention_kwargs(app_state),
         )
         app_state.gliner_cache = cache
     return cast("ModelCache[GlinerProvider]", cache)
@@ -196,9 +268,8 @@ def get_groundedness_scorer_cache(app_state: Any) -> ModelCache[NliScorer]:
 
         cache = ModelCache(
             factory=factory,
-            max_size=settings.model_cache_max_models,
-            ttl_seconds=settings.model_cache_ttl_s,
             metrics=build_model_cache_metrics_sink(),
+            **_retention_kwargs(app_state),
         )
         app_state.groundedness_scorer_cache = cache
     return cast("ModelCache[NliScorer]", cache)
@@ -256,6 +327,9 @@ async def pinned_gliner_provider(
 
     if model_id is None:
         model_id = await _resolve_aux_model_id(app_state, tenant_id, TASK_KEY_GUARDRAIL_SAFETY)
+    # Read-triggered retention refresh (TTL-cached, single-flight, fail-safe) —
+    # a service that never analyzes never polls.
+    await refresh_model_cache_retention(app_state)
     cache = get_gliner_cache(app_state)
     await cache.pin(model_id)
     try:
@@ -316,6 +390,7 @@ async def acquire_groundedness_verifier(
         app_state, request.headers.get("X-Tenant-Id"), TASK_KEY_GUARDRAIL_GROUNDEDNESS
     )
     config = settings.groundedness.model_copy(update={"model_id": model_id})
+    await refresh_model_cache_retention(app_state)
     cache = get_groundedness_scorer_cache(app_state)
     await cache.pin(model_id)
     try:

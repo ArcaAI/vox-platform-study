@@ -33,6 +33,39 @@ All keys are `globalOnly`, `tier: global-kv`, system-scoped (never tenant-set).
 
 `<svc>` ∈ `stt`, `nlp`, `guardrail`, `harness`, `tts`.
 
+> **Key prefix ≠ service name for tts-v2.** The service is registered as
+> `tts-v2` (that is what it sends as `?service=` and what its token is keyed on),
+> but its settings live under the **`tts`** prefix. Both spellings are load-
+> bearing and neither is interchangeable.
+
+### 2a. Which services actually read these keys
+
+Set a key here and it reaches every service in this table within one refresh
+window, with no redeploy. **As of TASK-535 that is all six** — before it,
+guardrail, harness and tts-v2 silently ignored the console and ran on env.
+
+| Service | Reads the control plane since | Client | Refresh trigger |
+|---|---|---|---|
+| stt-v2 | TASK-525 | `core/effective_config.py` | request-path refresher |
+| nlp | TASK-529 | `core/effective_config.py` | request-path (`refresh_inference_limit`) |
+| smr | TASK-525 | `core/effective_config.py` | request path (`get_runtime_limits`) |
+| guardrail | **TASK-535** | `core/effective_config.py` | aux-model resolution (analyze / groundedness) |
+| harness | **TASK-535** | `core/effective_config.py` | **Temporal worker** housekeeping tick (60 s) — §6a |
+| tts-v2 | **TASK-535** | `core/effective_config.py` | `POST /api/v1/audio/speech` |
+
+All six are **read-triggered, not background pollers** — a service that is never
+called never polls — and all six re-apply the `[60, 3600]` clamp client-side.
+Both halves are covered: a cache built *after* a refresh is born with the current
+values, and a cache that is **already resident** is reconfigured in place without
+dropping its models.
+
+Bootstrap fallbacks (used only until the first successful fetch, and whenever the
+gateway is unreachable): `GUARDRAIL_V2_MODEL_CACHE_TTL_S` /
+`..._MAX_MODELS`, `HARNESS_MODEL_CACHE_TTL_SECONDS` / `..._MAX_MODELS`,
+`TTS_MODEL_CACHE_TTL_SECONDS`. Where each service finds the control plane:
+`GUARDRAIL_V2_GATEWAY_URL`, `TTS_GATEWAY_URL`, and (harness) the existing
+`HARNESS_API_BASE_URL` + `/api/v1`.
+
 > **The clamp is real.** Setting `ttlSeconds = 7200` does not give you a 2-hour
 > TTL — the service clamps it to 3600. Setting `30` clamps up to 60. This is
 > deliberate: E6 specifies a 1-hour maximum retention.
@@ -167,6 +200,13 @@ own periodic sweep (every 60 s) so an idle entailer is released even when no
 further verification arrives. Restarting only the FastAPI app will NOT free it —
 restart the worker.
 
+The same placement applies to its **retention refresh** (TASK-535): the worker's
+housekeeping tick pulls `harness.modelCache.*` and reconfigures the entailer
+cache immediately before sweeping against it. A refresher in the harness FastAPI
+app would be a no-op — that process holds no entailer. So a `harness.modelCache.
+ttlSeconds` change lands within ~60 s **of the worker**, and if the worker is
+down it lands when the worker comes back, not when the API restarts.
+
 
 ## 7. tts-v2: the health-semantics change
 
@@ -214,6 +254,15 @@ FastAPI app (§6a). Check `model_cache_resident_models{cache="harness_minicheck"
 and restart `pnpm dev:harness:worker` — or just wait: the worker sweeps every
 60 s and releases it once idle past `harness.modelCache.ttlSeconds`.
 
+**"I changed `ttlSeconds` in the console and nothing happened."**
+First check §2a — before TASK-535, guardrail / harness / tts-v2 did not read the
+control plane at all. On a build that has it: the refresh is **read-triggered**,
+so a service with no traffic has not polled yet — issue one request (or, for
+harness, wait one 60 s worker tick). If it still has not moved, the fetch is
+failing and the service is on its env fallback: check the service log for
+`<svc>.effective_config.fetch_error` and confirm its gateway URL and
+`X-Service-Token`.
+
 **"I need a model to stay loaded permanently."**
 Set `ttlSeconds = 3600` (the maximum). There is deliberately no "never evict"
 setting — E6 specifies a 1-hour cap. For a genuinely dedicated model, use a
@@ -224,7 +273,7 @@ launch-time-resident engine (vLLM / llama.cpp server) instead.
 ## 9. Related
 
 - Contract + conformance clauses: `packages/py-runtime-models/README.md`
-- Tickets: `docs/implementation/TASK-529-Model-Lifecycle-Retention/README.md` (contract + first adoption wave) and `docs/implementation/TASK-530-Lifecycle-Convergence-Tail/README.md` (harness D-08, stt-v2 convergence, D-09 completion)
+- Tickets: `docs/implementation/TASK-529-Model-Lifecycle-Retention/README.md` (contract + first adoption wave), `docs/implementation/TASK-530-Lifecycle-Convergence-Tail/README.md` (harness D-08, stt-v2 convergence, D-09 completion) and `docs/implementation/TASK-535-Retention-Client-Adoption/README.md` (guardrail / harness / tts-v2 control-plane clients — the last three env-only services)
 - Config plane: `docs/implementation/TASK-525-*` (effective-config read path)
 - Ollama: <https://docs.ollama.com/faq> · LM Studio:
   <https://lmstudio.ai/docs/developer/core/ttl-and-auto-evict>
