@@ -61,10 +61,26 @@ class TestHealthEndpointE2E:
 
         data = response.json()
 
-        expected_keys = {"status", "service", "version", "uptime_seconds", "timestamp", "checks"}
-        assert set(data.keys()) == expected_keys, (
-            f"Unexpected keys in /health response: {set(data.keys())}"
+        # `/health` is additive by design: TASK-525 §3.7 added "effective_config"
+        # (config-lane diagnostics; auth-exempt, so source labels/timestamps only)
+        # and broke an exact-set assertion here. Re-pinning a new exact set would
+        # break again on the next diagnostics block, so assert the REQUIRED keys
+        # are present instead — a missing key is still a regression, an extra one
+        # is not.
+        required_keys = {
+            "status",
+            "service",
+            "version",
+            "uptime_seconds",
+            "timestamp",
+            "checks",
+            "effective_config",
+        }
+        assert required_keys <= set(data.keys()), (
+            f"Missing keys in /health response: {required_keys - set(data.keys())}"
         )
+
+        assert isinstance(data["effective_config"], dict)
 
         assert data["status"] in _VALID_HEALTH_STATUSES
 
