@@ -785,7 +785,13 @@ class TestStreamSession:
     async def test_persist_if_needed_respects_interval(self):
         session = self._make_session()
         session._persist_interval_s = 1000  # very long interval
-        # First call: _last_persisted_at=0 means interval has "elapsed" — persists
+        # `persist_if_needed` compares against `time.monotonic()`, which is time
+        # SINCE BOOT. Leaving `_last_persisted_at` at its 0.0 default made this
+        # test depend on host uptime: the first call only persisted once the
+        # machine had been up longer than the interval, so it failed on any host
+        # booted less than ~17 minutes ago. Backdate explicitly instead.
+        session._last_persisted_at = time.monotonic() - (session._persist_interval_s + 1)
+        # First call: interval has elapsed — persists
         result = await session.persist_if_needed()
         assert result is True
         # Second call: interval not yet elapsed — should skip

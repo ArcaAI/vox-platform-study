@@ -178,7 +178,7 @@ House constraints: fake clocks only, no `sleep` (real threads in the sync single
 - [x] **D-09 fully closed**: all three tts-v2 local engines lazy + TTL-unloaded
 - [x] R4 guard: `unload` proven called exactly once on all six eviction paths × both cache classes
 - [x] TASK-529 README errata applied; **DR-1 ratified as a recorded decision row**; its Status flipped to Review
-- [x] All gates green with pasted real output, **each stating the `PYTHONPATH` pin used** (§9.2) — with one documented exception: a single stt-v2 e2e health-schema test fails, proven pre-existing at `985ead2d` (§9.6)
+- [x] All gates green with pasted real output, **each stating the `PYTHONPATH` pin used** (§9.2) — with one documented exception: a single stt-v2 e2e health-schema test fails, proven pre-existing at `30f6562c` (§9.6)
 - [x] Runbook + comment deltas complete
 
 ## 7. Risks & Rollback
@@ -235,7 +235,7 @@ resolved: .../wf_90fdc7c8-c7f-1/apps/harness/src/harness/__init__.py | .../wf_90
 | `pytest .../temporal/test_replay_compat.py` | same | **10 passed** — file untouched |
 | `ruff check apps/harness/src/` · `mypy apps/harness/src/` | `MYPYPATH=$W/packages/py-runtime-models/src` | `All checks passed!` · `Success: no issues found in 90 source files` (baseline: 1 error) |
 | **stt-v2 PARITY** `pytest tests/unit/test_model_cache.py tests/unit/test_model_cache_ttl.py` | `$W/apps/stt-v2/src:$W/packages/py-runtime-models/src` | **40 passed in 0.85s**, both files unmodified |
-| `pytest apps/stt-v2/tests/` | same | **2647 passed, 73 skipped, 3 xfailed, 1 failed** — the single failure is `test_health_endpoints_comprehensive.py::test_health_returns_200_with_complete_schema`, **proven pre-existing** by re-running it on a clean `git stash` of this ticket's changes (fails identically at `985ead2d`; it asserts an exact `/health` key set that TASK-525/529's `effective_config` block already broke). Not in this ticket's surface. |
+| `pytest apps/stt-v2/tests/` | same | **2647 passed, 73 skipped, 3 xfailed, 1 failed** — the single failure is `test_health_endpoints_comprehensive.py::test_health_returns_200_with_complete_schema`, **proven pre-existing** by re-running it on a clean `git stash` of this ticket's changes (fails identically at `30f6562c`; it asserts an exact `/health` key set that TASK-525/529's `effective_config` block already broke). Not in this ticket's surface. |
 | `ruff check apps/stt-v2/{src,tests}/` · `mypy apps/stt-v2/src/` | `MYPYPATH=$W/packages/py-runtime-models/src` | `All checks passed!` · `Success: no issues found in 123 source files` (baseline: 1 error) |
 | `pytest apps/tts-v2/src/tts_v2/tests/` | `$W/apps/tts-v2/src:$W/packages/py-runtime-models/src` | **170 passed, 2 deselected in 0.43s** |
 | `ruff check apps/tts-v2/src/` · `mypy apps/tts-v2/src/` | `MYPYPATH=$W/packages/py-runtime-models/src` | `All checks passed!` · **17 errors, down from a 20-error baseline** — all 17 pre-existing (missing optional ML stubs `kokoro`/`parler_tts`, `aclosing` type-var in `routing/router.py`, one numpy `Any` inside the untouched `_load_model`). Zero new. |
@@ -279,7 +279,7 @@ Both mutations were applied, run, and reverted.
 
 > **ERRATA (2026-07-20, recorded by [TASK-535](../TASK-535-Retention-Client-Adoption/README.md) §2.1).** Item 1 below is **wrong about guardrail**, and items 1 and 2 are now **CLOSED**.
 >
-> **The correction.** Item 1 states E6's "global-admin-controlled" half is "satisfied for stt-v2/nlp/guardrail/smr". It was not satisfied for **guardrail**: verified against this ticket's own commit `8757ee3d`, `apps/guardrail/src/guardrail/core/dependencies.py:141,200` constructed both aux caches with `ttl_seconds=settings.model_cache_ttl_s` (env, `core/config.py:343`), and guardrail had **no `core/effective_config.py` module at all** — so it had no client to poll with, not merely no loop. The real gap was **three** services, not two. Guardrail specifically was an unfulfilled TASK-529 §4.4 promise ("effective-config wiring for `model_cache_ttl_s`/`max_models`"), i.e. a *partial implementation* under the §2.5 Completion & Cleanup Doctrine rather than deliberate residue.
+> **The correction.** Item 1 states E6's "global-admin-controlled" half is "satisfied for stt-v2/nlp/guardrail/smr". It was not satisfied for **guardrail**: verified against this ticket's own commit `9f3116fb`, `apps/guardrail/src/guardrail/core/dependencies.py:141,200` constructed both aux caches with `ttl_seconds=settings.model_cache_ttl_s` (env, `core/config.py:343`), and guardrail had **no `core/effective_config.py` module at all** — so it had no client to poll with, not merely no loop. The real gap was **three** services, not two. Guardrail specifically was an unfulfilled TASK-529 §4.4 promise ("effective-config wiring for `model_cache_ttl_s`/`max_models`"), i.e. a *partial implementation* under the §2.5 Completion & Cleanup Doctrine rather than deliberate residue.
 >
 > **Why it was missed here:** guardrail was out of this ticket's ownership manifest, and it *does* consume the control plane for a different concern (model IDENTITY, via the `AiTaskDefault` registry — `_resolve_aux_model_id`). "Guardrail reads the control plane" was true; "guardrail reads control-plane *retention*" was not, and the two were conflated.
 >
