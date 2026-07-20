@@ -33,6 +33,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         debug=settings.debug,
     )
 
+    # TASK-535 (R3) — the control-plane pull client for local-engine retention.
+    # Construction performs NO I/O, so boot never blocks on (or fails because of)
+    # the gateway; the first synth request triggers the first fetch, and a
+    # failure negative-caches into env behaviour.
+    if not hasattr(app.state, "effective_config_client"):
+        from tts_v2.core.effective_config import EffectiveConfigClient
+
+        app.state.effective_config_client = EffectiveConfigClient(
+            base_url=settings.gateway_url,
+            token=settings.service_token.get_secret_value(),
+        )
+
     registry = app.state.provider_registry
     if settings.azure.enabled and "azure" not in registry:
         from tts_v2.providers.azure_speech import AzureSpeechProvider

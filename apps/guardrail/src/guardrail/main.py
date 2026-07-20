@@ -54,6 +54,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     redis_client = aioredis.from_url(settings.redis.redis_url, decode_responses=True)
     app.state.redis = redis_client
 
+    # TASK-535 (R1) — the control-plane pull client for aux-cache retention.
+    # Construction performs NO I/O, so boot never blocks on (or fails because of)
+    # the gateway; the first analyze/groundedness request triggers the first
+    # fetch, and a failure negative-caches into env behaviour.
+    if not hasattr(app.state, "effective_config_client"):
+        from guardrail.core.effective_config import EffectiveConfigClient
+
+        app.state.effective_config_client = EffectiveConfigClient(
+            base_url=settings.gateway_url,
+            token=settings.service_token.get_secret_value(),
+        )
+
     # Per-tenant config resolver (TASK-338, Q3c). Only initialized when DB-config
     # is enabled; otherwise the env-only engine path below is used unchanged.
     if not hasattr(app.state, "tenant_config_resolver"):

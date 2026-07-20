@@ -16,6 +16,7 @@ import contextlib
 import functools
 import signal
 from datetime import timedelta
+from typing import Any
 
 from temporalio.worker import Worker
 
@@ -56,13 +57,64 @@ async def _sweep_model_caches_once() -> int:
         return 0
 
 
+async def _refresh_model_cache_retention_once(client: Any) -> None:
+    """Pull control-plane retention and apply it to the entailer cache. NEVER raises.
+
+    TASK-535 (R2) — this runs HERE, in the worker, because the MiniCheck GGUF is
+    loaded by an activity and is resident in THIS process (§2.4). `configure`
+    adopts the new limits without dropping a resident entailer, so an admin
+    moving the slider never evicts a model mid-document.
+
+    No client, or no opinion from the control plane, ⇒ the env values stay in
+    force — exactly the pre-TASK-535 behaviour.
+    """
+    if client is None:
+        return
+
+    from harness.sensors.inferential import minicheck_entailer
+
+    try:
+        snapshot = await client.get()
+        retention = snapshot.retention()
+        if retention:
+            minicheck_entailer.configure_entailer_cache(retention)
+    except Exception as exc:  # noqa: BLE001 — housekeeping never breaks the worker
+        logger.warning(
+            "harness.worker.model_cache_retention_refresh_failed",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+
+
+def _effective_config_client() -> Any:
+    """The worker's control-plane client, or None when it cannot be built."""
+    from harness.core.effective_config import build_effective_config_client
+
+    try:
+        return build_effective_config_client()
+    except Exception as exc:  # noqa: BLE001 — a worker must boot without the gateway
+        logger.warning(
+            "harness.worker.effective_config_client_unavailable",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+        return None
+
+
+async def _model_cache_housekeeping_once(client: Any = None) -> int:
+    """One housekeeping tick: adopt current retention, THEN sweep against it."""
+    await _refresh_model_cache_retention_once(client)
+    return await _sweep_model_caches_once()
+
+
 async def _sweep_model_caches_forever(
     interval_s: float = _MODEL_CACHE_SWEEP_INTERVAL_S,
 ) -> None:
-    """Periodic sweep loop; cancelled when the worker shuts down."""
+    """Periodic housekeeping loop; cancelled when the worker shuts down."""
+    client = _effective_config_client()
     while True:
         await asyncio.sleep(interval_s)
-        released = await _sweep_model_caches_once()
+        released = await _model_cache_housekeeping_once(client)
         if released:
             logger.info("harness.worker.model_cache_swept", released=released)
 

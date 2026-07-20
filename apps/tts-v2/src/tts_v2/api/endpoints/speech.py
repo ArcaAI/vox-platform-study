@@ -65,6 +65,14 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
     except VoiceNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"unknown voice: {body.voice}") from exc
 
+    # TASK-535 — read-triggered retention refresh (TTL-cached, single-flight,
+    # fail-safe): a service that never synthesizes never polls. Applied BEFORE
+    # routing so a provider loading its pipeline for this request is already on
+    # the current control-plane TTL.
+    from tts_v2.core.effective_config import refresh_model_cache_retention
+
+    await refresh_model_cache_retention(request.app.state)
+
     fmt = body.response_format
     stream = tts_router.synthesize(
         voice_id=body.voice,

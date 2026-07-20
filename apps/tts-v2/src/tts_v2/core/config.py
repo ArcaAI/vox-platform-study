@@ -161,8 +161,14 @@ class Settings(BaseSettings):
     # docs/operations/inference/model-retention.md.
     warmup_enabled: bool = False
 
+    # TASK-535 — where the control plane lives (env TTS_GATEWAY_URL). BOOTSTRAP
+    # TRANSPORT (the address of the config source), NOT config authority.
+    gateway_url: str = "http://localhost:8868/api/v1"
+
     # Idle TTL for local engine weights. BOOTSTRAP FALLBACK ONLY — the runtime
-    # value comes from the control plane (`tts.modelCache.ttlSeconds`).
+    # value comes from the control plane (`tts.modelCache.ttlSeconds`), consumed
+    # via `core/effective_config.py` since TASK-535. Until then this promise was
+    # unfulfilled and this value WAS the runtime value.
     model_cache_ttl_seconds: int = 600
 
     @field_validator("log_level")
