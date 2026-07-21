@@ -2,8 +2,6 @@ import { AutoClassMapper, UserRoleAssignmentEntity } from '@arcaai/domains';
 import { UserRoleAssignmentResponse, PaginatedUserRoleAssignmentResponse } from './dto';
 import { FetchResponse } from '../../../common';
 
-// TODO: Implement this
-
 export class UserRoleAssignmentDtoMapper {
   static ToResponse(entity: UserRoleAssignmentEntity): UserRoleAssignmentResponse {
     const response = AutoClassMapper(entity, UserRoleAssignmentResponse);

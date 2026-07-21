@@ -86,11 +86,11 @@ export class TranscriptionJobController {
     @Inject(ITenantBucketService) private readonly tenantBucketService: ITenantBucketService,
     private readonly pipelineService: PipelineService,
     private readonly streamTicketService: StreamTicketService,
-    // TASK-310 W7.A.9 (AC-3): persists sessionId → tenantId on create
+    // Persists sessionId → tenantId on create
     // and clears it on close, so the `@TenantOwnedResource('StreamSession')`
     // route guard on `closeStreamSession` can 404 cross-tenant probes.
     private readonly streamSessionTenantBinding: StreamSessionTenantBindingService,
-    // TASK-392 (concurrency) — hard-blocks a new streaming session when the
+    // Hard-blocks a new streaming session when the
     // caller's tenant is at/over its resolved `maxConcurrentSessions` (no-op
     // while the entitlements kill-switch is OFF).
     @Inject(IEntitlementsService)
@@ -106,7 +106,7 @@ export class TranscriptionJobController {
   }
 
   /**
-   * TASK-319 F3 — the caller's identity, used to owner-scope the end-user
+   * The caller's identity, used to owner-scope the end-user
    * list/stats/status reads so a user only ever sees the jobs THEY created.
    * The tenant-wide view lives on the admin surface
    * (`/admin/audio/transcription-jobs`).
@@ -120,7 +120,7 @@ export class TranscriptionJobController {
   }
 
   /**
-   * TASK-298 D-2 — assert the caller's tenant owns `pipelineId` before the
+   * Assert the caller's tenant owns `pipelineId` before the
    * controller forwards work to STT-V2. We translate cross-tenant pipelines
    * to `NotFoundException` so the error surface matches "unknown pipeline"
    * and we do not leak the existence of pipelines in other tenants.
@@ -156,7 +156,7 @@ export class TranscriptionJobController {
   @Get('stats')
   @ApiOperation({ summary: 'Get transcription job status counts (caller-owned jobs)' })
   async getStats() {
-    // TASK-319 F3 — owner-scoped: the caller's jobs only.
+    // Owner-scoped: the caller's jobs only.
     return this.jobService.getStatusCountsForOwner(this.getUserId());
   }
 
@@ -164,7 +164,7 @@ export class TranscriptionJobController {
   @ApiOperation({ summary: 'Get transcription jobs by status (caller-owned jobs)' })
   @ApiParam({ name: 'status', description: 'Job status filter' })
   async getByStatus(@Param('status') status: string) {
-    // TASK-319 F3 — owner-scoped: the caller's jobs only.
+    // Owner-scoped: the caller's jobs only.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return this.jobService.getByStatusForOwner(this.getUserId(), status as any);
   }
@@ -188,7 +188,7 @@ export class TranscriptionJobController {
     }
 
     const tenantId = this.getTenantId();
-    // TASK-298 D-2 — block cross-tenant pipeline use before any I/O.
+    // Block cross-tenant pipeline use before any I/O.
     await this.assertPipelineOwnership(body.pipelineId);
     const mediaId = uuidv7();
 
@@ -200,7 +200,7 @@ export class TranscriptionJobController {
     });
 
     // 3. Resolve the tenant's default audio bucket: configured purpose →
-    //    `recordings` slug (TASK-426 default) → legacy `audio` slug → global
+    //    `recordings` slug (default) → legacy `audio` slug → global
     //    constant.
     let uploadBucket = AUDIO_BUCKET;
     try {
@@ -319,15 +319,15 @@ export class TranscriptionJobController {
     const user = this.cls.get('user');
     const sampleRate = body.sampleRate ?? 16000;
 
-    // TASK-392 (concurrency) — HARD-BLOCK a new session when the tenant is at/
+    // HARD-BLOCK a new session when the tenant is at/
     // over its resolved `maxConcurrentSessions` (live socket-registry count).
     // Runs before any STT-V2 / bucket I/O so an over-capacity caller is rejected
     // early with a typed 429. No-op while the entitlements kill-switch is OFF.
     await this.entitlements.assertConcurrencyQuota(tenantId);
 
-    // TASK-298 D-2 — assert tenant ownership of the requested pipeline
-    // BEFORE we forward to STT-V2 (which is itself defended by D-3).
-    // TASK-351 P0-2 (M6) — the ownership check and the bucket resolution are
+    // Assert tenant ownership of the requested pipeline
+    // BEFORE we forward to STT-V2 (which is itself defended downstream).
+    // The ownership check and the bucket resolution are
     // independent reads, so they run in parallel; a rejected ownership check
     // still rejects the whole step before anything is forwarded to STT-V2.
     //
@@ -370,14 +370,14 @@ export class TranscriptionJobController {
       throw new ServiceUnavailableException('STT-V2 streaming service at capacity');
     }
 
-    // Three independent writes (TASK-351 P0-2 / M6 — parallelized):
-    //  - TASK-310 W7.A.9 (AC-3): persist the sessionId → tenantId mapping so
+    // Three independent writes (parallelized):
+    //  - Persist the sessionId → tenantId mapping so
     //    the global `TenantOwnedResourceInterceptor` can 404 cross-tenant
     //    probes against `DELETE /stream/session/:sessionId`. Default 24h TTL
     //    matches the longest reasonable streaming-session lifetime.
-    //  - TASK-351 P0-2 (C5): persist session meta (negotiated sampleRate) so
+    //  - Persist session meta (negotiated sampleRate) so
     //    the WS gateway forwards audio at the real rate, not hardcoded 16000.
-    //  - TASK-298 D-1: mint a one-shot stream ticket scoped to this session.
+    //  - Mint a one-shot stream ticket scoped to this session.
     //    The SDK appends it to the WS URL; the gateway consumes it on first
     //    open and rejects (4401) every subsequent attempt.
     const [issuedTicket] = await Promise.all([
@@ -390,7 +390,7 @@ export class TranscriptionJobController {
       this.streamSessionTenantBinding.bindSessionMeta(result.sessionId, { sampleRate }),
     ]);
 
-    // TASK-296 preseed contract — capture voiceProfileSeeded if the
+    // Preseed contract — capture voiceProfileSeeded if the
     // streaming service surfaces it.
     const voiceProfileSeeded = (result as unknown as { voiceProfileSeeded?: boolean }).voiceProfileSeeded ?? false;
 
@@ -407,8 +407,6 @@ export class TranscriptionJobController {
   }
 
   /**
-   * TASK-310 W7.A.9 (AC-3) — closes the carryover gap from TASK-307 W7.A.9.
-   *
    * Because `sessionId` is opaque to Prisma (the STT-V2 session row lives in
    * STT-V2 / Redis, not the gateway DB), `@TenantOwnedResource` cannot use
    * any of the repository-backed resolvers. Instead, `createStreamSession`
@@ -424,7 +422,7 @@ export class TranscriptionJobController {
    * Alternative designs that were considered and rejected:
    *   - Reshape the URL to `/jobs/:id/stream-session/:sessionId` so the
    *     parent jobId carries the tenant scope. Out of scope — would break
-   *     the live SDK contract documented in TASK-298 D-1.
+   *     the live SDK contract.
    *   - Modify STT-V2 to return `tenantId` on its status endpoint.
    *     Out of scope — touches `apps/stt-v2` (sibling Python service).
    */
@@ -439,12 +437,12 @@ export class TranscriptionJobController {
   }
 
   /**
-   * TASK-298 D-18 — mint a fresh single-use stream ticket for an existing
+   * Mint a fresh single-use stream ticket for an existing
    * session. The SDK calls this from `SttV2WebSocketClient.attemptReconnect`
    * before reopening the WebSocket, since each ticket is one-shot and gets
    * consumed by the previous connection.
    *
-   * TASK-450 I-1 — this is the second `stt_session:<sessionId>` mint (the
+   * This is the second `stt_session:<sessionId>` mint (the
    * first is `POST /auth/stream-ticket`), so it carries the same
    * `StreamSession` ownership guard as the sibling DELETE route: the
    * interceptor 404s any caller whose tenant doesn't match the session's
@@ -485,7 +483,7 @@ export class TranscriptionJobController {
     return job;
   }
 
-  // TASK-419 item 6 — @StreamScope lets single-use tickets from
+  // @StreamScope lets single-use tickets from
   // POST /auth/stream-ticket (scope `transcription_job:<id>`) authenticate this
   // SSE route; the @TenantOwnedResource pre-stream tenant assertion is unchanged.
   @Get(':id/stream')
@@ -532,7 +530,7 @@ export class TranscriptionJobController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   async list(@Query('page') page: number = 1, @Query('limit') limit: number = 20) {
-    // TASK-319 F3 — owner-scoped: the caller's jobs only. The tenant-wide
+    // Owner-scoped: the caller's jobs only. The tenant-wide
     // listing lives on the admin surface (/admin/audio/transcription-jobs).
     return this.jobService.listForOwner(this.getUserId(), page, limit);
   }

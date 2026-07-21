@@ -7,14 +7,14 @@ import {
 } from '../stream-session-tenant-binding.service';
 
 /**
- * TASK-310 W7.A.9 (AC-3) — StreamSessionTenantBindingService.
+ * StreamSessionTenantBindingService.
  *
- * Closes the carryover gap from TASK-307 W7.A.9: the `closeStreamSession`
- * endpoint takes a `sessionId` (an opaque STT-V2 streaming-session id, not
- * a Prisma row), so the existing `@TenantOwnedResource` model resolvers
- * couldn't run an ownership check. The pre-W7 enforcement was the Prisma
+ * The `closeStreamSession` endpoint takes a `sessionId` (an opaque STT-V2
+ * streaming-session id, not a Prisma row), so the existing
+ * `@TenantOwnedResource` model resolvers can't run an ownership check on
+ * it directly. Without this service, the only enforcement is the Prisma
  * tenantScope extension on whatever downstream rows
- * `StreamingSessionService.removeSession` happened to touch — which is
+ * `StreamingSessionService.removeSession` happens to touch — which is
  * defence-in-depth but not a route-level guard.
  *
  * This service is the missing piece: when a stream session is created, the
@@ -81,8 +81,8 @@ describe('StreamSessionTenantBindingService (TASK-310 W7.A.9 / AC-3)', () => {
   });
 
   // ===========================================================================
-  // TASK-351 P0-2 (C5) — session meta (negotiated sampleRate) carried from
-  // `createStreamSession` to the WS gateway under a sibling TTL-bounded key.
+  // Session meta (negotiated sampleRate) carried from `createStreamSession`
+  // to the WS gateway under a sibling TTL-bounded key.
   // ===========================================================================
   describe('session meta (TASK-351 P0-2 / C5)', () => {
     it('bindSessionMeta() writes a TTL-bounded JSON meta record', async () => {

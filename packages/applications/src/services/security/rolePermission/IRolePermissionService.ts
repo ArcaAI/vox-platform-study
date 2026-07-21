@@ -3,8 +3,6 @@ import { FetchResponse, PaginatedQuery } from '../../../common';
 import { IBaseService } from '../../../interfaces';
 import { CreateRolePermissionRequest, UpdateRolePermissionRequest } from './dto';
 
-// TODO: Implement this
-
 export interface IRolePermissionService extends IBaseService {
   createRoleAssignment(request: CreateRolePermissionRequest): Promise<RolePermissionEntity>;
   fetchAll(props: PaginatedQuery): Promise<FetchResponse<RolePermissionEntity>>;

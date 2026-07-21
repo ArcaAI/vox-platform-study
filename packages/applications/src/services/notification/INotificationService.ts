@@ -3,8 +3,6 @@ import { FetchResponse, PaginatedQuery } from '../../common';
 import { IBaseService } from '../../interfaces';
 import { CreateNotificationRequest, UpdateNotificationRequest } from './dto';
 
-// TODO: Implement this
-
 export interface INotificationService extends IBaseService {
   create(request: CreateNotificationRequest): Promise<NotificationEntity>;
   fetchAll(props: PaginatedQuery): Promise<FetchResponse<NotificationEntity>>;

@@ -4,8 +4,6 @@ import { INotificationService } from './INotificationService';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../baseServices';
 
-// TODO: Implement this
-
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule],
   providers: [

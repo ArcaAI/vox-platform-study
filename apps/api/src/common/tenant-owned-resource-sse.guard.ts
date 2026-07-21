@@ -1,5 +1,5 @@
 /**
- * `TenantOwnedResourceSseGuard` — TASK-309 SSE cross-tenant leak fix.
+ * `TenantOwnedResourceSseGuard` — guards against an SSE cross-tenant leak.
  *
  * The global `TenantOwnedResourceInterceptor` asserts `@TenantOwnedResource`
  * ownership and throws `404` on a tenant mismatch. That works for normal
@@ -17,7 +17,7 @@
  * `UnifiedAuthGuard` (which populates the CLS `tenantId` the assertion reads);
  * registration order in `AppModule.guards` guarantees that.
  *
- * TASK-460 C4-03 — the pre-stream check alone admits the stream exactly ONCE:
+ * The pre-stream check alone admits the stream exactly ONCE:
  * a `CanActivate` guard has no per-event re-evaluation, so once the
  * `text/event-stream` opened, the ownership assertion never ran again for the
  * stream's whole lifetime (PHI relays on `:id/live-summary/stream`). The guard
@@ -25,7 +25,7 @@
  * while the stream is open and ends the response when it reports 404 — i.e. it
  * catches the streamed resource being soft-DELETED or re-tenanted mid-stream.
  *
- * Scope limit (review I-3): this re-check revalidates the RESOURCE side only.
+ * Scope limit: this re-check revalidates the RESOURCE side only.
  * The CLS caller context (tenantId, user) is frozen for the stream's async
  * lifetime, so identity-side revocation — JWT/session invalidation, user
  * disable, role downgrade, a global admin switching working tenant — is NOT
@@ -41,7 +41,7 @@ import { TENANT_OWNED_RESOURCE_KEY, type TenantOwnedResourceOptions } from './te
 import { TenantOwnedResourceInterceptor } from './tenant-owned-resource.interceptor';
 
 /**
- * Re-check cadence for open SSE streams (TASK-460 C4-03). 30s bounds the
+ * Re-check cadence for open SSE streams. 30s bounds the
  * window in which a soft-DELETED or re-tenanted resource keeps streaming, at
  * one cheap indexed read per open stream per interval. The CLS request
  * context propagates into the timer callback via AsyncLocalStorage and stays
@@ -82,7 +82,6 @@ export class TenantOwnedResourceSseGuard implements CanActivate {
     // handler doesn't carry @TenantOwnedResource.
     await this.interceptor.assertAccess(context);
 
-    // TASK-460 C4-03 — keep re-asserting while the stream is open.
     this.scheduleOwnershipRecheck(context);
     return true;
   }
@@ -123,7 +122,7 @@ export class TenantOwnedResourceSseGuard implements CanActivate {
     } catch (err) {
       const request = context.switchToHttp().getRequest<{ url?: string }>();
 
-      // Review I-2 — only the interceptor's own ownership-failure signal
+      // Only the interceptor's own ownership-failure signal
       // (NotFoundException, 404-over-403) terminates the stream. Any other
       // error is a TRANSIENT infrastructure failure (Prisma pool exhaustion,
       // DB timeout, deadlock, Redis blip) — ending a valid multi-hour PHI

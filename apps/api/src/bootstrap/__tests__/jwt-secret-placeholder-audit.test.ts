@@ -1,7 +1,7 @@
 /**
- * TASK-307 W2.2 — boot-time JWT-secret placeholder audit pin.
+ * Boot-time JWT-secret placeholder audit pin.
  *
- * Mirrors the in-strategy assertion (W2.1) at the bootstrap layer so a
+ * Mirrors the in-strategy assertion at the bootstrap layer so a
  * misconfigured deploy fails BEFORE the Nest container finishes wiring
  * (defense-in-depth — strategy + bootstrap both refuse the placeholder).
  *
@@ -21,17 +21,17 @@ const fakeSecrets = (value: string | undefined) => ({
 
 describe('TASK-307 W2.2 — bootstrap refuses placeholder secret', () => {
   it('throws when SecretsService returns the literal placeholder', () => {
-    // TASK-307 W7.A.7 — error message disambiguates the literal-placeholder
-    // branch from the undefined branch so a crash-loop reading container
-    // logs can pin the root cause without re-running with debug logging.
+    // The error message disambiguates the literal-placeholder branch from
+    // the undefined branch so a crash-loop reading container logs can pin
+    // the root cause without re-running with debug logging.
     expect(() => assertJwtSecretNotPlaceholder(fakeSecrets(PLACEHOLDER) as never)).toThrowError(
       /Refusing to boot.*literal development placeholder/,
     );
   });
 
   it('throws when SecretsService returns undefined (warmup miss)', () => {
-    // TASK-307 W7.A.7 — disambiguated message names the undefined branch
-    // explicitly instead of reusing the placeholder message.
+    // The message names the undefined branch explicitly instead of
+    // reusing the placeholder message.
     expect(() => assertJwtSecretNotPlaceholder(fakeSecrets(undefined) as never)).toThrowError(
       /Refusing to boot.*not warmed in SecretsService.*undefined/,
     );

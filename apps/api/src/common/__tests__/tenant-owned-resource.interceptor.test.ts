@@ -1,7 +1,7 @@
 /**
- * `TenantOwnedResourceInterceptor` — unit tests (TASK-307 W3.2 / AC-7).
+ * `TenantOwnedResourceInterceptor` — unit tests.
  *
- * Pins the runtime contract the W3.4..W3.8 controller rollouts depend on:
+ * Pins the runtime contract every controller applying the decorator depends on:
  *
  *  1. Handler with NO `@TenantOwnedResource` metadata → interceptor is a
  *     pass-through (next.handle() invoked, no resource lookup, no CLS read).
@@ -48,7 +48,7 @@ interface MockRepoSet {
 
 interface MockServices {
   consultationJob: { getJobStatus: ReturnType<typeof vi.fn> };
-  // TASK-310 W7.A.9 (AC-3): mocks the `StreamSession` resolver branch.
+  // Mocks the `StreamSession` resolver branch.
   streamSessionTenantBinding: { lookup: ReturnType<typeof vi.fn> };
 }
 
@@ -445,7 +445,6 @@ describe('TASK-307 W3.2 — TenantOwnedResourceInterceptor', () => {
     });
   });
 
-  // TASK-318 R5 — per-tenant storage config row, resolved by repo.findById.
   describe('TenantStorageConfig — tenant-scoped lookup', () => {
     it('passes through when the config tenant matches the caller', async () => {
       const harness = buildHarness({
@@ -474,9 +473,9 @@ describe('TASK-307 W3.2 — TenantOwnedResourceInterceptor', () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────
-  // TASK-308 AC-1 / AC-3 — `scope: 'creator'` opt-in (intra-tenant ownership).
+  // `scope: 'creator'` opt-in (intra-tenant ownership).
   //
-  // The default `scope` (omitted, or `'tenant'`) keeps the W3 tenant-only
+  // The default `scope` (omitted, or `'tenant'`) keeps the tenant-only
   // semantic. Setting `scope: 'creator'` additionally requires
   // `status.userId === cls.user.id` after the tenant check passes. The 404
   // (no-existence-leak) shape stays identical so a same-tenant probe of a
@@ -592,8 +591,8 @@ describe('TASK-307 W3.2 — TenantOwnedResourceInterceptor', () => {
         },
         params: { jobId: 'job-1' },
       });
-      // Pre-W7.A.12 Redis row — tenantId present (from a TASK-307 W3 deploy
-      // window), but userId absent. The interceptor must 404, not crash.
+      // Legacy Redis row — tenantId present but userId absent. The
+      // interceptor must 404, not crash.
       harness.services.consultationJob.getJobStatus.mockResolvedValueOnce({
         jobId: 'job-1',
         tenantId: SENTINEL_TENANT_A,
@@ -606,7 +605,7 @@ describe('TASK-307 W3.2 — TenantOwnedResourceInterceptor', () => {
   });
 
   /**
-   * TASK-310 W7.A.9 (AC-3) — StreamSession resolver branch.
+   * StreamSession resolver branch.
    *
    * The sessionId is opaque to Prisma; the interceptor consults the
    * gateway-side `StreamSessionTenantBindingService.lookup(sessionId)`

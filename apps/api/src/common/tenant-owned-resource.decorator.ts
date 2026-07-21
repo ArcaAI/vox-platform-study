@@ -1,5 +1,5 @@
 /**
- * `@TenantOwnedResource` — TASK-307 W3.1 / AC-7.
+ * `@TenantOwnedResource` decorator.
  *
  * Usage:
  *   @Get(':id')
@@ -25,7 +25,7 @@ export const TENANT_OWNED_RESOURCE_KEY = 'tenant_owned_resource';
  */
 export type TenantOwnedResourceModelName =
   | 'TenantBucket'
-  // TASK-318 R5: per-tenant/per-bucket storage config row — repo.findById(id),
+  // Per-tenant/per-bucket storage config row — repo.findById(id),
   // tenant-scoped (the row carries `tenantId`).
   | 'TenantStorageConfig'
   | 'UserVoiceProfile'
@@ -34,7 +34,7 @@ export type TenantOwnedResourceModelName =
   // live-summary SSE route — repo.findById(id), tenant-scoped.
   | 'Consultation'
   | 'TranscriptionJob'
-  // TASK-310 W7.A.9 (AC-3): opaque STT-V2 streaming session. The
+  // Opaque STT-V2 streaming session. The
   // interceptor resolves the sessionId → tenantId mapping through
   // `StreamSessionTenantBindingService`, NOT a Prisma repository — the
   // session row lives in STT-V2 / Redis, not the API gateway DB.
@@ -50,7 +50,7 @@ export interface TenantOwnedResourceOptions {
    *   - `'id'` (default) → repository.findById(paramValue)
    *   - `'name'`         → repository.findByName(paramValue)  (TenantBucket only)
    *   - `'session'`      → StreamSessionTenantBindingService.lookup(paramValue)
-   *                        (StreamSession only — TASK-310 W7.A.9 / AC-3)
+   *                        (StreamSession only)
    */
   lookup?: 'id' | 'name' | 'session';
   scope?: 'tenant' | 'creator' | 'global-admin';

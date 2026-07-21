@@ -8,8 +8,6 @@ import { CreatePermissionRequest, UpdatePermissionRequest } from './dto';
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 
-// TODO: Implement this
-
 @Injectable()
 export class PermissionService extends BaseService implements IPermissionService {
   constructor(

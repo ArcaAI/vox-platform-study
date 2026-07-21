@@ -3,8 +3,6 @@ import { FetchResponse, PaginatedQuery } from '../../common';
 import { IBaseService } from '../../interfaces';
 import { CreateTagRequest, UpdateTagRequest } from './dto';
 
-// TODO: Implement this
-
 export interface ITagService extends IBaseService {
   create(request: CreateTagRequest): Promise<TagEntity>;
   fetchByResource(resourceTypeName: string, resourceId: string): Promise<TagEntity[]>;

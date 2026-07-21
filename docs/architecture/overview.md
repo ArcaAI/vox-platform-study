@@ -1,8 +1,10 @@
 # HOPE Architecture Overview
 
-Last updated: 2026-07-04
+| | |
+|---|---|
+| **Owner** | Platform / Architecture | **Introduced** docs/archive/TASK-412-Documentation-Realignment · **Last verified** 2026-07-21 |
 
-Authoritative high-level design of the HOPE healthcare AI platform. Every port, route, and name in this document is verified against code as of the date above. Companion documents: [data-and-domain-model.md](./data-and-domain-model.md) (domain model), [../traceability-matrix.md](../traceability-matrix.md) (capability-to-code mapping).
+Authoritative high-level design of the HOPE healthcare AI platform. Every port, route, and name in this document is verified against code. Companion documents: [data-and-domain-model.md](./data-and-domain-model.md) (domain model), [model-and-config-plane.md](./model-and-config-plane.md) (model / configuration control plane), [../traceability-matrix.md](../traceability-matrix.md) (capability-to-code mapping).
 
 ---
 
@@ -15,14 +17,16 @@ HOPE is a multi-tenant healthcare AI platform for clinical consultations. It pro
 - **Summarization** — LLM-generated pre-summaries, final summaries, and comprehensive summaries of consultations (SOAP-style clinical notes), including a live "running note" during recording.
 - **Guardrails** — content-safety, PII, and medical-validation checks on LLM output.
 - **Clinical documentation harness** — a bounded `guides → generate → sensors → gate` loop, run as a durable Temporal workflow, that produces grounded, cited, sensor-scored clinical drafts and gates them through clinician attestation into immutable signed notes.
+- **Text-to-speech** — realtime multi-provider synthesis (Azure Speech cloud + self-hosted Kokoro / Indic Parler-TTS), English + Malayalam, per-tenant configurable.
+- **Governance & administration** — a Next.js admin console for tenant, RBAC, pipeline, prompt, harness-policy, AI-config, model and platform governance across global-admin and tenant-admin tiers.
 
 ### Actors and tenants
 
 | Actor | Description | Entry point |
 |---|---|---|
 | Clinician (doctor) | Records consultations, reviews/edits/attests AI-generated documentation | Host application embedding the `@arcaai/vox` SDK |
-| Tenant admin | Manages a tenant's users, departments, prompt templates ("agents"), pipelines, storage config | `/api/v1/admin/*` routes (tenant-scoped) |
-| Platform global admin | Cross-tenant platform operations: tenants, entitlements, global settings, rate limits, harness policy, platform metrics | `/api/v1/admin/*` routes (global-admin tier) |
+| Tenant admin | Manages a tenant's users, departments, prompt templates ("agents"), pipelines, storage, TTS and identity-provider config | `apps/admin-console` → `/api/v1/admin/*` routes (tenant-scoped) |
+| Platform global admin | Cross-tenant platform operations: tenants, entitlements, global settings, rate limits, harness policy, AI/model config, platform metrics | `apps/admin-console` → `/api/v1/admin/*` routes (global-admin tier) |
 | Host application / SDK integrator | Third-party EMR/clinic software embedding the consultation SDK; server-to-server via API keys | `@arcaai/vox` SDK + REST/WS/SSE |
 | Patient | External subject of a consultation. Referenced by `patientId` (external system identifier, no FK) — patient records are NOT stored in HOPE | — |
 
@@ -40,6 +44,7 @@ graph TB
 
     subgraph client[Client side]
         HOST["Host application<br/>embeds @arcaai/vox SDK"]
+        ADMIN["apps/admin-console<br/>Next.js 16 BFF"]
     end
 
     subgraph hope[HOPE Platform]
@@ -56,8 +61,9 @@ graph TB
     end
 
     DOC --> HOST
-    TADM --> API
-    SADM --> API
+    TADM --> ADMIN
+    SADM --> ADMIN
+    ADMIN -->|BFF proxy REST| API
     HOST -->|REST + WebSocket + SSE| API
     API --> PY
     API --> DATA
@@ -77,13 +83,14 @@ graph TB
 | App | Role | Port | Protocols | Key dependencies |
 |---|---|---|---|---|
 | `api` | NestJS 11 API gateway — auth, multi-tenancy, all client-facing REST/WS/SSE, system of record | 8868 | REST (`/api/v1`), WS (`/ws/stt-v2/stream`), SSE | PostgreSQL (Prisma), Redis (BullMQ + cache + streams), MinIO, Vault (secrets/transit), SMR, NLP, Harness, STT-v2 |
-| `stt-v2` | Speech-to-text — multi-model ASR, VAD (Silero), diarization (wespeaker), streaming + batch | 8861 | REST (`/api/v1`, `/internal/*`) | PostgreSQL, Redis (streams + Dramatiq), MinIO (`recordings`), Qdrant (speaker embeddings), HuggingFace models, Azure Speech (optional) |
+| `stt-v2` | Speech-to-text — processor-registry pipeline (schema v2): multi-model ASR, VAD (Silero), embedding + diarization, streaming + batch | 8861 | REST (`/api/v1`, `/internal/*`) | PostgreSQL, Redis (streams + Dramatiq), MinIO (`recordings`), Qdrant (speaker embeddings), HuggingFace / NeMo models, Azure Speech (optional) |
 | `smr` | SMR v2 — multi-provider LLM text generation / summarization | 8862 | REST (`/api/v1`), SSE streaming | Redis (task manager), LLM providers (LM Studio default, Ollama, Azure OpenAI, Bedrock), Guardrail (external client) |
 | `guardrail` | Safety engine — content-safety / PII / prompt-injection analysis, medical validation | 8863 | REST (`/api/v1`) | Redis (job queue), LLM engines (LM Studio / Azure / Bedrock / Ollama), PostgreSQL (optional per-tenant config via SQLAlchemy) |
 | `nlp` | Medical NLP — extraction, text/token classification, correction, diagnosis suggestions | 8864 | REST (`/api/v1`), WS (`/api/v1/classify/{token,text}/{session_id}`) | HuggingFace transformer models (emotion classifier, Medical-NER, symptom/disease BERT) |
 | `harness` | Clinical Documentation Harness — FastAPI HTTP surface + Temporal durable workflows (`HarnessDocWorkflow`) | 8866 | REST (`/api/v1`) | Temporal (gRPC 7233), NLP, SMR, API gateway internal endpoints, Qdrant + reranker (hybrid RAG), Granite Guardian judge |
 | `tts-v2` | Text-to-speech — realtime multi-provider synthesis (Azure Speech cloud + self-hosted Kokoro / Indic Parler-TTS), English + Malayalam, OpenAI-compatible | 8865 | REST (`/api/v1`), chunked audio + SSE | Azure Speech (cloud), local ONNX/Torch models (GPU), reached via gateway `/api/v1/speech/*` |
-| `ui-playground` | SDK playground + admin console — React 19/Vite/TanStack Router. **Deprecated** (no development/maintenance plan) | 5175 (dev) | HTTP | API gateway |
+| `admin-console` | Governance & administration console — Next.js 16 App Router, React 19, BFF auth (encrypted httpOnly session, catch-all `/api/hope/*` proxy, stream tickets); tier-mirrored route groups `(global)` / `(shared)` / `(tenant)` | 5176 (dev) | HTTP (BFF) | API gateway (via server-side proxy) |
+| `ui-playground` | Legacy SDK playground + admin console — React 19/Vite/TanStack Router. **Deprecated** (no development/maintenance plan; superseded by `admin-console`) | 5175 (dev) | HTTP | API gateway |
 | `example` | Minimal live-transcription demo of the SDK (`live-transcription-example`) | 5173 (dev) | HTTP | API gateway |
 
 Two additional long-running processes are not HTTP services:
@@ -115,6 +122,11 @@ The API gateway also runs in-process BullMQ workers (queues from the `JobQueue` 
 graph TB
     subgraph browser[Browser - host application]
         SDK["@arcaai/vox SDK<br/>room + noise-filter + vad + stt (+ med-ner)"]
+    end
+
+    subgraph adminc[apps/admin-console - Next.js :5176]
+        ADMINUI["React 19 App Router UI"]
+        BFF["BFF proxy /api/hope/*<br/>encrypted httpOnly session"]
     end
 
     subgraph gateway[apps/api - NestJS :8868]
@@ -149,6 +161,8 @@ graph TB
     SDK -->|REST session + tickets| REST
     SDK -->|PCM frames| WS
     SDK -->|live summary, progress| SSE
+    ADMINUI --> BFF
+    BFF -->|Bearer + X-Tenant-Id, If-Match| REST
 
     WS <-->|"XADD stt:audio / XREAD stt:result"| RD
     STT <-->|streams| RD
@@ -274,9 +288,20 @@ Key mechanics:
 - Institutional-RAG ingestion: gateway BullMQ processor (`IngestKnowledgeDocument`) → harness `POST /api/v1/knowledge/ingest` (chunk → dense+sparse embed → Qdrant upsert), tracked by `KnowledgeDocument`/`KnowledgeChunk` rows.
 - Admin/observability: `/api/v1/admin/harness/*` in the gateway (policy, observe, workflow ops) proxied to harness `/api/v1/admin/harness/workflows*`; per-tenant realtime toggles under `/api/v1/admin/harness/pipeline-policy`.
 
-### 3.5 Voice profile enrollment
+### 3.5 Speaker diarization & voice-profile enrollment
 
-`POST /api/v1/voice-profile/enroll` (gateway) → STT-v2 `POST /internal/voice-profile` → speaker embedding (512-dim, wespeaker) upserted into Qdrant collection `stt_speaker_embeddings`; `UserVoiceProfile` row tracks state. Diarization during live sessions matches speakers against enrolled profiles.
+Verified against `apps/stt-v2/src/stt_v2/diarization/`, `.../voice_profile/`, `.../processors/base.py`, and `.../core/config/settings.py`.
+
+STT-v2 is built on a **processor registry** (`processors/base.py`): a closed set of pipeline stage kinds (`normalize`, `denoise`, `resample`, `vad`, `embedding`, `asr`, `diarization`, `stabilizer`, `punctuation`, `disfluency`, `merge`) with open implementations. Pipeline YAML (schema v2, `pipeline/yaml_parser.py`) references stages by **registry key only** — never import paths — so tenant-editable configs cannot execute arbitrary code, and each processor self-declares its device/compute support so the resolver fails fast at pipeline-load time.
+
+Two diarization strategies exist behind the per-pipeline `DiarizationConfig.backend` selector:
+
+- **Embedding + clustering (default path).** Speaker embeddings are extracted (`create_embedding_service()` picks the backend by HuggingFace model-id prefix — `SpeechBrainEmbeddingService` for ECAPA models, `PyannoteEmbeddingService` otherwise) and matched by cosine similarity. The **deployed default embedding model is `pyannote/wespeaker-voxceleb-resnet34-LM` (256-dim)**; the Qdrant collection `stt_speaker_embeddings` and the `UserVoiceProfile.embedding` `vector(N)` column must match that dimension. An **ECAPA-TDNN backend** (`speechbrain/spkrec-ecapa-voxceleb`, 192-dim) is implemented as an alternative; cutting over to it is a config + `vector(192)` migration + re-enroll step and is **not yet applied**.
+- **Streaming Sortformer (live 2-speaker loop core).** `StreamingSortformerDiarizer` wraps NVIDIA Streaming Sortformer (`nvidia/diar_streaming_sortformer_4spk-v2.1`, NVIDIA Open Model License, self-hosted only), selected via `backend == "sortformer"`. The NeMo loader is implemented but **unvalidated pending GPU** — the weights are not staged and there is no CPU/ONNX path, so `load_default_backend` raises `SortformerModelUnavailableError` and the diarizer **degrades to "no labels"** (today's default diarization-off behaviour). No path ever fabricates a speaker turn the model did not emit, and no cloud vendor may receive clinical audio.
+
+Voice-profile enrollment: `POST /api/v1/voice-profile/enroll` (gateway) → STT-v2 `POST /internal/voice-profile` → the speaker embedding is upserted into the Qdrant `stt_speaker_embeddings` collection; a `UserVoiceProfile` row tracks enrollment state. During live sessions the embedding path matches segment speakers against enrolled profiles.
+
+Transcript results persist as a `TRANSCRIPT` `ContextItem` plus ordered `TranscriptSegment` rows (time span, speaker label, character offsets used to anchor NER grounding).
 
 ---
 
@@ -288,14 +313,15 @@ Global prefix `/api/v1` (only `/metrics` is excluded — internal controllers ar
 
 | Group | Modules | Route prefixes |
 |---|---|---|
-| Identity & access | `auth`, `api-key`, `rbac`, `user` | `auth`, `admin/api-keys`, `admin/rbac/{roles,policies}`, `rbac/check`, `users`, `admin/users`, `user/me/*`, `users/password-reset` |
-| Tenancy & platform | `tenant`, `tenant-frontend-config`, `tenant-storage-config`, `tenant-bucket`, `storage-access-key`, `global-setting`, `entitlements`, `admin-rate-limit`, `platform-metrics`, `throttle` | `tenant`, `admin/tenants`, `admin/tenant-frontend-config`, `admin/tenants/storage/{config,buckets,keys}`, `admin/settings`, `entitlements`, `admin/entitlements`, `admin/rate-limit`, `admin/platform` |
-| Clinical domain | `consultation`, `department`, `dna-writing-style`, `prompt-management`, `voice-profile` | `consultations`, `consultations/jobs`, `admin/consultations`, `admin/departments`, `dna-writing-styles`, `admin/dna-writing-styles`, `prompt-templates`, `admin/prompt-templates`, `voice-profile` |
-| Audio & AI pipeline | `streaming`, `pipeline`, `ai-model` | `audio/transcription-jobs`, `admin/audio/transcription-jobs`, `audio/pipelines`, `admin/audio/pipelines`, `admin/ai-models`, `text` (SMR proxy) |
+| Identity & access | `auth`, `api-key`, `rbac`, `user`, `tenant-idp-config` | `auth`, `admin/api-keys`, `admin/rbac/{roles,policies}`, `rbac/check`, `users`, `admin/users`, `user/me/*`, `users/password-reset`, `admin/tenant-idp-config` |
+| Tenancy & platform | `tenant`, `tenant-frontend-config`, `tenant-storage-config`, `tenant-bucket`, `storage`, `storage-access-key`, `global-setting`, `settings-catalog`, `entitlements`, `admin-rate-limit`, `platform-metrics`, `throttle` | `tenant`, `admin/tenants`, `admin/tenant-frontend-config`, `admin/tenants/storage/{config,buckets,keys}`, `admin/settings` (global-setting + settings-catalog), `entitlements`, `admin/entitlements`, `admin/rate-limit`, `admin/platform` |
+| Clinical domain | `consultation`, `department`, `dna-writing-style`, `prompt-management`, `voice-profile`, `notification`, `resource-subscription` | `consultations`, `consultations/jobs`, `admin/consultations`, `admin/departments`, `dna-writing-styles`, `admin/dna-writing-styles`, `prompt-templates`, `admin/prompt-templates`, `voice-profile` |
+| Audio & AI pipeline | `streaming`, `pipeline`, `ai-model`, `speech` | `audio/transcription-jobs`, `admin/audio/transcription-jobs`, `audio/pipelines`, `admin/audio/pipelines`, `admin/ai-models`, `speech` (TTS proxy), `text` (SMR proxy) |
+| AI config & model plane | `ai-provider-connection`, `ai-runtime-profile`, `ai-task-default`, `ai-inference`, `ai-service-admin`, `mcp-admin`, `agentic-admin`, `agent-trajectory`, `tenant-tts-config` | `admin/ai-providers`, `admin/ai-runtime-profiles`, `admin/ai-task-defaults`, `ai` (user-plane inference proxy), `admin/ai-services`, `admin/mcp-servers`, `admin/agentic`, `admin/agent-trajectory`, `admin/tts-config` — see [model-and-config-plane.md](./model-and-config-plane.md) |
 | Harness | `harness-admin`, `pipeline-policy-admin`, consultation `harness-internal` controller | `admin/harness`, `admin/harness/pipeline-policy`, `internal/harness` |
-| Ops & internal | `health`, `monitoring`, `audit-log`, `queue-admin`, `pstudio`, `internal` | `health`, `monitoring`, `admin/audit-logs`, `admin/queues`, `admin/schedulers`, `admin/pstudio`, `internal/stt` |
+| Ops & internal | `health`, `monitoring`, `audit-log`, `queue-admin`, `pstudio`, `webhook`, `internal` | `health`, `monitoring`, `admin/audit-logs`, `admin/queues`, `admin/schedulers`, `admin/pstudio`, `internal/stt`, `internal/effective-config` |
 
-The SMR proxy (`SmrProxyController`, prefix `text`) exposes `POST /api/v1/text/generate`, `POST /api/v1/text/generate/assembled`, task polling/cancel/stream, and provider listings — it is a standalone controller (the legacy `BaseProxyController` in `src/shared/` is currently unused by any controller).
+The SMR proxy (`SmrProxyController`, prefix `text`) exposes `POST /api/v1/text/generate`, `POST /api/v1/text/generate/assembled`, task polling/cancel/stream, and provider listings — it is a standalone controller (the legacy `BaseProxyController` in `src/shared/` is currently unused by any controller). The `internal/effective-config` route is the service-token-authenticated read side of the config plane (`GET /api/v1/internal/effective-config?service=<name>`).
 
 ### Cross-cutting request pipeline
 
@@ -327,7 +353,7 @@ packages/applications → application services, DTOs, NestJS service modules,
 apps/api            → controllers, guards, gateways, interceptors only
 ```
 
-Enforced conventions (see `.cursor/rules` and `eslint-plugin-arcaai-internal`):
+Enforced conventions (see `.claude/rules` and `eslint-plugin-arcaai-internal`):
 
 - Controllers never touch Prisma; services never import `@arcaai/database` directly — they use `@arcaai/domains` repositories.
 - Entities are created via `XxxFactory.CreateXxx()`, never `new XxxEntity()`.
@@ -341,34 +367,52 @@ Browser SDK packages: `agentic-sdk-v2` (`@arcaai/vox` — Zustand store, consult
 
 ---
 
-## 6. Deployment Topologies
+## 6. Model & Configuration Plane
 
-### 6.1 Local development (Docker Compose + host processes)
+HOPE resolves *which model runs a task, where its provider lives, how it is authenticated, its hyperparameters, and how long it stays resident* through a **control plane in Postgres that the gateway reads at request time and injects into (or serves to) the stateless Python services**. No Python service reads Postgres directly. Full detail — including resolution cascades, credential encryption, and open tails — is in [model-and-config-plane.md](./model-and-config-plane.md); the summary:
+
+| Concern | Mechanism |
+|---|---|
+| Admin-controllable settings | Settings registry (`HOPE_SETTINGS_REGISTRY`) + catalog; `EffectiveSettingsService` resolves a registry key with a first-set-wins cascade and refuses `secret` keys |
+| Task → model selection | `AiTaskDefault` (per-`(tenant, taskKey)`; SYSTEM row = platform default; **global-admin-only** writes; resolution tenant → SYSTEM → env) |
+| Provider location + auth | `AiProviderConnection` (per-`(tenant, provider)`; BYO cloud key as Vault-Transit ciphertext, never returned; tenant rows only for azure/bedrock, self-host SYSTEM-only) |
+| Hyperparameters / concurrency | `AiRuntimeProfile` (per provider or per model; global-admin/SYSTEM-only; injection cascade under request params) |
+| Model registry + discovery | `AiModel` + `AiModelDiscoveryService` merge view (registered vs discovered vs missing-on-server) over server-managed providers |
+| Model source resolution | `AiModel.sourceUri` scheme grammar (`hf:` / `file://` / `s3://`) + `localPath` override, honoured by every service's `resolve_model_dir` |
+| Model lifecycle / retention | load-on-first-request, idle-TTL eviction (default 600 s, pinned models never evicted), set via `global-kv` settings, served over `internal/effective-config` (~60 s apply) |
+| Pipeline governance | `AsrPipeline` template lineage — SYSTEM templates cloned per tenant; locked copies are read-only (clone to customize); resync fast-forwards pristine copies |
+| Per-tenant TTS / identity / tools | `TenantTtsConfig` (+ BYO credential), `TenantIdentityProvider` (OIDC federation), `McpServer` (harness external-tool registry, Vault-path auth only) |
+
+Runtime services stay stateless with respect to this plane: the config plane degrades safely — an unreachable control plane leaves each service on its own env/bootstrap defaults.
+
+## 7. Deployment Topologies
+
+### 7.1 Local development (Docker Compose + host processes)
 
 Infrastructure in containers; application services run on the host (Node via pnpm/turbo, Python via conda env `arcaenv` + uv).
 
 - Base: `infrastructure/docker/docker-compose.yml` — `hope-postgres` (TimescaleDB pg18 image), `hope-minio` (+ bucket setup), `hope-redis`.
 - Dev overlay: `infrastructure/docker/docker-compose.dev.yml` — opt-in profiles: `vault` (+`vault-init` AppRole bootstrap), `qdrant` (+collection init), `temporal` (+`temporal-ui`; shares hope-postgres via dedicated `temporal`/`temporal_visibility` DBs), `rag` (`hope-reranker` TEI), `prometheus`/`observability` (Prometheus + Grafana).
-- Entry points: `pnpm dev:setup` (full bootstrap), `pnpm infra:up`, `pnpm dev:stack` (spawns api, stt, smr, guardrail, nlp, harness, worker, ui subsets), `pnpm dev:doctor` (health checks).
+- Entry points: `pnpm dev:setup` (full bootstrap), `pnpm infra:up`, `pnpm dev:stack` (spawns api, stt, smr, guardrail, nlp, harness, worker, ui subsets), `pnpm dev:doctor` (health checks). The admin console runs as its own Next.js dev server (`apps/admin-console`, `next dev -p 5176`); tts-v2 runs via `pnpm dev:tts-v2`.
 - Env files: `.env.dev` (dev), `.env.test` (isolated test infra: PG 5433, Redis 6380, MinIO 9002), `.env.example` (canonical template). Host env always wins; production loads host env only.
 
-### 6.2 Cluster (k3s + ArgoCD) — primary deployment target
+### 7.2 Cluster (k3s + ArgoCD) — primary deployment target
 
 GitOps via ArgoCD ApplicationSet (`deployment/argocd/bootstrap.{dev,prod}.yaml.example`), namespaces `hope-v2-dev` (auto-sync) and `hope-v2-prod` (manual sync), GitLab CI (`.gitlab-ci.yml`) builds per-service images on change.
 
-- Kustomize base (`deployment/k3s/base/kustomization.yaml`) deploys: `redis`, `ollama`, `lmstudio`, `api`, `guardrail`, `reranker`, `smr`, `stt-v2`, `stt-v2-worker`, `ui` (ui-playground image — deprecated app), and a `db-migrate` Job (ArgoCD PreSync hook). An `nlp.yaml` manifest exists but is not currently listed in the kustomization resources.
+- Kustomize base (`deployment/k3s/base/kustomization.yaml`) deploys: `redis`, `ollama`, `lmstudio`, `api`, `guardrail`, `reranker`, `vllm`, `llama-cpp`, `smr`, `stt-v2`, `stt-v2-worker`, `tts-v2`, `ui` (ui-playground image — deprecated app), `admin-console`, and a `db-migrate` Job (ArgoCD PreSync hook). An `nlp.yaml` manifest exists but is not currently listed in the kustomization resources.
 - PostgreSQL is not deployed in-cluster by the base; the platform targets the external HA Postgres cluster (Patroni + HAProxy + PgBouncer, VMs 500–502 — see `docs/research/deployments/deploy-vm500-502-postgres-ha.md`). Production requires the `DATABASE_URL` (PgBouncer 6432, transaction mode) / `DIRECT_URL` (un-pooled, migrations) split.
 - Harness + Temporal are not yet part of the k3s base (compose-profile / host-run only at this time).
 - Ingress: Traefik (k3s default). Overlays (`overlays/dev`, `overlays/prod`) patch image tags, hostnames, replicas.
 - Vault: HA 3-node Raft cluster with Transit auto-unseal on k3s — deployment artifacts in `infrastructure/single-deployment/vault/`, operator runbook in `docs/operations/vault/README.md`.
 
-### 6.3 Single-server deployment
+### 7.3 Single-server deployment
 
 `infrastructure/single-deployment/` currently contains only the Vault deployment tree (`vault/` — helm values, manifests, bootstrap, seal-vault, monitoring, test). The former full single-server app deployment has been superseded by the k3s + ArgoCD path; `infrastructure/SECURITY_DEPLOYMENT_GUIDE.md` documents the security posture for production deployments.
 
 ---
 
-## 7. Observability & Security Summary
+## 8. Observability & Security Summary
 
 | Concern | Mechanism |
 |---|---|

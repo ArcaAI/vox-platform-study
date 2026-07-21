@@ -1,11 +1,10 @@
 /**
- * TASK-307 W4a.3 — Verifies the side-effect module applies
- * `SKIP_AUTH_KEY=true` to third-party controllers we don't own.
+ * Verifies the side-effect module applies `SKIP_AUTH_KEY=true` to
+ * third-party controllers we don't own.
  *
- * Each route here is `legitimately public` per the W4a sweep: there's
- * no scenario in which it should require an authenticated caller. The
- * test pins the metadata so the boot-time audit (`W4a.1`) and the
- * integration test (`W4a.2`) keep agreeing with the runtime guard.
+ * Each route here is legitimately public: there's no scenario in which
+ * it should require an authenticated caller. The test pins the metadata
+ * so the boot-time route audit and the runtime guard keep agreeing.
  */
 
 import { describe, it, expect } from 'vitest';

@@ -8,8 +8,6 @@ import { CreateRoleRequest, UpdateRoleRequest } from './dto';
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 
-// TODO: Implement this
-
 /**
  * TASK-406 (P2-6c) — model-aware filter coercion (TASK-375 §8 scheme):
  * `isSystemRole` → boolean, `version` → number, `createdAt` → Date,

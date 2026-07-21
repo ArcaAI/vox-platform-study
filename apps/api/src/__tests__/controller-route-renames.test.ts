@@ -4,8 +4,6 @@ import { join } from 'path';
 import { PATH_METADATA } from '@nestjs/common/constants';
 
 /**
- * Tests for Phase 3: Rename All Controller Routes (TASK-210)
- *
  * Reduced after module removal — only tests controllers that remain in the API.
  */
 
@@ -151,13 +149,12 @@ describe('Runtime @Controller metadata (Reflect.getMetadata)', () => {
     );
 });
 
-// ─── Pstudio Auth Decorators (retuned by TASK-307 W5.2) ─────────────────
+// ─── Pstudio Auth Decorators ─────────────────────────────────────────────
 //
-// Pre-W5.2 the GET handler carried @Public() and accepted the JWT via
-// ?token=. W5.2 removes the public exemption and the URL-token form
-// entirely — both verbs require an @Authorize guard and the JWT must
-// arrive via the Authorization: Bearer header. TASK-419 item 4 re-pins
-// the guard from manage:all to the dedicated manage:PrismaStudio subject.
+// Both verbs require an @Authorize guard and the JWT must arrive via the
+// Authorization: Bearer header — no @Public() exemption, no ?token= query
+// param. The guard is scoped to the dedicated manage:PrismaStudio subject
+// (not manage:all).
 
 describe('Pstudio auth decorators (post-TASK-307 W5.2)', () => {
     it('serveStudio NO LONGER carries @Public() metadata', async () => {

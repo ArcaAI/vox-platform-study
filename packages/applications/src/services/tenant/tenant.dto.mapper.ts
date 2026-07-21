@@ -2,8 +2,6 @@ import { AutoClassMapper, TenantEntity } from '@arcaai/domains';
 import { TenantResponse, PaginatedTenantResponse } from './dto';
 import { FetchResponse } from '../../common';
 
-// TODO: Implement this
-
 export class TenantDtoMapper {
   static ToResponse(entity: TenantEntity): TenantResponse {
     return AutoClassMapper(entity, TenantResponse);

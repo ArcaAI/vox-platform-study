@@ -1,5 +1,5 @@
 /**
- * Barrel for `apps/api/src/common` — TASK-307 W3 cross-cutting primitives.
+ * Barrel for `apps/api/src/common` — cross-cutting primitives.
  */
 export {
   TenantOwnedResource,

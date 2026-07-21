@@ -1,5 +1,5 @@
 /**
- * `TenantOwnedResourceModule` — TASK-307 W3.2.
+ * `TenantOwnedResourceModule`.
  *
  * Wraps the global `TenantOwnedResourceInterceptor` registration so the
  * interceptor's repository / service injections resolve cleanly from the
@@ -29,8 +29,8 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { StreamSessionTenantBindingService } from './stream-session-tenant-binding.service';
 import { TenantOwnedResourceInterceptor } from './tenant-owned-resource.interceptor';
 
-// TASK-310 W7.A.9 (AC-3): the new `StreamSessionTenantBindingService`
-// depends on `IRedisCacheService`. That provider is registered by
+// `StreamSessionTenantBindingService` depends on `IRedisCacheService`.
+// That provider is registered by
 // `RedisCacheModule.register()` inside `StreamTicketModule`, which is
 // `@Global()` — so the binding constructor can resolve it without us
 // re-importing the cache module here.
@@ -54,7 +54,7 @@ import { TenantOwnedResourceInterceptor } from './tenant-owned-resource.intercep
   // Re-export the interceptor itself so `AppModule` can inject it into the
   // `TenantOwnedResourceSseGuard` registered in its `guards` array (the guard
   // delegates to `interceptor.assertAccess` to enforce ownership before an
-  // @Sse() stream opens — TASK-309 SSE leak fix).
+  // @Sse() stream opens).
   exports: [StreamSessionTenantBindingService, TenantOwnedResourceInterceptor],
 })
 export class TenantOwnedResourceModule {}

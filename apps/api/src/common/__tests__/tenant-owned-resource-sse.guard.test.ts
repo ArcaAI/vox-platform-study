@@ -1,10 +1,10 @@
 /**
- * `TenantOwnedResourceSseGuard` unit tests — TASK-309 pre-stream check +
- * TASK-460 C4-03 mid-stream RESOURCE-OWNERSHIP re-check.
+ * `TenantOwnedResourceSseGuard` unit tests — pre-stream check + mid-stream
+ * RESOURCE-OWNERSHIP re-check.
  *
- * C4-03: a `CanActivate` guard admits an `@Sse()` stream exactly ONCE, so the
- * ownership assertion never ran again for the stream's whole lifetime (PHI on
- * `live-summary`). The guard must re-run the SAME resource-ownership check
+ * A `CanActivate` guard admits an `@Sse()` stream exactly ONCE, so without a
+ * re-check the ownership assertion never runs again for the stream's whole
+ * lifetime (PHI on `live-summary`). The guard must re-run the SAME resource-ownership check
  * periodically and terminate the response when it reports 404 — i.e. when the
  * resource was soft-DELETED or re-tenanted mid-stream. (Identity-side
  * revocation — JWT/session invalidation, user disable, role downgrade — is NOT
@@ -143,7 +143,7 @@ describe('TenantOwnedResourceSseGuard — mid-stream ownership re-check (TASK-46
     expect(interceptor.assertAccess.mock.calls.length).toBe(callsAfterTermination);
   });
 
-  // TASK-460 review I-2 — a bare catch used to treat TRANSIENT infrastructure
+  // Regression guard: a bare catch would treat TRANSIENT infrastructure
   // failures (Prisma pool exhaustion, DB timeout, deadlock, Redis blip) exactly
   // like an ownership 404 and cut valid multi-hour PHI streams. Only the
   // interceptor's own NotFoundException may terminate; anything else logs and

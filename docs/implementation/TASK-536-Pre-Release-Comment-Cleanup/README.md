@@ -55,14 +55,14 @@ Dropped from the original spec (zero live instances, don't build tooling for the
 
 ## Implementation Plan
 
-### Wave 0 — Baseline (owner gate)
-Commit/land the current branch; record the baseline SHA here. Route the auth.service.ts security TODOs to a real ticket first (see finding 3).
+### Wave 0 — Baseline ✅ CLEARED (2026-07-21)
+Baseline SHA: **`c6c44de2`** (checkpoint commit landing the TASK-505/506/523–535 wave + program docs). The auth.service.ts security TODOs were routed to **TASK-541** (implemented, status Review) before cleanup; the eslint-suppression debt became **TASK-540**.
 
 ### Wave 1 — Inventory ✅ COMPLETE (2026-07-21)
 Findings above; full agent report in workflow `wf_e0632a48-a69` output.
 
-### Wave 2 — Per-package cleanup (Sonnet 5, effort high)
-Ordering per Wave-1 recommendation:
+### Wave 2 — Per-package cleanup (Sonnet 5, effort high) — batch 1 IN PROGRESS (workflow `wf_81525326-b65`)
+Batch 1 (running): scope units 1–2 below (applications quick-win + api pilot), executed sequentially in the main tree off the clean `c6c44de2` baseline (worktree isolation dropped for batch 1 — single writer per lane on a clean tree; revisit for parallel batches). Ordering per Wave-1 recommendation:
 1. **`packages/applications`** — opens with the 72-line scaffold-TODO bulk delete (fast, zero-risk win), then the 2,710-line classification pass.
 2. **`apps/api`** — pilots the protected-marker allowlist on the smallest AUTH-NOTE footprint (2 markers).
 3. **`packages/domains`, `packages/database`** — schema + seed comments; moderate density, mostly single-author narration; Prisma `//` comments triaged like code comments.
@@ -108,7 +108,9 @@ Mechanics: one agent per scope unit, `isolation: worktree` (pre-instructed to `g
 
 ## Implementation Summary
 
-_(populate as waves complete)_
+**Batch 1 ✅ (2026-07-21, workflow `wf_81525326-b65`):**
+- **Quick win complete:** all 72 `// TODO: Implement this` scaffold lines deleted across 72 files in `packages/applications` — each individually verified implemented first; `git diff` proof: 144 deletions, **0 additions**. Build green; 6,669 tests passed. The auth.service.ts TODOs were already replaced by TASK-541's implementation (nothing to harvest).
+- **apps/api pilot: 30 of 308 files done** (291 of 1,433 tagged lines; the highest-density production files: stt-ws.gateway, auth.controller, app.module, smr-proxy/transcription-job controllers, bootstrap/common/database/decorators clusters). Methodology validated: per-comment classification, ticket-prefix stripping with substance preserved, 1 stale comment rewritten, 3 lines commented-out dead code removed opportunistically, zero string/Swagger/test-description edits (one near-miss caught and self-reverted). Verification: `pnpm build:api` green · 2,394 api tests passed · eslint 0 errors (65 pre-existing bare-disable warnings = TASK-540 debt) · scripted comment-stripped before/after diff proves code-invariance on all 30 files. **Remaining: 278 files / 1,142 tagged lines** — density-ordered continuation list captured in the batch report (user.controller 26, prompt-management 20+18, consultation.controller 20, …).
 
 ## Change History
 

@@ -2,11 +2,10 @@ import { Logger } from '@nestjs/common';
 import type { SecretsService } from '@arcaai/applications';
 
 /**
- * TASK-307 W2.2 (closes audit C-6 part 2) — boot-time JWT-secret
- * placeholder audit.
+ * Boot-time JWT-secret placeholder audit.
  *
  * Mirrors the in-strategy assertion at `packages/applications/src/
- * services/auth/jwt.strategy.ts` (W2.1). Called from `main.ts` AFTER
+ * services/auth/jwt.strategy.ts`. Called from `main.ts` AFTER
  * `await secretsService.boot({ warmupKeys: ['JWT_SECRET_KEY', …] })`
  * resolves, so a misconfigured deploy fails BEFORE Nest finishes
  * wiring — defense-in-depth (strategy + bootstrap both refuse the
@@ -22,17 +21,16 @@ import type { SecretsService } from '@arcaai/applications';
  *
  * Throwing here propagates out of `bootstrap()` and exits the process
  * non-zero before `app.listen()`. Same posture as
- * `auditAdminRoutePermissions` immediately below it.
+ * `auditAdminRoutePermissions`, which runs immediately after in `main.ts`.
  */
 export function assertJwtSecretNotPlaceholder(secretsService: SecretsService): void {
   const PLACEHOLDER = 'default-jwt-secret-key-change-in-production';
   const jwtSecret = secretsService.getSecretSync('JWT_SECRET_KEY');
 
   if (jwtSecret === undefined || jwtSecret === PLACEHOLDER) {
-    // TASK-307 W7.A.7 — disambiguate "undefined" (warmup miss) from
-    // "literal placeholder" in both the log AND the thrown Error so a
-    // crash-loop reading container logs can pin the root cause without
-    // re-running with debug logging.
+    // Disambiguate "undefined" (warmup miss) from "literal placeholder" in
+    // both the log AND the thrown Error so a crash-loop reading container
+    // logs can pin the root cause without re-running with debug logging.
     const reason =
       jwtSecret === undefined
         ? 'JWT_SECRET_KEY is not warmed in SecretsService (undefined). Set a real secret in Vault / SecretsService before booting.'

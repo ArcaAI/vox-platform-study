@@ -2,8 +2,6 @@ import { AutoClassMapper, MediaEntity } from '@arcaai/domains';
 import { MediaResponse, PaginatedMediaResponse } from './dto';
 import { FetchResponse } from '../../../common';
 
-// TODO: Implement this
-
 export class MediaDtoMapper {
   static ToResponse(entity: MediaEntity): MediaResponse {
     return AutoClassMapper(entity, MediaResponse);

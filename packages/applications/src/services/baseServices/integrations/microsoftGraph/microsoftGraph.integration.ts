@@ -13,8 +13,6 @@ import {
 } from './microsoftGraphTypes';
 import { Injectable, Logger } from '@nestjs/common';
 
-// TODO: Implement this
-
 /**
  * MicrosoftGraphIntegration is a service that provides methods to interact with Microsoft Graph API.
  * It handles authentication and provides various functionalities such as fetching user details,

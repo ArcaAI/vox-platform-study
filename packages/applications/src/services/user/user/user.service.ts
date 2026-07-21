@@ -42,8 +42,6 @@ import { resolvePasswordPolicy, validatePasswordComplexity } from '../userPasswo
  */
 const USER_FILTER_MODEL = 'User';
 
-// TODO: Implement this
-
 @Injectable()
 export class UserService extends BaseService implements IUserService {
   constructor(

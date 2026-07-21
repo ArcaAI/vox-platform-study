@@ -3,8 +3,6 @@ import { FetchResponse, PaginatedQuery } from '../../common';
 import { IBaseService } from '../../interfaces';
 import { CreateWebhookRequest, UpdateWebhookRequest } from './dto';
 
-// TODO: Implement this
-
 export interface IWebhookService extends IBaseService {
   create(request: CreateWebhookRequest): Promise<WebhookEntity>;
   fetchAll(props: PaginatedQuery): Promise<FetchResponse<WebhookEntity>>;

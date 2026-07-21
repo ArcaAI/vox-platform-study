@@ -6,8 +6,6 @@ import { ModuleRef } from '@nestjs/core';
 import { IConfigService } from '../_meta/config';
 import { RedisConfigurationException } from './redis-config.exception';
 
-// TODO: Implement this
-
 @Injectable()
 export class RedisService implements IRedisService, OnModuleInit {
   private readonly logger = new Logger(RedisService.name);

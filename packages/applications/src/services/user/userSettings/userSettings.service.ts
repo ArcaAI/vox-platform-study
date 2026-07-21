@@ -10,8 +10,6 @@ import { CreateUserSettingsRequest, UpdateUserSettingsRequest, UpdateUserSetting
 import { USER_SETTINGS_NAMESPACES, validateUiDataGridValue } from './userSettings.namespaces';
 import { ValueType } from '@arcaai/domains';
 
-// TODO: Implement this
-
 @Injectable()
 export class UserSettingsService extends BaseService implements IUserSettingsService {
   constructor(

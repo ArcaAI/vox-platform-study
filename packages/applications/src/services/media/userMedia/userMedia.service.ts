@@ -8,8 +8,6 @@ import { CreateUserMediaRequest, UpdateUserMediaRequest } from './dto';
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 
-// TODO: Implement this
-
 @Injectable()
 export class UserMediaService extends BaseService implements IUserMediaService {
   constructor(

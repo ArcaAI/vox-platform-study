@@ -1,5 +1,15 @@
 # HOPE Traceability Matrix
 
+> **⚠️ This file is being superseded by the per-domain traceability under [`docs/traceability/`](./traceability/index.md).**
+> Start at **[`docs/traceability/index.md`](./traceability/index.md)** — the roll-up index and successor to this single table (TASK-538 rebuild). Domains already migrated there are re-verified against code and carry their own `Last verified` stamp; this file's rows for those domains are **superseded** and kept only until every domain moves.
+>
+> **Migrated (see the linked domain file, not the row below):**
+> - Rows **1, 2, 3, 8** → [`traceability/auth-identity.md`](./traceability/auth-identity.md) (also adds SSO/SAML and TASK-541 auth-revocation, which never had rows here).
+> - Rows **26 (`AiModel` registry part), 38, 39** → [`traceability/ai-models-providers.md`](./traceability/ai-models-providers.md) (also adds model discovery/lifecycle, runtime profiles, the AI-inference gateway, task defaults, and agent-trajectory ops).
+> - **TTS** (had ZERO rows here — an entire service) → [`traceability/tts.md`](./traceability/tts.md).
+>
+> All other rows below remain authoritative until their domain is migrated.
+
 Last updated: 2026-07-06
 
 Maps each business capability to the services, packages, data models, API routes, and tests that implement it. All route paths are verified against controllers/routers in code; gateway routes are relative to the global prefix `/api/v1`. Gaps are marked `—`.

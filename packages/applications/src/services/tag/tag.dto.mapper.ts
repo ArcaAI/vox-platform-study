@@ -2,8 +2,6 @@ import { AutoClassMapper, TagEntity } from '@arcaai/domains';
 import { TagResponse, PaginatedTagResponse } from './dto';
 import { FetchResponse } from '../../common';
 
-// TODO: Implement this
-
 export class TagDtoMapper {
   static ToResponse(entity: TagEntity): TagResponse {
     return AutoClassMapper(entity, TagResponse);

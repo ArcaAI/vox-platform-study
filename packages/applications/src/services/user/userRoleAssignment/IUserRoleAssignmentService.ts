@@ -3,8 +3,6 @@ import { FetchResponse, PaginatedQuery } from '../../../common';
 import { IBaseService } from '../../../interfaces';
 import { CreateUserRoleAssignmentRequest, UpdateUserRoleAssignmentRequest } from './dto';
 
-// TODO: Implement this
-
 /**
  * TASK-307 W6.1 — minimal projection of a Role row needed by the auth-issuance
  * path. Defined here (rather than re-using the auto-generated `RoleEntity`) so

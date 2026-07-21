@@ -8,8 +8,6 @@ import { CreateUserProfileRequest, UpdateUserProfileRequest } from './dto';
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 
-// TODO: Implement this
-
 @Injectable()
 export class UserProfileService extends BaseService implements IUserProfileService {
   constructor(

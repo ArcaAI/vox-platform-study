@@ -1,5 +1,5 @@
 /**
- * `StreamSessionTenantBindingService` — TASK-310 W7.A.9 / AC-3.
+ * `StreamSessionTenantBindingService`.
  *
  * Maps `sessionId → tenantId` for the lifetime of an STT-V2 streaming
  * session so the gateway can run a route-level tenant check on
@@ -25,7 +25,7 @@
  *                                        interceptor 404s, consistent
  *                                        with every other resolver)
  *
- * For the W7.A.9 carryover discussion (alternative designs: nested
+ * For a discussion of alternative designs (a nested
  * `/jobs/:id/stream-session/:sessionId` URL, STT-V2 returning tenantId
  * on its status endpoint, etc.) see the TSDoc on
  * `TranscriptionJobController.closeStreamSession`.
@@ -38,7 +38,7 @@ export const STREAM_SESSION_TENANT_KEY_PREFIX = 'stream-session-tenant:';
 export const STREAM_SESSION_TENANT_DEFAULT_TTL_SECONDS = 24 * 60 * 60; // 24h
 
 /**
- * TASK-351 P0-2 (C5) — sibling key carrying gateway-relevant session meta
+ * Sibling key carrying gateway-relevant session meta
  * (currently the negotiated audio sampleRate). Written by
  * `createStreamSession`, read once by the WS gateway at handshake so audio
  * frames are forwarded at the rate the client actually negotiated instead
@@ -75,8 +75,8 @@ export class StreamSessionTenantBindingService {
   }
 
   /**
-   * TASK-351 P0-2 (C5) — persist session meta (negotiated sampleRate) under
-   * a TTL-bounded sibling key. Same lifetime/posture as `bind()`.
+   * Persist session meta (negotiated sampleRate) under a TTL-bounded
+   * sibling key. Same lifetime/posture as `bind()`.
    */
   async bindSessionMeta(sessionId: string, meta: StreamSessionMeta, ttlSeconds: number = STREAM_SESSION_TENANT_DEFAULT_TTL_SECONDS): Promise<void> {
     if (!this.isValidSessionId(sessionId)) {

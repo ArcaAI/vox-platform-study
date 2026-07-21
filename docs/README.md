@@ -1,6 +1,6 @@
 # HOPE Documentation Index
 
-Last updated: 2026-07-04
+Owner: Platform Engineering · Introduced: 2026-07-04 · Last verified: 2026-07-21
 
 Index of everything under `docs/`. Start here.
 
@@ -43,15 +43,19 @@ docs/
 
 Active, ticket-based implementation documentation. One folder per ticket: `[TICKET]-[Short-Name]/README.md`, updated throughout the ticket lifecycle (single main document per ticket — no per-fix files).
 
-- **Numbering**: `TASK-XXX`. To assign a new number, take the highest existing ticket across `implementation/` and `archive/` and increment by 1.
-- **Latest ticket**: TASK-416 (k3s image pipeline fixes — pending). Recent: TASK-412 (documentation realignment), TASK-413 (dependency audit), TASK-414 (known-issues remediation), TASK-415 (Hope admin console).
+- **Numbering**: `TASK-XXX`. To assign a new number, take the highest existing ticket across `implementation/` and `archive/` and increment by 1 — the folders themselves are the source of truth for the current maximum.
 - **Required sections**: header (ticket, dates, status), requirement analysis, current-state evaluation, implementation plan (user-approved before coding), implementation summary, change history.
 - **Status values**: `Pending | In Progress | Completed | Blocked | Review`.
 - Completed/historical tickets are periodically moved to [`archive/`](./archive/).
 
 ## Backlog — `backlog/`
 
-Deliberately parked work items with context and pickup instructions. Current: [RESIDUALS-2026-07-02.md](./backlog/RESIDUALS-2026-07-02.md) (audit-payload field redaction sweep; MS-Graph live email credentials).
+Deliberately parked work items with context and pickup instructions:
+
+| Document | Contents |
+|---|---|
+| [2026-07-02-RESIDUALS.md](./backlog/2026-07-02-RESIDUALS.md) | Audit-payload field redaction sweep; MS-Graph live email credentials |
+| [2026-07-04-FEDL-MLFLOW-LEGACY.md](./backlog/2026-07-04-FEDL-MLFLOW-LEGACY.md) | Parked legacy federated-learning schema models + MinIO `mlflow` bucket (removal deferred — data-destructive) |
 
 ## Operations — `operations/`
 
@@ -59,11 +63,14 @@ Day-2 operator runbooks.
 
 | Document | Contents |
 |---|---|
+| [operations/inference/README.md](./operations/inference/README.md) | Production inference engines runbook; companion [model-retention.md](./operations/inference/model-retention.md) covers when models load, idle-TTL eviction, and runtime retention changes without a redeploy |
+| [operations/retrieval-corpus-ingestion/README.md](./operations/retrieval-corpus-ingestion/README.md) | Ingesting a licensed guideline corpus into the harness institutional-RAG store and enabling retrieval tiers (owner-run — not CI) |
+| [operations/tts-model-mirror/README.md](./operations/tts-model-mirror/README.md) | Mirroring the gated `ai4bharat/indic-parler-tts` weights into an internal ungated store for offline TTS GPU pods |
 | [operations/vault/README.md](./operations/vault/README.md) | HOPE HA Vault operator runbook: architecture (3-node Raft + Transit auto-unseal), bootstrap, rotation, failover, recovery, monitoring |
 
 ## Research — `research/`
 
-Technical research, homelab infrastructure guides, security audits, and architecture prior art. See [research/README.md](./research/README.md) for the full index.
+Technical research, homelab infrastructure guides, and architecture prior art. See [research/README.md](./research/README.md) for the full index.
 
 | Subfolder | Contents |
 |---|---|
@@ -72,9 +79,10 @@ Technical research, homelab infrastructure guides, security audits, and architec
 | [research/networking/](./research/networking/) | SSH/Cloudflare Tunnel access, database connectivity |
 | [research/ai-ml/](./research/ai-ml/) | Whisper ONNX optimization research |
 | [research/architecture/](./research/architecture/) | Streaming-timeout audit, encounter-workflow fit-gap analysis, system-config/multi-tenancy design notes (prior art — where it conflicts with `docs/architecture/`, the latter wins) |
-| [research/security/](./research/security/) | Security audit reports and vulnerability scans per app/package |
-| [research/clinical-harness/](./research/clinical-harness/) | Medical-AI research backing the clinical documentation harness (TASK-330) |
+| [research/clinical-harness/](./research/clinical-harness/) | Medical-AI research backing the clinical documentation harness (harness prior art) |
 | [research/configs/](./research/configs/) | Ready-to-deploy config files (GitLab, MinIO, Postgres HA, Redis, Langfuse) |
+
+> The former `research/security/` corpus (per-app security audit reports and vulnerability scans) was removed from HEAD; recover it from git history if needed.
 
 ## Archive — `archive/`
 

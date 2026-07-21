@@ -2,8 +2,6 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsString, IsOptional, IsEmail } from 'class-validator';
 import { BaseRequest } from '../../../../common';
 
-// TODO: Implement this
-
 export class CreateOAuthUserRequest extends BaseRequest {
   @ApiProperty({ description: 'The unique identifier for the user in the external system.' })
   @IsString()

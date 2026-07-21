@@ -1,4 +1,4 @@
-// TASK-302 Phase 3 - file-based grep tests that pin the Phase 3
+// File-based grep tests that pin secrets-handling
 // migrations in place. Each test reads the source file and asserts
 // the (replaced) process.env line is gone and the SecretsService call
 // is present. Faster + more deterministic than spinning up a Nest
@@ -19,7 +19,7 @@ describe('Phase 3 — secrets migration grep', () => {
     expect(src).toMatch(/secretsService\.getSecret\(['"]SESSION_SECRET_KEY['"]\)/);
   });
 
-  // TASK-307 W2.1 follow-up — boot moved from main.ts into the
+  // Boot moved from main.ts into the
   // SecretsModule.forRoot async useFactory (driven by
   // COMMON_SERVICE_WARMUP_KEYS) so NestJS awaits the warmup before
   // any provider that reads the cache synchronously (JwtStrategy,
@@ -38,7 +38,7 @@ describe('Phase 3 — secrets migration grep', () => {
   it('main.ts no longer calls secretsService.boot() directly (factory handles it)', () => {
     const src = readSource('apps/api/src/main.ts');
     expect(src).not.toMatch(/secretsService\.boot\(/);
-    // The placeholder audit (W2.2) is still invoked after the
+    // The placeholder audit is still invoked after the
     // factory has warmed the cache — defense-in-depth.
     expect(src).toMatch(/assertJwtSecretNotPlaceholder\(secretsService\)/);
   });
@@ -51,7 +51,7 @@ describe('Phase 3 — secrets migration grep', () => {
   });
 });
 
-// TASK-312 B.9 — apps/api/.env.production must carry NO plaintext secret
+// apps/api/.env.production must carry NO plaintext secret
 // material. All secrets resolve from Vault (warmup keys + dynamic DB creds);
 // AppRole credentials arrive via file mounts. Pin the secret-free shape so a
 // future edit can't silently reintroduce a plaintext secret.

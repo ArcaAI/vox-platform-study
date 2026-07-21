@@ -2,8 +2,6 @@ import { AutoClassMapper, UserProfileEntity } from '@arcaai/domains';
 import { UserProfileResponse, PaginatedUserProfileResponse } from './dto';
 import { FetchResponse } from '../../../common';
 
-// TODO: Implement this
-
 export class UserProfileDtoMapper {
   static ToResponse(entity: UserProfileEntity): UserProfileResponse {
     return AutoClassMapper(entity, UserProfileResponse);

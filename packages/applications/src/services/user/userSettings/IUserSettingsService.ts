@@ -3,8 +3,6 @@ import { FetchResponse, PaginatedQuery } from '../../../common';
 import { IBaseService } from '../../../interfaces';
 import { CreateUserSettingsRequest, UpdateUserSettingsRequest, UpdateUserSettingByKeyRequest } from './dto';
 
-// TODO: Implement this
-
 export interface IUserSettingsService extends IBaseService {
   create(request: CreateUserSettingsRequest): Promise<UserSettingsEntity>;
   fetchAll(props: PaginatedQuery): Promise<FetchResponse<UserSettingsEntity>>;

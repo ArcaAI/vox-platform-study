@@ -3,8 +3,6 @@ import { FetchResponse, PaginatedQuery } from '../../../common';
 import { IBaseService } from '../../../interfaces';
 import { CreateUserMediaRequest, UpdateUserMediaRequest } from './dto';
 
-// TODO: Implement this
-
 export interface IUserMediaService extends IBaseService {
   create(request: CreateUserMediaRequest): Promise<UserMediaEntity>;
   fetchAll(props: PaginatedQuery): Promise<FetchResponse<UserMediaEntity>>;

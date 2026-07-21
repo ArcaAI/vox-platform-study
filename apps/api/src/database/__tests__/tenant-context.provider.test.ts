@@ -1,5 +1,5 @@
 /**
- * TASK-305 Phase B.7 unit test — `ClsTenantContextProvider`.
+ * Unit test — `ClsTenantContextProvider`.
  *
  * Verifies the CLS ↔ Prisma-extension adapter without booting NestJS or
  * touching a real database. We construct a minimal `ClsService` stub and
@@ -92,7 +92,7 @@ describe('ClsTenantContextProvider', () => {
     expect(provider.getTenantId()).toBe('tenant-from-user');
   });
 
-  // TASK-417 — SUPER_ADMIN is retired: the literal must NOT elevate at the
+  // SUPER_ADMIN is retired: the literal must NOT elevate at the
   // DB-extension layer anymore.
   it('isSuperAdmin is FALSE for the retired SUPER_ADMIN role literal', () => {
     const provider = new ClsTenantContextProvider(
@@ -104,7 +104,7 @@ describe('ClsTenantContextProvider', () => {
     expect(provider.isSuperAdmin()).toBe(false);
   });
 
-  // AC-06 (TASK-336) / TASK-417 — GLOBAL_ADMIN is the single elevated role
+  // GLOBAL_ADMIN is the single elevated role
   // that receives the cross-tenant pass-through at the DB-extension layer.
   it('isSuperAdmin reflects the GLOBAL_ADMIN role on the user', () => {
     const provider = new ClsTenantContextProvider(

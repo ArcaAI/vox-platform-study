@@ -3,8 +3,6 @@ import { MqttClient, connect } from 'mqtt';
 import { IMqttService } from './IMqttService';
 import { IConfigService } from '../_meta/';
 
-// TODO: Implement this
-
 /**
  * MqttService is responsible for managing the MQTT client connection,
  * subscribing to topics, and handling incoming messages.

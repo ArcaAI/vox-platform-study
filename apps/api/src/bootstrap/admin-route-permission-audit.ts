@@ -12,8 +12,7 @@ import { REQUIRED_PERMISSIONS_KEY, SKIP_AUTH_KEY } from '@arcaai/applications';
 import './third-party-public-routes';
 
 /**
- * Boot-time route permission audit (originally Phase 0 Item 3 / TASK-302
- * Stream A; widened by TASK-307 W4a.1).
+ * Boot-time route permission audit.
  *
  * Walks every controller registered on the Nest application context and
  * refuses to start if any HTTP route lacks BOTH:
@@ -23,36 +22,35 @@ import './third-party-public-routes';
  *      including empty — counts as an explicit "auth-required" label,
  *      matching `AuthorizationGuard.canActivate`'s runtime semantics).
  *
- * TASK-319 F6 narrows rule (2) for the `/admin/*` surface: an EMPTY permission
+ * Rule (2) is narrowed for the `/admin/*` surface: an EMPTY permission
  * array (`@Authorize()` with no tuple) is rejected on admin routes. Admin
  * endpoints must declare a concrete permission (e.g. `@CanManage('Tenant')`),
  * so an auth-only gate can never silently expose an admin route to every
  * authenticated user. End-user routes keep the lenient "any array" rule.
  *
  * Diagnostic-only — this function does NOT change runtime guard
- * behaviour. It surfaces drift before TASK-307 W4b registers
- * `UnifiedAuthGuard` as `APP_GUARD`, so any forgotten decorator is
- * caught at boot rather than silently leaking PHI in production.
+ * behaviour. It surfaces drift before `UnifiedAuthGuard` runs as
+ * `APP_GUARD`, so any forgotten decorator is caught at boot rather than
+ * silently leaking PHI in production.
  *
  * Implementation notes:
  *
- * - The previous (TASK-302) version walked the Express router stack and
- *   read metadata via `Reflect.getMetadata` on the bound handler only.
+ * - `Reflect.getMetadata` on the bound handler alone is not enough:
  *   NestJS's `RouterExplorer.copyMetadataToCallback` copies METHOD-level
  *   metadata to the route handler but does NOT copy class-level metadata
- *   (verified empirically). This made class-level decorators like
+ *   (verified empirically). That would make class-level decorators like
  *   `@CanManage('Tenant')` on `TenantController` invisible to the audit,
- *   so the previous audit silently passed routes whose methods relied
- *   entirely on class-level annotations. The widened audit uses
- *   `Reflector.getAllAndOverride([methodRef, classRef])` so the audit
- *   sees exactly what `AuthorizationGuard` sees at request time.
+ *   silently passing routes whose methods rely entirely on class-level
+ *   annotations. Using `Reflector.getAllAndOverride([methodRef, classRef])`
+ *   instead makes the audit see exactly what `AuthorizationGuard` sees at
+ *   request time.
  * - We use `ModulesContainer` (auto-provided by NestJS's `InternalCoreModule`)
  *   directly instead of `DiscoveryService` so we don't have to import
- *   `DiscoveryModule` into `AppModule` (which would conflict with W4b's
- *   pending changes to that file).
+ *   `DiscoveryModule` into `AppModule`, avoiding a conflict with the guard
+ *   wiring there.
  */
-// TASK-319 F6 — matches `/admin/...` and the versioned `/api/v<N>/admin/...`
-// prefix used in production. Anchored so only the admin surface is narrowed.
+// Matches `/admin/...` and the versioned `/api/v<N>/admin/...` prefix used
+// in production. Anchored so only the admin surface is narrowed.
 const ADMIN_ROUTE_RE = /^\/(api\/v\d+\/)?admin\//;
 
 export function auditAdminRoutePermissions(app: INestApplicationContext): void {
@@ -94,8 +92,8 @@ export function auditAdminRoutePermissions(app: INestApplicationContext): void {
         // decorator is present — the runtime guard treats this as
         // "authentication required, no specific permission".
         if (Array.isArray(required)) {
-          // TASK-319 F6: an empty @Authorize() (auth-only) is acceptable on
-          // end-user routes but a security smell on the /admin surface — every
+          // An empty @Authorize() (auth-only) is acceptable on end-user
+          // routes but a security smell on the /admin surface — every
           // admin route must name the concrete permission it requires.
           if (isAdminRoute && required.length === 0) {
             offenders.push(
