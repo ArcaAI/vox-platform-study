@@ -16,7 +16,7 @@ import { firstValueFrom, throwError } from 'rxjs';
 import { Counter } from 'prom-client';
 
 import { ExceptionInterceptor } from '../exception.interceptor';
-import { DataNotFoundException, OptimisticConcurrencyException, BaseException, QuotaExceededException } from '@arcaai/exceptions';
+import { ArgumentInvalidException, DataNotFoundException, OptimisticConcurrencyException, BaseException, QuotaExceededException } from '@arcaai/exceptions';
 import { PrismaClientKnownRequestError } from '@arcaai/database';
 import { optimisticLockConflictTotal } from '../../observability/metrics';
 
@@ -716,5 +716,67 @@ describe('TASK-310 W7.A.14 — Prisma error code → HTTP status mapping (AC-1)'
       const body = JSON.stringify(caught.getResponse());
       expect(body).not.toContain('secret');
     }
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// TASK-534 e2e G4 — ArgumentInvalidException -> 400 Bad Request.
+//
+// Services signal invalid input with `ArgumentInvalidException` (rule-04 house
+// pattern: unwritable registry tiers, descriptor type mismatches, no-op
+// updates, bad slugs, …). It extends BaseException, and before this mapping it
+// fell into the generic BaseException branch and surfaced as a 500 "Internal
+// server error" — observed live on `PUT /admin/settings/registry/:key`.
+// ───────────────────────────────────────────────────────────────────────────
+describe('TASK-534 G4 — ArgumentInvalidException -> 400', () => {
+  let interceptor: ExceptionInterceptor;
+
+  beforeEach(() => {
+    const cls: any = {
+      getId: () => 'corr-g4',
+      get: () => undefined,
+    };
+    interceptor = new ExceptionInterceptor(cls);
+  });
+
+  function createMockContext(): ExecutionContext {
+    return {
+      switchToHttp: () => ({
+        getRequest: () => ({ method: 'PUT', url: '/api/v1/admin/settings/registry/rate-limit.enabled' }),
+        getResponse: () => ({}),
+      }),
+    } as unknown as ExecutionContext;
+  }
+
+  function createErrorHandler(err: unknown): CallHandler {
+    return { handle: () => throwError(() => err) };
+  }
+
+  it('maps ArgumentInvalidException to HttpException(BAD_REQUEST) with the toJSON body', async () => {
+    const err = new ArgumentInvalidException("Setting 'rate-limit.enabled' expects a boolean (got string).");
+
+    let caught: unknown;
+    await firstValueFrom(interceptor.intercept(createMockContext(), createErrorHandler(err))).catch((e) => {
+      caught = e;
+    });
+
+    expect(caught).toBeInstanceOf(HttpException);
+    const http = caught as HttpException;
+    expect(http.getStatus()).toBe(HttpStatus.BAD_REQUEST);
+    const body = http.getResponse() as { code?: string; message?: string };
+    expect(body.code).toBe('GENERIC.ARGUMENT_INVALID');
+    expect(body.message).toContain('expects a boolean');
+  });
+
+  it('still maps a plain (non-ArgumentInvalid) BaseException to 500', async () => {
+    class GenericException extends BaseException {
+      code = 'TEST.GENERIC';
+    }
+    let caught: unknown;
+    await firstValueFrom(interceptor.intercept(createMockContext(), createErrorHandler(new GenericException('boom')))).catch((e) => {
+      caught = e;
+    });
+    expect(caught).toBeInstanceOf(HttpException);
+    expect((caught as HttpException).getStatus()).toBe(HttpStatus.INTERNAL_SERVER_ERROR);
   });
 });

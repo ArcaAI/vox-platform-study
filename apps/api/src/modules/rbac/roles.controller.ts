@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus, Inject, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { IRbacRoleService, IUserRoleAssignmentService } from '@arcaai/applications';
-import { CanManage, CanAny } from '../../decorators';
+import { CanCreate, CanManage, CanAny } from '../../decorators';
 import {
   BreakGlassDto,
   CreateRoleDto,
@@ -127,10 +127,16 @@ export class RolesController {
 
   /**
    * TASK-501 — clone a role (SYSTEM or CUSTOM) into a new CUSTOM role,
-   * copying its policy set. Any admin holding manage:Role may call this.
+   * copying its policy set. Declared `create:Role` (overriding the class-level
+   * `manage:Role` via getAllAndOverride) because a clone only ever CREATES a
+   * CUSTOM role — the ability the seeded tenant grant (`rbac-tenant-manage`:
+   * `create Role { isSystemRole: false }`) already holds. This is what makes
+   * the TASK-501 requirement "any admin may clone" true for tenant admins;
+   * requiring `manage:Role` (global admins only) locked them out (TASK-534 e2e
+   * G9). Owner may reverse to global-only by restoring `@CanManage('Role')`.
    */
   @Post(':id/clone')
-  @CanManage('Role')
+  @CanCreate('Role')
   @ApiOperation({ summary: 'Clone a role (SYSTEM or CUSTOM) into a new CUSTOM role, copying its policies' })
   @ApiResponse({ status: 201, description: 'Role cloned', type: RoleResponse })
   @ApiResponse({ status: 404, description: 'Source role not found' })

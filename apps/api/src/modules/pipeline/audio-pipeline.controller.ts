@@ -65,8 +65,14 @@ export class AudioPipelineController {
   })
   @ApiParam({ name: 'id', description: 'Pipeline ID', type: String })
   @ApiResponse({ status: 404, description: 'Pipeline not found' })
-  async fetchById(@Param('id') id: string): Promise<PipelineResponse | null> {
-    return this.pipelineService.getById(id);
+  async fetchById(@Param('id') id: string): Promise<PipelineResponse> {
+    const pipeline = await this.pipelineService.getById(id);
+    if (!pipeline) {
+      // TASK-534 e2e G7 — a null service result used to serialize as HTTP 200
+      // with an EMPTY body (unparseable as JSON); an absent row is a 404.
+      throw new NotFoundException(`Pipeline '${id}' not found`);
+    }
+    return pipeline;
   }
 
   @ApiEndpoint({
@@ -76,8 +82,13 @@ export class AudioPipelineController {
   })
   @ApiParam({ name: 'slug', description: 'Pipeline slug', type: String })
   @ApiResponse({ status: 404, description: 'Pipeline not found' })
-  async fetchBySlug(@Param('slug') slug: string): Promise<PipelineResponse | null> {
-    return this.pipelineService.getBySlug(slug);
+  async fetchBySlug(@Param('slug') slug: string): Promise<PipelineResponse> {
+    const pipeline = await this.pipelineService.getBySlug(slug);
+    if (!pipeline) {
+      // TASK-534 e2e G7 — see fetchById: null must be a 404, not a 200-empty.
+      throw new NotFoundException(`Pipeline with slug '${slug}' not found`);
+    }
+    return pipeline;
   }
 
   @ApiEndpoint({

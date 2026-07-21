@@ -24,6 +24,12 @@
 import { test, expect } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
+// TASK-534 e2e G7 — every test in this file reads/mutates the SAME seeded
+// template-copy row (`TEMPLATE_SLUG`); under `fullyParallel: true` the toggle
+// test's disabled window made concurrent slug reads return empty bodies. Run
+// strictly in order.
+test.describe.configure({ mode: 'serial' });
+
 /** The refusal text is a product surface — the console renders it verbatim. */
 const LOCK_MESSAGE = 'Template copies are read-only — clone to customize';
 
@@ -157,6 +163,7 @@ test.describe('TASK-531 — clone is the customization path', () => {
     const token = await adminToken(request);
 
     const detail = await request.get(`/api/v1/admin/audio/pipelines/slug/${TEMPLATE_SLUG}`, { headers: auth(token) });
+    expect(detail.status(), 'seeded template copy must be readable by slug').toBe(200);
     const source = (await detail.json()) as { id: string; configYaml: string };
 
     const slug = `task-531-clone-${Date.now()}`;
@@ -199,6 +206,7 @@ test.describe('TASK-531 — clone is the customization path', () => {
     const token = await adminToken(request);
 
     const detail = await request.get(`/api/v1/admin/audio/pipelines/slug/${TEMPLATE_SLUG}`, { headers: auth(token) });
+    expect(detail.status(), 'seeded template copy must be readable by slug').toBe(200);
     const source = (await detail.json()) as { id: string; slug: string };
 
     const conflict = await request.post(`/api/v1/admin/audio/pipelines/${source.id}/clone`, {

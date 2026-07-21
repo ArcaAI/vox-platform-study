@@ -17,7 +17,8 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
+import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { AiProviderConnectionFactory, SYSTEM_TENANT_ID, SysEventType } from '@arcaai/domains';
 import { AiProviderConnectionService } from '../ai-provider-connection.service';
 
@@ -176,6 +177,44 @@ describe('AiProviderConnectionService — secret containment (§5 test 3)', () =
   it('refuses to write a key when Vault is not configured (no plaintext-at-rest fallback)', async () => {
     const { svc } = makeService({ withVault: false });
     await expect(svc.upsertRow('azure', { enabled: true, apiKey: 'sk-live' }, TENANT)).rejects.toThrow(/Vault/i);
+  });
+
+  // ── TASK-534 e2e G3 — precondition verdicts come BEFORE any Vault call ────
+
+  it('G3: a stale expectedVersion on an ABSENT row 412s without ever calling Transit (even with an apiKey in the body)', async () => {
+    const { svc, secrets } = makeService();
+    await expect(svc.upsertRow('azure', { apiKey: 'probe-key', expectedVersion: 9999 }, TENANT)).rejects.toBeInstanceOf(
+      OptimisticConcurrencyException,
+    );
+    expect(secrets!.encrypt).not.toHaveBeenCalled();
+  });
+
+  it('G2: expectedVersion 0 (create-intent) against an EXISTING row at version >= 1 is STALE → 412', async () => {
+    // With `If-Match: "0"` now accepted by the gateway parser (TASK-534 G2
+    // owner decision), the service CAS is the line of defense: 0 only means
+    // "create" when no row exists; against a materialized row it is drift.
+    const { svc, repo } = makeService();
+    repo.findByTenantAndProvider.mockResolvedValue(makeRow()); // factory rows start at version 1
+    await expect(svc.upsertRow('azure', { enabled: false, expectedVersion: 0 }, TENANT)).rejects.toBeInstanceOf(
+      OptimisticConcurrencyException,
+    );
+  });
+
+  it('G3: a stale expectedVersion on an EXISTING row 412s without calling Transit', async () => {
+    const { svc, repo, secrets } = makeService();
+    repo.findByTenantAndProvider.mockResolvedValue(makeRow());
+    await expect(svc.upsertRow('azure', { apiKey: 'probe-key', expectedVersion: 9999 }, TENANT)).rejects.toBeInstanceOf(
+      OptimisticConcurrencyException,
+    );
+    expect(secrets!.encrypt).not.toHaveBeenCalled();
+  });
+
+  it('G3: a Transit failure surfaces as 503 ServiceUnavailable, not a raw 500', async () => {
+    const { svc, secrets } = makeService();
+    (secrets!.encrypt as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Transit is not supported by this provider'));
+    await expect(svc.upsertRow('azure', { apiKey: 'probe-key', expectedVersion: 0 }, TENANT)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
   });
 });
 

@@ -1,4 +1,13 @@
-import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { ArgumentInvalidException, OptimisticConcurrencyException } from '@arcaai/exceptions';
@@ -83,10 +92,6 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
     const tx = this.crossTenantLane(scopedTenantId);
     const existing = await this.connectionRepository.findByTenantAndProvider(scopedTenantId, provider, tx);
 
-    // Encrypt only when the caller actually supplied a key; omitting `apiKey`
-    // leaves the stored ciphertext untouched (rotate vs. edit-other-fields).
-    const secret = dto.apiKey !== undefined ? await this.encryptKey(dto.apiKey) : undefined;
-
     if (!existing) {
       if (dto.expectedVersion !== undefined && dto.expectedVersion !== 0) {
         throw new OptimisticConcurrencyException('AiProviderConnection', `${scopedTenantId}:${provider}`, {
@@ -94,6 +99,10 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
           currentVersion: 0,
         });
       }
+      // Encrypt only when the caller actually supplied a key — and only AFTER
+      // the precondition verdict above (TASK-534 e2e G3: encrypting first
+      // turned a stale-If-Match 412 into a 500 whenever Transit was down).
+      const secret = dto.apiKey !== undefined ? await this.encryptKey(dto.apiKey) : undefined;
       const entity = AiProviderConnectionFactory.CreateAiProviderConnection({
         tenantId: scopedTenantId,
         provider,
@@ -116,6 +125,29 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
       return AiProviderConnectionDtoMapper.toResponse(saved);
     }
 
+    if (dto.expectedVersion === undefined) {
+      // A CAS update without a token cannot be verified. The gateway's
+      // `@RequiresIfMatch()` 428s before this; this covers off-route callers.
+      throw new OptimisticConcurrencyException('AiProviderConnection', existing.id, {
+        expectedVersion: dto.expectedVersion,
+        currentVersion: existing.version,
+      });
+    }
+    if (dto.expectedVersion !== existing.version) {
+      // Fast-fail the CAS against the row just read, BEFORE any Vault call —
+      // `updateWithVersion` below remains the atomic backstop for races.
+      // (TASK-534 e2e G3: pre-fix, a stale precondition with an `apiKey` in the
+      // body reached Transit first and surfaced as a 500 when Vault was down.)
+      throw new OptimisticConcurrencyException('AiProviderConnection', existing.id, {
+        expectedVersion: dto.expectedVersion,
+        currentVersion: existing.version,
+      });
+    }
+
+    // Encrypt only when the caller actually supplied a key; omitting `apiKey`
+    // leaves the stored ciphertext untouched (rotate vs. edit-other-fields).
+    const secret = dto.apiKey !== undefined ? await this.encryptKey(dto.apiKey) : undefined;
+
     const changes: Record<string, unknown> = {};
     if (dto.baseUrl !== undefined) changes.baseUrl = dto.baseUrl;
     if (dto.region !== undefined) changes.region = dto.region;
@@ -131,14 +163,6 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
     await this.updateEntity(existing, changes);
     if (!existing.hasChanges) {
       throw new ArgumentInvalidException('No changes to write to.');
-    }
-    if (dto.expectedVersion === undefined) {
-      // A CAS update without a token cannot be verified. The gateway's
-      // `@RequiresIfMatch()` 428s before this; this covers off-route callers.
-      throw new OptimisticConcurrencyException('AiProviderConnection', existing.id, {
-        expectedVersion: dto.expectedVersion,
-        currentVersion: existing.version,
-      });
     }
 
     const previousVersion = existing.version;
@@ -278,7 +302,18 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
         'Provider API keys require the Vault secrets provider (SECRETS_PROVIDER=vault). ' + 'There is no plaintext-at-rest fallback.',
       );
     }
-    return encryptSecretField(this.secretsService, plaintext);
+    try {
+      return await encryptSecretField(this.secretsService, plaintext);
+    } catch (err) {
+      // TASK-534 e2e G3 — a Transit failure (Vault down / provider without
+      // Transit support) is a dependency outage, not an internal fault: map to
+      // 503 so the client retries rather than filing a 500. Never log or echo
+      // the plaintext.
+      this.logger.warn(`Transit encryption unavailable for provider-key write: ${err instanceof Error ? err.message : String(err)}`);
+      throw new ServiceUnavailableException(
+        'Secret encryption is temporarily unavailable; the key was not stored. Retry once Vault Transit is reachable.',
+      );
+    }
   }
 
   private toResolved(entity: AiProviderConnectionEntity, source: 'tenant' | 'system'): ResolvedProviderConnection {

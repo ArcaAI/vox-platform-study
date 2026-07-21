@@ -16,7 +16,12 @@ import { AiModelDiscoveryService } from './ai-model-discovery.service';
  */
 @Module({
   imports: [AiModelServiceModule, CommonServiceModule, HttpModule],
-  controllers: [AiModelAdminController, AiModelDiscoveryController],
+  // ORDER MATTERS (TASK-534 e2e G6): Nest registers routes in controller order,
+  // and `AiModelAdminController` carries `GET ':id'` — if it registers first it
+  // captures `GET admin/ai-models/discovery` as id="discovery" (404). The
+  // discovery controller's static paths must register BEFORE the `:id` family
+  // (same static-route-wins rule as the settings registry, task-524 spec).
+  controllers: [AiModelDiscoveryController, AiModelAdminController],
   providers: [AiModelDiscoveryService],
 })
 export class AiModelModule {}
