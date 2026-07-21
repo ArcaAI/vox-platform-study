@@ -3,8 +3,6 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 /**
- * Tests for Phase 2: Global Prefix Change (TASK-210)
- *
  * Reduced after module removal — internal route exclusion tests removed
  * since stt-v2 (the only internal route consumer) was removed.
  */

@@ -37,7 +37,7 @@ import { ThrottleConfigModule, TieredThrottlerGuard } from './modules/throttle';
 
 // Feature modules
 import { RateLimitAdminModule } from './modules/admin-rate-limit/rate-limit-admin.module';
-// TASK-419 item 3 — /admin/ai-services read-only Guardrail/NLP proxy plane.
+// /admin/ai-services read-only Guardrail/NLP proxy plane.
 import { AiInferenceModule } from './modules/ai-inference/ai-inference.module';
 import { AiProviderConnectionModule } from './modules/ai-provider-connection/ai-provider-connection.module';
 import { AiRuntimeProfileModule } from './modules/ai-runtime-profile/ai-runtime-profile.module';
@@ -46,31 +46,31 @@ import { AiServiceAdminModule } from './modules/ai-service-admin/ai-service-admi
 import { ApiKeyModule } from './modules/api-key/api-key.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { AuthModule } from './modules/auth/auth.module';
-// TASK-390 #24 (ST1) — /admin/settings global-settings CRUD (global-admin tier).
+// /admin/settings global-settings CRUD (global-admin tier).
 import { GlobalSettingModule } from './modules/global-setting/global-setting.module';
-// TASK-504 Phase 3c — /admin/settings/catalog capability inventory (registered
+// /admin/settings/catalog capability inventory (registered
 // BEFORE GlobalSettingModule so the static route wins over admin/settings/:id).
 import { SettingsCatalogModule } from './modules/settings-catalog/settings-catalog.module';
 import { ConsultationModule } from './modules/consultation/consultation.module';
 import { DepartmentModule } from './modules/department/department.module';
 import { DnaWritingStyleModule } from './modules/dna-writing-style/dna-writing-style.module';
 import { EntitlementsApiModule } from './modules/entitlements/entitlements.module';
-// TASK-330 Phase 6 — harness administration & observability console (/admin/harness/*).
+// harness administration & observability console (/admin/harness/*).
 import { HarnessAdminModule } from './modules/harness-admin/harness-admin.module';
 // ordered agentic-session trajectory read plane (/admin/agent-trajectory/*).
 import { AgentTrajectoryModule } from './modules/agent-trajectory/agent-trajectory.module';
 // Phase 3A item 6 — read-only agentic instruction inventory (/admin/agentic/*).
 import { AgenticAdminModule } from './modules/agentic-admin/agentic-admin.module';
 import { McpAdminModule } from './modules/mcp-admin/mcp-admin.module';
-// TASK-356 Phase 5 — realtime-pipeline toggle cascade admin (/admin/harness/pipeline-policy).
+// realtime-pipeline toggle cascade admin (/admin/harness/pipeline-policy).
 import { PipelinePolicyAdminModule } from './modules/pipeline-policy-admin/pipeline-policy-admin.module';
 import { TenantTtsConfigModule } from './modules/tenant-tts-config/tenant-tts-config.module';
-// TASK-498 — tenant-scoped external identity provider (OIDC) admin surface.
+// tenant-scoped external identity provider (OIDC) admin surface.
 import { TenantIdpConfigModule } from './modules/tenant-idp-config/tenant-idp-config.module';
 import { HealthModule } from './modules/health/health.module';
 import { InternalModule } from './modules/internal/internal.module';
 import { MonitoringModule } from './modules/monitoring/monitoring.module';
-// TASK-419 item 2 — /admin/notifications (read/update/delete over system-emitted rows).
+// /admin/notifications (read/update/delete over system-emitted rows).
 import { NotificationModule } from './modules/notification/notification.module';
 import { PlatformMetricsModule } from './modules/platform-metrics/platform-metrics.module';
 import { PipelineModule } from './modules/pipeline/pipeline.module';
@@ -80,7 +80,7 @@ import { PrismaStudioModule, shouldEnablePrismaStudio } from './modules/pstudio/
 import { PrismaStudioStatusModule } from './modules/pstudio/pstudio-status.module';
 import { QueueAdminModule } from './modules/queue-admin/queue-admin.module';
 import { RbacModule } from './modules/rbac/rbac.module';
-// TASK-419 item 2 — /admin/resource-subscriptions (CRUD + toggle).
+// /admin/resource-subscriptions (CRUD + toggle).
 import { ResourceSubscriptionModule } from './modules/resource-subscription/resource-subscription.module';
 import { StorageAccessKeyModule } from './modules/storage-access-key/storage-access-key.module';
 import { StorageModule } from './modules/storage/storage.module';
@@ -92,7 +92,7 @@ import { TenantStorageConfigModule } from './modules/tenant-storage-config/tenan
 import { TenantModule } from './modules/tenant/tenant.module';
 import { UserModule } from './modules/user/user.module';
 import { VoiceProfileModule } from './modules/voice-profile/voice-profile.module';
-// TASK-419 item 2 — /admin/webhooks (CRUD + delivery-log reads).
+// /admin/webhooks (CRUD + delivery-log reads).
 import { WebhookModule } from './modules/webhook/webhook.module';
 
 const interceptors = [
@@ -122,20 +122,19 @@ const interceptors = [
 // so authentication is established before any concurrency / ownership
 // check that depends on the resolved CLS user / tenant context.
 //
-// TASK-307 W4b (AC-13, audit C-7 part 2) — register UnifiedAuthGuard as
-// APP_GUARD so the application default is deny. `@Public()` is the
-// explicit opt-out (read via SKIP_AUTH_KEY metadata); `@Authorize()` /
-// `@CanXxx()` decorators continue to gate per-route authorization on
-// top of the unified auth pass.
+// UnifiedAuthGuard registers as APP_GUARD so the application default is
+// deny. `@Public()` is the explicit opt-out (read via SKIP_AUTH_KEY
+// metadata); `@Authorize()` / `@CanXxx()` decorators continue to gate
+// per-route authorization on top of the unified auth pass.
 //
-// TASK-302 Stream D Phase D (D.2) — global guard that propagates the
+// RequiresIfMatchGuard is the global guard that propagates the
 // `@RequiresIfMatch()` marker onto `req._requiresIfMatch`. The companion
 // `@ExpectedVersion()` param decorator then throws `428 Precondition
 // Required` if the inbound `If-Match` header is absent on an annotated
 // route. Non-annotated routes pay only one `Reflector.getAllAndOverride`
 // call per request — effectively free.
 const guards = [
-  // TASK-315 — TieredThrottlerGuard runs FIRST (before auth resolution) so
+  // TieredThrottlerGuard runs FIRST (before auth resolution) so
   // brute-force / DoS protection rejects abusive traffic before the heavier
   // authentication + tenant/CLS resolution work executes. Only the `default`
   // tier gates every route; strict/heavy/relaxed are opt-in per route.
@@ -147,7 +146,7 @@ const guards = [
     provide: APP_GUARD,
     useClass: UnifiedAuthGuard,
   },
-  // TASK-309 — runs AFTER UnifiedAuthGuard so the CLS tenantId is populated.
+  // Runs AFTER UnifiedAuthGuard so the CLS tenantId is populated.
   // Closes the @Sse() cross-tenant leak: the global
   // TenantOwnedResourceInterceptor throws 404 too late for SSE (the stream has
   // already opened), so this guard re-runs the ownership assertion BEFORE the
@@ -162,13 +161,11 @@ const guards = [
   },
 ];
 
-// TASK-306 W5.5.4 / P3.3 / AC-12 (closes audit M-8) — global exception
-// filter that maps `DataNotFoundException` (thrown by
+// Global exception filter that maps `DataNotFoundException` (thrown by
 // `Repository<T>.findById` and friends) to a generic
 // `404 { message: "Resource not found" }` response, dropping the model
-// name + row id from the body. Scoped ONLY to `DataNotFoundException`
-// per the user-locked decision in plan README §10 Q2: the W5.1.3 /
-// W5.2 / W5.3 service-layer guards already throw
+// name + row id from the body. Scoped ONLY to `DataNotFoundException` —
+// service-layer guards elsewhere already throw
 // `NotFoundException("Resource not found")` directly with the right
 // message and need no filter wrapping.
 const filters = [
@@ -210,16 +207,16 @@ const common = [
       idGenerator: (req: any) => req.headers['X-Request-Id'] ?? uuidv7(),
     },
   }),
-  // TASK-315 — registers the global ThrottlerModule (named throttlers + Redis/
+  // Registers the global ThrottlerModule (named throttlers + Redis/
   // in-memory storage) and exports TieredThrottlerGuard so the APP_GUARD wired
   // in `guards[]` below can be constructed via DI. Placed early so the guard's
   // dependencies resolve before the feature modules load.
   ThrottleConfigModule,
-  // TASK-316 — DB-backed rate-limit settings. Exports IRateLimitSettingsService
+  // DB-backed rate-limit settings. Exports IRateLimitSettingsService
   // so the TieredThrottlerGuard (APP_GUARD above) resolves live limits from the
   // GlobalSetting cache, and IRateLimitAdminService for the admin endpoint.
   RateLimitServiceModule,
-  // TASK-392 (Q7) — exports IEntitlementsService so the TieredThrottlerGuard
+  // Exports IEntitlementsService so the TieredThrottlerGuard
   // (APP_GUARD above) can resolve per-tenant plan rate-limit tiers on the hot
   // path. Placed alongside RateLimitServiceModule (its sibling guard dep).
   EntitlementsServiceModule,
@@ -227,7 +224,7 @@ const common = [
   EventEmitterModule.forRoot(),
   SysEventServiceModule,
   CommonServiceModule,
-  // TASK-318 R5 — @Global() provider-agnostic blob storage. Registered once
+  // @Global() provider-agnostic blob storage. Registered once
   // here (after CommonServiceModule provides AppSettings) so there is exactly
   // ONE BlobStorageProviderFactory app-wide; required for tenant provider-cache
   // coherence between the read path and TenantStorageConfigService.invalidate().
@@ -235,26 +232,25 @@ const common = [
   RedisServiceModule.register(queueNames),
   ObservabilityModule,
   AuditLogServiceModule, // Event-driven audit logging (replaces Kafka audit topics)
-  AuditRetentionServiceModule, // TASK-336 OB-05 — scheduled AuditLog retention purge (bounds growth)
+  AuditRetentionServiceModule, // scheduled AuditLog retention purge (bounds growth)
   AgentTrajectoryRetentionServiceModule, // scheduled AgentTrajectoryStep hard-retention prune (opt-in)
   JwtAuthGuardModule, // JWT guard — before AuthorizationModule
   AuthorizationModule, // Policy-based authorization (RBAC)
-  // TASK-302 Phase 5 Task 5.6 (Stream B) — Vault prisma factory.
-  // Self-guards via SECRETS_PROVIDER=vault + PG_DYNAMIC_CREDS=true,
-  // so it's safe to import unconditionally; when off it provides a
-  // `null`-returning factory that CoreDatabaseService's @Optional
-  // inject treats as absent.
+  // Vault prisma factory. Self-guards via SECRETS_PROVIDER=vault +
+  // PG_DYNAMIC_CREDS=true, so it's safe to import unconditionally; when
+  // off it provides a `null`-returning factory that CoreDatabaseService's
+  // @Optional inject treats as absent.
   VaultPrismaFactoryModule,
-  // TASK-302 Phase 6 Task 6.5 (Stream B) — Vault rotation worker.
-  // Self-guards via SECRETS_PROVIDER=vault + VAULT_AUDIT_LOG_PATH +
-  // Redis leader-lock, so it's safe to import unconditionally.
+  // Vault rotation worker. Self-guards via SECRETS_PROVIDER=vault +
+  // VAULT_AUDIT_LOG_PATH + Redis leader-lock, so it's safe to import
+  // unconditionally.
   VaultRotationWorkerModule,
-  // TASK-305 Phase B.7 — Wires ClsService → tenantScopeFilter Prisma
+  // Wires ClsService → tenantScopeFilter Prisma
   // extension at app bootstrap. Until this module is loaded, the
   // extension treats every query as global-admin pass-through (the
   // safe default for CLI / seed scripts that run without CLS).
   TenantContextProviderModule,
-  // TASK-307 W3.2 — Registers the global TenantOwnedResourceInterceptor as
+  // Registers the global TenantOwnedResourceInterceptor as
   // APP_INTERCEPTOR. Runs AFTER the existing auth chain so the CLS
   // tenantId is already populated. The interceptor is a no-op for any
   // handler not annotated with `@TenantOwnedResource(...)`.
@@ -266,9 +262,9 @@ const featureModules: any[] = [
   RateLimitAdminModule,
   AiServiceAdminModule,
   AiInferenceModule,
-  // TASK-506 — /admin/ai-task-defaults (per-tenant default model per AI task key).
+  // /admin/ai-task-defaults (per-tenant default model per AI task key).
   AiTaskDefaultModule,
-  // TASK-524 — the config-plane core surfaces: /admin/ai-providers
+  // The config-plane core surfaces: /admin/ai-providers
   // (provider endpoints + BYO credentials) and /admin/ai-runtime-profiles
   // (hyperparameter/context/concurrency profiles, global-admin only).
   AiProviderConnectionModule,
@@ -279,27 +275,27 @@ const featureModules: any[] = [
   ConsultationModule,
   DepartmentModule,
   DnaWritingStyleModule,
-  // TASK-392 (Phase 4) — /admin/entitlements/* (global-admin matrix/override/kill-switch/downgrade)
+  // /admin/entitlements/* (global-admin matrix/override/kill-switch/downgrade)
   // + /entitlements/me (tenant self-snapshot). All entitlements endpoints live here.
   EntitlementsApiModule,
-  // TASK-504 Phase 3c — /admin/settings/catalog. MUST precede GlobalSettingModule
+  // /admin/settings/catalog. MUST precede GlobalSettingModule
   // so the static `catalog` route registers before `admin/settings/:id`.
   SettingsCatalogModule,
-  // TASK-390 #24 — /admin/settings (global-settings CRUD; wires the existing service).
+  // /admin/settings (global-settings CRUD; wires the existing service).
   GlobalSettingModule,
-  // TASK-330 Phase 3 — institutional-RAG knowledge ingestion (BullMQ worker;
+  // Institutional-RAG knowledge ingestion (BullMQ worker;
   // registers the IngestKnowledgeDocument queue + processor). Worker-only — no
   // REST controllers in this phase.
   KnowledgeServiceModule,
   HealthModule,
   InternalModule,
   MonitoringModule,
-  // TASK-419 item 2 — /admin/notifications (read/update/delete; no admin POST).
+  // /admin/notifications (read/update/delete; no admin POST).
   NotificationModule,
-  // TASK-386 (#16) — /admin/platform/{metrics,sockets,consumption} (global-admin).
+  // /admin/platform/{metrics,sockets,consumption} (global-admin).
   PlatformMetricsModule,
   PromptManagementModule,
-  // TASK-330 Phase 6 — /admin/harness/* (policy, observe, workflow ops).
+  // /admin/harness/* (policy, observe, workflow ops).
   HarnessAdminModule,
   // /admin/agent-trajectory/* (ordered session trajectory read plane).
   AgentTrajectoryModule,
@@ -307,18 +303,18 @@ const featureModules: any[] = [
   AgenticAdminModule,
   // /admin/mcp-servers/* (MCP external-tools registry; global-admin CRUD + registry read).
   McpAdminModule,
-  // TASK-356 Phase 5 — /admin/harness/pipeline-policy (realtime-toggle cascade admin).
+  // /admin/harness/pipeline-policy (realtime-toggle cascade admin).
   PipelinePolicyAdminModule,
-  // TASK-496 — /admin/tts-config (per-tenant TTS spec + BYO provider credentials).
+  // /admin/tts-config (per-tenant TTS spec + BYO provider credentials).
   TenantTtsConfigModule,
-  // TASK-498 — /admin/tenant-idp-config (tenant-scoped external OIDC identity provider).
+  // /admin/tenant-idp-config (tenant-scoped external OIDC identity provider).
   TenantIdpConfigModule,
   QueueAdminModule,
-  // TASK-403 — always-on availability probe for the dev-only Prisma Studio
+  // Always-on availability probe for the dev-only Prisma Studio
   // shell (the shell module below stays conditionally registered).
   PrismaStudioStatusModule,
   RbacModule,
-  // TASK-419 item 2 — /admin/resource-subscriptions (CRUD + toggle).
+  // /admin/resource-subscriptions (CRUD + toggle).
   ResourceSubscriptionModule,
   StorageModule,
   StorageAccessKeyModule,
@@ -332,11 +328,11 @@ const featureModules: any[] = [
   TenantFrontendConfigModule,
   UserModule,
   VoiceProfileModule,
-  // TASK-419 item 2 — /admin/webhooks (CRUD + delivery-log reads).
+  // /admin/webhooks (CRUD + delivery-log reads).
   WebhookModule,
 ];
 
-// TASK-419 item 4 (supersedes TASK-307 W5.2): Embedded Prisma Studio is
+// Embedded Prisma Studio is
 // production-capable but fail-closed — the module registers only when the
 // operator explicitly sets ENABLE_PRISMA_STUDIO=true, and every route is
 // additionally guarded by the dedicated `manage:PrismaStudio` permission.

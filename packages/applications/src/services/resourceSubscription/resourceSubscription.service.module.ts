@@ -5,8 +5,6 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../baseServices';
 import { UserServiceModule } from '../user/user/user.service.module';
 
-// TODO: Implement this
-
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule, UserServiceModule],
   providers: [

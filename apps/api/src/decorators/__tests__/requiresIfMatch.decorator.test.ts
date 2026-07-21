@@ -1,11 +1,10 @@
 /**
- * `@RequiresIfMatch()` decorator + `RequiresIfMatchGuard` unit tests
- * — TASK-302 Stream D Phase D (D.2).
+ * `@RequiresIfMatch()` decorator + `RequiresIfMatchGuard` unit tests.
  *
  * The decorator is a metadata-only marker (`SetMetadata`). The companion
  * guard runs globally and, on annotated routes, flips
  * `req._requiresIfMatch = true` so the `@ExpectedVersion()` parameter
- * decorator (D.2.2) can decide whether to throw 428 on a missing header.
+ * decorator can decide whether to throw 428 on a missing header.
  *
  * Splitting the responsibility this way means:
  *   - The decorator is trivially-composable on a controller method.

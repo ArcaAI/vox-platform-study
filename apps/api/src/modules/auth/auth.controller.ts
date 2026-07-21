@@ -9,7 +9,7 @@ import {
   IUserService,
   SecretsService,
   createJwt,
-  // TASK-400 — password rotation surfaced at login (warning-only).
+  // Password rotation surfaced at login (warning-only).
   isPasswordExpired,
   resolvePasswordPolicy,
 } from '@arcaai/applications';
@@ -65,10 +65,10 @@ import {
 import { ImpersonationEvents, ImpersonationDeniedReason, ImpersonationEventPayload } from './impersonation-events';
 import { StreamTicketService } from './stream-ticket.service';
 
-// TASK-417 — GLOBAL_ADMIN is the single elevated role (SUPER_ADMIN retired).
+// GLOBAL_ADMIN is the single elevated role (SUPER_ADMIN retired).
 const GLOBAL_ADMIN_ROLE = 'GLOBAL_ADMIN';
 
-// TASK-308 AC-5 — the previous class-wide `@Throttle({ default: { limit: 10,
+// A previous class-wide `@Throttle({ default: { limit: 10,
 // ttl: 60000 } })` lumped `/login`, `/refresh`, `/me`, `/logout`,
 // `/stream-ticket`, `/impersonate`, and `/revoke-impersonation` into a single
 // 10 req/min counter. The SDK polls `/me` + rotates `/refresh` more
@@ -96,17 +96,17 @@ export class AuthController {
     @Inject(IJwtRevocationService) private readonly jwtRevocationService: IJwtRevocationService,
     @Inject(SecretsService) private readonly secretsService: SecretsService,
     @Inject(IRefreshTokenService) private readonly refreshTokenService: IRefreshTokenService,
-    // TASK-305 Phase F — login enforces full membership (role + department);
+    // Login enforces full membership (role + department);
     // this resolves the department half via a pre-auth baseClient lookup.
     @Inject(IUserDepartmentService) private readonly userDepartmentService: IUserDepartmentService,
-    // TASK-331 M-3 — emits the explicit impersonation start/stop audit bracket.
+    // Emits the explicit impersonation start/stop audit bracket.
     // EventEmitter2 is globally provided via EventEmitterModule (same source the
     // ImpersonationAuditInterceptor uses for the per-request rows).
     private readonly eventEmitter: EventEmitter2,
-    // TASK-341 B4 — mint-time tenant-ownership check for live-summary stream
+    // Mint-time tenant-ownership check for live-summary stream
     // tickets (defense-in-depth alongside the SSE route's @TenantOwnedResource).
     private readonly consultationRepository: ConsultationRepository,
-    // TASK-450 C4-01 — mint-time tenant-ownership check for `stt_session:*`
+    // Mint-time tenant-ownership check for `stt_session:*`
     // tickets, resolved via the gateway-side sessionId → tenantId binding
     // written at session create (same instance the WS gateway and the
     // DELETE-route interceptor consult).
@@ -134,7 +134,7 @@ export class AuthController {
   }
 
   @Post('login')
-  // TASK-308 AC-5 — 5 req/min: tight bound vs credential stuffing.
+  // 5 req/min: tight bound vs credential stuffing.
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Public()
   @HttpCode(HttpStatus.OK)
@@ -154,7 +154,7 @@ export class AuthController {
   })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async login(@Body() request: LoginRequest, @Request() req: any): Promise<LoginResponse> {
-    // TASK-541 B1 — the audit row's failure reason. Set immediately before each
+    // The audit row's failure reason. Set immediately before each
     // throw and emitted once from the catch below, so there is a single
     // emission site rather than one per rejection branch. Server-side only:
     // the 401 RESPONSE stays deliberately uniform ('Invalid credentials' for
@@ -168,7 +168,7 @@ export class AuthController {
         throw new BadRequestException('Username and password are required');
       }
 
-      // TASK-541 B1 — `Repository.findFirst` THROWS `DataNotFoundException` on
+      // `Repository.findFirst` THROWS `DataNotFoundException` on
       // a miss (it never returns null), so the unknown-username case used to
       // land in the catch-all below and answer 'Authentication failed' while a
       // WRONG PASSWORD answered 'Invalid credentials'. That difference was a
@@ -204,7 +204,7 @@ export class AuthController {
         throw new UnauthorizedException('Invalid credentials');
       }
 
-      // TASK-430 — service accounts are API-only principals (they authenticate
+      // Service accounts are API-only principals (they authenticate
       // with API keys). Interactive login is refused AFTER the password check
       // so the response cannot be used as an account-type oracle for guessed
       // credentials, and no lastLoginAt/lastActiveAt stamp is written.
@@ -238,7 +238,7 @@ export class AuthController {
         resolvedTenantId = tenant.id;
         resolvedTenantKey = tenant.key;
 
-        // TASK-307 W6.1 (audit C-10) — tenant validation now flows through
+        // Tenant validation flows through
         // `UserRoleAssignmentService` instead of touching Prisma directly.
         const tenantRoleAssignment = await this.userRoleAssignmentService.findActiveAssignmentForUserInTenant(user.id, resolvedTenantId);
 
@@ -247,11 +247,11 @@ export class AuthController {
           throw new UnauthorizedException('User does not have access to the specified tenant');
         }
 
-        // TASK-305 Phase F — full tenant membership = an enabled role AND an
+        // Full tenant membership = an enabled role AND an
         // enabled department. The 401 message is intentionally identical to
         // the role miss above so the response never reveals which half of the
         // membership is incomplete. (Service accounts never reach this point —
-        // TASK-430 rejects them right after the password check; the guard is
+        // they are rejected right after the password check; the guard is
         // kept as defence-in-depth.)
         if (!user.isServiceAccount) {
           const tenantDepartment = await this.userDepartmentService.findActiveDepartmentForUserInTenant(user.id, resolvedTenantId);
@@ -265,9 +265,9 @@ export class AuthController {
 
       const permissions = await this.getUserPermissions(userRoles);
 
-      // TASK-307 W2.3 (closes audit C-6) — JWT_SECRET_KEY now sourced
+      // JWT_SECRET_KEY is sourced
       // from SecretsService (cache-warmed at bootstrap, placeholder
-      // refused by main.ts W2.2 assertion). Unifies the sign-path with
+      // refused by main.ts's boot assertion). Unifies the sign-path with
       // JwtStrategy.verify-path so the two cannot diverge.
       // JWT_EXPIRES_IN stays on AppSettings (it's a tunable, not a
       // secret — same rationale as oidc.strategy.ts:82-83).
@@ -277,13 +277,13 @@ export class AuthController {
       }
       const jwtExpiresIn = this.appSettingsService.getValueWithDefault('JWT_EXPIRES_IN', '1h') as string;
 
-      // TASK-307 W1.6 / E-1: jti is randomBytes(16).hex — unpredictable, no
+      // jti is randomBytes(16).hex — unpredictable, no
       // userId or timestamp leak. The legacy `auth-${user.id}-${Date.now()}`
       // shape was guessable and tied the jti's information density to the
       // user id, which is itself sometimes assumed-public elsewhere.
       const jti = randomBytes(16).toString('hex');
 
-      // TASK-307 W1.2 / C-1 / C-12: persist the refresh token in Redis so it
+      // Persist the refresh token in Redis so it
       // can be validated server-side on refresh. Carry the resolvedTenantId
       // (active session) — NOT user.tenantId — so multi-tenant users keep
       // their selected tenant across refreshes.
@@ -301,7 +301,7 @@ export class AuthController {
         permissions,
         tenantId: resolvedTenantId,
         jti,
-        // TASK-307 W1.4 / AC-2: ride the family id through the access-token
+        // Ride the family id through the access-token
         // JWT so `logout` can revoke every refresh token in this session
         // family without a Redis lookup.
         refreshFamily: issued.family,
@@ -339,7 +339,7 @@ export class AuthController {
         tenantKey: resolvedTenantKey,
       });
 
-      // TASK-400 — rotation check (warning only, never blocks). Disabled by
+      // Rotation check (warning only, never blocks). Disabled by
       // default (maxAgeDays=0); a NULL passwordChangedAt (legacy user) never
       // counts as expired, so enabling the knob cannot lock anyone out.
       const passwordExpired = isPasswordExpired(
@@ -354,7 +354,7 @@ export class AuthController {
         ...(passwordExpired ? { passwordExpired } : {}),
       };
     } catch (error) {
-      // TASK-541 B1 — persist the rejected attempt (AuditLogService writes a
+      // Persist the rejected attempt (AuditLogService writes a
       // LOGIN row with success=false). Fire-and-forget: an audit failure must
       // never turn a 401 into a 500, and the handler swallows its own errors.
       this.emitAuthenticationFailed({
@@ -375,7 +375,7 @@ export class AuthController {
   }
 
   /**
-   * TASK-541 B1 — emit the failed-authentication audit event.
+   * Emit the failed-authentication audit event.
    *
    * Deliberately carries only whitelisted, non-secret fields: the attempted
    * username (never the password), a stable machine-readable reason slug
@@ -433,7 +433,7 @@ export class AuthController {
   async logout(@Request() req: any): Promise<LogoutResponse> {
     const user = this.clsService.get('user');
 
-    // TASK-307 W1.4 / C-11: revoke the access token's jti so any in-flight
+    // Revoke the access token's jti so any in-flight
     // request bearing this token is rejected at the very next hop. Mirrors
     // the `revokeImpersonation` pattern. Best-effort — a Redis outage must
     // NOT leave the client stuck (the tokens have already been discarded
@@ -446,7 +446,7 @@ export class AuthController {
       }
     }
 
-    // TASK-307 W1.4 / AC-2: revoke the ENTIRE refresh-token family so the
+    // Revoke the ENTIRE refresh-token family so the
     // chain of rotated refresh tokens (login → refresh → refresh → …) is
     // dead. Without this, an attacker who exfiltrated any token earlier
     // in the chain could still rotate forward.
@@ -458,7 +458,7 @@ export class AuthController {
       }
     }
 
-    // Best-effort tracking of the logout event (TASK-224 behaviour).
+    // Best-effort tracking of the logout event.
     if (user) {
       try {
         await this.authService.trackAuthentication(user.id, {
@@ -521,12 +521,8 @@ export class AuthController {
         id: dbUser.id,
         username: dbUser.username,
         email: dbUser.UserProfile?.email || '',
-        // firstName: dbUser.UserProfile?.firstName || '',
-        // lastName: dbUser.UserProfile?.lastName || '',
-        // phone: dbUser.UserProfile?.phone || '',
         roles,
         permissions,
-        // tenantId: dbUser.tenantId,
       });
     } catch (error) {
       if (error instanceof UnauthorizedException) {
@@ -537,7 +533,7 @@ export class AuthController {
   }
 
   /**
-   * AC-11 (TASK-336): record a DENIED impersonation attempt as a dedicated
+   * Record a DENIED impersonation attempt as a dedicated
    * audit event. The legacy `UserAuthenticated` bracket is success-only, so
    * denials were previously invisible to the audit trail. Fire-and-forget — an
    * audit failure must never mask the authorization error being thrown.
@@ -558,15 +554,14 @@ export class AuthController {
   }
 
   @Post('impersonate')
-  // TASK-308 AC-5 — 10 req/min: same envelope as the retired class-wide
+  // 10 req/min: same envelope as the retired class-wide
   // throttle, kept explicit. Impersonation is an admin-tier action and
   // does not need the more permissive SDK-poll bound.
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   @Authorize()
   @ApiBearerAuth()
-  // AC-08 (TASK-336): the prior "Cannot impersonate admin users" wording was
-  // inaccurate. A GLOBAL_ADMIN MAY impersonate a TENANT_ADMIN (and any
+  // A GLOBAL_ADMIN MAY impersonate a TENANT_ADMIN (and any
   // non-global-admin) cross-tenant; only GLOBAL_ADMIN TARGETS can never be
   // impersonated. A TENANT_ADMIN may impersonate only non-admin users within
   // its OWN tenant.
@@ -593,7 +588,7 @@ export class AuthController {
       throw new UnauthorizedException('User not found in context');
     }
 
-    // TASK-401 — nested impersonation is never allowed: an impersonated
+    // Nested impersonation is never allowed: an impersonated
     // session (impersonatedBy claim present) cannot start another. Backported
     // to this legacy route so no nesting path remains.
     if (adminUser.impersonatedBy) {
@@ -601,7 +596,7 @@ export class AuthController {
       throw new ForbiddenException('An impersonated session cannot start another impersonation');
     }
 
-    // TASK-401 — self-impersonation guard (backported alongside the nested one).
+    // Self-impersonation guard (backported alongside the nested one).
     if (request.targetUserId === adminUser.id) {
       this.recordImpersonationDenied(req, adminUser.id, request.targetUserId, ImpersonationDeniedReason.SelfImpersonation);
       throw new BadRequestException('You cannot impersonate yourself');
@@ -609,8 +604,8 @@ export class AuthController {
 
     const adminRoles = await this.getUserRoles(adminUser.id);
     const adminRoleNames = adminRoles.map((r) => r.name);
-    // TASK-331 F-4 / TASK-417 — GLOBAL_ADMIN is the elevated cross-tenant
-    // role (unrestricted); it carries the C-1 cross-tenant bypass below.
+    // GLOBAL_ADMIN is the elevated cross-tenant
+    // role (unrestricted); it carries the cross-tenant bypass below.
     const isSuperAdmin = adminRoleNames.includes(GLOBAL_ADMIN_ROLE);
     const isTenantAdmin = adminRoleNames.some((r) => ['TENANT_ADMIN', 'admin', 'system-admin'].includes(r));
     if (!isSuperAdmin && !isTenantAdmin) {
@@ -631,7 +626,7 @@ export class AuthController {
       throw new BadRequestException('Target user not found');
     }
 
-    // TASK-430 — a service account is an API-only principal; impersonating one
+    // A service account is an API-only principal; impersonating one
     // would mint the interactive session it must never have.
     if (targetUser.isServiceAccount) {
       this.recordImpersonationDenied(req, adminUser.id, targetUser.id, ImpersonationDeniedReason.TargetIsServiceAccount);
@@ -640,7 +635,7 @@ export class AuthController {
 
     const targetRoles = await this.getUserRoles(targetUser.id);
     const targetRoleNames = targetRoles.map((r) => r.name);
-    // TASK-331 F-4 / TASK-417 — a GLOBAL_ADMIN target can never be
+    // A GLOBAL_ADMIN target can never be
     // impersonated.
     const targetIsSuperAdmin = targetRoleNames.includes(GLOBAL_ADMIN_ROLE);
     const targetIsTenantAdmin = targetRoleNames.some((r) => ['TENANT_ADMIN', 'admin', 'system-admin'].includes(r));
@@ -657,7 +652,7 @@ export class AuthController {
 
     const targetPermissions = await this.getUserPermissions(targetRoles);
 
-    // TASK-295 H-3 + TASK-307 W6.1 (audit C-10): resolve the impersonation
+    // Resolve the impersonation
     // tenant from the target user's ENABLED userRoleAssignments via the
     // application service (no direct Prisma access). Caller may pin a
     // specific tenant via `targetTenantId`; otherwise we pick the oldest
@@ -678,7 +673,7 @@ export class AuthController {
       throw new BadRequestException('Target user has no tenant assignment. Assign the user to a tenant before impersonating.');
     }
 
-    // TASK-295 C-1: tenant admins must not impersonate users outside their
+    // Tenant admins must not impersonate users outside their
     // own tenant. GLOBAL_ADMIN remains unrestricted (cross-tenant impersonation
     // is part of the business requirement for global admins).
     if (!isSuperAdmin) {
@@ -692,7 +687,7 @@ export class AuthController {
       }
     }
 
-    // TASK-307 W2.3 (closes audit C-6) — see login() for rationale.
+    // See login() for the JWT_SECRET_KEY resolution rationale.
     const jwtSecretKey = await this.resolveJwtSecretKey();
     if (!jwtSecretKey) {
       throw new UnauthorizedException('Authentication system not configured');
@@ -707,7 +702,7 @@ export class AuthController {
       permissions: targetPermissions,
       tenantId: resolvedTenantId,
       impersonatedBy: adminUser.id,
-      // TASK-331 F-8 — unpredictable jti (randomBytes(16).hex), same hygiene as
+      // Unpredictable jti (randomBytes(16).hex), same hygiene as
       // login/refresh. The stable `impersonate-` prefix is retained so audit /
       // log filtering on impersonation tokens still works; no admin/target id
       // or timestamp is leaked into the claim anymore.
@@ -726,7 +721,7 @@ export class AuthController {
       method: 'POST',
     });
 
-    // TASK-331 M-3 — explicit IMPERSONATION start bracket. The AuditAction enum
+    // Explicit IMPERSONATION start bracket. The AuditAction enum
     // is frozen (no migration in scope), so START reuses IMPERSONATED_ACTION +
     // the IMPERSONATION eventType, discriminated by `phase` inside the row's
     // data JSON (persisted by AuditLogService.handleUserAuthenticatedEvent).
@@ -743,7 +738,7 @@ export class AuthController {
       timestamp: new Date(),
     });
 
-    // AC-11 (TASK-336): dedicated, semantically named start event (in addition
+    // Dedicated, semantically named start event (in addition
     // to the legacy bracket above) so audit consumers get a precise signal.
     this.eventEmitter?.emit(ImpersonationEvents.Started, {
       adminId: adminUser.id,
@@ -757,7 +752,7 @@ export class AuthController {
       timestamp: new Date(),
     } satisfies ImpersonationEventPayload);
 
-    // TASK-331 F-9 — resolve the target's PRIMARY department for the
+    // Resolve the target's PRIMARY department for the
     // impersonation tenant so the SDK preference cascade keeps the impersonated
     // doctor's department tier (without it, effectiveDepartmentId resolves to
     // null during impersonation). Absent assignment ⇒ leave departmentId unset.
@@ -781,8 +776,8 @@ export class AuthController {
   }
 
   @Post('refresh')
-  // TASK-308 AC-5 — 60 req/min: the SDK rotates refresh tokens aggressively
-  // (single-use refresh per TASK-307 W1.3); the previous 10/min class-wide
+  // 60 req/min: the SDK rotates refresh tokens aggressively
+  // (single-use refresh); the previous 10/min class-wide
   // limit tripped legitimate clients in production.
   @Throttle({ default: { limit: 60, ttl: 60000 } })
   @Public()
@@ -795,15 +790,15 @@ export class AuthController {
       throw new BadRequestException('Refresh token is required');
     }
 
-    // TASK-307 W1.3 / C-1 / C-12: server-side validation through
-    // RefreshTokenService. The old `parts.split('_')` parser is RETIRED —
-    // it took client-supplied input as the userId, which is the audit
-    // finding itself. RefreshTokenService.consume:
+    // Server-side validation through
+    // RefreshTokenService. A prior `parts.split('_')` parser took
+    // client-supplied input as the userId — a security hole, and the reason
+    // that parser is retired. RefreshTokenService.consume:
     //   - looks the token up by sha256(token)
     //   - returns the ORIGINAL session's userId, tenantId, jti, and family
     //   - deletes the record (single-use) and flags reuse for family-revoke
     //   - throws UnauthorizedException on miss / reuse (let it bubble up)
-    // TASK-541 B1 — a miss/reuse here is the single strongest token-theft
+    // A miss/reuse here is the single strongest token-theft
     // signal the platform emits (RFC 6749 §10.4 family reuse), so it gets an
     // audit row before the 401 bubbles up.
     let consumed: Awaited<ReturnType<typeof this.refreshTokenService.consume>>;
@@ -839,8 +834,8 @@ export class AuthController {
 
     if (!user) {
       // The refresh token was valid but the account has since been disabled or
-      // deleted — the exact window TASK-541 A4's not-before stamp also covers
-      // for access tokens.
+      // deleted — the exact window the access-token not-before stamp also
+      // covers.
       this.emitAuthenticationFailed({
         userId: consumed.userId,
         reason: 'user_disabled_or_missing',
@@ -854,17 +849,17 @@ export class AuthController {
     const roles = userRoles.map((role) => role.name);
     const permissions = await this.getUserPermissions(userRoles);
 
-    // TASK-307 W2.3 (closes audit C-6) — see login() for rationale.
+    // See login() for the JWT_SECRET_KEY resolution rationale.
     const jwtSecretKey = await this.resolveJwtSecretKey();
     if (!jwtSecretKey) {
       throw new UnauthorizedException('Authentication system not configured');
     }
     const jwtExpiresIn = this.appSettingsService.getValueWithDefault('JWT_EXPIRES_IN', '1h') as string;
 
-    // TASK-307 W1.6 / E-1: fresh unpredictable jti per rotation.
+    // Fresh unpredictable jti per rotation.
     const newJti = randomBytes(16).toString('hex');
 
-    // TASK-307 W1.3 / C-12: refresh stays scoped to the tenant that ORIGINALLY
+    // Refresh stays scoped to the tenant that ORIGINALLY
     // issued the token — NOT a tenant the user has since been moved into.
     // The cross-tenant carry-through is the whole point.
     const issued = await this.refreshTokenService.issue({
@@ -911,19 +906,19 @@ export class AuthController {
     if (!user?.id) {
       throw new UnauthorizedException('User context not available');
     }
-    // TASK-341 B4 — the ACTIVE (CLS) tenant wins so a global admin's selected
+    // The ACTIVE (CLS) tenant wins so a global admin's selected
     // `X-Tenant-Id` propagates into the ticket (`??` would have kept an empty-
     // string JWT tenant); fall back to the JWT tenant, then null.
     const tenantId = this.clsService.get('tenantId') || user.tenantId || null;
 
-    // TASK-341 B4 / TASK-348 MIN-1 — defense-in-depth: any consultation-id-keyed
+    // Defense-in-depth: any consultation-id-keyed
     // `consultation_*:<id>` ticket may only be minted for a consultation in the
     // caller's (active) tenant. The SSE routes are `@TenantOwnedResource`, but
     // the ticket bypasses that interceptor, so we re-check ownership here
     // before issuing.
     await this.assertConsultationScopeOwnership(body.scope, tenantId);
 
-    // TASK-450 C4-01 — same posture for `stt_session:<sessionId>` (live
+    // Same posture for `stt_session:<sessionId>` (live
     // transcript WS): the session must be bound to the caller's (active)
     // tenant. Fail-closed: a missing binding 404s too.
     await this.assertSttSessionScopeOwnership(body.scope, tenantId);
@@ -932,7 +927,7 @@ export class AuthController {
       userId: user.id,
       tenantId,
       scope: body.scope,
-      // TASK-295 SEC-A5-6 / M-8: carry the impersonatedBy claim through the
+      // Carry the impersonatedBy claim through the
       // ticket so the SSE/WS request restored from the ticket can fire the
       // ImpersonationAuditInterceptor and produce a HIPAA-compliant audit row.
       impersonatedBy: user.impersonatedBy ?? null,
@@ -955,7 +950,7 @@ export class AuthController {
   private static readonly NON_CONSULTATION_ID_SCOPES: ReadonlySet<string> = new Set(['consultation_job']);
 
   /**
-   * TASK-341 B4 / TASK-348 MIN-1 — for any consultation-id-keyed
+   * For any consultation-id-keyed
    * `consultation_*:<id>` ticket scope (live-summary, harness-progress, and any
    * future sibling), verify the consultation belongs to the caller's active
    * tenant before minting. A missing OR cross-tenant consultation both yield
@@ -991,7 +986,7 @@ export class AuthController {
   private static readonly STT_SESSION_SCOPE_PREFIX = 'stt_session:';
 
   /**
-   * TASK-450 C4-01 — `stt_session:<sessionId>` tickets silently bypassed the
+   * `stt_session:<sessionId>` tickets used to silently bypass the
    * consultation-only check above, so any authenticated user who learned a
    * foreign sessionId could mint a live-transcript WS ticket for it. Resolve
    * the session's owning tenant via the gateway-side binding written at
@@ -1032,12 +1027,12 @@ export class AuthController {
       throw new UnauthorizedException('User not found in context');
     }
 
-    // TASK-295 L-3: only an actively-impersonated token may be revoked.
+    // Only an actively-impersonated token may be revoked.
     if (!user.impersonatedBy) {
       throw new BadRequestException('Not currently impersonating');
     }
 
-    // TASK-295 C-4: actually revoke the JWT by adding its jti to the
+    // Actually revoke the JWT by adding its jti to the
     // Redis-backed revocation set. JwtStrategy.validate consults this set
     // on every subsequent request so the revoked token fails at the very
     // next request.
@@ -1052,8 +1047,8 @@ export class AuthController {
       method: 'POST',
     });
 
-    // TASK-331 M-3 — explicit IMPERSONATION stop bracket (mirrors the START in
-    // impersonate()). `user.impersonatedBy` is guaranteed by the L-3 guard
+    // Explicit IMPERSONATION stop bracket (mirrors the START in
+    // impersonate()). `user.impersonatedBy` is guaranteed by the guard
     // above. Fire-and-forget audit side-channel.
     this.eventEmitter?.emit(EventTypes.UserAuthenticated, {
       userId: user.impersonatedBy,
@@ -1066,7 +1061,7 @@ export class AuthController {
       timestamp: new Date(),
     });
 
-    // AC-11 (TASK-336): dedicated, semantically named end event (in addition to
+    // Dedicated, semantically named end event (in addition to
     // the legacy bracket above) so audit consumers get a precise signal.
     this.eventEmitter?.emit(ImpersonationEvents.Ended, {
       adminId: user.impersonatedBy,
@@ -1079,9 +1074,9 @@ export class AuthController {
       timestamp: new Date(),
     } satisfies ImpersonationEventPayload);
 
-    // TASK-401 — forced audit row for the lifecycle END, symmetric with the
-    // USER_IMPERSONATION_STARTED row minted by AdminImpersonationController
-    // (TASK-396 forceAuditLog pattern). The impersonation token always carries
+    // Forced audit row for the lifecycle END, symmetric with the
+    // USER_IMPERSONATION_STARTED row minted by AdminImpersonationController.
+    // The impersonation token always carries
     // the resolved tenant, so CLS attribution is correct here.
     this.eventEmitter?.emit(SysEventType.ResourceViewed, {
       responsibleEntityId: user.impersonatedBy,
@@ -1105,7 +1100,7 @@ export class AuthController {
   /**
    * Get user roles from database.
    *
-   * TASK-307 W6.1 (audit C-10) — delegates to `UserRoleAssignmentService`
+   * Delegates to `UserRoleAssignmentService`
    * which performs the `include: { Role: true }` join behind a typed
    * application-service boundary. Returned shape preserves the legacy
    * (`{ id, name, permissions? }`) contract `getUserPermissions` consumes.

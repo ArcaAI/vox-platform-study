@@ -3,8 +3,6 @@ import { FetchResponse, PaginatedQuery } from '../../common';
 import { IBaseService } from '../../interfaces';
 import { CreateGlobalSettingRequest, RotateGlobalSettingRequest, UpdateGlobalSettingRequest } from './dto';
 
-// TODO: Implement this
-
 export interface IGlobalSettingService extends IBaseService {
   create(request: CreateGlobalSettingRequest): Promise<GlobalSettingEntity>;
   /** TASK-443 — `secretsOnly` resolves the derived secret predicate server-side (no `isSecret` column). */

@@ -8,8 +8,6 @@ import { EntitlementsServiceModule } from '../../entitlements/entitlements.servi
 import { CryptoServiceModule } from '../../crypto/crypto.service.module';
 import { JwtRevocationModule } from '../../auth/jwt-revocation.module';
 
-// TODO: Implement this
-
 @Module({
   // TASK-381 (V1) — UserProfileServiceModule supplies IUserProfileService so
   // create() can persist the optional `email` onto the user's profile.

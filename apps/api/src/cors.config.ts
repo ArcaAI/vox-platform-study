@@ -1,12 +1,11 @@
 /**
- * TASK-310 E-2 (AC-4) — CORS origin resolution for the API gateway.
+ * CORS origin resolution for the API gateway.
  *
  * Extracted from `main.ts` so the dev / staging / production branches
  * can be unit-tested without booting the Nest application. The exported
  * `getCorsOrigins(nodeEnv)` is the value passed to `app.enableCors({
- * origin })`. The dev branch returns the AC-4-pinned localhost-only
- * RegExp; the staging / production branches keep the pre-W7 callback
- * behaviour so production CORS is provably unchanged by this extraction.
+ * origin })`. The dev branch returns a localhost-only RegExp; the
+ * staging / production branches use a callback.
  */
 import { Logger } from '@nestjs/common';
 
@@ -122,16 +121,16 @@ export function isOriginAllowed(origin: string | undefined, nodeEnv: string): bo
 }
 
 /**
- * TASK-310 E-2 (AC-4) — value passed to `app.enableCors({ origin })`.
+ * Value passed to `app.enableCors({ origin })`.
  *
- *   - development → localhost-only RegExp (AC-4).
+ *   - development → localhost-only RegExp.
  *   - production / staging → callback delegating to `isOriginAllowed`.
  *
- * Pre-W7 the dev branch returned `true`. Combined with
- * `credentials: true`, browsers actually reject that config (the spec
- * forbids wildcard + credentials), so the intent of the original code
- * was always "localhost only in dev" — this pins it explicitly so the
- * server's response headers match the browser's behaviour.
+ * The dev branch must NOT return `true`: combined with
+ * `credentials: true`, browsers reject that config (the spec forbids
+ * wildcard + credentials), so the intent is "localhost only in dev" —
+ * this pins it explicitly so the server's response headers match the
+ * browser's behaviour.
  */
 export function getCorsOrigins(
   nodeEnv: string,

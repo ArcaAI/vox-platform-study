@@ -1,5 +1,5 @@
 /**
- * TASK-305 Phase B.7 — TenantContextProvider wiring.
+ * TenantContextProvider wiring.
  *
  * Adapter between `nestjs-cls` (which owns the request-scoped tenant id and
  * user roles) and the `tenantScopeFilter` Prisma extension shipped in
@@ -33,13 +33,13 @@ import { Injectable, Logger, Module, OnApplicationBootstrap, OnApplicationShutdo
 import { ClsModule, ClsService } from 'nestjs-cls';
 
 /**
- * AC-06 (TASK-336) — cross-tenant privileged roles for the DB-extension layer.
+ * Cross-tenant privileged roles for the DB-extension layer.
  * Local mirror of `@arcaai/applications` `ELEVATED_ROLES` (the canonical set
  * consumed by the `isSuperAdmin` helper). Kept local so this DB adapter has no
  * hard dependency on the applications elevated-set export, matching the same
  * deliberate cross-layer duplication documented in `common/tenant-guards.ts`.
  */
-// TASK-417 — SUPER_ADMIN consolidated into GLOBAL_ADMIN (single elevated role).
+// SUPER_ADMIN has been consolidated into GLOBAL_ADMIN (single elevated role).
 const ELEVATED_ROLES: readonly string[] = [GLOBAL_ADMIN_ROLE];
 
 @Injectable()
@@ -77,7 +77,7 @@ export class ClsTenantContextProvider implements TenantContextProvider, OnApplic
 
 /**
  * Stand-alone module that owns the provider lifecycle. Imported once from
- * `AppModule.imports` — see TASK-305 §B.7. Kept separate from the Vault
+ * `AppModule.imports`. Kept separate from the Vault
  * Prisma factory so the wiring concerns stay focused.
  */
 @Module({

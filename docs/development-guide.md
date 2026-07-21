@@ -1,6 +1,6 @@
 # HOPE Development Guide
 
-Last updated: 2026-07-04
+Owner: Platform Engineering · Introduced: 2026-07-04 · Last verified: 2026-07-21
 
 The single onboarding and daily-reference document for engineers working in this monorepo. Every command below is verified against the root `package.json` and the referenced config files. Companion documents: [docs index](./README.md), [architecture overview](./architecture/overview.md), [patterns and standards](./development-patterns-and-standards.md).
 
@@ -10,7 +10,7 @@ The single onboarding and daily-reference document for engineers working in this
 
 HOPE is a multi-tenant healthcare AI platform for clinical consultations. It transcribes doctor-patient conversations in real time (speech-to-text with VAD, noise filtering, and speaker diarization), extracts medical entities and ontology codes, generates LLM-based clinical summaries and SOAP notes, screens output through a guardrail safety engine, and runs a clinical documentation harness — a bounded `guides → generate → sensors → gate` loop on Temporal durable workflows that produces grounded, cited drafts and gates them through clinician attestation into immutable signed notes.
 
-Technically, it is a Turborepo + pnpm monorepo: a NestJS 11 API gateway (`apps/api`) is the system of record and the only client-facing surface; five Python/FastAPI services (`stt-v2`, `smr`, `guardrail`, `nlp`, `harness`) do the AI work behind it; browser SDK packages (`@arcaai/vox` and friends) run the audio pipeline in the host application. Full topology, ports, and data flows: [architecture/overview.md](./architecture/overview.md).
+Technically, it is a Turborepo + pnpm monorepo: a NestJS 11 API gateway (`apps/api`) is the system of record and the primary client-facing surface; six Python/FastAPI services (`stt-v2`, `smr`, `guardrail`, `nlp`, `harness`, `tts-v2`) do the AI work behind it; a Next.js 16 admin console (`apps/admin-console`) is the operator UI, BFF-proxied through the gateway; browser SDK packages (`@arcaai/vox` and friends) run the audio pipeline in the host application. Full topology, ports, and data flows: [architecture/overview.md](./architecture/overview.md).
 
 ## 2. Prerequisites
 
@@ -44,7 +44,7 @@ There is no `.nvmrc`; use any Node >= 22. TypeScript 5.9, Prisma 7, Vitest 4, an
 
    Expected: `.env` exists; the defaults (Postgres `postgres/postgres`, MinIO `minio_admin`) match what the compose files assume. See `.env.example` header for the full convention.
 
-3. **Python environment.** Creates/updates the shared conda env `arcaenv` (Python 3.11) with dependencies for all five services:
+3. **Python environment.** Creates/updates the shared conda env `arcaenv` (Python 3.11) with dependencies for all six services:
 
    ```bash
    pnpm py:setup            # add --apple (MPS) or --gpu (CUDA) via py:setup:apple / py:setup:gpu
@@ -98,11 +98,11 @@ There is no `.nvmrc`; use any Node >= 22. TypeScript 5.9, Prisma 7, Vitest 4, an
 
 ## 4. Daily development
 
-The aggregate supervisor is `pnpm dev:stack` (`scripts/dev-stack.sh`): it starts api (8868), stt (8861), smr (8862), guardrail (8863), nlp (8864), harness (8866), the harness Temporal worker, and the deprecated ui-playground (5175), tails all logs in the foreground, and stops everything on Ctrl-C. It refuses to start over busy ports or a second Temporal worker. Docker infra is not started by it — run `pnpm infra:up` first.
+The aggregate supervisor is `pnpm dev:stack` (`scripts/dev-stack.sh`): its default set starts api (8868), stt (8861), smr (8862), guardrail (8863), nlp (8864), harness (8866), the harness Temporal worker, and the admin console (5176), tails all logs in the foreground, and stops everything on Ctrl-C. tts-v2 (8865) and the deprecated ui-playground are not in the default set — start them explicitly. It refuses to start over busy ports or a second Temporal worker. Docker infra is not started by it — run `pnpm infra:up` first.
 
 ```bash
-pnpm dev:stack                      # full stack
-pnpm dev:stack -- smr worker        # subset (any of: api, stt, smr, guardrail, nlp, harness, worker, ui)
+pnpm dev:stack                      # full default stack (incl. admin console)
+pnpm dev:stack -- smr worker        # subset (any of: api, stt, smr, guardrail, nlp, harness, worker, ui, tts)
 pnpm dev:stack down                 # stop orphans left by a killed supervisor (pidfile-based; no-op if none)
 DRY_RUN=1 pnpm dev:stack            # print the launch plan, start nothing
 ```
@@ -119,7 +119,9 @@ Per-service dev commands (Python services run inside conda `arcaenv` via `script
 | `pnpm dev:guardrail` | Guardrail :8863 | |
 | `pnpm dev:harness` | Harness API :8866 | boots even when Temporal is down |
 | `pnpm dev:harness:worker` | Harness Temporal worker | no HTTP port; hard-requires Temporal (`pnpm infra:up`) |
-| `pnpm dev:<service>:watch` | scoped-reload variant | for stt-v2, smr-v2, guardrail, nlp, harness (not worker) |
+| `pnpm dev:tts-v2` | TTS-v2 :8865 | multi-provider text-to-speech (Azure + local Kokoro/Indic Parler) |
+| `pnpm dev:admin` | Admin console :5176 | Next.js 16 App Router (`next dev`); BFF-proxies the gateway |
+| `pnpm dev:<service>:watch` | scoped-reload variant | for stt-v2, smr-v2, guardrail, nlp, harness, tts-v2 (not worker) |
 
 Support commands:
 
@@ -140,6 +142,8 @@ Support commands:
 | Guardrail (`apps/guardrail`) | 8863 | FastAPI (health at `/api/health`, not `/api/v1`) |
 | NLP (`apps/nlp`) | 8864 | FastAPI + WS classify endpoints |
 | Harness (`apps/harness`) | 8866 | FastAPI + separate Temporal worker process |
+| TTS-v2 (`apps/tts-v2`) | 8865 | FastAPI — multi-provider text-to-speech (Azure + local Kokoro/Indic Parler), en+ml |
+| Admin console (`apps/admin-console`) | 5176 (dev) | Next.js 16 App Router — operator UI, BFF-proxies the gateway |
 | ui-playground (`apps/ui-playground`) | 5175 (dev) | React/Vite — **deprecated**, no development plan |
 | example (`apps/example`) | 5173 (dev) | minimal live-transcription demo |
 | PostgreSQL 18 | 5432 | `hope-postgres` (TimescaleDB image, pgvector available) |
@@ -168,9 +172,9 @@ DDD layering, enforced by lint: `packages/database` → `packages/domains` → `
 
 Rules of thumb: controllers never touch Prisma; services import repositories from `@arcaai/domains`, never `@arcaai/database` at runtime; entities are created via `XxxFactory.CreateXxx()`; every mutation broadcasts a sys-event and deletes are soft. Generator caveat: only `pnpm gen:model` truly scaffolds a domain layer. `gen:entity`/`gen:factory` reconcile barrels and check schema coverage but never create files; `gen:mapper` is destructive (never run it — it strips the `_version` OCC guard) and `gen:repository` is broken, so entities/factories/mappers/repositories are hand-authored. `gen:service | gen:controller` also exist. CI fails if the generated model layer drifts or an entity/factory misses a persisted column. Details: `.claude/rules/03-domain-layer.md` §Generated Code Discipline.
 
-Python services (`apps/stt-v2`, `smr`, `guardrail`, `nlp`, `harness`) are PEP-621 `src/<package>/` layouts: `main.py` (FastAPI `create_app()` + lifespan), `core/` (pydantic-settings config with per-service `env_prefix`, logging), `api/endpoints/`, `services/`, `models/`. Tests live in `src/<pkg>/tests/` (smr, guardrail, harness) or top-level `tests/` (stt-v2, nlp). Dependencies are declared per service but locked once at the repo root (`uv.lock`); run `uv lock` after changing any member's dependencies.
+Python services (`apps/stt-v2`, `smr`, `guardrail`, `nlp`, `harness`, `tts-v2`) are PEP-621 `src/<package>/` layouts: `main.py` (FastAPI `create_app()` + lifespan), `core/` (pydantic-settings config with per-service `env_prefix`, logging), `api/endpoints/`, `services/`, `models/`. Tests live in `src/<pkg>/tests/` (smr, guardrail, harness, tts-v2) or top-level `tests/` (stt-v2, nlp). Dependencies are declared per service but locked once at the repo root (`uv.lock`); run `uv lock` after changing any member's dependencies.
 
-Frontend/browser packages: `packages/ui` (@arcaai/ui — shadcn/Radix/cva component library, Tailwind v4 tokens in `src/styles/globals.css`), `packages/agentic-sdk-v2` (@arcaai/vox — consultation SDK, internal Zustand store behind hooks) composing `room`, `noise-filter`, `vad`, `stt`, `med-ner`, `pipeline`. Shared backend packages: `logger`, `exceptions`, `types`, `utils`, `tools`, `config-*`.
+Frontend apps and packages: `apps/admin-console` (@arcaai/admin-console — Next.js 16 App Router operator UI, BFF auth + catch-all gateway proxy, consumes `@arcaai/ui`; governed by `.claude/rules/13-nextjs-apps.md`), `packages/ui` (@arcaai/ui — shadcn/Radix/cva component library, Tailwind v4 tokens in `src/styles/globals.css`), `packages/agentic-sdk-v2` (@arcaai/vox — consultation SDK, internal Zustand store behind hooks) composing `room`, `noise-filter`, `vad`, `stt`, `med-ner`, `pipeline`. Shared backend packages: `logger`, `exceptions`, `types`, `utils`, `tools`, `config-*`.
 
 Deep conventions with exemplar file paths: [development-patterns-and-standards.md](./development-patterns-and-standards.md). Capability-to-code mapping: [traceability-matrix.md](./traceability-matrix.md).
 
@@ -215,6 +219,8 @@ All TypeScript suites load `.env.test` via dotenv-cli — the test stack is full
 | Python: NLP | `pnpm py:nlp:test` | `apps/nlp/pyproject.toml` | conda `arcaenv` |
 | Python: Guardrail | `pnpm py:guardrail:test` (`:cov`) | `apps/guardrail/pyproject.toml` | conda `arcaenv` |
 | Python: Harness | `pnpm py:harness:test` (`:unit`, `:cov`) | `apps/harness/pyproject.toml` | conda `arcaenv`; runs in CI as `test-harness` (hermetic — no DB/Redis) |
+| Python: TTS-v2 | `pnpm py:tts-v2:test` (`:unit`, `:cov`) | `apps/tts-v2/pyproject.toml` | conda `arcaenv` |
+| Admin console | `pnpm --filter @arcaai/admin-console test` (E2E `test:e2e`) | `apps/admin-console` Vitest / Playwright | Vitest unit specs colocated in `__tests__/`; Playwright E2E |
 | Everything | `pnpm test:all` / `pnpm test:ci` | — | unit → integration → e2e in sequence |
 
 Test DB helpers: `pnpm test:db:push` (force-push schema), `pnpm test:db:seed` (seed + media seed), `pnpm test:db:reset` (both).
@@ -237,7 +243,7 @@ pnpm docker:test:down
 - `pnpm lint` — turbo runs each package's ESLint (ESLint 9 flat config: per-package `eslint.config.mjs` spreading the `packages/config-eslint/flat/` presets; do not reintroduce eslintrc-format configs).
 - `pnpm format` — Prettier over `**/*.{ts,tsx,md}` (`singleQuote`, `printWidth: 150`).
 - `pnpm build` / `pnpm build:api` / `build:packages` / `build:modules` / `build:sdk` — scoped turbo builds.
-- Python per service: `pnpm py:<svc>:lint` (ruff), `py:<svc>:format` (black, line length 100), `py:<svc>:typecheck` (mypy), where `<svc>` is `stt-v2`, `smr-v2`, `nlp`, `guardrail`, `harness`.
+- Python per service: `pnpm py:<svc>:lint` (ruff), `py:<svc>:format` (black, line length 100), `py:<svc>:typecheck` (mypy), where `<svc>` is `stt-v2`, `smr-v2`, `nlp`, `guardrail`, `harness`, `tts-v2`. Admin console: `pnpm --filter @arcaai/admin-console lint` (ESLint 10 flat, `--max-warnings 0`) and `check-types` (`tsc --noEmit`).
 
 Architecture lint rules you will actually hit (defined in `packages/config-eslint/flat/core.js` + `packages/eslint-plugin-arcaai-internal/`):
 
@@ -250,7 +256,7 @@ Caveat: inside `packages/*` these rules are downgraded to warnings (`eslint-plug
 
 ## 10. Ticket and documentation workflow
 
-- **Numbering:** tickets are `TASK-XXX`. To assign a new number, take the highest existing ticket across `docs/implementation/` and `docs/archive/` and increment by 1 (latest as of this writing: TASK-412).
+- **Numbering:** tickets are `TASK-XXX`. To assign a new number, take the highest existing ticket across `docs/implementation/` and `docs/archive/` and increment by 1.
 - **Structure:** one folder per ticket — `docs/implementation/[TICKET]-[Short-Name]/README.md` — updated throughout the lifecycle. One main document per ticket; fixes append to its Change History instead of creating new files.
 - **Required sections:** header (ticket, created/updated dates, status), requirement analysis, current-state evaluation, implementation plan (user-approved before coding), implementation summary, change history.
 - **Status values:** `Pending | In Progress | Completed | Blocked | Review`.

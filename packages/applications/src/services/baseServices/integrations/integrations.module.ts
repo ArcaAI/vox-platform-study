@@ -1,7 +1,5 @@
 import { Module } from '@nestjs/common';
 
-// TODO: Implement this
-
 const integrations: never[] = [];
 
 @Module({

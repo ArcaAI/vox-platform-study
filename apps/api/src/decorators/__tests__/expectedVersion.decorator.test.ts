@@ -1,6 +1,5 @@
 /**
- * `@ExpectedVersion()` parameter decorator unit tests
- * — TASK-302 Stream D Phase D (D.2).
+ * `@ExpectedVersion()` parameter decorator unit tests.
  *
  * Tests `extractExpectedVersion` (the underlying extractor) directly so we
  * can exercise the parser logic without spinning a Nest test module. The

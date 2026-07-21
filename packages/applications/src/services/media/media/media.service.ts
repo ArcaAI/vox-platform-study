@@ -9,8 +9,6 @@ import { CreateMediaRequest, UpdateMediaRequest } from './dto';
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 
-// TODO: Implement this
-
 /**
  * TASK-406 (P2-6c) — model-aware filter coercion (TASK-375 §8 scheme): coerces
  * CSV `filters` values to the Media columns' real types (`size`/`version` →

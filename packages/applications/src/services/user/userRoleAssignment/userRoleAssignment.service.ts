@@ -25,8 +25,6 @@ import { IActiveUserContext } from '../../../interfaces';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { GLOBAL_ADMIN_ROLE } from '../../tenant/constants';
 
-// TODO: Implement this
-
 /** TASK-444 — raw joined shape of the members query (module-private). */
 interface RoleMemberJoinRow {
   id: string;

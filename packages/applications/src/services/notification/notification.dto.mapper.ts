@@ -2,8 +2,6 @@ import { AutoClassMapper, NotificationEntity } from '@arcaai/domains';
 import { NotificationResponse, PaginatedNotificationResponse } from './dto';
 import { FetchResponse } from '../../common';
 
-// TODO: Implement this
-
 export class NotificationDtoMapper {
   static ToResponse(entity: NotificationEntity): NotificationResponse {
     return AutoClassMapper(entity, NotificationResponse);

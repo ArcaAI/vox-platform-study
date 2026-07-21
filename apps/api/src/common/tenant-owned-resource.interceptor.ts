@@ -1,5 +1,5 @@
 /**
- * `TenantOwnedResourceInterceptor` — TASK-307 W3.2 / AC-7.
+ * `TenantOwnedResourceInterceptor`.
  *
  * Global interceptor that, for every handler annotated with
  * `@TenantOwnedResource(...)`, resolves the addressed resource via the
@@ -17,7 +17,7 @@
  *   - `TenantBucket`      — repo.findById(id) OR repo.findByName(name);
  *                           assert `entity.tenantId === cls.tenantId`.
  *   - `TenantStorageConfig` — repo.findById(id); assert
- *                           `entity.tenantId === cls.tenantId` (TASK-318 R5).
+ *                           `entity.tenantId === cls.tenantId`.
  *   - `TranscriptionJob`  — repo.findById(id); assert
  *                           `entity.tenantId === cls.tenantId`.
  *   - `Consultation`      — repo.findById(id); assert
@@ -70,7 +70,7 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
     private readonly consultationRepository: ConsultationRepository,
     @Inject(IConsultationJobService)
     private readonly consultationJobService: IConsultationJobService,
-    // TASK-310 W7.A.9 (AC-3): drives the `StreamSession` resolver branch.
+    // Drives the `StreamSession` resolver branch.
     // The binding is written by `TranscriptionJobController.createStreamSession`
     // and removed by `closeStreamSession` — the interceptor only reads it.
     private readonly streamSessionTenantBinding: StreamSessionTenantBindingService,
@@ -90,7 +90,7 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
    * can run the SAME assertion BEFORE the handler executes. Interceptors throw
    * AFTER an `@Sse()` handler has already returned its event stream, so the
    * thrown 404 never reaches the client and the cross-tenant stream opens with
-   * a 200 (TASK-309 SSE leak). A guard runs ahead of the handler, so re-running
+   * a 200. A guard runs ahead of the handler, so re-running
    * the assertion there closes the stream with a 404 before it opens.
    */
   async assertAccess(context: ExecutionContext): Promise<void> {
@@ -146,7 +146,7 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
         await this.assertVoiceProfileOwnership(paramValue);
         return;
       case 'StreamSession':
-        // TASK-310 W7.A.9 (AC-3): sessionId → tenantId lookup via the
+        // SessionId → tenantId lookup via the
         // gateway-side binding service (the session itself lives in
         // STT-V2 / Redis, not Prisma — there is no repository to call).
         await this.assertStreamSessionOwnership(paramValue, callerTenantId);
@@ -201,11 +201,11 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
       throw new NotFoundException(RESOURCE_NOT_FOUND);
     }
 
-    // TASK-308 AC-1 — `scope: 'creator'` adds the intra-tenant owner check.
-    // The `userId` on `ConsultationJobStatus` was introduced in TASK-307
-    // W3.3; pre-W7.A.12 Redis rows may still lack it (24h JOB_TTL window).
-    // Treating a missing `userId` as a mismatch keeps the 404 shape uniform
-    // and avoids leaking the legacy-row distinction. See ticket §2.3.
+    // `scope: 'creator'` adds the intra-tenant owner check. Older Redis rows
+    // (written before `userId` was added to `ConsultationJobStatus`) may
+    // still lack it within the 24h JOB_TTL window. Treating a missing
+    // `userId` as a mismatch keeps the 404 shape uniform and avoids leaking
+    // the legacy-row distinction.
     if (opts.scope === 'creator') {
       const callerUserId = this.cls.get('user')?.id;
       if (!callerUserId || typeof callerUserId !== 'string') {

@@ -68,11 +68,10 @@ interface SmrGenerateRequest {
   response_format?: SmrResponseFormat;
   context?: Record<string, unknown>;
   /**
-   * TASK-526 — gateway-injected tenant BYO credentials, keyed by provider.
+   * Gateway-injected tenant BYO credentials, keyed by provider.
    * NEVER accepted from a client: the strict global ValidationPipe rejects
    * undeclared fields on the request DTOs, and this interface describes the
    * body as FORWARDED, after `applyTenantProviderOverrides` populates it.
-   * Consumed by SMR in TASK-525.
    */
   provider_overrides?: Record<string, { api_key: string; base_url?: string; region?: string; api_version?: string; deployment_name?: string }>;
 }
@@ -103,7 +102,7 @@ interface UpstreamErrorPayload {
 }
 
 const RETRIABLE_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EPIPE']);
-// TASK-460 C4-04 — codes that can ONLY occur while establishing the
+// Codes that can ONLY occur while establishing the
 // connection, i.e. before any request bytes reached SMR. Everything else
 // (ECONNRESET/EPIPE/ETIMEDOUT, or ANY upstream response) may mean SMR already
 // started a billable generation, so the non-idempotent `/generate` POSTs must
@@ -114,10 +113,10 @@ const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
 // document can't blow the SMR context window. ~200k chars ≈ 50k tokens.
 const ATTACHMENT_TEXT_LIMIT = 200_000;
 const GLOBAL_TENANT_KEY = '__GLOBAL__';
-// TASK-417 — GLOBAL_ADMIN is the single elevated role (SUPER_ADMIN retired).
+// GLOBAL_ADMIN is the single elevated role (SUPER_ADMIN retired).
 const GLOBAL_ADMIN_ROLE = 'GLOBAL_ADMIN';
 
-// TASK-506 — one listing entry per registry `provider`, keeping the legacy
+// One listing entry per registry `provider`, keeping the legacy
 // response shape the console/SDK already consume (`name`/`models`/`is_available`/
 // `is_default`/`default_model`); each model carries the provider-native
 // identifier (`AiModel.sourceUri`) as `name` plus the stable registry `slug`.
@@ -135,7 +134,7 @@ interface ProviderListingEntry {
   default_model?: string;
 }
 
-// TASK-343 — the class-level `@UseGuards(JwtAuthGuard)` was removed: every
+// The class-level `@UseGuards(JwtAuthGuard)` was removed: every
 // method already carries `@Authorize()`, and the global `UnifiedAuthGuard`
 // (`APP_GUARD`) authenticates (JWT + stream-ticket path) once per request. The
 // redundant class guard previously made `text/*` routes run the JWT path a
@@ -159,25 +158,25 @@ export class SmrProxyController {
     @Inject(IBlobStorageService) private readonly blobStorage: IBlobStorageServiceType,
     @Inject(IConfigService) private readonly configService: IConfigService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // TASK-356 D-7 — resolves the tenant's effective SMR {provider, model} when a
+    // Resolves the tenant's effective SMR {provider, model} when a
     // caller (playground/SDK) omits the model. @Optional so test fixtures that
     // construct the controller without it keep compiling.
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
-    // TASK-506 — the providers listings read the AiModel registry (the single
-    // UI catalog) through the SHARED-READ query (r2605 Finding E): visibility
+    // The providers listings read the AiModel registry (the single
+    // UI catalog) through the SHARED-READ query: visibility
     // is [caller tenant, SYSTEM] de-duplicated by slug, tenant clone wins.
     // @Optional so existing positional test fixtures keep compiling.
     @Optional() @Inject(AiModelService) private readonly aiModelService?: AiModelService,
-    // TASK-506 — resolves the effective `guardrail.validate` default for the
+    // Resolves the effective `guardrail.validate` default for the
     // guardrail listing's default marking.
     @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
-    // TASK-524 — resolves the effective hyperparameter profile for the outgoing
+    // Resolves the effective hyperparameter profile for the outgoing
     // {provider, model}. @Optional so existing positional test fixtures (and
     // graphs that never proxy to SMR) keep compiling.
     @Optional()
     @Inject(IAiRuntimeProfileService)
     private readonly aiRuntimeProfileService?: IAiRuntimeProfileService,
-    // TASK-526 — resolves the caller tenant's BYO cloud credential for the
+    // Resolves the caller tenant's BYO cloud credential for the
     // outgoing provider. @Optional so existing positional test fixtures (and
     // graphs that never proxy to SMR) keep compiling.
     @Optional()
@@ -186,7 +185,7 @@ export class SmrProxyController {
   ) {}
 
   /**
-   * TASK-356 D-7 / SDK fidelity: a caller-supplied model is forwarded
+   * SDK fidelity: a caller-supplied model is forwarded
    * untouched. When the model is absent, resolve SYSTEM `{provider, model}` via
    * AiTaskDefault / HarnessPolicy. FAIL CLOSED: unresolved selection rethrows
    * (typically 400) — no silent omit → env fallback.
@@ -198,16 +197,16 @@ export class SmrProxyController {
       target.provider = provider;
       target.model = model;
     }
-    // TASK-524 — layer the resolved runtime profile on top of the identity.
+    // Layer the resolved runtime profile on top of the identity.
     // Runs for a caller-pinned model too: the caller chose the MODEL, not the
     // hyperparameters, and any parameter they did send still wins below.
     await this.applySmrRuntimeProfile(target);
-    // TASK-526 — then fold in the caller tenant's BYO cloud credential, if any.
+    // Then fold in the caller tenant's BYO cloud credential, if any.
     return this.applyTenantProviderOverrides(target);
   }
 
   /**
-   * TASK-526 — fold the caller tenant's BYO cloud credential into the forwarded
+   * Fold the caller tenant's BYO cloud credential into the forwarded
    * body as `provider_overrides` (GAP-C1 tenant lane).
    *
    * Three invariants:
@@ -223,7 +222,7 @@ export class SmrProxyController {
    *     fail-closed model-IDENTITY path above.
    *
    * With no tenant credential rows the forwarded body is byte-identical to
-   * today's. TASK-525 owns the SMR-side consumption; until then the field is
+   * today's. Until SMR consumes it, the field is
    * inert (the service ignores unknown body fields).
    */
   private async applyTenantProviderOverrides<T extends { provider?: string }>(target: T): Promise<T> {
@@ -255,7 +254,7 @@ export class SmrProxyController {
   }
 
   /**
-   * TASK-524 — inject the resolved hyperparameter profile into the forwarded
+   * Inject the resolved hyperparameter profile into the forwarded
    * body (GAP-C2).
    *
    * Two invariants:
@@ -268,7 +267,7 @@ export class SmrProxyController {
    *     service's default temperature is the status quo.
    *
    * With zero profile rows seeded (the shipped state) `isEmpty` is true and the
-   * body is byte-identical to today's — the ticket §7 silent-change guard.
+   * body is byte-identical to today's — a deliberate silent-change guard.
    *
    * Field names are snake_case to match the SMR wire contract; SMR ignores
    * unknown body fields, so this stays inert until the service consumes them.
@@ -312,9 +311,9 @@ export class SmrProxyController {
     return target;
   }
 
-  // TASK-310 E-5 (AC-5): the SMR base URL now resolves through the
-  // typed `IConfigService.getConfigValue('SMR_URL')` accessor. The
-  // pre-W7 direct `process.env.SMR_URL || 'http://localhost:8862'`
+  // The SMR base URL resolves through the
+  // typed `IConfigService.getConfigValue('SMR_URL')` accessor. A direct
+  // `process.env.SMR_URL || 'http://localhost:8862'`
   // read is forbidden by the `no-direct-downstream-url-env` lint
   // rule; the env-or-fallback resolution happens once at bootstrap
   // in `ConfigService.loadBaseConfig()`.
@@ -326,7 +325,7 @@ export class SmrProxyController {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
-    // TASK-302 Phase 3 Task 3.4 — sync lookup against the cache warmed at
+    // Sync lookup against the cache warmed at
     // bootstrap. Same fail-open behavior on miss (no header set) we had
     // when the env var was unset.
     const serviceToken = this.secretsService?.getSecretSync('SMR_SERVICE_TOKEN');
@@ -344,7 +343,7 @@ export class SmrProxyController {
   }
 
   /**
-   * TASK-460 C4-04 — retry predicate for the NON-IDEMPOTENT `/generate` POSTs:
+   * Retry predicate for the NON-IDEMPOTENT `/generate` POSTs:
    * only connect-phase failures qualify, because they prove the request never
    * left the gateway. An upstream response (any status) or a post-send socket
    * failure means SMR may already be generating — retrying would re-invoke it.
@@ -361,7 +360,7 @@ export class SmrProxyController {
     const status = axiosError.response?.status;
     const payload = axiosError.response?.data;
 
-    // TASK-462 C4-05 / I-1 — the raw upstream error body can echo the assembled
+    // The raw upstream error body can echo the assembled
     // clinical prompt / PHI or internal SMR/LM-Studio stack detail. It MUST NOT
     // reach the client AND MUST NOT be written to logs (stdout → k8s/Loki, outside
     // PHI controls). Record only NON-CONTENT metadata — the upstream status, the
@@ -390,7 +389,7 @@ export class SmrProxyController {
     fn: () => Promise<T>,
     context: string,
     maxRetries = 2,
-    // TASK-460 C4-04 — non-idempotent calls narrow this to connect-phase-only.
+    // Non-idempotent calls narrow this to connect-phase-only.
     isRetriable: (err: unknown) => boolean = (err) => this.isRetriable(err),
   ): Promise<T> {
     let lastErr: unknown;
@@ -418,7 +417,7 @@ export class SmrProxyController {
   }
 
   /**
-   * TASK-307 W5.9 (AC-23, audit D-12) — the GLOBAL-tenant fallback used
+   * The GLOBAL-tenant fallback used
    * to fire implicitly whenever a GLOBAL_ADMIN happened to have no CLS
    * tenantId. That made it easy for a GLOBAL_ADMIN debugging an issue
    * to accidentally read or mutate __GLOBAL__ provider settings while
@@ -447,9 +446,9 @@ export class SmrProxyController {
   }
 
   /**
-   * TASK-506 — read the registry rows backing a providers listing.
+   * Read the registry rows backing a providers listing.
    *
-   * r2605 Finding E — this previously called `getByTaskType`, which pins the
+   * `getByTaskType` pins the
    * CLS tenant explicitly and therefore DEFEATS the SYSTEM-shared-read
    * widening (tenants without cloned rows got an empty listing). The
    * shared-read variant queries without a tenant pin so the extension widens
@@ -480,7 +479,7 @@ export class SmrProxyController {
   }
 
   /**
-   * TASK-506 — group registry rows by `provider` into the legacy listing shape.
+   * Group registry rows by `provider` into the legacy listing shape.
    * Rows without a `provider` are skipped (not yet machine-actionable — the
    * pre-506 catalog rows); `defaultSelection` marks the tenant's effective
    * default provider/model (HarnessPolicy for SMR, AiTaskDefault for guardrail).
@@ -534,7 +533,7 @@ export class SmrProxyController {
             timeout: body.stream ? 30_000 : 120_000,
           }),
         'SMR generate',
-        // TASK-460 C4-04 — /generate is non-idempotent (billable generation):
+        // /generate is non-idempotent (billable generation):
         // retry ONLY when the request provably never reached SMR.
         2,
         (err) => this.isConnectPhaseFailure(err),
@@ -682,7 +681,7 @@ export class SmrProxyController {
         error: err instanceof Error ? err.message : String(err),
         upstreamStatus,
       });
-      // TASK-462 C4-05 / M-1 — this branch is currently DEAD (flushHeaders() above
+      // This branch is currently DEAD (flushHeaders() above
       // already sent the SSE headers, so res.headersSent is always true here and
       // only res.end() runs). Even so, NEVER forward the raw upstream body: if the
       // headers were somehow not yet sent, respond with a GENERIC message + the
@@ -730,7 +729,7 @@ export class SmrProxyController {
             timeout: smrPayload.stream ? 30_000 : 120_000,
           }),
         'SMR assembled generate',
-        // TASK-460 C4-04 — same single-delivery contract as `generate()`.
+        // Same single-delivery contract as `generate()`.
         2,
         (err) => this.isConnectPhaseFailure(err),
       );
@@ -821,7 +820,7 @@ export class SmrProxyController {
         if (!contextItem) {
           throw new NotFoundException(`Context item ${id} not found`);
         }
-        // TASK-329 X3 — cross-tenant context ownership check. The assembled
+        // Cross-tenant context ownership check. The assembled
         // generation path assembles prompts on behalf of the caller; without
         // this guard a caller could reference another tenant's context items
         // (raw DNA / transcripts / summaries) and exfiltrate their content
@@ -870,7 +869,7 @@ export class SmrProxyController {
         throw new NotFoundException(`Prompt template ${body.prompt_template_id} not found`);
       }
 
-      // TASK-331 doc-09 — close the prompt-template ownership bypass. This
+      // Close the prompt-template ownership bypass. This
       // branch previously resolved any `findById` hit with no tenant/owner
       // check (unlike the DNA guard below), so a caller could fold another
       // tenant's template — or a peer's USER_PERSONAL template in the same
@@ -918,7 +917,7 @@ export class SmrProxyController {
 
     if (body.dna_writing_style_id) {
       const dnaStyle = await this.dnaWritingStyleRepository.findById(body.dna_writing_style_id);
-      // TASK-299 D-12 — cross-doctor DNA writing-style ownership check.
+      // Cross-doctor DNA writing-style ownership check.
       // The SMR proxy assembles prompts on behalf of the caller; without
       // this guard a doctor could reference another doctor's stylistic
       // fingerprint (or a style from a different tenant) to imitate them.
@@ -1058,14 +1057,14 @@ export class SmrProxyController {
     return null;
   }
 
-  // TASK-506 §3.3 — the listing reads the AiModel registry (ENABLED
+  // The listing reads the AiModel registry (ENABLED
   // TEXT_GENERATION + SUMMARIZATION rows grouped by `provider`), replacing the
   // retired `smr-provider-models`/`default-smr-*` GlobalSetting keys. The
   // tenant's effective default still comes from the HarnessPolicy cascade
   // (`applySmrModelSelection` untouched). The live SMR probe survives ONLY as
   // transition safety when the registry has zero rows.
   //
-  // TASK-528 — that fallback is now scoped to the PLAYGROUND (tier 50-59), the
+  // That fallback is scoped to the PLAYGROUND (tier 50-59), the
   // only surface reaching it. Governing admin surfaces must NOT infer engine
   // state from this route: the AI-models hub calls
   // `GET admin/ai-models/discovery` instead, which merges the registry with the
@@ -1126,12 +1125,12 @@ export class SmrProxyController {
     }
   }
 
-  // TASK-506 §3.3 (supersedes TASK-338) — the guardrail listing reads ENABLED
+  // The guardrail listing reads ENABLED
   // GUARDRAIL registry rows and marks the effective `guardrail.validate`
   // default (AiTaskDefault tenant→SYSTEM cascade). There is no upstream-service
   // probe: an empty result simply means "not configured".
   //
-  // TASK-528 re-confirms this fail-CONFIGURED posture and leaves it unchanged:
+  // This fail-CONFIGURED posture is deliberate:
   // discovery is deliberately NOT extended to the guardrail listing — a safety
   // plane must never appear configured because an engine happens to host a model.
   @Get('guardrail-providers')

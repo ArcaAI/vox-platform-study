@@ -1,8 +1,6 @@
 import { JobQueue, JobType } from '@arcaai/domains';
 import { JobsOptions } from 'bullmq';
 
-// TODO: Implement this
-
 export interface AddJobProps<T> {
   queueName: JobQueue | string;
   jobType: JobType | string;

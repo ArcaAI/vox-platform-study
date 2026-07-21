@@ -66,7 +66,7 @@ Living documents: `SOTA-Track/findings-register.md` (every confirmed finding, st
 ## Implementation Plan
 
 ### Phase 0 — Baseline ✅ COMPLETE (2026-07-21)
-Risk queue + owner-decision register above; full report in workflow `wf_e0632a48-a69` output. Next artifact: materialize `findings-register.md` and `assessment-queue.md` from it at cycle-1 start.
+Risk queue + owner-decision register above; full report in workflow `wf_e0632a48-a69` output. **Cycle 1 OPENED 2026-07-21**: `SOTA-Track/findings-register.md` (F-001..F-021) and `SOTA-Track/assessment-queue.md` materialized; step 0 (commit checkpoint) done at `c6c44de2`; F-001/002/003 fixed by TASK-541 (pending e2e re-verification); next queue item: TASK-534 E2E execution.
 
 ### Phase 1 — Cycle 1 (first release gate; order per baseline)
 0. **Owner gate:** commit checkpoint (OD-7) incl. explicit ratify-or-restore of the security-report deletions — every assessment before this is against unlanded work.

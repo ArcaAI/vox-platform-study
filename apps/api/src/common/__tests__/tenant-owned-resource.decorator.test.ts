@@ -1,11 +1,11 @@
 /**
- * @TenantOwnedResource decorator — unit tests (TASK-307 W3.1 / AC-7)
+ * @TenantOwnedResource decorator — unit tests.
  *
  * Pins the Reflector metadata contract used by
- * `TenantOwnedResourceInterceptor` (W3.2). The decorator itself is a thin
+ * `TenantOwnedResourceInterceptor`. The decorator itself is a thin
  * `SetMetadata` wrapper — these tests document the key + payload shape so
- * the interceptor and the per-controller rollout commits (W3.4..W3.8) can
- * rely on the contract.
+ * the interceptor and every controller that applies the decorator can rely
+ * on the contract.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -51,7 +51,7 @@ describe('TASK-307 W3.1 — @TenantOwnedResource decorator', () => {
     expect(meta).toEqual({ modelName: 'TenantBucket', paramName: 'name', lookup: 'name' });
   });
 
-  // TASK-308 AC-1 — `scope` field carries the intra-tenant ownership opt-in.
+  // `scope` field carries the intra-tenant ownership opt-in.
   it('preserves the optional `scope` field on the metadata payload', () => {
     class JobLike {
       @TenantOwnedResource({ modelName: 'ConsultationJob', paramName: 'jobId', scope: 'creator' })

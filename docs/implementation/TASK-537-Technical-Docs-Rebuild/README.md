@@ -86,7 +86,10 @@ Per-cluster MR review; confirm `CLAUDE.md`/rules cross-references resolve; adopt
 
 ## Implementation Summary
 
-_(populate as waves complete)_
+**Wave 2, clusters C1+C2 ✅ (2026-07-21, workflow `wf_81525326-b65`, writer+verifier pairs):**
+- **C1:** `docs/architecture/overview.md` and `data-and-domain-model.md` rebuilt; `docs/architecture/model-and-config-plane.md` created. Independent verifier checked ~40 claim categories and fixed 5 factual errors (dead TASK-412 path ×2, missing `smr` in the effective-config service list, 31→29 domain-file count, stale k3s kustomization list + section renumbering). **Open flag: Redis DB-index assignments (BullMQ 0 / cache 1 / STT 2 / SMR 3 / Celery 4 / Dramatiq 5) could not be verified from code and `.env` samples contradict them (Celery + Dramatiq both DB 0) — owner to confirm the authoritative routing.**
+- **C2:** `development-guide.md` rebuilt (tts-v2 + admin-console added throughout), root `README.md` and `docs/README.md` updated. Verifier checked 33 doc links + 34 code paths + every command: **zero factual errors found**. Minor flag: root README carries no freshness header (convention decision left to owner).
+- Remaining clusters: C3 (stale app READMEs), C4 (patterns doc), C5 (ops verify pass), C6 (hygiene) + Wave-3 tooling (claim checker, date-consistency check).
 
 ## Change History
 

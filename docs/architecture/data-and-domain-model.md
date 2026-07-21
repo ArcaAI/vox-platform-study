@@ -1,14 +1,16 @@
 # HOPE Data & Domain Model
 
-Last updated: 2026-07-04
+| | |
+|---|---|
+| **Owner** | Platform / Data | **Introduced** docs/archive/TASK-412-Documentation-Realignment · **Last verified** 2026-07-21 |
 
-Domain model reference derived from `packages/database/src/prisma/db_main/*.prisma` (Prisma 7, PostgreSQL, all models in the `core` schema) and the DDD layer in `packages/domains`. Companion documents: [overview.md](./overview.md), [../traceability-matrix.md](../traceability-matrix.md).
+Domain model reference derived from `packages/database/src/prisma/db_main/*.prisma` (Prisma 7, PostgreSQL, all models in the `core` schema — 29 domain-model files, plus `schema.prisma` and `enums.prisma`) and the DDD layer in `packages/domains`. Companion documents: [overview.md](./overview.md), [model-and-config-plane.md](./model-and-config-plane.md) (the AI config/model plane in depth), [../traceability-matrix.md](../traceability-matrix.md).
 
 ---
 
 ## 1. Schema Layout
 
-- The Prisma schema is **split by domain file** under `packages/database/src/prisma/db_main/` (`schema.prisma` holds only the datasource/generator; models live in `tenant.prisma`, `consultation.prisma`, `harness.prisma`, etc.).
+- The Prisma schema is **split by domain file** under `packages/database/src/prisma/db_main/` (`schema.prisma` holds only the datasource/generator; enums are centralized in `enums.prisma`; models live in `tenant.prisma`, `consultation.prisma`, `harness.prisma`, `stt.prisma`, `ai-provider-connection.prisma`, `ai-runtime-profile.prisma`, `ai-task-default.prisma`, `tenant-tts-config.prisma`, `identity-provider.prisma`, `mcp-server.prisma`, `agent-trajectory.prisma`, etc.).
 - Datasource: PostgreSQL with schemas `public` + `core` and the `vector` (pgvector) extension declared; every model is annotated `@@schema("core")`.
 - Generated client output: `packages/database/src/generated/core-prisma-client` (Prisma 7 `prisma-client` provider; preview features: full-text search, pg extensions, relation joins, views, typed SQL).
 - Connection: driver adapter in `packages/database/src/client.ts` (`PRISMA_PG_MAX` pool size, default 5). Prod/staging splits `DATABASE_URL` (PgBouncer 6432, transaction mode) from `DIRECT_URL` (un-pooled, used by Prisma Migrate via `resolveMigrationUrl` in `src/migration-url.ts`).
@@ -28,7 +30,7 @@ Every business model follows this column template (enforced by convention and co
 | Tags | `tags String[]` | where applicable |
 | Indexes | `@@index`/`@@unique`, tenant-leading composites | e.g. `[tenantId, doctorId]` (TASK-305) |
 
-Exceptions: high-volume/immutable rows (`AudioRecording`, `SummaryMeta`, `NamedEntity`, `HarnessAuditEvent`) omit parts of the template; `HarnessAuditEvent` is append-only WORM (no version/updatedAt/resourceStatus; UPDATE/DELETE revoked at the DB level, hash-chained).
+Exceptions: high-volume/immutable/telemetry rows (`AudioRecording`, `SummaryMeta`, `NamedEntity`, `HarnessAuditEvent`, `AgentTrajectoryStep`, `TranscriptSegment`) omit parts of the template. Telemetry rows (`AgentTrajectoryStep`) carry no `resourceStatus` and are listed in `MODELS_WITHOUT_SOFT_DELETE` (`packages/database/src/client.ts`) — pruned by hard retention, not soft-deleted. `HarnessAuditEvent` is append-only WORM (no version/updatedAt/resourceStatus; UPDATE/DELETE revoked at the DB level, hash-chained).
 
 `ResourceStatusType`: `ENABLED | DISABLED | SUSPENDED | ARCHIVED | DELETED` (SUSPENDED/ARCHIVED are operator hold/retire states with restore paths — TASK-387).
 
@@ -72,6 +74,9 @@ Grouped by owning module (schema file → API/service ownership). "Module" names
 | `PasswordResetToken` | Hashed single-use reset tokens (forgot-password flow) | → `User` | `user` (password-reset controllers) |
 | `ApiKey` | Hashed API keys (HMAC-SHA256 + pepper), scoped types/status, expiry enforcement | owner user/tenant | `api-key` |
 | `Role` / `Policy` / `RolePolicy` | Policy-based RBAC: roles aggregate policies (`PermissionAction` × `ResourceType`, `PolicyScope`) | `RolePolicy` join; ← `UserRoleAssignment` | `rbac`, `authorization` |
+| `TenantIdentityProvider` | Per-tenant external IdP (`IdpProtocol` OIDC \| SAML — OIDC accepted in v1); non-secret config in JSON, OIDC client secret + directory credentials as Vault-Transit refs (`encryptedSecretRef` / `directoryCredentialsRef`); `IdpStatus` DRAFT→ENABLED lifecycle | ← `FederatedIdentity`, `TenantIdentityProviderDomain` | `tenant-idp-config`, `idp-resolver` |
+| `FederatedIdentity` | Links a HOPE user (loose `userId` ref) to a subject at a provider (`sub`/`NameID`); unique `[providerId, subject]` | → `TenantIdentityProvider` | `tenant-idp-config` |
+| `TenantIdentityProviderDomain` | Verified email-domain → provider allowlist for home-realm discovery; `domain` globally unique | → `TenantIdentityProvider` | `tenant-idp-config` |
 
 ### 5.3 Consultation & clinical content (core clinical domain)
 
@@ -80,6 +85,7 @@ Grouped by owning module (schema file → API/service ownership). "Module" names
 | `Consultation` | Top-level encounter: patient (external id), doctor, department, visit chain, typed lifecycle `ConsultationStatus` (`OPEN → RECORDING → DRAFT_PENDING_SENSORS → PENDING_REVIEW → SIGNED / CLOSED / REOPENED`) | → `User` (doctor), `Department`, self (parent/child chain), ← `ContextItem`, `Highlight` | `consultation` |
 | `ContextItem` | Polymorphic content container (`ContextItemType`: `AUDIO_RECORDING`, `TRANSCRIPT`, `WORKNOTE`, `CASE_NOTE`, `PRE_SUMMARY`, `RAW_SUMMARY`, `MODIFIED_SUMMARY`, `SIGNED_NOTE`, `NAMED_ENTITY`, `ATTACHMENT`); clinical text stored as Vault-Transit ciphertext (`encryptedContent`) | → `Consultation`; ← `AudioRecording`, `SummaryMeta`, `NamedEntity`, `ContextItemVersion`; soft refs `mediaId`, `dnaWritingStyleId` | `consultation` (context service) |
 | `ContextItemVersion` | Append-only version history incl. clinician attestation (`attestedAt/By`, `attestationHash` → WORM audit) | → `ContextItem`; unique `[contextItemId, versionNumber]` | `consultation` |
+| `TranscriptSegment` | Ordered segments of a `TRANSCRIPT` context item: `idx`, time span (`t0Ms`/`t1Ms`), `speaker` label, char offsets (`charStart`/`charEnd`) that anchor NER grounding onto source segments; nullable timings for text-only transcripts | → `ContextItem`; unique `[contextItemId, idx]` | `consultation`, `streaming`, stt-v2 |
 | `AudioRecording` | Audio metadata per recording (duration/format/sampleRate); raw vs processed media refs (dual capture) | → `ContextItem`; soft refs `mediaId`, `rawMediaId`, `processedMediaId` → `Media` | `consultation`, `streaming` |
 | `SummaryMeta` | 1:1 AI-generation provenance for summary items: model/prompt/tokens, harness sensor scores, gate decision, two-phase assurance timestamps, encrypted citations map / guardrail decisions | → `ContextItem` (unique) | `consultation` (summary service), harness |
 | `NamedEntity` | NER results with ontology codes (`umlsCui`, `snomedCode`, `rxnormCode`, `icdCode`, `loincCode`), transcript span provenance, encrypted text | → `ContextItem` (container + transcript provenance relations) | `consultation`, nlp |
@@ -91,8 +97,8 @@ Grouped by owning module (schema file → API/service ownership). "Module" names
 | Model | Purpose | Key relations | Owning module |
 |---|---|---|---|
 | `AsrPipeline` / `AsrPipelineVersion` | Named ASR pipeline configs (model chain, VAD/diarization settings) with versioning. **Template lineage (TASK-531)**: the 9 SYSTEM-tenant rows are TEMPLATES, cloned into every tenant at provisioning; each copy records `sourceTemplateSlug` (provenance, survives clone chains) and `templateLocked = true`, which makes it read-only for content edits + delete (403 "clone to customize") while leaving enable/disable and set-default available. Tenants clone a copy to customize it; a resync reconciler fast-forwards pristine locked copies to the template's current config and never touches unlocked rows. | version → pipeline; copy → template by slug (no FK) | `pipeline` (`audio/pipelines`), stt-v2 config reader |
-| `AiModel` | AI model registry (source/format/download status; STT + LLM entries) | referenced by pipelines / SummaryMeta.aiModelId | `ai-model` |
-| `TranscriptionJob` | Batch/streaming transcription job lifecycle (`TranscriptionJobStatus`, `TranscriptionJobType`, `TranscriptionMode`) | soft refs consultation/media | `streaming`, stt-v2 worker |
+| `AiModel` | AI model registry (ASR/VAD/denoise engines + admin-selectable LLM/guardrail/NLP/TTS task models). `category`/`taskType`/`modelType` enums; nullable `provider`/`architecture`; `sourceUri` scheme grammar (`hf:` / `file://` / `s3://`) with `localPath` override + SHA256 `checksum`, honoured by every service's `resolve_model_dir`. Referenced **by slug** (no FK) | referenced by pipeline YAML, `AiTaskDefault.modelSlug`, `SummaryMeta.aiModelId` | `ai-model` — see [model-and-config-plane.md](./model-and-config-plane.md#6-model-registry-discovery--source-resolution) |
+| `TranscriptionJob` | Batch/streaming transcription job lifecycle (`TranscriptionJobStatus`, `TranscriptionJobType`); result text/metadata as Vault-Transit ciphertext only | FK → `AsrPipeline`; soft refs consultation/media | `streaming`, stt-v2 worker |
 
 ### 5.5 Clinical documentation harness & evaluation
 
@@ -104,6 +110,7 @@ Grouped by owning module (schema file → API/service ownership). "Module" names
 | `EvalRun` / `EvalScore` | Eval executions and per-case sensor scores | score → run/case | `eval` service |
 | `HarnessAuditEvent` | Append-only WORM audit of harness actions (generate/gate/attest), hash-chained, encrypt-before-hash | soft refs consultation / contextItemVersion | `harness-audit` service |
 | `KnowledgeDocument` / `KnowledgeChunk` | Institutional-RAG ingestion tracking (status; chunk descriptors — vectors live in Qdrant) | chunk → document | `knowledge` service, harness `/knowledge/ingest` |
+| `GateEditExemplar` | Mined clinician-edit signals for few-shot retrieval: `gateDecision` + `qualitySignal` (`APPROVED_CLEAN` \| `HEAVILY_EDITED`), edit-burden stats, **PHI-redacted** before/after snippets (redacted before persistence), department/visit retrieval facets | soft refs consultation / contextItem / promptTemplate | `harness` (observability / edit-burden) |
 
 ### 5.6 Prompts & writing style
 
@@ -113,7 +120,20 @@ Grouped by owning module (schema file → API/service ownership). "Module" names
 | `DnaWritingStyleReport` / `DnaWritingStyleVersion` | Per-doctor writing-style ("DNA") reports + versions used to personalize generation | version → report; `ContextItem.dnaWritingStyleId` soft ref | `dna-writing-style` |
 | `DnaUsageRecord` / `PromptUsageRecord` | Usage tracking of DNA styles / prompts in generations | soft refs | `dna-writing-style`, `prompt-management` |
 
-### 5.7 Storage & media
+### 5.7 AI config-plane
+
+The AI configuration / model control plane — full resolution semantics, credential encryption, and open tails in [model-and-config-plane.md](./model-and-config-plane.md). Every row here uses the SYSTEM tenant `00000000-…` for its platform-default entry.
+
+| Model | Purpose | Key relations | Owning module |
+|---|---|---|---|
+| `AiProviderConnection` | Where a serving provider lives + how to auth: one row per `(tenant, provider)`; location columns (`baseUrl`/`region`/`apiVersion`/`deploymentName`); BYO cloud key as Vault-Transit ciphertext (`encryptedApiKey`, never returned — `hasKey` only). Tenant rows only for azure/bedrock; self-host SYSTEM-only. **SYSTEM-shared read** | `provider` by slug (no FK) | `ai-provider-connection` |
+| `AiRuntimeProfile` | Hyperparameters / context / concurrency per provider (`modelSlug = ""` sentinel) or per model (`modelSlug = AiModel.slug`); all numeric fields nullable = inherit. Global-admin / SYSTEM-only | `modelSlug` → `AiModel.slug` (no FK) | `ai-runtime-profile` |
+| `AiTaskDefault` | Per-`(tenant, taskKey)` default model for a task (`guardrail.*`, `nlp.*`, `smr.*`, `harness.*`); resolution tenant → SYSTEM → env. **All task-key prefixes global-admin-only** | `modelSlug` → `AiModel.slug` (no FK) | `ai-task-default` |
+| `TenantTtsConfig` | One TTS spec per tenant (`tenantId` unique; SYSTEM = platform default; null/`[]` inherits; clamped to `PLATFORM_TTS_LIMITS`) — resolved by the gateway, injected into stateless tts-v2 | tenant-scoped | `tenant-tts-config` |
+| `TenantTtsProviderCredential` | Optional per-`(tenant, provider)` BYO TTS key; Vault-Transit ciphertext only; **not** SYSTEM-shared | tenant-scoped | `tenant-tts-config` |
+| `McpServer` | Global-admin registry of external MCP tool servers the harness may call; SYSTEM-only rows + SYSTEM-shared read; **no secret in DB** (`authRef` = Vault path only); `phiBoundary` defaults `external` (fail-closed egress screen); `enabled` kill-switch under `HarnessPolicy.mcpToolsEnabled` | referenced by name (no FK) | `mcp-admin`, harness |
+
+### 5.8 Storage & media
 
 | Model | Purpose | Key relations | Owning module |
 |---|---|---|---|
@@ -122,7 +142,7 @@ Grouped by owning module (schema file → API/service ownership). "Module" names
 | `TenantStorageConfig` | Per-tenant storage provider/topology config (`StorageProviderType`, `StorageTopologyType`) | tenant-scoped | `tenant-storage-config` |
 | `StorageAccessKey` | Scoped storage access credentials | tenant-scoped | `storage-access-key` |
 
-### 5.8 Audit, events & notifications
+### 5.9 Audit, events & notifications
 
 | Model | Purpose | Key relations | Owning module |
 |---|---|---|---|
@@ -130,7 +150,15 @@ Grouped by owning module (schema file → API/service ownership). "Module" names
 | `Notification` / `ResourceSubscription` | In-app notifications and resource subscriptions (`ResourceSubscriptionType`) | user/resource refs | `notification`, `resourceSubscription` services |
 | `Webhook` / `WebhookRunHistory` | Tenant webhooks + delivery history (`WebhookRunStatus`) | history → webhook | `webhook` service |
 
-### 5.9 Federated learning (dormant)
+### 5.10 Agentic telemetry & evaluation
+
+| Model | Purpose | Key relations | Owning module |
+|---|---|---|---|
+| `AgentTrajectoryStep` | Ordered, typed per-session step stream (`AgentSessionKind` × `AgentStepType` LLM_CALL/TOOL_CALL/SENSOR/RETRIEVAL/GUARDRAIL/THINKING/SIGNAL/GATE/PHASE × `AgentStepStatus`) correlated to the OTel trace. **Stats-first / payload-by-reference**: `stats` holds generation stats, `payloadRef` is a claim-check/encrypted pointer — never plaintext clinical content. Tenant-scoped operational **telemetry**: no soft-delete (`MODELS_WITHOUT_SOFT_DELETE`), no `resourceStatus`, no sys-events; hard-retention prune by age. Unique `[tenantId, sessionId, runId, seq]` (idempotent ingest; `runId` uses a `""` sentinel) | soft ref `consultationId` | `agent-trajectory`, `agent-trajectory-retention` |
+
+Curated-evaluation models (`GoldenSet` / `GoldenCase` / `EvalRun` / `EvalScore`) are catalogued in §5.5.
+
+### 5.11 Federated learning (dormant)
 
 | Model | Purpose | Status |
 |---|---|---|
@@ -162,7 +190,7 @@ Verified against `packages/applications/src/services/sysEvent/` and `services/au
 |---|---|---|
 | PostgreSQL (`core` schema) | All relational/business data listed above; Temporal state in dedicated `temporal` / `temporal_visibility` databases on the same instance (dev) | PHI columns Transit-encrypted; LUKS at rest in prod; PgBouncer transaction pooling in prod |
 | MinIO / S3 | Audio recordings (raw + processed), generated audio, document attachments, backups | Buckets: `recordings`, `generated-audio`, `documents`, `backups` (+ legacy `mlflow`); per-tenant buckets via `TenantBucket`; referenced by `Media.uri`; SSE (KES/KMS) in prod |
-| Qdrant | Speaker embeddings (`stt_speaker_embeddings`, 512-dim wespeaker), institutional-RAG knowledge chunks (dense + sparse), prompt/DNA writing-style collections | Row-side tracking in `UserVoiceProfile`, `KnowledgeDocument`/`KnowledgeChunk`; `ContextItem.qdrantSynced` flags semantic-search sync |
+| Qdrant | Speaker embeddings (`stt_speaker_embeddings`; dimension matches the deployed embedding model — **256-dim `pyannote/wespeaker-voxceleb-resnet34-LM` by default**, with an implemented ECAPA-TDNN 192-dim backend whose cutover is a `vector(192)` migration + re-enroll, not yet applied), institutional-RAG knowledge chunks (dense + sparse), prompt/DNA writing-style collections | Row-side tracking in `UserVoiceProfile`, `KnowledgeDocument`/`KnowledgeChunk`; `ContextItem.qdrantSynced` flags semantic-search sync |
 | Redis | BullMQ queues (DB 0), cache + rate-limit counters (DB 1), STT audio/control/result streams (DB 2), SMR task streams (DB 3), Celery (DB 4, legacy), Dramatiq broker (DB 5) | Ephemeral; persistence disabled in dev so no PHI lands on disk; live-doc session stats TTL 300 s |
 | Vault | Static secrets (KV v2 `secret/hope/*`), Transit keys (`hope-globalsetting`, `hope-phi`), dynamic PG credentials (database engine) | HA Raft cluster with Transit auto-unseal in prod; `SECRETS_PROVIDER=env` default in local dev |
 | Retention | `AuditLog` — scheduled purge (audit-retention service); STT streaming sessions/resume buffers — bounded in-memory + Redis TTL; everything else — soft-deleted, never hard-deleted | `HarnessAuditEvent` and `ContextItemVersion` are append-only by design (clinical record) |

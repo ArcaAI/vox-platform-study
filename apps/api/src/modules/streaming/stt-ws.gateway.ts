@@ -10,15 +10,14 @@ import { StreamTicketService } from '../auth/stream-ticket.service';
 import { SessionRemovalRetryService } from './session-removal-retry.service';
 
 /**
- * TASK-298 D-1 / D-17 + TASK-307 W5.8 (AC-22, audit D-8) — STT WebSocket
- * handshake-rejection close codes.
+ * STT WebSocket handshake-rejection close codes.
  *
- * Pre-W5.8 we used `4001 missing param` (sessionId / ticket) and
- * `4401 invalid ticket` (invalid / scope-mismatched). That gave a
- * probing client an enumeration signal: it could tell apart a valid
- * sessionId from an invalid one based on which 4xxx code came back.
+ * A per-cause code (e.g. `4001 missing param` for sessionId / ticket vs.
+ * `4401 invalid ticket`) would give a probing client an enumeration
+ * signal: it could tell apart a valid sessionId from an invalid one
+ * based on which 4xxx code came back.
  *
- * W5.8 collapses ALL handshake-failure paths to a single generic
+ * All handshake-failure paths therefore collapse to a single generic
  * `4401 Authentication failed` over the wire. The real reason for the
  * failure still flows into the server-side warn log so SRE dashboards
  * remain useful.
@@ -38,7 +37,7 @@ export const WS_CLOSE_CODES = {
 export const WS_GENERIC_AUTH_REASON = 'Authentication failed';
 
 /**
- * TASK-298 D-17 — bounded per-session transcript replay buffer.
+ * Bounded per-session transcript replay buffer.
  *
  * The gateway keeps the last `RESUME_BUFFER_SIZE` transcript messages for
  * every active session so that a brief disconnect (≤ buffer window) can be
@@ -48,13 +47,13 @@ export const WS_GENERIC_AUTH_REASON = 'Authentication failed';
 export const RESUME_BUFFER_SIZE = 200;
 
 /**
- * TASK-351 P0-2 (C5) — fallback when no session meta was bound (legacy
- * clients / Redis blip at handshake). Matches the historical hardcoded rate.
+ * Fallback when no session meta was bound (legacy clients / Redis blip at
+ * handshake). Matches the historical hardcoded rate.
  */
 export const DEFAULT_SAMPLE_RATE = 16000;
 
 /**
- * TASK-351 P1-4 (H6) — WS egress backpressure threshold. When the client
+ * WS egress backpressure threshold. When the client
  * socket's `bufferedAmount` exceeds this many bytes, partial transcripts are
  * dropped and final transcripts are queued until the socket drains.
  * Default 512 KiB; overridable via `STT_WS_EGRESS_HIGH_WATERMARK_BYTES`.
@@ -65,22 +64,22 @@ export const WS_EGRESS_HIGH_WATERMARK_BYTES = (() => {
 })();
 
 /**
- * TASK-351 P1-4 (H6) — bound on the per-session queue of finals awaiting a
+ * Bound on the per-session queue of finals awaiting a
  * socket drain. On overflow the OLDEST queued final is dropped with an error
- * log (never silently); the resume buffer (TASK-298 D-17) still holds it for
+ * log (never silently); the resume buffer still holds it for
  * the reconnect-replay path.
  */
 export const WS_EGRESS_FINAL_QUEUE_LIMIT = 200;
 
 /**
- * TASK-351 P1-4 (H6) — drain-poll cadence for flushing queued finals. The
+ * Drain-poll cadence for flushing queued finals. The
  * `ws` library exposes no drain event on its WebSocket wrapper, so we poll
  * `bufferedAmount` while (and only while) finals are queued.
  */
 export const WS_EGRESS_FLUSH_POLL_MS = 50;
 
 /**
- * TASK-457 C3-01 — resume grace window. On a TRANSIENT socket drop the gateway
+ * Resume grace window. On a TRANSIENT socket drop the gateway
  * keeps the session (its resume buffer, seq counter, and upstream STT-v2
  * session) alive for this long so the SAME session can reconnect and continue
  * without a duplicate flood or a silent freeze. Only when the window expires
@@ -93,7 +92,7 @@ export const WS_RESUME_GRACE_MS = (() => {
 })();
 
 /**
- * TASK-457 C3-01 — stable consumer-group name the gateway uses when subscribing
+ * Stable consumer-group name the gateway uses when subscribing
  * to `stt:result:{sessionId}`. Being stable per session (the stream is already
  * per-session) means the bridge resumes from the group's Redis-owned cursor on
  * a re-subscription rather than re-reading from `0-0`. Distinct from the
@@ -112,38 +111,38 @@ interface SessionInfo {
   sessionId: string;
   /**
    * The CURRENT client socket. Mutable: on a reconnect within the grace window
-   * the session is rebound to the new socket (TASK-457 C3-01), so every send
+   * the session is rebound to the new socket, so every send
    * path reads `session.client` rather than a captured socket.
    */
   client: WebSocket;
   connectedAt: Date;
   binarySeq: number;
-  /** Server-assigned monotonic transcript seq (TASK-298 D-17). */
+  /** Server-assigned monotonic transcript seq. */
   resultSeq: number;
-  /** Last N transcripts retained for replay (TASK-298 D-17). */
+  /** Last N transcripts retained for replay. */
   resumeBuffer: BufferedTranscript[];
-  /** User id from the consumed stream ticket (TASK-298 D-1). */
+  /** User id from the consumed stream ticket. */
   userId: string;
-  /** Tenant id from the consumed stream ticket (TASK-298 D-1). */
+  /** Tenant id from the consumed stream ticket. */
   tenantId: string | null;
   /**
    * Session-negotiated audio sample rate, read from the session meta bound
-   * by `createStreamSession` (TASK-351 P0-2 / C5). Defaults to 16000.
+   * by `createStreamSession`. Defaults to 16000.
    */
   sampleRate: number;
-  /** Frames whose async Redis write failed (TASK-351 P0-2 / C1). */
+  /** Frames whose async Redis write failed. */
   droppedAudioFrames: number;
-  /** Partials dropped because the WS egress buffer was over the threshold (TASK-351 P1-4 / H6). */
+  /** Partials dropped because the WS egress buffer was over the threshold. */
   droppedPartialResults: number;
-  /** Finals dropped because the bounded egress queue overflowed (TASK-351 P1-4 / H6). */
+  /** Finals dropped because the bounded egress queue overflowed. */
   droppedFinalResults: number;
-  /** Finals awaiting delivery while the socket drains (TASK-351 P1-4 / H6). */
+  /** Finals awaiting delivery while the socket drains. */
   pendingFinalResults: Array<{ type: string; [key: string]: unknown }>;
   /** Poll timer that flushes `pendingFinalResults` once the socket drains. */
   egressFlushTimer?: ReturnType<typeof setInterval>;
   resultSubscription?: Subscription;
   /**
-   * TASK-457 C3-01 — grace-window timer armed on a transient disconnect. If the
+   * Grace-window timer armed on a transient disconnect. If the
    * same session reconnects before it fires the timer is cleared and the
    * session continues; otherwise the upstream is finalized. Undefined while the
    * socket is connected.
@@ -165,14 +164,14 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   private readonly logger = new Logger(SttWsGateway.name);
   private readonly sessions = new Map<WebSocket, SessionInfo>();
   /**
-   * TASK-457 C3-01 — resume state keyed by `sessionId` (not per-socket), so a
+   * Resume state keyed by `sessionId` (not per-socket), so a
    * reconnect within the grace window finds the SAME `SessionInfo` (its resume
    * buffer + seq + live result subscription) and rebinds to the new socket
    * instead of building a fresh, empty one that re-reads from `0-0`.
    */
   private readonly sessionsById = new Map<string, SessionInfo>();
   /**
-   * TASK-386 (#5/#17) — republishes this instance's live-socket count so the
+   * Republishes this instance's live-socket count so the
    * per-instance Redis key never expires between connect/disconnect bursts (key
    * TTL is 45s in `SocketRegistryService`). Cleared on module destroy.
    */
@@ -182,13 +181,13 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     private readonly sessionService: StreamingSessionService,
     private readonly bridgeService: StreamingAudioBridgeService,
     private readonly streamTicketService: StreamTicketService,
-    // TASK-351 P0-2 (C5): reads the session meta (negotiated sampleRate)
+    // Reads the session meta (negotiated sampleRate)
     // bound by `createStreamSession`.
     private readonly sessionBinding: StreamSessionTenantBindingService,
-    // TASK-351 P1-3 (M6 part 2): retries failed upstream session removals
+    // Retries failed upstream session removals
     // with backoff so STT-v2 sessions are not leaked on disconnect.
     private readonly removalRetry: SessionRemovalRetryService,
-    // TASK-386 (#5/#17): publishes this instance's open-socket count to Redis
+    // Publishes this instance's open-socket count to Redis
     // for the platform-metrics aggregate. Optional so the gateway still boots
     // in stacks that don't wire the platform-metrics module (best-effort).
     @Optional()
@@ -210,7 +209,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       clearInterval(this.socketHeartbeat);
       this.socketHeartbeat = undefined;
     }
-    // TASK-457 I3 — on SIGTERM / rolling deploy, best-effort FINALIZE every
+    // On SIGTERM / rolling deploy, best-effort FINALIZE every
     // live + in-grace session so the upstream STT-v2 sessions (and their
     // capacity slots) are not orphaned until the STT-v2 reaper. Clear timers,
     // unsubscribe, and DELETE the upstream session; bounded-await the removals
@@ -240,11 +239,11 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   }
 
   /**
-   * TASK-386 (#5/#17) — best-effort publish of THIS instance's live-socket count
+   * Best-effort publish of THIS instance's live-socket count
    * to the Redis registry. Never throws: a Redis blip must not affect the WS
    * data path.
    *
-   * TASK-392 (concurrency) — also publishes the per-tenant breakdown so the
+   * Also publishes the per-tenant breakdown so the
    * entitlements concurrency gate can compare a tenant's live active sessions
    * against `maxConcurrentSessions` across a horizontally-scaled deployment.
    */
@@ -264,7 +263,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   }
 
   /**
-   * TASK-392 (concurrency) — THIS instance's live open-socket count grouped by
+   * THIS instance's live open-socket count grouped by
    * tenant. Null-tenant sessions (legacy/system) are excluded: they are ungated
    * and must not consume any tenant's concurrency budget.
    */
@@ -283,7 +282,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     const sessionId = url.searchParams.get('sessionId');
     const ticket = url.searchParams.get('ticket');
 
-    // TASK-298 D-1 + TASK-307 W5.8 — auth gate runs BEFORE we register
+    // Auth gate runs BEFORE we register
     // the session or subscribe to the result stream, and every
     // rejection path closes with the SAME generic (code, reason) so
     // the client cannot enumerate sessions / tickets / scopes by
@@ -327,7 +326,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       return;
     }
 
-    // TASK-450 C4-01 — the scope string above only proves the ticket was
+    // The scope string above only proves the ticket was
     // minted FOR this sessionId, not that the minting tenant OWNS the
     // session. Verify the ticket's tenant against the session's owning
     // tenant (the gateway-side binding written at session create), mirroring
@@ -353,7 +352,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       return;
     }
 
-    // TASK-351 P0-2 (C5) — read the negotiated sampleRate bound at session
+    // Read the negotiated sampleRate bound at session
     // creation. Best-effort: a missing/corrupt record or a Redis blip falls
     // back to the historical 16000 and never rejects the handshake.
     let sampleRate: number = DEFAULT_SAMPLE_RATE;
@@ -371,10 +370,10 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       });
     }
 
-    // TASK-457 C3-01 — RECONNECT within the grace window: a prior transient
+    // RECONNECT within the grace window: a prior transient
     // drop kept this session (its resume buffer, seq, and live result
     // subscription) alive. Rebind it to the NEW socket instead of building a
-    // fresh, empty one that re-reads from 0-0. The client then sends the D-17
+    // fresh, empty one that re-reads from 0-0. The client then sends the
     // resume handshake to replay anything it missed.
     const existing = this.sessionsById.get(sessionId);
     if (existing) {
@@ -400,7 +399,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
 
     this.sessions.set(client, session);
     this.sessionsById.set(sessionId, session);
-    // TASK-386 (#5/#17) — refresh the multi-instance open-socket aggregate.
+    // Refresh the multi-instance open-socket aggregate.
     this.publishSocketCount();
 
     this.logger.log({
@@ -413,10 +412,10 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
 
     this.attachMessageHandler(client, sessionId);
 
-    // TASK-298 D-1 — subscribe to results ONLY after the ticket gate passes.
+    // Subscribe to results ONLY after the ticket gate passes.
     this.subscribeSessionResults(session);
 
-    // TASK-457 I1 — the async auth/lookup awaits above mean a client that
+    // The async auth/lookup awaits above mean a client that
     // sends resume/audio the instant its socket opens would race registration
     // (NO_SESSION → dropped resume → silent freeze). Emit an explicit readiness
     // ack AFTER registration + subscription so the client gates its first
@@ -425,7 +424,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   }
 
   /**
-   * TASK-457 C3-01 — (re)establish the result subscription for a session.
+   * (re)establish the result subscription for a session.
    * Uses the STABLE `captions` consumer group so the bridge resumes from the
    * group's persisted cursor (never a 0-0 re-read); every send path reads
    * `session.client`, so a rebind redirects output to the reconnected socket.
@@ -459,13 +458,13 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     });
   }
 
-  /** TASK-457 I1 — explicit readiness ack the client gates its first send on. */
+  /** Explicit readiness ack the client gates its first send on. */
   private sendReady(session: SessionInfo): void {
     this.sendJson(session.client, { type: 'ready', sessionId: session.sessionId, fromSeq: session.resultSeq + 1 });
   }
 
   /**
-   * TASK-457 C3-01 — register the per-socket message handler. Honors the ws
+   * Register the per-socket message handler. Honors the ws
    * `isBinary` frame flag: binary frames are audio, text frames (delivered by
    * ws@8 as a Buffer with `isBinary === false`) are JSON control. Without this
    * the `{type:'resume'|'stop'|'close'}` control channel was misclassified as
@@ -484,13 +483,13 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   }
 
   /**
-   * TASK-457 C3-01 — rebind a grace-window session to a reconnecting socket.
+   * Rebind a grace-window session to a reconnecting socket.
    * The upstream STT-v2 session and the result subscription stayed alive, so
    * the resume buffer + seq are intact; we swap the socket, cancel the grace
    * timer, and RE-ESTABLISH the result subscription (the transient disconnect
    * tore down the old reader so a cross-instance reconnect wouldn't split the
-   * shared caption group — TASK-457 C1). The re-established reader resumes from
-   * the group's persisted cursor; the client drives replay via the D-17
+   * shared caption group). The re-established reader resumes from
+   * the group's persisted cursor; the client drives replay via the
    * resume handshake.
    */
   private rebindSession(session: SessionInfo, client: WebSocket, stored: { userId: string; tenantId: string | null }): void {
@@ -526,12 +525,12 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       activeSessions: this.sessions.size,
     });
 
-    // TASK-457 I1 — readiness ack so the client gates its resume on it.
+    // Readiness ack so the client gates its resume on it.
     this.sendReady(session);
   }
 
   /**
-   * TASK-351 P1-4 (H6) — relay a bridge result to the WS client with egress
+   * Relay a bridge result to the WS client with egress
    * backpressure. When `client.bufferedAmount` exceeds the high-watermark
    * (or finals are already queued — preserves delivery order across the
    * drain window):
@@ -571,7 +570,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     }
   }
 
-  /** TASK-351 P1-4 — `bufferedAmount` of the client socket (0 when absent). */
+  /** `bufferedAmount` of the client socket (0 when absent). */
   private getBufferedAmount(client: WebSocket): number {
     return (client as { bufferedAmount?: number }).bufferedAmount ?? 0;
   }
@@ -581,11 +580,11 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   }
 
   /**
-   * TASK-351 P1-4 — queue a final for delivery after the socket drains. The
+   * Queue a final for delivery after the socket drains. The
    * queue is bounded: on overflow the oldest entry is dropped with an error log.
    *
-   * TASK-457 C3-03 — the previous claim that "the resume buffer still holds the
-   * dropped one" was FALSE: `tagAndBuffer` (bound `RESUME_BUFFER_SIZE`) runs
+   * Note: the resume buffer does NOT also hold the dropped one:
+   * `tagAndBuffer` (bound `RESUME_BUFFER_SIZE`) runs
    * microseconds before this enqueue and the resume buffer evicts the same final
    * in lockstep, so an overflowed final is in NEITHER the live queue NOR the
    * resume buffer. It survives only in the durable STT-v2 transcript (the
@@ -616,7 +615,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   }
 
   /**
-   * TASK-457 C3-03 — explicit gap marker so a dropped final is never a SILENT
+   * Explicit gap marker so a dropped final is never a SILENT
    * loss. Tiny control frame; sent even while the transcript stream is
    * backpressured (its congestion is what forced the drop). Recoverable from
    * the durable transcript on the client side.
@@ -636,10 +635,10 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   }
 
   /**
-   * TASK-351 P1-4 — drain poll: deliver queued finals in order while the
+   * Drain poll: deliver queued finals in order while the
    * socket stays below the threshold; self-clears once the queue empties
    * (normal delivery resumes) or the socket is gone. Targets `session.client`
-   * so a grace-window rebind flushes to the reconnected socket (TASK-457).
+   * so a grace-window rebind flushes to the reconnected socket.
    */
   private flushPendingFinals(session: SessionInfo): void {
     const client = session.client;
@@ -662,7 +661,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     }
   }
 
-  /** TASK-351 P1-4 — teardown of the egress queue + poll timer. */
+  /** Teardown of the egress queue + poll timer. */
   private clearEgressState(session: SessionInfo, reason: string): void {
     if (session.egressFlushTimer) {
       clearInterval(session.egressFlushTimer);
@@ -681,7 +680,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
 
   /**
    * Tag transcript messages with a server-assigned monotonic `seq` and push
-   * onto the bounded resume buffer (TASK-298 D-17). Non-transcript messages
+   * onto the bounded resume buffer. Non-transcript messages
    * pass through unchanged.
    */
   private tagAndBuffer(session: SessionInfo, msg: { type: string; [key: string]: unknown }): { type: string; [key: string]: unknown } {
@@ -707,14 +706,14 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     }
 
     this.sessions.delete(client);
-    // TASK-386 (#5/#17) — refresh the multi-instance open-socket aggregate.
+    // Refresh the multi-instance open-socket aggregate.
     this.publishSocketCount();
 
     this.logger.log({
       message: 'WebSocket client disconnected',
       sessionId: session.sessionId,
       droppedAudioFrames: session.droppedAudioFrames,
-      // TASK-351 P1-4 (H6) — egress backpressure accounting, mirroring
+      // Egress backpressure accounting, mirroring
       // the droppedAudioFrames pattern above.
       droppedPartialResults: session.droppedPartialResults,
       droppedFinalResults: session.droppedFinalResults,
@@ -726,7 +725,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       return;
     }
 
-    // TASK-457 C1 — STOP this session's captions reader immediately so a dead
+    // STOP this session's captions reader immediately so a dead
     // client's reader does NOT keep consuming/ACKing the shared `captions`
     // group for the whole grace window. Cross-instance that would split the
     // live captions (Redis load-balances new results between the dead reader
@@ -740,7 +739,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     session.resultSubscription?.unsubscribe();
     session.resultSubscription = undefined;
 
-    // TASK-457 C3-01 — a TRANSIENT disconnect must NOT finalize the upstream.
+    // A TRANSIENT disconnect must NOT finalize the upstream.
     // Keep the session (resume buffer + seq + upstream STT-v2 session) alive for
     // the grace window so the SAME session can reconnect anywhere and continue.
     // Only when the window expires with no reconnect do we finalize.
@@ -753,8 +752,8 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   }
 
   /**
-   * TASK-457 C3-01 — finalize a session for real: unsubscribe from results,
-   * tell STT-v2 to finalize (with the M6 removal-retry fallback), drop all
+   * Finalize a session for real: unsubscribe from results,
+   * tell STT-v2 to finalize (with the removal-retry fallback), drop all
    * state. Idempotent. Called on an explicit `close` or when the resume grace
    * window expires with no reconnect.
    */
@@ -787,7 +786,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
         sessionId: session.sessionId,
         error: err instanceof Error ? err.message : String(err),
       });
-      // TASK-351 P1-3 (M6 part 2) — park the session for bounded retries
+      // Park the session for bounded retries
       // instead of leaking it until the STT-v2 inactivity reaper.
       this.removalRetry.enqueue(session.sessionId);
     });
@@ -800,7 +799,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       return;
     }
 
-    // TASK-457 — route on the ws `isBinary` frame flag, NOT `Buffer.isBuffer`:
+    // Route on the ws `isBinary` frame flag, NOT `Buffer.isBuffer`:
     // ws@8 delivers TEXT frames as a Buffer too, so a Buffer with
     // `isBinary === false` is a JSON control frame ({resume|stop|close}), not
     // audio. Misrouting it as audio was why the resume handshake was dead.
@@ -839,13 +838,13 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
         }
 
         case 'resume': {
-          // TASK-298 D-17 / TASK-457 C3-01 — resumability handshake.
+          // Resumability handshake.
           this.handleResume(session, msg);
           break;
         }
 
         case 'close': {
-          // TASK-457 C3-01 — an explicit close is a REAL end (no grace window):
+          // An explicit close is a REAL end (no grace window):
           // finalize the upstream immediately.
           this.finalizeSession(session, 'session closed by client');
           client.close(1000, 'Session closed by client');
@@ -867,7 +866,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   }
 
   /**
-   * TASK-351 P0-2 (C1) — forward an audio frame WITHOUT awaiting the Redis
+   * Forward an audio frame WITHOUT awaiting the Redis
    * ack. ioredis preserves per-connection command order, so XADD ordering
    * (and the audio-before-finalize ordering relied on by `stop`) is
    * unaffected; awaiting each ack only added per-frame promise/microtask
@@ -894,8 +893,8 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   }
 
   /**
-   * Handle the `{type:'resume', sessionId, lastSeq}` handshake from the SDK
-   * (TASK-298 D-17 / TASK-457 C3-01). A successful resume ALWAYS acknowledges
+   * Handle the `{type:'resume', sessionId, lastSeq}` handshake from the SDK.
+   * A successful resume ALWAYS acknowledges
    * continuation from the next unseen seq (`fromSeq = lastSeq + 1`) and replays
    * every buffered transcript with `seq > lastSeq` — never re-sending anything
    * with `seq <= lastSeq` (no duplicate flood). When the requested `lastSeq` is

@@ -69,7 +69,8 @@ Each workflow = ordered step list citing service + endpoint + model + test per s
 
 ## Implementation Summary
 
-_(populate as waves complete)_
+**Wave 2, batch 1 ✅ (2026-07-21, workflow `wf_81525326-b65`):** `docs/traceability/` created with `index.md` + the P0/P1 gap domains — `tts.md` (the formerly-zero-rows service), `auth-identity.md` (incl. SAML/SSO TASK-499 and TASK-541 revocation/audit surfaces), `ai-models-providers.md` (registry, discovery, lifecycle/retention, runtime profiles, task defaults, BYO); successor banner added to the legacy matrix. Adversarial verifier checked every cited module dir, controller route string, Prisma model, e2e spec, and console test (~120 artifacts): 3 factual errors found and fixed (all in auth-identity.md — UserRoleAssignment's prisma file, two test paths, missing `POST /auth/forgot-password` entry point); zero errors in the other three files. Completeness refutations recorded: RBAC endpoints cell omits clone + role-policy-attachment routes (summary-style, optional); `ai-service-admin`/`agentic-admin` deliberately left in the legacy platform-ops domain (documented boundary).
+Remaining: migrate the other domains (consultation, transcription, summarization, harness, tenancy, storage, platform-ops, admin-console, sdk), `workflows.md`, SOTA gap pass, honesty/coverage checker scripts.
 
 ## Change History
 

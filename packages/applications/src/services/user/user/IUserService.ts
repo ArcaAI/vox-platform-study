@@ -3,8 +3,6 @@ import { FetchResponse, PaginatedQuery } from '../../../common';
 import { IBaseService } from '../../../interfaces';
 import { CreateUserRequest, CreateOAuthUserRequest, UpdateUserRequest } from './dto';
 
-// TODO: Implement this
-
 /**
  * TASK-398 (P1-7) — per-user export enrichment read-model: the profile email +
  * active department NAMES that `UserResponse` deliberately does not carry.

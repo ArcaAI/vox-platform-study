@@ -3,15 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { getCorsOrigins } from '../cors.config';
 
 /**
- * TASK-310 E-2 (AC-4) — dev CORS pins to a localhost-only RegExp.
+ * Dev CORS pins to a localhost-only RegExp.
  *
- * Pre-W7 the dev branch of `getCorsOrigins` returned `true`, which
- * combined with `credentials: true` is a config the browser rejects
- * anyway (cookies + wildcard is illegal). The intent was always
- * "localhost only in dev"; this AC pins that intent as code.
- *
- * Production / staging CORS callback paths are untouched — only the
- * dev value changes from `true` to the RegExp.
+ * The dev branch of `getCorsOrigins` must NOT return `true`: combined
+ * with `credentials: true` that's a config the browser rejects anyway
+ * (cookies + wildcard is illegal), so the intent is "localhost only in
+ * dev" and this test pins that intent as code.
  */
 describe('getCorsOrigins (TASK-310 E-2 / AC-4)', () => {
   describe('development', () => {

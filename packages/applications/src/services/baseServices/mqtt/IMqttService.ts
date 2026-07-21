@@ -1,5 +1,3 @@
-// TODO: Implement this
-
 /**
  * Interface representing an MQTT service for sending messages.
  */

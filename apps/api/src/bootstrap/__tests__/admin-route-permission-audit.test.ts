@@ -1,18 +1,11 @@
 /**
  * Boot-time route permission audit.
  *
- * Original — Phase 0 Item 3 (TASK-302 Stream A): walked the Express
- * router after Nest is built and refused to start if any path matching
- * ^/(api/v\d+/)?admin/ lacked both REQUIRED_PERMISSIONS_KEY and
- * SKIP_AUTH_KEY metadata.
- *
- * TASK-307 W4a.1 widens the scope from `/admin/*` to ALL routes and
- * fixes a latent bug where class-level decorators (e.g. a controller-
- * level `@CanManage('Tenant')` with no method-level decorator on a
- * given route) were invisible to the audit. The widened audit uses
- * `DiscoveryService` + `Reflector.getAllAndOverride([method, class])`
- * so class-level decorators are honoured the same way the
- * `AuthorizationGuard` honours them at runtime.
+ * Walks ALL routes (not just `/admin/*`) using `DiscoveryService` +
+ * `Reflector.getAllAndOverride([method, class])`, so class-level
+ * decorators (e.g. a controller-level `@CanManage('Tenant')` with no
+ * method-level decorator on a given route) are honoured the same way
+ * the `AuthorizationGuard` honours them at runtime.
  *
  * "Labeled" means: `SKIP_AUTH_KEY === true` (i.e. `@Public()`) OR
  * `REQUIRED_PERMISSIONS_KEY` metadata is set to an array (any value,
@@ -35,8 +28,8 @@ import { Authorize, CanManage, Public } from '../../decorators';
  * triggers full module initialisation (DB, Redis, secrets); `compile()`
  * is sufficient for metadata discovery.
  *
- * TASK-343 — `Authorize`/`CanXxx` are now metadata-only (they no longer
- * apply `@UseGuards(UnifiedAuthGuard)`), so the `.overrideGuard(UnifiedAuthGuard)`
+ * `Authorize`/`CanXxx` are metadata-only (they don't apply
+ * `@UseGuards(UnifiedAuthGuard)`), so the `.overrideGuard(UnifiedAuthGuard)`
  * below is a defensive no-op: the boot audit reads METADATA
  * (`REQUIRED_PERMISSIONS_KEY` / `SKIP_AUTH_KEY`), not guards. It is retained so
  * that if a controller in a future test re-applies the guard directly, the
@@ -172,10 +165,10 @@ describe('TASK-307 W4a.1 — boot-time route permission audit (widened to ALL ro
     });
   });
 
-  // TASK-319 F6 — admin routes must declare a CONCRETE permission. An empty
-  // @Authorize() (auth-only, no permission tuple) is an acceptable label on
-  // end-user routes but a security smell on the /admin surface, where every
-  // route should name the specific permission it requires.
+  // Admin routes must declare a CONCRETE permission. An empty @Authorize()
+  // (auth-only, no permission tuple) is an acceptable label on end-user
+  // routes but a security smell on the /admin surface, where every route
+  // should name the specific permission it requires.
   describe('TASK-319 F6 — /admin routes require a non-empty permission', () => {
     it('throws when an /admin route carries only an empty @Authorize() (no specific permission)', async () => {
       @Authorize()

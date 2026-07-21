@@ -2,8 +2,6 @@ import { AutoClassMapper, RolePermissionEntity } from '@arcaai/domains';
 import { RolePermissionResponse, PaginatedRolePermissionResponse } from './dto';
 import { FetchResponse } from '../../../common';
 
-// TODO: Implement this
-
 export class RolePermissionDtoMapper {
   static ToResponse(entity: RolePermissionEntity): RolePermissionResponse {
     return AutoClassMapper(entity, RolePermissionResponse);

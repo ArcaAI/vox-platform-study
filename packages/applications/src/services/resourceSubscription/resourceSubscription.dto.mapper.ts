@@ -2,8 +2,6 @@ import { AutoClassMapper, ResourceSubscriptionEntity } from '@arcaai/domains';
 import { ResourceSubscriptionResponse, PaginatedResourceSubscriptionResponse } from './dto';
 import { FetchResponse } from '../../common';
 
-// TODO: Implement this
-
 export class ResourceSubscriptionDtoMapper {
   static ToResponse(entity: ResourceSubscriptionEntity): ResourceSubscriptionResponse {
     return AutoClassMapper(entity, ResourceSubscriptionResponse);

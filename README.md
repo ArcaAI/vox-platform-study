@@ -12,7 +12,9 @@ apps/
   guardrail/    FastAPI (8863) — content-safety, PII, medical validation
   nlp/          FastAPI (8864) — medical NER, classification, diagnosis suggestions
   harness/      FastAPI (8866) — clinical documentation harness + Temporal worker
-  ui-playground/ React SDK playground + admin console (5175) — DEPRECATED
+  tts-v2/       FastAPI (8865) — text-to-speech, multi-provider (Azure + local Kokoro/Indic Parler)
+  admin-console/ Next.js 16 (5176) — operator UI, BFF auth + gateway proxy
+  ui-playground/ React SDK playground (5175) — DEPRECATED
   example/      Minimal live-transcription demo (5173)
 
 packages/
@@ -66,8 +68,8 @@ For the full setup guide, daily workflows, testing, and troubleshooting, see **[
 
 | Command | Description |
 |---------|-------------|
-| `pnpm dev:stack` | Start the full clinical-workspace stack (API, STT, SMR, NLP, harness + worker, UI) |
-| `pnpm dev:stack -- smr worker` | Start a subset of the stack (any of: api, stt, smr, guardrail, nlp, harness, worker, ui) |
+| `pnpm dev:stack` | Start the default stack (API, STT, SMR, guardrail, NLP, harness + worker, admin console) |
+| `pnpm dev:stack -- smr worker` | Start a subset of the stack (any of: api, stt, smr, guardrail, nlp, harness, worker, ui, tts) |
 | `pnpm dev:stack down` | Stop services previously spawned by `dev:stack` (pidfile-based; no-op if none) |
 | `DRY_RUN=1 pnpm dev:stack` | Print the launch plan without starting anything |
 | `pnpm dev:doctor` | Health-check all services, docker infra, LLM engines, and the STT key |
@@ -78,10 +80,12 @@ For the full setup guide, daily workflows, testing, and troubleshooting, see **[
 | `pnpm dev:smr-v2` | Start SMR-v2 service with the LM Studio provider registered |
 | `pnpm dev:nlp` / `dev:guardrail` / `dev:harness` | Start NLP / Guardrail / harness API service |
 | `pnpm dev:harness:worker` | Start the harness Temporal worker |
-| `pnpm dev:<service>:watch` | Scoped-reload variant (stt-v2, smr-v2, guardrail, nlp, harness) |
+| `pnpm dev:tts-v2` | Start TTS-v2 service (`:watch` for scoped reload) |
+| `pnpm dev:admin` | Start the admin console (Next.js dev, port 5176) |
+| `pnpm dev:<service>:watch` | Scoped-reload variant (stt-v2, smr-v2, guardrail, nlp, harness, tts-v2) |
 | `pnpm build` | Build all packages and apps |
 | `pnpm test:unit` / `test:integration` / `test:e2e` | Run the TypeScript test suites (`.env.test`, isolated infra) |
-| `pnpm py:<svc>:test` | Run a Python service's pytest suite (stt-v2, smr-v2, nlp, guardrail, harness) |
+| `pnpm py:<svc>:test` | Run a Python service's pytest suite (stt-v2, smr-v2, nlp, guardrail, harness, tts-v2) |
 | `pnpm ok` | Full reset: push DB (destructive), seed, build everything |
 | `pnpm db:studio` | Open Prisma Studio |
 | `pnpm gen:token` | Generate a dev JWT token |
@@ -114,7 +118,9 @@ for the dev-script design (defaults, env precedence, preflight checks).
 | Object Storage | MinIO |
 | Vector DB | Qdrant |
 | Workflows | Temporal (clinical documentation harness) |
+| Speech | TTS-v2 (Azure Speech + local Kokoro/Indic Parler); STT-v2 (multi-model ASR) |
 | Secrets | HashiCorp Vault (Transit PHI encryption, dynamic DB creds) |
 | Frontend SDK | React 19, TypeScript |
+| Admin Console | Next.js 16 App Router, React 19, Tailwind v4 |
 | Testing | Vitest, Playwright, pytest |
 | Infrastructure | Docker Compose (local), k3s + ArgoCD (cluster) |
