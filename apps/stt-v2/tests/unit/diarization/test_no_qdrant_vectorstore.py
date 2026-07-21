@@ -1,4 +1,4 @@
-"""Regression guard for the TASK-330 corrective decision.
+"""Regression guard for a corrective architecture decision.
 
 Speaker diarization in STT-v2 is **in-memory and session-scoped**. The legacy
 Qdrant-backed speaker vector store (``stt_v2.core.vectorstore``) was removed by
@@ -24,7 +24,7 @@ import pytest
 
 
 def test_legacy_qdrant_vectorstore_module_is_absent() -> None:
-    """The Qdrant-backed speaker store was intentionally removed (TASK-330).
+    """The Qdrant-backed speaker store was intentionally removed.
 
     If this fails, a ``core/vectorstore`` module has reappeared — reconcile it
     with the documented in-memory/session-scoped design before re-adding it.

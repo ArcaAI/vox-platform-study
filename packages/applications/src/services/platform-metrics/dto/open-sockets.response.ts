@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 /**
- * TASK-386 E2 / #17 — thin open-sockets tile source for the 380/383 dashboards.
+ * Thin open-sockets tile source for the 380/383 dashboards.
  * `open` is the live Redis-aggregated count across API instances; `perMinute`
  * is the Prometheus-derived churn rate (0 when Prometheus is unreachable).
  */

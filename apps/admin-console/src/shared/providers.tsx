@@ -8,7 +8,7 @@ import { Toaster } from '@arcaai/ui/components/shadcn/sonner';
 import { retryQuery } from '@/shared/api';
 
 /**
- * BUG-001: next-themes renders its FOUC-prevention <script> inside the React
+ * Next-themes renders its FOUC-prevention <script> inside the React
  * tree, and the React canary bundled with Next 16 warns on every executable
  * <script> created during a client render (upstream: pacocoursey/next-themes#385).
  * The client copy is never executed by React anyway, so mark it as an inert
@@ -27,7 +27,7 @@ export function Providers({ children }: { children: ReactNode }) {
                     queries: {
                         staleTime: 30_000,
                         // One retry for transient failures only — a 4xx is
-                        // deterministic and must not be replayed (TASK-428).
+                        // deterministic and must not be replayed.
                         retry: retryQuery,
                         refetchOnWindowFocus: false,
                     },

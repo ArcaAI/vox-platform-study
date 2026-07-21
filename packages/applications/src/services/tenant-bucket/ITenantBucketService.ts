@@ -29,7 +29,7 @@ export abstract class ITenantBucketService {
   abstract provisionSystemBuckets(tenantId: string): Promise<TenantBucketResponse[]>;
   /**
    * Writes the plan's `PlanEntitlement.storageQuotaBytes` onto the tenant's
-   * primary (AUDIO) system bucket as `TenantBucket.quotaBytes` (TASK-497 D4).
+   * primary (AUDIO) system bucket as `TenantBucket.quotaBytes`.
    * Idempotent — only writes when the bucket's `quotaBytes` is currently
    * null; a `null` plan or a `null` storageQuotaBytes (unlimited tier) is a
    * no-op that leaves `quotaBytes` null.

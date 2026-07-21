@@ -1,5 +1,5 @@
 /**
- * TASK-392 — Plan entitlements: constants, the seeded default matrix, and the
+ * Plan entitlements: constants, the seeded default matrix, and the
  * global kill-switch key.
  *
  * Mirrors the `rate-limit.constants.ts` registry: every entitlement knob and

@@ -29,7 +29,7 @@ export function getRole(id: string): Promise<Role> {
     return getJson(`${ROLES}/${encodeURIComponent(id)}`);
 }
 
-/** TASK-444 — users holding a role (tenant-scoped on the gateway). */
+/** Users holding a role (tenant-scoped on the gateway). */
 export function listRoleMembers(roleId: string, params?: RbacListParams): Promise<RbacPaginated<RoleMember>> {
     return getJson(`${ROLES}/${encodeURIComponent(roleId)}/members`, params);
 }
@@ -38,7 +38,7 @@ export function createRole(body: CreateRoleRequest): Promise<Role> {
     return postJson(ROLES, body);
 }
 
-/** TASK-501 — clone a role (SYSTEM or CUSTOM) into a new CUSTOM role. */
+/** Clone a role (SYSTEM or CUSTOM) into a new CUSTOM role. */
 export function cloneRole(id: string, body: CloneRoleRequest): Promise<Role> {
     return postJson(`${ROLES}/${encodeURIComponent(id)}/clone`, body);
 }

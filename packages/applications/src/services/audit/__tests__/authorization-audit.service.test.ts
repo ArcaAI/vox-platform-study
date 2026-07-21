@@ -47,7 +47,7 @@ const mockCacheService = {
 };
 
 // Mock ClsService (CLS boundary) — kept here so tenant-scoping tests
-// (TASK-305 D.8) can opt-in by passing it to the constructor.
+// can opt-in by passing it to the constructor.
 const mockClsService = {
     get: vi.fn(),
     set: vi.fn(),
@@ -113,7 +113,7 @@ describe('AuthorizationAuditService', () => {
                 data: expect.objectContaining({
                     eventType: 'AUTHORIZATION',
                     responsibleUserId: 'user-123',
-                    // TASK-306 P1.2 — persisted `tenantId` is now CLS-derived
+                    // Persisted `tenantId` is now CLS-derived
                     // (`tenant-a` from `beforeEach`), not the caller-supplied
                     // `entry.tenantId` (`tenant-1`).
                     tenantId: 'tenant-a',
@@ -589,7 +589,7 @@ describe('AuthorizationAuditService', () => {
                 allowed: true,
                 endpoint: '/api/users',
                 method: 'GET',
-                // TASK-306 P1.2 — `serviceWithoutCache` is constructed without
+                // `serviceWithoutCache` is constructed without
                 // CLS; supply `entry.tenantId` so the back-compat fallback
                 // satisfies the NOT NULL `tenantId` guard introduced in P1.2
                 // and the DB write proceeds (test verifies Redis bypass).
@@ -634,7 +634,7 @@ describe('AuthorizationAuditService', () => {
             expect(createCall.data).toMatchObject({
                 eventType: 'AUTHORIZATION',
                 responsibleUserId: 'user-123',
-                // TASK-306 P1.2 — persisted `tenantId` is CLS-derived
+                // Persisted `tenantId` is CLS-derived
                 // (`tenant-a`), not the caller-supplied `entry.tenantId`.
                 tenantId: 'tenant-a',
                 action: 'READ', // Action is uppercased to match AuditAction enum
@@ -1089,7 +1089,7 @@ describe('AuthorizationAuditService', () => {
     });
 
     /**
-     * TASK-305 D.8 — Multi-tenant scoping for raw Prisma audit queries
+     * Multi-tenant scoping for raw Prisma audit queries
      *
      * Audit finding C-5 (HIPAA §164.312(b)): `getAuthorizationHistory`,
      * `getRecentDenials`, and `getDenialCount` bypassed `AuditLogRepository`
@@ -1239,13 +1239,13 @@ describe('AuthorizationAuditService', () => {
     });
 
     /**
-     * TASK-306 P1.2 (audit C-7 finale / NEW-1 / HIPAA §164.312(b)) — derive
+     * (audit C-7 finale / NEW-1 / HIPAA §164.312(b)) — derive
      * the persisted audit row's `tenantId` from CLS, NOT from the caller-
      * supplied `entry.tenantId`. Caller-supplied is allowed only as a
      * back-compat fallback when no CLS context is wired (background jobs).
      * When neither source resolves a tenant, the write is SKIPPED with a
      * warning — audit rows with NULL tenantId would violate the schema
-     * NOT NULL constraint introduced by TASK-305 Phase A.
+     * NOT NULL constraint.
      */
     describe('TASK-306 P1.2 — logToDatabase uses CLS tenantId', () => {
         const baseEntry: Omit<AuthorizationAuditEntry, 'timestamp'> = {

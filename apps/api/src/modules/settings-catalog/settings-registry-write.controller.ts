@@ -14,7 +14,7 @@ import { EffectiveSettingResponse } from './dto/setting-catalog.response';
 import { WriteRegistrySettingRequest, WriteRegistrySettingResponse } from './dto/registry-setting.dto';
 
 /**
- * TASK-524 — the settings registry READ/WRITE lane (AD-1).
+ * The settings registry READ/WRITE lane.
  *
  * `GET/PUT /admin/settings/registry/:key`. Before this ticket there was NO
  * write route for any registry key anywhere in the gateway: descriptors
@@ -78,7 +78,7 @@ export class SettingsRegistryWriteController {
       departmentId: departmentId ?? null,
       doctorId: doctorId ?? null,
     });
-    // TASK-533 B2 — carry the backing row's version so the `ETagInterceptor`
+    // Carry the backing row's version so the `ETagInterceptor`
     // renders `ETag: "<version>"` and the client can round-trip it as `If-Match`
     // on the PUT. 0 when no row is stored yet (the value is a code default), and
     // the interceptor deliberately emits no ETag for a non-positive version —
@@ -107,7 +107,7 @@ export class SettingsRegistryWriteController {
   async putSetting(
     @Param('key') key: string,
     @Body() request: WriteRegistrySettingRequest,
-    // TASK-533 B2 — RFC 7232 precondition. Deliberately NOT `@RequiresIfMatch()`:
+    // RFC 7232 precondition. Deliberately NOT `@RequiresIfMatch()`:
     // that guard 428s unconditionally, which would make a FIRST write impossible
     // (no row ⇒ no ETag ⇒ nothing for the client to echo). The service applies
     // the precondition only when a row actually exists, so first writes succeed

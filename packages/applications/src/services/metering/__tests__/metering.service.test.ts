@@ -1,5 +1,5 @@
 /**
- * TASK-392 (Q5, Phase 2) — MeteringService.
+ * MeteringService.
  *
  * Verifies the authoritative behaviour, not the mock plumbing:
  *   - `getCurrentUsage` aggregates the CURRENT UTC month window and rounds

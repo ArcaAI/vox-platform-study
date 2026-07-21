@@ -1,5 +1,5 @@
 /**
- * STT v1 Config Removal Verification Tests (TASK-210 Phase 1)
+ * STT v1 Config Removal Verification Tests
  *
  * Verifies that STT_PORT, STT_URL, LLM_PORT, and LLM_URL have been
  * removed from the configuration service and IAppConfig interface.
@@ -43,7 +43,7 @@ describe('STT v1 Config Removal (TASK-210 Phase 1)', () => {
 
         // apps/fedl was removed; the gateway no longer carries the legacy
         // FEDL_PORT/FEDL_URL config keys. (TTS_PORT/TTS_URL were REINTRODUCED by
-        // apps/tts-v2 / TASK-488 — TTS is a real downstream service again, like
+        // apps/tts-v2 — TTS is a real downstream service again, like
         // SMR/NLP/GUARDRAIL — so their presence is now correct, not v1 cruft.)
         it('should no longer contain FEDL_PORT, FEDL_URL properties', () => {
             const content = readFile(interfacePath);
@@ -88,7 +88,7 @@ describe('STT v1 Config Removal (TASK-210 Phase 1)', () => {
         });
 
         // apps/fedl was removed; the config service no longer resolves the legacy
-        // FEDL_* env keys. (TTS_URL/TTS_PORT are back for apps/tts-v2 / TASK-488 —
+        // FEDL_* env keys. (TTS_URL/TTS_PORT are back for apps/tts-v2 —
         // a legitimate downstream service, resolved like SMR_URL/NLP_URL/GUARDRAIL_URL.)
         it('should no longer reference FEDL_URL, FEDL_PORT', () => {
             const content = readFile(configServicePath);

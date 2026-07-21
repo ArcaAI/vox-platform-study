@@ -44,7 +44,7 @@ from harness.sensors.inferential.verdict_cache import (
 
 NAME = "groundedness"
 
-# TASK-355 Phase D Slice 5d (Q5) — invoked AS EACH per-claim verdict resolves, so
+# Invoked AS EACH per-claim verdict resolves, so
 # the activity can stream it live: ``on_claim(claim_ref, supported)``. Best-effort —
 # the sensor swallows any callback error so a broken live feed never degrades the pass.
 ClaimVerdictCallback = Callable[[str, bool], Awaitable[None]]
@@ -144,7 +144,7 @@ def _vacuous_pass() -> SensorResult:
 class GroundednessSensor:
     """Score = entailed claims / total claims, via the injected judge.
 
-    ``batch_size`` (TASK-355 R-5): with ``<= 1`` the sensor keeps the legacy
+    ``batch_size``: with ``<= 1`` the sensor keeps the legacy
     one-call-per-claim path byte-for-byte; with ``>= 2`` it states the shared
     transcript premise ONCE and labels claims in ``ceil(N / batch_size)`` JSON-array
     calls fired concurrently — far fewer long-prefill judge calls. Both paths feed
@@ -173,7 +173,7 @@ class GroundednessSensor:
         try:
             if self.batch_size and self.batch_size > 1:
                 # Batching is the env-gated, clinically-rejected path: no live feed, and the
-                # TASK-359 WS-1 per-claim cache is not applied to its (different) framing.
+                # per-claim cache is not applied to its (different) framing.
                 verdicts = await self._verdicts_batched(ctx, claims, judge=judge)
             else:
                 verdicts = await self._verdicts_per_claim(
@@ -193,7 +193,7 @@ class GroundednessSensor:
         on_claim: ClaimVerdictCallback | None = None,
         verdict_cache: VerdictCache | None = None,
     ) -> dict[str, bool]:
-        """One focused judge call per claim, fired CONCURRENTLY (TASK-355 R-4).
+        """One focused judge call per claim, fired CONCURRENTLY.
 
         Each call sends the byte-identical single-claim prompt the serial path used —
         so verdicts are framing-equivalent to today's production loop (unlike claim
@@ -204,10 +204,10 @@ class GroundednessSensor:
         propagates to ``arun`` (degrade), an unparseable verdict is conservative
         ungrounded.
 
-        TASK-359 WS-1: when ``verdict_cache`` is provided, each claim's verdict is keyed on
+        When ``verdict_cache`` is provided, each claim's verdict is keyed on
         the EXACT judge input (post-clean claim text + premise + sensor/judge identity); a
         HIT reuses the cached boolean (no judge call), a MISS re-judges (conservative) and
-        populates. The cached boolean is byte-identical to a fresh judgement (AC-2) and feeds
+        populates. The cached boolean is byte-identical to a fresh judgement and feeds
         the unchanged aggregation below — so a cached pass yields the identical SensorResult.
         """
         identity = sensor_identity(NAME, _SYSTEM_PROMPT, judge.model)
@@ -232,7 +232,7 @@ class GroundednessSensor:
 
             supported = await cached_verdict(verdict_cache, key=key, compute=_judge_once)
             ref = _claim_ref(claim)
-            # Q5 live feed: stream this verdict the moment it resolves (hit or miss). Best-effort
+            # Live feed: stream this verdict the moment it resolves (hit or miss). Best-effort
             # — a callback failure must never change the verdict or degrade the pass.
             if on_claim is not None:
                 with contextlib.suppress(Exception):

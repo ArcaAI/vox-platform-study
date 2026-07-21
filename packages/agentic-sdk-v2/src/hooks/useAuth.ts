@@ -1,10 +1,10 @@
 /**
- * @arcaai/vox - useAuth Hook (TASK-032 WS-A, TASK-209, TASK-224, TASK-264)
+ * @arcaai/vox - useAuth Hook
  *
  * JWT-based authentication hook with impersonation support.
  * Provides login, logout, token refresh, impersonate, and current user retrieval.
  *
- * TASK-264 W0-3: the admin "original" JWT is no longer stored in the Zustand
+ * The admin "original" JWT is not stored in the Zustand
  * store. It lives in a private WeakMap inside `AgenticClient` and is restored
  * via `apiClient.stopImpersonation()`. `useAuth` simply exposes the boolean
  * `isImpersonating` and proxies `startImpersonation` / `stopImpersonation`.
@@ -15,7 +15,7 @@ import { useAgenticStore } from '../store';
 import { AUTH_ENDPOINTS } from '../core/constants';
 import type { AuthUser, LoginResponse, ImpersonateRequest, ImpersonateResponse, RefreshTokenResponse } from '../types/auth';
 
-// TASK-331 doc-05 F-4 / TASK-417 — GLOBAL_ADMIN is the single elevated role.
+// GLOBAL_ADMIN is the single elevated role.
 const IMPERSONATION_ROLES = ['GLOBAL_ADMIN', 'TENANT_ADMIN'] as const;
 
 export interface UseAuthReturn {
@@ -35,13 +35,13 @@ export interface UseAuthReturn {
   /**
    * Low-level escape hatch: stash an admin token explicitly. Most consumers
    * should use `impersonate()` instead, which performs the server round-trip
-   * and wires this up. TASK-264 W0-3.
+   * and wires this up.
    */
   startImpersonation: (token: string) => void;
   /**
    * Low-level escape hatch: clear any active impersonation locally. Most
    * consumers should use `endImpersonation()` instead, which also restores
-   * the admin user identity in the store. TASK-264 W0-3.
+   * the admin user identity in the store.
    */
   stopImpersonation: () => void;
 }
@@ -54,7 +54,7 @@ export function useAuth(): UseAuthReturn {
   const user = (store.authUser as AuthUser | null) ?? null;
   const isAuthenticated = store.authIsAuthenticated;
   const impersonatedUser = (store.authImpersonatedUser as AuthUser | null) ?? null;
-  // TASK-264 W0-3: impersonation flag now derived from BOTH the impersonated
+  // Impersonation flag is derived from BOTH the impersonated
   // user (UI cue) and the client's private flag (source of truth for the
   // admin token). They should agree, but the client flag is authoritative
   // because the admin JWT is no longer in the store.
@@ -76,7 +76,7 @@ export function useAuth(): UseAuthReturn {
         if (data.token) {
           apiClient.updateAccessToken(data.token);
         }
-        // TASK-320 B2 — capture the refresh token in AgenticClient's in-memory
+        // Capture the refresh token in AgenticClient's in-memory
         // store so the auto-refresh handler (wired by AgenticProvider) can mint
         // a new access token on a 401 without the host app wiring anything.
         if (data.refreshToken) {
@@ -106,10 +106,10 @@ export function useAuth(): UseAuthReturn {
     try {
       await apiClient.post(AUTH_ENDPOINTS.LOGOUT, {});
       apiClient.clearAccessToken();
-      // TASK-320 B2 — drop the in-memory refresh token so a logged-out client
+      // Drop the in-memory refresh token so a logged-out client
       // can't auto-refresh back into an authenticated state.
       apiClient.clearRefreshToken();
-      // TASK-264 W0-3: discard any stashed admin token defensively.
+      // Discard any stashed admin token defensively.
       if (apiClient.isImpersonating()) apiClient.stopImpersonation();
       store.setAuthUser(null);
       store.setIsAuthenticated(false);
@@ -177,14 +177,14 @@ export function useAuth(): UseAuthReturn {
       const timer = logger?.startOperation('impersonate');
       try {
         const currentToken = apiClient.getAccessToken();
-        // TASK-331 doc-05 F-3 — forward the caller's selected tenant so a global
+        // Forward the caller's selected tenant so a global
         // admin's chosen tenant is honoured; without it the backend falls back
         // to the target's OLDEST assignment. Sent ONLY when provided.
         const body: ImpersonateRequest = { targetUserId };
         if (targetTenantId) body.targetTenantId = targetTenantId;
         const data = await apiClient.post<ImpersonateResponse>(AUTH_ENDPOINTS.IMPERSONATE, body);
 
-        // TASK-264 W0-3: stash admin token inside AgenticClient (WeakMap),
+        // Stash admin token inside AgenticClient (WeakMap),
         // not in the Zustand store. Only stash when we have a non-empty
         // token — `startImpersonation` rejects empty input.
         if (currentToken && currentToken.length > 0) {
@@ -197,7 +197,7 @@ export function useAuth(): UseAuthReturn {
           apiClient.updateAccessToken(data.token);
         }
 
-        // TASK-297 H-4 — gate PersonalizationManager so admin edits during
+        // Gate PersonalizationManager so admin edits during
         // impersonation stay in-memory only (no IDB write, no PATCH).
         store.personalizationManager?.setImpersonationReadOnly?.(true);
 
@@ -223,7 +223,7 @@ export function useAuth(): UseAuthReturn {
       logger?.warn('Failed to revoke impersonation token on server — proceeding with local cleanup');
     }
 
-    // TASK-264 W0-3: retrieve and restore admin token from AgenticClient.
+    // Retrieve and restore admin token from AgenticClient.
     const originalToken = apiClient.stopImpersonation();
     const originalUser = store.authOriginalUser as AuthUser | null;
 
@@ -237,13 +237,13 @@ export function useAuth(): UseAuthReturn {
 
     store.setImpersonatedUser(null);
     store.setOriginalUser(null);
-    // TASK-297 H-4 — restore PersonalizationManager to read-write mode now
+    // Restore PersonalizationManager to read-write mode now
     // that the admin has resumed their own identity.
     store.personalizationManager?.setImpersonationReadOnly?.(false);
     logger?.info('Impersonation session ended, admin identity restored');
   }, [apiClient, store, logger]);
 
-  // TASK-264 W0-3 — low-level escape hatches that proxy to AgenticClient.
+  // Low-level escape hatches that proxy to AgenticClient.
   const startImpersonationFn = useCallback(
     (token: string): void => {
       if (!apiClient) throw new Error('SDK not initialized');

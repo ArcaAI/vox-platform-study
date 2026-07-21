@@ -1,5 +1,5 @@
 /**
- * TASK-392 (Q5, Phase 2) — rolling-monthly metering constants.
+ * Rolling-monthly metering constants.
  *
  * The reconcile job PERSISTS per-(tenant, metric, window) snapshots into
  * `TenantUsageMeter` from Postgres aggregates. It ships OFF by default (like the

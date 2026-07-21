@@ -75,7 +75,7 @@ function RenderedContent({
 }
 
 /**
- * Scroll-spy changelog timeline (TASK-378 §4a.3). A sticky marker rail tracks the
+ * Scroll-spy changelog timeline. A sticky marker rail tracks the
  * milestone currently in view (`useScrollSpy` + `IntersectionObserver`) while the
  * content column reuses the timeline renderer registry + `useExpansion` for the
  * collapsible New / Updates / Bug-Fixes sections. The rail is decorative; the

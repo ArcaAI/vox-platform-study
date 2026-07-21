@@ -1,7 +1,7 @@
 /**
- * TASK-390 #25 (AU2) — shared, column-driven table export.
+ * Shared, column-driven table export.
  *
- * Factored out of TASK-388's `UserExportService` so both the Users export and
+ * Factored out of `UserExportService` so both the Users export and
  * the Audit-log export share ONE csv/xlsx/pdf renderer (no duplication). These
  * tests pin the generic contract: byte-stable CSV (RFC-4180 escaping, `\n`
  * joins, header from column labels), a real `.xlsx` (PK zip) and `.pdf` (%PDF)

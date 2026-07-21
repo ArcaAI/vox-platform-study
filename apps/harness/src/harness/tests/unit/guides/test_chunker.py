@@ -1,4 +1,4 @@
-"""Token-window chunker tests (RED-first, TASK-330 Phase 3).
+"""Token-window chunker tests.
 
 The ingest endpoint slices an approved document into overlapping token windows
 (~400-512 tokens / 10-20% overlap). The chunker is pure + deterministic: every

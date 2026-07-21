@@ -1,4 +1,4 @@
-// Phase 2C (TASK-302 Stream B) - SecretsService unit tests.
+// SecretsService unit tests.
 //
 // Tests use InMemorySecretsProvider so cache / TTL / invalidation behavior
 // can be observed without touching Vault or env.
@@ -401,7 +401,7 @@ describe('SecretsService.requestDbCredential (Phase 5 Task 5.3)', () => {
   });
 });
 
-// BUG-006 — renewDbLease is the missing link between issueDbCredential
+// RenewDbLease is the missing link between issueDbCredential
 // (one-shot) and VaultLeaseRenewer (periodic caller): without it the
 // renewer has nothing to invoke and dynamic PG creds go stale at lease
 // expiry. Mirrors the requestDbCredential capability-check pattern above.

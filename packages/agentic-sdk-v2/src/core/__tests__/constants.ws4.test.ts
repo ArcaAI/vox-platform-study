@@ -278,8 +278,8 @@ describe('WS-4 endpoint constants', () => {
 
   describe('structural completeness', () => {
     it('DNA_STYLE_ENDPOINTS should have exactly 16 keys', () => {
-      // TASK-329 P5 added MINE + SET_DEFAULT (12 -> 14) for the playground.
-      // TASK-388 #13 added ADMIN_BY_DOCTOR + ADMIN_VERSIONS (14 -> 16) for admin cross-user PHI reads.
+      // MINE + SET_DEFAULT were added for the playground, and
+      // ADMIN_BY_DOCTOR + ADMIN_VERSIONS for admin cross-user PHI reads.
       const keys = Object.keys(DNA_STYLE_ENDPOINTS);
       expect(keys).toHaveLength(16);
       expect(keys).toEqual(expect.arrayContaining([
@@ -290,10 +290,9 @@ describe('WS-4 endpoint constants', () => {
 
     it('PROMPT_TEMPLATE_ENDPOINTS should have exactly 15 keys', () => {
       const keys = Object.keys(PROMPT_TEMPLATE_ENDPOINTS);
-      // TASK-328 A4 added TEST + USAGE_ANALYTICS (10 -> 12).
-      // TASK-331 doc-09 added AVAILABLE — the end-user (clinician) plane (12 -> 13).
-      // TASK-389 #14 (AG8/A3) added DIFF — the server-side version-diff route (13 -> 14).
-      // TASK-407 added USAGE_RECORDS — tenant-wide agent-run history (14 -> 15).
+      // TEST + USAGE_ANALYTICS support template testing/analytics; AVAILABLE is
+      // the end-user (clinician) plane; DIFF is the server-side version-diff
+      // route; USAGE_RECORDS is tenant-wide agent-run history.
       expect(keys).toHaveLength(15);
       expect(keys).toEqual(expect.arrayContaining([
         'CREATE', 'LIST', 'AVAILABLE', 'GET', 'UPDATE', 'DELETE', 'VERSIONS', 'VERSION',
@@ -311,7 +310,7 @@ describe('WS-4 endpoint constants', () => {
     });
 
     it('DEPARTMENT_ENDPOINTS should have exactly 10 keys', () => {
-      // TASK-387 (#6 / D2) added USERS (9 -> 10) for the reverse dept->users listing.
+      // USERS supports the reverse dept->users listing.
       const keys = Object.keys(DEPARTMENT_ENDPOINTS);
       expect(keys).toHaveLength(10);
       expect(keys).toEqual(expect.arrayContaining([
@@ -333,8 +332,8 @@ describe('WS-4 endpoint constants', () => {
       ]));
     });
 
-    // TASK-386 (E5) added USAGE (8 -> 9).
-    // TASK-387 (#1 / F6) added SUSPEND + ARCHIVE + RESTORE and (#2 / F9) added TAGS (9 -> 13).
+    // USAGE tracks consumption; SUSPEND + ARCHIVE + RESTORE cover lifecycle
+    // transitions; TAGS supports tenant tagging.
     it('TENANT_ENDPOINTS should have exactly 13 keys', () => {
       const keys = Object.keys(TENANT_ENDPOINTS);
       expect(keys).toHaveLength(13);

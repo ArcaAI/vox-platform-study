@@ -14,7 +14,7 @@ import { Authorize } from '../../../decorators';
  * Controller for the current user's role assignments (self-only).
  *
  * Uses the explicit `/users/:id/roles` path (not `/user/me/roles`) per the
- * TASK-282 "mirror_admin" decision: admins call `/admin/users/:id/roles` and
+ * "mirror_admin" decision: admins call `/admin/users/:id/roles` and
  * end-users call this route with their own id. Cross-user access is rejected
  * with 403 (rather than a silent 404) to give an unambiguous security signal.
  */

@@ -1,5 +1,5 @@
 /**
- * useStorageKeys Hook Tests (TASK-323 Phase 0 / TASK-318 R9)
+ * useStorageKeys Hook Tests
  *
  * Per-tenant storage access-key management. The create response carries the
  * secret exactly once.

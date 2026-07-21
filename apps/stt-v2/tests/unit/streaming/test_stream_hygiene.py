@@ -1,4 +1,4 @@
-"""Unit tests for Redis audio-stream hygiene (TASK-351 P1-3).
+"""Unit tests for Redis audio-stream hygiene.
 
 Covers:
 - ``SessionMetadata.last_stream_id`` — additive persisted field

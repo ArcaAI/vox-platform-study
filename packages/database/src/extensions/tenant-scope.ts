@@ -1,12 +1,12 @@
 /**
- * Tenant-Scope Prisma `$extends` Extension — TASK-305 Phase B.
+ * Tenant-Scope Prisma `$extends` Extension.
  *
  * This extension injects `tenantId` from a caller-supplied context
  * provider into every read/write against a tenant-scoped model. It is
  * the second line of defence behind the database-level Row-Level
- * Security policies that ship in Phase C; together they form the
- * "defence in depth" multi-tenancy posture mandated by the audit
- * (`docs/multi-tenancy-audit/02-prisma-schema-review.md` §B7).
+ * Security policies; together they form the "defence in depth"
+ * multi-tenancy posture mandated by the audit
+ * (`docs/multi-tenancy-audit/02-prisma-schema-review.md`).
  *
  * Composition: applied AFTER `applySoftDeleteExtension` so the
  * tenant filter sees the soft-delete-augmented args (Prisma runs the
@@ -18,10 +18,8 @@
  *
  * Out-of-scope (kept invisible to NestJS callers):
  *   - Cross-aggregate tenant equality (parent.tenantId vs child) —
- *     handled by Phase D guards.
- *   - `SET LOCAL app.tenant_id` for RLS — owned by Phase C.
- *
- * @see docs/implementation/TASK-305-Multi-Tenancy-Hardening/README.md
+ *     handled by application-layer guards.
+ *   - `SET LOCAL app.tenant_id` for RLS — owned separately.
  */
 
 import { PrismaClient } from '../generated/core-prisma-client/client.js';
@@ -39,18 +37,17 @@ import { PrismaClient } from '../generated/core-prisma-client/client.js';
  *
  * The `User*` identity tables (`User`, `UserProfile`, `UserSettings`,
  * `UserMedia`) are deliberately NOT here: `User` is a global, multi-tenant
- * identity (audit §B6 / TASK-305 Phase F). A user's membership in a tenant
- * is modeled by the two tenant-scoped JOIN tables — `UserRoleAssignment`
- * (role) and `UserDepartment` (department) — both of which ARE in this list.
- * `UserVoiceProfile` is the TASK-490 exception: it is biometric PHI, so each
+ * identity. A user's membership in a tenant is modeled by the two
+ * tenant-scoped JOIN tables — `UserRoleAssignment` (role) and
+ * `UserDepartment` (department) — both of which ARE in this list.
+ * `UserVoiceProfile` is the one exception: it is biometric PHI, so each
  * profile is stamped with its enrollment tenant and scoped like any other
  * PHI-bearing model (a user working in multiple tenants enrolls per tenant).
  *
- * History: an earlier revision predicted Phase A would add `tenantId` to
- * the `User*` tables and that this list would grow with them. That never
- * happened and was the wrong call (see TASK-305 Phase F). `UserDepartment`
- * was added to this list by Phase F (2026-06-02) so its reads/writes are
- * tenant-injected like every other tenant-scoped model.
+ * `UserDepartment` is in this list (added 2026-06-02) so its reads/writes
+ * are tenant-injected like every other tenant-scoped model; an earlier
+ * design considered adding `tenantId` directly to the `User*` tables
+ * instead, but that would have been the wrong call.
  */
 export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // consultation.prisma (7)
@@ -60,7 +57,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'AudioRecording',
   'SummaryMeta',
   'NamedEntity',
-  'Highlight', // doctor-authored highlight (TASK-344); scoped by TASK-349
+  'Highlight', // doctor-authored highlight
   // audit.prisma (1)
   'AuditLog',
   // webhook.prisma (1)
@@ -78,7 +75,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'GlobalSetting',
   // stt.prisma (4)
   'AsrPipeline',
-  'AsrPipelineVersion', // version-history child of AsrPipeline (doc-08 F3)
+  'AsrPipelineVersion', // version-history child of AsrPipeline
   'AiModel',
   'TranscriptionJob',
   // department.prisma (1)
@@ -86,7 +83,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // user.prisma (3)
   'UserRoleAssignment',
   'UserDepartment',
-  // TASK-490 — biometric voice profile, stamped with the enrollment tenant so
+  // Biometric voice profile, stamped with the enrollment tenant so
   // reads/writes are tenant-scoped like every other PHI-bearing model (the
   // STT-v2 preseed path applies the same filter in raw SQL).
   'UserVoiceProfile',
@@ -103,42 +100,42 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'StorageAccessKey',
   'TenantStorageConfig',
   // tenant.prisma (1)
-  'TenantFrontendConfig', // per-tenant frontend pipeline config (doc-08 F2)
+  'TenantFrontendConfig', // per-tenant frontend pipeline config
   // media.prisma (1)
   'Media',
-  // harness.prisma (7) — TASK-330 Phase 0/6 clinical-documentation harness
+  // harness.prisma (7) — clinical-documentation harness
   'GoldenSet',
   'GoldenCase',
   'EvalRun',
   'EvalScore',
   'HarnessAuditEvent', // append-only WORM audit (no soft-delete; see client.ts)
-  // TASK-330 Phase 6 — Harness Administration Console: editable runtime policy.
+  // Harness Administration Console: editable runtime policy.
   'HarnessPolicy', // also a SYSTEM-shared read model (global-default row, below)
   'HarnessPolicyChange', // append-only WORM change log (no soft-delete)
-  // knowledge.prisma (2) — TASK-330 Phase 3 institutional RAG corpus
+  // knowledge.prisma (2) — institutional RAG corpus
   'KnowledgeDocument',
   'KnowledgeChunk',
-  // pipeline-policy.prisma (2) — TASK-356 Phase 5 realtime-cascade policy.
+  // pipeline-policy.prisma (2) — realtime-cascade policy.
   'PipelinePolicy', // also a SYSTEM-shared read model (global-default row, below)
   'PipelinePolicyChange', // append-only WORM change log (no soft-delete)
-  // tenant-tts-config.prisma (2) — TASK-496 per-tenant TTS config + BYO creds.
+  // tenant-tts-config.prisma (2) — per-tenant TTS config + BYO creds.
   'TenantTtsConfig', // also a SYSTEM-shared read model (platform-default row, below)
   'TenantTtsProviderCredential', // per-(tenant,provider) BYO key; NOT SYSTEM-shared
-  // ai-task-default.prisma (1) — TASK-506 per-tenant default model per AI task.
+  // ai-task-default.prisma (1) — per-tenant default model per AI task.
   'AiTaskDefault', // also a SYSTEM-shared read model (platform-default row, below)
-  // ai-provider-connection.prisma (1) — TASK-524 config-plane core. WHERE a
+  // ai-provider-connection.prisma (1) — config-plane core. WHERE a
   // serving provider lives + HOW to authenticate. SYSTEM row = platform
   // default; tenant rows are BYO cloud credentials (azure/bedrock only,
   // service-enforced). Secret-bearing (`encryptedApiKey`), and unlike
   // TenantTtsProviderCredential it IS SYSTEM-shared for reads — see the
   // justification on the SYSTEM_SHARED_READ_MODELS entry below.
   'AiProviderConnection',
-  // ai-runtime-profile.prisma (1) — TASK-524 config-plane core. Hyperparameter /
+  // ai-runtime-profile.prisma (1) — config-plane core. Hyperparameter /
   // context / concurrency profiles per (provider, modelSlug). SYSTEM-only rows
-  // in this program (global-admin-only per owner expectation E5); tenantId is
+  // (global-admin-only per owner expectation); tenantId is
   // carried for the house template + forward compatibility.
   'AiRuntimeProfile', // also a SYSTEM-shared read model (platform-default row, below)
-  // entitlement.prisma (1) — TASK-392 rolling-monthly usage meters. The
+  // entitlement.prisma (1) — rolling-monthly usage meters. The
   // reconcile job reads/writes these via the UNSCOPED `baseClient` (explicit
   // tenantId filters, no CLS — same escape hatch as the audit-retention
   // purge), so scoping here is behaviour-neutral for it while protecting any
@@ -147,13 +144,13 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // throttler + global-admin cross-tenant override CRUD read it through the
   // extended client without a matching CLS tenant).
   'TenantUsageMeter',
-  // identity-provider.prisma (3) — TASK-498 tenant-scoped external OIDC IdP.
+  // identity-provider.prisma (3) — tenant-scoped external OIDC IdP.
   // None are SYSTEM-shared reads — a tenant's IdP config/links/domains are
   // never visible cross-tenant.
   'TenantIdentityProvider',
   'FederatedIdentity',
   'TenantIdentityProviderDomain',
-  // agent-trajectory.prisma (1) — Phase 2A ordered session trajectory.
+  // agent-trajectory.prisma (1) — ordered session trajectory.
   // Tenant-scoped ops telemetry (per-session step stream). NOT SYSTEM-shared —
   // a tenant's trajectory is never visible cross-tenant. It is soft-delete
   // EXEMPT (retention-pruned, no resourceStatus column) — see
@@ -170,7 +167,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // tenant-scoped and soft-delete EXEMPT (no resourceStatus column; segments
   // live/die with their parent transcript) — see MODELS_WITHOUT_SOFT_DELETE.
   'TranscriptSegment',
-  // harness.prisma — TASK-533 B6 gate-edit mining store. A derived, append-only
+  // harness.prisma — gate-edit mining store. A derived, append-only
   // learning corpus. Tenant-scoped and NOT SYSTEM-shared: one tenant's mined
   // exemplars must never surface in another tenant's few-shot retrieval. It is
   // soft-delete EXEMPT (no resourceStatus column) — see
@@ -223,31 +220,31 @@ export const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   'AsrPipeline',
   'AiModel',
-  // TASK-330 Phase 6 — the harness GLOBAL-DEFAULT policy row is owned by the
+  // The harness GLOBAL-DEFAULT policy row is owned by the
   // SYSTEM tenant and every tenant must read it to compute its effective policy
   // (tenant row merged over the system default). A READ therefore widens to
   // `tenantId IN [caller, SYSTEM]`; WRITES are NOT widened, so a tenant can read
   // but never mutate the SYSTEM-owned global default (only a platform admin can,
   // through the dedicated global-default service path).
   'HarnessPolicy',
-  // TASK-356 Phase 5 — the realtime-cascade GLOBAL-DEFAULT policy row is owned
+  // The realtime-cascade GLOBAL-DEFAULT policy row is owned
   // by the SYSTEM tenant and read by every tenant's ConfigResolver cascade
   // (doctor→department→tenant→SYSTEM default). READS widen to [caller, SYSTEM];
   // WRITES are NOT widened (only a platform admin mutates the SYSTEM default).
   'PipelinePolicy',
-  // TASK-496 — the per-tenant TTS PLATFORM-DEFAULT row is owned by the SYSTEM
+  // The per-tenant TTS PLATFORM-DEFAULT row is owned by the SYSTEM
   // tenant and read by every tenant's resolveForTenant (tenant row merged over
   // the SYSTEM default). READS widen to [caller, SYSTEM]; WRITES are NOT widened
   // (only a platform admin mutates the SYSTEM default). Credentials are NEVER
   // shared — TenantTtsProviderCredential is intentionally absent here.
   'TenantTtsConfig',
-  // TASK-506 — per-task default-model rows (guardrail.validate / nlp.*): the
+  // Per-task default-model rows (guardrail.validate / nlp.*): the
   // SYSTEM tenant row is the platform default every tenant merges under its
   // own row (AiTaskDefaultService.getEffective). READS widen to
   // [caller, SYSTEM]; WRITES are NOT widened (guardrail.* keys are additionally
   // global-admin-only at the service layer).
   'AiTaskDefault',
-  // TASK-524 — the provider CONNECTION catalog: the SYSTEM row records where a
+  // The provider CONNECTION catalog: the SYSTEM row records where a
   // serving provider lives and (as Vault-Transit ciphertext) how to auth to it.
   // Every tenant's `resolveConnection` cascade (tenant row → SYSTEM row → env)
   // runs under tenant CLS at request time and would otherwise read nothing.
@@ -260,7 +257,7 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // only). Contrast TenantTtsProviderCredential, which is deliberately absent
   // above: that model has no SYSTEM row at all, so sharing would buy nothing.
   'AiProviderConnection',
-  // TASK-524 — hyperparameter/context/concurrency profiles. SYSTEM-only rows,
+  // Hyperparameter/context/concurrency profiles. SYSTEM-only rows,
   // read by every tenant's injection cascade at request time. No secrets on
   // the model at all. READS widen to [caller, SYSTEM]; WRITES are NOT widened.
   'AiRuntimeProfile',

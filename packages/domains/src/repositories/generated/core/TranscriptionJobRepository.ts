@@ -165,7 +165,7 @@ export class TranscriptionJobRepository extends Repository<TranscriptionJobEntit
   /**
    * Count jobs by status for a tenant.
    *
-   * TASK-319 F3 — optional `ownerId` narrows the counts to a single creator
+   * Optional `ownerId` narrows the counts to a single creator
    * (`createdBy`) so the end-user surface reports only the caller's jobs while
    * the admin surface (no `ownerId`) keeps the tenant-wide totals.
    */

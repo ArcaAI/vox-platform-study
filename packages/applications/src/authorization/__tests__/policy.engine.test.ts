@@ -449,7 +449,7 @@ describe('PolicyEngine', () => {
           id: 'ura-global',
           userId: 'user-123',
           roleId: 'global-role',
-          // TASK-305 Phase A: platform-wide rows live under SYSTEM_TENANT_ID (was NULL).
+          // Platform-wide rows live under SYSTEM_TENANT_ID (was NULL).
           tenantId: '00000000-0000-0000-0000-000000000000',
           scopeOverrides: null,
           resourceStatus: 'ENABLED',
@@ -752,7 +752,7 @@ describe('PolicyEngine', () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────
-  // Tenant scoping of the role-assignment lookup (TASK-305 Phase A alignment).
+  // Tenant scoping of the role-assignment lookup.
   //
   // `UserRoleAssignment.tenantId` became a required, non-nullable column;
   // platform-wide assignments (e.g. GLOBAL_ADMIN) live under SYSTEM_TENANT_ID

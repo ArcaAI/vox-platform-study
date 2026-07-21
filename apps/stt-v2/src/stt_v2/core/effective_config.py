@@ -1,6 +1,6 @@
-"""TASK-525 §3.3/§4.4 — effective-config pull client (stt-v2).
+"""Effective-config pull client (stt-v2).
 
-Replaces the dead `GlobalSettingRead` SQLAlchemy path (D-11): the seed wrote
+Replaces the dead `GlobalSettingRead` SQLAlchemy path: the seed wrote
 `stt.config.model_cache.*` / `stt.config.workers.*` rows that nothing ever read.
 Those knobs now arrive over HTTP from the gateway's effective-config route.
 
@@ -11,8 +11,8 @@ header for `service=stt-v2` specifically, so no second credential is minted and
 no new env var is introduced for this service.
 
 Mechanics match the smr/nlp mirrors: TTL cache jittered ±10 %, negative cache,
-single-flight refresh, read-triggered. Duplicated per service on purpose — the
-shared-package question is TASK-529's OD-3.
+single-flight refresh, read-triggered. Duplicated per service on purpose — a
+shared package for this logic remains an open question.
 """
 
 from __future__ import annotations
@@ -131,7 +131,7 @@ class EffectiveConfigClient:
         self._expires_at = None
 
     def diagnostics(self) -> dict[str, Any]:
-        """The `/health` block (§3.7) — source labels and timestamps only."""
+        """The `/health` block — source labels and timestamps only."""
         return {
             "last_refresh_at": self._last_refresh_at.isoformat() if self._last_refresh_at else None,
             "last_refresh_ok": self._last_refresh_ok,

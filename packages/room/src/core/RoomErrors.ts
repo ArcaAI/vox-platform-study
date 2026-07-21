@@ -31,10 +31,9 @@ export const RoomMediaErrorCode = {
   MicResumeTimeout: 'mic_resume_timeout',
   MicUnknown: 'mic_unknown',
   /**
-   * TASK-300 L-1: thrown by {@link AudioContextManager.acquire} when the
-   * caller passes `requireSampleRate` and the context's `sampleRate` does
-   * not match. Suppressed (logged via `console.warn`) when
-   * `allowMismatch: true`.
+   * Thrown by {@link AudioContextManager.acquire} when the caller passes
+   * `requireSampleRate` and the context's `sampleRate` does not match.
+   * Suppressed (logged via `console.warn`) when `allowMismatch: true`.
    */
   SampleRateMismatch: 'sample_rate_mismatch',
 } as const;
@@ -155,7 +154,7 @@ export class RoomResumeTimeoutError extends RoomError {
 }
 
 // ============================================================================
-// Sample-rate mismatch (TASK-300 L-1)
+// Sample-rate mismatch
 // ============================================================================
 
 /**

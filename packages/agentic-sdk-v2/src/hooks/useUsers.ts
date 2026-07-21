@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useUsers Hook (TASK-032 WS-G, refactored TASK-039)
+ * @arcaai/vox - useUsers Hook
  *
  * User management hook for admin operations.
  */
@@ -55,7 +55,7 @@ export interface SearchUsersOptions {
   limit?: number;
 }
 
-/** TASK-388 #8 — admin reset-password. */
+/** Admin reset-password. */
 export type ResetPasswordMode = 'temporary' | 'link';
 
 export interface ResetPasswordInput {
@@ -85,7 +85,7 @@ export interface CompletePasswordResetResult {
   success: boolean;
 }
 
-/** TASK-400 — public self-service forgot-password (anti-enumeration: always the same ack). */
+/** Public self-service forgot-password (anti-enumeration: always the same ack). */
 export interface RequestPasswordResetInput {
   email: string;
 }
@@ -95,7 +95,7 @@ export interface RequestPasswordResetResult {
   message: string;
 }
 
-/** TASK-388 #9 — server-side bulk user actions (+ TASK-398 `assign-role`). */
+/** Server-side bulk user actions (incl. `assign-role`). */
 export type BulkUserActionType = 'enable' | 'disable' | 'delete' | 'assign-departments' | 'assign-role';
 
 export interface BulkUserActionInput {
@@ -104,7 +104,7 @@ export interface BulkUserActionInput {
   /** Required for action=assign-departments. */
   departmentIds?: string[];
   primaryDepartmentId?: string;
-  /** Required for action=assign-role (TASK-398). */
+  /** Required for action=assign-role. */
   roleId?: string;
 }
 
@@ -122,7 +122,7 @@ export interface BulkUserActionResult {
   results: BulkUserActionItemResult[];
 }
 
-/** TASK-388 #10 — server-side export. */
+/** Server-side export. */
 export type UserExportFormat = 'csv' | 'xlsx' | 'pdf';
 
 export interface UserExportQuery {
@@ -134,7 +134,7 @@ export interface UserExportQuery {
 }
 
 /**
- * TASK-375 client follow-up — full list query for {@link UseUsersReturn.listPaginated}.
+ * Full list query for {@link UseUsersReturn.listPaginated}.
  * Extends the page/limit {@link PaginationParams} with the backend `PaginatedQuery`
  * server-side params, mirroring `AuditLogFilterParams` and the `@arcaai/ui`
  * `toPaginatedQuery` CSV contract:
@@ -170,28 +170,28 @@ export interface UseUsersReturn {
   enable: (id: string) => Promise<User>;
   disable: (id: string) => Promise<User>;
   assignDepartments: (userId: string, input: AssignDepartmentsInput) => Promise<User>;
-  /** TASK-388 #8 — admin reset-password (temporary password OR emailed link). */
+  /** Admin reset-password (temporary password OR emailed link). */
   resetPassword: (userId: string, input?: ResetPasswordInput) => Promise<ResetPasswordResult>;
-  /** TASK-388 #8 — public completion of a reset link (token-carried). */
+  /** Public completion of a reset link (token-carried). */
   completePasswordReset: (input: CompletePasswordResetInput) => Promise<CompletePasswordResetResult>;
-  /** TASK-400 — public self-service forgot-password (always resolves with the generic ack). */
+  /** Public self-service forgot-password (always resolves with the generic ack). */
   requestPasswordReset: (input: RequestPasswordResetInput) => Promise<RequestPasswordResetResult>;
   /**
-   * TASK-401 — global-admin-only time-boxed impersonation mint ("act as").
+   * Global-admin-only time-boxed impersonation mint ("act as").
    * Returns the target session payload (token + user + expiry). The CALLER owns
    * the token swap (e.g. the admin app's auth store) — unlike
    * `useAuth().impersonate()`, nothing is stashed inside the SDK client here.
    */
   impersonate: (userId: string, options?: AdminImpersonateOptions) => Promise<ImpersonateResponse>;
   /**
-   * TASK-401 — end an active impersonation early: revokes the impersonation
+   * End an active impersonation early: revokes the impersonation
    * token's jti server-side (audited). Must be called while the client still
    * sends the impersonation token; the caller then restores its original session.
    */
   endImpersonation: () => Promise<{ success: boolean }>;
-  /** TASK-388 #9 — server-side bulk action with per-item results. */
+  /** Server-side bulk action with per-item results. */
   bulkAction: (input: BulkUserActionInput) => Promise<BulkUserActionResult>;
-  /** TASK-388 #10 — server-side export (csv | xlsx | pdf) as a Blob. */
+  /** Server-side export (csv | xlsx | pdf) as a Blob. */
   exportUsers: (query: UserExportQuery) => Promise<Blob>;
 }
 
@@ -315,7 +315,7 @@ export function useUsers(): UseUsersReturn {
     [execute],
   );
 
-  // TASK-388 #8 — admin reset-password. `mode=temporary` returns the plaintext to
+  // Admin reset-password. `mode=temporary` returns the plaintext to
   // convey out-of-band; `mode=link` (default) returns the token/link (also emailed
   // best-effort). No local state mutation — this is a side-effect action.
   const resetPassword = useCallback(
@@ -324,7 +324,7 @@ export function useUsers(): UseUsersReturn {
     [execute],
   );
 
-  // TASK-388 #8 — public completion; consumes the single-use token to set a new password.
+  // Public completion; consumes the single-use token to set a new password.
   const completePasswordReset = useCallback(
     (input: CompletePasswordResetInput) =>
       execute<CompletePasswordResetResult>('completePasswordReset', (client) =>
@@ -333,7 +333,7 @@ export function useUsers(): UseUsersReturn {
     [execute],
   );
 
-  // TASK-400 — public forgot-password; the reset link travels ONLY via email.
+  // Public forgot-password; the reset link travels ONLY via email.
   const requestPasswordReset = useCallback(
     (input: RequestPasswordResetInput) =>
       execute<RequestPasswordResetResult>('requestPasswordReset', (client) =>
@@ -342,7 +342,7 @@ export function useUsers(): UseUsersReturn {
     [execute],
   );
 
-  // TASK-401 — global-admin impersonation mint; thin wrapper (token swap is the
+  // Global-admin impersonation mint; thin wrapper (token swap is the
   // caller's job) so the admin app can retain its original session for restore.
   const impersonate = useCallback(
     (userId: string, options?: AdminImpersonateOptions) =>
@@ -350,21 +350,21 @@ export function useUsers(): UseUsersReturn {
     [execute],
   );
 
-  // TASK-401 — early end: server-side jti revocation via the existing
+  // Early end: server-side jti revocation via the existing
   // /auth/revoke-impersonation route (called with the impersonation token).
   const endImpersonation = useCallback(
     () => execute<{ success: boolean }>('endImpersonation', (client) => client.post<{ success: boolean }>(AUTH_ENDPOINTS.REVOKE_IMPERSONATION, {})),
     [execute],
   );
 
-  // TASK-388 #9 — server-side bulk action (one round-trip, per-item results).
+  // Server-side bulk action (one round-trip, per-item results).
   const bulkAction = useCallback(
     (input: BulkUserActionInput) =>
       execute<BulkUserActionResult>('bulkAction', (client) => client.post<BulkUserActionResult>(USER_ENDPOINTS.BULK_ACTIONS, input)),
     [execute],
   );
 
-  // TASK-388 #10 — server-side export as a Blob (csv | xlsx | pdf). Forwards the
+  // Server-side export as a Blob (csv | xlsx | pdf). Forwards the
   // same PaginatedQuery CSV filters/sort/search as the list so the export mirrors
   // the on-screen view; the caller triggers the file download.
   const exportUsers = useCallback(

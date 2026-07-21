@@ -1,5 +1,5 @@
 /**
- * TenantTtsConfigAdminController unit tests (TASK-496).
+ * TenantTtsConfigAdminController unit tests.
  *
  * CASL `@Authorize` + `If-Match`/`@RequiresIfMatch` are exercised by the
  * guard/interceptor (+ e2e). These specs cover the controller's OWN logic:

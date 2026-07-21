@@ -1,11 +1,11 @@
-"""TASK-525 DR-7 (revised) — the batch-job concurrency ceiling is ENFORCED.
+"""The batch-job concurrency ceiling is ENFORCED.
 
-The original DR-7 wiring fed `settings.worker_threads` into `Worker(...)` inside
+An earlier wiring attempt fed `settings.worker_threads` into `Worker(...)` inside
 `worker.py:main()`. That is dead code in the shipped image: the Dockerfile runs
 `python -m dramatiq stt_v2.worker --processes 2 --threads 4`, and the dramatiq
 CLI IMPORTS the module rather than executing it as `__main__`, then builds its
 own Worker from its own `--threads` flag. So the operator knob reached nothing —
-exactly the D-07 "wiring a dead field" failure this ticket exists to close.
+exactly the "wiring a dead field" failure this module exists to close.
 
 The fix is an in-actor gate: a thread-based counterpart to `ResizableSemaphore`
 that bounds jobs wherever the actor runs, under ANY launch mode.

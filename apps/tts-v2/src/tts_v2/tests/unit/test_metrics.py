@@ -1,4 +1,4 @@
-"""TDD tests for Prometheus metric definitions (TASK-488 Phase 2)."""
+"""TDD tests for Prometheus metric definitions."""
 
 from __future__ import annotations
 

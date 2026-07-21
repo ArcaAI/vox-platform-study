@@ -48,7 +48,7 @@ function FieldEditor({
   }
   if (field.kind === 'select') {
     const options = field.options ?? [];
-    // Escape hatch (TASK-506): a saved value outside the closed list keeps the
+    // Escape hatch: a saved value outside the closed list keeps the
     // legacy free-text editor instead of silently coercing it into an option.
     if (typeof value === 'string' && value !== '' && !options.includes(value)) {
       return <Input id={id} value={value} onChange={(event) => onChange(event.target.value)} className="h-8 font-mono text-xs" />;
@@ -87,7 +87,7 @@ function FieldEditor({
 }
 
 /**
- * OCC save panel for the TTS config row (TASK-504 Phase 4). Sparse patch over
+ * OCC save panel for the TTS config row. Sparse patch over
  * the current row; saves send If-Match from the read ETag (`"0"` on first
  * create). A 412/428 keeps local drafts and offers reload-merge (frame 08).
  */
@@ -105,7 +105,7 @@ export function TtsConfigForm({
   mutation: TtsRowMutation;
   onReloadLatest: () => void;
   successMessage: string;
-  /** TASK-506 registry catalog; omitted (e.g. catalog fetch failed) hides the bindings editor. */
+  /** registry catalog; omitted (e.g. catalog fetch failed) hides the bindings editor. */
   catalog?: TtsPlatformCatalog;
   /** Effective merged bindings — used only for the editor's row-id union. */
   effectiveBindings?: TtsVoiceBindings;

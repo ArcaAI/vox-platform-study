@@ -1,4 +1,4 @@
-"""TDD tests for TASK-240 — provider key consistency.
+"""TDD tests for provider key consistency.
 
 Ensures the SMR runtime uses tenant-facing provider keys
 (azure-openai, lm-studio) instead of internal-only keys (azure, openai_compat).

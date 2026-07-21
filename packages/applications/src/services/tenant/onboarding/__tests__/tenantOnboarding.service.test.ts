@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TenantOnboardingService } from '../tenantOnboarding.service';
 import { ResourceStatusType, TenantPlan } from '@arcaai/domains';
 
-// TASK-497 §3.3 — mirrors HarnessInternalService's ClsService test double
+// Mirrors HarnessInternalService's ClsService test double
 // (Map-backed store; `run` just invokes the callback synchronously).
 const createMockClsService = () => {
     const store = new Map<string, unknown>();

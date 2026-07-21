@@ -5,7 +5,7 @@
 export enum ConsultationStatus {
   OPEN = 'OPEN',
   RECORDING = 'RECORDING',
-  // TASK-355 Phase D — draft delivered early (readable); assurance running concurrently.
+  // Draft delivered early (readable); assurance running concurrently.
   DRAFT_PENDING_SENSORS = 'DRAFT_PENDING_SENSORS',
   PENDING_REVIEW = 'PENDING_REVIEW',
   SIGNED = 'SIGNED',

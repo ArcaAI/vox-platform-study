@@ -1,5 +1,5 @@
 /**
- * OcrEnrichmentProcessor unit tests (TASK-344 Workstream A2 — orchestration).
+ * OcrEnrichmentProcessor unit tests — orchestration.
  *
  * Event-driven: reacts to `ConsultationPipelineEvent.ContextAdded`. When an
  * ATTACHMENT has a `mediaId` but no `metaData.extractedText`, it fetches the file

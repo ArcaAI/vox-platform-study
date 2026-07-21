@@ -1,5 +1,5 @@
 /**
- * AiRuntimeProfileService (TASK-524) — unit tests (§5 tests 6–8).
+ * AiRuntimeProfileService — unit tests (§5 tests 6–8).
  *
  * The three contracts locked here:
  *   6. The per-field cascade — a model-scoped profile (`modelSlug = <slug>`)

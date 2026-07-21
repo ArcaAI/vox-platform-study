@@ -57,19 +57,19 @@ export const LIVE_SOAP_STABLE_SYSTEM_PREFIX =
   SOAP_OUTPUT_INSTRUCTION;
 
 /**
- * Safety cap on the transcript delta sent per flush (sliding-window fallback,
- * TASK-340 P0-B): the incremental prompt only sends new transcript since the
- * last successful flush, but if SMR keeps failing the un-flushed delta grows —
- * this bounds it so a busy/failing session can't send an unbounded prompt.
+ * Safety cap on the transcript delta sent per flush (sliding-window fallback):
+ * the incremental prompt only sends new transcript since the last successful
+ * flush, but if SMR keeps failing the un-flushed delta grows — this bounds it
+ * so a busy/failing session can't send an unbounded prompt.
  *
- * this former hardcoded constant is now the
+ * This former hardcoded constant is now the
  * `agentic.context.liveDelta.maxChars` settings-registry knob. The value is
  * resolved onto `this.contextLiveDeltaMaxChars` in the constructor (env override
  * → registry code default) so the cap is admin-controllable.
  */
 
 /**
- * Atomic single-owner lock scripts (TASK-459 C5-06). Redis serialises each Lua
+ * Atomic single-owner lock scripts. Redis serialises each Lua
  * body, so `acquire` is a true compare-and-set — two instances racing to own one
  * consultation can never both win (unlike the old unconditional `SET`). `release`
  * and `renew` are fenced: they touch the key only while its value is still THIS
@@ -135,7 +135,7 @@ interface LiveSession {
   transcriptParts: string[];
   /**
    * Live-folded notes/labs/files, keyed by their `contextItemId` so a
-   * soft-delete (TASK-342 GAP #3d) can drop the exact entry. Insertion order is
+   * soft-delete can drop the exact entry. Insertion order is
    * preserved, so the assembled notes block stays byte-identical to the prior
    * `string[]` representation on the add-only path.
    */
@@ -146,11 +146,11 @@ interface LiveSession {
   timer?: ReturnType<typeof setTimeout>;
   lastPayload?: LiveSummaryEventDto;
   sttSubscription?: Subscription;
-  /** Cross-instance "stop" control-channel reader (TASK-340 P1-A). */
+  /** Cross-instance "stop" control-channel reader. */
   controlSubscription?: Subscription;
-  /** Periodic fenced owner-lock renewal handle (TASK-459 C5-06). */
+  /** Periodic fenced owner-lock renewal handle. */
   lockRenewalTimer?: ReturnType<typeof setInterval>;
-  /** Monotonic flush id; only the latest generation may publish (TASK-340 P0-A). */
+  /** Monotonic flush id; only the latest generation may publish. */
   generation: number;
   /** Aborts the in-flight SMR/NLP HTTP calls when a newer flush supersedes them. */
   abortController?: AbortController;
@@ -170,7 +170,7 @@ interface LiveSession {
   staleDropCount: number;
   /** How many flushes truncated an oversized delta and carried the overflow forward (C5-04). */
   truncatedDeltaCount: number;
-  /** Epoch ms when the watcher session started — surfaced in the admin stats snapshot (TASK-341 B1). */
+  /** Epoch ms when the watcher session started — surfaced in the admin stats snapshot. */
   startedAt: number;
   /**
  * §2C — stable, per-instance trajectory session id used as the
@@ -197,7 +197,7 @@ interface LiveSession {
  * that channel verbatim. Optionally persists the last snapshot as a PRE_SUMMARY
  * context item on stop.
  */
-/** The effective `agentic.context.*` knobs for one resolution (TASK-533 B1). */
+/** The effective `agentic.context.*` knobs for one resolution. */
 export interface AgenticContextKnobs {
   liveDeltaMaxChars: number;
   segmentThreshold: number;
@@ -247,21 +247,21 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * Fencing token identifying this owner. A random suffix keeps it distinct even
    * for two instances constructed in the same process/millisecond (same pid +
    * `Date.now()`), so the compare-and-set acquire and fenced release/renew can
-   * never confuse two owners (TASK-459 C5-06).
+   * never confuse two owners.
    */
   private readonly instanceId = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   /** Renew the owner lock at half its TTL so a live session never lets it lapse (C5-06). */
   private readonly lockRenewalMs = Math.floor((this.LOCK_TTL * 1000) / 2);
 
-  // TASK-341 B1 — admin live console: cross-instance per-session stats in Redis.
+  // Admin live console: cross-instance per-session stats in Redis.
   private readonly STATS_PREFIX = 'live-doc:stats:'; // + consultationId → JSON LiveDocSessionStatsResponse
   private readonly ACTIVE_SET_PREFIX = 'live-doc:active:'; // + tenantId → Set<consultationId>
-  // TASK-341 B3 — runtime kill-switch override (read at start, toggled by the admin console).
+  // Runtime kill-switch override (read at start, toggled by the admin console).
   private readonly CONFIG_ENABLED_KEY = 'live-doc:config:enabled'; // JSON { enabled, updatedAt, updatedBy, reason }
   private readonly CONFIG_CONTROL_CHANNEL = 'live-doc:config:control'; // cross-instance toggle fan-out
 
   /**
-   * In-memory mirror of the Redis kill-switch override (TASK-341 B3). `null` =
+   * In-memory mirror of the Redis kill-switch override. `null` =
    * no override → the env default (`this.enabled`) applies. Kept fresh via a
    * boot read + a pub/sub subscription so `start()` (sync hot path) can resolve
    * the effective flag without a per-call Redis round-trip.
@@ -275,11 +275,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private readonly smrServiceUrl: string;
   private readonly guardrailServiceUrl: string;
   private readonly heartbeatMs: number;
-  // TASK-533 B1 — `agentic.context.*` env FALLBACKS. These are no longer the
+  // `agentic.context.*` env FALLBACKS. These are no longer the
   // effective values: the authority is the settings registry, resolved per call
-  // through `resolveAgenticContext` (TASK-524's `EffectiveSettingsService`).
+  // through `resolveAgenticContext`'s `EffectiveSettingsService`.
   //
-  // Before B1 these six were read from `env ?? AGENTIC_CONTEXT_DEFAULTS` in the
+  // These six used to be read from `env ?? AGENTIC_CONTEXT_DEFAULTS` in the
   // constructor and frozen there — so a global admin's registry write moved what
   // `GET /admin/settings/registry` reported and moved NOTHING in the running loop,
   // and even the env value needed a redeploy. `undefined` here means "no env
@@ -321,26 +321,26 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     private readonly redisSubscriber: RedisSubscriberService,
     @Optional() private readonly audioBridge?: StreamingAudioBridgeService,
     @Optional() @Inject(ContextItemRepository) private readonly contextItemRepository?: ContextItemRepository,
-    // TASK-356 D-7 — resolver for the tenant's effective SMR {provider, model}.
+    // Resolver for the tenant's effective SMR {provider, model}.
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
-    // TASK-479 (SOTA D2) — X-Service-Token for the guardrail groundedness hop
+    // X-Service-Token for the guardrail groundedness hop
     // (SecretsService is provided by the @Global SecretsModule). Optional so unit
     // fixtures and non-DI construction paths compile; when unset an empty token is
-    // sent (the guardrail's empty-token dev bypass, TASK-465).
+    // sent (the guardrail's empty-token dev bypass).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
     // §2C — ordered per-flush trajectory emitter. Optional + trailing so
     // existing positional test fixtures and non-DI paths compile; production DI
     // (apps/api consultation module) supplies it. A trajectory failure is
     // fire-and-forget and can NEVER break the live flush (see recordFlushTrajectory).
     @Optional() @Inject(IAgentTrajectoryService) private readonly trajectoryService?: IAgentTrajectoryService,
-    // TASK-533 B1 — TASK-524's governed read facade for `agentic.context.*`.
+    // Governed read facade for `agentic.context.*`.
     // Optional + trailing so existing positional fixtures keep their arity; absent
-    // ⇒ env/code-default resolution, i.e. exactly the pre-B1 behaviour.
+    // ⇒ env/code-default resolution.
     @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
-    // TASK-533 B1 — capture only the ENV OVERRIDES here. The effective values are
+    // Capture only the ENV OVERRIDES here. The effective values are
     // resolved per call in `resolveAgenticContext` so a control-plane write lands
     // on the next flush with no redeploy. `LIVE_DOC_*` keys stay supported as the
     // operational lane, but they now LOSE to a stored registry value.
@@ -364,12 +364,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     this.smrTimeoutMs = Number(this.configService.get('LIVE_DOC_SMR_TIMEOUT_MS') ?? 20000);
     this.smrProvider = this.configService.get<string>('LIVE_DOC_SMR_PROVIDER') || undefined;
     this.smrModel = this.configService.get<string>('LIVE_DOC_SMR_MODEL') || undefined;
-    // TTL on the per-session Redis stats snapshot + active set (TASK-341 B1). A
+    // TTL on the per-session Redis stats snapshot + active set. A
     // crashed/quiet session falls out of the admin "live" list after this window;
     // refreshed on every flush so an actively-flushing session stays visible.
     this.statsTtl = Number(this.configService.get('LIVE_DOC_STATS_TTL_SEC') ?? 300);
-    // TASK-479 (SOTA D2) — output groundedness gate. Off by default (dev/CI bypass,
-    // mirroring TASK-478's `enabled` posture); enabling is the clinical/ops rollout
+    // Output groundedness gate. Off by default (dev/CI bypass); enabling is
+    // the clinical/ops rollout
     // step and requires the guardrail's self-hosted NLI model staged. Degrade-safe →
     // fail-CLOSED: a blip is absorbed by a bounded retry, a sustained outage marks
     // segments `unverified` — an error path can NEVER mark `grounded`.
@@ -381,7 +381,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Boot-time kill-switch wiring (TASK-341 B3): seed the in-memory override
+   * Boot-time kill-switch wiring: seed the in-memory override
    * mirror from Redis (so a persisted toggle survives restart) and subscribe to
    * the control channel so a toggle on any instance updates this instance's
    * mirror live — no restart required.
@@ -420,7 +420,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
   /** Begin watching a consultation. Idempotent — restarting reuses the session. */
   start(params: StartLiveDocumentationParams): void {
-    // Feature kill-switch (P2 + TASK-341 B3): never spin up a watcher when
+    // Feature kill-switch: never spin up a watcher when
     // disabled. The effective flag is the runtime Redis override when present,
     // else the `LIVE_DOC_ENABLED` env default — resolved synchronously from the
     // in-memory mirror so this stays on the recording controller's hot path.
@@ -478,7 +478,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Stop watching. Resilient + cross-instance correct (TASK-340 P1-A): when this
+   * Stop watching. Resilient + cross-instance correct: when this
    * instance owns the session it flushes a final snapshot, optionally persists it,
    * and tears down locally; regardless of ownership it then signals the owner via
    * the control channel, releases the single-owner lock, and publishes the terminal
@@ -518,7 +518,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       this.teardownLocal(session);
     }
 
-    // TASK-341 B1 — drop this session from the admin live view (stats key +
+    // Drop this session from the admin live view (stats key +
     // active-set member). When stop is routed to a non-owner instance the
     // tenant is unknown here, so we can only delete the consultation-keyed stats
     // snapshot; the orphaned active-set member self-heals on the next
@@ -531,7 +531,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // `teardownLocal` above already released it — so only the no-local-session path
     // needs a release here, to self-heal an orphaned lock we happen to own (the real
     // owner, if remote, frees its own via the control `stop`). Avoids the double
-    // release (M-5).
+    // release.
     await this.safeChannelPublish(this.controlChannel(consultationId), JSON.stringify({ type: 'stop', ts: new Date().toISOString() }));
     if (!session) {
       await this.releaseOwnership(consultationId);
@@ -586,7 +586,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const note = (payload.contentPreview ?? '').trim();
     const text = note ? `${label}${note}` : `${label}${payload.contextType} added`;
 
-    // UPSERT by contextItemId (TASK-344): the OCR enrichment processor re-emits
+    // UPSERT by contextItemId: the OCR enrichment processor re-emits
     // ContextAdded for the SAME contextItemId once it has extracted text. Update the
     // existing note in place (preserving insertion order) instead of appending a
     // duplicate, so one attachment yields exactly one running-summary note.
@@ -600,7 +600,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Context-remove reaction (TASK-342 GAP #3d): a note/lab/file soft-deleted
+   * Context-remove reaction: a note/lab/file soft-deleted
    * mid-visit is dropped from the running summary's notes by `contextItemId`, so
    * the next flush no longer re-injects it. No-op when the session or the note
    * isn't tracked; only schedules a flush when an entry was actually removed.
@@ -628,7 +628,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * `force` (used by `stop`) bypasses the min-interval throttle for the final flush.
    * Overlapping flushes are made safe by a per-session generation id: a newer flush
    * aborts the prior in-flight SMR/NLP call and only the latest generation may
-   * publish, advance the incremental cursor, or persist (TASK-340 P0-A).
+   * publish, advance the incremental cursor, or persist.
    */
   async flush(consultationId: string, opts?: { force?: boolean }): Promise<LiveSummaryEventDto | null> {
     const session = this.sessions.get(consultationId);
@@ -650,7 +650,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     session.lastFlushAt = Date.now();
     session.pendingSegments = 0;
 
-    // TASK-533 B1 — resolve the effective agentic.context.* knobs for THIS flush.
+    // Resolve the effective agentic.context.* knobs for THIS flush.
     // Refreshing here (rather than at construction) is what makes the control plane
     // real: a global admin's registry write governs the very next flush, with no
     // redeploy. It also refreshes the snapshot the synchronous ingest/debounce
@@ -685,7 +685,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     let elidedParts = 0;
 
     if (windowed) {
-      // TASK-533 B3 — windowed mode: take the most RECENT segments that fit.
+      // Windowed mode: take the most RECENT segments that fit.
       //
       // The prior SOAP note already carries everything older, so on overflow the
       // oldest backlog largely re-describes what the note has while the NEWEST
@@ -714,7 +714,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         const part = session.transcriptParts[i];
         const separator = deltaSegments.length > 0 ? 1 : 0; // the joining space
         // The `deltaSegments.length > 0` guard always admits the FIRST segment so the
-        // cursor can always advance (no stall). Consequence (M-4): the cap is a
+        // cursor can always advance (no stall). Consequently the cap is a
         // SOFT per-flush bound — a single segment larger than the cap is still sent whole.
         if (deltaSegments.length > 0 && deltaLen + separator + part.length > agenticContext.liveDeltaMaxChars) {
           deltaTruncated = true;
@@ -809,7 +809,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn({ message: 'SMR running-summary call failed', consultationId, error: error instanceof Error ? error.message : String(error) });
     }
 
-    // TASK-477 (SOTA C2) — extract-from-source + entity-ground (SPEER). Run NER over the RAW
+    // Extract-from-source + entity-ground (SPEER). Run NER over the RAW
     // TRANSCRIPT DELTA (the same `delta || transcript` that feeds SMR), NOT the generated note:
     // the LLM running note carries a material hallucination base rate, so NER over the note
     // laundered invented findings/medications into first-class clinical entities. The
@@ -833,7 +833,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
     if (isStale()) return this.dropStale(session);
 
-    // TASK-479 (SOTA D2) — live OUTPUT groundedness gate: verify the generated note
+    // Live OUTPUT groundedness gate: verify the generated note
     // against the source transcript (∪ clinician notes, mirroring the durable sensor's
     // transcript ∪ evidence) BETWEEN building it and publishing it, so ungrounded
     // segments carry their mark before the clinician reads them. Degrade-safe →
@@ -849,7 +849,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     }
 
     // Ground the union of prior + newly-extracted transcript entities against the CURRENT note
-    // (TASK-477). Merging with the prior set preserves the running highlight set across flushes
+    // . Merging with the prior set preserves the running highlight set across flushes
     // (NER only sees the new delta, but the note is cumulative — recall), and always re-grounding
     // against the current `runningSummary` keeps offsets valid even on the NLP-failure fallback.
     const entities = this.groundEntitiesToNote([...priorEntities, ...extracted], runningSummary);
@@ -888,12 +888,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       summaryChars: runningSummary.length,
       staleDropCount: session.staleDropCount,
       truncatedDeltaCount: session.truncatedDeltaCount,
-      // TASK-479 — verdict + latency only (PHI-safe; never the flagged text).
+      // Verdict + latency only (PHI-safe; never the flagged text).
       groundednessVerdict: groundedness?.verdict,
       groundednessLatencyMs,
     });
 
-    // TASK-341 B1 — mirror the same PHI-safe metrics into Redis so the admin
+    // Mirror the same PHI-safe metrics into Redis so the admin
     // live console can observe this (possibly cross-instance) session.
     await this.publishStats(session, {
       generation: myGeneration,
@@ -1176,7 +1176,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Acquire the single-owner lock and subscribe to the cross-instance control
-   * channel (TASK-340 P1-A, hardened in TASK-459 C5-06).
+   * channel.
    *
    * The acquire is now an atomic compare-and-set (`LOCK_ACQUIRE_SCRIPT`): when a
    * live foreign instance already owns the consultation we BAIL OUT of the watcher
@@ -1237,7 +1237,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       if (result === 0 || result === '0') {
         // We no longer own the lock (foreign takeover / eviction). Stand down this
         // instance's watcher so we stop running a duplicate against the new owner —
-        // restoring the single-owner invariant mid-session instead of only logging (M-2).
+        // restoring the single-owner invariant mid-session instead of only logging.
         this.logger.warn({ message: 'Live-doc owner lock lost — standing down watcher to preserve single-owner invariant', consultationId });
         this.teardownLocal(this.sessions.get(consultationId));
       }
@@ -1303,7 +1303,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Throttled durable snapshot (TASK-340 P1-C): upsert ONE PRE_SUMMARY row tagged
+   * Throttled durable snapshot: upsert ONE PRE_SUMMARY row tagged
    * `metadata.subType = 'LIVE_SOAP_SNAPSHOT'` (create on first write, update the same
    * row thereafter) so the in-progress draft survives a restart/late join without
    * writing a row per tick. `force` (final-on-stop) bypasses the interval throttle.
@@ -1320,7 +1320,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
     try {
       if (!session.snapshotEntity) {
-        // Deterministic dedup (TASK-459 C5-06 / review I-1): a prior tick — on THIS
+        // Deterministic dedup: a prior tick — on THIS
         // instance after a restart, or a racing second instance that slipped past the
         // lock — may already have persisted the live snapshot row. Reuse it instead of
         // minting a SECOND PRE_SUMMARY for the same consultation. Must match on the
@@ -1380,7 +1380,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Assemble the live SMR user prompt (TASK-340 P0-B). Once a SOAP note exists we
+   * Assemble the live SMR user prompt. Once a SOAP note exists we
    * send it plus only the new transcript delta ("update the note") instead of the
    * whole transcript, keeping prompt size bounded; the first flush sends the delta
    * as the initial transcript.
@@ -1388,7 +1388,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private buildSmrUserPrompt(priorNote: string, delta: string, notes: string, elided = false): string {
     const notesBlock = notes ? `\n\nClinician notes / labs:\n${notes}` : '';
     const hasPriorNote = priorNote.trim().length > 0;
-    // TASK-533 B3 — in windowed mode an over-cap backlog drops its oldest part.
+    // In windowed mode an over-cap backlog drops its oldest part.
     // Say so: a partial window presented as the whole encounter would invite the
     // model to treat absent findings as absent from the visit. Appended AFTER the
     // stable prefix, and only when something was actually elided, so both the
@@ -1416,10 +1416,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Resolve the effective `agentic.context.*` knobs for `tenantId` (TASK-533 B1).
+   * Resolve the effective `agentic.context.*` knobs for `tenantId`.
    *
    * Precedence, highest first:
-   *   1. a value STORED through the TASK-524 write route (`sourceScope: 'global-kv'`)
+   *   1. a value STORED through the settings-registry write route (`sourceScope: 'global-kv'`)
    *   2. a `LIVE_DOC_*` / `AGENTIC_CONTEXT_*` env override
    *   3. the descriptor code default (`AGENTIC_CONTEXT_DEFAULTS`)
    *
@@ -1493,12 +1493,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     signal?: AbortSignal,
     corrective?: string,
   ): Promise<{ text: string; stats: LiveSummaryStatsDto | null; structured: boolean }> {
-    // TASK-356 D-7 — SMR is a stateless gateway with no model default. Resolve the
+    // SMR is a stateless gateway with no model default. Resolve the
     // tenant's effective {provider, model} via the HarnessPolicy cascade (NOT the
     // legacy LIVE_DOC_SMR_PROVIDER/MODEL env); fall back to env only when the
     // resolver is not wired (kept for non-DI construction paths).
     //
-    // TASK-533 D-26 — this is the LIVE tier: ask for the 'smr.live' routing key so a
+    // This is the LIVE tier: ask for the 'smr.live' routing key so a
     // global admin can point the low-latency running-note model at something smaller
     // than the end-of-visit finalize model. Omitting the task argument defaults to
     // 'finalize', which is what left `smr.live` inert despite being seeded+registered.
@@ -1571,7 +1571,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Ground transcript-extracted entities to the rendered note (TASK-477 · SOTA C2 · SPEER).
+   * Ground transcript-extracted entities to the rendered note.
    *
    * NER runs over the raw transcript (the source of truth), so every candidate entity is
    * transcript-supported by construction. To highlight it in the note the panel renders, each
@@ -1608,7 +1608,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * TASK-479 (SOTA D2) — output-side groundedness gate call.
+   * Output-side groundedness gate call.
    *
    * POSTs `{ summary, transcript }` to the guardrail's self-hosted NLI endpoint
    * (`/api/guardrail/ground`, behind `X-Service-Token`) and maps the per-segment
@@ -1664,7 +1664,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const body = data as { segments?: unknown; flagged_spans?: unknown; checked?: unknown } | null | undefined;
     if (!body || !Array.isArray(body.segments)) return null;
 
-    // TASK-479 review IMPORTANT-1 — a response we distrust (`checked !== true`: any
+    // A response we distrust (`checked !== true`: any
     // degrade / error / disabled path) must not drive ANY per-segment verdict, not just
     // the rollup. An honest degrade already sets every segment 'unverified'; this defends
     // against a compromised/buggy guardrail returning 'grounded' segments alongside
@@ -1758,7 +1758,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   // ------------------------------------------------------------------
-  // TASK-341 B1 — admin live console: per-session stats in Redis
+  // Admin live console: per-session stats in Redis
   // ------------------------------------------------------------------
 
   private statsKey(consultationId: string): string {
@@ -1851,7 +1851,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * List the tenant's active live-documentation sessions with their latest
-   * stats (TASK-341 B2 backing read). Reads the `live-doc:active:{tenantId}`
+   * stats. Reads the `live-doc:active:{tenantId}`
    * set then enriches each member from its stats snapshot; members whose
    * snapshot has expired (crash / long silence) are self-healed out of the set.
    * Tenant-isolated: a snapshot whose `tenantId` does not match is skipped.
@@ -1874,7 +1874,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Read one session's stats (TASK-341 B2). Tenant-isolated: returns `null`
+   * Read one session's stats. Tenant-isolated: returns `null`
    * when the snapshot is absent or belongs to another tenant, so a tenant admin
    * cannot read another tenant's session by guessing a consultation id.
    */
@@ -1887,7 +1887,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   // ------------------------------------------------------------------
-  // TASK-341 B3 — runtime kill-switch (env default + Redis override)
+  // Runtime kill-switch (env default + Redis override)
   // ------------------------------------------------------------------
 
   /** Effective enabled state: runtime override when set, else the env default. */
@@ -1925,7 +1925,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** Read the effective live-engine config / kill-switch (TASK-341 B3). */
+  /** Read the effective live-engine config / kill-switch. */
   async getEngineConfig(): Promise<LiveDocEngineConfigResponse> {
     await this.refreshEngineOverride();
     return {
@@ -1947,7 +1947,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Toggle the runtime kill-switch (TASK-341 B3). Persists a Redis override
+   * Toggle the runtime kill-switch. Persists a Redis override
    * (survives restart), updates the in-memory mirror so the effect is immediate
    * on this instance, and fans the change out on the control channel so other
    * instances pick it up — no restart required.

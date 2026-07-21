@@ -1,17 +1,16 @@
 import { defineConfig } from 'tsup';
 
 /**
- * TASK-271 (C-3 / C-4): the custom `vad-worklet-processor` was dead code —
- * the production path uses `@ricky0123/vad-web`'s internal worklet bundle.
- * Only the main entry is built; the separate `dist/worklets/` build was
- * removed alongside the source.
+ * The custom `vad-worklet-processor` is dead code — the production path
+ * uses `@ricky0123/vad-web`'s internal worklet bundle. Only the main entry
+ * is built; there is no separate `dist/worklets/` build.
  *
- * TASK-300 C-XCUT-2: the main entry exports the React hook `useVAD` so the
- * bundle is marked `"use client"` for Next.js App Router compatibility.
+ * The main entry exports the React hook `useVAD` so the bundle is marked
+ * `"use client"` for Next.js App Router compatibility.
  *
- * TASK-300 C-XCUT-3: emit ESM as `.mjs` (CJS as `.cjs`) so consumers get
- * unambiguous resolution regardless of host `type` field, matching the
- * convention used by `@arcaai/stt` and `@arcaai/vox`.
+ * ESM is emitted as `.mjs` (CJS as `.cjs`) so consumers get unambiguous
+ * resolution regardless of host `type` field, matching the convention used
+ * by `@arcaai/stt` and `@arcaai/vox`.
  */
 export default defineConfig([
   {
@@ -35,7 +34,7 @@ export default defineConfig([
       };
     },
   },
-  // TASK-300 C-XCUT-2: react-server stub (ESM-only).
+  // React-server stub (ESM-only).
   {
     entry: { 'react-server-stub': 'src/react-server-stub.ts' },
     format: ['esm'],

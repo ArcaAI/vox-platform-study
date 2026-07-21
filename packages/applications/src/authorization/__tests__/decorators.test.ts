@@ -141,7 +141,7 @@ describe('Authorization Decorators', () => {
       
       (decorator as any)(target, 'testMethod', descriptor);
       
-      // TASK-343 — @Authorize() is metadata-only. The global UnifiedAuthGuard
+      // @Authorize() is metadata-only. The global UnifiedAuthGuard
       // (APP_GUARD) reads REQUIRED_PERMISSIONS_KEY; the decorator must NOT
       // re-apply @UseGuards(UnifiedAuthGuard), which previously ran the guard
       // (and its CASL + Redis work) twice per request.
@@ -175,7 +175,7 @@ describe('Authorization Decorators', () => {
       
       (decorator as any)(target, 'testMethod', descriptor);
       
-      // TASK-343 — like @Authorize(), @AuthorizeAny() is metadata-only.
+      // Like @Authorize(), @AuthorizeAny() is metadata-only.
       const guards = Reflect.getMetadata(GUARDS_METADATA, descriptor.value);
       expect(guards).toBeUndefined();
     });

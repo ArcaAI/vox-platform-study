@@ -4,9 +4,9 @@ import { PaginatedQuery } from '@arcaai/applications';
 import type { UserExportFormat } from '../user-export.service';
 
 /**
- * TASK-388 #10 — query for `GET /admin/users/export`. Extends the shared
- * `PaginatedQuery` so the export honours the SAME CSV filters/sort/search as the
- * Users list; `format` selects the serialization (defaults to `csv`).
+ * Query for `GET /admin/users/export`. Extends the shared `PaginatedQuery` so
+ * the export honours the SAME CSV filters/sort/search as the Users list;
+ * `format` selects the serialization (defaults to `csv`).
  */
 export class ExportUsersQuery extends PaginatedQuery {
   @ApiPropertyOptional({ description: 'Export format', enum: ['csv', 'xlsx', 'pdf'], default: 'csv' })
@@ -15,7 +15,7 @@ export class ExportUsersQuery extends PaginatedQuery {
   format?: UserExportFormat;
 
   /**
-   * TASK-430 — scope the export to ONE tenant. Backs the users list's in-page
+   * Scope the export to ONE tenant. Backs the users list's in-page
    * tenant filter (users have no `tenantId` column, so the CSV filter grammar
    * cannot express the membership join). Guarded by the same
    * `assertCanReadTenant` as the by-tenant list route: GLOBAL_ADMIN may pass

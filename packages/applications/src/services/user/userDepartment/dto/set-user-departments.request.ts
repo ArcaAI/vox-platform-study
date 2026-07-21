@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsArray, IsOptional, IsString } from 'class-validator';
 
 /**
- * Bulk-set a user's department memberships (TASK-381 V2).
+ * Bulk-set a user's department memberships.
  *
  * `userId` comes from the `/admin/users/:id/departments` route param (never the
  * body). The service reconciles the user's active assignments to EXACTLY

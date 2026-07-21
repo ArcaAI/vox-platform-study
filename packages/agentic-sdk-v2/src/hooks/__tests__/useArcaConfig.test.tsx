@@ -53,14 +53,14 @@ describe('useArcaConfig', () => {
             personalizationManager: mockPersonalizationManager,
             modelRegistry: mockModelRegistry,
             logger: mockLogger,
-            // TASK-297 DEF-C6 — mutations are gated on configReady.
+            // Mutations are gated on configReady.
             configReady: true,
             updatePreferences: vi.fn(),
             setPreferences: vi.fn(),
             incrementModelRegistryVersion: vi.fn(),
         };
 
-        // TASK-297 DEF-H3 — the hook reads via discrete selectors
+        // The hook reads via discrete selectors
         // (useAgenticStore(selectX)), so apply the selector to the backing
         // store rather than returning the whole store for every call.
         (useAgenticStore as any).mockImplementation((selector: any) => selector(mockStore));

@@ -1,5 +1,5 @@
 /**
- * HarnessGatewayService Unit Tests (TASK-330 Phase 1 — Lane G)
+ * HarnessGatewayService Unit Tests
  *
  * The outbound apps/api -> apps/harness adapter. Two calls:
  *   - start(consultationId, ctx)            -> POST {HARNESS_URL}/api/v1/internal/consultations/:id/document:start

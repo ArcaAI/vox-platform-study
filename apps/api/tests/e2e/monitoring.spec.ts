@@ -12,8 +12,8 @@ test.describe('Health & Monitoring', () => {
 
   test.beforeAll(async ({ request }) => {
     try {
-      // TASK-336 OB-12 gated the monitoring controller to GLOBAL_ADMIN (`manage all`):
-      // ops/uptime/sessions is platform-wide infra data, so a TENANT_ADMIN now
+      // The monitoring controller is gated to GLOBAL_ADMIN (`manage all`):
+      // ops/uptime/sessions is platform-wide infra data, so a TENANT_ADMIN
       // (correctly) gets 403. Authenticate as the super-admin operator to exercise
       // the authorized read path.
       const result = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);

@@ -5,7 +5,7 @@ import { SchedulerAdminController } from './scheduler-admin.controller';
 import { QueueNamePipe } from './pipes/queue-name.pipe';
 
 /**
- * TASK-250 / TASK-336 OB-03 — exposes the previously-orphaned queue/job/
+ * Exposes the previously-orphaned queue/job/
  * scheduler application layer through guarded admin controllers. Imports
  * `QueueAdminServiceModule` from `@arcaai/applications` for
  * `IQueueAdminService`, `IJobAdminService`, and `ISchedulerAdminService`.

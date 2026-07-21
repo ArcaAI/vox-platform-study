@@ -85,7 +85,7 @@ async def health_check() -> dict[str, Any]:
         "checks": checks,
     }
 
-    # TASK-525 §3.7 — which config lane is live, mirroring the binding-health
+    # Which config lane is live, mirroring the binding-health
     # precedent above. Health is auth-exempt, so this carries SOURCE LABELS and
     # timestamps only, never resolved values. Deliberately does not affect
     # `overall_status`: a config-plane outage degrades to env values, which is a
@@ -262,7 +262,7 @@ def _check_streaming() -> dict[str, Any]:
 def _check_processors() -> dict[str, Any]:
     """Registered ASR engines + their resolved (device, compute) bindings.
 
-    TASK-505 P1 — surfaces silent downgrades (e.g. faster-whisper MPS -> CPU).
+    Surfaces silent downgrades (e.g. faster-whisper MPS -> CPU).
     Purely informational: never raises and never affects overall status, but it
     still honours the ``checks`` component contract ({status, duration_ms} plus
     an optional ``message``) so consumers can iterate the map uniformly. The

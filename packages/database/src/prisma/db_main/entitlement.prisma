@@ -1,15 +1,14 @@
 // ============================================================================
-// TASK-392 — Plan Entitlements (additive)
+// Plan Entitlements (additive)
 //
-// DB-backed entitlement model (proposal Q1): a platform-wide per-plan default
+// DB-backed entitlement model: a platform-wide per-plan default
 // matrix (`PlanEntitlement`) + a per-tenant admin-editable override
 // (`TenantEntitlement`), plus a rolling-monthly consumption meter
-// (`TenantUsageMeter`, Q5). Enforcement ships OFF by default behind the
-// `entitlements.enabled` GlobalSetting kill-switch (Q9). See
-// docs/implementation/TASK-392-Plan-Entitlements/README.md.
+// (`TenantUsageMeter`). Enforcement ships OFF by default behind the
+// `entitlements.enabled` GlobalSetting kill-switch.
 // ============================================================================
 
-// TASK-392 (Q5) — the three rolling-monthly consumption meters.
+// The three rolling-monthly consumption meters.
 enum UsageMeterMetric {
   CONSULTATIONS
   TRANSCRIPTION_MINUTES

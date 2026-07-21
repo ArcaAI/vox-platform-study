@@ -40,7 +40,7 @@ const mockUserRoleAssignmentRepository = {
 };
 
 // Mock CoreDatabaseService (CORE_DATABASE_SERVICE) - the service uses the
-// unscoped `baseClient` for the AC-02 role-tier lookup (Role is a global,
+// unscoped `baseClient` for the role-tier lookup (Role is a global,
 // non-tenant-scoped model) and for the existing cross-tenant identity reads.
 const mockDatabaseService = {
     baseClient: {
@@ -172,7 +172,7 @@ describe('UserRoleAssignmentService', () => {
             new DataNotFoundException('UserRoleAssignment', 'not-found')
         );
 
-        // AC-02 defaults: the target role is a non-elevated tenant role and the
+        // Defaults: the target role is a non-elevated tenant role and the
         // target user has no prior tenant membership (clean onboarding), so the
         // privilege-escalation guard is a no-op for the existing create specs.
         mockDatabaseService.baseClient.role.findUnique.mockResolvedValue({ name: 'DOCTOR' });
@@ -365,7 +365,7 @@ describe('UserRoleAssignmentService', () => {
             expect(mockUserRoleAssignmentRepository.create).not.toHaveBeenCalled();
         });
 
-        // TASK-305 D.7 — tenant pinning on create (audit C-6)
+        // Tenant pinning on create.
         // The caller's CLS tenantId is the only trusted source; request.tenantId
         // must never be allowed to silently widen tenant scope for non-super-admins.
         describe('tenantId pinning (TASK-305 D.7)', () => {
@@ -971,7 +971,7 @@ describe('UserRoleAssignmentService', () => {
     });
 
     // -------------------------------------------------------------------------
-    // AC-02 r2605 (Critical, privilege escalation) — service-layer defense in
+    // Service-layer defense in
     // depth for POST /admin/users/:id/roles. A non-GLOBAL_ADMIN caller must
     // never be able to (a) grant the platform-wide GLOBAL_ADMIN role, nor
     // (b) assign a role to a user that lives outside the caller's tenant.

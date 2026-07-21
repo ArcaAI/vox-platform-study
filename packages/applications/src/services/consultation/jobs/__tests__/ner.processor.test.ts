@@ -79,7 +79,7 @@ const createMockEventEmitter = () => ({
     emit: vi.fn(),
 });
 
-// Mock ClsService — TASK-305 D.9. See summary.processor.test.ts for the
+// Mock ClsService. See summary.processor.test.ts for the
 // rationale.
 const createMockClsService = () => {
     const store = new Map<string, unknown>();
@@ -1116,7 +1116,7 @@ Chinese: 發燒 (fever)
     });
 
     // ===========================================================================
-    // GAP-1: NerExtracted Pipeline Event Emission
+    // NerExtracted Pipeline Event Emission
     // ===========================================================================
 
     describe('NerExtracted pipeline event (GAP-1)', () => {
@@ -1305,7 +1305,7 @@ Chinese: 發燒 (fever)
     });
 
     // ===========================================================================
-    // TASK-305 D.9 — CLS rebind + tenant assert + fail-closed guard
+    // CLS rebind + tenant assert + fail-closed guard
     // ===========================================================================
 
     describe('CLS rebind + tenant assert (TASK-305 D.9)', () => {
@@ -1377,7 +1377,7 @@ Chinese: 發燒 (fever)
     });
 
     // ===========================================================================
-    // TASK-463 — durable NamedEntity persistence from the REAL NLP contract.
+    // Durable NamedEntity persistence from the REAL NLP contract.
     // The NLP /classify/tokens service emits { text, entity_type, confidence,
     // position: { start, end } } (canonical: apps/nlp/src/nlp/schemas/common.py).
     // This path previously read the phantom { value, type, start, end } shape and
@@ -1426,7 +1426,7 @@ Chinese: 發燒 (fever)
     });
 
     // ===========================================================================
-    // TASK-476 C1 (AC-3a) — the async durable path persists the ontology codes
+    // (AC-3a) — the async durable path persists the ontology codes
     // the NLP producer now emits. The codes flow through the shared mapper
     // (namedEntityPropsFromNlp) into the factory; RED before the mapper maps them.
     // ===========================================================================

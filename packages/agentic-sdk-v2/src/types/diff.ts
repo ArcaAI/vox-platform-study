@@ -48,7 +48,7 @@ export interface DiffStats {
 export type DiffMode = 'lines' | 'words' | 'chars';
 
 // =============================================================================
-// Prompt version diff (server superset) — TASK-389 #14 / TASK-394 P0-2
+// Prompt version diff (server superset)
 // =============================================================================
 
 /**

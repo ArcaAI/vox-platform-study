@@ -1,13 +1,13 @@
-"""TASK-529 AD-4 — the one model-lifecycle cache shared by every HOPE service.
+"""The one model-lifecycle cache shared by every HOPE service.
 
-Converges the three structurally identical caches that existed before this
-ticket (stt-v2 `models/cache.py`, guardrail `services/model_cache.py`, nlp
+Converges what were three structurally identical caches (stt-v2
+`models/cache.py`, guardrail `services/model_cache.py`, nlp
 `services/model_cache.py`) into a single generic implementation. The union of
 their behaviour is preserved deliberately, including the "soft ceiling under
 all-pinned load" quirk — that is a product decision (never drop a model that is
 serving a request), not a bug to fix.
 
-TASK-530 (R1) added a second concurrency skin. There are now TWO cache classes:
+There are two concurrency skins, i.e. TWO cache classes:
 
 * :class:`ModelCache` — asyncio (``asyncio.Lock`` + in-flight ``Future``), for
   the FastAPI services.
@@ -410,7 +410,7 @@ class _CacheCore(Generic[T]):
 
         Returning the instance is the ONLY way an evicted model's weights ever
         get released, so every eviction path routes through here and every caller
-        must hand the result to its unload runner (R4).
+        must hand the result to its unload runner.
         """
         entry = self._entries.pop(key, None)
         if entry is None:
@@ -586,7 +586,7 @@ class ModelCache(_CacheCore[T]):
 
         Called by a periodic task in each service. Without it an idle model
         whose key is never requested again is retained forever despite the TTL —
-        the concrete gap the pre-TASK-529 guardrail/nlp caches had.
+        the concrete gap the prior guardrail/nlp caches had.
         """
         async with self._lock:
             victims, resident, resident_bytes = self._sweep_locked()
@@ -631,7 +631,7 @@ class SyncModelCache(_CacheCore[T]):
     """The same policy as :class:`ModelCache`, driven by threads instead of asyncio.
 
     For consumers whose load is a blocking CPU/GPU call and whose call site is a
-    plain ``def`` (TASK-530 §2.1). ``factory`` and ``unload`` are ordinary
+    plain ``def``. ``factory`` and ``unload`` are ordinary
     callables; an *async* unload hook cannot be honoured here (there is no loop
     to await it on) and is refused with a warning rather than silently dropped.
 

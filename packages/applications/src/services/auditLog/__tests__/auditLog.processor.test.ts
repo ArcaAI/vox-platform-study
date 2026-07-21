@@ -1,8 +1,8 @@
 /**
- * AuditLogProcessor — TASK-305 D.9 follow-up
+ * AuditLogProcessor.
  *
  * BullMQ WorkerHost processors run OUTSIDE the API edge ClsModule middleware
- * that the Phase B `tenantScope` Prisma extension reads from. Without these
+ * that the `tenantScope` Prisma extension reads from. Without these
  * guards the extension hits its "no CLS = super-admin pass-through" branch
  * and the write silently bypasses tenant scoping.
  *

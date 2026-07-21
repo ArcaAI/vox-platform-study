@@ -40,7 +40,7 @@ export class UpdateWebhookRequest extends BaseRequest {
   @IsOptional()
   subscriptionMetadata?: JsonValue;
 
-  // TASK-302 Stream D Phase E.5 — required CAS predicate (echoed from
+  // Required CAS predicate (echoed from
   // the prior GET). The controller (when one is wired) folds the
   // `If-Match` header value over this when both are present; missing
   // both yields `428 Precondition Required` on `@RequiresIfMatch()`

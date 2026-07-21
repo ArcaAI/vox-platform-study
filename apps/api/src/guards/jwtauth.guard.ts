@@ -11,8 +11,8 @@ import type { RequestWithAuth } from '../types/request-with-auth';
  * Request-scoped marker holding the stream ticket already consumed + validated
  * on an earlier guard pass for THIS request.
  *
- * `UnifiedAuthGuard` is applied BOTH as the global `APP_GUARD` (TASK-307 W4b)
- * and via `@Authorize()`'s `@UseGuards(UnifiedAuthGuard)`, so its `canActivate`
+ * `UnifiedAuthGuard` is applied BOTH as the global `APP_GUARD` and via
+ * `@Authorize()`'s `@UseGuards(UnifiedAuthGuard)`, so its `canActivate`
  * — and therefore this guard's `canActivate` — runs twice per request. Stream
  * tickets are single-use (`StreamTicketService.consumeTicket` does GET+DEL), so
  * without this marker the first pass consumes the ticket and the second pass
@@ -24,7 +24,7 @@ const CONSUMED_STREAM_TICKET = Symbol('consumedStreamTicket');
 type RequestWithConsumedTicket = RequestWithAuth & { [CONSUMED_STREAM_TICKET]?: string };
 
 /**
- * JwtAuthGuard (TASK-263 W0-1 extension)
+ * JwtAuthGuard
  *
  * Two authentication paths:
  *   1. `Authorization: Bearer <jwt>` — handled by the underlying passport-jwt
@@ -57,10 +57,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       return true;
     }
 
-    // TASK-310 E-6 (AC-6): typed RequestWithAuth replaces the pre-W7
-    // inline anonymous structural type. The ticket path writes to
-    // `request.user`; using the typed interface keeps the assignment
-    // type-checked against the canonical `UserSession` shape.
+    // The typed RequestWithAuth avoids an inline anonymous structural type.
+    // The ticket path writes to `request.user`; using the typed interface
+    // keeps the assignment type-checked against the canonical `UserSession`
+    // shape.
     const request = context.switchToHttp().getRequest<RequestWithAuth>();
 
     const ticket = this.extractTicket(request?.query?.ticket);
@@ -129,13 +129,13 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       throw new UnauthorizedException('Stream ticket scope does not match this route');
     }
 
-    // TASK-295 SEC-A5-6 / M-8: when the ticket was minted under an active
-    // impersonation, restore the `impersonatedBy` claim on `req.user`. This
-    // is the only signal `ImpersonationAuditInterceptor` consults to decide
-    // whether to emit an impersonation audit event for streaming requests.
+    // When the ticket was minted under an active impersonation, restore the
+    // `impersonatedBy` claim on `req.user`. This is the only signal
+    // `ImpersonationAuditInterceptor` consults to decide whether to emit an
+    // impersonation audit event for streaming requests.
     //
-    // TASK-310 E-6 (AC-6): the cast is deliberate — the ticket-auth path
-    // only restores the three claims downstream consumers
+    // The cast is deliberate — the ticket-auth path only restores the three
+    // claims downstream consumers
     // (`ImpersonationAuditInterceptor`, CLS lookups) actually read.
     // Building a full `UserSession` here would require re-fetching email /
     // roles / permissions just to satisfy the type, which is wasted work

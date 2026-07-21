@@ -238,7 +238,7 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
   }
 
   /**
-   * Token spend for one run, summed from its LLM_CALL steps (TASK-533 B4).
+   * Token spend for one run, summed from its LLM_CALL steps.
    *
    * A "run" is the tuple `(tenantId, sessionId, runId)` — there is no run row in
    * the schema, and this needs none: the counts are already on the steps. `runId`
@@ -265,7 +265,7 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
   }
 
   /**
-   * Evaluate a run against its per-run token budget (TASK-533 B4).
+   * Evaluate a run against its per-run token budget.
    *
    * `perRunBudget = 0` means UNBOUNDED — the shipped default, and the reason this
    * check is byte-for-byte inert until a global admin sets a budget through
@@ -386,14 +386,14 @@ interface ParsedGenerationStats {
  */
 export type ModelPriceBook = Record<string, { inputPer1k: number; outputPer1k: number; currency?: string }>;
 
-/** Token spend for one run, as the budget check consumes it (TASK-533 B4). */
+/** Token spend for one run, as the budget check consumes it. */
 export interface RunTokenSpend {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
 }
 
-/** The budget verdict threaded to the harness on activity results (TASK-533 B4). */
+/** The budget verdict threaded to the harness on activity results. */
 export interface RunBudgetStatus extends RunTokenSpend {
   usedTokens: number;
   perRunBudget: number;
@@ -467,7 +467,7 @@ function parseGenerationStats(raw: unknown): ParsedGenerationStats | null {
   const ttftMs = pickNumber(obj, 'ttft_ms', 'ttftMs');
   const tokensPerSecond = pickNumber(obj, 'tokens_per_second', 'tokensPerSecond');
   const stopReason = pickString(obj, 'stop_reason', 'stopReason');
-  // TASK-533 B4 — token counts were ALREADY being persisted here and thrown away:
+  // Token counts were ALREADY being persisted here and thrown away:
   // the SMR client's `stats`/`usage` carries them, the harness forwards `stats`
   // verbatim onto every LLM_CALL step, and this parser simply never looked. Read
   // both the flat and the nested `usage` shape (the SMR wire uses both).

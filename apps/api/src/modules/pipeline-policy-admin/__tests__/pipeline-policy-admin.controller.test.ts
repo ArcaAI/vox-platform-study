@@ -1,5 +1,5 @@
 /**
- * PipelinePolicyAdminController authz/scoping unit tests (TASK-356 Phase 5).
+ * PipelinePolicyAdminController authz/scoping unit tests.
  *
  * The CASL `@Authorize` tuples + `If-Match`/`@RequiresIfMatch` decorators are
  * exercised by the guard/interceptor (and e2e). These specs cover the

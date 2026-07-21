@@ -96,7 +96,7 @@ function MyDnaStyleBody() {
                     </>
                 }
             />
-            {/* Centered flow (TASK-442 \u00a74): gate/status \u2192 settings \u2192 current style \u2192
+            {/* Centered flow (\u00a74): gate/status \u2192 settings \u2192 current style \u2192
                 generate \u2192 history. The gate remains the DESIGNED assertActingAsDoctor
                 state; switching persona now happens in the top-bar persona control. */}
             <ImpersonationGatePanel session={safe} gated={gated} />

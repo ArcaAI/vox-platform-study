@@ -1,8 +1,6 @@
 import { GlobalSettingEntity, getSecretFields } from '@arcaai/domains';
 
 /**
- * Phase 0 Item 4 (TASK-302 Stream A) — pure utility.
- *
  * Converts a GlobalSettingEntity to a plain object suitable for an
  * audit-log payload. If the entity has `locked === true`, every field
  * decorated with `@Secret` is replaced with '[REDACTED]'. Non-locked

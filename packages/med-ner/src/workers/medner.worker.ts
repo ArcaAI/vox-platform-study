@@ -1,5 +1,5 @@
 /**
- * @arcaai/med-ner - Medical NER Web Worker (TASK-272 / C-1)
+ * @arcaai/med-ner - Medical NER Web Worker
  *
  * Runs the Transformers.js token-classification pipeline in a dedicated
  * Worker so the UI stays responsive during ~200–2000 ms BERT inferences.

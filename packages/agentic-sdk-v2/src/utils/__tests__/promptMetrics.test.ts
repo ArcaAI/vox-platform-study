@@ -1,5 +1,5 @@
 /**
- * toPromptTestMetricScores tests (TASK-389 #15 / AG12 / A5)
+ * toPromptTestMetricScores tests
  */
 
 import { describe, it, expect } from 'vitest';

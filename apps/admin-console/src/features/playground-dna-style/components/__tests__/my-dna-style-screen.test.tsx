@@ -129,7 +129,7 @@ function session(overrides: Partial<Record<string, unknown>> = {}) {
         impersonatingUsername: 'dr.house',
         ...overrides,
     };
-    // BUG-005 — WorkingTenantGate now reads the effective identity; mirror the
+    // WorkingTenantGate now reads the effective identity; mirror the
     // (possibly overridden) operator fields since these fixtures never impersonate.
     return { ...base, effectiveUser: { ...base.user, departmentId: null }, effectiveIsElevated: base.isElevated, effectiveTenantId: base.workingTenantId };
 }

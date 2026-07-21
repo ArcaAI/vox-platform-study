@@ -1,5 +1,5 @@
 /**
- * TASK-331 r2605 #3 — Console-created users must satisfy the Phase F login
+ * Console-created users must satisfy the Phase F login
  * invariant (an ENABLED UserRoleAssignment AND an ENABLED UserDepartment in a
  * tenant). `UserService.create` now optionally creates the role/department
  * membership ATOMICALLY with the user, scoped to the ACTIVE CLS tenant. A
@@ -32,7 +32,7 @@ const mockUserDepartmentRepository = { create: vi.fn() };
 const $transaction = vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(TX));
 const mockDatabaseService = { baseClient: { $transaction } };
 const mockUserProfileService = { upsertByUserId: vi.fn() };
-// TASK-402 — create-time passwords are hashed; behavior pinned in task402 spec.
+// Create-time passwords are hashed; behavior pinned in task402 spec.
 const mockCryptoService = { hash: vi.fn(async (pw: string) => `$2b$10$hashed::${pw}`), verify: vi.fn() };
 const mockAppSettings = { getValueWithDefault: vi.fn(<T,>(_key: string, defaultValue: T): T => defaultValue) };
 

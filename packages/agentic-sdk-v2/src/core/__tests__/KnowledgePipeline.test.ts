@@ -222,7 +222,7 @@ describe('KnowledgePipeline', () => {
       expect(errorHandler).toHaveBeenCalled();
     });
 
-    // TASK-461 C5-05 — auto-NER re-extracts over overlapping/rolling text. A
+    // Auto-NER re-extracts over overlapping/rolling text. A
     // random UUID per extraction means the store dedup (which keys on `id`)
     // never matches, so the same clinical entity accumulates duplicate rows.
     it('mints a STABLE content/offset-derived entity id so re-extractions dedup (C5-05)', async () => {
@@ -820,7 +820,7 @@ describe('KnowledgePipeline', () => {
       const ids = entities.map((e) => e.id);
       const uniqueIds = new Set(ids);
       // Distinct entities (different text/type/span) keep distinct ids — no
-      // over-collapse (TASK-461 C5-05 replaced the random UUID with a stable,
+      // over-collapse (replaced the random UUID with a stable,
       // content/offset-derived id).
       expect(uniqueIds.size).toBe(3);
       const stableIdRegex = /^ner-[0-9a-f]{8}$/;

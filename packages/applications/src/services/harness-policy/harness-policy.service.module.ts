@@ -5,7 +5,7 @@ import { HarnessPolicyService } from './harness-policy.service';
 import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
 
 /**
- * HarnessPolicyService DI module (TASK-330 Phase 6). Imports CoreDatabaseModule
+ * HarnessPolicyService DI module. Imports CoreDatabaseModule
  * for the HarnessPolicy + HarnessPolicyChange repositories and the
  * `CORE_DATABASE_SERVICE` (interactive transactions). `ClsService` is resolved
  * from the globally-registered `ClsModule`.
@@ -15,7 +15,7 @@ import { EffectiveSettingsModule } from '../settings-registry/effective-settings
  * `resolveSmrSelection` (the injection is @Optional, so this is additive).
  */
 @Module({
-  // TASK-533 B4 — EffectiveSettingsModule supplies the settings-registry read
+  // EffectiveSettingsModule supplies the settings-registry read
   // facade so the effective policy can carry `agentic.context.tokenBudget.perRun`
   // to the worker in the single policy fetch it already makes.
   imports: [CoreDatabaseModule, AiTaskDefaultServiceModule, EffectiveSettingsModule],

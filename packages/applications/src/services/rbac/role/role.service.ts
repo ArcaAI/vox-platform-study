@@ -31,15 +31,15 @@ import {
 } from './IRoleService';
 
 /**
- * TASK-409 — the legacy protected-policy names (mirror of
+ * The legacy protected-policy names (mirror of
  * `PolicyService.PROTECTED_SYSTEM_POLICIES`; detach only needs the names).
  */
 const PROTECTED_SYSTEM_POLICY_NAMES = new Set(['system-full-access', 'rbac-system-manage']);
 
-/** TASK-409 — operations that can produce a break-glass audit row. */
+/** Operations that can produce a break-glass audit row. */
 type RoleBreakGlassOperation = 'role-delete' | 'role-policy-detach';
 
-/** TASK-409 — target descriptor for break-glass audit rows. */
+/** Target descriptor for break-glass audit rows. */
 interface RoleBreakGlassAuditTarget {
   targetId: string;
   targetName: string;
@@ -49,19 +49,16 @@ interface RoleBreakGlassAuditTarget {
 }
 
 /**
- * TASK-307 W6.3 — Service that absorbs the direct-Prisma access that
- * `RolesController` used to perform (audit C-10 / F-1 / H-9). Prefixed
+ * Service that absorbs the direct-Prisma access that
+ * `RolesController` used to perform. Prefixed
  * `Rbac` to disambiguate from the legacy `services/security/role/RoleService`
- * (still in the barrel, unused; renaming was out of W6 scope).
+ * (still in the barrel, unused).
  *
- * TASK-311 (closes the §H-9 deferral W7.A.15) — direct
- * `CoreDatabaseService` access removed. Persistence now flows through
+ * Direct `CoreDatabaseService` access removed. Persistence now flows through
  * `RbacRoleRepository` + `RolePolicyRepository` (plus their factories).
  * Behaviour is unchanged: every Prisma call shape, every audit-event
- * payload, every cache invalidation matches the W6 wiring (verified by
- * the existing TASK-307 W6.3 test suite, re-pointed at the new
- * repository mocks). See `docs/implementation/TASK-311-Policy-Role-
- * Repository-Extraction/README.md` for the inventory + design rationale.
+ * payload, every cache invalidation matches the prior wiring (verified by
+ * the existing test suite, re-pointed at the new repository mocks).
  */
 @Injectable()
 export class RbacRoleService extends BaseService implements IRbacRoleService {
@@ -81,7 +78,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
   }
 
   /**
-   * TASK-444 — role reads carry a member count so the admin console renders
+   * Role reads carry a member count so the admin console renders
    * per-role chips without one members call per row. The nested `_count` is
    * NOT intercepted by the tenant-scope `$extends` (query extensions only see
    * the dispatched model's TOP-LEVEL args), so the filter is built explicitly
@@ -257,7 +254,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
       throw new BadRequestException('Cannot delete system role');
     }
 
-    // TASK-409 — deleting a role is a dangerous-but-allowed mutation.
+    // Deleting a role is a dangerous-but-allowed mutation.
     await this.requireBreakGlass(
       'role-delete',
       { targetId: id, targetName: role.name, targetType: 'Role' },
@@ -335,7 +332,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
   }
 
   async removePolicy(roleId: string, policyId: string, breakGlass?: BreakGlassCredentials): Promise<void> {
-    // TASK-501 — SYSTEM-role policy detach is a global-admin-only operation
+    // SYSTEM-role policy detach is a global-admin-only operation
     // (defense in depth — the admin console already scopes the affordance).
     const role = await this.roleRepository.findByIdGuardSelect(roleId);
     if (!role) {
@@ -345,7 +342,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
       throw new ForbiddenException('Only a global admin can modify policies on a system role.');
     }
 
-    // TASK-409 — the detach target must exist (the policy name anchors both
+    // The detach target must exist (the policy name anchors both
     // the confirmation contract and the anti-lockout check below).
     const policy = (await this.policyRepository.findById(policyId)) as { id: string; name: string; isProtected?: boolean } | null;
     if (!policy) {
@@ -354,7 +351,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
 
     const auditTarget = { targetId: `${roleId}:${policyId}`, targetName: policy.name, targetType: 'RolePolicy' as const, roleId, policyId };
 
-    // TASK-409 — detaching a PROTECTED policy (marker OR legacy name) is
+    // Detaching a PROTECTED policy (marker OR legacy name) is
     // absolutely blocked: the seeded attachment to the super-admin role is
     // exactly what keeps super-admins in. Break-glass does NOT override this.
     if (policy.isProtected === true || PROTECTED_SYSTEM_POLICY_NAMES.has(policy.name)) {
@@ -364,7 +361,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
       );
     }
 
-    // TASK-409 — detach is a dangerous-but-allowed mutation: confirm with the
+    // Detach is a dangerous-but-allowed mutation: confirm with the
     // caller's password + the exact POLICY name.
     await this.requireBreakGlass('role-policy-detach', auditTarget, breakGlass, `Detaching policy '${policy.name}' from the role`);
 
@@ -390,7 +387,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
   }
 
   /**
-   * TASK-501 — clone a role (SYSTEM or CUSTOM) into a new CUSTOM role that
+   * Clone a role (SYSTEM or CUSTOM) into a new CUSTOM role that
    * copies the source's policy set. Any admin may call this (no isSuperAdmin
    * gate) — cloning a SYSTEM role is the whole point, since SYSTEM roles
    * themselves stay locked to global admins.
@@ -447,7 +444,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
   }
 
   /**
-   * TASK-409 — run the step-up verification; on failure, force-audit the
+   * Run the step-up verification; on failure, force-audit the
    * rejection and surface the mapped HTTP error (428/401/400). The
    * confirmation name is the TARGET name (role name for role-delete, policy
    * name for detach).
@@ -477,8 +474,8 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
   }
 
   /**
-   * TASK-409 — forced audit row for break-glass outcomes (TASK-396 pattern;
-   * see `PolicyService.emitBreakGlassAudit` for the direct-emit rationale).
+   * Forced audit row for break-glass outcomes
+   * (see `PolicyService.emitBreakGlassAudit` for the direct-emit rationale).
    * Roles/policies are platform-global resources — attribute the reserved
    * system tenant when the caller (super-admin) carries no CLS tenant.
    * NEVER the password.
@@ -509,8 +506,8 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
 
   /**
    * Validates parentRoleId: ensures the parent exists and there are no
-   * circular references. Behaviour mirrors the prior W6 helper
-   * verbatim — TASK-311 moved the two `findUnique` lookups behind
+   * circular references. Behaviour mirrors the prior helper
+   * verbatim — the two `findUnique` lookups now go through
    * `roleRepository.findParentRoleById` / `findParentRoleIdById`.
    *
    * @param currentRoleId - The ID of the role being updated (for cycle

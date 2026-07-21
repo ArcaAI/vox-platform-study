@@ -1,5 +1,5 @@
 // =============================================================================
-// TASK-330 — Phase 3 Institutional RAG (Knowledge corpus)
+// Institutional RAG (Knowledge corpus)
 //
 // Tenant-owned institutional knowledge corpus that backs the harness hybrid
 // JIT retriever. Two standard tenant-scoped models (tenantId + resourceStatus
@@ -80,7 +80,7 @@ model KnowledgeChunk {
   KnowledgeDocument   KnowledgeDocument @relation(fields: [knowledgeDocumentId], references: [id])
 
   // Chunk content + position within the source document.
-  // TASK-369 Phase 6 — plaintext `text` column DROPPED; persisted as
+  // The plaintext `text` column has been DROPPED; persisted as
   // Vault-Transit ciphertext only.
   chunkIndex  Int
   tokenCount  Int

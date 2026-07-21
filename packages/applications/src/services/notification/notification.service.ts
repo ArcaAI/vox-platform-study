@@ -23,7 +23,7 @@ import { SecretsService } from '../baseServices/_meta/secrets';
 import { GLOBAL_ADMIN_ROLE } from '../tenant/constants';
 
 /**
- * TASK-369 Phase 3C — ciphertext columns that must never cross an audit /
+ * Ciphertext columns that must never cross an audit /
  * SysEvent boundary. The entity serializer (`toObject()` / `changes`) iterates
  * every backing field, so the encrypted message blobs + shared key version are
  * stripped from any payload derived from the entity.
@@ -31,7 +31,7 @@ import { GLOBAL_ADMIN_ROLE } from '../tenant/constants';
 const NOTIFICATION_CIPHERTEXT_KEYS = ['encryptedMessageText', 'encryptedMessageRichText', 'encryptedMessageContent', 'keyVersion'] as const;
 
 /**
- * TASK-406 (P2-6c) — model-aware filter coercion (TASK-375 §8 scheme):
+ * Model-aware filter coercion:
  * `read` → boolean, `version`/`keyVersion` → number, `createdAt` → Date,
  * `type`/`resourceStatus` → member-validated enums, `metaData` → JSON-path
  * support. The encrypted Bytes columns are not filterable.
@@ -43,17 +43,17 @@ export class NotificationService extends BaseService implements INotificationSer
   constructor(
     private readonly notificationRepository: NotificationRepository,
     private readonly userRoleAssignmentRepository: UserRoleAssignmentRepository,
-    // TASK-305 Phase F — membership is role + department; the guard needs the
+    // Membership is role + department; the guard needs the
     // department join table and the User table (service-account exemption).
     private readonly userDepartmentRepository: UserDepartmentRepository,
     private readonly userRepository: UserRepository,
     private readonly resourceSubscriptionRepository: ResourceSubscriptionRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // TASK-369 Phase 3C — Vault-Transit field encryption for the notification
+    // Vault-Transit field encryption for the notification
     // message body (messageText / messageRichText / messageContent). Optional +
     // @Inject so legacy/direct-construction tests still work; when absent these
-    // PHI fields are left unpersisted (Phase 6 dropped the plaintext columns).
+    // PHI fields are left unpersisted (the plaintext columns were dropped).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super(eventEmitter, clsService, ResourceType.Notification);
@@ -62,7 +62,7 @@ export class NotificationService extends BaseService implements INotificationSer
   private readonly logger = new Logger(NotificationService.name);
 
   /**
-   * TASK-369 — encrypt the notification's plaintext message fields (messageText /
+   * Encrypt the notification's plaintext message fields (messageText /
    * messageRichText / messageContent) into their `encrypted*` / `keyVersion`
    * columns through the shared env-gated guard: a soft no-op in dev/test,
    * FAIL-CLOSED (throws) in staging/prod (SECRETS_PROVIDER=vault).
@@ -77,7 +77,7 @@ export class NotificationService extends BaseService implements INotificationSer
   }
 
   /**
-   * TASK-369 Phase 3C — drop the ciphertext columns from an entity-derived audit
+   * Drop the ciphertext columns from an entity-derived audit
    * payload (`toObject()` / `changes` / `previousData`) so the SysEvent never
    * carries the raw ciphertext Buffer or the key version.
    */
@@ -90,7 +90,7 @@ export class NotificationService extends BaseService implements INotificationSer
   }
 
   /**
-   * TASK-305 D.5.1 (audit C-5, B10) — close the notification cross-tenant
+   * Close the notification cross-tenant
    * gap. Two leaks are possible without service-layer guards:
    *   1. Routing a notification to a `targetUserId` who has no role in the
    *      caller's tenant (User has no `tenantId` FK in the schema).
@@ -99,7 +99,7 @@ export class NotificationService extends BaseService implements INotificationSer
    *
    * The flow is:
    *   - Pin the working `tenantId` to CLS unless the caller is GLOBAL_ADMIN
-   *     and explicitly overrides via `request.tenantId` (mirrors the D.7
+   *     and explicitly overrides via `request.tenantId` (mirrors the
    *     UserRoleAssignment pattern).
    *   - Assert `targetUserId` membership in the effective tenant. GLOBAL_ADMIN
    *     does NOT bypass — sending notifications to users in other tenants is
@@ -128,7 +128,7 @@ export class NotificationService extends BaseService implements INotificationSer
       createdBy: this.requestUser?.id,
     });
 
-    // TASK-369 Phase 3C — encrypt the message body into the ciphertext columns
+    // Encrypt the message body into the ciphertext columns
     // before the first persist (dual-write; plaintext is retained for the soak).
     await this.encryptMessage(newNotification);
 
@@ -147,7 +147,7 @@ export class NotificationService extends BaseService implements INotificationSer
   }
 
   /**
-   * TASK-305 D.5.1 — list endpoint scoped to the caller's tenant. Mirrors the
+   * List endpoint scoped to the caller's tenant. Mirrors the
    * `AuditLogService.fetchAll` D.8 pattern: GLOBAL_ADMIN bypasses the filter,
    * everyone else is pinned to CLS `tenantId`.
    */
@@ -180,10 +180,10 @@ export class NotificationService extends BaseService implements INotificationSer
   }
 
   /**
-   * TASK-306 P1.5 (audit AC-7 / NEW-3) — refuse cross-tenant list reads
-   * driven by the DTO `tenantId`. Pre-guard, any caller could enumerate
-   * another tenant's notifications by supplying a foreign `tenantId`.
-   * GLOBAL_ADMIN bypasses for admin-tooling cross-tenant listing.
+   * Refuse cross-tenant list reads driven by the DTO `tenantId` — without this
+   * guard any caller could enumerate another tenant's notifications by
+   * supplying a foreign `tenantId`. GLOBAL_ADMIN bypasses for admin-tooling
+   * cross-tenant listing.
    */
   async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<NotificationEntity>> {
     const { tenantId, limit, page } = props;
@@ -220,7 +220,7 @@ export class NotificationService extends BaseService implements INotificationSer
   }
 
   /**
-   * TASK-305 D.5.1 — `createdBy` filter is merged with the caller's CLS
+   * `createdBy` filter is merged with the caller's CLS
    * `tenantId` so a Tenant-A admin querying by an arbitrary user-id can
    * never enumerate notifications created by that user in Tenant-B.
    */
@@ -254,7 +254,7 @@ export class NotificationService extends BaseService implements INotificationSer
   }
 
   /**
-   * TASK-305 D.5.1 — load-then-assert. Throw `NotFoundException` (never
+   * Load-then-assert. Throw `NotFoundException` (never
    * `Forbidden`) on a cross-tenant id to avoid existence leakage.
    */
   async fetchById(id: EntityId): Promise<NotificationEntity> {
@@ -275,7 +275,7 @@ export class NotificationService extends BaseService implements INotificationSer
     const previousData = notification.toObject();
     this.updateEntity(notification, request);
 
-    // TASK-369 Phase 3C — re-encrypt only when a message field actually changed
+    // Re-encrypt only when a message field actually changed
     // (read by the entity change-set, not the request DTO, since the API DTO
     // field names differ from the entity columns) so read-status / tag-only
     // updates don't churn the ciphertext columns.

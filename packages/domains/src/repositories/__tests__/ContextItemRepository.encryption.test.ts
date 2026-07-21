@@ -1,4 +1,4 @@
-// TASK-369 (Data Encryption Initiative) Phase 3B — ContextItemRepository
+// ContextItemRepository
 // encryption helpers, exercised via the prototype-augmentation sibling file.
 // No real Prisma client is booted; findById is monkeypatched per test.
 import { describe, it, expect, vi } from 'vitest';

@@ -28,7 +28,7 @@ const AI_MODEL_SEARCH_FIELDS = ['name', 'slug'];
 const AI_MODEL_DEFAULT_SORT: SortRule[] = [{ id: 'name', desc: false }];
 
 const SOURCE_FILTER_OPTIONS: FilterOption[] = SOURCE_OPTIONS.map((source) => ({ value: source, label: SOURCE_LABELS[source] }));
-/** TASK-506 runtime-provider filter chip. */
+/** runtime-provider filter chip. */
 const PROVIDER_FILTER_OPTIONS: FilterOption[] = RUNTIME_PROVIDER_OPTIONS.map((provider) => ({ value: provider, label: provider }));
 const CAPABILITY_OPTIONS: FilterOption[] = CATEGORY_OPTIONS.map((category) => ({ value: category, label: humanizeEnum(category) }));
 const STATUS_OPTIONS: FilterOption[] = [
@@ -58,7 +58,7 @@ function ModelRowActions({ model, onEdit, onDelete }: { model: AiModel; onEdit: 
  * filters + sortable name/updated + pager), register/edit drawer (OCC If-Match)
  * and destructive delete with confirm.
  *
- * TASK-528 turns the registry screen into the hub: the header also opens the
+ * turns the registry screen into the hub: the header also opens the
  * DISCOVERY drawer, which merges these rows with the live LM Studio / Ollama /
  * vLLM / llama.cpp listings. Discovery probes are LAZY (drawer open only) so
  * this grid never waits on an engine round-trip, and the registry stays
@@ -121,7 +121,7 @@ export function AiModelsScreen() {
                 size: 200,
             },
             {
-                // TASK-506: the real runtime provider column (the source column below covers artifact origin).
+                // The real runtime provider column (the source column below covers artifact origin).
                 accessorKey: 'provider',
                 header: 'Provider',
                 enableSorting: false,
@@ -155,7 +155,7 @@ export function AiModelsScreen() {
                 header: 'Capability',
                 enableSorting: false,
                 meta: { label: 'Capability', variant: 'multiSelect', options: CAPABILITY_OPTIONS },
-                // Single line — wrapping badges outgrow the fixed-height grid row (TASK-429).
+                // Single line — wrapping badges outgrow the fixed-height grid row.
                 cell: ({ row }) => (
                     <span className="flex items-center gap-1">
                         <Badge variant="secondary">{humanizeEnum(row.original.taskType)}</Badge>

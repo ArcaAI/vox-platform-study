@@ -142,7 +142,7 @@ export class SysEventService implements ISysEventService {
       data: event.data as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       previousData: event.previousData as any,
-      // TASK-401 — carry the event's metaData (e.g. the impersonatedBy
+      // Carry the event's metaData (e.g. the impersonatedBy
       // provenance threaded by BaseService.broadcastSysEvent) into the queued
       // job so AuditLogProcessor persists it on the row's `metadata` column.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

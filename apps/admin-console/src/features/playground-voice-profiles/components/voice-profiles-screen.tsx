@@ -11,8 +11,8 @@ import { ProfileListCard } from './profile-list-card';
 
 /**
  * Frame 52 / artboard 4d — Playground voice enrollment & profiles (tier 50–59,
- * matrix row 36). Own-account plane rendered as a single centered canvas
- * (TASK-442 §4): enrollment wizard stacked over the caller's profile list.
+ * matrix row 36). Own-account plane rendered as a single centered canvas:
+ * enrollment wizard stacked over the caller's profile list.
  * Deliberately NO WorkingTenantGate — voice profiles are user-owned rows in
  * the caller's home tenant, so this plane works with or without a
  * working-tenant selection, and there is no admin surface over other users'

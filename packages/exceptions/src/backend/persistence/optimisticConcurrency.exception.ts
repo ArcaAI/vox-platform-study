@@ -13,7 +13,6 @@ export interface OptimisticConcurrencyMetadata {
  * @class OptimisticConcurrencyException
  * @extends {BasePersistenceException}
  *
- * @see TASK-302 Stream D Phase B
  * @see https://www.rfc-editor.org/rfc/rfc7232.html#section-4.2
  */
 export class OptimisticConcurrencyException extends BasePersistenceException {
@@ -24,9 +23,9 @@ export class OptimisticConcurrencyException extends BasePersistenceException {
    * `'Tenant'`). Surfaced as a separate field — not folded into
    * `metadata` — so it can be used as a Prometheus label without
    * affecting the JSON body shape the SDK / UI conflict-handler
-   * already consumes (TASK-302 Stream D Phase D.4 / D.5).
+   * already consumes.
    *
-   * @see TASK-302 Stream D Phase E.6 — `optimistic_lock_conflict_total`
+   * @see `optimistic_lock_conflict_total` — the Prometheus metric this label feeds
    */
   public readonly model: string;
 

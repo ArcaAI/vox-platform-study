@@ -14,7 +14,7 @@ export class PlanEntitlementRepository extends Repository<PlanEntitlementEntity,
   }
 
   /**
-   * TASK-392 (Q1) — resolve the single default-matrix row for a commercial
+   * Resolve the single default-matrix row for a commercial
    * plan (`plan` is `@unique`). Returns `null` when no row is seeded yet so
    * the resolver can fall back to the seeded-constant baseline.
    */

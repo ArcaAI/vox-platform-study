@@ -3,16 +3,15 @@ import { IsString, IsNotEmpty, IsOptional, IsInt, Min } from 'class-validator';
 import { BaseRequest } from '../../../common';
 
 /**
- * TASK-445 — rotate ONE secret setting: an atomic, step-up-gated,
+ * Rotate ONE secret setting: an atomic, step-up-gated,
  * distinctly-audited replace-with-new-value under optimistic concurrency.
  *
  * A GlobalSetting secret is operator-supplied — the server has no material to
  * regenerate (unlike an API key token) — so rotation accepts the NEW secret in
  * the request and replaces the stored value in ONE versioned write (the old
  * value is invalidated by that same write; no window where both are valid).
- * NOTE: encryption-at-rest is scaffolded but unwired (Phase 4C); when the
- * encryption write path lands, rotation additionally re-wraps `encryptedValue`
- * under a fresh `keyVersion` via `encryptValueIntoEntity`.
+ * Rotation additionally re-wraps `encryptedValue` under a fresh `keyVersion`
+ * via `encryptValueIntoEntity` for encryption-at-rest.
  *
  * Gating mirrors `reveal`: GLOBAL_ADMIN only (CASL `manage:all`) + step-up
  * re-auth with the caller's current password. The password and the new secret

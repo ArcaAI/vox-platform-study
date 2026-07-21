@@ -4,7 +4,7 @@ import { TenantFrontendConfigService } from './tenant-frontend-config.service';
 import { ITenantFrontendConfigService } from './ITenantFrontendConfigService';
 
 /**
- * Wires {@link TenantFrontendConfigService} (TASK-328 A6). Only the core
+ * Wires {@link TenantFrontendConfigService}. Only the core
  * repositories ({@link CoreDatabaseModule}) are needed.
  */
 @Module({

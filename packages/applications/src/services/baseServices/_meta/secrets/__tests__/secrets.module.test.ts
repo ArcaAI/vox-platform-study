@@ -1,4 +1,4 @@
-// Phase 2C Task 2.17 (TASK-302 Stream B) - SecretsModule factory test.
+// SecretsModule factory test.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -65,7 +65,7 @@ describe('SecretsModule', () => {
     ).rejects.toThrow(/VAULT_ADDR/);
   });
 
-  // TASK-312 B.10 — read-from-file AppRole creds. Production (systemd-creds /
+  // Read-from-file AppRole creds. Production (systemd-creds /
   // k8s Secret mounts) provides role_id + a one-shot wrapped secret_id as files
   // so no secret material is ever inlined in .env.production. The provider
   // constructor throws if role_id / secret_id are unresolved, so a successful
@@ -183,7 +183,7 @@ describe('SecretsModule', () => {
     await expect(svc.getSecret('JWT_SECRET_KEY')).resolves.toBe('test');
   });
 
-  // TASK-307 W2.1 follow-up — fixes the boot-ordering bug where
+  // Fixes the boot-ordering bug where
   // JwtStrategy.getSecretSync('JWT_SECRET_KEY') ran in the strategy
   // constructor against an empty cache because main.ts only called
   // `secretsService.boot({warmupKeys: [...]})` AFTER

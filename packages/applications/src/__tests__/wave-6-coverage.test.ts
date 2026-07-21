@@ -1,27 +1,26 @@
 /**
- * TASK-307 Wave 6 — Direct-Prisma-removal coverage aggregator.
+ * Direct-Prisma-removal coverage aggregator.
  *
- * W6 is a behaviour-preserving refactor: three controllers
- * (`auth.controller.ts`, `policies.controller.ts`, `roles.controller.ts`)
- * stopped touching `databaseService.client` directly and now route
- * through new application-service methods. The end-to-end gateway
- * behaviour is pinned by the EXISTING E2E suite (`apps/api/tests/e2e/`)
- * which the W7.9 cross-tenant aggregator
- * (`apps/api/src/__tests__/e2e-tenant-coverage.test.ts`) will track
- * once that file lands.
+ * Three controllers (`auth.controller.ts`, `policies.controller.ts`,
+ * `roles.controller.ts`) stopped touching `databaseService.client`
+ * directly and now route through new application-service methods, as
+ * a behaviour-preserving refactor. The end-to-end gateway behaviour is
+ * pinned by the EXISTING E2E suite (`apps/api/tests/e2e/`), which a
+ * cross-tenant aggregator in `apps/api/src/__tests__/
+ * e2e-tenant-coverage.test.ts` will track once that file lands.
  *
- * The NEW unit tests W6 added are NOT cross-tenant tests, so they do
- * not belong in `cross-tenant-coverage.test.ts`. They ARE the pin
- * against the new service-method behaviour, though — deleting them
- * leaves the W6 extractions unprotected. This aggregator closes that
+ * The new unit tests this refactor added are not cross-tenant tests,
+ * so they do not belong in `cross-tenant-coverage.test.ts`. They ARE
+ * the pin against the new service-method behaviour, though — deleting
+ * them leaves the extractions unprotected. This aggregator closes that
  * gap with the smallest viable surface:
  *
  *   1. Per-sub-task entry — file path + minimum `it(...)` count +
  *      describe-marker regex (mirrors the
  *      `cross-tenant-coverage.test.ts` shape).
  *   2. Existence pin — every entry must point to a file on disk.
- *   3. Describe-marker pin — the top-level `describe('TASK-307 W6.X
- *      — ...')` must still exist (so a future engineer that renames
+ *   3. Describe-marker pin — the top-level describe block each entry
+ *      targets must still exist (so a future engineer that renames
  *      the block trips CI).
  *   4. Count floor — actual `it()` count under the matching describe
  *      MUST be ≥ floor (so a future engineer that deletes a pin
@@ -29,10 +28,10 @@
  *      authoring time exceed them by 1–2 each.
  *
  * Exports:
- *   - `WAVE_6_TEST_COVERAGE` — typed constant so W7.9's aggregator
- *     (`apps/api/src/__tests__/e2e-tenant-coverage.test.ts`) can
- *     import it via a relative path and fold these floors into the
- *     gateway-level coverage report.
+ *   - `WAVE_6_TEST_COVERAGE` — typed constant so the gateway-level
+ *     cross-tenant aggregator (`apps/api/src/__tests__/
+ *     e2e-tenant-coverage.test.ts`) can import it via a relative path
+ *     and fold these floors into its own coverage report.
  *
  * Pattern reuse: this file deliberately mirrors the shape of
  * `cross-tenant-coverage.test.ts` (the brace-tracked `it()` counter,
@@ -52,7 +51,7 @@ import { describe, expect, it } from 'vitest';
 const APPLICATIONS_SRC = resolve(__dirname, '..');
 
 interface WaveSixEntry {
-  /** Sub-task identifier (W6.1 / W6.2 / W6.3). */
+  /** Identifier tying the entry to its describe-marker regex. */
   readonly subtask: string;
   /** Human-readable name used in the parameterised test label. */
   readonly name: string;
@@ -65,7 +64,7 @@ interface WaveSixEntry {
 }
 
 /**
- * The three new service-layer test files added by W6.1 / W6.2 / W6.3.
+ * The three service-layer test files this refactor added.
  *
  * Floors are set 1–2 below the actual count at authoring time so a
  * single accidental deletion (or a renamed `it(...)` that no longer
@@ -73,7 +72,7 @@ interface WaveSixEntry {
  * intentionally narrow: it does NOT try to enumerate every method
  * sub-describe (e.g. `findAll`, `findOne`, `create`, ...). The
  * top-level marker + floor combination is sufficient — and easier
- * to maintain across future W6 follow-ups than per-method floors.
+ * to maintain than per-method floors.
  */
 export const WAVE_6_TEST_COVERAGE: readonly WaveSixEntry[] = [
   {
@@ -165,23 +164,24 @@ describe('TASK-307 Wave 6 — Direct-Prisma-removal coverage aggregator', () => 
   );
 
   /*
-   * W7 hand-off note (consumed by `apps/api/src/__tests__/
-   * e2e-tenant-coverage.test.ts` when AC-33 lands):
+   * Hand-off note (consumed by `apps/api/src/__tests__/
+   * e2e-tenant-coverage.test.ts`, once that gateway-level aggregator
+   * exists):
    *
    *   import { WAVE_6_TEST_COVERAGE } from '@arcaai/applications/.../wave-6-coverage.test';
    *   // (or duplicate the contract — service-layer floors don't
-   *   //  need to flow into the gateway-level aggregator; W7 may
+   *   //  need to flow into the gateway-level aggregator; it may
    *   //  choose to keep them as parallel pins instead of importing.)
    *
-   * This aggregator is intentionally scoped to the W6 unit-test
-   * surface. The W6 controllers (auth / policies / roles) have NO
-   * new E2E spec files — behaviour preservation is pinned by the
-   * EXISTING `apps/api/tests/e2e/` suite, which the W7.9 aggregator
-   * will track via the `cross-tenant-coverage.test.ts` FS-introspection
-   * mechanism.
+   * This aggregator is intentionally scoped to this unit-test
+   * surface. The auth / policies / roles controllers it covers have
+   * NO new E2E spec files — behaviour preservation is pinned by the
+   * EXISTING `apps/api/tests/e2e/` suite, which the gateway-level
+   * aggregator will track via the `cross-tenant-coverage.test.ts`
+   * FS-introspection mechanism.
    *
-   * The W6.4 ESLint rule (`arcaai-internal/no-controller-direct-prisma`)
-   * is self-tested by `packages/eslint-plugin-arcaai-internal/__tests__/
+   * The ESLint rule `arcaai-internal/no-controller-direct-prisma` is
+   * self-tested by `packages/eslint-plugin-arcaai-internal/__tests__/
    * no-controller-direct-prisma.test.js` — it does NOT need an
    * aggregator entry because the RuleTester is the contract.
    */

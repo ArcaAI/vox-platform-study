@@ -6,7 +6,7 @@ import { BaseEntity, IBaseEntity } from '../../../common';
 import * as Enums from '../../../enums';
 
 /**
- * TASK-400 — revocable, DB-backed, single-use password-reset token.
+ * Revocable, DB-backed, single-use password-reset token.
  *
  * Only the SHA-256 hash of the raw token is ever stored. Lifecycle is
  * column-driven and UPDATE-only (`usedAt` on completion, `revokedAt` on
@@ -35,7 +35,7 @@ export class PasswordResetTokenEntity extends BaseEntity {
   private _requestedByUserId?: IPasswordResetTokenEntity['requestedByUserId'];
   private _requestedVia?: IPasswordResetTokenEntity['requestedVia'];
   private _requestIp?: IPasswordResetTokenEntity['requestIp'];
-  // TASK-497 §3.4 — `IBaseEntity.metaData` was declared but never wired on
+  // `IBaseEntity.metaData` was declared but never wired on
   // `BaseEntity` (a pre-existing gap affecting every entity, out of scope
   // here); implemented locally so the `email_verification` purpose can stash
   // the pending tenant name until POST /auth/register/verify consumes it.

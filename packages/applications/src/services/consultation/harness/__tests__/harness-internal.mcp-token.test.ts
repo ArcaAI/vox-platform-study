@@ -1,5 +1,5 @@
 /**
- * MCP token resolution (TASK-533 D-24, frozen design in the ticket §3.1).
+ * MCP token resolution — frozen design.
  *
  * `_resolve_mcp_token` in the harness was a hardcoded `return None`, and the
  * harness has NO Vault client (hvac appears only in comments) — so an MCP server

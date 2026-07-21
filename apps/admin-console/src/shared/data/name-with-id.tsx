@@ -1,5 +1,5 @@
 /**
- * TASK-424 — standard "human-readable first" cell: the display name is the
+ * Standard "human-readable first" cell: the display name is the
  * primary label; the id is demoted to muted mono metadata underneath. When no
  * name is available the id stands alone (still mono) so nothing breaks while
  * a catalog loads or when the caller cannot resolve the name.

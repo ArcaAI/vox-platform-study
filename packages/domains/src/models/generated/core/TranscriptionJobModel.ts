@@ -18,10 +18,10 @@ export class TranscriptionJob extends BaseTenantDataModel {
   public queuedAt: Date;
   public startedAt: Date | null;
   public completedAt: Date | null;
-  // TASK-369 Phase 6 — plaintext resultText / resultMetadata columns DROPPED;
+  // Plaintext resultText / resultMetadata columns DROPPED;
   // persistence is ciphertext-only. The entity keeps these as transient fields
   // repopulated by repository decrypt-on-read.
-  // TASK-369 Phase 3C — Vault-Transit ciphertext columns + shared key version.
+  // Vault-Transit ciphertext columns + shared key version.
   public encryptedResultText: Uint8Array | null;
   public encryptedResultMetadata: Uint8Array | null;
   public keyVersion: number | null;

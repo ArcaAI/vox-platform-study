@@ -45,7 +45,7 @@ export interface AgenticPolicy {
     nerPriorsEnabled?: boolean | null;
     maxEditReruns?: number | null;
     regenFeedbackEnabled?: boolean | null;
-    // TASK-533 D-24 — MCP external-tools master switch (null = OFF). Global-admin
+    // MCP external-tools master switch (null = OFF). Global-admin
     // governed, so the effective value always comes from the SYSTEM row.
     mcpToolsEnabled?: boolean | null;
     updatedAt: string | null;
@@ -126,7 +126,7 @@ export interface SettingCatalog {
 }
 
 /**
- * TASK-533 B2 — one registry setting's EFFECTIVE value plus its backing-row
+ * One registry setting's EFFECTIVE value plus its backing-row
  * version. `version: 0` (or absent) means the value is still the code default:
  * no row is stored, so the gateway emits no ETag and a first write needs none.
  */

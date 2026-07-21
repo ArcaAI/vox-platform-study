@@ -50,18 +50,18 @@ class AllProvidersUnavailableError(RuntimeError):
         self.voice_id = voice_id
 
 
-# Per-tenant BYO credentials the gateway decrypts + injects (TASK-496):
+# Per-tenant BYO credentials the gateway decrypts + injects:
 # ``{"azure": {"api_key": ..., "region": ...}, "sarvam": {"api_key": ..., "base_url": ...}}``.
 ProviderOverrides = dict[str, dict[str, str]]
 
 # Per-request voice-binding overrides the gateway resolves from the AiModel
-# registry / tenant TTS config and injects (TASK-506):
+# registry / tenant TTS config and injects:
 # ``{internalVoiceId: {provider: providerVoiceName}}``.
 VoiceBindings = dict[str, dict[str, str]]
 
 
 def _apply_voice_bindings(voice: Voice, voice_bindings: VoiceBindings | None) -> Voice:
-    """Apply a gateway-injected binding override for this voice (TASK-506).
+    """Apply a gateway-injected binding override for this voice.
 
     A present override MERGES over the voice's catalog binding map: mentioned
     providers get the overridden voice name, unmentioned providers keep their
@@ -92,7 +92,7 @@ def _override_cache_key(name: str, override: dict[str, str]) -> str:
 
 
 def _build_override_engine(settings: Settings, name: str, override: dict[str, str]) -> TTSEngine | None:
-    """Build a per-tenant provider from injected BYO credentials (TASK-496).
+    """Build a per-tenant provider from injected BYO credentials.
 
     Clones the platform base config with the tenant's key/endpoint. Returns None
     for a provider that takes no BYO key or an unknown name (→ fall back to the
@@ -136,7 +136,7 @@ class TTSRouter:
         self._cb_threshold = cb_threshold
         self._cb_recovery_s = cb_recovery_s
         self._breakers: dict[str, CircuitBreaker] = {}
-        # Per-tenant BYO provider instances, cached by credential hash (TASK-496).
+        # Per-tenant BYO provider instances, cached by credential hash.
         self._tenant_engines: dict[str, TTSEngine] = {}
 
     def breaker(self, name: str) -> CircuitBreaker:
@@ -154,7 +154,7 @@ class TTSRouter:
         """Locale → ordered provider chain. Code-switch ``ml-en`` → ml chain.
 
         Per-request ``routing_en``/``routing_ml`` (injected by the gateway from a
-        tenant's resolved config, TASK-496) override the static settings chains.
+        tenant's resolved config) override the static settings chains.
         """
         base = locale.split("-")[0]
         if base == "ml":
@@ -174,7 +174,7 @@ class TTSRouter:
     ) -> list[str]:
         """Providers that are registered, bound to this voice, and not tripped.
 
-        ``allowed_providers`` (tenant whitelist, TASK-496) further bounds the chain;
+        ``allowed_providers`` (tenant whitelist) further bounds the chain;
         ``override_providers`` (tenants with a BYO key) count as available even when
         the platform hasn't registered that provider.
         """
@@ -196,7 +196,7 @@ class TTSRouter:
 
     def _engine_for(self, name: str, provider_overrides: ProviderOverrides | None) -> TTSEngine:
         """Engine for a provider: a per-tenant BYO instance when overridden (cached
-        by credential hash), else the shared registered engine (TASK-496)."""
+        by credential hash), else the shared registered engine."""
         if provider_overrides and name in provider_overrides:
             override = provider_overrides[name]
             key = _override_cache_key(name, override)
@@ -224,7 +224,7 @@ class TTSRouter:
         voice_bindings: VoiceBindings | None = None,
     ) -> AsyncIterator[AudioChunk]:
         voice = self._catalog.get(voice_id)  # VoiceNotFoundError → 404 at endpoint
-        voice = _apply_voice_bindings(voice, voice_bindings)  # TASK-506 override
+        voice = _apply_voice_bindings(voice, voice_bindings)  # binding override
         locale = voice.locale
         candidates = self.candidates(
             voice,
@@ -309,7 +309,7 @@ class TTSRouter:
         provider_overrides: ProviderOverrides | None = None,
         voice_bindings: VoiceBindings | None = None,
     ) -> SynthesisStream:
-        """Open a duplex stream: incremental text in, audio frames out (TASK-492).
+        """Open a duplex stream: incremental text in, audio frames out.
 
         Prefers a natively-duplex engine (Azure text-stream) when the first
         candidate supports it and the request is PCM at speed 1.0 (TextStream mode
@@ -319,7 +319,7 @@ class TTSRouter:
         byte failover; the provider is locked once the first audio frame ships.
         """
         voice = self._catalog.get(voice_id)  # VoiceNotFoundError → 404 at endpoint
-        voice = _apply_voice_bindings(voice, voice_bindings)  # TASK-506 override
+        voice = _apply_voice_bindings(voice, voice_bindings)  # binding override
         candidates = self.candidates(
             voice,
             routing_en=routing_en,
@@ -379,7 +379,7 @@ class TTSRouter:
 
 
 class _ChainSynthesizer:
-    """Per-sentence synth callable for the SentenceAdapter (TASK-492).
+    """Per-sentence synth callable for the SentenceAdapter.
 
     Sentence 1 tries the candidate chain (before-first-byte failover); once the
     first audio frame ships the stream locks to that provider — every later

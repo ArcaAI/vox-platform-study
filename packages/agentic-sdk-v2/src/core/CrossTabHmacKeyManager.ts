@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox — Cross-Tab HMAC Key Manager (TASK-280)
+ * @arcaai/vox — Cross-Tab HMAC Key Manager
  *
  * Client-side manager that wraps the `CrossTabHmacSharedWorker` so every
  * tab of the same origin signs and verifies BroadcastChannel envelopes
@@ -60,8 +60,8 @@ export interface CrossTabHmacKeyManagerOptions {
 
 // =============================================================================
 // Fallback secret — module-level singleton, scoped per JS context (one page).
-// Used only when SharedWorker is unavailable / failed. The Wave-0 HMAC story
-// (TASK-266 W0-4) lives here now; `SimpleCrossTabSync` no longer owns it.
+// Used only when SharedWorker is unavailable / failed. This is where the
+// shared HMAC secret lives now; `SimpleCrossTabSync` no longer owns it.
 // =============================================================================
 
 let FALLBACK_SECRET: Uint8Array | null = null;
@@ -167,7 +167,7 @@ export class CrossTabHmacKeyManager {
   private readonly pending = new Map<string, PendingRpc>();
   private readonly rpcTimeoutMs: number;
   private closed = false;
-  // TASK-317 E-4 (AC-11) — active tenant. When set, sign/verify use the
+  // Active tenant. When set, sign/verify use the
   // per-tenant HKDF subkey instead of the bare master/fallback secret.
   private tenantId?: string;
   // Cached per-tenant fallback subkey; invalidated on setTenantId (rotation).
@@ -213,7 +213,7 @@ export class CrossTabHmacKeyManager {
   }
 
   /**
-   * TASK-317 E-4 (AC-11) — set the active tenant. Subsequent sign/verify use
+   * Set the active tenant. Subsequent sign/verify use
    * the per-tenant HKDF subkey so a signature minted for one tenant cannot be
    * forged onto another tenant's channel. Changing the tenant rotates the
    * cached fallback subkey (fail-closed: old-tenant signatures stop verifying).
@@ -221,7 +221,7 @@ export class CrossTabHmacKeyManager {
    * the subkey, so the master secret never leaves the worker.
    */
   setTenantId(tenantId: string): void {
-    // TASK-317 W3.1 (M-1) — normalize empty/whitespace tenantId to undefined so
+    // Normalize empty/whitespace tenantId to undefined so
     // the fallback and SharedWorker paths behave identically. The worker's
     // `keyFor('')` is falsy and uses the master key, whereas the fallback would
     // otherwise derive HKDF(secret, '') for a blank string; collapsing blanks to

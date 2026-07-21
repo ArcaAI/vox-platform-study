@@ -32,7 +32,7 @@ import { HarnessOpsClient, HarnessWorkflowActionResult, HarnessWorkflowDetail, H
 import { CreateGoldenCaseRequest, CreateGoldenSetRequest, EditBurdenQuery, SignalWorkflowRequest, WorkflowActionRequest } from './dto';
 
 /**
- * HarnessAdminController (TASK-330 Phase 6) — the admin surface for the clinical
+ * HarnessAdminController — the admin surface for the clinical
  * documentation harness, mounted at `/admin/harness/*` (global prefix →
  * `/api/v1/admin/harness/*`). Mirrors `PromptManagementController` (`@Authorize`,
  * `If-Match` OCC) and `MyTenantController` (CLS tenant resolution).
@@ -42,7 +42,7 @@ import { CreateGoldenCaseRequest, CreateGoldenSetRequest, EditBurdenQuery, Signa
  *    GLOBAL-DEFAULT (`policy/global`, global-admin only).
  *  - Observe: read the WORM audit trail (+ integrity verdict), eval runs, and
  *    the clinician gate queue.
- *  - Datasets (TASK-419 item 1): golden sets/cases — list/read + create over
+ *  - Datasets: golden sets/cases — list/read + create over
  *    `EvalService`. Case reads are PHI-SAFE metadata (the encrypted
  *    transcript/reference-note payloads are never surfaced).
  *  - Operate: proxy Temporal workflow ops to the harness via `HarnessOpsClient`,
@@ -65,7 +65,7 @@ export class HarnessAdminController {
     private readonly cls: ClsService<IActiveUserContext>,
     private readonly liveDocumentationService: LiveDocumentationService,
     private readonly evalService: EvalService,
-    // TASK-533 B6 — APPENDED, never inserted. This controller is constructed
+    // APPENDED, never inserted. This controller is constructed
     // positionally in its unit tests, so a mid-list insertion silently shifts
     // `cls` and fails ~35 unrelated specs with "this.cls.get is not a function".
     private readonly gateEditMiningService: GateEditMiningService,
@@ -199,7 +199,7 @@ export class HarnessAdminController {
     return this.observabilityService.getEvalRun(tenantId, id);
   }
 
-  // ─────────────────── Golden datasets (TASK-419 item 1) ───────────────────
+  // ─────────────────── Golden datasets ───────────────────────────────────
 
   @Get('golden-sets')
   @Authorize(['read', 'HarnessEval'])
@@ -303,8 +303,8 @@ export class HarnessAdminController {
     return this.observabilityService.gateQueue(tenantId);
   }
 
-  // Phase 0 D3 — the signal existed in `HarnessObservabilityService`
-  // (TASK-482 E3) unexposed; this wires it to the admin surface. The real
+  // The signal existed in `HarnessObservabilityService`
+  // unexposed; this wires it to the admin surface. The real
   // service signature is `getEditBurden(tenantId, consultationId)` — a
   // single-consultation lookup, not a date-range aggregate.
   @Get('edit-burden')
@@ -327,7 +327,7 @@ export class HarnessAdminController {
     return this.observabilityService.getEditBurden(tenantId, query.consultationId);
   }
 
-  // TASK-533 B6 (GAP-A1) — the learning loop's export half. Mined rows are
+  // The learning loop's export half. Mined rows are
   // PROPOSALS: the golden-set programme's SME review decides what becomes
   // corpus, and the payload carries `reviewStatus` so no consumer can mistake
   // this for approved eval data (§3.4 consumption (a)).
@@ -424,7 +424,7 @@ export class HarnessAdminController {
     return this.opsClient.signalWorkflow(id, { tenantId: ownerTenantId, signalName: body.signalName, payload: body.payload });
   }
 
-  // ───────────────────────── Live console (TASK-341) ─────────────────────────
+  // ───────────────────────── Live console ─────────────────────────────────────
 
   @Get('live/sessions')
   @Authorize(['read', 'HarnessWorkflow'])

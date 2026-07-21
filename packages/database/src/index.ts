@@ -4,7 +4,7 @@
  * This package provides:
  * - Prisma Client with PostgreSQL adapter (Prisma 7)
  * - Soft-delete filtering via Client Extensions
- * - Tenant-scope `$extends` (TASK-305 Phase B) composed on top of
+ * - Tenant-scope `$extends` composed on top of
  *   soft-delete; pulled from a host-registered context provider.
  * - Database seeding utilities
  *
@@ -25,7 +25,7 @@
  *
  * ⚠️ The unscoped client is exported as `getPlatformAdminPrismaClient_Unscoped`
  * — the long name is deliberate; an ESLint rule limits its import to a
- * documented allow-list (see TASK-305 §B.4).
+ * documented allow-list.
  */
 
 // Re-export client utilities
@@ -50,7 +50,7 @@ export type {
   ExtendedCorePrismaClient
 } from './client.js';
 
-// TASK-305 Phase B — tenant-scope extension surface.
+// Tenant-scope extension surface.
 export {
   applyTenantScopeExtension,
   isSystemSharedReadModel,
@@ -58,15 +58,15 @@ export {
   resolveTenantContext,
   setTenantContextProvider,
   SYSTEM_SHARED_READ_MODELS,
-  // TASK-330 Phase 6 — reserved system tenant that owns the harness
-  // GLOBAL-DEFAULT policy row; the domain `HarnessPolicyRepository`
-  // falls back to it when a tenant has no own row.
+  // Reserved system tenant that owns the harness GLOBAL-DEFAULT policy row;
+  // the domain `HarnessPolicyRepository` falls back to it when a tenant has
+  // no own row.
   SYSTEM_TENANT_ID,
   TENANT_SCOPED_MODELS,
 } from './extensions/tenant-scope.js';
 export type { TenantContextProvider } from './extensions/tenant-scope.js';
 
-// TASK-302 Phase 5 Task 5.5 (Stream B) — Vault-backed PrismaClient.
+// Vault-backed PrismaClient.
 export { getPrismaClientWithVault, VaultPrismaClient } from './vault-client.js';
 export type {
   DbCredential,

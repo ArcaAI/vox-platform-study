@@ -703,7 +703,7 @@ describe('SttInternalService', () => {
         });
 
         // ---------------------------------------------------------------------
-        // TASK-331 doc-06 F2 — dual-capture media ids threaded through the writer
+        // Dual-capture media ids threaded through the writer
         // ---------------------------------------------------------------------
 
         it('threads rawMediaId/processedMediaId onto the AudioRecording when provided', async () => {
@@ -757,7 +757,7 @@ describe('SttInternalService', () => {
     });
 
     // ---------------------------------------------------------------------
-    // TASK-334 I-2c — streaming shape: attach by consultationId (resolve the
+    // Streaming shape: attach by consultationId (resolve the
     // AUDIO_RECORDING container) and use a pre-registered mediaId (the raw /
     // processed Media were already created via createMedia), so NO third Media
     // row is created. This is the parity with the local path's container model.
@@ -828,7 +828,7 @@ describe('SttInternalService', () => {
     });
 
     // =========================================================================
-    // TASK-334 I-2b — standalone Media registration (POST /internal/stt/media).
+    // Standalone Media registration (POST /internal/stt/media).
     // The streaming dual-capture path uploads raw/processed WAVs to storage and
     // needs to turn each storage object into a Media row (to obtain rawMediaId /
     // processedMediaId) BEFORE creating the AudioRecording.
@@ -879,7 +879,7 @@ describe('SttInternalService', () => {
     });
 
     // =========================================================================
-    // GAP-1: TranscriptionCreated Pipeline Event Emission
+    // TranscriptionCreated Pipeline Event Emission
     // =========================================================================
 
     describe('TranscriptionCreated pipeline event (GAP-1)', () => {
@@ -1081,7 +1081,7 @@ describe('SttInternalService', () => {
     });
 
     // =========================================================================
-    // TASK-342 GAP #1 — streaming finalize persists a TRANSCRIPT with NO jobId.
+    // Streaming finalize persists a TRANSCRIPT with NO jobId.
     // The transcript is keyed directly to the consultation (+ tenant) so the
     // harness auto-draft pipeline triggers after a live consultation.
     // =========================================================================

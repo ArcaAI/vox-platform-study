@@ -227,7 +227,7 @@ function GoogleDirectoryCredentialsForm({ providerId }: { providerId: string }) 
 }
 
 /**
- * Directory sync tab (TASK-498 P3/P4): pick the directory API, seal its
+ * Directory sync tab: pick the directory API, seal its
  * credentials, and trigger an admin bulk pull. No live progress bar — the
  * gateway's job-status endpoint is platform-admin-only today (documented
  * gap), so this shows a single "sync started" toast instead.

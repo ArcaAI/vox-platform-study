@@ -1,4 +1,4 @@
-"""TDD tests for the WS-duplex streaming endpoint (TASK-492 Phase 3).
+"""TDD tests for the WS-duplex streaming endpoint.
 
 Uses Starlette's WebSocket test client against the real app with a fake engine
 registered — exercises the init→ready handshake, per-sentence binary frames,

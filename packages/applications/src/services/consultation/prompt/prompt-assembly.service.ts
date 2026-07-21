@@ -6,8 +6,6 @@
  * 2. Loading template content + hyperparameters + JSON schema from DB
  * 3. Substituting variables ({conversation_language}, {style_DNA_*}, etc.)
  * 4. Building the final payload with all parameters for SMR v2
- *
- * Implements E2 of TASK-222: Wire Variable Substitution.
  */
 
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
@@ -22,7 +20,7 @@ import { IActiveUserContext } from '../../../interfaces';
 const VARIABLE_PATTERN = /\{([a-zA-Z_][\w-]*)\}/g;
 
 /**
- * TASK-533 B6 — how many approved notes are shown as style examples.
+ * How many approved notes are shown as style examples.
  *
  * Small on purpose: each exemplar is a whole clinical note, so the block costs
  * real prompt budget, and few-shot returns diminish quickly. The mining service
@@ -59,18 +57,18 @@ function substituteVariables(template: string, variables: Record<string, string>
  * The label prefers the normalized form when available. Codes and offsets are
  * only emitted when present, keeping the block dense and deterministic.
  *
- * TASK-462 C5-03 — the ontology codes (umls/snomed/rxnorm/icd/loinc) are READ
+ * The ontology codes (umls/snomed/rxnorm/icd/loinc) are READ
  * here but WRITTEN nowhere until the SOTA Theme C clinical NER + ontology linker
- * lands (TASK-476); today the code set is permanently empty. The groundedness
+ * lands; today the code set is permanently empty. The groundedness
  * guard below therefore emits an explicit "no codes present" note when the whole
  * entity set is un-coded, so the block never reads as if coding was attempted.
  * The guard disengages automatically once the linker starts populating codes.
  */
-// TASK-462 M-3 — this note is injected into the clinical LLM prompt on EVERY
+// This note is injected into the clinical LLM prompt on EVERY
 // NER-bearing summary today (the code set is permanently empty), so it must be
 // clinically NEUTRAL: no internal jargon or ticket ids (which the model could
-// echo into a patient's summary). The SOTA Theme C / TASK-476 pointer lives in
-// the doc comment above (code only), never in the prompt string.
+// echo into a patient's summary) — those stay in the doc comment above
+// (code only), never in the prompt string.
 const NER_NO_ONTOLOGY_CODES_NOTE = '(no standardized codes assigned)';
 
 function serializeNerEntities(entities: NerEntityForPrompt[]): string {
@@ -78,7 +76,7 @@ function serializeNerEntities(entities: NerEntityForPrompt[]): string {
     return '';
   }
 
-  // TASK-462 C5-03 groundedness guard — does ANY entity carry an ontology code?
+  // Groundedness guard — does ANY entity carry an ontology code?
   const hasAnyOntologyCode = entities.some(
     (entity) => entity.umlsCui || entity.snomedCode || entity.rxnormCode || entity.icdCode || entity.loincCode,
   );
@@ -110,7 +108,7 @@ function serializeNerEntities(entities: NerEntityForPrompt[]): string {
 
 /**
  * Serialises a list of free-text items (clinician notes / attachment contents)
- * into a compact block — one entry per line, blanks dropped. TASK-342 GAP #2.
+ * into a compact block — one entry per line, blanks dropped.
  */
 function serializeTextBlock(items?: string[]): string {
   if (!items?.length) {
@@ -127,7 +125,7 @@ function serializeTextBlock(items?: string[]): string {
 // ============================================================================
 
 /**
- * A NER entity flattened for prompt injection (TASK-330 Phase 1).
+ * A NER entity flattened for prompt injection.
  * Mapped from NamedEntityEntity by the SummaryProcessor; codes/offsets optional.
  */
 export interface NerEntityForPrompt {
@@ -145,7 +143,7 @@ export interface NerEntityForPrompt {
 
 export interface PromptAssemblyParams {
   /**
-   * TASK-533 D-23 — tenant whose effective `HarnessPolicy.warmStartEnabled` governs
+   * Tenant whose effective `HarnessPolicy.warmStartEnabled` governs
    * the prior-draft injection below. Optional: callers running inside a CLS context
    * (API request, harness worker, BullMQ processor) may omit it and the tenant is
    * read from CLS; absent both, the SYSTEM/global default policy applies.
@@ -159,28 +157,28 @@ export interface PromptAssemblyParams {
   preSummaryText?: string;
   sameDayPrequelSummary?: string;
   explicitTemplate?: string;
-  /** The requesting doctor's preferred prompt template id (TASK-329 P2 Tier-0). */
+  /** The requesting doctor's preferred prompt template id. */
   preferredPromptTemplateId?: string | null;
   /**
-   * TASK-330 Phase 1 — clinical NER entities for the consultation transcript.
+   * Clinical NER entities for the consultation transcript.
    * Serialised into the {ner_entities} variable and/or appended to the prompt
    * so NER output actually reaches the LLM.
    */
   nerEntities?: NerEntityForPrompt[];
   /**
-   * TASK-342 GAP #2 — the doctor's case-notes / work-notes for the consultation
+   * The doctor's case-notes / work-notes for the consultation
    * (each entry already labeled by the caller, e.g. `[case note] …`). Serialised
    * into {clinician_notes} and/or appended so they reach the authoritative SOAP.
    */
   clinicianNotes?: string[];
   /**
-   * TASK-342 GAP #2 — uploaded lab/exam attachment contents (extracted text when
+   * Uploaded lab/exam attachment contents (extracted text when
    * available, else the filename label). Serialised into {attachments} and/or
    * appended to the prompt.
    */
   attachments?: string[];
   /**
-   * TASK-344 Workstream B — the doctor's manual highlight spans for the
+   * The doctor's manual highlight spans for the
    * consultation (each entry already labeled by the caller, e.g. `[highlight] …`).
    * Serialised into {doctor_highlights} and/or appended so the clinician-flagged
    * spans reach the authoritative SOAP. A SEPARATE concern from NER entities.
@@ -195,7 +193,7 @@ export interface AssembledPrompt {
   responseFormat: { type: string; json_schema: Record<string, unknown>; strict: boolean } | null;
   resolvedFrom: PromptResolutionTier;
   /**
-   * The prompt registry id that was actually resolved/used (TASK-331 doc-06 F4).
+   * The prompt registry id that was actually resolved/used.
    * Optional so existing inline AssembledPrompt literals remain valid; the real
    * PromptAssemblyService.assemble() always populates it from the resolver.
    */
@@ -210,17 +208,17 @@ export interface AssembledPrompt {
 export class PromptAssemblyService {
   private readonly logger = new Logger(PromptAssemblyService.name);
 
-  // TASK-355 Phase C (R-6) — warm-start kill-switch. Load-bearing gate: when OFF the
+  // Warm-start kill-switch. Load-bearing gate: when OFF the
   // {pre_summary_text} append-fallback below does not fire, so neither the harness
   // path nor the legacy SummaryService.generateSummary() path injects a prior draft
   // (the legacy latent no-op is preserved).
   //
-  // TASK-533 D-23 — the AUTHORITY is now `HarnessPolicy.warmStartEnabled`, resolved
+  // The AUTHORITY is now `HarnessPolicy.warmStartEnabled`, resolved
   // PER CALL. It used to be this env var alone, cached at construction: the policy
   // column was write-plumbed all the way to the admin console and read by nothing,
   // so the knob was dead and the real switch needed a redeploy to move and could
   // never vary per tenant. The env var is retained ONLY as the fallback for a null
-  // policy value, which reproduces the pre-D-23 behaviour byte-for-byte.
+  // policy value, which reproduces the original env-only behaviour byte-for-byte.
   private readonly warmStartEnvFallback: boolean;
 
   constructor(
@@ -230,10 +228,10 @@ export class PromptAssemblyService {
     private readonly configService: ConfigService,
     // Optional + trailing so existing positional test fixtures keep their arity;
     // production DI (ConsultationServiceModule) always supplies both. Absent ⇒ the
-    // env fallback governs, i.e. exactly the pre-D-23 behaviour.
+    // env fallback governs, i.e. exactly the original env-only behaviour.
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
     @Optional() @Inject(ClsService) private readonly cls?: ClsService<IActiveUserContext>,
-    // TASK-533 B6 — the gate-edit learning loop's READ half. Optional and
+    // The gate-edit learning loop's READ half. Optional and
     // trailing for the same reason as the two above: absent ⇒ zero-shot, which
     // is exactly the pre-B6 prompt.
     @Optional() @Inject(IGateEditExemplarRetriever) private readonly exemplarRetriever?: IGateEditExemplarRetriever,
@@ -245,7 +243,7 @@ export class PromptAssemblyService {
   }
 
   /**
-   * Effective warm-start decision for the calling tenant (TASK-533 D-23).
+   * Effective warm-start decision for the calling tenant.
    *
    * Policy wins; a null policy value means "not configured" and falls through to the
    * env fallback. Resolved on every call so a global admin's console flip takes
@@ -341,7 +339,7 @@ export class PromptAssemblyService {
       userPrompt = params.transcript;
     }
 
-    // TASK-533 B6 (GAP-A1) — per-department few-shot exemplars, placed with the
+    // Per-department few-shot exemplars, placed with the
     // template content and BEFORE the per-encounter transcript so the engine's
     // prefix cache still hits across flushes (§3.4). Empty string when there is
     // nothing to show, so the zero-shot prompt stays byte-identical.
@@ -351,14 +349,14 @@ export class PromptAssemblyService {
       userPrompt += `\n\n--- TRANSCRIPT ---\n${params.transcript}`;
     }
 
-    // TASK-330 Phase 1 — guarantee NER reaches the LLM. If the template
+    // Guarantee NER reaches the LLM. If the template
     // consumed {ner_entities} the block is already present; otherwise append it.
     const nerBlock = variables.ner_entities ?? '';
     if (nerBlock && !userPrompt.includes(nerBlock)) {
       userPrompt += `\n\n--- RECOGNIZED CLINICAL ENTITIES (from NER) ---\n${nerBlock}`;
     }
 
-    // TASK-342 GAP #2 — fold the doctor's case/work notes and attachment
+    // Fold the doctor's case/work notes and attachment
     // contents into the authoritative-SOAP prompt. Same pattern as NER: if the
     // template consumed the placeholder the block is already present, else append.
     const clinicianNotesBlock = variables.clinician_notes ?? '';
@@ -371,7 +369,7 @@ export class PromptAssemblyService {
       userPrompt += `\n\n--- ATTACHMENTS (lab / exam results) ---\n${attachmentsBlock}`;
     }
 
-    // TASK-344 Workstream B — fold the doctor's manually highlighted spans into
+    // Fold the doctor's manually highlighted spans into
     // the authoritative-SOAP prompt. Same pattern as NER / clinician notes: if
     // the template consumed {doctor_highlights} the block is already present,
     // else append it under a labeled section.
@@ -380,9 +378,9 @@ export class PromptAssemblyService {
       userPrompt += `\n\n--- DOCTOR HIGHLIGHTS (clinician-flagged spans) ---\n${highlightsBlock}`;
     }
 
-    // TASK-355 Phase C (R-6) → TASK-480 Half-A — warm-start refinement, gated behind the
+    // Warm-start refinement, gated behind the
     // kill-switch (default OFF). Matured into the explicit two-stage scratchpad→final
-    // lineage the SOTA S3-F5 verdict names: the live session's running note is STAGE 1
+    // lineage: the live session's running note is STAGE 1
     // (a working SCRATCHPAD), the harness produces STAGE 2 (the FINAL note) by REFINING
     // that scratchpad — never regenerating cold. If the template consumed
     // {pre_summary_text} the block is already present; otherwise append it (the seed
@@ -435,14 +433,14 @@ export class PromptAssemblyService {
   private async buildVariables(params: PromptAssemblyParams): Promise<Record<string, string>> {
     const variables: Record<string, string> = {
       conversation_language: params.conversationLanguage,
-      // TASK-330 Phase 1 — always define {ner_entities} (empty when none) so
+      // Always define {ner_entities} (empty when none) so
       // templates referencing it never leave a literal placeholder behind.
       ner_entities: serializeNerEntities(params.nerEntities ?? []),
-      // TASK-342 GAP #2 — always define the notes/attachments variables (empty
+      // Always define the notes/attachments variables (empty
       // when none) so templates referencing them never leave a placeholder.
       clinician_notes: serializeTextBlock(params.clinicianNotes),
       attachments: serializeTextBlock(params.attachments),
-      // TASK-344 Workstream B — always define {doctor_highlights} (empty when
+      // Always define {doctor_highlights} (empty when
       // none) so templates referencing it never leave a literal placeholder.
       doctor_highlights: serializeTextBlock(params.highlights),
     };

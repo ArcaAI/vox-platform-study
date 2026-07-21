@@ -28,7 +28,7 @@ export interface SessionManagerState {
   maxConcurrent: number | null;
   currentActive: number | null;
   /**
-   * TASK-329 P4 / D-3: the backend preseed echo (`voiceProfileSeeded`) from the
+   * The backend preseed echo (`voiceProfileSeeded`) from the
    * streaming-session response, so consumers can surface diarization-seeding
    * feedback without re-reading the raw response. `null` when no session exists
    * or the field was omitted by an older API revision.
@@ -150,7 +150,7 @@ export class StreamingSessionManager {
       return null;
     }
 
-    // TASK-431 — `ApiConfig.wsUrl` (when set) wins over `baseUrl` for the WS
+    // `ApiConfig.wsUrl` (when set) wins over `baseUrl` for the WS
     // origin, so REST can ride a same-origin BFF proxy while the WebSocket
     // upgrade hits the gateway directly. `https/wss` → wss, `http/ws` → ws.
     const parsed = new URL(this.apiClient.getWsUrl() ?? this.apiClient.getBaseUrl());
@@ -161,19 +161,19 @@ export class StreamingSessionManager {
     const params = new URLSearchParams({
       sessionId: this.sessionId,
     });
-    // TASK-298 D-1: append the one-shot stream ticket as a query param so
+    // Append the one-shot stream ticket as a query param so
     // the gateway can authenticate the upgrade request without exposing the
     // JWT in URL logs.
     if (this.sessionResponse.ticket) {
       params.set('ticket', this.sessionResponse.ticket);
     }
-    // TASK-320 B5: carry the active tenant id so the WS client's now-default-on
+    // Carry the active tenant id so the WS client's now-default-on
     // tenant-claim guard (`requireTenantClaim` defaults to true) can resolve a
     // claim from the URL. This is the single chokepoint for the SDK's own
     // streaming flow — `@arcaai/stt`'s StreamingBackendSTTProvider connects
     // with `connect(url)` (no options), so the claim MUST live in the URL.
     // When no tenant is set (e.g. an unscoped global-admin), nothing is appended
-    // and the guard fails closed, which is the intended TASK-317 AC-10 posture.
+    // and the guard fails closed, which is the intended posture.
     const tenantId = this.apiClient.getTenantId();
     if (tenantId) {
       params.set('tenantId', tenantId);
@@ -183,7 +183,7 @@ export class StreamingSessionManager {
   }
 
   /**
-   * TASK-298 D-18: Mint a fresh stream ticket for the current session.
+   * Mint a fresh stream ticket for the current session.
    * Used by `SttV2WebSocketClient.attemptReconnect` to swap the consumed
    * ticket with a new one before reopening the WebSocket.
    *

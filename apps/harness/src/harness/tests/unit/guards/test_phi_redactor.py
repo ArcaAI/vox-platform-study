@@ -1,6 +1,6 @@
-"""Tests for the fail-closed PHI redaction guard (TASK-330 Phase 2, step 5).
+"""Tests for the fail-closed PHI redaction guard.
 
-RED-first: written before ``harness.guards.phi.redactor`` exists. Covers:
+Covers:
 
 * :meth:`PhiRedactor.redact` over a crafted clinical line carrying four PHI
   types (name / phone / MRN / DOB) — every raw value must be removed;

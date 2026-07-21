@@ -9,11 +9,10 @@ model Tenant {
   key         String  @unique
   description String?
 
-  // TASK-387 (#3) — commercial plan (nullable; existing rows read NULL). See
-  // docs/implementation/TASK-387-Tenant-Data-Model-Backlog for the product flag.
+  // Commercial plan (nullable; existing rows read NULL).
   plan TenantPlan?
 
-  // TASK-392 (Q4) — trial clock (additive, nullable). Set when a tenant is
+  // Trial clock (additive, nullable). Set when a tenant is
   // created/assigned the TRIAL plan (default = create + 7 days). A scheduled
   // job auto-downgrades TRIAL → STARTER once `trialEndsAt < now`.
   trialEndsAt DateTime?
@@ -38,7 +37,7 @@ model Tenant {
 }
 
 // ============================================================================
-// Tenant Frontend Pipeline Config (TASK-328 A6, Q5)
+// Tenant Frontend Pipeline Config
 // One row per tenant — default frontend audio-processing pipeline for all of a
 // tenant's users. Convenience boolean columns mirror the typed `configJson`.
 // ============================================================================
@@ -58,14 +57,14 @@ model TenantFrontendConfig {
   vad                     Boolean           @default(false)
   voiceEnrollment         Boolean           @default(false)
   diarization             Boolean           @default(false)
-  // TASK-332 — tenant toggle for local raw-stream dual-capture. The effective
+  // Tenant toggle for local raw-stream dual-capture. The effective
   // SDK flag is platformCapability(GlobalSetting) AND this column, computed
   // server-side in GET /tenant/me/config.
   captureRawAudio         Boolean           @default(false)
-  // TASK-356 Phase 4 — tenant default transcription mode + lock, and audio
+  // Tenant default transcription mode + lock, and audio
   // capture mode. transcriptionMode defaults to BACKEND (preserves today's
   // hard-wired clinical-workspace behavior); captureMode is nullable so existing
-  // tenants keep current per-surface capture behavior until an admin opts in (R-6).
+  // tenants keep current per-surface capture behavior until an admin opts in.
   transcriptionMode       TranscriptionMode @default(BACKEND)
   transcriptionModeLocked Boolean           @default(false)
   captureMode             CaptureMode?

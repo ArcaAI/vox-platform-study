@@ -1,5 +1,5 @@
 /**
- * TASK-317 W4.4 (AC-13, audit C-1 + E-5) — concurrent multi-`AgenticProvider`
+ * Concurrent multi-`AgenticProvider`
  * store isolation.
  *
  * Audit C-1: the Zustand store is a module-level singleton, so two

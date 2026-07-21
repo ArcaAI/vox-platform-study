@@ -3,7 +3,7 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { HarnessAuditService } from './harness-audit.service';
 
 /**
- * HarnessAuditService DI module (TASK-330 Phase 0). Imports CoreDatabaseModule
+ * HarnessAuditService DI module. Imports CoreDatabaseModule
  * for the append-only HarnessAuditEvent repository.
  */
 @Module({

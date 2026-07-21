@@ -161,9 +161,9 @@ class GlinerConfig(BaseSettings):
 
 
 class GroundednessConfig(BaseSettings):
-    """Live output-side NLI groundedness gate (TASK-479 · SOTA D2).
+    """Live output-side NLI groundedness gate.
 
-    ``enabled`` mirrors TASK-478's posture: ``False`` (default) is the dev / hermetic-CI
+    ``False`` (default) is the dev / hermetic-CI
     bypass — the gate answers honestly with ``unverified`` verdicts and never loads a
     model; ``True`` is the clinical enforce posture and requires the SELF-HOSTED
     MiniCheck-class NLI model staged on the host (track guardrail: no cloud PHI).
@@ -183,10 +183,10 @@ class GroundednessConfig(BaseSettings):
     model_id: str = "nvhf/MiniCheck-Flan-T5-Large-Q6_K-GGUF"
     model_file: str = "minicheck-flan-t5-large-q6_k.gguf"
     # Explicit local .gguf path.
-    # TASK-527 (D-12) — BOOTSTRAP FALLBACK ONLY. The runtime value now comes from
+    # BOOTSTRAP FALLBACK ONLY. The runtime value now comes from
     # the `AiModel` registry row (`minicheck-flan-t5-large`): `localPath` first,
     # then a resolvable `file://` / `s3://` `sourceUri`. This env var is used when
-    # the registry carries no path, which keeps pre-TASK-527 deployments working
+    # the registry carries no path, which keeps deployments working
     # byte-for-byte. Unset in BOTH places ⇒ fail-closed to 'unverified', unchanged.
     model_path: str | None = None
     # Cache dir for weights materialised from an `s3://` source_uri.
@@ -200,7 +200,7 @@ class GroundednessConfig(BaseSettings):
     n_gpu_layers: int = 0
 
     # A segment is `grounded` only when its entailment score >= this threshold.
-    # TASK-479 review MINOR-2 — bounded to [0,1] so a fat-fingered threshold (e.g. a
+    # Bounded to [0,1] so a fat-fingered threshold (e.g. a
     # negative or >1 value) is rejected at startup ("fail fast") rather than silently
     # marking everything grounded on an honest checked:true response (a config fail-open
     # on a clinical gate).
@@ -241,9 +241,9 @@ class QueueConfig(BaseSettings):
 
 
 class DatabaseConfig(BaseSettings):
-    """Per-tenant config DB access (TASK-338, decision Q3c; TASK-506 default-on).
+    """Per-tenant config DB access.
 
-    When ``db_config_enabled`` is true (the default since TASK-506) the service
+    When ``db_config_enabled`` is true (the default) the service
     resolves the admin-chosen guardrail provider/model **per tenant** at request
     time by reading ``core."AiTaskDefault"`` ⋈ ``core."AiModel"`` directly
     (SQLAlchemy + asyncpg, mirroring STT-v2), with a short TTL cache. When false
@@ -252,7 +252,7 @@ class DatabaseConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_")
 
-    # Enabled by default (TASK-506): the resolver fails open to the env-selected
+    # Enabled by default: the resolver fails open to the env-selected
     # engine on ANY DB error or empty result, so deployments without a reachable
     # Postgres behave exactly as env-only ones.
     db_config_enabled: bool = True
@@ -305,7 +305,7 @@ class Settings(BaseSettings):
     # LLM engine selector: lm-studio (default) | ollama | vllm | llama-cpp | azure | bedrock
     provider: str = "lm-studio"
 
-    # TASK-527 — bootstrap credentials for `s3://` model sources (MinIO-compatible).
+    # Bootstrap credentials for `s3://` model sources (MinIO-compatible).
     # All optional: unset simply means an `s3://` source_uri errors cleanly and the
     # caller falls back to its env path. Env names: GUARDRAIL_V2_MODEL_S3_*.
     model_s3_endpoint: str | None = None
@@ -330,7 +330,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("GUARDRAIL_SERVICE_TOKEN"),
     )
 
-    # TASK-535 — where the control plane lives (env GUARDRAIL_V2_GATEWAY_URL).
+    # Where the control plane lives (env GUARDRAIL_V2_GATEWAY_URL).
     # This is BOOTSTRAP TRANSPORT (the address of the config source), NOT config
     # authority: the retention knobs themselves come from the effective-config
     # route this URL points at.
@@ -344,11 +344,9 @@ class Settings(BaseSettings):
     # NOT model selection. Idle TTL is clamped to the product window [60s, 3600s]
     # so both GLiNER and MiniCheck release when idle. `model_cache_max_models`
     # bounds how many distinct model ids are held per aux cache.
-    # TASK-529 / OD-5 — bootstrap fallback ONLY; the runtime value comes from the
+    # Bootstrap fallback ONLY; the runtime value comes from the
     # control plane (`guardrail.modelCache.{ttlSeconds,maxModels}`), consumed via
-    # `core/effective_config.py` since TASK-535. Until then this promise was
-    # unfulfilled and these two values WERE the runtime values.
-    # Default moved 3600 → 600.
+    # `core/effective_config.py`.
     model_cache_ttl_s: int = 600
     model_cache_max_models: int = 2
 

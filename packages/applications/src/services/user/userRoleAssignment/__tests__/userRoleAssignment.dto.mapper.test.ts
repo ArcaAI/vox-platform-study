@@ -297,7 +297,7 @@ describe('UserRoleAssignmentDtoMapper', () => {
         });
     });
 
-    // TASK-424 — the admin console renders role NAMES, not raw UUIDs. The
+    // The admin console renders role NAMES, not raw UUIDs. The
     // repository now eager-loads the Role relation into the entity's `Roles`
     // array so the mapper can surface `roleName`.
     describe('roleName population', () => {

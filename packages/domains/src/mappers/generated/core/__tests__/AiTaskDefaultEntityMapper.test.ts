@@ -1,5 +1,5 @@
 /**
- * AiTaskDefaultEntityMapper — round-trip tests (TASK-506 Phase 3).
+ * AiTaskDefaultEntityMapper — round-trip tests.
  *
  * Mirrors the `GlobalSettingEntityMapper` version-round-trip suite:
  *  - `version` is carried DB row → entity (read),

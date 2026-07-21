@@ -19,17 +19,17 @@ export interface HarnessAssuranceCompletePayload {
   gateDecision?: string | null;
   safetyFlag?: boolean;
   reducedAssurance?: boolean;
-  /** Q2b — an adverse verdict landed AFTER an early sign (amendment alert). */
+  /** An adverse verdict landed AFTER an early sign (amendment alert). */
   postSignAlert?: boolean;
 }
 
 /**
- * HarnessAssuranceService (TASK-355 Phase D Slice 5d — Q5 true mid-pass live feed).
+ * HarnessAssuranceService — true mid-pass live assurance feed.
  *
  * Ephemeral, Redis-only (no Prisma), keyed by consultationId. Two producers feed
  * the same accumulated snapshot:
  *   - the harness `run_inferential_sensors` activity calls `reportClaim` AS EACH
- *     claim verdict resolves (Q5 true-live, via the internal
+ *     claim verdict resolves (true-live, via the internal
  *     `/internal/harness/consultations/:id/assurance-event` route);
  *   - `finalizeAssurance` calls `publishComplete` with the aggregate verdict,
  *     which closes the feed (`closed: true`).

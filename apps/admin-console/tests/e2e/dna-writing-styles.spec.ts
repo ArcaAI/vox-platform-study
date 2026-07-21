@@ -30,9 +30,9 @@ async function waitForSettled(page: Page) {
 
 test.describe('dna writing styles (frame 33)', () => {
     test('shows the header, dashboard roll-up strip and the fill-height grid', async ({ page }) => {
-        // Redesign (TASK-441): the dashboard card is now the pinned `stats`
-        // strip; the doctor detail (and its PHI caption) moved into the detail
-        // slide-over, shown only when a doctor row is selected.
+        // The dashboard card is now the pinned `stats` strip; the doctor
+        // detail (and its PHI caption) moved into the detail slide-over,
+        // shown only when a doctor row is selected.
         await page.goto('/dna-writing-styles');
         await waitForSettled(page);
         await expect(page.getByRole('heading', { level: 2, name: 'Dashboard' })).toBeVisible();

@@ -7,12 +7,10 @@ import { defineConfig } from 'vitest/config';
  * `pnpm --filter @arcaai/domains test` / `turbo test --filter=@arcaai/domains`
  * pick up the same tests as the root-level `pnpm test:unit` does.
  *
- * Wired in so the Phase B Postgres regression test
+ * Wired in so the Postgres regression test
  * (`updateWithVersion.postgres.test.ts`) runs in the GitLab `test-packages`
  * CI job — the permanent guard against Prisma silently breaking OCC on a
  * future driver migration (issues #10207 / #28840).
- *
- * @see TASK-302 Stream D Phase B.4 / Gate B
  */
 export default defineConfig({
   test: {

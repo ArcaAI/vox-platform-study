@@ -1,5 +1,5 @@
 /**
- * TASK-307 W4a.2 — Auth-coverage integration test.
+ * Auth-coverage integration test.
  *
  * Walks every controller registered in `AppModule` and asserts that
  * each HTTP route declares EITHER:
@@ -12,12 +12,10 @@
  *      "authentication required, no specific permission". This matches
  *      the runtime guard's semantics exactly.
  *
- * This is the **AC-13 part 1 verification gate** for TASK-307 W4a:
- * W4a merges only when this test is green so W4b's runtime
+ * This test must be green so the runtime
  * `APP_GUARD` flip lands on a known-clean route table.
  *
- * Implementation note — the plan-README mentions `DiscoveryService` +
- * `MetadataScanner`. We instead walk `AppModule`'s `@Module` metadata
+ * Implementation note — we walk `AppModule`'s `@Module` metadata
  * tree directly because `Test.createTestingModule({ imports: [AppModule] })
  * .compile()` triggers `BullModule.registerQueue` → eager ioredis
  * connection on port 6380, which fails in CI without a running Redis.
@@ -229,16 +227,14 @@ describe('TASK-307 W4a.2 / AC-13 part 1 — every AppModule route is labeled (@P
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// TASK-307 W4b — Global APP_GUARD runtime walk (synthetic module).
+// Global APP_GUARD runtime walk (synthetic module).
 //
 // Why a synthetic module instead of `Test.createTestingModule({ imports:
-// [AppModule] }).compile()` (which the plan README §3 lists for AC-13
-// part 2): booting AppModule from a unit/integration test hangs.
-// AppModule's eager DI graph opens BullMQ workers (each ioredis-backed),
+// [AppModule] }).compile()`: booting AppModule from a unit/integration test
+// hangs. AppModule's eager DI graph opens BullMQ workers (each ioredis-backed),
 // runs `Issuer.discover()` against an external OIDC provider, and fires
 // `AppSettingsService.initializeCache()` (Prisma calls). `compile()`
-// never returns in this environment. See W4b dispatch prompt Step 0 for
-// the previous agent's full investigation summary.
+// never returns in this environment.
 //
 // Option A (locked in by user, 2026-05-28): validate the guard CONTRACT
 // directly with a synthetic test module that wires `UnifiedAuthGuard`
@@ -248,10 +244,10 @@ describe('TASK-307 W4a.2 / AC-13 part 1 — every AppModule route is labeled (@P
 // metadata walk above + the boot-time `auditAdminRoutePermissions`
 // check (widened in W4a).
 //
-// W7 follow-up: file a deferred task to build a proper AppModule
+// Follow-up: build a proper AppModule
 // integration test harness — likely a `TestAppModule` that re-exports
 // AppModule's controllers + providers but stubs the infra-heavy
-// modules. Not in TASK-307 scope.
+// modules.
 // ────────────────────────────────────────────────────────────────────────────
 
 @Controller('test/unprotected')
@@ -293,15 +289,14 @@ describe('TASK-307 W4b / AC-13 part 2 — global APP_GUARD runtime walk (synthet
       ],
       controllers: [_UnprotectedFixtureController, _PublicFixtureController, _AuthorizedFixtureController],
       providers: [
-        // TASK-307 W7.A.18 — the explicit `Reflector` provider previously
-        // here was redundant: `@nestjs/core`'s `InternalCoreModule`
+        // An explicit `Reflector` provider here would be redundant:
+        // `@nestjs/core`'s `InternalCoreModule`
         // already exports a global `Reflector` so the runtime guard
-        // resolves the same instance either way. Removed to keep the
-        // synthetic module minimal.
+        // resolves the same instance either way.
         {
           provide: IApiKeyService,
           useValue: {
-            // TASK-307 W7.A.18 — the prior `hasScope` stub was unreachable:
+            // A `hasScope` stub would be unreachable:
             // the synthetic flow never has an API key (no X-API-Key
             // header), so `UnifiedAuthGuard` short-circuits to the JWT
             // path before `hasScope` could ever be called. Dropped to

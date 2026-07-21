@@ -45,7 +45,7 @@ export function deleteModel(id: string): Promise<void> {
 }
 
 /**
- * TASK-528 — merge the registry with the live engine listings. Probes run
+ * Merge the registry with the live engine listings. Probes run
  * upstream (SMR aggregates them under a per-provider timeout), so this call can
  * take a couple of seconds: it is fired lazily when the drawer opens, never on
  * page load.

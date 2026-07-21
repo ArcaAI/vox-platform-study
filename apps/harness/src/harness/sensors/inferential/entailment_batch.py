@@ -1,4 +1,4 @@
-"""Batched-entailment helper for the groundedness sensor (TASK-355 Phase B / R-5).
+"""Batched-entailment helper for the groundedness sensor.
 
 The per-claim groundedness loop re-sent the entire transcript premise on every
 single claim — ~N serial long-prefill judge calls. This helper collapses that to

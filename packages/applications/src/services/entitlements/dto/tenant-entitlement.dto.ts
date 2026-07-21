@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 /**
- * TASK-392 (Q1/Q7) — a per-tenant entitlement override as returned to admins.
+ * A per-tenant entitlement override as returned to admins.
  * Every field is nullable: `null` = "inherit the plan default". `version` is
  * the OCC token.
  */
@@ -66,7 +66,7 @@ export class TenantEntitlementResponse {
 }
 
 /**
- * TASK-392 (Q1/Q7) — create-or-update a per-tenant override ("increase on
+ * Create-or-update a per-tenant override ("increase on
  * demand"). Every field is optional; a supplied `null` clears the override
  * (back to inherit). `expectedVersion` is REQUIRED only when updating an
  * existing override row (ignored on first create).

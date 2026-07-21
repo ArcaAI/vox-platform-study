@@ -75,7 +75,7 @@ const createMockJobMetrics = () => ({
     recordSmrCallDuration: vi.fn(),
 });
 
-// Mock ClsService — TASK-305 D.9. See summary.processor.test.ts for the
+// Mock ClsService. See summary.processor.test.ts for the
 // rationale; this mock runs the cls.run callback inline so existing tests
 // stay synchronous and exposes spies for the new D.9 assertions.
 const createMockClsService = () => {
@@ -97,7 +97,7 @@ const createMockClsService = () => {
     return mock;
 };
 
-// Mock ConfigResolver (TASK-362 — doctor-preferred prompt id threading).
+// Mock ConfigResolver (doctor-preferred prompt id threading).
 const createMockConfigResolver = () => ({ resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null) });
 
 // =============================================================================
@@ -211,11 +211,11 @@ describe('PreSummaryProcessor', () => {
             mockJobMetrics as any,
             mockClsService as any,
             undefined, // secretsService (@Optional)
-            mockHarnessPolicyService as any, // TASK-356 D-7 — HarnessPolicyService resolver
+            mockHarnessPolicyService as any, // HarnessPolicyService resolver
         );
     });
 
-    // ── TASK-362: the pre-summary BullMQ path threads the preferred prompt id ──
+    // ── the pre-summary BullMQ path threads the preferred prompt id ──
     describe('preferred-prompt threading (TASK-362)', () => {
         let mockConfigResolver: ReturnType<typeof createMockConfigResolver>;
         let processorWithResolver: PreSummaryProcessor;
@@ -234,7 +234,7 @@ describe('PreSummaryProcessor', () => {
                 mockClsService as any,
                 undefined, // secretsService
                 mockHarnessPolicyService as any,
-                mockConfigResolver as any, // TASK-362 — ConfigResolver
+                mockConfigResolver as any, // ConfigResolver
             );
 
             mockConsultationRepository.findById.mockResolvedValue(createMockConsultation({ doctorId: 'dr-1' }));
@@ -264,7 +264,7 @@ describe('PreSummaryProcessor', () => {
         });
     });
 
-    // ── TASK-356 D-7 (T-C4): the SMR call carries the cascade-resolved model ──
+    // ── the SMR call carries the cascade-resolved model ──
     describe('SMR selection', () => {
         it('posts the cascade-resolved provider+model when the request omits a model', async () => {
             mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
@@ -578,7 +578,7 @@ describe('PreSummaryProcessor', () => {
     // (Behavior verification tests for PreSummaryProcessor can be added here.)
 
     // ===========================================================================
-    // TASK-305 D.9 — CLS rebind + tenant assert + fail-closed guard
+    // CLS rebind + tenant assert + fail-closed guard
     // ===========================================================================
 
     describe('CLS rebind + tenant assert (TASK-305 D.9)', () => {

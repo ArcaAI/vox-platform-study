@@ -1,5 +1,5 @@
 /**
- * useArca ↔ useArcaAudio Unification Tests (TASK-267 / W1-1)
+ * useArca ↔ useArcaAudio Unification Tests
  *
  * Pins the contract that `useArca.audio` delegates to the same underlying
  * implementation as `useArcaAudio` so that:
@@ -123,7 +123,7 @@ interface MockStore {
   addTranscriptSegment: ReturnType<typeof vi.fn>;
   addContextItem: ReturnType<typeof vi.fn>;
   addEntities: ReturnType<typeof vi.fn>;
-  // TASK-464 — audio-drop actions the hook calls on start/stop and per drop.
+  // Audio-drop actions the hook calls on start/stop and per drop.
   resetAudioDropped: ReturnType<typeof vi.fn>;
   markAudioLost: ReturnType<typeof vi.fn>;
   incrementDroppedFrames: ReturnType<typeof vi.fn>;
@@ -210,7 +210,7 @@ function buildMockStore(): MockStore {
     addTranscriptSegment: vi.fn(),
     addContextItem: vi.fn(),
     addEntities: vi.fn(),
-    // TASK-464 — audio-drop actions the hook calls on start/stop and per drop.
+    // Audio-drop actions the hook calls on start/stop and per drop.
     resetAudioDropped: vi.fn(),
     markAudioLost: vi.fn(),
     incrementDroppedFrames: vi.fn(),

@@ -1,9 +1,9 @@
-"""TASK-469 (C1-04): idempotent synchronous ``/generate``.
+"""Idempotent synchronous ``/generate``.
 
 A deterministic ``Idempotency-Key`` (set by the harness from ``workflow_run:activity_id``)
 lets a worker-crash re-delivery return the FIRST generation from SMR's Redis instead of
-re-invoking — and re-billing — the model. TASK-458 narrowed the in-process re-send paths;
-this closes the cross-process replay path on the receiver.
+re-invoking — and re-billing — the model. This closes the cross-process replay path on
+the receiver.
 
 RED-first: written before the endpoint reads the key or dedups via Redis. With no dedup,
 the same key twice bills the model twice and nothing is cached.
@@ -84,7 +84,7 @@ _BODY = {"prompt": "hello", "model": "test-model"}
 
 
 class TestGenerateIdempotency:
-    """C1-04: the synchronous generate endpoint dedups on the ``Idempotency-Key`` header."""
+    """The synchronous generate endpoint dedups on the ``Idempotency-Key`` header."""
 
     @pytest.mark.asyncio
     async def test_same_key_twice_invokes_provider_once(self, client, mock_provider):
@@ -157,8 +157,8 @@ class TestGenerateIdempotencyFailurePosture:
     """The dedup cache is STRICTLY best-effort — a Redis outage must degrade to normal
     generation, NEVER fail an otherwise-serviceable request. A cache-write failure on an
     already-billed generation that flipped to 502 + task-FAILED + a false circuit-breaker
-    failure would make the harness retry and re-invoke the model = the very C1-04 double-bill
-    this ticket closes (review CRITICAL)."""
+    failure would make the harness retry and re-invoke the model — the exact
+    double-billing failure mode this dedup cache exists to prevent."""
 
     @pytest.mark.asyncio
     async def test_cache_write_failure_does_not_fail_billed_generation(

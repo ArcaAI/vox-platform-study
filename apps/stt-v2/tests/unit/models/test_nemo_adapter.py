@@ -1,4 +1,4 @@
-"""Unit tests for NemoAsrAdapter (TASK-258 Phase B)."""
+"""Unit tests for NemoAsrAdapter."""
 
 from __future__ import annotations
 

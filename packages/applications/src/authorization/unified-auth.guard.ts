@@ -29,7 +29,7 @@ export const JWT_AUTH_GUARD = Symbol('JWT_AUTH_GUARD');
  * Request-scoped marker holding the result of a SUCCESSFUL `canActivate` pass
  * for THIS request.
  *
- * TASK-343 — `UnifiedAuthGuard` is the single global `APP_GUARD` enforcement
+ * `UnifiedAuthGuard` is the single global `APP_GUARD` enforcement
  * point, but Nest may still invoke a guard more than once per request (e.g. a
  * route-level `@UseGuards(UnifiedAuthGuard)` layered on the global pass). This
  * memo lets a repeat pass short-circuit instead of re-running the CASL
@@ -71,7 +71,7 @@ export class UnifiedAuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    // TASK-343 — idempotency: a repeat pass on the SAME request skips the
+    // Idempotency: a repeat pass on the SAME request skips the
     // redundant CASL + Redis work. Only `true` is ever memoised; an auth
     // failure throws (401/403) and stops the pipeline before any second pass,
     // so the memo is only set after `authenticate` resolves successfully.
@@ -127,7 +127,7 @@ export class UnifiedAuthGuard implements CanActivate {
       try {
         const jwtResult = await this.jwtAuthGuard.canActivate(context);
         if (jwtResult === true || jwtResult) {
-          // TASK-343 — returned UN-AWAITED on purpose: a permission-denied
+          // Returned UN-AWAITED on purpose: a permission-denied
           // ForbiddenException (403) from post-auth must escape this `try` so
           // it is NOT downgraded to the generic 401 below. Only the awaited
           // `jwtAuthGuard.canActivate` rejection (an authentication failure) is
@@ -135,7 +135,7 @@ export class UnifiedAuthGuard implements CanActivate {
           return this.handleJwtPostAuth(context, request, method, path);
         }
       } catch (error) {
-        // TASK-343 — log the underlying failure (was silently swallowed). The
+        // Log the underlying failure (was silently swallowed). The
         // client still receives the generic 401 thrown below; this is purely
         // server-side diagnostics. Expected auth failures (bad/expired token,
         // already-consumed stream ticket) are debug noise; anything else is a

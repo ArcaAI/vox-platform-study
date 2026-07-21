@@ -24,7 +24,7 @@ export {
 // HTML escape (XSS protection for entity rendering)
 export { escapeHtml } from './htmlEscape.js';
 
-// Token-aware chunking (TASK-272 / C-2)
+// Token-aware chunking
 export {
   chunkByTokens,
   segmentSentences,

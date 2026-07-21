@@ -1,5 +1,5 @@
 /**
- * AiTaskDefaultRepository (TASK-506, r2605 Finding A) — unit tests.
+ * AiTaskDefaultRepository — unit tests.
  *
  * Pinned behaviour of `findByTenantAndTaskKey`:
  *  - a genuine miss (base `findFirst` throws `DataNotFoundException`) → null;

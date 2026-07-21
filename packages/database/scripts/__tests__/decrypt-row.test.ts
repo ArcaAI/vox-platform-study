@@ -1,4 +1,4 @@
-// TASK-369 follow-up — unit tests for the READ-ONLY decrypt CLI
+// Unit tests for the READ-ONLY decrypt CLI
 // (scripts/decrypt-row.ts). The Vault + Prisma round-trips are integration-only;
 // here we lock down argument parsing, invocation validation, the model registry
 // resolver, and the PURE decrypt helpers (per-field + AuditLog DEK-envelope)

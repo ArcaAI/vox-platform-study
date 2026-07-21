@@ -33,7 +33,7 @@ const AiModelFormat = {
     PYTORCH: 'PYTORCH',
     ONNX: 'ONNX',
     NEMO: 'NEMO',
-    // TASK-356 Phase 1 — additive formats (foundation migration).
+    // Additive formats (foundation migration).
     MLX: 'MLX',
     GGUF: 'GGUF',
 } as const;
@@ -135,7 +135,7 @@ function createBehavioralModelEntity(overrides: {
         set computeType(value: string | null) { _computeType = value; _changes.computeType = value; },
         get downloadStatus() { return _downloadStatus; },
         get localPath() { return _localPath; },
-        // TASK-527 — the real `AiModelEntity` exposes `localPath`/`checksum`
+        // The real `AiModelEntity` exposes `localPath`/`checksum`
         // setters routed through `setProperty` (AiModelEntity.ts:218,242); the
         // double previously modelled them read-only, which understated what the
         // service can write.
@@ -145,7 +145,7 @@ function createBehavioralModelEntity(overrides: {
         get checksum() { return _checksum; },
         set checksum(value: string | null) { _checksum = value; _changes.checksum = value; },
         get resourceStatus() { return _resourceStatus; },
-        // TASK-302/356 OCC — the `_version` column surfaced as a getter so the
+        // OCC — the `_version` column surfaced as a getter so the
         // service can snapshot it and pass it to `updateWithVersion`.
         get version() { return _version; },
         get changes() { return _changes; },
@@ -310,7 +310,7 @@ describe('AiModelService', () => {
             ).rejects.toThrow(BadRequestException);
         });
 
-        // TASK-356 Phase 1 — the catalog must accept the additive formats.
+        // The catalog must accept the additive formats.
         it.each([AiModelFormat.MLX, AiModelFormat.GGUF])('should accept the new %s format', async (format) => {
             mockModelRepository.isSlugUnique.mockResolvedValue(true);
             mockModelRepository.create.mockImplementation(async (entity: any) => entity);
@@ -329,7 +329,7 @@ describe('AiModelService', () => {
             expect(result.format).toBe(format);
         });
 
-        // TASK-506 — machine-actionable registry identity columns.
+        // Machine-actionable registry identity columns.
         it('should carry provider + architecture through create to the response', async () => {
             mockModelRepository.isSlugUnique.mockResolvedValue(true);
             mockModelRepository.create.mockImplementation(async (entity: any) => entity);
@@ -416,7 +416,7 @@ describe('AiModelService', () => {
             ).rejects.toThrow(BadRequestException);
         });
 
-        // TASK-356 Phase 1 — OCC retrofit (mirrors the AsrPipeline contract).
+        // OCC retrofit (mirrors the AsrPipeline contract).
         it('update() passes expectedVersion to updateWithVersion (CAS predicate)', async () => {
             const existingModel = createBehavioralModelEntity({ id: 'model-1', version: 7 });
             mockModelRepository.findById.mockResolvedValue(existingModel);
@@ -451,7 +451,7 @@ describe('AiModelService', () => {
             expect(result.version).toBe(4);
         });
 
-        // TASK-506 — provider/architecture flow through update to the response.
+        // Provider/architecture flow through update to the response.
         it('update() carries provider + architecture onto the entity and response', async () => {
             const existingModel = createBehavioralModelEntity({ id: 'model-1', version: 3 });
             mockModelRepository.findById.mockResolvedValue(existingModel);
@@ -469,7 +469,7 @@ describe('AiModelService', () => {
             expect(result.architecture).toBe('qwen3.5');
         });
 
-        // TASK-527 (D-12) — `localPath` is the operator override with HIGHEST
+        // `localPath` is the operator override with HIGHEST
         // precedence in every service's `resolve_model_dir`. It was previously
         // absent from `UpdateModelRequest`, so the global validation pipe
         // (`forbidNonWhitelisted`) REJECTED any admin PATCH carrying it — the
@@ -563,11 +563,11 @@ describe('AiModelService', () => {
         });
     });
 
-    // TASK-356 Phase 1 — admin catalog list (exact-tenant; includes disabled
+    // Admin catalog list (exact-tenant; includes disabled
     // rows so a just-disabled model stays visible and re-enableable). Mirrors
-    // AsrPipeline `getAllForAdmin`, but filters to the EXACT tenant (the user's
-    // D-Q3 decision: a tenant admin sees only its own clone, not the SYSTEM
-    // original surfaced by the shared-read tenant-scope extension).
+    // AsrPipeline `getAllForAdmin`, but filters to the EXACT tenant: a tenant
+    // admin sees only its own clone, not the SYSTEM
+    // original surfaced by the shared-read tenant-scope extension.
     describe('getAllForAdmin', () => {
         it('lists ENABLED + DISABLED rows for the exact tenant only', async () => {
             const models = [
@@ -627,7 +627,7 @@ describe('AiModelService', () => {
         });
     });
 
-    // r2605 Finding E — the legacy getByTaskType pins the CLS tenant, which
+    // The legacy getByTaskType pins the CLS tenant, which
     // DEFEATS the SYSTEM-shared-read widening (tenants without clones get an
     // empty picker). The shared-read variant queries without a tenant pin so
     // the extension widens to [caller, SYSTEM], then de-duplicates by slug

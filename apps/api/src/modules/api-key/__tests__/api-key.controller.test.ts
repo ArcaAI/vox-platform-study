@@ -150,7 +150,6 @@ describe('ApiKeyController', () => {
             expect(mockService.fetchById).toHaveBeenCalledTimes(1);
         });
 
-        // TASK-390 #23 (K5) — rotate endpoint.
         it('should rotate the key and return the new raw key once (create shape)', async () => {
             mockService.rotateKey.mockResolvedValue({ newRawKey: 'hk_new_secret_raw', newApiKey: { ...fakeEntity, id: 'key-2' } });
 

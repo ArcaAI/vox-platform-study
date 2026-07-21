@@ -18,10 +18,10 @@ class DiagnosisSuggestionRequest(BaseModel):
     text: str = Field(..., description="Patient conversation transcript")
     min_confidence: float | None = Field(default=0.1, ge=0.0, le=1.0, description="Minimum confidence threshold")
     language: SupportedLanguage | None = Field(default=SupportedLanguage.ENGLISH, description="Language of the text")
-    # TASK-506 — overrides ONLY the suggester's disease-classification model;
+    # Overrides ONLY the suggester's disease-classification model;
     # its internal NER stays the default token classifier.
     model_name: str | None = Field(default=None, description="Optional HF model id overriding the classification model")
-    # TASK-527 (D-12) — gateway-injected `AiModel.localPath`.
+    # Gateway-injected `AiModel.localPath`.
     model_path: str | None = Field(default=None, description="Optional local weights directory (gateway-injected AiModel.localPath)")
 
 

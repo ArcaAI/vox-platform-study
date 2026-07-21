@@ -1,7 +1,7 @@
 import type { ResourceStatusType } from '../../../../generated/core-prisma-client/client.js';
 
 /**
- * Shared enum mirrors + row shape for the AI-model seed catalog (TASK-506).
+ * Shared enum mirrors + row shape for the AI-model seed catalog.
  *
  * The enum consts mirror the Prisma enums in `enums.prisma`; only the values
  * actually used by a seed row are mirrored here (house convention carried over
@@ -21,20 +21,20 @@ export const AiModelFormat = {
     ONNX: 'ONNX',
     NEMO: 'NEMO',
     PYTORCH: 'PYTORCH',
-    // TASK-356 Phase 1 — additive formats (foundation migration).
+    // Additive formats (foundation migration).
     MLX: 'MLX',
     GGUF: 'GGUF',
-    // TASK-356 Phase 2 — CTranslate2 (faster-whisper) artifacts.
+    // CTranslate2 (faster-whisper) artifacts.
     CTRANSLATE2: 'CTRANSLATE2',
-    // TASK-505 P5 — Prisma↔Python enum sync (see migration task_505_stt_engine_enums).
+    // Prisma↔Python enum sync (see migration task_505_stt_engine_enums).
     FASTER_WHISPER: 'FASTER_WHISPER',
     ONNX_OPTIMUM: 'ONNX_OPTIMUM',
     AZURE_SPEECH: 'AZURE_SPEECH',
     AZURE_FOUNDRY: 'AZURE_FOUNDRY',
     PARAKEET_CPP: 'PARAKEET_CPP',
-    // TASK-506 — generic cloud-API engine (Sarvam TTS, Azure OpenAI catalog rows).
+    // Generic cloud-API engine (Sarvam TTS, Azure OpenAI catalog rows).
     CLOUD_API: 'CLOUD_API',
-    // TASK-507 — whisper.cpp ggml runtime (whisper-large-v3-turbo GGUF).
+    // whisper.cpp ggml runtime (whisper-large-v3-turbo GGUF).
     WHISPER_CPP: 'WHISPER_CPP',
 } as const;
 
@@ -49,11 +49,11 @@ export const ModelTaskType = {
     AUDIO_TO_AUDIO: 'AUDIO_TO_AUDIO',
     SUMMARIZATION: 'SUMMARIZATION',
     TEXT_GENERATION: 'TEXT_GENERATION',
-    // TASK-356 Phase 1 — guardrail/safety models (foundation migration).
+    // Guardrail/safety models (foundation migration).
     GUARDRAIL: 'GUARDRAIL',
-    // TASK-505 P5 — diarization stack task types.
+    // Diarization stack task types.
     SPEAKER_EMBEDDING: 'SPEAKER_EMBEDDING',
-    // TASK-506 — NLP task models + TTS engines join the registry.
+    // NLP task models + TTS engines join the registry.
     TOKEN_CLASSIFICATION: 'TOKEN_CLASSIFICATION',
     TEXT_CLASSIFICATION: 'TEXT_CLASSIFICATION',
     TEXT_TO_SPEECH: 'TEXT_TO_SPEECH',
@@ -66,7 +66,7 @@ export const ModelType = {
 } as const;
 
 /**
- * Canonical serving-provider identifiers (TASK-506 §3.1). String column (not a
+ * Canonical serving-provider identifiers. String column (not a
  * Prisma enum) to match `HarnessPolicy.smrProvider` / the guardrail provider
  * switch; the DTO layer validates with `@IsIn(AI_MODEL_PROVIDERS)`.
  */
@@ -78,7 +78,7 @@ export const AI_MODEL_PROVIDERS = [
     'built-in',
     'sarvam',
     // production self-host
-    // engines (AD-4 engine matrix). OpenAI-compatible `/v1` wire; free-string
+    // engines. OpenAI-compatible `/v1` wire; free-string
     // provider values, no Prisma enum migration (the column is a plain string).
     'vllm',
     'llama-cpp',
@@ -107,7 +107,7 @@ export interface AiModelSeed {
     sourceUri: string;
     sourceRevision: string;
     format: (typeof AiModelFormat)[keyof typeof AiModelFormat];
-    /** Canonical serving provider (TASK-506). */
+    /** Canonical serving provider. */
     provider: AiModelProvider;
     /** Model architecture family (nullable — engines without one use null). */
     architecture: string | null;

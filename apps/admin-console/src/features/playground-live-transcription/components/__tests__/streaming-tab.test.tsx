@@ -1,5 +1,5 @@
 /**
- * TASK-454 C6-01 — a11y contract for the degraded-connection banner. The banner
+ * A11y contract for the degraded-connection banner. The banner
  * is the clinician-facing signal that outbound audio was silently dropped, so it
  * must: announce via a polite status live region, carry meaning in icon + text
  * (never color alone), and keep the churning per-connection frame count OUT of

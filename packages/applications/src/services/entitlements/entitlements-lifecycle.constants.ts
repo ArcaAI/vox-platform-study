@@ -1,5 +1,5 @@
 /**
- * TASK-392 (Q4 trial-expiry + Q10 downgrade) — lifecycle-job constants.
+ * (Q4 trial-expiry + Q10 downgrade) — lifecycle-job constants.
  *
  * The trial-expiry job flips `plan = STARTER` for every tenant whose trial
  * clock has elapsed (`trialEndsAt <= now`) — a PURE plan change, leaving
@@ -21,7 +21,7 @@ export const TRIAL_EXPIRY_ENABLED_KEY = 'entitlements.trial-expiry.enabled';
 export const TRIAL_EXPIRY_CRON_KEY = 'entitlements.trial-expiry.cron';
 
 export const TRIAL_EXPIRY_DEFAULTS = {
-  /** OFF by default — like every other TASK-392 knob (Q9). */
+  /** OFF by default — like every other entitlements kill-switch knob. */
   enabled: false,
   /** Hourly on the hour — trial windows are day-scale, so hourly is ample. */
   cron: '0 * * * *',

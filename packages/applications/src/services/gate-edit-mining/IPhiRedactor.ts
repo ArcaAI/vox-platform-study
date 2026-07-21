@@ -1,5 +1,5 @@
 /**
- * PHI redaction seam for the gate-edit mining store (TASK-533 B6).
+ * PHI redaction seam for the gate-edit mining store.
  *
  * Deliberately a narrow port rather than a direct dependency on the guardrail
  * client: the mining store's contract is "redacted text or nothing", and the

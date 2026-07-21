@@ -36,7 +36,7 @@ AiModelSourceType = ENUM(
     "GITHUB",
     "MLFLOW",
     "LOCAL",
-    "S3",  # TASK-527 — S3/MinIO-compatible object storage (s3://bucket/prefix)
+    "S3",  # S3/MinIO-compatible object storage (s3://bucket/prefix)
     name="AiModelSource",
     schema="core",
     create_type=False,
@@ -85,7 +85,7 @@ ModelCategoryType = ENUM(
 )
 
 # Mirrors ModelTaskType in packages/database/src/prisma/db_main/enums.prisma —
-# guarded against drift by tests/unit/test_db_enum_mirrors.py (TASK-506).
+# guarded against drift by tests/unit/test_db_enum_mirrors.py.
 ModelTaskTypeEnum = ENUM(
     # Multimodal
     "IMAGE_TEXT_TO_TEXT",
@@ -157,11 +157,11 @@ ModelTypeEnum = ENUM(
 )
 
 
-# TASK-525 (D-11) — `GlobalSettingRead` was removed here. It mirrored the
-# `core.GlobalSetting` table but had ZERO callers: the seed wrote
-# `stt.config.model_cache.*` / `stt.config.workers.*` rows that nothing ever
-# read. Those knobs now arrive over HTTP via `core/effective_config.py`, so the
-# unused mapping is deleted rather than left as a second, dormant config lane.
+# `GlobalSettingRead` was removed here. It mirrored the `core.GlobalSetting`
+# table but had ZERO callers: the seed wrote `stt.config.model_cache.*` /
+# `stt.config.workers.*` rows that nothing ever read. Those knobs now arrive
+# over HTTP via `core/effective_config.py`, so the unused mapping is deleted
+# rather than left as a second, dormant config lane.
 
 
 class AsrPipelineRead(Base):

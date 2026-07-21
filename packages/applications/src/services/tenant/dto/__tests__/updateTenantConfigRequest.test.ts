@@ -1,12 +1,10 @@
 /**
  * UpdateTenantConfigRequest — `expectedVersion` validation.
  *
- * Carries the optimistic-concurrency token from the prior GET. Required since
- * TASK-302 Stream D Phase C; without it the strict global ValidationPipe
- * (forbidNonWhitelisted) would have rejected smuggled `expectedVersion`s, but
+ * Carries the optimistic-concurrency token from the prior GET. Required so
+ * the strict global ValidationPipe
+ * (forbidNonWhitelisted) does not reject a smuggled `expectedVersion`, but
  * once required it must be a positive integer.
- *
- * @see TASK-302 Stream D Phase C (C.1)
  */
 import { describe, it, expect } from 'vitest';
 import { plainToInstance } from 'class-transformer';

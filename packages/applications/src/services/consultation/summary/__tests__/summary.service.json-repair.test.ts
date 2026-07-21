@@ -1,7 +1,7 @@
 /**
- * SummaryService — bounded JSON auto-repair on the FINALIZE path (TASK-533 D-25).
+ * SummaryService — bounded JSON auto-repair on the FINALIZE path.
  *
- * The live-doc flush has carried a single bounded corrective retry since Phase 4D.3
+ * The live-doc flush carries a single bounded corrective retry
  * (`live-documentation.service.ts` → `generateJsonWithRepair`). The durable
  * end-of-visit summary — the higher-stakes path, since its output is what the
  * clinician signs — had none: a malformed structured response was stored VERBATIM
@@ -12,7 +12,7 @@
  *   - structured request + valid JSON      → no retry (byte-identical to before)
  *   - unstructured request (prose)         → no retry (byte-identical to before)
  *   - the corrective instruction is APPENDED, keeping the prefix-cache-stable
- *     lead-in intact (Phase 4D.1 discipline)
+ *     lead-in intact
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SummaryService } from '../summary.service';

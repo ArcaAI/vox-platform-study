@@ -1,5 +1,5 @@
 /**
- * useArcaSummary summary-options reconciliation tests — TASK-299 D-4 + D-17.
+ * useArcaSummary summary-options reconciliation tests.
  *
  * Asserts that the dedicated `useArcaSummary` hook normalises legacy SDK
  * option names to the canonical backend DTO field names before POSTing:
@@ -8,7 +8,7 @@
  *   - `promptTemplateId`   → `template`          (GenerateSummaryRequest)
  *   - `departmentId`       → `options.departmentId` (no first-class field)
  *
- * Also covers D-17: the comprehensive-summary signature is wide enough to
+ * Also covers that the comprehensive-summary signature is wide enough to
  * carry `template` and `includeLabResults` to the backend.
  *
  * @vitest-environment jsdom
@@ -159,7 +159,7 @@ describe('TASK-299 D-4 — useArcaSummary maps legacy SDK options to backend DTO
                 contextItemIds: ['c1', 'c2'],
                 options: { tone: 'concise' },
             });
-            // TASK-299 D-9 — idempotencyKey is auto-attached.
+            // idempotencyKey is auto-attached.
             expect(typeof body.idempotencyKey).toBe('string');
             expect(body.idempotencyKey.length).toBeGreaterThan(0);
         });
@@ -172,7 +172,7 @@ describe('TASK-299 D-4 — useArcaSummary maps legacy SDK options to backend DTO
                 await result.current.generateSummary();
             });
 
-            // TASK-299 D-9 — no body means no idempotency-key injection either
+            // No body means no idempotency-key injection either
             // (back-compat: this is the legacy "no options" path).
             expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE('c-001'), undefined);
         });
@@ -257,7 +257,7 @@ describe('TASK-299 D-4 — useArcaSummary maps legacy SDK options to backend DTO
 
             const [url, body] = mockPost.mock.calls[0];
             expect(url).toBe(SUMMARY_ENDPOINTS.GENERATE_ASYNC('c-001'));
-            // TASK-299 D-9 — async POSTs always carry an idempotencyKey so
+            // Async POSTs always carry an idempotencyKey so
             // double-clicks dedupe to the same backend job.
             expect(typeof body.idempotencyKey).toBe('string');
             expect(body.idempotencyKey.length).toBeGreaterThan(0);
@@ -296,7 +296,7 @@ describe('TASK-299 D-17 — useArcaSummary.generateComprehensiveSummary signatur
             includeLabResults: false,
             options: { tone: 'concise' },
         });
-        // TASK-299 D-9 — comprehensive POSTs are side-effectful; idempotency-key required.
+        // Comprehensive POSTs are side-effectful; idempotency-key required.
         expect(typeof body.idempotencyKey).toBe('string');
     });
 

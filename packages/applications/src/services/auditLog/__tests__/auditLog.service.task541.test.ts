@@ -1,5 +1,5 @@
 /**
- * TASK-541 B1 — failed authentication attempts must leave an audit trail.
+ * Failed authentication attempts must leave an audit trail.
  *
  * Gap under test: `EventTypes.UserAuthenticated` is a SUCCESS-ONLY bracket
  * (noted at auth.controller.ts), so a rejected login produced structured warn

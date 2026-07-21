@@ -1,5 +1,5 @@
 /**
- * @arcaai/med-ner - HTML Escape Utility (TASK-272 / M-3)
+ * @arcaai/med-ner - HTML Escape Utility
  *
  * Clinical text routinely contains characters that are unsafe to inject
  * directly into HTML (`<50%`, `pH>7`, `T<38.5°C`, drug brand names with

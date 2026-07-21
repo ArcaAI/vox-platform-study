@@ -9,9 +9,9 @@
  * instruction appended, then parses that. The tolerant parser is always the final
  * fallback — a repair is best-effort and never blocks the caller.
  *
- * It is deliberately transport-agnostic, and BOTH paths now drive it — the live-doc
- * flush (Phase 4D.3) and the durable finalize summary (TASK-533 D-25, which until
- * then persisted a malformed structured response verbatim as the clinical note):
+ * It is deliberately transport-agnostic, and BOTH paths drive it — the live-doc
+ * flush and the durable finalize summary (which previously would persist a
+ * malformed structured response verbatim as the clinical note):
  * the caller supplies the `generate` closure (which performs the actual SMR call,
  * measures latency, captures stats, …), the strict parser, and the tolerant
  * fallback. The helper returns every model call it made (in order) so the caller

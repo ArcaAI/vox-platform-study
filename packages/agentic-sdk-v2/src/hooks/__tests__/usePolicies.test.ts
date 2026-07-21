@@ -1,5 +1,5 @@
 /**
- * usePolicies Hook Tests (TASK-218 Priority 4)
+ * usePolicies Hook Tests
  *
  * @vitest-environment jsdom
  */
@@ -163,7 +163,7 @@ describe('usePolicies', () => {
             expect(result.current.policies).toEqual([initial[1]]);
         });
 
-        // TASK-409 — break-glass credentials travel as the DELETE body.
+        // Break-glass credentials travel as the DELETE body.
         it('should pass break-glass credentials as the DELETE data option (TASK-409)', async () => {
             mockDelete.mockResolvedValue(undefined);
             const { result } = renderHook(() => usePolicies());

@@ -1,5 +1,4 @@
-"""Self-hosted Streaming Sortformer diarizer — the live 2-speaker loop core
-(TASK-475 · SOTA S1-DIAR · Theme B2).
+"""Self-hosted Streaming Sortformer diarizer — the live 2-speaker loop core.
 
 Frame-level online speaker diarization for the clinician/patient case: NVIDIA
 Streaming Sortformer (arXiv:2507.18446) emits per-frame speaker-activity
@@ -7,10 +6,9 @@ probabilities (T×S) at an ~80 ms cadence, which this module thresholds into
 2-speaker turns for the live transcript. It is selected per-pipeline via
 ``DiarizationConfig.backend == "sortformer"`` while the existing
 embedding-clustering path (and ``preseed_speaker`` naming, and the batch path)
-stay put behind the same selector (see the TASK-474 §B2 Build Brief: replace the
-core, augment for naming).
+stay put behind the same selector (replace the core, augment for naming).
 
-Fail posture (mirrors TASK-479's ``groundedness_nli.load_default_scorer``):
+Fail posture (mirrors ``groundedness_nli.load_default_scorer``):
 
 * backend un-staged / un-loadable  → diarizer degrades to "no labels" (applied=False)
 * backend inference error          → degrades to "no labels" (applied=False)
@@ -131,7 +129,7 @@ def _dominant_speaker(frame: Sequence[float], threshold: float) -> int | None:
 
 # Streaming preset (nvidia/diar_streaming_sortformer_4spk-v2.x model card, all in
 # 80 ms frames). These are the checkpoint's PUBLISHED example values — the
-# latency/accuracy trade-off is a GPU-validation tuning point (AC-5/AC-6), not
+# latency/accuracy trade-off is a GPU-validation tuning point, not
 # fabricated here. See the model card "Streaming configuration" section.
 _STREAMING_PRESET: dict[str, int] = {
     "chunk_len": 340,
@@ -226,7 +224,7 @@ def _restore_sortformer_model(config: DiarizationConfig) -> Any:
         )
     else:
         # HF repo id, resolved from the offline HF cache (stage it first). Pin by
-        # revision when the operator set one (AC-1); tolerate a NeMo build whose
+        # revision when the operator set one; tolerate a NeMo build whose
         # from_pretrained predates the revision kwarg.
         pretrained_kwargs: dict[str, Any] = {"model_name": model_id, "map_location": device}
         if config.sortformer_revision:

@@ -1,5 +1,5 @@
 /**
- * ConsultationController — harness-assurance SSE route (TASK-355 Phase D Slice 5d).
+ * ConsultationController — harness-assurance SSE route.
  *
  * Verifies the `GET :id/harness-assurance/stream` SSE relay delegates to
  * HarnessAssuranceService and carries the same auth metadata as the other live

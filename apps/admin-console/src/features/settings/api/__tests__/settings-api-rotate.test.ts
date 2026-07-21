@@ -1,5 +1,5 @@
 /**
- * TASK-445 — rotateGlobalSetting client contract: POST :id/rotate with
+ * RotateGlobalSetting client contract: POST :id/rotate with
  * If-Match + expectedVersion (OCC like the update PATCH) and the step-up
  * password + new value in the body. The response is the masked setting —
  * no plaintext ever crosses this function.

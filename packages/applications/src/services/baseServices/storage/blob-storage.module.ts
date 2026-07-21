@@ -6,8 +6,7 @@ import { IBlobStorageService } from './IBlobStorageService';
 import { BlobStorageProviderFactory } from './providers/blob-storage.provider.factory';
 
 /**
- * BlobStorageModule — registers the provider-agnostic blob-storage stack
- * (TASK-318):
+ * BlobStorageModule — registers the provider-agnostic blob-storage stack:
  *
  * - {@link BlobStorageProviderFactory} — selects S3/MinIO or Azure per the
  *   `STORAGE_PROVIDER` global config AND per-tenant/per-bucket

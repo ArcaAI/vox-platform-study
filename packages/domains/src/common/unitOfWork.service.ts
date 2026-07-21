@@ -4,7 +4,7 @@ import { Injectable } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 
 /**
- * @deprecated TASK-306 W5.7 / 306-F13 — orphan dead code.
+ * @deprecated Orphan dead code.
  *
  * This class has **zero production callers** verified via
  * `rg '\bUnitOfWorkService\b'` across the entire monorepo (only
@@ -13,18 +13,18 @@ import { ClsService } from 'nestjs-cls';
  * Retained pending an explicit user-approved deletion ticket.
  *
  * If you find yourself reaching for this class, **STOP**. It exhibits
- * the same broken self-resolved-tx pattern that pre-W5.5.2
+ * the same broken self-resolved-tx pattern that the legacy
  * `CoreUnitOfWorkService.startTransaction()` had — `$transaction`'s
  * callback returns the inner client which immediately resolves the
  * transaction; the "tx" persisted into CLS is therefore a
  * post-rollback handle that does NOT carry transactional isolation
  * (no atomic multi-write rollback, no isolation level). Re-introducing
- * this pattern would re-open audit M-6.
+ * this pattern would re-open a previously fixed audit finding.
  *
  * Use one of these instead:
  *   - `CoreUnitOfWorkService.runInTransaction(work)` at
  *     `packages/domains/src/common/unitsOfWork/core/core.unitOfWork.ts`
- *     (TASK-306 W5.5.2 canonical Prisma-7 `$transaction(callback)`
+ *     (the canonical Prisma-7 `$transaction(callback)`
  *     pattern — atomic, isolation-aware, exception-safe rollback)
  *   - `databaseService.client.$transaction(callback)` directly when
  *     the call-site is outside the domain layer

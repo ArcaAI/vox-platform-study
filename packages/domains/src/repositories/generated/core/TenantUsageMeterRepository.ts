@@ -14,7 +14,7 @@ export class TenantUsageMeterRepository extends Repository<TenantUsageMeterEntit
   }
 
   /**
-   * TASK-392 (Q5) — resolve the meter row for one (tenant, metric, window).
+   * Resolve the meter row for one (tenant, metric, window).
    * The `@@unique([tenantId, metric, periodStart])` guarantees at most one
    * row. Returns `null` when the window has not been opened yet, so the
    * metering service can branch into "create" on first increment.

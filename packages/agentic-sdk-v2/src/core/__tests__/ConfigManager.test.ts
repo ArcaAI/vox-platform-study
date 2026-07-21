@@ -345,7 +345,7 @@ describe('ConfigManager', () => {
     });
 
     // =========================================================================
-    // TASK-245: Read-only mode for impersonation
+    // Read-only mode for impersonation
     // =========================================================================
 
     describe('TASK-245: read-only mode', () => {
@@ -473,7 +473,7 @@ describe('ConfigManager', () => {
     });
 
     // =========================================================================
-    // TASK-332 — audio.captureRawAudio is admin-owned (server-computed effective
+    // audio.captureRawAudio is admin-owned (server-computed effective
     // flag). It must survive from the tenant tier and be unoverridable by users.
     // =========================================================================
     describe('TASK-332: audio.captureRawAudio cascade', () => {

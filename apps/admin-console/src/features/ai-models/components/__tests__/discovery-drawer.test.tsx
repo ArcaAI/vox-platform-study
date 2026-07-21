@@ -1,5 +1,5 @@
 /**
- * TASK-528 §5.4 — discovery drawer: loading skeleton, empty and error states,
+ * Discovery drawer: loading skeleton, empty and error states,
  * per-tag + load-state badges, per-provider probe lines, staleness + refresh,
  * the register flow (success invalidates both queries; failure toasts), and an
  * axe 0-violations pass with the drawer open.

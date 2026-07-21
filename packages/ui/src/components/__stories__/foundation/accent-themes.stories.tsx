@@ -4,7 +4,7 @@ import { Badge } from '../../shadcn/badge';
 import { Button } from '../../shadcn/button';
 
 /**
- * Accent themes (TASK-437). Teal is the default with no attribute; setting
+ * Accent themes. Teal is the default with no attribute; setting
  * `data-accent="indigo" | "green" | "amber"` on `<html>` remaps the
  * accent-derived semantic tokens (primary / accent / ring / sidebar / chart-1)
  * with no component restyle.

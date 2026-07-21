@@ -1,5 +1,5 @@
 /**
- * TASK-402 (Defect 2, half B) — re-creating a soft-deleted GlobalSetting must
+ * (Defect 2, half B) — re-creating a soft-deleted GlobalSetting must
  * REVIVE the deleted row instead of 409ing on the DB unique index.
  *
  * The `@@unique([tenantId, name, key])` index counts DELETED rows, so a plain

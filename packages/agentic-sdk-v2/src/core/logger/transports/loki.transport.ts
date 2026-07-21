@@ -30,8 +30,8 @@ interface LokiPushRequest {
 /**
  * Loki transport implementation.
  *
- * **TASK-278 — gated activation.**
- * Mirrors the `HighlightTransport` (TASK-266 W0-2) defence-in-depth pattern.
+ * **Gated activation.**
+ * Mirrors the `HighlightTransport` defence-in-depth pattern.
  * Shipping consultation telemetry to a Loki endpoint is a HIPAA exposure
  * unless the operator has explicitly opted in to a vetted endpoint. This
  * transport therefore refuses to initialise unless ALL of the following are
@@ -60,7 +60,7 @@ export class LokiTransport implements ILogTransport {
   private isFlushing = false;
   /**
    * Once true, this transport will never POST another log and will not even
-   * queue them. Set when the TASK-278 gate refuses activation (production env,
+   * queue them. Set when the activation gate refuses activation (production env,
    * not opted in, or missing endpoint).
    */
   private permanentlyDisabled = false;
@@ -81,7 +81,7 @@ export class LokiTransport implements ILogTransport {
   }
 
   /**
-   * TASK-278 activation predicate.
+   * Activation predicate.
    *
    * Pure & static so `SDKLogger.initializeTransports()` can also call it
    * to skip constructing the transport entirely.
@@ -115,7 +115,7 @@ export class LokiTransport implements ILogTransport {
   /**
    * Log entry (buffers for batch sending).
    *
-   * TASK-278: when the transport is permanently disabled (production env,
+   * When the transport is permanently disabled (production env,
    * not opted in, or missing endpoint) this is a hard no-op — we do not even
    * queue the entry, so a misconfigured deploy cannot silently buffer PHI in
    * memory that a later runtime gate-flip could flush to Loki.

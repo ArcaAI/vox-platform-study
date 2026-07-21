@@ -82,7 +82,7 @@ export function AccountScreen() {
     const [prefDraft, setPrefDraft] = useState<{ workflowMode?: WorkflowMode; language?: string; dnaStyleId?: string }>({});
 
     const session = sessionQuery.data;
-    // BUG-005 Issue 4 — /account shows the EFFECTIVE identity: the
+    // /account shows the EFFECTIVE identity: the
     // impersonated target while impersonating, else the operator's own.
     const identityUser = session?.effectiveUser;
     const departments = departmentsQuery.data ?? [];

@@ -58,13 +58,13 @@ const createMockPromptTemplateRepository = () => ({
     findPaginated: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
-    // TASK-302 Stream D Phase E.3 — `updatePromptTemplate` now writes via
+    // `updatePromptTemplate` now writes via
     // Compare-And-Set (`updateWithVersion`). Legacy `.update` stays on
     // the mock for assertions that confirm it is NOT called.
     updateWithVersion: vi.fn(),
     softDelete: vi.fn(),
     $: vi.fn(),
-    // TASK-369 Phase 3C — encrypt-on-write helper (declaration-merged onto the
+    // Encrypt-on-write helper (declaration-merged onto the
     // generated repo). Default no-op so the legacy fixtures (no SecretsService
     // wired) never invoke it.
     encryptFieldsIntoEntity: vi.fn(async () => undefined),
@@ -74,7 +74,7 @@ const createMockPromptVersionRepository = () => ({
     findByTemplate: vi.fn(),
     findByVersionNumber: vi.fn(),
     create: vi.fn(),
-    // CC-01 — max-version helper queried inside the OCC transaction so the
+    // Max-version helper queried inside the OCC transaction so the
     // next versionNumber is max(existing)+1, never a recomputed duplicate.
     findMaxVersionNumber: vi.fn().mockResolvedValue(0),
 });
@@ -82,16 +82,16 @@ const createMockPromptVersionRepository = () => ({
 const createMockPromptUsageRecordRepository = () => ({
     findByTemplate: vi.fn().mockResolvedValue([]),
     findByDepartment: vi.fn().mockResolvedValue([]),
-    // TASK-328 A4 — analytics groupBy aggregations
+    // Analytics groupBy aggregations
     groupByDepartment: vi.fn().mockResolvedValue([]),
     groupByDoctor: vi.fn().mockResolvedValue([]),
     groupByDay: vi.fn().mockResolvedValue([]),
-    // TASK-407 — paginated raw run listing (Agent Jobs surface)
+    // Paginated raw run listing (Agent Jobs surface)
     findAll: vi.fn().mockResolvedValue([]),
     count: vi.fn().mockResolvedValue(0),
 });
 
-// TASK-328 A4 — SMR/text-generation client is an injected dependency
+// SMR/text-generation client is an injected dependency
 // (HttpService) so the prompt-test path is unit-testable with a mock; the
 // live SMR call is verified in CI against the running Python service.
 const createMockHttpService = (responseData: Record<string, unknown>) => ({
@@ -107,7 +107,7 @@ const createMockConfigService = (smrUrl = 'http://smr.local:8862') => ({
 const wordsOfLength = (n: number): string =>
     Array.from({ length: n }, (_, i) => `word${i}`).join(' ');
 
-// CC-01 — `updatePromptTemplate` now wraps the version-row insert + the OCC
+// `updatePromptTemplate` wraps the version-row insert + the OCC
 // compare-and-set in `databaseService.baseClient.$transaction(callback)` so
 // they commit/roll back atomically (mirrors TenantService / UserService).
 // The mock invokes the callback with a stub tx client so the body executes;
@@ -147,7 +147,7 @@ const createMockTemplateEntity = (overrides: Record<string, unknown> = {}) => {
         createdBy: overrides.createdBy ?? 'user-id-1',
         updatedBy: overrides.updatedBy ?? null,
         changes: overrides.changes ?? {},
-        // TASK-302 Stream D Phase E.3 — `_version` is required for the CAS
+        // `_version` is required for the CAS
         // write path. Default = first-write (1); override per-test as needed.
         // Distinct from `currentVersionNumber` (the human-meaningful
         // PromptVersion history counter).
@@ -429,7 +429,7 @@ describe('PromptManagementService', () => {
             );
         });
 
-        // TASK-331 doc-02 F5 — publication status threaded to the factory.
+        // Publication status threaded to the factory.
         it('should pass the provided status to the factory', async () => {
             mockTemplateRepo.findByName.mockResolvedValue(null);
             mockTemplateRepo.create.mockResolvedValue(createMockTemplateEntity({ status: 'PUBLISHED' }));
@@ -472,7 +472,7 @@ describe('PromptManagementService', () => {
         it('should create new version snapshot and increment version number on success', async () => {
             const existing = createMockTemplateEntity({ currentVersionNumber: 2, version: 4 });
             mockTemplateRepo.findById.mockResolvedValue(existing);
-            // CC-01 — next version is max(existing)+1; history max here is 2 → 3.
+            // Next version is max(existing)+1; history max here is 2 → 3.
             mockVersionRepo.findMaxVersionNumber.mockResolvedValue(2);
             mockTemplateRepo.updateWithVersion.mockResolvedValue(
                 createMockTemplateEntity({ currentVersionNumber: 3, version: 5 }),
@@ -563,7 +563,7 @@ describe('PromptManagementService', () => {
             expect(existing.tags).toEqual(['new', 'tags']);
         });
 
-        // TASK-331 doc-02 F5 — a status-only change is a mutating edit (no new
+        // A status-only change is a mutating edit (no new
         // PromptVersion snapshot, but the OCC write still proceeds).
         it('should apply a status change without creating a new version snapshot', async () => {
             const existing = createMockTemplateEntity({ status: 'DRAFT', version: 3 });
@@ -697,7 +697,7 @@ describe('PromptManagementService', () => {
             );
         });
 
-        // ─── CC-01 — transactional OCC writes ────────────────────────────
+        // ─── Transactional OCC writes ────────────────────────────
         // The version-history insert and the OCC compare-and-set must run in
         // ONE transaction. A rejected CAS (stale expectedVersion) must roll
         // back the version row so no orphan persists, and the next version
@@ -835,7 +835,7 @@ describe('PromptManagementService', () => {
             expect(result).toHaveLength(1);
         });
 
-        // TASK-331 doc-02 F5 — server-side status filter.
+        // Server-side status filter.
         it('should filter by status when provided', async () => {
             const mockQb = createMockQueryBuilder();
             mockTemplateRepo.$.mockReturnValue(mockQb);
@@ -1142,7 +1142,7 @@ describe('PromptManagementService', () => {
         });
     });
 
-    // ─── diffVersions (TASK-389 #14) ────────────────────────────
+    // ─── diffVersions ────────────────────────────
 
     describe('diffVersions', () => {
         const setupVersions = () => {
@@ -1356,7 +1356,7 @@ describe('PromptManagementService', () => {
         });
     });
 
-    // ─── TASK-294 DEF-C2: Authorization & tenant scope ───────────────────
+    // ─── Authorization & tenant scope ───────────────────
 
     describe('Authorization & tenant scope (DEF-C2)', () => {
         describe('updatePromptTemplate', () => {
@@ -1367,7 +1367,7 @@ describe('PromptManagementService', () => {
                 await expect(
                     service.updatePromptTemplate('tpl-X', { content: 'edit', expectedVersion: 1 } as never),
                 ).rejects.toThrow(NotFoundException);
-                // DEF-C2 + TASK-302: neither legacy nor CAS writers may fire on
+                // Neither legacy nor CAS writers may fire on
                 // a foreign-tenant row.
                 expect(mockTemplateRepo.update).not.toHaveBeenCalled();
                 expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
@@ -1435,7 +1435,7 @@ describe('PromptManagementService', () => {
             });
 
             it('returns null when a NON-admin caller is not the owner of a USER_PERSONAL template', async () => {
-                // TASK-388 #12 — the end-user (no manage:PromptTemplate) path stays
+                // The end-user (no manage:PromptTemplate) path stays
                 // strictly owner-bound: a peer's personal prompt is never disclosed.
                 abilityCan.mockReturnValue(false);
                 const personal = createMockTemplateEntity({
@@ -1451,7 +1451,7 @@ describe('PromptManagementService', () => {
                 expect(result).toBeNull();
             });
 
-            // TASK-388 #12 — an admin (manage:PromptTemplate) MAY read another
+            // An admin (manage:PromptTemplate) MAY read another
             // in-tenant user's USER_PERSONAL prompt (admin cross-owner read).
             it('returns the template when an ADMIN reads another user USER_PERSONAL in-tenant', async () => {
                 abilityCan.mockReturnValue(true);
@@ -1469,7 +1469,7 @@ describe('PromptManagementService', () => {
                 expect(result!.id).toBe('tpl-P');
             });
 
-            // TASK-388 #12 — admin cross-owner read does NOT cross tenants
+            // Admin cross-owner read does NOT cross tenants
             // (manage:PromptTemplate is tenant-scoped): a foreign-tenant personal
             // prompt is still hidden even for a manage-capable caller.
             it('returns null for a cross-tenant USER_PERSONAL even for an admin', async () => {
@@ -1615,7 +1615,7 @@ describe('PromptManagementService', () => {
         });
     });
 
-    // ─── TASK-331 doc-09: end-user readable templates (no admin ability) ─────
+    // ─── end-user readable templates (no admin ability) ─────
     describe('listAvailableForCaller (TASK-331 doc-09)', () => {
         it('scopes to tenant + ENABLED and ORs (TENANT_DEFAULT, DEPARTMENT_DEFAULT, own USER_PERSONAL)', async () => {
             const qb = createMockQueryBuilder();
@@ -1626,7 +1626,7 @@ describe('PromptManagementService', () => {
 
             expect(qb.Where).toHaveBeenCalledWith({ tenantId: 'tenant-1' });
             expect(qb.Where).toHaveBeenCalledWith({ resourceStatus: ResourceStatusType.ENABLED });
-            // CC-03 (TASK-336) — tenant + department defaults are publication-gated
+            // Tenant + department defaults are publication-gated
             // to non-DRAFT so clinicians never see admin drafts-in-progress.
             expect(qb.WhereOr).toHaveBeenCalledWith({ scope: 'TENANT_DEFAULT', status: { not: 'DRAFT' } });
             expect(qb.WhereOr).toHaveBeenCalledWith({ scope: 'DEPARTMENT_DEFAULT', status: { not: 'DRAFT' } });
@@ -1634,7 +1634,7 @@ describe('PromptManagementService', () => {
             expect(result).toHaveLength(1);
         });
 
-        // CC-03 (TASK-336) — publication status (DRAFT/PUBLISHED) is enforced on
+        // Publication status (DRAFT/PUBLISHED) is enforced on
         // the clinician resolution: tenant + department DEFAULT templates must be
         // non-DRAFT (PUBLISHED, or legacy/unset as a safe fallback), while the
         // caller's OWN personal overlays are returned regardless of status.
@@ -1693,7 +1693,7 @@ describe('PromptManagementService', () => {
         });
     });
 
-    // ─── TASK-294 DEF-C4 W5B-8: assign templates to department ───────────
+    // ─── assign templates to department ───────────
 
     describe('assignToDepartment (DEF-C4 W5B-8)', () => {
         it('delegates to DepartmentService.updatePromptConfig with the right fields', async () => {
@@ -1703,7 +1703,7 @@ describe('PromptManagementService', () => {
                 departmentId: 'dept-1',
                 newPatientPromptId: 'np-1',
                 revisitPromptId: 'rv-1',
-                // TASK-302 Stream D Phase E.2 — the AssignDepartmentPromptRequest
+                // The AssignDepartmentPromptRequest
                 // DTO now carries the target Department row's expectedVersion
                 // so the downstream `updatePromptConfig` can CAS against it.
                 expectedVersion: 7,
@@ -1725,7 +1725,7 @@ describe('PromptManagementService', () => {
         });
     });
 
-    // ─── TASK-328 A4: prompt quality/score test run ──────────────────────
+    // ─── prompt quality/score test run ──────────────────────
 
     describe('testPromptTemplate (TASK-328 A4)', () => {
         const buildSmrService = (
@@ -1747,12 +1747,12 @@ describe('PromptManagementService', () => {
                 httpMock as never,
                 configMock as never,
                 undefined, // secretsService (@Optional)
-                harnessPolicyService as never, // TASK-356 D-7 — HarnessPolicyService resolver
+                harnessPolicyService as never, // HarnessPolicyService resolver
             );
             return { svc, httpMock, configMock, harnessPolicyService };
         };
 
-        // ── TASK-356 D-7 (T-C8): prompt-test resolves provider+model via policy ──
+        // ── prompt-test resolves provider+model via policy ──
         it('resolves provider+model via the policy cascade and posts both to SMR', async () => {
             const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, content: 'Summarize {{topic}}' });
             mockTemplateRepo.findById.mockResolvedValue(existing);
@@ -1797,7 +1797,7 @@ describe('PromptManagementService', () => {
             expect(typeof result.testedAt).toBe('string');
         });
 
-        // ── TASK-369 Phase 3C: encrypt `lastTestOutput` on the test-run write ──
+        // ── encrypt `lastTestOutput` on the test-run write ──
         const buildSmrServiceWithSecrets = (responseData: Record<string, unknown>) => {
             const httpMock = createMockHttpService(responseData);
             const configMock = createMockConfigService();
@@ -1812,7 +1812,7 @@ describe('PromptManagementService', () => {
                 mockDatabaseService as never,
                 httpMock as never,
                 configMock as never,
-                secretsService as never, // TASK-369 SecretsService
+                secretsService as never, // SecretsService
                 { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'm' }) } as never,
             );
             return { svc, secretsService };
@@ -1915,7 +1915,7 @@ describe('PromptManagementService', () => {
             ).rejects.toThrow(OptimisticConcurrencyException);
         });
 
-        // ── TASK-331 doc-02 F8: deterministic composite rubric ──────────
+        // ── deterministic composite rubric ──────────
         describe('deterministic output rubric (TASK-331 doc-02 F8)', () => {
             const runWith = async (entityOverrides: Record<string, unknown>, output: string) => {
                 const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, ...entityOverrides });
@@ -1982,7 +1982,7 @@ describe('PromptManagementService', () => {
         });
     });
 
-    // ─── TASK-328 A4: repository-level pagination ────────────────────────
+    // ─── repository-level pagination ────────────────────────
 
     describe('listPromptTemplatesPaginated (TASK-328 A4)', () => {
         it('delegates to repository.findPaginated and returns {data,count,page,limit}', async () => {
@@ -2017,7 +2017,7 @@ describe('PromptManagementService', () => {
             expect(where).not.toHaveProperty('resourceStatus');
         });
 
-        // TASK-331 doc-02 F5 — server-side status filter folds into the where clause.
+        // Server-side status filter folds into the where clause.
         it('applies the status filter into the where clause', async () => {
             mockTemplateRepo.findPaginated.mockResolvedValue({ data: [], count: 0 });
 
@@ -2043,7 +2043,7 @@ describe('PromptManagementService', () => {
         });
     });
 
-    // ─── TASK-328 A4: usage analytics (groupBy dept / doctor / time) ─────
+    // ─── usage analytics (groupBy dept / doctor / time) ─────
 
     describe('getUsageAnalytics (TASK-328 A4)', () => {
         it('returns aggregates grouped by department, doctor, and day', async () => {
@@ -2093,7 +2093,7 @@ describe('PromptManagementService', () => {
         });
     });
 
-    // ─── TASK-407: tenant-scoped raw usage-record listing (Agent Jobs) ─────
+    // ─── tenant-scoped raw usage-record listing (Agent Jobs) ─────
 
     describe('listUsageRecords (TASK-407)', () => {
         const mkRecord = (overrides: Record<string, unknown> = {}) => ({
@@ -2168,7 +2168,7 @@ describe('PromptManagementService', () => {
         });
     });
 
-    // ─── TASK-356 Phase 6 (S1/S2) — doctor self-service (caller-ownership) ───
+    // ─── doctor self-service (caller-ownership) ───
     describe('doctor self-service: personal CRUD + preferred template', () => {
         const createMockUserProfileService = () => ({
             upsertByUserId: vi.fn(),
@@ -2192,7 +2192,7 @@ describe('PromptManagementService', () => {
                 undefined, // configService
                 undefined, // secretsService
                 undefined, // harnessPolicyService
-                profileSvc as never, // userProfileService (Phase 6)
+                profileSvc as never, // userProfileService
             );
         });
 
@@ -2289,7 +2289,7 @@ describe('PromptManagementService', () => {
         });
     });
 
-    // ─── TASK-388 #12 — admin per-user prompt scope (USER_PERSONAL/ownerUserId) ──
+    // ─── admin per-user prompt scope (USER_PERSONAL/ownerUserId) ──
     describe('TASK-388 #12 — admin USER_PERSONAL create + owner filters', () => {
         it('createPromptTemplate stamps scope=USER_PERSONAL + the provided ownerUserId (admin-for-user)', async () => {
             mockTemplateRepo.findByName.mockResolvedValue(null);

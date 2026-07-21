@@ -1,4 +1,4 @@
-"""TDD tests for IndicParlerProvider (TASK-488 Phase 4)."""
+"""TDD tests for IndicParlerProvider."""
 
 from __future__ import annotations
 
@@ -76,7 +76,7 @@ def test_protocol_and_streaming_flag():
     assert provider.native_streaming is True
 
 
-# --- TASK-495: internal-mirror load-branch resolution ---
+# --- Internal-mirror load-branch resolution ---
 
 
 def test_model_source_defaults_to_gated_hub():

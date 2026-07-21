@@ -1,5 +1,5 @@
 /**
- * useTenants Hook Tests (TASK-218 Priority 2, QA-006)
+ * useTenants Hook Tests
  *
  * @vitest-environment jsdom
  */
@@ -23,7 +23,7 @@ describe('useTenants', () => {
     const mockPost = vi.fn();
     const mockPatch = vi.fn();
     const mockDelete = vi.fn();
-    // TASK-302 Stream D OCC — `update` now reads the ETag and replays it as `If-Match`.
+    // `update` now reads the ETag and replays it as `If-Match`.
     const mockGetWithEtag = vi.fn();
     const mockPatchWithIfMatch = vi.fn();
 
@@ -218,7 +218,7 @@ describe('useTenants', () => {
     });
 
     describe('update', () => {
-        // TASK-302 Stream D OCC: `PATCH admin/tenants/:id` is `@RequiresIfMatch()`, so
+        // `PATCH admin/tenants/:id` is `@RequiresIfMatch()`, so
         // `update` reads the row's ETag and replays it as `If-Match` via
         // `patchWithIfMatch` (getWithEtag→patchWithIfMatch) rather than a plain PATCH
         // that would 428 live.

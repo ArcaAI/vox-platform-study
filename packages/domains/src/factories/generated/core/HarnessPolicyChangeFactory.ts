@@ -18,7 +18,7 @@ export interface CreateHarnessPolicyChangeProps extends BaseEntityFactoryCreateP
   beforeJson?: IHarnessPolicyChangeEntity['beforeJson'];
   afterJson: IHarnessPolicyChangeEntity['afterJson'];
   reason?: IHarnessPolicyChangeEntity['reason'];
-  // TASK-369 Phase 3D — when supplied (by the service, after Vault-Transit
+  // When supplied (by the service, after Vault-Transit
   // encryption), the plaintext beforeJson/afterJson are replaced with a redaction
   // sentinel before persistence (per field). Omitted ⇒ legacy plaintext row.
   encryptedBeforeJson?: IHarnessPolicyChangeEntity['encryptedBeforeJson'];

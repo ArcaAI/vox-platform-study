@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - Provenance / Citations Types (TASK-330 Phase 1, Lane J)
+ * @arcaai/vox - Provenance / Citations Types
  *
  * The clinical-documentation harness emits, alongside each generated SOAP
  * note, a `SummaryMeta.citationsMap` linking every drafted claim back to the

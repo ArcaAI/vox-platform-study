@@ -1,5 +1,5 @@
 /**
- * TDD screen tests for frame 25 (tenant half — Tenant profile), TASK-440
+ * TDD screen tests for frame 25 (tenant half — Tenant profile),
  * redesign: three tabs (Organization identity from GET /tenant/me, Plan & usage
  * from GET /entitlements/me, Settings with a category sub-nav over the editable
  * tenant/me/config rows). Settings saves send per-row If-Match over PATCH
@@ -28,7 +28,7 @@ const ELEVATED_SESSION: SafeSession = {
     effectiveTenantId: 'ten-1',
 };
 
-/** BUG-005 — a non-elevated session: a real end-user, or an operator impersonating one. */
+/** A non-elevated session: a real end-user, or an operator impersonating one. */
 const NON_ADMIN_SESSION: SafeSession = {
     user: { id: 'admin-1', username: 'super_admin', email: 'root@hope.dev', roles: ['GLOBAL_ADMIN'], tenantId: null },
     isElevated: true,
@@ -222,7 +222,7 @@ describe('TenantProfileScreen', () => {
         renderWithProviders(<TenantProfileScreen />, { searchParams: '?tab=plan' });
 
         const plan = await screen.findByRole('region', { name: 'Plan & usage' });
-        // BUG-005 — entitlements now fetch only after the session resolves the
+        // Entitlements now fetch only after the session resolves the
         // caller as elevated, so the panel populates one tick later.
         expect(await within(plan).findByText('Users')).toBeDefined();
         expect(within(plan).getByText('12 / 25')).toBeDefined();
@@ -354,7 +354,7 @@ describe('TenantProfileScreen', () => {
     });
 
     /**
-     * BUG-005 Issue 2 — while impersonating (or for a real end-user), the
+     * While impersonating (or for a real end-user), the
      * screen must show only basic org identity + a read-only Settings tab;
      * "Plan & usage" (limits/meters/entitlements) must not render or fetch.
      */

@@ -40,7 +40,7 @@ export interface BreakGlassDialogProps {
 }
 
 /**
- * Break-glass step-up (matrix rows 17/18, TASK-409): destructive RBAC
+ * Break-glass step-up (matrix rows 17/18): destructive RBAC
  * operations re-collect the admin password and the target's exact name, sent
  * in the request BODY. Missing credentials -> 428 server-side.
  */

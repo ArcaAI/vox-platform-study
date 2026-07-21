@@ -39,11 +39,11 @@ const createMockDnaReportRepository = () => ({
     findAll: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
-    // TASK-326 X7 / D-2 — `updateDnaReport` now writes via Compare-And-Set
+    // `updateDnaReport` now writes via Compare-And-Set
     // (`updateWithVersion`). Legacy `.update` stays on the mock for assertions
     // that confirm it is NOT called.
     updateWithVersion: vi.fn(),
-    // TASK-331 doc-02 F6 — repository-level pagination for the admin list.
+    // Repository-level pagination for the admin list.
     findPaginated: vi.fn().mockResolvedValue({ data: [], count: 0 }),
     $: vi.fn(),
 });
@@ -53,20 +53,20 @@ const createMockDnaVersionRepository = () => ({
     create: vi.fn(),
 });
 
-// TASK-328 A5 — usage-record source for the aggregate dashboard.
+// Usage-record source for the aggregate dashboard.
 const createMockDnaUsageRecordRepository = () => ({
     countSince: vi.fn().mockResolvedValue(0),
     getDailyUsageCounts: vi.fn().mockResolvedValue([]),
     findRecent: vi.fn().mockResolvedValue([]),
 });
 
-// TASK-305 D.5.3 — required for the `assertUserBelongsToTenant` guard run
+// Required for the `assertUserBelongsToTenant` guard run
 // during `generateDnaReport` and `getDnaReport`.
 const createMockUserRoleAssignmentRepository = () => ({
     findFirst: vi.fn(),
 });
 
-// TASK-305 Phase F — membership guard now also reads the UserDepartment join
+// Membership guard now also reads the UserDepartment join
 // table and the User table (service-account exemption).
 const createMockUserDepartmentRepository = () => ({
     findFirst: vi.fn(),
@@ -74,7 +74,7 @@ const createMockUserDepartmentRepository = () => ({
 
 const createMockUserRepository = () => ({
     findFirst: vi.fn(),
-    // TASK-424 — id→username resolution: batch (`findAll`) for the paginated
+    // Id→username resolution: batch (`findAll`) for the paginated
     // admin list and single (`findById`) for the doctor detail read.
     findAll: vi.fn().mockResolvedValue([]),
     findById: vi.fn(),
@@ -188,7 +188,7 @@ describe('DnaWritingStyleService', () => {
             }
         });
 
-        // TASK-305 D.5.3 — default to a permissive in-tenant assignment so
+        // Default to a permissive in-tenant assignment so
         // legacy tests (which don't care about the new doctor-membership
         // guard) keep passing.
         mockUserRoleAssignmentRepo.findFirst.mockResolvedValue({
@@ -197,7 +197,7 @@ describe('DnaWritingStyleService', () => {
             tenantId: 'tenant-1',
             resourceStatus: ResourceStatusType.ENABLED,
         });
-        // TASK-305 Phase F — default to a present in-tenant department so the
+        // Default to a present in-tenant department so the
         // role+department membership guard passes for the happy path.
         mockUserDepartmentRepo.findFirst.mockResolvedValue({
             id: 'ud-doctor-1',
@@ -344,7 +344,7 @@ describe('DnaWritingStyleService', () => {
             expect(result).toBeNull();
         });
 
-        // TASK-424 — human-readable label resolution for the detail read.
+        // Human-readable label resolution for the detail read.
         it('resolves doctorUsername when the user exists', async () => {
             mockReportRepo.findLatestForDoctor.mockResolvedValue(
                 createMockReportEntity({ doctorId: 'doctor-id-1' }),
@@ -390,7 +390,7 @@ describe('DnaWritingStyleService', () => {
     // ─── updateDnaReport ────────────────────────────────────────
 
     describe('updateDnaReport', () => {
-        // ─── TASK-326 X7 / D-2 — optimistic concurrency control ──────────
+        // ─── optimistic concurrency control ──────────
         // The final persistence write is a Compare-And-Set against the row's
         // `_version` OCC token (DISTINCT from `currentVersionNumber` / the
         // DnaVersion history). The admin PATCH route folds the `If-Match`
@@ -840,7 +840,7 @@ describe('DnaWritingStyleService', () => {
     // ─── getVersions ────────────────────────────────────────────
 
     describe('getVersions', () => {
-        // TASK-305 D.5.3 — `getVersions` now loads the parent report first to
+        // `getVersions` now loads the parent report first to
         // enforce the tenant scope, so each test must seed `findById` with a
         // report in the caller's tenant.
         beforeEach(() => {
@@ -1062,7 +1062,7 @@ describe('DnaWritingStyleService', () => {
             await expect(freshService.listReports()).rejects.toThrow('Tenant ID is required');
         });
 
-        // TASK-417 — the retired SUPER_ADMIN role string grants NO elevation:
+        // The retired SUPER_ADMIN role string grants NO elevation:
         // such a caller is treated like any non-admin (tenant context required).
         it('does NOT treat the retired SUPER_ADMIN role as elevated (TASK-417)', async () => {
             mockClsService.get.mockImplementation((key: string) => {
@@ -1191,7 +1191,7 @@ describe('DnaWritingStyleService', () => {
         });
     });
 
-    // ─── listReportsPaginated (TASK-331 doc-02 F6) ───────────────
+    // ─── listReportsPaginated ───────────────
 
     describe('listReportsPaginated', () => {
         const buildWith = (clsImpl: (key: string) => unknown) => {
@@ -1290,7 +1290,7 @@ describe('DnaWritingStyleService', () => {
             expect(where).not.toHaveProperty('tenantId');
         });
 
-        // CC-02 (TASK-336) — a super-admin who has selected an active tenant
+        // CC-02 — a super-admin who has selected an active tenant
         // (X-Tenant-Id → CLS `tenantId`) but omits the `?tenantId` query param
         // must see ONLY that tenant's reports, not every tenant's.
         it('CC-02: scopes a global admin with an active tenant header and no explicit tenantId to the active tenant', async () => {
@@ -1331,7 +1331,7 @@ describe('DnaWritingStyleService', () => {
             await expect(tenantAdmin.listReportsPaginated()).rejects.toThrow(BadRequestException);
         });
 
-        // TASK-424 — human-readable label resolution for the admin list.
+        // Human-readable label resolution for the admin list.
         it('resolves doctorUsername for rows whose doctor exists and leaves it undefined otherwise', async () => {
             mockReportRepo.findPaginated.mockResolvedValue({
                 data: [
@@ -1444,7 +1444,7 @@ describe('DnaWritingStyleService', () => {
     });
 
     /**
-     * TASK-305 D.5.3 — Multi-tenant isolation for DnaWritingStyleService.
+     * Multi-tenant isolation for DnaWritingStyleService.
      *
      * Audit C-9 — DNA writing style is derived from a doctor's PHI (transcripts,
      * summaries, prior notes). Allowing a Tenant-A admin to:
@@ -1592,7 +1592,7 @@ describe('DnaWritingStyleService', () => {
         });
     });
 
-    // ─── TASK-356 Phase 6 (S3) — per-doctor DNA settings (toggle) ───────────
+    // ─── per-doctor DNA settings (toggle) ───────────
     describe('DNA settings (Phase 6 doctor self-service toggle)', () => {
         const createMockPipelinePolicyService = () => ({
             getDnaSettings: vi.fn(),

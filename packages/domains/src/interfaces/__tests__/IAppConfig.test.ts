@@ -1,5 +1,5 @@
 /**
- * Compile-time type assertions for IAppConfig (TASK-302 Stream C Phase 0 Task 0.1).
+ * Compile-time type assertions for IAppConfig.
  *
  * IAppConfig is a type — there is no runtime to test. This file uses TypeScript
  * conditional types as the assertion harness; if either declaration is removed

@@ -40,7 +40,7 @@ export interface StatusBadgeProps {
 
 /**
  * Status indicator that is never color-only: always renders an (optional) icon
- * plus a text label alongside the semantic color (TASK-372 §3.1.3, A3).
+ * plus a text label alongside the semantic color.
  */
 export function StatusBadge({ label, colorRole = 'neutral', icon, className }: StatusBadgeProps) {
   return (

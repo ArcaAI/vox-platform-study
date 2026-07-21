@@ -1,5 +1,5 @@
 /**
- * buildSmrGeneratePayload — structured SOAP output forwarding (TASK-330 Phase 1)
+ * buildSmrGeneratePayload — structured SOAP output forwarding
  *
  * Proves the assembled `responseFormat` (json_schema) actually reaches the SMR
  * provider payload for non-Ollama providers, and is suppressed for Ollama

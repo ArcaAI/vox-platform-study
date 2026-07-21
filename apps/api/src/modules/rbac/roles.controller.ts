@@ -20,21 +20,20 @@ import {
  * Manages roles in the RBAC system.
  * Read/list endpoints accept `read` or `manage` on 'Role'; mutations require `manage`.
  *
- * TASK-307 W6.3 (audit C-10 / F-1 / H-9) — every Prisma call used to live
+ * Every Prisma call used to live
  * here. The controller is now a thin transport-layer wrapper around
  * `IRbacRoleService`; direct `CoreDatabaseService` access is forbidden
- * by the W6.4 ESLint rule.
+ * by ESLint rule.
  */
 @ApiTags('RBAC - Roles')
 @ApiBearerAuth()
 @Controller('admin/rbac/roles')
-// Phase 0 Item 3 (TASK-302 Stream A): explicit permission required.
 @CanManage('Role')
 export class RolesController {
   constructor(
     @Inject(IRbacRoleService)
     private readonly roleService: IRbacRoleService,
-    // TASK-444 — members listing (users-by-role) lives on the sanctioned
+    // Members listing (users-by-role) lives on the sanctioned
     // user-role-assignment service; the controller stays transport-only.
     @Inject(IUserRoleAssignmentService)
     private readonly userRoleAssignmentService: IUserRoleAssignmentService,
@@ -44,7 +43,7 @@ export class RolesController {
    * List all roles
    */
   @Get()
-  // AC-03 (TASK-336): read/list reachable by holders of decomposed `read:Role`
+  // Read/list reachable by holders of decomposed `read:Role`
   // (e.g. TENANT_ADMIN per seed) OR the `manage:Role` alias. Mutations below
   // stay `manage`-only.
   @CanAny(['read', 'Role'], ['manage', 'Role'])
@@ -81,7 +80,7 @@ export class RolesController {
   }
 
   /**
-   * TASK-444 — list the users assigned this role (members). The role is a
+   * List the users assigned this role (members). The role is a
    * global resource (existence check → 404); the member rows are tenant-scoped
    * by the service layer, so a tenant admin sees only their tenant's holders
    * and cross-tenant members are simply absent (404-over-403 posture: nothing
@@ -126,14 +125,14 @@ export class RolesController {
   }
 
   /**
-   * TASK-501 — clone a role (SYSTEM or CUSTOM) into a new CUSTOM role,
+   * Clone a role (SYSTEM or CUSTOM) into a new CUSTOM role,
    * copying its policy set. Declared `create:Role` (overriding the class-level
    * `manage:Role` via getAllAndOverride) because a clone only ever CREATES a
    * CUSTOM role — the ability the seeded tenant grant (`rbac-tenant-manage`:
    * `create Role { isSystemRole: false }`) already holds. This is what makes
-   * the TASK-501 requirement "any admin may clone" true for tenant admins;
-   * requiring `manage:Role` (global admins only) locked them out (TASK-534 e2e
-   * G9). Owner may reverse to global-only by restoring `@CanManage('Role')`.
+   * "any admin may clone" true for tenant admins;
+   * requiring `manage:Role` (global admins only) locked them out. Owner may
+   * reverse to global-only by restoring `@CanManage('Role')`.
    */
   @Post(':id/clone')
   @CanCreate('Role')
@@ -197,7 +196,7 @@ export class RolesController {
   @ApiResponse({ status: 404, description: 'Role not found' })
   @ApiResponse({ status: 428, description: 'Break-glass confirmation (password + confirmationName) is required' })
   async remove(@Param('id') id: string, @Body() breakGlass?: BreakGlassDto): Promise<void> {
-    // TASK-409 — role deletion demands the break-glass step-up (DELETE body:
+    // Role deletion demands the break-glass step-up (DELETE body:
     // `{ password, confirmationName: <role name> }`).
     await this.roleService.softDelete(id, breakGlass);
   }
@@ -233,7 +232,7 @@ export class RolesController {
   @ApiResponse({ status: 404, description: 'Policy not found' })
   @ApiResponse({ status: 428, description: 'Break-glass confirmation (password + confirmationName) is required' })
   async removePolicy(@Param('roleId') roleId: string, @Param('policyId') policyId: string, @Body() breakGlass?: BreakGlassDto): Promise<void> {
-    // TASK-409 — detach demands the break-glass step-up; the confirmation
+    // Detach demands the break-glass step-up; the confirmation
     // name is the POLICY name (the object being detached).
     await this.roleService.removePolicy(roleId, policyId, breakGlass);
   }
@@ -250,7 +249,7 @@ export class RolesController {
     createdAt: Date;
     updatedAt: Date;
     RolePolicies: { Policy: { id: string; name: string } | null; priority: number }[];
-    // TASK-444 — present on the read paths only (findAll/findOne merge the
+    // Present on the read paths only (findAll/findOne merge the
     // tenant-scoped `_count` include; mutations return no count).
     _count?: { UserRoleAssignments: number };
   }): RoleResponse {

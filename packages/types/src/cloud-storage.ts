@@ -1,5 +1,5 @@
 /**
- * Cloud blob-storage provider types (TASK-318 / W1).
+ * Cloud blob-storage provider types.
  *
  * Shared across packages so the backend storage abstraction, the SDK and the
  * admin UI agree on a single set of provider/topology identifiers. The string

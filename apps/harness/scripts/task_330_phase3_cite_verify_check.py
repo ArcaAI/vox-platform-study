@@ -1,4 +1,4 @@
-"""TASK-330 Phase 3 — live StrictCitations + citation_verify proof (harness layer).
+"""Live StrictCitations + ``citation_verify`` proof (harness layer).
 
 Exercises the cite->verify half of the loop with the REAL Phase-3 code paths and
 REAL models, against the LIVE seeded tenant-A hypertension chunk:

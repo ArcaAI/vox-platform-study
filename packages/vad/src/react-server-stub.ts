@@ -8,8 +8,6 @@
  * server and would otherwise crash with an opaque `ReferenceError`.
  *
  * Use the package from a Client Component (a file with `"use client"`).
- *
- * TASK-300 C-XCUT-2.
  */
 
 throw new Error(

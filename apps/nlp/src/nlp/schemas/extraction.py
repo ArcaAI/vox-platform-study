@@ -1,4 +1,4 @@
-"""Schemas for the document extraction endpoint (TASK-344 Workstream A2)."""
+"""Schemas for the document extraction endpoint."""
 
 from pydantic import BaseModel, ConfigDict, Field
 

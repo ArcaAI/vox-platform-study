@@ -1,7 +1,7 @@
 import type { CorePrismaClient } from '../../../client';
 
 /**
- * AiRuntimeProfile Seed (TASK-524 — config-plane core, GAP-C2)
+ * AiRuntimeProfile Seed (config-plane core)
  *
  * DELIBERATELY EMPTY — and that emptiness is the feature, not an omission.
  *
@@ -15,10 +15,9 @@ import type { CorePrismaClient } from '../../../client';
  *           → the consuming service's own pydantic/env default
  *
  * With ZERO rows seeded, every resolution falls straight through to the last
- * tier — so gateway-forwarded requests are byte-identical to today's. That is
- * the ticket §7 silent-change guard: seeding any value here would silently
- * override a live service default, which is exactly the D-07 failure mode this
- * program is correcting.
+ * tier — so gateway-forwarded requests are byte-identical to today's. This is
+ * a deliberate silent-change guard: seeding any value here would silently
+ * override a live service default without the caller changing anything.
  *
  * A global admin creates profiles deliberately through
  * `PUT /api/v1/admin/ai-runtime-profiles`; the seed never presumes one.

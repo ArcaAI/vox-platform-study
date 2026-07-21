@@ -4,7 +4,7 @@
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 
-// TASK-490 — voice profiles are biometric PHI stamped with their enrollment
+// Voice profiles are biometric PHI stamped with their enrollment
 // tenant (`UserVoiceProfile.tenantId`), so the entity is tenant-scoped.
 export interface IUserVoiceProfileEntity extends IBaseTenantEntity {
   userId: string;

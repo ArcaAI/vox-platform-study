@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, NotFoundException } from '@nes
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TenantBucketService } from '../tenant-bucket.service';
 
-// TASK-497 D4 — inject an "unlimited" test tier (storageQuotaBytes: null) so
+// Inject an "unlimited" test tier (storageQuotaBytes: null) so
 // the "leave quotaBytes null" branch is exercised without depending on a real
 // plan happening to carry a null default.
 vi.mock('../../entitlements/entitlements.constants', async (importOriginal) => {
@@ -148,7 +148,7 @@ describe('TenantBucketService', () => {
         vi.clearAllMocks();
 
         // Default: the physical bucket already exists, so data-plane ops do
-        // not trigger the on-demand provisioning path (TASK-426).
+        // not trigger the on-demand provisioning path.
         mockBlobStorage.bucketExists.mockResolvedValue(true);
 
         mockClsService.get.mockImplementation((key: string) => {
@@ -203,7 +203,7 @@ describe('TenantBucketService', () => {
             expect(result).toEqual([]);
         });
 
-        // TASK-430 — an unscoped GLOBAL_ADMIN (no working tenant) lists buckets
+        // An unscoped GLOBAL_ADMIN (no working tenant) lists buckets
         // across ALL tenants instead of getting "Tenant ID is required".
         it('lists buckets cross-tenant for an unscoped GLOBAL_ADMIN', async () => {
             mockClsService.get.mockImplementation((key: string) => {
@@ -470,7 +470,7 @@ describe('TenantBucketService', () => {
         });
     });
 
-    // TASK-331 doc-03 F7 — object LIST on the admin plane (by bucket id).
+    // Object LIST on the admin plane (by bucket id).
     describe('listObjects', () => {
         it('should list provider objects for a tenant-owned bucket', async () => {
             const bucket = createMockBucketEntity({ id: 'bucket-1', name: 'hope-audio-arcaai' });
@@ -502,7 +502,7 @@ describe('TenantBucketService', () => {
         });
     });
 
-    // TASK-426 — seeded bucket rows may predate the physical bucket (the seed
+    // Seeded bucket rows may predate the physical bucket (the seed
     // creates DB rows only). Data-plane ops must provision the provider bucket
     // on demand instead of failing with NoSuchBucket.
     describe('on-demand provider bucket provisioning (TASK-426)', () => {
@@ -594,7 +594,7 @@ describe('TenantBucketService', () => {
         });
     });
 
-    // TASK-331 doc-03 F7 — object UPLOAD on the admin plane (by bucket id).
+    // Object UPLOAD on the admin plane (by bucket id).
     describe('uploadObject', () => {
         it('should upload the object via the provider and broadcast ResourceCreated', async () => {
             const bucket = createMockBucketEntity({ id: 'bucket-1', name: 'hope-audio-arcaai' });
@@ -814,7 +814,7 @@ describe('TenantBucketService', () => {
         });
     });
 
-    // TASK-497 D4 — plan storageQuotaBytes -> primary system bucket quotaBytes.
+    // Plan storageQuotaBytes -> primary system bucket quotaBytes.
     describe('applyPlanStorageQuota', () => {
         const recordingsBucket = (quotaBytes: bigint | null = null) => ({
             id: 'bucket-recordings',

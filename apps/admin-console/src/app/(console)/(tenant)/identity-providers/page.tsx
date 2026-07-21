@@ -3,7 +3,7 @@ import { IdentityProvidersScreen } from '@/features/identity-providers/component
 
 export const metadata: Metadata = { title: 'Identity Providers' };
 
-/** TASK-498 P4 — tenant-scoped external identity provider (OIDC) administration (tier 30-49). */
+/** Tenant-scoped external identity provider (OIDC) administration (tier 30-49). */
 export default function IdentityProvidersPage() {
     return <IdentityProvidersScreen />;
 }

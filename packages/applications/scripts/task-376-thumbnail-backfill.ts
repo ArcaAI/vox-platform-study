@@ -1,5 +1,5 @@
 /**
- * TASK-376 — image thumbnail backfill (idempotent / best-effort / non-destructive).
+ * Image thumbnail backfill (idempotent / best-effort / non-destructive).
  *
  * Finds existing IMAGE `Media` whose `<key>.thumb.webp` derivative is missing
  * from object storage and generates + stores it by REUSING the production

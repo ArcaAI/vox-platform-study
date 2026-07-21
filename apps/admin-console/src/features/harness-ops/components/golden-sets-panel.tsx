@@ -323,7 +323,7 @@ function GoldenSetDetailDrawer({
 }
 
 /**
- * TASK-532 B-5 (M-09 tenant leg) — golden datasets on the harness observability
+ * Golden datasets on the harness observability
  * board. Reads are `read:HarnessEval`; both create flows are gated on
  * `manage:HarnessEval` (client-side visibility only — the gateway enforces).
  */

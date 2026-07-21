@@ -52,7 +52,7 @@ const createMockEventEmitter = () => ({
     emit: vi.fn(),
 });
 
-// TASK-330 Phase 1 (Lane G) — outbound harness gate adapter. When the
+// (Lane G) — outbound harness gate adapter. When the
 // consultation's pipelineConfig.harnessEnabled flag is set, the handler routes
 // to HarnessGatewayService.start instead of the legacy BullMQ summary job.
 const createMockHarnessGatewayService = () => ({
@@ -60,7 +60,7 @@ const createMockHarnessGatewayService = () => ({
     signalApproval: vi.fn().mockResolvedValue({ ok: true }),
 });
 
-// TASK-330 Phase 1 (Lane G) — the handler loads the triggering transcript's
+// (Lane G) — the handler loads the triggering transcript's
 // content so it can forward it to the harness workflow (NER + sensors run on it).
 const createMockContextItemRepository = () => ({
     findById: vi.fn().mockResolvedValue({ id: 'ctx-transcript-001', content: 'Patient reports chest pain.' }),
@@ -78,7 +78,7 @@ const createMockPromptResolutionService = () => ({
     ),
 });
 
-// TASK-356 Phase 5 (Pillar B) — the realtime cascade resolver. Defaults mirror
+// (Pillar B) — the realtime cascade resolver. Defaults mirror
 // DEFAULT_PIPELINE_CONFIG (auto-summary/NER on, harness off) so the cascade is a
 // no-op unless a test overrides it; `resolvePreferredPromptTemplateId` defaults
 // to null (no doctor preference).
@@ -93,7 +93,7 @@ const createMockConfigResolver = () => ({
     resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null),
 });
 
-// Mock ClsService — TASK-305 D.9 follow-up. EventEmitter2 async handlers
+// Mock ClsService. EventEmitter2 async handlers
 // run in their own microtask context that does NOT inherit the caller's
 // AsyncLocalStorage scope, so the handler must explicitly re-establish CLS.
 // This mock runs the cls.run callback inline so existing tests stay
@@ -326,7 +326,7 @@ describe('ConsultationEventHandler', () => {
     });
 
     // =========================================================================
-    // handleTranscriptionCreated — Prompt Resolution (GAP-3)
+    // handleTranscriptionCreated — Prompt Resolution
     // =========================================================================
 
     describe('handleTranscriptionCreated — prompt resolution (GAP-3)', () => {
@@ -817,7 +817,7 @@ describe('ConsultationEventHandler', () => {
     });
 
     // =========================================================================
-    // TASK-305 D.9 follow-up — CLS rebind + fail-closed guard
+    // CLS rebind + fail-closed guard
     //
     // EventEmitter2 async handlers run in their own microtask context that
     // does NOT inherit the caller's AsyncLocalStorage scope. Without these
@@ -955,7 +955,7 @@ describe('ConsultationEventHandler', () => {
     });
 
     // =========================================================================
-    // TASK-330 Phase 1 (Lane G) — harness flag routing
+    // (Lane G) — harness flag routing
     //
     // When `metadata.pipelineConfig.harnessEnabled` is true, the transcription
     // handler routes auto-generation to the durable harness workflow
@@ -1067,7 +1067,7 @@ describe('ConsultationEventHandler', () => {
     });
 
     // =========================================================================
-    // TASK-356 Phase 5 (Pillar B) — realtime cascade + preferred-prompt threading
+    // (Pillar B) — realtime cascade + preferred-prompt threading
     //
     // The handler now resolves the realtime toggles through the PipelinePolicy
     // cascade (ConfigResolver: doctor → department → tenant → SYSTEM default)

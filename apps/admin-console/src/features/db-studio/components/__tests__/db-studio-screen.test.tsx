@@ -1,7 +1,6 @@
 /**
- * Frame 19 — Database Studio screen (renamed from Prisma Studio by TASK-532
- * M-08; the gateway path stays /admin/pstudio). The status endpoint decides
- * between a
+ * Frame 19 — Database Studio screen (renamed from Prisma Studio; the
+ * gateway path stays /admin/pstudio). The status endpoint decides between a
  * truthful disabled card (never a broken iframe) and the guarded iframe shell
  * around the gateway-served studio; error and loading states round it out.
  */

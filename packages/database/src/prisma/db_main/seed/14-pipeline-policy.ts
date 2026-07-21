@@ -2,7 +2,7 @@ import type { CorePrismaClient } from '../../../client';
 import { SEED_TENANT_ID, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 
 /**
- * PipelinePolicy Seed (TASK-356 Phase 5 — Realtime cascade, Pillar B)
+ * PipelinePolicy Seed (Realtime cascade)
  *
  * The realtime-pipeline toggle cascade (auto-summary / auto-NER / harness-vs-
  * legacy routing) is resolved by `ConfigResolver`
@@ -29,10 +29,10 @@ import { SEED_TENANT_ID, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants
  * create — NOT a blind upsert, because the (tenantId, scope, scopeId) unique index
  * treats a NULL `scopeId` as DISTINCT) and records a WORM `PipelinePolicyChange`
  * (`beforeJson = null`) for every row it creates. `dnaStyleEnabled` is left NULL
- * (per-doctor storage written in Phase 6).
+ * (per-doctor storage written separately).
  *
  * Scope guard: this seed touches NO HarnessPolicy gating/threshold/safety columns
- * (TASK-358/359) — it only seeds the realtime-toggle cascade rows.
+ * — it only seeds the realtime-toggle cascade rows.
  */
 
 /** Toggle snapshot mirrored from the runtime PipelinePolicyService change record. */

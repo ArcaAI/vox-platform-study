@@ -36,7 +36,7 @@ import { isCloudByoProvider } from './constants';
 import { AiProviderConnectionResponse, UpsertAiProviderConnectionRequest } from './dto';
 
 /**
- * TASK-524 — provider-connection service (GAP-C1).
+ * Provider-connection service.
  *
  * Owns WHERE a serving provider lives and HOW to authenticate to it, as the
  * DB control plane replacing per-service env configuration.
@@ -100,8 +100,8 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
         });
       }
       // Encrypt only when the caller actually supplied a key — and only AFTER
-      // the precondition verdict above (TASK-534 e2e G3: encrypting first
-      // turned a stale-If-Match 412 into a 500 whenever Transit was down).
+      // the precondition verdict above (encrypting first would turn a
+      // stale-If-Match 412 into a 500 whenever Transit was down).
       const secret = dto.apiKey !== undefined ? await this.encryptKey(dto.apiKey) : undefined;
       const entity = AiProviderConnectionFactory.CreateAiProviderConnection({
         tenantId: scopedTenantId,
@@ -136,8 +136,8 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
     if (dto.expectedVersion !== existing.version) {
       // Fast-fail the CAS against the row just read, BEFORE any Vault call —
       // `updateWithVersion` below remains the atomic backstop for races.
-      // (TASK-534 e2e G3: pre-fix, a stale precondition with an `apiKey` in the
-      // body reached Transit first and surfaced as a 500 when Vault was down.)
+      // (Otherwise a stale precondition with an `apiKey` in the body would
+      // reach Transit first and surface as a 500 when Vault was down.)
       throw new OptimisticConcurrencyException('AiProviderConnection', existing.id, {
         expectedVersion: dto.expectedVersion,
         currentVersion: existing.version,
@@ -188,7 +188,7 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
     const tx = this.crossTenantLane(scopedTenantId);
     const existing = await this.connectionRepository.findByTenantAndProvider(scopedTenantId, provider, tx);
     if (!existing) {
-      // TASK-526: an absent row is a 404, matching the frozen §3.6 contract and
+      // An absent row is a 404, matching the frozen §3.6 contract and
       // the `TenantTtsConfigService.removeCredential` precedent. A cross-tenant
       // row reads as absent through the scope extension, so the same 404 hides
       // existence — the house posture, not a 400 "bad argument".
@@ -227,7 +227,7 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
   }
 
   /**
-   * TASK-526 — the BYO injection resolver (see the interface for the full
+   * The BYO injection resolver (see the interface for the full
    * contract). Mirrors `TenantTtsConfigService.resolveProviderOverrides` with
    * ONE deliberate improvement: the per-credential catch is not silent.
    */
@@ -305,10 +305,9 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
     try {
       return await encryptSecretField(this.secretsService, plaintext);
     } catch (err) {
-      // TASK-534 e2e G3 — a Transit failure (Vault down / provider without
-      // Transit support) is a dependency outage, not an internal fault: map to
-      // 503 so the client retries rather than filing a 500. Never log or echo
-      // the plaintext.
+      // A Transit failure (Vault down / provider without Transit support) is a
+      // dependency outage, not an internal fault: map to 503 so the client
+      // retries rather than filing a 500. Never log or echo the plaintext.
       this.logger.warn(`Transit encryption unavailable for provider-key write: ${err instanceof Error ? err.message : String(err)}`);
       throw new ServiceUnavailableException(
         'Secret encryption is temporarily unavailable; the key was not stored. Retry once Vault Transit is reachable.',

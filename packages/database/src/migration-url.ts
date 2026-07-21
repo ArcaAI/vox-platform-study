@@ -1,8 +1,6 @@
 /**
  * Pure resolver for Prisma Migrate's connection URL.
  *
- * Background — TASK-302 Stream C Phase 2A
- *
  *   `DATABASE_URL` is the **runtime** connection string. In production it
  *   points at the PgBouncer pool (port 6432) in transaction mode.
  *   `DIRECT_URL` is the **migrations-only** connection string and points
@@ -17,8 +15,6 @@
  *   This function encapsulates that selection so it can be tested in
  *   isolation from `prisma.config.ts` (which the Prisma CLI loads in
  *   its own ts-node context).
- *
- * @see docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md
  */
 
 export type EnvLike = Pick<NodeJS.ProcessEnv, 'DATABASE_URL' | 'DIRECT_URL'>;

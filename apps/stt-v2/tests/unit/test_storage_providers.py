@@ -1,4 +1,4 @@
-"""Unit tests for the pluggable storage providers (TASK-318 W3-C).
+"""Unit tests for the pluggable storage providers.
 
 Covers:
 * ``factory.build_provider`` returning S3 vs Azure providers per ``provider``.

@@ -1,7 +1,7 @@
 /**
  * SummaryMetaFactory + SummaryMetaEntityMapper — cacheHit/qualityScore threading.
  *
- * TASK-329 (P6 — Summarization completeness): the Prisma columns
+ * Summarization completeness: the Prisma columns
  * `SummaryMeta.cacheHit` (Boolean?) and `SummaryMeta.qualityScore` (Float?)
  * already exist; this slice threads them through the domain layer
  * (entity ⇄ model) so the application/API layers can surface them.

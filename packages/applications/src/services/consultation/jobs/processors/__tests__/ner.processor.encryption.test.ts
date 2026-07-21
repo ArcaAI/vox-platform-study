@@ -1,5 +1,5 @@
 /**
- * NerProcessor — TASK-369 Phase 3C field-encryption wiring.
+ * NerProcessor — field-encryption wiring.
  *
  * The async NER pipeline persists NamedEntity rows (recognized PHI spans). This
  * verifies the processor encrypts each entity via

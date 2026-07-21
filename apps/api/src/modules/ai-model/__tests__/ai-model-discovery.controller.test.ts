@@ -1,5 +1,5 @@
 /**
- * TASK-528 §5.2 — AI model discovery (merge view + explicit register).
+ * AI model discovery (merge view + explicit register).
  *
  * Unit level: the SMR probe transport and `AiModelService` are stubbed, so the
  * assertions are about the MERGE RULE and the register mapping, not HTTP.

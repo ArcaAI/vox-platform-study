@@ -22,7 +22,7 @@ from tts_v2.providers.base import AudioChunk, AudioFormat, SynthesisRequest
 logger = get_logger(__name__)
 
 _CHUNK_BYTES = 4096
-# v2 endpoint required for the incremental TextStream input mode (TASK-492).
+# v2 endpoint required for the incremental TextStream input mode.
 _TEXT_STREAM_ENDPOINT = "wss://{region}.tts.speech.microsoft.com/cognitiveservices/websocket/v2"
 
 
@@ -128,7 +128,7 @@ class AzureSpeechProvider:
 
         await asyncio.to_thread(_open)
 
-    # ── Native duplex (TextStream) — TASK-492 ───────────────────────────────
+    # ── Native duplex (TextStream) ───────────────────────────────
 
     def open_stream(self, req: SynthesisRequest) -> AzureTextStream:
         """Open an incremental text→audio duplex stream (v2 WS TextStream mode).

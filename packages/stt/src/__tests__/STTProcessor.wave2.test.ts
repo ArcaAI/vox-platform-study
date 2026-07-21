@@ -1,5 +1,5 @@
 /**
- * @arcaai/stt — Wave 2 (TASK-304 Wave 2) STTProcessor wire-up tests.
+ * @arcaai/stt — STTProcessor wire-up tests.
  *
  * Covers:
  *   • W2-STT-2 — `setLanguage` failure restores the previous `audio.language`.

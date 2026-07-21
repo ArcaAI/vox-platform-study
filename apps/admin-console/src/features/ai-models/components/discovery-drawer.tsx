@@ -14,7 +14,7 @@ import { useModelDiscovery, useRegisterDiscoveredModel } from '../api/hooks';
 import type { DiscoveryEntry, DiscoveryEntryStatus, DiscoveryLoadState, DiscoveryProbe } from '../api/types';
 
 /**
- * TASK-528 R5 — the discovery half of the AI-models hub.
+ * The discovery half of the AI-models hub.
  *
  * Shows every model either side of the merge knows about, tagged against the
  * registry, with the engine's load state where the engine reports it. It is

@@ -15,7 +15,7 @@ afterEach(() => {
 
 describe('Providers', () => {
     /**
-     * BUG-001: the React canary bundled with Next 16 logs "Encountered a
+     * The React canary bundled with Next 16 logs "Encountered a
      * script tag while rendering React component" for every executable
      * <script> created during a client render. next-themes' FOUC bootstrap
      * must therefore be an inert data block on the client (it is never

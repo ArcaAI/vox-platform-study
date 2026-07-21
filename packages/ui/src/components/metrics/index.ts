@@ -1,5 +1,5 @@
-// TASK-377 — Shared Metrics / Reporting / Chart primitives (PHASE-2-PLAN §3).
-// Subpath barrel: `@arcaai/ui/components/metrics`. Since TASK-404 retired the
+// Shared Metrics / Reporting / Chart primitives.
+// Subpath barrel: `@arcaai/ui/components/metrics`. The legacy `components/custom/service-status-bar` was retired, so the
 // legacy `components/custom/service-status-bar`, the canonical semantic
 // `ServiceStatusBar` is also re-exported from the root barrel.
 

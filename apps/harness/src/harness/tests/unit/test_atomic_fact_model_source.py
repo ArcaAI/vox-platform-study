@@ -1,14 +1,15 @@
-"""TASK-527 (D-12) — the harness atomic-fact entailer resolves weights DB-first.
+"""The harness atomic-fact entailer resolves weights DB-first.
 
-Harness has NO database access (AD-1: services never read the DB directly), so
+Harness has NO database access (services never read the DB directly), so
 the registry path arrives via the control plane's effective-config `modelWeights`
 map, keyed by the `AiModel` SLUG (`minicheck-flan-t5-large`) — harness's use has
 no `AiTaskDefault` task key.
 
-TASK-525 landed the effective-config client but NOT the `modelWeights` contract,
-so this stage ships env-fallback-first: the control-plane lane is implemented and
-tested against a stub, and degrades to `HARNESS_ATOMIC_FACT_MODEL_PATH` whenever
-the key is absent — which is every deployment until 525's follow-up lands.
+The effective-config client does not yet always carry the `modelWeights`
+contract, so this stage ships env-fallback-first: the control-plane lane is
+implemented and tested against a stub, and degrades to
+`HARNESS_ATOMIC_FACT_MODEL_PATH` whenever the key is absent — which is every
+deployment until the control plane populates it.
 
 Hermetic: no Temporal, no DB, no Redis, no network. `workflows.py` is untouched.
 """
@@ -27,7 +28,7 @@ from harness.models.source_resolver import (
 
 
 class _StubClient:
-    """Stands in for the TASK-525 effective-config client."""
+    """Stands in for the effective-config client."""
 
     def __init__(self, weights: dict | None = None, explode: bool = False) -> None:
         self._weights = weights or {}
@@ -76,7 +77,7 @@ async def test_env_fallback_when_key_absent(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_env_fallback_when_client_absent(tmp_path: Path) -> None:
-    """No client wired at all (the state until TASK-525's follow-up)."""
+    """No client wired at all (the state until the control plane populates it)."""
     env_path = tmp_path / "from-env"
     env_path.mkdir()
 

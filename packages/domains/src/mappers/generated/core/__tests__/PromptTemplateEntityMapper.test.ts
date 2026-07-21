@@ -1,8 +1,8 @@
 /**
- * PromptTemplateEntityMapper — TASK-328 A4 test-field round-trip.
+ * PromptTemplateEntityMapper — test-field round-trip.
  *
  * `lastTestScore` and `lastTestAt` are real Prisma columns the auto-mapper must
- * carry in BOTH directions by name. TASK-369 Phase 6 DROPPED `lastTestOutput`
+ * carry in BOTH directions by name. The plaintext `lastTestOutput` column was DROPPED
  * (free-text PHI): it now survives only as a transient entity field backed by
  * the `encryptedLastTestOutput` ciphertext column, so it must NEVER appear in a
  * persistence payload. `stripNonWritableFields` still removes the database-owned

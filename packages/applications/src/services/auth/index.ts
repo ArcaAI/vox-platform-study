@@ -13,7 +13,7 @@ export * from './oidc.strategy';
 export * from './session.serializer';
 export * from './registration';
 
-// TASK-541 A2 — the `gateway-jwt` passport strategy, its guard, and the
+// The `gateway-jwt` passport strategy, its guard, and the
 // gateway-only decorators were RETIRED here. They were wired to zero routes:
-// `UnifiedAuthGuard` (TASK-343) is the single mandated enforcement point, and
+// `UnifiedAuthGuard` is the single mandated enforcement point, and
 // keeping a second strategy meant keeping it security-equivalent by hand.

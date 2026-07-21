@@ -1,5 +1,5 @@
 /**
- * @arcaai/stt - STTProcessor streaming-transport wiring (TASK-298 D-4)
+ * @arcaai/stt - STTProcessor streaming-transport wiring
  *
  * Verifies that `STTProcessor.initializeRemoteProvider` instantiates the
  * pipeline-aware `StreamingBackendSTTProvider` when a streaming transport
@@ -137,7 +137,7 @@ describe('STTProcessor — streaming-transport wiring (TASK-298 D-4)', () => {
     });
   });
 
-  // TASK-464 — the streaming provider counts backpressure drops, but on the SDK
+  // The streaming provider counts backpressure drops, but on the SDK
   // path nothing polls the getter. STTProcessor must (a) re-emit the provider's
   // PUSH channel via `onBackpressureDrop`, and (b) surface the count in getStats()
   // so a consumer (the vox pipeline/store) can render a degraded-connection signal.

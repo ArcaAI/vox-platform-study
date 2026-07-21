@@ -946,7 +946,7 @@ class TestPartialEmission:
         assert len(finals) >= 1
 
     # ---------------------------------------------------------------------
-    # TASK-351 P0-4 (C2) — bounded partial decode window.
+    # Bounded partial decode window.
     # ---------------------------------------------------------------------
 
     @pytest.mark.asyncio
@@ -1210,7 +1210,7 @@ class TestForceEmitSmartSplit:
 
 
 # =========================================================================
-# Tests: Short / jittery utterance recovery (TASK-451 C2-06)
+# Tests: Short / jittery utterance recovery
 # =========================================================================
 
 
@@ -1316,7 +1316,7 @@ class TestShortUtteranceRecovery:
 
     @pytest.mark.asyncio
     async def test_alternating_near_threshold_pattern_is_rejected(self):
-        # TASK-451 I-1, contract updated by TASK-505: SPARSE periodic noise
+        # SPARSE periodic noise
         # (a real monitor beep — one above-threshold frame every ~250 ms) must
         # NOT accrete a false onset: the cumulative dip budget (3 frames) is
         # spent between blips, resetting the attempt. NOTE: dense per-frame
@@ -1357,7 +1357,7 @@ class TestShortUtteranceRecovery:
 
 
 class TestPartialCadenceConfigurable:
-    """TASK-471 A1 — the partial-emit cadence is a constructor arg with a
+    """The partial-emit cadence is a constructor arg with a
     lowered default so newly-spoken words surface in near-real-time as a
     tentative tail; the 0.5 s min-audio floor still gates the first partial.
     """
@@ -1445,7 +1445,7 @@ class TestPartialCadenceConfigurable:
 
 
 # =========================================================================
-# Tests: TASK-505 Phase 0 — VAD word-clipping fixes
+# Tests: VAD word-clipping fixes
 # =========================================================================
 
 
@@ -1699,7 +1699,7 @@ class TestTask505Defaults:
 
 
 class TestTask505ReviewFixes:
-    """Fixes from the Phase 0 adversarial review."""
+    """Regression locks for adversarial-review findings."""
 
     @pytest.mark.asyncio
     async def test_mid_band_babble_does_not_defer_final_forever(self):
@@ -1762,7 +1762,7 @@ class TestTask505ReviewFixes:
 
 
 class TestTask505DualPathDenoiseStreaming:
-    """TASK-505 P2 (decision D2) — dual-path denoise on the streaming path."""
+    """Dual-path denoise on the streaming path."""
 
     def _zeroing_denoiser(self):
         d = MagicMock()

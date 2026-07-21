@@ -1,5 +1,5 @@
 /**
- * TASK-392 (Q8) — plan → model-catalog clone-subset.
+ * Plan → model-catalog clone-subset.
  *
  * Pure helpers (no DB/DI) so the clone-subset decision is unit-testable and
  * usable directly from `TenantService.provisionTenantModelCatalog` WITHOUT

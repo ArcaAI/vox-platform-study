@@ -1,16 +1,15 @@
 /**
- * Cross-user / cross-tenant probes against VoiceProfileController
- * (AC-11).
+ * Cross-user / cross-tenant probes against VoiceProfileController.
  *
- * Originally landed by TASK-307 W3.7 closing audit finding C-5
- * (`docs/multi-tenancy-audit/04-api-design-review.md`): before that
- * fix `PATCH /voice-profile/:id/activate`, `:id/deactivate`, and
- * `DELETE /voice-profile/:id` forwarded the supplied id to the
+ * Without the ownership guard
+ * (`docs/multi-tenancy-audit/04-api-design-review.md`),
+ * `PATCH /voice-profile/:id/activate`, `:id/deactivate`, and
+ * `DELETE /voice-profile/:id` would forward the supplied id to the
  * service without verifying that the caller owned the profile — any
  * authenticated user with `update:UserVoiceProfile` could enable,
  * disable, or soft-delete any other user's voice profile.
  *
- * `UserVoiceProfile` is USER-scoped (no `tenantId` column). The W3.2
+ * `UserVoiceProfile` is USER-scoped (no `tenantId` column). The
  * `TenantOwnedResourceInterceptor` `assertVoiceProfileOwnership`
  * branch resolves the profile by id and 404s any caller whose CLS
  * `user.id` does not match the profile's `userId`. This is stricter
@@ -18,10 +17,10 @@
  * `VoiceProfileService.assertOwnership` posture, normalised to 404
  * instead of mixed 403/400.
  *
- * TASK-309 AC-2 / AC-3 — genuine probe upgrade. The previous synthetic
- * uuidv7 probe asserted only that the 404 SHAPE was correct (since
- * the database had no matching row, the resource-not-found branch
- * fired regardless of the cross-user logic). This spec now enrols a
+ * Genuine probe: a synthetic uuidv7 probe would assert only that the 404
+ * SHAPE was correct (since
+ * the database has no matching row, the resource-not-found branch
+ * would fire regardless of the cross-user logic). This spec instead enrols a
  * real `UserVoiceProfile` belonging to `doctor` and probes it from
  * `doctor2` — both are in tenant `__GLOBAL__`, so the 404 must come
  * from the per-USER `userId !== cls.user.id` check, not from a
@@ -37,7 +36,7 @@
  * enrolment in `beforeAll` 5xxs and every dependent test is reported
  * as a setup failure — the cross-user assertion intentionally does
  * NOT fall back to a synthetic id, because that would silently
- * downgrade to the pre-TASK-309 behaviour.
+ * downgrade to a weaker, shape-only assertion.
  */
 import { test, expect } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';

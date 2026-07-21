@@ -27,7 +27,7 @@ export interface CreateSummaryMetaProps extends BaseEntityFactoryCreateProps {
   qualityScore?: ISummaryMetaEntity['qualityScore'];
   promptResolvedFrom?: ISummaryMetaEntity['promptResolvedFrom'];
   resolvedPromptId?: ISummaryMetaEntity['resolvedPromptId'];
-  // TASK-330 Phase 1 — clinical-harness sensor scores + citation provenance
+  // Clinical-harness sensor scores + citation provenance
   entityFaithfulnessScore?: ISummaryMetaEntity['entityFaithfulnessScore'];
   coverageScore?: ISummaryMetaEntity['coverageScore'];
   ragTriadScore?: ISummaryMetaEntity['ragTriadScore'];
@@ -35,7 +35,7 @@ export interface CreateSummaryMetaProps extends BaseEntityFactoryCreateProps {
   guardrailDecisions?: ISummaryMetaEntity['guardrailDecisions'];
   attestationRef?: ISummaryMetaEntity['attestationRef'];
   modelName?: ISummaryMetaEntity['modelName'];
-  // TASK-355 Phase D — two-phase (optimistic) assurance state
+  // Two-phase (optimistic) assurance state
   gateDecision?: ISummaryMetaEntity['gateDecision'];
   assuranceCompletedAt?: ISummaryMetaEntity['assuranceCompletedAt'];
   tenantId: ISummaryMetaEntity['tenantId'];

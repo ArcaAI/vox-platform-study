@@ -8,7 +8,7 @@ import { SEED_ROLE_IDS } from './00-constants';
  * Implements the RBAC best practices design for HOPE platform.
  *
  * Role Hierarchy:
- * - GLOBAL_ADMIN (Global) - System-wide access (SUPER_ADMIN was consolidated into it — TASK-417)
+ * - GLOBAL_ADMIN (Global) - System-wide access (SUPER_ADMIN was consolidated into it)
  * - TENANT_ADMIN (Tenant) - Full tenant access
  * - DOCTOR (Tenant) - Clinical role, owns consultations
  *   └── DEPARTMENT_HEAD (extends DOCTOR) - + delegation + department view
@@ -29,7 +29,7 @@ import { SEED_ROLE_IDS } from './00-constants';
 // Exported for testing purposes
 // =============================================================================
 export const SYSTEM_ROLES = [
-    // TASK-417 — the former SUPER_ADMIN role (id …0001) was consolidated into
+    // The former SUPER_ADMIN role (id …0001) was consolidated into
     // GLOBAL_ADMIN (see GLOBAL_ROLES below) and soft-retired by data migration;
     // it must never be re-seeded.
     {
@@ -48,7 +48,7 @@ export const SYSTEM_ROLES = [
         externalName: 'Doctor / Clinician',
         isSystemRole: true,
         parentRoleId: null,
-        // TASK-331 doc-09 — `prompt-template-read` lets a clinician populate the
+        // `prompt-template-read` lets a clinician populate the
         // Pre-Summary / Summary template selector via the end-user
         // `GET /prompt-templates/available` route (read-only; NOT the admin
         // `manage` plane). DEPARTMENT_HEAD inherits these via parentRoleId.
@@ -75,7 +75,7 @@ export const SYSTEM_ROLES = [
 ];
 
 // =============================================================================
-// GLOBAL ROLES (TASK-336 AC-06, canonical since TASK-417)
+// GLOBAL ROLES
 // Elevated, platform-wide role kept separate from the count-pinned SYSTEM_ROLES
 // array. `GLOBAL_ADMIN` is THE elevated role recognized by the code-side guard
 // (`tenant-guards.ELEVATED_ROLES`) and carries the full system-level policy
@@ -89,7 +89,7 @@ export const GLOBAL_ROLES = [
         externalName: 'Global Administrator',
         isSystemRole: true,
         parentRoleId: null,
-        // TASK-419 item 4 — `prisma-studio-manage` (manage:PrismaStudio) is the
+        // `prisma-studio-manage` (manage:PrismaStudio) is the
         // dedicated production-capable Prisma Studio grant; `manage:all` would
         // also pass the guard, but the explicit policy keeps studio access
         // delegable without full access.
@@ -137,7 +137,6 @@ export const seedRole = async (client: CorePrismaClient) => {
     console.log('  Global roles:', GLOBAL_ROLES.length);
     console.log('  Tenant extendable roles:', TENANT_EXTENDABLE_ROLES.length);
 
-    // First, get all policies
     const policies = await client.policy.findMany();
     const policyMap = new Map<string, string>(
       policies.map((p: any) => [p.name as string, p.id as string]),
@@ -156,7 +155,6 @@ export const seedRole = async (client: CorePrismaClient) => {
         // Resolve parent role ID if specified
         let resolvedParentRoleId: string | null = null;
         if (roleData.parentRoleId) {
-            // Check if parent exists in DB
             const parentRole = await client.role.findFirst({
                 where: { id: roleData.parentRoleId },
             });
@@ -192,7 +190,6 @@ export const seedRole = async (client: CorePrismaClient) => {
             });
         }
 
-        // Track the role ID
         createdRoleIds.set(roleData.id, role.id);
 
         // Create role-policy assignments

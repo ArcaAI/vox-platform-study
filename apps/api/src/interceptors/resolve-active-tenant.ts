@@ -1,8 +1,7 @@
 import { isSuperAdmin } from '@arcaai/applications';
 
 /**
- * TASK-331 r2605 Finding #1 — pure decision helper for the global-admin
- * "manage as tenant" elevation.
+ * Pure decision helper for the global-admin "manage as tenant" elevation.
  *
  * A global-admin authenticates with an EMPTY CLS `tenantId` (their JWT carries
  * `tenantId: ''`). When they pick a tenant in the admin console it is sent as
@@ -12,7 +11,7 @@ import { isSuperAdmin } from '@arcaai/applications';
  * pure and trivially testable.
  *
  * Decision table (only reached when an `x-tenant-id` header is present and the
- * caller has NOT been rejected by the TASK-307 W5.3 divergence guard):
+ * caller has NOT been rejected by `ContextInterceptor`'s divergence guard):
  *  - global-admin + empty JWT tenant + valid-UUID header → `elevate`
  *  - global-admin + empty JWT tenant + malformed header  → `invalid`
  *  - tenant-bound caller (truthy JWT tenant)            → `none`

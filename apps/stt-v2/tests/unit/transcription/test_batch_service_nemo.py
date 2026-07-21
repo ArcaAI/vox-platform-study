@@ -1,4 +1,4 @@
-"""Unit tests for BatchTranscriptionService._run_nemo_inference (TASK-258 Phase C)."""
+"""Unit tests for BatchTranscriptionService._run_nemo_inference."""
 
 from __future__ import annotations
 

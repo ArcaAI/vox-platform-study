@@ -1,5 +1,5 @@
 /**
- * TASK-445 — POST /admin/settings/:id/rotate controller unit tests.
+ * POST /admin/settings/:id/rotate controller unit tests.
  *
  * The rotate route mirrors reveal's gating (method-level `@Authorize(['manage','all'])`
  * overriding the class `@CanManage('GlobalSetting')`) and update's OCC contract

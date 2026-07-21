@@ -1,4 +1,4 @@
-"""Contract tests for the sensor framework base types (RED-first).
+"""Contract tests for the sensor framework base types.
 
 Covers the ``SensorResult`` / ``SensorContext`` / ``NEREntity`` value objects,
 the ``normalize_text`` helper, and the runtime-checkable ``Sensor`` protocol.
@@ -22,7 +22,7 @@ class TestNormalizeText:
     def test_empty(self):
         assert normalize_text("") == ""
 
-    # TASK-358: the entity-level matching path must be ▁-insensitive too (the live
+    # The entity-level matching path must be ▁-insensitive too (the live
     # NER returns SentencePiece "▁" (U+2581) surfaces). Strip ▁ so a marker-bearing
     # note entity matches the plain transcript — consistent with the claims path.
     def test_strips_sentencepiece_word_boundary_marker(self):

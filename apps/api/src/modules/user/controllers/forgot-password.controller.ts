@@ -7,7 +7,7 @@ import { Public } from '../../../decorators';
 const GENERIC_MESSAGE = 'If an account exists for that email, a password reset link has been sent.';
 
 /**
- * TASK-400 — public self-service forgot-password.
+ * Public self-service forgot-password.
  *
  * Anti-enumeration contract: ALWAYS 202 with the identical generic body —
  * email matched, email unknown, or internal failure. The reset token travels

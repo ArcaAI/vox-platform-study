@@ -1,7 +1,7 @@
 /**
- * TASK-264 W0-1 — SSEClient must use single-use stream tickets, never JWTs.
+ * SSEClient must use single-use stream tickets, never JWTs.
  *
- * Pre-condition: TASK-262 §2.4 SEC-A — JWTs appended as `?token=` query
+ * Pre-condition: JWTs appended as `?token=` query
  * parameters leak through CDN logs, browser history, Referer headers, and
  * the Highlight.io network recorder. The replacement contract:
  *
@@ -285,7 +285,7 @@ describe('TASK-264 W0-1: SSEClient ticket-based auth', () => {
   });
 
   // -------------------------------------------------------------------------
-  // TASK-274 fu-sse-constants — single source of truth for the ticket path
+  // Single source of truth for the ticket path
   // -------------------------------------------------------------------------
 
   it('exposes AUTH_ENDPOINTS.STREAM_TICKET = "/auth/stream-ticket" (TASK-274)', () => {

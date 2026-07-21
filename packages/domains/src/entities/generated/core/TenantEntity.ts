@@ -12,9 +12,9 @@ export interface ITenantEntity extends Omit<IBaseTaggedEntity, 'tenantId'> {
   name: string;
   key: string;
   description?: string | null;
-  // TASK-387 (#3) — commercial plan (nullable; existing rows read null).
+  // Commercial plan (nullable; existing rows read null).
   plan?: Enums.TenantPlan | null;
-  // TASK-392 (Q4) — trial clock; auto-downgrade TRIAL → STARTER on expiry.
+  // Trial clock; auto-downgrade TRIAL → STARTER on expiry.
   trialEndsAt?: Date | null;
 }
 
@@ -29,7 +29,7 @@ export class TenantEntity extends BaseTaggedEntity {
     // TenantEntity is its own tenant — no separate tenantId column exists on
     // core.Tenant (the schema deliberately omits it; ITenantEntity uses
     // `Omit<IBaseTaggedEntity, 'tenantId'>`). We pass `init.id` to satisfy
-    // the BaseTenantEntity contract that requires a tenantId (TASK-305 A.7).
+    // the BaseTenantEntity contract that requires a tenantId.
     // The override of validate() below intentionally does NOT call
     // super.validate(); the tenantId === id invariant is enforced here.
     super({ ...init, tenantId: init.id });
@@ -81,7 +81,7 @@ export class TenantEntity extends BaseTaggedEntity {
   }
 
   // ============================================
-  // Custom Domain Methods (TASK-387 #1 / F6)
+  // Custom Domain Methods
   // ============================================
 
   /**

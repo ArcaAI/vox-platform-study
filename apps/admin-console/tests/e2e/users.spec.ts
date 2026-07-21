@@ -118,8 +118,8 @@ test.describe('user detail (frame 20.1)', () => {
         await openFirstUser(page);
 
         await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-        // Impersonate is hidden for service accounts (TASK-430) and the seeded
-        // first user may be one, so assert the always-present Reset password action.
+        // Impersonate is hidden for service accounts and the seeded first
+        // user may be one, so assert the always-present Reset password action.
         await expect(page.getByRole('button', { name: 'Reset password' })).toBeVisible();
         await expect(page.getByRole('tablist')).toBeVisible();
         for (const name of ['Roles', 'Departments', 'Settings', 'Profile', 'Security']) {

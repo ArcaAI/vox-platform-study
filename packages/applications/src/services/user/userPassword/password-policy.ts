@@ -1,5 +1,5 @@
 /**
- * TASK-400 — password complexity + rotation policy (pure, DI-free).
+ * Password complexity + rotation policy (pure, DI-free).
  *
  * Defaults encode the healthcare posture: min 12 chars, upper + lower +
  * digit + special, max 128 (hashing DoS bound; bcrypt only reads 72 bytes

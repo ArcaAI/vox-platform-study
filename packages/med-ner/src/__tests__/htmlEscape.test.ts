@@ -1,5 +1,5 @@
 /**
- * @arcaai/med-ner - escapeHtml Tests (M-3)
+ * @arcaai/med-ner - escapeHtml Tests
  *
  * @vitest-environment jsdom
  */

@@ -1,5 +1,5 @@
 /**
- * TASK-409 — policy break-glass + `isProtected` hardening: live API contract.
+ * Policy break-glass + `isProtected` hardening: live API contract.
  *
  * Real HTTP round-trips against the live dev stack
  * (`SKIP_DB_PRECHECK=true API_URL=http://localhost:8868/api/v1`). Harness
@@ -22,7 +22,7 @@
  *   F. ABSOLUTES — the two protected policies refuse deletion and detach even
  *      WITH a fully correct break-glass confirmation (403, standing decision),
  *      and a plain doctor is 403 regardless of credentials.
- *   G. Forced audit rows (TASK-396 posture) — confirmed mutations AND rejected
+ *   G. Forced audit rows — confirmed mutations AND rejected
  *      attempts land `RBAC_BREAK_GLASS` rows (actor, target, operation,
  *      outcome; never the password).
  */

@@ -1,7 +1,7 @@
 /**
  * SummaryMetaFactory + SummaryMetaEntityMapper — promptResolvedFrom/resolvedPromptId.
  *
- * TASK-331 doc-06 F4: the prompt-resolution tier (`'preferred' | 'department' |
+ * The prompt-resolution tier (`'preferred' | 'department' |
  * 'default'`) and the prompt id actually used must be persisted on SummaryMeta so
  * the summary surface can show which tier produced a given summary. This slice
  * threads the two new columns through the domain layer (entity ⇄ model).

@@ -4,17 +4,17 @@ import { ApiBearerAuth, ApiHeader, ApiOperation, ApiQuery, ApiResponse, ApiTags 
 import { CanAny, ExpectedVersion } from '../../decorators';
 
 /**
- * Admin API for the per-tenant FRONTEND audio-pipeline defaults (TASK-328 A6).
+ * Admin API for the per-tenant FRONTEND audio-pipeline defaults.
  *
  * A single row per tenant holds the client-side capture defaults applied to
  * every user in that tenant (ASR model + feature switches + a typed advanced
- * `configJson`). Tenant scoping mirrors the DNA admin surface (TASK-328 A5):
+ * `configJson`). Tenant scoping mirrors the DNA admin surface:
  * a global admin (GLOBAL_ADMIN) may target a tenant via
  * `?tenantId=`; a tenant admin is pinned to their CLS tenant and any supplied
  * `tenantId` is ignored by the service.
  *
- * `@CanAny(['manage','Tenant'],['update','Tenant'])` gates the surface
- * (TASK-331 doc-04 F1): the `tenant-full-access` policy grants tenant admins
+ * `@CanAny(['manage','Tenant'],['update','Tenant'])` gates the surface:
+ * the `tenant-full-access` policy grants tenant admins
  * tenant-scoped `update:Tenant` (not `manage:Tenant`), which now suffices to
  * reach this config surface; GLOBAL_ADMIN passes via `manage:all`. Matches
  * `TenantStorageConfigAdminController`.
@@ -45,7 +45,7 @@ export class TenantFrontendConfigAdminController {
       'supply the row version you last read via the `If-Match` header (RFC 7232) or the body ' +
       '`expectedVersion`. The header wins when both are present. First-time creation needs no ' +
       'version. On drift the response is `412 Precondition Failed`. ' +
-      'TASK-356 — the body may also carry `transcriptionMode` (LOCAL|BACKEND), `transcriptionModeLocked`, ' +
+      'The body may also carry `transcriptionMode` (LOCAL|BACKEND), `transcriptionModeLocked`, ' +
       'and `captureMode` (RAW_AND_PROCESSED|RAW_ONLY|PROCESSED_ONLY|NONE; null clears the override).',
   })
   @ApiHeader({

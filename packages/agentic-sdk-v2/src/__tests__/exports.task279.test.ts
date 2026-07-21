@@ -1,11 +1,11 @@
 /**
- * SDK Exports Verification Tests (TASK-279 follow-up / Wave-2A C4)
+ * SDK Exports Verification Tests
  *
- * The TASK-279 split (B6) introduced `ADMIN_USER_ROLES_ENDPOINTS` for the
+ * A prior split introduced `ADMIN_USER_ROLES_ENDPOINTS` for the
  * admin user-role-assignment surface (`/admin/users/:id/roles[/:assignmentId]`).
  * The constant is defined in `core/constants.ts` and re-exported via the
  * inner `core/index.ts` barrel, but was NOT re-exported from the package
- * barrel `core.ts` (TASK-279 README §7.3). External consumers therefore
+ * barrel `core.ts`. External consumers therefore
  * could not do `import { ADMIN_USER_ROLES_ENDPOINTS } from '@arcaai/vox/core'`
  * even though every sibling endpoint group (`ROLE_ENDPOINTS`,
  * `USER_ENDPOINTS`, `AUTH_ENDPOINTS`, …) is exposed there.

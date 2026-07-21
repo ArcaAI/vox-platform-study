@@ -9,7 +9,7 @@ import { AuditLogService } from './auditLog.service';
 import { AuditLogEncryptionService } from './auditLog-encryption.service';
 
 @Module({
-  // CryptoServiceModule supplies ICryptoService for the Phase 3D envelope
+  // CryptoServiceModule supplies ICryptoService for the envelope
   // encryption; SecretsService is @Global() (SecretsModule.forRoot in AppModule).
   imports: [CommonServiceModule, CoreDatabaseModule, CryptoServiceModule, BullModule.registerQueue({ name: JobQueue.AuditLog })],
   providers: [

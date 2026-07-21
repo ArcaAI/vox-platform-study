@@ -1,6 +1,6 @@
-"""DeepEval metric-wrapper tests (TASK-330, task 0.5).
+"""DeepEval metric-wrapper tests.
 
-RED-first. The wrappers must:
+The wrappers must:
 
 * expose the four DeepEval metrics the harness needs (Faithfulness,
   Hallucination, Summarization, GEval), each pre-wired to our **model-agnostic**

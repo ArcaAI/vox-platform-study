@@ -1,4 +1,4 @@
-// TASK-302 Phase 5 Task 5.8 (Stream B) — vault-db-smoke argument parser.
+// vault-db-smoke argument parser.
 //
 // Only the pure parseArgs() helper is unit-tested. The end-to-end
 // script requires a live Vault + PG and is exercised manually during

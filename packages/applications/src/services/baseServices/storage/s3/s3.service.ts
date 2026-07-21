@@ -48,7 +48,7 @@ export class S3Service implements IS3Service, OnModuleInit {
 
   constructor(
     @Inject(IAppSettingsService) private readonly appSettingsService: IAppSettingsService,
-    // TASK-302 Phase 3 Task 3.9 — S3_ACCESS_KEY + S3_SECRET_KEY come from
+    // S3_ACCESS_KEY + S3_SECRET_KEY come from
     // SecretsService (cache-warmed at bootstrap). Optional so existing
     // direct-construction unit tests compile; on miss the keys default
     // to '' which is exactly what AppSettingsService used to return.
@@ -236,7 +236,7 @@ export class S3Service implements IS3Service, OnModuleInit {
     return {
       endpoint,
       region: this.appSettingsService.getValueWithDefault('S3_REGION', isMinIO ? 'us-east-1' : 'us-east-1'),
-      // TASK-302 Phase 3 Task 3.9 — secrets via SecretsService cache-only sync
+      // Secrets resolve via SecretsService cache-only sync
       // path; non-secrets (S3_REGION, S3_PUBLIC_BUCKET, etc.) stay on AppSettings.
       accessKey: this.secretsService?.getSecretSync('S3_ACCESS_KEY') ?? '',
       secretKey: this.secretsService?.getSecretSync('S3_SECRET_KEY') ?? '',

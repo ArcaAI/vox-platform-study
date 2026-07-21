@@ -24,7 +24,7 @@ export class HealthCheckService implements IHealthCheckService, OnModuleInit {
     private readonly memoryHealthIndicator: MemoryHealthIndicator,
     @Inject(IAppSettingsService) private readonly appSettingsService: IAppSettingsService,
     // SecretsHealthIndicator is provided by the @Global SecretsModule
-    // (TASK-302 Phase 2C). Optional so test modules that do not import
+    // . Optional so test modules that do not import
     // SecretsModule still resolve.
     @Optional() private readonly secretsHealthIndicator?: SecretsHealthIndicator,
   ) {

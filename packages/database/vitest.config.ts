@@ -9,7 +9,7 @@ import { defineConfig } from 'vitest/config';
  * suites the root run does. Until now `@arcaai/database` had no `test` script,
  * so `turbo run test --filter=@arcaai/database` silently skipped the package —
  * the database unit suite only ever ran via the root `pnpm test:unit`. That
- * gap is why the TASK-305 Phase F verification command could report "green"
+ * gap is why a verification command could report "green"
  * without actually running any database test. Mirrors the standalone
  * `@arcaai/domains` config (`packages/domains/vitest.config.ts`).
  *

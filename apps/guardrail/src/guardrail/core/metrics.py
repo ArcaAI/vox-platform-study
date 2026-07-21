@@ -3,7 +3,7 @@
 Exposes the standardized cross-service per-model metrics on the existing
 ``/metrics`` endpoint (served from the default Prometheus registry by
 ``guardrail.main``). These are scraped by Prometheus for the platform-metrics
-backend (TASK-386).
+backend.
 """
 
 from __future__ import annotations
@@ -16,13 +16,12 @@ from hope_runtime_models import PrometheusMetricsSink
 from prometheus_client import Counter, Gauge, Histogram
 
 # ---------------------------------------------------------------------------
-# Cross-service per-model contract metrics (TASK-386)
+# Cross-service per-model contract metrics
 # ---------------------------------------------------------------------------
 # Standardized {service, model} pair emitted IDENTICALLY by every HOPE model
 # service (STT, SMR, NLP, Guardrail) so the platform-metrics backend can read
 # per-model "running" + "avg latency" with ONE PromQL pattern. The name and
-# label keys must stay byte-identical across services — see
-# docs/implementation/TASK-386-Platform-Metrics-Backend/METRIC-CONTRACT.md.
+# label keys must stay byte-identical across services.
 
 SERVICE_NAME = "guardrail"
 
@@ -60,7 +59,7 @@ def track_model_inference(model: str, service: str = SERVICE_NAME) -> Iterator[N
 
 
 # ---------------------------------------------------------------------------
-# Model-cache retention metrics (TASK-529 §3.5)
+# Model-cache retention metrics
 # ---------------------------------------------------------------------------
 # FIXED CONTRACT: names and label sets are identical across all five HOPE
 # services so one Grafana dashboard

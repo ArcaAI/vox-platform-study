@@ -12,7 +12,7 @@ import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags }
 import { CanManage } from '../../decorators';
 
 /**
- * ResourceSubscriptionController (TASK-419 item 2) — admin CRUD + toggle
+ * ResourceSubscriptionController — admin CRUD + toggle
  * surface over the pre-existing `ResourceSubscriptionService`, mounted at
  * `/admin/resource-subscriptions`.
  *

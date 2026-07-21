@@ -1,7 +1,7 @@
 import { CaptureMode } from '@arcaai/domains';
 
 /**
- * TASK-356 Phase 4 (A5) — CaptureMode translation layer.
+ * CaptureMode translation layer.
  *
  * The single, table-driven mapping from the tenant-scoped `CaptureMode` enum
  * onto the two capture surfaces that already exist:

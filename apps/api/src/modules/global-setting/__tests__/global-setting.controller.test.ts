@@ -82,7 +82,7 @@ describe('GlobalSettingController', () => {
       expect(mockService.fetchAllByTenantId).not.toHaveBeenCalled();
     });
 
-    // TASK-443 — the query DTO transforms 'true'/'false' to a real boolean and
+    // The query DTO transforms 'true'/'false' to a real boolean and
     // the controller forwards the flag to BOTH list branches.
     it('forwards the secretsOnly facet to the unscoped fetchAll', async () => {
       mockCls.get.mockReturnValue(undefined);
@@ -171,7 +171,7 @@ describe('GlobalSettingController', () => {
     });
   });
 
-  // TASK-396 — reveal ONE secret. Global-admin-only (CASL) + step-up re-auth.
+  // Reveal ONE secret. Global-admin-only (CASL) + step-up re-auth.
   describe('POST /admin/settings/:id/reveal (reveal)', () => {
     it('delegates to service.revealSecret with the id + step-up password and returns the plaintext', async () => {
       mockService.revealSecret.mockResolvedValue({ entity: fakeEntity({ id: 'gs-7', key: 'secrets.api-token' }), plaintext: 'plaintext-secret' });

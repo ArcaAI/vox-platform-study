@@ -1,4 +1,4 @@
-"""Unit tests for health/api/routes.py (TASK-020 Track B4).
+"""Unit tests for health/api/routes.py.
 
 Covers:
 - ``/api/v1/health`` — liveness probe

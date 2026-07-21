@@ -1,5 +1,5 @@
 /**
- * useQueueAdmin Hook Tests (TASK-403)
+ * useQueueAdmin Hook Tests
  *
  * @vitest-environment jsdom
  */

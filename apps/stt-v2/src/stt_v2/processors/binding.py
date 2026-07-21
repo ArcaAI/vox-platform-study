@@ -1,4 +1,4 @@
-"""Platform-aware engine binding resolution (TASK-505 P1).
+"""Platform-aware engine binding resolution.
 
 Bridges the processor capability declarations to the running host: the
 detected platform yields a device-preference list, and

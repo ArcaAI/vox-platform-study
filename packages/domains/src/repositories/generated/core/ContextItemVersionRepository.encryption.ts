@@ -1,4 +1,4 @@
-// TASK-369 (Data Encryption Initiative) Phase 3C — field encryption for
+// Field encryption for
 // ContextItemVersion (immutable content snapshots: content / contentDiff /
 // changeSummary / fieldChanges).
 //
@@ -6,7 +6,7 @@
 // merging + prototype patching so codegen can re-run with --overwrite). All
 // four fields share ONE `keyVersion` column; the shared Buffer/ciphertext
 // primitives live in common/field-encryption.ts and default to the dedicated
-// `hope-phi` Transit key. TASK-369 Phase 6 dropped the plaintext columns; reads
+// `hope-phi` Transit key. The plaintext columns have been dropped; reads
 // decrypt the ciphertext only (no plaintext fallback).
 
 import { ContextItemVersionRepository } from './ContextItemVersionRepository';
@@ -105,7 +105,7 @@ ContextItemVersionRepository.prototype.decryptFieldsFromEntity = async function 
   const contentDiff = await decryptCiphertextToString(secrets, entity.encryptedContentDiff);
   const changeSummary = await decryptCiphertextToString(secrets, entity.encryptedChangeSummary);
   const fieldChanges = await decryptCiphertextToJson(secrets, entity.encryptedFieldChanges);
-  // TASK-369 Phase 6 — plaintext columns dropped; decrypt ciphertext only.
+  // Plaintext columns dropped; decrypt ciphertext only.
   return { content, contentDiff, changeSummary, fieldChanges };
 };
 

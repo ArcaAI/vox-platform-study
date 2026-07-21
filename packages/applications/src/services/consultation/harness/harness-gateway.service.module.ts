@@ -4,7 +4,7 @@ import { HttpModule } from '@nestjs/axios';
 import { HarnessGatewayService } from './harness-gateway.service';
 
 /**
- * HarnessGatewayService DI module (TASK-330 Phase 1 — Lane G). Leaf module:
+ * HarnessGatewayService DI module. Leaf module:
  * only needs HttpModule + ConfigModule (SecretsService is provided globally by
  * the @Global SecretsModule). Kept separate from the inbound harness-internal
  * module so the BullMQ-heavy ConsultationJobServiceModule and SummaryServiceModule

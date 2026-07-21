@@ -1,4 +1,4 @@
-// TASK-525 §3.2 — the generalized per-service internal token guard.
+// The generalized per-service internal token guard.
 //
 // Generalizes HarnessServiceTokenGuard: instead of one hardcoded secret, the
 // guard validates the presented token against the secret belonging to the

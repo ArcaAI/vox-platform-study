@@ -1,5 +1,5 @@
 /**
- * Type augmentation for the `vitest-axe` matchers (TASK-532).
+ * Type augmentation for the `vitest-axe` matchers.
  *
  * WHY THIS FILE EXISTS: `vitest-axe@0.1.0` ships its augmentation against the
  * LEGACY global `Vi` namespace:

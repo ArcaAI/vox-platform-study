@@ -1,5 +1,5 @@
 /**
- * TASK-387 — Tenant data-model + department backlog (Group B) backend contract.
+ * Tenant data-model + department backlog (Group B) backend contract.
  *
  * Real HTTP round-trips against the live API (`pnpm test:e2e`, or a dev stack via
  * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8868`). Mirrors the harness of

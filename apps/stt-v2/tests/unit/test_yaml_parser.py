@@ -123,12 +123,12 @@ postprocessing:
         assert spec.inference.device == "auto"
 
     def test_parse_denoise_engine_defaults_to_rnnoise(self, parser, minimal_yaml):
-        """TASK-507 — preprocessing.denoise.engine defaults to 'rnnoise'."""
+        """preprocessing.denoise.engine defaults to 'rnnoise'."""
         spec = parser.parse(minimal_yaml)
         assert spec.preprocessing.denoise.engine == "rnnoise"
 
     def test_parse_denoise_engine_deepfilternet3(self, parser):
-        """TASK-507 — preprocessing.denoise.engine accepts 'deepfilternet3'."""
+        """preprocessing.denoise.engine accepts 'deepfilternet3'."""
         yaml = """
 version: "2.0"
 models:
@@ -146,7 +146,7 @@ preprocessing:
         assert result.valid is True
 
     def test_validate_rejects_unknown_denoise_engine(self, parser):
-        """TASK-507 — an unrecognized denoise engine is a hard validation error."""
+        """An unrecognized denoise engine is a hard validation error."""
         yaml = """
 version: "2.0"
 models:
@@ -362,7 +362,7 @@ models:
     def test_validate_unsupported_version(self, parser):
         """Test validation with unsupported version.
 
-        TASK-505 P2: "2.0" is now a SUPPORTED version — the unsupported
+        "2.0" is now a SUPPORTED version — the unsupported
         example moves to a future version string.
         """
         yaml = """
@@ -1551,7 +1551,7 @@ inference:
         assert result.valid is True
 
     def test_validate_code_switching_with_language_pins_language(self, parser, caplog):
-        """TASK-351 P2-1 — language + code_switching means PINNED matrix
+        """language + code_switching means PINNED matrix
         language with CS enabled: valid, info log, and NO warning (the
         earlier 'set language to null' advisory is deliberately superseded).
         """
@@ -2093,7 +2093,7 @@ diarization:
 
 
 class TestYamlParserStreamingSection:
-    """TASK-351 P1-1 — per-pipeline `streaming.commit_policy` gate."""
+    """Per-pipeline `streaming.commit_policy` gate."""
 
     @pytest.fixture
     def parser(self):
@@ -2158,7 +2158,7 @@ streaming:
 
 
 class TestRealtimeStreamingActivatesTentativeTail:
-    """TASK-471 A1 — activation contract for the (already-built but dormant)
+    """Activation contract for the (already-built but dormant)
     tentative-tail render.
 
     The realtime pipeline seed YAML(s) add a ``streaming.commit_policy:
@@ -2172,7 +2172,7 @@ class TestRealtimeStreamingActivatesTentativeTail:
 
     def test_realtime_streaming_block_emits_valid_stable_chars(self):
         parser = PipelineYamlParser()
-        # The exact top-level block TASK-471 adds to the realtime seed YAML(s),
+        # The exact top-level block added to the realtime seed YAML(s),
         # including the inline comments — proving the parser (which ignores YAML
         # comments) still resolves commit_policy under the streaming mapping.
         realtime_yaml = """
@@ -2207,7 +2207,7 @@ streaming:
 
 
 class TestTask505VadDefaults:
-    """TASK-505 Phase 0 — clinical VAD fallback defaults.
+    """Clinical VAD fallback defaults.
 
     A pipeline that omits VAD keys must inherit the clinical defaults
     (min_speech 100 ms so short confirmations survive; padding 200 ms per
@@ -2247,11 +2247,11 @@ preprocessing:
 
 
 class TestTask505SchemaV2:
-    """TASK-505 Phase 2 — pipeline schema v2.
+    """Pipeline schema v2.
 
     v2 adds: `provider :: model[@rev]` shorthand, declarable
     normalize-processor / resample / segment_merge stages, denoise.scope
-    (dual-path per decision D2), endpoint parsing, and the
+    (dual-path), endpoint parsing, and the
     diar_feature_extraction declaration. v1.0/1.1 configs parse unchanged.
     """
 
@@ -2335,7 +2335,7 @@ class TestTask505SchemaV2:
         assert spec.preprocessing.resample_enabled is True
 
     def test_denoise_scope_defaults_to_vad_only(self, parser):
-        # Decision D2 (dual-path): denoised audio gates VAD; ASR gets raw.
+        # Dual-path default: denoised audio gates VAD; ASR gets the raw audio.
         spec = self._parse(
             parser, "models:\n  asr: m\npreprocessing:\n  denoise:\n    enabled: true\n"
         )

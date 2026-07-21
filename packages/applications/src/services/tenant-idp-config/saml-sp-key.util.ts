@@ -1,9 +1,9 @@
 /**
- * TASK-499 P1 — SAML SP key-pair generation.
+ * SAML SP key-pair generation.
  *
  * Mints the RSA key pair + self-signed X.509 certificate a tenant's SAML SP
  * config uses to sign AuthnRequests and (optionally) decrypt assertions
- * (TASK-499 D2/D5). Wraps the maintained `selfsigned` library rather than
+ * . Wraps the maintained `selfsigned` library rather than
  * hand-rolling X.509 — the IdP-side signature-verification path has its own
  * tampered/expired/replayed test matrix against `@node-saml/node-saml`; this
  * is only SP-side key issuance, called from `TenantIdpConfigService.create`.

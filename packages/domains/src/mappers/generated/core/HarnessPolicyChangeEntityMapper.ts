@@ -49,7 +49,7 @@ export const HarnessPolicyChangeEntityMapperHandlers = createMapperHandlers<
   Models.HarnessPolicyChange
 >({
   $toPersistence: {
-    // TASK-369 Phase 3D — preserve the raw Buffer for the Prisma Bytes write path
+    // Preserve the raw Buffer for the Prisma Bytes write path
     // (the generic auto-mapper would destructure a typed array into a byte map).
     encryptedBeforeJson: (entity) => entity.encryptedBeforeJson ?? null,
     encryptedAfterJson: (entity) => entity.encryptedAfterJson ?? null,

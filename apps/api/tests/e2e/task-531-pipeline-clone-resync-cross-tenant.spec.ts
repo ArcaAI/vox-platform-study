@@ -1,10 +1,8 @@
 /**
- * Cross-tenant probes against the TASK-531 surfaces (clone + resync).
- *
- * AUTHORED BY TASK-531, EXECUTED BY TASK-534 (program plan §2.2).
+ * Cross-tenant probes against the pipeline clone + resync surfaces.
  *
  * Every new by-id admin surface needs cross-tenant coverage (rule 05 DoD), and
- * this ticket adds two. The specific hazard TASK-531 introduces is that the
+ * this ticket adds two. The specific hazard here is that the
  * lock check answers 403 with a message that NAMES the resource's nature. If
  * that 403 could ever fire before the ownership check, a prober could learn
  * that a given pipeline id exists in another tenant — the exact existence leak

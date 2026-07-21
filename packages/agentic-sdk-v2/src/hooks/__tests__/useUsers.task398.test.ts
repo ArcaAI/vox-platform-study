@@ -1,5 +1,5 @@
 /**
- * useUsers Hook — TASK-398 (P1-6): bulk `assign-role` action.
+ * useUsers Hook — bulk `assign-role` action.
  *
  * The server arm fans the single-user role assignment out over `ids`; the SDK
  * delta is purely additive — `assign-role` joins the `BulkUserActionType`

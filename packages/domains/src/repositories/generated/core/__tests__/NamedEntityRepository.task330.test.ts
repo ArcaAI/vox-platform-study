@@ -1,5 +1,5 @@
 /**
- * TASK-330 Phase 1 — NamedEntityRepository.findByConsultation.
+ * NamedEntityRepository.findByConsultation.
  *
  * The SummaryProcessor needs every NER entity for a consultation's transcript
  * (with transcript offsets + ontology codes) to inject into the LLM prompt.

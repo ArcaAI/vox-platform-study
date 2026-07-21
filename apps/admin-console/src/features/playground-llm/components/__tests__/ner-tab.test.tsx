@@ -1,5 +1,5 @@
 /**
- * TASK-446 — Agent Playground NER tab. fetch is stubbed at the network
+ * Agent Playground NER tab. fetch is stubbed at the network
  * boundary; covers the idle prompt, the extract flow (POST to the ai/nlp
  * proxy), the entity list, and the empty result.
  */

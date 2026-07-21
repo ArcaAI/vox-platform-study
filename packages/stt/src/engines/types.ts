@@ -65,7 +65,6 @@ export interface EngineConfig {
    * Per-call `TranscribeOptions.task` overrides this default.
    *
    * @default 'transcribe'
-   * @see TASK-300 L-2
    */
   task?: WhisperTask;
 
@@ -98,8 +97,6 @@ export interface TranscribeOptions {
    * Whisper inference task for this single call.
    *
    * Overrides `EngineConfig.task`. See {@link WhisperTask} for semantics.
-   *
-   * @see TASK-300 L-2
    */
   task?: WhisperTask;
 }

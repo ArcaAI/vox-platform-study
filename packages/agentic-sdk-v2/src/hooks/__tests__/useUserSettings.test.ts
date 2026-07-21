@@ -1,7 +1,7 @@
 /**
  * useUserSettings Hook Tests
  *
- * TASK-265 W0-8 / GAP-03: reduced surface — only `list()` and
+ * Reduced surface — only `list()` and
  * `updateByKey(namespace, key, value)`. The previous CRUD methods (get, create,
  * update by id, getMySettings) targeted routes that do not exist on the API
  * (`UserSettingsController`) and have been removed.
@@ -165,10 +165,10 @@ describe('useUserSettings (TASK-265 reduced surface)', () => {
         });
     });
 
-    // ─── TASK-388 #11 — admin edit ANOTHER user's settings/preferences ───
+    // ─── Admin edit ANOTHER user's settings/preferences ───
     // The backend already exposes `GET /admin/users/:id/settings` and
-    // `PATCH /admin/users/:id/settings/:namespace/:key` (assertUserInScope,
-    // TASK-245). These SDK methods target a specific `userId` so a future admin
+    // `PATCH /admin/users/:id/settings/:namespace/:key` (assertUserInScope).
+    // These SDK methods target a specific `userId` so a future admin
     // FE can view/edit another user's preferences.
     describe('admin target-user surface (TASK-388 #11)', () => {
         it('listForUser GETs the admin settings route for the target user', async () => {

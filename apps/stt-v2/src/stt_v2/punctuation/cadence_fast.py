@@ -1,11 +1,9 @@
 """Direct loader for ai4bharat/Cadence-Fast punctuation restoration.
 
-TASK-351 P2-2 (decision gate D-2: GO). The ``cadence-punctuation`` wrapper
+The ``cadence-punctuation`` wrapper
 package cannot load under the pinned transformers 5.x, so the ``cadence-fast``
-model option loads the checkpoint directly via ``AutoModel`` with the
-spike-verified kwargs. See
-``docs/implementation/TASK-351-Realtime-Transcription-Performance/spike-cadence-fast.md``
-for the root-cause analysis behind each load flag.
+model option loads the checkpoint directly via ``AutoModel`` with
+spike-verified kwargs.
 
 This module imports no ML dependencies at import time; transformers/torch are
 only pulled in when :func:`load_model` actually runs.
@@ -31,7 +29,7 @@ their legacy loader.
 
 MODEL_ID = "ai4bharat/Cadence-Fast"
 REVISION = "8971c5011e4fba5dcfbcac52744587d7da605534"
-"""Pinned revision — remote code + weights audited at this sha in the D-2 spike."""
+"""Pinned revision — remote code + weights audited at this sha."""
 
 _WARMUP_TEXT = "hello doctor how are you"
 _NO_PUNCTUATION_LABEL = "O"

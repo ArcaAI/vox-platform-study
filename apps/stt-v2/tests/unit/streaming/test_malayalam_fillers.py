@@ -1,4 +1,4 @@
-"""Malayalam filler forms + configurable filler patterns (TASK-351 P2-1).
+"""Malayalam filler forms + configurable filler patterns.
 
 Covers:
 - ``_FILLER_PATTERN`` (module default) recognizes common Malayalam

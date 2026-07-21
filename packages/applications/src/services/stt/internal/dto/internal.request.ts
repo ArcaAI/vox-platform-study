@@ -56,7 +56,7 @@ export class TranscriptSegmentInput {
  * Request from STT-v2 service to create a transcript context item
  */
 export class CreateTranscriptRequest {
-  // TASK-342 GAP #1 — streaming sessions have NO TranscriptionJob, so `jobId`
+  // Streaming sessions have NO TranscriptionJob, so `jobId`
   // is optional. When absent the caller MUST supply `consultationId` (+
   // `tenantId`) and the transcript is keyed directly to the consultation.
   @ApiPropertyOptional({
@@ -198,7 +198,7 @@ export class InternalFailJobRequest {
  * Called after STT-v2 stores audio blob to MinIO
  */
 export class CreateAudioRecordRequest {
-  // TASK-334 I-2c — the writer now serves two callers:
+  // The writer serves two callers:
   //  • batch/local: `contextItemId` + the storage quartet (creates the Media here)
   //  • streaming dual-capture: `consultationId` (+ `tenantId`) + a pre-registered
   //    `mediaId` (raw/processed Media already created via /internal/stt/media)
@@ -377,7 +377,7 @@ export class AudioRecordResponse {
 }
 
 /**
- * TASK-334 I-2b — Request from STT-v2 to register a stored object as a `Media`
+ * Request from STT-v2 to register a stored object as a `Media`
  * row. The streaming dual-capture path uploads raw/processed WAVs to object
  * storage, then calls this to obtain each `Media` id (`rawMediaId` /
  * `processedMediaId`) before creating the `AudioRecording`.

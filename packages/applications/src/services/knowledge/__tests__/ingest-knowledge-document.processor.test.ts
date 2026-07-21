@@ -1,5 +1,5 @@
 /**
- * IngestKnowledgeDocumentProcessor unit tests (TASK-330 Phase 3 — institutional RAG).
+ * IngestKnowledgeDocumentProcessor unit tests — institutional RAG.
  *
  * The processor mirrors SummaryProcessor: a fail-closed `tenantId` guard, a CLS
  * rebind via `createWorkerSession`, an `assertEqualTenants` defense-in-depth

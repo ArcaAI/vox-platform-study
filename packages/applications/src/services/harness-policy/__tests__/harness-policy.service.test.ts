@@ -1,5 +1,5 @@
 /**
- * HarnessPolicyService unit tests (TASK-330 Phase 6).
+ * HarnessPolicyService unit tests.
  *
  * Verifies the three behaviours the admin console + worker depend on:
  *  1. getEffectivePolicy resolves tenant row → system default → code default
@@ -94,7 +94,7 @@ describe('HarnessPolicyService', () => {
 
   describe('getEffectivePolicy', () => {
     it('returns the tenant own row (source=tenant) when present', async () => {
-      // SMR fields non-null so the TASK-356 D-7 (B1) field-level fallthrough is
+      // SMR fields non-null so the field-level fallthrough is
       // a no-op here: this case asserts the SYSTEM default is NOT consulted when
       // the own row is fully populated.
       const own = HarnessPolicyFactory.CreateHarnessPolicy({
@@ -141,7 +141,7 @@ describe('HarnessPolicyService', () => {
       expect(result.id).toBeNull();
     });
 
-    // ── TASK-356 D-7 (T-B1): field-level fallthrough for the two SMR fields ──
+    // ── field-level fallthrough for the two SMR fields ──
     it('fills null SMR fields on the tenant own row from the SYSTEM default (field-level fallthrough)', async () => {
       const own = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: TENANT,
@@ -246,7 +246,7 @@ describe('HarnessPolicyService', () => {
     });
   });
 
-  // ── TASK-356 D-7 (T-B2): the fail-closed SMR selection seam ──
+  // ── the fail-closed SMR selection seam ──
   describe('resolveSmrSelection', () => {
     it('returns {provider, model} resolved from the SYSTEM-default cascade', async () => {
       const sys = HarnessPolicyFactory.CreateHarnessPolicy({
@@ -293,7 +293,7 @@ describe('HarnessPolicyService', () => {
     });
   });
 
-  // AiTaskDefault-first SMR routing (TRACKER D-11).
+  // AiTaskDefault-first SMR routing.
   describe('resolveSmrSelection — AiTaskDefault precedence', () => {
     it('consults the smr.finalize AiTaskDefault FIRST and returns its {provider, sourceUri}', async () => {
       const svc = makeServiceWithAiTaskDefault();
@@ -412,7 +412,7 @@ describe('HarnessPolicyService', () => {
       expect(policyChangeRepository.create).not.toHaveBeenCalled();
     });
 
-    // TASK-532 work-stream A-1 (E3-L1, OD-2): the guardrail/PHI ON-OFF switches
+    // The guardrail/PHI ON-OFF switches
     // join the global-admin-only list. A tenant admin must not be able to
     // disable the safety gate or the PHI fail-closed posture for their tenant.
     describe.each(['safetyEnabled', 'phiEnabled', 'phiFailClosed'] as const)('E3-L1 lock — %s', (key) => {
@@ -510,7 +510,7 @@ describe('HarnessPolicyService', () => {
       expect(result.source).toBe('tenant');
     });
 
-    // ── TASK-534 e2e G1 — the FIRST-EDIT create path honors the precondition ──
+    // ── The FIRST-EDIT create path honors the precondition ──
     // Pre-fix, a stale `If-Match` on a tenant with no policy row silently
     // CREATED the row and returned 200 (observed on the fresh e2e DB); the
     // caller's validator must be compared against the inherited default's

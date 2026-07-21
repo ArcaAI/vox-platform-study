@@ -1,12 +1,12 @@
 /**
- * StreamTicketService — TASK-263 / W0-1 (D1 contract)
+ * StreamTicketService
  *
  * Issues and consumes single-use, short-TTL tickets that let SDK clients
  * authenticate Server-Sent-Events endpoints without leaking long-lived JWTs
  * into the URL query string (HIPAA-relevant; query strings show up in CDN
  * access logs, browser history, and Highlight.io network recordings).
  *
- * Locked contract (TASK-263 §2.1 D1):
+ * Locked contract:
  *   - Redis key shape: `stream-ticket:<ticket>` → `{ userId, tenantId, scope, exp }`
  *   - TTL: 30 seconds
  *   - Single-use: `consumeTicket()` does GET + DEL
@@ -14,7 +14,7 @@
  *
  * The "atomic" GET+DEL is currently a 2-call sequence. The race window is in
  * the microsecond range and is not exploitable for 30-second tickets, but
- * a follow-up (see TASK-263 §6) can swap in `IRedisCacheService.getdel(...)`
+ * a follow-up can swap in `IRedisCacheService.getdel(...)`
  * once that method exists on the cache interface.
  */
 import { Inject, Injectable, Logger } from '@nestjs/common';
@@ -30,7 +30,7 @@ export interface IssueTicketInput {
   tenantId?: string | null;
   scope: string;
   /**
-   * TASK-295 SEC-A5-6 / M-8: when the ticket is issued during an active
+   * When the ticket is issued during an active
    * impersonation, the admin's id is carried forward so the eventual
    * ticket-authenticated request (e.g. SSE/WS) can restore the
    * `impersonatedBy` claim on `req.user` and produce the appropriate
@@ -97,7 +97,7 @@ export class StreamTicketService {
           tenantId: typeof candidate.tenantId === 'string' ? candidate.tenantId : null,
           scope: candidate.scope,
           exp: candidate.exp,
-          // Backward-compatible: tickets minted before TASK-295 lack this
+          // Backward-compatible: tickets minted before impersonation support lack this
           // field; default to null so non-impersonated requests still work.
           impersonatedBy: typeof candidate.impersonatedBy === 'string' ? candidate.impersonatedBy : null,
         };

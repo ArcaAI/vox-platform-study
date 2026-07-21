@@ -1,5 +1,5 @@
 """parakeet.cpp loader — ggml runtime for NVIDIA Parakeet/Nemotron ASR
-(TASK-505 P3, engine PARAKEET_CPP).
+(engine PARAKEET_CPP).
 
 Upstream (``mudler/parakeet.cpp``, MIT) ships a C API (``libparakeet``) and a
 CLI — **no official Python bindings** as of 2026-07. This loader therefore
@@ -52,7 +52,7 @@ class ParakeetCppLoader(BaseModelLoader):
         settings = get_settings()
 
         # 1) Fetch (or locate) the GGUF weights.
-        # TASK-527 — the one resolver contract replaces the local_path-or-HF
+        # The one resolver contract replaces the local_path-or-HF
         # branch: local_path (operator override) -> hf: / file:// / s3://.
         # parakeet.cpp needs a real directory on disk, so every scheme is
         # materialised here rather than passed through.
@@ -91,7 +91,7 @@ class ParakeetCppLoader(BaseModelLoader):
         except ImportError:
             pass
 
-        # TASK-505 review — a raw ctypes CDLL handle is NOT drivable by the
+        # A raw ctypes CDLL handle is NOT drivable by the
         # adapter (it needs a binding exposing transcribe()); returning one
         # "succeeded" at load and only failed later at session build. Fail
         # HERE, at load time, with the actionable message instead.

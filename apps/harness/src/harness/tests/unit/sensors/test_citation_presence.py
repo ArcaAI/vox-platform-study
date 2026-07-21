@@ -1,4 +1,4 @@
-"""Citation-presence sensor tests (RED-first).
+"""Citation-presence sensor tests.
 
 Heuristic under test: every provenance claim in ``citationsMap.claims`` must
 carry at least one evidence span. A claim with no evidence -> citation-presence

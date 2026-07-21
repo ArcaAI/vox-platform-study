@@ -391,7 +391,7 @@ describe('ConsultationJobService', () => {
     });
 
     // ===========================================================================
-    // createComprehensiveSummaryJob Tests (GAP-4 Task 2.6–2.7 verification)
+    // createComprehensiveSummaryJob Tests
     // ===========================================================================
 
     describe('createComprehensiveSummaryJob', () => {
@@ -1644,7 +1644,7 @@ describe('ConsultationJobService', () => {
     });
 
     // ===========================================================================
-    // TASK-299 D-9 / D-10 — Idempotency-Key (Redis-backed dedupe)
+    // Idempotency-Key (Redis-backed dedupe)
     // ===========================================================================
 
     describe('TASK-299 D-9/D-10 — Idempotency-Key dedupe', () => {
@@ -1760,7 +1760,7 @@ describe('ConsultationJobService', () => {
     });
 
     // ===========================================================================
-    // TASK-307 W3.3 — tenant + user carry-through to ConsultationJobStatus
+    // Tenant + user carry-through to ConsultationJobStatus
     // ===========================================================================
 
     describe('TASK-307 W3 — ConsultationJobStatus carries tenantId + userId', () => {

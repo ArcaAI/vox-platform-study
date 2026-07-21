@@ -82,7 +82,7 @@ class ErrorResponse(BaseModel):
 
 
 class PipelineValidateRequest(BaseModel):
-    """TASK-505 P2 — validate a pipeline YAML against the Python parser."""
+    """Validate a pipeline YAML against the Python parser."""
 
     config_yaml: str = Field(..., description="Pipeline configuration YAML")
 

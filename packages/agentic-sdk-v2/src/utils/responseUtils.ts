@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - Response Utilities (TASK-215)
+ * @arcaai/vox - Response Utilities
  *
  * Handles API responses that may be either raw arrays or paginated wrappers.
  */
@@ -72,7 +72,7 @@ export interface CursorPageResult<T> {
 
 /**
  * Normalizes a server `CursorPaginatedResponse<T>` (`{ data, nextCursor,
- * hasMore, limit }` — TASK-373, reference endpoint `GET /admin/audit-logs/cursor`)
+ * hasMore, limit }` — reference endpoint `GET /admin/audit-logs/cursor`)
  * into the client {@link CursorPageResult} (`PageResult<T>`-shaped) cursor page.
  *
  * The offset counterpart is {@link extractPaginated}. Defensive like its

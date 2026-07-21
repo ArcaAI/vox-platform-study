@@ -2,17 +2,17 @@ import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
 
 /**
- * TASK-390 #25 (AU2) — shared, column-driven table export (csv | xlsx | pdf).
+ * Shared, column-driven table export (csv | xlsx | pdf).
  *
- * Factored out of TASK-388's `UserExportService` so the Users export and the
- * Audit-log export share ONE renderer instead of each carrying its own
+ * Factored out of `UserExportService` so the Users export and the Audit-log
+ * export share ONE renderer instead of each carrying its own
  * `exceljs`/`pdfkit` plumbing. Callers describe their columns + rows (rows are
  * plain records keyed by `column.key`) and pick a format; this module owns the
  * library choice, escaping, and content-type/filename derivation.
  *
- * Library choice (inherited FLAG from TASK-388): `exceljs` for `.xlsx` and
- * `pdfkit` for `.pdf` — both pure-JS, no native build step, no headless
- * browser; `pdfkit` ships the standard Helvetica font so no vendored TTFs.
+ * Library choice: `exceljs` for `.xlsx` and `pdfkit` for `.pdf` — both
+ * pure-JS, no native build step, no headless browser; `pdfkit` ships the
+ * standard Helvetica font so no vendored TTFs.
  */
 export type TableExportFormat = 'csv' | 'xlsx' | 'pdf';
 

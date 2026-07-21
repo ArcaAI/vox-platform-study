@@ -1,4 +1,4 @@
-/** GET /admin/pstudio/status — production feature-flag gate (TASK-419). */
+/** GET /admin/pstudio/status — production feature-flag gate. */
 export interface PstudioStatus {
     enabled: boolean;
 }

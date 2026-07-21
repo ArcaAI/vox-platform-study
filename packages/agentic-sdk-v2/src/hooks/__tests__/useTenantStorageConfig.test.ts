@@ -1,5 +1,5 @@
 /**
- * useTenantStorageConfig Hook Tests (TASK-323 Phase 0 / TASK-318 R9)
+ * useTenantStorageConfig Hook Tests
  *
  * Per-tenant / per-bucket storage provider configuration management.
  *

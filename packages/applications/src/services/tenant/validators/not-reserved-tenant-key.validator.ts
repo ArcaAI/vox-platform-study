@@ -2,7 +2,7 @@ import { ValidatorConstraint, ValidatorConstraintInterface } from 'class-validat
 import { isReservedTenantKeyShape } from '../tenantKey';
 
 /**
- * TASK-497 D3 — rejects an explicit `key` shaped like a platform-reserved
+ * Rejects an explicit `key` shaped like a platform-reserved
  * tenant key (`__SYSTEM__`, `__GLOBAL__`, or any `__*__`). Non-string values
  * are left to `@IsString` to reject.
  */

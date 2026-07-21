@@ -1,5 +1,5 @@
 /**
- * TenantFrontendConfigDtoMapper (TASK-356 Phase 4, A-T2).
+ * TenantFrontendConfigDtoMapper.
  *
  * The response must surface the three new audio-console fields
  * (transcriptionMode, transcriptionModeLocked, captureMode) so the admin UI

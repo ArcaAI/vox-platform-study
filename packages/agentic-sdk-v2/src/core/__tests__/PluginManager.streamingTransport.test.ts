@@ -1,5 +1,5 @@
 /**
- * PluginManager — streaming-transport wiring (TASK-298 D-4)
+ * PluginManager — streaming-transport wiring
  *
  * Verifies that `getTranscriptionPipelineConfig()` builds a
  * `streamingTransport` (StreamingSessionManager + SttV2WebSocketClient)
@@ -147,7 +147,7 @@ describe('PluginManager.getTranscriptionPipelineConfig (TASK-298 D-4)', () => {
   });
 });
 
-// TASK-356 Phase 4 — the server-resolved EFFECTIVE transcription mode (injected
+// The server-resolved EFFECTIVE transcription mode (injected
 // by AgenticProvider into resolvedConfig.stt.transcriptionMode) must reach the
 // pipeline config so TranscriptionPipeline.resolveSTTRuntimeProvider() honors it.
 describe('PluginManager — transcriptionMode passthrough (TASK-356)', () => {

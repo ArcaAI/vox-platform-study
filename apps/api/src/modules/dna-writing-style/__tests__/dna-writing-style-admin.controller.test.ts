@@ -43,7 +43,7 @@ const createMockDnaService = () => ({
     getVersions: vi.fn(),
     getVersionsForDoctor: vi.fn(),
     listReports: vi.fn(),
-    // TASK-331 doc-02 F6 — repository-level pagination delegate.
+    // Repository-level pagination delegate.
     listReportsPaginated: vi.fn(),
     getDashboard: vi.fn(),
 });
@@ -67,7 +67,7 @@ describe('DnaWritingStyleAdminController', () => {
         );
     });
 
-    // ─── TASK-331 doc-02 F6 — repository-level pagination ────────────────
+    // ─── Repository-level pagination ──────────────────────────────────────
     // The admin list now delegates to `listReportsPaginated` (repo `findMany` +
     // `count`) instead of loading the full tenant result set and slicing it.
     describe('GET /admin/dna-writing-styles (list)', () => {
@@ -119,7 +119,7 @@ describe('DnaWritingStyleAdminController', () => {
             );
         });
 
-        // TASK-388 #13 — cross-user DNA read: an admin narrows the list to one
+        // Cross-user DNA read: an admin narrows the list to one
         // doctor's reports. The service already filters by `doctorId` (and
         // PHI-gates it to the caller's tenant); this just threads the param.
         it('forwards the doctorId query param (cross-user read)', async () => {
@@ -174,7 +174,7 @@ describe('DnaWritingStyleAdminController', () => {
     });
 
     describe('PATCH /admin/dna-writing-styles/:reportId (update)', () => {
-        // ─── TASK-326 X7 / D-2 — If-Match → expectedVersion fold ─────────
+        // ─── If-Match → expectedVersion fold ──────────────────────────────
         // The route is `@RequiresIfMatch()`; the `@ExpectedVersion()` param
         // decorator parses `If-Match` into a number (or 428s when missing).
         // The controller folds that value onto the DTO's `expectedVersion`
@@ -271,7 +271,7 @@ describe('DnaWritingStyleAdminController', () => {
         });
     });
 
-    // TASK-388 #13 — admin "latest DNA report for a doctor" read. Delegates to
+    // Admin "latest DNA report for a doctor" read. Delegates to
     // the PHI-gated `getDnaReport(doctorId)` (asserts the doctor is in the
     // caller's tenant; even GLOBAL_ADMIN cannot cross tenants).
     describe('GET /admin/dna-writing-styles/doctor/:doctorId (getReportForDoctor)', () => {
@@ -454,7 +454,7 @@ describe('DnaWritingStyleAdminController', () => {
         });
     });
 
-    // TASK-419 item 6 — single-use tickets from POST /auth/stream-ticket must
+    // Single-use tickets from POST /auth/stream-ticket must
     // authenticate the SSE route: JwtAuthGuard rejects tickets on routes without
     // @StreamScope, so the console's `dna_job:<jobId>` tickets 401'd before this
     // declaration existed (the console shipped a labeled polling fallback).

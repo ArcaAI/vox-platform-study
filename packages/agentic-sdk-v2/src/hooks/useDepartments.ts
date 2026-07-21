@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useDepartments Hook (SDK-207 WS-5, refactored TASK-039)
+ * @arcaai/vox - useDepartments Hook (SDK-207 WS-5)
  *
  * Department management hook for admin operations.
  */
@@ -20,13 +20,13 @@ export interface Department {
   newPatientPromptId?: string;
   revisitPromptId?: string;
   summaryPromptId?: string;
-  // TASK-387 (#7 / D3) — per-department default DNA writing-style prompt.
+  // Per-department default DNA writing-style prompt.
   dnaWritingStylePromptId?: string | null;
   promptMetadata?: Record<string, unknown>;
   [key: string]: unknown;
 }
 
-/** TASK-387 (#6 / D2) — a member returned by the dept->users listing. */
+/** A member returned by the dept->users listing. */
 export interface DepartmentUser {
   id: string;
   email?: string;
@@ -49,7 +49,7 @@ export interface UseDepartmentsReturn {
   getChildren: (id: string) => Promise<Department[]>;
   getByCode: (code: string) => Promise<Department>;
   updatePromptConfig: (id: string, data: Record<string, unknown>) => Promise<Department>;
-  // TASK-387 (#6 / D2) — reverse dept->users listing (server-backed, paginated).
+  // Reverse dept->users listing (server-backed, paginated).
   getUsers: (id: string, pagination?: PaginationParams) => Promise<DepartmentUser[]>;
 }
 
@@ -136,7 +136,7 @@ export function useDepartments(): UseDepartmentsReturn {
   const updatePromptConfig = useCallback(
     (id: string, data: Record<string, unknown>) =>
       execute<Department>('updatePromptConfig', (client) => {
-        // OCC (TASK-302 Stream D Phase E.2): `PATCH admin/departments/:id/prompt-config`
+        // OCC: `PATCH admin/departments/:id/prompt-config`
         // is `@RequiresIfMatch()`, so a plain PATCH is rejected `428`. The caller
         // passes the version it read (`expectedVersion`, from the GET that loaded the
         // department); replay it as the strong `If-Match` validator so the server

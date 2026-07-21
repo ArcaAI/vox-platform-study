@@ -20,7 +20,7 @@ class SmrServiceError(RuntimeError):
     """The SMR service was unreachable or returned a non-2xx response.
 
     ``after_send`` is True when the request reached SMR and the model MAY have generated —
-    so retrying would re-invoke it (C1-04 / I-1). It is set for the two dispatch-then-lost
+    so retrying would re-invoke it. It is set for the two dispatch-then-lost
     paths this client closes: a read-side transport failure (``_POST_SEND_ERRORS``) and the
     governor's per-call ``LlmCallTimeout`` firing mid-request. ``generate`` also makes the
     Temporal retry non-retryable for these, so neither the governor nor ``_GENERATE_RETRY``
@@ -28,7 +28,7 @@ class SmrServiceError(RuntimeError):
 
     NOT covered by ``after_send`` (still retried, pre-existing / lower risk): an SMR 5xx or
     the LM-Studio ``terminated`` 400 that arrives AFTER the model ran — the governor retries
-    those. TASK-469 adds a deterministic ``Idempotency-Key`` (see ``generate``) that lets SMR
+    those. A deterministic ``Idempotency-Key`` (see ``generate``) lets SMR
     dedup a replayed generate — closing the worker-crash re-delivery path; the residual is a
     5xx after the model ran but before SMR cached the response. A pre-send failure sets
     ``after_send=False`` (safe to retry).
@@ -40,7 +40,7 @@ class SmrServiceError(RuntimeError):
 
 
 # Read-side httpx failures: the request bytes were fully sent, so SMR MAY have run the
-# model before the response was lost. Retrying re-invokes generation (C1-04). WRITE/
+# model before the response was lost. Retrying re-invokes generation. WRITE/
 # connect/pool failures are PRE-send (the model never saw the prompt) and stay retryable.
 _POST_SEND_ERRORS = (httpx.ReadTimeout, httpx.ReadError, httpx.RemoteProtocolError)
 
@@ -65,7 +65,7 @@ class SmrGenerationResult(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     content: str
-    # TASK-483 claim-check: OPTIONAL out-of-band ref to the generated note. Set by the
+    # Claim-check: OPTIONAL out-of-band ref to the generated note. Set by the
     # ``generate`` activity when ``content`` is offloaded above the threshold — in which
     # case ``content`` is emptied so the (large) note stays OUT of Temporal history, and
     # the workflow threads ``content_ref`` to the downstream activities that resolve it.
@@ -135,7 +135,7 @@ class SmrClient:
         if context is not None:
             body["context"] = context
 
-        # C1-04 (TASK-469): a deterministic key lets SMR dedup a replayed generate (a
+        # A deterministic key lets SMR dedup a replayed generate (a
         # worker-crash re-delivery) without re-invoking — and re-billing — the model. Sent
         # as a header (the api_client Idempotency-Key contract), never in the LLM body.
         headers = {"Idempotency-Key": idempotency_key} if idempotency_key else None
@@ -146,7 +146,7 @@ class SmrClient:
                 try:
                     resp = await client.post(url, json=body, headers=headers)
                 except _POST_SEND_ERRORS as exc:
-                    # C1-04: the prompt reached SMR (bytes sent) but the response was
+                    # The prompt reached SMR (bytes sent) but the response was
                     # lost. The model MAY have run — do NOT let the governor re-POST it.
                     raise _SmrResponseLost(exc) from exc
                 resp.raise_for_status()
@@ -157,7 +157,7 @@ class SmrClient:
             # NON-idempotent, so ``retry_on_timeout=False`` makes a per-call governor
             # timeout terminal, and a post-send read loss is surfaced as
             # ``_SmrResponseLost`` (marker-free) — the governor NEVER re-invokes the model
-            # after the prompt is dispatched (I-1 / C1-04). Pre-send failures still retry.
+            # after the prompt is dispatched. Pre-send failures still retry.
             try:
                 resp = await governed_request(self._base_url, _send, retry_on_timeout=False)
             except _SmrResponseLost as exc:

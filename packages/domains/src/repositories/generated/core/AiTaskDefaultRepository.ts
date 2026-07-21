@@ -10,7 +10,7 @@ import { AiTaskDefaultEntityMapper } from '../../../mappers';
 import { AiTaskDefault } from '../../../models';
 
 /**
- * Per-tenant "default model for task X" repository (TASK-506).
+ * Per-tenant "default model for task X" repository.
  *
  * One row per (tenant, taskKey) — enforced by the
  * `AiTaskDefault_tenant_task_unique` index. The reserved SYSTEM tenant row is

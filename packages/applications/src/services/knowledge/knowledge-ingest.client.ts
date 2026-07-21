@@ -38,7 +38,7 @@ export interface KnowledgeIngestResponse {
 }
 
 /**
- * KnowledgeIngestClient (TASK-330 Phase 3 — institutional RAG).
+ * KnowledgeIngestClient — institutional RAG.
  *
  * Thin outbound HTTP client the BullMQ ingestion worker uses to call the harness
  * internal chunk+embed+upsert endpoint. Mirrors HarnessGatewayService: base URL

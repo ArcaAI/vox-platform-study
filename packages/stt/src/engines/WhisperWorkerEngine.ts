@@ -347,9 +347,9 @@ export class WhisperWorkerEngine extends BaseEngine {
       throw new Error('Worker not initialized');
     }
 
-    // TASK-300 L-2: capability gate before crossing the worker boundary so
-    // callers get a synchronous, typed STTError instead of an opaque worker
-    // failure. Mirrors WhisperEngine's check on the main-thread path.
+    // Capability gate before crossing the worker boundary so callers get a
+    // synchronous, typed STTError instead of an opaque worker failure.
+    // Mirrors WhisperEngine's check on the main-thread path.
     const task = options?.task ?? this.config.task;
     if (task === 'translate') {
       const modelId =
@@ -369,7 +369,7 @@ export class WhisperWorkerEngine extends BaseEngine {
       // Transfer the audio buffer (zero-copy). After this call the caller's
       // `audio` view is detached; callers must not reuse it. This avoids the
       // ~1.9 MB structured-clone per 30 s chunk that would otherwise occur on
-      // every transcription (TASK-270 / C-2 in 04-stt.md).
+      // every transcription.
       const result = await this.sendWorkerRequest<TranscriptionResult>(
         'transcribe',
         {
@@ -378,8 +378,8 @@ export class WhisperWorkerEngine extends BaseEngine {
             language: options?.language,
             returnTimestamps: options?.returnTimestamps,
             prompt: options?.prompt,
-            // TASK-300 L-2: forward the resolved task (per-call override else
-            // engine-level default) so the worker can pipe it to the pipeline.
+            // Forward the resolved task (per-call override else engine-level
+            // default) so the worker can pipe it to the pipeline.
             task,
           },
         },

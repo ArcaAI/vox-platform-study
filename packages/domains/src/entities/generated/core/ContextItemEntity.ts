@@ -13,9 +13,9 @@ export interface IContextItemEntity extends IBaseTenantEntity {
   source: Enums.ContextItemSource;
   currentVersionNumber: number;
   content?: string | null;
-  // TASK-369 (Data Encryption Initiative) Phase 3B — Vault-Transit (hope-phi)
+  // Vault-Transit (hope-phi)
   // ciphertext of `content` plus the Transit key version. Both nullable.
-  // TASK-369 Phase 6 dropped the plaintext `content` column; `content` survives
+  // The plaintext `content` column was dropped; `content` survives
   // only as a transient field repopulated by repository decrypt-on-read.
   encryptedContent?: Buffer | null;
   contentKeyVersion?: number | null;
@@ -105,7 +105,7 @@ export class ContextItemEntity extends BaseTenantEntity {
     this.setProperty('currentVersionNumber', value);
   }
 
-  // TASK-369 Phase 3B — `content` is free-text clinical PHI. @Secret() marks
+  // `content` is free-text clinical PHI. @Secret() marks
   // it for audit-log redaction (defense-in-depth) and documents it as the
   // plaintext counterpart of the encrypted column.
   @Secret()
@@ -117,7 +117,7 @@ export class ContextItemEntity extends BaseTenantEntity {
     this.setProperty('content', value);
   }
 
-  // TASK-369 Phase 3B — Vault-Transit ciphertext of `content`. @Secret()
+  // Vault-Transit ciphertext of `content`. @Secret()
   // guards it from audit-log surfaces (leaking ciphertext + keyVersion helps
   // an attacker correlate confidential rows).
   @Secret()

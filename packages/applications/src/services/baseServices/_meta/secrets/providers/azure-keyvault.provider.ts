@@ -2,9 +2,9 @@ import { Injectable, NotImplementedException } from '@nestjs/common';
 import { ISecretsProvider, SecretsHealth } from '../ISecretsProvider';
 
 /**
- * Phase 2A Task 2.6 (TASK-302 Stream B) — AzureKeyVaultProvider stub.
+ * AzureKeyVaultProvider stub.
  *
- * Future-option placeholder per Decision D2. Mirrors AwsSecretsManagerProvider.
+ * Future-option placeholder. Mirrors AwsSecretsManagerProvider.
  */
 @Injectable()
 export class AzureKeyVaultProvider implements ISecretsProvider {

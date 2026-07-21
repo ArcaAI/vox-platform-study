@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - TranscriptionPipeline audio-drop wiring (TASK-464)
+ * @arcaai/vox - TranscriptionPipeline audio-drop wiring
  *
  * The push channel is load-bearing: the STT processor exposes a backpressure
  * `onBackpressureDrop` callback (nothing polls the getter). The pipeline must

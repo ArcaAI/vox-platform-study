@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 /**
- * TASK-328 A4 — usage-analytics aggregates for `PromptUsageRecord`, grouped by
+ * Usage-analytics aggregates for `PromptUsageRecord`, grouped by
  * department, doctor, and UTC day. Tenant-scoped; an optional
  * `promptTemplateId` query narrows the aggregation to a single template.
  */

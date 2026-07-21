@@ -1,4 +1,4 @@
-"""TASK-386 — tests proving the (previously dead) STT domain metrics and the
+"""Tests proving the (previously dead) STT domain metrics and the
 cross-service per-model metrics actually increment on their helper call-sites.
 
 These exercise the public helpers in ``stt_v2.core.metrics`` directly (no model

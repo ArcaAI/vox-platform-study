@@ -1,5 +1,5 @@
 /**
- * Optimistic-locking e2e — TASK-302 Stream D Phase C (C.5 + C.6).
+ * Optimistic-locking e2e.
  *
  * Proves that two concurrent PATCHes against `/api/v1/tenant/me/config`
  * carrying the same `expectedVersion` produce a clean winner/loser pair:
@@ -15,16 +15,14 @@
  * never exercises the race.
  *
  * The 412 mapping lives in `apps/api/src/interceptors/exception.interceptor.ts`
- * (OCC branch added in C.5). The CAS write itself is
- * `Repository.updateWithVersion` (B.2/B.3), wrapped per-batch in
+ * (the OCC branch). The CAS write itself is
+ * `Repository.updateWithVersion`, wrapped per-batch in
  * `databaseService.baseClient.$transaction(callback)` by `TenantService.updateTenantConfigs`
- * (C.4) so a mid-batch conflict rolls back every prior row.
+ * so a mid-batch conflict rolls back every prior row.
  *
  * Environment. Requires the test API at `process.env.API_URL` (default
  * `http://localhost:8868`) and a seeded test database — see
  * `tests/setup/playwright.global-setup.ts`.
- *
- * @see docs/implementation/TASK-302-System-Config-Implementation-Roadmap/04-optimistic-locking.md
  */
 import { test, expect, request as playwrightRequest } from '@playwright/test';
 import { createTestDataRegistry, loginSeededUsers, cleanupTestData, type TestDataRegistry } from '../../../../tests/helpers';
@@ -182,7 +180,7 @@ test.describe(`Optimistic locking — PATCH /admin/tenants/configs/${TENANT_KEY}
   });
 });
 
-// TASK-302 Stream D Phase D (D.3) — once `@RequiresIfMatch()` is applied to
+// With `@RequiresIfMatch()` applied to
 // the my-tenant config PATCH route, an inbound request without the
 // `If-Match` header must return `428 Precondition Required` (RFC 6585).
 // The body-field `expectedVersion` is NOT a substitute here — that's the

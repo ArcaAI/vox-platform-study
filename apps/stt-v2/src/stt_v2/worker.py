@@ -163,10 +163,10 @@ def main() -> None:
     # Initialize services (database, MinIO, etc.) before starting worker
     asyncio.run(initialize_services())
 
-    # TASK-525 — the worker-thread ceiling, control-plane first with the env
-    # value as fallback. Resolved once at worker start (Dramatiq fixes the thread
-    # pool at construction, so there is no live-resize path here) and never
-    # blocks startup: an unreachable gateway returns the env default.
+    # The worker-thread ceiling resolves control-plane first with the env value
+    # as fallback. Resolved once at worker start (Dramatiq fixes the thread pool
+    # at construction, so there is no live-resize path here) and never blocks
+    # startup: an unreachable gateway returns the env default.
     from stt_v2.core.runtime_limits import resolve_worker_concurrency
 
     worker_threads = asyncio.run(resolve_worker_concurrency(settings.worker_threads))

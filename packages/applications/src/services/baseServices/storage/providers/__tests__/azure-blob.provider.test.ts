@@ -1,5 +1,5 @@
 /**
- * AzureBlobProvider Unit Tests (TASK-318 / W1)
+ * AzureBlobProvider Unit Tests
  *
  * Strategy: mock `@azure/storage-blob` (external boundary). The mock exposes a
  * single shared service/container/blob client chain (via vi.hoisted) so tests

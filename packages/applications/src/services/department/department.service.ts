@@ -26,15 +26,15 @@ export class DepartmentService extends BaseService implements IDepartmentService
     private readonly departmentRepository: DepartmentRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // TASK-387 (#6 / D2) — appended last (append-only DI) so existing positional
+    // Appended last (append-only DI) so existing positional
     // callers / unit tests keep working. Used to list users of a department via
     // the `UserDepartment` join without a cross-service injection.
     private readonly userRepository: UserRepository,
-    // TASK-392 (Phase 3, C3) — optional so existing positional constructors in
+    // Optional so existing positional constructors in
     // unit tests keep working; when present, `create` enforces the plan
     // `maxDepartments` quota (kill-switch-gated, no-op when OFF).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
-    // TASK-441 — appended last (append-only DI). Used to surface a per-member
+    // Appended last (append-only DI). Used to surface a per-member
     // `isLead` flag on the department-members listing, derived from the
     // `UserDepartment.isPrimary` column. Optional so existing positional
     // constructors in other unit tests keep working.
@@ -129,7 +129,7 @@ export class DepartmentService extends BaseService implements IDepartmentService
   }
 
   /**
-   * TASK-387 (#6 / D2) — reverse listing of the users assigned to a department,
+   * Reverse listing of the users assigned to a department,
    * paginated with the house `PaginatedQuery` / `PaginatedResponse` shape.
    *
    * Tenant scope: the department is loaded first; a non-super-admin caller may
@@ -168,7 +168,7 @@ export class DepartmentService extends BaseService implements IDepartmentService
       where: deptWhere as any,
     });
 
-    // TASK-441 — `isPrimary` models the user's primary department; here it is
+    // `isPrimary` models the user's primary department; here it is
     // surfaced as `isLead` for the department-members view (closest available
     // signal — no dedicated per-department lead field exists). Scope by the
     // DEPARTMENT's tenant (matches the user query above) and drop soft-deleted
@@ -205,7 +205,7 @@ export class DepartmentService extends BaseService implements IDepartmentService
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // TASK-392 (Phase 3, C3) — plan quota precheck. Only pay the COUNT when the
+    // Plan quota precheck. Only pay the COUNT when the
     // kill-switch is ON (Q9); `assertQuantityQuota` throws `QuotaExceededException`
     // (→ 409) when creating one more would exceed `maxDepartments`, grandfathering
     // existing rows (Q10 block-new-only). Unlimited/ungated tenants are a no-op.
@@ -222,7 +222,7 @@ export class DepartmentService extends BaseService implements IDepartmentService
       }
     }
 
-    // TASK-305 D.6 (audit C-7) — verify the parent both exists AND lives
+    // (audit C-7) — verify the parent both exists AND lives
     // in the caller's tenant. `assertParentInScope` throws
     // `NotFoundException` (not `ForbiddenException`) on tenant mismatch
     // to avoid leaking the existence of a cross-tenant parent. GLOBAL_ADMIN
@@ -238,7 +238,7 @@ export class DepartmentService extends BaseService implements IDepartmentService
       name: dto.name,
       description: dto.description,
       parentDepartmentId: dto.parentDepartmentId,
-      // CC-04 (TASK-336) — forward the create modal's default summary template
+      // CC-04 — forward the create modal's default summary template
       // (the factory defaults it to null when absent).
       defaultSummaryTemplate: dto.defaultSummaryTemplate,
       createdBy: userId ?? undefined,
@@ -258,7 +258,7 @@ export class DepartmentService extends BaseService implements IDepartmentService
   /**
    * Update an existing department.
    *
-   * TASK-302 Stream D Phase E.2 — write path is now Compare-And-Set
+   * Write path is now Compare-And-Set
    * against `_version`. The `expectedVersion` carried on the DTO is the
    * CAS predicate input (a `@RequiresIfMatch()` HTTP route folds the
    * `If-Match` header value over the body-field at the controller).
@@ -289,7 +289,7 @@ export class DepartmentService extends BaseService implements IDepartmentService
       }
     }
 
-    // TASK-305 D.6 (audit C-7) — same cross-tenant guard as `create`. The
+    // (audit C-7) — same cross-tenant guard as `create`. The
     // self-parent circular-reference check stays as-is; only the existence
     // check is replaced with the tenant-aware helper.
     if (dto.parentDepartmentId !== undefined && dto.parentDepartmentId !== null) {
@@ -333,10 +333,10 @@ export class DepartmentService extends BaseService implements IDepartmentService
   /**
    * Update department prompt configuration (pre-summary, new patient, revisit prompts).
    *
-   * TASK-294 DEF-C3: enforce tenant ownership before mutating. Mismatched tenant
+   * Enforce tenant ownership before mutating. Mismatched tenant
    * raises NotFoundException (not Forbidden) to avoid leaking existence.
    *
-   * TASK-302 Stream D Phase E.2 — also enforces OCC; the route requires
+   * Also enforces OCC; the route requires
    * `If-Match` and the body-field `expectedVersion` is the CAS predicate.
    *
    * @throws OptimisticConcurrencyException — version drift; HTTP 412.
@@ -359,7 +359,7 @@ export class DepartmentService extends BaseService implements IDepartmentService
     if (dto.preSummaryPromptId !== undefined) department.preSummaryPromptId = dto.preSummaryPromptId;
     if (dto.newPatientPromptId !== undefined) department.newPatientPromptId = dto.newPatientPromptId;
     if (dto.revisitPromptId !== undefined) department.revisitPromptId = dto.revisitPromptId;
-    // TASK-387 (#7) — default DNA writing-style prompt slot.
+    // Default DNA writing-style prompt slot.
     if (dto.dnaWritingStylePromptId !== undefined) department.dnaWritingStylePromptId = dto.dnaWritingStylePromptId;
 
     if (!department.hasChanges) {

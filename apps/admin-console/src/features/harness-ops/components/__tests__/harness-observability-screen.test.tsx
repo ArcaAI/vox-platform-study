@@ -122,7 +122,7 @@ const GATE_QUEUE: GateQueue = {
     policySource: 'tenant',
 };
 
-/** TASK-532 B-5 — the board also mounts the golden-sets panel + edit-burden card. */
+/** The board also mounts the golden-sets panel + edit-burden card. */
 const GOLDEN_SETS: GoldenSetList = {
     items: [
         {
@@ -146,7 +146,7 @@ function stubRoutes(overrides: { audit?: Response | HarnessAuditList; workingTen
             return { userId: 'u-1', tenantId: 'tnt-1', permissions: [{ action: 'manage', subject: 'HarnessEval' }] };
         }
         if (url.startsWith('/api/hope/admin/harness/golden-sets')) return GOLDEN_SETS;
-        // Best-effort per-user grid-layout persistence (TASK-423): the eval-runs grid
+        // Best-effort per-user grid-layout persistence: the eval-runs grid
         // loads its layout on mount; no saved layout in tests.
         if (url.includes('/user/me/settings')) return [];
         if (url.startsWith('/api/hope/admin/harness/audit')) return overrides.audit ?? AUDIT;

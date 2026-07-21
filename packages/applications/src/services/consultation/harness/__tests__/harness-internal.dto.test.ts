@@ -1,5 +1,5 @@
 /**
- * HarnessProgressRequest DTO Validation Tests (TASK-348 — MAJ-6 / TG-3).
+ * HarnessProgressRequest DTO Validation Tests.
  *
  * The internal progress endpoint is service-token guarded, but a buggy or
  * compromised token-holder could still grow the per-consultation snapshot
@@ -90,7 +90,7 @@ describe('HarnessProgressRequest payload bounds (MAJ-6 / TG-3)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// TASK-466 (C1-05) — HarnessEscalationRequest (gate SLA-breach escalation).
+// HarnessEscalationRequest (gate SLA-breach escalation).
 //
 // The harness `escalate_gate` activity POSTs {tenantId, reason, jobId?}; the
 // global pipe is whitelist + forbidNonWhitelisted, so `reason` is pinned to the
@@ -132,7 +132,7 @@ describe('HarnessEscalationRequest (C1-05)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// TASK-476 (C1) — HarnessEntityItem carries the five ontology codes. They are
+// HarnessEntityItem carries the five ontology codes. They are
 // declared class-validator fields (@IsOptional @IsString), so a coded entity
 // validates and a non-string code is rejected.
 // ---------------------------------------------------------------------------

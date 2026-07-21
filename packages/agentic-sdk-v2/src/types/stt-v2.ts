@@ -114,16 +114,16 @@ export interface StreamingSessionResponse {
   /** WebSocket URL path for connecting */
   wsUrl: string;
   /**
-   * One-shot stream ticket (TASK-298 D-1). The SDK appends `?ticket=<value>`
+   * One-shot stream ticket. The SDK appends `?ticket=<value>`
    * to the WebSocket URL; the API gateway consumes it on first WS open and
    * the ticket becomes invalid afterwards. Optional for backward compat with
    * older API revisions that haven't shipped the ticket field yet.
    */
   ticket?: string;
-  /** Epoch milliseconds when the stream ticket expires (TASK-298 D-1). */
+  /** Epoch milliseconds when the stream ticket expires. */
   ticketExpiresAt?: number;
   /**
-   * Whether the speaker voice profile was successfully preseeded (TASK-296
+   * Whether the speaker voice profile was successfully preseeded
    * preseed contract). Surfaced so the SDK can short-circuit an extra
    * voice-enrollment-status round-trip.
    */
@@ -171,7 +171,7 @@ export interface WsCloseMessage {
 
 /**
  * Resume handshake sent by the client immediately after a reconnect
- * (TASK-298 D-17). The server uses `lastSeq` to decide whether to replay
+ * The server uses `lastSeq` to decide whether to replay
  * buffered transcripts or respond with `resume_failed`.
  */
 export interface WsResumeRequest {
@@ -208,27 +208,27 @@ export interface WsTranscriptResult {
   /** Whether this is a final (committed) transcript */
   isFinal: boolean;
   /**
-   * Committed-prefix length of `text` on partial results (TASK-351 P1-1).
+   * Committed-prefix length of `text` on partial results.
    * Characters before this index passed stt-v2's local-agreement gate and
    * will not be revised; the remainder is a tentative tail. Optional for
    * backward compat with older servers that don't emit the field.
    */
   stableChars?: number;
   /**
-   * Utterance ordinal stamped on every segment result (TASK-351 P1-1
+   * Utterance ordinal stamped on every segment result
    * follow-up). Gloss results reuse the index of the final they translate,
    * which is how clients pair a gloss to its segment. Optional for
    * backward compat with older servers.
    */
   utteranceIndex?: number;
   /**
-   * Result kind (TASK-351 P1-1 follow-up): 'segment' (default — absence
+   * Result kind: 'segment' (default — absence
    * means segment) or 'gloss', a follow-up English translation published
    * after the real final with `englishText` and the same `utteranceIndex`.
    */
   resultType?: 'segment' | 'gloss';
   /**
-   * Monotonic server-assigned sequence number (TASK-298 D-17). Used by the
+   * Monotonic server-assigned sequence number. Used by the
    * client to track `lastReceivedSeq` for the resume handshake. Optional for
    * backward compat with older servers that don't tag transcripts.
    */
@@ -252,7 +252,7 @@ export interface WsTranscriptResult {
 }
 
 /**
- * Shared transcript WIRE CONTRACT (TASK-461 C6-04).
+ * Shared transcript WIRE CONTRACT.
  *
  * The raw server→client transcript payload exactly as it arrives on the WS,
  * BEFORE normalization into the strict {@link WsTranscriptResult} consumers
@@ -341,7 +341,7 @@ export interface WsErrorMessage {
 }
 
 /**
- * Server acknowledgement that a resume handshake was accepted (TASK-298 D-17).
+ * Server acknowledgement that a resume handshake was accepted.
  * After this message the server replays any buffered transcripts whose
  * `seq > lastSeq`.
  */
@@ -353,7 +353,7 @@ export interface WsResumedMessage {
 }
 
 /**
- * Server response when it cannot satisfy the resume request (TASK-298 D-17).
+ * Server response when it cannot satisfy the resume request.
  * Typical reasons: requested `lastSeq` is older than the bounded buffer,
  * the session is unknown, or the session belongs to a different client.
  */

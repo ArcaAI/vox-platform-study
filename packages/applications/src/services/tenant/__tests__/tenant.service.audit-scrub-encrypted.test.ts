@@ -1,10 +1,8 @@
 /**
- * TASK-302 Phase 4 Task 4.8 (Stream B) — Vault ciphertext also scrubbed.
+ * Vault ciphertext also scrubbed.
  *
- * Phase 0 Item 4 (Stream A) wired scrubLockedForAudit which honours
- * @Secret metadata to redact `value` and `defaultValue` for locked rows.
- *
- * Phase 4 Task 4.3 added the new `encryptedValue` field with @Secret().
+ * `scrubLockedForAudit` honours `@Secret` metadata to redact `value` and
+ * `defaultValue` for locked rows, including the `encryptedValue` field.
  * This test pins the integration: the SysEvent for a locked row whose
  * encryptedValue is non-null MUST surface `[REDACTED]` for that field
  * too, never the raw ciphertext bytes.
@@ -35,7 +33,7 @@ const gsRepo = {
   count: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
-  // TASK-302 Stream D Phase C — TenantService.updateTenantConfigs now routes
+  // TenantService.updateTenantConfigs now routes
   // through Compare-And-Set via `updateWithVersion`. Audit-scrub still happens
   // post-write, so these fixtures wire the new repo method.
   updateWithVersion: vi.fn(),
@@ -43,7 +41,7 @@ const gsRepo = {
 const deps = { findAll: vi.fn(), count: vi.fn() };
 const ptemps = { findAll: vi.fn(), count: vi.fn() };
 const pipes = { findAll: vi.fn(), count: vi.fn() };
-// TASK-302 Stream D Phase C (C.4) — `updateTenantConfigs` wraps writes in
+// (C.4) — `updateTenantConfigs` wraps writes in
 // `databaseService.baseClient.$transaction(callback)`. The stub invokes the
 // callback with a sentinel tx client so the loop executes.
 const mockTxClient = { __tx: true } as const;
@@ -79,9 +77,9 @@ describe('TenantService — audit-scrub for Vault-encrypted rows (Phase 4 Task 4
       buckets as never,
       events as never,
       cls as never,
-      // TASK-356 Phase 1 — model-catalog clone repo (unused by this suite).
+      // Model-catalog clone repo (unused by this suite).
       { findAll: async () => [] } as never,
-      // TASK-356 Phase 2 — pipeline-version clone repo (unused by this suite).
+      // Pipeline-version clone repo (unused by this suite).
       { create: async () => ({}) } as never,
     );
   });

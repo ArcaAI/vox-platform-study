@@ -1,24 +1,24 @@
 /**
- * Cross-tenant probes against ConsultationJobController (AC-10).
+ * Cross-tenant probes against ConsultationJobController.
  *
- * Originally landed by TASK-307 W3.4 closing audit finding C-3
- * (`docs/multi-tenancy-audit/04-api-design-review.md`): before that
- * fix `GET /consultations/jobs/:jobId` returned 200 with the status of
- * jobs owned by ANY tenant. The W3.2 `TenantOwnedResourceInterceptor`
- * now reads `@TenantOwnedResource('ConsultationJob', 'jobId')` and
+ * Without this guard, `GET /consultations/jobs/:jobId` would return 200
+ * with the status of jobs owned by ANY tenant
+ * (`docs/multi-tenancy-audit/04-api-design-review.md`).
+ * `TenantOwnedResourceInterceptor` reads
+ * `@TenantOwnedResource('ConsultationJob', 'jobId')` and
  * asserts `status.tenantId === cls.tenantId`, throwing 404
  * ("Resource not found") on mismatch — the DEF-C3 no-existence-leak
- * posture from TASK-306.
+ * posture.
  *
- * TASK-309 AC-2 / AC-3 — genuine probe upgrade. The previous synthetic
- * uuidv7 probe asserted only that the 404 SHAPE was correct (since
- * Redis had no matching job, the resource-not-found branch fired
- * regardless of the cross-tenant logic). This spec now:
+ * Genuine probe: a synthetic uuidv7 probe would assert only that the 404
+ * SHAPE was correct (since Redis has no matching job, the
+ * resource-not-found branch fires regardless of the cross-tenant logic).
+ * This spec instead:
  *
  *   1. Bootstraps a real summarisation job in tenant `__GLOBAL__` via
  *      `POST /consultations/:id/summary/pre-summary/async`, which
  *      persists `tenantId` + `userId` on the Redis status payload
- *      (W3.3) before `BullModule` enqueues the work to the SMR worker.
+ *      before `BullModule` enqueues the work to the SMR worker.
  *   2. Confirms the originating doctor can resolve the job (200), so
  *      the 404 from the cross-tenant probe must be tenant-mismatch
  *      and not "Redis lost the job".

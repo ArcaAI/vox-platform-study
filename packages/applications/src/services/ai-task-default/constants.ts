@@ -1,7 +1,7 @@
 import { ModelTaskType } from '@arcaai/domains';
 
 /**
- * TASK-506 — the AI tasks whose default model is selected through
+ * The AI tasks whose default model is selected through
  * `AiTaskDefault` rows (the Class-3 generalization of
  * `HarnessPolicy.smrProvider/smrModel` for non-pipeline tasks). Extensible:
  * new keys are added here + a compatibility mapping below + a

@@ -1,5 +1,5 @@
 /**
- * TASK-443 — grouped-row support for `VirtualizedDataGrid`.
+ * Grouped-row support for `VirtualizedDataGrid`.
  *
  * Pure display-layer grouping: the table's row model is untouched (sorting,
  * selection, filtering, pagination all keep operating on data rows); grouping

@@ -1,4 +1,4 @@
-"""TDD tests for the voice catalog (TASK-488 Phase 2)."""
+"""TDD tests for the voice catalog."""
 
 from __future__ import annotations
 

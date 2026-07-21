@@ -1,12 +1,12 @@
 /**
- * TASK-526 — tenant "AI Configuration" screen (tier 30-49, /ai-configuration).
+ * Tenant "AI Configuration" screen (tier 30-49, /ai-configuration).
  *
- * Replaces the M-05 dead-end EmptyState with two tabs:
+ * Replaces the dead-end EmptyState with two tabs:
  *   - "Effective models" (default): read-only resolution of ALL 9 task keys,
- *     each with its winning cascade tier. No pickers — the E3 global-admin-only
+ *     each with its winning cascade tier. No pickers — the global-admin-only
  *     write posture is untouched.
  *   - "Cloud credentials": BYO Azure/Bedrock write-only key cards over the
- *     TASK-524 `admin/ai-providers` routes, with OCC (If-Match) on save.
+ * `admin/ai-providers` routes, with OCC (If-Match) on save.
  *
  * §5 tests 12-15: loading skeletons, populated table, credential Configured/None
  * cards, error+retry, axe 0 violations per tab in BOTH themes, the working-tenant

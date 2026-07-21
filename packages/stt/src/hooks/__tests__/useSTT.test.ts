@@ -1,11 +1,11 @@
 /**
  * @arcaai/stt - useSTT Hook Integration Tests
  *
- * TASK-244 Task 3.2: Integration tests for audio pipeline.
- * Tests processor recreation on config change (D2 regression), and related behavior.
+ * Integration tests for audio pipeline. Tests processor recreation on
+ * config change, and related behavior.
  *
- * TASK-276: lock-in tests for the post-A8 (TASK-270) `STTProcessor` API surface
- * — `on`/`off`/`destroy`/`releaseWarmResources`/`transcribeSegment`/`setLanguage`.
+ * Lock-in tests for the `STTProcessor` API surface — `on`/`off`/`destroy`/
+ * `releaseWarmResources`/`transcribeSegment`/`setLanguage`.
  * @vitest-environment jsdom
  */
 
@@ -148,7 +148,7 @@ describe('useSTT hook integration', () => {
     });
   });
 
-  // TASK-329 P3 — switching the local Whisper task (transcribe<->translate)
+  // Switching the local Whisper task (transcribe<->translate)
   // must rebuild the processor so the new task is baked into the (pooled) local
   // provider; otherwise a translate request silently reuses a transcribe-warm
   // provider. The task therefore belongs in the config fingerprint.
@@ -227,7 +227,7 @@ describe('useSTT hook integration', () => {
   });
 
   // ===========================================================================
-  // TASK-276 — Lock-in tests for the post-A8 STTProcessor API surface
+  // Lock-in tests for the STTProcessor API surface
   // ===========================================================================
 
   describe('Post-A8 STTProcessor API alignment (TASK-276)', () => {

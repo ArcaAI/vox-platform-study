@@ -16,17 +16,17 @@ export type WorkerSessionKind =
   | 'transcription-created-event'
   | 'summary-generated-event'
   | 'ner-extracted-event'
-  // TASK-330 Phase 1 (Lane G) — inbound harness gate adapter (entities/assemble/draft).
+  // Inbound harness gate adapter (entities/assemble/draft).
   | 'harness-internal'
-  // TASK-330 Phase 3 — institutional-RAG knowledge ingestion worker.
+  // Institutional-RAG knowledge ingestion worker.
   | 'ingest-knowledge'
-  // TASK-344 Workstream A2 — server-side OCR enrichment @OnEvent handler.
+  // Server-side OCR enrichment @OnEvent handler.
   | 'ocr-enrichment'
-  // TASK-392 (Q4/Q10) — trial-expiry + downgrade soft-disable lifecycle job.
+  // Trial-expiry + downgrade soft-disable lifecycle job.
   | 'entitlements-lifecycle'
-  // TASK-533 B6 — gate-edit mining worker (derived learning-loop corpus).
+  // Gate-edit mining worker (derived learning-loop corpus).
   | 'gate-edit-mining'
-  // TASK-498 P3 — admin-triggered tenant external-IdP directory pull (MS Graph / Google Directory).
+  // Admin-triggered tenant external-IdP directory pull (MS Graph / Google Directory).
   | 'directory-sync';
 
 /**
@@ -61,7 +61,7 @@ export interface WorkerSessionInit {
 }
 
 /**
- * TASK-306 W5.7.11 (§8 F-6) — typed factory for background-worker /
+ * (§8 F-6) — typed factory for background-worker /
  * event-handler CLS contexts.
  *
  * Replaces the ad-hoc `{ id, tenantId, roles: [], permissions: [] }

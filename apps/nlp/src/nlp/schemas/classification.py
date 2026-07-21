@@ -11,10 +11,10 @@ from nlp.schemas.common import Entity, SupportedLanguage
 class TextClassificationRequest(BaseModel):
     text: str = Field(..., description="Input text")
     language: SupportedLanguage | None = Field(default=SupportedLanguage.ENGLISH, description="Language of the text")
-    # TASK-506 — optional per-request model override (gateway-injected from the
+    # Optional per-request model override (gateway-injected from the
     # AiTaskDefault registry). None → the startup default instance, unchanged.
     model_name: str | None = Field(default=None, description="Optional HF model id overriding the default classifier")
-    # TASK-527 (D-12) — gateway-injected `AiModel.localPath`. Registry-derived,
+    # Gateway-injected `AiModel.localPath`. Registry-derived,
     # never caller-chosen; absent ⇒ load by `model_name` exactly as before.
     model_path: str | None = Field(default=None, description="Optional local weights directory (gateway-injected AiModel.localPath)")
 
@@ -33,17 +33,14 @@ class TokenClassificationRequest(BaseModel):
     text: str = Field(..., description="Input text")
     aggregation_strategy: str = Field(default="simple", description="Entity aggregation strategy")
     language: SupportedLanguage | None = Field(default=SupportedLanguage.ENGLISH, description="Language of the text")
-    # TASK-506 — optional per-request model override (gateway-injected from the
+    # Optional per-request model override (gateway-injected from the
     # AiTaskDefault registry). None → the startup default instance, unchanged.
     model_name: str | None = Field(default=None, description="Optional HF model id overriding the default NER model")
-    # TASK-527 (D-12) — gateway-injected `AiModel.localPath`.
+    # Gateway-injected `AiModel.localPath`.
     model_path: str | None = Field(default=None, description="Optional local weights directory (gateway-injected AiModel.localPath)")
 
 
 class TokenClassificationResponse(BaseModel):
-    # tokens: List[str] = Field(..., description="Input tokens")
-    # labels: List[str] = Field(..., description="Predicted labels for each token")
-    # confidences: List[float] = Field(..., description="Confidence scores for each token")
     entities: list[Entity] = Field(..., description="Extracted entities")
     model_version: str = Field(..., description="Token classification model version")
 

@@ -10,13 +10,13 @@ import {
 } from './shared';
 
 /**
- * TTS engine catalog (TASK-506 §4.3) — the five engines of TASK-488/496 with
+ * TTS engine catalog — the five engines with
  * their admin-selectable voice bindings in `metaData.voices`. The registry
  * becomes the platform TTS catalog (`TenantTtsConfig` stays the tenant knob
  * store); `seedAiModels` re-syncs `metaData` on re-seed so voice catalogs
  * stay current.
  *
- * `indic-f5` is seeded DISABLED — experimental, prod NO-GO (TASK-494).
+ * `indic-f5` is seeded DISABLED — experimental, prod NO-GO.
  */
 export const TTS_AI_MODELS: AiModelSeed[] = [
     {
@@ -56,7 +56,7 @@ export const TTS_AI_MODELS: AiModelSeed[] = [
         taskType: ModelTaskType.TEXT_TO_SPEECH,
         modelType: ModelType.BASE_MODEL,
         source: AiModelSource.HUGGINGFACE,
-        // TASK-507 — corrected to the real upstream repo + format: the
+        // Corrected to the real upstream repo + format: the
         // `kokoro` PyPI package (tts-v2's actual runtime dependency) loads
         // PyTorch weights, not ONNX — `kokoro-onnx` is a different package
         // this service does not use.
@@ -148,7 +148,7 @@ export const TTS_AI_MODELS: AiModelSeed[] = [
             ttsProvider: 'indic_f5',
             voices: [{ id: 'ml-ref-1', locale: 'ml-IN' }],
         },
-        // TASK-494 prod NO-GO — seeded disabled; admins may enable per env.
+        // Prod NO-GO — seeded disabled; admins may enable per env.
         resourceStatus: ResourceStatusType.DISABLED,
     },
 ];

@@ -51,8 +51,8 @@ export type AudioFrameCallback = (frame: Float32Array) => void;
  */
 export interface AudioCaptureOptions {
   /**
-   * Coalesced frame size in ms on the worklet path (TASK-351 P0-1). Quanta
-   * accumulate in the worklet and are posted as one frame per `frameMs`,
+   * Coalesced frame size in ms on the worklet path. Quanta accumulate in
+   * the worklet and are posted as one frame per `frameMs`,
    * cutting message rate ~10–30× vs per-quantum posting. Defaults to 80.
    * Ignored on the `ScriptProcessorNode` fallback (its 4096-sample buffer is
    * already ~85 ms at 48 kHz).

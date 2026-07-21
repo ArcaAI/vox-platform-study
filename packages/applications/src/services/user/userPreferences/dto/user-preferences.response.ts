@@ -119,7 +119,7 @@ export class UserPreferencesResponse {
   })
   custom?: Record<string, unknown>;
 
-  // TASK-356 Phase 4 — read-only EFFECTIVE transcription mode + lock, resolved
+  // Read-only EFFECTIVE transcription mode + lock, resolved
   // server-side (locked ⇒ tenant default wins; unlocked ⇒ workflowMode
   // overrides). The SDK re-projects this into `resolvedConfig.stt.transcriptionMode`.
   @ApiProperty({

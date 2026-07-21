@@ -15,11 +15,9 @@ import { ApiEndpoint, Authorize, ExpectedVersion, RequiresIfMatch } from '../../
 import { AssignTenantRequest, AssignTenantResponse, ValidateYamlRequest, ValidateYamlResponse, resolveYaml } from './dto';
 
 /**
- * TASK-298 D-10 — narrowed authorization scope.
- *
- * Previously this controller used `@Authorize(['manage', 'all'])` which only
- * tenant global-admins could satisfy. Tenant admins legitimately need to
- * self-serve their ASR pipelines, so we narrow the subject to `AsrPipeline`.
+ * Narrowed authorization scope: `@Authorize(['manage', 'all'])` would only
+ * be satisfiable by tenant global-admins. Tenant admins legitimately need to
+ * self-serve their ASR pipelines, so the subject is narrowed to `AsrPipeline`.
  */
 @ApiBearerAuth()
 @ApiTags('admin-audio-pipelines')
@@ -68,8 +66,8 @@ export class AudioPipelineController {
   async fetchById(@Param('id') id: string): Promise<PipelineResponse> {
     const pipeline = await this.pipelineService.getById(id);
     if (!pipeline) {
-      // TASK-534 e2e G7 — a null service result used to serialize as HTTP 200
-      // with an EMPTY body (unparseable as JSON); an absent row is a 404.
+      // A null service result used to serialize as HTTP 200 with an EMPTY
+      // body (unparseable as JSON); an absent row is a 404.
       throw new NotFoundException(`Pipeline '${id}' not found`);
     }
     return pipeline;
@@ -85,7 +83,7 @@ export class AudioPipelineController {
   async fetchBySlug(@Param('slug') slug: string): Promise<PipelineResponse> {
     const pipeline = await this.pipelineService.getBySlug(slug);
     if (!pipeline) {
-      // TASK-534 e2e G7 — see fetchById: null must be a 404, not a 200-empty.
+      // See fetchById: null must be a 404, not a 200-empty.
       throw new NotFoundException(`Pipeline with slug '${slug}' not found`);
     }
     return pipeline;
@@ -101,8 +99,7 @@ export class AudioPipelineController {
   @ApiOperation({
     summary: 'Update an ASR pipeline',
     description:
-      'Updates one AsrPipeline row. Optimistic concurrency is enforced ' +
-      '(TASK-302 Stream D Phase E.4): the `If-Match` header (RFC 7232) is ' +
+      'Updates one AsrPipeline row. Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is ' +
       "REQUIRED, and the server runs a Compare-And-Set against the row's " +
       '`_version` column. When the header is present, its value overrides the ' +
       'body-field `expectedVersion`. On version drift the response is `412 ' +
@@ -118,7 +115,7 @@ export class AudioPipelineController {
   @ApiResponse({ status: 400, description: 'Bad request - invalid YAML or duplicate slug' })
   @ApiResponse({
     status: 403,
-    description: 'Template copy is read-only — clone it to customize (TASK-531). Enable/disable and set-default remain available on a locked copy.',
+    description: 'Template copy is read-only — clone it to customize. Enable/disable and set-default remain available on a locked copy.',
   })
   @ApiResponse({ status: 404, description: 'Pipeline not found' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
@@ -128,9 +125,9 @@ export class AudioPipelineController {
     @Body() request: UpdatePipelineRequest,
     @ExpectedVersion() expectedFromHeader: number | undefined,
   ): Promise<PipelineResponse> {
-    // TASK-302 Stream D Phase E.4 — header takes precedence over body
-    // when both are present. On a `@RequiresIfMatch()` route the param
-    // decorator fired 428 if the header was missing.
+    // Header takes precedence over body when both are present. On a
+    // `@RequiresIfMatch()` route the param decorator fired 428 if the
+    // header was missing.
     const effectiveRequest: UpdatePipelineRequest = expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
     return this.pipelineService.update(id, effectiveRequest);
   }
@@ -142,14 +139,14 @@ export class AudioPipelineController {
     by: ['id'],
   })
   @ApiParam({ name: 'id', description: 'Pipeline ID', type: String })
-  @ApiResponse({ status: 403, description: 'Template copy is read-only — clone it to customize (TASK-531).' })
+  @ApiResponse({ status: 403, description: 'Template copy is read-only — clone it to customize.' })
   @ApiResponse({ status: 404, description: 'Pipeline not found' })
   async delete(@Param('id') id: string): Promise<void> {
     return this.pipelineService.delete(id);
   }
 
   /**
-   * TASK-531 (GAP-T2) — clone a pipeline into a new, editable copy.
+   * Clone a pipeline into a new, editable copy.
    *
    * This is the tenant admin's way to customize a locked template copy: the
    * clone is unlocked, keeps the source's template provenance, and inherits the
@@ -160,7 +157,7 @@ export class AudioPipelineController {
    */
   @Post(':id/clone')
   @ApiOperation({
-    summary: 'Clone a pipeline into a new editable copy (TASK-531)',
+    summary: 'Clone a pipeline into a new editable copy',
     description:
       'Creates a NEW pipeline from an existing one. The copy is never ' +
       '`templateLocked`, carries the source `sourceTemplateSlug` forward, and ' +
@@ -183,22 +180,21 @@ export class AudioPipelineController {
   })
   @ApiResponse({ status: 200, description: 'YAML validation result', type: ValidateYamlResponse })
   async validateYaml(@Body() body: ValidateYamlRequest): Promise<ValidateYamlResponse> {
-    // TASK-298 D-6 — accept either `configYaml` (SDK) or `yaml` (legacy).
+    // Accept either `configYaml` (SDK) or `yaml` (legacy).
     return this.pipelineService.validateYaml(resolveYaml(body));
   }
 
   /**
-   * IC-04 (TASK-336) — Assign a pipeline within its owning tenant.
+   * IC-04 — Assign a pipeline within its owning tenant.
    *
-   * Previously a no-op stub that echoed success without persisting anything.
-   * Real persistence now lives in the service: `AsrPipeline` has a single,
-   * deliberately protected `tenantId` (BaseTenantEntity, TASK-305), so a
-   * cross-tenant transfer is unsupported and is rejected; a same-tenant
-   * assignment is persisted by promoting the pipeline to the tenant default.
+   * `AsrPipeline` has a single, deliberately protected `tenantId`
+   * (BaseTenantEntity), so a cross-tenant transfer is unsupported and is
+   * rejected; a same-tenant assignment is persisted by promoting the
+   * pipeline to the tenant default.
    */
   @Post(':id/assign-tenant')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Assign an ASR pipeline within its tenant (IC-04 / TASK-336)' })
+  @ApiOperation({ summary: 'Assign an ASR pipeline within its tenant' })
   @ApiParam({ name: 'id', description: 'Pipeline ID' })
   @ApiResponse({ status: 200, description: 'Pipeline assigned', type: AssignTenantResponse })
   async assignTenant(@Param('id') id: string, @Body() body: AssignTenantRequest): Promise<AssignTenantResponse> {
@@ -213,7 +209,7 @@ export class AudioPipelineController {
   }
 
   // ============================================================
-  // TASK-328 A6 — default / toggle / versioning
+  // Default / toggle / versioning
   // ============================================================
 
   /**
@@ -223,7 +219,7 @@ export class AudioPipelineController {
    */
   @Post(':id/set-default')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Set a pipeline as the tenant default (TASK-328 A6)' })
+  @ApiOperation({ summary: 'Set a pipeline as the tenant default' })
   @ApiParam({ name: 'id', description: 'Pipeline ID', type: String })
   @ApiResponse({ status: 200, description: 'Pipeline marked as default', type: PipelineResponse })
   @ApiResponse({ status: 404, description: 'Pipeline not found' })
@@ -238,7 +234,7 @@ export class AudioPipelineController {
   @Patch(':id/toggle')
   @RequiresIfMatch()
   @ApiOperation({
-    summary: 'Enable/disable a pipeline (TASK-328 A6)',
+    summary: 'Enable/disable a pipeline',
     description:
       'Flips the pipeline `resourceStatus` (ENABLED ⇄ DISABLED). Optimistic ' +
       'concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED ' +
@@ -263,7 +259,7 @@ export class AudioPipelineController {
    * List config-version snapshots for a pipeline (newest first).
    */
   @Get(':id/versions')
-  @ApiOperation({ summary: 'List config-version snapshots for a pipeline (TASK-328 A6)' })
+  @ApiOperation({ summary: 'List config-version snapshots for a pipeline' })
   @ApiParam({ name: 'id', description: 'Pipeline ID', type: String })
   @ApiResponse({ status: 200, description: 'Version snapshots (newest first)', type: PipelineVersionResponse, isArray: true })
   async listVersions(@Param('id') id: string): Promise<PipelineVersionResponse[]> {
@@ -274,7 +270,7 @@ export class AudioPipelineController {
    * Fetch a single config-version snapshot by version number.
    */
   @Get(':id/versions/:versionNumber')
-  @ApiOperation({ summary: 'Get one config-version snapshot by version number (TASK-328 A6)' })
+  @ApiOperation({ summary: 'Get one config-version snapshot by version number' })
   @ApiParam({ name: 'id', description: 'Pipeline ID', type: String })
   @ApiParam({ name: 'versionNumber', description: 'Version number (1-based)', type: Number })
   @ApiResponse({ status: 200, description: 'Version snapshot', type: PipelineVersionResponse })

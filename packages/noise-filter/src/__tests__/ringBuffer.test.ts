@@ -1,6 +1,4 @@
 /**
- * TASK-269 — HIGH-1
- *
  * The processor must emit gap-free output once the priming frame has
  * been processed, regardless of input quantum size. Trailing partial
  * frames are zero-padded.

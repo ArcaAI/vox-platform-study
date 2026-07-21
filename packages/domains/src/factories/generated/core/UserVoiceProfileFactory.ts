@@ -6,7 +6,7 @@ import { IUserVoiceProfileEntity, UserVoiceProfileEntity } from '../../../entiti
 import { generateId } from '../../../utils';
 
 export interface CreateUserVoiceProfileProps extends BaseEntityFactoryCreateProps {
-  // TASK-490 — enrollment tenant; voice-profile reads are tenant-scoped.
+  // Enrollment tenant; voice-profile reads are tenant-scoped.
   tenantId: IUserVoiceProfileEntity['tenantId'];
   userId: IUserVoiceProfileEntity['userId'];
   isActive?: IUserVoiceProfileEntity['isActive'];

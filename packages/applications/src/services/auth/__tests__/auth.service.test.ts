@@ -232,7 +232,7 @@ describe('AuthService', () => {
         });
     });
 
-    // TASK-541 — `isTokenRevoked` and `validateUser` were REMOVED from
+    // `isTokenRevoked` and `validateUser` were REMOVED from
     // AuthService along with the `gateway-jwt` strategy that was their only
     // caller (A2). Revocation now belongs solely to `IJwtRevocationService`
     // (covered by jwt-revocation.service.test.ts and jwt.strategy.test.ts);

@@ -1,4 +1,4 @@
-"""TASK-386 — SMR cross-service per-model metrics.
+"""SMR cross-service per-model metrics.
 
 Proves the standardized ``model_running_instances`` gauge and
 ``model_inference_latency_seconds`` histogram (emitted alongside SMR's existing

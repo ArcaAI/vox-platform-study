@@ -2,13 +2,13 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { PrismaStudioStatusController } from '../pstudio-status.controller';
 
-// TASK-403 — the Studio module itself is conditionally registered, which makes
+// The Studio module itself is conditionally registered, which makes
 // its availability unobservable from the admin console (404 vs disabled are
 // indistinguishable). This always-registered status endpoint reports the same
 // env decision (`shouldEnablePrismaStudio`) so the FE card can render a
 // truthful enabled/disabled state in every environment.
 //
-// TASK-419 item 4 — the gate is now production-capable: `ENABLE_PRISMA_STUDIO`
+// The gate is production-capable: `ENABLE_PRISMA_STUDIO`
 // is the ONLY env signal (fail-closed when unset), and access requires the
 // dedicated `manage:PrismaStudio` permission instead of `manage:all`.
 describe('PrismaStudioStatusController (TASK-403 / TASK-419)', () => {

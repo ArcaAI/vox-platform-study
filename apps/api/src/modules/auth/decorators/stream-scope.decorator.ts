@@ -1,5 +1,5 @@
 /**
- * StreamScope decorator — TASK-263 / W0-1
+ * StreamScope decorator
  *
  * Attach to SSE-serving routes that are allowed to be opened with a single-use
  * `?ticket=<ticket>` query param (issued by `POST /auth/stream-ticket`).

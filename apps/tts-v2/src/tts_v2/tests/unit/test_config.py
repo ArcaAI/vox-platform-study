@@ -1,4 +1,4 @@
-"""TDD tests for tts_v2 Settings (TASK-488 Phase 1)."""
+"""TDD tests for tts_v2 Settings."""
 
 from __future__ import annotations
 

@@ -531,7 +531,7 @@ describe('PipelineOrchestrator', () => {
   });
 
   // =========================================================================
-  // TASK-273 — H-4: autoExecute actually runs target with source's result.
+  // autoExecute actually runs target with source's result.
   // =========================================================================
 
   describe('autoExecute (TASK-273 H-4)', () => {
@@ -620,7 +620,7 @@ describe('PipelineOrchestrator', () => {
   });
 
   // =========================================================================
-  // TASK-273 — L-7: listener leak on register/unregister and destroy.
+  // Listener leak on register/unregister and destroy.
   // =========================================================================
 
   describe('listener leak (TASK-273 L-7)', () => {

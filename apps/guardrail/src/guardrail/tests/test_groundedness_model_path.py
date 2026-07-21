@@ -1,9 +1,7 @@
-"""TASK-527 (D-12) — the MiniCheck clinical gate resolves its weights DB-first.
+"""The MiniCheck clinical gate resolves its weights DB-first.
 
-Before this ticket the groundedness scorer's path came 100 % from
-``GUARDRAIL_V2_GROUNDEDNESS_MODEL_PATH``; editing the ``minicheck-flan-t5-large``
-registry row changed nothing. Now the DB row wins, env remains the fallback
-(so an un-configured registry behaves byte-for-byte as before), and the
+The DB row wins, env remains the fallback
+(so an un-configured registry behaves byte-for-byte as env-only), and the
 "never auto-download in a clinical gate" posture is preserved: hub pulls stay
 blocked (``allow_network=False``) while ``s3://`` / ``file://`` / ``localPath``
 are permitted.

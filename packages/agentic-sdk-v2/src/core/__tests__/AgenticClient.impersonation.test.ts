@@ -1,9 +1,9 @@
 /**
- * TASK-264 W0-3 — AgenticClient impersonation token (PHI-safe storage)
+ * AgenticClient impersonation token (PHI-safe storage)
  *
  * The admin JWT held during an impersonation session previously lived in the
  * Zustand store as `authOriginalToken`, exposed through `useAgenticStore.getState()`.
- * Per TASK-262 SEC-4 this is a security defect: any third-party code in the same
+ * This is a security defect: any third-party code in the same
  * JS context could read the raw admin token.
  *
  * This test suite enforces that:

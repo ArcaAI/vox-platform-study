@@ -1,4 +1,4 @@
-"""TASK-351 P0-4 — SessionManager → StreamingPreprocessor kwargs wiring.
+"""SessionManager → StreamingPreprocessor kwargs wiring.
 
 Pins the contract of ``SessionManager._build_preprocessor_vad_kwargs``:
 
@@ -108,7 +108,7 @@ class TestBuildPreprocessorVadKwargs:
         assert with_config["partial_window_s"] == 6.5
 
     def test_partial_interval_always_present_from_settings(self):
-        """TASK-471 A1: the lowered partial cadence is settings-driven and
+        """The lowered partial cadence is settings-driven and
         always wired into the preprocessor, regardless of VAD config."""
         mgr = _make_mgr(partial_interval_s=0.3)
 
@@ -122,7 +122,7 @@ class TestBuildPreprocessorVadKwargs:
 
 
 class TestStreamingPartialIntervalSetting:
-    """TASK-471 A1 — the cadence is a bare-env Settings field (the Settings
+    """The cadence is a bare-env Settings field (the Settings
     class has NO env_prefix, so the env var is STREAMING_PARTIAL_INTERVAL_S)
     defaulting below the legacy 1.0 s."""
 

@@ -14,7 +14,7 @@ export class Consultation extends BaseTenantDataModel {
   public departmentId: string | null;
   public parentConsultationId: string | null;
   public metadata: JsonValue | null;
-  // TASK-330 Phase 1 — typed lifecycle state machine
+  // Typed lifecycle state machine
   public status: Enums.ConsultationStatus;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { SchedulerAdminController } from '../scheduler-admin.controller';
 
-// TASK-250 / TASK-336 OB-03 — guarded admin surface over the existing
+// Guarded admin surface over the existing
 // scheduler-admin application layer (@nestjs/schedule SchedulerRegistry +
 // dynamic GlobalSetting-backed cron). Thin delegate to ISchedulerAdminService.
 const mockSchedulerService = {

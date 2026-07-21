@@ -1,7 +1,7 @@
 import { DbFilters, IFindAllProps } from '@arcaai/domains';
 
 /**
- * TASK-373 — generic, opt-in cursor (keyset) pagination engine.
+ * Generic, opt-in cursor (keyset) pagination engine.
  *
  * This is the symmetric counterpart of the offset helpers in
  * `paginatedQueryParamConverters.ts`. It is transport-agnostic: it produces an

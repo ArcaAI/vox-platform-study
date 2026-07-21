@@ -105,7 +105,7 @@ describe('verifyHarnessAuditChain', () => {
 });
 
 // =============================================================================
-// TASK-369 Phase 3D — ENCRYPT-BEFORE-HASH (WORM hash chain over ciphertext)
+// ENCRYPT-BEFORE-HASH (WORM hash chain over ciphertext)
 // =============================================================================
 
 const ct = (s: string): Buffer => Buffer.from(s, 'utf8');

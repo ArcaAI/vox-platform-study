@@ -22,7 +22,7 @@ export interface StorageSoftWarn {
 }
 
 /**
- * TASK-392 (Q7) — a tenant's resolved rate-limit policy for the hot-path
+ * A tenant's resolved rate-limit policy for the hot-path
  * throttler: the plan's `rateLimitTier` name plus the optional per-tenant
  * absolute override (`rateLimitPerMinute`, "increase on demand"). `null` from
  * the resolver means "apply the global tiers unchanged" (kill-switch OFF or an
@@ -34,14 +34,13 @@ export interface TenantRateLimitPolicy {
 }
 
 /**
- * TASK-392 — the plan-entitlements service contract.
+ * The plan-entitlements service contract.
  *
- * Phase 1 surfaces resolution + display (no enforcement): the DB-backed
+ * Surfaces resolution + display, plus enforcement: the DB-backed
  * resolver (`PlanEntitlement` matrix ← per-tenant override, seeded fallback),
  * the read-only capability/usage snapshot, the global kill-switch accessor,
- * and admin-editable CRUD over the matrix + overrides. Later phases layer the
- * per-service quota checks and rate-limit/model wiring on top of the same
- * resolver.
+ * admin-editable CRUD over the matrix + overrides, per-service quota checks,
+ * and rate-limit/model wiring, all layered on top of the same resolver.
  */
 export interface IEntitlementsService {
   /**
@@ -72,7 +71,7 @@ export interface IEntitlementsService {
   getCapabilities(tenantId: EntityId): Promise<EntitlementCapabilitiesResponse>;
 
   /**
-   * Phase 3 (Q10 "block-new") — throw a typed `QuotaExceededException` when
+   * (Q10 "block-new") — throw a typed `QuotaExceededException` when
    * creating `increment` (default 1) more of a QUANTITY/meter `capability` would
    * exceed the tenant's resolved limit. A no-op when the enforcement kill-switch
    * is OFF (Q9) or the capability is unlimited (null limit, incl. ungated-legacy
@@ -83,7 +82,7 @@ export interface IEntitlementsService {
   assertQuantityQuota(tenantId: EntityId, capability: EntitlementLimitKey, currentCount: number, increment?: number): Promise<void>;
 
   /**
-   * Phase 3 (Q5 meters) — throw `QuotaExceededException` (→ 429) when performing
+   * (Q5 meters) — throw `QuotaExceededException` (→ 429) when performing
    * `increment` more of a rolling-monthly METER `capability` (consultations /
    * transcription-minutes / summaries) would exceed the tenant's monthly limit.
    * Reads the live current-month usage internally (no caller-supplied count).
@@ -92,7 +91,7 @@ export interface IEntitlementsService {
   assertMeterQuota(tenantId: EntityId, capability: MeterCapabilityKey, increment?: number): Promise<void>;
 
   /**
-   * TASK-392 (Q7) — the tenant's effective rate-limit policy for the pre-auth
+   * The tenant's effective rate-limit policy for the pre-auth
    * throttler hot path (plan `rateLimitTier` + per-tenant `rateLimitPerMinute`
    * override). Returns `null` when the kill-switch is OFF or the tenant is
    * ungated (null-plan / system, Q3) — the guard then applies the global tiers
@@ -103,7 +102,7 @@ export interface IEntitlementsService {
   getTenantRateLimitPolicy(tenantId: EntityId): Promise<TenantRateLimitPolicy | null>;
 
   /**
-   * TASK-392 (concurrency) — HARD-BLOCK a new STT streaming session/consultation
+   * (concurrency) — HARD-BLOCK a new STT streaming session/consultation
    * when the tenant's live simultaneous-session count (from the multi-instance
    * socket-registry) is at/over its resolved `maxConcurrentSessions`. Throws a
    * typed `QuotaExceededException` (→ 429) and emits a block event. A no-op when
@@ -114,7 +113,7 @@ export interface IEntitlementsService {
   assertConcurrencyQuota(tenantId: EntityId, increment?: number): Promise<void>;
 
   /**
-   * Phase 3 (Q6 storage) — SOFT-WARN on the upload path: emit a warning event
+   * (Q6 storage) — SOFT-WARN on the upload path: emit a warning event
    * (never blocks) when `additionalBytes` would push the tenant over its storage
    * quota. Returns the projected figures for the caller to surface. A no-op
    * (returns `warn:false`) when the kill-switch is OFF or storage is unlimited.

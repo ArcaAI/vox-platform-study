@@ -11,7 +11,7 @@ export interface CreateStorageAccessKeyProps {
   expiresAt?: Date;
   createdBy?: string;
   /**
-   * TASK-318 W3 (F-2) — the HASH of the secret access key, never the plaintext.
+   * The HASH of the secret access key, never the plaintext.
    * The application layer (`StorageAccessKeyService`) generates the raw secret
    * via {@link StorageAccessKeyFactory.generateRawSecret}, hashes it (peppered
    * when a SecretsService is available), and passes the digest here so only the
@@ -26,7 +26,7 @@ function generateAccessKeyId(): string {
 
 export class StorageAccessKeyFactory {
   /**
-   * TASK-318 W3 (F-2) — generate a cryptographically-secure raw secret
+   * Generate a cryptographically-secure raw secret
    * (plaintext). 32 random bytes encoded as base64url => 43 url-safe chars.
    * This value is shown to the caller exactly once at creation time; the
    * database stores only its hash (computed by the service), so a leaked row

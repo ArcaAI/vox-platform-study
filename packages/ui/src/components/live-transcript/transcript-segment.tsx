@@ -15,7 +15,7 @@ import type { LiveTranscriptSegment, SpeakerConfig } from './types';
 // esbuild rewrites `.js` → `.tsx` for the JS bundle. The `as unknown as …` keeps the
 // dts (CJS-interop) view of the default export aligned with esbuild's ESM runtime
 // shape; paths aren't applied to un-inlined dynamic imports in the dts bundle.
-// TASK-410 re-verified (tsc 5.9): dropping the extension → TS2835; dropping the cast →
+// re-verified (tsc 5.9): dropping the extension → TS2835; dropping the cast →
 // TS2322 (CJS interop wraps the module namespace as `default`) — still required.
 const LazySegmentEditor = React.lazy(() => import('./segment-editor.js') as unknown as Promise<{ default: React.ComponentType<SegmentEditorProps> }>);
 

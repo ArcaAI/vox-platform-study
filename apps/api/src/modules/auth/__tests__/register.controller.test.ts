@@ -1,5 +1,5 @@
 /**
- * TASK-497 §3.4 — public registration endpoints.
+ * Public registration endpoints.
  *
  * Contract: both routes 404 when REGISTRATION_SELF_SIGNUP_ENABLED is off
  * (default); when on, they delegate straight to RegistrationService.

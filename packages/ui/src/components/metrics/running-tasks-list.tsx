@@ -42,8 +42,8 @@ function relativeTime(value: Date | string | number): string {
 }
 
 /**
- * Recent-activity / running-tasks list (PHASE-2-PLAN §3.8) — a preset over the
- * TASK-378 `ItemList` foundation. Each row is `StatusDot` + name + `font-mono` id +
+ * Recent-activity / running-tasks list — a preset over the
+ * `ItemList` foundation. Each row is `StatusDot` + name + `font-mono` id +
  * optional `Progress` + relative timestamp. Loading/empty/error are delegated to
  * `ItemList`'s `AsyncStateProps` contract. Presentational: feed `tasks` from a job
  * hook (e.g. `useMonitoring`/`useAsyncJobs`).

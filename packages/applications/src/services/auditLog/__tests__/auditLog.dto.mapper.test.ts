@@ -136,7 +136,7 @@ describe('AuditLogDtoMapper', () => {
             expect(result.previousData).toEqual({ oldKey: 'oldValue' });
         });
 
-        // TASK-331 doc-03 F6 — tenantId must be carried onto the wire so the
+        // TenantId must be carried onto the wire so the
         // global-scope admin console can resolve & show a Tenant column. The
         // AutoEntityMapper only copies fields declared on the target DTO, so
         // this asserts AuditLogResponse declares + assigns tenantId.
@@ -793,7 +793,7 @@ describe('AuditLogDtoMapper', () => {
             expect(csv.split('\n')).toHaveLength(1);
         });
 
-        // OB-07 (TASK-336) — a cross-tenant (global/super-admin) export must carry
+        // OB-07 — a cross-tenant (global/super-admin) export must carry
         // tenant attribution; a tenant-scoped export must not (every row is the
         // caller's own tenant, so the column would be noise).
         describe('OB-07 — tenant column on global export', () => {
@@ -828,7 +828,7 @@ describe('AuditLogDtoMapper', () => {
         });
     });
 
-    // TASK-390 #25 (AU2) — structured column/row extraction feeding the shared
+    // Structured column/row extraction feeding the shared
     // csv/xlsx/pdf table exporter. Same column order + cell mapping as ToCsv, but
     // returned as data (not a serialised string) so the API can render xlsx/pdf.
     describe('ToExportRows (TASK-390 #25 xlsx/pdf export)', () => {

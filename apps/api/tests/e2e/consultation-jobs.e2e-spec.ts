@@ -1,5 +1,5 @@
 /**
- * ConsultationJobController E2E (TASK-263 W0-6)
+ * ConsultationJobController E2E.
  *
  * Tests for the three routes exposed by `ConsultationJobController`:
  *   GET   /api/v1/consultations/jobs/:jobId

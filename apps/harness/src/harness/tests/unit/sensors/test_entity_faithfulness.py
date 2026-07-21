@@ -1,4 +1,4 @@
-"""Entity-faithfulness sensor tests (RED-first).
+"""Entity-faithfulness sensor tests.
 
 Heuristic under test: every entity asserted in the *note* must be grounded in
 the transcript — by a transcript NER span of the same text, or by a verbatim

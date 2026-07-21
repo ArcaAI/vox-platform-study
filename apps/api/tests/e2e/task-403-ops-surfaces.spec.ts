@@ -1,5 +1,5 @@
 /**
- * TASK-403 — Super-admin ops surfaces (Rate Limits · Queues & Jobs · Prisma Studio).
+ * Super-admin ops surfaces (Rate Limits · Queues & Jobs · Prisma Studio).
  *
  * Real HTTP round-trips against the live API (`pnpm test:e2e`, or a dev stack via
  * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8868/api/v1`). Harness mirrors
@@ -12,14 +12,14 @@
  *           (ON → verify → OFF → verify — ALWAYS ends OFF); strict-tier limit
  *           round-trip (bump → verify db source → restore original).
  *   15    · GET /admin/queues lists every registered queue with counts;
- *           GET /admin/queues/health/redis (new TASK-403 endpoint) is healthy;
+ *           GET /admin/queues/health/redis is healthy;
  *           failed-job lifecycle: a synthetic poisoned IngestKnowledgeDocument
  *           job (missing tenantId → the processor's fail-closed guard throws
  *           BEFORE any DB/harness access) is enqueued straight into the test
  *           Redis, observed as `failed` via listing + detail, then
  *           POST .../retry re-runs it (attempts 1 → 2). Non-destructive: the
  *           fixture job ages out via removeOnFail like every platform job.
- *   16    · GET /admin/pstudio/status (new TASK-403 endpoint) reports
+ *   16    · GET /admin/pstudio/status reports
  *           enabled:false under NODE_ENV=test, and the dev-only Studio shell
  *           (GET /admin/pstudio) is genuinely absent (404).
  *
@@ -346,7 +346,7 @@ test.describe.serial('TASK-403 Queues & Jobs — listing, redis health, failed-j
 // Surface 16 — Prisma Studio
 // =============================================================================
 test.describe('TASK-403 Prisma Studio — status probe honest about availability', () => {
-  // TASK-419 item 4: the gate is the ENABLE_PRISMA_STUDIO flag alone
+  // The gate is the ENABLE_PRISMA_STUDIO flag alone
   // (production-capable, fail-closed when unset). `.env.test` does not set
   // the flag, so the probe must report disabled and the shell must be absent.
   test('GET /admin/pstudio/status reports enabled:false when ENABLE_PRISMA_STUDIO is unset', async ({ request }) => {

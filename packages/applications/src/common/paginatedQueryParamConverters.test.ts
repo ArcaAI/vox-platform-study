@@ -247,7 +247,7 @@ describe('deserializeFilterString — enum / JSON column coercion (TASK-375 §8 
     // Enum and JSON columns are FIRST-CLASS recognized by the model field-type
     // registry (drift-guarded by the `satisfies ModelFilterFieldTypes<T>` mapped
     // type) rather than being silently bucketed with "unknown / String".
-    // TASK-406 (P2-6b) evolved the contract: enum columns now carry a runtime
+    // Enum columns carry a runtime
     // MEMBER allow-list (`{ type: 'enum', members }`, sourced from the
     // `@arcaai/domains` generated enum objects) and an invalid member is
     // rejected with a 400 instead of being deferred to Prisma; JSON columns
@@ -290,9 +290,8 @@ describe('deserializeFilterString — enum / JSON column coercion (TASK-375 §8 
     });
 
     it('rejects an unrecognized enum member with a 400 instead of deferring to Prisma (TASK-406)', () => {
-        // TASK-375 passed a bogus member through for Prisma to reject
-        // server-side (a 500-class error). TASK-406 resolves that flagged
-        // deferral: the registry now carries the member allow-list, so an
+        // A bogus member previously passed through for Prisma to reject
+        // server-side (a 500-class error). The registry now carries the member allow-list, so an
         // invalid member is a clean client error naming the allowed members.
         expect(() => deserializeFilterString('action[equals]:NOT_A_REAL_ACTION', 'AuditLog')).toThrow(BadRequestException);
         expect(() => deserializeFilterString('action[equals]:NOT_A_REAL_ACTION', 'AuditLog')).toThrow(/NOT_A_REAL_ACTION.*action/s);
@@ -330,7 +329,7 @@ describe('deserializeFilterString — enum MEMBER validation (TASK-406 P2-6b)', 
 
     it("keeps a plain 'enum' tag in an EXPLICIT map as an unvalidated pass-through (legacy escape hatch)", () => {
         // Only member-carrying registry specs validate; an explicit map that
-        // says just 'enum' has no allow-list and keeps TASK-375 behaviour.
+        // says just 'enum' has no allow-list and keeps the legacy behaviour.
         expect(deserializeFilterString('status[equals]:ANYTHING', { status: 'enum' })).toEqual({
             status: { equals: 'ANYTHING' },
         });
@@ -644,9 +643,9 @@ describe('deserializeFilterString — case-insensitive string operators (TASK-42
     });
 
     it("a literal '__proto__' field key never pollutes Object.prototype (own-key hardening)", () => {
-        // Filter keys are attacker-controlled query-string input. Before the
-        // TASK-423 hardening, `filterObject['__proto__'][op] = value` reached
-        // Object.prototype and polluted EVERY object in the process.
+        // Filter keys are attacker-controlled query-string input. Without
+        // hardening, `filterObject['__proto__'][op] = value` would reach
+        // Object.prototype and pollute EVERY object in the process.
         try {
             const result = deserializeFilterString('__proto__[in]:a|b;__proto__[icontains]:x;__proto__[equals]:y') as Record<
                 string,

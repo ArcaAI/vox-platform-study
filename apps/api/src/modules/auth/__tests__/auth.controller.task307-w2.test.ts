@@ -1,5 +1,5 @@
 /**
- * TASK-307 W2.3 — AuthController must source JWT_SECRET_KEY from
+ * AuthController must source JWT_SECRET_KEY from
  * SecretsService ONLY.
  *
  * Closes audit C-6 part 3 (bare-minimum, fail-closed): unify sign &
@@ -66,7 +66,7 @@ const createMockDatabaseService = (roleAssignments: any[] = []) => ({
     },
 });
 
-// TASK-307 W6.1 — controller no longer touches Prisma directly. The 4th
+// Controller no longer touches Prisma directly. The 4th
 // constructor arg is now IUserRoleAssignmentService. This helper accepts
 // the same legacy `[{ Role: { name, permissions } }, ...]` shape the W2
 // tests already pass and unwraps it for `findActiveRolesForUser`.
@@ -79,7 +79,7 @@ const createMockUserRoleAssignmentService = (roleAssignments: any[] = []) => {
     };
 };
 
-// TASK-307 W1 — RefreshTokenService is now the source of refresh-token
+// RefreshTokenService is now the source of refresh-token
 // issuance. Default mock issues a deterministic opaque token + family
 // and consumes it back into the user-001/tenant-001 default the W2
 // refresh path expects.
@@ -213,7 +213,7 @@ function buildController(opts: {
         { revoke: vi.fn(), isRevoked: vi.fn().mockResolvedValue(false) } as any,
         opts.secretsService as any,
         createMockRefreshTokenService() as any,
-        // TASK-305 Phase F — login now also resolves the department half of membership.
+        // Login now also resolves the department half of membership.
         { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
         { emit: vi.fn() } as any,
         {} as any,
@@ -279,7 +279,7 @@ describe('TASK-307 W2.3 — auth.controller uses SecretsService only', () => {
             const target = createUser({ id: 'doctor-001', username: 'dr_smith' });
             const users = new Map([[target.id, target]]);
 
-            // TASK-307 W6 — controller no longer touches Prisma directly. Instead,
+            // Controller no longer touches Prisma directly. Instead,
             // it asks IUserRoleAssignmentService for roles + tenant ids. Wire the
             // GLOBAL_ADMIN admin / doctor target shape via service methods.
             const uraService = {

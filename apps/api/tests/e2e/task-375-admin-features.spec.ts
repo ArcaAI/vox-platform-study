@@ -1,5 +1,5 @@
 /**
- * TASK-375 / TASK-374 — admin-feature backend contract verification.
+ * Admin-feature backend contract verification.
  *
  * Exercises the server side of the three admin features shipped this session,
  * against the live API (`pnpm test:e2e`, or a dev stack via
@@ -25,11 +25,11 @@
  *     This route is TENANT-SCOPED, so it is read as the consultation's
  *     tenant-bound owner (NOT the cross-tenant super_admin, who has no tenant
  *     binding and is rejected 400 "Tenant ID is required"). Defaults to the
- *     TASK-376 media fixture (consultation 90000000-…-376), which is folded into
+ *     seeded media fixture (consultation 90000000-…-376), which is folded into
  *     the test-DB seed (`test:db:seed` + the CI prepare-test-db job), so it runs
  *     without manual env. Override with `E2E_CONSULTATION_ID`, or set it to an
  *     EMPTY string to skip when no media fixture/storage is present. The
- *     owner login is env-overridable too (TASK-406 P2-7b):
+ *     owner login is env-overridable too:
  *     `E2E_MEDIA_OWNER_USERNAME` / `E2E_MEDIA_OWNER_PASSWORD` /
  *     `E2E_MEDIA_OWNER_TENANT_KEY` (defaults: seeded doctor / __GLOBAL__).
  */
@@ -62,15 +62,15 @@ interface ContextItem {
 const GRID_NAMESPACE = 'ui.data-grid';
 const GRID_KEY = 'e2e-task375'; // dedicated key — idempotent upsert, no cleanup endpoint exists
 
-// TASK-376 — the additive media seed (folded into the test-DB seed) creates this
+// The additive media seed (folded into the test-DB seed) creates this
 // Global-tenant consultation with image/pdf/audio/mixed ATTACHMENT context items.
 // Used as the default when E2E_CONSULTATION_ID is not set.
 const DEFAULT_MEDIA_CONSULTATION_ID = '90000000-0000-0000-0000-000000000376';
 
-// TASK-406 (P2-7b, TASK-376 residual) — the media test reads as the
+// The media test reads as the
 // consultation's TENANT-BOUND owner. When E2E_CONSULTATION_ID points at a
 // different tenant's consultation, override the owner credentials via env;
-// they default to the TASK-376 fixture's owner (`doctor` in __GLOBAL__).
+// they default to the seeded fixture's owner (`doctor` in __GLOBAL__).
 const MEDIA_OWNER = {
   username: process.env.E2E_MEDIA_OWNER_USERNAME || SEEDED_USERS.doctor.username,
   password: process.env.E2E_MEDIA_OWNER_PASSWORD || SEEDED_USERS.doctor.password,
@@ -279,7 +279,7 @@ test.describe('TASK-375 — admin features (D8 persistence, Users sort/filter/se
   // --- 3. Media + thumbnails (presigned URLs) --------------------------------
 
   test('Media: context attachments expose presigned url + mimeType (+ thumbnail for images)', async ({ request }) => {
-    // Default to the TASK-376 seeded fixture so this runs without manual env
+    // Default to the seeded fixture so this runs without manual env
     // once the test-DB seed has run. `??` keeps an explicit empty string
     // (E2E_CONSULTATION_ID="") as an opt-out to skip when no fixture/storage.
     const consultationId = process.env.E2E_CONSULTATION_ID ?? DEFAULT_MEDIA_CONSULTATION_ID;
@@ -294,7 +294,7 @@ test.describe('TASK-375 — admin features (D8 persistence, Users sort/filter/se
     // The consultation-context route is TENANT-SCOPED: the cross-tenant
     // `super_admin` (no tenant binding) is rejected 400 "Tenant ID is
     // required". Read as the consultation's tenant-bound owner instead —
-    // env-overridable (TASK-406 P2-7b), defaulting to the TASK-376 fixture
+    // env-overridable, defaulting to the seeded fixture
     // owner `doctor` in the __GLOBAL__ tenant.
     const owner = await loginUser(request, MEDIA_OWNER.username, MEDIA_OWNER.password, MEDIA_OWNER.tenantKey);
     expect(

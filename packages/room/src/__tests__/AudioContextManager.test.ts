@@ -538,7 +538,7 @@ describe('AudioContextManager.resume timeout (W1-7)', () => {
 });
 
 // ============================================================================
-// TASK-300 L-1 — acquire() sample-rate enforcement
+// acquire() sample-rate enforcement
 // ============================================================================
 
 describe('AudioContextManager.acquire sample-rate enforcement (TASK-300 L-1)', () => {
@@ -616,7 +616,7 @@ describe('AudioContextManager.acquire sample-rate enforcement (TASK-300 L-1)', (
 });
 
 // ============================================================================
-// TASK-317 W5.2 — cross-tenant acquire() dev-warning (AC-15 / audit D-6)
+// Cross-tenant acquire() dev-warning
 // ============================================================================
 
 describe('TASK-317 W5.2 — AudioContextManager cross-tenant acquire warning (AC-15)', () => {

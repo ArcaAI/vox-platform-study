@@ -13,7 +13,7 @@ export class TenantUsageResponse {
   @ApiProperty({ description: 'Total number of pipelines' })
   totalPipelines!: number;
 
-  // TASK-386 (#5 / E5) — storage roll-ups for the Tenant Detail "Storage" tile.
+  // Storage roll-ups for the Tenant Detail "Storage" tile.
   @ApiProperty({ description: 'Storage used in bytes (SUM of Media.size).' })
   storageUsedBytes!: number;
 
@@ -24,7 +24,7 @@ export class TenantUsageResponse {
   })
   storageQuotaBytes!: number | null;
 
-  // TASK-386 (#16 / E5) — clinical roll-ups for the Tenant Detail "Overview" tile.
+  // Clinical roll-ups for the Tenant Detail "Overview" tile.
   @ApiProperty({ description: 'Transcription minutes (SUM of AudioRecording.duration ms / 60000).' })
   transcriptionMinutes!: number;
 

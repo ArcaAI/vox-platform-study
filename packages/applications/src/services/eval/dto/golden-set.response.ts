@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-/** One golden set (TASK-419 item 1 — read projection of `GoldenSet`). */
+/** One golden set — read projection of `GoldenSet`. */
 export class GoldenSetResponse {
   @ApiProperty({ description: 'Golden set id.' })
   id: string;
@@ -37,7 +37,7 @@ export class GoldenSetListResponse {
 }
 
 /**
- * One golden case, PHI-SAFE projection (TASK-419 item 1): the clinical payload
+ * One golden case, PHI-SAFE projection: the clinical payload
  * columns (`transcript`, `referenceNote`) are Vault-encrypted PHI and are
  * deliberately NEVER surfaced through the admin read plane — only metadata.
  */

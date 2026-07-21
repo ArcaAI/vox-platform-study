@@ -1,16 +1,15 @@
 /**
- * Cross-tenant probes against StorageController (AC-9).
+ * Cross-tenant probes against StorageController.
  *
- * Originally landed by TASK-307 W3.6 closing audit finding C-2
- * (BLOCKER, `04-api-design-review.md`). The controller historically
- * resolved any free-form `:name` directly to `s3Service.{getFile,
+ * Without the tenant-ownership guard, the controller would resolve any
+ * free-form `:name` directly to `s3Service.{getFile,
  * deleteBucket,…}` with only a path-traversal regex for hygiene; a
  * tenant-A user with the `delete:Storage` CASL permission could
  * enumerate every known bucket suffix (`hope-recordings-<tenant>`,
  * `hope-attachments-<tenant>`) and delete or download tenant-B
  * contents.
  *
- * After the W3 fix the global interceptor reads
+ * The global interceptor reads
  * `@TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'name',
  * lookup: 'name' })` and resolves the name via
  * `TenantBucketRepository.findByName` (only ENABLED system/custom
@@ -19,7 +18,7 @@
  * ("Resource not found") keeps every shape of failure
  * indistinguishable from a missing bucket.
  *
- * TASK-309 AC-2 / AC-3 — genuine probe strengthening. This spec was
+ * Genuine probe strengthening: this spec was
  * already using real bucket NAMES (the seed in
  * `05a-tenant-bucket.ts` ships `hope-recordings-<tenant>` and
  * `hope-attachments-<tenant>` for every customer tenant), so the
@@ -35,7 +34,7 @@
 import { test, expect } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
-const ARCAAI_RECORDINGS_BUCKET = 'hope-recordings-arcaai'; // matches seed/05a-tenant-bucket (TASK-426: recordings)
+const ARCAAI_RECORDINGS_BUCKET = 'hope-recordings-arcaai'; // matches seed/05a-tenant-bucket (recordings)
 const ARCAAI_ATTACHMENTS_BUCKET = 'hope-attachments-arcaai';
 
 interface BucketRow {
@@ -58,7 +57,7 @@ test.describe('TASK-309 AC-2/AC-3 — Storage bucket ownership genuine probe (AC
     expect(sa, 'super_admin login (ARCAAI) failed').toBeTruthy();
     superAdminArcaaiToken = sa!.token;
 
-    // TASK-309: assert the ARCAAI seed actually shipped the bucket
+    // Assert the ARCAAI seed actually shipped the bucket
     // we're about to probe. If the seed regresses (e.g. someone
     // deletes tenant-bucket seeds) the cross-tenant 404 below
     // would silently turn into a missing-bucket 404 and the test

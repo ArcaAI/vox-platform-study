@@ -61,7 +61,7 @@ describe('Version/Usage Mapper Handlers — exclude fields not in Prisma schema'
       }
       expect(result.id).toBe('civ-1');
       expect(result.contextItemId).toBe('ci-1');
-      // TASK-369 Phase 6 — plaintext PHI columns dropped; never persisted.
+      // Plaintext PHI columns dropped; never persisted.
       for (const field of ['content', 'contentDiff', 'changeSummary', 'fieldChanges']) {
         expect(result).not.toHaveProperty(field);
       }
@@ -92,7 +92,7 @@ describe('Version/Usage Mapper Handlers — exclude fields not in Prisma schema'
       expect(restored.id).toBe('civ-rt');
       expect(restored.versionNumber).toBe(3);
       expect(restored.contextItemId).toBe('ci-1');
-      // TASK-369 Phase 6 — `content` is no longer round-tripped by the mapper;
+      // `content` is no longer round-tripped by the mapper;
       // encrypt-on-write / decrypt-on-read owns PHI, so it is not persisted.
       expect(persisted).not.toHaveProperty('content');
     });
@@ -190,7 +190,7 @@ describe('Version/Usage Mapper Handlers — exclude fields not in Prisma schema'
       expect(result.id).toBe('dv-1');
       expect(result.tenantId).toBe('tenant-1');
       expect(result.createdAt).toBeDefined();
-      // TASK-369 Phase 6 — plaintext PHI columns dropped; never persisted.
+      // Plaintext PHI columns dropped; never persisted.
       for (const field of ['reportData', 'styleText']) {
         expect(result).not.toHaveProperty(field);
       }

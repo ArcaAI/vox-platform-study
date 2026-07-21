@@ -2,7 +2,7 @@ import { IsArray, IsBoolean, IsIn, IsNumber, IsObject, IsOptional, IsString, Max
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * TASK-330 Phase 1 — Lane G internal-harness contract DTOs.
+ * Lane G internal-harness contract DTOs.
  *
  * Every request carries `tenantId` in the body: the harness calls these
  * endpoints out-of-band of the API edge ClsModule middleware, so the internal
@@ -63,7 +63,7 @@ export class HarnessEntityItem {
   @IsNumber()
   transcriptEndOffset?: number;
 
-  // TASK-476 C1 — clinical ontology codes resolved by the NLP entity linker.
+  // Clinical ontology codes resolved by the NLP entity linker.
   // Declared with validators + @ApiPropertyOptional so they are first-class DTO
   // fields (the global pipe is whitelist + forbidNonWhitelisted).
   @ApiPropertyOptional({ description: 'UMLS Concept Unique Identifier' })
@@ -117,8 +117,8 @@ export interface HarnessPersistEntitiesResponse {
 }
 
 /**
- * TASK-480 Half-B — read response the harness `load_entity_priors` activity consumes:
- * a consultation's persisted NamedEntity rows (coded per TASK-476) it reuses as NER
+ * Read response the harness `load_entity_priors` activity consumes:
+ * a consultation's persisted, ontology-coded NamedEntity rows, reused as NER
  * priors instead of re-extracting the transcript cold. Reuses the `HarnessEntityItem`
  * shape (the offsets are already transcript-span-preferred, mirroring `loadNerEntities`).
  */
@@ -190,7 +190,7 @@ export interface HarnessAssembleResponse {
 // ---------------------------------------------------------------------------
 
 /**
- * TASK-355 Phase D — two-phase (optimistic) delivery discriminator on the
+ * Two-phase (optimistic) delivery discriminator on the
  * persist-draft contract.
  *   - `DRAFT_PENDING_SENSORS` (early): persist the readable draft BEFORE the
  *     inferential assurance pass completes. Computational scores only; the
@@ -298,7 +298,7 @@ export class HarnessDraftRequest {
 
   @ApiPropertyOptional({
     description:
-      'TASK-355 Phase D — two-phase delivery discriminator. DRAFT_PENDING_SENSORS = early optimistic persist (assurance deferred to finalizeAssurance); FINALIZE/absent = legacy single-shot (assurance already complete).',
+      'Two-phase delivery discriminator. DRAFT_PENDING_SENSORS = early optimistic persist (assurance deferred to finalizeAssurance); FINALIZE/absent = legacy single-shot (assurance already complete).',
     enum: [HARNESS_DRAFT_PHASE.EARLY, HARNESS_DRAFT_PHASE.FINALIZE],
   })
   @IsOptional()
@@ -312,7 +312,7 @@ export interface HarnessDraftResponse {
 }
 
 // ---------------------------------------------------------------------------
-// finalize-assurance (TASK-355 Phase D — second phase of optimistic delivery)
+// finalize-assurance (second phase of optimistic delivery)
 // ---------------------------------------------------------------------------
 
 /**
@@ -399,7 +399,7 @@ export interface HarnessFinalizeAssuranceResponse {
 }
 
 // ---------------------------------------------------------------------------
-// progress (TASK-345 — live harness activity feed)
+// progress (live harness activity feed)
 // ---------------------------------------------------------------------------
 
 /**
@@ -409,7 +409,7 @@ export interface HarnessFinalizeAssuranceResponse {
 export const HARNESS_PROGRESS_TERMINAL_STAGE = 'completed';
 
 /**
- * Failure terminal pseudo-stage (TASK-348 / MAJ-1): the workflow emits this
+ * Failure terminal pseudo-stage: the workflow emits this
  * best-effort when the document loop fails. The service marks the currently
  * active stage `failed`, freezes the rest, and closes the feed (`closed: true`)
  * so the SSE stream ends instead of replaying a lying `active` snapshot.
@@ -418,8 +418,8 @@ export const HARNESS_PROGRESS_TERMINAL_STAGE = 'completed';
 export const HARNESS_PROGRESS_FAILED_STAGE = 'failed';
 
 /**
- * The fixed server-side stage catalog (TASK-348 / MAJ-6 — ENH-4 mirror of
- * `HARNESS_PROGRESS_STAGES` in apps/harness `models.py`). Both sides deploy
+ * The fixed server-side stage catalog, mirroring
+ * `HARNESS_PROGRESS_STAGES` in apps/harness `models.py`. Both sides deploy
  * from this repo: adding a workflow stage requires updating BOTH catalogs, or
  * the internal endpoint rejects the unknown key (fail-closed payload bound).
  */
@@ -431,7 +431,7 @@ export const HARNESS_PROGRESS_STAGE_KEYS = [
   'finalizing_draft',
 ] as const;
 
-// TASK-348 / MAJ-6: payload bounds. The snapshot is rebroadcast to every SSE
+// Payload bounds. The snapshot is rebroadcast to every SSE
 // subscriber, so each field is capped at the validation pipe and `stage` is
 // pinned to the fixed server-side catalog (both sides ship from this repo —
 // a new workflow stage lands by updating both catalog mirrors together).
@@ -500,7 +500,7 @@ export interface HarnessProgressStageDto {
 export interface HarnessProgressEventDto {
   consultationId: string;
   /**
-   * Tenant the run belongs to (TASK-348 / MIN-5). Folded from the internal
+   * Tenant the run belongs to. Folded from the internal
    * request for ops correlation; the SSE route is independently tenant-guarded
    * (`@TenantOwnedResource`), so this is informational, not an access check.
    */
@@ -557,21 +557,21 @@ export interface HarnessGateDecisionResponse {
 }
 
 // ---------------------------------------------------------------------------
-// escalation (TASK-466 C1-05 — gate SLA-breach record)
+// escalation (gate SLA-breach record)
 // ---------------------------------------------------------------------------
 
 /**
  * The two harness `escalate_gate` reason strings (mirrors the reason set in
  * apps/harness `workflows.py`). Terminal-ness is encoded IN the reason:
  *   - `gate_sla_breached`  — a non-terminal escalation (the gate keeps waiting).
- *   - `gate_sla_abandoned` — the terminal escalation before the gate abandons (C1-02).
+ *   - `gate_sla_abandoned` — the terminal escalation before the gate abandons.
  * apps/api maps them to the GATE_ESCALATED / GATE_ABANDONED WORM audit actions.
  */
 export const HARNESS_ESCALATION_REASONS = ['gate_sla_breached', 'gate_sla_abandoned'] as const;
 export type HarnessEscalationReason = (typeof HARNESS_ESCALATION_REASONS)[number];
 
 /**
- * TASK-466 (C1-05) — the harness `escalate_gate` activity POSTs this when an
+ * The harness `escalate_gate` activity POSTs this when an
  * un-signed gate passes its SLA. The wire body is exactly `{tenantId, reason,
  * jobId?}` (its only caller sends no escalationCount/terminal, so the harness
  * `_prune` drops them); the global pipe is whitelist + forbidNonWhitelisted, so
@@ -584,7 +584,7 @@ export class HarnessEscalationRequest {
 
   @ApiProperty({
     description:
-      'Escalation reason — gate_sla_breached (non-terminal) or gate_sla_abandoned (terminal abandon, C1-02). Terminal-ness is encoded in the reason.',
+      'Escalation reason — gate_sla_breached (non-terminal) or gate_sla_abandoned (terminal abandon). Terminal-ness is encoded in the reason.',
     enum: HARNESS_ESCALATION_REASONS,
   })
   @IsString()
@@ -602,7 +602,7 @@ export interface HarnessEscalationResponse {
 }
 
 // ---------------------------------------------------------------------------
-// assurance live feed (TASK-355 Phase D Slice 5d — Q5 true mid-pass streaming)
+// assurance live feed (true mid-pass streaming)
 // ---------------------------------------------------------------------------
 
 /**

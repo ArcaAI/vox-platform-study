@@ -1,5 +1,5 @@
 /**
- * TASK-524 — config-plane core e2e (AUTHORED HERE, EXECUTED IN TASK-534/P7).
+ * Config-plane core e2e.
  *
  * Live-stack requirement: the dev stack (`pnpm test:api:up`) plus a seeded
  * database (`pnpm db:seed`), which supplies the eight DISABLED SYSTEM

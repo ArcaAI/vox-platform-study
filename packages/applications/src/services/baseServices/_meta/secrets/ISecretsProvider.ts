@@ -1,9 +1,9 @@
 /**
- * Phase 2A Task 2.2 (TASK-302 Stream B) — ISecretsProvider contract.
+ * ISecretsProvider contract.
  *
  * Every secrets backend (env, vault, aws, azure, in-memory) implements this
  * interface. Consumer code never depends on a concrete provider; it depends
- * on SecretsService (Task 2.15) which wraps the provider with caching.
+ * on SecretsService which wraps the provider with caching.
  *
  * Stays in @arcaai/applications because the providers wrap NestJS DI
  * primitives. The interface itself is framework-agnostic.
@@ -27,8 +27,8 @@ export interface SecretsHealth {
   /** Optional human-readable detail; never include secret material. */
   detail?: string;
   /**
-   * TASK-302 Phase 5 Task 5.7 (Stream B) — stale-while-revalidate
-   * signal for DB lease rotation. `degraded=true` means at least one
+   * Stale-while-revalidate signal for DB lease rotation. `degraded=true`
+   * means at least one
    * registered VaultLeaseRenewer has crossed its failure threshold;
    * `ok` may still be true (cached credentials remain valid until
    * expiry). Health endpoints surface this as a WARNING, not a

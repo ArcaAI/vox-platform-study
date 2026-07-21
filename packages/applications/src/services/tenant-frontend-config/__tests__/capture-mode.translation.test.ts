@@ -1,5 +1,5 @@
 /**
- * CaptureMode translation layer (TASK-356 Phase 4, A5).
+ * CaptureMode translation layer.
  *
  * Single, table-driven mapping from the tenant-scoped `CaptureMode` enum onto:
  *   - the two backend pipeline-YAML `dual_capture` booleans

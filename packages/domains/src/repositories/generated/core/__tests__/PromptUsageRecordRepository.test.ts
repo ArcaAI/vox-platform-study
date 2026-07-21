@@ -1,5 +1,5 @@
 /**
- * PromptUsageRecordRepository — TASK-328 A4 usage-analytics aggregations.
+ * PromptUsageRecordRepository — usage-analytics aggregations.
  *
  * Department and doctor counts use Prisma `groupBy` (the
  * `TranscriptionJobRepository.countByStatus` precedent). Per-day buckets are

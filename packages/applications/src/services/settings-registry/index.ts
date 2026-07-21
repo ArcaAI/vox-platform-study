@@ -1,4 +1,4 @@
-// TASK-504 Phase 3 — settings registry barrel.
+// Settings registry barrel.
 export * from './registry.types';
 export * from './scope-cascade';
 export * from './settings-registry';

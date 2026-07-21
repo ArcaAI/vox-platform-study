@@ -27,8 +27,7 @@ type AdminMode = 'existing' | 'new-local';
 type Step = 1 | 2 | 3;
 
 /**
- * Cosmetic client-side preview only — the server (`generateUniqueTenantKey`,
- * TASK-497 D3) is the authoritative generator (collision suffixing, reserved
+ * Cosmetic client-side preview only — the server (`generateUniqueTenantKey`) is the authoritative generator (collision suffixing, reserved
  * fallback). This mirrors it loosely just so the user sees what to expect.
  */
 function previewTenantKey(name: string): string {
@@ -42,7 +41,7 @@ function previewTenantKey(name: string): string {
 }
 
 /**
- * Create-tenant-with-admin wizard (TASK-497 §3.5): step 1 identity, step 2
+ * Create-tenant-with-admin wizard: step 1 identity, step 2
  * plan, step 3 the tenant's initial TENANT_ADMIN (existing user or a new
  * local account) — mandatory, so a tenant is never created adminless from
  * this dialog. Submits via `POST /admin/tenants/provision`.

@@ -1,9 +1,9 @@
 /**
- * TASK-328 A1–A3 — admin user-department + user-profile endpoint guards.
+ * Admin user-department + user-profile endpoint guards.
  *
  * Pins the URL shapes, special-char encoding, key-count (so the endpoint
  * surface cannot silently drift), and the package-barrel re-export from
- * `@arcaai/vox/core` (mirrors the TASK-279 ADMIN_USER_ROLES guard).
+ * `@arcaai/vox/core` (mirrors the ADMIN_USER_ROLES guard).
  *
  * @vitest-environment jsdom
  */

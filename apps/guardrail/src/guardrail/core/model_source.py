@@ -1,4 +1,4 @@
-"""TASK-527 — model weight source & path resolution (plan AD-3), guardrail mirror.
+"""Model weight source & path resolution, guardrail mirror.
 
 MIRROR of ``apps/stt-v2/src/stt_v2/models/source_resolver.py`` — the conformance
 suite in ``tests/test_model_source_resolver.py`` is the same named quartet, so a
@@ -20,10 +20,11 @@ One contract, mirrored across stt-v2 / guardrail / nlp / harness:
                                          single-flight + SHA256-verified
            file:///abs/path           -> verify and use IN PLACE, never copied
     3. anything else                   -> ``ModelSourceError``. There is no
-                                          silent fallback (OD-4: ``s3://`` only
-                                          this program; ``azure-blob://`` deferred).
+                                          silent fallback: ``s3://`` is the only
+                                          cloud scheme supported; ``azure-blob://``
+                                          is deferred.
 
-Design constraints (rule 06 + plan AD-3):
+Design constraints (rule 06):
 
 * The S3 client is imported LAZILY inside ``_make_s3_client`` so a deployment
   that never uses ``s3://`` never imports ``minio``. That function is also the
@@ -411,7 +412,7 @@ def _verify_dir_checksum(
 
 
 # ---------------------------------------------------------------------------
-# TASK-527 (D-12) — clinical-gate weight resolution
+# Clinical-gate weight resolution
 # ---------------------------------------------------------------------------
 
 # The `AiModel` slug the groundedness gate consumes (seed: nlp.ts).
@@ -431,7 +432,7 @@ async def resolve_groundedness_model_path(
     Precedence: `AiModel.localPath` (via the 60 s-TTL tenant-config cache) ->
     resolvable `file://` / `s3://` `sourceUri` -> the bootstrap env path.
 
-    Clinical-gate posture (unchanged from pre-TASK-527): this call site passes
+    Clinical-gate posture: this call site passes
     ``allow_network=False``, so a HuggingFace-only row NEVER triggers a
     download. It degrades to the env path, and if that is unset too the caller's
     ``load_minicheck_scorer`` raises ``NliModelUnavailableError`` and the

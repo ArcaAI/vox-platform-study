@@ -271,7 +271,7 @@ class APIGatewayClient:
         Calls NestJS ``POST /internal/stt/transcripts`` which expects
         a ``CreateTranscriptRequest`` body.
 
-        Two callers (TASK-342 GAP #1):
+        Two callers:
           * batch/file: pass ``job_id`` — tenant/creator are derived from the job.
           * streaming finalize: pass ``consultation_id`` + ``tenant_id`` and omit
             ``job_id`` (streaming sessions have no TranscriptionJob).
@@ -285,25 +285,25 @@ class APIGatewayClient:
             tenant_id: Owning tenant ID. Required when ``job_id`` is omitted.
             transcription_source: ``"streaming"`` or ``"batch"`` (event label).
             idempotency_key: Optional client-supplied dedup key sent as the
-                ``Idempotency-Key`` header (TASK-456 C2-03 outbox/retry seam).
+                ``Idempotency-Key`` header (outbox/retry seam).
                 NOTE: the gateway does not yet consume this header — today the
                 streaming path is already deduped server-side by
                 ``consultationId``; the header is forward-compatible and becomes
-                authoritative once apps/api honors it (see ticket report).
-            segments: Consumer-shaped transcript segments (TASK-533 D-22) —
+                authoritative once apps/api honors it.
+            segments: Consumer-shaped transcript segments —
                 ``{idx, t0Ms, t1Ms, speaker, text, charStart, charEnd}``, camelCase,
                 milliseconds. Maps onto the typed ``CreateTranscriptRequest.segments``
                 field, which is what feeds ``TranscriptSegment`` rows and therefore
                 the harness evidence-grounding chain. Omit (or pass empty) and the
-                gateway persists no segments — the pre-D-22 behaviour.
+                gateway persists no segments.
         """
         payload: dict[str, Any] = {
             "transcriptText": transcript_text,
         }
         # Sent as a TOP-LEVEL typed field, deliberately NOT inside `metadata`:
         # metadata is an untyped JsonValue, so a wrong shape there bypasses
-        # class-validator entirely and silently persists null columns (the D-22
-        # batch failure mode). On the typed field a bad shape is a 400.
+        # class-validator entirely and silently persists null columns. On
+        # the typed field a bad shape is a 400.
         if segments:
             payload["segments"] = segments
         if job_id:

@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useStorageKeys Hook (TASK-323 Phase 0 / TASK-318 R9)
+ * @arcaai/vox - useStorageKeys Hook
  *
  * Per-tenant storage access-key management for TENANT_ADMIN / GLOBAL_ADMIN. The
  * server gates `/admin/tenants/storage/keys` with `@CanManage('Tenant')`, so a

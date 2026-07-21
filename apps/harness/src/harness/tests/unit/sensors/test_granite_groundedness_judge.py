@@ -1,10 +1,11 @@
-"""R-8a candidate tests — Granite Guardian *groundedness* mode as a drop-in judge.
+"""Faster-entailment-judge candidate tests — Granite Guardian *groundedness* mode as a
+drop-in judge.
 
-TASK-355 R-8 (faster entailment judge). The residual <2 min gap is the 31 groundedness
-calls paying a *reasoning* judge (gemma-4-e4b) for a 1-token verdict. R-8a reuses the
+The residual <2 min gap is the 31 groundedness
+calls paying a *reasoning* judge (gemma-4-e4b) for a 1-token verdict. This candidate reuses the
 already-resident IBM Granite Guardian (single no-think ``<score>yes/no</score>`` verdict)
 in *groundedness* mode, exposed as a :class:`~harness.eval.judge.base.JudgeClient` so the
-groundedness/citation sensors swap with ZERO code change (E4 = a config flip).
+groundedness/citation sensors swap with ZERO code change (a config flip).
 
 Contract under test (mirrors the gemma client + the sensors' conservative fallback):
 * speaks the sensors' ``PREMISE:/HYPOTHESIS:`` envelope and reframes it as a Granite

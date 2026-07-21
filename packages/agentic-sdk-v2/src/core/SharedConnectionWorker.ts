@@ -43,18 +43,17 @@ export type WorkerMessageType =
 export interface SSESubscription {
   url: string;
   /**
-   * TASK-297 C-SSE-1 — short-lived stream ticket minted by the API via
+   * Short-lived stream ticket minted by the API via
    * `POST /auth/stream-ticket`. Passed as `?ticket=<…>` on the SSE URL.
    *
-   * The legacy `authToken` field embedded a raw JWT into the URL, which:
-   *   - leaked the JWT into webserver / proxy access logs,
-   *   - leaked it into `Referer` headers if the SSE backend ever redirected,
-   *   - persisted it in browser history / DevTools network panel.
-   * It has been removed.
+   * A raw JWT must never be embedded in the URL instead, since that would:
+   *   - leak the JWT into webserver / proxy access logs,
+   *   - leak it into `Referer` headers if the SSE backend ever redirected,
+   *   - persist it in browser history / DevTools network panel.
    */
   ticket?: string;
   /**
-   * TASK-297 H-SSE-5 — owner user id (the user that minted the ticket).
+   * Owner user id (the user that minted the ticket).
    * SSE deduplication keys on `(id, userId)` so we never share an
    * upstream connection across distinct user contexts.
    */
@@ -66,14 +65,14 @@ export interface WSSubscription {
   url: string;
   protocols?: string[];
   /**
-   * TASK-317 C-4 (AC-8) — owner user id. WebSocket deduplication keys on
+   * Owner user id. WebSocket deduplication keys on
    * `(id, userId)` (see `wsDedupKey`) so we never share one upstream socket
    * across distinct user contexts even when the base id collides — mirrors
-   * the SSE `(id, userId)` dedup added under TASK-297 H-SSE-5.
+   * the SSE `(id, userId)` dedup.
    */
   userId?: string;
   /**
-   * TASK-317 C-4 (AC-8) — active tenant id, carried alongside `userId` for
+   * Active tenant id, carried alongside `userId` for
    * diagnostics / defense-in-depth. The dedup key itself is `(id, userId)`;
    * `tenantId` travels with the subscription so a future cross-tenant guard
    * has the discriminator without another round-trip.
@@ -85,7 +84,7 @@ interface ManagedSSE {
   eventSource: EventSource;
   subscribers: Set<MessagePort>;
   url: string;
-  /** TASK-297 H-SSE-5 — owner user id for the upstream connection. */
+  /** Owner user id for the upstream connection. */
   userId?: string;
 }
 
@@ -93,7 +92,7 @@ interface ManagedWS {
   socket: WebSocket;
   subscribers: Set<MessagePort>;
   url: string;
-  /** TASK-317 C-4 (AC-8) — owner user id for the upstream connection. */
+  /** Owner user id for the upstream connection. */
   userId?: string;
 }
 
@@ -122,7 +121,7 @@ function broadcastToAll(message: WorkerMessage): void {
 }
 
 /**
- * TASK-297 H-SSE-5 — Compose the SSE dedup key from `(id, userId)`.
+ * Compose the SSE dedup key from `(id, userId)`.
  * Two tabs may share an upstream EventSource only when both their ids
  * and their owner user ids match.
  */
@@ -131,7 +130,7 @@ function sseDedupKey(id: string, userId: string | undefined): string {
 }
 
 /**
- * TASK-317 C-4 (AC-8) — Compose the WebSocket dedup key from `(id, userId)`,
+ * Compose the WebSocket dedup key from `(id, userId)`,
  * symmetric to `sseDedupKey`. Two tabs may share an upstream WebSocket only
  * when both their ids and their owner user ids match; distinct users that
  * collide on `id` get distinct sockets and never cross-wire each other's
@@ -145,7 +144,7 @@ function handleSSESubscribe(port: MessagePort, id: string, sub: SSESubscription)
   const dedupKey = sseDedupKey(id, sub.userId);
   const existing = sseConnections.get(dedupKey);
   if (existing) {
-    // TASK-297 H-SSE-5 — refuse to share when user id mismatches.
+    // Refuse to share when user id mismatches.
     if (existing.userId !== sub.userId) {
       port.postMessage({
         type: 'sse_error',
@@ -159,7 +158,7 @@ function handleSSESubscribe(port: MessagePort, id: string, sub: SSESubscription)
     return;
   }
 
-  // TASK-297 C-SSE-1 — append a stream ticket (NOT a JWT) when provided.
+  // Append a stream ticket (NOT a JWT) when provided.
   let url = sub.url;
   if (sub.ticket) {
     const separator = url.includes('?') ? '&' : '?';
@@ -207,7 +206,7 @@ function handleSSESubscribe(port: MessagePort, id: string, sub: SSESubscription)
 }
 
 function handleSSEUnsubscribe(port: MessagePort, id: string, userId?: string): void {
-  // TASK-297 H-SSE-5 — caller may supply userId; if absent, scan every
+  // Caller may supply userId; if absent, scan every
   // entry sharing the base id and remove the port from each.
   if (userId !== undefined) {
     const dedupKey = sseDedupKey(id, userId);
@@ -232,12 +231,12 @@ function handleSSEUnsubscribe(port: MessagePort, id: string, userId?: string): v
 }
 
 function handleWSSubscribe(port: MessagePort, id: string, sub: WSSubscription): void {
-  // TASK-317 C-4 (AC-8) — dedup on `(id, userId)`, not the bare id.
+  // Dedup on `(id, userId)`, not the bare id.
   const dedupKey = wsDedupKey(id, sub.userId);
   const existing = wsConnections.get(dedupKey);
   if (existing) {
-    // TASK-317 C-4 (AC-8) — refuse to share when the user id mismatches
-    // (mirrors the SSE H-SSE-5 guard). With a `(id, userId)` key this is a
+    // Refuse to share when the user id mismatches
+    // (mirrors the SSE dedup guard). With a `(id, userId)` key this is a
     // defense-in-depth invariant: a shared slot always has one owner user.
     if (existing.userId !== sub.userId) {
       port.postMessage({
@@ -293,7 +292,7 @@ function handleWSSubscribe(port: MessagePort, id: string, sub: WSSubscription): 
 }
 
 function handleWSUnsubscribe(port: MessagePort, id: string, userId?: string): void {
-  // TASK-317 C-4 (AC-8) — caller may supply userId; if absent, scan every
+  // Caller may supply userId; if absent, scan every
   // entry sharing the base id and remove the port from each (mirrors SSE).
   if (userId !== undefined) {
     const dedupKey = wsDedupKey(id, userId);
@@ -318,7 +317,7 @@ function handleWSUnsubscribe(port: MessagePort, id: string, userId?: string): vo
 }
 
 function handleWSSend(port: MessagePort, id: string, data: unknown): void {
-  // TASK-317 C-4 (AC-8) — multiple users may share a base id, so route the
+  // Multiple users may share a base id, so route the
   // send to the socket the SENDER port is subscribed to. This fail-closes a
   // cross-user send leak: a tab can only write to its own user's socket.
   const matchPrefix = `${id}::`;
@@ -425,7 +424,7 @@ self.onconnect = (event: MessageEvent) => {
 };
 
 // ---------------------------------------------------------------------------
-// Test-only surface (TASK-317 C-4 / AC-8).
+// Test-only surface.
 //
 // In jsdom the SharedWorker `self.onconnect` lifecycle never fires, so the
 // dedup logic is otherwise unreachable from a unit test. These thin hooks let

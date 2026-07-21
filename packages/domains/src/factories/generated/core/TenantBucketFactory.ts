@@ -11,7 +11,7 @@ import { generateId } from '../../../utils';
  *     Replaces the legacy `audio` slug; keeps the AUDIO purpose so
  *     streaming/batch bucket resolution is unchanged.
  *
- * `misc` is deliberately NOT a default (TASK-426): MISC remains an assignable
+ * `misc` is deliberately NOT a default: MISC remains an assignable
  * purpose, but no misc bucket is auto-provisioned.
  */
 export const SYSTEM_BUCKET_SLUGS = {

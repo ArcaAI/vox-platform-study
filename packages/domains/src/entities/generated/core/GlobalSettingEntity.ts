@@ -14,7 +14,7 @@ export interface IGlobalSettingEntity extends IBaseTaggedEntity {
   key: string;
   defaultValue?: string | null;
   value: string;
-  // TASK-302 Phase 4 — envelope-encrypted ciphertext + Transit key version.
+  // Envelope-encrypted ciphertext + Transit key version.
   // Both nullable; populated only for secret rows that have been migrated.
   encryptedValue?: Buffer | null;
   keyVersion?: number | null;
@@ -69,7 +69,7 @@ export class GlobalSettingEntity extends BaseTaggedEntity {
     return this._key;
   }
 
-  // Phase 0 Item 2 (TASK-302 Stream A) — immutable post-construction.
+  // Immutable post-construction.
   // Constructor / mapper write `_key` directly via init payload; setters
   // are the only mutation surface and they MUST refuse all writes. Any
   // attempted assignment from mass-assignment, applyChangesToEntity, or
@@ -80,7 +80,7 @@ export class GlobalSettingEntity extends BaseTaggedEntity {
     );
   }
 
-  // Phase 0 Item 4 (TASK-302 Stream A) — @Secret marks this field for
+  // @Secret marks this field for
   // audit-log scrubbing when the parent row is locked. See:
   //   packages/applications/src/services/tenant/scrubbing.ts
   @Secret()
@@ -88,14 +88,14 @@ export class GlobalSettingEntity extends BaseTaggedEntity {
     return this._defaultValue;
   }
 
-  // Phase 0 Item 2 (TASK-302 Stream A) — immutable post-construction.
+  // Immutable post-construction.
   set defaultValue(_value: IGlobalSettingEntity['defaultValue']) {
     throw new BusinessException(
       'Phase 0 Item 2 (TASK-302): GlobalSettingEntity.defaultValue is immutable post-construction.',
     );
   }
 
-  // Phase 0 Item 4 (TASK-302 Stream A) — @Secret marks this field for
+  // @Secret marks this field for
   // audit-log scrubbing when the parent row is locked.
   @Secret()
   get value(): IGlobalSettingEntity['value'] {
@@ -106,7 +106,7 @@ export class GlobalSettingEntity extends BaseTaggedEntity {
     this.setProperty('value', value);
   }
 
-  // TASK-302 Phase 4 — Vault-Transit-encrypted ciphertext. @Secret() guards
+  // Vault-Transit-encrypted ciphertext. @Secret() guards
   // it from audit-log surfaces (defense-in-depth: even though ciphertext is
   // not directly readable, audit-log entries that leak ciphertext + the
   // associated keyVersion materially help an attacker correlate
@@ -132,14 +132,14 @@ export class GlobalSettingEntity extends BaseTaggedEntity {
     return this._locked;
   }
 
-  // Phase 0 Item 2 (TASK-302 Stream A) — immutable post-construction.
+  // Immutable post-construction.
   set locked(_value: IGlobalSettingEntity['locked']) {
     throw new BusinessException(
       'Phase 0 Item 2 (TASK-302): GlobalSettingEntity.locked is immutable post-construction.',
     );
   }
 
-  // Phase 0 Item 2 (TASK-302 Stream A) — override BaseTenantEntity.tenantId
+  // Override BaseTenantEntity.tenantId
   // setter so that a smuggled tenantId in an update payload cannot reassign
   // the row to a different tenant. Construction-time tenantId is set via
   // the BaseTenantEntity constructor, which bypasses this override.

@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * TASK-433 — live STT session state machine (frame 51 streaming tab).
+ * Live STT session state machine (frame 51 streaming tab).
  * Flow: mic capture grant → `POST stream/session` through the BFF → WS
  * DIRECTLY to the gateway (`publicEnv.apiHost`, one-shot ticket + tenant
  * claim in the URL) → Int16 PCM frames from the `@arcaai/stt` worklet →
@@ -73,7 +73,7 @@ interface SttStreamClient {
     onDisconnect(cb: () => void): void;
     onReconnect(cb: (attempt: number) => void): void;
     onReconnectFailed(cb: () => void): void;
-    /** Reconnect SUCCESS — the socket genuinely re-opened (TASK-461 C6-02). Optional so partial test fakes need not stub it; the real client always implements it. */
+    /** Reconnect SUCCESS — the socket genuinely re-opened. Optional so partial test fakes need not stub it; the real client always implements it. */
     onReconnected?(cb: () => void): void;
     /** Optional in this structural view so partial test fakes need not stub it; the real client always implements it. */
     onBackpressureDrop?(cb: (reason: 'queue_full' | 'buffered_amount_high') => void): void;
@@ -190,7 +190,7 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
             receivedAt: Date.now(),
             latencyMs,
             seq: typeof result.seq === 'number' ? result.seq : null,
-            // TASK-489 AC-2 — prefer the canonical label the bridge derived; fall back
+            // Prefer the canonical label the bridge derived; fall back
             // to the raw speakerId so an older worker/bridge still shows attribution.
             speakerLabel: result.speakerLabel ?? result.speakerId,
         };
@@ -275,7 +275,7 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
             });
 
             // 3. WS direct to the gateway. Reconnects mint a FRESH one-shot
-            //    ticket through the BFF refresh route (TASK-298 D-18).
+            // ticket through the BFF refresh route.
             setStatus('connecting');
             const client = new SttV2WebSocketClient(
                 undefined,

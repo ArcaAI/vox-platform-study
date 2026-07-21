@@ -522,13 +522,13 @@ describe('ContextInterceptor', () => {
     });
 
     /**
-     * TASK-310 E-10 (AC-9) — requestId must come from the `x-request-id`
-     * header, never from the client-controlled JSON body. Pre-W7 the code
-     * was `request?.body?.requestId ?? uuidv7()`, which let any client pin
-     * its own correlation id by simply POSTing `{ "requestId": "..." }`,
-     * polluting CLS / logs and letting two unrelated requests share a
-     * correlation id. The fix sources the value from the standard header
-     * a load balancer / CDN would already set, falls back to uuidv7().
+     * requestId must come from the `x-request-id` header, never from the
+     * client-controlled JSON body — reading `request?.body?.requestId` would
+     * let any client pin its own correlation id by simply POSTing
+     * `{ "requestId": "..." }`, polluting CLS / logs and letting two
+     * unrelated requests share a correlation id. The value sources from the
+     * standard header a load balancer / CDN would already set, falling back
+     * to uuidv7().
      */
     describe('TASK-310 E-10 — requestId precedence (AC-9)', () => {
         beforeEach(async () => {

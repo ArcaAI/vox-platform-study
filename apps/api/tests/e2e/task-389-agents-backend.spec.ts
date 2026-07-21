@@ -1,5 +1,5 @@
 /**
- * TASK-389 — Agents backend backlog (Group D) backend contract.
+ * Agents backend backlog (Group D) backend contract.
  *
  * Real HTTP round-trips against the live API (`pnpm test:e2e`, or a dev stack via
  * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8868/api/v1`). Mirrors the

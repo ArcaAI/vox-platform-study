@@ -165,14 +165,14 @@ export class TranscriptionPipeline {
         const streamingTransport = this.config.stt.streamingTransport as import('@arcaai/stt').STTStreamingTransport | undefined;
         const useVadGate = runtimeProvider === 'local' && this.config.vad.enabled;
 
-        // TASK-298 D-4 — the streaming transport carries its own WebSocket
+        // The streaming transport carries its own WebSocket
         // URL via `StreamingSessionManager.getWebSocketUrl()`; only require
         // `sttSocket` for the legacy `RemoteSTTProvider` path.
         if (runtimeProvider === 'remote' && !sttSocket && !streamingTransport) {
           throw new Error('stt.sttSocket or stt.streamingTransport is required when STT provider resolves to backend/remote');
         }
 
-        // TASK-304 Wave 2 — forward the voice-profile and Whisper task that
+        // Forward the voice-profile and Whisper task that
         // `PluginManager.getTranscriptionPipelineConfig()` resolved from the
         // user's preferences. These are local-only; the remote path ignores
         // them (`STTProcessor.initializeRemoteProvider` does not read either).
@@ -517,7 +517,7 @@ export class TranscriptionPipeline {
 
   /**
    * Get the RAW input track (the unprocessed source track), independent of any
-   * enabled processing stages. Used by dual-capture (TASK-329 X8) to record the
+   * enabled processing stages. Used by dual-capture to record the
    * original microphone alongside the processed output from `getProcessedTrack()`.
    */
   getRawInputTrack(): MediaStreamTrack | null {
@@ -580,7 +580,7 @@ export class TranscriptionPipeline {
   // =========================================================================
 
   private resolveSTTRuntimeProvider(): STTRuntimeProvider {
-    // TASK-356 Phase 4 — the server-resolved EFFECTIVE transcription mode is
+    // The server-resolved EFFECTIVE transcription mode is
     // authoritative (admin-owned, with the tenant lock + workflowMode cascade
     // already applied upstream). It wins over provider/location/sttSocket.
     const transcriptionMode = this.config.stt.transcriptionMode;
@@ -606,7 +606,7 @@ export class TranscriptionPipeline {
       return 'local';
     }
 
-    // TASK-364 — default to backend/remote whenever a backend transport exists.
+    // Default to backend/remote whenever a backend transport exists.
     // The backend workflow injects a pipeline-aware `streamingTransport` (its own
     // WebSocket URL) but no legacy `sttSocket`; treating only `sttSocket` as the
     // backend signal wrongly resolved those consumers to LOCAL when the server
@@ -663,7 +663,7 @@ export class TranscriptionPipeline {
       this.emit('error', { error: errorPayload.error, stage: stage.name });
     });
 
-    // TASK-464 — the STT processor exposes a PUSH channel for backpressure drops
+    // The STT processor exposes a PUSH channel for backpressure drops
     // (its `getStats().droppedFrames` getter is unpolled on the SDK path). Wire it
     // through to an `audioDrop` event so the loss reaches the store/hook/UI. The
     // method is single-slot (re-registration is idempotent), and guarded so

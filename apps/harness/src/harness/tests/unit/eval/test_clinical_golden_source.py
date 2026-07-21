@@ -1,6 +1,6 @@
-"""ClinicalGoldenSetSource loader tests (TASK-330, Phase-0 real golden set).
+"""ClinicalGoldenSetSource loader tests (Phase-0 real golden set).
 
-RED-first. The clinical golden set is authored in a RICH multi-rater schema
+The clinical golden set is authored in a RICH multi-rater schema
 (``clinical_v1.schema.json``): >=3 blinded clinician PDSQI ratings per case, an
 adjudicated consensus, claim-level groundedness truth, safety truth, PHI
 de-identification, and provenance/consent. The loader PROJECTS that rich format

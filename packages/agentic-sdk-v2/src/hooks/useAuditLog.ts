@@ -1,7 +1,7 @@
 /**
- * @arcaai/vox - useAuditLog Hook (QA-003, extended TASK-328 A8)
+ * @arcaai/vox - useAuditLog Hook (QA-003)
  *
- * Read-only audit log hook for admin compliance operations. TASK-328 A8 adds
+ * Read-only audit log hook for admin compliance operations. Adds
  * repository-pushed filters (date range / action / resourceType / userId), a
  * single-entry `getById`, and a server-side CSV `exportCsv`.
  */
@@ -23,7 +23,7 @@ export interface AuditLogResponsibleUser {
 
 export interface AuditLogEntry {
   id: string;
-  /** TASK-331 doc-03 F6 — owning tenant id, surfaced so a global-scope console can render a Tenant column. */
+  /** Owning tenant id, surfaced so a global-scope console can render a Tenant column. */
   tenantId?: string | null;
   responsibleUserId?: string | null;
   responsibleIp?: string | null;
@@ -39,13 +39,13 @@ export interface AuditLogEntry {
   causationId?: string | null;
   createdAt?: string;
   updatedAt?: string;
-  /** TASK-328 A8 — resolved acting user (display name/email) for the table. */
+  /** Resolved acting user (display name/email) for the table. */
   responsibleUser?: AuditLogResponsibleUser | null;
   [key: string]: unknown;
 }
 
 /**
- * TASK-328 A8 — audit list/export filter params. Pagination is inherited;
+ * Audit list/export filter params. Pagination is inherited;
  * the rest are pushed to the server `where` clause. `from`/`to` are ISO-8601
  * boundary strings.
  */
@@ -58,7 +58,7 @@ export interface AuditLogFilterParams extends PaginationParams {
 }
 
 /**
- * TASK-373 client follow-up — cursor (keyset) audit-log query, the cursor
+ * Cursor (keyset) audit-log query, the cursor
  * sibling of {@link AuditLogFilterParams}. Mirrors the server `CursorQuery`
  * (opaque `cursor` token + `limit`) and carries the SAME A8 filters the offset
  * `list()` supports (`from`/`to`/`action`/`resourceType`/`userId`), pushed to
@@ -80,7 +80,7 @@ export interface AuditLogCursorParams {
 export interface UseAuditLogReturn {
   entries: AuditLogEntry[];
   /**
-   * TASK-331 doc-03 F11 — total number of audit rows matching the active
+   * Total number of audit rows matching the active
    * filters, taken from the paginated envelope so the UI can render true
    * pagination ("Page N of M") instead of guessing from the page length.
    * `0` until the first successful `list()`.
@@ -90,7 +90,7 @@ export interface UseAuditLogReturn {
   error: Error | null;
   list: (params?: AuditLogFilterParams) => Promise<AuditLogEntry[]>;
   /**
-   * TASK-373 client follow-up — cursor (keyset) sibling of {@link list}. Calls
+   * Cursor (keyset) sibling of {@link list}. Calls
    * `GET /admin/audit-logs/cursor` and returns the server
    * `CursorPaginatedResponse` normalized via `extractCursorPaginated` into the
    * client `PageResult`-shaped cursor page (`{ rows, nextCursor, hasMore, limit }`).
@@ -101,7 +101,7 @@ export interface UseAuditLogReturn {
   getById: (id: string) => Promise<AuditLogEntry>;
   exportCsv: (filters?: AuditLogFilterParams) => Promise<string>;
   /**
-   * TASK-390 #25 (AU2) — export the filtered set as a binary file (`xlsx`/`pdf`,
+   * Export the filtered set as a binary file (`xlsx`/`pdf`,
    * or `csv` as a Blob) for a browser download. Hits the SAME
    * `GET /admin/audit-logs/export` route as {@link exportCsv} with `?format=`,
    * honouring the same A8 filters + tenant scope. Returns the raw `Blob` (via
@@ -113,7 +113,7 @@ export interface UseAuditLogReturn {
   byUser: (userId: string) => Promise<AuditLogEntry[]>;
 }
 
-/** TASK-390 #25 (AU2) — binary export formats for {@link UseAuditLogReturn.exportFile}. */
+/** Binary export formats for {@link UseAuditLogReturn.exportFile}. */
 export type AuditExportFormat = 'csv' | 'xlsx' | 'pdf';
 
 /** Extract only the server-side filter params (skip pagination keys). */
@@ -157,7 +157,7 @@ export function useAuditLog(): UseAuditLogReturn {
           params && (params.page !== undefined || params.limit !== undefined) ? { page: params.page, limit: params.limit } : undefined;
         const url = appendPagination(appendFilters(AUDIT_LOG_ENDPOINTS.LIST, toFilterQuery(params)), pagination);
         const raw = await client.get(url);
-        // TASK-331 doc-03 F11 — read the full paginated envelope so we can keep
+        // Read the full paginated envelope so we can keep
         // the real `count` for pagination, while still returning the bare array
         // that existing callers depend on.
         const { data, total } = extractPaginated<AuditLogEntry>(raw);
@@ -194,7 +194,7 @@ export function useAuditLog(): UseAuditLogReturn {
     [execute],
   );
 
-  // TASK-390 #25 (AU2) — binary export (xlsx/pdf, or csv-as-Blob). Same EXPORT
+  // Binary export (xlsx/pdf, or csv-as-Blob). Same EXPORT
   // route + A8 filters as `exportCsv`, with `?format=` selecting the renderer;
   // returns the raw bytes as a Blob for the caller to download.
   const exportFile = useCallback(

@@ -1,5 +1,5 @@
 /**
- * Wire types for the harness admin surface (`/admin/harness/*`, TASK-330
+ * Wire types for the harness admin surface (`/admin/harness/*`,
  * Phase 6), mirroring the gateway DTOs in @arcaai/applications
  * (harness-observability + live-doc-admin) and the HarnessOpsClient
  * projections in apps/api. `?tenantId=` exists on every read but is
@@ -123,7 +123,7 @@ export interface EvalRunListParams {
     [key: string]: string | number | boolean | undefined | null;
 }
 
-/** One golden set (GoldenSetResponse) — TASK-532 B-5. */
+/** One golden set (GoldenSetResponse). */
 export interface GoldenSet {
     id: string;
     tenantId: string;

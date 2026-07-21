@@ -8,7 +8,7 @@ interface RegisterRequestBody {
 }
 
 /**
- * BFF register (TASK-497 D1): pure passthrough to the gateway — no session is
+ * BFF register: pure passthrough to the gateway — no session is
  * minted here (the account is unverified until `/register/verify`). 404s
  * whenever the gateway's `REGISTRATION_SELF_SIGNUP_ENABLED` flag is off.
  */

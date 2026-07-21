@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - Prompt Test Metrics Mapping (TASK-389 #15 / AG12 / A5)
+ * @arcaai/vox - Prompt Test Metrics Mapping
  *
  * Maps the backend `PromptTestMetrics` (raw, mixed-type) into the flat
  * `Record<string, number>` DISPLAY shape the admin Test Playground consumes

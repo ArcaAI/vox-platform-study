@@ -1,5 +1,5 @@
 /**
- * TASK-304 Wave 2D — PersonalizationManager IndexedDB cache tests
+ * PersonalizationManager IndexedDB cache tests
  *
  * Replaces the legacy `localStorage` cache with the shared `arcaai-config`
  * IDB store (separate `personalization` object store). Old `localStorage`
@@ -70,7 +70,7 @@ describe('PersonalizationManager · IDB cache (Wave 2D)', () => {
   });
 
   it('hydrate() merges cached preferences from the personalization IDB store', async () => {
-    // TASK-317 M-3 — a manager with no namespace fail-closes to `pre-login`,
+    // A manager with no namespace fail-closes to `pre-login`,
     // never the bare global key.
     idbStore.set('arcaai-personalization/pre-login', {
       language: 'th',

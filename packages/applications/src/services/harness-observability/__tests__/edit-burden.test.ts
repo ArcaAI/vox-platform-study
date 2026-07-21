@@ -1,5 +1,5 @@
 /**
- * Edit-burden telemetry — pure-function unit tests (TASK-482 E3, AC-3 / AC-6).
+ * Edit-burden telemetry — pure-function unit tests.
  *
  * The clinician gate already emits approve/edit decisions + delivered-vs-signed
  * note versions into the WORM audit; nothing derived edit-burden from it (S3-F7

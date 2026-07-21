@@ -1,8 +1,8 @@
 /**
  * @arcaai/utils - Transformers.js tenant-scoped cache tests
  *
- * TASK-317 W5.1 (AC-14 / audit D-3): custom (`source: 'custom'`) model weights
- * must be cached under a TENANT-scoped Cache Storage name so one tenant's
+ * Custom (`source: 'custom'`) model weights must be cached under a
+ * TENANT-scoped Cache Storage name so one tenant's
  * private model artifacts can never be read/served from another tenant's
  * session. Public (HF-hub) weights stay on the shared, unchanged cache, and a
  * tenant's custom cache is cleaned up (orphan removal) on tenant switch.

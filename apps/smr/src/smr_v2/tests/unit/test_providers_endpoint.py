@@ -1,4 +1,4 @@
-"""TASK-528 §5.1 — provider probe hardening (timeouts, partial failure, load state).
+"""Provider probe hardening (timeouts, partial failure, load state).
 
 Hermetic: no live engines. The registry is stubbed and the httpx/OpenAI
 transports are replaced with in-test doubles.

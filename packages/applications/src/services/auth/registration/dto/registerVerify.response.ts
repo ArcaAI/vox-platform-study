@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-/** TASK-497 §3.4 — result of a successful `POST /auth/register/verify`. */
+/** Result of a successful `POST /auth/register/verify`. */
 export class RegisterVerifyResponse {
   @ApiProperty({ description: 'Id of the now-activated, now-TENANT_ADMIN user' })
   userId!: string;

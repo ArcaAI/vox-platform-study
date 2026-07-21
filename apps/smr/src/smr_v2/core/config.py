@@ -7,7 +7,7 @@ api_key / region / tuning). There is deliberately NO ``*_ENABLED`` selection
 flag — a provider is available iff its connection config is present, and it is
 instantiated lazily on first use (see ``main.py`` / ``ProviderRegistry``).
 
-TASK-525: the SERVICE-LEVEL knobs below (``max_concurrent``, ``timeout_s``) are
+The SERVICE-LEVEL knobs below (``max_concurrent``, ``timeout_s``) are
 bootstrap fallbacks — their runtime values come from the control plane via
 ``core/effective_config.py`` and are applied by ``services/runtime_limits.py``.
 The selection contract above is UNCHANGED: effective-config carries capacity and
@@ -27,7 +27,7 @@ class OllamaConfig(BaseSettings):
 
     base_url: str = "http://localhost:11434"
     default_model: str = "google/gemma-4-e4b"
-    # TASK-525 — bootstrap fallback; runtime value comes from the control plane
+    # Bootstrap fallback; runtime value comes from the control plane
     # (effective-config). Applies to `timeout_s` and `max_concurrent` below.
     timeout_s: int = 300
     max_concurrent: int = 4
@@ -44,7 +44,7 @@ class AzureOpenAIConfig(BaseSettings):
     api_version: str = "2024-12-01-preview"
     deployment_name: str = ""
     default_model: str = "gpt-5-mini"
-    # TASK-525 — bootstrap fallbacks; runtime values come from the control plane.
+    # Bootstrap fallbacks; runtime values come from the control plane.
     timeout_s: int = 120
     max_concurrent: int = 10
     tpm_limit: int = 80_000
@@ -60,7 +60,7 @@ class BedrockConfig(BaseSettings):
 
     region: str = "us-east-1"
     default_model: str = "anthropic.claude-3-5-haiku-20241022-v1:0"
-    # TASK-525 — bootstrap fallbacks; runtime values come from the control plane.
+    # Bootstrap fallbacks; runtime values come from the control plane.
     timeout_s: int = 120
     max_concurrent: int = 10
     max_pool_connections: int = 150
@@ -79,7 +79,7 @@ class OpenAICompatConfig(BaseSettings):
     base_url: str = "http://localhost:1234/v1"
     api_key: SecretStr = SecretStr("not-needed")
     default_model: str = "google/gemma-4-e4b"
-    # TASK-525 — bootstrap fallbacks; runtime values come from the control plane.
+    # Bootstrap fallbacks; runtime values come from the control plane.
     timeout_s: int = 300
     max_concurrent: int = 4
     organization: str | None = None
@@ -98,7 +98,7 @@ class VllmConfig(OpenAICompatConfig):
 
     base_url: str = "http://localhost:8000/v1"
     default_model: str = ""
-    # TASK-525 — bootstrap fallback; runtime value comes from the control plane.
+    # Bootstrap fallback; runtime value comes from the control plane.
     max_concurrent: int = 8
     # Structured-output routing: vLLM >= 0.8 accepts the native OpenAI
     # ``response_format={"type":"json_schema",...}``. Older builds only support
@@ -121,31 +121,31 @@ class LlamaCppConfig(BaseSettings):
 
     base_url: str = "http://localhost:8080"
     default_model: str = ""
-    # TASK-525 — bootstrap fallbacks; runtime values come from the control plane.
+    # Bootstrap fallbacks; runtime values come from the control plane.
     timeout_s: int = 300
     max_concurrent: int = 4
 
 
 class ExternalGuardrailConfig(BaseSettings):
-    """Input moderation posture for /generate (TASK-338, TASK-478).
+    """Input moderation posture for /generate.
 
     Fail posture is degrade-safe → fail-CLOSED: a transient guardrail error is
     absorbed by a bounded retry, a sustained outage rejects, and an errored
     guardrail NEVER allows (there is deliberately no ``fail_open`` option — that
-    foot-gun was retired in TASK-478).
+    foot-gun was retired).
     """
 
     model_config = SettingsConfigDict(env_prefix="SMR_V2_EXTERNAL_GUARDRAIL_")
 
     # Dev/CI bypass switch. When False (default) input moderation is intentionally
     # OFF so local dev + hermetic CI run without a guardrail service (mirrors the
-    # empty-service-token bypass in TASK-465). Clinical/production deployments MUST
+    # empty-service-token bypass). Clinical/production deployments MUST
     # enable it — an ops rollout step (guardrail reachable), not a code default that
     # would break dev.
     enabled: bool = False
     base_url: str = "http://localhost:8863"
     timeout_s: int = 10
-    # Bounded retry for a transient guardrail blip (TASK-478): the moderation call is
+    # Bounded retry for a transient guardrail blip: the moderation call is
     # retried up to ``max_retries`` extra times (total tries = max_retries + 1) with a
     # linear ``retry_backoff_ms`` backoff before the client fails CLOSED. A momentary
     # error is absorbed (degrade-safe); a sustained outage rejects (never allows).
@@ -176,13 +176,11 @@ class CircuitBreakerConfig(BaseSettings):
 
     failure_threshold: int = 5
     recovery_timeout_s: float = 30.0
-    # D6 (dead-config sweep): these three fields were previously never
-    # read by CircuitBreaker. ``None`` preserves the pre-wiring behavior exactly
+    # ``None`` preserves the default unlimited/undecayed behavior
     # (unlimited HALF_OPEN trial calls / no time-based failure-count decay) — a
-    # non-null literal default (the previous 3 / 120.0) would have silently
-    # started capping/decaying on every unconfigured deployment now that these
-    # are actually wired. Operators opt in via SMR_V2_CB_HALF_OPEN_MAX_CALLS /
-    # SMR_V2_CB_RESET_TIMEOUT_S.
+    # non-null literal default would silently start capping/decaying on every
+    # unconfigured deployment now that these fields are wired. Operators opt in
+    # via SMR_V2_CB_HALF_OPEN_MAX_CALLS / SMR_V2_CB_RESET_TIMEOUT_S.
     half_open_max_calls: int | None = None
     reset_timeout_s: float | None = None
     count_rate_limits: bool = True
@@ -218,7 +216,7 @@ class Settings(BaseSettings):
     # Inter-service authentication (empty = auth disabled for local dev)
     service_token: SecretStr = SecretStr("")
 
-    # TASK-525 — where the control plane lives. This is BOOTSTRAP TRANSPORT (the
+    # Where the control plane lives. This is BOOTSTRAP TRANSPORT (the
     # address of the config source), NOT config authority: service-level knobs
     # themselves come from the effective-config route this URL points at.
     # Env var: SMR_V2_GATEWAY_URL.
@@ -250,14 +248,14 @@ class Settings(BaseSettings):
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
     queue: QueueConfig = Field(default_factory=QueueConfig)
 
-    # TASK-528 §3.3 — per-provider cap for the `/providers` LISTING probe only
+    # Per-provider cap for the `/providers` LISTING probe only
     # (never generation). One hung engine must not stall the endpoint: the
     # shared httpx/AsyncOpenAI clients carry a 300 s generation timeout, which
     # is far too long for an admin-facing listing.
     # Env var: SMR_V2_PROVIDER_PROBE_TIMEOUT_S.
     provider_probe_timeout_s: int = 5
 
-    # TASK-529 (D-10) — model retention hint forwarded to SERVER-MANAGED engines
+    # Model retention hint forwarded to SERVER-MANAGED engines
     # (Ollama `keep_alive`, LM Studio `ttl`). SMR holds no weights of its own, so
     # this is propagation, not a cache.
     #

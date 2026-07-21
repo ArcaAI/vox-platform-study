@@ -1,5 +1,5 @@
 /**
- * TASK-417 — structural guard for the SUPER_ADMIN → GLOBAL_ADMIN role
+ * Structural guard for the SUPER_ADMIN → GLOBAL_ADMIN role
  * consolidation data migration.
  *
  * The migration is a pure data migration (no DDL) and applying it requires a

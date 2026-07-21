@@ -36,15 +36,15 @@ const mockUserRepository = {
     softDelete: vi.fn(),
 };
 
-// TASK-331 r2605 #3 — membership deps added to the UserService constructor.
+// Membership deps added to the UserService constructor.
 // These plain mocks satisfy DI for the existing (no-membership) create path;
 // the atomic create-with-membership flow is covered in user.service.task331.test.ts.
 const mockUserRoleAssignmentRepository = { create: vi.fn() };
 const mockUserDepartmentRepository = { create: vi.fn() };
 const mockDatabaseService = { baseClient: { $transaction: vi.fn() } };
-// TASK-381 (V1) — profile upsert for the optional create-user email.
+// Profile upsert for the optional create-user email.
 const mockUserProfileService = { upsertByUserId: vi.fn() };
-// TASK-402 — create/update passwords are policy-checked + bcrypt-hashed;
+// Create/update passwords are policy-checked + bcrypt-hashed;
 // hashing/policy behavior itself is pinned in user.service.task402.test.ts.
 const mockCryptoService = { hash: vi.fn(async (pw: string) => `$2b$10$hashed::${pw}`), verify: vi.fn() };
 const mockAppSettings = { getValueWithDefault: vi.fn(<T,>(_key: string, defaultValue: T): T => defaultValue) };
@@ -500,7 +500,7 @@ describe('UserService', () => {
     });
 
     // -------------------------------------------------------------------------
-    // TASK-375 (item 3 backend) — composition lock: the CSV `filters`/`sort`
+    // (item 3 backend) — composition lock: the CSV `filters`/`sort`
     // from PaginatedQuery are deserialized by withFormattedPaginatedProps and
     // forwarded to the repository, and on the tenant-scoped path they compose
     // WITH the tenant `where` (filters are merged into `where` downstream by

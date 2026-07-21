@@ -15,12 +15,12 @@ import type { ReviewClaim } from '../api/types';
 import { buildTranscriptHighlights, hasSegmentProvenance } from '../lib/transcript-highlights';
 
 /**
- * Consultation review — click-to-source evidence (TASK-533 B5, GAP-A2).
+ * Consultation review — click-to-source evidence.
  *
  * The evidence-link machinery existed only in the deprecated `ui-playground`,
  * and had no data to work with anyway: `citationsMap.segmentId` was never
- * populated until D-22 fixed the transcript-segment producers. Both halves are
- * now real, so this brings the surface into the production console.
+ * populated until the transcript-segment producers were fixed. Both halves
+ * are now real, so this brings the surface into the production console.
  *
  * The clinically load-bearing behaviour is the NEGATIVE case: a claim with no
  * resolved provenance must say so loudly. Silently showing an unhighlighted

@@ -1,4 +1,4 @@
-// Phase 2B (TASK-302 Stream B) - VaultSecretsProvider unit tests.
+// VaultSecretsProvider unit tests.
 //
 // All tests in this file use a mocked node-vault client (assigned via
 // `(p as unknown as { client: ... }).client = ...`) so they run with no
@@ -371,7 +371,7 @@ describe('VaultSecretsProvider transit helpers', () => {
     await expect(p.issueDbCredential('r')).rejects.toThrow(/empty creds/);
   });
 
-  // BUG-006 — the lease-renewal machinery existed (VaultLeaseRenewer) but
+  // The lease-renewal machinery existed (VaultLeaseRenewer) but
   // nothing could actually call Vault's renew endpoint for a DB lease. This
   // is that call: POST sys/leases/renew, surfaced via node-vault's
   // generated client.renew({ lease_id, increment }).
@@ -399,7 +399,7 @@ describe('VaultSecretsProvider transit helpers', () => {
   });
 });
 
-// Phase 3A (Data Encryption Initiative) — the PHI field-encryption workstream
+// PHI field-encryption
 // needs a SECOND Transit key (`hope-phi`) so clinical content rotates and is
 // policy-scoped independently from the `hope-globalsetting` secrets key. The
 // provider gains an OPTIONAL keyName parameter on encrypt/decrypt (default
@@ -456,7 +456,7 @@ describe('VaultSecretsProvider keyed transit (Phase 3A PHI)', () => {
   });
 });
 
-// TASK-312 Phase B (B.1–B.4) — AppRole token renewal. boot() captures the
+// (B.1–B.4) — AppRole token renewal. boot() captures the
 // login lease_duration/renewable but the pre-B build never renewed, so a prod
 // pod 403s when the token hits token_max_ttl. These tests pin the renew-at-50%
 // loop, degraded-after-N-failures health signal, recovery, and shutdown cancel.
@@ -593,7 +593,7 @@ describe('VaultSecretsProvider AppRole token renewal', () => {
   });
 });
 
-// TASK-312 Phase B (B.7/B.8) — fail-closed boot. A sealed/unreachable Vault
+// (B.7/B.8) — fail-closed boot. A sealed/unreachable Vault
 // at startup must abort the boot with ONE clear, secret-free FATAL line (k8s
 // then restarts the pod) rather than leaking a raw node-vault stack/body.
 describe('VaultSecretsProvider.boot() fail-closed', () => {

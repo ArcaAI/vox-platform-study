@@ -11,7 +11,7 @@ const createMockHttpService = () => ({
   },
 });
 
-// TASK-506 — `fetchTenantConfigs` dropped: the providers listings no longer
+// `fetchTenantConfigs` dropped: the providers listings no longer
 // read the retired GlobalSetting keys; only `fetchByCodeName` (the explicit
 // `?tenantKey=__GLOBAL__` resolution) remains.
 const createMockTenantService = () => ({
@@ -20,7 +20,7 @@ const createMockTenantService = () => ({
 
 const createMockClsService = () => ({
   get: vi.fn(),
-  // TASK-462 I-1 — the correlation/request id logged alongside redacted upstream
+  // The correlation/request id logged alongside redacted upstream
   // errors (matches the api-wide `clsService.getId()` pattern).
   getId: vi.fn(() => 'req-test-id'),
 });
@@ -49,7 +49,7 @@ const createMockBlobStorage = () => ({
   getObject: vi.fn(),
 });
 
-// TASK-310 E-5 (AC-5): stubbed IConfigService so the controller resolves
+// Stubbed IConfigService so the controller resolves
 // the SMR base URL through the typed accessor (matching production), not
 // process.env.
 const createMockConfigService = () => ({
@@ -89,7 +89,7 @@ describe('SmrProxyController', () => {
 
     mockClsService.get.mockImplementation((key: string) => {
       if (key === 'tenantId') return 'tenant-1';
-      // TASK-299 D-12 — user id must be present so the ownership check
+      // User id must be present so the ownership check
       // can pass for legacy fixtures that expect the happy path.
       if (key === 'user') return { id: 'user-1', roles: [] };
       return undefined;
@@ -176,7 +176,7 @@ describe('SmrProxyController', () => {
       ).rejects.toThrow();
     });
 
-    // TASK-462 C4-05 — the proxy MUST preserve the upstream status code but must
+    // The proxy MUST preserve the upstream status code but must
     // NOT forward the raw upstream error body verbatim: that body can echo the
     // assembled clinical prompt / PHI / internal SMR detail. The client receives
     // a generic message; the upstream detail is kept server-side only.
@@ -208,7 +208,7 @@ describe('SmrProxyController', () => {
     });
   });
 
-  // TASK-462 C4-05 — `buildUpstreamException` used to forward the raw upstream
+  // `buildUpstreamException` used to forward the raw upstream
   // error body verbatim (`{ detail: payload }` for string bodies, `payload` for
   // object bodies). SMR/LM-Studio error bodies can echo the assembled clinical
   // prompt / PHI / internal stack detail, so an upstream 4xx/5xx leaked that into
@@ -244,7 +244,7 @@ describe('SmrProxyController', () => {
       expect(serialized).not.toContain('LEAK');
     });
 
-    // TASK-462 I-1 — the raw upstream body is PHI-shaped and must ALSO stay out of
+    // The raw upstream body is PHI-shaped and must ALSO stay out of
     // the server logs (stdout → k8s/Loki, outside PHI controls). The server-side
     // record is REDACTED: it carries the status + correlation id + a redaction
     // sentinel so operators can correlate the failure, but never the body content.
@@ -286,7 +286,7 @@ describe('SmrProxyController', () => {
     });
   });
 
-  // TASK-356 D-7 (T-D1) — the playground/SDK proxy passes a caller-supplied
+  // The playground/SDK proxy passes a caller-supplied
   // model through untouched (SDK fidelity); only when the model is absent does it
   // fall back to the HarnessPolicy cascade. When neither is available it forwards
   // to SMR, which is the fail-closed 422 authority (no in-proxy default).
@@ -369,7 +369,7 @@ describe('SmrProxyController', () => {
     });
   });
 
-  // TASK-460 C4-04 — `withRetry` used to re-POST `/generate` on post-send
+  // `withRetry` used to re-POST `/generate` on post-send
   // socket failures (ECONNRESET/EPIPE/ETIMEDOUT) and upstream 5xx responses.
   // Those occur AFTER request bytes reached SMR, so a generation may already
   // be running/billed — the retry re-invoked it (duplicate billing, divergent
@@ -534,7 +534,7 @@ describe('SmrProxyController', () => {
       expect(url).toContain('last_event_id=2-0');
     });
 
-    // TASK-462 M-1 — the SSE connect-error branch must never forward the raw
+    // The SSE connect-error branch must never forward the raw
     // upstream body. In production this branch is dead (flushHeaders() runs before
     // the try, so res.headersSent is always true → only res.end()), but if headers
     // were not yet sent the response must be GENERIC (status preserved). This test
@@ -692,7 +692,7 @@ describe('SmrProxyController', () => {
     });
   });
 
-  // ── TASK-506 §3.3 — providers listings repointed to the AiModel registry ──
+  // ── Providers listings repointed to the AiModel registry ──────────────────
   // `GET /text/providers` and `GET /text/guardrail-providers` no longer read the
   // retired GlobalSetting keys (`smr-provider-models` / `default-smr-*` /
   // `default-guardrail-*`); the registry (ENABLED AiModel rows grouped by
@@ -853,7 +853,7 @@ describe('SmrProxyController', () => {
     });
   });
 
-  // TASK-307 W5.9 (AC-23, audit D-12) — the GLOBAL-tenant targeting must stay
+  // The GLOBAL-tenant targeting must stay
   // EXPLICIT via `?tenantKey=__GLOBAL__` after the registry repoint.
   describe('TASK-307 W5.9 — explicit ?tenantKey=__GLOBAL__ posture on getProviders (TASK-506 registry-backed)', () => {
     it('GLOBAL_ADMIN with ?tenantKey=__GLOBAL__ resolves the GLOBAL tenant id', async () => {
@@ -930,7 +930,7 @@ describe('SmrProxyController', () => {
     });
   });
 
-  // TASK-506 — the guardrail listing reads ENABLED GUARDRAIL registry rows and
+  // The guardrail listing reads ENABLED GUARDRAIL registry rows and
   // marks the effective `guardrail.validate` default (AiTaskDefault cascade).
   // NO upstream probe: an empty registry simply means "not configured".
   describe('GET /text/guardrail-providers (registry-backed — TASK-506)', () => {
@@ -1515,7 +1515,6 @@ describe('SmrProxyController', () => {
       expect(systemPrompt).toContain('new patient visit');
     });
 
-    // TASK-299 D-12 — Cross-doctor `dnaStyleId` ownership.
     describe('TASK-299 D-12 — DNA writing-style ownership', () => {
       it('throws ForbiddenException when dna_writing_style_id belongs to a different doctor', async () => {
         mockDnaStyleRepo.findById.mockResolvedValue({
@@ -1590,7 +1589,7 @@ describe('SmrProxyController', () => {
       });
     });
 
-    // TASK-331 doc-09 — `prompt_template_id` ownership bypass on the
+    // `prompt_template_id` ownership bypass on the
     // assembled-generation path. The template branch previously resolved any
     // `findById` hit with NO tenant/owner check (unlike the DNA guard right
     // below it), so a caller could reference another tenant's template — or a
@@ -1684,7 +1683,7 @@ describe('SmrProxyController', () => {
       });
     });
 
-    // TASK-329 X3 — raw context ownership bypass on the assembled-generation path.
+    // Raw context ownership bypass on the assembled-generation path.
     // A caller could previously pass another tenant's context_item_ids and
     // exfiltrate their content through the generated summary; the proxy must
     // reject cross-tenant context items (surfaced as NotFound to avoid leaking
@@ -1758,7 +1757,7 @@ describe('SmrProxyController - Endpoint Security', () => {
 
 describe('SmrProxyController - SSE stream scope', () => {
   it('declares @StreamScope on the task stream so single-use tickets can open it', () => {
-    // House SSE convention (TASK-263): every SSE route declares a stream scope so
+    // House SSE convention: every SSE route declares a stream scope so
     // clients mint `POST auth/stream-ticket` with `<namespace>:<resourceId>` and
     // connect straight to the gateway. Without this metadata the guard 401s any
     // presented ticket, which is what forced the console's BFF-tunnel workaround.

@@ -1,4 +1,4 @@
-"""StrictCitations prompt block + citation-marker parsing (TASK-330 Phase 3).
+"""StrictCitations prompt block + citation-marker parsing.
 
 Retrieved chunks are injected into the generation prompt as a numbered Knowledge
 Context, each item tagged with the chunk id the model must cite. The model is

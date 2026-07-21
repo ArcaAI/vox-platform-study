@@ -18,11 +18,11 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     @Inject(IJwtRevocationService)
     private readonly jwtRevocationService?: IJwtRevocationService,
   ) {
-    // TASK-302 Phase 3 Task 3.6 — JWT secret now sourced from SecretsService
-    // (cache-warmed at bootstrap by main.ts).
+    // JWT secret is sourced from SecretsService (cache-warmed at bootstrap
+    // by main.ts).
     //
-    // TASK-307 W2.1 / W7.A.6 (closes audit C-6) — refuse to start when the
-    // resolved JWT secret is missing OR equals the literal placeholder.
+    // Refuse to start when the resolved JWT secret is missing OR equals the
+    // literal placeholder.
     // Catches both:
     //   (a) the placeholder ever landing in Vault / SecretsService, and
     //   (b) a warmup miss returning undefined (no implicit fallback).
@@ -61,7 +61,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       impersonatedBy: payload.impersonatedBy,
       jti: payload.jti,
       exp: payload.exp,
-      // TASK-307 W1.4: propagate the refresh-token family so /auth/logout
+      // Propagate the refresh-token family so /auth/logout
       // can revoke the full chain via RefreshTokenService.revokeFamily.
       refreshFamily: payload.refreshFamily,
     });
@@ -77,15 +77,15 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   /**
    * Two independent revocation axes, both consulted before the session is built.
    *
-   * - **C-4 per-token**: the `jti` was explicitly revoked (logout,
+   * - **Per-token**: the `jti` was explicitly revoked (logout,
    *   revoke-impersonation).
-   * - **TASK-541 A4 per-user**: the user was disabled/suspended/deleted after
+   * - **Per-user**: the user was disabled/suspended/deleted after
    *   this token was minted, so every `iat` at or before the stamp is dead.
    *   Comparison is `iat <= notBefore` — a token minted in the same second as
    *   the deactivation must lose the tie, since the alternative is handing a
    *   just-disabled user a full token lifetime of access.
    *
-   * **TASK-541 A3 — posture when the store is unreachable.** An ordinary token
+   * **Posture when the store is unreachable.** An ordinary token
    * fails OPEN: a Redis outage must not black out every authenticated request,
    * and the token remains subject to signature + expiry validation. An
    * IMPERSONATION token fails CLOSED: it is the highest-privilege credential

@@ -1,5 +1,5 @@
 /**
- * TASK-488 — Speech proxy E2E (auth gating).
+ * Speech proxy E2E (auth gating).
  *
  * Confirms the gateway registers the speech proxy routes and that the global
  * deny-by-default auth guard protects them. Full-path streaming (gateway → tts-v2)

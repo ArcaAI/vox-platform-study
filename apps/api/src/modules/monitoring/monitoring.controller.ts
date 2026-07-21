@@ -7,10 +7,9 @@ import { HeartbeatRecord, ServiceUptime, SessionsResponse, UptimeResponse } from
 
 @ApiTags('monitoring')
 @ApiBearerAuth()
-// TASK-336 OB-12 — ops monitoring is platform-wide infra data. Originally gated
-// to GLOBAL_ADMIN only (`manage all`).
-// TASK-386 (#21) — widened so a TENANT_ADMIN can read their own tenant's
-// service sessions/health/uptime (`read:TenantTelemetry`) without `manage all`.
+// Ops monitoring is platform-wide infra data. A TENANT_ADMIN can read their
+// own tenant's service sessions/health/uptime (`read:TenantTelemetry`)
+// without `manage all`.
 // Service uptime/heartbeats/session-counts are platform-infra status (no PHI,
 // no per-tenant rows), so there is nothing tenant-specific to filter out here;
 // GLOBAL_ADMIN still passes via `manage:all`, and a plain DOCTOR (neither grant)

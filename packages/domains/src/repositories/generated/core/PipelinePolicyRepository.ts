@@ -9,7 +9,7 @@ import { PipelinePolicyScope } from '../../../enums';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 
 /**
- * Editable realtime-pipeline policy repository (TASK-356 Phase 5, Pillar B).
+ * Editable realtime-pipeline policy repository.
  *
  * Polymorphic across the cascade tiers via `scope`/`scopeId`. One row per
  * (tenant, scope, scopeId); the reserved SYSTEM tenant owns the platform-default

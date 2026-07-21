@@ -1,6 +1,6 @@
 """Verdict aggregator — fold sensor results into a fail-safe gate decision.
 
-Decision policy (deterministic; clinical-safety > automation, per TASK-330 D2/D4):
+Decision policy (deterministic; clinical-safety > automation):
 
 * **degraded inputs** — a sensor could not verify (``SensorResult.degraded``), the
   caller signalled a degraded run (``degraded=True``), or an ``expected`` sensor is
@@ -58,7 +58,7 @@ HIGHEST_HARM_SENSORS: tuple[str, ...] = (entity_faithfulness.NAME, numeric_dose.
 # ``"groundedness"`` is the inferential per-claim entailment gate, and
 # ``"citation_verify"`` is the Phase-3 per-claim citation-entailment gate (both
 # regen the offending ``details["sections"]``, FLAG once the budget is exhausted).
-# ``"atomic_fact"`` (TASK-481 E2) is the DETERMINISTIC reference-free atomic-claim
+# ``"atomic_fact"`` is the DETERMINISTIC reference-free atomic-claim
 # entailment gate — an ungrounded atomic claim regens, then FLAGs on exhaustion (which
 # the optimistic-delivery retraction contract turns into a draft retraction).
 REGEN_FIXABLE_SENSORS: tuple[str, ...] = (

@@ -1,6 +1,6 @@
 # Infrastructure
 
-Last updated: 2026-07-04
+Introduced: 2026-07-04 · Last verified: 2026-07-21
 
 Map of `infrastructure/` — everything needed to run HOPE's backing services locally (Docker Compose) plus production blueprints for Vault. Cluster (k3s + ArgoCD) deployment manifests live in [deployment/](../deployment/README.md), not here.
 
@@ -34,6 +34,11 @@ Two compose files, combined by the wrapper scripts. Both load the root `.env`.
 | TEI reranker (`BAAI/bge-reranker-v2-m3`) | `hope-reranker` | 8870 | `rag` |
 | Prometheus v3 | `hope-prometheus` | 9090 | `prometheus` (alias: `observability`) |
 | Grafana 12 | `hope-grafana` | 3001 | `prometheus` (alias: `observability`) |
+| vLLM (`Qwen/Qwen3-8B` default) | `hope-vllm` | 8000 | `inference` (GPU host) |
+| llama.cpp server (pre-staged GGUF) | `hope-llama-cpp` | 8080 | `inference` |
+| TEI embeddings (`BAAI/bge-m3`) | `hope-tei-embed` | 8871 | `inference` |
+
+The `inference` profile stages the production self-host LLM engine matrix (vLLM + llama.cpp + TEI embeddings) on a GPU dev host; LM Studio + Ollama remain the default local engines. See [docs/operations/inference/README.md](../docs/operations/inference/README.md) for staging, wiring, and smoke-testing.
 
 The dev Prometheus scrapes host-run services via `host.docker.internal` (api 8868, stt 8861, smr 8862, guardrail 8863, nlp 8864, harness 8866) per `docker/configs/prometheus/prometheus.yml`. Dev Grafana provisions its datasource + starter dashboard from `docker/configs/grafana/`.
 

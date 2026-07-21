@@ -28,7 +28,7 @@ def get_app() -> FastAPI:
         return JSONResponse({"service": "Medical Entity Recognition & NLP", "version": "1.0.0"})
 
     # Expose settings on app.state (parity with the other Python services) and
-    # enforce inter-service auth (TASK-465). Added before CORS so CORS stays
+    # enforce inter-service auth. Added before CORS so CORS stays
     # outermost; an empty service_token is a dev / hermetic-CI bypass. The
     # middleware reads the token from the nlp.core.config singleton at dispatch.
     app.state.settings = settings

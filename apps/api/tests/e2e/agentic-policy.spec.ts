@@ -98,12 +98,10 @@ test.describe('agentic policy governance (OCC + GLOBAL_ADMIN privilege walls)', 
   });
 
   test('A: PATCH harness policy with the current If-Match succeeds and bumps version', async ({ request }) => {
-    // REFRESHED (TASK-534 G1): on a fresh seed the FIRST edit CREATES the
-    // tenant row — the caller's validator is the inherited SYSTEM default's
-    // version and the created row starts at version 1, so "bumps version"
-    // cannot hold on that edit. (Pre-fix this test only passed because the
-    // stale-If-Match test's silent create — the G1 bug — materialized the row
-    // first.) Edit once to guarantee the row exists, then assert the OCC
+    // On a fresh seed the FIRST edit CREATES the tenant row — the caller's
+    // validator is the inherited SYSTEM default's version and the created
+    // row starts at version 1, so "bumps version" cannot hold on that edit.
+    // Edit once to guarantee the row exists, then assert the OCC
     // version bump on a SECOND edit against the materialized row.
     const before = await readPolicy(request, globalAdminToken);
     const firstMaxRegen = before.maxRegen === 2 ? 3 : 2;

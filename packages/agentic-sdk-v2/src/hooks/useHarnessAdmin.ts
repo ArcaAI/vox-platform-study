@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useHarnessAdmin Hook (TASK-407)
+ * @arcaai/vox - useHarnessAdmin Hook
  *
  * Read-only admin surface for the Clinical Documentation Harness
  * (`/admin/harness/*`). Policy / audit / eval-runs / gate-queue are

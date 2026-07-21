@@ -1,5 +1,5 @@
 /**
- * TASK-442 §3 — Playground canvas primitives. PlaygroundCanvas (centered
+ * Playground canvas primitives. PlaygroundCanvas (centered
  * work column), SplitCanvas (input | live-output), and RunBar (Run/Stop +
  * connection/progress chips) that standardize the per-page SSE/WS state.
  */

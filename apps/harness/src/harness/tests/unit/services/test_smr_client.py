@@ -1,6 +1,6 @@
 """Tests for the SMR tool client (POST /api/v1/generate, stream:false).
 
-RED-first: written before ``harness.services.smr_client`` exists. The client
+The client
 must always send ``stream:false``, pass the SOAP ``response_format`` through
 untouched, omit unset optional hyperparameters, and parse the SMR
 ``GenerateResponse`` (content/model/usage/latency_ms/finish_reason).
@@ -100,7 +100,7 @@ class TestSmrClient:
 
     @pytest.mark.asyncio
     async def test_generate_attaches_idempotency_key_header(self):
-        # C1-04 (TASK-469): the durable generate carries a deterministic Idempotency-Key so
+        # The durable generate carries a deterministic Idempotency-Key so
         # SMR can dedup a worker-crash replay instead of re-billing the model. Mirrors the
         # api_client header contract (``Idempotency-Key``), not a body field.
         seen, handler = _capture()
@@ -115,7 +115,7 @@ class TestSmrClient:
 
     @pytest.mark.asyncio
     async def test_generate_omits_idempotency_header_when_unset(self):
-        # No key supplied → no header (preserve the pre-TASK-469 wire for non-durable calls).
+        # No key supplied → no header (preserve the wire shape for non-durable calls).
         seen, handler = _capture()
         client = SmrClient("http://smr:8862", transport=httpx.MockTransport(handler))
 
@@ -176,7 +176,7 @@ class TestSmrClientStats:
 
 
 class TestGenerateLostResponseNoReinvoke:
-    """C1-04 (TASK-458): a lost response AFTER the request was delivered (the model
+    """A lost response AFTER the request was delivered (the model
     may have run) must NOT be re-POSTed by the endpoint governor — a re-send is a
     second, divergent generation (double LLM spend). Only PRE-send failures retry."""
 
@@ -227,7 +227,7 @@ class TestGenerateLostResponseNoReinvoke:
 
     @pytest.mark.asyncio
     async def test_governor_per_call_timeout_is_not_retried(self, monkeypatch):
-        """I-1 (TASK-458): the governor's per-call ``asyncio.timeout`` firing WHILE the
+        """The governor's per-call ``asyncio.timeout`` firing WHILE the
         model runs (post-send) must NOT re-POST. Budget several attempts + a tiny per-call
         timeout so, without the fix, the builtin ``TimeoutError`` is classified transient
         and re-invokes the model up to ``max_attempts``. The fix caps it at ONE call."""

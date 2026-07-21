@@ -6,7 +6,7 @@
  * read at v7 could `updateWithVersion(…, 7)` after another admin soft-deleted
  * the row, succeed, and resurrect deleted PHI — a compliance / SOC2 finding.
  *
- * @see TASK-302 Stream D Phase B (B.8)
+ * Soft-delete / restore bump `_version` on every write.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ResourceStatusType } from '../../enums/generated/ResourceStatusType';

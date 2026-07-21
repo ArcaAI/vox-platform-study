@@ -1,4 +1,4 @@
-"""TASK-527 (D-12) — the gateway-injected `model_path` reaches `from_pretrained`.
+"""The gateway-injected `model_path` reaches `from_pretrained`.
 
 NLP is deliberately stateless (no DB), so `AiModel.localPath` can only arrive by
 request injection. `_MODEL_IDENTITY_FIELDS` in `nlp/core/config.py` already

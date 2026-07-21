@@ -1,4 +1,4 @@
-"""TASK-525 §4.2 — control-plane values reach SMR's live runtime state.
+"""Control-plane values reach SMR's live runtime state.
 
 Two things are locked here:
   1. A refreshed `maxConcurrent`/`timeoutS` actually moves the live semaphore and

@@ -1,5 +1,5 @@
 /**
- * TASK-364 — SDK bundle externalization guard.
+ * SDK bundle externalization guard.
  *
  * Regression guard for the local-model "Invalid URL" defect. `@arcaai/stt` and
  * `@arcaai/noise-filter` resolve runtime assets via `new URL(<rel>, import.meta.url)`

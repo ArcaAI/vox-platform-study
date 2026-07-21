@@ -3,11 +3,11 @@
  *
  * Server-Sent Events client for `EventSource`-based job/transcript streams.
  *
- * TASK-264 W0-1 (Single-use stream tickets):
+ * Single-use stream tickets:
  *   The previous implementation appended the user JWT to the URL as
  *   `?token=<jwt>`, which leaks the credential through Referer headers,
- *   browser history, CDN logs, and the Highlight.io network recorder
- *   (TASK-262 §2.4 SEC-A). The replacement protocol is:
+ *   browser history, CDN logs, and the Highlight.io network recorder.
+ *   The replacement protocol is:
  *
  *     1. At construction the caller declares the stream `scope`
  *        (e.g. `consultation-jobs`) and supplies an `AgenticClient`-shaped
@@ -19,15 +19,13 @@
  *        (URL-encoded). The ticket is held only in memory and discarded on
  *        the next reconnect.
  *
- * TASK-264 W2-1 (No listener leaks across reconnects):
+ * No listener leaks across reconnects:
  *   Every named listener attached to an `EventSource` is now tracked in a
  *   `Map<string, EventListener>` so we can call `removeEventListener` on
  *   `close()` (both for explicit `disconnect()` and the implicit close that
  *   precedes a reconnect). The leak test
  *   (`SSEClient.leak.test.ts`) opens/closes 50 times and asserts the listener
  *   count never accumulates.
- *
- * @see docs/implementation/TASK-264-SDK-Auth-Core/README.md
  */
 
 import { AUTH_ENDPOINTS } from './constants';
@@ -54,7 +52,7 @@ export interface StreamTicket {
 /**
  * Options for SSE connection.
  *
- * NOTE: The legacy `authToken` field was removed in TASK-264 W0-1. The only
+ * NOTE: There is no `authToken` field. The only
  * authentication path is the single-use stream ticket fetched per connect.
  */
 export interface SSEConnectOptions {
@@ -101,7 +99,7 @@ export class SSEClient {
    * A legacy signature `new SSEClient(logger?)` is still accepted at the TS
    * level so that pre-migration callers (currently `useConsultationJob`) keep
    * compiling. Such instances WILL surface a deterministic error via
-   * `onError` from `connect()`. See TASK-264 README §5 (Deviations).
+   * `onError` from `connect()`.
    */
   constructor(scope?: string | ISDKLogger, apiClient?: SSEApiClient, logger?: ISDKLogger) {
     if (typeof scope === 'string') {

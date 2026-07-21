@@ -1,5 +1,5 @@
 /**
- * BlobStorageProviderFactory — per-tenant / per-bucket resolution (TASK-318 / R5)
+ * BlobStorageProviderFactory — per-tenant / per-bucket resolution
  *
  * Mirrors the W1 selection suite: both provider modules are mocked so we assert
  * which provider gets constructed (and with what resolved config) without

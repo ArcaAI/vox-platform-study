@@ -1,5 +1,5 @@
 /**
- * HighlightService Unit Tests (TASK-344 Workstream B)
+ * HighlightService Unit Tests
  *
  * Covers create (tenant guard + ResourceCreated event), list (tenant-scoped),
  * and delete (soft-delete + ResourceDeleted). Cross-tenant / cross-consultation

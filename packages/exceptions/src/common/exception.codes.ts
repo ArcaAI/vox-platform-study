@@ -17,8 +17,8 @@ export const UNAUTHORIZED = 'UNAUTHORIZED';
 
 /** Domain layer */
 export const BUSINESS = 'DOMAIN.BUSINESS';
-// TASK-392 (Q10) — a plan-entitlement quantity/meter limit was reached. The API
-// gateway maps this to 409 Conflict (create) / 429 (meter) in Phase 4.
+// A plan-entitlement quantity/meter limit was reached. The API gateway maps
+// this to 409 Conflict (create) / 429 (meter).
 export const QUOTA_EXCEEDED = 'DOMAIN.QUOTA_EXCEEDED';
 
 /** Persistence layer */

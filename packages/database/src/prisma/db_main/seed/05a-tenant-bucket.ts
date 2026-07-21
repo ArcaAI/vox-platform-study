@@ -1,8 +1,7 @@
 /**
  * Tenant Bucket Seed
  *
- * Provisions the TWO default system bucket DB rows for every seeded tenant
- * (TASK-426):
+ * Provisions the TWO default system bucket DB rows for every seeded tenant:
  *   - `attachments` — files uploaded by users while working (consultation
  *     documents, lab results, any files).
  *   - `recordings`  — audio recordings captured during live transcription
@@ -17,7 +16,7 @@
  * demand and in `provisionSystemBuckets`) or via the admin endpoint
  * `POST /admin/tenants/storage/buckets/provision/:tenantId` as a fallback.
  *
- * Convergence for environments seeded before TASK-426:
+ * Convergence for environments seeded before the `recordings` rename:
  *   - a legacy `audio` row is RENAMED to `recordings` in place (id preserved so
  *     `Media.bucketId` references stay valid); if a `recordings` row already
  *     exists the redundant `audio` SYSTEM row is soft-deleted instead so at
@@ -35,7 +34,7 @@ import { ALL_TENANTS } from './05-tenant';
  * in sync: a slug added here but not there is provisioned by the seed and never
  * by the app.
  *
- * `misc` is deliberately absent (TASK-426). `TenantBucketPurpose.MISC` survives
+ * `misc` is deliberately absent. `TenantBucketPurpose.MISC` survives
  * only as an ASSIGNABLE purpose an admin grants to an existing bucket via
  * `TenantBucketService.setDefaultBuckets`; the API models it as nullable.
  */
@@ -118,7 +117,7 @@ async function convergeLegacyBuckets(client: CorePrismaClient, tenant: { id: str
     console.log(`  Soft-deleted redundant legacy 'audio' bucket for tenant ${tenant.key}`);
   }
 
-  // `misc` stopped being a default in TASK-426. Retire the SYSTEM row that older
+  // `misc` stopped being a default. Retire the SYSTEM row that older
   // seeds provisioned. Scoped to bucketType SYSTEM so a bucket an admin created
   // and assigned the MISC purpose to (a CUSTOM row) is never touched — MISC
   // remains a valid assignable purpose, it is just not provisioned by default.

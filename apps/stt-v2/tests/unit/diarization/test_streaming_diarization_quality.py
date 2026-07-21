@@ -1,7 +1,7 @@
-"""Hermetic unit tests for the diarization-accuracy metric scaffold (TASK-475 · AC-5).
+"""Hermetic unit tests for the diarization-accuracy metric scaffold.
 
-TASK-470 lists diarization scoring as its own Non-goal, so TASK-475 owns this
-metric. The math is pure stdlib (no model, no infra) so it is unit-testable with
+Diarization scoring is a distinct metric owned separately from the streaming
+quality scorecard. The math is pure stdlib (no model, no infra) so it is unit-testable with
 nothing staged — the live capture on real 2-speaker clinical audio is what is
 BLOCKED on the un-staged Sortformer model. These tests lock:
 
@@ -12,8 +12,8 @@ BLOCKED on the un-staged Sortformer model. These tests lock:
   good scorecard (the "does the gate actually fail" adversarial-review focus),
 * the de-identified synthetic 2-speaker clinical fixture loads and self-scores 0.
 
-The module lives beside TASK-470's ``streaming_quality.py`` (a sibling, NOT a fork
-of it — the manifest's additive-only rule for TASK-470-owned files).
+The module lives beside ``streaming_quality.py`` (a sibling, NOT a fork
+of it).
 """
 
 from __future__ import annotations
@@ -121,7 +121,7 @@ class TestConfusionAndAttribution:
 
 
 # ---------------------------------------------------------------------------
-# Scorecard + regression gate (the AC-5 gate; must actually fail on regression)
+# Scorecard + regression gate (must actually fail on regression)
 # ---------------------------------------------------------------------------
 
 
@@ -149,7 +149,7 @@ class TestScorecardAndGate:
         assert report["passed"] is True
 
     def test_regressed_der_fails_the_gate(self) -> None:
-        """AC-5 proof: a synthetic DER regression must be caught (not asserted-only)."""
+        """A synthetic DER regression must be caught (not asserted-only)."""
         thresholds = load_diarization_thresholds()
         card = {
             "diarization": {

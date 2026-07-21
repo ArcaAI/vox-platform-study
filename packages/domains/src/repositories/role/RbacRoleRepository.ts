@@ -1,8 +1,8 @@
 /**
- * TASK-311 AC-1 / AC-6 — `RbacRoleRepository` is the thin facade that
+ * `RbacRoleRepository` is the thin facade that
  * encapsulates `databaseService.client.role.*` for `RbacRoleService`.
  *
- * Surface design (README §4.3 D-2):
+ * Surface design:
  *
  *   • `findMany(args)` / `count(args)` — pass-through to support the
  *     paged listing in `findAll` (caller owns where/skip/take/include).
@@ -14,13 +14,13 @@
  *   • `findParentRoleById(id)` / `findParentRoleIdById(id)` — narrow
  *     projections backing the `validateParentRole` cycle-walk in the
  *     service. Split into two methods to mirror the two distinct
- *     Prisma calls in pre-TASK-311 code.
+ *     Prisma calls in the legacy code.
  *   • `create`/`update` accept the factory-built input. `update`
  *     re-issues with `ROLE_POLICIES_INCLUDE` so the returned row
  *     carries the full `RolePolicies` projection that the service
  *     hands back to its controller.
  *   • `softDelete(id, updatedBy?)` encapsulates the audit-stamp
- *     pattern (closes AC-6 per README §4.2 audit).
+ *     pattern.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { CoreDatabaseService } from '../../common/databaseServices/core/core.database.service';
@@ -53,7 +53,7 @@ export class RbacRoleRepository {
   }
 
   /**
-   * TASK-444 — `include` may be overridden so the role read can carry extra
+   * `include` may be overridden so the role read can carry extra
    * projections (e.g. a tenant-filtered `_count.UserRoleAssignments` for
    * member counts) without duplicating the canonical policies shape.
    */

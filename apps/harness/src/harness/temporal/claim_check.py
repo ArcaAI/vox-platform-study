@@ -1,4 +1,4 @@
-"""Claim-check payloads for the Temporal history budget (TASK-483).
+"""Claim-check payloads for the Temporal history budget.
 
 Temporal records EVERY activity input + output into an immutable workflow
 history that is replayed on every worker pickup and is bounded by a ~50 MB
@@ -14,12 +14,11 @@ ref at the edge (all I/O lives in activities, never the deterministic workflow
 body); the workflow only ever holds the small ref, so history stays flat
 regardless of blob length or regen count.
 
-Replay-safety posture (see the TASK-483 README §Replay safety): the ref fields
+Replay-safety posture: the ref fields
 are **additive-optional** on the existing payloads and the store/load happen
 **inside the existing activities**, so no new ``execute_activity`` command is
 added and no ``workflow.patched()`` marker is needed — the exact posture the
-codebase already uses for ``phi_enabled`` (TASK-357) and ``prior_verdicts``
-(TASK-359 WS-1).
+codebase already uses for ``phi_enabled`` and ``prior_verdicts``.
 
 Data-integrity is the safety property: a claim-check must round-trip EXACTLY
 (store→reference→retrieve = identity) and a missing/corrupt blob must fail LOUD
@@ -208,7 +207,7 @@ def content_key(data: bytes) -> str:
 
 
 def should_offload(text: str, *, min_bytes: int) -> bool:
-    """True when the utf-8 blob is at/above the offload threshold (AC-2).
+    """True when the utf-8 blob is at/above the offload threshold.
 
     Below the threshold the blob stays inline — no store round-trip tax on the
     small prompts/notes that dominate typical encounters. Measured in utf-8
@@ -251,7 +250,7 @@ async def maybe_offload(
     """Above threshold ⇒ store & return ``("", ref)``; else ``(text, None)``.
 
     Emptying the inline field on offload is what keeps the blob OUT of Temporal
-    history (AC-6) — the carrier records only the ref. The caller writes ``text``
+    history — the carrier records only the ref. The caller writes ``text``
     (the emptied inline) into the payload's inline field and ``ref`` into its
     ``*_ref`` field.
     """

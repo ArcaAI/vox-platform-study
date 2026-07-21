@@ -1,4 +1,4 @@
-"""Processor registry (TASK-505 Phase 1).
+"""Processor registry.
 
 Keyed ``(kind, name)``. Specs register at import time via
 :func:`register_processor`; implementations import lazily on first
@@ -96,7 +96,7 @@ class ProcessorRegistry:
         ``compute_pref`` is a SOFT preference (order beats capability rank):
         if none of the preferred computes is supported, the highest-rank
         row's own default compute is used — a preference mismatch must never
-        report a supported engine as unsupported (TASK-505 P1 review: the
+        report a supported engine as unsupported (the
         profile vocabulary, e.g. ``float16``, differs from some engines'
         declared sets, e.g. NeMo ``float32`` or ONNX quant names). A
         capability with an empty compute tuple has no compute concept (cloud

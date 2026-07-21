@@ -1,5 +1,5 @@
 /**
- * SDK Exports Verification Tests (TASK-032)
+ * SDK Exports Verification Tests
  *
  * Ensures all new hooks, types, and constants are properly re-exported
  * from the SDK entry points (hooks/index, core.ts, types/index).

@@ -1,4 +1,4 @@
-// TASK-369 (Data Encryption Initiative) follow-up — READ-ONLY decrypt CLI.
+// READ-ONLY decrypt CLI.
 //
 // An admin/dev tool to decrypt a single row's encrypted PHI field(s) for
 // support / debugging, WITHOUT going through the running API. It loads the row
@@ -35,7 +35,7 @@
 //   2 — bad invocation (missing/unknown args, wrong SECRETS_PROVIDER)
 
 import * as crypto from 'crypto';
-// eslint-disable-next-line no-restricted-imports -- TASK-305 B.4 allow-list: scripts/ legitimately bypass tenant-scope for read-only admin tasks
+// eslint-disable-next-line no-restricted-imports -- allow-list: scripts/ legitimately bypass tenant-scope for read-only admin tasks
 import { getPlatformAdminPrismaClient_Unscoped } from '../src/client.js';
 import vault from 'node-vault';
 

@@ -31,7 +31,7 @@ import { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSe
 import { resolvePasswordPolicy, validatePasswordComplexity } from '../userPassword/password-policy';
 
 /**
- * TASK-375 §8 — the Users resource's Prisma model name. Passed to
+ * The Users resource's Prisma model name. Passed to
  * `withFormatted{Paginated,Count}Props` so the shared deserializer coerces
  * EVERY boolean/number/date column of `User` from its stringly-typed CSV
  * `filters` value to the column's real type before the `where` reaches Prisma
@@ -50,21 +50,21 @@ export class UserService extends BaseService implements IUserService {
     private readonly userDepartmentRepository: UserDepartmentRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // TASK-331 r2605 #3 — `baseClient.$transaction(callback)` is the canonical
-    // Prisma-7 atomic idiom in this codebase (see TenantService TASK-302 D.4).
+    // `baseClient.$transaction(callback)` is the canonical
+    // Prisma-7 atomic idiom in this codebase (see `TenantService`).
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
-    // TASK-381 (V1) — `email` is a `UserProfile` field; the create flow upserts
+    // `email` is a `UserProfile` field; the create flow upserts
     // it onto the profile after the identity row exists.
     @Inject(IUserProfileService) private readonly userProfileService: IUserProfileService,
-    // TASK-402 (Defect 1) — creation/update-time passwords must be bcrypt-hashed
+    // Creation/update-time passwords must be bcrypt-hashed
     // and policy-checked like every other password write path (the login
     // comparator is bcrypt; plaintext at rest could never log in).
     @Inject(ICryptoService) private readonly cryptoService: ICryptoService,
     @Inject(IAppSettingsService) private readonly appSettings: IAppSettingsService,
-    // TASK-392 (Phase 3, C2) — optional (append-only DI); enforces the plan
+    // Optional (append-only DI); enforces the plan
     // `maxUsers` SEAT quota when onboarding a user WITH a role (kill-switch-gated).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
-    // TASK-541 A4 — optional (append-only DI); stamps a per-user not-before so
+    // Optional (append-only DI); stamps a per-user not-before so
     // disabling an account also kills its already-issued access tokens.
     @Optional() @Inject(IJwtRevocationService) private readonly jwtRevocationService?: IJwtRevocationService,
   ) {
@@ -72,7 +72,7 @@ export class UserService extends BaseService implements IUserService {
   }
 
   /**
-   * TASK-541 A4 — invalidate every access token already issued to `userId`.
+   * Invalidate every access token already issued to `userId`.
    *
    * Called AFTER the status write commits, so a failed mutation never kills
    * live sessions. Never throws: `resourceStatus` in the DB is what blocks the
@@ -89,7 +89,7 @@ export class UserService extends BaseService implements IUserService {
   }
 
   /**
-   * TASK-402 (Defect 1) — validate against the TASK-400 complexity policy
+   * Validate against the complexity policy
    * (GlobalSettings-overridable) and bcrypt-hash a password destined for
    * persistence. Same voice as `UserPasswordService.assertPasswordPolicy`:
    * the 400 lists every unmet rule.
@@ -103,7 +103,7 @@ export class UserService extends BaseService implements IUserService {
   }
 
   /**
-   * TASK-392 (Phase 3, C2) — count a tenant's occupied SEATS: distinct users
+   * Count a tenant's occupied SEATS: distinct users
    * with at least one ENABLED role-assignment (mirrors
    * `TenantService.getUsageStats().totalUsers`). Uses the unscoped `baseClient`
    * with an explicit `tenantId` filter — this can run inside/around the create
@@ -122,7 +122,7 @@ export class UserService extends BaseService implements IUserService {
     const { roleId, departmentId, isPrimaryDepartment, email, ...userRequest } = request;
     const wantsMembership = Boolean(roleId || departmentId);
 
-    // TASK-402 (Defect 1) — policy-check + bcrypt the creation-time password
+    // Policy-check + bcrypt the creation-time password
     // BEFORE the factory so both the plain and the atomic membership branches
     // persist a hash, never plaintext. An empty password is the "no local
     // credential" placeholder (OAuth/`createExternalUser` semantics): it is
@@ -139,7 +139,7 @@ export class UserService extends BaseService implements IUserService {
       createdBy: this.requestUser?.id,
     });
     if (hasCreationPassword) {
-      // Rotation parity with the password module (TASK-400 `maxAgeDays`).
+      // Rotation parity with the password module (`maxAgeDays`).
       newUser.passwordChangedAt = new Date();
     }
 
@@ -159,7 +159,7 @@ export class UserService extends BaseService implements IUserService {
       return user;
     }
 
-    // TASK-331 r2605 #3 — membership requested. Tenant attribution comes from
+    // Membership requested. Tenant attribution comes from
     // the ACTIVE CLS tenant (a super-admin's selected tenant is elevated into
     // CLS by the context interceptor; a tenant-admin's comes from their
     // session). It is NEVER taken from the request body — the same security
@@ -169,9 +169,9 @@ export class UserService extends BaseService implements IUserService {
       throw new BadRequestException('Tenant context required to assign role/department');
     }
 
-    // TASK-392 (Phase 3, C2) — onboarding a NEW user with a role consumes a new
+    // Onboarding a NEW user with a role consumes a new
     // seat (the user is brand-new, so it is always a distinct seat). Enforce the
-    // plan `maxUsers` quota before the write. Kill-switch-gated (Q9); the seat
+    // plan `maxUsers` quota before the write. Kill-switch-gated; the seat
     // COUNT only runs when enforcement is ON. A department-only create (no
     // roleId) adds no seat, so it is not gated.
     if (roleId && this.entitlements?.isEnforcementEnabled()) {
@@ -241,7 +241,7 @@ export class UserService extends BaseService implements IUserService {
   }
 
   /**
-   * TASK-381 (V1) — `email` is a `UserProfile` field, not a `User` column. When
+   * `email` is a `UserProfile` field, not a `User` column. When
    * the admin create-user payload carries an email, upsert it onto the profile
    * after the identity row exists (keyed by userId). No-op when email is absent.
    */
@@ -387,10 +387,10 @@ export class UserService extends BaseService implements IUserService {
     const user = await this.userRepository.findById(id);
 
     const previousData = user.toObject();
-    // TASK-402 (Defect 1) — a password update goes through the same policy +
+    // A password update goes through the same policy +
     // bcrypt path as creation (the generic assignment used to store the DTO's
     // plaintext verbatim). The handler re-stamps `passwordChangedAt` so the
-    // TASK-400 rotation check sees this write like any password-module write.
+    // rotation check sees this write like any password-module write.
     await this.updateEntity(user, request, {
       password: async ({ entity, value }) => {
         const hashed = await this.validateAndHashPassword(String(value));
@@ -404,7 +404,7 @@ export class UserService extends BaseService implements IUserService {
     }
     const updatedUser = await this.userRepository.update(id, user);
 
-    // TASK-541 A4 — a transition AWAY from ENABLED (disable / suspend /
+    // A transition AWAY from ENABLED (disable / suspend /
     // archive / delete) must also kill tokens already in the wild; the
     // ENABLED filters on login+refresh only gate the NEXT credential.
     if (request.resourceStatus && request.resourceStatus !== ResourceStatusType.ENABLED) {
@@ -422,7 +422,7 @@ export class UserService extends BaseService implements IUserService {
   async deleteById(id: EntityId): Promise<UserEntity> {
     const user = await this.userRepository.softDelete(id);
 
-    // TASK-541 A4 — same reasoning as update(): the soft-deleted user's live
+    // Same reasoning as update(): the soft-deleted user's live
     // tokens die with the row, not at their own exp.
     await this.revokeLiveTokens(String(id));
 
@@ -434,7 +434,7 @@ export class UserService extends BaseService implements IUserService {
   }
 
   /**
-   * TASK-398 (P1-7) — export enrichment read-model: profile email + active
+   * Export enrichment read-model: profile email + active
    * department NAMES for every id in ONE pass. Exactly two grouped queries
    * (`userId IN (...)`) + an in-memory join — never per-row lookups — so a
    * 10 000-row export costs the same round-trips as a 10-row one.

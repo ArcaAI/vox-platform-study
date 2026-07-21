@@ -1,5 +1,5 @@
 /**
- * TASK-541 A4 — disabling a user must kill their LIVE access tokens.
+ * Disabling a user must kill their LIVE access tokens.
  *
  * Gap under test: `resourceStatus` gates login and refresh (both filter on
  * `ENABLED`), but an access token already in the wild stayed valid until its

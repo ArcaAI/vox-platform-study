@@ -1,5 +1,5 @@
 /**
- * TDD for the permission-matrix derivation engine (TASK-438 §4, plan step 1).
+ * TDD for the permission-matrix derivation engine.
  * The matrix is a derived, read-only view: allow → ✓, deny (inverted) → none,
  * GLOBAL-scope allow → inherited, conditions → conditional, `manage` expands to
  * every column, action aliases normalize, unknown subjects append, order is

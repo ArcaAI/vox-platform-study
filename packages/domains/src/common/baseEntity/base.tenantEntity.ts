@@ -3,19 +3,18 @@ import { TenantEntity } from '../../entities';
 // Import siblings directly to avoid a circular barrel cycle at module
 // load (the `index.ts` barrel re-exports BaseTaggedEntity, which extends
 // BaseTenantEntity — going through the barrel here breaks single-file
-// test loads). TASK-305 A.9.
+// test loads).
 import { EntityId } from './base.entity';
 import { BaseAggregate, BaseAggregateProps } from './base.aggregate';
 
 /**
- * Hardened by TASK-305 Phase A (multi-tenancy hardening) and TASK-306 P1.1:
+ * Hardened for multi-tenancy:
  * - `tenantId` is REQUIRED on construction; the field can no longer be
  *   silently left null/undefined (matches the schema-level NOT NULL).
  * - The `tenantId` setter is `protected`, so external code can no longer
  *   overwrite a tenant scope. Entities/factories/mappers — and only those —
  *   may rewrite it.
- * - The `Tenant` relation setter is `protected` too (TASK-306 P1.1 closes
- *   audit C-7 finale); external callers cannot overwrite the relation —
+ * - The `Tenant` relation setter is `protected` too; external callers cannot overwrite the relation —
  *   only subclasses (factories, mappers, lifecycle methods) may. The
  *   setter additionally throws if assigned `null`/`undefined`, so we never
  *   silently clear the tenant relation. Use a dedicated lifecycle method
@@ -55,10 +54,10 @@ export abstract class BaseTenantEntity extends BaseAggregate {
   }
 
   /**
-   * Mutation surface is `protected` (TASK-306 P1.1, audit C-7 finale) — only
+   * Mutation surface is `protected` — only
    * subclasses (entity factories / mappers / lifecycle methods) may overwrite
    * the tenant relation. External callers cannot, by design; mirroring the
-   * `tenantId` setter guard from TASK-305 A.7.
+   * `tenantId` setter guard.
    */
   protected set Tenant(tenant: TenantEntity) {
     if (tenant === null || tenant === undefined) {
@@ -71,8 +70,8 @@ export abstract class BaseTenantEntity extends BaseAggregate {
   }
 
   /**
-   * Mandatory runtime backstop for the schema-level NOT NULL on `tenantId`
-   * (TASK-305 Phase A). Catches the cases TypeScript can't — e.g. an entity
+   * Mandatory runtime backstop for the schema-level NOT NULL on `tenantId`.
+   * Catches the cases TypeScript can't — e.g. an entity
    * hydrated from untyped Prisma rows, a mapper that forgot to set tenantId,
    * a hand-rolled `as any` cast in test fixtures.
    *

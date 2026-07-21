@@ -1,15 +1,15 @@
-"""Unit tests for `preseed_speaker` (TASK-296 backend-echo · TASK-490 PHI/tenant).
+"""Unit tests for `preseed_speaker` (backend-echo · PHI/tenant).
 
 Verifies that `preseed_speaker(...)` returns a structured dict with shape
 `{"success": bool, "profile_id": str | None, "model_id": str | None}` so that
-SessionManager (TASK-298) and BatchTranscriptionService can echo the
+SessionManager and BatchTranscriptionService can echo the
 `voiceProfileSeeded` event back to the client.
 
 The metadata (profile_id, model_id) is fetched best-effort via the new
 `get_voice_profile_metadata` helper, which is purposefully non-fatal: a
 failed metadata lookup MUST NOT block the speaker pre-seed.
 
-TASK-490 adds two contracts (TASK-474 findings B-04/B-05):
+Two contracts apply here:
   * tenant threading — ``tenant_id`` reaches every tenant-aware DB lookup;
   * PHI log hygiene — no clinician name / user id / consultation id ever
     appears in a log record emitted by the preseed path (redacted/hashed
@@ -210,13 +210,13 @@ async def test_preseed_returns_success_with_none_metadata_when_metadata_lookup_f
 
 
 # ---------------------------------------------------------------------------
-# TASK-490 AC-2 — tenant_id is threaded into every tenant-aware lookup
+# tenant_id is threaded into every tenant-aware lookup
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_preseed_threads_tenant_id_to_all_lookups():
-    """tenant_id reaches identity, embedding AND metadata lookups (B-04)."""
+    """tenant_id reaches identity, embedding AND metadata lookups."""
     tracker = _FakeTracker(register_returns="Dr. Alice")
     identity = AsyncMock(return_value=("user-uuid-1", "Dr. Alice"))
     embedding = AsyncMock(return_value=[0.01] * 256)
@@ -248,7 +248,7 @@ async def test_preseed_threads_tenant_id_to_all_lookups():
 
 
 # ---------------------------------------------------------------------------
-# TASK-490 AC-1 — no PII/PHI in any log record emitted by the preseed path
+# No PII/PHI in any log record emitted by the preseed path
 # ---------------------------------------------------------------------------
 
 
@@ -371,7 +371,7 @@ async def test_preseed_exception_path_logs_contain_no_pii(caplog):
 @pytest.mark.asyncio
 async def test_preseed_fallback_log_context_is_not_logged_raw(caplog):
     """When log_context is absent it falls back to consultation/user ids —
-    those fallbacks must be redacted in log output too (B-05)."""
+    those fallbacks must be redacted in log output too."""
     tracker = _FakeTracker()
 
     with (

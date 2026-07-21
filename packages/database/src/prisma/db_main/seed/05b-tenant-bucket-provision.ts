@@ -1,5 +1,5 @@
 /**
- * BUG-007 — provisions the physical MinIO buckets for every TenantBucket row
+ * Provisions the physical MinIO buckets for every TenantBucket row
  * `seedTenantBucket` (05a) just wrote. That step is DB-rows-only by design;
  * without this step a fresh environment (dev or prod) has bucket rows with no
  * matching physical bucket, and every storage read 500s with `NoSuchBucket`.

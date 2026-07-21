@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { resolveActiveTenant } from '../resolve-active-tenant';
 
-// TASK-331 r2605 Finding #1 — pure decision helper for global-admin
-// "manage as tenant" elevation. A global-admin authenticates with an EMPTY
+// Pure decision helper for global-admin "manage as tenant" elevation.
+// A global-admin authenticates with an EMPTY
 // CLS tenantId; selecting a tenant in the console sends `x-tenant-id`. The
 // helper decides whether that header may elevate the active tenant.
 describe('resolveActiveTenant', () => {

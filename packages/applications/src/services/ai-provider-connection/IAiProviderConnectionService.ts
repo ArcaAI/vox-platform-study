@@ -16,9 +16,9 @@ export interface ResolvedProviderConnection {
 }
 
 /**
- * TASK-526 — one decrypted tenant BYO credential in the shape the SMR service
+ * One decrypted tenant BYO credential in the shape the SMR service
  * consumes. snake_case matches the frozen wire contract (and the TTS
- * `provider_overrides` precedent); TASK-525 owns the Python-side consumption.
+ * `provider_overrides` precedent).
  */
 export interface LlmProviderOverrideEntry {
   api_key: string;
@@ -58,7 +58,7 @@ export interface IAiProviderConnectionService {
   findRow(provider: string, tenantId: string): Promise<AiProviderConnectionEntity | null>;
 
   /**
-   * TASK-526 — decrypt a tenant's ENABLED **cloud BYO** connections into the
+   * Decrypt a tenant's ENABLED **cloud BYO** connections into the
    * injectable `provider_overrides` map the gateway folds into the SMR generate
    * body. Gateway-only: the result carries plaintext key material and is NEVER
    * returned by any read API.

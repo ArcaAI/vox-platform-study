@@ -97,7 +97,7 @@ logger = get_logger(__name__)
 
 _DEFAULT_TIMEOUT_S = 120.0
 
-# C1-04 (TASK-469): how long a completed generation stays replay-cached under
+# How long a completed generation stays replay-cached under
 # ``smr:idem:{key}``. Bounded so Redis never grows unboundedly, and comfortably longer
 # than any worker-crash → Temporal activity re-delivery window (the replay this dedups).
 _IDEMPOTENCY_TTL_S = 86_400  # 24h
@@ -192,7 +192,7 @@ async def generate(
     shutdown_manager: ShutdownManager | None = Depends(get_shutdown_manager),
     provider_queues: dict[str, ProviderQueue] = Depends(get_provider_queues),
     provider_semaphores: dict[str, ResizableSemaphore] = Depends(get_provider_semaphores),
-    # TASK-525 — refreshes control-plane limits (cached, so ~free inside the TTL
+    # Refreshes control-plane limits (cached, so ~free inside the TTL
     # window) and yields per-provider timeout overrides; empty ⇒ env value wins.
     runtime_timeouts: dict[str, int] = Depends(get_runtime_limits),
     settings: Settings = Depends(get_dep_settings),
@@ -204,7 +204,7 @@ async def generate(
     if shutdown_manager and shutdown_manager.is_shutting_down:
         raise ShutdownError("Service is shutting down — not accepting new requests.")
 
-    # C1-04 (TASK-469): idempotent replay. A deterministic Idempotency-Key (set by the harness
+    # Idempotent replay. A deterministic Idempotency-Key (set by the harness
     # from workflow_run:activity_id — globally unique per logical generate; the apps/api SMR
     # proxy strips any client-supplied header, so no tenant scoping is required here, though a
     # tenant prefix would be a cheap defense-in-depth if that ever changes) makes a worker-crash
@@ -227,9 +227,9 @@ async def generate(
             logger.debug("generation.idempotency_cache_hit", cache_key=cache_key)
             return GenerateResponse.model_validate_json(cached)
 
-    # Guardrail medical-content validation (TASK-338 Phase 4b; TASK-478 fail-closed).
+    # Guardrail medical-content validation.
     # The consultation tenant is forwarded so guardrail resolves per-tenant
-    # provider/model from DB. Degrade-safe → fail-CLOSED posture (TASK-478): a
+    # provider/model from DB. Degrade-safe → fail-CLOSED posture: a
     # guardrail failure never ships an unmoderated PHI prompt — the verdict defaults
     # to NOT-allowed on a missing/malformed key, a sustained outage rejects with a
     # retryable 503 (vs a 422 content rejection), and if the enforce posture is on
@@ -262,7 +262,7 @@ async def generate(
 
     ctx = structlog.contextvars.get_contextvars()
 
-    # D-7 (TASK-356): SMR is a stateless gateway with no default model. The
+    # SMR is a stateless gateway with no default model. The
     # caller (API/harness) resolves and supplies the model on every request;
     # a missing/blank model fails closed with a 422 (no silent default).
     model = request_body.model
@@ -379,7 +379,7 @@ async def generate(
 
     await task_manager.update_task(task.task_id, status=TaskStatus.RUNNING)
     ACTIVE_GENERATIONS.labels(provider=request_body.provider).inc()
-    # TASK-386 — cross-service per-model running gauge (e.g. gemma-4-e4b).
+    # Cross-service per-model running gauge (e.g. gemma-4-e4b).
     MODEL_RUNNING_INSTANCES.labels(service=SERVICE_NAME, model=model).inc()
     start = time.monotonic()
 
@@ -465,7 +465,7 @@ async def generate(
 
         GENERATION_TOTAL.labels(provider=request_body.provider, model=model, status="completed").inc()
         GENERATION_LATENCY.labels(provider=request_body.provider, model=model).observe(latency_ms / 1000)
-        # TASK-386 — cross-service per-model inference latency (for avg latency).
+        # Cross-service per-model inference latency (for avg latency).
         MODEL_INFERENCE_LATENCY.labels(service=SERVICE_NAME, model=model).observe(latency_ms / 1000)
         TOKENS_TOTAL.labels(provider=request_body.provider, model=model, direction="input").inc(prompt_tokens)
         TOKENS_TOTAL.labels(provider=request_body.provider, model=model, direction="output").inc(completion_tokens)
@@ -530,13 +530,13 @@ async def generate(
             finish_reason=finish_reason,
             stats=stats,
         )
-        # C1-04 (TASK-469): cache the completed generation so a replayed request carrying the
+        # Cache the completed generation so a replayed request carrying the
         # same key returns THIS response instead of re-billing the model (bounded TTL). STRICTLY
         # best-effort and locally guarded: the model already ran and the task is COMPLETED, so a
         # cache-write failure (Redis OOM on a large SOAP note, a dropped connection) must NEVER
         # bubble into the outer ``except`` — that would discard a billed generation, record a
         # FALSE circuit-breaker failure, flip the task to FAILED, and return a 5xx the harness
-        # retries (re-invoking the model = the very C1-04 double-bill this ticket closes). Swallow
+        # retries (re-invoking the model would double-bill it). Swallow
         # it and return the response; the worst case degrades to "not cached" (documented residual).
         if cache_key is not None and redis_client is not None:
             try:
@@ -638,7 +638,7 @@ async def _run_streaming_generation(
     resolved_provider = provider_name or request_body.provider
     await task_manager.update_task(task_id, status=TaskStatus.RUNNING)
     ACTIVE_GENERATIONS.labels(provider=resolved_provider).inc()
-    # TASK-386 — cross-service per-model running gauge (streaming path).
+    # Cross-service per-model running gauge (streaming path).
     MODEL_RUNNING_INSTANCES.labels(service=SERVICE_NAME, model=resolved_model).inc()
     start = time.monotonic()
     first_chunk_recorded = False
@@ -690,7 +690,7 @@ async def _run_streaming_generation(
         await task_manager.update_task(task_id, status=TaskStatus.COMPLETED)
         GENERATION_TOTAL.labels(provider=resolved_provider, model=resolved_model, status="completed").inc()
         GENERATION_LATENCY.labels(provider=resolved_provider, model=resolved_model).observe(latency_ms / 1000)
-        # TASK-386 — cross-service per-model inference latency (streaming path).
+        # Cross-service per-model inference latency (streaming path).
         MODEL_INFERENCE_LATENCY.labels(service=SERVICE_NAME, model=resolved_model).observe(latency_ms / 1000)
         if total_input_tokens or total_output_tokens:
             TOKENS_TOTAL.labels(provider=resolved_provider, model=resolved_model, direction="input").inc(total_input_tokens)

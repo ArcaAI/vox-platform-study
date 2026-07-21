@@ -1,12 +1,12 @@
-"""Deterministic RAG e2e (TASK-330 Phase 3, Lane C — verification).
+"""Deterministic RAG e2e (verification).
 
 These tests exercise the institutional-RAG retrieve path end-to-end against a
 **real Qdrant engine** (the ``qdrant-client`` in-memory local mode) and the
 **real in-process fastembed BM25** sparse embedder — the two pieces that don't
 need a live service. Only the dense embedder (LM Studio ``/v1/embeddings``,
 BAAI/bge-m3) and the cross-encoder reranker (TEI ``hope-reranker``) are stubbed,
-because they require GPU-loaded models that are a documented prerequisite handoff
-(see the TASK-330 README §10). That is exactly the "use mocked/seeded Qdrant"
+because they require GPU-loaded models that are a documented prerequisite handoff.
+That is exactly the "use mocked/seeded Qdrant"
 deterministic subset the plan calls for when the embedding/reranker models can't
 be loaded.
 

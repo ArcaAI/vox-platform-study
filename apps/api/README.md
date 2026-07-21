@@ -259,13 +259,13 @@ APP_SETTINGS_BOOT_INVARIANT=skip pnpm dev:api
 Setting `APP_SETTINGS_BOOT_INVARIANT=skip` outside `development` has no
 effect — the invariant still runs and the process still refuses to
 start. See `packages/applications/src/services/baseServices/_meta/appSettings/appSettings.service.ts`
-and TASK-302 `docs/implementation/TASK-302-System-Config-Implementation-Roadmap/01-phase-0-hotfix.md` §Section E.
+and TASK-302 `docs/archive/TASK-302-System-Config-Implementation-Roadmap/01-phase-0-hotfix.md` §Section E.
 
 ### Operating with PgBouncer (TASK-302 Stream C Phase 2A)
 
 The HOPE production HA stack runs **PgBouncer in transaction pooling
 mode** ([HA blueprint §10](../../research/deployments/deploy-vm500-502-postgres-ha.md#10-deploy-pgbouncer-transaction-mode)),
-validated by [`docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-validation-report.md`](../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-validation-report.md).
+validated by [`docs/archive/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-validation-report.md`](../../docs/archive/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-validation-report.md).
 The Prisma adapter (`@prisma/adapter-pg`) owns pool sizing in Prisma 7
 — the v6 `connection_limit` URL parameter is ignored. Three env vars
 wire `packages/database/src/client.ts` and `packages/database/prisma.config.ts`:
@@ -312,7 +312,7 @@ work natively in transaction mode. Do NOT set `?pgbouncer=true` on
 when `MAX_PREPARED_STATEMENTS=0`.
 
 See the canonical plan at
-[`docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md`](../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md).
+[`docs/archive/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md`](../../docs/archive/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md).
 
 ### Configuration Files
 
@@ -611,7 +611,7 @@ The API Gateway is designed for containerized deployment:
    - Includes NGINX reverse proxy
 
 2. **Kubernetes Deployment**
-   - See: `infrastructure/k8s/README.md`
+   - See: `deployment/README.md`
    - Supports horizontal pod autoscaling
    - Includes health probes and service mesh
 

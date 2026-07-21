@@ -1,7 +1,7 @@
 /**
- * Cross-tenant probes against the harness-progress SSE stream (TASK-348 / TG-4).
+ * Cross-tenant probes against the harness-progress SSE stream.
  *
- * TASK-345 added `GET /consultations/:id/harness-progress/stream`, guarded the
+ * `GET /consultations/:id/harness-progress/stream` is guarded the
  * same way as the live-summary stream:
  *
  *   - `@TenantOwnedResource('Consultation', 'id')` → the global
@@ -19,7 +19,7 @@
  *      tenant mismatch, not a missing row.
  *   2. A super_admin re-logged into tenant ARCAAI probes the stream → 404
  *      with no tenant wording in the body (no SSE channel leak).
- *   3. TASK-348 / MIN-1: the same cross-tenant caller cannot MINT a
+ *   3. The same cross-tenant caller cannot MINT a
  *      `consultation_harness_progress:<id>` stream ticket either → 404
  *      (mint-time ownership, defense-in-depth ahead of the SSE guard).
  *   4. A synthetic uuidv7 consultation id 404s with the same shape, so an

@@ -83,7 +83,7 @@ export function HarnessPolicyForm({
     onReloadLatest: () => void;
     successMessage: string;
     /**
-     * TASK-532 (E3-L1) — keys this editor renders read-only. The TENANT tab
+     * Keys this editor renders read-only. The TENANT tab
      * passes `TENANT_LOCKED_POLICY_KEYS`; the GLOBAL tab passes nothing (it may
      * write every key). Locked fields are excluded from the sparse patch too, so
      * a stale draft can never smuggle one into a save.

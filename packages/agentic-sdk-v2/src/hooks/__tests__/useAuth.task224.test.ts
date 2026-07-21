@@ -1,5 +1,5 @@
 /**
- * TASK-224: Auth Security Enhancement Tests
+ * Auth Security Enhancement Tests
  *
  * Tests for:
  * 1. endImpersonation restores admin user identity
@@ -49,7 +49,7 @@ describe('TASK-224: Auth Security Enhancement', () => {
         mockGet.mockReset();
         mockPost.mockReset();
 
-        // TASK-264 W0-3: admin JWT now lives inside AgenticClient (WeakMap),
+        // Admin JWT now lives inside AgenticClient (WeakMap),
         // not in the store. The mock client emulates the stash with a closure.
         let stashedAdminToken: string | undefined;
         mockStore = {
@@ -73,7 +73,7 @@ describe('TASK-224: Auth Security Enhancement', () => {
                     return t;
                 }),
                 isImpersonating: vi.fn(() => stashedAdminToken !== undefined),
-                // TASK-320 B2: AgenticClient in-memory refresh-token API
+                // AgenticClient in-memory refresh-token API
                 setRefreshToken: vi.fn(),
                 getRefreshToken: vi.fn(),
                 hasRefreshToken: vi.fn().mockReturnValue(false),
@@ -83,7 +83,7 @@ describe('TASK-224: Auth Security Enhancement', () => {
             authUser: adminUser,
             authIsAuthenticated: true,
             authImpersonatedUser: null as unknown,
-            // NOTE: `authOriginalToken` removed in TASK-264 W0-3.
+            // NOTE: `authOriginalToken` removed.
             authOriginalUser: null as unknown,
             setAuthUser: vi.fn((user: unknown) => { mockStore.authUser = user; }),
             setIsAuthenticated: vi.fn((val: boolean) => { mockStore.authIsAuthenticated = val; }),
@@ -101,7 +101,7 @@ describe('TASK-224: Auth Security Enhancement', () => {
 
     describe('Fix 1: endImpersonation restores admin user identity', () => {
         it('should call setAuthUser with the original admin user when ending impersonation', async () => {
-            // TASK-264 W0-3 — stash token in AgenticClient instead of store
+            // Stash token in AgenticClient instead of store
             mockStore.apiClient.startImpersonation('admin-jwt-token');
             mockStore.authOriginalUser = adminUser;
             mockPost.mockResolvedValue({ success: true });
@@ -127,7 +127,7 @@ describe('TASK-224: Auth Security Enhancement', () => {
 
         it('should restore both token AND user in correct order', async () => {
             const callOrder: string[] = [];
-            // TASK-264 W0-3 — stopImpersonation comes from client
+            // stopImpersonation comes from client
             mockStore.apiClient.stopImpersonation = vi.fn(() => {
                 callOrder.push('stopImpersonation');
                 return 'admin-jwt-token';
@@ -217,7 +217,7 @@ describe('TASK-224: Auth Security Enhancement', () => {
 
     // =========================================================================
     // FIX 3 test: login should update apiClient accessToken
-    // (already tested in useAuth.test.ts BUG-10, repeated here for TASK-224 regression)
+    // (already tested in useAuth.test.ts, repeated here for regression)
     // =========================================================================
 
     describe('Fix 3: login sets access token on apiClient', () => {

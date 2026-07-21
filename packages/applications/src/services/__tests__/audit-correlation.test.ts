@@ -1,5 +1,5 @@
 /**
- * Cross-service audit-log correlation contract (TASK-302 Stream D Phase C.8).
+ * Cross-service audit-log correlation contract.
  *
  * Both write paths for config — `TenantService.updateTenantConfigs` (multi-row
  * via `$transaction`) and `GlobalSettingService.update` (single-row admin path)
@@ -163,7 +163,7 @@ describe('Audit-log version correlation (TASK-302 Stream D Phase C.8) — cross-
             softDelete: vi.fn(),
         };
 
-        // TASK-396 — constructor also takes UserRepository, ICryptoService,
+        // Constructor also takes UserRepository, ICryptoService,
         // SecretsService (used only by revealSecret; `update` ignores them).
         const service = new (GlobalSettingService as any)(
             globalSettingRepo,

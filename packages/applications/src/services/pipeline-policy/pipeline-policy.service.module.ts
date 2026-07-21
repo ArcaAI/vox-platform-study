@@ -4,7 +4,7 @@ import { ConfigResolverModule } from '../config-resolver';
 import { PipelinePolicyService } from './pipeline-policy.service';
 
 /**
- * PipelinePolicyService DI module (TASK-356 Phase 5 — Pillar B). Imports
+ * PipelinePolicyService DI module. Imports
  * CoreDatabaseModule for the PipelinePolicy + PipelinePolicyChange repositories
  * and the `CORE_DATABASE_SERVICE` (interactive transactions), and
  * ConfigResolverModule for the effective-cascade resolution. `ClsService` is

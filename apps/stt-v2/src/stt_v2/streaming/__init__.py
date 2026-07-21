@@ -1,7 +1,7 @@
-"""Streaming Architecture Phase 1 — Foundation.
+"""Streaming Architecture — Foundation.
 
 This module implements the foundational components for real-time streaming
-transcription as designed in TASK-014. It provides:
+transcription. It provides:
 
 - **ExecutionProfile**: Hardware auto-detection and adaptive tuning
 - **StreamSession**: Redis-backed session state with two-tier persistence

@@ -1,5 +1,5 @@
 /**
- * TASK-329 P3 — ModelRegistry STT task persistence.
+ * ModelRegistry STT task persistence.
  *
  * The user's chosen Whisper task (transcribe|translate) persists alongside the
  * selected model in the SAME tenant/user-namespaced localStorage row

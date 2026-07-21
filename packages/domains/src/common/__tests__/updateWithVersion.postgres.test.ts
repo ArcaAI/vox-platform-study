@@ -9,7 +9,7 @@
  *
  * Runs only when `DATABASE_URL` is set (it skips gracefully in pure-unit CI).
  *
- * @see TASK-302 Stream D Phase B.4
+ * Live-Postgres coverage for `updateWithVersion` CAS semantics.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, afterAll, beforeAll } from 'vitest';

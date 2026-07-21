@@ -1,9 +1,8 @@
 /**
- * TASK-307 W6.1 — UserRoleAssignmentService: tenant-scoped read methods
+ * UserRoleAssignmentService: tenant-scoped read methods
  *
  * Pins the contract for the three callsites that AuthController previously
- * answered with direct `databaseService.client.userRoleAssignment` access
- * (audit C-10):
+ * answered with direct `databaseService.client.userRoleAssignment` access:
  *   1. `findActiveAssignmentForUserInTenant(userId, tenantId)`
  *      → login-time tenant validation
  *   2. `findActiveTenantIdsForUser(userId)`
@@ -40,7 +39,7 @@ const mockUserRoleAssignmentRepository = {
     findById: vi.fn(),
 };
 
-// TASK-314 — these auth-identity reads run pre-auth / cross-tenant and MUST
+// These auth-identity reads run pre-auth / cross-tenant and MUST
 // bypass the tenant-scope `$extends`, so they go through `baseClient`. The
 // scoped `client` is mocked too, purely to assert it is NEVER touched.
 const mockDatabaseService = {
@@ -145,7 +144,7 @@ describe('TASK-307 W6.1 — UserRoleAssignmentService tenant-scoped reads', () =
             const result = await service.findActiveTenantIdsForUser('user-1');
 
             expect(result).toEqual(['tenant-A', 'tenant-B', 'tenant-C']);
-            // TASK-305 §B4 — `tenantId` is non-nullable, so the service does NOT
+            // `tenantId` is non-nullable, so the service does NOT
             // push a `{ not: null }` filter (invalid in Prisma 7 + redundant); it
             // skips empty/blank tenantIds in memory instead.
             expect(mockDatabaseService.baseClient.userRoleAssignment.findMany).toHaveBeenCalledWith({
@@ -211,7 +210,7 @@ describe('TASK-307 W6.1 — UserRoleAssignmentService tenant-scoped reads', () =
         });
     });
 
-    // TASK-314 — pre-auth identity resolution runs before any tenant context
+    // Pre-auth identity resolution runs before any tenant context
     // exists in CLS. Routing it through the tenant-scoped `client` makes the
     // tenant-scope `$extends` throw "tenant context required for model
     // UserRoleAssignment" (clean boot) and 401s every login. These three reads

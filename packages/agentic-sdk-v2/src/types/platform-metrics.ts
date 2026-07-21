@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox — Platform runtime metrics types (TASK-386).
+ * @arcaai/vox — Platform runtime metrics types
  *
  * Mirrors the API DTOs returned by `@Controller('admin/platform')`
  * (E1 `/metrics`, E2 `/sockets`, E3 `/consumption`). Prometheus-derived fields

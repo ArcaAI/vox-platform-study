@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PlatformMetricsController } from '../platform-metrics.controller';
 
 /**
- * TASK-386 (#16 / E1·E2·E3) — controller delegation unit test.
+ * Controller delegation unit test.
  *
  * The auth matrix (global-admin → 200, tenant-admin / doctor → 403 via the
  * `@CanManage('PlatformMetrics')` gate) is enforced by the global

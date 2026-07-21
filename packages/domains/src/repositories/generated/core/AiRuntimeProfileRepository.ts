@@ -10,7 +10,7 @@ import { AiRuntimeProfileEntityMapper } from '../../../mappers';
 import { AiRuntimeProfile } from '../../../models';
 
 /**
- * Runtime-profile repository (TASK-524 — config-plane core).
+ * Runtime-profile repository (config-plane core).
  *
  * HAND-AUTHORED — the `gen:repository` generator crashes pre-existingly; this
  * follows the `AiTaskDefaultRepository` precedent in this folder.

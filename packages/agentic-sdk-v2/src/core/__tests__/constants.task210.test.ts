@@ -1,5 +1,5 @@
 /**
- * TASK-210 Phase 6: SDK v2 Constants Route Standardization Tests
+ * SDK v2 Constants Route Standardization Tests
  *
  * Verifies all endpoint constants match the new /api/v1/<domain> route convention.
  * Written TDD-first — these tests define the target state before any constants change.
@@ -222,8 +222,7 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
   // ===========================================================================
 
   describe('USER_SETTINGS_ENDPOINTS (/user-settings -> /user/me/settings)', () => {
-    // TASK-265 W0-8 / GAP-03 reduced this surface to { list, updateByKey }
-    // — see docs/implementation/TASK-265-SDK-Endpoint-Drift/README.md
+    // This surface was reduced to { list, updateByKey }
     it('should use /user/me/settings for list', () => {
       expect(USER_SETTINGS_ENDPOINTS.list).toBe('/user/me/settings');
     });
@@ -369,14 +368,14 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
       expect(DNA_STYLE_ENDPOINTS.ADMIN_LIST).toBe('/admin/dna-writing-styles');
     });
 
-    // TASK-319 F4 — prompt-template management moved under the audited /admin
-    // prefix (was unprefixed through TASK-210).
+    // Prompt-template management lives under the audited /admin
+    // prefix.
     it('PROMPT_TEMPLATE_ENDPOINTS should use the admin prefix', () => {
       expect(PROMPT_TEMPLATE_ENDPOINTS.LIST).toBe('/admin/prompt-templates');
       expect(PROMPT_TEMPLATE_ENDPOINTS.CREATE).toBe('/admin/prompt-templates');
     });
 
-    // TASK-331 doc-09 — end-user (clinician) read-only template plane. This is
+    // End-user (clinician) read-only template plane. This is
     // the doctor-safe path integrators should copy for the Pre-Summary /
     // Summary selector; it must NOT carry the `/admin` prefix.
     it('PROMPT_TEMPLATE_ENDPOINTS.AVAILABLE should be the unprefixed end-user route', () => {
@@ -693,7 +692,7 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
     });
 
     it('STT_V2_ENDPOINTS should have exactly 16 keys', () => {
-      // TASK-298 D-18 added REFRESH_TICKET to support stream-ticket refresh
+      // REFRESH_TICKET supports stream-ticket refresh
       // on reconnect.
       expect(Object.keys(STT_V2_ENDPOINTS)).toHaveLength(16);
       expect(Object.keys(STT_V2_ENDPOINTS)).toEqual(expect.arrayContaining([
@@ -706,7 +705,7 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
     });
 
     it('PIPELINE_ENDPOINTS should have exactly 13 keys', () => {
-      // TASK-328 A6 added SET_DEFAULT, TOGGLE, VERSIONS, VERSION (9 -> 13).
+      // SET_DEFAULT, TOGGLE, VERSIONS, VERSION bring the count to 13.
       expect(Object.keys(PIPELINE_ENDPOINTS)).toHaveLength(13);
       expect(Object.keys(PIPELINE_ENDPOINTS)).toEqual(
         expect.arrayContaining(['SET_DEFAULT', 'TOGGLE', 'VERSIONS', 'VERSION']),
@@ -714,7 +713,7 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
     });
 
     it('GLOBAL_SETTINGS_ENDPOINTS should have exactly 8 keys', () => {
-      // TASK-396 added REVEAL (7 -> 8).
+      // REVEAL brings the count to 8.
       expect(Object.keys(GLOBAL_SETTINGS_ENDPOINTS)).toHaveLength(8);
     });
 
@@ -724,7 +723,7 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
     });
 
     it('API_KEY_ENDPOINTS should have exactly 8 keys', () => {
-      // TASK-390 #23 (K5) added ROTATE (7 -> 8).
+      // ROTATE brings the count to 8.
       expect(Object.keys(API_KEY_ENDPOINTS)).toHaveLength(8);
     });
 
@@ -733,7 +732,7 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
     });
 
     it('TENANT_ENDPOINTS should have exactly 13 keys', () => {
-      // TASK-386 (E5) added USAGE (8 -> 9); TASK-387 added SUSPEND/ARCHIVE/RESTORE/TAGS (9 -> 13).
+      // USAGE brings the count to 9; SUSPEND/ARCHIVE/RESTORE/TAGS bring it to 13.
       expect(Object.keys(TENANT_ENDPOINTS)).toHaveLength(13);
     });
   });

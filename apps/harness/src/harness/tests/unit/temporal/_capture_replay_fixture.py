@@ -14,39 +14,39 @@ Two scenarios:
   marker, emits the failed terminal progress, and re-raises. The recorded history
   therefore carries BOTH patch gates (``task-345-harness-progress`` +
   ``task-348-failure-terminal``) and the ``run_inferential_sensors`` command —
-  the post-TASK-348 forward-guard fixture (incl. the TASK-354 option change).
-* ``--optimistic`` — PASS verdict with the TASK-355 Phase D optimistic flag ON, so
+  the failure-terminal forward-guard fixture.
+* ``--optimistic`` — PASS verdict with the optimistic delivery flag ON, so
   the workflow takes the patch-gated reorder: computational settle -> early
   ``persist_draft(phase=DRAFT_PENDING_SENSORS)`` -> terminal progress ->
   ``run_inferential_sensors`` (assurance) -> ``finalize_assurance`` -> gate ->
   ``record_gate_decision``. The recorded history carries the
   ``task-355-optimistic-delivery`` marker + the reordered command sequence — the
-  post-TASK-355 (Slice 4a) forward-guard fixture.
+  optimistic-delivery forward-guard fixture.
 * ``--regen`` — optimistic flag ON + an inferential REGEN-then-SAFE sequence so the
-  workflow takes the Slice-4b regen-if-untouched path: early deliver ->
+  workflow takes the regen-if-untouched path: early deliver ->
   ``run_inferential_sensors`` (REGEN) -> regenerate (assemble/generate/extract/
   run_sensors) -> re-deliver ``persist_draft`` -> ``run_inferential_sensors`` (SAFE)
   -> ``finalize_assurance``. The recorded history carries BOTH the
   ``task-355-optimistic-delivery`` AND ``task-355-assurance-signals`` markers + the
-  regen reorder — the post-TASK-355 (Slice 4b) forward-guard fixture.
-* ``--gate-abandon`` (TASK-458 C1-02) — a never-signed gate with a low escalation bound
+  regen reorder — the assurance-signals forward-guard fixture.
+* ``--gate-abandon`` — a never-signed gate with a low escalation bound
   so it escalates to the terminal bound and ABANDONS (approved=False): two
   ``escalate_gate`` calls (the second terminal) then a terminal completion WITHOUT
   ``record_gate_decision``. Records the ``task-458-gate-terminal-abandon`` marker — the
   gate-terminal forward-guard fixture.
-* ``--edit-cap`` (TASK-458 C1-02) — an optimistic run with edits on TWO assurance passes
+* ``--edit-cap`` — an optimistic run with edits on TWO assurance passes
   and ``max_edit_reruns=1`` so the loop CAPS the edit-driven re-runs (ONE re-run, not
   two). Records the ``task-458-edit-rerun-cap`` marker — the edit-cap forward-guard fixture.
-* ``--retract`` (TASK-481 E2) — an optimistic run whose post-delivery assurance FLAGs
+* ``--retract`` — an optimistic run whose post-delivery assurance FLAGs
   (inferential UNSAFE), so the delivered draft is RETRACTED: early
   ``persist_draft(phase=DRAFT_PENDING_SENSORS)`` -> ``run_inferential_sensors`` (FLAG) ->
   ``retract_draft`` -> terminal completion (retracted, no gate/finalize). Records the
   ``task-481-optimistic-retraction`` marker — the retraction forward-guard fixture.
-* ``--claim-check`` (TASK-483) — the happy path with the ``generate`` + ``assemble_prompt``
+* ``--claim-check`` — the happy path with the ``generate`` + ``assemble_prompt``
   stubs returning OFFLOADED results (content/prompt emptied + a ``ClaimCheckRef``), so the
   recorded history threads the claim-check REF shape through every downstream activity. The
   command sequence is byte-identical to the inline happy path (NO new command, NO patch
-  marker), so this fixture proves ref-threading is command-neutral on replay (AC-4).
+  marker), so this fixture proves ref-threading is command-neutral on replay.
 
 Usage (from the repo root):
 
@@ -54,19 +54,19 @@ Usage (from the repo root):
         [--failure] apps/harness/src/harness/tests/unit/temporal/fixtures/<name>.json
 
 Fixture provenance notes:
-- ``doc_workflow_pre_task345_history.json`` was captured from the PRE-TASK-345
-  definition (commit ``50059301^``) by loading that revision's workflows.py and
-  running this same happy path. It represents in-flight executions started
-  before the progress feed existed and must never be regenerated from newer
-  code — it is the frozen "old era" contract (TASK-348 / CRIT-1).
-- ``doc_workflow_task345_history.json`` — happy path, post-TASK-345 era.
-- ``doc_workflow_post_task348_history.json`` — ``--failure`` scenario, post-TASK-348
-  era (TASK-354). Recapture whenever a ``workflow.patched()`` gate is added so future
-  definition changes stay replay-compatible with every era still in flight.
-- ``doc_workflow_post_task458_gate_abandon_history.json`` — ``--gate-abandon`` scenario,
-  post-TASK-458 era (C1-02 gate terminal abandon).
-- ``doc_workflow_post_task458_edit_cap_history.json`` — ``--edit-cap`` scenario,
-  post-TASK-458 era (C1-02 edit-rerun cap).
+- ``doc_workflow_pre_task345_history.json`` was captured from the workflow
+  definition that predates the progress feed (commit ``50059301^``) by loading
+  that revision's workflows.py and running this same happy path. It represents
+  in-flight executions started before the progress feed existed and must never
+  be regenerated from newer code — it is the frozen "old era" contract.
+- ``doc_workflow_task345_history.json`` — happy path, with the progress feed.
+- ``doc_workflow_post_task348_history.json`` — ``--failure`` scenario, with the
+  failure-terminal gate. Recapture whenever a ``workflow.patched()`` gate is added so
+  future definition changes stay replay-compatible with every era still in flight.
+- ``doc_workflow_post_task458_gate_abandon_history.json`` — ``--gate-abandon``
+  scenario (gate terminal abandon).
+- ``doc_workflow_post_task458_edit_cap_history.json`` — ``--edit-cap`` scenario
+  (edit-rerun cap).
 """
 
 from __future__ import annotations
@@ -102,11 +102,11 @@ _EDITED_NOTE = '{"subjective": "s-edited", "objective": "o", "assessment": "a", 
 async def capture(out_path: Path, *, scenario: str = "happy") -> None:
     recorder = StubRecorder()
     # The failure scenario fails at persist_draft (AFTER the inferential pass) so the
-    # history reaches the TASK-348 failure-terminal gate while still recording
+    # history reaches the failure-terminal gate while still recording
     # run_inferential_sensors; the happy path runs straight through to approval; the
-    # optimistic scenario takes the TASK-355 Slice-4a reorder; the regen scenario takes
-    # the Slice-4b regen-if-untouched path (inferential REGEN -> regenerate -> SAFE).
-    # C1-02 (TASK-458): ``gate-abandon`` never signs so the gate escalates to its terminal
+    # optimistic scenario takes the optimistic-delivery reorder; the regen scenario takes
+    # the regen-if-untouched path (inferential REGEN -> regenerate -> SAFE).
+    # ``gate-abandon`` never signs so the gate escalates to its terminal
     # bound and ABANDONS (records ``task-458-gate-terminal-abandon``); ``edit-cap`` fires
     # edits on TWO assurance passes with ``max_edit_reruns=1`` so the loop CAPS the re-runs
     # (records ``task-458-edit-rerun-cap``).
@@ -121,7 +121,7 @@ async def capture(out_path: Path, *, scenario: str = "happy") -> None:
             verdicts=["PASS", "PASS", "PASS"], inferential_verdicts=["SAFE", "SAFE", "SAFE"]
         )
     elif scenario == "retract":
-        # TASK-481 (E2): optimistic delivery, then the assurance pass FLAGs (UNSAFE) so the
+        # Optimistic delivery, then the assurance pass FLAGs (UNSAFE) so the
         # delivered draft is RETRACTED (records the task-481-optimistic-retraction marker).
         config = StubConfig(verdicts=["PASS"], inferential_verdicts=["UNSAFE"])
     elif scenario == "mcp":
@@ -149,16 +149,16 @@ async def capture(out_path: Path, *, scenario: str = "happy") -> None:
             ),
         )
     elif scenario == "claim-check":
-        # TASK-483: happy path with the generate + assemble stubs returning OFFLOADED
+        # Happy path with the generate + assemble stubs returning OFFLOADED
         # results (content/prompt emptied + a ClaimCheckRef), so the recorded history
         # threads the claim-check REF shape through every downstream activity. The command
         # sequence is byte-identical to the inline happy path (no new command, no patch
-        # marker) — this fixture proves ref-threading is command-neutral on replay (AC-4).
+        # marker) — this fixture proves ref-threading is command-neutral on replay.
         config = StubConfig(verdicts=["PASS"], inferential_verdicts=["SAFE"], claim_check=True)
     else:
         config = StubConfig(verdicts=["PASS"], inferential_verdicts=["SAFE"])
 
-    # TASK-355 Phase D — the optimistic + regen scenarios enable the flag in the
+    # The optimistic + regen scenarios enable the flag in the
     # snapshotted gate config so the patch-gated reorder path is exercised and recorded.
     if scenario in ("optimistic", "regen", "retract"):
         gate = HarnessGateConfig(optimistic_delivery_enabled=True)

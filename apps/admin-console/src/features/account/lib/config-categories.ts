@@ -1,5 +1,5 @@
 /**
- * TASK-440 — client-side categorization for the tenant Settings tab.
+ * Client-side categorization for the tenant Settings tab.
  *
  * Tenant config rows (GET /tenant/me/config) carry no category metadata, so
  * the Settings sub-nav groups them here from key/namespace conventions. The

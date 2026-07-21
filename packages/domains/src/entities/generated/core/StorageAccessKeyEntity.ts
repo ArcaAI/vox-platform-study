@@ -57,7 +57,7 @@ export class StorageAccessKeyEntity extends BaseTenantEntity {
     this.setProperty('accessKeyId', value);
   }
 
-  // TASK-318 W3 (F-2) — the persisted value is a HASH of the secret, but it is
+  // The persisted value is a HASH of the secret, but it is
   // still marked @Secret so it is redacted from audit-log surfaces (the raw
   // plaintext is only ever returned once at creation and never stored).
   @Secret()

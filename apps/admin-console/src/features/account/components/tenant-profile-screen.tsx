@@ -194,7 +194,7 @@ function PlanUsagePanel() {
 
 /**
  * Frame 25 (tenant half) — Tenant profile (/tenant-profile, tier 20-29).
- * Self-service view of the working tenant, reframed (TASK-440) into three tabs:
+ * Self-service view of the working tenant, reframed into three tabs:
  * Organization (read-only identity — no self-serve tenant PATCH exists), Plan &
  * usage (entitlement/usage snapshot), and Settings (category sub-nav over the
  * editable tenant/me/config rows). Tenant-less global admins get the frame's
@@ -204,7 +204,7 @@ export function TenantProfileScreen() {
     const uid = useId();
     const tenantQuery = useMyTenant();
     const session = useSession();
-    // BUG-005 Issue 2 — while impersonating (or for a real end-user), only the
+    // While impersonating (or for a real end-user), only the
     // basic org identity + a read-only Settings tab render; Plan & usage
     // (limits/meters/entitlements) is admin-only. Defaults to false (safe)
     // until the session resolves, matching the harness-policy-screen pattern.

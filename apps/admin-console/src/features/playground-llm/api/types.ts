@@ -136,7 +136,7 @@ export interface SmrStreamFrame {
     data?: Record<string, unknown> | null;
 }
 
-// ─── TASK-446: Guardrails + NER tabs (verbatim upstream shapes) ───
+// ─── Guardrails + NER tabs (verbatim upstream shapes) ───
 
 export const GUARDRAIL_TYPES = ['content_safety', 'pii_detection', 'prompt_injection', 'comprehensive'] as const;
 export type GuardrailType = (typeof GUARDRAIL_TYPES)[number];

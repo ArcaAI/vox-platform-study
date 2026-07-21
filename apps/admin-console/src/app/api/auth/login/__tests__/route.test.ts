@@ -76,7 +76,7 @@ afterEach(() => {
 });
 
 describe('POST /api/auth/login', () => {
-    // TASK-422 — without forwarding, Node's fetch sends `user-agent: node` and
+    // Without forwarding, Node's fetch sends `user-agent: node` and
     // the gateway's LOGIN audit row records the BFF's identity instead of the
     // operator's browser.
     it('forwards the browser User-Agent to the gateway so the LOGIN audit row records the real client', async () => {

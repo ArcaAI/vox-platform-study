@@ -1,12 +1,12 @@
 /**
- * TASK-352 — Vault-aware API_KEY_PEPPER resolution for the API-key seed.
+ * Vault-aware API_KEY_PEPPER resolution for the API-key seed.
  *
  * Dev ships SECRETS_PROVIDER=vault, so the running API validates keys with
  * HMAC-SHA256 using the pepper in Vault KV (`secret/hope/API_KEY_PEPPER`,
  * written by infrastructure/docker/configs/vault/dev-init.sh). The tracked
- * .env.dev keeps API_KEY_PEPPER blank on purpose (TASK-348 MAJ-7), so the
+ * .env.dev keeps API_KEY_PEPPER blank on purpose, so the
  * seed must read the pepper from the same source the API does — otherwise
- * it writes plain-SHA-256 hashes that 401 against the API (the TASK-342
+ * it writes plain-SHA-256 hashes that 401 against the API (a real
  * 2026-06-10 incident).
  *
  * Resolution order:

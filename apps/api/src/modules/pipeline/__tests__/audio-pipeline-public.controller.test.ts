@@ -1,11 +1,11 @@
 /**
- * AudioPipelinePublicController — tests for TASK-298 D-8.
+ * AudioPipelinePublicController
  *
  * Public (non-admin) pipeline read endpoints must exist so the SDK can
  * resolve a pipeline by id or slug without `manage:AsrPipeline` privileges.
- * The PipelineService enforces tenant-scoping (TASK-298 D-9), so this
- * controller is intentionally thin — it only validates that the routes
- * exist, are wired to the service, and translate `null` into `404`.
+ * The PipelineService enforces tenant-scoping, so this controller is
+ * intentionally thin — it only validates that the routes exist, are wired to
+ * the service, and translate `null` into `404`.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants';

@@ -1,5 +1,5 @@
 /**
- * ConsultationController — Manual Highlight routes (TASK-344 Workstream B).
+ * ConsultationController — Manual Highlight routes.
  *
  * Verifies the POST/GET/DELETE `:id/highlights` routes delegate to the
  * HighlightService behind the existing ownership/access guards.
@@ -49,7 +49,7 @@ function buildController(overrides: { userId?: string | null; consultation?: unk
     empty, // globalSettingRepository
     empty, // tagService
     empty, // liveDocumentationService
-    highlightService as never, // highlightService (TASK-344)
+    highlightService as never, // highlightService
     empty, // harnessProgressService
     empty, // harnessAssuranceService
   );

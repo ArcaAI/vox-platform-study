@@ -67,11 +67,11 @@ function TableSkeleton() {
 }
 
 /**
- * TASK-526 — the read-only effective-models table (M-11 / E2 tenant visibility).
+ * The read-only effective-models table (tenant visibility).
  *
  * ONE `GET admin/ai-task-defaults` round-trip returns the resolved default for
  * every task key. This surface is deliberately READ-ONLY: model selection for
- * guardrail/nlp/smr/harness is a GLOBAL_ADMIN-only write (owner expectation E3),
+ * guardrail/nlp/smr/harness is a GLOBAL_ADMIN-only write,
  * so a tenant admin sees which model serves each task and which cascade tier
  * decided it — visibility, not control.
  */

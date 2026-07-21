@@ -1,5 +1,5 @@
 /**
- * TASK-446 — Agent Playground Guardrails tab. fetch is stubbed at the network
+ * Agent Playground Guardrails tab. fetch is stubbed at the network
  * boundary; covers the idle prompt, the analyze flow (POST to the ai/guardrail
  * proxy), and the safe/unsafe verdict with issues + confidence.
  */

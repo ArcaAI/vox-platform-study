@@ -1,17 +1,35 @@
 # STT Service V2
 
+**Owner**: Platform / Speech · **Introduced**: STT-001 · **Last verified**: 2026-07-21
+
 High-availability Speech-to-Text service with multi-model support for the HOPE platform.
 
 ## Overview
 
-STT V2 is a Python FastAPI service that provides:
+STT V2 is a Python FastAPI service (port **8861**) that provides:
 
 - **Live streaming transcription** via WebSocket (through API Gateway)
 - **Batch file transcription** via Dramatiq job queue
-- **Multi-model ASR support**: Whisper (ONNX), NVIDIA NeMo (Parakeet), Azure Speech Service
+- **Multi-engine ASR** via a `(kind, name)` processor registry (TASK-505): Whisper
+  (`faster_whisper`, `onnx`/`onnx_optimum`, `whisper_cpp`/GGUF), NVIDIA NeMo
+  (`nemo` Parakeet + `parakeet_cpp`/ggml), Azure Speech (`azure_speech`), and
+  Azure AI Foundry (`azure_foundry`, MAI). Engines self-declare their
+  `(device, compute, mode)` capability matrix so a pipeline fails fast at load
+  time, not at first inference.
+- **Pipeline schema v2** (TASK-505): YAML pipelines carry declarable
+  normalize/resample/denoise/endpoint/segment-merge stages and a
+  `provider :: model[@rev]` model shorthand; v2 fields also parse under v1.x
+  (forward-tolerant). Registry keys — never import paths — appear in YAML, so
+  tenant-editable configs cannot execute arbitrary code.
 - **Voice Activity Detection (VAD)**: Silero VAD v5 (ONNX) with per-session streaming state
-- **Speaker Diarization**: Pyannote embedding extraction + in-memory, session-scoped speaker tracking
-- **LRU model caching** with configurable TTL
+- **Speaker Diarization**: pluggable embedding extraction (default
+  `pyannote/wespeaker-voxceleb-resnet34-LM`, 256-dim; SpeechBrain **ECAPA-TDNN**,
+  192-dim, selected by a `speechbrain/*` model id — TASK-505 D1 cutover) with
+  in-memory, session-scoped speaker tracking, plus an optional self-hosted
+  **Streaming Sortformer** frame-level backend for the live 2-speaker loop
+  (`DiarizationConfig.backend == "sortformer"`, GPU-only; degrades to "no labels"
+  until weights + NeMo runtime are staged)
+- **On-first-request model loading with idle-TTL eviction** (TASK-529 lifecycle)
 - **Read-only database access** for pipeline configurations and speaker voice profiles
 
 > **Speaker identity & persistence (TASK-330 note).** Speaker diarization is
@@ -229,11 +247,12 @@ cp .env.example .env.dev
 
 #### Speaker Diarization (Pyannote)
 
-| Variable                           | Description                          | Default              |
-| ---------------------------------- | ------------------------------------ | -------------------- |
-| `DIARIZATION_HF_MODEL_ID`          | Pyannote embedding model             | `pyannote/embedding` |
-| `DIARIZATION_SIMILARITY_THRESHOLD` | Speaker matching threshold (0.0–1.0) | `0.7`                |
-| `DIARIZATION_DEVICE`               | Inference device (auto, cuda, cpu)   | `auto`               |
+| Variable                           | Description                          | Default                                     |
+| ---------------------------------- | ------------------------------------ | ------------------------------------------- |
+| `DIARIZATION_HF_MODEL_ID`          | Speaker-embedding model (a `speechbrain/*` id selects the ECAPA-TDNN service) | `pyannote/wespeaker-voxceleb-resnet34-LM` |
+| `DIARIZATION_SIMILARITY_THRESHOLD` | Speaker matching threshold (0.0–1.0) | `0.7`                                       |
+| `DIARIZATION_DEVICE`               | Inference device (auto, cuda, cpu)   | `auto`                                      |
+| `VOICE_PROFILE_EMBEDDING_DIM`      | Embedding dimension — must match the `UserVoiceProfile.embedding` column (256 = wespeaker; 192 = ECAPA-TDNN) | `256`   |
 
 #### Punctuation Restoration (Cadence)
 
@@ -282,7 +301,7 @@ combination that is known to load the model.
 conda activate arcaenv
 
 # Terminal 1: Start the FastAPI server (with hot reload)
-uvicorn stt_v2.main:app --host 0.0.0.0 --port 8001 --reload
+uvicorn stt_v2.main:app --host 0.0.0.0 --port 8861 --reload
 
 # Terminal 2: Start Dramatiq workers
 python -m stt_v2.worker
@@ -322,13 +341,21 @@ apps/stt-v2/
 │       │   ├── silero_service.py   # ONNX session management, batch + streaming inference
 │       │   ├── session_manager.py  # Per-session state for streaming VAD
 │       │   └── dto.py              # SpeechSegment, VADResult, VADSessionState
-│       ├── diarization/         # Speaker Diarization (Pyannote + in-memory tracking)
-│       │   ├── embedding_service.py   # Pyannote embedding extraction (512-dim)
+│       ├── processors/          # (kind, name) processor registry + ASR engine specs/adapters (TASK-505)
+│       │   ├── registry.py           # Lazy (kind,name)→ProcessorSpec registry, hardware-binding resolver
+│       │   ├── base.py               # Capability / HardwareBinding / ProcessorSpec, closed STAGE_KINDS
+│       │   ├── asr_capabilities.py   # Import-cheap ASR engine capability declarations
+│       │   └── asr_engines.py        # Delegation adapters (batch + streaming dispatch)
+│       ├── diarization/         # Speaker Diarization (pluggable embeddings + in-memory tracking)
+│       │   ├── embedding_service.py   # Factory: pyannote (wespeaker) or SpeechBrain ECAPA-TDNN by model id
+│       │   ├── pyannote_embedding.py  # Pyannote/wespeaker embedding extraction (256-dim default)
+│       │   ├── speechbrain_embedding.py # SpeechBrain ECAPA-TDNN embedding extraction (192-dim)
+│       │   ├── streaming_sortformer.py # Self-hosted NeMo Streaming Sortformer (live 2-speaker, GPU, gated)
 │       │   ├── speaker_tracker.py     # In-memory, session-scoped speaker store
 │       │   ├── speaker_identifier.py  # Session-scoped identify + register (no external I/O)
 │       │   ├── preseed.py             # Pre-seed tracker from DB voice profile (cross-session identity)
 │       │   └── dto.py                 # DiarizedSegment, DiarizationResult, SpeakerIdentification
-│       ├── models/              # AI model loaders (HF, ONNX, Azure Speech, NeMo)
+│       ├── models/              # AI model loaders (HF, ONNX, Azure Speech, NeMo, parakeet.cpp, Azure Foundry)
 │       ├── storage/             # Audio storage domain
 │       └── health/              # Health checks
 ├── tests/
@@ -343,13 +370,22 @@ apps/stt-v2/
 
 ## API Endpoints
 
-| Method | Endpoint                | Description            |
-| ------ | ----------------------- | ---------------------- |
-| `GET`  | `/health`               | Liveness check         |
-| `GET`  | `/ready`                | Readiness check        |
-| `GET`  | `/metrics`              | Prometheus metrics     |
-| `GET`  | `/internal/cache/stats` | Model cache statistics |
-| `POST` | `/internal/cache/clear` | Clear model cache      |
+Health lives under the `/api/v1` prefix; internal, transcription, streaming, and
+voice-profile routers mount their own prefixes. Browsers reach transcription and
+streaming only through the API Gateway.
+
+| Method | Endpoint                          | Description                     |
+| ------ | --------------------------------- | ------------------------------- |
+| `GET`  | `/api/v1/health` `/health/live` `/health/ready` | Health / liveness / readiness |
+| `GET`  | `/api/v1/ready` `/api/v1/live`    | Readiness / liveness aliases    |
+| `GET`  | `/metrics`                        | Prometheus metrics              |
+| `GET`  | `/internal/cache/stats`           | Model cache statistics          |
+| `POST` | `/internal/cache/clear`           | Clear model cache               |
+| `GET`  | `/internal/cache/model/{slug}`    | Per-model cache entry           |
+| `GET`  | `/internal/pipelines/loaded`      | Loaded pipeline inventory       |
+| `GET`  | `/internal/sessions`              | Streaming session inventory     |
+| `GET`  | `/internal/streaming/status`      | Streaming subsystem status      |
+| `POST` | `/internal/sessions/cleanup`      | Reap stale streaming sessions   |
 
 ## Development
 
@@ -436,28 +472,27 @@ Test service ports (isolated from development):
 
 #### CI/CD Pipeline
 
-GitHub Actions automatically runs tests on multiple platforms:
-
-- **CPU (ubuntu-latest)**: All Python services, runs on every PR
-- **GPU (self-hosted CUDA)**: STT-v2 GPU tests, runs if GPU runner available
-- **Apple Silicon (macos-latest)**: STT-v2 MPS tests, runs on ARM64 macOS
+STT-v2 tests run in **GitLab CI** as the `test-stt-v2` job (`.gitlab/ci/test.yml`)
+on a CPU (`ubuntu`) runner — unit tests plus the non-integration/non-e2e suite.
+The `@pytest.mark.gpu` / `.cuda` / `.mps` markers are for **local** selective runs
+on GPU/Apple-Silicon hosts; CI does not provision GPU or macOS runners.
 
 ### Code Quality
 
 ```bash
 conda activate arcaenv
 
-# Format code
-black src tests && isort src tests
+# Format code (black; ruff owns import order via --select I — isort is NOT used)
+make format          # or: black src tests && ruff check --fix --select I src tests
 
 # Lint
-ruff check src tests
+make lint            # or: ruff check src tests
 
 # Type check
-mypy src
+make type-check      # or: mypy src
 
 # All quality checks at once
-make quality
+make quality         # lint + format-check + type-check
 ```
 
 ## Troubleshooting
@@ -537,7 +572,7 @@ STT-v2, so a missing collection is **not** an STT-v2 error.
 This indicates the PostgreSQL schema is not initialized. Run migrations from the monorepo root:
 
 ```bash
-pnpm --filter @hope/database db:migrate:deploy
+pnpm db:migrate:deploy    # → pnpm --filter @arcaai/database db:migrate:deploy
 ```
 
 ### HuggingFace gated model access
@@ -555,11 +590,20 @@ export HUGGINGFACE_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 ## Supported ASR Engines
 
-| Engine         | Model Source             | Runtime        | Best For                        |
-| -------------- | ------------------------ | -------------- | ------------------------------- |
-| Whisper (ONNX) | HuggingFace              | ONNX Runtime   | Fast CPU/GPU inference, offline |
-| NeMo Parakeet  | HuggingFace / NVIDIA NGC | PyTorch        | High-accuracy, CUDA GPUs        |
-| Azure Speech   | Azure Cloud API          | REST/WebSocket | Cloud-hosted, no GPU needed     |
+Registry name → runtime, from `processors/asr_capabilities.py`. Engine names are
+`AiModelFormat` values lowercased, so YAML engine strings and registry keys are
+one vocabulary.
+
+| Registry name           | Model Source              | Runtime          | Best For                          |
+| ----------------------- | ------------------------- | ---------------- | --------------------------------- |
+| `faster_whisper`        | HuggingFace               | CTranslate2      | Fast CPU/CUDA Whisper, batch+stream |
+| `onnx` / `onnx_optimum` | HuggingFace               | ONNX Runtime     | Offline CPU/GPU (optimum adds streaming) |
+| `whisper_cpp`           | GGUF (whisper-large-v3-turbo) | ggml (pywhispercpp) | CPU/Metal/CUDA offline (TASK-507) |
+| `safetensor`            | HuggingFace               | PyTorch/Transformers | CUDA/MPS/CPU HF models          |
+| `nemo`                  | HuggingFace / NVIDIA NGC  | PyTorch (NeMo)   | High-accuracy Parakeet, CUDA GPUs |
+| `parakeet_cpp`          | ggml quantized            | ggml             | CPU/Metal/CUDA Parakeet (TASK-505 P3) |
+| `azure_speech`          | Azure Cloud API           | REST/WebSocket   | Cloud-hosted, no GPU              |
+| `azure_foundry`         | Azure AI Foundry (MAI)    | Cloud (batch)    | Cloud batch preview (TASK-505 P3) |
 
 ## Documentation
 

@@ -1,5 +1,5 @@
 /**
- * STT v1 Health Check Removal Verification Tests (TASK-210 Phase 1)
+ * STT v1 Health Check Removal Verification Tests
  *
  * Verifies that the ServiceHealthMonitoringService no longer monitors
  * the legacy STT v1 service (port 5003, STT_URL). It now monitors

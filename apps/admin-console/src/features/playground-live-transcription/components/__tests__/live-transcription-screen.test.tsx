@@ -1,5 +1,5 @@
 /**
- * TASK-433 — frame 51 Live Transcription screen. fetch, EventSource and the
+ * Frame 51 Live Transcription screen. fetch, EventSource and the
  * audio SDK modules are all stubbed: the WS leg drives through a fake
  * `SttV2WebSocketClient`, capture through a fake `@arcaai/stt`, SSE through a
  * FakeEventSource. Covers the NoTenant gate, the 429 quota panel, the
@@ -169,7 +169,7 @@ function session(overrides: Partial<{ workingTenantId: string | null; tenantId: 
         workingTenantName: 'Sunrise Medical Group',
         impersonatingUserId: null,
         impersonatingUsername: null,
-        // BUG-005 — WorkingTenantGate now reads the effective identity; mirror
+        // WorkingTenantGate now reads the effective identity; mirror
         // the operator fields since this fixture never impersonates.
         effectiveUser: { ...user, departmentId: null },
         effectiveIsElevated: true,
@@ -320,7 +320,7 @@ describe('LiveTranscriptionScreen', () => {
         expect(await screen.findByRole('tab', { name: /streaming/i })).toBeDefined();
         expect(screen.getByRole('tab', { name: /batch upload/i })).toBeDefined();
 
-        // Canvas-header subtitle (TASK-442 §4: the playground banner moved to the
+        // Canvas-header subtitle (the playground banner moved to the
         // top-bar persona control — no page-level statusBanner strip here).
         expect(screen.getByText(/Streaming session .* runs under your own account/)).toBeDefined();
 

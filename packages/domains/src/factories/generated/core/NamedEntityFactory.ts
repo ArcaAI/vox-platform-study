@@ -19,13 +19,13 @@ export interface CreateNamedEntityProps extends BaseEntityFactoryCreateProps {
   aiModelVersion?: INamedEntityEntity['aiModelVersion'];
   processingTimeMs?: INamedEntityEntity['processingTimeMs'];
   metadata?: INamedEntityEntity['metadata'];
-  // TASK-330 Phase 1 — clinical ontology codes
+  // Clinical ontology codes
   umlsCui?: INamedEntityEntity['umlsCui'];
   snomedCode?: INamedEntityEntity['snomedCode'];
   rxnormCode?: INamedEntityEntity['rxnormCode'];
   icdCode?: INamedEntityEntity['icdCode'];
   loincCode?: INamedEntityEntity['loincCode'];
-  // TASK-330 Phase 1 — transcript-span provenance
+  // Transcript-span provenance
   transcriptContextItemId?: INamedEntityEntity['transcriptContextItemId'];
   transcriptStartOffset?: INamedEntityEntity['transcriptStartOffset'];
   transcriptEndOffset?: INamedEntityEntity['transcriptEndOffset'];

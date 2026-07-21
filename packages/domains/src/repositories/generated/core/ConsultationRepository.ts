@@ -361,7 +361,7 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
 
   /**
    * Consultations awaiting clinician review (the harness gate queue), oldest
-   * first so the longest-waiting item leads. TASK-330 Phase 6 — backs
+   * first so the longest-waiting item leads. Backs
    * `HarnessObservabilityService.gateQueue`; SLA/escalation is computed in the
    * service from the effective policy + the audit trail.
    */
@@ -377,8 +377,8 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
   }
 
   /**
-   * TASK-414 — minimal projection of consultations created inside
-   * [rangeStart, rangeEnd] (inclusive), for the TASK-386 (#20 / E4) new-vs-
+   * Minimal projection of consultations created inside
+   * [rangeStart, rangeEnd] (inclusive), for the new-vs-
    * revisit range aggregation. Rows are returned raw (`createdAt` +
    * `parentConsultationId` only) — the service zero-fills and buckets them,
    * so no entity mapping happens here. `tenantId` is applied ONLY when

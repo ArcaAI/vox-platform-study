@@ -1,4 +1,4 @@
-"""TASK-330 Phase 3 — live hybrid-retrieval verification (one-off driver).
+"""Live hybrid-retrieval verification (one-off driver).
 
 Mirrors ``harness.temporal.activities._hybrid_retriever`` (the real wiring) and
 exercises the retrieve half of the loop against the LIVE stack (LM Studio bge-m3

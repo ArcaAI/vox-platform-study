@@ -109,7 +109,7 @@ function SettingsSkeleton() {
 }
 
 /**
- * TASK-440 step 3–5 — Settings tab: a category rail (chip row on mobile) plus a
+ * Settings tab: a category rail (chip row on mobile) plus a
  * focused form pane. Editable rows draft locally; a per-category save bar fires
  * sequential per-row PATCH /tenant/me/config with per-row If-Match (the gateway
  * route is `@RequiresIfMatch()` and applies the header version to every row, so

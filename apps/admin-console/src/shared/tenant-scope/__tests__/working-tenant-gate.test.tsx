@@ -6,7 +6,7 @@ import { WorkingTenantGate } from '../working-tenant-gate';
 function stubSession(session: {
     isElevated: boolean;
     workingTenantId: string | null;
-    /** BUG-005 — defaults to mirroring isElevated/workingTenantId (the non-impersonating projection). */
+    /** Defaults to mirroring isElevated/workingTenantId (the non-impersonating projection). */
     effectiveIsElevated?: boolean;
     effectiveTenantId?: string | null;
 }) {
@@ -73,7 +73,7 @@ describe('WorkingTenantGate', () => {
     });
 
     /**
-     * BUG-005 Issue 3 — while impersonating, `isElevated`/`workingTenantId`
+     * While impersonating, `isElevated`/`workingTenantId`
      * stay the OPERATOR's (always elevated, often no working tenant picked),
      * so the old gate condition fired even though the impersonated user is
      * tenant-bound. The gate must key off the EFFECTIVE identity instead.

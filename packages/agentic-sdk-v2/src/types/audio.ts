@@ -70,10 +70,10 @@ export interface STTPluginState extends PluginState {
  * Audio actions interface
  */
 export interface AudioActions {
-  /** Start audio capture with optional per-capture options (TASK-331 doc-06 F3). */
+  /** Start audio capture with optional per-capture options. */
   start: (options?: AudioStartOptions) => Promise<void>;
   /**
-   * TASK-331 doc-06 F3/Q5 — start capture using the user's persisted
+   * Start capture using the user's persisted
    * preferences (device(s), language, workflow mode → local/backend STT,
    * dual-capture). Derives {@link AudioStartOptions} and delegates to `start`.
    */
@@ -137,7 +137,7 @@ export interface TranscriptionResult {
   /** Duration of the audio segment in seconds */
   duration?: number;
   /**
-   * Word-level timestamps (TASK-372 D9, Option B). Carried from the streaming
+   * Word-level timestamps. Carried from the streaming
    * backend's `WsTranscriptResult.wordTimestamps` through
    * `StreamingBackendSTTProvider.normalizeTranscript` so the store's
    * {@link TranscriptSegment.words} can expose word timings to consumers.
@@ -216,7 +216,7 @@ export interface AudioOptions {
 // =============================================================================
 
 /**
- * A single word-level timestamp within a transcript segment (TASK-372 D9).
+ * A single word-level timestamp within a transcript segment.
  *
  * Originates from stt-v2 `SegmentResult.word_timestamps` →
  * `WsTranscriptResult.wordTimestamps` and is carried through the SDK store so
@@ -246,7 +246,7 @@ export interface TranscriptSegment {
   confidence?: number;
   language?: string;
   /**
-   * Word-level timestamps (TASK-372 D9, Option B), when the backend provides
+   * Word-level timestamps, when the backend provides
    * them. Optional/back-compatible — existing consumers are unaffected.
    */
   words?: TranscriptWord[];
@@ -270,25 +270,25 @@ export interface AudioStartOptions {
   language?: string;
   pipelineId?: string;
   /**
-   * TASK-331 doc-06 F3 — primary microphone deviceId. Forwarded as
+   * Primary microphone deviceId. Forwarded as
    * `getUserMedia({ audio: { deviceId: { exact } } })`. Omit for the default mic.
    */
   deviceId?: string;
   /**
-   * TASK-331 doc-06 F3 — optional second microphone. When set, its stream is
+   * Optional second microphone. When set, its stream is
    * mixed with the primary mic (via `@arcaai/room`'s `AudioMixer`) into a single
    * processed graph before the noise-filter/VAD/STT pipeline.
    */
   secondaryDeviceId?: string;
   /**
-   * TASK-331 doc-06 F2 — when true (and the workflow is LOCAL), records the
+   * When true (and the workflow is LOCAL), records the
    * pre-noise-filter (raw) and post-filter (processed) tracks in parallel via
    * `DualStreamRecorder`. The resulting blobs are delivered on `stop()` through
    * {@link AudioStartOptions.onDualCapture}.
    */
   dualCaptureEnabled?: boolean;
   /**
-   * TASK-331 doc-06 F2 — callback fired on `stop()` with the dual-capture blobs.
+   * Callback fired on `stop()` with the dual-capture blobs.
    * A consumer uploads each blob, then attaches both via
    * `useAudioRecordings.add(consultationId, { mediaId, rawMediaId, processedMediaId })`.
    * The SDK does not perform the upload itself (that's the UI bucket).

@@ -172,7 +172,7 @@ describe('VoiceProfileService', () => {
       expect(result).toBe(mockCreatedEntity);
     });
 
-    // TASK-490 — a voice profile is biometric PHI stamped with its enrollment
+    // A voice profile is biometric PHI stamped with its enrollment
     // tenant; reads (incl. the STT-v2 diarization preseed) filter on it.
     it('should stamp the enrolled profile with the CLS tenant (TASK-490)', async () => {
       const { of } = await import('rxjs');
@@ -223,7 +223,7 @@ describe('VoiceProfileService', () => {
       ).rejects.toThrow();
     });
 
-    // TASK-304 follow-up: translate STT-v2 errors into friendly HTTP exceptions
+    // Translate STT-v2 errors into friendly HTTP exceptions
     // so the UI surfaces the real cause instead of an opaque 500/AxiosError dump.
     describe('extractEmbeddings error translation', () => {
       it('maps STT-v2 400 with {detail} to BadRequestException carrying the detail', async () => {
@@ -325,7 +325,7 @@ describe('VoiceProfileService', () => {
       });
     });
 
-    // TASK-296 C-1: auto-activate the first enrolled profile.
+    // Auto-activate the first enrolled profile.
     it('auto-activates the newly created profile when the user has no active profile yet', async () => {
       const { of } = await import('rxjs');
       mockHttpService.post.mockReturnValue(
@@ -420,7 +420,7 @@ describe('VoiceProfileService', () => {
       );
     });
 
-    // TASK-296 C-3: IDOR.
+    // IDOR.
     it('throws ForbiddenException when the profile belongs to another user', async () => {
       const mockProfile = createMockVoiceProfileEntity({ id: 'vp-1', userId: 'someone-else' });
       mockVoiceProfileRepository.findById.mockResolvedValue(mockProfile);
@@ -446,7 +446,7 @@ describe('VoiceProfileService', () => {
       expect(mockVoiceProfileRepository.findById).toHaveBeenCalledWith('vp-1');
     });
 
-    // TASK-296 C-3: IDOR.
+    // IDOR.
     it('throws ForbiddenException when the profile belongs to another user', async () => {
       const mockProfile = createMockVoiceProfileEntity({ id: 'vp-1', userId: 'someone-else' });
       mockVoiceProfileRepository.findById.mockResolvedValue(mockProfile);
@@ -480,7 +480,7 @@ describe('VoiceProfileService', () => {
       expect(result).toBe(deleted);
     });
 
-    // TASK-296 C-3: IDOR.
+    // IDOR.
     it('throws ForbiddenException when the profile belongs to another user', async () => {
       const mockProfile = createMockVoiceProfileEntity({ id: 'vp-1', userId: 'someone-else' });
       mockVoiceProfileRepository.findById.mockResolvedValue(mockProfile);

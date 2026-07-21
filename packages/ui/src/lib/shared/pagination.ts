@@ -1,5 +1,5 @@
 /**
- * Cross-component pagination contracts (TASK-372 §3.1.4).
+ * Cross-component pagination contracts.
  *
  * Transport-agnostic (D5): these are plain data shapes + normalizers, with no
  * fetch/react-query coupling. They align with the SDK's `extractPaginated`
@@ -14,7 +14,7 @@ export interface OffsetPageRequest {
   limit: number;
 }
 
-/** Cursor request — INERT today (no server cursor contract exists, D7 / TASK-373). */
+/** Cursor request — INERT today (no server cursor contract exists, D7). */
 export interface CursorPageRequest {
   mode: 'cursor';
   cursor: string | null;
@@ -31,7 +31,7 @@ export interface PageResult<T> {
   limit?: number;
   totalPages?: number;
   hasMore?: boolean;
-  /** Cursor mode only — inert until TASK-373 lands a server cursor contract (D7). */
+  /** Cursor mode only — inert until lands a server cursor contract (D7). */
   nextCursor?: string | null;
 }
 

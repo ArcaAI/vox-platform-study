@@ -100,7 +100,7 @@ describe('handleProxy', () => {
         expect(calls[0].headers.get('x-tenant-id')).toBeNull();
     });
 
-    // BUG-006: downloading a blob whose key contains slashes (e.g.
+    // Downloading a blob whose key contains slashes (e.g.
     // `2026/07/10/streams/<id>/processed/complete.wav`). The browser encodes the
     // key as `%2F`; Next's catch-all decodes it into a single segment with real
     // slashes. A plain `path.join('/')` forwards those as separators and the
@@ -155,7 +155,7 @@ describe('handleProxy', () => {
         expect(calls[0].headers.get('authorization')).toBe('Bearer impersonation-token');
     });
 
-    // BUG-005 Issue 3 (latent bug folded in): if the operator had a working
+    // (latent bug folded in): if the operator had a working
     // tenant selected BEFORE impersonating, and it differs from the target's
     // own (resolved) tenant, the gateway's ContextInterceptor 400s every
     // proxied call because the header no longer matches the act-as JWT's
@@ -214,7 +214,7 @@ describe('handleProxy', () => {
         expect(await response.json()).toEqual({ id: 'dept-1' });
     });
 
-    // TASK-422 — the gateway audits `user-agent` (e.g. IMPERSONATED_ACTION rows
+    // The gateway audits `user-agent` (e.g. IMPERSONATED_ACTION rows
     // minted per proxied request); without forwarding it records the BFF's
     // undici default ("node") instead of the operator's browser.
     it('forwards the browser User-Agent so gateway audit rows record the real client', async () => {
@@ -229,8 +229,8 @@ describe('handleProxy', () => {
         expect(calls[0].headers.get('user-agent')).toBe('Mozilla/5.0 (TestBrowser)');
     });
 
-    // BUG-003: the gateway marks the Prisma Studio shell `no-store` (TASK-336
-    // OB-11); dropping it at the proxy silently voided that posture on the only
+    // The gateway marks the Prisma Studio shell `no-store`;
+    // dropping it at the proxy silently voided that posture on the only
     // supported access path.
     it('forwards the gateway Cache-Control so no-store responses stay uncached', async () => {
         await seedSession(baseSession);

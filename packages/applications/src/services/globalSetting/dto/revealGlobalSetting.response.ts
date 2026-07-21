@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 /**
- * TASK-396 — the decrypted plaintext for ONE secret setting.
+ * The decrypted plaintext for ONE secret setting.
  *
  * Returned ONLY by the gated `POST /admin/settings/:id/reveal` endpoint. This
  * shape is intentionally minimal (no version/timestamps/audit fields) — it is a

@@ -1,6 +1,6 @@
-"""Judge-calibration reliability tests (TASK-330 Phase 0, task 0.7).
+"""Judge-calibration reliability tests.
 
-RED-first. These tests pin the statistics used to validate the PDSQI-9
+These tests pin the statistics used to validate the PDSQI-9
 LLM-as-judge against clinician ratings BEFORE trusting any automated score:
 
 * ICC(2,1) — two-way random-effects, absolute-agreement, single rater. The

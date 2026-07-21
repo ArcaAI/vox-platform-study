@@ -24,7 +24,7 @@ import { StreamingAudioBridgeService } from '../streamingAudioBridge.service';
 // ---------------------------------------------------------------------------
 
 const mockXadd = vi.fn().mockResolvedValue('1234567890-0');
-// TASK-457 — the result reader now uses a Redis consumer group.
+// The result reader now uses a Redis consumer group.
 const mockXreadgroup = vi.fn().mockResolvedValue(null);
 const mockXack = vi.fn().mockResolvedValue(1);
 const mockXgroup = vi.fn().mockResolvedValue('OK');
@@ -32,7 +32,7 @@ const mockXautoclaim = vi.fn().mockResolvedValue(['0-0', [], []]);
 const mockQuit = vi.fn().mockResolvedValue('OK');
 
 /**
- * TASK-351 P1-3 (H5) — every `new Redis()` call is recorded here with
+ * Every `new Redis()` call is recorded here with
  * per-instance spies (delegating to the shared fns above, so the aggregate
  * assertions of older tests keep working). This lets tests assert WHICH
  * connection issued an XREADGROUP — the structural property behind the
@@ -45,7 +45,7 @@ interface MockRedisInstance {
     xgroup: ReturnType<typeof vi.fn>;
     xautoclaim: ReturnType<typeof vi.fn>;
     quit: ReturnType<typeof vi.fn>;
-    // TASK-457 C1 — disconnect() forcibly drops the reader connection on
+    // Disconnect() forcibly drops the reader connection on
     // unsubscribe; M3 — on() registers writer health listeners.
     disconnect: ReturnType<typeof vi.fn>;
     on: ReturnType<typeof vi.fn>;
@@ -578,7 +578,7 @@ describe('StreamingAudioBridgeService', () => {
             });
         });
 
-        // TASK-351 P1-1 — additive stable_chars relay (committed-prefix length
+        // Additive stable_chars relay (committed-prefix length
         // emitted by stt-v2 on partial results). Absent field must leave the
         // message exactly as today.
         it('maps stable_chars to stableChars when present (TASK-351 P1-1)', async () => {
@@ -633,7 +633,7 @@ describe('StreamingAudioBridgeService', () => {
             expect('stableChars' in result).toBe(false);
         });
 
-        // TASK-351 P1-1 follow-up — utterance_index + type ('segment'|'gloss')
+        // Utterance_index + type ('segment'|'gloss')
         // are additive wire fields; gloss results carry the final's
         // utterance_index plus english_text.
         it('maps a gloss result (type/utterance_index/english_text) onto the transcript message', async () => {
@@ -840,10 +840,10 @@ describe('StreamingAudioBridgeService', () => {
             expect(results[0].text).toBe('hello');
         });
 
-        // TASK-457 C3-01 — the reader is a CONSUMER GROUP now. It creates the
+        // The reader is a CONSUMER GROUP now. It creates the
         // group (MKSTREAM) and reads via XREADGROUP; it NEVER re-reads the whole
         // stream from '0-0' (the old duplicate-flood bug). BLOCK stays 500ms
-        // (TASK-351 P1-3) so an unsubscribe/abort is honored within ≤500ms.
+        // so an unsubscribe/abort is honored within ≤500ms.
         it('creates a consumer group and reads via XREADGROUP — never XREAD from 0-0 (TASK-457 C3-01)', async () => {
             mockXreadgroup.mockResolvedValue(null);
 
@@ -954,7 +954,7 @@ describe('StreamingAudioBridgeService', () => {
     });
 
     // ===================================================================
-    // TASK-351 P1-3 (H5) — per-subscriber reader connections
+    // Per-subscriber reader connections
     //
     // The old implementation funneled every session's blocking XREAD
     // through ONE shared ioredis connection, serializing all result reads
@@ -1093,7 +1093,7 @@ describe('StreamingAudioBridgeService', () => {
     });
 
     // ===================================================================
-    // Shared-session teardown (TASK-340 P1-B)
+    // Shared-session teardown
     //
     // The captions WS gateway AND LiveDocumentationService both subscribe to
     // the SAME stt:result:{sessionId}. The old impl keyed activeSubscriptions

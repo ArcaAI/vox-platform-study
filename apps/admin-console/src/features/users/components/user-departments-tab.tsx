@@ -143,7 +143,7 @@ function AssignDepartmentDialog({ userId, open, onOpenChange }: { userId: string
  */
 export function UserDepartmentsTab({ id }: { id: string }) {
     const { data, isLoading, error, refetch } = useUserDepartments(id);
-    // TASK-430 — an unscoped GLOBAL_ADMIN sees CROSS-TENANT memberships, so
+    // An unscoped GLOBAL_ADMIN sees CROSS-TENANT memberships, so
     // each row is attributed to its tenant (names degrade to raw ids).
     const tenantNames = useTenantNames();
     const update = useUpdateDepartment();

@@ -30,7 +30,7 @@ export function PipelineConfigTab({
     detail: WithEtag<Pipeline>;
     /** Refetches the detail after a 412 so a fresh ETag backs the next save. */
     onReload: () => void;
-    /** TASK-531 — opens the clone dialog for a locked template copy. */
+    /** Opens the clone dialog for a locked template copy. */
     onClone?: () => void;
 }) {
     const textareaId = useId();
@@ -42,7 +42,7 @@ export function PipelineConfigTab({
     const pipeline = detail.data;
     const value = draft ?? pipeline.configYaml ?? '';
     const dirty = draft !== null && draft !== pipeline.configYaml;
-    // TASK-531 — a locked template copy renders VIEW-ONLY. We surface the lock
+    // A locked template copy renders VIEW-ONLY. We surface the lock
     // up front with a Clone affordance rather than letting the user type a full
     // config and only discover the 403 when they press Save.
     const locked = pipeline.templateLocked;

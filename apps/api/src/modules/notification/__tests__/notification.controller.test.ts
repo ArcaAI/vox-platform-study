@@ -1,5 +1,5 @@
 /**
- * NotificationController unit tests (TASK-419 item 2).
+ * NotificationController unit tests.
  *
  * Read/update/delete plane over the system-emitted notifications — there is
  * deliberately NO admin POST (notifications are emitted by the platform, not

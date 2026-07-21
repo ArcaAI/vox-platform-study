@@ -1,5 +1,5 @@
 /**
- * NotificationService — TASK-369 Phase 3C field-encryption wiring.
+ * NotificationService — field-encryption wiring.
  *
  * Verifies the service dual-writes encrypted message fields (messageText /
  * messageRichText / messageContent via `NotificationRepository.encryptFieldsIntoEntity`

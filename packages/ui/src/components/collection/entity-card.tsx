@@ -37,7 +37,7 @@ const entityCardVariants = cva('transition-colors', {
 });
 
 /**
- * Presentational collection card (TASK-378 §4a.1): icon · title · meta · status,
+ * Presentational collection card: icon · title · meta · status,
  * with an optional trailing actions row. Reuses the shadcn `Card` and the
  * canonical `StatusBadge` (status is dot/icon + label, never color-only).
  */

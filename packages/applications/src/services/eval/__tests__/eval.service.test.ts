@@ -1,5 +1,5 @@
 /**
- * EvalService unit tests (TASK-330 Phase 0).
+ * EvalService unit tests.
  *
  * The service is a thin data-layer orchestrator: it builds entities via the
  * domain factories and persists them through the repositories. Tests mock the
@@ -135,7 +135,7 @@ describe('EvalService', () => {
   });
 
   // ===========================================================================
-  // TASK-419 item 1 — read projections for the /admin/harness golden-set
+  // Read projections for the /admin/harness golden-set
   // surface. Mirrors HarnessObservabilityService.listEvalRuns: repository
   // count + findAll pinned to the tenant, newest-first, {items,total}.
   // ===========================================================================

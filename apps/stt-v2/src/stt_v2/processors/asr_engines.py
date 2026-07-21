@@ -1,4 +1,4 @@
-"""ASR engine adapters — the registry's dispatch surface (TASK-505 P1).
+"""ASR engine adapters — the registry's dispatch surface.
 
 One adapter per engine family, resolved from the processor registry by
 ``AiModelFormat``. This is a DELEGATION layer: the battle-tested inference
@@ -29,10 +29,8 @@ ASR_FORMAT_TO_NAME: dict[AiModelFormat, str] = {
     AiModelFormat.NEMO: "nemo",
     AiModelFormat.FASTER_WHISPER: "faster_whisper",
     AiModelFormat.AZURE_SPEECH: "azure_speech",
-    # TASK-505 P3 — new engines.
     AiModelFormat.AZURE_FOUNDRY: "azure_foundry",
     AiModelFormat.PARAKEET_CPP: "parakeet_cpp",
-    # TASK-507 — whisper.cpp.
     AiModelFormat.WHISPER_CPP: "whisper_cpp",
 }
 
@@ -198,7 +196,7 @@ class FasterWhisperEngine(AsrEngine):
         prompt: str | None = None,
         initial_prompt: str | None = None,
     ) -> Any:
-        # TASK-505 P1 review — `prompt` first: on the segmented batch path it
+        # `prompt` first: on the segmented batch path it
         # is compose_prompt(initial_prompt, previous_segment_text), a superset
         # that already contains initial_prompt; preferring the bare
         # initial_prompt silently discarded the rolling segment context.
@@ -270,7 +268,7 @@ def resolve_asr_engine(model_format: Any) -> AsrEngine:
 
 
 class ParakeetCppEngine(AsrEngine):
-    """parakeet.cpp (ggml) — TASK-505 P3. Per-utterance streaming +
+    """parakeet.cpp (ggml). Per-utterance streaming +
     whole-audio batch via the same duck-typed binding adapter."""
 
     async def run_batch(
@@ -304,7 +302,7 @@ class ParakeetCppEngine(AsrEngine):
 
 
 class WhisperCppEngine(AsrEngine):
-    """whisper.cpp (ggml) — TASK-507. Per-utterance streaming + whole-audio
+    """whisper.cpp (ggml). Per-utterance streaming + whole-audio
     batch via the same duck-typed adapter (mirrors ``ParakeetCppEngine``)."""
 
     async def run_batch(
@@ -339,7 +337,7 @@ class WhisperCppEngine(AsrEngine):
 
 
 class AzureFoundryEngine(AsrEngine):
-    """Azure AI Foundry MAI-Transcribe — TASK-505 P3, decision D4:
+    """Azure AI Foundry MAI-Transcribe —
     PREVIEW service, batch-only, disabled by default."""
 
     async def run_batch(

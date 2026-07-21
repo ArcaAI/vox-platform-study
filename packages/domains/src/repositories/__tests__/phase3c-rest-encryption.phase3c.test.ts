@@ -1,4 +1,4 @@
-// TASK-369 (Data Encryption Initiative) Phase 3C — field encryption for the
+// Field encryption for the
 // remaining 9 clinical models (TranscriptionJob, GoldenCase, EvalRun,
 // EvalScore, DnaWritingStyleReport, DnaWritingStyleVersion, KnowledgeChunk,
 // Notification, PromptTemplate).

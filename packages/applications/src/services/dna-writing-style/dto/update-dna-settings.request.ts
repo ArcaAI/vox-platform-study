@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 /**
- * TASK-356 Phase 6 (S3) — PUT body for the doctor DNA on/off switch.
+ * PUT body for the doctor DNA on/off switch.
  *  - `enabled: true`  → explicit opt-in.
  *  - `enabled: false` → explicit opt-out (allowed under an enabled tenant).
  *  - `enabled: null`  → clear the override (revert to the implicit opt-in default).

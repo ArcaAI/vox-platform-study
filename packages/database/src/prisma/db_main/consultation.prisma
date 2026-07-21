@@ -30,9 +30,9 @@ model Consultation {
   // Flexible metadata (scheduling info, external refs, etc.)
   metadata Json? @db.JsonB
 
-  // Lifecycle state (TASK-330 Phase 1) — typed promotion of the legacy
-  // free-form `metadata.status` JSON. Backfilled NON-destructively in the
-  // migration; the attestation gate transitions PENDING_REVIEW → SIGNED.
+  // Lifecycle state — typed promotion of the legacy free-form
+  // `metadata.status` JSON. Backfilled non-destructively; the attestation
+  // gate transitions PENDING_REVIEW → SIGNED.
   status ConsultationStatus @default(OPEN)
 
   // Resource status + Audit (standard fields)
@@ -46,8 +46,8 @@ model Consultation {
 
   // Relations
   ContextItems ContextItem[]
-  // TASK-344 Workstream B — manual doctor highlights anchored to this
-  // consultation's persisted surfaces (virtual relation; FK lives on Highlight).
+  // Manual doctor highlights anchored to this consultation's persisted
+  // surfaces (virtual relation; FK lives on Highlight).
   Highlights   Highlight[]
 
   // Indexes (no unique constraint - allows multiple visits same doctor/day)
@@ -55,13 +55,13 @@ model Consultation {
   @@index([patientId], name: "Consultation_patientId_idx")
   @@index([appointmentDate], name: "Consultation_appointmentDate_idx")
   @@index([parentConsultationId], name: "Consultation_parentId_idx")
-  // Composite tenant-leading indexes (TASK-305 A.4) — replace single-column
-  // doctorId/departmentId indexes so the planner picks tenantId+X for every
-  // tenant-scoped fetch (which is every fetch under RLS).
+  // Composite tenant-leading indexes replace single-column doctorId/departmentId
+  // indexes so the planner picks tenantId+X for every tenant-scoped fetch
+  // (which is every fetch under RLS).
   @@index([tenantId, doctorId], name: "Consultation_tenant_doctor_idx")
   @@index([tenantId, departmentId], name: "Consultation_tenant_department_idx")
   @@index([tenantId, patientId, appointmentDate], name: "Consultation_tenant_patient_date_idx")
-  // TASK-330 Phase 1 — tenant-leading lifecycle filter (e.g. review queues).
+  // Tenant-leading lifecycle filter (e.g. review queues).
   @@index([tenantId, status], name: "Consultation_tenant_status_idx")
   @@schema("core")
 }
@@ -91,7 +91,7 @@ model ContextItem {
   currentVersionNumber Int @default(1)
 
   // Data Encryption Initiative — clinical free-text content.
-  // TASK-369 Phase 6: the plaintext `content` column has been DROPPED.
+  // The plaintext `content` column has been DROPPED.
   // Persistence is Vault-Transit (hope-phi) ciphertext only; reads decrypt on
   // the fly into the entity's transient `content` field.
   encryptedContent  Bytes?
@@ -136,9 +136,9 @@ model ContextItem {
   // for TRANSCRIPT items; empty for every other type.
   TranscriptSegments TranscriptSegment[]
 
-  // TASK-330 Phase 1 — NamedEntities whose transcript span points at THIS
-  // (TRANSCRIPT) context item. Distinct from the `NamedEntities` container
-  // relation above, so both relations are explicitly named.
+  // NamedEntities whose transcript span points at THIS (TRANSCRIPT) context
+  // item. Distinct from the `NamedEntities` container relation above, so both
+  // relations are explicitly named.
   TranscriptNamedEntities NamedEntity[] @relation("NamedEntityTranscript")
 
   // Indexes
@@ -153,7 +153,7 @@ model ContextItem {
   // Composite for common queries
   @@index([consultationId, type], name: "ContextItem_consultation_type_idx")
   @@index([tenantId, type, createdAt], name: "ContextItem_tenant_type_created_idx")
-  // TASK-305 A.4 — tenant-leading composite for per-consultation reads
+  // Tenant-leading composite for per-consultation reads
   @@index([tenantId, consultationId, type], name: "ContextItem_tenant_consultation_type_idx")
   @@schema("core")
 }
@@ -178,9 +178,9 @@ model AudioRecording {
   // Reference to Media table (stores actual file info)
   mediaId String
 
-  // Dual capture (TASK-329 X8) — soft references to the raw vs processed
-  // (noise-cancelled / VAD-trimmed / resampled) media. Nullable + additive;
-  // `mediaId` above is retained as the primary/back-compat reference.
+  // Dual capture — soft references to the raw vs processed (noise-cancelled /
+  // VAD-trimmed / resampled) media. Nullable + additive; `mediaId` above is
+  // retained as the primary/back-compat reference.
   rawMediaId       String?
   processedMediaId String?
 
@@ -206,7 +206,7 @@ model AudioRecording {
   @@index([contextItemId], name: "AudioRecording_contextItemId_idx")
   @@index([mediaId], name: "AudioRecording_mediaId_idx")
   @@index([contextItemId, sequenceNumber], name: "AudioRecording_sequence_idx")
-  // TASK-305 A.4 — tenant-leading composite for per-contextItem reads.
+  // Tenant-leading composite for per-contextItem reads.
   // (AudioRecording is keyed off ContextItem, not Consultation directly.)
   @@index([tenantId, contextItemId], name: "AudioRecording_tenant_contextItem_idx")
   @@schema("core")
@@ -251,7 +251,7 @@ model SummaryMeta {
   ttftMs          Int? // time-to-first-token in milliseconds
   tokensPerSecond Float? // decode throughput (predicted tokens / decode-time)
 
-  // Cache + quality analytics (TASK-329 P6)
+  // Cache + quality analytics
   cacheHit     Boolean? // Whether this summary was served from cache
   qualityScore Float? // Quality/score of the generated summary (0.0 - 1.0)
 
@@ -263,23 +263,23 @@ model SummaryMeta {
   // Generation metadata
   generatedAt DateTime? // When the summary was generated
 
-  // Prompt resolution provenance (TASK-331 doc-06 F4) — which tier of the
-  // PromptResolutionService chain produced the summary, plus the prompt id
-  // actually used. Nullable + additive.
+  // Prompt resolution provenance — which tier of the PromptResolutionService
+  // chain produced the summary, plus the prompt id actually used. Nullable +
+  // additive.
   promptResolvedFrom String? // 'preferred' | 'department' | 'default'
   resolvedPromptId   String? // the promptId actually used
 
-  // TASK-330 Phase 1 — clinical-harness sensor scores + citation provenance.
-  // All nullable/additive; populated by the eval/guardrail pipeline.
+  // Clinical-harness sensor scores + citation provenance. All nullable/additive;
+  // populated by the eval/guardrail pipeline.
   entityFaithfulnessScore Float? // NER entity faithfulness (0.0 - 1.0)
   coverageScore           Float? // transcript coverage (0.0 - 1.0)
   ragTriadScore           Float? // RAG triad (context relevance / groundedness / answer relevance)
-  // TASK-369 Phase 6 — plaintext citationsMap / guardrailDecisions JSONB columns
-  // DROPPED; persisted as Vault-Transit ciphertext only (see encrypted* below).
+  // Plaintext citationsMap / guardrailDecisions JSONB columns DROPPED;
+  // persisted as Vault-Transit ciphertext only (see encrypted* below).
   attestationRef          String? // ref to the attestation (ContextItemVersion id / audit hash)
   modelName               String? // model that produced the scored summary
 
-  // TASK-355 Phase D — two-phase (optimistic) assurance. Both nullable/additive.
+  // Two-phase (optimistic) assurance. Both nullable/additive.
   // The early draft persist writes neither (gateDecision=null ⇒ DRAFT_PENDING_SENSORS);
   // finalize_assurance writes both ONCE the inferential verdict is computed (WORM
   // truthfulness: a gate decision is recorded only when it exists). The sign-off guard
@@ -289,8 +289,8 @@ model SummaryMeta {
 
   // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the
   // JSONB provenance blobs (citationsMap / guardrailDecisions) plus the shared
-  // Transit key version. TASK-369 Phase 6: the plaintext JSONB columns have been
-  // DROPPED; these ciphertext columns are now the system of record.
+  // Transit key version. The plaintext JSONB columns have been DROPPED; these
+  // ciphertext columns are now the system of record.
   encryptedCitationsMap       Bytes?
   encryptedGuardrailDecisions Bytes?
   keyVersion                  Int?
@@ -305,7 +305,7 @@ model SummaryMeta {
   @@index([aiModelId], name: "SummaryMeta_aiModelId_idx")
   @@index([generatedAt], name: "SummaryMeta_generatedAt_idx")
   @@index([promptResolvedFrom], name: "SummaryMeta_promptResolvedFrom_idx")
-  // TASK-305 A.4 — tenant-leading composite for per-contextItem reads.
+  // Tenant-leading composite for per-contextItem reads.
   @@index([tenantId, contextItemId], name: "SummaryMeta_tenant_contextItem_idx")
   @@schema("core")
 }
@@ -327,31 +327,29 @@ model NamedEntity {
   ContextItem   ContextItem @relation("NamedEntityParent", fields: [contextItemId], references: [id])
 
   // Entity information.
-  // TASK-369 Phase 6 — plaintext `text` / `normalizedText` columns DROPPED
-  // (persisted as Vault-Transit ciphertext; see encrypted* below).
+  // Plaintext `text` / `normalizedText` columns DROPPED (persisted as
+  // Vault-Transit ciphertext; see encrypted* below).
   className      String // Entity class (e.g., "MEDICATION", "CONDITION", "PROCEDURE", "ANATOMY")
 
-  // TASK-330 Phase 1 — clinical ontology normalization codes (nullable; set by
-  // the NER/normalization pipeline). Enables entity-faithfulness scoring and
-  // coded problem / medication / observation lists.
+  // Clinical ontology normalization codes (nullable; set by the
+  // NER/normalization pipeline). Enables entity-faithfulness scoring and coded
+  // problem / medication / observation lists.
   //
-  // TASK-462 C5-03 (interim) — these five columns are currently READ by the
-  // durable summarization path (prompt-assembly / harness-internal / summary
-  // processor) but WRITTEN by no code: the NLP token classifier emits no codes
-  // and there is no ontology linker yet. They are populated by SOTA Theme C —
-  // the server-side clinical NER + ontology linker (candidate TASK-476, see
-  // docs/implementation/SOTA-Track). Until then a groundedness guard in
-  // prompt-assembly.service.ts makes the empty-code case explicit. Do NOT treat
-  // these as orphaned or drop them — they are the linker's write target.
+  // These five columns are currently READ by the durable summarization path
+  // (prompt-assembly / harness-internal / summary processor) but WRITTEN by no
+  // code: the NLP token classifier emits no codes and there is no ontology
+  // linker yet. A groundedness guard in prompt-assembly.service.ts makes the
+  // empty-code case explicit. Do NOT treat these as orphaned or drop them —
+  // they are the future ontology linker's write target.
   umlsCui    String? // UMLS Concept Unique Identifier
   snomedCode String? // SNOMED CT code
   rxnormCode String? // RxNorm code (medications)
   icdCode    String? // ICD-10 code
   loincCode  String? // LOINC code (labs / observations)
 
-  // Transcript provenance (TASK-330 Phase 1) — FK back into the originating
-  // TRANSCRIPT context item plus the character span, so summaries can cite the
-  // exact source offsets that grounded each entity.
+  // Transcript provenance — FK back into the originating TRANSCRIPT context
+  // item plus the character span, so summaries can cite the exact source
+  // offsets that grounded each entity.
   transcriptContextItemId String?
   TranscriptContextItem   ContextItem? @relation("NamedEntityTranscript", fields: [transcriptContextItemId], references: [id])
   transcriptStartOffset   Int? // Character offset start within the transcript
@@ -381,8 +379,8 @@ model NamedEntity {
 
   // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the
   // recognized free-text span (text / normalizedText) and the metadata JSONB
-  // blob, plus the shared Transit key version. TASK-369 Phase 6: the plaintext
-  // text / normalizedText / metadata columns AND the now-unused
+  // blob, plus the shared Transit key version. The plaintext text /
+  // normalizedText / metadata columns AND the now-unused
   // `NamedEntity_text_idx` have been DROPPED. The coded ontology columns
   // (umlsCui/snomedCode/rxnormCode/icdCode/loincCode) are NOT encrypted and
   // remain plaintext.
@@ -398,12 +396,12 @@ model NamedEntity {
   @@index([tenantId], name: "NamedEntity_tenantId_idx")
   @@index([contextItemId], name: "NamedEntity_contextItemId_idx")
   @@index([className], name: "NamedEntity_className_idx")
-  // TASK-369 Phase 6 — `NamedEntity_text_idx` dropped with the `text` column.
+  // `NamedEntity_text_idx` dropped with the `text` column.
   @@index([confidence], name: "NamedEntity_confidence_idx")
   @@index([contextItemId, className], name: "NamedEntity_item_class_idx")
-  // TASK-305 A.4 — tenant-leading composite for entity-class lookups.
+  // Tenant-leading composite for entity-class lookups.
   @@index([tenantId, contextItemId, className], name: "NamedEntity_tenant_item_class_idx")
-  // TASK-330 Phase 1 — transcript-span provenance lookups.
+  // Transcript-span provenance lookups.
   @@index([transcriptContextItemId], name: "NamedEntity_transcriptContextItem_idx")
   @@schema("core")
 }
@@ -428,9 +426,9 @@ model ContextItemVersion {
   // Version number (1, 2, 3...)
   versionNumber Int
 
-  // Change metadata. TASK-369 Phase 6 — the free-text snapshot columns
-  // (content / contentDiff / changeSummary / fieldChanges) have been DROPPED;
-  // they are persisted as Vault-Transit ciphertext only (see encrypted* below).
+  // Change metadata. The free-text snapshot columns (content / contentDiff /
+  // changeSummary / fieldChanges) have been DROPPED; they are persisted as
+  // Vault-Transit ciphertext only (see encrypted* below).
   // changeReason / changedBy / changeSource are NOT encrypted and remain.
   changeReason  String? // e.g., "user_edit", "ai_regeneration", "correction", "typo_fix"
   changedBy     String? // User ID or "system"
@@ -438,7 +436,7 @@ model ContextItemVersion {
 
   // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the
   // free-text clinical snapshot fields (content / contentDiff / changeSummary /
-  // fieldChanges) plus the shared Transit key version. Phase 6: these ciphertext
+  // fieldChanges) plus the shared Transit key version. These ciphertext
   // columns are now the system of record (plaintext columns dropped).
   encryptedContent       Bytes?
   encryptedContentDiff   Bytes?
@@ -446,10 +444,10 @@ model ContextItemVersion {
   encryptedFieldChanges  Bytes?
   keyVersion             Int?
 
-  // TASK-330 Phase 1 — clinician attestation (confirm-before-commit gate).
-  // Populated when a SIGNED_NOTE version is written on approveSummary; the
-  // attestationHash anchors the version to its append-only HarnessAuditEvent
-  // (action = ATTEST). All nullable/additive.
+  // Clinician attestation (confirm-before-commit gate). Populated when a
+  // SIGNED_NOTE version is written on approveSummary; the attestationHash
+  // anchors the version to its append-only HarnessAuditEvent (action = ATTEST).
+  // All nullable/additive.
   attestedAt      DateTime? // when the clinician attested
   attestedBy      String? // clinician user id who attested
   attestationHash String? // SHA-256 hash linking to the WORM audit event
@@ -474,7 +472,7 @@ model ContextItemVersion {
 }
 
 // =============================================================================
-// HIGHLIGHT (TASK-344 Workstream B — Manual doctor highlighting)
+// HIGHLIGHT (Manual doctor highlighting)
 // Durable, per-tenant, soft-deletable doctor-authored highlight anchored to a
 // persisted ContextItem (transcript / case note / work note / summary) via W3C
 // dual selectors (TextQuoteSelector exact/prefix/suffix + TextPositionSelector
@@ -505,9 +503,9 @@ model Highlight {
   // W3C Web Annotation dual selectors:
   //  - TextQuoteSelector  : exact + ~32-char prefix/suffix (robust to re-flow)
   //  - TextPositionSelector: startOffset/endOffset (precise but brittle)
-  // TASK-369 Phase 6 — the quote-selector / note free-text columns
-  // (exact / prefix / suffix / note) have been DROPPED; persisted as
-  // Vault-Transit ciphertext only (see encrypted* below).
+  // The quote-selector / note free-text columns (exact / prefix / suffix /
+  // note) have been DROPPED; persisted as Vault-Transit ciphertext only (see
+  // encrypted* below).
   startOffset Int
   endOffset   Int
 
@@ -517,7 +515,7 @@ model Highlight {
 
   // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the W3C
   // quote selectors + free-text note (exact / prefix / suffix / note) plus the
-  // shared Transit key version. Phase 6: these ciphertext columns are now the
+  // shared Transit key version. These ciphertext columns are now the
   // system of record (plaintext columns dropped).
   encryptedExact  Bytes?
   encryptedPrefix Bytes?
@@ -538,7 +536,7 @@ model Highlight {
   @@index([tenantId], name: "Highlight_tenantId_idx")
   @@index([consultationId], name: "Highlight_consultationId_idx")
   @@index([sourceContextItemId], name: "Highlight_sourceContextItemId_idx")
-  // Tenant-leading composite for per-consultation reads (TASK-305 A.4 pattern).
+  // Tenant-leading composite for per-consultation reads.
   @@index([tenantId, consultationId], name: "Highlight_tenant_consultation_idx")
   @@schema("core")
 }
@@ -548,8 +546,8 @@ model Highlight {
 // =============================================================================
 // A single ordered segment (a diarized turn / VAD segment) of a TRANSCRIPT
 // context item. STT emits per-segment metadata (start/end timestamps, speaker,
-// and the text slice) which the ingest previously DROPPED (gap D8). Persisting
-// them here lets the harness/summary paths cite the exact source segment for a
+// and the text slice) which the ingest previously dropped. Persisting them
+// here lets the harness/summary paths cite the exact source segment for a
 // grounded claim (sentence-level `[[seg:<id>]]` provenance) and lets a future
 // console click-to-source seek the audio (t0/t1).
 //
@@ -558,8 +556,8 @@ model Highlight {
 // OFFSETS [charStart, charEnd) into the parent TRANSCRIPT's content. The
 // segment TEXT is NOT duplicated here: it is a slice of the transcript
 // ContextItem's already-encrypted `content`, recoverable via the offsets. This
-// keeps the table free of any new plaintext-PHI surface (the TASK-369 posture)
-// and avoids a second ciphertext column set.
+// keeps the table free of any new plaintext-PHI surface and avoids a second
+// ciphertext column set.
 //
 // Like NamedEntity / AudioRecording (sibling per-transcript annotation tables)
 // it is TENANT-SCOPED but soft-delete EXEMPT: segments live and die with their
@@ -608,7 +606,7 @@ model TranscriptSegment {
   @@unique([contextItemId, idx], name: "TranscriptSegment_item_idx_unique")
   @@index([tenantId], name: "TranscriptSegment_tenantId_idx")
   @@index([contextItemId], name: "TranscriptSegment_contextItemId_idx")
-  // Tenant-leading composite for per-transcript reads (TASK-305 A.4 pattern).
+  // Tenant-leading composite for per-transcript reads.
   @@index([tenantId, contextItemId], name: "TranscriptSegment_tenant_item_idx")
   @@schema("core")
 }

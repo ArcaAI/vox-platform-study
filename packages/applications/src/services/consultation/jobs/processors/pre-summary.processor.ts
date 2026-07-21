@@ -33,9 +33,9 @@ export class PreSummaryProcessor extends WorkerHost {
     private readonly jobMetrics: JobMetricsService,
     private readonly cls: ClsService<IActiveUserContext>,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // TASK-356 D-7 — resolver for the tenant's effective SMR {provider, model}.
+    // Resolver for the tenant's effective SMR {provider, model}.
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
-    // TASK-362 — load the consulting doctor's preferred prompt id so the
+    // Load the consulting doctor's preferred prompt id so the
     // pre-summary BullMQ path threads it (was previously dropped here, unlike
     // summary.processor). Optional + trailing so existing positional fixtures
     // keep compiling.
@@ -47,12 +47,12 @@ export class PreSummaryProcessor extends WorkerHost {
 
   async process(job: Job<GeneratePreSummaryJobPayload>): Promise<PreSummaryJobResult> {
     const { jobId, consultationId, tenantId, userId } = job.data;
-    // TASK-305 D.9.3 — fail-closed when tenantId is missing.
+    // Fail-closed when tenantId is missing.
     if (!tenantId) {
       throw new Error(`Job ${jobId ?? job.id} is missing required tenantId`);
     }
-    // TASK-305 D.9.1 — rebind tenantId + user into a fresh CLS scope so the
-    // Phase B tenantScope Prisma extension sees the correct context.
+    // Rebind tenantId + user into a fresh CLS scope so the
+    // tenantScope Prisma extension sees the correct context.
     return this.cls.run(async () => {
       this.cls.set('tenantId', tenantId);
       this.cls.set('user', createWorkerSession({ userId, tenantId, kind: 'pre-summary' }));
@@ -76,18 +76,18 @@ export class PreSummaryProcessor extends WorkerHost {
         if (!consultation) {
           throw new Error(`Consultation ${consultationId} not found`);
         }
-        // TASK-305 D.9.2 — defense in depth against a poisoned / stale payload.
+        // Defense in depth against a poisoned / stale payload.
         assertEqualTenants(consultation, { tenantId });
 
-        // TASK-362 — resolve the consulting doctor's preferred prompt id once so
+        // Resolve the consulting doctor's preferred prompt id once so
         // BOTH the prompt resolution and assembly thread it (the pre-summary path
         // previously dropped it). Null-safe + no-op when the resolver isn't wired.
         const preferredPromptTemplateId = this.configResolver
           ? await this.configResolver.resolvePreferredPromptTemplateId(consultation.doctorId ?? null)
           : undefined;
 
-        // Resolve prompt config for pre-summary (GAP-3)
-        // DNA style is per-doctor and resolved separately — not part of prompt resolution (TASK-025).
+        // Resolve prompt config for pre-summary
+        // DNA style is per-doctor and resolved separately — not part of prompt resolution.
         const resolved = await this.promptResolutionService.resolve({
           departmentId: consultation.departmentId ?? undefined,
           promptType: 'pre-summary',
@@ -126,7 +126,7 @@ export class PreSummaryProcessor extends WorkerHost {
           transcript: content,
           conversationLanguage: this.resolveConversationLanguage(request.options),
           dnaStyleId: request.dnaStyleId,
-          // TASK-362 — thread the doctor-preferred prompt id into assembly.
+          // Thread the doctor-preferred prompt id into assembly.
           preferredPromptTemplateId: preferredPromptTemplateId ?? undefined,
         });
 
@@ -221,7 +221,7 @@ export class PreSummaryProcessor extends WorkerHost {
   }> {
     try {
       const smrStart = Date.now();
-      // TASK-356 D-7 — resolve the tenant's effective {provider, model} (CLS tenant
+      // Resolve the tenant's effective {provider, model} (CLS tenant
       // set by process()) and merge as the base so a caller-supplied model wins.
       let options = request.options;
       if (this.harnessPolicyService) {

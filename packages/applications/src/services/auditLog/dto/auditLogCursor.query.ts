@@ -4,7 +4,7 @@ import { AuditAction, ResourceType } from '@arcaai/domains';
 import { CursorQuery } from '../../../common';
 
 /**
- * TASK-373 — query-param DTO for the cursor (keyset) audit-log list.
+ * Query-param DTO for the cursor (keyset) audit-log list.
  *
  * The cursor counterpart of {@link AuditLogQuery}: extends {@link CursorQuery}
  * (`cursor`/`limit`) and carries the same A8 filters, pushed to the repository

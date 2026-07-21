@@ -3,7 +3,7 @@ import { GlobalSettingResponse, PaginatedGlobalSettingResponse } from './dto';
 import { FetchResponse } from '../../common';
 
 /**
- * TASK-396 — secret-setting convention.
+ * Secret-setting convention.
  *
  * A row is treated as a secret when it either (a) carries a Vault-encrypted
  * `encryptedValue`, or (b) its namespace/key matches the secret naming
@@ -15,7 +15,7 @@ import { FetchResponse } from '../../common';
 const SECRET_NAMESPACE = 'secrets';
 
 /**
- * TASK-443 — the key-naming markers behind the secret convention, expanded to
+ * The key-naming markers behind the secret convention, expanded to
  * literal substrings (the former `api[_-]?key` / `private[_-]?key` optional
  * groups become three literals each) so the SAME list drives BOTH the runtime
  * regex used by {@link GlobalSettingDtoMapper.isSecretEntity} and the Prisma
@@ -26,7 +26,7 @@ const SECRET_KEY_MARKERS = ['secret', 'password', 'token', 'credential', 'api_ke
 const SECRET_KEY_PATTERN = new RegExp(SECRET_KEY_MARKERS.join('|'), 'i');
 
 /**
- * TASK-443 — the derived secret predicate as a Prisma `where` fragment: a row
+ * The derived secret predicate as a Prisma `where` fragment: a row
  * is a secret when it carries an encrypted value OR sits in the `secrets`
  * namespace OR its key matches the naming convention — the exact tri-condition
  * of {@link GlobalSettingDtoMapper.isSecretEntity}, reproduced once here for

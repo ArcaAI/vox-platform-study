@@ -5,7 +5,7 @@ import { EntitlementCapabilitiesResponse, IActiveUserContext, IEntitlementsServi
 import { Authorize } from '../../decorators';
 
 /**
- * TASK-392 (Phase 4) — tenant self-service entitlements snapshot.
+ * Tenant self-service entitlements snapshot.
  *
  * Reachable at `/api/v1/entitlements/me`. Gated with `read Tenant` (the
  * tenant-scoped policy grants it for `id = context.tenantId`), so a tenant

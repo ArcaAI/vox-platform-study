@@ -32,7 +32,7 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
     // Use type assertion to handle the indexing
     const delegate = (this._databaseContext as Record<string, any>)[this._modelName];
 
-    // TASK-369 Phase 6 — decrypt-on-read for the dropped plaintext PHI columns.
+    // Decrypt-on-read for the dropped plaintext PHI columns.
     // Only wrap when a SecretsService has been wired (Vault mode); env-mode dev
     // and unit tests leave it unwired, so this is a zero-overhead pass-through
     // there. Routing through `this.db` means BOTH the generic finders above and
@@ -51,7 +51,7 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
     let data = this._mapper.toPersistence(entity);
     data = removeNullValues(data);
 
-    // TASK-331 r2605 #3 — when a transaction client is supplied (atomic
+    // When a transaction client is supplied (atomic
     // multi-entity create, e.g. user + role + department membership), route the
     // write through it so it participates in the caller's `$transaction` and
     // rolls back with the rest on partial failure. Mirrors the existing
@@ -172,7 +172,6 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
    *   version is no longer `expectedVersion`
    * @throws DataNotFoundException when the row no longer exists
    *
-   * @see TASK-302 Stream D Phase B (CAS), Phase C C.4 (transactional batch)
    * @see https://github.com/prisma/prisma/issues/10207 (MySQL-only caveat)
    */
   public async updateWithVersion(
@@ -274,7 +273,7 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
         resourceStatus: ResourceStatusType.DELETED,
         resourceStatusUpdatedAt: new Date(),
         ...(updatedBy && { resourceStatusUpdatedBy: updatedBy }),
-        // TASK-302 Stream D Phase B (B.8) — soft-delete is a real state change.
+        // Soft-delete is a real state change.
         // Bumping `_version` prevents a stale reader at v(n) from successfully
         // calling `updateWithVersion(…, n)` after another admin soft-deleted
         // the row, which would resurrect deleted PHI (compliance / SOC2 risk).
@@ -303,7 +302,7 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
         resourceStatus: ResourceStatusType.ENABLED,
         resourceStatusUpdatedAt: new Date(),
         ...(updatedBy && { resourceStatusUpdatedBy: updatedBy }),
-        // TASK-302 Stream D Phase B (B.8) — restore is the inverse state
+        // Restore is the inverse state
         // change and must also bump so OCC tracks the resurrection cleanly.
         version: { increment: 1 },
       },

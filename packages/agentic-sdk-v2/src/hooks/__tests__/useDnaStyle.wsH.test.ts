@@ -157,7 +157,7 @@ describe('useDnaStyle — WS-H enhancements', () => {
                 await result.current.generate(input);
             });
 
-            // TASK-299 D-9 — body now always carries an auto-generated idempotencyKey.
+            // Body now always carries an auto-generated idempotencyKey.
             const [url, body] = mockPost.mock.calls[0];
             expect(url).toBe(DNA_STYLE_ENDPOINTS.GENERATE);
             expect(body).toMatchObject({ departmentId: 'dept-1', promptTemplateId: 'prompt-tmpl-1' });

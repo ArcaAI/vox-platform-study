@@ -36,12 +36,12 @@ const mockNotificationRepository = {
     softDelete: vi.fn(),
 };
 
-// TASK-305 D.5.1 — required for tenant guards on `targetUserId` and `resourceSubscriptionId`.
+// Required for tenant guards on `targetUserId` and `resourceSubscriptionId`.
 const mockUserRoleAssignmentRepository = {
     findFirst: vi.fn(),
 };
 
-// TASK-305 Phase F — membership guard now also reads the UserDepartment join
+// Membership guard now also reads the UserDepartment join
 // table and the User table (service-account exemption).
 const mockUserDepartmentRepository = {
     findFirst: vi.fn(),
@@ -171,7 +171,7 @@ describe('NotificationService', () => {
             }
         });
 
-        // TASK-305 D.5.1 — guard helpers always need both repos to resolve. The
+        // Guard helpers always need both repos to resolve. The
         // default behaviour is a permissive in-tenant assignment so legacy
         // tests continue to pass.
         mockUserRoleAssignmentRepository.findFirst.mockResolvedValue({
@@ -180,7 +180,7 @@ describe('NotificationService', () => {
             tenantId: 'tenant-1',
             resourceStatus: RST.ENABLED,
         });
-        // TASK-305 Phase F — default to a present in-tenant department so the
+        // Default to a present in-tenant department so the
         // role+department membership guard passes for the happy path.
         mockUserDepartmentRepository.findFirst.mockResolvedValue({
             id: 'ud-1',
@@ -478,7 +478,7 @@ describe('NotificationService', () => {
         });
 
         it('should return empty result when no notifications match tenant', async () => {
-            // TASK-306 P1.5 — `fetchAllByTenantId` now refuses cross-tenant
+            // `fetchAllByTenantId` now refuses cross-tenant
             // reads. Align this empty-result probe with the CLS default
             // (`tenant-1`) so the new guard does not short-circuit and the
             // assertion still validates the "no rows" branch the original
@@ -498,13 +498,12 @@ describe('NotificationService', () => {
     });
 
     /**
-     * TASK-306 P1.5 (audit AC-7 / NEW-3) — `fetchAllByTenantId` previously
-     * trusted the caller-supplied `tenantId` from the DTO without comparing
-     * to CLS. A Tenant-A admin could list Tenant-B notifications by passing
-     * `tenantId: 'tenant-B'`. The new guard short-circuits with
-     * `NotFoundException` (no existence leak) when the DTO `tenantId` does
-     * not match the CLS-supplied caller `tenantId`, except for GLOBAL_ADMIN
-     * callers, who retain the cross-tenant bypass (admin tooling).
+     * `fetchAllByTenantId` must not trust the caller-supplied `tenantId` from
+     * the DTO without comparing it to CLS — otherwise a Tenant-A admin could
+     * list Tenant-B notifications by passing `tenantId: 'tenant-B'`. The guard
+     * short-circuits with `NotFoundException` (no existence leak) when the DTO
+     * `tenantId` does not match the CLS-supplied caller `tenantId`, except for
+     * GLOBAL_ADMIN callers, who retain the cross-tenant bypass (admin tooling).
      */
     describe('TASK-306 P1.5 — fetchAllByTenantId tenant-scoped', () => {
         const setRequestUserRoles = (roles: string[] | undefined) => {
@@ -592,7 +591,7 @@ describe('NotificationService', () => {
             expect(result.data[0].createdBy).toBe('creator-id');
             expect(mockNotificationRepository.findAll).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    // TASK-305 D.5.1 — `where` is now scoped to the caller's
+                    // `where` is now scoped to the caller's
                     // CLS tenantId (tenant-1) in addition to the createdBy filter.
                     where: { createdBy: 'creator-id', tenantId: 'tenant-1' },
                 })
@@ -763,7 +762,7 @@ describe('NotificationService', () => {
 
     describe('edge cases', () => {
         it('rejects creation when CLS has neither user nor tenant context', async () => {
-            // TASK-305 D.5.1 — pre-D.5 this happily wrote a notification with
+            // Pre-D.5 this happily wrote a notification with
             // a DTO-supplied tenantId and no caller. After D.5 we fail closed:
             // a non-GLOBAL_ADMIN call with mismatched DTO/CLS tenant is a
             // privilege-escalation attempt.
@@ -873,16 +872,16 @@ describe('NotificationService', () => {
     });
 
     /**
-     * TASK-305 D.5.1 — Multi-tenant isolation for NotificationService.
+     * Multi-tenant isolation for NotificationService.
      *
-     * Audit C-5 / B10 — Notifications carry `targetUserId` (FK to User, no
+     * Notifications carry `targetUserId` (FK to User, no
      * tenantId on User) and `resourceSubscriptionId` (FK to ResourceSubscription,
      * a tenant-scoped resource). Without service-layer guards, a Tenant-A admin
      * could route a notification to a user that has no role-assignment in
      * Tenant A, or anchor it to a Tenant-B ResourceSubscription — both leak
      * data across the tenant boundary.
      *
-     * Read-side audit-log pattern (D.8): `fetchAll` / `fetchAllCreatedByUser`
+     * Read-side audit-log pattern: `fetchAll` / `fetchAllCreatedByUser`
      * inject CLS `tenantId`; `fetchById` / `update` / `deleteById` load and
      * assert `entity.tenantId === this.tenantId`, throwing `NotFoundException`
      * (never `Forbidden`) on mismatch. GLOBAL_ADMIN bypasses the read-side

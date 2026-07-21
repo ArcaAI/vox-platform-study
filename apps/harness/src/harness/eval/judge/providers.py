@@ -189,7 +189,7 @@ _TRANSIENT_MARKERS = (
 
 
 def _is_transient(exc: Exception) -> bool:
-    # A per-call wall-clock timeout (TASK-354) is a transient hang — retry within the
+    # A per-call wall-clock timeout is a transient hang — retry within the
     # judge's budget before the sensor degrades (``asyncio.timeout`` can raise a bare
     # ``TimeoutError`` whose empty message marker-matching would otherwise miss).
     if isinstance(exc, TimeoutError):
@@ -211,8 +211,8 @@ async def _create_with_retry(
     (:func:`harness.core.llm_concurrency.limit_endpoint`, keyed by ``base_url``), so
     the inferential pass's concurrent judge calls never burst the LM Studio box past
     its admin-set cap — the slot is held only for the call itself, not the backoff.
-    Each attempt is ALSO bounded by the per-call wall-clock timeout (TASK-354 Defect A,
-    ``HARNESS_LLM_REQUEST_TIMEOUT_S``) so a hung judge call can't stall the whole pass;
+    Each attempt is ALSO bounded by the per-call wall-clock timeout
+    (``HARNESS_LLM_REQUEST_TIMEOUT_S``) so a hung judge call can't stall the whole pass;
     a timeout is transient and retried like any other transient backend failure.
     The backoff gives a crashed local model time to reload before the next attempt.
     Non-transient errors raise immediately; transient ones raise only once the

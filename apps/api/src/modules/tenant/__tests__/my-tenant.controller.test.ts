@@ -40,10 +40,10 @@ function createMockClsService(tenantId?: string, user?: { roles?: string[] }) {
     };
 }
 
-// TASK-332 — the controller now appends a synthetic `enable-local-raw-capture`
+// The controller appends a synthetic `enable-local-raw-capture`
 // row computed by ITenantFrontendConfigService. Existing tests inject a default
 // mock that resolves `false` so the appended row is harmless; the dedicated
-// TASK-332 tests below assert the appended row's shape and value.
+// tests below assert the appended row's shape and value.
 function createMockFrontendConfigService(effective = false) {
     return {
         resolveEffectiveLocalRawCapture: vi.fn().mockResolvedValue(effective),
@@ -170,7 +170,7 @@ describe('MyTenantController', () => {
             );
         });
 
-        // TASK-332 — GET /tenant/me/config must append a synthetic, read-only
+        // GET /tenant/me/config must append a synthetic, read-only
         // `enable-local-raw-capture` row carrying the server-computed effective
         // boolean (platform capability AND tenant toggle). The SDK maps it into
         // audio.captureRawAudio; the user cannot override it.
@@ -227,7 +227,7 @@ describe('MyTenantController', () => {
             expect(result.count).toBe(1);
         });
 
-        // TASK-356 Phase 4 (API-T2) — the raw-capture row now reflects the
+        // The raw-capture row now reflects the
         // captureMode-derived value (resolveEffectiveLocalRawCapture is backed by
         // captureMode in A7, with a legacy captureRawAudio fallback). The
         // controller surface is unchanged: it faithfully surfaces whatever the
@@ -329,7 +329,7 @@ describe('MyTenantController', () => {
             expect(tenantService.updateTenantConfigs).not.toHaveBeenCalled();
         });
 
-        // TASK-302 Stream D Phase D (D.3.2) — the controller is annotated
+        // The controller is annotated
         // with `@RequiresIfMatch()`, so under real HTTP traffic
         // `expectedFromHeader` is GUARANTEED to be a positive integer (the
         // 428 fires in the param decorator if it would have been undefined).

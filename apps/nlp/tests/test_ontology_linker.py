@@ -1,4 +1,4 @@
-"""TASK-476 C1 — deterministic clinical ontology linker.
+"""Deterministic clinical ontology linker.
 
 RED-first: written before ``nlp.services.ontology_linker`` exists. The linker
 resolves a recognized clinical span to standardized ontology codes (UMLS CUI +
@@ -7,8 +7,8 @@ self-hosted vocabulary subset. It is fully deterministic and offline — no
 network, no cloud vendor, no model download.
 
 These tests pin:
-  * a known medication resolves to RxNorm + UMLS (AC-1: ``metformin``);
-  * a known condition resolves to ICD-10 + SNOMED + UMLS (AC-1: ``pneumonia``);
+  * a known medication resolves to RxNorm + UMLS (``metformin``);
+  * a known condition resolves to ICD-10 + SNOMED + UMLS (``pneumonia``);
   * lookup is normalization-robust (case / whitespace / leading article / ``▁``);
   * an unknown span returns an all-``None`` record (null-safe downstream);
   * repeated lookups are identical (deterministic).

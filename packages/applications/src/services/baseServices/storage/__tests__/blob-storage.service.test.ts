@@ -1,5 +1,5 @@
 /**
- * BlobStorageService Unit Tests (TASK-318 / W1)
+ * BlobStorageService Unit Tests
  *
  * The service is a thin delegate over the factory-selected provider, so the
  * factory + a provider are faked. Each test asserts (a) the provider is resolved

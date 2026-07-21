@@ -1,4 +1,4 @@
-"""Unit tests for the self-hosted semantic endpointer (TASK-473 · Theme A3).
+"""Unit tests for the self-hosted semantic endpointer.
 
 Hermetic + deterministic: the model-free heuristic core needs no runtime, and the
 optional neural turn-detector seam is exercised with a tiny deterministic stub
@@ -100,7 +100,7 @@ def test_incomplete_unpunctuated_hypothesis_never_endpoints() -> None:
 
 def test_trailing_filler_is_vetoed() -> None:
     ep = SemanticEndpointer(_cfg())
-    # AC-2 mid-utterance disfluency: "the patient is … uh …" — must not cut.
+    # Mid-utterance disfluency: "the patient is … uh …" — must not cut.
     ep.observe_hypothesis("The patient is uh")
     decision = ep.decide(trailing_silence_ms=400.0, min_silence_ms=500.0)
     assert decision.should_endpoint is False

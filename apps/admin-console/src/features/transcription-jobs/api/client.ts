@@ -2,7 +2,7 @@
  * Transcription-jobs read client (capabilities-matrix row 28). Read-only ops
  * surface: tenant-wide reads come from the admin controller; the per-job
  * detail + SSE stream live on the tenant-owned end-user controller. Job
- * creation is the SDK plane (TASK-420) — deliberately no writes here.
+ * creation is the SDK plane — deliberately no writes here.
  */
 
 import { getJson } from '@/shared/api';

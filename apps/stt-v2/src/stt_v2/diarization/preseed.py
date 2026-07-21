@@ -3,7 +3,7 @@
 Both SessionManager and BatchTranscriptionService delegate to
 ``preseed_speaker`` so the logic lives in one place.
 
-PHI log hygiene (TASK-490, TASK-474 finding B-05): this path handles a
+PHI log hygiene: this path handles a
 clinician's display name and user / consultation identifiers. No log record
 emitted here may contain any of them — identifiers are redacted via
 :func:`stt_v2.core.logging.redact_id` (deterministic hash prefix, so lines
@@ -48,13 +48,13 @@ async def preseed_speaker(
     immediately (display name is still resolved from the consultation when
     available).
 
-    Tenant scoping (TASK-490): ``tenant_id`` is threaded into every DB lookup.
+    Tenant scoping: ``tenant_id`` is threaded into every DB lookup.
     The voice-profile queries FAIL CLOSED without it (see
     ``voice_profile_model.py``), so callers must pass the session's tenant —
     a cross-tenant profile is never served.
 
     Non-fatal: any DB error or missing profile is logged (redacted) and the
-    helper returns a structured failure dict (TASK-296 backend-echo contract).
+    helper returns a structured failure dict (the backend-echo contract).
 
     Returns:
         A dict shaped ``{"success": bool, "profile_id": str | None,
@@ -74,7 +74,7 @@ async def preseed_speaker(
             identity lookup for the voice embedding.
     """
     # Redacted log context — the fallbacks are identifiers, so the raw value
-    # must never reach a log record (B-05).
+    # must never reach a log record.
     ctx = redact_id(log_context or consultation_id or user_id)
     try:
         from ..core.database.voice_profile_model import (

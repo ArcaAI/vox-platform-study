@@ -1,5 +1,5 @@
 /**
- * TASK-329 P3 — availableModels single-source-of-truth regression.
+ * availableModels single-source-of-truth regression.
  *
  * BUG: the model list *presented* to the user (`SttConfigSchema.availableModels`
  * default, surfaced as `SYSTEM_DEFAULTS.stt.availableModels`) drifted from the

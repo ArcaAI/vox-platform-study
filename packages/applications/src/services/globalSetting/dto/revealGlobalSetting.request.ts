@@ -3,7 +3,7 @@ import { IsString, IsNotEmpty } from 'class-validator';
 import { BaseRequest } from '../../../common';
 
 /**
- * TASK-396 — step-up re-auth payload for revealing a single secret setting.
+ * Step-up re-auth payload for revealing a single secret setting.
  *
  * The reveal endpoint is super-admin-only (CASL `manage all`) AND requires the
  * caller to re-enter their CURRENT account password. The password is verified

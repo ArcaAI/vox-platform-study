@@ -1,5 +1,5 @@
 /**
- * TASK-491 — AudioWorklet PLAYBACK ring buffer for streamed TTS audio.
+ * AudioWorklet PLAYBACK ring buffer for streamed TTS audio.
  *
  * The first output (playback) worklet in the repo — existing ones are all
  * capture (input) processors. It receives Float32 mono frames (already resampled

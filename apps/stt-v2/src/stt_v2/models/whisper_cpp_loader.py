@@ -1,5 +1,5 @@
 """whisper.cpp model loader — ggml runtime for GGUF whisper-large-v3-turbo
-(TASK-507, engine WHISPER_CPP).
+(engine WHISPER_CPP).
 
 Unlike ``parakeet_cpp`` (no official Python bindings), whisper.cpp has a
 maintained, wheel-distributed binding — ``pywhispercpp`` (prebuilt manylinux +
@@ -12,7 +12,7 @@ following the same lazy-import-with-install-hint pattern as
 ``pywhispercpp.model.Model`` only auto-downloads its own catalog of official
 ggml model names — a custom GGUF repo (e.g. ``oxide-lab/whisper-large-v3-turbo-GGUF``)
 must be materialised locally first and the resulting ``.gguf`` file path handed
-to ``Model(model=<path>)``. TASK-527 moved that fetch into the shared
+to ``Model(model=<path>)``. That fetch moved into the shared
 ``source_resolver`` (``local_path`` override, then ``hf:`` / ``file://`` /
 ``s3://`` dispatch); this module keeps only the ``.gguf`` selection tail.
 """
@@ -54,7 +54,7 @@ class WhisperCppLoader(BaseModelLoader):
 
         settings = get_settings()
 
-        # TASK-527 — the one resolver contract supplies the weights directory
+        # The one resolver contract supplies the weights directory
         # (local_path override -> hf: / file:// / s3://); the `.gguf` selection
         # tail below is whisper.cpp-specific and stays here.
         try:
@@ -109,7 +109,7 @@ class WhisperCppLoader(BaseModelLoader):
 
         Prefers a filename containing the configured quantization (e.g.
         ``q8_0``) when the directory ships more than one quantized variant.
-        Fetching is TASK-527's resolver's job; this is only the selection tail.
+        Fetching is the resolver's job; this is only the selection tail.
         """
         candidates = sorted(glob.glob(os.path.join(repo_dir, "**", "*.gguf"), recursive=True))
         if not candidates:

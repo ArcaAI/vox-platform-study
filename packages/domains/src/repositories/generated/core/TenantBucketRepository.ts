@@ -25,7 +25,7 @@ export class TenantBucketRepository extends Repository<TenantBucketEntity, Tenan
   }
 
   /**
-   * TASK-430 — platform-wide bucket listing for unscoped elevated sessions.
+   * Platform-wide bucket listing for unscoped elevated sessions.
    * No tenant predicate: the tenant-scope $extends bypasses injection for
    * elevated callers, so this spans all tenants.
    */
@@ -110,9 +110,9 @@ export class TenantBucketRepository extends Repository<TenantBucketEntity, Tenan
   }
 
   /**
-   * TASK-414 — SUM(quotaBytes) over buckets that have a quota configured
+   * SUM(quotaBytes) over buckets that have a quota configured
    * (`quotaBytes IS NOT NULL`), for the platform consumption roll-up
-   * (TASK-386 #18, "storage quota"). `tenantId = null` means platform-wide
+   * ("storage quota"). `tenantId = null` means platform-wide
    * (no tenant filter). Returns the raw nullable BigInt sum — the caller
    * owns the null-vs-Number presentation.
    */

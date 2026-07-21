@@ -1,5 +1,5 @@
 /**
- * @arcaai/stt - StreamingBackendSTTProvider Tests (TASK-298 D-4)
+ * @arcaai/stt - StreamingBackendSTTProvider Tests
  *
  * Verifies the new pipeline-aware STT provider that wraps an injected
  * `StreamingSessionManager` + `SttV2WebSocketClient` pair instead of the
@@ -151,8 +151,8 @@ describe('StreamingBackendSTTProvider — TASK-298 D-4', () => {
 
       expect(wsClient.sendAudioFrame).toHaveBeenCalledTimes(1);
       const [frame] = wsClient.sendAudioFrame.mock.calls[0]!;
-      // TASK-351 P0-5 — the Int16 view is forwarded directly (no
-      // ArrayBuffer.slice copy on the per-frame hot path).
+      // The Int16 view is forwarded directly (no ArrayBuffer.slice copy on
+      // the per-frame hot path).
       expect(ArrayBuffer.isView(frame)).toBe(true);
       expect(frame).toBeInstanceOf(Int16Array);
       // Frame length should be a multiple of 2 bytes per sample.
@@ -222,7 +222,7 @@ describe('StreamingBackendSTTProvider — TASK-298 D-4', () => {
       expect(provider.getDroppedFrameCount()).toBe(0);
     });
 
-    // TASK-464 — a passive getter is inert (nothing polls it). The provider must
+    // A passive getter is inert (nothing polls it). The provider must
     // PUSH the drop so it can propagate up to the store/hook/UI. `onDrop` fires
     // once per dropped frame with the current cumulative count; `getStats()`
     // surfaces the same count so a poller (STTProcessor.getStats) can read it.
@@ -295,8 +295,8 @@ describe('StreamingBackendSTTProvider — TASK-298 D-4', () => {
       expect(result.speakerId).toBe('speaker-1');
     });
 
-    // TASK-372 D9 (Option B) — word-level timestamps must survive
-    // normalizeTranscript so the SDK store can expose them to consumers.
+    // Word-level timestamps must survive normalizeTranscript so the SDK
+    // store can expose them to consumers.
     it('carries word-level timestamps through normalizeTranscript into result.words', () => {
       const cb = vi.fn();
       provider.onTranscription(cb);

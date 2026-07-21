@@ -7,7 +7,7 @@ import { TtsWsGateway } from './tts-ws.gateway';
 // IConfigService + SecretsService are provided app-wide by CommonServiceModule
 // (under the app's @Global core), and StreamTicketService is @Global, so this
 // module only needs the HTTP client, the per-tenant TTS config resolver
-// (TASK-496), and to register the WS-duplex gateway.
+// and to register the WS-duplex gateway.
 @Module({
   imports: [
     HttpModule.register({

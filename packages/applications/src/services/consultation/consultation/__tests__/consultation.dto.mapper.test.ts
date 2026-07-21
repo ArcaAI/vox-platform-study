@@ -255,7 +255,7 @@ describe('ConsultationDtoMapper', () => {
             expect(result.appointmentDate).toBe('2026-12-25');
         });
 
-        // TASK-322 — derived lifecycle status
+        // Derived lifecycle status
         it('should default status to OPEN when metadata is null', () => {
             const entity = createMockConsultationEntity({ metadata: null });
 
@@ -280,7 +280,7 @@ describe('ConsultationDtoMapper', () => {
             expect(result.status).toBe('CLOSED');
         });
 
-        // TASK-330 — lifecycle was promoted to a typed `status` COLUMN. The
+        // Lifecycle was promoted to a typed `status` COLUMN. The
         // attestation gate (harness draft → PENDING_REVIEW, approve → SIGNED)
         // writes the column, NOT metadata.status, so the read must surface it.
         it('should surface PENDING_REVIEW from the typed status column (harness draft)', () => {
@@ -311,7 +311,7 @@ describe('ConsultationDtoMapper', () => {
         });
 
         // Column default OPEN means "not yet transitioned" → defer to the legacy
-        // TASK-322 close/reopen JSON so closing a consultation still surfaces.
+        // close/reopen JSON so closing a consultation still surfaces.
         it('should defer to legacy metadata.status (CLOSED) when the column is default OPEN', () => {
             const entity = createMockConsultationEntity({ status: 'OPEN', metadata: { status: 'CLOSED' } });
 

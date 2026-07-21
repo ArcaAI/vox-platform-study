@@ -1,10 +1,10 @@
 /**
- * usePipelines.select(...) persistence — TASK-298 D-5
+ * usePipelines.select(...) persistence
  *
  * Verifies that calling `select(id)` not only updates local state but also
  * persists the choice to the existing UserSettings backend via
  * `PATCH /user/me/settings/arcaai-sdk/selectedPipelineId`. The acceptance
- * criterion in TASK-298 §1.3 (6) requires that backend ownership of the
+ * criterion requires that backend ownership of the
  * selected pipeline is enforced server-side (validator).
  *
  * @vitest-environment jsdom

@@ -4,7 +4,7 @@ import { Redis } from 'ioredis';
 /**
  * Rate limit configuration.
  *
- * TASK-541 A2 — relocated here from the retired `decorators/gateway-decorators`
+ * Relocated here from the retired `decorators/gateway-decorators`
  * module. This service is its only consumer, and the shape never depended on
  * the gateway guard that module annotated.
  */

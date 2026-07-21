@@ -37,7 +37,7 @@ export class StorageAccessKeyRepository extends Repository<StorageAccessKeyEntit
   }
 
   async findActiveByTenant(tenantId: string): Promise<StorageAccessKeyEntity[]> {
-    // TASK-318 W3 (F-15) — push the expiry predicate into the query rather than
+    // Push the expiry predicate into the query rather than
     // fetching every ENABLED key and dropping expired ones in memory:
     //   enabled AND (expiresAt IS NULL OR expiresAt > now())
     return this.findAll({

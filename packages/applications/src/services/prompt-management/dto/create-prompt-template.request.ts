@@ -21,7 +21,7 @@ export class CreatePromptTemplateRequest {
   @IsEnum(['SYSTEM', 'SUMMARY', 'DNA_ANALYSIS', 'CUSTOM'] as const)
   category: string;
 
-  // TASK-331 doc-02 F5 — publication status; defaults to DRAFT server-side.
+  // Publication status; defaults to DRAFT server-side.
   @ApiPropertyOptional({ description: 'Publication status', enum: ['DRAFT', 'PUBLISHED'], default: 'DRAFT' })
   @IsOptional()
   @IsIn(['DRAFT', 'PUBLISHED'])
@@ -42,7 +42,7 @@ export class CreatePromptTemplateRequest {
   @IsString({ each: true })
   tags?: string[];
 
-  // TASK-388 #12 — admin per-user prompt scope. Defaults to `TENANT_DEFAULT`
+  // Admin per-user prompt scope. Defaults to `TENANT_DEFAULT`
   // server-side; `USER_PERSONAL` provisions a personal prompt owned by
   // `ownerUserId` (an in-tenant user; falls back to the caller when omitted).
   // `DEPARTMENT_DEFAULT` remains department-assigned via the department config.

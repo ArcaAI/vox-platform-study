@@ -124,7 +124,7 @@ class SileroVADService:
             raise RuntimeError("SileroVADService not initialised — call initialize() first")
 
         settings = get_settings()
-        # TASK-505 — `is not None` (not `or`): an explicit 0 override is valid
+        # `is not None` (not `or`): an explicit 0 override is valid
         # (e.g. speech_pad_ms=0 for exact boundaries) and must not silently
         # fall back to settings.
         threshold = threshold if threshold is not None else settings.vad_threshold
@@ -147,7 +147,7 @@ class SileroVADService:
         state = np.zeros(_SILERO_STATE_SHAPE, dtype=np.float32)
         sr_array = np.array(sample_rate, dtype=np.int64)
 
-        # Collect per-frame probabilities. TASK-386 — count this full-file VAD
+        # Collect per-frame probabilities. Count this full-file VAD
         # pass as one silero-vad-v5 inference (running gauge + latency).
         probs: list[float] = []
         with track_model_inference("silero-vad-v5"):
@@ -295,7 +295,7 @@ class SileroVADService:
 
         Implements the same logic as Silero's ``get_speech_timestamps``:
         - A frame above *threshold* triggers speech onset.
-        - TASK-505: speech is HELD while the probability stays at or above
+        - Speech is HELD while the probability stays at or above
           *neg_threshold* (default ``threshold - 0.15``, floored at 0.01) —
           the upstream Silero hysteresis. Trailing unvoiced phones (/s/, /f/,
           /t/) hover between the two thresholds and were previously counted
@@ -317,7 +317,7 @@ class SileroVADService:
         # frame >= threshold clears it. Mid-band frames (neg..threshold) hold
         # speech while no run is open, but do NOT clear an open run —
         # otherwise probabilities hovering around neg_threshold keep the
-        # segment open forever (TASK-505 review finding).
+        # segment open forever.
         raw: list[tuple[int, int, float]] = []  # (start_frame, end_frame_excl, avg_prob)
         speech_start: int | None = None
         silence_count = 0

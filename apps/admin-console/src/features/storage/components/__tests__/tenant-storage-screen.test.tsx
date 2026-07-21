@@ -131,7 +131,7 @@ function session(overrides: Partial<{ isElevated: boolean; workingTenantId: stri
 function defaultHandler(call: RecordedCall): Response | undefined {
     const parsed = new URL(call.url, 'http://test.local');
     const path = parsed.pathname;
-    // Best-effort per-user grid-layout persistence (TASK-423): the buckets grid
+    // Best-effort per-user grid-layout persistence: the buckets grid
     // loads (GET) and debounce-saves (PATCH) its layout; tests carry no saved layout.
     if (path.includes('/user/me/settings')) {
         return call.method === 'GET' ? Response.json([]) : Response.json({ ok: true });
@@ -139,7 +139,7 @@ function defaultHandler(call: RecordedCall): Response | undefined {
     if (call.method !== 'GET') return undefined;
     // The screen gates on scope: elevated session with a working tenant set.
     if (path === '/api/auth/session') return Response.json(session());
-    // TASK-430 — tenant catalog resolving the Tenant column names.
+    // Tenant catalog resolving the Tenant column names.
     if (path === '/api/hope/admin/tenants') {
         return Response.json({
             data: [
@@ -178,7 +178,7 @@ afterEach(() => {
 });
 
 describe('TenantStorageScreen', () => {
-    // TASK-430 — an unscoped elevated session sees every tenant's buckets with
+    // An unscoped elevated session sees every tenant's buckets with
     // a Tenant column resolved through the catalog.
     it('lists buckets across all tenants for an elevated session without a working tenant', async () => {
         stubStorage((call) => {

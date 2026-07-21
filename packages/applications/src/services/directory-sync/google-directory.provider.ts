@@ -27,7 +27,7 @@ const JWT_ASSERTION_TTL_SECONDS = 3600;
 const TOKEN_EXPIRY_BUFFER_MS = 60_000;
 
 /**
- * TASK-498 P3 — Google Workspace Directory provider. Domain-wide-delegated
+ * Google Workspace Directory provider. Domain-wide-delegated
  * service account, JWT-bearer OAuth2 grant (RFC 7523) — the tenant provisions
  * its own service account + delegates the two read-only directory scopes to
  * it in the Workspace admin console; `delegatedAdminEmail` is the

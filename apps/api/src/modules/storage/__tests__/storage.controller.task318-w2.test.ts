@@ -1,5 +1,5 @@
 /**
- * TASK-318 W2 — close residual security gaps in the legacy end-user
+ * Close residual security gaps in the legacy end-user
  * StorageController. Three findings, all scoped to this controller:
  *
  *  - F-1  (HIGH, cross-tenant leak): `GET /storage/buckets` (`listBuckets`)
@@ -50,8 +50,8 @@ const mockS3HealthService = {
   checkHealth: vi.fn(),
 };
 
-// TASK-375 (thumbnails) — StorageController now also generates image derivatives
-// on upload; these TASK-318 cases all upload non-images, so it is never invoked.
+// StorageController now also generates image derivatives
+// on upload; these cases all upload non-images, so it is never invoked.
 const mockImageThumbnailService = {
   generateWebpThumbnail: vi.fn(),
 };

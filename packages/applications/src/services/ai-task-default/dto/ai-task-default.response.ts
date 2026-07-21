@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-/** TASK-506 — the raw persisted AiTaskDefault row for a (tenant, taskKey). */
+/** The raw persisted AiTaskDefault row for a (tenant, taskKey). */
 export class AiTaskDefaultResponse {
   @ApiProperty({ description: 'Owning tenant id (SYSTEM tenant = platform default row)' })
   tenantId!: string;

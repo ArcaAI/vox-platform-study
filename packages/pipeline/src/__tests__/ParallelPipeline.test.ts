@@ -343,7 +343,7 @@ describe('ParallelPipeline', () => {
     });
 
     // -----------------------------------------------------------------------
-    // TASK-273 — H-1: cancel must short-circuit in-flight stages.
+    // Cancel must short-circuit in-flight stages.
     // -----------------------------------------------------------------------
 
     it('should short-circuit in-flight stages on cancel even when stage ignores ctx.abortSignal (TASK-273 H-1)', async () => {
@@ -372,7 +372,7 @@ describe('ParallelPipeline', () => {
   });
 
   // =========================================================================
-  // TASK-273 — H-2: per-stage serialization on shared results / errors maps.
+  // Per-stage serialization on shared results / errors maps.
   // =========================================================================
 
   describe('triggerStage concurrency (TASK-273 H-2)', () => {

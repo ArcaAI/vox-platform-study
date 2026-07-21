@@ -4,7 +4,7 @@
 - **Type**: review / planning input to the SOTA Enhancement Track
 - **Source under review**: external research report *"SOTA Architectures for Real-Time Clinical Consultation AI: Harness Layers, Agentic Loops, and Evaluation (2024–2026)"* (compass artifact, provided by owner 2026-07-18)
 - **Baseline compared against**: `fix/2605-review` as of 2026-07-18 (post TASK-470–483 SOTA-track execution, post TASK-505 ASR rebuild, post TASK-506 model-registry consolidation)
-- **Method**: four parallel code-mapping passes (harness Temporal internals · SMR LLM layer · guardrail+NLP · end-to-end flow+eval) with file:line evidence, reconciled against `docs/implementation/TASK-448` (the July 9 internal SOTA review) and `docs/implementation/SOTA-Track/README.md`
+- **Method**: four parallel code-mapping passes (harness Temporal internals · SMR LLM layer · guardrail+NLP · end-to-end flow+eval) with file:line evidence, reconciled against `docs/archive/TASK-448-Harness-Loop-Quality-Review` (the July 9 internal SOTA review) and `docs/implementation/SOTA-Track/README.md`
 - **Also answers**: owner's three deployment scenarios — (A) 64 vCPU / 128 GB / 1×RTX 5090 32 GB or 2×RTX A2000 Ada 16 GB, (B) 128 vCPU / 256 GB / RTX PRO 6000-class, (C) cloud
 
 ---

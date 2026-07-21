@@ -1,5 +1,5 @@
 /**
- * AiTaskDefaultRepository — repository shape (TASK-506 Phase 3).
+ * AiTaskDefaultRepository — repository shape.
  *
  * One row per (tenant, taskKey); the SYSTEM tenant row is the platform
  * default. `findByTenantAndTaskKey` pins the read to an EXACT tenant (the

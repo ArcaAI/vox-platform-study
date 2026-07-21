@@ -12,8 +12,8 @@ export interface LocalSpeakerDiarizerOptions {
   maxSpeakers: number;
   similarityThreshold?: number;
   /**
-   * TASK-296 C-2: when set, the FIRST allocated speaker slot's id is pinned
-   * to this value instead of the default `speaker-1`. Subsequent slots stay
+   * When set, the FIRST allocated speaker slot's id is pinned to this value
+   * instead of the default `speaker-1`. Subsequent slots stay
    * sequentially numbered (`speaker-2`, `speaker-3`, ...).
    *
    * Short-term workaround for the 40-d MFCC vs 256-d backend embedding
@@ -60,9 +60,9 @@ export class LocalSpeakerDiarizer {
   }
 
   /**
-   * TASK-296 C-2: set / replace the doctor-reserved speaker id used for the
-   * FIRST allocated speaker slot. No-op if a profile has already been
-   * allocated (the first slot is fixed at creation time).
+   * Set / replace the doctor-reserved speaker id used for the FIRST
+   * allocated speaker slot. No-op if a profile has already been allocated
+   * (the first slot is fixed at creation time).
    */
   setReservedSpeakerId(id: string | undefined): void {
     if (this.profiles.length === 0) {

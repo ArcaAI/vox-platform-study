@@ -1,5 +1,5 @@
 /**
- * TASK-392 (Q8) — plan → model clone-subset predicate.
+ * Plan → model clone-subset predicate.
  */
 import { describe, it, expect } from 'vitest';
 import { TenantPlan } from '@arcaai/domains';

@@ -1,5 +1,5 @@
 /**
- * TASK-387 (#1 / #3) — TenantEntity lifecycle + plan field
+ * TenantEntity lifecycle + plan field
  *
  * TDD verification for:
  *   - #3 the new nullable `plan` (TenantPlan) field on the entity + factory

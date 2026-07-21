@@ -117,7 +117,7 @@ export class AsrPipelineRepository extends Repository<AsrPipelineEntity, AsrPipe
   }
 
   /**
-   * TASK-328 A6 — The tenant's current default pipeline, if any.
+   * The tenant's current default pipeline, if any.
    */
   async findDefault(tenantId: string): Promise<AsrPipelineEntity | null> {
     try {
@@ -128,7 +128,7 @@ export class AsrPipelineRepository extends Repository<AsrPipelineEntity, AsrPipe
   }
 
   /**
-   * TASK-328 A6 — Atomically mark `pipelineId` as the tenant default and
+   * Atomically mark `pipelineId` as the tenant default and
    * unset any previous default, scoped to `tenantId`. Runs inside a single
    * Prisma transaction so the "exactly one default" invariant can never be
    * observed half-applied (two defaults, or zero) under concurrency.

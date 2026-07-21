@@ -1,5 +1,5 @@
 /**
- * @arcaai/stt - LocalSTTProvider TASK-296 C-2 wiring tests
+ * @arcaai/stt - LocalSTTProvider voice profile wiring tests
  *
  * Verifies that `LocalProviderConfig.voiceProfile.reservedSpeakerId` flows
  * from `LocalSTTProvider.init(...)` into the `LocalSpeakerDiarizer`
@@ -111,7 +111,7 @@ describe('LocalSTTProvider — TASK-296 C-2 voice profile wiring', () => {
 });
 
 /**
- * TASK-304 Wave 3 hotfix — late-arriving voice profile.
+ * Late-arriving voice profile.
  *
  * `LocalSTTProvider.setReservedSpeakerId` must forward to the underlying
  * `LocalSpeakerDiarizer`, so `PluginManager.propagateUserPreferenceDelta`

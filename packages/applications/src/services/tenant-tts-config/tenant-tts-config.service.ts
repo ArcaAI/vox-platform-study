@@ -60,7 +60,7 @@ export class TenantTtsConfigService extends BaseService implements ITenantTtsCon
   constructor(
     private readonly configRepository: TenantTtsConfigRepository,
     private readonly credentialRepository: TenantTtsProviderCredentialRepository,
-    // TASK-506 — SYSTEM TTS registry rows drive the platform catalog +
+    // SYSTEM TTS registry rows drive the platform catalog +
     // provider-universe / voice-binding validation (code-constant fallback).
     private readonly aiModelRepository: AiModelRepository,
     protected override readonly eventEmitter: EventEmitter2,
@@ -83,21 +83,21 @@ export class TenantTtsConfigService extends BaseService implements ITenantTtsCon
       this.configRepository.findByTenantId(tenantId),
       this.loadRegistryCatalogCached(),
     ]);
-    // r2605 Finding F — registry-driven provider universe (plan §3.4.2): a
+    // Registry-driven provider universe: a
     // provider whose SYSTEM registry row is disabled/absent is stripped from
     // the effective whitelist + routing chains platform-wide. Empty catalog
     // (pre-seed) → the resolver's code-constant universe, exactly the rule
     // `upsertRow`'s validation uses.
     const universe = registryProviders.length > 0 ? new Set(registryProviders.map((p) => p.provider)) : undefined;
     const effective = resolveEffectiveTtsConfig(this.toSpec(systemRow), this.toSpec(tenantRow), universe);
-    // TASK-506 — SYSTEM bindings merged under tenant bindings (per-voice-id
+    // SYSTEM bindings merged under tenant bindings (per-voice-id
     // shallow merge, tenant wins per provider entry).
     const voiceBindings = mergeVoiceBindings(this.bindingsOf(systemRow), this.bindingsOf(tenantRow));
     return { tenantId, ...effective, voiceBindings };
   }
 
   /**
-   * TASK-506 — the platform TTS catalog: SYSTEM-tenant ENABLED
+   * The platform TTS catalog: SYSTEM-tenant ENABLED
    * `TEXT_TO_SPEECH` registry rows mapped to routing providers with their
    * `metaData.voices`. Falls back to the code-constant provider universe
    * (no voice metadata) when the registry has no TTS rows yet, so nothing
@@ -123,7 +123,7 @@ export class TenantTtsConfigService extends BaseService implements ITenantTtsCon
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // TASK-506 — validate provider entries + voice bindings against the
+    // Validate provider entries + voice bindings against the
     // registry-derived catalog (code-constant universe pre-seed).
     const registryProviders = await this.loadRegistryCatalog();
     const universe: ReadonlySet<string> =
@@ -204,10 +204,10 @@ export class TenantTtsConfigService extends BaseService implements ITenantTtsCon
     return out;
   }
 
-  // ───────────────── TASK-506: registry-derived catalog helpers ─────────────────
+  // ───────────────── registry-derived catalog helpers ─────────────────
 
   /**
-   * r2605 Finding F — `getEffective` sits on the speech-proxy/WS hot path, so
+   * `getEffective` sits on the speech-proxy/WS hot path, so
    * its catalog read is memoized for a short TTL (admin edits to the registry
    * surface within ~30s; the admin surfaces keep reading fresh via
    * `loadRegistryCatalog`).
@@ -237,7 +237,7 @@ export class TenantTtsConfigService extends BaseService implements ITenantTtsCon
   }
 
   /**
-   * TTS routing provider id for a registry row. Contract with the TASK-506
+   * TTS routing provider id for a registry row. Contract with the model
    * seed: cloud engines carry it on the `provider` column (`azure`, `sarvam`);
    * `built-in` engines declare it as `metaData.ttsProvider` (`kokoro`,
    * `indic_parler`, `indic_f5`); slug-underscored is the last resort.
@@ -332,7 +332,7 @@ export class TenantTtsConfigService extends BaseService implements ITenantTtsCon
     return {};
   }
 
-  // ─────────────────────── BYO credentials (Phase 6) ───────────────────────
+  // ─────────────────────── BYO credentials ───────────────────────
 
   /** Masked list of a tenant's BYO credentials (never the key). */
   async getCredentials(tenantId: string): Promise<TtsCredentialResponse[]> {

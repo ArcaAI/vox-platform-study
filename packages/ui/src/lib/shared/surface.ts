@@ -1,5 +1,5 @@
 /**
- * Shared surface props (TASK-372 §3.1.4): density + base + async-state contracts
+ * Shared surface props: density + base + async-state contracts
  * reused by all three flagship components.
  */
 import type * as React from 'react';

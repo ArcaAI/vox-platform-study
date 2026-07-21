@@ -1,9 +1,9 @@
 /**
- * TASK-499 P1 — SAML SP key-pair generation unit tests.
+ * SAML SP key-pair generation unit tests.
  *
  * `generateSamlSpKeyPair()` mints the RSA key pair + self-signed certificate a
  * tenant's SAML SP config needs to sign AuthnRequests / decrypt assertions
- * (TASK-499 D2/D5). Pure, dependency-light (wraps the maintained `selfsigned`
+ * . Pure, dependency-light (wraps the maintained `selfsigned`
  * library — no hand-rolled X.509), so it is unit-testable without any live
  * `TenantIdentityProvider` row.
  */

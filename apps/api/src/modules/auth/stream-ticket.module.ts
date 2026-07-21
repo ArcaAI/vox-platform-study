@@ -3,7 +3,7 @@ import { RedisCacheModule } from '@arcaai/applications';
 import { StreamTicketService } from './stream-ticket.service';
 
 /**
- * StreamTicketModule (TASK-263 W0-1)
+ * StreamTicketModule
  *
  * Provides the `StreamTicketService` globally so that:
  *   - `AuthController` can call `issueTicket()` from `POST /auth/stream-ticket`.

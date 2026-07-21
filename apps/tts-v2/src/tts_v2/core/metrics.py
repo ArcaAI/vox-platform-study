@@ -59,7 +59,7 @@ TTS_PROVIDER_ERRORS = Counter(
 
 
 # ---------------------------------------------------------------------------
-# Model-cache retention metrics (TASK-529 §3.5)
+# Model-cache retention metrics
 # ---------------------------------------------------------------------------
 # FIXED CONTRACT: names and label sets are identical across all five HOPE
 # services so one Grafana dashboard

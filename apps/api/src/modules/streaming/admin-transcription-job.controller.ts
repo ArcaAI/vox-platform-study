@@ -4,7 +4,7 @@ import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestj
 import { CanManage, CanRead } from '../../decorators';
 
 /**
- * TASK-319 F3 — admin transcription-job surface (tenant-wide scope).
+ * Admin transcription-job surface (tenant-wide scope).
  *
  * Separate-controller (Pattern A) admin counterpart to
  * {@link TranscriptionJobController}. Where the end-user controller scopes
@@ -15,7 +15,7 @@ import { CanManage, CanRead } from '../../decorators';
  *   - Class-level `@CanManage('Tenant')` documents the admin plane and keeps
  *     the F6 boot audit satisfied (no empty `@Authorize()` on /admin routes),
  *     exactly like `TenantBucketController`.
- *   - TASK-407: each read carries a handler-level `@CanRead('AsrPipeline')`
+ *   - Each read carries a handler-level `@CanRead('AsrPipeline')`
  *     which OVERRIDES the class gate (the guard uses `getAllAndOverride`).
  *     `TranscriptionJob` is not a CASL subject; the audio surface is scoped on
  *     `AsrPipeline` per the §5.8 design permissions, which `tenant-full-access`

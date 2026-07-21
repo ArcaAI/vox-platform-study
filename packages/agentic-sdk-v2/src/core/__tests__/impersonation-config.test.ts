@@ -1,5 +1,5 @@
 /**
- * Impersonation Config Isolation Tests (TASK-245)
+ * Impersonation Config Isolation Tests
  *
  * Verifies that during impersonation:
  * 1. The impersonated user's preferences are loaded into ConfigManager
@@ -125,11 +125,11 @@ describe('Impersonation Config Isolation (TASK-245)', () => {
     });
 
     // -------------------------------------------------------------------------
-    // TASK-331 doc-07 F5a — additive server sync of the user-pref tier.
+    // Additive server sync of the user-pref tier.
     //
     // ConfigManager now accepts a SECOND persist callback
     // (`onPersistUserPreferencesToServer`) alongside the existing
-    // local-storage one. It MUST honour the same TASK-245 read-only
+    // local-storage one. It MUST honour the same read-only
     // short-circuit so an admin's edits while impersonating never reach the
     // impersonated doctor's server profile.
     // -------------------------------------------------------------------------

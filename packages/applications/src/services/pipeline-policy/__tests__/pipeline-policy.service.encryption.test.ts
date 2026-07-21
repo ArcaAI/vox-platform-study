@@ -1,5 +1,5 @@
 /**
- * PipelinePolicyService — WORM change-row encryption wiring (TASK-369 Phase 3D).
+ * PipelinePolicyService — WORM change-row encryption wiring.
  *
  * Every write path (admin `upsertRow` create/update and the doctor self-service
  * `setDnaStyleForDoctor` create/update) encrypts the before/after toggle
@@ -40,7 +40,7 @@ const databaseService = {
 };
 
 // GLOBAL_ADMIN caller: these specs exercise WORM change-row ENCRYPTION, and
-// several drive it through `harnessEnabled` — which TASK-532 locked to global
+// several drive it through `harnessEnabled` — which is locked to global
 // admins. The elevated role keeps the privilege boundary out of the way so each
 // spec still fails only for encryption reasons.
 const cls = {

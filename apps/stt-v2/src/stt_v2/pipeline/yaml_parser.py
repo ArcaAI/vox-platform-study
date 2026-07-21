@@ -48,7 +48,7 @@ class PipelineYamlParser:
     - 1.1: Enhanced format with inline model definitions (hf_model_id + engine)
     """
 
-    # TASK-505 P2 — "2.0" adds provider::model shorthand + declarable
+    # "2.0" adds provider::model shorthand + declarable
     # normalize/resample/segment_merge/denoise-scope/endpoint stages. All v2
     # fields also parse under v1.x (forward-tolerant); the version gate is
     # advisory for admin surfaces.
@@ -125,7 +125,7 @@ class PipelineYamlParser:
         diarization_data = data.get("diarization", {})
         diarization = self._parse_diarization(diarization_data)
 
-        # Parse streaming (optional, use defaults) — TASK-351 P1-1
+        # Parse streaming (optional, use defaults)
         streaming_data = data.get("streaming", {})
         streaming = self._parse_streaming(streaming_data)
 
@@ -216,8 +216,8 @@ class PipelineYamlParser:
                         f"Valid values: {', '.join(VALID_ONNX_QUANTIZATIONS)}",
                     )
 
-        # TASK-351 P1-2 — FASTER_WHISPER compute-type compatibility:
-        # CTranslate2 accepts a wider/different set than the generic engines.
+        # FASTER_WHISPER compute-type compatibility: CTranslate2 accepts a
+        # wider/different set than the generic engines.
         for role, model_ref in spec.models.get_all_refs():
             if (
                 model_ref.is_inline
@@ -244,7 +244,7 @@ class PipelineYamlParser:
                 "Sample rate must be one of: 8000, 16000, 22050, 44100, 48000",
             )
 
-        # TASK-505 P2 — schema v2 stage validations.
+        # Schema v2 stage validations.
         if spec.preprocessing.normalize_processor not in VALID_NORMALIZE_PROCESSORS:
             result.add_error(
                 "preprocessing.normalize.processor",
@@ -356,11 +356,10 @@ class PipelineYamlParser:
                     f"Use an ISO 639-1 code (e.g. 'en', 'ml') or BCP-47 tag (e.g. 'en-US').",
                 )
 
-        # TASK-351 P2-1 — code_switching with a fixed language means PINNED
-        # matrix language with code-switching enabled (deliberate semantics
-        # change: the earlier warning advised `language: null`; the language
-        # is now passed through to the engine). language: null + CS keeps
-        # auto-LID.
+        # code_switching with a fixed language means PINNED matrix language
+        # with code-switching enabled (deliberate semantics: the language is
+        # passed through to the engine rather than cleared). language: null +
+        # CS keeps auto-LID.
         if spec.inference.code_switching and spec.inference.language is not None:
             logger.info(
                 "code_switching enabled with pinned matrix language '%s' — "
@@ -369,8 +368,8 @@ class PipelineYamlParser:
                 spec.inference.language,
             )
 
-        # TASK-351 P2-1 — hard guard: the NEMO (Parakeet) engine only
-        # supports the Parakeet-v3 language set (e.g. 'ml' is Whisper-only).
+        # Hard guard: the NEMO (Parakeet) engine only supports the
+        # Parakeet-v3 language set (e.g. 'ml' is Whisper-only).
         if (
             spec.inference.language is not None
             and asr_ref.is_inline
@@ -395,7 +394,7 @@ class PipelineYamlParser:
                     f"initial_prompt must be a valid UUID, got '{spec.inference.initial_prompt}'",
                 )
 
-        # Streaming validation (TASK-351 P1-1)
+        # Streaming validation
         if spec.streaming.commit_policy not in VALID_STREAMING_COMMIT_POLICIES:
             result.add_error(
                 "streaming.commit_policy",
@@ -429,7 +428,7 @@ class PipelineYamlParser:
                 "diarization.min_segment_duration_s",
                 "Minimum segment duration must be non-negative",
             )
-        # TASK-475 B2: backend selector must be a known diarizer.
+        # Backend selector must be a known diarizer.
         if spec.diarization.backend not in VALID_DIARIZATION_BACKENDS:
             result.add_error(
                 "diarization.backend",
@@ -501,7 +500,7 @@ class PipelineYamlParser:
 
     def _parse_preprocessing(self, data: dict[str, Any]) -> PreprocessingConfig:
         """Parse preprocessing section."""
-        # TASK-505 P2 — normalize accepts a bool (legacy) or a dict
+        # normalize accepts a bool (legacy) or a dict
         # {enabled, processor: peak|rms}.
         normalize_data = data.get("normalize", True)
         if isinstance(normalize_data, dict):
@@ -511,8 +510,8 @@ class PipelineYamlParser:
             normalize = bool(normalize_data)
             normalize_processor = "peak"
 
-        # TASK-505 P2 — resample declared as a stage; the block's
-        # target_sample_rate wins over the legacy top-level key.
+        # resample declared as a stage; the block's target_sample_rate wins
+        # over the legacy top-level key.
         resample_data = data.get("resample", {})
         if isinstance(resample_data, dict) and resample_data:
             resample_enabled = bool(resample_data.get("enabled", True))
@@ -522,16 +521,16 @@ class PipelineYamlParser:
                 )
             )
         elif isinstance(resample_data, bool):
-            # TASK-505 review — bool shorthand parity with `normalize:`
-            # (`resample: false` silently no-oped before).
+            # bool shorthand parity with `normalize:` (`resample: false`
+            # silently no-oped before).
             resample_enabled = resample_data
             target_sample_rate = int(data.get("target_sample_rate", 16000))
         else:
             resample_enabled = True
             target_sample_rate = int(data.get("target_sample_rate", 16000))
 
-        # TASK-505 P2 — semantic endpoint block (EndpointConfig existed since
-        # TASK-473 but was never populated from YAML).
+        # Semantic endpoint block (EndpointConfig existed but was never
+        # populated from YAML until now).
         endpoint_data = data.get("endpoint", {})
         endpoint = EndpointConfig(
             enabled=bool(endpoint_data.get("enabled", False)),
@@ -542,7 +541,7 @@ class PipelineYamlParser:
             model_id=str(endpoint_data.get("model_id", "")),
         )
 
-        # TASK-505 P2 — declarative diarization feature-extraction marker.
+        # Declarative diarization feature-extraction marker.
         dfe_data = data.get("diar_feature_extraction")
         if isinstance(dfe_data, dict):
             diar_feature_extraction_enabled: bool | None = bool(
@@ -557,8 +556,8 @@ class PipelineYamlParser:
         vad = VadConfig(
             enabled=vad_data.get("enabled", True),
             threshold=float(vad_data.get("threshold", 0.6)),
-            # TASK-505: fallbacks aligned with VadConfig defaults (the old 350
-            # ms min-speech fallback was the harshest value in the codebase and
+            # Fallbacks aligned with VadConfig defaults (the old 350 ms
+            # min-speech fallback was the harshest value in the codebase and
             # silently dropped short clinical confirmations).
             min_speech_duration_ms=int(vad_data.get("min_speech_duration_ms", 100)),
             min_silence_duration_ms=int(vad_data.get("min_silence_duration_ms", 100)),
@@ -573,10 +572,10 @@ class PipelineYamlParser:
         denoise = DenoiseConfig(
             enabled=denoise_data.get("enabled", False),
             strength=float(denoise_data.get("strength", 0.5)),
-            # TASK-505 P2 (D2 dual-path): default vad_only — denoise gates VAD,
-            # ASR consumes raw audio.
+            # Dual-path default vad_only — denoise gates VAD, ASR consumes
+            # raw audio.
             scope=str(denoise_data.get("scope", "vad_only")),
-            # TASK-507 — denoise engine selector (rnnoise = legacy default).
+            # Denoise engine selector (rnnoise = legacy default).
             engine=str(denoise_data.get("engine", "rnnoise")),
         )
 
@@ -662,7 +661,7 @@ class PipelineYamlParser:
         ):
             kwargs["hallucination_short_word_count"] = int(data["hallucination_short_word_count"])
 
-        # TASK-351 P2-3 — opt-in streaming English gloss flag.
+        # Opt-in streaming English gloss flag.
         if "streaming_english_gloss" in data:
             kwargs["streaming_english_gloss"] = bool(data["streaming_english_gloss"])
 
@@ -709,8 +708,8 @@ class PipelineYamlParser:
             capture_processed=bool(dual_capture_data.get("capture_processed", False)),
         )
 
-        # TASK-505 P2 — per-pipeline segment merge; absent keys inherit the
-        # global setting gate (enabled=None) / values (None).
+        # Per-pipeline segment merge; absent keys inherit the global setting
+        # gate (enabled=None) / values (None).
         segment_merge_data = data.get("segment_merge") or {}
         segment_merge = SegmentMergeConfig(
             enabled=(
@@ -740,7 +739,7 @@ class PipelineYamlParser:
         )
 
     def _parse_streaming(self, data: dict[str, Any]) -> StreamingConfig:
-        """Parse streaming section (TASK-351 P1-1)."""
+        """Parse streaming section."""
         if not isinstance(data, dict):
             data = {}
         return StreamingConfig(
@@ -758,7 +757,7 @@ class PipelineYamlParser:
             segment_silence_padding_ms=int(data.get("segment_silence_padding_ms", 100)),
             min_update_confidence=float(data.get("min_update_confidence", 0.8)),
             enable_segmentation_refinement=data.get("enable_segmentation_refinement", True),
-            # TASK-475 B2: streaming diarizer backend selector + Sortformer knobs.
+            # Streaming diarizer backend selector + Sortformer knobs.
             backend=str(data.get("backend", "embedding")),
             sortformer_model_id=str(
                 data.get("sortformer_model_id", "nvidia/diar_streaming_sortformer_4spk-v2.1")

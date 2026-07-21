@@ -1,5 +1,5 @@
 /**
- * responseUtils Tests (TASK-215)
+ * responseUtils Tests
  *
  * @vitest-environment jsdom
  */
@@ -99,7 +99,7 @@ describe('extractArray', () => {
     });
 });
 
-// TASK-373 client follow-up — cursor (keyset) normalizer. Maps the server
+// Cursor (keyset) normalizer. Maps the server
 // `CursorPaginatedResponse<T>` (`{ data, nextCursor, hasMore, limit }`, from
 // `GET /admin/audit-logs/cursor`) into the client `PageResult<T>` cursor shape
 // (`@arcaai/ui` `lib/shared/pagination.ts`): `{ rows, nextCursor, hasMore, limit }`.

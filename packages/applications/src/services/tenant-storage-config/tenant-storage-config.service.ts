@@ -17,7 +17,7 @@ import { UpsertTenantStorageConfigRequest, TenantStorageConfigResponse } from '.
 import { TenantStorageConfigDtoMapper } from './tenant-storage-config.dto.mapper';
 
 /**
- * Manages per-tenant / per-bucket storage configuration (TASK-318 / R5).
+ * Manages per-tenant / per-bucket storage configuration.
  *
  * Resolution precedence (read side, applied by {@link BlobStorageProviderFactory}):
  *   per-bucket override → tenant default → global/shared config.

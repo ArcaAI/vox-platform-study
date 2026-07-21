@@ -1,5 +1,5 @@
 /**
- * Phase 0 Item 3 (TASK-302 Stream A) — AuthorizationGuard admin-deny pin.
+ * AuthorizationGuard admin-deny pin.
  *
  * Asserts the inverted default: when @CanManage / @Authorize is missing
  * and the route path matches /^\/(api\/v\d+\/)?admin\//, the guard

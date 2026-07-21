@@ -1,5 +1,5 @@
 /**
- * SummaryService — persist prompt-resolution tier on SummaryMeta (TASK-331 doc-06 F4).
+ * SummaryService — persist prompt-resolution tier on SummaryMeta.
  *
  * Both `generateSummary` and `generatePreSummary` compute an `assembledPrompt`
  * whose `resolvedFrom` (preferred/department/default) + `promptId` describe which

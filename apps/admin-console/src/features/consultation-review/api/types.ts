@@ -1,15 +1,15 @@
 /**
- * Consultation-review types (TASK-533 B5, GAP-A2).
+ * Consultation-review types.
  *
  * Mirrors `SummaryMeta.citationsMap` as the gateway serves it. `segmentId` is
- * the field the D-22 chain populates — before that fix it was always absent,
- * which is why this screen could not exist.
+ * the field the transcript-segment producers populate — before that fix it
+ * was always absent, which is why this screen could not exist.
  */
 
 export interface ReviewEvidenceSpan {
     startOffset: number;
     endOffset: number;
-    /** Transcript segment this span resolved to (TASK-533 D-22). */
+    /** Transcript segment this span resolved to. */
     segmentId?: string | null;
 }
 

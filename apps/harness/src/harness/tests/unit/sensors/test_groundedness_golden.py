@@ -1,4 +1,4 @@
-"""Golden verdict-stability + conservative-batch tests (TASK-355 Phase B / R-5).
+"""Golden verdict-stability + conservative-batch tests.
 
 The batching change MUST NOT change verdicts: with a judge that decides each
 hypothesis identically whether asked one-at-a-time or in a JSON-array batch, the

@@ -1,5 +1,5 @@
 /**
- * usePlatformMetrics Hook Tests (TASK-386 #16)
+ * usePlatformMetrics Hook Tests
  *
  * @vitest-environment jsdom
  */

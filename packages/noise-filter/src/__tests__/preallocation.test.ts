@@ -1,6 +1,4 @@
 /**
- * TASK-269 — CRIT-1
- *
  * Asserts that the audio-thread hot path does not call `_malloc`/`_free`
  * per frame. Buffers must be allocated once at init and freed only at
  * destroy.

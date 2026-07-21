@@ -1,4 +1,4 @@
-"""TDD tests for TTSRouter (TASK-488 Phase 2)."""
+"""TDD tests for TTSRouter."""
 
 from __future__ import annotations
 
@@ -87,7 +87,7 @@ class TestRouting:
 
     @pytest.mark.asyncio
     async def test_routing_override_reorders_chain(self) -> None:
-        # TASK-496 — a per-request routing_en override (gateway-injected from the
+        # A per-request routing_en override (gateway-injected from the
         # tenant config) wins over the static settings chain.
         azure, kokoro = FakeEngine("azure"), FakeEngine("kokoro", chunks=1)
         router = _router({"azure": azure, "kokoro": kokoro})
@@ -99,7 +99,7 @@ class TestRouting:
 
     @pytest.mark.asyncio
     async def test_allowed_providers_whitelist_filters_chain(self) -> None:
-        # TASK-496 — allowed_providers bounds the chain; azure (first by default)
+        # allowed_providers bounds the chain; azure (first by default)
         # is dropped when not whitelisted.
         azure, kokoro = FakeEngine("azure"), FakeEngine("kokoro", chunks=1)
         router = _router({"azure": azure, "kokoro": kokoro})
@@ -111,7 +111,7 @@ class TestRouting:
 
     @pytest.mark.asyncio
     async def test_provider_override_builds_per_tenant_engine(self, monkeypatch) -> None:
-        # TASK-496 — a BYO key lets a tenant use a provider the platform did NOT
+        # A BYO key lets a tenant use a provider the platform did NOT
         # register; the router builds a per-tenant engine from the injected creds.
         fake = FakeEngine("azure", chunks=1)
         monkeypatch.setattr(router_mod, "_build_override_engine", lambda settings, name, override: fake)

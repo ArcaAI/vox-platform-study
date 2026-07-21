@@ -1,4 +1,4 @@
-"""TASK-525 §3.3 — effective-config pull client (nlp).
+"""Effective-config pull client (nlp).
 
 Mirrors `smr_v2.core.effective_config` against the same frozen contract, exposing
 the subset nlp consumes: `concurrency.maxConcurrent` for the inference bound.
@@ -8,7 +8,7 @@ structurally env-unreachable (`core/config.py` `_MODEL_IDENTITY_FIELDS`).
 Mechanics: TTL cache jittered ±10 %, negative cache (a down gateway costs at most
 one attempt per window, then callers keep their env values), single-flight
 refresh, read-triggered. Duplicated per service on purpose — the shared-package
-question is TASK-529's OD-3.
+question is settled and not reopened here.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ class EffectiveConfigSnapshot:
         return _positive_int(concurrency.get("maxConcurrent"))
 
     def retention(self) -> dict[str, int]:
-        """TASK-529 (D-07) — model-cache retention knobs with an opinion.
+        """Model-cache retention knobs with an opinion.
 
         An omitted key means "keep the env/bootstrap value"; a null or
         non-positive value is never coerced into a real number.

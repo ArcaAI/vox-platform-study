@@ -210,7 +210,7 @@ class StreamSession:
             )
 
         # Append to ring buffer (cap at ~30 s of 16 kHz mono 16-bit = ~960 KB)
-        max_ring_bytes = sample_rate * 2 * 30  # 30 seconds per TASK-014 design
+        max_ring_bytes = sample_rate * 2 * 30  # 30 seconds by design
         self.ring_buffer.extend(data)
         if len(self.ring_buffer) > max_ring_bytes:
             overflow = len(self.ring_buffer) - max_ring_bytes
@@ -301,7 +301,7 @@ class StreamSession:
     def build_transcript_text(self) -> str:
         """Build the plain-text transcript from accumulated final segments.
 
-        TASK-342 GAP #1 — this is the text persisted as the streaming
+        This is the text persisted as the streaming
         ``TRANSCRIPT`` context item (the harness re-loads it server-side to
         auto-draft the SOAP). Only final segments are included; interim
         (partial) hypotheses are skipped.
@@ -316,7 +316,7 @@ class StreamSession:
         )
 
     def build_transcript_segments(self) -> list[dict[str, Any]]:
-        """Build consumer-shaped transcript segments for the gateway (TASK-533 D-22).
+        """Build consumer-shaped transcript segments for the gateway.
 
         The evidence-grounding pillar (harness ``segment_citations`` → clinician
         click-to-source) needs per-utterance rows with timing, speaker and CHAR

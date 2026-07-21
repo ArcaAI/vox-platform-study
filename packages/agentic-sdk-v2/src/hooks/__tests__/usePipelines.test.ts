@@ -1,5 +1,5 @@
 /**
- * usePipelines Hook Tests (TASK-032 WS-A)
+ * usePipelines Hook Tests
  *
  * @vitest-environment jsdom
  */
@@ -158,7 +158,7 @@ describe('usePipelines', () => {
     });
 
     /* ------------------------------------------------------------------ */
-    /*  TASK-218 Priority 5: CRUD + validate methods                       */
+    /*  CRUD + validate methods                       */
     /* ------------------------------------------------------------------ */
 
     describe('createPipeline (TASK-218)', () => {
@@ -268,7 +268,7 @@ describe('usePipelines', () => {
             expect(resp).toEqual(validationResult);
         });
 
-        // TASK-265 W0-9 / GAP-10: lock the actual URL string. The previous SDK
+        // Lock the actual URL string. The previous SDK
         // value ended in `/validate-yaml`, the API was renamed to `/validate`.
         it('TASK-265: posts to exactly /admin/audio/pipelines/validate (no -yaml)', async () => {
             const mockPost = mockStore.apiClient.post;
@@ -362,7 +362,7 @@ describe('usePipelines', () => {
     });
 
     /* ------------------------------------------------------------------ */
-    /*  TASK-328 A6: setDefault / toggle / listVersions / getVersion       */
+    /*  setDefault / toggle / listVersions / getVersion       */
     /* ------------------------------------------------------------------ */
 
     describe('setDefault (TASK-328 A6)', () => {

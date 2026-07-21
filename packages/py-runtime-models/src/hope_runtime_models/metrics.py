@@ -1,4 +1,4 @@
-"""TASK-529 §3.5 — the fixed Prometheus metric contract for model caches.
+"""The fixed Prometheus metric contract for model caches.
 
 Metric names and label sets are a CONTRACT: one Grafana dashboard
 (`infrastructure/grafana/dashboards/model-retention.json`) reads them across all

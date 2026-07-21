@@ -1,5 +1,5 @@
 /**
- * Tenant TTS-config client (TASK-504 Phase 4). Two sub-resources:
+ * Tenant TTS-config client. Two sub-resources:
  *  - the versioned config ROW (OCC If-Match; expectedVersion required, 0=create),
  *  - the non-versioned BYO CREDENTIALS (write-only key, masked reads).
  * Paths are gateway-relative; the shared core prepends the BFF proxy mount.
@@ -38,7 +38,7 @@ export function putTtsRow(patch: Omit<UpdateTtsConfigRequest, 'expectedVersion'>
   });
 }
 
-/** Registry-derived platform catalog: providers + voices (TASK-506; tenant-agnostic). */
+/** Registry-derived platform catalog: providers + voices (tenant-agnostic). */
 export function getTtsCatalog(): Promise<TtsPlatformCatalog> {
   return getJson(`${BASE}/catalog`);
 }

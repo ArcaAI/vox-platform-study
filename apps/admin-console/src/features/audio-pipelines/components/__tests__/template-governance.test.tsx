@@ -1,5 +1,5 @@
 /**
- * TASK-531 — template governance on frame 34.
+ * Template governance on frame 34.
  *
  * A tenant's provisioned pipelines are LOCKED copies of the SYSTEM templates:
  * the gateway answers PATCH/DELETE on them with 403. The console's job is to
@@ -176,7 +176,7 @@ describe('TASK-531 — locked detail is read-only', () => {
         expect(await within(dialog).findByText(/Derived from/)).toBeDefined();
     });
 
-    // OD-1 — the lock covers content only; the tenant still owns the lifecycle.
+    // The lock covers content only; the tenant still owns the lifecycle.
     it('keeps enable/disable and set-default available, and withholds Delete', async () => {
         stubPipelines();
         renderWithProviders(<AudioPipelinesScreen />, { searchParams: '?pipeline=p-tpl&ptab=lifecycle' });

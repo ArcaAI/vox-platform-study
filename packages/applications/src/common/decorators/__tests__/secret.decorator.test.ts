@@ -1,5 +1,5 @@
 /**
- * Phase 0 Item 4 (TASK-302 Stream A) — @Secret decorator contract pin.
+ * @Secret decorator contract pin.
  *
  * Verifies the decorator registers field names on a prototype-keyed
  * metadata bag and that getSecretFields() returns them. Lives in the

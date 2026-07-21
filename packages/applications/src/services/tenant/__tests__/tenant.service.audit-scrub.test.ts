@@ -1,17 +1,13 @@
 /**
- * Phase 0 Item 4 (TASK-302 Stream A) — audit-log secret scrubbing pin.
+ * Audit-log secret scrubbing pin.
  *
  * Asserts that TenantService.updateTenantConfigs emits a
  * SysEventType.ResourceUpdated whose `data` payload carries
  * '[REDACTED]' in `value` / `defaultValue` for any row whose
- * underlying GlobalSettingEntity has `locked === true`. Unlocked
+ * underlying GlobalSettingEntity has `locked === true`, via
+ * `scrubLockedForAudit` honouring the `@Secret` metadata. Unlocked
  * rows MUST NOT be scrubbed (audit fidelity matters for the
  * non-secret 99% case).
- *
- * RED — current code calls config.toObject() directly, which
- *       returns plaintext value/defaultValue. D.4 wires in
- *       scrubLockedForAudit which honours the @Secret metadata
- *       applied in D.3.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -35,7 +31,7 @@ const gsRepo = {
   count: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
-  // TASK-302 Stream D Phase C — TenantService.updateTenantConfigs now routes
+  // TenantService.updateTenantConfigs now routes
   // through Compare-And-Set via `updateWithVersion`. Audit-scrub still happens
   // post-write, so these fixtures wire the new repo method.
   updateWithVersion: vi.fn(),
@@ -43,7 +39,7 @@ const gsRepo = {
 const deps = { findAll: vi.fn(), count: vi.fn() };
 const ptemps = { findAll: vi.fn(), count: vi.fn() };
 const pipes = { findAll: vi.fn(), count: vi.fn() };
-// TASK-302 Stream D Phase C (C.4) — `updateTenantConfigs` wraps writes in
+// `updateTenantConfigs` wraps writes in
 // `databaseService.baseClient.$transaction(callback)`. The stub invokes the
 // callback with a sentinel tx client so the loop executes.
 const mockTxClient = { __tx: true } as const;
@@ -79,9 +75,9 @@ describe('TenantService — audit-log secret scrubbing (Phase 0 Item 4)', () => 
       buckets as never,
       events as never,
       cls as never,
-      // TASK-356 Phase 1 — model-catalog clone repo (unused by this suite).
+      // Model-catalog clone repo (unused by this suite).
       { findAll: async () => [] } as never,
-      // TASK-356 Phase 2 — pipeline-version clone repo (unused by this suite).
+      // Pipeline-version clone repo (unused by this suite).
       { create: async () => ({}) } as never,
     );
   });

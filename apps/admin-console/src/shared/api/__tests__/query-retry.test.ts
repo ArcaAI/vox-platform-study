@@ -1,5 +1,5 @@
 /**
- * TASK-428 — app-wide TanStack Query retry policy. A 4xx is deterministic
+ * App-wide TanStack Query retry policy. A 4xx is deterministic
  * (the retry replays the same failure, doubling request count — dev-log
  * evidence: tenant/me, entitlements/me, rbac/roles each fired twice with
  * 400s), so only network errors and 5xx get the single retry. 401 is also

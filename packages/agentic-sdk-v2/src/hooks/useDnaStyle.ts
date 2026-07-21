@@ -14,7 +14,7 @@ import { appendFilters } from '../utils/urlUtils';
 import type { DnaReport, DnaStyleVersion, DnaGenerateInput, DnaUpdateInput, DnaJobStatus } from '../types';
 
 /**
- * TASK-388 #13 — filters for the admin cross-user report list. A global admin
+ * Filters for the admin cross-user report list. A global admin
  * may target a tenant via `tenantId`; a tenant admin is pinned to their CLS
  * tenant server-side. `doctorId` narrows to one in-tenant doctor.
  */
@@ -26,7 +26,7 @@ export interface AdminDnaListFilters {
   limit?: number;
 }
 
-/** TASK-388 #13 — paginated admin report envelope (mirrors the backend shape). */
+/** Paginated admin report envelope (mirrors the backend shape). */
 export interface AdminDnaReportPage {
   data: DnaReport[];
   count: number;
@@ -35,7 +35,7 @@ export interface AdminDnaReportPage {
 }
 
 /**
- * TASK-299 D-7 — SSE callbacks for DNA report generation.
+ * SSE callbacks for DNA report generation.
  */
 export interface DnaJobStreamCallbacks {
   onStatus?: (status: DnaJobStatus['status']) => void;
@@ -45,7 +45,7 @@ export interface DnaJobStreamCallbacks {
 }
 
 /**
- * TASK-299 D-7 — Build the per-job SSE scope literal expected by the backend
+ * Build the per-job SSE scope literal expected by the backend
  * `@StreamScope({ namespace: 'dna_job', param: 'jobId' })` decorator.
  */
 const dnaJobScopeFor = (jobId: string): string => `dna_job:${jobId}`;
@@ -55,34 +55,34 @@ const DNA_TERMINAL = new Set(['completed', 'failed']);
 export interface UseDnaStyleReturn {
   style: DnaReport | null;
   versions: DnaStyleVersion[];
-  /** TASK-329 P5 — the doctor's own report history (populated by getMyReports). */
+  /** The doctor's own report history (populated by getMyReports). */
   reports: DnaReport[];
   isLoading: boolean;
   error: Error | null;
   getMyStyle: () => Promise<DnaReport>;
   /**
-   * TASK-299 D-9 — DNA generate is a side-effectful POST. Pass an explicit
+   * DNA generate is a side-effectful POST. Pass an explicit
    * `idempotencyKey` on the input to dedupe duplicate user-actions, or let
    * the hook mint a UUID for you per call.
    */
   generate: (input?: DnaGenerateInput & { idempotencyKey?: string }) => Promise<{ jobId: string }>;
   /**
-   * TASK-329 P5 — Generate a brand-new DNA report seeded from a selection of
+   * Generate a brand-new DNA report seeded from a selection of
    * historical source items (prior report-version snapshots / context items).
    * Thin wrapper over `generate` that attaches the selected `sourceIds`.
    */
   generateFromHistory: (sourceIds: string[], extra?: Omit<DnaGenerateInput, 'sourceIds'> & { idempotencyKey?: string }) => Promise<{ jobId: string }>;
   update: (reportId: string, input: DnaUpdateInput) => Promise<DnaReport>;
   /**
-   * TASK-329 P5 — Promote a historical report to the doctor's active/default
+   * Promote a historical report to the doctor's active/default
    * (`isLatest`) report. Owner + tenant scoped on the backend.
    */
   setDefault: (reportId: string) => Promise<DnaReport>;
-  /** TASK-329 P5 — Fetch the doctor's own report history (owner-scoped). */
+  /** Fetch the doctor's own report history (owner-scoped). */
   getMyReports: () => Promise<DnaReport[]>;
   getVersions: (reportId: string) => Promise<DnaStyleVersion[]>;
   /**
-   * TASK-329 P5 — Resolve two version snapshots of a report for a side-by-side
+   * Resolve two version snapshots of a report for a side-by-side
    * diff. Reuses the versions endpoint and returns the matched `left`/`right`.
    */
   getVersionDiff: (
@@ -93,12 +93,12 @@ export interface UseDnaStyleReturn {
   getJobStatus: (jobId: string) => Promise<DnaJobStatus>;
   pollJobStatus: (jobId: string, options?: { intervalMs?: number; maxAttempts?: number }) => Promise<DnaReport>;
   /**
-   * TASK-299 D-7 — Subscribe to real-time DNA-report generation status via SSE.
+   * Subscribe to real-time DNA-report generation status via SSE.
    * Returns a cleanup function that closes the SSE connection.
    */
   streamJobStatus: (jobId: string, callbacks: DnaJobStreamCallbacks) => () => void;
   getByDoctor: (doctorId: string) => Promise<DnaReport>;
-  // ─── TASK-388 #13 — admin cross-user (PHI-gated) reads/generate ─────
+  // ─── Admin cross-user (PHI-gated) reads/generate ─────
   // These hit the `/admin/dna-writing-styles` controller (requires
   // `manage:DnaWritingStyleReport`); the service tenant-scopes the caller and
   // even GLOBAL_ADMIN cannot cross tenants. Distinct from the self-only
@@ -134,7 +134,7 @@ export function useDnaStyle(): UseDnaStyleReturn {
 
   const generate = useCallback(
     (input?: DnaGenerateInput & { idempotencyKey?: string }): Promise<{ jobId: string }> => {
-      // TASK-299 D-9 — attach an idempotency key to the POST body so the
+      // Attach an idempotency key to the POST body so the
       // backend can dedupe duplicate submissions (double-clicks, retries).
       const { idempotencyKey, ...rest } = (input ?? {}) as Record<string, unknown> & { idempotencyKey?: string };
       const body = withIdempotencyKey(rest as Record<string, unknown>, idempotencyKey);
@@ -143,7 +143,7 @@ export function useDnaStyle(): UseDnaStyleReturn {
     [execute],
   );
 
-  // TASK-329 P5 — generate seeded from a selection of historical source items.
+  // Generate seeded from a selection of historical source items.
   const generateFromHistory = useCallback(
     (sourceIds: string[], extra?: Omit<DnaGenerateInput, 'sourceIds'> & { idempotencyKey?: string }): Promise<{ jobId: string }> => {
       const { idempotencyKey, ...rest } = (extra ?? {}) as Record<string, unknown> & { idempotencyKey?: string };
@@ -163,7 +163,7 @@ export function useDnaStyle(): UseDnaStyleReturn {
     [execute],
   );
 
-  // TASK-329 P5 — promote a historical report to the doctor's active default.
+  // Promote a historical report to the doctor's active default.
   const setDefault = useCallback(
     (reportId: string): Promise<DnaReport> =>
       execute<DnaReport>('setDefault', async (client) => {
@@ -185,7 +185,7 @@ export function useDnaStyle(): UseDnaStyleReturn {
     [execute],
   );
 
-  // TASK-329 P5 — the doctor's own report history (owner-scoped).
+  // The doctor's own report history (owner-scoped).
   const getMyReports = useCallback(
     (): Promise<DnaReport[]> =>
       execute<DnaReport[]>('getMyReports', async (client) => {
@@ -197,7 +197,7 @@ export function useDnaStyle(): UseDnaStyleReturn {
     [execute],
   );
 
-  // TASK-329 P5 — resolve two versions of a report for a side-by-side diff.
+  // Resolve two versions of a report for a side-by-side diff.
   const getVersionDiff = useCallback(
     (reportId: string, fromVersionId: string, toVersionId: string): Promise<{ left: DnaStyleVersion | null; right: DnaStyleVersion | null }> =>
       execute<{ left: DnaStyleVersion | null; right: DnaStyleVersion | null }>('getVersionDiff', async (client) => {
@@ -263,7 +263,7 @@ export function useDnaStyle(): UseDnaStyleReturn {
     [apiClient, logger],
   );
 
-  // TASK-299 D-7 — SSE consumer for DNA generation jobs.
+  // SSE consumer for DNA generation jobs.
   const streamJobStatus = useCallback(
     (jobId: string, callbacks: DnaJobStreamCallbacks): (() => void) => {
       if (!apiClient) throw new Error('SDK not initialized');
@@ -365,7 +365,7 @@ export function useDnaStyle(): UseDnaStyleReturn {
     [execute],
   );
 
-  // ─── TASK-388 #13 — admin cross-user (PHI-gated) methods ────────────
+  // ─── Admin cross-user (PHI-gated) methods ────────────
   const adminGetReportForDoctor = useCallback(
     (doctorId: string): Promise<DnaReport> =>
       execute<DnaReport>('adminGetReportForDoctor', async (client) => {

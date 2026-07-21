@@ -29,7 +29,7 @@ import { RoleDetailDrawer, RoleDetailPane } from './role-detail';
 const LIST_LIMIT = 100;
 
 /**
- * TASK-444 — accessible member-count chip for the role detail header (the
+ * Accessible member-count chip for the role detail header (the
  * aria-hidden list-row count is a decorative duplicate of this badge).
  * Renders nothing when the read carried no count (mutation responses).
  */

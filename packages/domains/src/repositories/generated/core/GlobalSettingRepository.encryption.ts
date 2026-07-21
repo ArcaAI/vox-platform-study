@@ -1,5 +1,3 @@
-// TASK-302 Phase 4 Tasks 4.6 + 4.9 (Stream B).
-//
 // Encryption helpers for GlobalSettingRepository. Implemented in a sibling
 // file via TS declaration merging + prototype patching so the generated
 // repository (src/repositories/generated/core/GlobalSettingRepository.ts)
@@ -8,7 +6,7 @@
 // Design constraints:
 //   - SecretsService is passed as a parameter at call time (NOT via
 //     constructor injection) — the codegen owns the constructor
-//     signature and changing it would break the regen contract (R5).
+//     signature and changing it would break the regen contract.
 //   - The methods live as instance methods on GlobalSettingRepository
 //     so consumers can write `repo.encryptValueIntoEntity(entity, sec)`
 //     ergonomically.
@@ -82,7 +80,7 @@ declare module './GlobalSettingRepository' {
   }
 }
 
-// TASK-504 note: a behaviour-identical canonical copy of this function lives in
+// Note: a behaviour-identical canonical copy of this function lives in
 // the applications layer (secrets/secret-field.util.ts). This domains-layer copy
 // is intentional — domains cannot import applications (import cycle). Keep the
 // two implementations byte-identical; do not diverge one without the other.

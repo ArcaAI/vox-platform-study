@@ -30,7 +30,7 @@ if (!isCI && nodeEnv !== 'production') {
   }
 }
 
-// TASK-302 Stream C Phase 2A: prefer DIRECT_URL for migrations so that
+// Prefer DIRECT_URL for migrations so that
 // Prisma Migrate's per-session advisory locks survive — those locks break
 // under PgBouncer transaction-mode pooling. Falls back to DATABASE_URL
 // for backwards compatibility when DIRECT_URL is unset (local dev).

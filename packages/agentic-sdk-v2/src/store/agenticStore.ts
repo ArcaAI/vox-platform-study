@@ -73,21 +73,21 @@ export interface AgenticState {
   activeStream: MediaStream | null;
   activeAudioContext: AudioContext | null;
 
-  // TTS playback state (TASK-491)
+  // TTS playback state
   ttsIsPlaying: boolean;
   ttsIsLoading: boolean;
   ttsError: Error | null;
   /**
-   * TASK-464 — outbound audio frames dropped at the streaming STT client's
-   * backpressure watermark during the current capture session. The dropped PCM
-   * never reached the durable transcript.
+   * Outbound audio frames dropped at the streaming STT client's backpressure
+   * watermark during the current capture session. The dropped PCM never
+   * reached the durable transcript.
    */
   audioDroppedFrameCount: number;
   /**
-   * TASK-464 — session-sticky latch: true once ANY audio was lost this session.
+   * Session-sticky latch: true once ANY audio was lost this session.
    * SURVIVES reconnect (backpressure precedes the disconnect, so a reconnect
-   * reset would erase the signal exactly when loss happened — the bug TASK-454
-   * fixed on review); clears ONLY on capture start/stop.
+   * reset would erase the signal exactly when loss happened); clears ONLY on
+   * capture start/stop.
    */
   audioLostThisSession: boolean;
 
@@ -112,7 +112,7 @@ export interface AgenticState {
   authUser: unknown;
   authIsAuthenticated: boolean;
   authImpersonatedUser: unknown;
-  // NOTE: `authOriginalToken` was removed in TASK-264 W0-3. The admin JWT now
+  // NOTE: `authOriginalToken` is intentionally not tracked here. The admin JWT
   // lives inside `AgenticClient` (module-level WeakMap, not enumerable on the
   // instance). See `AgenticClient.startImpersonation()` / `stopImpersonation()`.
   authOriginalUser: unknown;
@@ -120,20 +120,20 @@ export interface AgenticState {
   // Global error
   globalError: Error | null;
 
-  // Model registry version (M-001: forces memo recomputation on mutation)
+  // Model registry version: forces memo recomputation on mutation.
   modelRegistryVersion: number;
 
   // Tenant configuration (parsed from GlobalSettings)
   tenantConfig: TenantAudioConfig | null;
 
-  // Three-tier config management (TASK-244)
+  // Three-tier config management
   configManager: ConfigManager | null;
   resolvedConfig: AppConfig | null;
   configReady: boolean;
   /**
-   * TASK-297 DEF-C6 — true after the provider has successfully preloaded
-   * `/auth/me` (and therefore knows `authUser`, `tenantId`, `departmentId`).
-   * Always false before the first `/auth/me` resolves.
+   * True after the provider has successfully preloaded `/auth/me` (and
+   * therefore knows `authUser`, `tenantId`, `departmentId`). Always false
+   * before the first `/auth/me` resolves.
    */
   profileReady: boolean;
 }
@@ -185,7 +185,7 @@ export interface AgenticActions {
   setAudioError: (error: Error | null) => void;
   setActiveStream: (stream: MediaStream | null) => void;
   setActiveAudioContext: (ctx: AudioContext | null) => void;
-  // TASK-464 — audio-drop surfacing (push channel from the streaming STT provider)
+  // Audio-drop surfacing (push channel from the streaming STT provider)
   /** Increment the per-session dropped-frame count by one (one call per dropped frame). */
   incrementDroppedFrames: () => void;
   /** Latch `audioLostThisSession` true (session-sticky; survives reconnect). */
@@ -216,55 +216,55 @@ export interface AgenticActions {
   setAuthUser: (user: unknown) => void;
   setIsAuthenticated: (isAuthenticated: boolean) => void;
   setImpersonatedUser: (user: unknown) => void;
-  // NOTE: `setOriginalToken` was removed in TASK-264 W0-3. See `AgenticClient`.
+  // NOTE: `setOriginalToken` is intentionally not exposed. See `AgenticClient`.
   setOriginalUser: (user: unknown) => void;
 
   // Error actions
   setGlobalError: (error: Error | null) => void;
 
   // Security actions
-  /**
-   * TASK-317 W2.1 (AC-7, review C-1) — reset ONLY the tenant-scoped PHI/session
-   * slices (consultation / relatedConsultations / context / sharedContext /
-   * entities / summaries / transcript / dnaStyle / tenantConfig), leaving auth
-   * and impersonation fields untouched. Used by the same-tab tenant-switch
-   * handler, which must NOT touch the auth/impersonation state driving the
-   * in-flight switch. Shared base for `clearSensitiveData()`.
-   */
-  // TTS playback actions (TASK-491)
+  // TTS playback actions
   setTtsIsPlaying: (playing: boolean) => void;
   setTtsIsLoading: (loading: boolean) => void;
   setTtsError: (error: Error | null) => void;
 
+  /**
+   * Reset ONLY the tenant-scoped PHI/session slices (consultation /
+   * relatedConsultations / context / sharedContext / entities / summaries /
+   * transcript / dnaStyle / tenantConfig), leaving auth and impersonation
+   * fields untouched. Used by the same-tab tenant-switch handler, which must
+   * NOT touch the auth/impersonation state driving the in-flight switch.
+   * Shared base for `clearSensitiveData()`.
+   */
   clearTenantSessionData: () => void;
   clearSensitiveData: () => void;
   /**
-   * TASK-317 W1.4 (AC-3) — scope logout cleanup to the OUTGOING
-   * `${tenantId}::${userId}` namespace only. Removes the outgoing
-   * `arcaai-user-preferences/${ns}` localStorage key and the
-   * `arcaai-personalization/${ns}` IDB row; never sweeps other namespaces.
+   * Scope logout cleanup to the OUTGOING `${tenantId}::${userId}` namespace
+   * only. Removes the outgoing `arcaai-user-preferences/${ns}` localStorage
+   * key and the `arcaai-personalization/${ns}` IDB row; never sweeps other
+   * namespaces.
    */
   clearOnLogout: (ns: string) => void;
 
-  // Model registry version (M-001)
+  // Bumps modelRegistryVersion to force memo recomputation.
   incrementModelRegistryVersion: () => void;
 
   // Tenant config
-  // TASK-317 W2.1 (AC-7) — accepts `null` so a same-tab tenant switch can reset
-  // the outgoing tenant's resolved audio/AI config (the state field is already
+  // Accepts `null` so a same-tab tenant switch can reset the outgoing
+  // tenant's resolved audio/AI config (the state field is already
   // `TenantAudioConfig | null`).
   setTenantConfig: (config: TenantAudioConfig | null) => void;
 
   // Runtime config (ENH-05)
   updateRuntimeConfig: (patch: { logLevel?: string }) => void;
 
-  // Three-tier config management (TASK-244)
+  // Three-tier config management
   setConfigManager: (manager: ConfigManager | null) => void;
   setResolvedConfig: (config: AppConfig | null) => void;
   setConfigReady: (ready: boolean) => void;
-  /** TASK-297 DEF-C6 — provider toggles after `/auth/me` resolves. */
+  /** Provider toggles after `/auth/me` resolves. */
   setProfileReady: (ready: boolean) => void;
-  /** TASK-297 DEF-H6 — allow provider to re-create manager keyed on user. */
+  /** Allow provider to re-create manager keyed on user. */
   setPersonalizationManager: (manager: PersonalizationManager | null) => void;
 }
 
@@ -310,11 +310,11 @@ const initialState: AgenticState = {
   activeStream: null,
   activeAudioContext: null,
 
-  // TTS playback state (TASK-491)
+  // TTS playback state
   ttsIsPlaying: false,
   ttsIsLoading: false,
   ttsError: null,
-  // TASK-464 — audio-drop signal starts clean each session.
+  // Audio-drop signal starts clean each session.
   audioDroppedFrameCount: 0,
   audioLostThisSession: false,
 
@@ -335,7 +335,7 @@ const initialState: AgenticState = {
   isAudioSource: false,
   audioSourceTabId: null,
 
-  // Auth state (TASK-264 W0-3: `authOriginalToken` deliberately omitted)
+  // Auth state (`authOriginalToken` deliberately omitted — see NOTE above)
   authUser: null,
   authIsAuthenticated: false,
   authImpersonatedUser: null,
@@ -350,15 +350,15 @@ const initialState: AgenticState = {
   // Tenant config
   tenantConfig: null,
 
-  // Three-tier config management (TASK-244)
+  // Three-tier config management
   configManager: null,
   resolvedConfig: null,
   configReady: false,
-  // TASK-297 DEF-C6 — flips true once `/auth/me` has resolved.
+  // Flips true once `/auth/me` has resolved.
   profileReady: false,
 };
 
-// TASK-317 W4 (review M-2) — every store instance (the @deprecated singleton AND
+// Every store instance (the @deprecated singleton AND
 // each per-provider `createAgenticStore()`) must start from its OWN deep copy of
 // the initial state. Spreading the shared `initialState` const directly would
 // alias its mutable members (`preferences`, the `[]` slices, `audioPlugins`)
@@ -371,7 +371,7 @@ const createInitialState = (): AgenticState => structuredClone(initialState);
 // Store Creation
 // =============================================================================
 
-// TASK-317 W4.1 (AC-12) — the store config is extracted into a named
+// The store config is extracted into a named
 // `StateCreator` so it can be instantiated either as the module singleton
 // (`useAgenticStore`, retained for external importers) OR per-provider via
 // `createAgenticStore()`. The slice/action bodies below are UNCHANGED from
@@ -464,12 +464,12 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
   setActiveStream: (stream) => set({ activeStream: stream }),
   setActiveAudioContext: (ctx) => set({ activeAudioContext: ctx }),
 
-  // TTS playback setters (TASK-491)
+  // TTS playback setters
   setTtsIsPlaying: (playing) => set({ ttsIsPlaying: playing }),
   setTtsIsLoading: (loading) => set({ ttsIsLoading: loading }),
   setTtsError: (error) => set({ ttsError: error }),
 
-  // TASK-464 — audio-drop surfacing. `incrementDroppedFrames` is called once per
+  // Audio-drop surfacing. `incrementDroppedFrames` is called once per
   // dropped frame; `markAudioLost` latches the session signal; `resetAudioDropped`
   // clears both on start/stop (the latch deliberately survives reconnect).
   incrementDroppedFrames: () => set((state) => ({ audioDroppedFrameCount: state.audioDroppedFrameCount + 1 })),
@@ -505,12 +505,12 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
   setAuthUser: (user) => set({ authUser: user }),
   setIsAuthenticated: (isAuthenticated) => set({ authIsAuthenticated: isAuthenticated }),
   setImpersonatedUser: (user) => set({ authImpersonatedUser: user }),
-  // NOTE: TASK-264 W0-3 — `setOriginalToken` removed; admin JWT lives in `AgenticClient`.
+  // NOTE: `setOriginalToken` is intentionally not exposed; admin JWT lives in `AgenticClient`.
   setOriginalUser: (user) => set({ authOriginalUser: user }),
 
   setGlobalError: (error) => set({ globalError: error }),
 
-  // TASK-317 W2.1 (AC-7, review C-1) — single source of truth for the
+  // Single source of truth for the
   // tenant-scoped PHI/session reset. Clears EVERY tenant-A slice surfaced
   // through useArca()/useArcaConfig() (consultation, relatedConsultations,
   // contextItems, sharedContext, entities [medical NER PHI], summaries,
@@ -530,12 +530,12 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
       transcriptSegments: [],
       dnaStyle: null,
       tenantConfig: null,
-      // TASK-464 — a tenant switch ends the capture context; the outgoing tenant's
+      // A tenant switch ends the capture context; the outgoing tenant's
       // audio-drop signal must not bleed into the next. (`clearSensitiveData`
       // delegates here, so the security wipe is covered too.)
       audioDroppedFrameCount: 0,
       audioLostThisSession: false,
-      // TASK-491 — TTS playback state resets on tenant switch (mirrors activeStream).
+      // TTS playback state resets on tenant switch (mirrors activeStream).
       ttsIsPlaying: false,
       ttsIsLoading: false,
       ttsError: null,
@@ -573,7 +573,7 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
     }
   },
 
-  // Three-tier config management (TASK-244)
+  // Three-tier config management
   setConfigManager: (manager) => set({ configManager: manager }),
   setResolvedConfig: (config) => set({ resolvedConfig: config }),
   setConfigReady: (ready) => set({ configReady: ready }),
@@ -583,7 +583,7 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
   clearOnLogout: (ns: string) => {
     if (typeof window !== 'undefined') {
       try {
-        // TASK-317 W1.4 (AC-3) — remove ONLY the outgoing namespace's
+        // Remove ONLY the outgoing namespace's
         // localStorage key. The previous iterate-and-delete-all sweep wiped
         // every tenant's `arcaai-user-preferences/*` data on a shared
         // workstation (audit C-2). Mirrors `LS_NAMESPACE_PREFIX` in
@@ -593,7 +593,7 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
         /* SSR or restricted storage */
       }
 
-      // TASK-317 W1.4 (AC-3) — delete ONLY the outgoing namespace's
+      // Delete ONLY the outgoing namespace's
       // personalization IDB row instead of wholesale-clearing the stores
       // (which also wiped other tenants). Fire-and-forget; failures are
       // swallowed (storage may be unavailable in SSR / private mode).
@@ -611,7 +611,7 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
       currentTranscript: '',
       transcriptSegments: [],
       dnaStyle: null,
-      // TASK-464 — logout ends the capture context; clear the audio-drop signal.
+      // Logout ends the capture context; clear the audio-drop signal.
       audioDroppedFrameCount: 0,
       audioLostThisSession: false,
       authUser: null,
@@ -625,7 +625,7 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
       globalError: null,
       activeStream: null,
       activeAudioContext: null,
-      // TASK-297 DEF-H6 — drop personalization tier so next mount rebuilds
+      // Drop personalization tier so next mount rebuilds
       // a fresh ConfigManager / PersonalizationManager keyed to the new user.
       preferences: {},
       tenantConfig: null,
@@ -639,14 +639,14 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
 });
 
 // =============================================================================
-// Store factory (TASK-317 W4.1, AC-12)
+// Store factory
 // =============================================================================
 
 /** A vanilla Zustand store instance for the agentic SDK. */
 export type AgenticStoreApi = StoreApi<AgenticState & AgenticActions>;
 
 /**
- * TASK-317 W4.1 (AC-12) — build a fresh, fully-independent store instance.
+ * Build a fresh, fully-independent store instance.
  *
  * `AgenticProvider` calls this exactly once per mount (held in a `useRef`) so
  * each provider — and therefore each concurrent tenant in a multi-tenant
@@ -663,7 +663,7 @@ export function createAgenticStore(): AgenticStoreApi {
 }
 
 // =============================================================================
-// Per-provider store context + hooks (TASK-317 W4.2/W4.3, AC-12)
+// Per-provider store context + hooks
 // =============================================================================
 
 /**
@@ -675,7 +675,7 @@ export const AgenticStoreContext = createContext<AgenticStoreApi | null>(null);
 AgenticStoreContext.displayName = 'AgenticStoreContext';
 
 /**
- * TASK-317 W4.2 (AC-12) — read the per-provider `StoreApi` from context.
+ * Read the per-provider `StoreApi` from context.
  *
  * Throws when used outside an `<AgenticProvider>` (fail-loud: never silently
  * fall back to the module singleton, which would reintroduce the C-1 leak).
@@ -693,7 +693,7 @@ export function useStoreApi(): AgenticStoreApi {
 const identitySelector = <T>(state: T): T => state;
 
 /**
- * TASK-317 W4.3 (AC-12) — the INTERNAL store hook. Reads the per-provider store
+ * The INTERNAL store hook. Reads the per-provider store
  * from `AgenticStoreContext`, so every concurrent tenant gets isolated state.
  *
  * `useAgenticStore(selector)` is sugar for `useStore(useStoreApi(), selector)`;
@@ -712,7 +712,7 @@ export function useAgenticStore<U>(selector?: (state: AgenticState & AgenticActi
 }
 
 /**
- * @deprecated TASK-317 W4.3 (AC-12) — module-level singleton store retained
+ * @deprecated Module-level singleton store retained
  * ONLY so external importers (`import { useAgenticStore } from '@arcaai/vox'`)
  * keep compiling and working as before. INTERNAL SDK code MUST NOT read this —
  * use the context-backed `useAgenticStore` hook / `useStoreApi()` instead.
@@ -778,7 +778,7 @@ export const selectTranscriptionPipelineState = (state: AgenticState) => state.t
 export const selectKnowledgePipelineState = (state: AgenticState) => state.knowledgePipelineState;
 
 // =============================================================================
-// Granular Selectors (BUG-01)
+// Granular Selectors
 //
 // Use these with `useAgenticStore(selectXxx)` to subscribe to only the
 // specific slice of state you need, avoiding full-store re-renders.
@@ -793,13 +793,13 @@ export const selectIsMuted = (state: AgenticState) => state.isMuted;
 export const selectIsSpeaking = (state: AgenticState) => state.isSpeaking;
 export const selectCurrentTranscript = (state: AgenticState) => state.currentTranscript;
 /**
- * TASK-464 — running count of outbound audio frames dropped this session. Read
+ * Running count of outbound audio frames dropped this session. Read
  * from the EXTERNAL vox UI with `useArcaStore(selectAudioDropped)` (never a
  * direct store import; select atomically to avoid full-store re-renders).
  */
 export const selectAudioDropped = (state: AgenticState) => state.audioDroppedFrameCount;
 /**
- * TASK-464 — session-sticky "audio was lost this session" latch (survives
+ * Session-sticky "audio was lost this session" latch (survives
  * reconnect, clears only on start/stop). Read via `useArcaStore(selectAudioDegraded)`
  * to render a degraded-connection banner/badge.
  */
@@ -818,21 +818,21 @@ export const selectTenantConfig = (state: AgenticState) => state.tenantConfig;
 export const selectConfigManager = (state: AgenticState) => state.configManager;
 export const selectResolvedConfig = (state: AgenticState) => state.resolvedConfig;
 export const selectConfigReady = (state: AgenticState) => state.configReady;
-/** TASK-297 DEF-C6 — true after `/auth/me` resolves. */
+/** True after `/auth/me` resolves. */
 export const selectProfileReady = (state: AgenticState) => state.profileReady;
-/** TASK-297 DEF-H6 — selector for the personalization manager instance. */
+/** Selector for the personalization manager instance. */
 export const selectPersonalizationManager = (state: AgenticState) => state.personalizationManager;
-/** TASK-297 — selector for in-flight authenticated user. */
+/** Selector for in-flight authenticated user. */
 export const selectAuthUser = (state: AgenticState) => state.authUser;
-/** TASK-297 — selector for the impersonated user (or null). */
+/** Selector for the impersonated user (or null). */
 export const selectAuthImpersonatedUser = (state: AgenticState) => state.authImpersonatedUser;
-/** TASK-297 — selector for the model registry (used by useArcaConfig). */
+/** Selector for the model registry (used by useArcaConfig). */
 export const selectModelRegistry = (state: AgenticState) => state.modelRegistry;
-/** TASK-297 — selector for model registry version (forces memoization on selection). */
+/** Selector for model registry version (forces memoization on selection). */
 export const selectModelRegistryVersion = (state: AgenticState) => state.modelRegistryVersion;
-/** TASK-297 DEF-H3 — selector for shared context items. */
+/** Selector for shared context items. */
 export const selectSharedContext = (state: AgenticState) => state.sharedContext;
-/** TASK-297 DEF-H3 — selector for the current context loading state. */
+/** Selector for the current context loading state. */
 export const selectContextLoading = (state: AgenticState) => state.contextLoading;
-/** TASK-297 DEF-H3 — selector for the current context error. */
+/** Selector for the current context error. */
 export const selectContextError = (state: AgenticState) => state.contextError;

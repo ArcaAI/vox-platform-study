@@ -25,11 +25,11 @@ import {
   type MessageEvent,
 } from '@nestjs/common';
 
-// TASK-331 doc-07 F1 — admin vs. doctor role sets, mirroring the UI's
+// Admin vs. doctor role sets, mirroring the UI's
 // `useDoctorContext` gate. A "global"/tenant admin who is NOT also a clinical
 // user and is NOT impersonating one must not generate a DNA style (which would
 // be owned by their own account — a per-doctor isolation break).
-// TASK-417 — SUPER_ADMIN retired; GLOBAL_ADMIN is the sole elevated role.
+// SUPER_ADMIN retired; GLOBAL_ADMIN is the sole elevated role.
 const DNA_ADMIN_ROLES = ['GLOBAL_ADMIN', 'TENANT_ADMIN'];
 const DNA_DOCTOR_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
 import { ApiTags, ApiBearerAuth, ApiHeader, ApiParam, ApiResponse, ApiOperation } from '@nestjs/swagger';
@@ -38,7 +38,7 @@ import { Queue } from 'bullmq';
 import { ClsService } from 'nestjs-cls';
 import type { IActiveUserContext } from '@arcaai/applications';
 import { Observable } from 'rxjs';
-// TASK-331 doc-02 F12 — `@RequiresIfMatch()` + `@ExpectedVersion()` gate the
+// `@RequiresIfMatch()` + `@ExpectedVersion()` gate the
 // OCC-enforced doctor self-edit PATCH route below (mirrors the admin controller).
 import { ApiEndpoint, Authorize, RequiresIfMatch, ExpectedVersion } from '../../decorators';
 import { getDnaJobStatus, streamDnaJobStatus } from './dna-writing-style-job-stream';
@@ -65,7 +65,7 @@ export class DnaWritingStyleController {
   }
 
   /**
-   * TASK-331 doc-07 F1 — defense-in-depth doctor-scope gate for `generate`.
+   * Defense-in-depth doctor-scope gate for `generate`.
    *
    * `generate` derives the owner from the caller (`getDoctorId()`), so a
    * non-impersonating admin would create a DNA writing-style under their OWN
@@ -93,7 +93,7 @@ export class DnaWritingStyleController {
   })
   @ApiResponse({ status: 400, description: 'Bad request — invalid input' })
   async generate(@Body() dto: GenerateDnaReportRequest): Promise<DnaJobResponse> {
-    // TASK-331 doc-07 F1 — block a non-impersonating admin from self-generating.
+    // Block a non-impersonating admin from self-generating.
     this.assertActingAsDoctor();
     return this.dnaService.generateDnaReport(this.getDoctorId(), dto);
   }
@@ -111,12 +111,12 @@ export class DnaWritingStyleController {
     return report;
   }
 
-  // ─── TASK-356 Phase 6 (S3) — per-doctor DNA on/off settings ──────────
+  // ─── Per-doctor DNA on/off settings ──────────────────────────────────
   // Storage is the Phase-5 DOCTOR-scope `PipelinePolicy.dnaStyleEnabled`.
   // `effective = tenant AND doctor`; the UI binds the switch to `doctorToggle`
   // and disables it when `tenantEnabled` is false.
   @Get('settings')
-  @ApiOperation({ summary: "Get the caller doctor's DNA writing-style on/off settings (TASK-356 Phase 6)" })
+  @ApiOperation({ summary: "Get the caller doctor's DNA writing-style on/off settings" })
   @ApiResponse({ status: 200, description: 'Per-doctor DNA settings', type: DnaSettingsResponse })
   async getSettings(): Promise<DnaSettingsResponse> {
     return this.dnaService.getDnaSettings(this.getDoctorId());
@@ -124,7 +124,7 @@ export class DnaWritingStyleController {
 
   @Put('settings')
   @ApiOperation({
-    summary: "Set the caller doctor's DNA writing-style on/off toggle (TASK-356 Phase 6)",
+    summary: "Set the caller doctor's DNA writing-style on/off toggle",
     description:
       'Writes the DOCTOR-scope `PipelinePolicy.dnaStyleEnabled` for the caller. `enabled: false` is an explicit ' +
       'opt-out, `enabled: null` clears the override (revert to the implicit opt-in). Optimistic concurrency is ' +
@@ -142,7 +142,7 @@ export class DnaWritingStyleController {
     return this.dnaService.setDnaEnabled(this.getDoctorId(), effective);
   }
 
-  // TASK-329 P5 — owner-scoped report history for the playground's report list
+  // Owner-scoped report history for the playground's report list
   // and set-default picker. Tenant scope is enforced in the service.
   @ApiEndpoint({
     returnedModel: DnaReportResponse,
@@ -184,7 +184,7 @@ export class DnaWritingStyleController {
     summary: "Update the current doctor's DNA writing-style report",
     description:
       'Updates one DNA writing-style report row owned by the caller. Optimistic ' +
-      'concurrency is enforced (TASK-331 doc-02 F12): the `If-Match` header (RFC ' +
+      'concurrency is enforced: the `If-Match` header (RFC ' +
       "7232) is REQUIRED and the server runs a Compare-And-Set against the row's " +
       '`_version` column (DISTINCT from `currentVersionNumber`, the DnaVersion ' +
       'history counter). When the header is present, its value overrides the ' +
@@ -208,7 +208,7 @@ export class DnaWritingStyleController {
     @Body() dto: UpdateDnaReportRequest,
     @ExpectedVersion() expectedFromHeader: number | undefined,
   ): Promise<DnaReportResponse> {
-    // TASK-331 doc-02 F12 — header takes precedence over body when both are
+    // Header takes precedence over body when both are
     // present. On this `@RequiresIfMatch()` route the param decorator already
     // fired 428 if the header was missing. The service runs CAS with
     // `dto.expectedVersion` (no service change needed).
@@ -216,7 +216,7 @@ export class DnaWritingStyleController {
     return this.dnaService.updateDnaReport(reportId, effectiveDto);
   }
 
-  // TASK-329 P5 — promote a report to the doctor's active/default. Owner +
+  // Promote a report to the doctor's active/default. Owner +
   // tenant scope enforced in the service.
   @ApiEndpoint({
     returnedModel: DnaReportResponse,

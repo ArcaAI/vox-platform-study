@@ -1,5 +1,5 @@
 /**
- * TASK-497 §3.5 — CreateTenantDialog gains a mandatory 3rd step (tenant
+ * CreateTenantDialog gains a mandatory 3rd step (tenant
  * admin: existing user vs new local user) and now submits through
  * POST /admin/tenants/provision (useProvisionTenant) instead of the plain
  * create — a tenant is never left adminless from this dialog. The existing

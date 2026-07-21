@@ -1,5 +1,5 @@
 /**
- * TASK-409 — Policy break-glass second confirmation + hardened protected-set
+ * Policy break-glass second confirmation + hardened protected-set
  * identification.
  *
  * Matrix pinned here:
@@ -17,7 +17,7 @@
  *   4. `isProtected` is read-only through the API — explicit write attempts
  *      are rejected with 400 (the field never reaches the factory/Prisma).
  *   5. Audit — every confirmed mutation AND every rejected attempt emits a
- *      forced audit event (TASK-396 pattern) that never carries the password.
+ *      forced audit event that never carries the password.
  */
 import { vi, describe, beforeEach, it, expect } from 'vitest';
 import { BadRequestException, ForbiddenException, HttpException, UnauthorizedException } from '@nestjs/common';
@@ -52,7 +52,7 @@ const SYSTEM_FULL_ACCESS = row({
   rules: [{ action: 'manage', subject: 'all' }],
 });
 
-/** The rename-fragility case TASK-409 exists to close: marker true, name unknown. */
+/** The rename-fragility case: marker true, name unknown. */
 const RENAMED_PROTECTED = row({
   id: 'sfa-renamed',
   name: 'platform-root-grant',

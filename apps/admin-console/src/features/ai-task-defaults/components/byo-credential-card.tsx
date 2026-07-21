@@ -65,9 +65,9 @@ function CardSkeleton() {
 }
 
 /**
- * TASK-526 — one cloud provider's BYO-credential card (GAP-C1 tenant lane).
+ * One cloud provider's BYO-credential card (tenant lane).
  *
- * Follows the TASK-496 TTS `CredentialCard` interaction exactly — Configured /
+ * Follows the TTS `CredentialCard` interaction exactly — Configured /
  * None + enabled badges, a WRITE-ONLY password field, inline remove
  * confirmation, toasts — with one deliberate divergence: this row carries the
  * house `_version`, so the save is OCC-guarded (`If-Match` from the row read,

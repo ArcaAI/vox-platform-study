@@ -1,5 +1,5 @@
 /**
- * useMonitoring Hook Tests (TASK-032 WS-A)
+ * useMonitoring Hook Tests
  *
  * @vitest-environment jsdom
  */
@@ -54,7 +54,7 @@ describe('useMonitoring', () => {
                 { service: 'stt', status: 'up', uptimeSeconds: 3600 },
                 { service: 'smr', status: 'up', uptimeSeconds: 7200 },
             ];
-            // TASK-386 — real backend SessionsResponse shape (per-service active + totalUsers).
+            // Real backend SessionsResponse shape (per-service active + totalUsers).
             const sessionsData = {
                 services: { smr: { active: 2 }, stt: { active: 5 }, nlp: { active: 1 }, guardrail: { active: 0 }, harness: { active: 0 } },
                 totalUsers: 4,

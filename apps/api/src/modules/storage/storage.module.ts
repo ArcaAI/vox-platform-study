@@ -5,7 +5,7 @@ import { StorageController } from './storage.controller';
 @Module({
   imports: [S3ServiceModule, MediaServiceModule, TenantBucketServiceModule],
   controllers: [StorageController],
-  // TASK-375 (thumbnails) — dependency-free image-derivative generator (sharp)
+  // Dependency-free image-derivative generator (sharp)
   // consumed by StorageController.uploadFile.
   providers: [ImageThumbnailService],
 })

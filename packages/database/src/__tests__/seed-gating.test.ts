@@ -1,7 +1,7 @@
 /**
- * Seed Gating + Secret-Safety Tests (TASK-331 doc-08 F5)
+ * Seed Gating + Secret-Safety Tests
  *
- * Verifies the security fixes for finding F5:
+ * Verifies:
  *  1. Demo API-key fixtures (which embed raw secrets from 00-constants) are
  *     only seedable in development/test — the `shouldSeedApiKeys` predicate is
  *     the single source of truth reused by the seed orchestrator gate.

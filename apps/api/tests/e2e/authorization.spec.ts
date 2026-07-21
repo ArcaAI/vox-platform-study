@@ -19,7 +19,6 @@ import { SEEDED_API_KEY_SERVICE_ACCOUNT } from '../../../../tests/helpers';
  * `/rbac/permissions/check-bulk` and `/rbac/permissions/check`, none of which
  * have ever existed. Every assertion behind them sat inside an
  * `if (status === 200)` guard, so ~9 tests passed vacuously against a 404.
- * (TASK-539 finding S-2.)
  */
 const MY_PERMISSIONS_ROUTE = '/api/v1/rbac/check/my-permissions';
 const CHECK_BULK_ROUTE = '/api/v1/rbac/check/bulk';
@@ -36,7 +35,7 @@ interface EffectivePermission {
  * string (`{ action: 'read,list', subject: 'Consultation' }` — see
  * permission-check.controller.ts `getMyPermissions`). Exact-equality matching
  * on `action` therefore silently misses every multi-action rule, so split
- * before comparing. (TASK-539 finding S-2a.)
+ * before comparing.
  */
 function hasPermission(permissions: EffectivePermission[], action: string, subject: string): boolean {
   return permissions.some((p) => p.subject === subject && p.action.split(',').includes(action));
@@ -86,7 +85,7 @@ test.describe('Authorization Flow', () => {
     nurseToken = nurseBody.token;
 
     // Service Account - API/integration access.
-    // TASK-430 (commit c8850f4f) made service accounts API-key-only principals:
+    // Service accounts are API-key-only principals:
     // auth.controller.ts rejects interactive login with 401 ("Service accounts
     // cannot sign in interactively"), locked in by
     // apps/api/src/modules/auth/__tests__/auth.service-account.task430.test.ts.
@@ -128,11 +127,10 @@ test.describe('Authorization Flow', () => {
     });
 
     test('should deny authenticated users without manage:Tenant permission', async ({ request }) => {
-      // TASK-258 hardened TenantController with @CanManage('Tenant') at the class level,
-      // so /admin/tenants/* now requires the manage:Tenant ability. A clinician token
+      // TenantController is hardened with @CanManage('Tenant') at the class level,
+      // so /admin/tenants/* requires the manage:Tenant ability. A clinician token
       // (doctor) is authenticated but lacks that ability and must be rejected with 403.
-      // See docs/implementation/TASK-258-Tenant-Config-Provisioning/README.md (Issue #2)
-      // and apps/api/tests/e2e/tenant-access-control.spec.ts for the dedicated coverage.
+      // See apps/api/tests/e2e/tenant-access-control.spec.ts for the dedicated coverage.
       const response = await request.get('/api/v1/admin/tenants', {
         headers: { Authorization: `Bearer ${doctorToken}` },
       });
@@ -189,10 +187,10 @@ test.describe('Authorization Flow', () => {
       expect(hasPermission(body.permissions, 'read', 'Consultation')).toBe(true);
     });
 
-    // Reaches the principal by API key — TASK-430 removed interactive login for
-    // service accounts. This assertion had never actually executed: it sat
-    // behind a 404 status-guard (S-2), and once repointed it still needed the
-    // API-key auth path to work at all (S-3).
+    // Reaches the principal by API key — service accounts cannot use
+    // interactive login. This assertion had never actually executed: it sat
+    // behind a 404 status-guard, and once repointed it still needed the
+    // API-key auth path to work at all.
     test('service account should have limited integration permissions', async ({ request }) => {
       const permResponse = await request.post(MY_PERMISSIONS_ROUTE, {
         headers: { 'X-API-Key': SEEDED_API_KEY_SERVICE_ACCOUNT },

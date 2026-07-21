@@ -1,5 +1,5 @@
 /**
- * useApiKeys Hook Tests (TASK-032 WS-G)
+ * useApiKeys Hook Tests
  *
  * @vitest-environment jsdom
  */
@@ -217,7 +217,7 @@ describe('useApiKeys', () => {
         });
     });
 
-    // TASK-390 #23 (K5) — rotate endpoint.
+    // Rotate endpoint.
     describe('rotate', () => {
         it('should POST to API_KEY_ENDPOINTS.ROTATE(id) and return the new raw key', async () => {
             const rotated = { apiKey: { id: 'k-2', keyName: 'Key' }, rawKey: 'hope_live_rotated_chk' };

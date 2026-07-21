@@ -1,4 +1,4 @@
-"""Unit tests for the streaming architecture Phase 1 components.
+"""Unit tests for the streaming architecture components.
 
 Covers:
 - schemas.py: AudioFrame, SegmentResult, SessionControl, SessionMetadata
@@ -750,7 +750,7 @@ class TestStreamSession:
         chunk = b"\x00\x00" * 16000  # 1 second of audio = 32,000 bytes
         for i in range(35):  # 35 seconds
             session.record_frame(seq=i, data=chunk, sample_rate=16000)
-        # Ring buffer should be capped at ~30 seconds per TASK-014 design
+        # Ring buffer should be capped at ~30 seconds by design
         max_bytes = 16000 * 2 * 30
         assert len(session.ring_buffer) <= max_bytes
 
@@ -862,7 +862,7 @@ class TestRedisStreamKeys:
 
 
 def _group_redis_mock() -> AsyncMock:
-    """AsyncMock wired for the consumer-group audio reader (TASK-457).
+    """AsyncMock wired for the consumer-group audio reader.
 
     Defaults: XGROUP CREATE ok, XAUTOCLAIM returns nothing, XACK ok, and a
     slow empty XREADGROUP so the loop yields instead of spin-looping. Tests
@@ -882,7 +882,7 @@ def _group_redis_mock() -> AsyncMock:
 
 
 class TestIngestionConsumer:
-    """Tests for IngestionConsumer (TASK-457 — Redis consumer groups)."""
+    """Tests for IngestionConsumer (Redis consumer groups)."""
 
     async def test_start_stop(self):
         from stt_v2.streaming.redis_streams import IngestionConsumer
@@ -1028,7 +1028,7 @@ class TestResultPublisher:
         entry_id = await publisher.publish(result)
         assert entry_id == "1-0"
         redis_mock.xadd.assert_called_once()
-        # TASK-457 C3-05 — result stream is MAXLEN-bounded during the session.
+        # Result stream is MAXLEN-bounded during the session.
         call_kwargs = redis_mock.xadd.call_args.kwargs
         assert call_kwargs["maxlen"] is not None and call_kwargs["maxlen"] > 0
         assert call_kwargs["approximate"] is True
@@ -1053,7 +1053,7 @@ class TestResultPublisher:
         publisher = ResultPublisher(redis=redis_mock, session_id="s1")
         entry_id = await publisher.publish_error("Something went wrong")
         assert entry_id == "2-0"
-        # C3-05 — error entries are bounded too.
+        # Error entries are bounded too.
         assert redis_mock.xadd.call_args.kwargs["maxlen"] is not None
         assert redis_mock.xadd.call_args.kwargs["approximate"] is True
 
@@ -1066,7 +1066,7 @@ class TestResultPublisher:
         publisher = ResultPublisher(redis=redis_mock, session_id="s1")
         entry_id = await publisher.publish_status("finalizing")
         assert entry_id == "3-0"
-        # C3-05 — status entries are bounded too.
+        # Status entries are bounded too.
         assert redis_mock.xadd.call_args.kwargs["maxlen"] is not None
         assert redis_mock.xadd.call_args.kwargs["approximate"] is True
 
@@ -1157,7 +1157,7 @@ class TestXaddAudioFrame:
         assert call_kwargs["approximate"] is True
 
     async def test_xadd_default_maxlen_uses_reconciled_setting(self):
-        """TASK-457 C3-06 — the default bound is the single source of truth
+        """The default bound is the single source of truth
         (settings.streaming_audio_stream_maxlen), reconciled to 10000 to match
         the TS bridge's XADD MAXLEN."""
         from stt_v2.core.config.settings import get_settings
@@ -1262,7 +1262,7 @@ class TestSessionManager:
         redis_mock.exists.return_value = False
 
         # Make the read loops yield control so consumer tasks don't spin-loop.
-        # Audio uses XREADGROUP (TASK-457); control still uses XREAD.
+        # Audio uses XREADGROUP; control still uses XREAD.
         async def _slow_read(*args, **kwargs):
             await asyncio.sleep(0.05)
             return []
@@ -1370,7 +1370,7 @@ class TestSessionManager:
         assert mgr.active_session_count == 0
 
     async def test_reaper_loop_uses_audio_idle_timeout(self):
-        """C2-02 (TASK-456) — the background reaper must reap on the audio-idle
+        """The background reaper must reap on the audio-idle
         timeout (streaming_audio_idle_timeout_s=300), NOT the 60s session
         timeout, so a live consultation with a normal speech pause is not
         finalized. Wires the previously-dead streaming_audio_idle_timeout_s knob.
@@ -1413,8 +1413,8 @@ class TestStreamingSettings:
         assert s.streaming_session_persist_interval_s == 5.0
         assert s.streaming_session_timeout_s == 60
         assert s.streaming_reaper_interval_s == 300
-        # TASK-456 — durable-transcript persist retries + outbox re-drive cap
-        # (C2-03) + finalize drain timeout (C2-05, previously a getattr fallback,
+        # Durable-transcript persist retries + outbox re-drive cap
+        # + finalize drain timeout (previously a getattr fallback,
         # now a real setting).
         assert s.streaming_transcript_persist_max_attempts == 3
         assert s.streaming_transcript_persist_backoff_s == 0.5
@@ -1422,10 +1422,10 @@ class TestStreamingSettings:
         assert s.streaming_inference_drain_timeout_s == 60.0
         assert s.streaming_worker_heartbeat_s == 10
         assert s.streaming_worker_heartbeat_ttl_s == 30
-        # TASK-457 C3-06 — audio bound reconciled to the single source of
+        # Audio bound reconciled to the single source of
         # truth (was 2000; now equals the TS bridge's XADD MAXLEN of 10000).
         assert s.streaming_audio_stream_maxlen == 10000
-        # TASK-457 C3-05 — result stream bounded during the session.
+        # Result stream bounded during the session.
         assert s.streaming_result_stream_maxlen == 10000
         assert s.streaming_result_stream_expire_s == 3600
         assert s.streaming_session_metadata_expire_s == 86400

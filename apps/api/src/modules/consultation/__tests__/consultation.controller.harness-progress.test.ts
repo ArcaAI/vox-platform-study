@@ -1,5 +1,5 @@
 /**
- * ConsultationController — harness-progress SSE route (TASK-345).
+ * ConsultationController — harness-progress SSE route.
  *
  * Verifies the `GET :id/harness-progress/stream` SSE relay delegates to
  * HarnessProgressService and carries the same auth metadata as the

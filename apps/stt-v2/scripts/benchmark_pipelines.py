@@ -1,9 +1,9 @@
 #!/usr/bin/env python
-"""TASK-505 Phase 6 — per-hardware pipeline benchmark harness.
+"""Per-hardware pipeline benchmark harness.
 
 Runs the seeded matrix pipelines against a WAV corpus and reports latency,
-realtime factor, and (with a reference transcript) WER — evidence for the
-TASK-505 README and for default-pipeline decisions (e.g. promoting the CT2
+realtime factor, and (with a reference transcript) WER — evidence for
+default-pipeline decisions (e.g. promoting the CT2
 pipeline once it beats the transformers default).
 
 ENV-GATED by design: this downloads/loads real models and is NOT part of any

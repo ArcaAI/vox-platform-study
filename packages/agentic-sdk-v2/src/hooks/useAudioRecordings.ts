@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useAudioRecordings Hook (TASK-329 P2 — dual-capture X8)
+ * @arcaai/vox - useAudioRecordings Hook
  *
  * Lists and attaches audio recordings on a consultation via the public
  * `/consultations/:id/recordings` routes. `add` accepts an optional

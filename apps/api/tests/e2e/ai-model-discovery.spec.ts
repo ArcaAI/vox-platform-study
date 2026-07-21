@@ -1,8 +1,8 @@
 /**
- * TASK-528 — `admin/ai-models/discovery` (merge view) and
+ * `admin/ai-models/discovery` (merge view) and
  * `admin/ai-models/discovery/register` (explicit register).
  *
- * AUTHORED IN TASK-528, EXECUTED IN P7 (TASK-534). The e2e job needs a live
+ * The e2e job needs a live
  * gateway + seeded DB (`pnpm test:api:up`, then `pnpm test:e2e`); SMR itself may
  * be DOWN — that is a covered case, not a skip condition, because a failed probe
  * must degrade the response, never 5xx it.
@@ -26,7 +26,7 @@
 import { test, expect, APIRequestContext } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
-// TASK-534 e2e G7 — these tests share mutable state (the registry row count,
+// These tests share mutable state (the registry row count,
 // `createdIds` ordering between the register and cross-tenant tests). Under the
 // root config's `fullyParallel: true` they interleaved across workers and
 // failed on each other's writes; run this file's tests strictly in order.

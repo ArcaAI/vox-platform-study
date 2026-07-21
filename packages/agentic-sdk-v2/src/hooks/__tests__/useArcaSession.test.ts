@@ -226,15 +226,15 @@ describe('useArcaSession', () => {
                     patientId: mockConsultation.patientId,
                     doctorId: mockConsultation.doctorId,
                 }),
-                // TASK-317 D-5 (AC-9) — options arg is always present; this test
+                // Options arg is always present; this test
                 // seeds no tenant, so it only asserts the call shape (the strict
-                // tenantId assertion lives in the dedicated AC-9 test below).
+                // tenantId assertion lives in the dedicated test below).
                 expect.objectContaining({})
             );
         });
 
         // =====================================================================
-        // TASK-317 W3.3 — AC-9: cross-tab sync MUST be namespaced per tenant.
+        // Cross-tab sync MUST be namespaced per tenant.
         //
         // SimpleCrossTabSync already supports `options.tenantId` (channel name
         // becomes `agentic.<tenantId>`), but useArcaSession never passed it, so

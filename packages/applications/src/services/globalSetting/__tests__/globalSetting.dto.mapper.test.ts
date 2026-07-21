@@ -126,7 +126,7 @@ describe('GlobalSettingDtoMapper', () => {
             expect(result.namespace).toBe('custom.namespace');
         });
 
-        // TASK-430 — the admin console renders a Tenant column on the cross-tenant
+        // The admin console renders a Tenant column on the cross-tenant
         // /settings list, so the row's owning tenant must flow to the response.
         it('should map the tenantId field', () => {
             const entity = createMockGlobalSettingEntity({ tenantId: 'tenant-42' });
@@ -136,7 +136,7 @@ describe('GlobalSettingDtoMapper', () => {
             expect(result.tenantId).toBe('tenant-42');
         });
 
-        // TASK-391 (D2) — `locked` must flow through to the response so the admin
+        // `locked` must flow through to the response so the admin
         // console can render the super-admin-only lock affordance.
         it('should map the locked field (true)', () => {
             const entity = createMockGlobalSettingEntity({ locked: true });
@@ -231,7 +231,7 @@ describe('GlobalSettingDtoMapper', () => {
         });
     });
 
-    // TASK-396 — server-authoritative secret detection + value masking. A row is
+    // Server-authoritative secret detection + value masking. A row is
     // secret when it has an `encryptedValue` OR its namespace/key matches the
     // convention; its `value` is masked ('') on list/get (plaintext only via reveal).
     describe('TASK-396 secret masking', () => {

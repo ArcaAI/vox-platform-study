@@ -78,7 +78,7 @@ export interface GateEditCandidate {
 }
 
 /**
- * TASK-533 B6 (GAP-A1) — the gate-edit learning loop.
+ * The gate-edit learning loop.
  *
  * WRITE half: mine an exemplar from a completed gate decision. READ half:
  * retrieve per-department few-shot exemplars for prompt assembly. Explicitly NOT

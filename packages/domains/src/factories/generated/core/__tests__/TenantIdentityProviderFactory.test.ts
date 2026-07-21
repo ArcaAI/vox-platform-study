@@ -1,5 +1,5 @@
 /**
- * TenantIdentityProviderFactory Unit Tests (TASK-498)
+ * TenantIdentityProviderFactory Unit Tests
  *
  * Tests for the TenantIdentityProviderFactory that creates a tenant's
  * configured external IdP row, plus the TenantIdentityProviderEntity.validate()

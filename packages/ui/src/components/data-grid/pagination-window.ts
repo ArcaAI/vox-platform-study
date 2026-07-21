@@ -1,5 +1,5 @@
 /**
- * Pure pagination math (TASK-423 §F). Kept framework-free so the numbered
+ * Pure pagination math. Kept framework-free so the numbered
  * window, item-range status, and responsive radius are unit-testable without
  * rendering.
  */

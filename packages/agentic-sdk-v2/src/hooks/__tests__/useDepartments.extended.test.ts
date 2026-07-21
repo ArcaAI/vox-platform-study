@@ -1,5 +1,5 @@
 /**
- * useDepartments Extended Methods Tests (TASK-032 WS-G Task G-4)
+ * useDepartments Extended Methods Tests
  *
  * Tests for new create, remove, getRoots, getChildren, getByCode, updatePromptConfig methods.
  *

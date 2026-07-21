@@ -1,6 +1,6 @@
 """Provider listing endpoint.
 
-TASK-528 §3.3 — probe contract. Every registered provider is probed IN PARALLEL
+Probe contract. Every registered provider is probed IN PARALLEL
 under a per-provider ``SMR_V2_PROVIDER_PROBE_TIMEOUT_S`` cap (default 5 s), and
 each entry reports its own ``probe_status`` (``ok`` / ``timeout`` / ``error``),
 ``probe_latency_ms`` and ``probe_error``. Consequences, all deliberate:

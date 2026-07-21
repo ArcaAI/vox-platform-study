@@ -15,7 +15,7 @@ export interface AuthenticationTrackingData {
  * IAuthService is an interface that defines the authentication service methods.
  * It provides a contract for implementing authentication-related functionalities.
  *
- * TASK-541 — `isTokenRevoked()`, `validateUser()` and the `UserValidationResponse`
+ * `isTokenRevoked()`, `validateUser()` and the `UserValidationResponse`
  * shape were REMOVED here. Both methods existed solely for the `gateway-jwt`
  * strategy retired in this ticket (A2), leaving them with zero callers, and both
  * were actively misleading:

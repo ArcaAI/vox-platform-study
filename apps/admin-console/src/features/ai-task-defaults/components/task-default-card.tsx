@@ -64,7 +64,7 @@ function CardSkeleton() {
 }
 
 /**
- * One AI task key = one card (TASK-506 Phase 6): the resolved effective model
+ * One AI task key = one card: the resolved effective model
  * (with its cascade-source badge), a picker over the ENABLED registry options
  * for the key, and an OCC save of the scope's row (If-Match from the row read;
  * `"0"` creates it). `tenantId` scopes the row: the platform screen passes the

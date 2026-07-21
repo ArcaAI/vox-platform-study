@@ -1,11 +1,11 @@
-"""Processor-registry core types (TASK-505 Phase 1).
+"""Processor-registry core types.
 
 A *processor* is one swappable pipeline stage implementation (an ASR engine,
 a VAD, a denoiser, a punctuation model, ...). Stage kinds are a closed set;
 implementations are open and self-describe their hardware support so the
 resolver can fail fast at pipeline-load time instead of at first inference.
 
-Design (per the TASK-505 architecture research):
+Design:
 - Specs are import-cheap metadata; the heavy implementation class is a lazy
   ``"module:attr"`` target imported on first :meth:`ProcessorRegistry.load`.
 - YAML never carries import paths — only registry keys — so tenant-editable

@@ -1,5 +1,5 @@
 /**
- * TASK-392 (Phase 1) — pure helpers for composing the read-only
+ * Pure helpers for composing the read-only
  * capability/usage snapshot. Kept free of NestJS/DB so the near-limit maths and
  * the trial-clock arithmetic are exhaustively unit-testable.
  */
@@ -14,7 +14,7 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
  * Build one capability row from a resolved `limit` (null = unlimited) and the
- * live `used` count (null = not yet metered — M1–M3 before Phase 2).
+ * live `used` count (null = not metered for this capability).
  */
 export function buildCapabilityRow(key: string, limit: number | null, used: number | null): CapabilityUsageRow {
   const unlimited = limit === null;

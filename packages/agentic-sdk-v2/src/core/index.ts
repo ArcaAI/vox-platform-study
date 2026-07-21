@@ -9,7 +9,7 @@ export { PluginManager, type PluginEventCallbacks, type PluginManagerState } fro
 export { PersonalizationManager, type PreferencesChangeCallback } from './PersonalizationManager';
 export { ModelRegistry, type ModelLoadProgressCallback } from './ModelRegistry';
 
-// Three-tier config management (TASK-244)
+// Three-tier config management
 export { ConfigManager, type ConfigManagerOptions } from './ConfigManager';
 export {
   AppConfigSchema,
@@ -36,7 +36,7 @@ export { KnowledgePipeline, createKnowledgePipeline, type TriggerMode } from './
 // Cross-tab sync
 export { SimpleCrossTabSync, createCrossTabSync, type CrossTabEventType } from './SimpleCrossTabSync';
 
-// TASK-280: SharedWorker-backed HMAC key for cross-tab BroadcastChannel envelopes.
+// SharedWorker-backed HMAC key for cross-tab BroadcastChannel envelopes.
 export { CrossTabHmacKeyManager, type CrossTabHmacKeyManagerOptions } from './CrossTabHmacKeyManager';
 export type {
   CrossTabHmacReq,

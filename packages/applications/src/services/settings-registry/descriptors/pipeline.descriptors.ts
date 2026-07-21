@@ -1,4 +1,4 @@
-// TASK-504 Phase 3 — pipeline-toggle descriptors.
+// Pipeline-toggle descriptors.
 //
 // Sourced FROM the existing `PIPELINE_SETTING_DESCRIPTORS` (config-resolver) so
 // maxScope + code default stay single-sourced — the registry adds only the
@@ -22,11 +22,11 @@ function mapScope(scope: PipelinePolicyScope): SettingScope {
 }
 
 /**
- * TASK-532 (E3-L2, OD-2) — `globalOnly` marks the toggles a tenant admin may no
+ * `globalOnly` marks the toggles a tenant admin may no
  * longer write. `harnessEnabled` gates guardrail's primary caller and
  * `autoNerEnabled` gates NLP auto-extraction; per the owner directive both AI
  * services are controlled by global admins only. `PipelinePolicyService`
- * enforces FROM this metadata (AD-1) — do not mirror it into a key list there.
+ * enforces FROM this metadata — do not mirror it into a key list there.
  *
  * `autoSummaryEnabled` / `dnaStyleEnabled` stay tenant-writable: they select
  * clinical convenience behaviour, not whether a governed AI service runs.

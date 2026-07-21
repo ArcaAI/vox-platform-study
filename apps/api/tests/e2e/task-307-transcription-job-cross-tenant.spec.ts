@@ -1,24 +1,24 @@
 /**
- * Cross-tenant probes against TranscriptionJobController (AC-12).
+ * Cross-tenant probes against TranscriptionJobController.
  *
- * Originally landed by TASK-307 W3.8 closing audit finding D-3
- * (`docs/multi-tenancy-audit/04-api-design-review.md`): before that
- * fix `GET /audio/transcription-jobs/:id`, `POST /:id/cancel`,
- * `POST /:id/retry`, and the SSE `:id/stream` accepted any id without
- * verifying ownership; the only defence was the TASK-305 Prisma
+ * Without the tenant-ownership guard
+ * (`docs/multi-tenancy-audit/04-api-design-review.md`),
+ * `GET /audio/transcription-jobs/:id`, `POST /:id/cancel`,
+ * `POST /:id/retry`, and the SSE `:id/stream` would accept any id without
+ * verifying ownership; the only defence would be the Prisma
  * `tenantScopeFilter` extension, which super-admins bypass by design.
  *
- * The W3.2 interceptor + `assertTenantScoped` branch resolves the row
+ * The interceptor + `assertTenantScoped` branch resolves the row
  * via `TranscriptionJobRepository.findById` and 404s any caller whose
  * CLS tenantId disagrees with the row's `tenantId`. The
  * list/getByConsultation endpoints get a parallel service-layer guard
- * (W3.8 in `transcriptionJob.service.ts`) so super-admin calls cannot
+ * (in `transcriptionJob.service.ts`) so super-admin calls cannot
  * accidentally return cross-tenant rows.
  *
- * TASK-309 AC-2 / AC-3 — genuine probe upgrade. The previous synthetic
- * uuidv7 probe asserted only that the 404 SHAPE was correct (since
- * the database had no matching row, the resource-not-found branch
- * fired regardless of the cross-tenant logic). This spec now:
+ * Genuine probe: a synthetic uuidv7 probe would assert only that the 404
+ * SHAPE was correct (since
+ * the database has no matching row, the resource-not-found branch
+ * fires regardless of the cross-tenant logic). This spec instead:
  *
  *   1. Creates a real `TranscriptionJob` row in tenant `__GLOBAL__`
  *      via `POST /audio/transcription-jobs` (the lightweight create

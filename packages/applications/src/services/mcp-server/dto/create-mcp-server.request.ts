@@ -5,7 +5,7 @@ import { ArrayUnique, IsArray, IsBoolean, IsIn, IsNotEmpty, IsOptional, IsString
  * register a new MCP external-tools server.
  *
  * `authRef` is a Vault PATH ONLY (validated to be path-like — no whitespace, no
- * obvious secret material). Secrets flow through the TASK-504 Vault path, never
+ * obvious secret material). Secrets flow through Vault, never
  * this request body. Feature stays OFF by default: `enabled` defaults false and
  * the whole path is additionally gated by `HarnessPolicy.mcpToolsEnabled`.
  */

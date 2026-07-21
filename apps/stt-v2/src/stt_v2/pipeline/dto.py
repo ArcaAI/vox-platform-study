@@ -14,7 +14,7 @@ class ModelTaskType(StrEnum):
     AUDIO_DENOISING = "AUDIO_DENOISING"
     AUDIO_TO_AUDIO = "AUDIO_TO_AUDIO"  # For noise suppression (RNNoise, etc.)
     SPEAKER_DIARIZATION = "SPEAKER_DIARIZATION"
-    # TASK-505 P5 — feature extractors (e.g. ECAPA) in the catalog.
+    # Feature extractors (e.g. ECAPA) in the catalog.
     SPEAKER_EMBEDDING = "SPEAKER_EMBEDDING"
 
 
@@ -26,7 +26,7 @@ class AiModelSource(StrEnum):
     MLFLOW = "MLFLOW"  # Reserved: self-hosted MLFlow model registry
     KSERVE = "KSERVE"  # Reserved: MLFlow Serve + KServe inference
     LOCAL = "LOCAL"
-    S3 = "S3"  # TASK-527: S3/MinIO-compatible object storage (s3://bucket/prefix)
+    S3 = "S3"  # S3/MinIO-compatible object storage (s3://bucket/prefix)
 
 
 class AiModelFormat(StrEnum):
@@ -39,18 +39,18 @@ class AiModelFormat(StrEnum):
     # Special formats for specific engines
     ONNX_OPTIMUM = "ONNX_OPTIMUM"  # HuggingFace Optimum ONNX
     CTRANSLATE2 = "CTRANSLATE2"  # CTranslate2 (legacy alias, loads via transformers)
-    # faster-whisper on CTranslate2 (TASK-351 P1-2). hf_model_id is a
-    # CT2-converted model repo/path, loaded via FasterWhisperLoader.
+    # faster-whisper on CTranslate2. hf_model_id is a CT2-converted model
+    # repo/path, loaded via FasterWhisperLoader.
     FASTER_WHISPER = "FASTER_WHISPER"
     # Cloud-based engines (no local model, API-driven)
     AZURE_SPEECH = "AZURE_SPEECH"  # Azure Cognitive Services Speech
-    # TASK-505 P3 — Azure AI Foundry LLM Speech API (MAI-Transcribe family).
-    # PREVIEW (decision D4): disabled by default, batch-only.
+    # Azure AI Foundry LLM Speech API (MAI-Transcribe family).
+    # PREVIEW: disabled by default, batch-only.
     AZURE_FOUNDRY = "AZURE_FOUNDRY"
-    # TASK-505 P3 — parakeet.cpp (ggml runtime, mudler/parakeet.cpp) for
-    # NVIDIA Parakeet / nemotron-3.5-asr-streaming models. CPU/Metal/CUDA.
+    # parakeet.cpp (ggml runtime, mudler/parakeet.cpp) for NVIDIA Parakeet /
+    # nemotron-3.5-asr-streaming models. CPU/Metal/CUDA.
     PARAKEET_CPP = "PARAKEET_CPP"
-    # TASK-507 — whisper.cpp (ggml runtime, ggml-org/whisper.cpp) for GGUF
+    # whisper.cpp (ggml runtime, ggml-org/whisper.cpp) for GGUF
     # whisper-large-v3-turbo. CPU/Metal/CUDA, via the pywhispercpp binding.
     WHISPER_CPP = "WHISPER_CPP"
 
@@ -236,7 +236,7 @@ _INITIAL_PROMPT_CAPABLE_ENGINES: set[AiModelFormat] = {
 }
 
 
-# CTranslate2-supported compute types (TASK-351 P1-2). Used to validate
+# CTranslate2-supported compute types. Used to validate
 # models.asr.compute_type when engine is FASTER_WHISPER. Device-specific
 # coercion (e.g. float16 on CPU) happens at load time.
 VALID_CT2_COMPUTE_TYPES: list[str] = [
@@ -262,14 +262,14 @@ def is_valid_language_for_engine(code: str, engine: AiModelFormat) -> bool:
         return False
     primary = code.split("-")[0].lower()
     if engine == AiModelFormat.NEMO:
-        # TASK-351 P2-1 — NEMO (Parakeet) supports only the Parakeet-v3
-        # language set. The earlier Whisper-set fallback masked unsupported
-        # languages (e.g. 'ml' is Whisper-only) until runtime.
+        # NEMO (Parakeet) supports only the Parakeet-v3 language set. The
+        # earlier Whisper-set fallback masked unsupported languages (e.g. 'ml'
+        # is Whisper-only) until runtime.
         return primary in VALID_PARAKEET_V3_LANGUAGES
     if engine in (AiModelFormat.AZURE_FOUNDRY, AiModelFormat.PARAKEET_CPP):
-        # TASK-505 P3 — locale coverage is model/service-side (MAI: 43 langs;
-        # nemotron-3.5: 40 locales) and evolves with releases; accept any
-        # plausible primary tag and let the engine reject unsupported ones.
+        # Locale coverage is model/service-side (MAI: 43 langs; nemotron-3.5:
+        # 40 locales) and evolves with releases; accept any plausible primary
+        # tag and let the engine reject unsupported ones.
         return primary.isalpha() and 2 <= len(primary) <= 3
     return primary in VALID_WHISPER_LANGUAGES
 
@@ -372,9 +372,9 @@ class ModelRef:
             return self.inline.hf_model_id
         return self.slug or ""
 
-    # TASK-505 P2 — `provider :: model[@rev]` shorthand providers. Values are
-    # engine strings resolved through the same engine_mapping below, so the
-    # two vocabularies stay consistent.
+    # `provider :: model[@rev]` shorthand providers. Values are engine strings
+    # resolved through the same engine_mapping below, so the two vocabularies
+    # stay consistent.
     _PROVIDER_ALIASES: ClassVar[dict[str, str]] = {
         "transformer": "SAFETENSOR",
         "transformers": "SAFETENSOR",
@@ -392,10 +392,8 @@ class ModelRef:
         "ct2": "CTRANSLATE2",
         "azure": "AZURE_SPEECH",
         "azure-speech": "AZURE_SPEECH",
-        # TASK-505 P3 — new engines (product matrix pipelines #6 and #8).
         "azure-foundry": "AZURE_FOUNDRY",
         "parakeet.cpp": "PARAKEET_CPP",
-        # TASK-507 — whisper.cpp (product matrix pipelines #1-4, GGUF).
         "whisper.cpp": "WHISPER_CPP",
         # Denoise models (RNNoise et al.) load via the ONNX runtime path.
         "rnnoise": "ONNX",
@@ -408,7 +406,7 @@ class ModelRef:
 
         Args:
             value: A string slug, a ``provider :: model[@rev]`` shorthand
-                (TASK-505 P2, schema v2), or a dict with an inline definition.
+                (schema v2), or a dict with an inline definition.
         """
         if isinstance(value, str):
             if "::" in value:
@@ -456,17 +454,16 @@ class ModelRef:
                 "HUGGINGFACE": AiModelFormat.SAFETENSOR,
                 "CTRANSLATE2": AiModelFormat.CTRANSLATE2,
                 "CT2": AiModelFormat.CTRANSLATE2,
-                # TASK-351 P1-2 — accepts `faster_whisper` / `faster-whisper`
+                # Accepts `faster_whisper` / `faster-whisper`
                 "FASTER_WHISPER": AiModelFormat.FASTER_WHISPER,
                 "FASTER-WHISPER": AiModelFormat.FASTER_WHISPER,
                 "OPTIMUM": AiModelFormat.ONNX_OPTIMUM,
-                # TASK-505 P1 review — accept the enum's own value (and the
-                # registry spelling) now that unknown strings hard-error.
+                # Accepts the enum's own value (and the registry spelling) now
+                # that unknown strings hard-error.
                 "ONNX_OPTIMUM": AiModelFormat.ONNX_OPTIMUM,
                 "ONNX-OPTIMUM": AiModelFormat.ONNX_OPTIMUM,
                 "AZURE_SPEECH": AiModelFormat.AZURE_SPEECH,
                 "AZURE": AiModelFormat.AZURE_SPEECH,
-                # TASK-505 P3 — new engines.
                 "AZURE_FOUNDRY": AiModelFormat.AZURE_FOUNDRY,
                 "AZURE-FOUNDRY": AiModelFormat.AZURE_FOUNDRY,
                 "FOUNDRY": AiModelFormat.AZURE_FOUNDRY,
@@ -478,9 +475,9 @@ class ModelRef:
                 "WHISPER-CPP": AiModelFormat.WHISPER_CPP,
                 "WHISPER.CPP": AiModelFormat.WHISPER_CPP,
             }
-            # TASK-505 P1 — unknown engine strings are a hard error. The old
-            # silent SAFETENSOR default turned a typo into a different engine
-            # that failed obscurely at model-load time.
+            # Unknown engine strings are a hard error. The old silent
+            # SAFETENSOR default turned a typo into a different engine that
+            # failed obscurely at model-load time.
             engine_or_none = engine_mapping.get(engine_str)
             if engine_or_none is None:
                 raise ValueError(
@@ -564,13 +561,13 @@ class VadConfig:
 
     enabled: bool = True
     threshold: float = 0.6
-    # TASK-505: 100 ms (was 250, TASK-451). A spoken "yes"/"no" is ~150-250 ms;
-    # at 250 ms the whole word is discarded before reaching ASR. Production
-    # consensus (LiveKit ships 50 ms) is 50-100 ms with the false-positive
-    # control left to threshold + hysteresis, not duration gating.
+    # 100 ms (was 250). A spoken "yes"/"no" is ~150-250 ms; at 250 ms the
+    # whole word is discarded before reaching ASR. Production consensus
+    # (LiveKit ships 50 ms) is 50-100 ms with the false-positive control left
+    # to threshold + hysteresis, not duration gating.
     min_speech_duration_ms: int = 100
     min_silence_duration_ms: int = 100
-    # TASK-505: 200 ms (was 30). Batch-only segment padding; Silero onsets are
+    # 200 ms (was 30). Batch-only segment padding; Silero onsets are
     # structurally late by 30-100 ms and unvoiced tails fall below threshold —
     # faster-whisper ships speech_pad_ms=400 for transcription use.
     padding_ms: int = 200
@@ -580,17 +577,17 @@ class VadConfig:
     force_emit_overlap_ms: int = 500
 
 
-# TASK-505 P2 — denoise data-flow scope (decision D2, dual-path):
+# Denoise data-flow scope (dual-path):
 #   "vad_only" (default): the denoised signal gates VAD only; ASR consumes the
 #     raw (resampled) audio. Medical-ASR evidence (arXiv 2512.17562): speech
 #     enhancement before ASR degraded accuracy in 40/40 tested configurations.
 #   "full": legacy behavior — ASR consumes the denoised audio.
 VALID_DENOISE_SCOPES: list[str] = ["vad_only", "full"]
 
-# TASK-507 — denoise engine selection (rnnoise = legacy default).
+# Denoise engine selection (rnnoise = legacy default).
 VALID_DENOISE_ENGINES: list[str] = ["rnnoise", "deepfilternet3"]
 
-# TASK-505 P2 — normalize processor selection (peak = legacy).
+# Normalize processor selection (peak = legacy).
 VALID_NORMALIZE_PROCESSORS: list[str] = ["peak", "rms"]
 
 
@@ -600,15 +597,15 @@ class DenoiseConfig:
 
     enabled: bool = False
     strength: float = 0.5
-    scope: str = "vad_only"  # TASK-505 P2 (D2): vad_only | full
-    # TASK-507 — denoise engine selector. "rnnoise" (default, unchanged
-    # behavior) or "deepfilternet3" (DeepFilterNet3, full-band 48kHz DNN).
+    scope: str = "vad_only"  # vad_only | full
+    # Denoise engine selector. "rnnoise" (default, unchanged behavior) or
+    # "deepfilternet3" (DeepFilterNet3, full-band 48kHz DNN).
     engine: str = "rnnoise"
 
 
 @dataclass
 class EndpointConfig:
-    """Semantic end-of-utterance (endpointing) configuration — TASK-473 A3.
+    """Semantic end-of-utterance (endpointing) configuration.
 
     Content-driven end-of-turn detection that augments the fixed Silero-VAD
     silence offset on the realtime hot path. When ``enabled`` and the running
@@ -660,7 +657,7 @@ class DiarizationConfig:
     enable_segmentation_refinement: bool = True
     # Rolling window size per speaker (number of recent embeddings to keep)
     max_embeddings_per_speaker: int = 8
-    # TASK-475 (Theme B2): streaming diarizer backend selector.
+    # Streaming diarizer backend selector.
     #   "embedding"  -> the existing pyannote/wespeaker embedding-clustering path
     #                   (DEFAULT — preserves current behavior; batch stays here).
     #   "sortformer" -> the self-hosted NeMo Streaming Sortformer diarizer for the
@@ -673,7 +670,7 @@ class DiarizationConfig:
     # accepted (waived the in-app acceptance gate). NOTE: this differs from the plain
     # cc-by-4.0 of `...-v2`; it is NOT the cc-by-nc offline v1. Self-hosted only.
     sortformer_model_id: str = "nvidia/diar_streaming_sortformer_4spk-v2.1"
-    # Pin the model by revision once staged (AC-1: "Model pinned by revision").
+    # Pin the model by revision once staged ("Model pinned by revision").
     sortformer_revision: str | None = None
     # Per-frame speaker-activity probability threshold for turn extraction.
     sortformer_threshold: float = 0.5
@@ -703,21 +700,21 @@ class PreprocessingConfig:
 
     target_sample_rate: int = 16000
     normalize: bool = True
-    # TASK-505 P2 — normalize processor: peak (legacy) | rms.
+    # Normalize processor: peak (legacy) | rms.
     normalize_processor: str = "peak"
-    # TASK-505 P2 — resample declared as a stage; disabling is honored only
-    # when the input is already VAD-compatible (runtime guards resample when
-    # Silero needs 8/16 kHz).
+    # Resample declared as a stage; disabling is honored only when the input
+    # is already VAD-compatible (runtime guards resample when Silero needs
+    # 8/16 kHz).
     resample_enabled: bool = True
     vad: VadConfig = field(default_factory=VadConfig)
     denoise: DenoiseConfig = field(default_factory=DenoiseConfig)
     dual_capture: DualCaptureConfig = field(default_factory=DualCaptureConfig)
-    # TASK-473 A3 / TASK-505 P2 — semantic end-of-utterance config (default
-    # disabled); parsed from `preprocessing.endpoint` since schema v2.
+    # Semantic end-of-utterance config (default disabled); parsed from
+    # `preprocessing.endpoint` since schema v2.
     endpoint: EndpointConfig = field(default_factory=EndpointConfig)
-    # TASK-505 P2 — declarative marker for the diarization feature-extraction
-    # stage (executes inside the diarization track): True requires
-    # models.embedding; None = not declared.
+    # Declarative marker for the diarization feature-extraction stage
+    # (executes inside the diarization track): True requires models.embedding;
+    # None = not declared.
     diar_feature_extraction_enabled: bool | None = None
 
 
@@ -745,9 +742,9 @@ class InferenceConfig:
     max_segment_text_chars: int = 1200
     hallucination_rms_threshold: float = 0.01
     hallucination_short_word_count: int = 3
-    # TASK-351 P2-3 — opt-in streaming English gloss: after a final
-    # publishes, run a low-priority task=translate pass on the same cached
-    # model and publish a follow-up `type: gloss` result.
+    # Opt-in streaming English gloss: after a final publishes, run a
+    # low-priority task=translate pass on the same cached model and publish
+    # a follow-up `type: gloss` result.
     streaming_english_gloss: bool = False
 
 
@@ -769,7 +766,7 @@ class PunctuationConfig:
 
 @dataclass
 class SegmentMergeConfig:
-    """Per-pipeline VAD segment merging (TASK-505 P2).
+    """Per-pipeline VAD segment merging.
 
     ``enabled=None`` inherits the global setting gate
     (``settings.segment_merge_gap_threshold_s > 0`` — the v1 behavior);
@@ -794,18 +791,18 @@ class PostprocessingConfig:
     segment_merge: SegmentMergeConfig = field(default_factory=SegmentMergeConfig)
 
 
-# Valid values for streaming.commit_policy (TASK-351 P1-1).
+# Valid values for streaming.commit_policy.
 VALID_STREAMING_COMMIT_POLICIES: list[str] = ["none", "local_agreement_2"]
 
-# Valid values for diarization.backend (TASK-475 Theme B2). "embedding" is the
-# existing pyannote/wespeaker embedding-clustering path (default); "sortformer"
-# routes the live 2-speaker loop through the self-hosted NeMo Streaming Sortformer.
+# Valid values for diarization.backend. "embedding" is the existing
+# pyannote/wespeaker embedding-clustering path (default); "sortformer" routes
+# the live 2-speaker loop through the self-hosted NeMo Streaming Sortformer.
 VALID_DIARIZATION_BACKENDS: list[str] = ["embedding", "sortformer"]
 
 
 @dataclass
 class StreamingConfig:
-    """Streaming-specific pipeline configuration (TASK-351).
+    """Streaming-specific pipeline configuration.
 
     ``commit_policy`` gates the LocalAgreement-2 partial stabilizer:
     - ``"none"`` (default): partials publish unchanged, no ``stable_chars``.

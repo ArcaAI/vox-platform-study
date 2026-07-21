@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, MinLength } from 'class-validator';
 
 /**
- * TASK-499 — the SAML ACS POST body (HTTP-POST binding). `SAMLResponse` is
+ * The SAML ACS POST body (HTTP-POST binding). `SAMLResponse` is
  * the base64-encoded XML the IdP posts back; `RelayState` is opaque
  * (single-use InResponseTo tracking is `RedisSamlCacheProvider`'s job, not
  * RelayState's — see `FederatedAuthService.buildSamlAuthnRequest`).

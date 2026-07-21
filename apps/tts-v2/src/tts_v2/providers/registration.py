@@ -1,18 +1,12 @@
 """Registration helper for local engines.
 
-TASK-529 (D-09) — registration is NO LONGER gated on a successful model load.
-
-Before: `warm_and_register` called `provider.warmup()` at boot and registered the
-provider only if it succeeded. That made every local engine eager (weights
-pinned for the life of the process, never unloaded) AND made a broken model
-present as a missing provider.
-
-After: the provider always registers; its weights load on the first synth
-request and are released by the idle-TTL sweep. Operators who prefer
-fail-at-boot set `TTS_WARMUP_ENABLED=true`, which restores the warm-at-boot
-call — but even then a load failure leaves the provider registered, so the
-failure surfaces as a 503 on the affected route rather than silently removing a
-route from the service.
+Registration is NOT gated on a successful model load: the provider always
+registers; its weights load on the first synth request and are released by
+the idle-TTL sweep. Operators who prefer fail-at-boot set
+`TTS_WARMUP_ENABLED=true`, which restores the warm-at-boot call — but even
+then a load failure leaves the provider registered, so the failure surfaces
+as a 503 on the affected route rather than silently removing a route from
+the service.
 """
 
 from __future__ import annotations

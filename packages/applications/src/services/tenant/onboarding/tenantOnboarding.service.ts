@@ -24,18 +24,18 @@ import { OnboardingActor, ProvisionTenantWithAdminInput } from './dto';
 import { TenantProvisionResult } from './tenantOnboarding.dto.mapper';
 
 /**
- * TASK-497 §3.3 — see `ITenantOnboardingService` for the contract summary.
+ * See `ITenantOnboardingService` for the contract summary.
  *
- * CLS strategy (D6): the whole method runs inside a fresh `clsService.run()`
+ * CLS strategy: the whole method runs inside a fresh `clsService.run()`
  * so it never depends on (or leaks into) an ambient request context — correct
  * for both the SYSTEM-bootstrap registration caller (no CLS at all) and the
  * real-caller admin-create path. The synthetic session is built with the
  * `GLOBAL_ADMIN` role: this is an internal, already-authorized orchestration
  * (the SYSTEM bootstrap is inherently trusted; admin-create is already gated
- * by `@CanManage('Tenant')` upstream), and `UserRoleAssignmentService`'s AC-02
+ * by `@CanManage('Tenant')` upstream), and `UserRoleAssignmentService`'s
  * cross-tenant guard would otherwise reject re-assigning an EXISTING admin
  * who already holds a role in some other tenant — exactly the global-admin
- * "pick an existing user" case this ticket adds.
+ * "pick an existing user" case this method supports.
  *
  * Atomicity (guardrail: never adminless): `TenantService.create` is not
  * itself transactional (its own provisioning steps are independently

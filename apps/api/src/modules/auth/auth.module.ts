@@ -20,12 +20,12 @@ import { StreamTicketModule } from './stream-ticket.module';
  *
  * Uses AuthServiceModule for JWT/OIDC strategies and IAuthService.
  * Uses UserServiceModule for IUserService.
- * TASK-307 W6.1 — UserRoleAssignmentServiceModule replaces the previous
- * direct Prisma access in `AuthController` (audit C-10); `CoreDatabaseModule`
+ * UserRoleAssignmentServiceModule replaces the previous
+ * direct Prisma access in `AuthController`; `CoreDatabaseModule`
  * is still imported because the controller continues to use the User /
  * Tenant / Role repositories for login lookups.
  *
- * StreamTicketModule (TASK-263 W0-1) is `@Global`. Importing it here
+ * StreamTicketModule is `@Global`. Importing it here
  * triggers its initialisation so that `JwtAuthGuard` (registered globally
  * in `JwtAuthGuardModule`) can resolve `StreamTicketService` for the
  * `?ticket=` SSE auth fallback, and so `AuthController` can issue tickets.
@@ -41,24 +41,24 @@ import { StreamTicketModule } from './stream-ticket.module';
     UserDepartmentServiceModule,
     CoreDatabaseModule,
     StreamTicketModule,
-    // TASK-450 C4-01 — exposes `StreamSessionTenantBindingService` so the
+    // Exposes `StreamSessionTenantBindingService` so the
     // stream-ticket mint can 404 `stt_session:*` scopes whose session is not
     // bound to the caller's tenant (same instance the WS gateway and the
     // DELETE-route interceptor consult). NestJS dedupes the module instance
     // with the AppModule/StreamingModule imports.
     TenantOwnedResourceModule,
-    // TASK-498 — FederatedAuthService (OIDC login round-trip + JIT provisioning).
+    // FederatedAuthService (OIDC login round-trip + JIT provisioning).
     FederatedAuthServiceModule,
-    // TASK-497 — RegistrationService (verified self-signup) for RegisterController.
+    // RegistrationService (verified self-signup) for RegisterController.
     RegistrationServiceModule,
   ],
-  // TASK-401 — AdminImpersonationController adds the global-admin-only
+  // AdminImpersonationController adds the global-admin-only
   // `POST /admin/users/:id/impersonate` mint alongside the legacy
   // `/auth/impersonate` route (same module: it reuses the exact same
   // service/repository set the AuthController already wires).
-  // TASK-498 — AuthSsoController adds `/auth/sso/{start,callback}`, reusing
+  // AuthSsoController adds `/auth/sso/{start,callback}`, reusing
   // the same createJwt/RefreshTokenService mint path as AuthController.login.
-  // TASK-497 — RegisterController adds `/auth/register` + `/auth/register/verify`.
+  // RegisterController adds `/auth/register` + `/auth/register/verify`.
   controllers: [AuthController, AdminImpersonationController, AuthSsoController, RegisterController],
 })
 export class AuthModule {}

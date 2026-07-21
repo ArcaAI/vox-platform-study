@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - Voice-embedding math + provider selection (TASK-329 P4)
+ * @arcaai/vox - Voice-embedding math + provider selection
  *
  * Pure, dependency-free helpers shared by the LOCAL in-browser voice-embedding
  * provider. They are deliberately framework/DOM/ONNX-agnostic so they unit-test

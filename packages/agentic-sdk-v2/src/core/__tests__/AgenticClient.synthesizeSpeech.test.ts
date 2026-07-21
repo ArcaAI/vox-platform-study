@@ -1,5 +1,5 @@
 /**
- * TASK-491 — AgenticClient.synthesizeSpeech (gateway TTS proxy).
+ * AgenticClient.synthesizeSpeech (gateway TTS proxy).
  *
  * @vitest-environment jsdom
  */

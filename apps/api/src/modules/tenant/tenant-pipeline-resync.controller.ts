@@ -4,10 +4,10 @@ import { PipelineTemplateResyncService, PipelineTemplateResyncSummary } from '@a
 import { CanManage } from '../../decorators';
 
 /**
- * TASK-531 (GAP-T3) — admin-triggered SYSTEM-template resync for one tenant.
+ * Admin-triggered SYSTEM-template resync for one tenant.
  *
  * A SEPARATE thin controller sharing the `admin/tenants` prefix, following the
- * `TenantProvisionController` (TASK-497 §3.5) precedent: it keeps the pipeline
+ * `TenantProvisionController` precedent: it keeps the pipeline
  * reconciler off `TenantController` (whose routes are tenant CRUD) while still
  * living at the tenant-shaped URL the console calls.
  *
@@ -29,7 +29,7 @@ export class TenantPipelineResyncController {
   @HttpCode(200)
   @CanManage('Tenant')
   @ApiOperation({
-    summary: "Resync a tenant's ASR pipeline catalog against the SYSTEM templates (TASK-531)",
+    summary: "Resync a tenant's ASR pipeline catalog against the SYSTEM templates",
     description:
       'Reconciles one tenant against the SYSTEM template catalog: missing ' +
       'templates are cloned in as locked copies, and pristine locked copies are ' +

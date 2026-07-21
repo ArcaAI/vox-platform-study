@@ -1,7 +1,7 @@
 /**
  * Consultation Pipeline Event Definitions
  *
- * Domain events for the consultation auto-pipeline (GAP-1).
+ * Domain events for the consultation auto-pipeline.
  * These events are emitted via EventEmitter2 and consumed by
  * ConsultationEventHandler to drive the automatic
  * Transcription → Summary → NER pipeline.
@@ -40,7 +40,7 @@ export enum ConsultationPipelineEvent {
 
   /**
    * Emitted when a live-tracked context item (WORKNOTE / CASE_NOTE /
-   * ATTACHMENT) is soft-deleted via the context delete path (TASK-342 GAP #3d).
+   * ATTACHMENT) is soft-deleted via the context delete path.
    * Consumed by LiveDocumentationService so a note/lab/file removed mid-visit
    * drops out of the in-flight running summary. Does NOT drive the harness
    * pipeline (the durable assemble already excludes soft-deleted items).
@@ -97,7 +97,7 @@ export interface TranscriptionCreatedPayload extends ConsultationPipelineEventBa
 
   /**
    * The STT transcription job ID that produced this transcript.
-   * Optional — streaming sessions (TASK-342 GAP #1) have no TranscriptionJob.
+   * Optional — streaming sessions have no TranscriptionJob.
    */
   jobId?: string;
 
@@ -283,7 +283,7 @@ export interface ConsultationPipelineConfig {
   haltOnFailure?: boolean;
 
   /**
-   * TASK-330 Phase 1 (Lane G) — route auto-generation to the durable harness
+   * (Lane G) — route auto-generation to the durable harness
    * workflow (apps/harness) instead of the legacy BullMQ summary job. Defaults
    * to false/undefined, so existing consultations keep the legacy pipeline.
    */

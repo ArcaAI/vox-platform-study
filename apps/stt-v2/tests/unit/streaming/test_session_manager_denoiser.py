@@ -64,8 +64,8 @@ class TestSessionManagerDenoiserWiring:
             mgr._load_pipeline_config = AsyncMock(return_value=pipeline_config)
             mgr._load_vad_service = AsyncMock(return_value=MagicMock())
             mgr._load_asr_pipeline = AsyncMock(return_value=(MagicMock(), None))
-            # TASK-505 P1 — bind the REAL shared assembly (session wiring moved
-            # out of create/recover into _assemble_session_runtime).
+            # Bind the REAL shared assembly (session wiring moved out of
+            # create/recover into _assemble_session_runtime).
             mgr._assemble_session_runtime = (
                 lambda **kw: SessionManager._assemble_session_runtime(mgr, **kw)
             )
@@ -97,7 +97,7 @@ class TestSessionManagerDenoiserWiring:
 
     @pytest.mark.asyncio
     async def test_deepfilternet3_denoiser_created_when_engine_selected(self):
-        """TASK-507 — denoise.engine=deepfilternet3 selects the DF3 denoiser,
+        """denoise.engine=deepfilternet3 selects the DF3 denoiser,
         not RNNoise's StreamingDenoiser."""
         from stt_v2.streaming.session_manager import SessionManager
 
@@ -223,8 +223,8 @@ class TestSessionManagerDenoiserWiring:
             mgr._load_pipeline_config = AsyncMock(return_value=pipeline_config)
             mgr._load_vad_service = AsyncMock(return_value=MagicMock())
             mgr._load_asr_pipeline = AsyncMock(return_value=(MagicMock(), None))
-            # TASK-505 P1 — bind the REAL shared assembly (session wiring moved
-            # out of create/recover into _assemble_session_runtime).
+            # Bind the REAL shared assembly (session wiring moved out of
+            # create/recover into _assemble_session_runtime).
             mgr._assemble_session_runtime = (
                 lambda **kw: SessionManager._assemble_session_runtime(mgr, **kw)
             )
@@ -308,8 +308,8 @@ class TestSessionManagerDenoiserWiring:
             mgr._load_pipeline_config = AsyncMock(return_value=pipeline_config)
             mgr._load_vad_service = AsyncMock(return_value=MagicMock())
             mgr._load_asr_pipeline = AsyncMock(return_value=(MagicMock(), None))
-            # TASK-505 P1 — bind the REAL shared assembly (session wiring moved
-            # out of create/recover into _assemble_session_runtime).
+            # Bind the REAL shared assembly (session wiring moved out of
+            # create/recover into _assemble_session_runtime).
             mgr._assemble_session_runtime = (
                 lambda **kw: SessionManager._assemble_session_runtime(mgr, **kw)
             )
@@ -334,8 +334,8 @@ class TestSessionManagerDenoiserWiring:
                 user_id="user-1",
             )
 
-            # TASK-490 (B-04) — the call site now threads the session tenant
-            # so the voice-profile lookups are tenant-scoped.
+            # The call site threads the session tenant so the voice-profile
+            # lookups are tenant-scoped.
             mgr._preseed_speaker.assert_awaited_once_with(
                 mock_tracker,
                 None,

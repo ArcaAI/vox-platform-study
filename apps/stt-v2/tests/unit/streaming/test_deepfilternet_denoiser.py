@@ -1,4 +1,4 @@
-"""Unit tests for DeepFilterNet3StreamingDenoiser (TASK-507).
+"""Unit tests for DeepFilterNet3StreamingDenoiser.
 
 Tests:
 - initialize() returns False gracefully when `deepfilternet` is not installed

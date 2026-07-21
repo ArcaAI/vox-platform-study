@@ -1,5 +1,5 @@
 /**
- * TDD tests for TASK-532 B-5 — `EditBurdenCard` (M-09 tenant leg).
+ * TDD tests for `EditBurdenCard`.
  *
  * `GET admin/harness/edit-burden?consultationId=` returns DERIVED SCALARS only
  * (edit distance, deferral, time-to-sign) — the note text never leaves the

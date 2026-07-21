@@ -1,4 +1,4 @@
-"""YAML parser tests for the FASTER_WHISPER engine (TASK-351 P1-2)."""
+"""YAML parser tests for the FASTER_WHISPER engine."""
 
 from __future__ import annotations
 

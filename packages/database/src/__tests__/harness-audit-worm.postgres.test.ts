@@ -1,6 +1,5 @@
 /**
  * HarnessAuditEvent WORM enforcement — live-Postgres regression guard.
- * TASK-330 Phase 0.2.
  *
  * The migration `…_task_330_add_clinical_harness_eval_and_worm_audit` runs
  *   REVOKE UPDATE, DELETE ON core."HarnessAuditEvent" FROM <app role>

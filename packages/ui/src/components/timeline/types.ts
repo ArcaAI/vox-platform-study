@@ -1,5 +1,5 @@
 /**
- * Types for HistoryTimelineList (TASK-372 §3.5).
+ * Types for HistoryTimelineList.
  *
  * A content-type-aware, reverse-chronological, virtualized history. The row model
  * is `TimelineItemModel`; consumers adapt their raw rows (SDK `ContextItem`,

@@ -4,7 +4,7 @@
  * TDD tests for the Server-Sent Events client that reconnects
  * to GET /api/v1/transcription-jobs/:id/stream for job updates.
  *
- * Updated in TASK-264 W0-1: `new SSEClient(scope, apiClient, logger?)` and
+ * Updated: `new SSEClient(scope, apiClient, logger?)` and
  * the URL is now built as `<endpoint>?ticket=<ticket>`. The legacy `authToken`
  * field on `SSEConnectOptions` is gone.
  *
@@ -16,7 +16,7 @@ import { SSEClient } from '../SSEClient';
 import { createMockLogger } from '../../__tests__/setup';
 import { STT_V2_ENDPOINTS } from '../constants';
 
-// TASK-264 W0-1: SSEClient now requires `(scope, apiClient, logger?)`.
+// SSEClient now requires `(scope, apiClient, logger?)`.
 function makeApiClient() {
   let i = 0;
   return {
@@ -531,7 +531,7 @@ describe('SSEClient', () => {
   });
 
   // =========================================================================
-  // BUG-08: Named event listener leak on reconnect
+  // Named event listener leak on reconnect
   // =========================================================================
 
   describe('BUG-08: named listeners should use stored callback on reconnect', () => {
@@ -598,7 +598,7 @@ describe('SSEClient', () => {
   });
 
   // =========================================================================
-  // TASK-264 W0-1: legacy authToken option is REMOVED
+  // Legacy authToken option is REMOVED
   // =========================================================================
 
   describe('TASK-264 W0-1: legacy authToken option is no longer honored', () => {

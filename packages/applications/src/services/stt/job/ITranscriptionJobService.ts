@@ -41,7 +41,7 @@ export interface ITranscriptionJobService {
   getByConsultation(consultationId: string): Promise<TranscriptionJobResponse[]>;
 
   /**
-   * EU-02 (TASK-336) — owner-scoped variant of {@link getByConsultation}: only
+   * EU-02 — owner-scoped variant of {@link getByConsultation}: only
    * the caller's OWN jobs (`createdBy`) for the consultation.
    */
   getByConsultationForOwner(ownerId: string, consultationId: string): Promise<TranscriptionJobResponse[]>;
@@ -52,7 +52,7 @@ export interface ITranscriptionJobService {
   list(page: number, limit: number): Promise<PaginatedTranscriptionJobResponse>;
 
   /**
-   * TASK-319 F3 — owner-scoped paginated list (end-user surface): only the
+   * Owner-scoped paginated list (end-user surface): only the
    * jobs the given user created.
    */
   listForOwner(ownerId: string, page: number, limit: number): Promise<PaginatedTranscriptionJobResponse>;
@@ -63,7 +63,7 @@ export interface ITranscriptionJobService {
   getByStatus(status: TranscriptionJobStatus): Promise<TranscriptionJobResponse[]>;
 
   /**
-   * TASK-319 F3 — owner-scoped variant of {@link getByStatus}.
+   * Owner-scoped variant of {@link getByStatus}.
    */
   getByStatusForOwner(ownerId: string, status: TranscriptionJobStatus): Promise<TranscriptionJobResponse[]>;
 
@@ -73,7 +73,7 @@ export interface ITranscriptionJobService {
   getStatusCounts(): Promise<TranscriptionJobStatusCountResponse>;
 
   /**
-   * TASK-319 F3 — owner-scoped variant of {@link getStatusCounts}.
+   * Owner-scoped variant of {@link getStatusCounts}.
    */
   getStatusCountsForOwner(ownerId: string): Promise<TranscriptionJobStatusCountResponse>;
 
@@ -108,7 +108,7 @@ export interface ITranscriptionJobService {
   cancelJob(id: string): Promise<TranscriptionJobResponse>;
 
   /**
-   * EU-01 (TASK-336) — creator-scoped cancel for the end-user surface: the
+   * EU-01 — creator-scoped cancel for the end-user surface: the
    * caller must be the job's `createdBy` (404 otherwise, no existence leak).
    */
   cancelJobForOwner(ownerId: string, id: string): Promise<TranscriptionJobResponse>;
@@ -119,7 +119,7 @@ export interface ITranscriptionJobService {
   retryJob(id: string): Promise<TranscriptionJobResponse>;
 
   /**
-   * EU-01 (TASK-336) — creator-scoped retry (mirrors {@link cancelJobForOwner}).
+   * EU-01 — creator-scoped retry (mirrors {@link cancelJobForOwner}).
    */
   retryJobForOwner(ownerId: string, id: string): Promise<TranscriptionJobResponse>;
 }

@@ -5,7 +5,7 @@
  * using a three-tier fallback chain (highest priority first):
  *
  *   Tier-0 (preferred) — the consulting doctor's preferred prompt template,
- *     from `UserProfile.preferredPromptTemplateId` (TASK-329 P2). When it
+ *     from `UserProfile.preferredPromptTemplateId`. When it
  *     resolves, its id wins over the department/default tiers.
  *   Tier-1 (department) — from Department model prompt config fields.
  *   Tier-2 (default) — hardcoded system fallback values.
@@ -20,7 +20,7 @@
  * invoked from background job processors (BullMQ workers) that have no HTTP
  * request context. All identifying information is passed as parameters.
  *
- * Implements GAP-3 of TASK-021: Department-to-Prompt Mapping.
+ * Implements Department-to-Prompt Mapping.
  */
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -57,7 +57,7 @@ export type PromptResolutionTier = 'preferred' | 'department' | 'default';
 
 /** Trace of what each tier contributed */
 export interface PromptResolutionTrace {
-  /** The doctor's preferred prompt template id, when it resolved (TASK-329 P2 Tier-0) */
+  /** The doctor's preferred prompt template id, when it resolved (Tier-0) */
   preferredPromptId?: string | null;
   departmentTemplate?: string | null;
   departmentPromptId?: string | null;
@@ -79,7 +79,7 @@ export interface PromptResolutionParams {
   explicitTemplate?: string;
 
   /**
-   * The requesting doctor's preferred prompt template id (TASK-329 P2 Tier-0).
+   * The requesting doctor's preferred prompt template id (Tier-0).
    * When set and the template exists, it wins over the department/default tiers.
    */
   preferredPromptTemplateId?: string | null;
@@ -121,7 +121,7 @@ export class PromptResolutionService {
       usedDefaults: [],
     };
 
-    // Tier-0 (TASK-329 P2): the doctor's preferred prompt template, when it exists,
+    // Tier-0: the doctor's preferred prompt template, when it exists,
     // wins over the department/default tiers. Resolved up-front so its id can override
     // the promptId computed below while still keeping department context variables.
     const preferredPromptId = await this.resolvePreferredPromptId(params.preferredPromptTemplateId);

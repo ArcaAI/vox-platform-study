@@ -9,7 +9,7 @@ import { ExtractEntitiesRequest } from './dto/extract-entities.request';
 import { SuggestDiagnosisRequest } from './dto/suggest-diagnosis.request';
 
 /**
- * AiInferenceController (TASK-446) — the USER-PLANE `/ai/*` inference proxy over
+ * AiInferenceController — the USER-PLANE `/ai/*` inference proxy over
  * the Guardrail and NLP Python services, backing the Agent Playground's
  * Guardrails and NER tabs (matrix row 38). `@Authorize()` (no permission pair):
  * any authenticated caller — GLOBAL_ADMIN or TENANT_ADMIN acting under their
@@ -17,7 +17,7 @@ import { SuggestDiagnosisRequest } from './dto/suggest-diagnosis.request';
  * are stateless inference calls over caller-supplied text — no tenant-owned
  * resource is read, so there is no by-id/tenancy surface here.
  *
- * TASK-506 / the NLP routes resolve the SYSTEM `AiTaskDefault`
+ * The NLP routes resolve the SYSTEM `AiTaskDefault`
  * (`nlp.ner` for NER / `nlp.diagnosis` for diagnosis suggestions) and inject it
  * as the upstream `model_name` (the AiModel row's `sourceUri`, an HF id) when the
  * caller supplies none. Resolution FAILS CLOSED: missing/failed SYSTEM default →
@@ -34,14 +34,14 @@ export class AiInferenceController {
 
   constructor(
     private readonly client: AiInferenceClient,
-    // TASK-506 — optional so unit fixtures (and deployments without the
+    // Optional so unit fixtures (and deployments without the
     // AiTaskDefault surface) construct cleanly; absent = no model injection.
     @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
-    // r2605 Finding B — validates a caller-supplied model override against the
+    // Validates a caller-supplied model override against the
     // registry. Optional for fixture compatibility, but an OVERRIDE with the
     // service absent is rejected (fail-closed) — see resolveValidatedModelOverride.
     @Optional() @Inject(AiModelService) private readonly aiModelService?: AiModelService,
-    // TASK-524 — resolves the effective hyperparameter profile for the model
+    // Resolves the effective hyperparameter profile for the model
     // being called. Optional; absent = no parameter injection.
     @Optional()
     @Inject(IAiRuntimeProfileService)
@@ -68,13 +68,13 @@ export class AiInferenceController {
   })
   @ApiOkResponse({ description: 'Upstream `{ entities[], model_version }`, proxied verbatim.' })
   async extractEntities(@Body() body: ExtractEntitiesRequest): Promise<Record<string, unknown>> {
-    // r2605 Finding B — an explicit override is VALIDATED against the registry
+    // An explicit override is VALIDATED against the registry
     // (fail-closed); only the absent-override default injection stays fail-open.
-    // TASK-524 — a caller-supplied override pins only the MODEL, and we have no
+    // A caller-supplied override pins only the MODEL, and we have no
     // registry provider for an arbitrary override, so profile injection applies
     // to the resolved-default path only.
     let modelName: string;
-    // TASK-527 (D-12) — the registry row's operator weight override. Always
+    // The registry row's operator weight override. Always
     // registry-derived (never caller-supplied), and OMITTED when absent so the
     // payload stays byte-for-byte identical to pre-527 for every existing row.
     let modelPath: string | null = null;
@@ -103,7 +103,7 @@ export class AiInferenceController {
   @Post('nlp/diagnosis')
   @Authorize()
   @ApiOperation({
-    summary: 'Derive diagnosis suggestions from the supplied clinical text (proxied to the NLP diagnosis endpoint, TASK-506).',
+    summary: 'Derive diagnosis suggestions from the supplied clinical text (proxied to the NLP diagnosis endpoint).',
   })
   @ApiOkResponse({ description: 'Upstream `{ suggestions[], ... }`, proxied verbatim.' })
   async suggestDiagnosis(@Body() body: SuggestDiagnosisRequest): Promise<Record<string, unknown>> {
@@ -115,14 +115,14 @@ export class AiInferenceController {
       ...(body.minConfidence !== undefined ? { min_confidence: body.minConfidence } : {}),
       ...(body.language ? { language: body.language } : {}),
       ...(selection.sourceUri ? { model_name: selection.sourceUri } : {}),
-      // TASK-527 (D-12) — omitted when the row carries no localPath.
+      // Omitted when the row carries no localPath.
       ...(selection.localPath ? { model_path: selection.localPath } : {}),
       ...runtimeParams,
     });
   }
 
   /**
-   * r2605 Finding B (security) — validate a caller-supplied `modelName`
+   * Validate a caller-supplied `modelName`
    * override against the registry before forwarding it to NLP. Previously the
    * raw value was proxied verbatim, letting any authenticated user make the
    * clinical NLP service download/load an ARBITRARY HuggingFace model. The
@@ -155,7 +155,7 @@ export class AiInferenceController {
     if (!match) {
       throw rejection();
     }
-    // TASK-527 — the weight path comes from the MATCHED REGISTRY ROW, never
+    // The weight path comes from the MATCHED REGISTRY ROW, never
     // from the caller, so an override cannot point NLP at an arbitrary path.
     return {
       sourceUri: match.sourceUri,
@@ -173,7 +173,7 @@ export class AiInferenceController {
   }
 
   /**
-   * TASK-524 — the same fail-closed resolution as `resolveDefaultModelName`,
+   * The same fail-closed resolution as `resolveDefaultModelName`,
    * but keeping the `provider` / `modelSlug` the runtime-profile cascade is
    * keyed on. Split out rather than re-calling `getEffective` a second time.
    */
@@ -193,7 +193,7 @@ export class AiInferenceController {
         sourceUri,
         provider: (effective.model as { provider?: string } | null)?.provider ?? null,
         modelSlug: effective.modelSlug ?? null,
-        // TASK-527 (D-12) — operator weight override from the registry row.
+        // Operator weight override from the registry row.
         localPath: (effective.model as { localPath?: string | null } | null)?.localPath ?? null,
       };
     } catch (err) {
@@ -208,7 +208,7 @@ export class AiInferenceController {
   }
 
   /**
-   * TASK-524 — resolve the runtime profile for a (provider, modelSlug) and
+   * Resolve the runtime profile for a (provider, modelSlug) and
    * project it onto the upstream NLP payload fields.
    *
    * FAIL-OPEN, in deliberate contrast to the model-IDENTITY path above: if the

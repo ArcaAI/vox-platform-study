@@ -1,9 +1,9 @@
-"""TASK-525 D-11 — the dead `GlobalSettingRead` SQLAlchemy path is gone.
+"""The dead `GlobalSettingRead` SQLAlchemy path is gone.
 
 It was a read-only mirror of the `core.GlobalSetting` table with ZERO callers:
 the seed wrote `stt.config.*` rows that nothing ever read. Its replacement is the
 effective-config pull client, so the mapping is removed outright rather than left
-as a second, unused config lane (Completion & Cleanup Doctrine §2.5).
+as a second, unused config lane.
 """
 
 from __future__ import annotations

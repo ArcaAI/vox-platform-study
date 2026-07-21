@@ -1,5 +1,5 @@
 /**
- * AgentTrajectoryService — token + $ accounting (TASK-533 B4).
+ * AgentTrajectoryService — token + $ accounting.
  *
  * The substrate for per-run budgets was already complete and already ignored:
  * `SmrGenerationResult.stats` carries token counts, the harness forwards it

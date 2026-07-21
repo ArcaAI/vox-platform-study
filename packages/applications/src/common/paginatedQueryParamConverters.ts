@@ -15,7 +15,7 @@ const NUMERIC_FILTER_VALUE = /^[-+]?\d+(\.\d+)?$/;
 const ISO_DATE_FILTER_VALUE = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
 
 /**
- * TASK-375 §8 — coerce a stringly-typed CSV filter value to the scalar type of
+ * Coerce a stringly-typed CSV filter value to the scalar type of
  * its column (derived from the target model's generated Prisma type). Coercion
  * is conservative: only recognizable tokens are converted, otherwise the
  * original string is returned UNCHANGED so a malformed value is never silently
@@ -23,19 +23,17 @@ const ISO_DATE_FILTER_VALUE = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?
  * (plain String / unknown field / no model) is always left a string.
  *
  * Enum and Json column handling:
- *   - `enum` (TASK-406 P2-6b): a registry entry carries the runtime member
+ *   - `enum`: a registry entry carries the runtime member
  *     allow-list ({@link FilterFieldSpec} object form), so an invalid member is
  *     rejected HERE with a clear 400 instead of surfacing as a Prisma
  *     server-side error. A valid member passes through unchanged (Prisma
  *     accepts the enum's string value directly). A plain `'enum'` tag (only
- *     possible in an explicit caller-provided map) keeps the TASK-375
+ *     possible in an explicit caller-provided map) keeps an
  *     unvalidated pass-through.
  *   - `json`: at the whole-column level the value stays a string (a flat
  *     `field[op]:value` token can't express Prisma's JSON operators safely).
  *     Structured `column.path[op]:value` filtering is handled by the dotted-key
- *     grammar in `deserializeFilterStringWithMap` (TASK-406 P2-6b), not here.
- *
- * Supersedes DEFECT-F1's boolean-only `coerceBooleanFilterValue`.
+ *     grammar in `deserializeFilterStringWithMap`, not here.
  */
 function coerceFilterValue(field: string, value: string, spec: FilterFieldSpec | undefined): boolean | number | Date | string {
   if (typeof spec === 'object') {
@@ -65,7 +63,7 @@ function coerceFilterValue(field: string, value: string, spec: FilterFieldSpec |
 }
 
 /**
- * TASK-406 P2-6b — the Prisma JSON path-filter operators the dotted-key grammar
+ * The Prisma JSON path-filter operators the dotted-key grammar
  * accepts (PostgreSQL `JsonFilter`). Anything else on a JSON path is rejected
  * with a 400 — never forwarded for Prisma to blow up on server-side.
  */
@@ -89,7 +87,7 @@ const JSON_PATH_FILTER_OPERATORS: ReadonlySet<string> = new Set([
 const JSON_STRING_OPERATORS: ReadonlySet<string> = new Set(['string_contains', 'string_starts_with', 'string_ends_with']);
 
 /**
- * TASK-423 — list operators: the token value is a '|'-separated list
+ * List operators: the token value is a '|'-separated list
  * (`field[in]:v1|v2|v3`) deserializing to Prisma's `{ in: [...] }` /
  * `{ notIn: [...] }`, with EACH item coerced/validated per the column spec.
  * NOTE: a literal '|' inside an item is NOT expressible in a list token —
@@ -98,7 +96,7 @@ const JSON_STRING_OPERATORS: ReadonlySet<string> = new Set(['string_contains', '
 const LIST_FILTER_OPERATORS: ReadonlySet<string> = new Set(['in', 'notIn']);
 
 /**
- * TASK-423 — case-insensitive string operators → the Prisma base operator they
+ * Case-insensitive string operators → the Prisma base operator they
  * deserialize to, alongside `mode: 'insensitive'`. String-column operators
  * only: the value intentionally BYPASSES {@link coerceFilterValue} (Prisma's
  * `mode` is only valid on String columns, where coercion is a no-op anyway —
@@ -113,7 +111,7 @@ const INSENSITIVE_STRING_OPERATORS: ReadonlyMap<string, string> = new Map([
 ]);
 
 /**
- * TASK-423 hardening — filter KEYS are attacker-controlled query-string input,
+ * Filter KEYS are attacker-controlled query-string input,
  * so field entries must be created as OWN properties: a plain
  * `filterObject[key] = {}` / truthiness guard with key `'__proto__'` walks the
  * prototype chain and pollutes `Object.prototype` for the whole process (and
@@ -145,8 +143,7 @@ function coerceJsonPathValue(op: string, value: string): unknown {
 
 /**
  * Deserialize the `field[op]:value` (`;`-separated) CSV filter contract into a
- * Prisma `where` fragment, coercing each value to its column's scalar type
- * (TASK-375 §8).
+ * Prisma `where` fragment, coercing each value to its column's scalar type.
  *
  * `fieldTypes` declares HOW to coerce, and may be:
  *   - a model NAME (string) → resolved against the model field-type registry so
@@ -156,7 +153,7 @@ function coerceJsonPathValue(op: string, value: string): unknown {
  *   - a `readonly string[]` → LEGACY boolean allow-list (DEFECT-F1 back-compat);
  *   - an explicit `{ column: spec }` map.
  *
- * TASK-406 P2-6b — JSON-path grammar: when the KEY is dotted and its root
+ * JSON-path grammar: when the KEY is dotted and its root
  * segment is a declared `'json'` column (`metaData.a.b[equals]:1`), the token
  * deserializes to Prisma's JSON path filter
  * (`{ metaData: { path: ['a','b'], equals: 1 } }`) with the operator validated
@@ -181,7 +178,7 @@ export function deserializeFilterString<T = DefaultDbFieldType>(filtersString: s
 function deserializeFilterStringWithMap<T = DefaultDbFieldType>(filtersString: string, fieldTypes?: FilterFieldTypeMap): DbFilters {
   const fields = filtersString.split(';');
   const filterObject: DbFilters<T> = {};
-  // TASK-423 — case-insensitive ops accumulate per field in a SIDE bucket
+  // Case-insensitive ops accumulate per field in a SIDE bucket
   // (folded back in after parsing) so their shared `mode: 'insensitive'` can
   // never leak onto a sibling case-sensitive op on the same field: Prisma's
   // `mode` applies to the WHOLE field filter object, so the two families must
@@ -197,7 +194,7 @@ function deserializeFilterStringWithMap<T = DefaultDbFieldType>(filtersString: s
       const innerFiltersString = field.slice(3, -1);
       filterObject.OR = innerFiltersString.split(',').map((f) => deserializeFilterStringWithMap<T>(f, fieldTypes));
     } else {
-      // Hardened token parsing (TASK-406): split on the FIRST '[' and the FIRST
+      // Hardened token parsing: split on the FIRST '[' and the FIRST
       // ']:' so values containing '[' or ']:' (JSON arrays/objects) survive.
       // For all previously-valid tokens this is byte-identical to the old
       // `split('[')` / `split(']:')` destructuring (which silently dropped the
@@ -211,7 +208,7 @@ function deserializeFilterStringWithMap<T = DefaultDbFieldType>(filtersString: s
       const op = rest.slice(0, closeIdx);
       const value = rest.slice(closeIdx + 2);
 
-      // TASK-406 P2-6b — dotted key on a declared JSON column → Prisma JSON
+      // Dotted key on a declared JSON column → Prisma JSON
       // path filter. Any other dotted key falls through to the literal-key
       // legacy behaviour below.
       const dotIdx = key.indexOf('.');
@@ -238,7 +235,7 @@ function deserializeFilterStringWithMap<T = DefaultDbFieldType>(filtersString: s
         return;
       }
 
-      // TASK-423 — list operators (`in` / `notIn`): split the value on '|'
+      // List operators (`in` / `notIn`): split the value on '|'
       // and coerce each item with the column spec (enum members validate per
       // item, exactly like a scalar token). Empty items (trailing '|',
       // 'a||b', or an entirely empty value) are REJECTED with a 400 rather
@@ -255,7 +252,7 @@ function deserializeFilterStringWithMap<T = DefaultDbFieldType>(filtersString: s
         return;
       }
 
-      // TASK-423 — case-insensitive string ops: accumulate on the side bucket
+      // Case-insensitive string ops: accumulate on the side bucket
       // (see above); multiple i-ops on one field safely SHARE one object and
       // one `mode`. The raw string value is kept on purpose (see the operator
       // map doc).
@@ -275,7 +272,7 @@ function deserializeFilterStringWithMap<T = DefaultDbFieldType>(filtersString: s
     }
   });
 
-  // TASK-423 — fold the case-insensitive buckets back in. A field with ONLY
+  // Fold the case-insensitive buckets back in. A field with ONLY
   // i-ops keeps the flat `{ field: { contains, mode } }` shape; a field that
   // ALSO carries case-sensitive ops gets its insensitive bucket appended to
   // the top-level AND (top-level fields are implicitly AND-ed in Prisma), so

@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - usePrompts Hook (SDK-207 WS-5, refactored TASK-039)
+ * @arcaai/vox - usePrompts Hook (SDK-207 WS-5)
  *
  * Prompt Template management hook for admin operations.
  */
@@ -30,7 +30,7 @@ export interface PromptUsageStats {
   lastUsedAt: string | null;
 }
 
-/** One raw prompt run row (PromptUsageRecord) for the Agent Jobs surface (TASK-407). */
+/** One raw prompt run row (PromptUsageRecord) for the Agent Jobs surface. */
 export interface PromptUsageRecord {
   id: string;
   promptTemplateId: string | null;
@@ -58,7 +58,7 @@ export interface UsePromptsReturn {
   create: (input: CreatePromptInput) => Promise<PromptTemplate>;
   list: (filters?: PromptListFilters) => Promise<PromptTemplate[]>;
   /**
-   * TASK-331 doc-09 — end-user (clinician) read-only template list. Hits the
+   * End-user (clinician) read-only template list. Hits the
    * `prompt-templates/available` end-user route (NOT `/admin/*`), returning the
    * tenant + department defaults plus the caller's OWN personal templates.
    * Use this for clinician-facing selectors (Pre-Summary / Summary) so a doctor
@@ -73,7 +73,7 @@ export interface UsePromptsReturn {
   assignToDepartment: (input: AssignDepartmentPromptInput) => Promise<void>;
   compareVersions: (id: string, v1: number, v2: number) => Promise<DiffResult>;
   /**
-   * TASK-394 P0-2 — like {@link compareVersions} but returns the FULL server
+   * Like {@link compareVersions} but returns the FULL server
    * superset ({@link PromptVersionDiff}): the combined `{ changes, patch, stats }`
    * PLUS the comparison metadata and the per-field breakdown (`content` vs
    * `variables`). Use this when the UI wants to show which fields changed.
@@ -81,11 +81,11 @@ export interface UsePromptsReturn {
   compareVersionsDetailed: (id: string, v1: number, v2: number) => Promise<PromptVersionDiff>;
   /** Activate (rollback to) a specific version of a prompt template. */
   activateVersion: (promptId: string, versionNumber: number) => Promise<PromptTemplate>;
-  /** TASK-328 A4 — run a quality/score test against the SMR service. */
+  /** Run a quality/score test against the SMR service. */
   test: (id: string, input?: TestPromptInput) => Promise<PromptTestResult>;
-  /** TASK-328 A4 — usage analytics grouped by department / doctor / day. */
+  /** Usage analytics grouped by department / doctor / day. */
   analytics: (filters?: { promptTemplateId?: string }) => Promise<PromptUsageAnalytics>;
-  /** TASK-407 — paginated raw prompt run rows (newest first) for the Agent Jobs surface. */
+  /** Paginated raw prompt run rows (newest first) for the Agent Jobs surface. */
   listUsageRecords: (params?: { page?: number; limit?: number; promptTemplateId?: string }) => Promise<PaginatedPromptUsageRecords>;
 }
 
@@ -114,7 +114,7 @@ export function usePrompts(): UsePromptsReturn {
               departmentId: filters.departmentId,
               tags: filters.tags,
               search: filters.search || undefined,
-              // TASK-388 #12 — admin scope/owner narrowing.
+              // Admin scope/owner narrowing.
               scope: filters.scope,
               ownerUserId: filters.ownerUserId,
             })
@@ -206,7 +206,7 @@ export function usePrompts(): UsePromptsReturn {
   const compareVersions = useCallback(
     (id: string, v1: number, v2: number) =>
       execute<DiffResult>('compareVersions', async (client) => {
-        // TASK-389 #14 (AG8/A3) — one request to the server-side diff endpoint
+        // One request to the server-side diff endpoint
         // (was: GET both versions + diff client-side). The server returns a
         // superset of DiffResult (per-field breakdown + the combined
         // content+variables line diff); map the combined `{changes,patch,stats}`
@@ -219,7 +219,7 @@ export function usePrompts(): UsePromptsReturn {
 
   const compareVersionsDetailed = useCallback(
     (id: string, v1: number, v2: number) =>
-      // TASK-394 P0-2 — same endpoint as compareVersions, but returns the full
+      // Same endpoint as compareVersions, but returns the full
       // superset (per-field breakdown + comparison metadata) unmapped so the
       // admin can surface which fields changed.
       execute<PromptVersionDiff>('compareVersionsDetailed', (client) => client.get<PromptVersionDiff>(PROMPT_TEMPLATE_ENDPOINTS.DIFF(id, v1, v2))),
@@ -242,7 +242,7 @@ export function usePrompts(): UsePromptsReturn {
       execute<PromptTestResult>('test', async (client) => {
         // OCC parity with update(): the server folds the `If-Match` header
         // over the body `expectedVersion`, or uses the body value directly.
-        // TASK-389 #15 (AG12/A5) — the server's `metrics` is the RAW backend
+        // The server's `metrics` is the RAW backend
         // `PromptTestMetrics`; keep it on `metricDetail` and derive the flat
         // `[0,1]` display map the admin Test Playground consumes.
         const raw = await client.post<Omit<PromptTestResult, 'metrics' | 'metricDetail'> & { metrics?: PromptTestMetrics }>(

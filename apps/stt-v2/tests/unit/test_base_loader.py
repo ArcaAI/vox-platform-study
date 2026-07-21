@@ -1,4 +1,4 @@
-"""Unit tests for BaseModelLoader — TASK-010 Apple Silicon enhancements.
+"""Unit tests for BaseModelLoader — Apple Silicon enhancements.
 
 Tests float16 auto-detection for MPS and the cleanup_accelerator_memory utility.
 """

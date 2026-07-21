@@ -80,7 +80,7 @@ describe('tenant hooks', () => {
         expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: tenantKeys.root });
     });
 
-    // TASK-497 §3.5 — global-admin create-tenant-with-admin.
+    // Global-admin create-tenant-with-admin.
     it('useProvisionTenant posts to admin/tenants/provision and invalidates the tenants namespace', async () => {
         const fetchMock = vi.fn(async () => Response.json({ tenant: { id: 't-1' }, adminUserId: 'u1', tenantKey: 'acme' }));
         vi.stubGlobal('fetch', fetchMock);

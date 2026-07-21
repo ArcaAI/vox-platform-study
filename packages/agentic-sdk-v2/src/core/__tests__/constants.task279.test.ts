@@ -1,5 +1,5 @@
 /**
- * TASK-279 — R-05 ROLE_ENDPOINTS split (user-self vs admin)
+ * R-05 ROLE_ENDPOINTS split (user-self vs admin)
  *
  * The SDK previously exposed user-role assignment URLs only via
  * `ROLE_ENDPOINTS.USER_ROLES(userId)` / `ROLE_ENDPOINTS.USER_ROLE(userId, roleId)`,
@@ -7,7 +7,7 @@
  * the real admin route is `/admin/users/:id/roles[/:assignmentId]` (see
  * `apps/api/src/modules/user/user.controller.ts`). At the same time, the
  * end-user "my roles" surface (canonical `/users/:id/roles`) is currently
- * served only by `/auth/me.roles` (see TASK-282 follow-up).
+ * served only by `/auth/me.roles`.
  *
  * This test pins the new shape:
  *   - `ROLE_ENDPOINTS.USER_ROLES` / `USER_ROLE` are kept at the user-self path

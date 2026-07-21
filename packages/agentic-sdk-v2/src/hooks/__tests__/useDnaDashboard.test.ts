@@ -1,5 +1,5 @@
 /**
- * useDnaDashboard Hook Tests (TASK-328 A5)
+ * useDnaDashboard Hook Tests
  *
  * @vitest-environment jsdom
  */

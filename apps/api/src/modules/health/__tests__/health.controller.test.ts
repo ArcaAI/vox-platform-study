@@ -26,7 +26,7 @@ const createMockHttpService = () => ({
     },
 });
 
-// TASK-310 E-5 (AC-5): stubbed IConfigService so the controller's
+// Stubbed IConfigService so the controller's
 // `downstreamServices` array can resolve URLs the same way as production
 // (env-or-fallback at bootstrap, frozen at construction).
 const createMockConfigService = () => ({
@@ -213,9 +213,9 @@ describe('ApiHealthController', () => {
 
             const result = await controller.checkServices();
 
-            // TASK-307 W5.1 / AC-15 / E-3 — version and checks are stripped
+            // Version and checks are stripped
             // from the public response to avoid leaking downstream service
-            // versions / internal probe details (per audit finding C-8).
+            // versions / internal probe details.
             expect(result.services.smr.service).toBe('Summarization');
             expect(result.services.guardrail.service).toBe('Guardrail');
             expect(result.services.smr).not.toHaveProperty('version');
@@ -272,8 +272,8 @@ describe('ApiHealthController', () => {
             expect(result.status).toBe('healthy');
             expect(result.service).toBe('Summarization');
             expect(result.duration_ms).toBeGreaterThanOrEqual(0);
-            // TASK-307 W5.1 / AC-15 — version + checks are stripped before
-            // returning to the client (audit C-8 / E-3 / D-11). Full
+            // Version + checks are stripped before
+            // returning to the client. Full
             // detail remains in server logs only.
             expect(result).not.toHaveProperty('version');
             expect(result).not.toHaveProperty('checks');
@@ -333,15 +333,10 @@ describe('ApiHealthController', () => {
     });
 
     // ─────────────────────────────────────────────────────────────────
-    // TASK-307 W5.1 — Surface hardening for /health/services{/:key}
-    //   AC-15 closes audit findings:
-    //     C-8  (/health/services unauth + leaks)
-    //     D-11 (Health throttle 300/min too generous)
-    //     E-3  (Health leaks downstream version)
-    //
-    //   - /services and /services/:key now require @Authorize()
+    // Surface hardening for /health/services{/:key}
+    //   - /services and /services/:key require @Authorize()
     //   - Response strips `version` and `checks` from each service entry
-    //   - Class-level throttle lowered to { limit: 30, ttl: 60000 }
+    //   - Class-level throttle: { limit: 30, ttl: 60000 }
     //   - /live, /ready, /startup, / remain public (no @Authorize)
     // ─────────────────────────────────────────────────────────────────
     describe('TASK-307 W5.1 — /health surface hardening (AC-15)', () => {
@@ -350,9 +345,9 @@ describe('ApiHealthController', () => {
                 REQUIRED_PERMISSIONS_KEY,
                 ApiHealthController.prototype.checkServices,
             );
-            // @Authorize(...) sets a RequiredPermission[] on the handler. Post
-            // TASK-336 OB-12 this is the concrete admin gate (asserted exactly
-            // in the OB-12 block below); here we only check the gate exists.
+            // @Authorize(...) sets a RequiredPermission[] on the handler. This
+            // is the concrete admin gate (asserted exactly
+            // in the block below); here we only check the gate exists.
             expect(required).toBeDefined();
             expect(Array.isArray(required)).toBe(true);
         });
@@ -419,16 +414,12 @@ describe('ApiHealthController', () => {
     });
 
     // ─────────────────────────────────────────────────────────────────
-    // TASK-336 OB-12 / TASK-386 #21·E6 — admin-gate /health/services{/:key}
-    //   Pre-OB-12 these carried @Authorize() (any authenticated caller —
-    //   a plain doctor could read downstream ops health). OB-12 tightened
-    //   them to the GLOBAL_ADMIN `manage all` gate.
-    //
-    //   TASK-386 (#21/E6) WIDENS them to `@CanAny(['manage','all'],
-    //   ['read','TenantTelemetry'])` so a tenant-admin with the seeded
-    //   read:TenantTelemetry rule can read downstream service health, while a
-    //   plain doctor (neither permission) still gets 403. Mode flips to OR.
-    //   The k8s probes (/live, /ready, /startup, /) stay public.
+    // Admin-gate /health/services{/:key}
+    //   Gated to `@CanAny(['manage','all'], ['read','TenantTelemetry'])` so a
+    //   tenant-admin with the seeded read:TenantTelemetry rule can read
+    //   downstream service health, while a plain doctor (neither permission)
+    //   still gets 403. Mode is OR. The k8s probes (/live, /ready, /startup, /)
+    //   stay public.
     // ─────────────────────────────────────────────────────────────────
     describe('TASK-336 OB-12 / TASK-386 #21 — admin-gate /health/services', () => {
         const PERMISSION_MODE_KEY = 'permission_mode';

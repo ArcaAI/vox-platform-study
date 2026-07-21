@@ -1,4 +1,4 @@
-"""TASK-386 — NLP per-model metrics (Prometheus-scrapable).
+"""NLP per-model metrics (Prometheus-scrapable).
 
 NLP's domain metrics use OpenTelemetry (OTLP gRPC export). The platform-metrics
 backend reads Prometheus, so these tests cover the prometheus_client-based
@@ -43,7 +43,7 @@ async def test_token_classifier_process_observes_medical_ner_latency():
     classifier = TransformerTokenClassifier()
     # Stub out the HF pipeline so no model download/inference is needed.
     # Accept **kwargs so process()'s aggregation_strategy= call hits the SUCCESS
-    # path (not the except branch) — TASK-452.
+    # path (not the except branch).
     classifier.pipeline = lambda text, **kwargs: []
     classifier.is_initialized = True
 

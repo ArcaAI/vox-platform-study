@@ -326,7 +326,7 @@ describe('PipelineStage', () => {
   });
 
   // ===========================================================================
-  // TASK-273 — AbortSignal handling (C-1, C-2)
+  // AbortSignal handling
   // ===========================================================================
 
   describe('AbortSignal propagation (TASK-273)', () => {

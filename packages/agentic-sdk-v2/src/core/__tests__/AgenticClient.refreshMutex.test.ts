@@ -1,5 +1,5 @@
 /**
- * AgenticClient — Refresh Mutex Tests (TASK-235)
+ * AgenticClient — Refresh Mutex Tests
  *
  * Verifies that concurrent 401 responses trigger the onUnauthorized handler
  * exactly once, and that all waiting requests retry with the refreshed token.

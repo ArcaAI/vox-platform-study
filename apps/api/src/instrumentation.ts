@@ -12,7 +12,7 @@ if (process.env.OTEL_DEBUG === 'true') {
   diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 }
 
-// TASK-411: telemetry export is explicit opt-in — no localhost fallback.
+// Telemetry export is explicit opt-in — no localhost fallback.
 const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
 const sdkDisabled = process.env.OTEL_SDK_DISABLED === 'true';
 

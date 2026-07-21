@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # initialized eagerly here.
     websocket_service = get_websocket_manager()
 
-    # TASK-525 — the control-plane pull client. Construction performs NO I/O, so
+    # The control-plane pull client. Construction performs NO I/O, so
     # boot never blocks on (or fails because of) the gateway; the first inference
     # triggers the first fetch, and a failure negative-caches into env behaviour.
     app.state.effective_config_client = EffectiveConfigClient(

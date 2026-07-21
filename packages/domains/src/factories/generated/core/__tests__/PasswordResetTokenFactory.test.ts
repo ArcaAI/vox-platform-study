@@ -1,5 +1,5 @@
 /**
- * TASK-400 — PasswordResetToken domain unit tests (factory + entity lifecycle).
+ * PasswordResetToken domain unit tests (factory + entity lifecycle).
  *
  * The entity is the single source of truth for token-state semantics:
  *   - `isActive(now)`  — not used, not revoked, not expired
@@ -43,7 +43,7 @@ describe('PasswordResetTokenFactory (TASK-400)', () => {
         expect(token.requestedVia).toBe('admin');
     });
 
-    // TASK-497 §3.4 — the `email_verification` purpose stashes the pending
+    // The `email_verification` purpose stashes the pending
     // tenant name (captured at POST /auth/register) here until POST
     // /auth/register/verify consumes the token, since the token's own
     // columns carry only token-management metadata.

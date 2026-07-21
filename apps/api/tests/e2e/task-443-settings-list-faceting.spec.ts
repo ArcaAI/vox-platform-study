@@ -1,12 +1,12 @@
 /**
- * TASK-443 — settings list faceting contract (namespace / dataType / secretsOnly).
+ * Settings list faceting contract (namespace / dataType / secretsOnly).
  *
  * Live-stack proof that the settings list narrows SERVER-SIDE (not a client
  * page filter):
  *   F1. `filters=namespace[in]:…` narrows to the listed namespaces.
  *   F2. `filters=dataType[equals]:Json` narrows to the enum member; an invalid
- *       `ValueType` member is rejected with a clear 400 (registry validation,
- *       TASK-406 pattern) — never a Prisma 500.
+ *       `ValueType` member is rejected with a clear 400 (registry validation
+ *       pattern) — never a Prisma 500.
  *   F3. `secretsOnly=true` resolves the DERIVED secret predicate (encrypted
  *       value OR `secrets` namespace OR convention-named key — the exact
  *       tri-condition of `GlobalSettingDtoMapper.isSecretEntity`); false

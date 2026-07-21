@@ -1,4 +1,4 @@
-"""Cross-encoder reranker tool client — HF TEI ``/rerank`` (TASK-330 Phase 3).
+"""Cross-encoder reranker tool client — HF TEI ``/rerank``.
 
 The hybrid retriever's last stage: the fused dense+sparse candidates are reranked
 by a self-hosted Text-Embeddings-Inference cross-encoder (``hope-reranker`` serving

@@ -19,8 +19,8 @@ import { Authorize, CanManage } from '../../decorators';
  * Global-admins (`isSuperAdmin`) target any tenant via `?tenantId=`.
  *
  * AUTHORIZATION: this controller DELIBERATELY keeps `@CanManage('HarnessPolicy')`
- * (TASK-532 M-12 swapped the mcp-admin and agent-trajectory controllers to their
- * own subjects, and deliberately did NOT swap this one). The instructions
+ * — the mcp-admin and agent-trajectory controllers were swapped to their own
+ * subjects, but this one deliberately was not. The instructions
  * document is not a separate resource — it is a READ PROJECTION OF the harness
  * policy itself (resolved thresholds, safety criteria, prompt tier), so whoever
  * governs the policy governs this view of it. `manage` rather than `read`

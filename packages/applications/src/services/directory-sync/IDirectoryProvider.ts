@@ -1,5 +1,5 @@
 /**
- * TASK-498 P3 — one page of directory users, paginated by an opaque
+ * One page of directory users, paginated by an opaque
  * provider-specific cursor (`nextPageToken`; MS Graph calls this `@odata.nextLink`,
  * Google Directory calls it `nextPageToken` — both normalized to this shape).
  */

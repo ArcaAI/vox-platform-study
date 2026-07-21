@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * TASK-424 — cross-feature id → name catalogs. Features may not import each
+ * Cross-feature id → name catalogs. Features may not import each
  * other, so the tiny read-only lookups (tenants, roles, departments) live in
  * shared with their own minimal wire types. Queries are cached (staleTime) and
  * NEVER throw at the call site: a caller without permission for a catalog

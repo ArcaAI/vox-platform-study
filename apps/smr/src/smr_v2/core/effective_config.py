@@ -1,4 +1,4 @@
-"""TASK-525 §3.3 — effective-config pull client (smr).
+"""Effective-config pull client (smr).
 
 Pulls this service's SERVICE-LEVEL knobs from the gateway
 (`GET /api/v1/internal/effective-config?service=smr`) instead of taking them from
@@ -18,7 +18,7 @@ Mechanics are the guardrail `TenantConfigResolver`'s, over HTTP instead of SQL:
     manage, and a service that never reads never polls.
 
 This module is deliberately duplicated per service rather than shared; factoring
-it into a common package is TASK-529's OD-3 and must not be preempted here.
+it into a common package is a settled decision and must not be preempted here.
 """
 
 from __future__ import annotations
@@ -88,7 +88,7 @@ class EffectiveConfigSnapshot:
         return limits
 
     def retention(self) -> dict[str, int]:
-        """TASK-529 (D-10) — the idle-retention TTL forwarded to engines.
+        """The idle-retention TTL forwarded to engines.
 
         SMR owns no cache; this value becomes Ollama's `keep_alive` and LM
         Studio's `ttl`. An omitted/null/non-positive value means "keep the

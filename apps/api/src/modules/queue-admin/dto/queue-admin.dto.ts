@@ -151,7 +151,7 @@ export class SuccessResponse {
   @ApiProperty({ default: true }) success!: boolean;
 }
 
-/** TASK-403 — Redis health snapshot for `GET /admin/queues/health/redis`. */
+/** Redis health snapshot for `GET /admin/queues/health/redis`. */
 export class RedisHealthInfoResponse {
   @ApiProperty({ enum: ['healthy', 'degraded', 'unhealthy'] }) status!: 'healthy' | 'degraded' | 'unhealthy';
   @ApiProperty({ description: 'PING round-trip in ms (-1 when unreachable).' }) latencyMs!: number;

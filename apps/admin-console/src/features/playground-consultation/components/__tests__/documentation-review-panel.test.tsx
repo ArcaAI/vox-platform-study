@@ -1,5 +1,5 @@
 /**
- * Frame 50.1 — Documentation Review phase (TASK-432). Exercises the harness
+ * Frame 50.1 — Documentation Review phase. Exercises the harness
  * stage checklist (progress SSE), per-claim assurance verdicts + gate
  * decision + flagged-claim chip (assurance SSE), the draft-note pane with
  * provenance, and the approve & sign-off success path. fetch stubbed by

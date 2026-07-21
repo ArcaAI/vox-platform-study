@@ -17,7 +17,7 @@ describe('PromptManagementDtoMapper', () => {
                 description: 'A SOAP note prompt',
                 content: 'You are a clinical assistant.',
                 category: 'SUMMARY',
-                // TASK-356 Phase 6 (S1) — scope is surfaced for the doctor UI.
+                // Scope is surfaced for the doctor UI.
                 scope: 'USER_PERSONAL',
                 variables: { format: 'SOAP' },
                 currentVersionNumber: 3,
@@ -43,7 +43,7 @@ describe('PromptManagementDtoMapper', () => {
             expect(result.updatedAt).toBe('2026-02-18T12:00:00.000Z');
         });
 
-        // TASK-331 doc-02 F5 — status maps through; pre-migration rows default DRAFT.
+        // Status maps through; pre-migration rows default DRAFT.
         it('should map status when present and default to DRAFT when absent', async () => {
             const withStatus = PromptManagementDtoMapper.toTemplateResponse({
                 id: 'tpl-s',
@@ -192,7 +192,7 @@ describe('PromptManagementDtoMapper', () => {
             expect(result.tags).toEqual([]);
         });
 
-        // TASK-407 — Agent Jobs surfaces the last prompt-test outcome. Score +
+        // Agent Jobs surfaces the last prompt-test outcome. Score +
         // timestamp map through; the vault-encrypted lastTestOutput must NOT.
         it('should map lastTestScore/lastTestAt and never expose lastTestOutput', () => {
             const entity = {

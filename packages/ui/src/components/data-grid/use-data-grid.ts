@@ -38,7 +38,7 @@ export interface UseDataGridResult<TData> {
   table: Table<TData>;
   rowVirtualizer: Virtualizer<HTMLDivElement, Element>;
   /**
-   * TASK-443 — the virtualized display entries: the table's data rows, with
+   * The virtualized display entries: the table's data rows, with
    * group-header entries interleaved when `groupBy` is set (index-aligned with
    * the virtualizer). Without `groupBy` it is exactly the row model.
    */
@@ -202,7 +202,7 @@ export function useDataGrid<TData>(props: VirtualizedDataGridProps<TData>): UseD
     [rowSelection, selection],
   );
 
-  // TASK-443 — filter-only virtual columns (`meta.filterOnly`) are FORCED
+  // Filter-only virtual columns (`meta.filterOnly`) are FORCED
   // hidden: they exist to drive a toolbar filter chip, never a rendered
   // column. The overlay wins over any persisted visibility.
   const filterOnlyVisibility = useMemo(() => {
@@ -244,7 +244,7 @@ export function useDataGrid<TData>(props: VirtualizedDataGridProps<TData>): UseD
     [layout, emitLayout],
   );
 
-  // TASK-500 — a `multiSelect` column with no explicit `filterFn` falls back to
+  // A `multiSelect` column with no explicit `filterFn` falls back to
   // TanStack's default `includesString`, which stringifies the array filter value
   // (`"ACTIVE,ARCHIVED"`) and never matches a scalar cell once 2+ values are
   // selected. Resolve an array-aware default so client-side facets work out of the
@@ -296,7 +296,7 @@ export function useDataGrid<TData>(props: VirtualizedDataGridProps<TData>): UseD
   // ----- Virtualization -----
   const scrollRef = useRef<HTMLDivElement>(null);
   const rows = table.getRowModel().rows;
-  // TASK-443 — group headers are extra virtual rows, so the virtualizer counts
+  // Group headers are extra virtual rows, so the virtualizer counts
   // the DISPLAY entries (identical to `rows` when `groupBy` is off).
   const displayRows = useMemo(() => buildDisplayRows(rows, props.groupBy), [rows, props.groupBy]);
   const rowVirtualizer = useVirtualizer({

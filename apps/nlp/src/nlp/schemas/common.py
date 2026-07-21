@@ -38,7 +38,7 @@ class Entity(BaseModel):
     confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score")
     position: TextPosition = Field(..., description="Position in source text")
 
-    # TASK-476 C1 — clinical ontology codes resolved by the entity linker
+    # Clinical ontology codes resolved by the entity linker
     # (OntologyLinker). Nullable: un-codable spans stay None so every downstream
     # NamedEntity write is null-safe. Field names mirror the NamedEntity columns.
     umls_cui: str | None = Field(default=None, description="UMLS Concept Unique Identifier")

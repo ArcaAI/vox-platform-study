@@ -19,7 +19,7 @@ import { ClsService } from 'nestjs-cls';
 import { ApiEndpoint, Authorize, CanCreate, CanManage, CanRead, CanUpdate, CanDelete, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 
 /**
- * TASK-390 #24 (ST1) — Global-settings admin CRUD.
+ * Global-settings admin CRUD.
  *
  * Thin delegation surface over the already-existing `GlobalSettingService`
  * (create / fetchAll / fetchAllByTenantId / fetchById / update / softDelete),
@@ -28,9 +28,8 @@ import { ApiEndpoint, Authorize, CanCreate, CanManage, CanRead, CanUpdate, CanDe
  * + service + SDK hook (`useGlobalSettings`) already exist; this only wires the
  * HTTP surface the SDK's `GLOBAL_SETTINGS_ENDPOINTS` targets.
  *
- * Mount path is `admin/settings` to match the existing, tested SDK contract
- * (the §3a review labels the item `admin/global-settings`; see the TASK-390
- * README §3.3 for the naming reconciliation FLAG).
+ * Mount path is `admin/settings` (not `admin/global-settings`) to match the
+ * existing, tested SDK contract.
  *
  * Authorization: class-level `manage:GlobalSetting` (global-admin via
  * `manage:all`; tenant admins via the seeded `tenant-full-access` /
@@ -73,7 +72,7 @@ export class GlobalSettingController {
     name: 'secretsOnly',
     required: false,
     type: Boolean,
-    description: 'TASK-443 — facet on the DERIVED secret predicate (not a column): true = secrets only, false = non-secrets only.',
+    description: 'Facet on the DERIVED secret predicate (not a column): true = secrets only, false = non-secrets only.',
   })
   @CanRead('GlobalSetting')
   async fetchAll(@Query() queryParams: ListGlobalSettingQuery): Promise<PaginatedGlobalSettingResponse> {
@@ -172,7 +171,7 @@ export class GlobalSettingController {
   }
 
   /**
-   * TASK-396 — reveal ONE secret setting's decrypted plaintext.
+   * Reveal ONE secret setting's decrypted plaintext.
    *
    * GLOBAL-ADMIN ONLY: the method-level `@Authorize(['manage','all'])`
    * OVERRIDES the class-level `@CanManage('GlobalSetting')` (the
@@ -215,7 +214,7 @@ export class GlobalSettingController {
   }
 
   /**
-   * TASK-445 — rotate ONE secret setting (atomic replace-with-new-value).
+   * Rotate ONE secret setting (atomic replace-with-new-value).
    *
    * Gating mirrors `reveal`: method-level `@Authorize(['manage','all'])`
    * OVERRIDES the class `@CanManage('GlobalSetting')` so only GLOBAL_ADMIN

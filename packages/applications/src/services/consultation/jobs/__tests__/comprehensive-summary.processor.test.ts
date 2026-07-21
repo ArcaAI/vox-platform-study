@@ -1,5 +1,5 @@
 /**
- * ComprehensiveSummaryProcessor Unit Tests — GAP-4 Task 2.6
+ * ComprehensiveSummaryProcessor Unit Tests
  *
  * Tests for the BullMQ processor that handles async comprehensive summary
  * generation jobs. The processor resolves linked consultations, gathers
@@ -114,7 +114,7 @@ const createMockJobMetrics = () => ({
     recordSmrCallDuration: vi.fn(),
 });
 
-// Mock ClsService — TASK-305 D.9. See summary.processor.test.ts for the
+// Mock ClsService. See summary.processor.test.ts for the
 // rationale.
 const createMockClsService = () => {
     const store = new Map<string, unknown>();
@@ -204,7 +204,7 @@ function createProcessor() {
     const harnessPolicyService = {
         resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }),
     };
-    // TASK-362 — doctor-preferred prompt id resolver. Default null keeps existing tests unaffected.
+    // Doctor-preferred prompt id resolver. Default null keeps existing tests unaffected.
     const configResolver = { resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null) };
 
     const processor = new ComprehensiveSummaryProcessor(
@@ -221,8 +221,8 @@ function createProcessor() {
         jobMetrics as any,
         clsService as any,
         undefined, // secretsService (@Optional)
-        harnessPolicyService as any, // TASK-356 D-7 — HarnessPolicyService resolver
-        configResolver as any, // TASK-362 — ConfigResolver (doctor-preferred prompt id)
+        harnessPolicyService as any, // HarnessPolicyService resolver
+        configResolver as any, // ConfigResolver (doctor-preferred prompt id)
     );
 
     return {
@@ -256,7 +256,7 @@ describe('ComprehensiveSummaryProcessor', () => {
         mocks = createProcessor();
     });
 
-    // ── TASK-356 D-7 (T-C5): the SMR call carries the cascade-resolved model ──
+    // ── the SMR call carries the cascade-resolved model ──
     describe('SMR selection', () => {
         it('posts the cascade-resolved provider+model when the request omits a model', async () => {
             const consultation = createConsultation();
@@ -794,7 +794,7 @@ describe('ComprehensiveSummaryProcessor', () => {
     });
 
     // ===========================================================================
-    // GAP-3 Fix: PromptResolutionService Fallback (WS-2 Task 5)
+    // PromptResolutionService Fallback
     // ===========================================================================
 
     describe('PromptResolutionService Fallback (WS-2)', () => {
@@ -942,7 +942,7 @@ describe('ComprehensiveSummaryProcessor', () => {
     });
 
     // ===========================================================================
-    // TASK-305 D.9 — CLS rebind + tenant assert + fail-closed guard
+    // CLS rebind + tenant assert + fail-closed guard
     // ===========================================================================
 
     describe('CLS rebind + tenant assert (TASK-305 D.9)', () => {
@@ -1014,7 +1014,7 @@ describe('ComprehensiveSummaryProcessor', () => {
     });
 
     // ===========================================================================
-    // TASK-362 — thread the requesting doctor's preferred prompt template id into
+    // Thread the requesting doctor's preferred prompt template id into
     // BOTH prompt resolution and assembly (this async path previously dropped it).
     // ===========================================================================
 

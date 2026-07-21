@@ -26,13 +26,13 @@ export interface ISummaryMetaEntity extends IBaseTenantEntity {
   qualityScore?: number | null;
   promptResolvedFrom?: string | null;
   resolvedPromptId?: string | null;
-  // TASK-330 Phase 1 — clinical-harness sensor scores + citation provenance
+  // Clinical-harness sensor scores + citation provenance
   entityFaithfulnessScore?: number | null;
   coverageScore?: number | null;
   ragTriadScore?: number | null;
   citationsMap?: JsonValue | null;
   guardrailDecisions?: JsonValue | null;
-  // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the JSONB
+  // Vault-Transit (hope-phi) ciphertext of the JSONB
   // provenance blobs (citationsMap / guardrailDecisions) + shared key version.
   // Phase 6 dropped the plaintext columns; plaintext survives only as transient
   // fields repopulated by decrypt-on-read.
@@ -41,7 +41,7 @@ export interface ISummaryMetaEntity extends IBaseTenantEntity {
   keyVersion?: number | null;
   attestationRef?: string | null;
   modelName?: string | null;
-  // TASK-355 Phase D — two-phase (optimistic) assurance state
+  // Two-phase (optimistic) assurance state
   gateDecision?: string | null;
   assuranceCompletedAt?: Date | null;
   ContextItem?: Entities.ContextItemEntity | null;
@@ -285,7 +285,7 @@ export class SummaryMetaEntity extends BaseTenantEntity {
     this.setProperty('ragTriadScore', value);
   }
 
-  // TASK-369 Phase 3C — citation provenance + guardrail decisions can echo
+  // Citation provenance + guardrail decisions can echo
   // clinical content. @Secret() marks them for audit-log redaction.
   @Secret()
   get citationsMap(): ISummaryMetaEntity['citationsMap'] {
@@ -305,7 +305,7 @@ export class SummaryMetaEntity extends BaseTenantEntity {
     this.setProperty('guardrailDecisions', value);
   }
 
-  // TASK-369 Phase 3C — Vault-Transit ciphertext columns. @Secret() guards the
+  // Vault-Transit ciphertext columns. @Secret() guards the
   // ciphertext from audit-log surfaces.
   @Secret()
   get encryptedCitationsMap(): ISummaryMetaEntity['encryptedCitationsMap'] {

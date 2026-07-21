@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 
 /**
- * TASK-372 D8 (supporting backend change) — single source of truth for the
+ * Single source of truth for the
  * user-settings namespaces the platform recognises.
  *
  * Historically each consumer hard-coded its own namespace literal
@@ -15,14 +15,14 @@ import { BadRequestException } from '@nestjs/common';
  * namespaces (the SDK `useUserSettings` hook lets a client choose its own), so
  * this is a *recognition* registry — not a rejecting allow-list. A strict
  * allow-list would be a breaking change for existing clients and is out of
- * scope here (see TASK-373 §5).
+ * scope here.
  */
 export const USER_SETTINGS_NAMESPACES = {
   /** Consultation SDK preferences (selected pipeline, local config, …). */
   SDK: 'arcaai-sdk',
   /** Admin-applied per-user overrides (e.g. assigned-pipeline). */
   ADMIN: 'arcaai-admin',
-  /** TASK-372 — per-user data-grid layout (column order/size/visibility/pinning/density). */
+  /** Per-user data-grid layout (column order/size/visibility/pinning/density). */
   UI_DATA_GRID: 'ui.data-grid',
 } as const;
 
@@ -37,14 +37,14 @@ export function isKnownUserSettingsNamespace(namespace: string): boolean {
 }
 
 /**
- * TASK-372 D8 — upper bound (bytes) for a single `ui.data-grid` setting value.
+ * Upper bound (bytes) for a single `ui.data-grid` setting value.
  * A grid layout is a small JSON blob; this guard keeps a malformed/abusive
  * client from persisting an unbounded string into a settings row.
  */
 export const UI_DATA_GRID_MAX_BYTES = 16_384;
 
 /**
- * TASK-375 (item 1 backend) — canonical validator for a `ui.data-grid` setting
+ * (item 1 backend) — canonical validator for a `ui.data-grid` setting
  * value, shared by the self-service controller AND the service layer so EVERY
  * write path (self-service `PATCH /user/me/settings/...` and admin
  * `PATCH /admin/users/:id/settings/...`) enforces the same guard. The value is

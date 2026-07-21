@@ -1,10 +1,10 @@
 /**
- * TASK-479 (SOTA D2) — live OUTPUT groundedness gate wiring tests.
+ * Live OUTPUT groundedness gate wiring tests.
  *
  * The flush must verify the generated running note against the source transcript
  * (guardrail `POST /api/guardrail/ground`) BETWEEN building `runningSummary` and
  * `safePublish`, so ungrounded segments carry their mark before the clinician
- * reads them. Fail posture (pairs with TASK-478's input gate, adapted to a
+ * reads them. Fail posture (pairs with the input gate, adapted to a
  * best-effort streaming surface):
  *   - gate disabled (default)      → payload unchanged, guardrail never called
  *   - transient blip               → absorbed by a bounded retry (verified after a clean re-check)
@@ -133,8 +133,8 @@ describe('LiveDocumentationService — output groundedness gate (TASK-479)', () 
   });
 
   // ------------------------------------------------------------------
-  // AC-3 (baseline half): the un-gated flush publishes NO verdict — the gate is
-  // strictly opt-in (dev/CI bypass, mirroring TASK-478's `enabled` posture).
+  // Baseline: the un-gated flush publishes NO verdict — the gate is
+  // strictly opt-in (dev/CI bypass, mirroring the input gate's `enabled` posture).
   // ------------------------------------------------------------------
   it('publishes the payload with no groundedness verdict when the gate is disabled (default)', async () => {
     const httpMock = buildHttpMock();
@@ -151,7 +151,7 @@ describe('LiveDocumentationService — output groundedness gate (TASK-479)', () 
   });
 
   // ------------------------------------------------------------------
-  // AC-3 (gate half) + AC-5: ungrounded segments carry the flag BEFORE publish.
+  // Gated: ungrounded segments carry the flag BEFORE publish.
   // ------------------------------------------------------------------
   it('marks ungrounded segments in the published payload when the gate is enabled', async () => {
     const httpMock = buildHttpMock();
@@ -215,7 +215,7 @@ describe('LiveDocumentationService — output groundedness gate (TASK-479)', () 
   });
 
   // ------------------------------------------------------------------
-  // AC-4: degrade-safe → fail-CLOSED. A blip is absorbed; a sustained outage
+  // Degrade-safe → fail-CLOSED. A blip is absorbed; a sustained outage
   // marks `unverified` and the feed keeps publishing; NO error path yields
   // `grounded`.
   // ------------------------------------------------------------------
@@ -308,7 +308,7 @@ describe('LiveDocumentationService — output groundedness gate (TASK-479)', () 
     const payload = await service.flush(CID);
 
     expect(payload!.groundedness!.verdict).toBe('unverified');
-    // TASK-479 review IMPORTANT-1 — a distrusted (checked:false) response must drive
+    // A distrusted (checked:false) response must drive
     // NO grounded segment mark either, not just an unverified rollup: every per-segment
     // verdict is coerced to 'unverified' (the wire claimed all-'grounded').
     expect(payload!.groundedness!.segments.length).toBeGreaterThan(0);

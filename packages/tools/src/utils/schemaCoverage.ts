@@ -7,7 +7,7 @@ import { discoverPrismaDomains, getDMMFForDomain } from './prismaSchema';
 
 /**
  * ============================================================================
- * TASK-370 — Content-aware schema-coverage check (curated-projection aware)
+ * Content-aware schema-coverage check (curated-projection aware)
  * ============================================================================
  *
  * The entity (`packages/domains/src/entities/generated`) and factory
@@ -23,11 +23,11 @@ import { discoverPrismaDomains, getDMMFForDomain } from './prismaSchema';
  *
  * Verbatim reproduction alone cannot detect the one drift that actually causes
  * data bugs: a Prisma model gains a persisted column but the entity/factory was
- * never updated (cf. the audit-column drift behind TASK-366). This module adds
- * that missing signal: for every entity/factory backed by a Prisma model it
- * compares the model's persisted scalar/enum columns (from DMMF) against the
- * fields the committed artifact actually surfaces, and fails `--check` (exit 1)
- * when a column is missing — naming the offending artifact + field.
+ * never updated. This module adds that missing signal: for every entity/factory
+ * backed by a Prisma model it compares the model's persisted scalar/enum
+ * columns (from DMMF) against the fields the committed artifact actually
+ * surfaces, and fails `--check` (exit 1) when a column is missing — naming
+ * the offending artifact + field.
  *
  * What is intentionally NOT enforced:
  *  - Relation fields (DMMF `kind === 'object'`). The entity layer curates
@@ -121,8 +121,8 @@ export const OMITTED_SCALARS_BY_MODEL: Readonly<Record<string, ReadonlySet<strin
  * factory coverage pass. Keyed by Prisma model name.
  */
 export const FACTORY_OMITTED_SCALARS_BY_MODEL: Readonly<Record<string, ReadonlySet<string>>> = {
-    // TASK-328 A6 — the per-tenant "default pipeline" flag is flipped by a
-    // dedicated set-default operation; a pipeline is always created `false`.
+    // The per-tenant "default pipeline" flag is flipped by a dedicated
+    // set-default operation; a pipeline is always created `false`.
     AsrPipeline: new Set<string>(['isDefault']),
     // Nullable bucket FK assigned when the object is placed in a `TenantBucket`,
     // not at media-record creation.
@@ -138,9 +138,9 @@ export const FACTORY_OMITTED_SCALARS_BY_MODEL: Readonly<Record<string, ReadonlyS
 };
 
 /**
- * At-rest field-encryption envelope columns (Data Encryption Initiative,
- * TASK-369). These are written by the repository encryption layer on persist —
- * factories accept only the PLAINTEXT business fields they wrap — so they are
+ * At-rest field-encryption envelope columns. These are written by the
+ * repository encryption layer on persist — factories accept only the
+ * PLAINTEXT business fields they wrap — so they are
  * never factory creation inputs. The ENTITY surfaces them (for read/round-trip),
  * so this skip is FACTORY-ONLY. Expressed as one documented rule rather than an
  * enumerated per-model list because the naming convention is uniform across the

@@ -56,7 +56,7 @@ vi.mock('../../store', () => {
     setActiveAudioContext: vi.fn(),
     setAudioLanguage: vi.fn(),
     addTranscriptSegment: vi.fn(),
-    // TASK-464 — audio-drop actions the hook calls on start/stop and per drop.
+    // Audio-drop actions the hook calls on start/stop and per drop.
     resetAudioDropped: vi.fn(),
     markAudioLost: vi.fn(),
     incrementDroppedFrames: vi.fn(),

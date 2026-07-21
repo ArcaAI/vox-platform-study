@@ -3,7 +3,7 @@ import { IsString, IsNotEmpty, IsOptional, IsEnum, IsNumber, IsBoolean, IsUUID, 
 import { TranscriptionJobType } from '@arcaai/domains';
 
 /**
- * TASK-298 D-19 pipeline-id contract: a `pipelineId` is a slug
+ * Pipeline-id contract: a `pipelineId` is a slug
  * (`general-consult`) OR a UUID-shaped id. The platform's seeded pipelines use
  * deterministic, non-RFC-versioned UUIDs (e.g. `81000000-0000-0000-0001-000000000001`),
  * which a strict `@IsUUID(7)` rejects. Mirror the HTTP-boundary DTOs

@@ -3,7 +3,7 @@ import * as Entities from '../../../entities';
 import * as Models from '../../../models';
 import * as Mappers from '../../../mappers';
 
-// TASK-302 Stream D Phase E.2 — `_version` is owned by the database and the
+// `_version` is owned by the database and the
 // only legitimate writer is `Repository.updateWithVersion`. Strip it from every
 // write path here so the auto-mappers cannot leak it into a Prisma update.
 // Mirrors the B.6 / E.1.1 treatment on `GlobalSettingEntityMapper` and

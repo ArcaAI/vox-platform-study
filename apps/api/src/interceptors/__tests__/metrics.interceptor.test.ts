@@ -78,16 +78,17 @@ describe('MetricsInterceptor', () => {
     });
 
     /**
-     * TASK-310 E-7 (AC-7) — Prometheus cardinality fix.
+     * Prometheus cardinality guard.
      *
-     * Pre-W7 the interceptor labelled the `http_requests_total` metric
-     * with `request.route?.path || request.url`. Unmatched / 404 / OPTIONS
-     * requests have an undefined `route`, so the fallback expanded to the
-     * raw URL — every `/api/v1/<scanner-noise>/<uuid>` shipped a new
-     * Prometheus series. Cardinality blew up linearly with traffic.
+     * Labelling the `http_requests_total` metric with
+     * `request.route?.path || request.url` would blow up cardinality:
+     * unmatched / 404 / OPTIONS requests have an undefined `route`, so the
+     * fallback would expand to the raw URL and every
+     * `/api/v1/<scanner-noise>/<uuid>` would ship a new Prometheus series,
+     * growing linearly with traffic.
      *
-     * The fix labels unmatched routes with the literal `<unmatched>` so
-     * the series count stays bounded by the templated-route set.
+     * Unmatched routes are labelled with the literal `<unmatched>` instead,
+     * so the series count stays bounded by the templated-route set.
      */
     it('falls back to "<unmatched>" (not request.url) when route.path is unavailable', async () => {
         const context = createMockContext({

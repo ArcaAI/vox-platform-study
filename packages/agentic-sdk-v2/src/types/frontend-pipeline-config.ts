@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - Frontend pipeline config types (TASK-328 A6)
+ * @arcaai/vox - Frontend pipeline config types
  *
  * Per-tenant FRONTEND audio-pipeline defaults applied to every user in the
  * tenant. Mirrors the backend `TenantFrontendConfigResponse` /
@@ -28,14 +28,14 @@ export interface FrontendPipelineConfigJson {
 }
 
 /**
- * TASK-356 Phase 4 — tenant default transcription mode (mirrors the server
+ * Tenant default transcription mode (mirrors the server
  * `TranscriptionMode` enum). The EFFECTIVE per-doctor mode is resolved
  * server-side and surfaced on the UserPreferences response.
  */
 export type TranscriptionMode = 'LOCAL' | 'BACKEND';
 
 /**
- * TASK-356 Phase 4 — tenant audio capture mode (mirrors the server `CaptureMode`
+ * Tenant audio capture mode (mirrors the server `CaptureMode`
  * enum). `null` (no tenant override) falls back to the legacy `captureRawAudio`.
  */
 export type CaptureMode = 'RAW_AND_PROCESSED' | 'RAW_ONLY' | 'PROCESSED_ONLY' | 'NONE';
@@ -50,21 +50,21 @@ export interface TenantFrontendConfig {
   voiceEnrollment: boolean;
   diarization: boolean;
   /**
-   * TASK-332 — tenant toggle for local raw-stream audio capture (persisted).
+   * Tenant toggle for local raw-stream audio capture (persisted).
    * Only takes effect when `platformRawCaptureCapable` is also true.
    */
   captureRawAudio: boolean;
   /**
-   * TASK-332 — server-computed platform capability for local raw capture
+   * Server-computed platform capability for local raw capture
    * (the locked `enable-local-raw-capture` GlobalSetting). Read-only; the admin
    * UI disables the `captureRawAudio` toggle when this is false.
    */
   platformRawCaptureCapable: boolean;
-  /** TASK-356 — tenant default transcription mode (LOCAL | BACKEND). */
+  /** Tenant default transcription mode (LOCAL | BACKEND). */
   transcriptionMode: TranscriptionMode;
-  /** TASK-356 — when true, doctors cannot override the transcription mode. */
+  /** When true, doctors cannot override the transcription mode. */
   transcriptionModeLocked: boolean;
-  /** TASK-356 — tenant audio capture mode (null = no override; legacy captureRawAudio applies). */
+  /** Tenant audio capture mode (null = no override; legacy captureRawAudio applies). */
   captureMode?: CaptureMode | null;
   configJson?: FrontendPipelineConfigJson | null;
   resourceStatus?: string;
@@ -85,13 +85,13 @@ export interface UpsertTenantFrontendConfigInput {
   vad?: boolean;
   voiceEnrollment?: boolean;
   diarization?: boolean;
-  /** TASK-332 — tenant toggle for local raw-stream audio capture. */
+  /** Tenant toggle for local raw-stream audio capture. */
   captureRawAudio?: boolean;
-  /** TASK-356 — tenant default transcription mode (LOCAL | BACKEND). */
+  /** Tenant default transcription mode (LOCAL | BACKEND). */
   transcriptionMode?: TranscriptionMode;
-  /** TASK-356 — lock the transcription mode so doctors cannot override it. */
+  /** Lock the transcription mode so doctors cannot override it. */
   transcriptionModeLocked?: boolean;
-  /** TASK-356 — tenant audio capture mode; `null` clears the override. */
+  /** Tenant audio capture mode; `null` clears the override. */
   captureMode?: CaptureMode | null;
   configJson?: FrontendPipelineConfigJson | null;
   /** Required to UPDATE an existing config; omit on first-time create. */

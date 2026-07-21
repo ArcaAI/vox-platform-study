@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - AUDIO_RECORDING_ENDPOINTS (TASK-329 P2 — dual-capture X8)
+ * @arcaai/vox - AUDIO_RECORDING_ENDPOINTS (dual-capture X8)
  *
  * @vitest-environment jsdom
  */

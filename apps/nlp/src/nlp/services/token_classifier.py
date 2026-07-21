@@ -59,7 +59,7 @@ class TransformerTokenClassifier(TokenClassifier):
         self.tokenizer: Any = None
         self.model: Any = None
         self.pipeline: Any = None
-        # TASK-476 C1 — deterministic, offline clinical ontology linker. Runs
+        # Deterministic, offline clinical ontology linker. Runs
         # post-`_to_entities` in `process()` to populate the entity code fields.
         self.linker = linker if linker is not None else OntologyLinker()
         self.linker_config = linker_config if linker_config is not None else OntologyLinkerConfig()
@@ -70,7 +70,7 @@ class TransformerTokenClassifier(TokenClassifier):
 
     async def initialize(self) -> None:
         """Load transformer token classification model"""
-        # TASK-506 — idempotent: per-request MedicalSuggester instances share the
+        # Idempotent: per-request MedicalSuggester instances share the
         # default token classifier and call initialize() again; never reload it.
         if self.is_initialized:
             return
@@ -85,8 +85,8 @@ class TransformerTokenClassifier(TokenClassifier):
                 "token-classification",
                 model=self.model,
                 tokenizer=self.tokenizer,
-                # D6: configs.use_gpu (default True) now gates GPU use;
-                # default preserves today's auto-detect-when-available behavior.
+                # `configs.use_gpu` (default True) gates GPU use;
+                # default preserves auto-detect-when-available behavior.
                 device=0 if (self.configs.use_gpu and torch.cuda.is_available()) else -1,
             )
 
@@ -105,33 +105,16 @@ class TransformerTokenClassifier(TokenClassifier):
             await self.initialize()
 
         try:
-            # TASK-452 — honor the request's aggregation strategy (config fallback).
+            # Honor the request's aggregation strategy (config fallback).
             # Without a non-"none" strategy the HF pipeline emits `##` subword
             # fragments with raw BIO labels instead of merged whole-word entities.
             strategy = request.aggregation_strategy or self.configs.aggregation_strategy
-            # TASK-386 — per-model running gauge + inference latency (Medical-NER).
+            # Per-model running gauge + inference latency (Medical-NER).
             with track_model_inference(MODEL_MEDICAL_NER):
                 pipeline_results = self.pipeline(request.text, aggregation_strategy=strategy)
 
-            # tokenized = self.tokenizer(text, return_tensors="pt", add_special_tokens=True)
-            # tokens = self.tokenizer.convert_ids_to_tokens(tokenized["input_ids"][0])
-
-            # with torch.no_grad():
-            #     outputs = self.model(**tokenized)
-            #     predictions = torch.nn.functional.softmax(outputs.logits, dim=-1)
-            #     predicted_labels = torch.argmax(predictions, dim=-1)
-
-            # labels = []
-            # confidences = []
-
-            # for i, (pred_id, pred_probs) in enumerate(zip(predicted_labels[0], predictions[0])):
-            #     label = self.label_mapping.get(pred_id.item(), "O")
-            #     confidence = pred_probs[pred_id].item()
-            #     labels.append(label)
-            #     confidences.append(confidence)
-
             entities = self._to_entities(pipeline_results)
-            # TASK-476 C1 — resolve ontology codes for each recognized span so the
+            # Resolve ontology codes for each recognized span so the
             # NLP service is the authoritative producer of CODED entities.
             entities = self._link_entities(entities)
             # label each span's assertion polarity (negation/family/
@@ -195,7 +178,7 @@ class TransformerTokenClassifier(TokenClassifier):
         return entities
 
     def _link_entities(self, entities: list[Entity]) -> list[Entity]:
-        """Resolve ontology codes for each recognized span (TASK-476 C1).
+        """Resolve ontology codes for each recognized span.
 
         Config-gated: skipped entirely when the linker is disabled, and only
         entities at/above the confidence floor are linked (low-confidence NER

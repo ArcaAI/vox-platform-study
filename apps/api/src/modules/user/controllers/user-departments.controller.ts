@@ -4,16 +4,15 @@ import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags 
 import { CanManage, ExpectedVersion, RequiresIfMatch } from '../../../decorators';
 
 /**
- * Admin CRUD for user ↔ department assignments (TASK-328 A1).
+ * Admin CRUD for user ↔ department assignments.
  *
  * Tenant scoping mirrors the other admin controllers: the active tenant comes
  * from the CLS request context. For a global-admin that context is set by a
  * role-gated elevation in `ContextInterceptor` — only a GLOBAL_ADMIN whose JWT
  * tenant is empty may have a syntactically valid `X-Tenant-Id` promoted into
- * CLS (TASK-331 r2605 #1); the header can never override a tenant-bound JWT. A
- * tenant admin's context is set from their session. The service rejects calls
- * with no tenant context, so no per-route guard is needed beyond
- * `@CanManage('User')`.
+ * CLS; the header can never override a tenant-bound JWT. A tenant admin's
+ * context is set from their session. The service rejects calls with no
+ * tenant context, so no per-route guard is needed beyond `@CanManage('User')`.
  */
 @ApiBearerAuth()
 @ApiTags('admin-user-departments')

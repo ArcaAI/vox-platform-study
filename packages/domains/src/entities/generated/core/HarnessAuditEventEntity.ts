@@ -8,7 +8,7 @@ import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
 /**
- * Append-only, hash-chained WORM audit record (TASK-330 Phase 0).
+ * Append-only, hash-chained WORM audit record.
  *
  * Immutable by design: the backing table has NO `_version` / `_metadata` /
  * `updatedAt` / `resourceStatus` columns and the migration REVOKEs UPDATE/DELETE
@@ -25,7 +25,7 @@ export interface IHarnessAuditEventEntity extends IBaseTenantEntity {
   promptVersion?: string | null;
   sensorScores: JsonValue;
   citations: JsonValue;
-  // TASK-369 Phase 3D (ENCRYPT-BEFORE-HASH) — Vault-Transit (hope-phi) ciphertext
+  // ENCRYPT-BEFORE-HASH — Vault-Transit (hope-phi) ciphertext
   // of sensorScores/citations + shared key version. Set ONLY on encrypted (new)
   // rows; the plaintext JSONB columns then hold a non-PHI redaction sentinel and
   // the row `hash` is computed over THESE bytes. Null on legacy/plaintext rows.
@@ -110,7 +110,7 @@ export class HarnessAuditEventEntity extends BaseTenantEntity {
     return this._promptVersion;
   }
 
-  // TASK-369 Phase 3D — `sensorScores`/`citations` can carry clinical evidence.
+  // `sensorScores`/`citations` can carry clinical evidence.
   // @Secret() marks them for audit-log redaction (defense-in-depth). On encrypted
   // rows these hold a non-PHI redaction sentinel; the real payload lives in the
   // `encrypted*` columns (use the repository decrypt helper to read it back).
@@ -124,7 +124,7 @@ export class HarnessAuditEventEntity extends BaseTenantEntity {
     return this._citations;
   }
 
-  // TASK-369 Phase 3D — Vault-Transit ciphertext (read-only; WORM). @Secret()
+  // Vault-Transit ciphertext (read-only; WORM). @Secret()
   // keeps ciphertext + keyVersion off audit-log surfaces.
   @Secret()
   get encryptedSensorScores(): IHarnessAuditEventEntity['encryptedSensorScores'] {

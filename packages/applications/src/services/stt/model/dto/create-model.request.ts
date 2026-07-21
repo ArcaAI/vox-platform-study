@@ -3,9 +3,9 @@ import { IsString, IsNotEmpty, IsOptional, IsArray, IsEnum, IsIn, IsNumber, Matc
 import { ModelCategory, ModelTaskType, ModelType, AiModelSource, AiModelFormat } from '@arcaai/domains';
 
 /**
- * TASK-506 — canonical runtime provider ids for registry rows.
+ * Canonical runtime provider ids for registry rows.
  *
- * TASK-528 §2.5: this list MUST stay identical to the seed's canonical list in
+ * This list MUST stay identical to the seed's canonical list in
  * `packages/database/src/prisma/db_main/seed/ai-models/shared.ts` — it drifted
  * (missing `vllm`/`llama-cpp`), so a seeded or discovered vLLM/llama.cpp model
  * could not be written through the API at all. Pinned by
@@ -14,7 +14,7 @@ import { ModelCategory, ModelTaskType, ModelType, AiModelSource, AiModelFormat }
 export const AI_MODEL_PROVIDERS = ['ollama', 'lm-studio', 'azure', 'bedrock', 'built-in', 'sarvam', 'vllm', 'llama-cpp'] as const;
 
 /**
- * TASK-528 §3.5 — the subset of providers whose models live on a server we can
+ * The subset of providers whose models live on a server we can
  * ENUMERATE (`admin/ai-models/discovery`). Cloud providers have nothing to
  * "discover", so the register action refuses them.
  */
@@ -77,7 +77,7 @@ export class CreateModelRequest {
   modelType: ModelType;
 
   @ApiProperty({
-    description: 'Model source. S3 = S3/MinIO-compatible object storage (OD-4: s3:// only; azure-blob:// is out of scope).',
+    description: 'Model source. S3 = S3/MinIO-compatible object storage (s3:// only; azure-blob:// is out of scope).',
     enum: AiModelSource,
     example: AiModelSource.HUGGINGFACE,
   })
@@ -116,7 +116,7 @@ export class CreateModelRequest {
   format: AiModelFormat;
 
   @ApiPropertyOptional({
-    description: 'Canonical runtime provider id (TASK-506)',
+    description: 'Canonical runtime provider id',
     enum: AI_MODEL_PROVIDERS,
     example: 'lm-studio',
   })
@@ -125,7 +125,7 @@ export class CreateModelRequest {
   provider?: string;
 
   @ApiPropertyOptional({
-    description: 'Model architecture family (TASK-506)',
+    description: 'Model architecture family',
     example: 'gemma4',
   })
   @IsOptional()

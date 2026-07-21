@@ -4,7 +4,7 @@ import { DEFAULT_PASSWORD_RESET_BASE_URL, IPasswordResetMailer, LoggingPasswordR
 import { DevOutboxPasswordResetMailer } from './dev-outbox-mailer';
 
 /**
- * TASK-400 — real password-reset delivery over MS Graph.
+ * Real password-reset delivery over MS Graph.
  *
  * Wraps the pre-existing `MicrosoftGraphIntegration` (client-credentials app,
  * `/users/{sender}/sendMail`) behind the `IPasswordResetMailer` port. Selection

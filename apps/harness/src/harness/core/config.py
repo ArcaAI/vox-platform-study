@@ -13,7 +13,7 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Environments where the in-memory claim-check store is a data-loss bug rather than a
-# convenience (TASK-533 D-28). Anything else — "development", "test", a bare default —
+# convenience. Anything else — "development", "test", a bare default —
 # is treated as single-process and allowed.
 _DEPLOYED_ENVIRONMENTS = frozenset({"production", "prod", "staging"})
 
@@ -47,7 +47,7 @@ _SAFETY_PROVIDERS = ("lm-studio", "ollama", "azure", "bedrock")
 class SafetyGuardConfig(BaseSettings):
     """IBM Granite Guardian content-safety classifier over a selectable engine.
 
-    The Phase-2 safety sensor screens the generated note through Granite Guardian.
+    The safety sensor screens the generated note through Granite Guardian.
     The **default** engine is **LM Studio** — an OpenAI-compatible endpoint: the
     safety client posts to ``{base_url}/chat/completions`` (``base_url`` already
     includes the ``/v1`` path) and reads ``choices[0].message.content``. ``provider``
@@ -119,7 +119,7 @@ class PhiConfig(BaseSettings):
 
 
 class RetrievalConfig(BaseSettings):
-    """Phase-3 institutional-RAG hybrid retriever (TASK-330 Phase 3, Lane A).
+    """Institutional-RAG hybrid retriever.
 
     The JIT retriever grounds generation in a tenant-owned knowledge corpus: a
     query built from the extracted entities is dense-embedded (self-hosted LM
@@ -131,7 +131,7 @@ class RetrievalConfig(BaseSettings):
     (``hope-reranker``) down to ``top_k_rerank``.
 
     ``enabled`` is **False by default** — the whole feature is flag-gated and
-    additive, so Phase 1/2 behaviour is unchanged until an operator opts in. Every
+    additive, so prior behaviour is unchanged until an operator opts in. Every
     backend is degrade-safe: if embeddings/Qdrant/reranker are down the retriever
     yields an empty context (generation proceeds, flagged), never an exception
     into the durable loop.
@@ -178,7 +178,7 @@ _CLAIM_CHECK_STORES = ("memory", "s3")
 
 
 class ClaimCheckConfig(BaseSettings):
-    """Claim-check out-of-band blob store (TASK-483 — Temporal history budget).
+    """Claim-check out-of-band blob store (Temporal history budget).
 
     Large clinical blobs (transcript / assembled prompt / generated note / RAG
     chunks) are moved OUT of Temporal workflow history and replaced with a small
@@ -193,9 +193,9 @@ class ClaimCheckConfig(BaseSettings):
     the hermetic suite and SINGLE-worker local dev; a MULTI-worker deploy MUST set
     ``store=s3`` + the MinIO endpoint/creds, because a cross-worker activity retry
     against the in-memory fake fails LOUD (``ClaimCheckNotFound``). Creds are
-    ``SecretStr``, validated at startup (AC-7).
+    ``SecretStr``, validated at startup.
 
-    TASK-533 D-28 — that MUST is ENFORCED, not just documented. ``Settings``
+    That MUST is ENFORCED, not just documented. ``Settings``
     carries a ``_reject_memory_claim_check_outside_dev`` model validator that turns
     ``enabled=True`` + ``store="memory"`` into a hard startup error whenever
     ``HARNESS_ENVIRONMENT`` names a deployed environment, and
@@ -247,7 +247,7 @@ class McpConfig(BaseSettings):
     ``HarnessPolicy.mcpToolsEnabled`` flag is set AND the referenced
     ``McpServer.enabled`` is true (defense in depth); this config only supplies
     the client TUNING (timeout / bounded retry / result size cap). READ-ONLY
-    tools only in this ticket. Credentials are resolved from Vault at call time
+    tools only. Credentials are resolved from Vault at call time
     by the server's ``authRef`` PATH — never stored or logged here.
     """
 
@@ -287,7 +287,7 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8866
     debug: bool = False
-    # Deployment signal (TASK-533 D-28). Deliberately SEPARATE from ``debug``: that
+    # Deployment signal. Deliberately SEPARATE from ``debug``: that
     # flag defaults False, so "not debug" cannot distinguish a production deploy from
     # unconfigured local dev — and the claim-check guard below must not fire on the
     # latter. Production/staging deploys set ``HARNESS_ENVIRONMENT`` explicitly.
@@ -301,10 +301,10 @@ class Settings(BaseSettings):
     # endpoints AND is the ``X-Service-Token`` the api_client presents to apps/api.
     service_token: SecretStr = SecretStr("")
 
-    # Phase-3 (TASK-330) dedicated token for the institutional-knowledge ingest
+    # Dedicated token for the institutional-knowledge ingest
     # endpoint (``POST /internal/knowledge/ingest``). The ingest guard accepts an
     # ``X-Service-Token`` matching THIS secret OR the shared ``service_token``;
-    # empty (and an empty shared token) disables the guard for local dev. Lane B's
+    # empty (and an empty shared token) disables the guard for local dev. The
     # BullMQ ingest processor presents this as the ingest contract's token.
     internal_service_token: SecretStr = SecretStr("")
 
@@ -312,12 +312,12 @@ class Settings(BaseSettings):
     httpx_max_connections: int = 200
     httpx_max_keepalive: int = 100
 
-    # -- Loop / gate-adapter (TASK-330 Phase 1, Lane I) ----------------------
+    # -- Loop / gate-adapter --------------------------------------------------
     # Tool-service base URLs the durable loop calls out to.
     smr_base_url: str = "http://localhost:8862"
     nlp_base_url: str = "http://localhost:8864"
     api_base_url: str = "http://localhost:8868"
-    # apps/api internal-harness mount. Lane G's ``HarnessInternalController`` sits
+    # apps/api internal-harness mount. ``HarnessInternalController`` sits
     # under the global ``/api/v1`` prefix (``@Controller('internal/harness')``), so
     # the live, out-of-the-box mount is ``/api/v1/internal/harness``. Override via
     # ``HARNESS_API_INTERNAL_PREFIX`` if the gateway prefix ever changes.
@@ -328,26 +328,27 @@ class Settings(BaseSettings):
     gate_sla_seconds: float = 86_400.0  # 24h until the first SLA escalation
     gate_escalation_seconds: float = 43_200.0  # re-escalate every 12h until sign-off
 
-    # TASK-355 Phase D (R-7) — optimistic two-phase delivery kill-switch. The FIRST
+    # Optimistic two-phase delivery kill-switch. The FIRST
     # key of the two-key optimistic gate; the second is the durable
     # ``workflow.patched("task-355-optimistic-delivery")`` marker (permanent in code).
     # Read here, in NON-workflow settings, and snapshotted into ``HarnessGateConfig``
     # at workflow start (document:start + the policy merge), so it stays deterministic
     # across replay — never read from env inside the workflow body. Default OFF ⇒ the
-    # legacy single-phase path, byte-identical to pre-Phase-D history.
+    # legacy single-phase path, byte-identical to before optimistic delivery.
     optimistic_delivery_enabled: bool = False
 
-    # TASK-480 Half-B — NER-priors reuse kill-switch (HARNESS_NER_PRIORS_ENABLED,
+    # NER-priors reuse kill-switch (HARNESS_NER_PRIORS_ENABLED,
     # default OFF). When ON, the transcript ``extract_entities`` activity reuses
-    # already-persisted CODED NamedEntity rows (TASK-476) as the NER priors instead of
+    # already-persisted CODED NamedEntity rows as the NER priors instead of
     # re-running the cold NLP pass — killing the redundant second transcript-NER pass.
     # Read at runtime inside the (non-deterministic) activity, NOT the workflow body, so
     # it needs no snapshot/patch marker; when OFF (or when no prior carries a code) the
     # activity falls back to the cold extraction, so enabling it is an explicit ops
-    # rollout, never a silent default flip, and it is inert until TASK-476 codes exist.
+    # rollout, never a silent default flip, and it is inert until coded entities are
+    # actually persisted elsewhere.
     ner_priors_enabled: bool = False
 
-    # TASK-481 (E2) — reference-free atomic-fact verifier kill-switch
+    # Reference-free atomic-fact verifier kill-switch
     # (HARNESS_ATOMIC_FACT_ENABLED, default OFF). When ON, the ``run_inferential_sensors``
     # activity runs the DETERMINISTIC self-hosted-NLI atomic-fact verifier ALONGSIDE the
     # LLM-judge groundedness sensor (a second, model-cheap groundedness gate). Read at
@@ -359,17 +360,18 @@ class Settings(BaseSettings):
     # (:class:`DeterministicOverlapEntailer`) needs no model and never auto-PASSes.
     atomic_fact_enabled: bool = False
 
-    # TASK-481 — optional self-hosted MiniCheck-Flan-T5 GGUF entailer (owner directive
+    # Optional self-hosted MiniCheck-Flan-T5 GGUF entailer (owner directive
     # 2026-07-11: "GGUF everywhere"). When `atomic_fact_model_path` is set (a staged local
     # .gguf), the verifier swaps the model-free DeterministicOverlapEntailer for the
     # MiniCheck NLI; unset (default) keeps the hermetic model-free entailer. `model_id`/
     # `model_file` are provenance only. A build/calibration failure falls back to the safe
     # deterministic entailer (see `_atomic_fact_entailer`). CPU-default (Q6 quant).
-    # TASK-527 (D-12) — BOOTSTRAP FALLBACK ONLY. The runtime value comes from the
+    # BOOTSTRAP FALLBACK ONLY. The runtime value comes from the
     # control plane's effective-config `modelWeights['minicheck-flan-t5-large']`
-    # (harness holds no DB handle per AD-1). This env var applies when that key is
-    # absent — which is every deployment until TASK-525's `modelWeights` follow-up
-    # lands — so pre-527 behaviour is preserved byte-for-byte.
+    # (harness holds no DB handle, so it cannot read the control plane directly). This
+    # env var applies when that key is absent — which is every deployment until the
+    # `modelWeights` control-plane rollout completes — so behaviour predating that
+    # rollout is preserved byte-for-byte.
     atomic_fact_model_path: str | None = None
     # Cache dir for weights materialised from an `s3://` source_uri.
     atomic_fact_model_cache_dir: str = "/models/harness-cache"
@@ -384,7 +386,7 @@ class Settings(BaseSettings):
     # Per-claim entailment decision: P(entailed) >= this ⇒ grounded.
     atomic_fact_entail_threshold: float = 0.5
 
-    # TASK-530 (D-08) — MiniCheck entailer retention. Before this ticket the
+    # MiniCheck entailer retention. Before this the
     # entailer sat in a module dict with no TTL, no bound and no unload, so a
     # worker that verified one document pinned the GGUF for its whole life.
     #
@@ -392,7 +394,8 @@ class Settings(BaseSettings):
     # (`harness.modelCache.{ttlSeconds,maxModels}`), applied by
     # `sensors.inferential.minicheck_entailer.configure_entailer_cache`. Env:
     # HARNESS_MODEL_CACHE_TTL_SECONDS / HARNESS_MODEL_CACHE_MAX_MODELS. The
-    # 600 s default is OD-5; maxModels 1 preserves today's residency exactly.
+    # 600 s default is an owner decision; maxModels 1 preserves today's residency
+    # exactly.
     model_cache_ttl_seconds: int = 600
     model_cache_max_models: int = 1
 
@@ -409,14 +412,14 @@ class Settings(BaseSettings):
     activity_max_attempts: int = 3
     generate_max_attempts: int = 2
 
-    # Per-call LLM wall-clock timeout (TASK-354 Defect A). Bounds EACH individual judge /
+    # Per-call LLM wall-clock timeout. Bounds EACH individual judge /
     # citation-verify / Granite Guardian request inside the inferential pass so a single
     # hung LM Studio call can no longer burn the whole 900s start_to_close before Temporal
     # retries; a timed-out call is transient (retried within HARNESS_LLM_MAX_ATTEMPTS) and
     # the owning sensor then self-degrades. Enforced by the shared LLM governor (env
     # ``HARNESS_LLM_REQUEST_TIMEOUT_S``; see ``core.llm_concurrency.LlmGovernorConfig`` and
     # ``eval.judge.providers._create_with_retry``). Safety net for the raised
-    # HARNESS_LLM_MAX_CONCURRENCY (TASK-355 Phase A): a hung call now ties up a real slot.
+    # HARNESS_LLM_MAX_CONCURRENCY: a hung call now ties up a real slot.
     llm_request_timeout_s: float = 120.0
 
     @property
@@ -429,22 +432,22 @@ class Settings(BaseSettings):
         """
         return self.service_token
 
-    # Observability. (TASK-533 D-27 removed a seven-field ``otel_*`` block here: it
-    # had zero consumers, no TracerProvider/exporter was ever constructed, and no
-    # env file could even reach it — the repo only ever defined bare ``OTEL_*`` vars
-    # for stt-v2/smr, never the ``HARNESS_OTEL_*`` this prefix required. Prometheus
+    # Observability. There is deliberately no ``otel_*`` block here: it would have
+    # zero consumers, no TracerProvider/exporter would ever be constructed, and no
+    # env file would even reach it — the repo only ever defines bare ``OTEL_*`` vars
+    # for stt-v2/smr, never a ``HARNESS_OTEL_*`` prefix. Prometheus
     # metrics + the trajectory spine cover the observability need. ``_add_otel_context``
-    # in core/logging.py is kept: it is inert until something installs a provider.)
+    # in core/logging.py is kept: it is inert until something installs a provider.
     metrics_enabled: bool = True
 
     # Sub-configs (loaded from their own env prefixes)
     temporal: TemporalConfig = Field(default_factory=TemporalConfig)
-    # Phase-2 guardrails (TASK-330): Granite Guardian safety + fail-closed PHI.
+    # Granite Guardian safety + fail-closed PHI.
     safety: SafetyGuardConfig = Field(default_factory=SafetyGuardConfig)
     phi: PhiConfig = Field(default_factory=PhiConfig)
-    # Phase-3 institutional RAG (TASK-330): hybrid JIT retriever (flag-gated off).
+    # Institutional RAG: hybrid JIT retriever (flag-gated off).
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
-    # TASK-483 claim-check: out-of-band blob store for the Temporal history budget.
+    # Claim-check: out-of-band blob store for the Temporal history budget.
     claim_check: ClaimCheckConfig = Field(default_factory=ClaimCheckConfig)
     # MCP external-tools client tuning (default OFF; the path is
     # gated on HarnessPolicy.mcpToolsEnabled + McpServer.enabled + workflow.patched).
@@ -468,8 +471,8 @@ class Settings(BaseSettings):
         correct for the hermetic suite and single-worker local dev. In a deployed
         environment it is a data-loss bug: the store is a per-process singleton, so a
         cross-worker activity retry raises ``ClaimCheckNotFound`` and the offloaded
-        transcript/prompt/note is simply gone. The class docstring has said "a
-        MULTI-worker deploy MUST set store=s3" since TASK-483; this enforces it.
+        transcript/prompt/note is simply gone. The class docstring says "a
+        MULTI-worker deploy MUST set store=s3"; this enforces it.
 
         Cross-field, so it cannot live on ``ClaimCheckConfig`` — the deployment
         signal belongs to the parent. Development stays silent here; the worker
@@ -533,7 +536,7 @@ def get_settings() -> Settings:
 def get_runtime_judge_config() -> JudgeConfig:
     """Reuse the eval ``JudgeConfig`` (``HARNESS_JUDGE_*``) at harness runtime.
 
-    Phase 2's groundedness + reasoning judge is the **same** calibrated judge the
+    The groundedness + reasoning judge is the **same** calibrated judge the
     eval gate uses — it is NOT re-declared under a new prefix. Construct the client
     with ``harness.eval.judge.providers.build_judge_client(get_runtime_judge_config())``.
     Imported lazily so ``core.config`` keeps no module-level dependency on ``eval``.

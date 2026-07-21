@@ -24,15 +24,12 @@ import type { AiModelSeed } from './ai-models/shared';
  *
  * These rows are PLATFORM-WIDE system seeds: every customer tenant inherits
  * them; they are NOT customer data. Therefore they are owned by the reserved
- * system tenant (`00000000-…`), introduced by TASK-305 Phase A.
+ * system tenant (`00000000-…`).
  *
- * TASK-506 — the 60-row model catalog is consolidated to 26 rows split into
- * per-domain modules under `seed/ai-models/` ({audio,llm,nlp,tts}.ts); the 50
+ * The model catalog is consolidated to 26 rows split into
+ * per-domain modules under `seed/ai-models/` ({audio,llm,nlp,tts}.ts); the
  * retired slugs are soft-`DELETED` across all tenants by
  * `retireLegacyAiModels` (guarded against live pipeline references).
- *
- * See: docs/implementation/STT-001-STT-Service-V2-Architecture/README.md
- * See: docs/implementation/TASK-506-AI-Model-Registry-Consolidation/README.md
  */
 
 // `DEFAULT_TENANT_ID` is kept as a local re-export so existing call sites
@@ -42,7 +39,7 @@ export const DEFAULT_TENANT_ID = SYSTEM_TENANT_ID;
 export { SYSTEM_USER_ID } from './00-constants';
 
 // =============================================================================
-// ENUM MIRRORS + MODEL CATALOG (TASK-506 — split into seed/ai-models/*)
+// ENUM MIRRORS + MODEL CATALOG (split into seed/ai-models/*)
 // Re-exported here so existing imports keep working.
 // =============================================================================
 
@@ -85,7 +82,7 @@ export const DEFAULT_AI_MODELS: AiModelSeed[] = [
  * Models are referenced by slug (from AiModel table)
  */
 const PIPELINE_CONFIGS = {
-    // High-quality production pipeline (v2.0 — whisper.cpp GGUF, TASK-507)
+    // High-quality production pipeline (v2.0 — whisper.cpp GGUF)
     production: `version: "2.0"
 
 # TASK-507 matrix #1 — [whisper-large-v3-turbo gguf] Full features.
@@ -154,9 +151,8 @@ postprocessing:
     capture_processed: true  # what ASR consumed (raw when scope=vad_only)
 `,
 
-    // TASK-356 Phase 2 / TASK-505 — faster-whisper whisper-large-v3-turbo,
-    // CTranslate2 int8 (deepdml artifact, resolvable). Carries diarization +
-    // dual_capture.
+    // faster-whisper whisper-large-v3-turbo, CTranslate2 int8 (deepdml
+    // artifact, resolvable). Carries diarization + dual_capture.
     faster_whisper_turbo_int8: `version: "2.0"
 
 # TASK-505 matrix #7 — [faster-whisper] deepdml CT2 int8, bare.
@@ -194,9 +190,9 @@ postprocessing:
 `,
 
     // Fast turbo pipeline for real-time (v1.1 — safetensor, MPS/CUDA/CPU auto)
-    // TASK-507 — this is now matrix #9 (safetensor "Transcription only"),
-    // kept unchanged; matrix #2's GGUF equivalent is
-    // PIPELINE_CONFIGS.whisper_turbo_gguf_default below (the new default).
+    // This is matrix #9 (safetensor "Transcription only"), kept unchanged;
+    // matrix #2's GGUF equivalent is PIPELINE_CONFIGS.whisper_turbo_gguf_default
+    // below (the new default).
     turbo: `version: "2.0"
 
 # TASK-505 matrix #9 (was #2) — [whisper-large-v3-turbo] Transcription only.
@@ -246,7 +242,7 @@ postprocessing:
     enabled: false
 `,
 
-    // TASK-507 matrix #2 — [whisper-large-v3-turbo gguf] Transcription only.
+    // Matrix #2 — [whisper-large-v3-turbo gguf] Transcription only.
     // Same shape as `turbo` above but whisper.cpp GGUF ASR — this is the NEW
     // platform default (isDefault flip in DEFAULT_ASR_PIPELINES etc.).
     whisper_turbo_gguf_default: `version: "2.0"
@@ -713,7 +709,7 @@ diarization:
 /**
  * Shape of an ASR pipeline seed row. `isDefault` is optional so most rows can
  * omit it (DB default = false); exactly ONE row per owning tenant should set it
- * `true` (TASK-331 doc-03 Q2 — per-tenant backend default, enforced by tests).
+ * `true` (per-tenant backend default, enforced by tests).
  */
 interface AsrPipelineSeed {
     id: string;
@@ -724,7 +720,7 @@ interface AsrPipelineSeed {
     configYaml: string;
     isDefault?: boolean;
     tags: string[];
-    // TASK-531 — template lineage. Omitted on the SYSTEM rows (they ARE the
+    // Template lineage. Omitted on the SYSTEM rows (they ARE the
     // templates); stamped on every tenant copy by `asTemplateCopies` below.
     sourceTemplateSlug?: string | null;
     templateLocked?: boolean;
@@ -738,7 +734,7 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
         slug: 'production-whisper-large-v3',
         description: 'TASK-507 matrix #1 — full pipeline: normalize + dual-path denoise (DeepFilterNet3) + resample + VAD + diarization feature extraction, whisper.cpp GGUF ASR, 2-speaker diarization, LocalAgreement-2 stabilizer, full post-processing. Slug kept for setting/FK continuity.',
         configYaml: PIPELINE_CONFIGS.production,
-        // TASK-507 — no longer the tenant default (flipped to
+        // No longer the tenant default (flipped to
         // production-whisper-large-v3-turbo-gguf below). seedAsrPipelines
         // never clobbers isDefault on update, so the one-time flip for
         // already-seeded environments is a separate explicit step —
@@ -756,7 +752,7 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
         tags: ['streaming', 'real-time', 'fast'],
     },
     {
-        // TASK-507 matrix #2 — new platform default.
+        // Matrix #2 — new platform default.
         id: '81000000-0000-0000-0001-000000000014',
         tenantId: DEFAULT_TENANT_ID,
         name: '[whisper-large-v3-turbo gguf] Transcription Only',
@@ -772,22 +768,22 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     // BEST PRACTICE PIPELINES (v1.1 with inline model definitions)
     // =========================================================================
     {
-        // TASK-356 Phase 2 / TASK-505 — faster-whisper CT2 int8 pipeline.
+        // faster-whisper CT2 int8 pipeline.
         // Registered in the catalog; resolvable (deepdml) but not the default
-        // until it earns it via benchmarks (Phase 6).
+        // until it earns it via benchmarks.
         id: '81000000-0000-0000-0001-000000000008',
         tenantId: DEFAULT_TENANT_ID,
         name: '[faster-whisper] deepdml CT2 int8',
         slug: 'production-faster-whisper-turbo-int8',
         description: 'TASK-505 matrix #7 — bare faster-whisper transcription (deepdml/faster-whisper-large-v3-turbo-ct2, int8). Slug kept for tenant-clone continuity.',
         configYaml: PIPELINE_CONFIGS.faster_whisper_turbo_int8,
-        // Registered + catalog-visible, not the default (TASK-505: resolvable
-        // via deepdml; default flip deferred to Phase 6 benchmarks).
+        // Registered + catalog-visible, not the default (resolvable
+        // via deepdml; default flip deferred to future benchmarks).
         isDefault: false,
         tags: ['faster-whisper', 'ctranslate2', 'int8', 'diarization'],
     },
     // =========================================================================
-    // TASK-505 P5 — remaining matrix pipelines (#3-#6, #8)
+    // Remaining matrix pipelines (#3-#6, #8)
     // =========================================================================
     {
         id: '81000000-0000-0000-0001-000000000009',
@@ -839,7 +835,7 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
 ];
 
 /**
- * TASK-531 — the slugs of the 9 SYSTEM template pipelines, derived so the list
+ * The slugs of the 9 SYSTEM template pipelines, derived so the list
  * can never drift from the catalog above.
  *
  * A tenant row carrying one of these slugs is a copy of that template. The
@@ -850,13 +846,13 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
 export const ASR_TEMPLATE_SLUGS: readonly string[] = DEFAULT_ASR_PIPELINES.map((p) => p.slug);
 
 /**
- * TASK-531 — stamp template lineage onto a tenant's catalog rows.
+ * Stamp template lineage onto a tenant's catalog rows.
  *
  * Every seeded tenant pipeline is provisioned FROM the SYSTEM template of the
  * same slug, so its provenance is that slug and it starts locked: tenant admins
- * clone a copy to customize it rather than editing it in place (owner
- * expectation E4). SYSTEM rows never pass through here — they are the templates,
- * and stay unlocked with null provenance.
+ * clone a copy to customize it rather than editing it in place. SYSTEM rows
+ * never pass through here — they are the templates, and stay unlocked with
+ * null provenance.
  */
 const asTemplateCopies = (rows: AsrPipelineSeed[]): AsrPipelineSeed[] =>
     rows.map((row) => ({ ...row, sourceTemplateSlug: row.slug, templateLocked: true }));
@@ -870,20 +866,20 @@ export const RETIRED_ASR_PIPELINE_SLUGS = [
 ] as const;
 
 /**
- * TASK-505/356 policy correction (owner directive 2026-07-17): every
- * customer-facing tenant mirrors the FULL SYSTEM pipeline catalog — a new
- * tenant gets the SAME pipelines as SYSTEM, not a curated subset. The first
- * rows of each customer array below stay hand-authored because their IDs are
- * referenced by other seeds (91-user `default-stt-pipeline`, 09-consultation
- * job seeds); the REMAINING SYSTEM pipelines are derived here so the customer
- * catalogs can never drift from DEFAULT_ASR_PIPELINES.
+ * Policy: every customer-facing tenant mirrors the FULL SYSTEM pipeline
+ * catalog — a new tenant gets the SAME pipelines as SYSTEM, not a curated
+ * subset. The first rows of each customer array below stay hand-authored
+ * because their IDs are referenced by other seeds (91-user
+ * `default-stt-pipeline`, 09-consultation job seeds); the REMAINING SYSTEM
+ * pipelines are derived here so the customer catalogs can never drift from
+ * DEFAULT_ASR_PIPELINES.
  *
- * TASK-531 lineage: because every customer row mirrors a SYSTEM template, all of
+ * Lineage: because every customer row mirrors a SYSTEM template, all of
  * them (hand-authored and derived alike) are stamped `sourceTemplateSlug = slug`
  * + `templateLocked = true` by `asTemplateCopies`. Tenant admins therefore get
- * the full catalog as READ-ONLY copies and clone one to customize (owner
- * expectation E4); the SYSTEM rows themselves stay unlocked — they are the
- * templates the copies descend from.
+ * the full catalog as READ-ONLY copies and clone one to customize; the SYSTEM
+ * rows themselves stay unlocked — they are the templates the copies descend
+ * from.
  *
  * Derived IDs reuse the `81000000-…-0001-…` block with the tenant discriminator
  * in the hundreds slot (SYSTEM=0xx, ArcaAI=1xx, Global=4xx) and a sequence
@@ -908,10 +904,10 @@ const deriveRemainingTenantPipelines = (
     }));
 
 // =============================================================================
-// PER-CUSTOMER-TENANT ASR PIPELINES (TASK-331 doc-03 F3 / Q2)
+// PER-CUSTOMER-TENANT ASR PIPELINES
 //
 // The DEFAULT_ASR_PIPELINES above are platform-wide system seeds owned by the
-// reserved system tenant. Per the TASK-505/356 full-parity policy, every
+// reserved system tenant. Per the full-parity policy, every
 // customer tenant now carries the ENTIRE SYSTEM catalog: three hand-authored
 // rows (production default + turbo + CT2, whose IDs other seeds reference) plus
 // the remaining SYSTEM pipelines appended via `deriveRemainingTenantPipelines`.
@@ -931,7 +927,7 @@ const EXPLICIT_TENANT_PIPELINE_SLUGS = new Set([
     'production-whisper-large-v3',
     'turbo-whisper-large-v3',
     'production-faster-whisper-turbo-int8',
-    // TASK-507 — new default pipeline; its id is referenced by the tenant
+    // New default pipeline; its id is referenced by the tenant
     // `default-stt-pipeline` GlobalSetting, so it's hand-authored per tenant
     // like the three above.
     'production-whisper-large-v3-turbo-gguf',
@@ -946,7 +942,7 @@ export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = asTemplateCopies
         slug: 'production-whisper-large-v3',
         description: 'ArcaAI full-features pipeline using whisper.cpp GGUF ASR with VAD and DeepFilterNet3 noise reduction.',
         configYaml: PIPELINE_CONFIGS.production,
-        // TASK-507 — no longer the tenant default; see …-000000000104 below.
+        // No longer the tenant default; see …-000000000104 below.
         isDefault: false,
         tags: ['high-quality'],
     },
@@ -961,20 +957,20 @@ export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = asTemplateCopies
         tags: ['streaming', 'real-time', 'fast'],
     },
     {
-        // TASK-356 Phase 2 / TASK-505 — ArcaAI CT2 pipeline (registered, resolvable, not default).
+        // ArcaAI CT2 pipeline (registered, resolvable, not default).
         id: '81000000-0000-0000-0001-000000000103',
         tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
         name: 'ArcaAI Production Pipeline (Faster-Whisper Turbo CT2 f16)',
         slug: 'production-faster-whisper-turbo-int8',
         description: 'ArcaAI default production pipeline using whisper-large-v3-turbo CTranslate2 f16 (faster-whisper) with diarization + dual capture.',
         configYaml: PIPELINE_CONFIGS.faster_whisper_turbo_int8,
-        // Registered + catalog-visible, not the default (TASK-505: resolvable
-        // via deepdml; default flip deferred to Phase 6 benchmarks).
+        // Registered + catalog-visible, not the default (resolvable
+        // via deepdml; default flip deferred to future benchmarks).
         isDefault: false,
         tags: ['faster-whisper', 'ctranslate2', 'diarization'],
     },
     {
-        // TASK-507 — new tenant default (matrix #2, whisper.cpp GGUF).
+        // New tenant default (matrix #2, whisper.cpp GGUF).
         id: '81000000-0000-0000-0001-000000000104',
         tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
         name: 'ArcaAI Production Pipeline (Whisper Large V3 Turbo GGUF)',
@@ -994,7 +990,7 @@ export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = asTemplateCopies
 ]);
 
 // =============================================================================
-// GLOBAL CUSTOMER-TENANT ASR PIPELINES (TASK-336 IC-03)
+// GLOBAL CUSTOMER-TENANT ASR PIPELINES
 //
 // The DEFAULT_ASR_PIPELINES above are owned by the reserved SYSTEM tenant
 // (DEFAULT_TENANT_ID === SYSTEM_TENANT_ID) and are NOT shared-read into customer
@@ -1024,7 +1020,7 @@ export const GLOBAL_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = asTemplateCopies([
         slug: 'production-whisper-large-v3',
         description: 'Global tenant full-features pipeline using whisper.cpp GGUF ASR with VAD and DeepFilterNet3 noise reduction.',
         configYaml: PIPELINE_CONFIGS.production,
-        // TASK-507 — no longer the tenant default; see …-000000000404 below.
+        // No longer the tenant default; see …-000000000404 below.
         isDefault: false,
         tags: ['high-quality'],
     },
@@ -1039,7 +1035,7 @@ export const GLOBAL_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = asTemplateCopies([
         tags: ['streaming', 'real-time', 'fast'],
     },
     {
-        // TASK-356 Phase 2 / TASK-505 — Global tenant CT2 pipeline
+        // Global tenant CT2 pipeline
         // (registered, resolvable, not default).
         id: '81000000-0000-0000-0001-000000000403',
         tenantId: SEED_TENANT_ID,
@@ -1047,13 +1043,13 @@ export const GLOBAL_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = asTemplateCopies([
         slug: 'production-faster-whisper-turbo-int8',
         description: 'Global tenant default production pipeline using whisper-large-v3-turbo CTranslate2 f16 (faster-whisper) with diarization + dual capture.',
         configYaml: PIPELINE_CONFIGS.faster_whisper_turbo_int8,
-        // Registered + catalog-visible, not the default (TASK-505: resolvable
-        // via deepdml; default flip deferred to Phase 6 benchmarks).
+        // Registered + catalog-visible, not the default (resolvable
+        // via deepdml; default flip deferred to future benchmarks).
         isDefault: false,
         tags: ['faster-whisper', 'ctranslate2', 'diarization'],
     },
     {
-        // TASK-507 — new tenant default (matrix #2, whisper.cpp GGUF).
+        // New tenant default (matrix #2, whisper.cpp GGUF).
         // Referenced by the tenant `default-stt-pipeline` GlobalSetting (91-user.ts).
         id: '81000000-0000-0000-0001-000000000404',
         tenantId: SEED_TENANT_ID,
@@ -1078,12 +1074,12 @@ export const GLOBAL_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = asTemplateCopies([
 // =============================================================================
 
 export const DEFAULT_STT_SETTINGS = [
-    // TASK-525 — the `model_cache` (max_models / ttl_seconds / max_memory_mb) and
+    // The `model_cache` (max_models / ttl_seconds / max_memory_mb) and
     // `workers` (concurrency / batch_queue / streaming_queue) rows were REMOVED here.
     //
     // They were never read by anything: stt-v2's only GlobalSetting reader was the
     // `GlobalSettingRead` SQLAlchemy mapping, which had zero callers and is now
-    // deleted (D-11). Their replacements are registered settings keys served over
+    // deleted. Their replacements are registered settings keys served over
     // `GET /api/v1/internal/effective-config?service=stt-v2`:
     //     stt.modelCache.{maxModels,ttlSeconds,maxMemoryMb}
     //     stt.workers.concurrency
@@ -1256,9 +1252,9 @@ export const DEFAULT_STT_SETTINGS = [
         namespace: 'stt.config',
         name: 'defaults',
         key: 'batch_pipeline_slug',
-        // TASK-507 — batch + streaming defaults point at the new whisper.cpp
+        // Batch + streaming defaults point at the new whisper.cpp
         // GGUF pipeline (production-whisper-large-v3-turbo-gguf), replacing
-        // production-whisper-large-v3 (TASK-361/505).
+        // production-whisper-large-v3.
         value: 'production-whisper-large-v3-turbo-gguf',
         defaultValue: 'production-whisper-large-v3-turbo-gguf',
         dataType: ValueType.String,
@@ -1310,7 +1306,7 @@ export const seedAiModels = async (client: CorePrismaClient) => {
                     memorySizeMb: modelData.memorySizeMb,
                     computeType: modelData.computeType,
                     tags: modelData.tags,
-                    // TASK-506 — keep provider/architecture and per-model
+                    // Keep provider/architecture and per-model
                     // extras (TTS voice catalogs, Azure deployment placeholder)
                     // in sync on re-seed. `metaData` is only written when the
                     // seed row defines one (absent → field skipped).
@@ -1341,7 +1337,7 @@ export const CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL = [
 ];
 
 /**
- * TASK-356 Phase 1 (D-5 backfill) — clones the SYSTEM AI model catalog into
+ * Clones the SYSTEM AI model catalog into
  * every seeded customer tenant so EXISTING tenants are made whole (the runtime
  * `TenantService.provisionTenantModelCatalog` handles NEW tenants).
  *
@@ -1362,7 +1358,7 @@ export const backfillCustomerTenantAiModels = async (client: CorePrismaClient) =
                 where: { tenantId, slug: src.slug },
             });
             if (existing) {
-                // TASK-506 — pre-506 clones lack the machine-actionable
+                // Older clones lack the machine-actionable
                 // provider/architecture/metaData columns the guardrail/NLP/TTS
                 // resolvers read (the resolver prefers the same-tenant model
                 // row, so a NULL-provider clone shadows the SYSTEM row's
@@ -1399,7 +1395,7 @@ export const backfillCustomerTenantAiModels = async (client: CorePrismaClient) =
 };
 
 /**
- * TASK-506 — soft-retire the 50 legacy catalog slugs (RETIRED_AI_MODEL_SLUGS)
+ * Soft-retire the legacy catalog slugs (RETIRED_AI_MODEL_SLUGS)
  * across EVERY tenant's copy (SYSTEM master + Global/customer clones + rows
  * provisioned at tenant creation). Runs inside `seedStt` AFTER the upserts.
  *
@@ -1482,7 +1478,7 @@ export const retireRetiredAsrPipelines = async (client: CorePrismaClient) => {
 export const seedAsrPipelines = async (client: CorePrismaClient) => {
     console.log('Seeding ASR Pipelines...');
 
-    // System (platform-wide) pipelines + Global-tenant pipelines (TASK-336
+    // System (platform-wide) pipelines + Global-tenant pipelines
     // IC-03) + per-customer-tenant pipelines.
     const allPipelines = [
         ...DEFAULT_ASR_PIPELINES,
@@ -1500,7 +1496,7 @@ export const seedAsrPipelines = async (client: CorePrismaClient) => {
 
         if (existing) {
             // Idempotent re-seed: refresh content but DO NOT clobber `isDefault`.
-            // The default flag is admin-controlled at runtime (per TASK-331
+            // The default flag is admin-controlled at runtime (per the
             // doc-03 Q2); leaving it untouched on update both respects admin
             // changes and keeps the "exactly one default per tenant" invariant
             // intact (no new rows are created, so no second default can appear).
@@ -1512,7 +1508,7 @@ export const seedAsrPipelines = async (client: CorePrismaClient) => {
                     description: pipelineData.description,
                     configYaml: pipelineData.configYaml,
                     tags: pipelineData.tags,
-                    // TASK-531 — lineage is a property of the seed declaration,
+                    // Lineage is a property of the seed declaration,
                     // not admin state, so (unlike `isDefault`) it IS refreshed
                     // on re-seed. This branch already restores `configYaml` to
                     // the seed value, so the row is pristine by definition.
@@ -1532,7 +1528,7 @@ export const seedAsrPipelines = async (client: CorePrismaClient) => {
     return { success: true, count: allPipelines.length };
 };
 
-// TASK-507 — matrix #2 (whisper.cpp GGUF "Transcription Only") is the new
+// Matrix #2 (whisper.cpp GGUF "Transcription Only") is the new
 // platform default, replacing `production-whisper-large-v3` (matrix #1).
 const STT_OLD_DEFAULT_PIPELINE_SLUG = 'production-whisper-large-v3';
 const STT_NEW_DEFAULT_PIPELINE_SLUG = 'production-whisper-large-v3-turbo-gguf';
@@ -1545,8 +1541,8 @@ const STT_DEFAULT_PIPELINE_BACKFILL_TENANTS = [
 ];
 
 /**
- * TASK-507 — migrate EXISTING databases to the new whisper.cpp GGUF default
- * without creating a second default (mirrors the TASK-356 Phase 2
+ * Migrate EXISTING databases to the new whisper.cpp GGUF default
+ * without creating a second default (mirrors the
  * `switchDefaultSttPipeline`, removed once its own reconciliation completed).
  *
  * `seedAsrPipelines` deliberately never clobbers `isDefault` on update, so on
@@ -1669,22 +1665,21 @@ export const seedStt = async (client: CorePrismaClient) => {
         await seedAiModels(client);
         console.log('');
 
-        // TASK-356 Phase 1 — clone the SYSTEM catalog into existing customer
+        // Clone the SYSTEM catalog into existing customer
         // tenants (idempotent; mirrors the runtime clone-per-tenant).
         await backfillCustomerTenantAiModels(client);
         console.log('');
 
-        // Seed ASR Pipelines
         await seedAsrPipelines(client);
         console.log('');
 
-        // TASK-505 — the TASK-361 switchDefaultSttPipeline reconciliation was
+        // The switchDefaultSttPipeline reconciliation was
         // removed: the CT2 artifact now resolves (deepdml, decision D3), so
         // there is no placeholder default to demote, and re-running it would
         // silently override an admin's legitimate CT2 default choice.
         // seedAsrPipelines never clobbers isDefault on update.
 
-        // TASK-507 — reconcile the default pipeline to the new whisper.cpp
+        // Reconcile the default pipeline to the new whisper.cpp
         // GGUF pipeline on existing DBs (seedAsrPipelines won't clobber
         // isDefault on update, so without this an existing DB would have two
         // defaults per tenant).
@@ -1695,14 +1690,13 @@ export const seedStt = async (client: CorePrismaClient) => {
         await retireRetiredAsrPipelines(client);
         console.log('');
 
-        // TASK-506 — soft-retire the legacy catalog rows across all tenants
+        // Soft-retire the legacy catalog rows across all tenants
         // AFTER the upserts (idempotent; the pipeline-reference guard skips
         // any slug a live pipeline still points at). Runs after
         // seedAsrPipelines so the guard sees the freshly seeded pipelines.
         await retireLegacyAiModels(client);
         console.log('');
 
-        // Seed Global Settings
         await seedSttSettings(client);
         console.log('');
 

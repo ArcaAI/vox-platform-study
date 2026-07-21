@@ -17,7 +17,7 @@ export interface IAiModelEntity extends IBaseTaggedEntity {
   sourceUri: string;
   sourceRevision?: string | null;
   format: Enums.AiModelFormat;
-  // TASK-506 — machine-actionable registry identity: canonical runtime
+  // Machine-actionable registry identity: canonical runtime
   // provider (`ollama` | `lm-studio` | `azure` | `bedrock` | `built-in` |
   // `sarvam`) and model architecture family (`gemma4`, `whisper`, ...).
   provider?: string | null;
@@ -44,7 +44,7 @@ export class AiModelEntity extends BaseTaggedEntity {
   private _format: IAiModelEntity['format'];
   private _provider?: IAiModelEntity['provider'];
   private _architecture?: IAiModelEntity['architecture'];
-  // TASK-506 — `IBaseEntity.metaData` was declared but never wired on
+  // `IBaseEntity.metaData` was declared but never wired on
   // `BaseEntity` (pre-existing gap affecting every entity); implemented
   // locally so registry extras (TTS `metaData.voices`, Azure deployment
   // names) survive the DB → entity round-trip. Mirrors

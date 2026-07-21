@@ -360,7 +360,7 @@ class OpenAICompatGuardianProvider:
                 "response_format": {"type": "json_object"},
             }
 
-            # TASK-386 — per-model running gauge + inference latency.
+            # Per-model running gauge + inference latency.
             start = time.perf_counter()
             with track_model_inference(self.model):
                 response = await self.http_client.post(

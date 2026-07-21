@@ -1,4 +1,4 @@
-// TASK-525 §4.1 — the frozen per-service effective-config contract.
+// The frozen per-service effective-config contract.
 //
 // The service resolves the SERVICE-LEVEL subset only: retention, concurrency and
 // runtime profiles. It never carries per-request model selection — SMR's
@@ -64,8 +64,8 @@ function settingsStub(overrides: Record<string, unknown> = {}) {
 }
 
 // The registry's own defaults — imported, NOT transcribed. A local copy silently
-// drifts from the descriptors (it did: it still read 3600 after OD-5 moved the
-// TTL default to 600), which is the exact failure mode the descriptor file warns
+// drifts from the descriptors (it did: it still read 3600 after the
+// TTL default moved to 600), which is the exact failure mode the descriptor file warns
 // about. Importing makes the stub definitionally correct.
 const DEFAULTS: Record<string, unknown> = SERVICE_RUNTIME_DEFAULTS;
 
@@ -92,7 +92,7 @@ describe('EffectiveConfigService', () => {
   });
 
   describe('per-service subset filtering', () => {
-    // TASK-529 (D-10) — smr now ALSO carries `retention.ttlSeconds`. That is not
+    // Smr now ALSO carries `retention.ttlSeconds`. That is not
     // a cache bound: smr holds no weights, and forwards this value to the
     // server-managed engine (Ollama `keep_alive` / LM Studio `ttl`). The
     // service-level-knobs-only contract is intact — this is a capacity/residency
@@ -118,7 +118,7 @@ describe('EffectiveConfigService', () => {
 
       expect(res.runtimeProfiles).toHaveLength(1);
       expect(res.concurrency?.maxConcurrent).toBe(4);
-      // TASK-529 (D-07) — nlp retention is now admin-controlled too.
+      // Nlp retention is now admin-controlled too.
       expect(res.retention).toMatchObject({ ttlSeconds: 600, maxModels: 3 });
     });
 
@@ -126,14 +126,14 @@ describe('EffectiveConfigService', () => {
       const svc = serviceWith(settingsStub(), [profile()]);
       const res = await svc.resolveForService('stt-v2');
 
-      // TASK-529 / OD-5 — the ttl DEFAULT moved 3600 → 600 (the [60,3600] window
+      // The ttl DEFAULT moved 3600 → 600 (the [60,3600] window
       // is unchanged). Deliberate, owner-approved behaviour change.
       expect(res.retention).toMatchObject({ ttlSeconds: 600, maxModels: 5, maxMemoryMb: 10000 });
       expect(res.concurrency).toMatchObject({ workerConcurrency: 4, streamingMaxConcurrent: 0 });
       expect(res.runtimeProfiles).toBeUndefined();
     });
 
-    // TASK-529 — the subsets TASK-525 deliberately RESERVED are now filled.
+    // The subsets deliberately RESERVED are now filled.
     // Fields appeared; none changed meaning, so clients already polling these
     // services are unaffected (the frozen-contract promise in
     // IEffectiveConfigService).

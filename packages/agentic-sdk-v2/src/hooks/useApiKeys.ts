@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useApiKeys Hook (TASK-032 WS-G, refactored TASK-039)
+ * @arcaai/vox - useApiKeys Hook
  *
  * API key management hook for admin operations.
  */
@@ -61,7 +61,7 @@ export interface UseApiKeysReturn {
   remove: (id: string) => Promise<void>;
   revoke: (id: string) => Promise<void>;
   /**
-   * TASK-390 #23 (K5) — rotate the key: the server mints a NEW secret
+   * Rotate the key: the server mints a NEW secret
    * (returned exactly once as `rawKey`) and keeps the OLD key valid for a 24h
    * grace window so clients can cut over without downtime.
    */

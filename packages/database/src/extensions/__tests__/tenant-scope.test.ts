@@ -1,5 +1,5 @@
 /**
- * Tenant-Scope Extension Unit Tests — TASK-305 Phase B.6.
+ * Tenant-Scope Extension Unit Tests.
  *
  * Tests the Prisma `$extends` query handlers that inject / assert
  * `tenantId` on every read/write against a tenant-scoped model.
@@ -82,40 +82,13 @@ function captureExtensionConfig(opts: {
 describe('TENANT_SCOPED_MODELS allow-list', () => {
   it('contains the 54 tenant-scoped models currently defined in db_main/*.prisma', () => {
     // The allow-list tracks SCHEMA TRUTH (every model here has a tenantId
-    // scalar), not the audit's 30-name wish-list. The User* identity tables
-    // are intentionally excluded — `User` is global by design (§B6 /
-    // TASK-305 Phase F); tenant membership lives in the UserRoleAssignment
-    // (role) + UserDepartment (department) join tables.
-    // TASK-318 added TenantStorageConfig → 28. TASK-305 Phase F added
-    // UserDepartment → 29. TASK-331 doc-08 added TenantFrontendConfig (F2)
-    // + AsrPipelineVersion (F3) → 31. TASK-330 Phase 0 added the clinical-
-    // documentation harness GoldenSet/GoldenCase/EvalRun/EvalScore +
-    // HarnessAuditEvent → 36. TASK-330 Phase 3 added the institutional-RAG
-    // KnowledgeDocument + KnowledgeChunk → 38. TASK-330 Phase 6 added the
-    // editable harness policy HarnessPolicy + append-only HarnessPolicyChange
-    // → 40. TASK-349 added Highlight (TASK-344 model, caught by the drift
-    // guard below) → 41. TASK-356 Phase 5 added the realtime-cascade
-    // PipelinePolicy + append-only PipelinePolicyChange → 43. TASK-392 added
-    // TenantUsageMeter → 44 (TenantEntitlement is INTENTIONALLY_UNSCOPED,
-    // below). TASK-490 added UserVoiceProfile (biometric PHI stamped with
-    // its enrollment tenant) → 45. TASK-496 added the per-tenant TTS config
-    // TenantTtsConfig + TenantTtsProviderCredential (BYO provider keys) → 47.
-    // TASK-498 added the tenant-scoped external OIDC identity provider
-    // TenantIdentityProvider + FederatedIdentity + TenantIdentityProviderDomain
-    // → 50. TASK-506 added the per-tenant task-default selector AiTaskDefault
-    // → 51. Phase 2A added the ordered session-trajectory telemetry
-    // AgentTrajectoryStep → 52. added the segment-level transcript
-    // annotation TranscriptSegment → 53. Phase 5 added the MCP
-    // external-tools registry McpServer (SYSTEM-shared read; global-admin
-    // writes) → 54. TASK-524 added the config-plane core pair
-    // AiProviderConnection (per-(tenant,provider) endpoint + BYO ciphertext)
-    // and AiRuntimeProfile (per-(provider,modelSlug) hyperparameters) → 56.
-    // TASK-539 finding S-3 REMOVED ApiKey → 55: it is read pre-auth by the
-    // API-key authentication lookup, so it can never carry a CLS tenant (see
-    // INTENTIONALLY_UNSCOPED below for the full justification).
-    // TASK-533 B6 added the gate-edit mining store GateEditExemplar → 56.
-    // (The drift guard below is the durable check; this count
-    // stays as a quick human-readable tripwire.)
+    // scalar). The User* identity tables are intentionally excluded — `User`
+    // is global by design; tenant membership lives in the UserRoleAssignment
+    // (role) + UserDepartment (department) join tables. `ApiKey` is
+    // deliberately NOT in the list (see INTENTIONALLY_UNSCOPED below): it is
+    // read pre-auth by the API-key authentication lookup, so it can never
+    // carry a CLS tenant. (The drift guard below is the durable check; this
+    // count stays as a quick human-readable tripwire.)
     expect(TENANT_SCOPED_MODELS.size).toBe(56);
   });
 
@@ -134,7 +107,7 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     }
   });
 
-  // TASK-539 finding S-3 — regression guard.
+  // Regression guard.
   //
   // API-key authentication must read `ApiKey` by keyHash BEFORE any principal
   // (and therefore any tenant) exists. Inside an HTTP request CLS is active but
@@ -178,7 +151,7 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Schema-derived drift guard (TASK-331 doc-08 F2/F3)
+// Schema-derived drift guard
 // ---------------------------------------------------------------------------
 
 /**
@@ -213,7 +186,7 @@ describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
    * real tenant-scoped model.
    */
   const INTENTIONALLY_UNSCOPED: ReadonlySet<string> = new Set<string>([
-    // TASK-392 — per-tenant entitlement override (`tenantId @unique`), a
+    // Per-tenant entitlement override (`tenantId @unique`), a
     // platform-administration row rather than customer data. It is read via
     // the EXTENDED client from contexts whose CLS tenant can never match the
     // target row, so CLS-based scope injection would silently break them:
@@ -232,7 +205,7 @@ describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
     // `tenantId` (`findByTenant`), the row carries no PHI, and the only
     // write surface is the GLOBAL_ADMIN-gated admin controller.
     'TenantEntitlement',
-    // TASK-539 finding S-3 — API-key AUTHENTICATION reads this table by
+    // API-key AUTHENTICATION reads this table by
     // `keyHash` before any principal exists, so it can never have a CLS
     // tenant. Inside an HTTP request CLS is active but empty, which is
     // `tenantId === undefined` AND `isSuperAdmin() === false` — the exact
@@ -248,7 +221,7 @@ describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
     //   - list paths go through `buildTenantWhere` (injects the caller's CLS
     //     tenantId; throws NotFound for a non-super-admin with no tenant),
     //   - `fetchAllByTenantId` rejects a foreign `tenantId` unless the caller
-    //     is GLOBAL_ADMIN (TASK-305 D.5.2 / audit M-1 — added precisely to
+    //     is GLOBAL_ADMIN (added precisely to
     //     stop a Tenant-A admin enumerating Tenant-B keys),
     //   - every `findById` is immediately followed by `assertKeyAccess`,
     //     which compares `apiKey.tenantId` to the caller's CLS tenant.
@@ -286,9 +259,9 @@ describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
     expect(found).toContain('Consultation');
     expect(found).toContain('TenantFrontendConfig'); // tenant.prisma (F2)
     expect(found).toContain('AsrPipelineVersion'); // stt.prisma (F3)
-    expect(found).toContain('HarnessAuditEvent'); // harness.prisma (TASK-330)
-    expect(found).toContain('KnowledgeDocument'); // knowledge.prisma (TASK-330 Phase 3)
-    expect(found).toContain('KnowledgeChunk'); // knowledge.prisma (TASK-330 Phase 3)
+    expect(found).toContain('HarnessAuditEvent'); // harness.prisma
+    expect(found).toContain('KnowledgeDocument'); // knowledge.prisma
+    expect(found).toContain('KnowledgeChunk'); // knowledge.prisma
   });
 
   it('lists every schema tenantId model in TENANT_SCOPED_MODELS (drift = []) ', () => {
@@ -307,22 +280,22 @@ describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
 describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
   it('contains the platform catalog models + the harness/pipeline global-default policies + GlobalSetting (AsrPipeline, AiModel, HarnessPolicy, PipelinePolicy, GlobalSetting)', () => {
     expect(new Set(SYSTEM_SHARED_READ_MODELS)).toEqual(
-      // TASK-330 Phase 6 — HarnessPolicy's SYSTEM-tenant row is the global
+      // HarnessPolicy's SYSTEM-tenant row is the global
       // default every tenant reads to compute its effective policy.
-      // TASK-356 Phase 5 — PipelinePolicy's SYSTEM-tenant row is the realtime
+      // PipelinePolicy's SYSTEM-tenant row is the realtime
       // cascade's platform default (ConfigResolver reads it for every tenant).
       // GlobalSetting — platform infra settings (S3/MinIO, STT) are seeded under
       // the SYSTEM tenant; the AppSettingsService platform cache reads them.
-      // TASK-496 — TenantTtsConfig's SYSTEM-tenant row is the per-tenant TTS
+      // TenantTtsConfig's SYSTEM-tenant row is the per-tenant TTS
       // platform default every tenant's resolveForTenant merges over (credentials
       // are NEVER shared, so TenantTtsProviderCredential is intentionally absent).
-      // TASK-506 — AiTaskDefault's SYSTEM-tenant rows are the platform default
+      // AiTaskDefault's SYSTEM-tenant rows are the platform default
       // model per AI task (guardrail.validate / nlp.*) every tenant's
       // getEffective merges under its own row; writes are NOT widened.
       // McpServer's SYSTEM-tenant rows are the shared external-tools
       // registry every tenant's harness run reads to resolve a server; writes
       // are NOT widened (registry mutation is global-admin only).
-      // TASK-524 — AiProviderConnection's SYSTEM row is the platform-default
+      // AiProviderConnection's SYSTEM row is the platform-default
       // provider catalog entry every tenant's resolveConnection cascade reads
       // (tenant row → SYSTEM row → env); it is the FIRST secret-bearing entry
       // in this list, which is safe because the widening is [caller, SYSTEM]
@@ -583,7 +556,7 @@ describe('Missing tenantId behaviour', () => {
     const config = captureExtensionConfig({ getTenantId: () => undefined });
 
     // Uses `Webhook` (a genuinely tenant-scoped model). This assertion used to
-    // name `ApiKey`, which TASK-539 finding S-3 moved to INTENTIONALLY_UNSCOPED
+    // name `ApiKey`, which moved to INTENTIONALLY_UNSCOPED
     // — keeping it here would have asserted the very throw that broke API-key
     // authentication.
     await expect(

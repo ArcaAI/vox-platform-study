@@ -3,8 +3,8 @@ import { BadRequestException, ForbiddenException, NotFoundException, StreamableF
 import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { UserController } from '../user.controller';
 
-// TASK-326 X2 — mirror of the AuditLogController CLS mock so the
-// controller can read the caller's `user`/`tenantId` for tenant scoping.
+// Mirror of the AuditLogController CLS mock so the controller can read the
+// caller's `user`/`tenantId` for tenant scoping.
 function createMockCls(user: { id?: string; tenantId?: string | null; roles?: string[] } | null, tenantId?: string | null) {
     return {
         get: vi.fn((key: string) => {
@@ -24,11 +24,11 @@ const createMockUserService = () => ({
     fetchByExternalId: vi.fn(),
     update: vi.fn(),
     deleteById: vi.fn(),
-    // TASK-398 (P1-7) — export enrichment read-model; default = nothing enriched.
+    // Export enrichment read-model; default = nothing enriched.
     getExportEnrichment: vi.fn().mockResolvedValue({}),
 });
 
-// TASK-398 (P1-6) — fake CASL ability for the bulk assign-role posture checks.
+// Fake CASL ability for the bulk assign-role posture checks.
 const abilityGranting = (granted: boolean) => ({
     can: vi.fn((action: string, subject: string) => (action === 'manage' && subject === 'UserRoleAssignment' ? granted : true)),
 });
@@ -49,14 +49,14 @@ const createMockUserRoleAssignmentService = () => ({
     deleteById: vi.fn(),
     fetchAll: vi.fn(),
     fetchAllByUserId: vi.fn(),
-    // AC-01 — by-id tenant-scope guard resolves the target user's tenant
+    // The by-id tenant-scope guard resolves the target user's tenant
     // membership through this existing service method.
     findActiveTenantIdsForUser: vi.fn(),
 });
 
-// TASK-328 A1–A3 added admin user-profile + voice-profile read surfaces to the
-// controller constructor (before the CLS arg). Mock them so the positional
-// construction below matches the real 7-arg constructor.
+// Admin user-profile + voice-profile read surfaces sit in the controller
+// constructor (before the CLS arg). Mock them so the positional construction
+// below matches the real 7-arg constructor.
 const createMockUserProfileService = () => ({
     getByUserId: vi.fn(),
     upsertByUserId: vi.fn(),
@@ -66,19 +66,19 @@ const createMockVoiceProfileService = () => ({
     listByUserId: vi.fn(),
 });
 
-// TASK-381 V2 — the bulk department-reconcile dependency, injected before the
-// CLS arg so the positional construction below matches the real 8-arg constructor.
+// The bulk department-reconcile dependency is injected before the CLS arg so
+// the positional construction below matches the real 8-arg constructor.
 const createMockUserDepartmentService = () => ({
     setDepartments: vi.fn(),
 });
 
-// TASK-388 #8 — reset-password service, injected before the CLS arg (9-arg ctor).
+// Reset-password service, injected before the CLS arg (9-arg ctor).
 const createMockUserPasswordService = () => ({
     setTemporaryPassword: vi.fn(),
     createResetLink: vi.fn(),
 });
 
-// TASK-388 #10 — export serialization service, injected before the CLS arg (10-arg ctor).
+// Export serialization service, injected before the CLS arg (10-arg ctor).
 const createMockUserExportService = () => ({
     build: vi.fn(),
 });
@@ -208,9 +208,9 @@ describe('UserController', () => {
         });
     });
 
-    // TASK-381 V2 — PATCH /admin/users/:id/departments bulk-reconciles a user's
-    // memberships, then returns the refreshed user (the SDK `assignDepartments`
-    // contract). GLOBAL_ADMIN default context bypasses the per-id scope guard.
+    // PATCH /admin/users/:id/departments bulk-reconciles a user's memberships,
+    // then returns the refreshed user (the SDK `assignDepartments` contract).
+    // GLOBAL_ADMIN default context bypasses the per-id scope guard.
     describe('PATCH /admin/users/:id/departments (setDepartments — V2 bulk reconcile)', () => {
         it('reconciles departments via the service then returns the refreshed user', async () => {
             mockUserService.fetchById.mockResolvedValue(fakeUserEntity);
@@ -246,12 +246,12 @@ describe('UserController', () => {
     });
 
     // -------------------------------------------------------------------------
-    // TASK-375 (item 3 backend) — Users list sort/filter/search via the shared
-    // PaginatedQuery. The CSV filters/sort/search already flow through the
+    // Users list sort/filter/search via the shared PaginatedQuery. The CSV
+    // filters/sort/search already flow through the
     // service → repository (withFormattedPaginatedProps → formatFindAllProps);
     // the controller adds a DETERMINISTIC default sort so server-side offset
-    // paging from the admin grid is stable, mirroring AuditLogController. The
-    // query params are otherwise forwarded untouched on every scoping branch.
+    // paging from the admin grid is stable, mirroring AuditLogController.
+    // The query params are otherwise forwarded untouched on every scoping branch.
     // -------------------------------------------------------------------------
     describe('TASK-375 — sort/filter/search forwarding + default sort', () => {
         it('fetchAll: applies the default createdAt:desc sort when none is supplied (global-admin)', async () => {
@@ -324,10 +324,9 @@ describe('UserController', () => {
     });
 
     // -------------------------------------------------------------------------
-    // TASK-326 X2 — GET /admin/users tenant scoping (Critical defect).
-    // Pre-fix `fetchAll` applied NO tenant scope, so a TENANT_ADMIN with
-    // `manage:User` could enumerate users platform-wide. Non-global-admins must
-    // be routed to the by-tenant service path; GLOBAL_ADMIN keeps cross-tenant.
+    // GET /admin/users tenant scoping: a TENANT_ADMIN with `manage:User` must
+    // not be able to enumerate users platform-wide. Non-global-admins are
+    // routed to the by-tenant service path; GLOBAL_ADMIN keeps cross-tenant.
     // -------------------------------------------------------------------------
     describe('TASK-326 X2 — GET /admin/users tenant scoping', () => {
         const buildController = (cls: ReturnType<typeof createMockCls>) =>
@@ -375,8 +374,8 @@ describe('UserController', () => {
             expect(mockUserService.fetchAllByTenantId).not.toHaveBeenCalled();
         });
 
-        // AC-07 (TASK-336) — when a GLOBAL_ADMIN selects a tenant in the console,
-        // the ContextInterceptor elevates `x-tenant-id` into CLS `tenantId`.
+        // When a GLOBAL_ADMIN selects a tenant in the console, the
+        // ContextInterceptor elevates `x-tenant-id` into CLS `tenantId`.
         // `fetchAll` must honour it and scope the listing to that tenant instead
         // of silently enumerating every tenant.
         it('scopes a GLOBAL_ADMIN to the elevated CLS tenant (X-Tenant-Id) when present', async () => {
@@ -434,11 +433,10 @@ describe('UserController', () => {
     });
 
     // -------------------------------------------------------------------------
-    // TASK-331 r2605 #2 (Critical, IDOR) — GET /admin/users/tenant/:tenantId
-    // had NO caller-tenant guard, so any `manage:User` holder (e.g. a
-    // TENANT_ADMIN) could enumerate ANY tenant's users by UUID. Mirror the
-    // `fetchAll` X2 hardening: a non-global-admin may only read their OWN tenant;
-    // GLOBAL_ADMIN keeps the cross-tenant read.
+    // GET /admin/users/tenant/:tenantId needs a caller-tenant guard, else any
+    // `manage:User` holder (e.g. a TENANT_ADMIN) could enumerate ANY tenant's
+    // users by UUID. Mirrors `fetchAll`'s tenant-scope guard: a non-global-admin
+    // may only read their OWN tenant; GLOBAL_ADMIN keeps the cross-tenant read.
     // -------------------------------------------------------------------------
     describe('TASK-331 #2 — GET /admin/users/tenant/:tenantId caller-tenant guard', () => {
         const buildController = (cls: ReturnType<typeof createMockCls>) =>
@@ -536,11 +534,10 @@ describe('UserController', () => {
     });
 
     // ------------------------------------------------------------------------
-    // TASK-310 E-11 (AC-10) — bulkDelete partial-failure semantics.
+    // bulkDelete partial-failure semantics.
     //
-    // Pre-W7 the loop threw on the first error and left the caller without
-    // any signal about which ids did delete. The new shape catches per-id
-    // and returns `{ succeeded: UserResponse[], failed: Array<{ id, reason }> }`
+    // The loop catches per-id (rather than throwing on the first error) and
+    // returns `{ succeeded: UserResponse[], failed: Array<{ id, reason }> }`
     // so partial failures are observable + idempotent retries are tractable.
     // ------------------------------------------------------------------------
     describe('DELETE /admin/users/bulk (bulkDelete)', () => {
@@ -604,9 +601,6 @@ describe('UserController', () => {
         });
     });
 
-    // ------------------------------------------------------------------------
-    // TASK-388 #8 — POST /admin/users/:id/reset-password (both flows).
-    // ------------------------------------------------------------------------
     describe('POST /admin/users/:id/reset-password (resetPassword)', () => {
         it('mode="temporary": sets a temporary password and returns the plaintext', async () => {
             mockUserPasswordService.setTemporaryPassword.mockResolvedValue({ temporaryPassword: 'Temp1234' });
@@ -663,13 +657,9 @@ describe('UserController', () => {
     });
 
     // ------------------------------------------------------------------------
-    // TASK-388 #9 — POST /admin/users/bulk-actions (server-side bulk actions).
-    //
     // Replaces the client `Promise.allSettled` loop with one endpoint that
-    // returns per-item success/failure. Action set (FLAG): enable | disable |
-    // delete | assign-departments (mirrors the FE bulk bar's real client loops
-    // — disable + assign-department — plus their trivial siblings enable/delete;
-    // assign-role is deferred). Reuses the existing per-id scope guard.
+    // returns per-item success/failure. Action set: enable | disable | delete |
+    // assign-departments | assign-role. Reuses the existing per-id scope guard.
     // ------------------------------------------------------------------------
     describe('POST /admin/users/bulk-actions (bulkActions)', () => {
         it('action="disable": updates each id to DISABLED, returns per-item results', async () => {
@@ -771,11 +761,11 @@ describe('UserController', () => {
     });
 
     // ------------------------------------------------------------------------
-    // TASK-398 (P1-6) — the deferred `assign-role` bulk arm. Mirrors the
-    // single-user `POST :id/roles` semantics: same service (`create` enforces
-    // the AC-02 tier/tenant guards per item) and the SAME CASL posture — the
-    // arm requires `manage:UserRoleAssignment` (checked imperatively via the
-    // request ability, since the class-level gate is only `manage:User`).
+    // The `assign-role` bulk arm mirrors the single-user `POST :id/roles`
+    // semantics: same service (`create` enforces the tier/tenant guards per
+    // item) and the SAME CASL posture — the arm requires
+    // `manage:UserRoleAssignment` (checked imperatively via the request
+    // ability, since the class-level gate is only `manage:User`).
     // ------------------------------------------------------------------------
     describe('POST /admin/users/bulk-actions action="assign-role" (TASK-398 P1-6)', () => {
         it('assigns the role to every id via userRoleAssignmentService.create, per-item envelope', async () => {
@@ -868,9 +858,6 @@ describe('UserController', () => {
         });
     });
 
-    // ------------------------------------------------------------------------
-    // TASK-388 #10 — GET /admin/users/export (csv/xlsx/pdf).
-    // ------------------------------------------------------------------------
     describe('GET /admin/users/export (exportUsers)', () => {
         const fakeFile = { buffer: Buffer.from('data'), contentType: 'text/csv; charset=utf-8', filename: 'users.csv' };
 
@@ -889,7 +876,6 @@ describe('UserController', () => {
             expect(result).toBeInstanceOf(StreamableFile);
         });
 
-        // TASK-398 (P1-7) — email + department-NAME enrichment on the export path.
         it('enriches rows with email + department names via ONE batched getExportEnrichment call', async () => {
             mockUserService.fetchAll.mockResolvedValue(fakeFetchResponse);
             mockUserService.getExportEnrichment.mockResolvedValue({
@@ -1110,7 +1096,7 @@ describe('UserController', () => {
     });
 
     // -------------------------------------------------------------------------
-    // AC-01 (Critical, IDOR) — the by-id User routes had NO caller-tenant guard.
+    // The by-id User routes require a caller-tenant guard.
     // The `User` model is intentionally NOT tenant-scoped at the Prisma
     // extension level, so a TENANT_ADMIN with `manage:User` could read/mutate
     // ANY tenant's user by UUID. The fix resolves the TARGET user's tenant
@@ -1220,8 +1206,8 @@ describe('UserController', () => {
     });
 
     // -------------------------------------------------------------------------
-    // AC-02 (Critical, privilege escalation) — POST /admin/users/:id/roles
-    // inherited only the class-level `@CanManage('User')`. A role-assignment
+    // POST /admin/users/:id/roles must not rely on only the class-level
+    // `@CanManage('User')`. A role-assignment
     // route must carry the permission that governs the resource it mutates:
     // `manage:UserRoleAssignment` (matches the `rbac-*` policy seed). The
     // method-level decorator overrides the class-level one via

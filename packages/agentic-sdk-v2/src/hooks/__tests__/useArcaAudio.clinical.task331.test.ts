@@ -1,5 +1,5 @@
 /**
- * useArcaAudio — Clinical Playground consolidation tests (TASK-331 doc-06).
+ * useArcaAudio — Clinical Playground consolidation tests.
  *
  * Covers the SDK bucket of the Developer Playgrounds — Clinical review:
  *   - F3 / Q5: mic selection (`deviceId`), 2-mic mixing (`secondaryDeviceId`)
@@ -154,7 +154,7 @@ function setupStore(overrides: Record<string, any> = {}) {
     addTranscriptSegment: vi.fn(),
     addContextItem: vi.fn(),
     addEntities: vi.fn(),
-    // TASK-464 — audio-drop actions the hook calls on start/stop and per drop.
+    // Audio-drop actions the hook calls on start/stop and per drop.
     resetAudioDropped: vi.fn(),
     markAudioLost: vi.fn(),
     incrementDroppedFrames: vi.fn(),

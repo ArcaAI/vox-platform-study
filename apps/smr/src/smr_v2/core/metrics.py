@@ -115,13 +115,12 @@ CONCURRENT_REQUESTS = Gauge(
 )
 
 # ---------------------------------------------------------------------------
-# Cross-service per-model contract metrics (TASK-386)
+# Cross-service per-model contract metrics
 # ---------------------------------------------------------------------------
 # Standardized {service, model} pair emitted IDENTICALLY by every HOPE model
 # service (STT, SMR, NLP, Guardrail) so the platform-metrics backend can read
 # per-model "running" + "avg latency" with ONE PromQL pattern. The name and
-# label keys must stay byte-identical across services — see
-# docs/implementation/TASK-386-Platform-Metrics-Backend/METRIC-CONTRACT.md.
+# label keys must stay byte-identical across services.
 
 SERVICE_NAME = "smr"
 

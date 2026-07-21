@@ -1,4 +1,4 @@
-// TASK-369 (Data Encryption Initiative) Phase 6 — decrypt-on-read for the
+// Decrypt-on-read for the
 // encrypt-only end state.
 //
 // Phase 6 DROPs the legacy plaintext PHI columns for 14 models. The plaintext

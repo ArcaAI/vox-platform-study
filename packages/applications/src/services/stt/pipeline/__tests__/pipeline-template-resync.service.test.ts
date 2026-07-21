@@ -1,5 +1,5 @@
 /**
- * TASK-531 (GAP-T3) — template resync for EXISTING tenants.
+ * Template resync for EXISTING tenants.
  *
  * Clone-on-provision only ever ran once, at tenant creation. A tenant created
  * before a new SYSTEM template existed never receives it, and a template whose

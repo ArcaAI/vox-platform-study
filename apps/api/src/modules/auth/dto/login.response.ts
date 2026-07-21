@@ -68,7 +68,7 @@ export class LoginResponse {
   @IsString()
   refreshToken: string;
 
-  // TASK-400 — rotation policy surfaced at login as a NON-BLOCKING warning
+  // Rotation policy surfaced at login as a NON-BLOCKING warning
   // flag: true when `security.password.maxAgeDays` > 0 and the password is
   // older than the window. Login still succeeds; the client decides how to
   // nudge. Absent/false when rotation is disabled (default) or not exceeded.

@@ -36,30 +36,30 @@ import { TranscriptionJobController } from './transcription-job.controller';
     TenantBucketServiceModule,
     PipelineServiceModule,
     CoreDatabaseModule,
-    HarnessPolicyServiceModule, // TASK-356 D-7 — SMR-selection resolver for SmrProxyController
-    // TASK-506 — registry-backed providers listings on SmrProxyController:
+    HarnessPolicyServiceModule, // SMR-selection resolver for SmrProxyController
+    // Registry-backed providers listings on SmrProxyController:
     // AiModelService lists ENABLED rows per taskType; AiTaskDefaultService
     // resolves the effective `guardrail.validate` default.
     AiModelServiceModule,
     AiTaskDefaultServiceModule,
-    // TASK-524 — hyperparameter profile resolver for the SMR proxy's
+    // Hyperparameter profile resolver for the SMR proxy's
     // caller-wins, fail-open parameter injection.
     AiRuntimeProfileServiceModule,
-    // TASK-526 — tenant BYO cloud-credential resolver for the SMR proxy's
+    // Tenant BYO cloud-credential resolver for the SMR proxy's
     // cloud-only, minimal-exposure, fail-open `provider_overrides` injection.
     AiProviderConnectionServiceModule,
-    // TASK-386 (#5/#17): provides `ISocketRegistryService` so `SttWsGateway`
+    // Provides `ISocketRegistryService` so `SttWsGateway`
     // publishes its per-instance open-socket count for the platform aggregate.
     PlatformMetricsServiceModule,
-    // TASK-392 (concurrency): provides `IEntitlementsService` so
+    // Provides `IEntitlementsService` so
     // `TranscriptionJobController` can hard-block over-capacity sessions.
     EntitlementsServiceModule,
-    // TASK-310 W7.A.9 (AC-3): exposes `StreamSessionTenantBindingService`
+    // Exposes `StreamSessionTenantBindingService`
     // to `TranscriptionJobController` so it can bind on create / clear on close.
     TenantOwnedResourceModule,
   ],
   controllers: [TranscriptionJobController, AdminTranscriptionJobController, SmrProxyController],
-  // TASK-351 P1-3 (M6 part 2): SessionRemovalRetryService resolves
+  // SessionRemovalRetryService resolves
   // `StreamingSessionService` from StreamingSessionServiceModule above and
   // `IRedisCacheService` from the @Global() RedisCacheModule registration.
   providers: [SttWsGateway, SessionRemovalRetryService],

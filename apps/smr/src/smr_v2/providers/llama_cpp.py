@@ -49,7 +49,7 @@ class LlamaCppProvider:
         self._base_url = config.base_url.rstrip("/")
 
     def _resolve_model(self, request: GenerateRequest) -> str | None:
-        # D-7 (TASK-356): the caller-supplied model is authoritative. A llama.cpp
+        # The caller-supplied model is authoritative. A llama.cpp
         # server loads a single model at launch and ignores a per-request model,
         # so this is informational only (stamped onto stats), never sent on the
         # wire.

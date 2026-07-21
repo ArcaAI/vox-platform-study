@@ -6,10 +6,10 @@
  * line with the documented behaviour and the other filtered operations
  * (`findFirst`, `findMany`, `count`, `aggregate`, `groupBy`).
  *
- * TASK-305 B.12 — previously the `findUnique` handler bypassed
+ * Previously the `findUnique` handler bypassed
  * `applySoftDeleteFilter`, so `findUnique({ where: { id } })` returned rows
  * even when `resourceStatus = 'DELETED'`. See
- * `docs/multi-tenancy-audit/02-prisma-schema-review.md` § B12.
+ * `docs/multi-tenancy-audit/02-prisma-schema-review.md`.
  *
  * Unlike `soft-delete-extension.test.ts` (which exercises the pure helpers
  * via a hand-rolled simulator), this file invokes the REAL handler returned

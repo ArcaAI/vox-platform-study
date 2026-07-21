@@ -1,5 +1,5 @@
 /**
- * useDnaStyle Hook Tests — TASK-388 #13 admin cross-user (PHI-gated) methods.
+ * useDnaStyle Hook Tests — admin cross-user (PHI-gated) methods.
  *
  * The admin methods target the `/admin/dna-writing-styles` controller, which
  * requires `manage:DnaWritingStyleReport` and tenant-scopes the caller (even

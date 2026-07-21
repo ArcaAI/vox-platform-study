@@ -1,15 +1,14 @@
 /**
- * TASK-307 W3.5 — cross-tenant probes against TenantBucketController.
+ * Cross-tenant probes against TenantBucketController.
  *
- * Closes audit finding C-4 (`docs/multi-tenancy-audit/04-api-design-review.md`):
- * before this change, `GET /admin/tenants/storage/buckets/:id` and the sister
- * tree / presigned-url / delete routes returned 200 with the bucket payload
+ * Without the tenant-ownership guard (`docs/multi-tenancy-audit/04-api-design-review.md`),
+ * `GET /admin/tenants/storage/buckets/:id` and the sister
+ * tree / presigned-url / delete routes would return 200 with the bucket payload
  * regardless of which tenant owned the row — any TENANT_ADMIN with manage
  * privileges could enumerate every other tenant's buckets by id.
  *
- * The W3.2 global `TenantOwnedResourceInterceptor`, driven by the
- * `@TenantOwnedResource('TenantBucket', 'id')` decorator added in this
- * commit, resolves the bucket via
+ * The global `TenantOwnedResourceInterceptor`, driven by the
+ * `@TenantOwnedResource('TenantBucket', 'id')` decorator, resolves the bucket via
  * `TenantBucketRepository.findById` and throws 404 ("Resource not found")
  * whenever `bucket.tenantId !== cls.tenantId`. The DEF-C3 posture keeps the
  * 404 generic so the existence of cross-tenant buckets remains private.
@@ -49,7 +48,7 @@ test.describe('TASK-307 W3.5 — TenantBucket ownership (AC-8)', () => {
     const listResp = await request.get('/api/v1/admin/tenants/storage/buckets', { headers: { Authorization: `Bearer ${superAdminToken}` } });
     expect(listResp.status(), 'list ARCAAI buckets').toBe(200);
     const rows = (await listResp.json()) as BucketRow[];
-    // TASK-426 — the default audio-purpose system slug is `recordings`.
+    // The default audio-purpose system slug is `recordings`.
     const recordings = rows.find((b) => b.slug === 'recordings');
     expect(recordings, 'ARCAAI seed should ship a recordings bucket').toBeTruthy();
     arcaaiBucketId = recordings!.id;

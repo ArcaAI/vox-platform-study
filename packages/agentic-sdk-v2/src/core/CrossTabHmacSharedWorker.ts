@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox — Cross-Tab HMAC SharedWorker (TASK-280)
+ * @arcaai/vox — Cross-Tab HMAC SharedWorker
  *
  * Owns the 32-byte HMAC secret in SharedWorker-process memory so every tab
  * of the same origin verifies BroadcastChannel envelopes against the same
@@ -31,7 +31,7 @@ export interface CrossTabHmacSignReq {
   op: 'sign';
   payload: ArrayBuffer;
   /**
-   * TASK-317 E-4 (AC-11) — when present, sign with the per-tenant HKDF subkey
+   * When present, sign with the per-tenant HKDF subkey
    * `HKDF(masterSecret, tenantId)` instead of the bare master secret, so two
    * tenants sharing this worker cannot forge each other's envelopes.
    */
@@ -43,7 +43,7 @@ export interface CrossTabHmacVerifyReq {
   op: 'verify';
   payload: ArrayBuffer;
   hmac: ArrayBuffer;
-  /** TASK-317 E-4 (AC-11) — verify against the per-tenant HKDF subkey. */
+  /** Verify against the per-tenant HKDF subkey. */
   tenantId?: string;
 }
 
@@ -69,7 +69,7 @@ export interface CrossTabHmacResErr {
 export type CrossTabHmacRes = CrossTabHmacResOk | CrossTabHmacResErr;
 
 // =============================================================================
-// Per-tenant HKDF derivation (TASK-317 E-4 / AC-11).
+// Per-tenant HKDF derivation.
 //
 // Shared by the worker (master secret) and the fallback path in
 // CrossTabHmacKeyManager (per-page secret) so the SAME subkey is produced for
@@ -98,7 +98,7 @@ export async function deriveTenantHmacKey(secret: Uint8Array, tenantId: string):
 
 let SECRET: Uint8Array | null = null;
 let KEY_PROMISE: Promise<CryptoKey> | null = null;
-// TASK-317 E-4 (AC-11) — cache of per-tenant HKDF subkeys derived from the
+// Cache of per-tenant HKDF subkeys derived from the
 // master secret. Cleared on reset alongside the master key.
 const TENANT_KEYS = new Map<string, Promise<CryptoKey>>();
 
@@ -120,7 +120,7 @@ function getKey(): Promise<CryptoKey> {
 }
 
 /**
- * TASK-317 E-4 (AC-11) — derive (and cache) the per-tenant HMAC signing key
+ * Derive (and cache) the per-tenant HMAC signing key
  * `HKDF(masterSecret, tenantId)`. Distinct tenants yield distinct subkeys, so
  * a signature minted for tenant-A never verifies under tenant-B even though
  * both share this worker's master secret.

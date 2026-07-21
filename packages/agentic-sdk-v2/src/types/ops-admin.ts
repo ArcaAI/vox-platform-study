@@ -1,9 +1,9 @@
 /**
- * @arcaai/vox — Global-admin ops-surface types (TASK-403).
+ * @arcaai/vox — Global-admin ops-surface types
  *
  * Wire shapes for the three OPERATIONS admin surfaces:
- * - Rate Limits  → `apps/api/src/modules/admin-rate-limit/` (TASK-316 substrate)
- * - Queues & Jobs → `apps/api/src/modules/queue-admin/` (TASK-250/336 substrate)
+ * - Rate Limits  → `apps/api/src/modules/admin-rate-limit/`
+ * - Queues & Jobs → `apps/api/src/modules/queue-admin/`
  * - Prisma Studio → `apps/api/src/modules/pstudio/pstudio-status.controller.ts`
  *
  * These mirror the API response DTOs / `@arcaai/domains` interfaces 1:1 — the

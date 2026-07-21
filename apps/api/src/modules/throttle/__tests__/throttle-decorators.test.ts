@@ -11,7 +11,7 @@ const THROTTLER_LIMIT = 'THROTTLER:LIMIT';
 const THROTTLER_TTL = 'THROTTLER:TTL';
 
 describe('Controller @Throttle() decorator overrides', () => {
-    // TASK-308 AC-5 — AuthController's class-wide throttle was removed; the
+    // AuthController's class-wide throttle was removed; the
     // SDK aggressively polls /auth/me + /auth/refresh, and lumping every
     // endpoint under a single 10/min counter was tripping refresh under
     // production load. Per-endpoint decorators replace it (see the
@@ -24,7 +24,7 @@ describe('Controller @Throttle() decorator overrides', () => {
         expect(ttl).toBeUndefined();
     });
 
-    // TASK-307 W5.1 / AC-15 / audit D-11 — health throttle lowered from
+    // Health throttle lowered from
     // 300 → 30 req/min. With `/services{/:key}` now @Authorize()-gated
     // and the SSRF amplifier surface (4 outbound calls per probe)
     // shrinking accordingly, the generous default for the remaining
@@ -48,7 +48,7 @@ describe('Controller @Throttle() decorator overrides', () => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────
-// TASK-308 AC-5 — per-endpoint throttle granularity on AuthController.
+// Per-endpoint throttle granularity on AuthController.
 //
 // Rationale: the SDK (`@arcaai/vox`) routinely polls `/auth/me` and
 // rotates `/auth/refresh` more often than the previous class-wide 10/min

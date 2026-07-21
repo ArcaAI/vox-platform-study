@@ -20,7 +20,7 @@ interface PersonaUser {
 }
 
 /**
- * Playground persona control (TASK-442 §2, artboard 4a). The playground runs
+ * Playground persona control (artboard 4a). The playground runs
  * end-user planes under the caller's account; a GLOBAL_ADMIN impersonates a
  * doctor to test features as them. The bearer swap invalidates every query, so
  * a switch/stop must refetch the whole cache and refresh the server layout.

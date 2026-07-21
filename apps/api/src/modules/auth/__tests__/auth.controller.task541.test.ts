@@ -1,5 +1,5 @@
 /**
- * AuthController — TASK-541 B1 (failed-authentication audit trail).
+ * AuthController — failed-authentication audit trail.
  *
  * Gap closed: `EventTypes.UserAuthenticated` is a SUCCESS-ONLY bracket, so a
  * rejected login/refresh produced structured warn logs and nothing queryable.
@@ -157,7 +157,7 @@ describe('AuthController — TASK-541 B1 failed-login audit', () => {
         expect(events[0]).toMatchObject({ reason: 'invalid_password', userId: 'doctor-001', attemptedUsername: 'dr_smith' });
     });
 
-    // Regression guard: before TASK-541 the unknown-username path reached the
+    // Regression guard: previously the unknown-username path reached the
     // catch-all ('Authentication failed') while a wrong password answered
     // 'Invalid credentials' — a username-enumeration oracle. This only
     // reproduces with a THROWING repository double, matching production.

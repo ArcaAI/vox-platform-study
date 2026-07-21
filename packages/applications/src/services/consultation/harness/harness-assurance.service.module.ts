@@ -4,7 +4,7 @@ import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.servi
 import { HarnessAssuranceService } from './harness-assurance.service';
 
 /**
- * HarnessAssuranceService DI module (TASK-355 Phase D Slice 5d — live assurance feed).
+ * HarnessAssuranceService DI module — live assurance feed.
  *
  * Redis-only wiring (no Prisma — assurance verdicts are ephemeral realtime data):
  * - RedisCacheModule        → publish/setex the accumulated state to `consultation:harness-assurance:{id}`

@@ -38,10 +38,10 @@ export interface HarnessApprovalSignal {
 }
 
 /**
- * Edit signal payload forwarded to the harness (TASK-355 Phase D, Slice 5c) when
+ * Edit signal payload forwarded to the harness when
  * a clinician edits an optimistically-delivered draft that is still
  * `DRAFT_PENDING_SENSORS`. The workflow re-binds + re-runs assurance on the
- * edited content (Q3) and disables the silent regen-if-untouched path (Q1). Like
+ * edited content and disables the silent regen-if-untouched path. Like
  * `signalApproval` this is a best-effort notification — the apps/api version
  * write is the source of truth.
  */
@@ -54,7 +54,7 @@ export interface HarnessEditSignal {
 }
 
 /**
- * HarnessGatewayService (TASK-330 Phase 1 — Lane G).
+ * HarnessGatewayService.
  *
  * The OUTBOUND half of the apps/api <-> apps/harness gate adapter. Uses Nest
  * `HttpService` to POST to the harness internal endpoints, authenticating with

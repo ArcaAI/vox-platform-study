@@ -4,7 +4,7 @@ import { ApiBearerAuth, ApiHeader, ApiOperation, ApiQuery, ApiResponse, ApiTags 
 import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 
 /**
- * AiRuntimeProfileController (TASK-524) — the admin surface for runtime
+ * AiRuntimeProfileController — the admin surface for runtime
  * profiles (hyperparameters / context / concurrency), mounted at
  * `/admin/ai-runtime-profiles`.
  *

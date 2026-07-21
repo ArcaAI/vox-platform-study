@@ -27,7 +27,7 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
                 <SidebarTierSync />
                 <AppSidebar />
                 <SidebarInset className="h-svh overflow-hidden">
-                    {/* BUG-004 / TASK-423 §A: topbar + session banners are shell chrome,
+                    {/* /: topbar + session banners are shell chrome,
                         pinned ABOVE the scroll boundary (frame 07; rule 11 §App Shell).
                         The inset owns the height (h-svh overflow-hidden) so the window
                         never scrolls; only the region below does. */}

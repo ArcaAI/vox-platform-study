@@ -18,8 +18,8 @@ import { resolveScopedTenantIdOptional } from '../../shared/tenant-scope';
  * `/api/v1/admin/mcp-servers`). Mirrors `AiTaskDefaultAdminController`
  * (`If-Match` OCC, `resolveScoped*` tenant scoping).
  *
- * AUTHORIZATION: gated by the registry's OWN `McpServer` subject (TASK-532
- * M-12). It previously borrowed `HarnessPolicy` — that subject now means
+ * AUTHORIZATION: gated by the registry's OWN `McpServer` subject.
+ * It previously borrowed `HarnessPolicy` — that subject now means
  * "harness policy", nothing else, so a grant to one no longer silently confers
  * the other. `McpServer` already exists in the audit `ResourceType` enum, so the
  * swap needed no migration; the seeded roles gained explicit `manage:McpServer`
@@ -32,7 +32,7 @@ import { resolveScopedTenantIdOptional } from '../../shared/tenant-scope';
  * boundary; NOT the 404-over-403 tenancy posture). Cross-tenant reads are 404.
  *
  * SECURITY: no response ever carries secret material — `authRef` is a Vault PATH
- * only (secrets flow through the TASK-504 Vault path, never this API).
+ * only (secrets flow through the Vault path, never this API).
  */
 @ApiBearerAuth()
 @ApiTags('admin-mcp-servers')

@@ -49,7 +49,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     private readonly audioRecordingRepository: AudioRecordingRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // TASK-369 Phase 3C — optional + trailing so existing positional fixtures
+    // Optional + trailing so existing positional fixtures
     // keep their arity; when wired, the completed job's resultText/resultMetadata
     // are encrypted before persist (dual-write soak).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
@@ -83,7 +83,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     if (!Array.isArray(rawSegments) || rawSegments.length === 0) return;
 
     try {
-      // TASK-533 D-22 — report (never silently swallow) a segment that resolved to
+      // Report (never silently swallow) a segment that resolved to
       // nothing but its ordinal. That was the defect's whole signature: the batch
       // producer sent a text-less, seconds-based, snake_case shape, every field
       // coerced to null, and the ingest wrote ungroundable rows without a murmur.
@@ -131,7 +131,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
   private readonly logger = new Logger(SttInternalService.name);
 
   /**
-   * TASK-369 — encrypt PHI on write through the shared env-gated guard: a soft
+   * Encrypt PHI on write through the shared env-gated guard: a soft
    * no-op in dev/test (SECRETS_PROVIDER!=vault) but FAIL-CLOSED (throws) in
    * staging/prod (SECRETS_PROVIDER=vault) instead of persisting plaintext-only.
    */
@@ -143,7 +143,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
    * Create a transcript context item from completed transcription
    */
   async createTranscript(dto: CreateTranscriptRequest): Promise<{ contextItemId: string }> {
-    // TASK-342 GAP #1 — streaming finalize has no TranscriptionJob. When no
+    // Streaming finalize has no TranscriptionJob. When no
     // jobId is supplied, persist the transcript keyed directly to the
     // consultation (+ tenant) and skip the job lookup / setContextItem link-back.
     if (!dto.jobId) {
@@ -191,7 +191,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
       },
     });
 
-    // Emit pipeline event to trigger auto-summary → auto-NER (GAP-1)
+    // Emit pipeline event to trigger auto-summary → auto-NER
     this.eventEmitter.emit(ConsultationPipelineEvent.TranscriptionCreated, {
       consultationId,
       tenantId: job.tenantId || '',
@@ -207,7 +207,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
   }
 
   /**
-   * TASK-342 GAP #1 — persist a streaming-session transcript that has no
+   * Persist a streaming-session transcript that has no
    * TranscriptionJob. Keyed directly to the consultation (+ tenant) and
    * idempotent so a finalize retry does not double-create the transcript or
    * re-trigger the harness auto-draft pipeline.
@@ -312,7 +312,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
 
     job.complete(dto.resultText, dto.resultMetadata);
 
-    // TASK-369 Phase 3C — encrypt resultText/resultMetadata into the ciphertext
+    // Encrypt resultText/resultMetadata into the ciphertext
     // columns before the completing persist (dual-write; plaintext kept for soak).
     await this.encryptBestEffort('TranscriptionJob', () =>
       this.jobRepository.encryptFieldsIntoEntity(job, this.secretsService!),
@@ -491,7 +491,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
   }
 
   /**
-   * Register a stored object as a Media row (TASK-334 I-2b).
+   * Register a stored object as a Media row.
    *
    * The streaming dual-capture path uploads raw/processed WAVs to object
    * storage and calls this once per capture to obtain the Media ids it then

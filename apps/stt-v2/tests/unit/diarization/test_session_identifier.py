@@ -33,7 +33,7 @@ def _seed_numpy() -> None:
     i.e. AFTER this setup-phase fixture — so under that plugin this baseline is overridden
     per test and cannot fix the flake on its own. The two threshold-sensitive ambiguous-zone
     tests therefore re-seed inside the test body (call phase), where they win. (Pre-existing
-    defect surfaced by TASK-475's test reshuffle.)
+    defect surfaced by an earlier test reshuffle.)
     """
     np.random.seed(_SEED)
 

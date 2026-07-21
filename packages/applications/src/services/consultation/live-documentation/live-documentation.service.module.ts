@@ -24,7 +24,7 @@ import { EffectiveSettingsModule } from '../../settings-registry/effective-setti
  * - RedisSubscriberService → dedicated subscriber connection for the SSE relay
  * - StreamingSessionServiceModule → StreamingAudioBridgeService for `stt:result:{sessionId}`
  *
- * TASK-344 (Workstream A2) — also hosts {@link OcrEnrichmentProcessor}, the
+ * Also hosts {@link OcrEnrichmentProcessor}, the
  * event-driven heavy-OCR enrichment handler. It shares this module's
  * `ContextAdded` reaction wiring and DI (HttpModule → NLP `/extract`,
  * CoreDatabaseModule → ContextItemRepository, EventEmitterModule → re-emit;
@@ -42,9 +42,9 @@ import { EffectiveSettingsModule } from '../../settings-registry/effective-setti
     StreamingSessionServiceModule,
     HarnessPolicyServiceModule,
     AgentTrajectoryServiceModule,
-    // TASK-533 B1 — EffectiveSettingsModule resolves the @Optional
+    // EffectiveSettingsModule resolves the @Optional
     // EffectiveSettingsService so `agentic.context.*` is governed by the control
-    // plane (TASK-524's registry) rather than by constructor-frozen env values.
+    // plane's settings registry rather than by constructor-frozen env values.
     EffectiveSettingsModule,
   ],
   providers: [LiveDocumentationService, RedisSubscriberService, OcrEnrichmentProcessor],

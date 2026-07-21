@@ -1,5 +1,5 @@
 /**
- * AiTaskDefaultService (TASK-506 Phase 3) — unit tests.
+ * AiTaskDefaultService — unit tests.
  *
  * Mirrors the `tenant-tts-config` test style: repositories, EventEmitter2 and
  * ClsService are mocked; the effective cascade (tenant row → SYSTEM row →

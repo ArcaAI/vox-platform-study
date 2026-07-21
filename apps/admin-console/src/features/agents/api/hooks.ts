@@ -106,7 +106,7 @@ export function useActivateVersion() {
 }
 
 /**
- * TASK-532 (M-03/OD-6) — clinical approval, ported from `/prompt-studio`.
+ * Clinical approval, ported from `/prompt-studio`.
  * Invalidates the whole agents root: an approval flips `status` on the row AND
  * pins a new PromptVersion, so list, detail and versions all go stale.
  */

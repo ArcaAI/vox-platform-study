@@ -1,5 +1,5 @@
 /**
- * TASK-390 #22 (R3) — AUTH-SENSITIVE system-lockout guard.
+ * AUTH-SENSITIVE system-lockout guard.
  *
  * The Roles & Policies builder allows editing policy rules. These tests pin the
  * anti-foot-gun invariant: the seeded system-critical GLOBAL policies
@@ -47,8 +47,8 @@ function makeMocks() {
   const eventEmitter = { emit: vi.fn() };
   const policyRepo = { findMany: vi.fn(), count: vi.fn(), findById: vi.fn(), create: vi.fn(), update: vi.fn(), softDelete: vi.fn().mockResolvedValue(undefined) };
   const engine = { invalidatePolicy: vi.fn().mockResolvedValue(undefined) };
-  // TASK-409 — break-glass dependencies (the delete path verifies password +
-  // confirmation name; these mocks accept any password so the TASK-390 guard
+  // Break-glass dependencies (the delete path verifies password +
+  // confirmation name; these mocks accept any password so the guard
   // matrix stays focused on the protected-set behaviour).
   const rolePolicyRepo = { countEnabledByPolicy: vi.fn().mockResolvedValue(0) };
   const userRepo = { findById: vi.fn().mockResolvedValue({ id: ADMIN_USER.id, password: 'stored-hash' }) };

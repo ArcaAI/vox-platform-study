@@ -1,5 +1,4 @@
-"""Self-hosted semantic end-of-utterance detector (TASK-473 · SOTA S1-ENDPOINT ·
-Theme A3).
+"""Self-hosted semantic end-of-utterance detector.
 
 Content-driven end-of-turn detection that augments the fixed Silero-VAD silence
 offset on the realtime hot path. Today the streaming preprocessor declares
@@ -25,8 +24,8 @@ Two-layer detector:
   lazy-loads it via ``load_default_endpoint_model`` (which raises until the model
   is staged), so an un-staged model degrades to the heuristic.
 
-Fail posture (mirrors TASK-475 ``streaming_sortformer.load_default_backend`` and
-TASK-479's scorer): model un-staged / un-loadable → heuristic-only; model
+Fail posture (mirrors ``streaming_sortformer.load_default_backend`` and the
+groundedness scorer): model un-staged / un-loadable → heuristic-only; model
 inference error → heuristic-only; ANY uncertainty (disabled, no hypothesis,
 below the silence floor, low confidence, trailing filler) →
 ``should_endpoint=False``. ``decide()`` NEVER raises, so the preprocessor always

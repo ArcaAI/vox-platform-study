@@ -1,5 +1,5 @@
 /**
- * HarnessPolicyService — WORM change-row encryption wiring (TASK-369 Phase 3D).
+ * HarnessPolicyService — WORM change-row encryption wiring.
  *
  * The before/after policy snapshots on the immutable `HarnessPolicyChange` table
  * are encrypted via the repo's `encryptPayloads` BEFORE the change row is built,

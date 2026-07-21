@@ -2,7 +2,7 @@
  * Frame 20 — Users list screen (AdminDataGrid). fetch is stubbed at the network
  * boundary; assertions here are the rendered list states, the request the typed
  * filters produce (the NEW gateway BRACKET grammar `field[op]:value` joined by
- * `;` — TASK-423), grid selection + bulk actions, CSV export, and the create POST.
+ * `;`), grid selection + bulk actions, CSV export, and the create POST.
  *
  * The grid persists per-user layout via `GET user/me/settings`, so `settingsResponse`
  * answers it and assertions locate the list request by URL rather than call index.
@@ -114,7 +114,7 @@ function stubListFetch(overrides?: (url: string, init?: RequestInit) => Response
         if (custom) return custom;
         const settings = settingsResponse(url, init);
         if (settings) return settings;
-        // TASK-430 — tenant catalog behind the Tenant column/filter.
+        // Tenant catalog behind the Tenant column/filter.
         if (method === 'GET' && url.startsWith('/api/hope/admin/tenants')) {
             return Response.json({ data: [{ id: 't-1', name: 'Acme Hospital', key: 'acme' }], count: 1, limit: 500, page: 0 });
         }
@@ -248,7 +248,7 @@ describe('UsersListScreen', () => {
         });
     });
 
-    // TASK-430 — cross-tenant admin surface: Tenant column + tenant filter.
+    // Cross-tenant admin surface: Tenant column + tenant filter.
     it('renders the Tenant column with catalog names resolved from role assignments', async () => {
         stubListFetch();
         renderWithProviders(<UsersListScreen />);

@@ -47,7 +47,7 @@ class TestNormalizeFrame:
         assert np.abs(result).max() <= 1.0 + 1e-6
 
     def test_peak_decay(self):
-        """TASK-505: bounded-window peak — held inside the window, released after.
+        """Bounded-window peak — held inside the window, released after.
 
         The old exponential decay (0.9997/frame ≈ 107 s time constant) let one
         loud transient suppress speech for minutes; the window holds the peak

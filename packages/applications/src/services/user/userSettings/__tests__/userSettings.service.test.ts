@@ -516,7 +516,7 @@ describe('UserSettingsService', () => {
         });
     });
 
-    // TASK-375 (item 1 backend) — the admin path
+    // (item 1 backend) — the admin path
     // (UserController.updateUserSetting → upsertByUserKeyNamespace) previously
     // bypassed the `ui.data-grid` guard that lived only in the self-service
     // controller. The SERVICE now validates the round-trip itself, so EVERY

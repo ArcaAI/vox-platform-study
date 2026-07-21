@@ -1,7 +1,7 @@
 """Retirement contract for the inline regex guardrails.
 
 The inline regex-based prompt-injection scanner and its guardrail audit
-logger have been retired from the SMR service. The TASK-330 harness
+logger have been retired from the SMR service. The harness
 (Granite Guardian safety + groundedness + fail-closed PHI) is now the
 authoritative safety/guardrail layer, so SMR no longer ships its own
 regex content filters.

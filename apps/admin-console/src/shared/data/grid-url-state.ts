@@ -1,5 +1,5 @@
 /**
- * URL <-> query-state codec for console data grids (TASK-423, Phase 4).
+ * URL <-> query-state codec for console data grids.
  *
  * QUERY state (search / sort / page / limit / typed filters) is shareable, so it
  * lives in the URL via nuqs; column personalization (order/size/visibility/pin/
@@ -16,7 +16,7 @@
  * tuple with an unknown operator/variant is dropped rather than thrown.
  *
  * `toListParams` serializes the state to the console `ListParams`, emitting the
- * gateway BRACKET filter grammar (TASK-423 Phase 2): tokens `field[op]:value`
+ * gateway BRACKET filter grammar: tokens `field[op]:value`
  * joined by `;` (comma is reserved for AND[]/OR[] groups); lists as
  * `field[in]:a|b`; ranges as `field[gte]:X;field[lte]:Y`.
  */
@@ -229,7 +229,7 @@ function rangeTokens(id: string, value: unknown): string[] {
 }
 
 /**
- * FilterRule -> bracket token(s). The mapping (TASK-423 Phase 2 grammar):
+ * FilterRule -> bracket token(s). The mapping (grammar):
  *   text    iLike -> field[icontains]:v   |  eq -> field[iequals]:v
  *   non-text eq   -> field[equals]:v      (never an i-op on enum/boolean/number/date)
  *   lt/lte/gt/gte -> field[<op>]:v
@@ -275,7 +275,7 @@ export function toListParams(state: DataQueryState, opts?: ToListParamsOptions):
         // The grid's page index is 0-based (TanStack), but the gateway list
         // contract is 1-based (`skip = (page - 1) * limit`). Convert at this single
         // seam so the SECOND page (index 1) maps to `skip = limit` instead of skip 0
-        // — otherwise every page after the first re-fetches page 1 (TASK-423 defect).
+        // — otherwise every page after the first re-fetches page 1 (defect).
         out.page = state.pagination.page + 1;
         out.limit = state.pagination.limit;
     } else {

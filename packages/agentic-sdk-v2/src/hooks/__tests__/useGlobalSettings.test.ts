@@ -1,5 +1,5 @@
 /**
- * useGlobalSettings Hook Tests (TASK-032 WS-A, QA-006)
+ * useGlobalSettings Hook Tests
  *
  * @vitest-environment jsdom
  */
@@ -35,7 +35,7 @@ describe('useGlobalSettings', () => {
         mockPatchWithIfMatch.mockReset();
         mockDelete.mockReset();
 
-        // TASK-302 Stream D Phase D — `get` and `update` now flow through
+        // `get` and `update` now flow through
         // `getWithEtag`/`patchWithIfMatch` (D.4). Pre-existing tests below
         // are migrated to the new mocks; the `mockGet`/`mockPatch` keys
         // are kept for `list`/`getByTenant`/`getTenantConfig`/`create`
@@ -184,7 +184,7 @@ describe('useGlobalSettings', () => {
 
     describe('get', () => {
         it('should GET from GLOBAL_SETTINGS_ENDPOINTS.GET(id)', async () => {
-            // TASK-302 Stream D Phase D — `get` now calls `getWithEtag` to
+            // `get` now calls `getWithEtag` to
             // capture the ETag for a follow-up `update`. The body return
             // shape is preserved (backwards-compatible for callers that
             // only read `result.current.get(id)`'s resolved value).
@@ -249,7 +249,7 @@ describe('useGlobalSettings', () => {
 
     describe('update', () => {
         it('should PATCH to GLOBAL_SETTINGS_ENDPOINTS.UPDATE(id) with cached If-Match', async () => {
-            // TASK-302 Stream D Phase D — `update` requires a prior `get`
+            // `update` requires a prior `get`
             // to populate the ETag cache. The PATCH path now flows
             // through `patchWithIfMatch` (not bare `patch`).
             const FRESH_ID = 'gs-update-bg-7c9d4e';
@@ -333,7 +333,7 @@ describe('useGlobalSettings', () => {
     });
 
     /* ------------------------------------------------------------------ */
-    /*  TASK-396: revealSecret (global-admin, step-up re-auth)              */
+    /*  revealSecret (global-admin, step-up re-auth)              */
     /* ------------------------------------------------------------------ */
 
     describe('revealSecret (TASK-396)', () => {

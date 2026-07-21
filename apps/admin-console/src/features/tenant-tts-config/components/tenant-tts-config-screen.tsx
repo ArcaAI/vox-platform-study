@@ -32,7 +32,7 @@ function EffectiveResolveCard({ effective }: { effective: EffectiveTtsConfig }) 
     { label: 'routing ml', value: list(effective.routingMl) },
     { label: 'allowed', value: list(effective.allowedProviders) },
     { label: 'sarvam public', value: effective.sarvamPublicApiAllowed ? 'on' : 'off' },
-    // TASK-506 — effective merged bindings, read-only (tenant over SYSTEM per voice id).
+    // Effective merged bindings, read-only (tenant over SYSTEM per voice id).
     ...Object.entries(effective.voiceBindings ?? {}).map(([voiceId, bindings]) => ({
       label: `bind ${voiceId}`,
       value: Object.entries(bindings)
@@ -130,7 +130,7 @@ function ConfigTab() {
 }
 
 /**
- * TASK-504 Phase 4 — Tenant TTS configuration (/tts-config, tier 30-49).
+ * Tenant TTS configuration (/tts-config, tier 30-49).
  * Tenant-scoped effective config with OCC row editing, plus BYO provider-key
  * management (write-only, Vault-encrypted). Built to the design-system best
  * practices (ScreenTemplate, skeletons, both themes, semantic tokens).

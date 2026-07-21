@@ -1,5 +1,5 @@
 /**
- * TASK-442 §2 — Playground persona (impersonation) control. Covers the three
+ * Playground persona (impersonation) control. Covers the three
  * render states (self / acting-as / tenant-admin degrade), the "under {admin}"
  * line always showing, and the impersonate/revoke flows (BFF POST + query
  * invalidation + router.refresh). fetch is stubbed at the network boundary.

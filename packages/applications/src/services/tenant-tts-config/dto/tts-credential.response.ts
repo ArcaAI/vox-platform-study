@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-/** TASK-496 — masked view of a tenant's BYO provider credential. NEVER carries the key. */
+/** Masked view of a tenant's BYO provider credential. NEVER carries the key. */
 export class TtsCredentialResponse {
   @ApiProperty({ description: 'Provider (azure | sarvam)' })
   provider!: string;

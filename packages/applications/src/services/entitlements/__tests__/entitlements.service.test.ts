@@ -6,7 +6,7 @@ import { EntitlementsService } from '../entitlements.service';
 import { GIB, ENTITLEMENTS_QUOTA_BLOCKED_EVENT, ENTITLEMENTS_STORAGE_WARN_EVENT } from '../entitlements.constants';
 
 /*
- * TASK-392 (Phase 1) — EntitlementsService.
+ * EntitlementsService.
  *
  * The pure merge is exhaustively covered in `resolve-entitlements.test.ts`;
  * here we assert the SERVICE behaviour: DB wiring into the resolver, the
@@ -41,7 +41,7 @@ const appSettings = {
 const globalSettings = { update: vi.fn().mockResolvedValue({}), create: vi.fn().mockResolvedValue({}) };
 const eventEmitter = { emit: vi.fn() };
 const clsService = { get: vi.fn(() => undefined) };
-// TASK-392 (concurrency) — live per-tenant socket count source.
+// (concurrency) — live per-tenant socket count source.
 const socketRegistry = { getTenantAggregateCount: vi.fn().mockResolvedValue(0) };
 
 const makeService = () =>
@@ -205,7 +205,7 @@ describe('EntitlementsService', () => {
       apiKeyRepository.count.mockResolvedValue(1);
       // Q5 live meters: 450/500 consultations trips near-limit.
       metering.getCurrentUsage.mockResolvedValue({ consultations: 450, transcriptionMinutes: 100, summaries: 0 });
-      // TASK-392 (concurrency) — 3 live sessions against the STARTER cap of 5.
+      // (concurrency) — 3 live sessions against the STARTER cap of 5.
       socketRegistry.getTenantAggregateCount.mockResolvedValueOnce(3);
 
       const caps = await makeService().getCapabilities('tenant-1');
@@ -213,14 +213,14 @@ describe('EntitlementsService', () => {
       const users = caps.quantities.find((q) => q.key === 'users')!;
       expect(users).toMatchObject({ limit: 5, used: 4, remaining: 1, unlimited: false, nearLimit: true, exceeded: false });
 
-      // TASK-392 (concurrency) — live sessions vs. the concurrency cap.
+      // (concurrency) — live sessions vs. the concurrency cap.
       const concurrency = caps.quantities.find((q) => q.key === 'concurrentSessions')!;
       expect(concurrency).toMatchObject({ limit: 5, used: 3, remaining: 2, unlimited: false, exceeded: false });
 
       const storage = caps.quantities.find((q) => q.key === 'storageBytes')!;
       expect(storage).toMatchObject({ limit: 5 * GIB, used: 2048, unlimited: false });
 
-      // Q5 (Phase 2) — meters now carry live rolling-monthly usage.
+      // Q5 — meters carry live rolling-monthly usage.
       const consultations = caps.meters.find((m) => m.key === 'monthlyConsultations')!;
       expect(consultations).toMatchObject({ limit: 500, used: 450, nearLimit: true, exceeded: false });
       expect(caps.enforcementEnabled).toBe(false);

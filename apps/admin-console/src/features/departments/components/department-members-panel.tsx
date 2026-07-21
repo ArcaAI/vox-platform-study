@@ -77,7 +77,7 @@ const COLUMNS: ColumnDef<DepartmentMember>[] = [
  * (UserResponse carries no UserDepartment join), so Status stands in.
  * The parent remounts this panel per department (key=id), resetting the page.
  *
- * TASK-423: an embedded grid (design-spec D2) — `VirtualizedDataGrid` at a fixed
+ * An embedded grid (design-spec D2) — `VirtualizedDataGrid` at a fixed
  * height with server pagination driven by local query-state; personalization,
  * omni search and the toolbar are off since the endpoint takes only page/limit.
  */

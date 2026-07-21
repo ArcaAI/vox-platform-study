@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - Consultation Job Types (TASK-032 WS-A)
+ * @arcaai/vox - Consultation Job Types
  *
  * Types for consultation job tracking (SSE + polling).
  */
@@ -34,7 +34,7 @@ export interface JobStreamCallbacks {
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 
 /**
- * TASK-299 D-8 — case-insensitive terminal-status check. The backend has
+ * Case-insensitive terminal-status check. The backend has
  * historically emitted both `COMPLETED` and `completed`; either should
  * resolve to a terminal state.
  */

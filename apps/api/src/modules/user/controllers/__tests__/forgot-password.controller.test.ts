@@ -1,5 +1,5 @@
 /**
- * TASK-400 — public forgot-password endpoint.
+ * Public forgot-password endpoint.
  *
  * Contract: POST /auth/forgot-password is unauthenticated, throttled, and
  * ALWAYS answers 202 with the same generic body — whether the email matched an

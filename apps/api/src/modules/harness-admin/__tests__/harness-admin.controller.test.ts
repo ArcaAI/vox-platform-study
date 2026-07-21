@@ -1,5 +1,5 @@
 /**
- * HarnessAdminController authz/scoping unit tests (TASK-330 Phase 6).
+ * HarnessAdminController authz/scoping unit tests.
  *
  * The CASL `@Authorize` tuples + `If-Match`/`@RequiresIfMatch` decorators are
  * exercised by the guard/interceptor (and e2e). These specs cover the
@@ -290,7 +290,7 @@ describe('HarnessAdminController — workflow ops ownership', () => {
   });
 });
 
-// TASK-341 B2/B3 — admin live console: monitoring (tenant-scoped) + kill-switch (global-admin).
+// Admin live console: monitoring (tenant-scoped) + kill-switch (global-admin).
 describe('HarnessAdminController — live sessions (TENANT_ADMIN, tenant-scoped)', () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -359,7 +359,7 @@ describe('HarnessAdminController — live engine kill-switch (GLOBAL_ADMIN / glo
   });
 });
 
-// TASK-419 item 1 — golden-set dataset surface (reads: read:HarnessEval,
+// Golden-set dataset surface (reads: read:HarnessEval,
 // creates: manage:HarnessEval). Same tenant resolution as the other reads.
 describe('HarnessAdminController — golden sets (TASK-419)', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -432,7 +432,7 @@ describe('HarnessAdminController — golden-set authorization metadata (TASK-419
 });
 
 /**
- * TASK-533 B6 (GAP-A1) — eval regression-corpus export.
+ * Eval regression-corpus export.
  *
  * The route is a thin pass-through by design; what must be locked here is the
  * TENANT resolution (a global admin may target a tenant, a tenant admin may

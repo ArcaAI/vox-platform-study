@@ -1,4 +1,4 @@
-// TASK-302 Phase 6 Task 6.5 (Stream B) — VaultRotationWorkerService.
+// VaultRotationWorkerService.
 //
 // We DO NOT spin up Nest's full DI container here; the service is
 // straightforward and the value of an integration test is in the

@@ -1,7 +1,7 @@
-"""TASK-527 — conformance suite for the guardrail model source resolver (mirror).
+"""Conformance suite for the guardrail model source resolver (mirror).
 
 This is the CANONICAL copy of the resolver conformance quartet. The same named
-cases are mirrored in guardrail / nlp / harness (plan AD-3 mirrored-implementation
+cases are mirrored in guardrail / nlp / harness (mirrored-implementation
 discipline) so a behavioural drift in any one service shows up as a named test
 failure rather than a production surprise.
 

@@ -1,5 +1,5 @@
 /**
- * useAuth — TASK-331 doc-05 (F-3, F-9)
+ * useAuth — impersonation guards
  *
  * F-3: `impersonate(targetUserId, targetTenantId?)` must forward the selected
  *      tenant to `POST /auth/impersonate` so a global admin's chosen tenant is

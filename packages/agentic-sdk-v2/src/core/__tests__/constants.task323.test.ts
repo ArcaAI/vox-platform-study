@@ -1,5 +1,5 @@
 /**
- * Endpoint Constants Tests (TASK-323 Phase 0)
+ * Endpoint Constants Tests
  *
  * Verifies the new admin/storage/SMR endpoint constant groups added so the
  * ui-playground can consume the new API surfaces "via the SDK". Every path is

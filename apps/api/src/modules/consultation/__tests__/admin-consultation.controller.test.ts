@@ -4,7 +4,7 @@ import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { ConsultationStatus } from '@arcaai/domains';
 import { AdminConsultationController } from '../admin-consultation.controller';
 
-// TASK-319 F1 — admin (tenant-wide) consultation surface.
+// Admin (tenant-wide) consultation surface.
 //
 // The admin controller is the separate-controller (Pattern A) counterpart to
 // ConsultationController. It must (a) list EVERY consultation in the tenant via
@@ -49,7 +49,7 @@ describe('AdminConsultationController', () => {
       );
     });
 
-    // TASK-341 B2 — optional ?status=RECORDING filter (admin live console).
+    // Optional ?status=RECORDING filter (admin live console).
     it('forwards a valid ?status filter (e.g. RECORDING)', async () => {
       mockConsultationService.listConsultationsForTenant.mockResolvedValue({ data: [], count: 0, page: 1, limit: 10 });
       await controller.list({ status: 'RECORDING' } as any);

@@ -1,4 +1,4 @@
-"""Activity-level claim-check tests (TASK-483, AC-3 + AC-6).
+"""Activity-level claim-check tests.
 
 Each *real* activity body runs in a Temporal ``ActivityEnvironment`` with the tool
 clients + the blob store monkeypatched, so we assert the claim-check seam without
@@ -6,10 +6,10 @@ network or live MinIO:
 
 * **Produce** — ``generate`` / ``assemble_prompt`` offload their big outputs above
   the threshold: the inline field is EMPTIED and a ref is set, so the blob content
-  never enters the activity RESULT (AC-6). Below the threshold / disabled ⇒ inline.
+  never enters the activity RESULT. Below the threshold / disabled ⇒ inline.
 * **Consume** — ``extract_entities`` / ``persist_draft`` / ``run_inferential_sensors``
   resolve inline-or-ref at entry: driving an activity with an inline input and with a
-  ref input produces IDENTICAL materialized behaviour (AC-3).
+  ref input produces IDENTICAL materialized behaviour.
 """
 
 from __future__ import annotations
@@ -80,7 +80,7 @@ class _FakeNlp:
 class TestGenerateOffloadsNote:
     @pytest.mark.asyncio
     async def test_offloads_big_note_and_keeps_content_out_of_result(self, env, monkeypatch):
-        """AC-6: an offloaded note ⇒ ``content`` emptied + ref; the blob is NOT in the result."""
+        """An offloaded note ⇒ ``content`` emptied + ref; the blob is NOT in the result."""
         store = InMemoryBlobStore()
         monkeypatch.setattr(activities, "get_settings", lambda: _settings())
         monkeypatch.setattr(activities, "build_blob_store", lambda cc: store)
@@ -90,7 +90,7 @@ class TestGenerateOffloadsNote:
 
         assert result.content == ""  # inline emptied — note not serialized into history
         assert result.content_ref is not None
-        assert _BIG_NOTE not in str(result.model_dump())  # AC-6: content out of the result
+        assert _BIG_NOTE not in str(result.model_dump())  # content out of the result
         # The blob round-trips from the store byte-for-byte.
         assert await load_blob(result.content_ref, store=store) == _BIG_NOTE
 
@@ -108,7 +108,7 @@ class TestGenerateOffloadsNote:
 
     @pytest.mark.asyncio
     async def test_disabled_keeps_note_inline_even_above_threshold(self, env, monkeypatch):
-        """The disabled path is byte-identical to pre-483 (no offload, no ref)."""
+        """The disabled path is byte-identical to a no-offload path (no offload, no ref)."""
         store = InMemoryBlobStore()
         monkeypatch.setattr(activities, "get_settings", lambda: _settings(enabled=False))
         monkeypatch.setattr(activities, "build_blob_store", lambda cc: store)
@@ -121,7 +121,7 @@ class TestGenerateOffloadsNote:
 
     @pytest.mark.asyncio
     async def test_resolves_prompt_ref_and_folds_block_before_smr(self, env, monkeypatch):
-        """AC-3 (consume): the prompt is resolved inline-or-ref and the RAG block folded in."""
+        """Consume: the prompt is resolved inline-or-ref and the RAG block folded in."""
         store = InMemoryBlobStore()
         prompt_ref = await store_blob("BASE PROMPT", store=store, bucket=_BUCKET)
         fake = _FakeSmr("small")
@@ -163,7 +163,7 @@ class TestGenerateOffloadsNote:
 class TestConsumersResolveInlineOrRef:
     @pytest.mark.asyncio
     async def test_persist_draft_identical_for_inline_and_ref(self, env, monkeypatch):
-        """AC-3: an inline content and a ref-to-the-same-content materialize identically."""
+        """An inline content and a ref-to-the-same-content materialize identically."""
         store = InMemoryBlobStore()
         api = _FakeApiPersist()
         monkeypatch.setattr(activities, "get_settings", lambda: _settings())
@@ -186,11 +186,11 @@ class TestConsumersResolveInlineOrRef:
         ref_seen = api.content
 
         assert inline_seen == _BIG_NOTE
-        assert ref_seen == _BIG_NOTE  # identical materialized behaviour (AC-3)
+        assert ref_seen == _BIG_NOTE  # identical materialized behaviour
 
     @pytest.mark.asyncio
     async def test_extract_entities_resolves_note_ref(self, env, monkeypatch):
-        """AC-3: note-NER dereferences an offloaded note before the NLP pass."""
+        """Note-NER dereferences an offloaded note before the NLP pass."""
         store = InMemoryBlobStore()
         ref = await store_blob(_BIG_NOTE, store=store, bucket=_BUCKET)
         nlp = _FakeNlp()
@@ -208,7 +208,7 @@ class TestConsumersResolveInlineOrRef:
 class TestAssembleOffloadsPrompt:
     @pytest.mark.asyncio
     async def test_offloads_big_user_prompt(self, env, monkeypatch):
-        """AC-3 (produce): a big assembled prompt is offloaded (inline emptied + ref)."""
+        """Produce: a big assembled prompt is offloaded (inline emptied + ref)."""
 
         class _FakeApiAssemble:
             async def assemble(self, consultation_id: str, **kwargs: Any):

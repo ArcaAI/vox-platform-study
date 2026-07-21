@@ -44,8 +44,8 @@ export interface TransformersCacheNameOptions {
 }
 
 /**
- * TASK-317 W5.1 (AC-14 / audit D-3): resolve the Cache Storage cache name to use
- * for a Transformers.js model based on its source.
+ * Resolve the Cache Storage cache name to use for a Transformers.js model
+ * based on its source.
  *
  * - PUBLIC weights (`source: 'public'` or unset) → {@link SHARED_TRANSFORMERS_CACHE_NAME}
  *   (unchanged shared cache).
@@ -73,9 +73,9 @@ export function getTransformersCacheName(options: TransformersCacheNameOptions =
 }
 
 /**
- * TASK-317 W5.1 (AC-14 / audit D-3): orphan cleanup of a tenant's CUSTOM
- * Transformers.js caches — call on tenant switch / logout so the outgoing
- * tenant's private weights do not linger in Cache Storage.
+ * Orphan cleanup of a tenant's CUSTOM Transformers.js caches — call on
+ * tenant switch / logout so the outgoing tenant's private weights do not
+ * linger in Cache Storage.
  *
  * Deletes only caches under the `vox/${tenantId}/` namespace. The shared public
  * cache ({@link SHARED_TRANSFORMERS_CACHE_NAME}) and other tenants' custom caches

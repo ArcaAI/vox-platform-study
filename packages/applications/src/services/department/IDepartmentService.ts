@@ -8,7 +8,7 @@ export abstract class IDepartmentService {
   abstract getByCode(code: string): Promise<DepartmentResponse | null>;
   abstract getRootDepartments(): Promise<DepartmentResponse[]>;
   abstract getChildren(parentId: string): Promise<DepartmentResponse[]>;
-  // TASK-387 (#6 / D2) — reverse listing of a department's users.
+  // Reverse listing of a department's users.
   abstract getDepartmentUsers(departmentId: string, query: PaginatedQuery): Promise<PaginatedUserResponse>;
   abstract create(dto: CreateDepartmentRequest): Promise<DepartmentResponse>;
   abstract update(id: string, dto: UpdateDepartmentRequest): Promise<DepartmentResponse>;

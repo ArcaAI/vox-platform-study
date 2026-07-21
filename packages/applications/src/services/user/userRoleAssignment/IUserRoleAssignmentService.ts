@@ -4,7 +4,7 @@ import { IBaseService } from '../../../interfaces';
 import { CreateUserRoleAssignmentRequest, UpdateUserRoleAssignmentRequest } from './dto';
 
 /**
- * TASK-307 W6.1 — minimal projection of a Role row needed by the auth-issuance
+ * Minimal projection of a Role row needed by the auth-issuance
  * path. Defined here (rather than re-using the auto-generated `RoleEntity`) so
  * the service contract stays narrow: only `id`, `name`, and the legacy
  * `permissions` claim list — the only fields `AuthController.getUserRoles` and
@@ -17,9 +17,9 @@ export interface AuthRoleSummary {
 }
 
 /**
- * TASK-307 W6.1 — minimal projection of a UserRoleAssignment row used for
+ * Minimal projection of a UserRoleAssignment row used for
  * login-time tenant validation. Matches the raw Prisma shape the controller
- * relied on before C-10 was closed.
+ * previously relied on directly.
  */
 export interface ActiveUserRoleAssignmentRow {
   id: string;
@@ -30,7 +30,7 @@ export interface ActiveUserRoleAssignmentRow {
 }
 
 /**
- * TASK-444 — one member of a role: a `UserRoleAssignment` row joined to its
+ * One member of a role: a `UserRoleAssignment` row joined to its
  * (global) `User`, projected for the admin members listing. `department` is
  * the user's department IN THE ASSIGNMENT'S TENANT (primary preferred);
  * `resourceStatus` is the membership (assignment) status, `userResourceStatus`
@@ -49,7 +49,7 @@ export interface RoleMemberRow {
   assignedAt: Date;
 }
 
-/** TASK-444 — members listing result (RBAC-surface envelope: data + total). */
+/** Members listing result (RBAC-surface envelope: data + total). */
 export interface RoleMembersResult {
   data: RoleMemberRow[];
   total: number;
@@ -63,7 +63,7 @@ export interface IUserRoleAssignmentService extends IBaseService {
   fetchAllByUserId(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<UserRoleAssignmentEntity>>;
 
   /**
-   * TASK-444 — the inverse of `fetchAllByUserId`: who holds this role.
+   * The inverse of `fetchAllByUserId`: who holds this role.
    * Tenant-scoped through the extended client (tenant admins see their
    * tenant's members; an unscoped platform admin sees all assignments).
    */
@@ -73,7 +73,7 @@ export interface IUserRoleAssignmentService extends IBaseService {
   deleteById(id: EntityId): Promise<UserRoleAssignmentEntity>;
 
   /**
-   * TASK-307 W6.1 — replaces the direct Prisma `findFirst` previously used in
+   * Replaces the direct Prisma `findFirst` previously used in
    * `AuthController.login` to validate the user has at least one ENABLED role
    * assignment in the tenant key they're authenticating into. Returns the
    * matching assignment, or null when the user has no access to the tenant.
@@ -81,8 +81,8 @@ export interface IUserRoleAssignmentService extends IBaseService {
   findActiveAssignmentForUserInTenant(userId: string, tenantId: string): Promise<ActiveUserRoleAssignmentRow | null>;
 
   /**
-   * TASK-307 W6.1 — replaces the direct Prisma `findMany` previously used in
-   * `AuthController.impersonate` (TASK-295 H-3) to enumerate the tenants the
+   * Replaces the direct Prisma `findMany` previously used in
+   * `AuthController.impersonate` to enumerate the tenants the
    * impersonation target user has ENABLED assignments in. Returns unique
    * tenant ids in creation order (oldest first) — matches the previous
    * sortable-via-createdAt behaviour the controller depended on.
@@ -90,7 +90,7 @@ export interface IUserRoleAssignmentService extends IBaseService {
   findActiveTenantIdsForUser(userId: string): Promise<string[]>;
 
   /**
-   * TASK-307 W6.1 — replaces the direct Prisma `findMany({include: {Role}})`
+   * Replaces the direct Prisma `findMany({include: {Role}})`
    * previously used in `AuthController.getUserRoles` for JWT role / permission
    * claim construction. Returns the Role rows joined to the user's ENABLED
    * assignments, filtering null Roles defensively against stale joins.

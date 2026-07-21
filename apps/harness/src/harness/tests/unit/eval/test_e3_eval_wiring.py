@@ -1,11 +1,11 @@
-"""Eval-run wiring for the TASK-482 E3 metrics (AC-4 / AC-5).
+"""Eval-run wiring for the concept-F1 + harm-weighted metrics.
 
-RED-first. ``draft_eval`` surfaces concept-F1 + harm-weighted-error-rate onto
+``draft_eval`` surfaces concept-F1 + harm-weighted-error-rate onto
 ``EvalCaseResult`` / ``EvalRunResult``, skip-clean when a golden reference (or, for
 concept-F1, the note's candidate codes) is absent — no metric fabricates a value.
 The packaged synthetic golden case deliberately omits a reference medication so
 concept-F1 recall is non-degenerate (< 1.0); with the candidate codes stripped
-(the pre-476 reality) the concept-F1 pass skips clean while harm-weight still runs.
+(no encoder codes on this note) the concept-F1 pass skips clean while harm-weight still runs.
 """
 
 from __future__ import annotations
@@ -74,7 +74,7 @@ class TestSkipClean:
 
     def test_concept_f1_skips_when_candidate_codes_absent_pre_476(self):
         # Reference present, but the note carries NO candidate codes (metadata has
-        # no candidate_concepts) — the pre-476 reality. concept-F1 skips clean;
+        # no candidate_concepts). concept-F1 skips clean;
         # harm-weight is independent of codes and still runs.
         case = _bare_case(
             reference_concepts=["C0020538", "C0025598"],

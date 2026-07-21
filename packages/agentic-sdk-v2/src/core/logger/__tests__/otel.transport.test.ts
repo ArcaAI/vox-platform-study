@@ -540,9 +540,9 @@ describe('OTelTransport', () => {
   });
 
   // =========================================================================
-  // TASK-278: gated activation
+  // Gated activation
   //
-  // Mirrors TASK-266 W0-2 for HighlightTransport. The OTel transport may
+  // Mirrors the HighlightTransport gating pattern. The OTel transport may
   // only activate when ALL of:
   //   1. NODE_ENV !== 'production' (or process is undefined)
   //   2. config.enabled === true (explicit opt-in)

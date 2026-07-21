@@ -7,7 +7,7 @@ import {
 } from './dto';
 
 /**
- * TASK-498 — tenant-scoped external OIDC identity provider config.
+ * Tenant-scoped external OIDC identity provider config.
  * `tenantId` is resolved by the controller (a tenant admin is pinned to their
  * CLS tenant; a global admin may target another tenant).
  */

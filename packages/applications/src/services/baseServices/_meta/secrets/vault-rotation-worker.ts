@@ -1,9 +1,9 @@
-// TASK-302 Phase 6 Tasks 6.3 + 6.4 (Stream B) — Vault rotation worker.
+// Vault rotation worker.
 //
 // Tails the Vault audit log file and publishes an
 // `arca:secrets:invalidate` Pub/Sub event when a kv-v2 write under
 // `secret/data/<kvPrefix>/<KEY>` is observed. The fleet of HOPE API
-// pods subscribes (via SecretsService.attachRedisSubscriber, Phase 2C)
+// pods subscribes (via SecretsService.attachRedisSubscriber)
 // and evicts the rotated key from its in-process LRU cache.
 //
 // Scope:
@@ -65,7 +65,7 @@ export class VaultRotationWorker {
   }
 
   /**
-   * Phase 6 Task 6.3. Parse a single audit-log line; if it represents
+   * Parse a single audit-log line; if it represents
    * a kv-v2 write under our prefix, publish an invalidation event.
    *
    * Public so the unit tests can drive it without spinning up the
@@ -99,7 +99,7 @@ export class VaultRotationWorker {
   }
 
   /**
-   * Phase 6 Task 6.4. File-tail loop. Polls the audit log every
+   * File-tail loop. Polls the audit log every
    * `pollIntervalMs` ms; if the file has grown, reads the new bytes
    * and feeds each line through `handleAuditLine`. Starts at EOF so
    * historical entries are not replayed on boot.

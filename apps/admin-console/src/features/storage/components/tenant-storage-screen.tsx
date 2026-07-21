@@ -83,7 +83,7 @@ function BucketRowActions({ bucket, onBrowse, onDelete }: { bucket: TenantBucket
 
 /**
  * Frame 14 buckets list: embedded grid (client search + faceted filters).
- * TASK-430 — spans all tenants for an unscoped elevated session, so the grid
+ * Spans all tenants for an unscoped elevated session, so the grid
  * carries a Tenant column and tenant/purpose/type filters.
  */
 function BucketsTab({ onProvision }: { onProvision: () => void }) {
@@ -308,7 +308,7 @@ function ProvisionBucketsDialog({ open, onOpenChange }: { open: boolean; onOpenC
 
 /** Frame 14 — Tenant storage administration: buckets, defaults, configs, keys. */
 /**
- * TASK-430 — the buckets list works CROSS-TENANT for an unscoped elevated
+ * The buckets list works CROSS-TENANT for an unscoped elevated
  * session (GLOBAL_ADMIN with no working tenant): the backend returns every
  * tenant's buckets and the grid shows a Tenant column + filter. Defaults,
  * configs and access keys remain per-tenant wiring, so those tabs still ask

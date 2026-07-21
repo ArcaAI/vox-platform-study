@@ -1,4 +1,4 @@
-"""Hermetic tests for the MiniCheck-Flan-T5 GGUF groundedness scorer (TASK-479).
+"""Hermetic tests for the MiniCheck-Flan-T5 GGUF groundedness scorer.
 
 No llama.cpp / weights needed: the model-dependent first-step logit read is injected
 as a fake ``logit_fn``, so these lock the pure scoring math, the MiniCheck template,

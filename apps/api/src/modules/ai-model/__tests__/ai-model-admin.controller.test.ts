@@ -1,5 +1,5 @@
 /**
- * AiModelAdminController — TASK-356 Phase 1 (Catalog plane)
+ * AiModelAdminController
  *
  * Mirrors `audio-pipeline.controller.test.ts`: unit-level assertions on the
  * runtime decorator metadata (route paths/methods, class-level `@Authorize`)
@@ -11,8 +11,7 @@ import { RequestMethod } from '@nestjs/common';
 import { AiModelAdminController } from '../ai-model-admin.controller';
 
 // =============================================================================
-// Authorization — global-admin only (manage:all) per TASK-415 Decision 6
-// (capabilities-matrix row 11, review 2026-07-04); re-pinned in TASK-419 item 5
+// Authorization — global-admin only (manage:all)
 // =============================================================================
 describe('AiModelAdminController authorization metadata (TASK-419 item 5)', () => {
   it('is decorated @Authorize(["manage","all"]) at class level (global-admin only)', () => {

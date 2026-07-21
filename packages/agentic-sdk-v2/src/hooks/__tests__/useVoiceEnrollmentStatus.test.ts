@@ -1,5 +1,5 @@
 /**
- * useVoiceEnrollmentStatus Hook Tests — TASK-296 C-4
+ * useVoiceEnrollmentStatus Hook Tests
  *
  * @vitest-environment jsdom
  */

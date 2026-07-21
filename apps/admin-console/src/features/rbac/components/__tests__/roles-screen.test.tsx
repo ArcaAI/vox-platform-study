@@ -1,5 +1,5 @@
 /**
- * TDD screen tests for the TASK-438 two-pane RBAC Roles redesign (frame 21):
+ * TDD screen tests for the two-pane RBAC Roles redesign (frame 21):
  * grouped role list, selection → detail with the derived permission matrix,
  * system-role lockdown, tab switching (Permissions/Members/Policies), the
  * screen-level break-glass delete, policy detach, the 412 OCC alert, and the
@@ -46,7 +46,7 @@ const CUSTOM_ROLE = role({
     memberCount: 2,
 });
 
-/** TASK-444 — members of the Billing role served by the members endpoint. */
+/** Members of the Billing role served by the members endpoint. */
 const BILLING_MEMBERS: RoleMember[] = [
     {
         assignmentId: 'a-1',
@@ -74,7 +74,7 @@ const BILLING_MEMBERS: RoleMember[] = [
     },
 ];
 
-/** TASK-501 — SYSTEM-role policy unlock reads `effectiveIsElevated` off the BFF session. */
+/** SYSTEM-role policy unlock reads `effectiveIsElevated` off the BFF session. */
 function session(overrides: { roles?: string[]; effectiveIsElevated?: boolean } = {}) {
     const roles = overrides.roles ?? ['TENANT_ADMIN'];
     const effectiveIsElevated = overrides.effectiveIsElevated ?? roles.includes('GLOBAL_ADMIN');
@@ -192,7 +192,7 @@ describe('RolesScreen (two-pane redesign)', () => {
         await screen.findByRole('heading', { level: 2, name: 'GlobalAdmin' });
         expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
-        // Clone (TASK-501) is offered even for a locked system role and even to a tenant admin.
+        // Clone is offered even for a locked system role and even to a tenant admin.
         expect(screen.getByRole('button', { name: 'Clone' })).toBeDefined();
         // Lock notice appears in both the header and the Policies panel.
         expect((await screen.findAllByText(/System role — seed-managed and read-only/i)).length).toBeGreaterThanOrEqual(1);

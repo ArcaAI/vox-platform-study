@@ -1,5 +1,5 @@
 /**
- * useTenantFrontendConfig Hook Tests (TASK-328 A6)
+ * useTenantFrontendConfig Hook Tests
  *
  * @vitest-environment jsdom
  */
@@ -103,7 +103,7 @@ describe('useTenantFrontendConfig', () => {
             expect(url).toContain('tenantId=t-2');
         });
 
-        // TASK-356 Phase 4 (SDK-T5) — the new audio-console fields round-trip
+        // The new audio-console fields round-trip
         // through GET and save (the hook forwards the typed payload verbatim).
         it('round-trips transcriptionMode / transcriptionModeLocked / captureMode through save and stores the result', async () => {
             const input = {

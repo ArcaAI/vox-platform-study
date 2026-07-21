@@ -5,7 +5,7 @@ import { ClsService } from 'nestjs-cls';
 import { Authorize } from '../../../decorators';
 
 /**
- * Self-service department read (BUG-005 Issue 4). Mirrors
+ * Self-service department read. Mirrors
  * `UserDepartmentsController.list` but resolves the caller from CLS instead
  * of an admin-supplied `:id`, so any authenticated user (including one being
  * impersonated — the act-as JWT carries the target's own id) can see their

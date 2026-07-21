@@ -301,7 +301,7 @@ export const DEFAULT_DEPARTMENTS = [
     },
 ];
 
-// Per-customer-tenant General Practice departments (TASK-305 Phase F).
+// Per-customer-tenant General Practice departments.
 //
 // The DEFAULT_DEPARTMENTS above all belong to the Global customer tenant
 // (DEFAULT_TENANT_ID). The ArcaAI customer tenant needs at least a GEN
@@ -329,7 +329,7 @@ export const CUSTOMER_TENANT_GEN_DEPARTMENTS = [
     },
 ];
 
-// Per-customer-tenant specialty departments (TASK-331 r2605 #6).
+// Per-customer-tenant specialty departments.
 //
 // In addition to the bare GEN above, the ArcaAI customer tenant gets a small
 // realistic specialty catalog — Cardiology (`CARD`) and Emergency (`ER`) —

@@ -35,7 +35,7 @@ def _assemble_generate_kwargs(
     *,
     return_timestamps: bool,
 ) -> dict[str, Any]:
-    """Delegate to the PRODUCTION builder (TASK-505 P1).
+    """Delegate to the PRODUCTION builder.
 
     This helper used to be a hand-kept replica of the inline assembly in
     ``batch_service.py``; the logic now lives in
@@ -171,7 +171,7 @@ class TestOnnxBeamSizeTemperature:
 
 
 # =========================================================================
-# Code-switch language pinning (TASK-351 P2-1)
+# Code-switch language pinning
 # =========================================================================
 
 

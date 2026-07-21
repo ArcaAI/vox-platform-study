@@ -1,5 +1,5 @@
 /**
- * NotificationEntity.validate() Unit Tests — TASK-261 (Tier 2)
+ * NotificationEntity.validate() Unit Tests
  *
  * Locks in the real invariant implementation that replaces the previous
  * `throw new BusinessException('Method not implemented.')` stub.

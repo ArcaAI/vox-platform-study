@@ -1,5 +1,5 @@
 /**
- * TASK-264 W0-11 — AgenticErrorCode union extension
+ * AgenticErrorCode union extension
  *
  * The error code union must include 'FORBIDDEN' (HTTP 403) and 'RATE_LIMITED'
  * (HTTP 429) so that consumers can react programmatically. Before this ticket

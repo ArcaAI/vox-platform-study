@@ -1,7 +1,6 @@
 // packages/database/tests/pgbouncer-validation/vitest.config.ts
 //
-// Self-contained Vitest config for the PgBouncer validation rig
-// (TASK-302 Stream C Phase 1).
+// Self-contained Vitest config for the PgBouncer validation rig.
 //
 // Kept deliberately separate from the monorepo's root vitest.config.ts so
 // that:

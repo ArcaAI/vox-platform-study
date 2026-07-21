@@ -1,10 +1,10 @@
-"""TDD tests for the Guardrail ServiceAuthMiddleware (TASK-465).
+"""TDD tests for the Guardrail ServiceAuthMiddleware.
 
 Verifies inter-service authentication via the ``X-Service-Token`` header and,
 critically, that the token is sourced from the canonical ``GUARDRAIL_SERVICE_TOKEN``
 env var (the key the gateway provisions) rather than the legacy
 ``GUARDRAIL_V2_SERVICE_TOKEN``. Reading the wrong key means enforcement silently
-never fires in production — the high-severity bug this ticket fixes.
+never fires in production.
 
 The app is built with ``create_app()`` and driven over an ASGI transport WITHOUT
 entering the lifespan, so Redis / GLiNER / provider init never run.

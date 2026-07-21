@@ -116,13 +116,13 @@ def get_logger(name: str) -> structlog.stdlib.BoundLogger:
 
 
 def redact_id(value: object | None) -> str:
-    """Return a PHI-safe token for an identifier in log records (TASK-490).
+    """Return a PHI-safe token for an identifier in log records.
 
     Raw user ids, consultation ids, session labels and names must never appear
-    in log output (redacted-logging posture; TASK-474 finding B-05). A short
-    SHA-256 prefix keeps log lines correlatable — the same input always yields
-    the same token — without exposing the underlying value. ``None``/empty
-    values render as ``"-"``.
+    in log output (redacted-logging posture). A short SHA-256 prefix keeps log
+    lines correlatable — the same input always yields the same token —
+    without exposing the underlying value. ``None``/empty values render as
+    ``"-"``.
     """
     if value is None or value == "":
         return "-"

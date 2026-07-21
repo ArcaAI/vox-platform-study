@@ -3,7 +3,7 @@ import { LiveTranscriptionScreen } from '@/features/playground-live-transcriptio
 
 export const metadata: Metadata = { title: 'Live Transcription' };
 
-/** Playground tier — frame 51 (TASK-433, matrix row 35). */
+/** Playground tier — frame 51 (matrix row 35). */
 export default function LiveTranscriptionPage() {
     return <LiveTranscriptionScreen />;
 }

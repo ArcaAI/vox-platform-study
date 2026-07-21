@@ -1,5 +1,5 @@
 /**
- * SttInternalService.completeJob encryption wiring (TASK-369 Phase 3C).
+ * SttInternalService.completeJob encryption wiring.
  *
  * The STT internal callback endpoint is the genuine TS write path for the STT
  * result fields (resultText / resultMetadata): the Python stt-v2 worker posts

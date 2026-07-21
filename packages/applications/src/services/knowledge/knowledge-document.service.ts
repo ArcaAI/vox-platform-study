@@ -32,7 +32,7 @@ export interface ApproveKnowledgeDocumentInput {
 }
 
 /**
- * KnowledgeDocumentService (TASK-330 Phase 3 — institutional RAG).
+ * KnowledgeDocumentService — institutional RAG.
  *
  * Admin-side CRUD + approval workflow for the institutional knowledge corpus
  * (mirrors EvalService: `tenantId` supplied explicitly by the API caller, built

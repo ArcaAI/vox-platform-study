@@ -3,7 +3,7 @@ import * as Entities from '../../../entities';
 import * as Models from '../../../models';
 import * as Mappers from '../../../mappers';
 
-// TASK-302 Stream D Phase E.5 — `_version` is database-owned (initial
+// `_version` is database-owned (initial
 // value at `Prisma.create()` and atomic `version + 1` bump inside the
 // repository's Compare-And-Set predicate). Stripping it here on every
 // write makes accidental client-supplied `version` payloads no-ops.

@@ -2,16 +2,15 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsArray, IsIn, IsOptional, IsString } from 'class-validator';
 
 /**
- * TASK-388 #9 — server-side bulk user actions.
+ * Server-side bulk user actions.
  *
  * Action set: `enable` | `disable` | `delete` | `assign-departments` | `assign-role`.
  * This mirrors the two real client `Promise.allSettled` loops on the admin Users
  * surface (bulk disable + bulk assign-department) plus their trivial siblings
  * (`enable` = inverse of `disable`; `delete` already exists as `bulkDelete`).
- * `assign-role` (TASK-398 P1-6) closes the arm deferred by TASK-388: it fans the
- * single-user `POST /admin/users/:id/roles` semantics out over `ids`, so the
- * AC-02 posture (`manage:UserRoleAssignment` + the service-level tier/tenant
- * guards) applies per item.
+ * `assign-role` fans the single-user `POST /admin/users/:id/roles` semantics
+ * out over `ids`, so the `manage:UserRoleAssignment` permission plus the
+ * service-level tier/tenant guards apply per item.
  */
 export type BulkUserAction = 'enable' | 'disable' | 'delete' | 'assign-departments' | 'assign-role';
 

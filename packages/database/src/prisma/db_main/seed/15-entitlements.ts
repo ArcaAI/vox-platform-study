@@ -3,15 +3,15 @@ import { TenantPlan, ValueType } from '../../../generated/core-prisma-client/cli
 import { SEED_TENANT_ID, SEED_USER_IDS, SEED_GLOBAL_SETTING_IDS, SEED_PLAN_ENTITLEMENT_IDS } from './00-constants';
 
 /**
- * TASK-392 — Plan entitlements seed (proposal §2 / Q1 / Q9).
+ * Plan entitlements seed.
  *
  * Seeds two things:
  *   1. The platform-wide per-plan default matrix (`PlanEntitlement`, one row per
  *      `TenantPlan`). This is the proposed STARTER → TRIAL → PRO → ENTERPRISE
  *      matrix anchored at ~100 seats for ENTERPRISE. `null` = unlimited.
  *   2. The enforcement kill-switch (`entitlements.enabled` GlobalSetting) under
- *      the platform tenant. Ships **OFF** by default (Q9) so the epic lands
- *      safely dark; the fresh-DB seed value is **env-driven** (TASK-392 closeout)
+ *      the platform tenant. Ships **OFF** by default so the epic lands
+ *      safely dark; the fresh-DB seed value is **env-driven**
  *      so DEV + STAGING come up **ON** while TEST/CI/PROD stay **OFF** — see the
  *      `ENTITLEMENTS_ENABLED_DEFAULT` note below.
  *
@@ -29,7 +29,7 @@ const CREATED_BY = SEED_USER_IDS.SUPER_ADMIN;
 const GIB = 1024 ** 3;
 
 /**
- * TASK-392 closeout — the kill-switch's SEED-TIME initial value is now
+ * The kill-switch's SEED-TIME initial value is
  * environment-driven so an env can come up with enforcement already ON without
  * any code change, while keeping the default SAFE (OFF):
  *

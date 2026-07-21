@@ -43,7 +43,7 @@ const createMockStreamTicketService = () => ({
     }),
 });
 
-// TASK-351 P0-2 (C5) — the gateway reads the session-negotiated sampleRate
+// The gateway reads the session-negotiated sampleRate
 // from the session meta written by `createStreamSession`. Default: no meta
 // bound → gateway falls back to 16000.
 const createMockSessionBinding = () => ({
@@ -54,7 +54,7 @@ const createMockSessionBinding = () => ({
     clear: vi.fn().mockResolvedValue(undefined),
 });
 
-// TASK-351 P1-3 (M6 part 2) — parks session ids whose upstream removal
+// Parks session ids whose upstream removal
 // failed on disconnect so they can be retried with backoff.
 const createMockRemovalRetry = () => ({
     enqueue: vi.fn(),
@@ -135,10 +135,10 @@ describe('SttWsGateway', () => {
             expect(mockStreamTicketService.consumeTicket).toHaveBeenCalledWith('valid-ticket');
         });
 
-        // TASK-307 W5.8 (AC-22, audit D-8) updated these from per-cause
+        // These were updated from per-cause
         // (MISSING_PARAM / AUTH_FAILED with descriptive reasons) to the
         // single generic 4401 + "Authentication failed". The per-cause
-        // truth table now lives in the W5.8 describe block below.
+        // truth table now lives in the describe block below.
         it('should reject connection without sessionId (TASK-298 D-1, retuned by W5.8)', async () => {
             const client = createMockSocket();
             await gateway.handleConnection(client as any, { url: '/ws/stt-v2/stream' } as any);
@@ -207,13 +207,13 @@ describe('SttWsGateway', () => {
             expect(mockStreamTicketService.consumeTicket).toHaveBeenCalledBefore(
                 mockBridgeService.subscribeToResults as any,
             );
-            // TASK-457 C3-01 — subscribes with the stable 'captions' consumer
+            // Subscribes with the stable 'captions' consumer
             // group so the bridge resumes from the persisted cursor on a
             // re-subscription (never a 0-0 re-read).
             expect(mockBridgeService.subscribeToResults).toHaveBeenCalledWith('sess-sub', { consumerGroup: 'captions' });
         });
 
-        // TASK-307 W5.8 (AC-22, audit D-8) — every handshake-rejection
+        // Every handshake-rejection
         // path must close with the SAME generic code (4401) and the same
         // constant reason, regardless of cause. Differentiating
         // `4001 missing param` from `4401 invalid ticket` lets a probing
@@ -330,7 +330,7 @@ describe('SttWsGateway', () => {
                 }
             });
 
-            // TASK-450 C4-01 — the binding-mismatch rejection joins the same
+            // The binding-mismatch rejection joins the same
             // generic-close truth table (no fifth distinguishable signal).
             it('session tenant-binding mismatch -> 4401 with the generic reason (no tenant id on the wire)', async () => {
                 const client = createMockSocket();
@@ -373,7 +373,7 @@ describe('SttWsGateway', () => {
             });
         });
 
-        // TASK-450 C4-01 — a ticket whose SCOPE matches the sessionId but whose
+        // A ticket whose SCOPE matches the sessionId but whose
         // tenant is NOT the session's owning tenant used to pass the handshake
         // (the gateway trusted `stored.tenantId` and never consulted the
         // gateway-side sessionId → tenantId binding). The handshake now mirrors
@@ -453,7 +453,7 @@ describe('SttWsGateway', () => {
         });
     });
 
-    // TASK-457 C3-01 — a TRANSIENT disconnect must NOT finalize the upstream:
+    // A TRANSIENT disconnect must NOT finalize the upstream:
     // the session (buffer + seq + subscription) is kept alive for a grace
     // window so the SAME session can reconnect and continue. Only when the
     // window expires with no reconnect is the upstream finalized.
@@ -490,7 +490,7 @@ describe('SttWsGateway', () => {
             }
         });
 
-        // TASK-351 P1-3 (M6 part 2) — a failed fire-and-forget removeSession
+        // A failed fire-and-forget removeSession
         // used to leave the Python session leaked. The failure now parks the
         // session id on a retry queue — now at grace-window expiry.
         it('enqueues a removal retry when the upstream removeSession fails at grace expiry (TASK-351 P1-3 / M6)', async () => {
@@ -653,8 +653,8 @@ describe('SttWsGateway', () => {
     });
 
     // =========================================================================
-    // TASK-351 P0-2 — session-negotiated sampleRate (C5) + non-blocking audio
-    // ingestion (C1).
+    // Session-negotiated sampleRate + non-blocking audio
+    // ingestion.
     // =========================================================================
     describe('TASK-351 P0-2 — negotiated sampleRate + non-blocking ingestion', () => {
         it('forwards the session-negotiated sampleRate on binary frames (C5)', async () => {
@@ -792,7 +792,7 @@ describe('SttWsGateway', () => {
             const client = createMockSocket();
             setValidTicketFor('sess-fwd');
             await gateway.handleConnection(client as any, buildReq('sess-fwd') as any);
-            // TASK-457 I1 — drop the readiness ack so we assert the transcript.
+            // Drop the readiness ack so we assert the transcript.
             (client.send as any).mockClear();
 
             resultSubject.next({
@@ -818,7 +818,7 @@ describe('SttWsGateway', () => {
             expect(second.seq).toBe(2);
         });
 
-        // TASK-351 P1-1 — stableChars (committed-prefix length) is an
+        // stableChars (committed-prefix length) is an
         // additive bridge field; the gateway must forward it untouched on
         // the WS transcript message and omit it when absent.
         it('forwards stableChars on the relayed transcript when present (TASK-351 P1-1)', async () => {
@@ -828,7 +828,7 @@ describe('SttWsGateway', () => {
             const client = createMockSocket();
             setValidTicketFor('sess-stable');
             await gateway.handleConnection(client as any, buildReq('sess-stable') as any);
-            // TASK-457 I1 — drop the readiness ack so we assert the transcript.
+            // Drop the readiness ack so we assert the transcript.
             (client.send as any).mockClear();
 
             resultSubject.next({
@@ -844,7 +844,7 @@ describe('SttWsGateway', () => {
             expect(sent.stableChars).toBe(5);
         });
 
-        // TASK-351 P1-1 follow-up — gloss results (post-final English
+        // Gloss results (post-final English
         // translations) ride the same relay; their additive fields must
         // survive the `{ ...msg, seq }` spread untouched.
         it('forwards gloss results with resultType/englishText/utteranceIndex intact (TASK-351 follow-up)', async () => {
@@ -854,7 +854,7 @@ describe('SttWsGateway', () => {
             const client = createMockSocket();
             setValidTicketFor('sess-gloss');
             await gateway.handleConnection(client as any, buildReq('sess-gloss') as any);
-            // TASK-457 I1 — drop the readiness ack so we assert the transcript.
+            // Drop the readiness ack so we assert the transcript.
             (client.send as any).mockClear();
 
             resultSubject.next({
@@ -883,7 +883,7 @@ describe('SttWsGateway', () => {
             const client = createMockSocket();
             setValidTicketFor('sess-no-utt');
             await gateway.handleConnection(client as any, buildReq('sess-no-utt') as any);
-            // TASK-457 I1 — drop the readiness ack so we assert the transcript.
+            // Drop the readiness ack so we assert the transcript.
             (client.send as any).mockClear();
 
             resultSubject.next({
@@ -906,7 +906,7 @@ describe('SttWsGateway', () => {
             const client = createMockSocket();
             setValidTicketFor('sess-no-stable');
             await gateway.handleConnection(client as any, buildReq('sess-no-stable') as any);
-            // TASK-457 I1 — drop the readiness ack so we assert the transcript.
+            // Drop the readiness ack so we assert the transcript.
             (client.send as any).mockClear();
 
             resultSubject.next({
@@ -1006,7 +1006,7 @@ describe('SttWsGateway', () => {
     });
 
     // =========================================================================
-    // TASK-457 — the folded-in WS-control fix. ws@8 delivers TEXT frames as a
+    // The folded-in WS-control fix. ws@8 delivers TEXT frames as a
     // Buffer with isBinary=false; the gateway used to split audio-vs-JSON on
     // Buffer.isBuffer(), so JSON control frames ({resume|stop|close}) were
     // misclassified as binary audio and the JSON path never ran. It now routes
@@ -1066,8 +1066,8 @@ describe('SttWsGateway', () => {
     });
 
     // =========================================================================
-    // TASK-457 C3-01 — reconnect-after-drop target (the unit-level mirror of
-    // the task-455 resume-after-drop e2e gate): resume from lastSeq+1, no
+    // Reconnect-after-drop target (the unit-level mirror of
+    // the resume-after-drop e2e gate): resume from lastSeq+1, no
     // duplicate flood, no silent freeze.
     // =========================================================================
     describe('TASK-457 C3-01 — reconnect-after-drop resume', () => {
@@ -1103,7 +1103,7 @@ describe('SttWsGateway', () => {
             expect(mockBridgeService.subscribeToResults).toHaveBeenCalledTimes(2);
             expect(mockBridgeService.subscribeToResults.mock.calls.every((c: any[]) => c[1]?.consumerGroup === 'captions')).toBe(true);
 
-            // The client drives the D-17 resume from the last seq it saw (3).
+            // The client drives the resume from the last seq it saw (3).
             await gateway.handleMessage(
                 client2 as any,
                 Buffer.from(JSON.stringify({ type: 'resume', sessionId: 'sess-rad', lastSeq: 3 })) as any,
@@ -1130,7 +1130,7 @@ describe('SttWsGateway', () => {
     });
 
     // =========================================================================
-    // TASK-457 I1 — readiness ack. handleConnection registers the session
+    // Readiness ack. handleConnection registers the session
     // AFTER async auth/lookup awaits; a client that resumes/sends the instant
     // its socket opens would race registration → NO_SESSION → silent freeze.
     // The gateway now emits {type:'ready'} after registration so the client
@@ -1166,7 +1166,7 @@ describe('SttWsGateway', () => {
     });
 
     // =========================================================================
-    // TASK-457 I3 — graceful shutdown. onModuleDestroy must FINALIZE live +
+    // Graceful shutdown. onModuleDestroy must FINALIZE live +
     // in-grace sessions so a SIGTERM / rolling deploy does not orphan STT-v2
     // sessions (and their capacity slots) until the STT-v2 reaper.
     // =========================================================================
@@ -1198,7 +1198,7 @@ describe('SttWsGateway', () => {
     });
 
     // =========================================================================
-    // TASK-351 P1-4 — WS egress backpressure (H6).
+    // WS egress backpressure.
     //
     // Contract: when the client socket's `bufferedAmount` exceeds the 512 KiB
     // threshold, PARTIAL transcripts are dropped (per-session counter + log)
@@ -1319,14 +1319,14 @@ describe('SttWsGateway', () => {
             expect(finals).toHaveLength(FINAL_QUEUE_LIMIT);
             // The newest final survives; the oldest was the one dropped (loudly).
             expect(finals[finals.length - 1].text).toBe(`f${FINAL_QUEUE_LIMIT + 1}`);
-            // TASK-457 C3-03 — the dropped final is signaled with an EXPLICIT gap
+            // The dropped final is signaled with an EXPLICIT gap
             // marker (never a silent loss); it is recoverable from the durable
             // transcript, NOT the resume buffer (which evicted it in lockstep).
             expect(sent.some((m) => m.type === 'gap' && m.reason === 'egress_overflow')).toBe(true);
             gateway.handleDisconnect(client as any);
         });
 
-        // TASK-351 P1-1 follow-up — gloss results arrive with isFinal: true,
+        // Gloss results arrive with isFinal: true,
         // so the egress policy must queue them like any final (never drop),
         // and their additive fields must survive the queue+flush round trip.
         it('treats gloss results as finals under backpressure — queued, never dropped (TASK-351 follow-up)', async () => {

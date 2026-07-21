@@ -23,7 +23,7 @@ import {
  * storage. Delegates every call to the {@link IBlobStorageProvider} resolved by
  * {@link BlobStorageProviderFactory}.
  *
- * Tenant-aware (TASK-318 / R5): data-plane calls resolve the provider for the
+ * Tenant-aware: data-plane calls resolve the provider for the
  * current tenant + bucket (per-bucket override → tenant default → global/shared
  * config). With no tenant context (e.g. unit tests, platform jobs) it resolves
  * the global/shared provider, preserving W1 behaviour.

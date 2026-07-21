@@ -8,8 +8,8 @@ import * as Enums from '../../../enums';
 import * as Models from './';
 
 /**
- * Persistence model for the editable, tenant-scoped realtime-pipeline policy
- * (TASK-356 Phase 5, Pillar B). Standard model — carries the inherited
+ * Persistence model for the editable, tenant-scoped realtime-pipeline policy.
+ * Standard model — carries the inherited
  * `_version` OCC token + `resourceStatus` audit fields. The `scope`/`scopeId`
  * discriminator makes the table polymorphic across the cascade tiers; the
  * toggle columns are NULLABLE (null => inherit from the next tier up).

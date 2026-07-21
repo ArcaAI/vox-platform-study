@@ -1,6 +1,6 @@
-"""Model-agnostic judge configuration + provider factory tests (TASK-330, 0.5).
+"""Model-agnostic judge configuration + provider factory tests.
 
-RED-first. The judge model MUST be configurable & model-agnostic via env/config:
+The judge model MUST be configurable & model-agnostic via env/config:
 * an OpenAI-compatible local endpoint (LM Studio / vLLM) is the priority/default
   for a small ≤20B judge,
 * Azure OpenAI and AWS Bedrock are opt-in for a large judge,
@@ -164,7 +164,7 @@ class TestJsonResponseFormat:
 
 
 class TestRobustnessDefaults:
-    """TASK-330 cross-family hardening: a large token budget + reasoning-aware
+    """Cross-family hardening: a large token budget + reasoning-aware
     levers so the judge survives reasoning-runaway across model families
     (qwen3.5, gpt-oss, gemma 3/4, medgemma) on LM Studio / Azure / Bedrock."""
 

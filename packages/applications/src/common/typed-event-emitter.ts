@@ -39,7 +39,7 @@ export interface AuthenticationEventPayload {
 }
 
 /**
- * TASK-541 B1 — failed authentication attempt.
+ * Failed authentication attempt.
  *
  * `userId` is present only when the attempt resolved to a real account
  * (wrong password, disabled account, revoked token). It is absent for an

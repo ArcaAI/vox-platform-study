@@ -1,5 +1,5 @@
 /**
- * useArcaSession.update Tests (TASK-323 Phase 0 / TASK-322 lifecycle)
+ * useArcaSession.update Tests
  *
  * `session.update(input)` → PATCH /consultations/:id. Mirrors the existing
  * close()/reopen() lifecycle methods (which POST to /close and /reopen).

@@ -26,7 +26,7 @@ export class UserResponse extends BaseResponse {
   })
   isLead?: boolean;
 
-  // AC-05 (TASK-336) — secret1/secret2 (and their expiries) are sensitive user
+  // secret1/secret2 (and their expiries) are sensitive user
   // credentials and are deliberately NOT exposed on this response. The auto
   // entity→DTO mapper copies a field only when the target instance declares it,
   // so omitting them here keeps them out of every serialised UserResponse.

@@ -3,7 +3,7 @@
  *
  * Root provider component for the SDK.
  *
- * TASK-297 — DEF-C5, DEF-C6, DEF-H1, DEF-H4, DEF-H5, DEF-H6.
+ * Key behaviors:
  *   - DEF-C6: `/auth/me` is preloaded before `configReady` flips. Without
  *             credentials, `/auth/me` is skipped entirely and both
  *             `profileReady` and `configReady` remain false.
@@ -33,13 +33,13 @@ import { useStore } from 'zustand';
 import { createAgenticStore, AgenticStoreContext, type AgenticStoreApi } from '../store';
 import { DEFAULT_AUDIO_CONFIG, DEFAULT_PERSONALIZATION_CONFIG } from '../types';
 import { AUTH_ENDPOINTS, DEPARTMENT_ENDPOINTS, PERSONALIZATION_ENDPOINTS, USER_SETTINGS_ENDPOINTS } from '../core/constants';
-// TASK-304 Wave 2D — single source of truth for the `arcaai-config` IDB
+// Single source of truth for the `arcaai-config` IDB
 // schema (now v2 with `user-preferences` and `personalization` stores).
 import { configDBGet, configDBSet, USER_PREFERENCES_STORE } from '../core/configDB';
 
 // =============================================================================
-// IndexedDB persistence helpers (TASK-244 / Task 1.5; namespaced in TASK-297 DEF-H1;
-// schema delegated to `core/configDB` in TASK-304 Wave 2D)
+// IndexedDB persistence helpers (namespaced per tenant/user;
+// schema delegated to `core/configDB`)
 // =============================================================================
 
 const LS_NAMESPACE_PREFIX = 'arcaai-user-preferences/';
@@ -100,7 +100,7 @@ function makePersistUserPreferencesToStorage(nsRef: { current: string }) {
 }
 
 // =============================================================================
-// Server persistence (TASK-331 doc-07 F5a)
+// Server persistence
 //
 // ADDITIVE server sync of the user-pref tier. SDK prefs live under the
 // server-owned `arcaai-sdk` namespace with DOT-PATH keys (e.g. `stt.language`),
@@ -165,7 +165,7 @@ function flattenUserPrefsToLeaves(prefs: DeepPartial<AppConfig>, prefix = ''): S
  * ever throws (a failed sync must not break local-storage persistence).
  *
  * Gating to "not impersonating" is handled by ConfigManager's read-only
- * short-circuit (TASK-245) at SCHEDULE time, AND re-checked here at FLUSH time
+ * short-circuit at SCHEDULE time, AND re-checked here at FLUSH time
  * via `isReadOnly()`: because the sync is debounced, an edit scheduled by the
  * admin just before impersonation starts must not have its pending PATCH land
  * on the impersonated user's profile.
@@ -242,7 +242,7 @@ export interface AgenticProviderProps {
  * Wraps your application and provides SDK functionality via hooks.
  */
 export function AgenticProvider({ config, children }: AgenticProviderProps) {
-  // TASK-317 W4.2 (AC-12) — own ONE isolated store instance per provider mount
+  // Own ONE isolated store instance per provider mount
   // (lazy-init into a ref so it survives re-renders) instead of the shared
   // module singleton. Each concurrent tenant in a multi-tenant tree therefore
   // gets independent state (audit C-1). The instance is published via
@@ -287,7 +287,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     });
     loggerRef.current = logger;
 
-    // TASK-317 W5.3 (AC-16 / audit E-1): the `console` path here is the
+    // The `console` path here is the
     // INTENDED fail-safe base case, not an incidental error handler.
     //
     // `createSDKLogger` installs a ConsoleTransport by default (unless a
@@ -325,7 +325,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     const pluginManager = new PluginManager(audioConfig, logger.child('PluginManager'), apiClient, cfg.debug);
 
     const personalizationConfig = cfg.personalization ?? DEFAULT_PERSONALIZATION_CONFIG;
-    // TASK-317 W1.1/W1.2 (AC-1/AC-4, review C-1) — the namespace starts at
+    // The namespace starts at
     // `pre-login` (the user-id arrives later from /auth/me). PersonalizationManager
     // and ModelRegistry are handed a LIVE accessor over `namespaceRef`, so they
     // derive their browser-storage keys per access and follow the real
@@ -337,7 +337,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     const nsAccessor = () => namespaceRef.current;
     const personalizationManager = new PersonalizationManager(personalizationConfig, apiClient, logger.child('PersonalizationManager'), nsAccessor);
 
-    // TASK-304 Wave 2D — hydrate the IDB cache asynchronously. We don't
+    // Hydrate the IDB cache asynchronously. We don't
     // await here so the rest of init (which is mostly synchronous) is
     // unblocked; the onChange listener wired below picks up the merged
     // snapshot once hydration completes, and we explicitly push it into
@@ -357,7 +357,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         });
       });
 
-    // TASK-317 W1.5 (AC-4) — key the selected-models localStorage entry by the
+    // Key the selected-models localStorage entry by the
     // same live `${tenantId}::${userId}` accessor; re-keyed after /auth/me.
     const modelRegistry = new ModelRegistry(cfg.models ?? {}, apiClient, logger.child('ModelRegistry'), nsAccessor);
 
@@ -396,7 +396,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
       });
     }
 
-    // TASK-334 I-1 — capture the backend-preferences load so init() can await
+    // Capture the backend-preferences load so init() can await
     // it and read the per-user resolved `remoteConfig.pipelineId` before the
     // first cascade resolve (see Step 2). Resolves even on failure so the
     // tenant tier still applies without the pipeline id.
@@ -408,7 +408,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         .then(() => {
           const loaded = personalizationManager.getPreferences();
           store.setPreferences(loaded);
-          // TASK-304 Wave 2 W2-SDK-7 — refresh the PluginManager snapshot once
+          // Refresh the PluginManager snapshot once
           // the DB-side preferences land so any pipeline built after this
           // moment uses the user's saved local-STT config.
           pluginManager.setUserPreferences(loaded);
@@ -422,18 +422,18 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     }
 
     // -----------------------------------------------------------------------
-    // 4-tier ConfigManager + cascade init (TASK-244 + TASK-297 DEF-C5/C6/H1/H4/H5)
+    // 4-tier ConfigManager + cascade init
     // -----------------------------------------------------------------------
 
-    // Namespace bootstrapped to `pre-login` above (TASK-317 W1.1/W1.2); the
+    // Namespace bootstrapped to `pre-login` above; the
     // managers follow `namespaceRef` lazily and are re-hydrated once /auth/me
     // resolves the real `${tenantId}::${userId}`.
     const configManagerLogger = logger.child('ConfigManager');
     const configManager = new ConfigManager({
       onLoadUserPreferences: makeLoadUserPreferencesFromStorage(namespaceRef),
       onPersistUserPreferences: makePersistUserPreferencesToStorage(namespaceRef),
-      // TASK-331 doc-07 F5a — additive, debounced server sync. ConfigManager's
-      // read-only short-circuit (TASK-245) keeps this from firing while the
+      // Additive, debounced server sync. ConfigManager's
+      // read-only short-circuit keeps this from firing while the
       // playground impersonates, so impersonated edits never reach the server;
       // the flush-time `isReadOnly` re-check also covers the debounce window.
       onPersistUserPreferencesToServer: makePersistUserPreferencesToServer(
@@ -446,7 +446,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     configManagerRef.current = configManager;
     store.setConfigManager(configManager);
 
-    // TASK-297 DEF-H4 — wire the cascade sink so PersonalizationManager
+    // Wire the cascade sink so PersonalizationManager
     // forwards user-editable fields straight into ConfigManager.setUserValue.
     personalizationManager.setConfigManager(configManager);
 
@@ -454,7 +454,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
       store.setResolvedConfig(resolved);
     });
 
-    // TASK-297 DEF-H5 — cache the tenant-config promise so subsequent
+    // Cache the tenant-config promise so subsequent
     // consumers (this effect, ModelRegistry callers) share a single fetch.
     if (!tenantConfigPromiseRef.current) {
       tenantConfigPromiseRef.current = modelRegistry.loadTenantConfig();
@@ -480,7 +480,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
 
     const configOp = providerLogger.startOperation('initConfigManager');
     const init = async () => {
-      // TASK-297 DEF-C6 — without credentials we cannot call /auth/me, so
+      // Without credentials we cannot call /auth/me, so
       // we deliberately leave `configReady` false. The companion effect
       // (auth user change) will rehydrate once credentials arrive.
       if (!hasCredentials) {
@@ -510,7 +510,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         store.setIsAuthenticated(true);
         store.setProfileReady(true);
         namespaceRef.current = makeNamespace(me.tenantId ?? cfg.api.tenantId, me.id);
-        // TASK-317 W1.2 (AC-1/AC-4, review C-1) — the namespace is now the real
+        // The namespace is now the real
         // `${tenantId}::${userId}`. Re-key the managers (they read the live
         // accessor) and re-hydrate from the authenticated rows so a shared
         // workstation never serves the previous user's cached personalization
@@ -537,14 +537,14 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         if (tenantCfg.features) {
           tenantOverrides.features = tenantCfg.features as DeepPartial<AppConfig['features']>;
         }
-        // TASK-332 — surface the server-computed effective local raw-capture
+        // Surface the server-computed effective local raw-capture
         // flag as a tenant-tier override. It is admin-owned in CONFIG_PERMISSIONS,
         // so the cascade's stripLockedAndAdminPaths prevents user prefs from
         // overriding it; the panel reads resolvedConfig.audio.captureRawAudio.
         if (tenantCfg.captureRawAudio !== undefined) {
           tenantOverrides.audio = { ...(tenantOverrides.audio ?? {}), captureRawAudio: tenantCfg.captureRawAudio };
         }
-        // TASK-334 I-1 — the assigned remote ASR pipeline is resolved per-user
+        // The assigned remote ASR pipeline is resolved per-user
         // server-side (per-user admin override -> tenant default -> global) and
         // returned on GET /user/me/preferences as `remoteConfig.pipelineId`.
         // Surface it as an admin-owned tenant-tier override
@@ -561,7 +561,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
           if (remotePipelineId) {
             tenantOverrides.stt = { ...(tenantOverrides.stt ?? {}), transcriptionPipelineId: remotePipelineId };
           }
-          // TASK-356 — the EFFECTIVE transcription mode is resolved per-user
+          // The EFFECTIVE transcription mode is resolved per-user
           // server-side and returned on the prefs response. Surface it as an
           // admin-owned tenant-tier override (stt.transcriptionMode is
           // permission:'admin') so the cascade keeps it authoritative against
@@ -637,7 +637,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
       });
     });
 
-    // TASK-304 Wave 2 W2-SDK-7 — push user preferences (localConfig +
+    // Push user preferences (localConfig +
     // activeVoiceProfile) into PluginManager so the next pipeline build picks
     // them up and a running pipeline receives the delta live (language /
     // noise level / VAD sensitivity / reserved speaker).
@@ -680,7 +680,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
   }, []);
 
   // ---------------------------------------------------------------------------
-  // TASK-297 DEF-H1 — re-hydrate ConfigManager when the active user changes.
+  // Re-hydrate ConfigManager when the active user changes.
   // ---------------------------------------------------------------------------
   const authUser = store.authUser as { id?: string; tenantId?: string; departmentId?: string } | null;
   const impersonated = store.authImpersonatedUser as { id?: string; tenantId?: string; departmentId?: string } | null;
@@ -698,7 +698,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     if (namespaceRef.current === nextNamespace) return;
     namespaceRef.current = nextNamespace;
 
-    // TASK-317 W2.1 (AC-7, audit C-5; review C-1) — reset the OUTGOING tenant's
+    // Reset the OUTGOING tenant's
     // FULL PHI/session set SYNCHRONOUSLY, the instant the effective tenant/user
     // changes and BEFORE the async re-hydrate below resolves the new tenant's
     // config. This closes the window where tenant B is already active in the
@@ -723,7 +723,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
       attributes: { namespace: nextNamespace },
     });
 
-    // TASK-317 W1.2 (AC-1/AC-4, review C-1) — managers read the live namespace
+    // Managers read the live namespace
     // accessor; re-key them to the incoming namespace so a tenant/user switch
     // in the same tab reads the new user's rows (and writes under their
     // namespace), never the outgoing user's.
@@ -733,13 +733,13 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     (async () => {
       try {
         modelRegistry?.reloadSelected();
-        // TASK-317 W2.1 (AC-7) — `reloadSelected()` replaced the registry's
+        // `reloadSelected()` replaces the registry's
         // in-memory selection with the incoming namespace's (or empty); bump
         // the version so the `useArcaConfig` `models` memo recomputes and
         // consumers immediately stop rendering the previous tenant's selection.
         store.incrementModelRegistryVersion();
 
-        // TASK-317 W2.1 (review M-2) — `clearTenantSessionData()` nulled
+        // `clearTenantSessionData()` nulls
         // `tenantConfig` synchronously above, but the mount-time
         // `loadTenantConfig()` promise resolved the OUTGOING tenant's audio/AI
         // config and is never re-run on a same-tab switch. Re-fetch the INCOMING
@@ -758,7 +758,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
             store.setTenantConfig(nextTenantCfg);
             store.incrementModelRegistryVersion();
 
-            // TASK-334 impersonation parity — re-apply the CASCADE tenant tier for
+            // Re-apply the CASCADE tenant tier for
             // the INCOMING identity. The mount-time init() (deps []) is the only
             // other place that calls `configManager.setTenantConfig`, and it
             // injects the per-user server-resolved remote ASR pipeline
@@ -803,7 +803,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
             if (remotePipelineId) {
               nextTenantOverrides.stt = { ...(nextTenantOverrides.stt ?? {}), transcriptionPipelineId: remotePipelineId };
             }
-            // TASK-356 — re-apply the switched-in user's effective transcription mode.
+            // Re-apply the switched-in user's effective transcription mode.
             if (effectiveTranscriptionMode) {
               nextTenantOverrides.stt = { ...(nextTenantOverrides.stt ?? {}), transcriptionMode: effectiveTranscriptionMode };
             }
@@ -825,7 +825,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
           store.setPreferences(personalizationManager.getPreferences());
         }
 
-        // TASK-331 doc-05 F-2 — while impersonating, the playground is the SINGLE
+        // While impersonating, the playground is the SINGLE
         // writer of the user-pref tier: it loads the impersonated user's REAL
         // backend prefs (GET /user/me/settings via the doctor JWT) read-only.
         // `loadUserPreferences()` is LOCAL-IDB-ONLY (the impersonated user has no
@@ -875,7 +875,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
   }, [effectiveUserId, effectiveTenantId, effectiveDepartmentId]);
 
   // ---------------------------------------------------------------------------
-  // TASK-320 B2 — auto-wire the 401→refresh single-flight handler.
+  // Auto-wire the 401→refresh single-flight handler.
   //
   // `AgenticClient` already implements a 401→refresh-once mutex
   // (`deduplicatedRefresh`/`setOnUnauthorized`), but it only fires when a
@@ -901,7 +901,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
   useEffect(() => {
     const apiClient = store.apiClient;
     if (!apiClient) return;
-    // TASK-331 doc-05 F-5 — a host that owns its own 401 handling can opt out
+    // A host that owns its own 401 handling can opt out
     // (e.g. ui-playground's impersonation-aware `useAutoRefresh`), leaving the
     // single-slot `setOnUnauthorized` a single deterministic owner. Default
     // (undefined / true) preserves the B2 auto-refresh. Read via `configRef`
@@ -919,7 +919,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         if (!data?.token) return false;
         apiClient.updateAccessToken(data.token);
         // Rotate the in-memory refresh token (backend refresh tokens are
-        // single-use — TASK-307 W1.3) so the next 401 can refresh again.
+        // single-use) so the next 401 can refresh again.
         if (data.refreshToken) {
           apiClient.setRefreshToken(data.refreshToken);
         }
@@ -972,7 +972,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     [store.initialized, config],
   );
 
-  // TASK-317 W4.2 (AC-12) — publish the per-provider store instance so every
+  // Publish the per-provider store instance so every
   // descendant hook (`useArca`, `useArcaConfig`, …) binds to THIS tenant's
   // store via `useStoreApi()`/the context-backed `useAgenticStore`, never the
   // module singleton.

@@ -20,7 +20,7 @@ class TestDiarizationConfigDefaults:
         assert config.min_update_confidence == 0.8
         assert config.enable_segmentation_refinement is True
         assert config.max_embeddings_per_speaker == 8
-        # TASK-475 B2: the backend selector defaults to the existing embedding path
+        # The backend selector defaults to the existing embedding path
         # so current behavior is preserved until Streaming Sortformer is staged.
         assert config.backend == "embedding"
 
@@ -160,7 +160,7 @@ diarization:
 
 
 class TestDiarizationBackendSelector:
-    """TASK-475 B2: DiarizationConfig gains a backend selector (embedding|sortformer)."""
+    """DiarizationConfig gains a backend selector (embedding|sortformer)."""
 
     @pytest.fixture
     def parser(self):

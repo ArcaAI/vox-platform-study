@@ -1,4 +1,4 @@
-"""TDD tests for the OpenAI-compatible speech endpoint (TASK-488 Phase 2)."""
+"""TDD tests for the OpenAI-compatible speech endpoint."""
 
 from __future__ import annotations
 

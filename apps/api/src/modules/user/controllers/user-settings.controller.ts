@@ -14,9 +14,9 @@ import { ClsService } from 'nestjs-cls';
 import { Authorize } from '../../../decorators';
 
 /**
- * TASK-298 D-5 — Setting namespace/key reserved for the doctor's chosen
- * pipeline. The validator below enforces that the value identifies a
- * pipeline the caller's tenant owns before persisting.
+ * Setting namespace/key reserved for the doctor's chosen pipeline. The
+ * validator below enforces that the value identifies a pipeline the
+ * caller's tenant owns before persisting.
  */
 const SELECTED_PIPELINE_NAMESPACE = 'arcaai-sdk';
 const SELECTED_PIPELINE_KEY = 'selectedPipelineId';
@@ -77,10 +77,10 @@ export class UserSettingsController {
    * open to arbitrary namespaces (the SDK lets clients choose their own), so
    * these are targeted, per-namespace guards — not a rejecting allow-list.
    *
-   * - TASK-298 D-5: `arcaai-sdk:selectedPipelineId` must reference a pipeline
+   * - `arcaai-sdk:selectedPipelineId` must reference a pipeline
    *   owned by the caller's tenant (PipelineService.getById is tenant-scoped,
    *   so a `null` result is sufficient to reject).
-   * - TASK-372 D8 / TASK-375: `ui.data-grid` layout values must be well-formed
+   * - `ui.data-grid` layout values must be well-formed
    *   JSON within the byte cap. This is an early-reject (fast 400) that
    *   delegates to the shared {@link validateUiDataGridValue}; the service
    *   layer enforces the SAME guard so the admin path is covered too.

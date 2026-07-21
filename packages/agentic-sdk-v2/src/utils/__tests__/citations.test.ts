@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - Citations / provenance utilities (TASK-330 Phase 1, Lane J)
+ * @arcaai/vox - Citations / provenance utilities
  *
  * These pure helpers back the linked-evidence clinician review UI:
  *   - float-to-top ordering of unverified/flagged claims (anti-omission UX)

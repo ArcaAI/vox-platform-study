@@ -1,5 +1,5 @@
 /**
- * TASK-526 — tenant BYO cloud-credential client. Paths are gateway-relative;
+ * Tenant BYO cloud-credential client. Paths are gateway-relative;
  * the shared core prepends the BFF proxy mount. Tenant admins omit `tenantId`
  * (the gateway pins them to their CLS tenant); elevated callers ride the
  * working tenant injected as `X-Tenant-Id` by the proxy.

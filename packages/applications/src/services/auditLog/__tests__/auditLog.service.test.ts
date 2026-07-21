@@ -47,13 +47,13 @@ const mockAuditLogRepository = {
     softDelete: vi.fn(),
 };
 
-// Mock UserRepository (dependency boundary) — TASK-328 A8 acting-user enrichment.
+// Mock UserRepository (dependency boundary) — acting-user enrichment.
 const mockUserRepository = {
     findAll: vi.fn().mockResolvedValue([]),
 };
 
 // Mock CoreDatabaseService (dependency boundary).
-// TASK-314 §7: the authentication-audit write must bypass the tenant-scope
+// The authentication-audit write must bypass the tenant-scope
 // `$extends`, so it goes through the UNSCOPED `baseClient` rather than the
 // tenant-scoped repository. The scoped `client` is intentionally distinct so
 // tests can assert the bypass invariant (it must never be touched here).
@@ -75,7 +75,7 @@ const mockDatabaseService = {
  * Includes all fields to prevent incomplete mock anti-pattern.
  * Updated to include new fields: eventType, success (for high-performance querying)
  *
- * TASK-305 D.8: `tenantId` defaults to 'tenant-1' to match the CLS mock context,
+ * `tenantId` defaults to 'tenant-1' to match the CLS mock context,
  * so existing tests that load entities by id pass the new ownership assertion.
  */
 const createMockAuditLogEntity = (overrides: Partial<{
@@ -151,7 +151,7 @@ vi.mock('@arcaai/domains', async () => {
                 toObject: vi.fn().mockReturnValue({ id: 'new-audit-log-id', ...data }),
             })),
         },
-        // TASK-314 §7: the service maps the entity to its persistence shape
+        // The service maps the entity to its persistence shape
         // before the baseClient create. Pass the entity through unchanged so
         // the create payload stays deterministic and assertions can match the
         // factory-built fields directly.
@@ -337,7 +337,7 @@ describe('AuditLogService', () => {
     });
 
     // -------------------------------------------------------------------------
-    // OB-04 (TASK-336) — admin reads must not inflate the audit trail, and reads
+    // OB-04 — admin reads must not inflate the audit trail, and reads
     // OF the audit log itself must never be audited. No read path may emit a
     // ResourceViewed system event (the SysEvent → audit/webhook/activity pipeline).
     // -------------------------------------------------------------------------
@@ -379,7 +379,7 @@ describe('AuditLogService', () => {
         });
     });
 
-    // OB-10 (TASK-336) — the soft-delete capability was removed for audit-log
+    // OB-10 — the soft-delete capability was removed for audit-log
     // immutability. Audit rows are append-only from the admin surface.
     describe('deleteById removed (OB-10)', () => {
         it('does not expose a deleteById method on the service', () => {
@@ -388,7 +388,7 @@ describe('AuditLogService', () => {
     });
 
     /**
-     * TASK-305 D.8 — Multi-tenant isolation for AuditLogService
+     * Multi-tenant isolation for AuditLogService
      *
      * Audit finding C-5 (HIPAA §164.312(b)): fetch methods were tenant-blind,
      * letting a Tenant-A admin enumerate every tenant's audit log.
@@ -512,7 +512,7 @@ describe('AuditLogService', () => {
             });
         });
 
-        // OB-07 / TASK-305 D.8 (TASK-336) — the CSV export is a bulk read of the
+        // The CSV export is a bulk read of the
         // audit trail; it MUST honour the same tenant scope as the table it
         // mirrors, otherwise an operator could export another tenant's rows.
         describe('exportFiltered', () => {
@@ -772,7 +772,7 @@ describe('AuditLogService', () => {
                 });
             });
 
-            // TASK-331 M-3 — explicit impersonation start/stop bracket rows.
+            // Explicit impersonation start/stop bracket rows.
             // The AuditAction enum is frozen (no DB migration in this scope), so
             // START/STOP reuse the existing IMPERSONATED_ACTION + IMPERSONATION
             // eventType and are distinguished by a `phase` discriminator persisted
@@ -871,12 +871,12 @@ describe('AuditLogService', () => {
             });
 
             /**
-             * TASK-314 §7 — tenant-scope bypass invariant for the auth audit.
+             * Tenant-scope bypass invariant for the auth audit.
              *
              * `AuthService.trackAuthentication` emits `user.authenticated` while
              * CLS still has NO tenant context (login is a public route handled
              * before any user/tenant is hydrated). `AuditLog` is tenant-scoped
-             * (TASK-305 Phase B), so the normal repository write would throw
+             * , so the normal repository write would throw
              * "tenant context required for model AuditLog" and the row would be
              * silently dropped. The fix routes the create through the UNSCOPED
              * `baseClient`; the audit's tenantId is already resolved by the
@@ -1260,7 +1260,7 @@ describe('AuditLogService', () => {
     });
 
     // -------------------------------------------------------------------------
-    // TASK-326 X1 — recordSystemAction: privileged/system action direct-write.
+    // RecordSystemAction: privileged/system action direct-write.
     // Used by the Prisma Studio BFF (raw SQL, untenanted) so every query is on
     // the audit trail. Mirrors the auth direct-write: UNSCOPED baseClient +
     // system-tenant fallback + best-effort (never throws).

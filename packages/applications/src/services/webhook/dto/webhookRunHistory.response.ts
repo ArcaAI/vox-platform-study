@@ -3,8 +3,8 @@ import { JsonValue, WebhookRunStatus } from '@arcaai/domains';
 import { BaseResponse, BaseResponseProps, PaginatedResponse } from '../../../common';
 
 /**
- * One webhook delivery attempt (TASK-419 item 2 — read projection of
- * `WebhookRunHistory`). Rows carry no tenantId: tenancy is enforced through
+ * One webhook delivery attempt — read projection of
+ * `WebhookRunHistory`. Rows carry no tenantId: tenancy is enforced through
  * the parent webhook on the service read path.
  */
 export class WebhookRunHistoryResponse extends BaseResponse {

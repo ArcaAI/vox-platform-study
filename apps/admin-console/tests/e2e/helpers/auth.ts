@@ -23,9 +23,9 @@ export async function loginAsAdmin(page: Page): Promise<void> {
 }
 
 /**
- * Impersonates the given (seeded) username via the BFF impersonate route
- * (BUG-005 / TASK-502 verification). Runs inside the page for the same
- * cookie reason as selectWorkingTenant; call after loginAsAdmin().
+ * Impersonates the given (seeded) username via the BFF impersonate route.
+ * Runs inside the page for the same cookie reason as selectWorkingTenant;
+ * call after loginAsAdmin().
  */
 export async function impersonateUser(page: Page, username: string): Promise<void> {
     const result = await page.evaluate(async (targetUsername) => {

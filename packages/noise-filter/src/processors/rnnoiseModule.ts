@@ -6,8 +6,6 @@
  * `RNNoiseProcessor` consumes; the worklet thread builds the same interface
  * via `workletRnnoiseLoader.ts` because AudioWorklets cannot import npm
  * packages at runtime.
- *
- * TASK-269 — CRIT-3.
  */
 
 /**

@@ -11,7 +11,7 @@ class ModelInfo(BaseModel):
     name: str
     supports_streaming: bool = True
     context_window: int | None = None
-    # TASK-528 — additive probe metadata. ``state`` is the engine-reported load
+    # Additive probe metadata. ``state`` is the engine-reported load
     # state ("loaded" / "not-loaded"); ``None`` = the engine does not report it.
     # ``engine_native`` carries engine-specific extras (quantization, max
     # context length, ...) verbatim — informational, never used for routing.
@@ -26,7 +26,7 @@ class ProviderInfo(BaseModel):
     default_model: str
     models: list[ModelInfo] = Field(default_factory=list)
     supports_streaming: bool = True
-    # TASK-528 §3.3 — per-provider probe outcome, populated by the /providers
+    # Per-provider probe outcome, populated by the /providers
     # endpoint (not by the providers themselves). Additive/optional so the
     # gateway fallback mapper and the SMR contract test stay compatible.
     probe_status: str | None = None

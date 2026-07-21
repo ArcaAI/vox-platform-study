@@ -41,7 +41,7 @@ export class NamedEntityEntityMapper extends BaseMapper<Entities.NamedEntityEnti
 
 export const NamedEntityEntityMapperHandlers = createMapperHandlers<Entities.NamedEntityEntity, Models.NamedEntity>({
   $toPersistence: {
-    // TASK-369 Phase 3C — Bytes-safe: return the raw ciphertext Buffer directly.
+    // Bytes-safe: return the raw ciphertext Buffer directly.
     encryptedText: (entity) => entity.encryptedText ?? null,
     encryptedNormalizedText: (entity) => entity.encryptedNormalizedText ?? null,
     encryptedMetadata: (entity) => entity.encryptedMetadata ?? null,

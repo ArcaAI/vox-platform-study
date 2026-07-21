@@ -1,5 +1,5 @@
 /**
- * TASK-304 Wave 2 — TranscriptionPipeline → createSTT wire-up tests
+ * TranscriptionPipeline → createSTT wire-up tests
  *
  * Verifies that the new STT config surface added in Wave 2C
  * (`voiceProfile`, `task`) is forwarded from

@@ -16,7 +16,7 @@ interface GatewayImpersonateResponse {
         roles: string[];
         permissions: string[];
         tenantId: string;
-        /** Target's primary department in the impersonation tenant (TASK-331 F-9); absent if none active. */
+        /** Target's primary department in the impersonation tenant; absent if none active. */
         departmentId?: string;
     };
     token: string;
@@ -81,7 +81,7 @@ export async function POST(request: Request): Promise<Response> {
             originalRefreshToken: session.refreshToken,
             targetUserId: data.user.id,
             targetUsername: data.user.username,
-            // BUG-005 Phase 0 — the full target identity, so the client can
+            // The full target identity, so the client can
             // project an effective session distinct from the operator's own.
             targetEmail: data.user.email,
             targetRoles: data.user.roles,

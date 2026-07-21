@@ -29,7 +29,7 @@ const mockDepartmentRepository = {
     findChildren: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
-    // TASK-302 Stream D Phase E.2 — `update()` and `updatePromptConfig()` now
+    // `update()` and `updatePromptConfig()` now
     // write via Compare-And-Set (`updateWithVersion`). The legacy `.update()`
     // remains on the mock for assertions that confirm it is NOT called.
     updateWithVersion: vi.fn(),
@@ -59,7 +59,7 @@ const createMockDepartmentEntity = (overrides: Partial<{
     resourceStatus: overrides.resourceStatus ?? 'ENABLED',
     createdAt: overrides.createdAt ?? new Date('2026-01-29T10:00:00Z'),
     updatedAt: overrides.updatedAt ?? new Date('2026-01-29T10:00:00Z'),
-    // TASK-302 Stream D Phase E.2 — every Department row carries a
+    // Every Department row carries a
     // server-owned `_version` after the B.5 BaseEntity getter + E.2.1 mapper.
     version: overrides.version ?? 1,
 });
@@ -412,7 +412,7 @@ describe('DepartmentService', () => {
                     parentDepartmentId: 'non-existent-parent',
                 })
             ).rejects.toThrow(NotFoundException);
-            // TASK-305 D.6 — the `assertParentInScope` helper deliberately
+            // The `assertParentInScope` helper deliberately
             // emits a generic message so the caller cannot distinguish
             // "parent missing" from "parent in another tenant" (no
             // existence leak across tenant boundaries).
@@ -447,7 +447,7 @@ describe('DepartmentService', () => {
             );
         });
 
-        // CC-04 (TASK-336) — the create modal collects `defaultSummaryTemplate`,
+        // CC-04 — the create modal collects `defaultSummaryTemplate`,
         // so `create` must forward it into department creation (the factory).
         // Previously it was dropped, so a template typed at create-time was lost.
         it('CC-04: forwards defaultSummaryTemplate from the DTO into department creation', async () => {
@@ -562,7 +562,7 @@ describe('DepartmentService', () => {
 
             await service.update('dept-1', { name: 'Renamed', expectedVersion: 9 } as any);
 
-            // Same audit shape as Phase C.8 / E.1: the SysEvent carries the
+            // The SysEvent carries the
             // pre- and post-write versions so downstream observers can
             // correlate the change with the row's prior state.
             expect(mockEventEmitter.emit).toHaveBeenCalledWith(
@@ -678,7 +678,7 @@ describe('DepartmentService', () => {
     });
 
     /**
-     * TASK-305 D.6 — Department parent must live in the caller's tenant.
+     * Department parent must live in the caller's tenant.
      *
      * Audit C-7: without this check a tenant can chain a department
      * under a parent owned by a different tenant, building a malformed

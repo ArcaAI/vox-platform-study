@@ -1,5 +1,5 @@
 /**
- * TranscriptionJobService.completeJob encryption wiring (TASK-369 Phase 3C).
+ * TranscriptionJobService.completeJob encryption wiring.
  *
  * `completeJob` is a genuine TS write path for the STT result fields
  * (resultText / resultMetadata) — the Python stt-v2 worker posts the result

@@ -18,7 +18,7 @@ import {
 import { QueueNamePipe } from './pipes/queue-name.pipe';
 
 /**
- * TASK-250 / TASK-336 OB-03 — guarded admin surface over the existing
+ * Guarded admin surface over the existing
  * queue-admin application layer (BullMQ queues + jobs). Reachable at
  * `/api/v1/admin/queues`.
  *
@@ -52,7 +52,7 @@ export class QueueAdminController {
     return this.queueService.getAllQueueStats();
   }
 
-  // TASK-403 — declared before the dynamic `:queueName` routes so the static
+  // Declared before the dynamic `:queueName` routes so the static
   // `health/redis` segment can never be swallowed by a queue-name match.
   @Get('health/redis')
   @ApiOperation({ summary: 'Redis connection health for the queue infrastructure (PING latency + INFO stats). Never errors.' })

@@ -13,7 +13,7 @@ import { ClsService } from 'nestjs-cls';
 import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 
 /**
- * PipelinePolicyAdminController (TASK-356 Phase 5 — Pillar B) — the admin surface
+ * PipelinePolicyAdminController — the admin surface
  * for the realtime-pipeline toggle cascade (auto-summary / auto-NER / harness-vs-
  * legacy routing), mounted at `/admin/harness/pipeline-policy` (global prefix →
  * `/api/v1/admin/harness/pipeline-policy`).

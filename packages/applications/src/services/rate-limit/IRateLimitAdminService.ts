@@ -46,7 +46,7 @@ export interface SetRouteInput {
 }
 
 /**
- * TASK-316 — admin write surface for rate-limit configuration. Each setter
+ * Admin write surface for rate-limit configuration. Each setter
  * persists a `rate-limit.*` `GlobalSetting` row via `IGlobalSettingService`,
  * then forces an `AppSettingsService.refreshCache()` so the change takes effect
  * for subsequent requests without a redeploy. Mirrors `SchedulerAdminService`.

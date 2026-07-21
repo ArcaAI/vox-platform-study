@@ -1,5 +1,5 @@
 /**
- * Voice-embedding math + provider-selection utilities (TASK-329 P4).
+ * Voice-embedding math + provider-selection utilities.
  *
  * Pure, deterministic helpers shared by the LOCAL in-browser voice-embedding
  * provider: cosine similarity for the "quick test" speaker match, centroid

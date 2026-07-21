@@ -27,7 +27,7 @@ export interface ItemListProps<T> extends BaseSurfaceProps, AsyncStateProps {
 }
 
 /**
- * Expandable item-list foundation (TASK-378 §4a.2). Full-width rows with a
+ * Expandable item-list foundation. Full-width rows with a
  * disclosure that reveals a detail panel; roving-tabindex keyboard model; density;
  * optional `@tanstack/react-virtual` virtualization. Expansion is delegated to the
  * shared `useExpansion` controller (single/multiple, controlled/uncontrolled).

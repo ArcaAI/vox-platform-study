@@ -28,8 +28,8 @@ async function waitForSettled(page: Page) {
 
 test.describe('audio pipelines (frame 34)', () => {
     test('shows the header, filters and the fill-height grid', async ({ page }) => {
-        // Redesign (TASK-441): the former Config / Versions-&-lifecycle side
-        // panels moved into the detail slide-over; the grid is now primary.
+        // The former Config / Versions-&-lifecycle side panels moved into
+        // the detail slide-over; the grid is now primary.
         await page.goto('/audio/pipelines');
         await waitForSettled(page);
         await expect(page.getByRole('button', { name: 'New pipeline' }).first()).toBeVisible();

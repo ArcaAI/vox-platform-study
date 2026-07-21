@@ -1,5 +1,5 @@
 /**
- * IngestKnowledgeDocumentProcessor encryption wiring (TASK-369 Phase 3C).
+ * IngestKnowledgeDocumentProcessor encryption wiring.
  *
  * The processor is the SOLE TypeScript write path for KnowledgeChunk rows. This
  * test verifies each chunk's free-text `text` is encrypted into the

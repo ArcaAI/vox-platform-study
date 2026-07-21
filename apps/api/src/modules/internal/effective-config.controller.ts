@@ -6,7 +6,7 @@ import { Public } from '../../decorators';
 import { InternalServiceTokenGuard } from './internal-service-token.guard';
 
 /**
- * EffectiveConfigController (TASK-525 §4.1).
+ * EffectiveConfigController.
  *
  * The read side of the config plane: each Python service polls its own subset
  * (retention / concurrency / runtime profiles) instead of taking those values

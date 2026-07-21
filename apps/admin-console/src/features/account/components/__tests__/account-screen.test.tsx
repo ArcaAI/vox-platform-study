@@ -28,7 +28,7 @@ const SESSION: SafeSession = {
     effectiveTenantId: 'ten-1',
 };
 
-/** BUG-005 — an operator (super_admin) impersonating doctor2. */
+/** An operator (super_admin) impersonating doctor2. */
 const IMPERSONATING_SESSION: SafeSession = {
     user: { id: 'u-1', username: 'super_admin', email: 'root@hope.dev', roles: ['GLOBAL_ADMIN'], tenantId: null },
     isElevated: true,
@@ -139,7 +139,7 @@ describe('AccountScreen', () => {
         expect(within(identity).getByText('SA')).toBeDefined();
     });
 
-    /** BUG-005 Issue 4 — the Identity card shows the caller's own department when present. */
+    /** The Identity card shows the caller's own department when present. */
     it('shows the primary department on the Identity card when present', async () => {
         stubFetch(happyHandler({ departments: [DEPARTMENT] }));
         renderWithProviders(<AccountScreen />);
@@ -202,7 +202,7 @@ describe('AccountScreen', () => {
     });
 
     /**
-     * BUG-005 Issue 4 — while impersonating, the Identity card + page meta
+     * While impersonating, the Identity card + page meta
      * must show the impersonated user, not the operator (`super_admin`).
      */
     it('shows the impersonated identity, not the operator, while impersonating', async () => {

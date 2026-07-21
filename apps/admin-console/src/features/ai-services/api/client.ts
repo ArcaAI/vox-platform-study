@@ -1,5 +1,5 @@
 /**
- * AI-services read plane (TASK-532 B-4 / M-09). All paths are gateway-relative;
+ * AI-services read plane. All paths are gateway-relative;
  * the shared core prepends the BFF proxy mount. Every route here is a GET —
  * neither Python service exposes config writes, so the gateway invents none.
  *

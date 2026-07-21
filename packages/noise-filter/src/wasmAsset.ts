@@ -15,8 +15,6 @@
  * Consumers needing to self-host the binary can override
  * `NoiseFilterOptions.wasmPath` or import the asset via the
  * `@arcaai/noise-filter/wasm` subpath export.
- *
- * TASK-269 — CRIT-2.
  */
 
 /**

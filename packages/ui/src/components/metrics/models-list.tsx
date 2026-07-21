@@ -40,7 +40,7 @@ function relativeTime(value: Date | string | number): string {
 }
 
 /**
- * Loaded-models list (PHASE-2-PLAN §3.8) — a preset over the TASK-378 `ItemList`
+ * Loaded-models list — a preset over the `ItemList`
  * foundation. Like `RunningTasksList` but each row adds a `StatusBadge`
  * (loaded/loading/error) plus size and `font-mono` version columns. The leading
  * `StatusDot` is decorative — the `StatusBadge` carries the textual status, so

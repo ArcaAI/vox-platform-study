@@ -1,8 +1,8 @@
 /**
- * TASK-311 AC-1/AC-2/AC-6 — PolicyRepository / PolicyFactory /
+ * PolicyRepository / PolicyFactory /
  * PolicyEntityMapper unit tests.
  *
- * Pinned behaviour (mirrors the Prisma calls inlined in the pre-TASK-311
+ * Pinned behaviour (mirrors the Prisma calls inlined in the legacy
  * `PolicyService` so the W6 RBAC E2E suite stays green after migration):
  *
  *   • `findMany`/`count` pass `args` through to `client.policy.{findMany,count}`
@@ -17,7 +17,7 @@
  *     of its own.
  *   • `softDelete(id, updatedBy?)` encapsulates the
  *     `update({ data: { resourceStatus: DELETED, … } })` pattern. The
- *     three pre-TASK-311 `.softDelete` paths (policy/role/rolePolicy)
+ *     three legacy `.softDelete` paths (policy/role/rolePolicy)
  *     were already soft via this exact pattern — see README §4.2 audit.
  */
 import { describe, beforeEach, it, expect, vi } from 'vitest';
@@ -283,7 +283,7 @@ describe('TASK-311 — PolicyEntityMapper', () => {
     expect(record.rules).toEqual({ complex: { nested: ['structure'] } });
   });
 
-  // TASK-409 — rows missing the column (legacy fixtures) default to false so
+  // Rows missing the column (legacy fixtures) default to false so
   // the record shape is always total.
   it('defaults isProtected to false when the row omits it (TASK-409)', () => {
     const record = mapPolicyRowToRecord({

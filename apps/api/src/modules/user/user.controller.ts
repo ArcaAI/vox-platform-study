@@ -28,13 +28,10 @@ import {
   PaginatedUserRoleAssignmentResponse,
   isSuperAdmin,
   IActiveUserContext,
-  // TASK-388 #8 — reset-password (admin flows).
   UserPasswordService,
   ResetPasswordRequest,
   ResetPasswordResponse,
-  // TASK-398 P1-6 — imperative CASL check for the bulk assign-role arm.
   type AppAbility,
-  // TASK-398 P1-7 — batched email/department-name enrichment for exports.
   type UserExportEnrichment,
 } from '@arcaai/applications';
 import {
@@ -71,7 +68,7 @@ import { UserExportService, UserExportRow } from './user-export.service';
 import { VoiceProfileResponse } from '../voice-profile/dto/voice-profile.response';
 
 /**
- * TASK-375 (item 3 backend) — default ordering for the admin Users list.
+ * Default ordering for the admin Users list.
  *
  * The CSV `filters`/`sort`/`search` from the shared `PaginatedQuery` already
  * flow through `UserService` → `Repository.findAll`, but with NO `sort` the
@@ -84,10 +81,9 @@ const DEFAULT_USERS_SORT = 'createdAt:desc';
 @ApiBearerAuth()
 @ApiTags('admin-users')
 @Controller('admin/users')
-// Phase 0 Item 3 (TASK-302 Stream A): explicit permission required.
 @CanManage('User')
 export class UserController {
-  /** TASK-388 #10 — hard cap on export rows (FLAG: large tenants stream/paginate in a follow-up). */
+  /** Hard cap on export rows (FLAG: large tenants stream/paginate in a follow-up). */
   private static readonly EXPORT_LIMIT = 10000;
 
   constructor(
@@ -103,12 +99,9 @@ export class UserController {
     private readonly userProfileService: IUserProfileService,
     @Inject(IVoiceProfileService)
     private readonly voiceProfileService: IVoiceProfileService,
-    // TASK-381 V2 — bulk department reconcile for the Users surface.
     @Inject(IUserDepartmentService)
     private readonly userDepartmentService: IUserDepartmentService,
-    // TASK-388 #8 — admin reset-password (temporary password + emailed link).
     private readonly userPasswordService: UserPasswordService,
-    // TASK-388 #10 — server-side export (csv/xlsx/pdf) serialization.
     private readonly userExportService: UserExportService,
     private readonly cls: ClsService<IActiveUserContext>,
   ) {}
@@ -123,7 +116,7 @@ export class UserController {
     return UserDtoMapper.ToResponse(result);
   }
 
-  // TASK-381 V2 — bulk reconcile a user's department memberships. Backs the SDK
+  // Bulk reconcile a user's department memberships. Backs the SDK
   // `useUsers.assignDepartments` ({ departmentIds, primaryDepartmentId }) used by
   // the Create-User dialog's initial departments and the bulk "Assign department"
   // action; returns the updated user so the client can refresh its row.
@@ -146,15 +139,14 @@ export class UserController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   async fetchAll(@Query() queryParams: PaginatedQuery): Promise<PaginatedUserResponse> {
-    // TASK-326 X2 (audit X2, Critical): pre-fix `fetchAll` applied NO tenant
-    // scope, so any caller with `manage:User` (e.g. a TENANT_ADMIN) could
-    // enumerate users platform-wide. Mirror the AuditLogController guard:
-    // non-global-admins are routed to the by-tenant service path scoped to
-    // their effective CLS tenant; GLOBAL_ADMIN keeps the cross-tenant read.
+    // Tenant-scope guard: mirrors the AuditLogController guard — non-global-admins
+    // are routed to the by-tenant service path scoped to their effective CLS
+    // tenant; GLOBAL_ADMIN keeps the cross-tenant read (prevents platform-wide
+    // user enumeration by non-global-admins).
     const user = this.cls.get('user');
     const callerTenantId = this.cls.get('tenantId');
-    // TASK-375 — apply the deterministic default sort once, before any scoping
-    // branch, so every path pages stably.
+    // Apply the deterministic default sort once, before any scoping branch, so
+    // every path pages stably.
     const params = this.withDefaultSort(queryParams);
     if (!isSuperAdmin(user)) {
       if (!callerTenantId) {
@@ -167,10 +159,10 @@ export class UserController {
       return UserDtoMapper.ToPaginatedResponse(scoped);
     }
 
-    // AC-07 (TASK-336): when a global-admin selects a tenant in the console, the
-    // ContextInterceptor elevates `x-tenant-id` into CLS `tenantId`. Honour it
-    // and scope the listing to that tenant; with no selection the platform-wide
-    // cross-tenant listing is preserved.
+    // When a global-admin selects a tenant in the console, the ContextInterceptor
+    // elevates `x-tenant-id` into CLS `tenantId`. Honour it and scope the listing
+    // to that tenant; with no selection the platform-wide cross-tenant listing
+    // is preserved.
     if (callerTenantId) {
       const scoped = await this.userService.fetchAllByTenantId({
         ...params,
@@ -186,7 +178,7 @@ export class UserController {
   }
 
   /**
-   * TASK-375 — fill in {@link DEFAULT_USERS_SORT} when the caller supplies no
+   * Fill in {@link DEFAULT_USERS_SORT} when the caller supplies no
    * `sort`, leaving an explicit `sort` (and all other CSV `filters`/`search`
    * params) untouched. `||` (not `??`) also defaults an empty-string sort,
    * which `deserializeSortString` would otherwise treat as "no order".
@@ -196,7 +188,7 @@ export class UserController {
   }
 
   // -------------------------------------------------------------------------
-  // TASK-388 #10 — server-side export (csv | xlsx | pdf).
+  // Server-side export (csv | xlsx | pdf).
   //
   // Declared BEFORE the `/:id` route so `GET /admin/users/export` is never
   // captured as an id lookup (mirrors AuditLogController.exportCsv). Honours the
@@ -228,7 +220,7 @@ export class UserController {
    * their CLS tenant (403 with no context); a global-admin honours an elevated
    * `X-Tenant-Id` selection, else reads cross-tenant.
    *
-   * TASK-398 P1-7 — rows are enriched with email + department NAMES via ONE
+   * Rows are enriched with email + department NAMES via ONE
    * batched `getExportEnrichment(allIds)` call (two grouped `findMany`s joined
    * in memory inside the service) so the export never fans out per-user
    * (no N+1). The list DTO itself is unchanged — this is export-path only.
@@ -240,9 +232,9 @@ export class UserController {
 
     let result;
     if (query.tenantId) {
-      // TASK-430 — explicit tenant scope from the in-page tenant filter. Same
-      // guard as the by-tenant list route: GLOBAL_ADMIN may export any tenant,
-      // every other caller only their own CLS tenant.
+      // Explicit tenant scope from the in-page tenant filter. Same guard as the
+      // by-tenant list route: GLOBAL_ADMIN may export any tenant, every other
+      // caller only their own CLS tenant.
       this.assertCanReadTenant(query.tenantId);
       result = await this.userService.fetchAllByTenantId({ ...params, tenantId: query.tenantId });
     } else if (!isSuperAdmin(user)) {
@@ -263,7 +255,7 @@ export class UserController {
   }
 
   /**
-   * Map a `UserResponse` (+ its TASK-398 enrichment) to a flat export row.
+   * Map a `UserResponse` (+ its enrichment) to a flat export row.
    * `email`/`departments` come from the batched enrichment lookup — the list
    * DTO still doesn't carry them; a user with no profile/memberships renders
    * blank. `status` stays defensive: `resourceStatus` is on the entity but not
@@ -302,12 +294,10 @@ export class UserController {
   })
   @ApiParam({ name: 'tenantId', description: 'Tenant ID', type: String })
   async fetchByTenant(@Param('tenantId') tenantId: string, @Query() queryParams: PaginatedQuery): Promise<PaginatedUserResponse> {
-    // TASK-331 r2605 #2 (Critical, IDOR): the X2 hardening scoped `fetchAll`
-    // but left this sibling path-param route with only the class-level
-    // `@CanManage('User')` action check — which does NOT constrain WHICH
-    // tenant. Any `manage:User` holder (e.g. a TENANT_ADMIN) could enumerate
-    // any tenant's users by UUID. Mirror `fetchAll`: a non-global-admin may
-    // only read their own CLS tenant; GLOBAL_ADMIN keeps the cross-tenant read.
+    // Tenant-scope guard: the class-level `@CanManage('User')` action check does
+    // NOT constrain WHICH tenant, so this route asserts it explicitly. Mirrors
+    // `fetchAll`: a non-global-admin may only read their own CLS tenant;
+    // GLOBAL_ADMIN keeps the cross-tenant read.
     this.assertCanReadTenant(tenantId);
 
     const result = await this.userService.fetchAllByTenantId({
@@ -318,9 +308,9 @@ export class UserController {
   }
 
   /**
-   * TASK-331 r2605 #2 — shared caller-tenant guard for the by-tenant read
-   * routes. GLOBAL_ADMIN reads any tenant; every other `manage:User` holder is
-   * confined to their own CLS tenant. Throws `ForbiddenException` otherwise.
+   * Shared caller-tenant guard for the by-tenant read routes. GLOBAL_ADMIN
+   * reads any tenant; every other `manage:User` holder is confined to their
+   * own CLS tenant. Throws `ForbiddenException` otherwise.
    */
   private assertCanReadTenant(tenantId: string): void {
     const user = this.cls.get('user');
@@ -334,9 +324,9 @@ export class UserController {
   }
 
   /**
-   * AC-01 r2605 (Critical, IDOR) — shared caller-tenant guard for the by-id
-   * User routes (read/mutate/profile/settings/sub-resource). Unlike the LIST
-   * routes (which scope by an explicit `tenantId`), these accept a raw user
+   * Shared caller-tenant guard for the by-id User routes
+   * (read/mutate/profile/settings/sub-resource). Unlike the LIST routes
+   * (which scope by an explicit `tenantId`), these accept a raw user
    * UUID, and the `User` model is intentionally NOT tenant-scoped at the
    * Prisma extension level — so the TARGET user's tenant membership must be
    * asserted explicitly. Resolves the target's ENABLED tenant memberships via
@@ -405,11 +395,8 @@ export class UserController {
   }
 
   /**
-   * Bulk delete users with partial-failure semantics (TASK-310 E-11 / AC-10).
-   *
-   * Pre-W7 this method threw on the first failing id, leaving the caller
-   * with no signal about which preceding deletes had landed or which later
-   * ids never ran. It now catches per-id and returns the structured
+   * Bulk delete users with partial-failure semantics: per-id catch (not a
+   * `throw` on the first failure), returning the structured
    * `BulkDeleteUsersResponse` so admin tooling can report exact partial
    * progress and retry only the failed ids idempotently.
    *
@@ -437,9 +424,9 @@ export class UserController {
 
     for (const id of body.ids) {
       try {
-        // AC-01 r2605 — validate EVERY id; a cross-tenant target throws
-        // `NotFoundException` here and is captured under `failed` (never
-        // deleted), preserving the partial-failure contract.
+        // Validate EVERY id; a cross-tenant target throws `NotFoundException`
+        // here and is captured under `failed` (never deleted), preserving the
+        // partial-failure contract.
         await this.assertUserInScope(id);
         const result = await this.userService.deleteById(id);
         succeeded.push(UserDtoMapper.ToResponse(result));
@@ -452,20 +439,20 @@ export class UserController {
   }
 
   /**
-   * TASK-388 #9 — server-side bulk user actions with per-item partial-failure
-   * semantics. Replaces the client `Promise.allSettled` loop on the admin Users
-   * surface with a single endpoint so one round-trip mutates N users and the
-   * caller learns exactly which ids failed.
+   * Server-side bulk user actions with per-item partial-failure semantics.
+   * Replaces the client `Promise.allSettled` loop on the admin Users surface
+   * with a single endpoint so one round-trip mutates N users and the caller
+   * learns exactly which ids failed.
    *
    * Every id is validated through the same by-id tenant-scope guard as the
    * single-user routes (`assertUserInScope`), so a cross-tenant target is
    * recorded under the failed set (404) and is never mutated. The loop mirrors
    * the existing `bulkDelete` precedent (per-id catch, no early throw, no
-   * `$transaction`) — see that method for the AC-10 rationale.
+   * `$transaction`) — see that method for the rationale.
    *
    * Action set: enable | disable | delete | assign-departments | assign-role.
    *
-   * TASK-398 P1-6 — `assign-role` mirrors the AC-02 posture of the single-user
+   * `assign-role` mirrors the permission posture of the single-user
    * `POST :id/roles` route. That route swaps the class-level `manage:User` for
    * `manage:UserRoleAssignment` via a method-level `@CanManage` override; here
    * a decorator would (wrongly) re-gate ALL arms, so the same check runs
@@ -480,7 +467,7 @@ export class UserController {
     description:
       'Per-item success/failure; the call never throws mid-batch. Each id is tenant-scope-guarded (a cross-tenant ' +
       'id is reported as failed, not mutated). CASL-gated by the class-level manage:User; the assign-role arm ' +
-      'additionally requires manage:UserRoleAssignment (the AC-02 posture of POST :id/roles).',
+      'additionally requires manage:UserRoleAssignment (matching the permission on POST :id/roles).',
   })
   @ApiResponse({ status: 200, description: 'Per-item results', type: BulkUserActionResponse })
   async bulkActions(@Body() body: BulkUserActionRequest, @UserAbility() ability?: AppAbility): Promise<BulkUserActionResponse> {
@@ -535,7 +522,7 @@ export class UserController {
         return;
       case 'assign-role':
         // Same call shape as the single-user `assignRole`; the service's
-        // AC-02 guards (tier ceiling + caller-tenant containment) throw here
+        // tier-ceiling and caller-tenant-containment guards throw here
         // and surface as this item's per-id failure.
         await this.userRoleAssignmentService.create({ roleId: body.roleId, userId: id } as CreateUserRoleAssignmentRequest);
         return;
@@ -561,7 +548,7 @@ export class UserController {
   }
 
   // -------------------------------------------------------------------------
-  // TASK-245: Admin user settings management
+  // Admin user settings management
   // -------------------------------------------------------------------------
 
   @Get(':id/settings')
@@ -598,7 +585,7 @@ export class UserController {
   }
 
   // -------------------------------------------------------------------------
-  // TASK-388 #8 — admin reset-password (both flows)
+  // Admin reset-password (both flows)
   // -------------------------------------------------------------------------
 
   @Post(':id/reset-password')
@@ -651,8 +638,8 @@ export class UserController {
   }
 
   @Post(':id/roles')
-  // AC-02 r2605 (Critical, privilege escalation) — a role-assignment route must
-  // be gated by the permission that governs the resource it mutates, NOT the
+  // A role-assignment route must be gated by the permission that governs
+  // the resource it mutates, NOT the
   // inherited class-level `manage:User`. `manage:UserRoleAssignment` matches the
   // `rbac-*` policy seed; this method-level decorator overrides the class-level
   // one via `Reflector.getAllAndOverride([handler, class])`.
@@ -678,7 +665,7 @@ export class UserController {
   }
 
   // -------------------------------------------------------------------------
-  // TASK-328 A1–A3: Admin user profile (incl. preferredPromptTemplateId)
+  // Admin user profile (incl. preferredPromptTemplateId)
   // -------------------------------------------------------------------------
 
   @Get(':id/profile')

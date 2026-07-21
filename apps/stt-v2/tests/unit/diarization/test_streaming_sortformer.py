@@ -1,9 +1,9 @@
-"""Unit tests for the Streaming Sortformer diarizer scaffold (TASK-475 · Theme B2).
+"""Unit tests for the Streaming Sortformer diarizer scaffold.
 
 Hermetic — the real NeMo Streaming Sortformer model is NOT staged on this host
 (only whisper + silero + pyannote-embedding are in ``HF_HOME``), so the default
 backend factory MUST raise ``SortformerModelUnavailableError`` and the diarizer
-MUST degrade honestly to "no labels" (mirrors TASK-479's ``load_default_scorer``
+MUST degrade honestly to "no labels" (mirrors the groundedness scorer's
 fail-closed posture). The pure frame->turn thresholding is exercised with a tiny
 deterministic injected backend so the reusable math is unit-testable with nothing
 staged.

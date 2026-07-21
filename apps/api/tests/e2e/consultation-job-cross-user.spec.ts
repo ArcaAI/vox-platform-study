@@ -1,21 +1,19 @@
 /**
- * TASK-308 AC-4 — same-tenant cross-user probes against
- * `ConsultationJobController.cancel`.
+ * Same-tenant cross-user probes against `ConsultationJobController.cancel`.
  *
- * Pins the AC-2 + AC-3 contract end-to-end:
+ * Pins the contract end-to-end:
  *
  *   - tenant-A user-1 (the job's creator) cancels their own job → 200
  *   - tenant-A user-2 (a same-tenant peer)                cancels → 404
  *   - tenant-A user-2 GETs the same job                            → 200
- *     (read routes deliberately stay tenant-only; see README §1.3 AC-2)
+ *     (read routes deliberately stay tenant-only)
  *
  * Cross-TENANT 404 behaviour is already proven by
- * `task-307-consultation-job-cross-tenant.spec.ts` (TASK-307 W3.4) — we
- * don't re-prove it here. The TASK-308 §1.3 AC-4 reference to "tenant-B
- * user → 404" is satisfied by that prior spec PLUS the
+ * `task-307-consultation-job-cross-tenant.spec.ts` — we
+ * don't re-prove it here. The "tenant-B user → 404" case
+ * is satisfied by that prior spec PLUS the
  * `cross-tenant probe regardless of scope:"creator"` unit test in
- * `apps/api/src/common/__tests__/tenant-owned-resource.interceptor.test.ts`
- * (TASK-308 AC-3).
+ * `apps/api/src/common/__tests__/tenant-owned-resource.interceptor.test.ts`.
  *
  * Test data
  * ---------
@@ -129,8 +127,7 @@ test.describe('TASK-308 AC-4 — ConsultationJob cancel ownership (intra-tenant)
   });
 
   // -----------------------------------------------------------------------
-  // AC-4 case 1 — same-tenant peer cannot CANCEL the creator's job.
-  // This is the audit C-4 / W7.A.12 finding the ticket exists to close.
+  // Case 1 — same-tenant peer cannot CANCEL the creator's job.
   // -----------------------------------------------------------------------
   test('PATCH /consultations/jobs/:jobId/cancel — same-tenant cross-user returns 404', async ({ request }) => {
     const response = await request.patch(`/api/v1/consultations/jobs/${jobId}/cancel`, {
@@ -145,7 +142,7 @@ test.describe('TASK-308 AC-4 — ConsultationJob cancel ownership (intra-tenant)
   });
 
   // -----------------------------------------------------------------------
-  // AC-4 case 2 — read routes deliberately stay tenant-only. A same-tenant
+  // Case 2 — read routes deliberately stay tenant-only. A same-tenant
   // peer may READ the job (e.g. shared consultation room).
   // -----------------------------------------------------------------------
   test('GET /consultations/jobs/:jobId — same-tenant peer can READ (read route is tenant-only)', async ({ request }) => {
@@ -160,8 +157,8 @@ test.describe('TASK-308 AC-4 — ConsultationJob cancel ownership (intra-tenant)
   });
 
   // -----------------------------------------------------------------------
-  // AC-4 case 3 — the creator can still cancel their own job (the W3 +
-  // W7.A.12 guard didn't accidentally lock out the rightful owner).
+  // Case 3 — the creator can still cancel their own job (the cross-user
+  // guard must not accidentally lock out the rightful owner).
   //
   // Runs LAST in the file because the cancel flips the status to
   // CANCELLED in the same Redis row case 1+2 read; running case 1

@@ -198,7 +198,7 @@ class TestWorkerNewServiceInitialization:
 
 
 class TestWorkerPunctuationLogging:
-    """TASK-348 TG-5/MIN-12: worker boot-log contract for the punctuation service
+    """Worker boot-log contract for the punctuation service
     (mirrors the FastAPI lifespan contract in test_main.py)."""
 
     @contextmanager

@@ -1,4 +1,4 @@
-// TASK-302 Phase 3B Tasks 3.5–3.8 — pin auth-strategy secret migrations.
+// Pin auth-strategy secret migrations.
 //
 // Each strategy/factory MUST:
 //   - NOT call appSettingsService.getValueWithDefault('<SECRET>', …)
@@ -16,7 +16,7 @@ function rel(p: string): string {
 }
 
 describe('Phase 3B auth secret migration', () => {
-  // Task 3.5 covered gateway-auth.strategy.ts, RETIRED by TASK-541 A2 (the
+  // gateway-auth.strategy.ts was RETIRED (the
   // `gateway-jwt` strategy was wired to zero routes; UnifiedAuthGuard is the
   // single enforcement point). Its JWT_SECRET_KEY assertions moved with it —
   // the remaining secret consumers are pinned below.

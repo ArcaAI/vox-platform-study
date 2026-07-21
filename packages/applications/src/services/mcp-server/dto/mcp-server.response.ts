@@ -5,7 +5,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  *
  * SECURITY: this projection carries NO secret material. `authRef` is a Vault
  * PATH ONLY (e.g. `secret/data/mcp/terminology`); the credential itself lives
- * in Vault (TASK-504 secrets flow) and is NEVER stored in the DB nor echoed
+ * in Vault and is NEVER stored in the DB nor echoed
  * here. The same object shape backs both the global-admin CRUD surface and the
  * console "Tools & MCP" registry read.
  */

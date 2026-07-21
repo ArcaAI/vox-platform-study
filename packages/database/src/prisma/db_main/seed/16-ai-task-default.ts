@@ -2,7 +2,7 @@ import type { CorePrismaClient } from '../../../client';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 
 /**
- * AiTaskDefault Seed (TASK-506 — centralized task-model configuration)
+ * AiTaskDefault Seed (centralized task-model configuration)
  *
  * Seeds the SYSTEM-tenant (`00000000-…`) platform defaults for the
  * non-pipeline AI tasks — the Class-3 generalization of

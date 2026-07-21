@@ -72,7 +72,7 @@ class GuardianProvider:
                 "format": "json",  # Request JSON format from Ollama
             }
 
-            # TASK-386 — per-model running gauge + inference latency.
+            # Per-model running gauge + inference latency.
             with track_model_inference(self.model):
                 response = await self.http_client.post(
                     f"{self.base_url}/api/generate",

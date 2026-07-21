@@ -1,5 +1,5 @@
 /**
- * TASK-329 P2 — ConsultationRepository.findConsultationChain full multi-hop walk.
+ * ConsultationRepository.findConsultationChain full multi-hop walk.
  *
  * The base `Repository.db` getter returns `unitOfWork.getDatabaseService()[modelName]`,
  * so we hand the repo a fake unit-of-work whose `consultation` delegate is an in-memory

@@ -166,7 +166,7 @@ describe('modelHasSoftDelete', () => {
       // per-transcript segment annotation: no resourceStatus column
       // (segments live/die with their parent transcript), so soft-delete skips it.
       'TranscriptSegment',
-      // TASK-533 B6 gate-edit mining store: derived append-only corpus, pruned
+      // Gate-edit mining store: derived append-only corpus, pruned
       // wholesale rather than soft-deleted, so it has no resourceStatus column.
       'GateEditExemplar',
     ];
@@ -294,7 +294,7 @@ describe('Extension handler contract', () => {
 });
 
 // ---------------------------------------------------------------------------
-// TASK-364 — AsrPipelineVersion 400 regression
+// AsrPipelineVersion 400 regression
 //
 // AsrPipelineVersion is an immutable version-history table with NO
 // `resourceStatus` column (see prisma db_main/stt.prisma + the

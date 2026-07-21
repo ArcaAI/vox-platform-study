@@ -1,5 +1,5 @@
 /**
- * HarnessObservabilityService unit tests (TASK-330 Phase 6 — Phase A).
+ * HarnessObservabilityService unit tests.
  *
  *  - listAuditEvents pages newest-first, filters by consultation, and reports a
  *    chain-global integrity verdict computed from REAL hash-chained events.

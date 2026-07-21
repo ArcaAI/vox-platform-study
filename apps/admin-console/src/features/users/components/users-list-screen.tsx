@@ -41,7 +41,7 @@ const ROLE_CHIP_LIMIT = 2;
 const TENANT_CHIP_LIMIT = 2;
 
 /**
- * TASK-430 — the User model has no `tenantId` column (tenancy = role
+ * The User model has no `tenantId` column (tenancy = role
  * assignments), so the in-page Tenant filter cannot ride the CSV filter
  * grammar. The screen strips this rule from the list params and swaps to the
  * membership-based by-tenant route instead.
@@ -86,7 +86,7 @@ function RolesCell({ assignments }: { assignments?: UserRoleAssignment[] }) {
     );
 }
 
-/** TASK-430 — distinct tenants from the user's role assignments; names degrade to raw ids while the catalog loads. */
+/** Distinct tenants from the user's role assignments; names degrade to raw ids while the catalog loads. */
 function TenantsCell({ assignments, tenantNames }: { assignments?: UserRoleAssignment[]; tenantNames: Map<string, string> }) {
     const tenantIds = Array.from(new Set((assignments ?? []).map((assignment) => assignment.tenantId).filter((id): id is string => !!id)));
     if (tenantIds.length === 0) return <span className="text-muted-foreground">{'\u2014'}</span>;
@@ -187,7 +187,7 @@ export function UsersListScreen() {
         [tenantCatalog.data],
     );
 
-    // TASK-430 — the Tenant filter cannot ride the CSV grammar (no tenantId
+    // The Tenant filter cannot ride the CSV grammar (no tenantId
     // column on User): strip it from the params and route the fetch through the
     // membership-based `GET /admin/users/tenant/:id` instead.
     const tenantFilter = query.queryState.filters.find((rule) => rule.id === TENANT_FILTER_ID && typeof rule.value === 'string' && rule.value.length > 0);
@@ -248,7 +248,7 @@ export function UsersListScreen() {
     /** Export the current filtered view (not just the selection) — the gateway export takes ListParams. */
     function handleExport() {
         exportUsersMutation.mutate(
-            // TASK-430 — the tenant filter travels as a dedicated query param (see listParams note above).
+            // The tenant filter travels as a dedicated query param (see listParams note above).
             { ...listParams, format: 'csv', ...(filterTenantId ? { tenantId: filterTenantId } : {}) },
             {
                 onSuccess: ({ blob, contentDisposition }) => {
@@ -290,7 +290,7 @@ export function UsersListScreen() {
                 size: 200,
             },
             {
-                // TASK-430 — cross-tenant view: which tenant(s) the user belongs
+                // Cross-tenant view: which tenant(s) the user belongs
                 // to (via role assignments) + a tenant filter (see listParams).
                 // The accessorFn makes this an ACCESSOR column so TanStack's
                 // getCanFilter() is true and the faceted filter renders; actual

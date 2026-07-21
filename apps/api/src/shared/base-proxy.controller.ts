@@ -60,10 +60,9 @@ export abstract class BaseProxyController {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (fixRequestBody as any)(proxyReq, req, res);
 
-            // TASK-302 Phase 3 Task 3.4 — read SMR token from SecretsService
-            // cache (warmed at bootstrap). Sync lookup because on.proxyReq
-            // cannot await. Cold cache -> no header (same fail-open behavior
-            // we had when env var was unset).
+            // Read SMR token from SecretsService cache (warmed at bootstrap).
+            // Sync lookup because on.proxyReq cannot await. Cold cache -> no
+            // header (fail-open, same as an unset env var).
             const serviceToken = this.secrets?.getSecretSync('SMR_SERVICE_TOKEN');
             if (serviceToken) {
               proxyReq.setHeader('X-Service-Token', serviceToken);

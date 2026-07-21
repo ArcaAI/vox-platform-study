@@ -1,5 +1,5 @@
 /**
- * LiveDocumentationService — windowed transcript mode (TASK-533 B3).
+ * LiveDocumentationService — windowed transcript mode.
  *
  * `agentic.context.transcript.mode` shipped as a declared-but-inert descriptor
  * ("windowed lands in a later phase"). This is that phase.
@@ -156,7 +156,7 @@ describe('LiveDocumentationService — windowed transcript (TASK-533 B3)', () =>
     const windowed = await flushWith({ 'transcript.mode': 'windowed', 'liveDelta.maxChars': 30 }, segments);
 
     // Both prompts must still OPEN with the same stable system block — that is
-    // what the engine's prefix cache keys on (Phase 4D.1).
+    // what the engine's prefix cache keys on.
     const stablePrefix = generatePrompt(whole.http).slice(0, 200);
     expect(generatePrompt(windowed.http).startsWith(stablePrefix)).toBe(true);
   });

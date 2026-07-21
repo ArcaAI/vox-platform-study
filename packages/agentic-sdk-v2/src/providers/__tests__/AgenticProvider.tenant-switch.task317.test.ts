@@ -1,15 +1,15 @@
 /**
- * TASK-317 W2.1 (AC-7) — AgenticProvider tenant-switch session reset (audit C-5).
+ * AgenticProvider tenant-switch session reset.
  *
- * Finding C-5: on a tenant switch / admin impersonation IN THE SAME TAB the
- * store keeps the previous tenant's session state — `consultation`,
+ * Without this reset, on a tenant switch / admin impersonation IN THE SAME
+ * TAB the store keeps the previous tenant's session state — `consultation`,
  * `contextItems`, `transcriptSegments`, `summaries` (all PHI) plus the
  * tenant-scoped model config (`tenantConfig` + the `modelRegistry` selection
  * surfaced through `useArcaConfig`) — resident and visible until an explicit
  * close. There is therefore a window where tenant B is already active while
  * tenant A's PHI is still readable.
  *
- * AC-7: when `effectiveTenantId` changes, `AgenticProvider` must reset those
+ * When `effectiveTenantId` changes, `AgenticProvider` must reset those
  * session slices BEFORE the new tenant config resolves, so the previous
  * tenant's PHI is never resident while the new tenant is active.
  *
@@ -18,7 +18,7 @@
  * SYNCHRONOUSLY on the switch — i.e. immediately after the state change that
  * triggers the re-hydrate effect, before its async tail (personalization
  * hydrate / config reload) has a chance to resolve. The harness mirrors
- * `AgenticProvider.namespacing.task317.test.ts` (W1).
+ * `AgenticProvider.namespacing.task317.test.ts`.
  *
  * @vitest-environment jsdom
  */
@@ -124,7 +124,7 @@ const TENANT_B = 'tenant-2';
 const USER_B = 'user-99';
 
 function renderProvider() {
-  // TASK-317 W4.2/W4.3 (AC-12) — capture THIS provider's per-instance StoreApi
+  // Capture THIS provider's per-instance StoreApi
   // (fresh `createAgenticStore()` already at initial state, so no pre-render
   // reset needed). The test body's `store.getState()` then observes exactly the
   // store the provider writes to.

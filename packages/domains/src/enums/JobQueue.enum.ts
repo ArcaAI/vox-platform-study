@@ -21,12 +21,12 @@ export enum JobQueue {
   // DNA Writing Style Analysis
   GenerateDnaReport = 'GenerateDnaReport',
 
-  // Institutional RAG knowledge corpus (TASK-330 Phase 3)
+  // Institutional RAG knowledge corpus
   IngestKnowledgeDocument = 'IngestKnowledgeDocument',
 
-  // Tenant-scoped external identity provider — admin-triggered directory pull (TASK-498 P3)
+  // Tenant-scoped external identity provider — admin-triggered directory pull
   SyncTenantDirectoryUsers = 'SyncTenantDirectoryUsers',
 
-  // Gate-edit mining — derived learning-loop corpus (TASK-533 B6)
+  // Gate-edit mining — derived learning-loop corpus
   MineGateEditExemplar = 'MineGateEditExemplar',
 }

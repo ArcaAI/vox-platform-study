@@ -1,5 +1,5 @@
 /**
- * TASK-330 Phase 3 — live full-loop provenance READ-ONLY verification (one-off).
+ * Live full-loop provenance READ-ONLY verification (one-off).
  *
  * Companion to `task-330-phase3-consultation-seed.ts`. After the Temporal loop
  * persists the RAW_SUMMARY draft, this reads back the persisted provenance the

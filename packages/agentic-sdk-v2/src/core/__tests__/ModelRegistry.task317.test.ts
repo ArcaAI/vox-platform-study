@@ -1,9 +1,9 @@
 /**
- * TASK-317 W1.5 (AC-4) + W1.6 (AC-5) — ModelRegistry selected-models storage.
+ * ModelRegistry selected-models storage.
  *
- *  - AC-4 (audit D-1): `SELECTED_MODELS` reads/writes are namespaced
+ *  - `SELECTED_MODELS` reads/writes are namespaced
  *    `arcaai-selected-models/${tenantId}::${userId}`, not a shared global key.
- *  - AC-5 (audit E-2): the parsed JSON is validated with a valibot schema
+ *  - The parsed JSON is validated with a valibot schema
  *    (`{ stt?, vad?, ner? }` of strings); a poisoned/typed-wrong payload yields
  *    `null` + a `logger.warn` rather than throwing on construction.
  *
@@ -39,7 +39,7 @@ describe('TASK-317 W1.5 — ModelRegistry SELECTED_MODELS namespacing (AC-4)', (
     reg.selectModel('stt', 'whisper-tiny');
 
     expect(localStorage.getItem('arcaai-selected-models/tenantA::userA')).toContain('whisper-tiny');
-    // The unscoped global key (audit D-1) must never be written.
+    // The unscoped global key must never be written.
     expect(localStorage.getItem('arcaai-selected-models')).toBeNull();
   });
 

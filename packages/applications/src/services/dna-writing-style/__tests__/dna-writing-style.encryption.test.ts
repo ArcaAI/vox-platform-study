@@ -1,5 +1,5 @@
 /**
- * DNA writing-style encryption wiring (TASK-369 Phase 3C).
+ * DNA writing-style encryption wiring.
  *
  * Covers the two genuine TS write paths for the DnaWritingStyleReport /
  * DnaWritingStyleVersion clinical models:

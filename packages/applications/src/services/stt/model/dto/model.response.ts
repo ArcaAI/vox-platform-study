@@ -24,7 +24,7 @@ export class ModelResponse {
   modelType: ModelType;
 
   @ApiProperty({
-    description: 'Model source. S3 = S3/MinIO-compatible object storage (OD-4: s3:// only).',
+    description: 'Model source. S3 = S3/MinIO-compatible object storage (s3:// only).',
     enum: AiModelSource,
   })
   source: AiModelSource;
@@ -40,10 +40,10 @@ export class ModelResponse {
   @ApiProperty({ description: 'Model format', enum: AiModelFormat })
   format: AiModelFormat;
 
-  @ApiPropertyOptional({ description: 'Canonical runtime provider id (TASK-506)', nullable: true })
+  @ApiPropertyOptional({ description: 'Canonical runtime provider id', nullable: true })
   provider?: string | null;
 
-  @ApiPropertyOptional({ description: 'Model architecture family (TASK-506)', nullable: true })
+  @ApiPropertyOptional({ description: 'Model architecture family', nullable: true })
   architecture?: string | null;
 
   @ApiPropertyOptional({ description: 'Estimated memory size in MB' })
@@ -74,7 +74,7 @@ export class ModelResponse {
   @ApiProperty({ description: 'Resource status', enum: ResourceStatusType })
   resourceStatus: ResourceStatusType;
 
-  // TASK-356 Phase 1 — OCC version surfaced so the global `ETagInterceptor`
+  // OCC version surfaced so the global `ETagInterceptor`
   // can stamp `ETag: "<version>"` (the `If-Match` source on PATCH).
   @ApiProperty({ description: 'Optimistic-concurrency row version', example: 7 })
   version: number;

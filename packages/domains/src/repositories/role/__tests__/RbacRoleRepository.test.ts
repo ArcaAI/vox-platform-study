@@ -1,8 +1,8 @@
 /**
- * TASK-311 AC-1/AC-2/AC-6 — RbacRoleRepository / RbacRoleFactory /
+ * RbacRoleRepository / RbacRoleFactory /
  * RbacRoleEntityMapper unit tests.
  *
- * Pinned behaviour (mirrors the Prisma calls inlined in the pre-TASK-311
+ * Pinned behaviour (mirrors the Prisma calls inlined in the legacy
  * `RbacRoleService` so the W6 RBAC E2E suite stays green):
  *
  *   • `findMany`/`count` are pass-through.
@@ -17,7 +17,7 @@
  *     the service-level `validateParentRole` stays free of inline
  *     Prisma calls.
  *   • `softDelete` flips `resourceStatus → DELETED` and stamps audit
- *     fields (already soft in pre-TASK-311 code — see README §4.2).
+ *     fields (already soft in the legacy code).
  */
 import { describe, beforeEach, it, expect, vi } from 'vitest';
 import { ResourceStatusType } from '../../../enums';

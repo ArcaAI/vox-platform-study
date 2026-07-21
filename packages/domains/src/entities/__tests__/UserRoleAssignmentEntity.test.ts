@@ -1,5 +1,5 @@
 /**
- * UserRoleAssignmentEntity.validate() Unit Tests — TASK-261 (Tier 1)
+ * UserRoleAssignmentEntity.validate() Unit Tests
  *
  * Locks in the real invariant implementation that replaces the previous
  * `throw new BusinessException('Method not implemented.')` stub.
@@ -8,7 +8,7 @@
  * model + `IUserRoleAssignmentEntity` interface):
  *   - userId: non-empty trimmed string
  *   - roleId: non-empty trimmed string
- *   - tenantId: REQUIRED (TASK-305 Phase A — schema is NOT NULL,
+ *   - tenantId: REQUIRED (schema is NOT NULL,
  *     validate() refuses empty/null/undefined). The pre-W1.3 "global
  *     assignment via null tenantId" pattern is gone; platform-wide
  *     role assignments (GLOBAL_ADMIN, system service account) belong
@@ -61,7 +61,7 @@ describe('UserRoleAssignmentEntity.validate()', () => {
     });
 
     it('should reject null tenantId (TASK-305 Phase A — platform roles use SYSTEM_TENANT_ID)', () => {
-      // Pre-TASK-305 this case was a positive assertion ("global
+      // Previously this case was a positive assertion ("global
       // role assignments may omit tenantId"). The new contract
       // requires every role assignment row to carry a concrete tenant
       // (SYSTEM_TENANT_ID for platform-wide roles like GLOBAL_ADMIN).

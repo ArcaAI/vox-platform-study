@@ -8,7 +8,7 @@ import { formatJson, type JsonToken, type JsonValidation, tokenizeJson, validate
 import { cn } from '@/lib/utils';
 
 /**
- * A small JSON code editor (TASK-437): line numbers, synchronous syntax
+ * A small JSON code editor: line numbers, synchronous syntax
  * highlighting, live validation with a line/column error, Format and Copy. It is
  * a transparent `<textarea>` overlaying a highlighted `<pre>` — no async
  * highlighter — on a FIXED dark surface (`--code-editor-*` tokens) in both

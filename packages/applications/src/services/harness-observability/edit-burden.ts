@@ -1,6 +1,6 @@
 /**
- * Clinician edit-burden telemetry (TASK-482 E3 · SOTA S3-F7 — "the signal exists
- * in the gate, unused").
+ * Clinician edit-burden telemetry — surfaces a signal that already exists
+ * in the gate but previously went unused.
  *
  * The clinician gate already emits its approve/edit decision and the delivered
  * (`RAW_SUMMARY`) vs signed (`MODIFIED_SUMMARY`) note versions into the WORM audit.

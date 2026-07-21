@@ -173,7 +173,7 @@ describe('LocalSpeakerDiarizer', () => {
     expect(strict.getProfileCount()).toBeGreaterThanOrEqual(1);
   });
 
-  // TASK-296 C-2: reserved-speaker slot for the enrolled doctor.
+  // Reserved-speaker slot for the enrolled doctor.
   describe('reservedSpeakerId (TASK-296 C-2)', () => {
     it('pins the FIRST allocated speaker slot to reservedSpeakerId when provided', () => {
       const diarizer = new LocalSpeakerDiarizer({

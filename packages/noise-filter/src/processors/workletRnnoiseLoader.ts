@@ -26,8 +26,6 @@
  * The TS source is shipped via `dist/worklets/rnnoise.worklet.js` and is
  * mirrored verbatim into the inline string in `worklets/worklet-loader.ts`
  * (the runtime blob URL). Keep the two in sync.
- *
- * TASK-269 — CRIT-3 (worklet path).
  */
 
 import type { RnnoiseModule } from './rnnoiseModule.js';

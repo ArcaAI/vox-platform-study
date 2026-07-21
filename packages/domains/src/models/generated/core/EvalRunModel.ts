@@ -18,10 +18,10 @@ export class EvalRun extends BaseTenantDataModel {
   public startedAt: Date | null;
   public completedAt: Date | null;
   public aggregateScores: JsonValue | null;
-  // TASK-369 Phase 6 — plaintext notes column DROPPED; persistence is
+  // Plaintext notes column DROPPED; persistence is
   // ciphertext-only. The entity keeps `notes` as a transient field repopulated
   // by repository decrypt-on-read.
-  // TASK-369 Phase 3C — Vault-Transit ciphertext columns + shared key version.
+  // Vault-Transit ciphertext columns + shared key version.
   public encryptedNotes: Uint8Array | null;
   public keyVersion: number | null;
   public resourceStatus: Enums.ResourceStatusType;

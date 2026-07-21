@@ -1,5 +1,5 @@
 /**
- * TASK-443 — grid capabilities backing the settings list redesign:
+ * Grid capabilities backing the settings list redesign:
  *   1. `groupBy` — injected, non-interactive group-header rows (label + count)
  *      between contiguous groups of the CURRENT page, virtualization intact,
  *      zero behaviour change when omitted.

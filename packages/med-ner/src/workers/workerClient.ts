@@ -1,5 +1,5 @@
 /**
- * @arcaai/med-ner - MedNERWorkerClient (TASK-272 / C-1)
+ * @arcaai/med-ner - MedNERWorkerClient
  *
  * Main-thread wrapper around a Web Worker hosting the NER pipeline. The
  * client multiplexes Promise-based requests over `postMessage` by

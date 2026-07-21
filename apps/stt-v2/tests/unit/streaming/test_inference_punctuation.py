@@ -231,8 +231,8 @@ class TestProcessUtteranceWithPunctuation:
 
 
 # ---------------------------------------------------------------------------
-# TASK-351 P2-2 — direct Cadence-Fast punctuation: finals-only, time-boxed,
-# raw-text fallback. Legacy registry models above keep their behavior.
+# Direct Cadence-Fast punctuation: finals-only, time-boxed, raw-text
+# fallback. Legacy registry models above keep their behavior.
 # ---------------------------------------------------------------------------
 
 
@@ -278,7 +278,7 @@ class TestCadenceFastFinalsOnly:
 
     @patch("stt_v2.punctuation.service.punctuate")
     async def test_global_default_model_selects_cadence_fast(self, mock_punctuate):
-        """punctuation.model: null + PUNCTUATION_MODEL_NAME=cadence-fast ⇒ P2-2 path."""
+        """punctuation.model: null + PUNCTUATION_MODEL_NAME=cadence-fast ⇒ selects cadence-fast."""
         cfg = MagicMock()
         cfg.enabled = True
         cfg.model = None
@@ -468,7 +468,7 @@ class TestCadenceFastProcessUtterance:
     async def test_final_utterance_punctuated_before_gloss_snapshot(
         self, mock_punctuate
     ):
-        """P2-3 interaction: the gloss task must snapshot the punctuated text."""
+        """The gloss task must snapshot the punctuated text."""
         mock_punctuate.return_value = "Hello world."
         publisher = AsyncMock()
         worker = StreamingInferenceWorker(

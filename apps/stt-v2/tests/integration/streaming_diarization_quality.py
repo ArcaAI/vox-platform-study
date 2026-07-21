@@ -1,14 +1,13 @@
-"""TASK-475 (Theme B2) — pure diarization-ACCURACY metric functions.
+"""Pure diarization-ACCURACY metric functions.
 
-TASK-470's streaming scorecard lists diarization scoring as its own Non-goal, so
-TASK-475 owns this metric. It is a SIBLING of ``streaming_quality.py`` (NOT a fork
-of it — the TASK-475 manifest's additive-only rule for TASK-470-owned files):
-the ASR-guardrail scorecard (WER / keyterm recall / transport) stays in
+The streaming scorecard lists diarization scoring as its own concern, owned
+separately here. It is a SIBLING of ``streaming_quality.py`` (NOT a fork
+of it): the ASR-guardrail scorecard (WER / keyterm recall / transport) stays in
 ``streaming_quality.py``; the speaker-attribution scorecard lives here.
 
 Deterministic, dependency-light (stdlib only — no numpy, no NeMo), so the metric
 math is unit-testable with NOTHING staged. The LIVE capture on real 2-speaker
-clinical audio (AC-5 baseline) is what is BLOCKED on the un-staged Streaming
+clinical audio (baseline) is what is BLOCKED on the un-staged Streaming
 Sortformer model — this module is the scaffold that capture will feed.
 
 WHAT'S HERE
@@ -19,12 +18,12 @@ WHAT'S HERE
 * ``jaccard_error_rate(ref, hyp)`` — DIHARD-style per-reference-speaker Jaccard
   error, averaged over reference speakers.
 * ``speaker_confusion_rate(ref, hyp)`` — confusion time / reference speech (the
-  2-speaker clinician↔patient swap — the headline B2 error mode).
+  2-speaker clinician↔patient swap — the headline error mode).
 * ``attribution_accuracy(ref, hyp)`` — fraction of reference speech attributed to
   the correct (optimally-mapped) speaker.
 * ``load_turns_fixture(path)`` — load a de-identified 2-speaker turn fixture.
 * ``build_diarization_scorecard(...)`` / ``diarization_regression_report(...)`` /
-  ``assert_no_diarization_regression(...)`` — the AC-5 gate (mirrors the
+  ``assert_no_diarization_regression(...)`` — the pass/fail gate (mirrors the
   ``streaming_quality`` regression-gate shape). ``load_diarization_thresholds()``
   reads the committed sibling ``streaming_diarization_thresholds.json``.
 
@@ -238,7 +237,7 @@ def load_turns_fixture(path: str | Path) -> DiarizationFixture:
 
 
 # ---------------------------------------------------------------------------
-# Scorecard + regression gate (AC-5)
+# Scorecard + regression gate
 # ---------------------------------------------------------------------------
 
 

@@ -1,4 +1,4 @@
-"""Retrieval-eval tests (TASK-330 Phase 3, Lane C — verification).
+"""Retrieval-eval tests (verification).
 
 Locks the deterministic synthetic retrieval-eval numbers so the Phase-3
 retrieval exit-gate signal ("% claims with a valid citation; basic recall

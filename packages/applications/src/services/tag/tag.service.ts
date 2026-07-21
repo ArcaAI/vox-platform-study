@@ -9,7 +9,7 @@ import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, wi
 import { IActiveUserContext } from '../../interfaces';
 
 /**
- * TASK-406 (P2-6c) — model-aware filter coercion (TASK-375 §8 scheme):
+ * Model-aware filter coercion:
  * `version` → number, `createdAt` → Date, `resourceStatus` → member-validated
  * enum, `metaData` → JSON-path support; String columns (tagValue, …) are
  * never mangled.

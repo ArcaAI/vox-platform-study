@@ -5,7 +5,7 @@ interface VerifyRequestBody {
 }
 
 /**
- * BFF verify-email (TASK-497 D1): pure passthrough — the gateway response
+ * BFF verify-email: pure passthrough — the gateway response
  * carries no tokens (verify does not auto-login), so there is nothing to
  * seal into the session cookie here.
  */

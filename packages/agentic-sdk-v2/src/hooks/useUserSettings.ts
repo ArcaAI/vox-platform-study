@@ -1,10 +1,10 @@
 /**
- * @arcaai/vox - useUserSettings Hook (TASK-265 W0-8 / GAP-03 reduction)
+ * @arcaai/vox - useUserSettings Hook
  *
  * Reduced surface — the API only implements `GET /user/me/settings` and
  * `PATCH /user/me/settings/:namespace/:key`. Earlier methods (get(id), create,
  * update(id), getMySettings) targeted routes that do not exist and have been
- * removed. See docs/implementation/TASK-265-SDK-Endpoint-Drift/README.md.
+ * removed.
  */
 
 import { useState, useCallback } from 'react';
@@ -21,7 +21,7 @@ export interface UseUserSettingsReturn {
   error: Error | null;
   list: (pagination?: PaginationParams) => Promise<UserSetting[]>;
   updateByKey: (namespace: string, key: string, value: unknown) => Promise<UserSetting>;
-  // ─── TASK-388 #11 — admin edit ANOTHER user's settings/preferences ───
+  // ─── Admin edit ANOTHER user's settings/preferences ───
   // Target a specific `userId` via the pre-existing admin routes
   // (`assertUserInScope`, tenant-scoped). Requires `manage:User`; a future
   // admin FE uses these to view/edit another user's preferences.
@@ -52,7 +52,7 @@ export function useUserSettings(): UseUserSettingsReturn {
     [execute],
   );
 
-  // ─── TASK-388 #11 — admin target-user settings/preferences ──────────
+  // ─── Admin target-user settings/preferences ──────────
   const listForUser = useCallback(
     (userId: string) =>
       execute<UserSetting[]>('listForUser', async (client) => {

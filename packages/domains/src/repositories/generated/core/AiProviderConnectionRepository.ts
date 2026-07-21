@@ -10,7 +10,7 @@ import { AiProviderConnectionEntityMapper } from '../../../mappers';
 import { AiProviderConnection } from '../../../models';
 
 /**
- * Provider-connection repository (TASK-524 — config-plane core).
+ * Provider-connection repository (config-plane core).
  *
  * HAND-AUTHORED — the `gen:repository` generator crashes pre-existingly; this
  * follows the `AiTaskDefaultRepository` / `TenantTtsProviderCredentialRepository`

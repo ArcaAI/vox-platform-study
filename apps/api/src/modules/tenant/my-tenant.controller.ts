@@ -59,7 +59,7 @@ export class MyTenantController {
     const result = await this.tenantService.fetchTenantConfigs({ tenantId, limit: 200, page: 1 });
     const response = TenantConfigDtoMapper.ToPaginatedResponse(result);
 
-    // TASK-332 — surface the server-computed effective local raw-capture flag
+    // Surface the server-computed effective local raw-capture flag
     // (platform capability AND tenant toggle) as a synthetic, read-only config
     // row keyed `enable-local-raw-capture`. The SDK maps it into
     // `audio.captureRawAudio`; the user cannot override it (admin-owned in the
@@ -87,7 +87,7 @@ export class MyTenantController {
     summary: 'Update current tenant configuration',
     description:
       "Updates one or more configuration values for the caller's tenant. " +
-      'Optimistic concurrency is enforced (TASK-302 Stream D): the `If-Match` ' +
+      'Optimistic concurrency is enforced: the `If-Match` ' +
       'header (RFC 7232) is REQUIRED, and the server runs a Compare-And-Set ' +
       "against the row's `_version`. When the header is present, its value " +
       'is applied as the `expectedVersion` for EVERY row in the request — ' +
@@ -112,7 +112,7 @@ export class MyTenantController {
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
   async updateMyConfig(
-    // Phase 0 Item 1 (TASK-302 Stream A) — the global ValidationPipe does NOT
+    // The global ValidationPipe does NOT
     // validate top-level array bodies element-wise (NestJS treats the metatype
     // as `Array`, so class-validator never runs per item). ParseArrayPipe
     // re-applies the same `whitelist` + `forbidNonWhitelisted` posture to each
@@ -123,7 +123,7 @@ export class MyTenantController {
     @ExpectedVersion() expectedFromHeader: number | undefined,
   ): Promise<PaginatedTenantConfigResponse> {
     const tenantId = this.resolveTenantId();
-    // TASK-302 Stream D Phase D (D.3.2) — when the `If-Match` header is
+    // When the `If-Match` header is
     // present, it overrides each row's body-field `expectedVersion`. The
     // SDK is expected to set the header even for bulk updates (using the
     // minimum row version is the conservative choice); the body-field
@@ -143,7 +143,7 @@ export class MyTenantController {
   }
 
   /**
-   * TASK-332 — builds the synthetic, read-only `enable-local-raw-capture` row
+   * Builds the synthetic, read-only `enable-local-raw-capture` row
    * carrying the server-computed effective boolean. It is not backed by a
    * persisted GlobalSetting (the value is `platformCapability AND tenantToggle`),
    * so identity/audit fields are empty and `version` is 0; the SDK only reads

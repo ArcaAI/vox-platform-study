@@ -10,7 +10,7 @@ import { SYSTEM_TENANT_ID } from '../api/types';
 import { TaskDefaultCard } from './task-default-card';
 
 /**
- * TASK-506 Phase 6 — AI task defaults (platform) (/ai-task-defaults, tier
+ * AI task defaults (platform) (/ai-task-defaults, tier
  * 10-19, GLOBAL_ADMIN only). Edits the SYSTEM-tenant platform-default rows for
  * ALL THREE task keys by pinning `?tenantId=` to the SYSTEM tenant.
  *
@@ -28,7 +28,7 @@ export function AiTaskDefaultsPlatformScreen() {
         <PageHeader
           title="AI task defaults (platform)"
           meta={<span>SYSTEM-tenant platform defaults &mdash; global-admin-only; tenants receive the platform default</span>}
-          // TASK-528 — the pickers below only offer models that exist in the
+          // The pickers below only offer models that exist in the
           // registry; this is the way out to add one (incl. discovering what the
           // serving engines already host).
           actions={

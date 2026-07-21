@@ -1,4 +1,4 @@
-// TASK-506 — AI task-model default descriptors.
+// AI task-model default descriptors.
 //
 // One `models.<taskKey>` descriptor per `AiTaskDefault` task key. The value is
 // a registry model slug (dataType `string`) living in the dedicated

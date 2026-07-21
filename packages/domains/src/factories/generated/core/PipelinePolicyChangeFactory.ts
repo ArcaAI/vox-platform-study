@@ -20,7 +20,7 @@ export interface CreatePipelinePolicyChangeProps extends BaseEntityFactoryCreate
   beforeJson?: IPipelinePolicyChangeEntity['beforeJson'];
   afterJson: IPipelinePolicyChangeEntity['afterJson'];
   reason?: IPipelinePolicyChangeEntity['reason'];
-  // TASK-369 Phase 3D — when supplied (by the service, after Vault-Transit
+  // When supplied (by the service, after Vault-Transit
   // encryption), the plaintext beforeJson/afterJson are replaced with a redaction
   // sentinel before persistence (per field). Omitted ⇒ legacy plaintext row.
   encryptedBeforeJson?: IPipelinePolicyChangeEntity['encryptedBeforeJson'];

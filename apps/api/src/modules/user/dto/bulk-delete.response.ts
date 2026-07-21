@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { UserResponse } from '@arcaai/applications';
 
 /**
- * Per-id failure record for `POST /admin/users/bulk` (TASK-310 E-11 / AC-10).
+ * Per-id failure record for `POST /admin/users/bulk`.
  *
  * Used so a partially-failing bulk delete returns a structured response
  * instead of throwing on the first id and leaving the caller unable to
@@ -20,15 +20,10 @@ export class BulkDeleteUserFailure {
 }
 
 /**
- * Bulk delete response with partial-failure semantics (TASK-310 E-11 / AC-10).
+ * Bulk delete response with partial-failure semantics.
  *
- * Pre-W7 `bulkDelete` returned `UserResponse[]` and threw on the first
- * failing id, which meant the caller had no way to tell whether the
- * preceding ids were deleted or whether the later ids were still pending.
- *
- * Decision (AC-10 alternatives): the AC allows either wrapping the loop in
- * `databaseService.client.$transaction(...)` OR returning this struct. The
- * struct is preferred because:
+ * This struct is preferred over wrapping the loop in
+ * `databaseService.client.$transaction(...)` because:
  *   - `IUserService.deleteById` does not accept a transaction client today,
  *     and threading one through would change the public service surface
  *     (out of scope for an apps/api hygiene sweep).

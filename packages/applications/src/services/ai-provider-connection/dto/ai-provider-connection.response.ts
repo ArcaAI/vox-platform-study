@@ -1,11 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * TASK-524 — masked read view of one (tenant, provider) connection row.
+ * Masked read view of one (tenant, provider) connection row.
  *
  * THIS CLASS NEVER CARRIES THE KEY. `encryptedApiKey` is deliberately absent
  * from the shape; presence of key material is reported as the `hasKey` boolean
- * only, mirroring the `TtsCredentialResponse` precedent (TASK-496). There is no
+ * only, mirroring the `TtsCredentialResponse` precedent. There is no
  * reveal route for provider keys.
  */
 export class AiProviderConnectionResponse {

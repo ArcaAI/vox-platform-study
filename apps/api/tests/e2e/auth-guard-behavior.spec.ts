@@ -29,7 +29,7 @@ test.describe('UnifiedAuthGuard Behavior', () => {
     const result = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
     superAdminToken = result?.token ?? '';
 
-    // TASK-539 finding S-3 — this used to be a soft probe
+    // This used to be a soft probe
     // (`apiKeyWorks = probe.status() !== 401`) that made every API-key test
     // below call `test.skip()` when it failed. That turned a total outage of
     // API-key authentication into a silent green run: the tenant-scope

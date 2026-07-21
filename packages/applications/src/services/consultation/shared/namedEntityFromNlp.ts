@@ -16,7 +16,7 @@ export interface NlpNamedEntity {
   entity_type?: string | null;
   confidence?: number | null;
   position?: { start?: number | null; end?: number | null } | null;
-  // TASK-476 C1 — ontology codes resolved by the NLP entity linker (snake_case
+  // Ontology codes resolved by the NLP entity linker (snake_case
   // on the wire; apps/nlp Entity). Nullable; mapped onto the NamedEntity columns.
   umls_cui?: string | null;
   snomed_code?: string | null;
@@ -42,7 +42,7 @@ export interface NlpNamedEntity {
  * Single source of truth for the NLP → NamedEntity field contract, shared by the
  * synchronous (summary.service `extractEntities`) and asynchronous (ner.processor)
  * durable persistence paths so the mapping cannot silently drift between them
- * again (TASK-463). `text`/`className` default to '' (both are required, non-null
+ * again. `text`/`className` default to '' (both are required, non-null
  * NamedEntity columns); offsets/confidence stay undefined when absent so the
  * factory nulls them. `0` is preserved (nullish coalescing, never `||`).
  */
@@ -55,7 +55,7 @@ export function namedEntityPropsFromNlp(entity: NlpNamedEntity, ctx: { tenantId:
     confidence: entity.confidence ?? undefined,
     startOffset: entity.position?.start ?? entity.start ?? entity.startOffset ?? undefined,
     endOffset: entity.position?.end ?? entity.end ?? entity.endOffset ?? undefined,
-    // TASK-476 C1 — carry the ontology codes onto the columns (undefined when
+    // Carry the ontology codes onto the columns (undefined when
     // absent so the factory nulls them; the C5-03 guard covers un-codable spans).
     umlsCui: entity.umls_cui ?? undefined,
     snomedCode: entity.snomed_code ?? undefined,

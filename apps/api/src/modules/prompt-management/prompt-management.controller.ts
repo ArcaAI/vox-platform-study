@@ -18,27 +18,25 @@ import {
 } from '@arcaai/applications';
 import { Body, Controller, Get, HttpCode, Inject, NotFoundException, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-// TASK-302 Stream D Phase E.3 — `@RequiresIfMatch()` + `@ExpectedVersion()`
-// gate the OCC-enforced PATCH route below.
 import { ApiEndpoint, Authorize, RequiresIfMatch, ExpectedVersion } from '../../decorators';
 import { PaginatedPromptTemplateResponse, PromptUsageStatsResponse } from './dto';
 
 @ApiBearerAuth()
 @ApiTags('admin-prompt-templates')
-// TASK-319 F4 — prompt-template management is an admin capability; mounting it
-// under the audited `/admin` prefix brings it in line with the other admin
-// surfaces and the boot-time admin-route permission audit (F6).
+// Prompt-template management is an admin capability; mounting it under the
+// audited `/admin` prefix brings it in line with the other admin surfaces and
+// the boot-time admin-route permission audit.
 //
-// TASK-331 doc-09 D1 — the class-level read surface is `manage:PromptTemplate`
-// (was `read`). This keeps the admin GET routes that inherit the class
-// decorator (list / getById / getVersions / getVersion / getUsageStats /
-// analytics/usage) on the ADMIN plane: granting clinicians the new
-// `read:PromptTemplate` ability (for the end-user PromptTemplateController)
-// must NOT also let them list every tenant template, peers' personal prompts,
-// drafts, or usage analytics here. Admins already hold `manage` (no
-// regression). Per-method `create/update/delete/test/activate` tuples below
-// are unaffected — the guard reads metadata with `getAllAndOverride`, so a
-// handler-level `@Authorize` wins over this class-level one.
+// The class-level read surface is `manage:PromptTemplate` (not `read`). This
+// keeps the admin GET routes that inherit the class decorator (list / getById
+// / getVersions / getVersion / getUsageStats / analytics/usage) on the ADMIN
+// plane: granting clinicians the `read:PromptTemplate` ability (for the
+// end-user PromptTemplateController) must NOT also let them list every tenant
+// template, peers' personal prompts, drafts, or usage analytics here. Admins
+// already hold `manage` (no regression). Per-method
+// `create/update/delete/test/activate` tuples below are unaffected — the
+// guard reads metadata with `getAllAndOverride`, so a handler-level
+// `@Authorize` wins over this class-level one.
 @Controller('admin/prompt-templates')
 @Authorize(['manage', 'PromptTemplate'])
 export class PromptManagementController {
@@ -62,11 +60,10 @@ export class PromptManagementController {
     multi: true,
   })
   @ApiQuery({ name: 'category', required: false, type: String })
-  @ApiQuery({ name: 'status', required: false, enum: ['DRAFT', 'PUBLISHED'], description: 'Filter by publication status (TASK-331 doc-02 F5)' })
+  @ApiQuery({ name: 'status', required: false, enum: ['DRAFT', 'PUBLISHED'], description: 'Filter by publication status' })
   @ApiQuery({ name: 'departmentId', required: false, type: String })
   @ApiQuery({ name: 'search', required: false, type: String })
   @ApiQuery({ name: 'includeDisabled', required: false, type: Boolean, description: 'Include disabled templates in results' })
-  // TASK-388 #12 — admin scope/owner narrowing (e.g. list a user's personal prompts).
   @ApiQuery({
     name: 'scope',
     required: false,
@@ -90,17 +87,15 @@ export class PromptManagementController {
       limit?: number;
     },
   ): Promise<PaginatedPromptTemplateResponse> {
-    // TASK-328 A4 — pagination is pushed down to the repository
+    // Pagination is pushed down to the repository
     // (`findPaginated` → `db.findMany` + `db.count`) instead of materializing
     // the full tenant result set and slicing it in memory.
     return this.promptService.listPromptTemplatesPaginated({
       category: queryParams.category,
-      // TASK-331 doc-02 F5 — server-side Draft/Published filter.
       status: queryParams.status,
       departmentId: queryParams.departmentId,
       search: queryParams.search,
       includeDisabled: queryParams.includeDisabled === 'true',
-      // TASK-388 #12 — admin scope/owner filters.
       scope: queryParams.scope,
       ownerUserId: queryParams.ownerUserId,
       page: Number(queryParams.page) || 1,
@@ -108,23 +103,23 @@ export class PromptManagementController {
     });
   }
 
-  // TASK-328 A4 — declared BEFORE the `:id` / `:id/usage` param routes so the
-  // static `analytics/usage` path is not shadowed by `:id/usage`.
+  // Declared BEFORE the `:id` / `:id/usage` param routes so the static
+  // `analytics/usage` path is not shadowed by `:id/usage`.
   @Get('analytics/usage')
-  @ApiOperation({ summary: 'Usage analytics grouped by department / doctor / day (TASK-328 A4)' })
+  @ApiOperation({ summary: 'Usage analytics grouped by department / doctor / day' })
   @ApiQuery({ name: 'promptTemplateId', required: false, type: String, description: 'Narrow analytics to a single template' })
   @ApiResponse({ status: 200, description: 'Usage analytics aggregates', type: PromptUsageAnalyticsResponse })
   async getUsageAnalytics(@Query() queryParams: { promptTemplateId?: string }): Promise<PromptUsageAnalyticsResponse> {
     return this.promptService.getUsageAnalytics({ promptTemplateId: queryParams.promptTemplateId });
   }
 
-  // TASK-407 — tenant-scoped raw run rows for the tenant-detail "Agent Jobs"
-  // surface (complements the aggregated analytics above). Static path, so it
-  // is also declared BEFORE the `:id` param routes. Inherits the class-level
+  // Tenant-scoped raw run rows for the tenant-detail "Agent Jobs" surface
+  // (complements the aggregated analytics above). Static path, so it is also
+  // declared BEFORE the `:id` param routes. Inherits the class-level
   // `manage PromptTemplate` posture (tenant-admin own tenant; global-admin
   // cross-tenant via X-Tenant-Id).
   @Get('usage-records')
-  @ApiOperation({ summary: 'Paginated prompt run history (PromptUsageRecord rows), newest first (TASK-407)' })
+  @ApiOperation({ summary: 'Paginated prompt run history (PromptUsageRecord rows), newest first' })
   @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (0-based)' })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Rows per page (default 20)' })
   @ApiQuery({ name: 'promptTemplateId', required: false, type: String, description: 'Narrow to a single template' })
@@ -163,8 +158,8 @@ export class PromptManagementController {
   @ApiOperation({
     summary: 'Update prompt template',
     description:
-      'Updates one prompt template row. Optimistic concurrency is enforced ' +
-      '(TASK-302 Stream D Phase E.3): the `If-Match` header (RFC 7232) is ' +
+      'Updates one prompt template row. Optimistic concurrency is enforced: ' +
+      'the `If-Match` header (RFC 7232) is ' +
       "REQUIRED, and the server runs a Compare-And-Set against the row's " +
       '`_version` column (distinct from `currentVersionNumber`, the PromptVersion ' +
       'history counter). When the header is present, its value overrides the ' +
@@ -186,9 +181,9 @@ export class PromptManagementController {
     @Body() request: UpdatePromptTemplateRequest,
     @ExpectedVersion() expectedFromHeader: number | undefined,
   ): Promise<PromptTemplateResponse> {
-    // TASK-302 Stream D Phase E.3 — header takes precedence over body
-    // when both are present. On a `@RequiresIfMatch()` route the param
-    // decorator fired 428 if the header was missing.
+    // Header takes precedence over body when both are present. On a
+    // `@RequiresIfMatch()` route the param decorator fired 428 if the
+    // header was missing.
     const effectiveRequest: UpdatePromptTemplateRequest =
       expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
     return this.promptService.updatePromptTemplate(id, effectiveRequest);
@@ -234,8 +229,8 @@ export class PromptManagementController {
     return result;
   }
 
-  // TASK-389 #14 (AG8/A3) — server-side field-level version diff. Inherits the
-  // class-level `manage:PromptTemplate` (admin plane, same as the sibling
+  // Server-side field-level version diff. Inherits the class-level
+  // `manage:PromptTemplate` (admin plane, same as the sibling
   // getVersions/getVersion reads). The static `diff` path segment keeps this
   // clear of `:id/versions/:versionNumber` and `.../activate`.
   @Get(':id/versions/:from/diff/:to')
@@ -269,7 +264,7 @@ export class PromptManagementController {
     return svc.getUsageStats(id);
   }
 
-  // ─── TASK-328 A4: prompt quality/score test run ──────────────────────
+  // ─── Prompt quality/score test run ──────────────────────
 
   @ApiEndpoint({
     returnedModel: PromptTestResultResponse,
@@ -302,8 +297,8 @@ export class PromptManagementController {
     @Body() request: TestPromptTemplateRequest,
     @ExpectedVersion() expectedFromHeader: number | undefined,
   ): Promise<PromptTestResultResponse> {
-    // TASK-328 A4 — header takes precedence over body when both are present
-    // (mirrors `update`); on a `@RequiresIfMatch()` route the param decorator
+    // Header takes precedence over body when both are present (mirrors
+    // `update`); on a `@RequiresIfMatch()` route the param decorator
     // already fired 428 if the header was missing.
     const effectiveRequest: TestPromptTemplateRequest =
       expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
@@ -312,7 +307,7 @@ export class PromptManagementController {
 
   // ─── prompt governance approval ─────────────────
   //
-  // AUTH-NOTE(TASK-532): this route carries NO handler-level permission
+  // AUTH-NOTE: this route carries NO handler-level permission
   // decorator ON PURPOSE. It inherits the class-level
   // `@Authorize(['manage','PromptTemplate'])` (so the deny-by-default boot audit
   // is satisfied), and the additional GLOBAL_ADMIN restriction is IMPERATIVE in
@@ -386,12 +381,11 @@ export class PromptManagementController {
     const version = await svc.getVersion(id, versionNumber);
     if (!version) throw new NotFoundException(`Version ${versionNumber} not found for template ${id}`);
 
-    // TASK-302 Stream D Phase E.3 — `updatePromptTemplate` now requires
-    // `expectedVersion`. This route is a server-driven rollback (no
-    // user-supplied If-Match) so we read the template's current
-    // `_version` and pass it. A concurrent edit between this read and
-    // the CAS write surfaces as `412 Precondition Failed`, which is
-    // the correct behavior — the operator should retry.
+    // `updatePromptTemplate` requires `expectedVersion`. This route is a
+    // server-driven rollback (no user-supplied If-Match) so we read the
+    // template's current `_version` and pass it. A concurrent edit between
+    // this read and the CAS write surfaces as `412 Precondition Failed`,
+    // which is the correct behavior — the operator should retry.
     const currentTemplate = await this.promptService.getPromptTemplate(id);
     if (!currentTemplate) throw new NotFoundException(`Prompt template ${id} not found`);
 
@@ -406,7 +400,7 @@ export class PromptManagementController {
   @Post('assign-department')
   @HttpCode(200)
   @Authorize(['manage', 'Department'])
-  @ApiOperation({ summary: 'Assign prompt templates to a department (TASK-294 DEF-C4)' })
+  @ApiOperation({ summary: 'Assign prompt templates to a department' })
   @ApiBody({ type: AssignDepartmentPromptRequest })
   @ApiResponse({ status: 200, description: 'Updated department prompt config', type: DepartmentResponse })
   @ApiResponse({ status: 403, description: 'Forbidden - caller lacks manage Department ability' })

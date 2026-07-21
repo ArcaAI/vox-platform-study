@@ -1,7 +1,7 @@
-"""Unit tests for the SMR ExternalGuardrailClient (TASK-338, Phase 4b).
+"""Unit tests for the SMR ExternalGuardrailClient.
 
 httpx is fully mocked — covers tenant-header propagation, the medical verdict
-mapping, and the degrade-safe → fail-CLOSED posture (TASK-478) when the guardrail
+mapping, and the degrade-safe → fail-CLOSED posture when the guardrail
 is unreachable: a transient blip is absorbed by a bounded retry, a sustained
 outage fails closed, and an errored guardrail can NEVER return ``allowed: True``.
 """
@@ -165,12 +165,12 @@ async def test_fail_closed_blocks_when_guardrail_unreachable() -> None:
     assert "error" in result
 
 
-# --- TASK-478: degrade-safe → fail-CLOSED posture --------------------------------
+# --- Degrade-safe → fail-CLOSED posture --------------------------------
 
 
 @pytest.mark.asyncio
 async def test_transient_blip_absorbed_by_bounded_retry() -> None:
-    # AC-2: one transient error then success → the blip is absorbed by the bounded
+    # One transient error then success → the blip is absorbed by the bounded
     # retry and the (medical) verdict is returned. Degrade-safe, NOT a hard fail.
     http = _RaiseThenSucceedClient(fail_times=1, payload={"is_medical": True, "confidence": 0.9})
     client = _client(ExternalGuardrailConfig(enabled=True, require_medical=True), http)
@@ -184,7 +184,7 @@ async def test_transient_blip_absorbed_by_bounded_retry() -> None:
 
 @pytest.mark.asyncio
 async def test_sustained_outage_fails_closed_after_bounded_retries() -> None:
-    # AC-3 / AC-1: every attempt errors → after the bounded retry budget the client
+    # Every attempt errors → after the bounded retry budget the client
     # fails CLOSED with a deterministic not-allowed verdict — never allowed=True.
     http = _RaisingClient()
     client = _client(ExternalGuardrailConfig(enabled=True), http)
@@ -199,7 +199,7 @@ async def test_sustained_outage_fails_closed_after_bounded_retries() -> None:
 
 @pytest.mark.asyncio
 async def test_fail_open_option_removed_from_config() -> None:
-    # AC-1: the fail-open foot-gun is retired — the config option no longer exists,
+    # The fail-open foot-gun is retired — the config option no longer exists,
     # so it cannot be flipped to silently ship unmoderated PHI on an outage.
     with pytest.raises(ValidationError):
         ExternalGuardrailConfig(enabled=True, fail_open=True)
@@ -207,7 +207,7 @@ async def test_fail_open_option_removed_from_config() -> None:
 
 @pytest.mark.asyncio
 async def test_retry_budget_is_config_driven_no_retry() -> None:
-    # AC-2: max_retries=0 → exactly one attempt (no retry), then fail closed.
+    # max_retries=0 → exactly one attempt (no retry), then fail closed.
     http = _RaisingClient()
     client = _client(ExternalGuardrailConfig(enabled=True, max_retries=0, retry_backoff_ms=0), http)
 
@@ -219,7 +219,7 @@ async def test_retry_budget_is_config_driven_no_retry() -> None:
 
 @pytest.mark.asyncio
 async def test_retry_budget_is_config_driven_bounded() -> None:
-    # AC-2/AC-3: max_retries=3 → exactly 4 bounded attempts, then fail closed
+    # max_retries=3 → exactly 4 bounded attempts, then fail closed
     # (bounded — never an unbounded retry loop that bricks a request).
     http = _RaisingClient()
     client = _client(ExternalGuardrailConfig(enabled=True, max_retries=3, retry_backoff_ms=0), http)

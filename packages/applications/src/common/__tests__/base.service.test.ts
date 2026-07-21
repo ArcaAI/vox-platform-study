@@ -225,7 +225,7 @@ describe('BaseService', () => {
   });
 
   /*
-   * TASK-306 P3.1 / AC-10 — `tenantId` is a security boundary, not a
+   * `tenantId` is a security boundary, not a
    * debug/audit convenience. The merge order in `broadcastSysEvent` must
    * make the CLS-resolved tenantId WIN over any caller-supplied
    * `payload.tenantId` so an upstream caller cannot misattribute events
@@ -273,14 +273,14 @@ describe('BaseService', () => {
       );
     });
 
-    // TASK-503 — a GLOBAL_ADMIN authenticates with an empty CLS tenantId and
+    // A GLOBAL_ADMIN authenticates with an empty CLS tenantId and
     // stays unscoped until they elevate to a working tenant (see
     // `resolve-active-tenant.ts`). Any mutation broadcast during that window
     // (e.g. a self-service UserSettings save while browsing the cross-tenant
     // audit-logs grid) previously stamped `tenantId: null`, which
     // `AuditLogProcessor`'s fail-closed guard rejects outright. Falls back to
     // the reserved SYSTEM tenant — the same convention already used by
-    // `AuditLogService` for pre-CLS LOGIN/IMPERSONATION events (TASK-305 A.8)
+    // `AuditLogService` for pre-CLS LOGIN/IMPERSONATION events
     // — so platform-level events attribute to SYSTEM instead of crashing the
     // queue. The anti-spoofing invariant is unchanged: the caller-supplied
     // `payload.tenantId` is still never used.

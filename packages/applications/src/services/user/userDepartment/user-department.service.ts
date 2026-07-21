@@ -19,11 +19,10 @@ import { BaseService, assertParentInScope, isSuperAdmin } from '../../../common'
 import { IActiveUserContext } from '../../../interfaces';
 
 /**
- * Tenant-scoped service for user ↔ department assignments (TASK-328 A1;
- * membership enforcement TASK-305 Phase F).
+ * Tenant-scoped service for user ↔ department assignments.
  *
- * `UserDepartment` is in the tenant-scope Prisma extension allow-list (added by
- * Phase F), so reads/writes are tenant-injected automatically. Every query here
+ * `UserDepartment` is in the tenant-scope Prisma extension allow-list,
+ * so reads/writes are tenant-injected automatically. Every query here
  * ALSO carries an explicit `tenantId` predicate — defence-in-depth, and required
  * to satisfy the `@@unique([tenantId, userId, departmentId])` constraint and the
  * soft-deleted-row lookup. Soft-deleted rows are reactivated on re-assign rather
@@ -37,12 +36,12 @@ import { IActiveUserContext } from '../../../interfaces';
 export class UserDepartmentService extends BaseService implements IUserDepartmentService {
   constructor(
     private readonly userDepartmentRepository: UserDepartmentRepository,
-    // TASK-305 Phase F — verify the target Department belongs to the caller's
+    // Verify the target Department belongs to the caller's
     // tenant before binding a user to it (cross-tenant referential integrity).
     private readonly departmentRepository: DepartmentRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // TASK-305 Phase F — `findActiveDepartmentForUserInTenant` is a pre-auth
+    // `findActiveDepartmentForUserInTenant` is a pre-auth
     // login lookup that must bypass the tenant-scope `$extends` (no CLS tenant
     // yet), mirroring `UserRoleAssignmentService`'s baseClient access.
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
@@ -51,7 +50,7 @@ export class UserDepartmentService extends BaseService implements IUserDepartmen
   }
 
   async findActiveDepartmentForUserInTenant(userId: string, tenantId: string): Promise<{ id: string } | null> {
-    // TASK-305 Phase F — baseClient (tenant-scope bypass). The login flow calls
+    // BaseClient (tenant-scope bypass). The login flow calls
     // this BEFORE any tenant context exists in CLS; `UserDepartment` is in the
     // tenant-scope allow-list, so the scoped client would throw "tenant context
     // required for model UserDepartment". The tenant boundary is enforced by the
@@ -68,7 +67,7 @@ export class UserDepartmentService extends BaseService implements IUserDepartmen
   }
 
   async getByUser(userId: string): Promise<UserDepartmentResponse[]> {
-    // TASK-430 — an unscoped GLOBAL_ADMIN (no working tenant selected) reads
+    // An unscoped GLOBAL_ADMIN (no working tenant selected) reads
     // the user's memberships CROSS-TENANT: the tenant-scope $extends bypasses
     // injection for elevated callers, so omitting the tenant predicate spans
     // all tenants. Every other caller keeps the strict tenant requirement.
@@ -85,7 +84,7 @@ export class UserDepartmentService extends BaseService implements IUserDepartmen
       data: { userId, items: assignments.map((a) => a.id) },
     });
 
-    // TASK-424 — the admin console renders department NAMES/CODES, not raw
+    // The admin console renders department NAMES/CODES, not raw
     // UUIDs. Batch-resolve the distinct departmentIds in ONE query (no N+1) and
     // build an id→department map. Departments are tenant-scoped (the extended
     // client injects the tenant predicate) and the assignments above are already
@@ -122,10 +121,10 @@ export class UserDepartmentService extends BaseService implements IUserDepartmen
     const { departmentId } = dto;
     const isPrimary = dto.isPrimary ?? false;
 
-    // TASK-305 Phase F — the department must exist AND live in the caller's
+    // The department must exist AND live in the caller's
     // tenant; otherwise the membership row would reference a foreign-tenant
     // department. NotFoundException avoids leaking cross-tenant existence.
-    // TASK-424 — reuse the already-loaded department to surface its name/code
+    // Reuse the already-loaded department to surface its name/code
     // on the returned row (no extra query).
     const department = await assertParentInScope(this.departmentRepository, departmentId, tenantId);
 
@@ -183,7 +182,7 @@ export class UserDepartmentService extends BaseService implements IUserDepartmen
   }
 
   /**
-   * TASK-381 V2 — reconcile a user's department memberships to EXACTLY
+   * Reconcile a user's department memberships to EXACTLY
    * `dto.departmentIds`. Adds the missing departments (restoring a soft-deleted
    * row to respect the `@@unique([tenantId, userId, departmentId])` key),
    * soft-deletes the ones no longer wanted, and enforces the single-primary
@@ -270,7 +269,7 @@ export class UserDepartmentService extends BaseService implements IUserDepartmen
       page: 1,
       limit: 500,
     });
-    // TASK-424 — `toResponse` now takes an optional label arg, so it can no
+    // `toResponse` now takes an optional label arg, so it can no
     // longer be passed straight to `Array.map` (which would forward the index).
     return finalAssignments.map((assignment) => UserDepartmentDtoMapper.toResponse(assignment));
   }

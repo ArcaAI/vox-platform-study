@@ -1,5 +1,5 @@
 /**
- * TASK-315 — TieredThrottlerGuard in-process integration test.
+ * TieredThrottlerGuard in-process integration test.
  *
  * Proves the global throttler is actually wired into the guard chain and that
  * "Option 2" (named throttlers, non-default opt-in) behaves correctly:
@@ -121,7 +121,7 @@ describe('TieredThrottlerGuard (integration)', () => {
 });
 
 /**
- * TASK-316 — DB-backed live overrides.
+ * DB-backed live overrides.
  *
  * Wires a STUB `IRateLimitSettingsService` so the guard resolves limits from
  * "the database" without any real DB/cache. Controllers are named to match the
@@ -247,7 +247,7 @@ describe('TieredThrottlerGuard (DB-backed live overrides)', () => {
 });
 
 /**
- * TASK-392 (Q7) — per-tenant plan rate-limits on the pre-auth hot path.
+ * Per-tenant plan rate-limits on the pre-auth hot path.
  *
  * Wires a stub `IEntitlementsService.getTenantRateLimitPolicy` (the cached
  * plan-tier + per-tenant override resolver) alongside a stub

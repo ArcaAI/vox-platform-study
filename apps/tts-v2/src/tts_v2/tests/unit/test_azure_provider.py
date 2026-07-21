@@ -1,4 +1,4 @@
-"""TDD tests for AzureSpeechProvider (TASK-488 Phase 3).
+"""TDD tests for AzureSpeechProvider.
 
 The Azure SDK is fully faked (injected) so these run hermetically without the
 native ``azure-cognitiveservices-speech`` wheel. A live test at the bottom is
@@ -317,7 +317,7 @@ class TestProviderContract:
 
 
 class TestTextStreamDuplex:
-    """Native duplex path (TASK-492) — v2 WS TextStream, fully faked."""
+    """Native duplex path — v2 WS TextStream, fully faked."""
 
     @pytest.mark.asyncio
     async def test_push_text_yields_audio_then_done(self):

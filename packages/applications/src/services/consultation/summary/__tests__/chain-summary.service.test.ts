@@ -1,5 +1,5 @@
 /**
- * ChainSummaryService Unit Tests — GAP-4 Implementation
+ * ChainSummaryService Unit Tests
  *
  * Tests for the comprehensive cross-chain summary generation service.
  * Verifies:
@@ -160,7 +160,7 @@ function createService() {
     const harnessPolicyService = {
         resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }),
     };
-    // TASK-362 — doctor-preferred prompt id resolver. Defaults to null so the
+    // Doctor-preferred prompt id resolver. Defaults to null so the
     // existing fixtures (no doctor preference) are unaffected.
     const configResolver = { resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null) };
 
@@ -175,8 +175,8 @@ function createService() {
         clsService as any,
         promptAssemblyService as any,
         undefined, // secretsService (@Optional)
-        harnessPolicyService as any, // TASK-356 D-7 — HarnessPolicyService resolver
-        configResolver as any, // TASK-362 — preferred-prompt resolver
+        harnessPolicyService as any, // HarnessPolicyService resolver
+        configResolver as any, // Preferred-prompt resolver
     );
 
     return {
@@ -207,7 +207,7 @@ describe('ChainSummaryService', () => {
         mocks = createService();
     });
 
-    // ── TASK-356 D-7 (T-C2): callSmrService passes the cascade-resolved model ──
+    // ── callSmrService passes the cascade-resolved model ──
     describe('SMR selection', () => {
         const primeComprehensive = () => {
             const consultation = createConsultation();
@@ -241,7 +241,7 @@ describe('ChainSummaryService', () => {
         });
     });
 
-    // ── TASK-362 — the sync chain-summary REST path must thread the requesting
+    // ── the sync chain-summary REST path must thread the requesting
     //    doctor's preferred prompt template id (UserProfile.preferredPromptTemplateId,
     //    resolved via ConfigResolver off the requesting consultation's doctorId)
     //    into promptAssemblyService.assemble so Tier-0 prompt selection is honored.
@@ -1144,7 +1144,7 @@ describe('ChainSummaryService', () => {
     });
 
     // ============================================================
-    // TASK-305 D.4 — Cross-aggregate tenant isolation for ChainSummaryService
+    // Cross-aggregate tenant isolation for ChainSummaryService
     //
     // The comprehensive-summary endpoint loads the requesting consultation
     // by id AND traverses the full chain via `findConsultationChain`

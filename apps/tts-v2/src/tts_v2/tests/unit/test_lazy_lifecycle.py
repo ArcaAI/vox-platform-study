@@ -1,16 +1,11 @@
-"""TASK-529 §4.7 (D-09) — tts-v2 local engines become lazy + evictable.
+"""tts-v2 local engines are lazy + evictable.
 
-Before this ticket the local engines were loaded EAGERLY in the lifespan
-(`warm_and_register` called `provider.warmup()` and only registered on success)
-and were never unloaded — no unload path existed at all. A booted tts-v2 pinned
-Kokoro + IndicParler weights for the life of the process regardless of traffic.
-
-After: providers register unconditionally, the model loads on first synth
+Providers register unconditionally, the model loads on first synth
 request, and an idle model is released by the shared cache's TTL sweep.
 
-Health-semantics shift (documented in the runbook): a broken model now surfaces
-as a first-request 503 rather than boot-time non-registration.
-`TTS_WARMUP_ENABLED=true` restores the old fail-at-boot behaviour.
+Health-semantics: a broken model surfaces as a first-request 503 rather than
+boot-time non-registration (documented in the runbook).
+`TTS_WARMUP_ENABLED=true` restores fail-at-boot behaviour.
 
 RED: written before the implementation.
 """
@@ -45,7 +40,7 @@ def _request(text: str = "hello") -> SynthesisRequest:
 
 
 def test_warmup_is_disabled_by_default() -> None:
-    """Lazy-by-default is the whole point of D-09."""
+    """Lazy loading only works if warmup is off by default."""
     settings = Settings()
     assert settings.warmup_enabled is False
 
@@ -168,13 +163,11 @@ async def test_idle_model_is_unloaded_and_gauge_returns_to_zero() -> None:
     assert _FakePipeline.constructed == 2
 
 
-# ── TASK-530 (D-09 completion) — ALL THREE local engines, not just Kokoro ───
+# ── ALL THREE local engines, not just Kokoro ───
 #
-# TASK-529 made Kokoro/IndicParler/IndicF5 lazy but put only KOKORO behind the
-# shared cache, so IndicParler and IndicF5 loaded on first use and then stayed
-# resident forever — lazy, but never TTL-unloaded. Under §2.5's Completion &
-# Cleanup Doctrine a partial implementation is finished end-to-end, so the same
-# clauses now run against every local engine.
+# Kokoro/IndicParler/IndicF5 are all lazy AND behind the shared cache, so
+# each is TTL-unloaded when idle rather than staying resident forever. The
+# same clauses run against every local engine.
 
 LOCAL_ENGINES = ("kokoro", "indic_parler", "indic_f5")
 

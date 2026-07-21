@@ -202,7 +202,7 @@ class TestSileroVADServiceBatch:
 
 
 class TestProbs2SegmentsEndPadding:
-    """Test that _probs_to_segments applies padding to BOTH start and end (TASK-008 2.1)."""
+    """Test that _probs_to_segments applies padding to BOTH start and end."""
 
     def test_segment_end_includes_padding(self):
         """Segment end time should include pad_samples beyond last speech frame."""
@@ -416,7 +416,7 @@ class TestSileroVADServiceStreaming:
 
 
 class TestVADSessionStateDatetimeAware:
-    """Verify VADSessionState uses timezone-aware datetimes (TASK-008 4.1)."""
+    """Verify VADSessionState uses timezone-aware datetimes."""
 
     def test_created_at_is_timezone_aware(self):
         """created_at default should have timezone info (not naive)."""
@@ -554,7 +554,7 @@ class TestVADSessionManager:
 
 
 # =========================================================================
-# Tests: TASK-505 Phase 0 — hysteresis + falsy-fallback fixes
+# Tests: hysteresis + falsy-fallback fixes
 # =========================================================================
 
 
@@ -657,7 +657,7 @@ class TestTask505FalsyOverrides:
 
 
 class TestTask505ReviewFixes:
-    """Fixes from the Phase 0 adversarial review."""
+    """Regression locks for adversarial-review findings."""
 
     def test_padded_segments_never_overlap(self):
         # 200 ms padding with a 3-frame (96 ms) gap between two words: without

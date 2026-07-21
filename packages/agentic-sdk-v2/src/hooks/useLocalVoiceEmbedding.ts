@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useLocalVoiceEmbedding Hook (TASK-329 P4)
+ * @arcaai/vox - useLocalVoiceEmbedding Hook
  *
  * A NEW, in-browser voice-enrollment provider that sits ALONGSIDE the existing
  * server-side `useVoiceEmbedding` (backend) provider — it never replaces it.

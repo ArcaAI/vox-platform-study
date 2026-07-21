@@ -67,7 +67,7 @@ async def health_check(request: Request) -> dict[str, Any]:
         "checks": checks,
     }
 
-    # TASK-525 §3.7 — which config lane is live. Health is auth-exempt, so this
+    # Which config lane is live. Health is auth-exempt, so this
     # carries SOURCE LABELS and timestamps only, never resolved values. It never
     # affects `overall`: a config-plane outage degrades to env values, which is
     # a healthy state.

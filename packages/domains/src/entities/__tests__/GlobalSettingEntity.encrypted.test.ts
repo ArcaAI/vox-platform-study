@@ -1,4 +1,4 @@
-// TASK-302 Phase 4 Task 4.3 — GlobalSettingEntity exposes encryptedValue
+// GlobalSettingEntity exposes encryptedValue
 // and keyVersion. Both nullable.
 import { describe, it, expect } from 'vitest';
 import { GlobalSettingEntity } from '../generated/core/GlobalSettingEntity';

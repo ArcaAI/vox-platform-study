@@ -4,7 +4,7 @@ import { IPlatformMetricsService, PlatformMetricsResponse, OpenSocketsResponse, 
 import { CanManage } from '../../decorators';
 
 /**
- * TASK-386 (#16 / E1·E2·E3) — platform runtime metrics surface.
+ * Platform runtime metrics surface.
  *
  * Platform-wide ops data, so the whole controller is gated to GLOBAL_ADMIN via
  * `@CanManage('PlatformMetrics')` (satisfied by the GLOBAL `manage:all` grant;

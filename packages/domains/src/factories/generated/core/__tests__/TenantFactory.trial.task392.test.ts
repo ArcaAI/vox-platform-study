@@ -1,9 +1,9 @@
 /**
- * TASK-392 (Q4) — TenantFactory trial-clock stamping.
+ * TenantFactory trial-clock stamping.
  *
  * A tenant created on the TRIAL plan gets a 7-day trial window stamped from
  * `createdAt`; non-TRIAL tenants carry a null clock; an explicit `trialEndsAt`
- * always wins. The plan default itself stays `null` (TASK-387 factory
+ * always wins. The plan default itself stays `null` (factory
  * contract, covered by TenantEntity.lifecycle-plan.test.ts).
  */
 import { describe, it, expect } from 'vitest';

@@ -1,9 +1,9 @@
 // ============================================================================
-// AI Provider Connections (TASK-524 — config-plane core, GAP-C1)
+// AI Provider Connections (config-plane core)
 //
 // WHERE a serving provider lives and HOW to authenticate. One row per
 // (tenant, provider); the reserved SYSTEM tenant row is the platform default.
-// Generalizes TenantTtsProviderCredential (TASK-496) to all LLM providers.
+// Generalizes TenantTtsProviderCredential to all LLM providers.
 // `provider` is a validated string (AI_MODEL_PROVIDERS — no Prisma enum, per
 // the AiModel.provider convention). Tenant rows are allowed ONLY for cloud API
 // providers (azure, bedrock — service-layer 403 otherwise, mirroring

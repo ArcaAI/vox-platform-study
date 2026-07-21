@@ -565,7 +565,7 @@ class TestAudioLoadingWithFallback:
 
 
 # =============================================================================
-# VAD PRIORITY TESTS (TASK-008 1.2)
+# VAD PRIORITY TESTS
 # =============================================================================
 
 
@@ -810,14 +810,14 @@ class TestApplyVadSmartPriority:
 
 
 # =============================================================================
-# PIPELINE ORDER TESTS (TASK-009)
+# PIPELINE ORDER TESTS
 # =============================================================================
 
 
 class TestPipelineOrder:
     """Tests verifying the correct preprocessing pipeline order.
 
-    TASK-009 requirement: Load → Mono → Normalize → Denoise → Resample → VAD
+    Required order: Load → Mono → Normalize → Denoise → Resample → VAD
     """
 
     @pytest.fixture
@@ -984,7 +984,7 @@ class TestPipelineOrder:
 
 
 # =============================================================================
-# RNNOISE DENOISE TESTS (TASK-009)
+# RNNOISE DENOISE TESTS
 # =============================================================================
 
 
@@ -1099,7 +1099,7 @@ class TestApplyDenoise:
 
 
 class TestApplyDenoiseDeepFilterNet3:
-    """TASK-507 — tests for _apply_denoise_deepfilternet3 (DeepFilterNet3)."""
+    """Tests for _apply_denoise_deepfilternet3 (DeepFilterNet3)."""
 
     @pytest.fixture
     def preprocessor(self):
@@ -1167,7 +1167,7 @@ class TestApplyDenoiseDeepFilterNet3:
 
 
 class TestDenoiseEngineDispatch:
-    """TASK-507 — preprocessing.denoise.engine selects the RNNoise vs
+    """preprocessing.denoise.engine selects the RNNoise vs
     DeepFilterNet3 implementation in AudioPreprocessor.process()."""
 
     @pytest.fixture
@@ -1224,7 +1224,7 @@ class TestDenoiseEngineDispatch:
 
 
 # =============================================================================
-# PREPROCESSING EDGE CASES — COMBINED FEATURES (TASK-009)
+# PREPROCESSING EDGE CASES — COMBINED FEATURES
 # =============================================================================
 
 
@@ -1427,7 +1427,7 @@ class TestPreprocessingCombinedFeatures:
 
 
 class TestTask505DualPathDenoise:
-    """TASK-505 P2 (decision D2) — dual-path denoise + v2 stage toggles."""
+    """Dual-path denoise + v2 stage toggles."""
 
     def _pre(self):
         return AudioPreprocessor()

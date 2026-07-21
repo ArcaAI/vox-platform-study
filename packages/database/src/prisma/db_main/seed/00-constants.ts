@@ -40,7 +40,7 @@
  *   97000000-xxxx  →  User Voice Profiles (diarization enrollment)
  *   98000000-xxxx  →  Transcription Jobs (ASR job queue rows)
  *   A0000000-xxxx  →  Audit Log Entries
- *   B0000000-xxxx  →  Plan Entitlements (TASK-392)
+ *   B0000000-xxxx  →  Plan Entitlements
  */
 
 // =============================================================================
@@ -56,8 +56,8 @@ export const SYSTEM_USER_ID = '60000000-0000-0000-0000-000000000000';
 /**
  * Reserved system tenant — used as the `tenantId` owner for platform-wide rows
  * (system policies, RBAC roles, system AI models / pipelines, system-wide
- * settings) that are NOT customer data. Introduced by TASK-305 Phase A to
- * replace the previous `tenantId IS NULL` / sentinel-default semantics.
+ * settings) that are NOT customer data. Replaces the previous
+ * `tenantId IS NULL` / sentinel-default semantics.
  *
  * DO NOT use this tenant for any customer-facing data.
  */
@@ -72,7 +72,7 @@ export const SEED_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 export const SEED_CUSTOMER_TENANT_IDS = {
     // ArcaAI is the single retained customer/demo tenant. It exists to back the
     // cross-tenant isolation E2E suite (a "second tenant" to prove 404/scoping
-    // contracts). The former 4bits + Mumbai demo tenants were removed (TASK-365).
+    // contracts). The former 4bits + Mumbai demo tenants were removed.
     ARCAAI: '50000000-0000-0000-0000-000000000001',
 } as const;
 
@@ -105,12 +105,12 @@ export const SEED_POLICY_IDS = {
 // =============================================================================
 
 export const SEED_ROLE_IDS = {
-    // 00000000-0000-0000-0000-000000000001 is the RETIRED SUPER_ADMIN role id
-    // (TASK-417): consolidated into GLOBAL_ADMIN and soft-deleted by data
+    // 00000000-0000-0000-0000-000000000001 is the RETIRED SUPER_ADMIN role id:
+    // consolidated into GLOBAL_ADMIN and soft-deleted by data
     // migration. Reserved forever — never reuse it for a new role.
     TENANT_ADMIN: '00000000-0000-0000-0000-000000000002',
-    // TASK-336 AC-06 — elevated platform-wide "global admin"; the single
-    // elevated role recognized by tenant-guards.ELEVATED_ROLES (TASK-417).
+    // Elevated platform-wide "global admin"; the single
+    // elevated role recognized by tenant-guards.ELEVATED_ROLES.
     GLOBAL_ADMIN: '00000000-0000-0000-0000-000000000003',
     DOCTOR: '00000000-0000-0000-0000-000000000010',
     NURSE: '00000000-0000-0000-0000-000000000011',
@@ -126,11 +126,11 @@ export const SEED_ROLE_IDS = {
 export const SEED_USER_IDS = {
     SYSTEM: SYSTEM_USER_ID,
     // Key kept as SUPER_ADMIN for data identity: it is the seeded `super_admin`
-    // USER (login identifier), which since TASK-417 carries the GLOBAL_ADMIN role.
+    // USER (login identifier), which carries the GLOBAL_ADMIN role.
     SUPER_ADMIN: '70000000-0000-0000-0000-000000000001',
     TENANT_ADMIN: '70000000-0000-0000-0000-000000000002',
     ARCAAI_ADMIN: '70000000-0000-0000-0000-000000000003',
-    // TASK-336 AC-06 — platform-wide global admin. Lives on the SYSTEM tenant
+    // Platform-wide global admin. Lives on the SYSTEM tenant
     // (like the seeded super_admin user) so it is membership-exempt and
     // elevated cross-tenant.
     GLOBAL_ADMIN: '70000000-0000-0000-0000-000000000006',
@@ -154,9 +154,9 @@ export const SEED_USER_IDS = {
     NURSE_CARD: '70000000-0000-0000-0000-000000000027',
     NURSE_MED: '70000000-0000-0000-0000-000000000028',
     SERVICE_ACCOUNT: '70000000-0000-0000-0000-000000000030',
-    // TASK-331 doc-05 F1 — one impersonatable DOCTOR + NURSE for the ArcaAI
+    // One impersonatable DOCTOR + NURSE for the ArcaAI
     // customer tenant. The ~17 clinical users above all live on the Global
-    // tenant; tenant admins are confined to their own tenant (backend C-1), so
+    // tenant; tenant admins are confined to their own tenant, so
     // ArcaAI needs its own non-admin clinical users to impersonate.
     ARCAAI_DOCTOR: '70000000-0000-0000-0000-000000000040',
     ARCAAI_NURSE: '70000000-0000-0000-0000-000000000041',
@@ -185,13 +185,13 @@ export const SEED_DEPARTMENT_IDS = {
     DIET: '70000000-0000-0000-0000-000000000016',
     NEPH: '70000000-0000-0000-0000-000000000017',
     SONC: '70000000-0000-0000-0000-000000000018',
-    // Per-customer-tenant General Practice departments (TASK-305 Phase F).
+    // Per-customer-tenant General Practice departments.
     // The 18 departments above belong to the Global customer tenant
     // (SEED_TENANT_ID, 50000000-…0000). The ArcaAI customer tenant needs its
     // own GEN department so its non-exempt admins can satisfy the
     // role + department membership invariant enforced at login.
     GEN_ARCAAI: '70000000-0000-0000-0001-000000000001',
-    // TASK-331 r2605 #6 — enrich the ArcaAI customer tenant with a small
+    // Enrich the ArcaAI customer tenant with a small
     // realistic specialty catalog (Cardiology + Emergency) alongside the
     // existing GEN so cross-tenant demos look real. The 4th UUID group encodes
     // the tenant (0001=ArcaAI); the trailing group encodes the department slot
@@ -327,7 +327,7 @@ export const SEED_CONSULTATION_IDS = {
     DIET_NEW: '90000000-0000-0000-0000-000000000013',
     NEPH_NEW: '90000000-0000-0000-0000-000000000014',
     SONC_NEW: '90000000-0000-0000-0000-000000000015',
-    // --- Customer-tenant consultations (TASK-331 doc-08 F1, seeded in 09-consultation.ts) ---
+    // --- Customer-tenant consultations (seeded in 09-consultation.ts) ---
     // 4th UUID group encodes the customer tenant (0001 ArcaAI).
     ARCAAI_GEN_NEW: '90000000-0000-0000-0001-000000000001',
     ARCAAI_GEN_REVISIT: '90000000-0000-0000-0001-000000000002',
@@ -392,7 +392,7 @@ export const SEED_CONTEXT_ITEM_IDS = {
     DNA_CASE_NOTE_DOE_3: SEED_CTX_ID(222),
     DNA_CASE_NOTE_DOE_4: SEED_CTX_ID(223),
     DNA_CASE_NOTE_DOE_5: SEED_CTX_ID(224),
-    // --- Customer-tenant transcripts (TASK-331 doc-08 F1, seeded in 09-consultation.ts) ---
+    // --- Customer-tenant transcripts (seeded in 09-consultation.ts) ---
     // 4th UUID group encodes the customer tenant (0001 ArcaAI).
     ARCAAI_GEN_NEW_TRANSCRIPT: '91000000-0000-0000-0001-000000000001',
     ARCAAI_GEN_REVISIT_TRANSCRIPT: '91000000-0000-0000-0001-000000000002',
@@ -414,7 +414,7 @@ export const SEED_AUDIO_RECORDING_IDS = {
 } as const;
 
 // =============================================================================
-// USER VOICE PROFILES (TASK-331 doc-07 F3)
+// USER VOICE PROFILES
 //
 // Deterministic voice-enrollment rows for the two primary seed doctors so the
 // Voice Profile playground, the active-profile diarization seeding, and the
@@ -430,14 +430,14 @@ export const SEED_VOICE_PROFILE_IDS = {
     DOCTOR_INACTIVE: '97000000-0000-0000-0000-000000000002',
     DOCTOR2_ACTIVE: '97000000-0000-0000-0000-000000000003',
     DOCTOR2_INACTIVE: '97000000-0000-0000-0000-000000000004',
-    // TASK-336 EU-05 — one ACTIVE enrollment for the ArcaAI customer-tenant
+    // One ACTIVE enrollment for the ArcaAI customer-tenant
     // doctor so voice-enrollment demos are populated for the customer tenant,
     // not just the Global-tenant doctors above.
     ARCAAI_DOCTOR_ACTIVE: '97000000-0000-0000-0001-000000000001',
 } as const;
 
 // =============================================================================
-// TRANSCRIPTION JOBS (TASK-336 EU-04)
+// TRANSCRIPTION JOBS
 // =============================================================================
 // ASR job-queue rows across the full status lifecycle so the admin "jobs"
 // views and EU analytics are populated. The 4th UUID group encodes the owning
@@ -524,8 +524,8 @@ export const SEED_GLOBAL_SETTING_IDS = {
     // ArcaAI — stt
     ARCAAI_STT_MODEL: '85000000-0000-0000-0001-000000000020',
     ARCAAI_STT_VAD: '85000000-0000-0000-0001-000000000021',
-    // ArcaAI — smr Azure deployment-name (TASK-338, non-secret)
-    // TASK-506 — ARCAAI_SMR_PROVIDER (…030) / ARCAAI_SMR_MODEL (…031) /
+    // ArcaAI — smr Azure deployment-name (non-secret)
+    // ARCAAI_SMR_PROVIDER (…030) / ARCAAI_SMR_MODEL (…031) /
     // ARCAAI_GUARDRAIL_* (…033-035) / ARCAAI_UX_SMR_PROVIDER_MODELS (…043)
     // retired (rows swept to DELETED); ids stay reserved — never reuse them.
     ARCAAI_SMR_AZURE_DEPLOYMENT: '85000000-0000-0000-0001-000000000032',
@@ -548,8 +548,8 @@ export const SEED_GLOBAL_SETTING_IDS = {
     // Global tenant — stt
     GLOBAL_STT_MODEL: '85000000-0000-0000-0000-000000000020',
     GLOBAL_STT_VAD: '85000000-0000-0000-0000-000000000021',
-    // Global tenant — smr Azure deployment-name (TASK-338, non-secret)
-    // TASK-506 — GLOBAL_SMR_PROVIDER (…030) / GLOBAL_SMR_MODEL (…031) /
+    // Global tenant — smr Azure deployment-name (non-secret)
+    // GLOBAL_SMR_PROVIDER (…030) / GLOBAL_SMR_MODEL (…031) /
     // GLOBAL_GUARDRAIL_* (…033-035) / GLOBAL_UX_SMR_PROVIDER_MODELS (…043)
     // retired (rows swept to DELETED); ids stay reserved — never reuse them.
     GLOBAL_SMR_AZURE_DEPLOYMENT: '85000000-0000-0000-0000-000000000032',
@@ -566,26 +566,26 @@ export const SEED_GLOBAL_SETTING_IDS = {
 
     ARCAAI_LOCKED_CONFIG_PATHS: '85000000-0000-0000-0001-000000000050',
 
-    // TASK-331 doc-04 F4 — per-tenant admin-console menu-order default
+    // Per-tenant admin-console menu-order default
     // (namespace `arcaai-admin`, key `menuOrder`). Seeds the TENANT tier of the
     // resolver's USER → TENANT → DEFAULT precedence. Suffix `051` mirrors the
     // `050` locked-config-paths numbering; the 4th UUID group encodes the tenant.
     GLOBAL_ADMIN_MENU_ORDER: '85000000-0000-0000-0000-000000000051',
     ARCAAI_ADMIN_MENU_ORDER: '85000000-0000-0000-0001-000000000051',
 
-    // TASK-332 — platform capability for local raw-stream dual-capture. A single
+    // Platform capability for local raw-stream dual-capture. A single
     // `locked` row owned by SYSTEM_TENANT_ID (the reserved platform tenant). The
     // 4th UUID group `0002` is a fresh system-tenant block (roles use `0000`,
     // policies `0001`). Read flat-by-key from the AppSettings boot cache.
     SYSTEM_FF_LOCAL_RAW_CAPTURE: '00000000-0000-0000-0002-000000000001',
 
-    // TASK-531 — platform controls for the nightly SYSTEM-template resync sweep.
+    // Platform controls for the nightly SYSTEM-template resync sweep.
     // Same `0002` system-tenant block as the capability flag above; read flat
     // by key from the AppSettings boot cache.
     SYSTEM_PIPELINE_TEMPLATE_RESYNC_ENABLED: '00000000-0000-0000-0002-000000000002',
     SYSTEM_PIPELINE_TEMPLATE_RESYNC_CRON: '00000000-0000-0000-0002-000000000003',
 
-    // TASK-316 — DB-backed rate-limit config (platform tenant only; gateway-wide).
+    // DB-backed rate-limit config (platform tenant only; gateway-wide).
     RATE_LIMIT_ENABLED: '85000000-0000-0000-0000-000000000300',
     RATE_LIMIT_TIER_DEFAULT_LIMIT: '85000000-0000-0000-0000-000000000301',
     RATE_LIMIT_TIER_DEFAULT_TTL: '85000000-0000-0000-0000-000000000302',
@@ -596,13 +596,13 @@ export const SEED_GLOBAL_SETTING_IDS = {
     RATE_LIMIT_TIER_RELAXED_LIMIT: '85000000-0000-0000-0000-000000000307',
     RATE_LIMIT_TIER_RELAXED_TTL: '85000000-0000-0000-0000-000000000308',
 
-    // TASK-392 — entitlements enforcement kill-switch (platform tenant only).
+    // Entitlements enforcement kill-switch (platform tenant only).
     // Seeded OFF (Q9); flip per-env to turn quota/feature enforcement on.
     ENTITLEMENTS_ENABLED: '85000000-0000-0000-0000-000000000400',
 } as const;
 
 // =============================================================================
-// PLAN ENTITLEMENTS (TASK-392 — platform-wide per-plan default matrix)
+// PLAN ENTITLEMENTS (platform-wide per-plan default matrix)
 // =============================================================================
 // One row per TenantPlan (the `plan` column is @unique). NOT tenant-scoped —
 // a platform reference table like Role/Permission. Values mirror

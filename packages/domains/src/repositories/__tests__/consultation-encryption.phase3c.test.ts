@@ -1,4 +1,4 @@
-// TASK-369 (Data Encryption Initiative) Phase 3C — consultation-group field
+// Consultation-group field
 // encryption (ContextItemVersion / Highlight / NamedEntity / SummaryMeta).
 //
 // Exercises the multi-field prototype-augmentation siblings (encrypt/decrypt

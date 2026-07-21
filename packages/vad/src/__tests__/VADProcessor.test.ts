@@ -40,8 +40,8 @@ vi.mock('@arcaai/room', () => {
       this.emit('data', { type, data, timestamp: Date.now() });
     }
 
-    // Delegate to subclass lifecycle hooks so TASK-271 tests can exercise
-    // the real init / reset / setStream paths under jsdom.
+    // Delegate to subclass lifecycle hooks so tests can exercise the real
+    // init / reset / setStream paths under jsdom.
     async init(opts: unknown) {
       const self = this as unknown as { onInit?: (opts: unknown) => Promise<void> };
       if (typeof self.onInit === 'function') {
@@ -274,7 +274,7 @@ describe('VADProcessor', () => {
       expect(options.negativeSpeechThreshold).toBe(0.4);
     });
 
-    // TASK-304: validation guards for threshold ranges
+    // Validation guards for threshold ranges
     it('rejects positiveSpeechThreshold below 0', async () => {
       const processor = new VADProcessor();
       await expect(processor.updateThresholds(-0.1, 0.3)).rejects.toThrow(VADError);
@@ -320,7 +320,7 @@ describe('VADProcessor', () => {
     });
   });
 
-  // TASK-304: postSpeechPadMs forwarded via zero-pad in handleSpeechEnd
+  // postSpeechPadMs forwarded via zero-pad in handleSpeechEnd
   describe('postSpeechPadMs (TASK-304)', () => {
     function withSpeechEndStub(padMs: number, sampleRate: number) {
       const processor = new VADProcessor({
@@ -570,7 +570,7 @@ describe('VADProcessor edge cases', () => {
 });
 
 // ============================================================================
-// TASK-271 — lifecycle integration tests (init / reset / setStream / silence)
+// Lifecycle integration tests (init / reset / setStream / silence)
 // ============================================================================
 
 interface InitOpts {
@@ -591,9 +591,9 @@ interface InternalProcessor {
 const asInternal = (p: VADProcessor): InternalProcessor =>
   p as unknown as InternalProcessor;
 
-// Every TASK-271 describe shares the module-level micVADCalls array; make
-// sure it does not leak across tests (the existing vi.clearAllMocks() does
-// not touch our local array).
+// Every describe below shares the module-level micVADCalls array; make sure
+// it does not leak across tests (the existing vi.clearAllMocks() does not
+// touch our local array).
 beforeEach(() => {
   micVADCalls.length = 0;
 });
@@ -749,7 +749,7 @@ describe('VADProcessor silence-triggered reset (TASK-271 H-1)', () => {
 });
 
 // ============================================================================
-// TASK-271 H-2 — sliding-window probability stats (memory bounded)
+// Sliding-window probability stats (memory bounded)
 // ============================================================================
 
 describe('VADProcessor sliding-window stats (TASK-271 H-2 / TASK-300 L-4)', () => {
@@ -818,7 +818,7 @@ describe('VADProcessor sliding-window stats (TASK-271 H-2 / TASK-300 L-4)', () =
 });
 
 // ============================================================================
-// TASK-300 L-3 — VADProcessor.restart() alias + threshold hot-reload
+// VADProcessor.restart() alias + threshold hot-reload
 // ============================================================================
 
 describe('VADProcessor.restart() (TASK-300 L-3)', () => {
@@ -908,7 +908,7 @@ describe('VADProcessor threshold hot-reload triggers restart (TASK-300 L-3)', ()
 });
 
 // ============================================================================
-// TASK-300 L-4 — sliding window upgraded to 1024 frames (~32.8s @ 31.25 fps)
+// Sliding window upgraded to 1024 frames (~32.8s @ 31.25 fps)
 // ============================================================================
 
 describe('VADProcessor sliding-window @ 1024 frames (TASK-300 L-4)', () => {
@@ -942,7 +942,7 @@ describe('VADProcessor sliding-window @ 1024 frames (TASK-300 L-4)', () => {
 });
 
 // ============================================================================
-// TASK-300 L-10 — VAD numThreads gating on crossOriginIsolated
+// VAD numThreads gating on crossOriginIsolated
 // ============================================================================
 
 describe('VADProcessor numThreads gating (TASK-300 L-10)', () => {
@@ -1022,7 +1022,7 @@ describe('VADProcessor numThreads gating (TASK-300 L-10)', () => {
 });
 
 // ============================================================================
-// TASK-271 H-4 — VADSpeechEndPayload.duration (ms) at the source
+// VADSpeechEndPayload.duration (ms) at the source
 // ============================================================================
 
 describe('VADSpeechEndPayload.duration (TASK-271 H-4)', () => {

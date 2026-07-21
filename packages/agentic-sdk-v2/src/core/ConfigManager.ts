@@ -7,18 +7,18 @@ type ConfigEventType =
   | 'configChanged'
   | 'userPreferencesChanged'
   | 'tenantConfigChanged'
-  /** TASK-297 DEF-C5 — emitted whenever the department tier changes. */
+  /** Emitted whenever the department tier changes. */
   | 'departmentConfigChanged';
 type ConfigEventHandler = (config: AppConfig) => void;
 
 /**
- * TASK-297 DEF-L3 — minimal logger surface the ConfigManager can call into
+ * Minimal logger surface the ConfigManager can call into
  * to surface I/O failures (load / persist). Kept tiny and structurally
  * compatible with `ISDKLogger` so `logger.child(...)` can be passed straight
  * in from the provider.
  */
 export interface ConfigManagerLogger {
-  // TASK-321 E — method syntax (not an arrow property) so parameter checking is
+  // Method syntax (not an arrow property) so parameter checking is
   // bivariant. This lets a full `ISDKLogger` (whose `warn(message, meta?: LogMeta)`
   // is narrower in its 2nd param) be passed where a `ConfigManagerLogger` is
   // expected, without coupling ConfigManager to the SDK logger's `LogMeta` type.
@@ -28,10 +28,10 @@ export interface ConfigManagerLogger {
 export interface ConfigManagerOptions {
   onPersistUserPreferences?: (prefs: DeepPartial<AppConfig>) => Promise<void>;
   /**
-   * TASK-331 doc-07 F5a — OPTIONAL additive server sync of the user-pref tier
+   * OPTIONAL additive server sync of the user-pref tier
    * (e.g. debounced `PATCH /user/me/settings`). Runs ALONGSIDE
    * `onPersistUserPreferences` and is gated by the SAME read-only
-   * short-circuit (TASK-245), so an admin's edits while impersonating never
+   * short-circuit, so an admin's edits while impersonating never
    * reach the impersonated user's server profile. A rejection here is
    * isolated and never breaks local-storage persistence.
    */
@@ -42,12 +42,12 @@ export interface ConfigManagerOptions {
 }
 
 /**
- * Four-tier configuration resolution engine (TASK-297 DEF-C5).
+ * Four-tier configuration resolution engine.
  *
  * Resolution order:
  *   SYSTEM_DEFAULTS         (frozen, Tier 0)
  *   <- tenantOverrides      (admin, Tier 1)
- *   <- departmentOverrides  (department admin, Tier 2 — TASK-297 DEF-C5)
+ *   <- departmentOverrides  (department admin, Tier 2)
  *   <- userPreferences      (user-editable only, Tier 3)
  *   = resolved config
  *
@@ -57,9 +57,9 @@ export interface ConfigManagerOptions {
 export class ConfigManager {
   private tenantOverrides: DeepPartial<AppConfig> = {};
   private tenantLockedPaths: Set<string> = new Set();
-  /** TASK-297 DEF-C5 — department tier (Tier 2). */
+  /** Department tier (Tier 2). */
   private departmentOverrides: DeepPartial<AppConfig> = {};
-  /** TASK-297 DEF-C5 — paths locked by the department tier. */
+  /** Paths locked by the department tier. */
   private departmentLockedPaths: Set<string> = new Set();
   private userPreferences: DeepPartial<AppConfig> = {};
   private resolved: AppConfig = SYSTEM_DEFAULTS;
@@ -87,7 +87,7 @@ export class ConfigManager {
   }
 
   // ---------------------------------------------------------------------------
-  // Tier 2 — Department config (TASK-297 DEF-C5)
+  // Tier 2 — Department config
   // ---------------------------------------------------------------------------
 
   /**
@@ -153,7 +153,7 @@ export class ConfigManager {
   }
 
   /**
-   * TASK-297 DEF-C5 — union of tenant + department locked paths.
+   * Union of tenant + department locked paths.
    */
   private allLockedPaths(): ReadonlySet<string> {
     if (this.departmentLockedPaths.size === 0) return this.tenantLockedPaths;
@@ -193,7 +193,7 @@ export class ConfigManager {
         this.emit('userPreferencesChanged', this.resolved);
       }
     } catch (error) {
-      // TASK-297 DEF-L3 — surface load failures via the SDK logger so the
+      // Surface load failures via the SDK logger so the
       // host app can wire them into Highlight / OTel. Behaviour-wise we
       // still fall back to defaults so the SDK keeps working.
       this.options.logger?.warn?.('[ConfigManager] loadUserPreferences failed; falling back to defaults', {
@@ -218,7 +218,7 @@ export class ConfigManager {
   }
 
   // ---------------------------------------------------------------------------
-  // Read-only mode (TASK-245 — impersonation isolation)
+  // Read-only mode (impersonation isolation)
   // ---------------------------------------------------------------------------
 
   setReadOnly(flag: boolean): void {
@@ -278,7 +278,7 @@ export class ConfigManager {
   // ---------------------------------------------------------------------------
 
   private resolve(): void {
-    // TASK-297 DEF-C5 — 4-tier: SYSTEM <- tenant <- department <- user
+    // 4-tier: SYSTEM <- tenant <- department <- user
     const afterTenant = deepmerge(SYSTEM_DEFAULTS, this.tenantOverrides) as AppConfig;
     const afterDept = deepmerge(afterTenant, this.departmentOverrides) as AppConfig;
     const allowedUserPrefs = this.stripLockedAndAdminPaths(this.userPreferences);
@@ -338,7 +338,7 @@ export class ConfigManager {
       }
     }
 
-    // TASK-331 doc-07 F5a — additive server sync. Isolated try/catch so a
+    // Additive server sync. Isolated try/catch so a
     // failed PATCH can never break the local-storage persistence above.
     if (this.options.onPersistUserPreferencesToServer) {
       try {

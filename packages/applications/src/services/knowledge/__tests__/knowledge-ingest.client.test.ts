@@ -1,5 +1,5 @@
 /**
- * KnowledgeIngestClient unit tests (TASK-330 Phase 3 — institutional RAG, Lane C).
+ * KnowledgeIngestClient unit tests — institutional RAG.
  *
  * The OUTBOUND half of the apps/api -> apps/harness knowledge-ingest contract.
  * Mirrors HarnessGatewayService: base URL from `HARNESS_URL` (host only), the

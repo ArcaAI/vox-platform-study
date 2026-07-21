@@ -1,5 +1,5 @@
 /**
- * TASK-331 doc-06 F4 — surface the prompt-resolution tier on the summary DTO.
+ * Surface the prompt-resolution tier on the summary DTO.
  *
  * `SummaryMeta` now persists `promptResolvedFrom` (preferred/department/default)
  * and `resolvedPromptId`; `SummaryDtoMapper.toResponse` must expose both inside

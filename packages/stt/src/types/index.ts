@@ -37,7 +37,7 @@ export type STTProviderType = 'local' | 'remote';
  *   model itself decides the source language; only the **output** is English.
  *   English-only Whisper checkpoints (model IDs ending with `.en`) cannot
  *   translate and will be rejected with `STTError(NOT_SUPPORTED)` at the
- *   engine layer. See TASK-300 L-2.
+ *   engine layer.
  */
 export type WhisperTask = 'transcribe' | 'translate';
 
@@ -209,7 +209,6 @@ export interface STTFeatureFlags {
    *   ending with `.en`) reject this with `STTError(NOT_SUPPORTED)`.
    *
    * @default 'transcribe'
-   * @see TASK-300 L-2
    */
   task?: WhisperTask;
 }
@@ -265,7 +264,7 @@ export interface STTOptions {
   prompt?: string;
 
   /**
-   * TASK-304 Wave 2 — optional voice-profile context for the local diarizer.
+   * Optional voice-profile context for the local diarizer.
    *
    * `id` is the server-side `UserVoiceProfile.id` (carried for telemetry /
    * logging). `reservedSpeakerId` pins the first allocated speaker slot in
@@ -276,8 +275,6 @@ export interface STTOptions {
    * Set by the SDK from `UserPreferences.activeVoiceProfile` +
    * `UserPreferences.localConfig.voiceProfile`. All fields are optional so the
    * SDK can express partial state (e.g. threshold tweak before enrollment).
-   *
-   * @see TASK-296 C-2, TASK-304 Wave 2 W2-STT-4 / W2-SDK-1 / W2-SDK-2
    */
   voiceProfile?: {
     id?: string;
@@ -395,7 +392,7 @@ export interface TranscriptionTimestamp {
 /**
  * Word-level timestamp emitted by the streaming backend (stt-v2
  * `SegmentResult.word_timestamps`). Carried through {@link TranscriptionResult.words}
- * so the SDK store can expose word timings to consumers (TASK-372 D9, Option B).
+ * so the SDK store can expose word timings to consumers.
  *
  * Distinct from {@link TranscriptionTimestamp} (segment-level `{ start, end, text }`):
  * this is per-word and includes an optional confidence score.
@@ -453,9 +450,9 @@ export interface TranscriptionResult {
   timestamps?: TranscriptionTimestamp[];
 
   /**
-   * Word-level timestamps carried from the streaming backend transcript
-   * (TASK-372 D9, Option B). Distinct from the segment-level `timestamps`
-   * above; preserved so the SDK store can surface per-word timings.
+   * Word-level timestamps carried from the streaming backend transcript.
+   * Distinct from the segment-level `timestamps` above; preserved so the
+   * SDK store can surface per-word timings.
    */
   words?: WordTimestamp[];
 
@@ -562,8 +559,8 @@ export interface STTStats {
   connectionStatus?: 'connected' | 'disconnected' | 'connecting' | 'error';
 
   /**
-   * TASK-464 — outbound audio frames dropped at the streaming client's
-   * bufferedAmount watermark since the session started (remote streaming only).
+   * Outbound audio frames dropped at the streaming client's bufferedAmount
+   * watermark since the session started (remote streaming only).
    * Non-zero means PCM was lost from the durable transcript; consumers surface
    * it as a degraded-connection signal. Undefined for providers that cannot drop.
    */
@@ -885,31 +882,28 @@ export interface LocalProviderConfig extends ProviderConfig {
   onProgress?: (progress: ModelLoadProgress) => void;
 
   /**
-   * TASK-304 Wave 2 W2-STT-3 — default Whisper task baked into the engine
-   * for this provider instance. Forwarded into `EngineConfig.task` at
-   * `LocalSTTProvider.init()` time. Per-call `TranscribeOptions.task`
-   * still wins; this field exists so the provider pool key can distinguish
-   * a transcribe-warm provider from a translate-warm provider.
+   * Default Whisper task baked into the engine for this provider instance.
+   * Forwarded into `EngineConfig.task` at `LocalSTTProvider.init()` time.
+   * Per-call `TranscribeOptions.task` still wins; this field exists so the
+   * provider pool key can distinguish a transcribe-warm provider from a
+   * translate-warm provider.
    *
-   * @see TASK-300 L-2 for the engine-level field
    * @default 'transcribe'
    */
   task?: WhisperTask;
 
   /**
-   * TASK-296 C-2 + TASK-304 Wave 2 W2-STT-4: optional reserved-speaker slot
-   * for the enrolled doctor.
+   * Optional reserved-speaker slot for the enrolled doctor.
    *
    * When `reservedSpeakerId` is set, `LocalSpeakerDiarizer` pins the FIRST
    * allocated speaker slot to that id instead of the default `speaker-1`.
-   * `similarityThreshold` (Wave 2) lets the user tune the cosine-similarity
-   * threshold used by the MFCC centroid matcher; lower means more permissive
-   * matching to the doctor's profile (default `0.97`).
+   * `similarityThreshold` lets the user tune the cosine-similarity threshold
+   * used by the MFCC centroid matcher; lower means more permissive matching
+   * to the doctor's profile (default `0.97`).
    *
    * The 40-d MFCC (local) vs 256-d backend embedding mismatch means the
    * acoustic anchor itself cannot yet be shared — long-term unification
-   * onto a single ONNX speaker-embedding model is tracked in the TASK-293
-   * master roadmap (W5D / P2-7).
+   * onto a single ONNX speaker-embedding model is a tracked roadmap item.
    */
   voiceProfile?: {
     /** Server-side voice profile id (UUID). Optional so the SDK can carry a
@@ -1010,7 +1004,7 @@ export const DEFAULT_LOCAL_WHISPER_SIZE: WhisperModelSize = 'base';
  *    too-large size ("medium"/"large") with no browser-loadable onnx repo — is
  *    NOT loadable in the browser. Returning it as a bare path makes the worker
  *    request `huggingface.co/<id>` and fail (401/404), so fall back to
- *    {@link DEFAULT_LOCAL_WHISPER_SIZE} and warn instead. (TASK-364 follow-up.)
+ *    {@link DEFAULT_LOCAL_WHISPER_SIZE} and warn instead.
  */
 export function resolveLocalWhisperModel(modelId: string): {
   model: WhisperModelSize;

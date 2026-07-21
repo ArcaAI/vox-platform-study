@@ -150,7 +150,7 @@ describe('QueueAdminService', () => {
     });
   });
 
-  // TASK-403 — Redis health probe for the Queues & Jobs admin surface (design
+  // Redis health probe for the Queues & Jobs admin surface (design
   // frame `15` health strip). Reads via the first registered queue's shared
   // ioredis connection: PING → latency, INFO → server stats. Never throws.
   describe('getRedisHealth (TASK-403)', () => {

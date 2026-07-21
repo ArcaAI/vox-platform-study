@@ -41,7 +41,7 @@ export class PromptUsageRecordRepository extends Repository<PromptUsageRecordEnt
   }
 
   // ============================================
-  // TASK-328 A4 — usage analytics aggregations
+  // Usage analytics aggregations
   // ============================================
 
   /**

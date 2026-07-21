@@ -1,7 +1,7 @@
 /**
- * TASK-219: Admin Panel E2E Gap Tests
+ * Admin Panel E2E Gap Tests
  *
- * Tests for implementation gaps identified in TASK-219 (remaining after module removal):
+ * Tests for implementation gaps (remaining after module removal):
  * - A1: PATCH /admin/rbac/roles/{id}
  * - A2: PATCH /admin/rbac/policies/{id}
  * - A6: Fix PATCH /admin/tenants/configs/{identifier}
@@ -173,7 +173,7 @@ test.describe('TASK-219: Admin Panel Gaps', () => {
   test.describe('A7: PATCH /storage/buckets/{name}', () => {
     const bucketName = `task219-bucket-${Date.now()}`;
     // The storage management routes are tenant-owned (@TenantOwnedResource,
-    // no super-admin bypass — TASK-307 W3.2): a super_admin WITHOUT a tenant
+    // no super-admin bypass): a super_admin WITHOUT a tenant
     // context 404s on PATCH/DELETE because there is no tenant to match. Use a
     // tenant-scoped super_admin so POST registers a TenantBucket row owned by a
     // real tenant and the ownership interceptor can resolve it on PATCH.

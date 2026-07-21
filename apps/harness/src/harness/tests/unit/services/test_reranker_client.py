@@ -1,4 +1,4 @@
-"""Reranker (HF TEI ``/rerank``) client tests (RED-first, TASK-330 Phase 3).
+"""Reranker (HF TEI ``/rerank``) client tests.
 
 The cross-encoder reranker is the last hybrid-retrieval stage: given the query and
 the fused candidate passages it returns a relevance-ordered ``(index, score)`` list

@@ -6,10 +6,10 @@ import WebSocket from 'ws';
 import { StreamTicketService } from '../auth/stream-ticket.service';
 
 /**
- * TASK-492 — WS-duplex TTS gateway. Bridges a browser WebSocket to the tts-v2
+ * WS-duplex TTS gateway. Bridges a browser WebSocket to the tts-v2
  * streaming endpoint so a summary can be spoken while it is still generating.
  *
- * Posture mirrors `SttWsGateway` (TASK-307 W5.8): the handshake is gated by a
+ * Posture mirrors `SttWsGateway`: the handshake is gated by a
  * single-use stream ticket (never a JWT in the URL), and EVERY rejection closes
  * with the same generic `4401` so a prober cannot enumerate sessions / tickets /
  * scopes — the real cause goes to the warn log only.
@@ -50,7 +50,7 @@ interface Bridge {
   pending: Array<{ data: WebSocket.RawData; isBinary: boolean }>;
   upstreamOpen: boolean;
   backpressureTimer?: ReturnType<typeof setInterval>;
-  /** Resolved tenant TTS spec injected into the init frame (TASK-496); null = none. */
+  /** Resolved tenant TTS spec injected into the init frame; null = none. */
   effectiveConfig: EffectiveTtsConfigResponse | null;
   /** Decrypted BYO provider credentials injected into the init frame; null = none. */
   providerOverrides: TtsProviderOverrides | null;
@@ -73,7 +73,7 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly streamTicketService: StreamTicketService,
     @Inject(IConfigService) private readonly configService: IConfigService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // TASK-496 — resolve the ticket tenant's TTS spec and inject it into the init frame.
+    // Resolve the ticket tenant's TTS spec and inject it into the init frame.
     @Optional() @Inject(ITenantTtsConfigService) private readonly tenantTtsConfig?: ITenantTtsConfigService,
   ) {}
 
@@ -123,7 +123,7 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       headers['X-Service-Token'] = token;
     }
 
-    // TASK-496 — pre-resolve the tenant's effective TTS spec (fail-open: a lookup
+    // Pre-resolve the tenant's effective TTS spec (fail-open: a lookup
     // error leaves it null → tts-v2 uses its own settings). Injected into the
     // first `init` frame the browser sends.
     let effectiveConfig: EffectiveTtsConfigResponse | null = null;
@@ -221,7 +221,7 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   /**
-   * TASK-496 — enrich the browser's first `init` frame with the tenant's resolved
+   * Enrich the browser's first `init` frame with the tenant's resolved
    * routing chains + whitelist (and default speed when omitted). Binary frames,
    * non-init frames, and everything after the first init pass through untouched.
    * Fail-open: a non-JSON frame is forwarded verbatim.
@@ -247,7 +247,7 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       enriched.routing_en = eff.routingEn;
       enriched.routing_ml = eff.routingMl;
       enriched.allowed_providers = eff.allowedProviders;
-      // TASK-506 — resolved voice bindings; only injected when non-empty so
+      // Resolved voice bindings; only injected when non-empty so
       // tts-v2 keeps its built-in DEFAULT_VOICES otherwise.
       if (eff.voiceBindings && Object.keys(eff.voiceBindings).length > 0) {
         enriched.voice_bindings = eff.voiceBindings;

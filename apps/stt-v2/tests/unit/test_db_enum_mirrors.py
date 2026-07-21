@@ -1,18 +1,18 @@
-"""TASK-506 — guard the SQLAlchemy Prisma-enum mirrors against drift.
+"""Guard the SQLAlchemy Prisma-enum mirrors against drift.
 
 The read-only models in ``stt_v2.core.database.models`` mirror Prisma enums
 with ``create_type=False`` (Postgres owns the types). The Python-side value
 lists must match ``packages/database/src/prisma/db_main/enums.prisma``: a bind
 against a value missing from the mirror fails, and a stale list misleads
-maintainers (pre-TASK-506 the format mirror was 9 values behind the schema and
+maintainers (the format mirror was once 9 values behind the schema and
 category/task-type mirrors listed members that do not exist in Prisma at all).
 """
 
 from stt_v2.core.database import models
 from stt_v2.pipeline.dto import AiModelSource as AiModelSourceStrEnum
 
-# TASK-527 — Prisma ``AiModelSource`` values (enums.prisma). ``S3`` added by
-# TASK-527 (OD-4: s3:// only this program; azure-blob:// explicitly deferred).
+# Prisma ``AiModelSource`` values (enums.prisma). ``S3`` added
+# (s3:// only for now; azure-blob:// explicitly deferred).
 PRISMA_AI_MODEL_SOURCE = {"HUGGINGFACE", "GITHUB", "MLFLOW", "LOCAL", "S3"}
 
 # The pipeline StrEnum is a deliberate SUPERSET of Prisma: ``KSERVE`` is

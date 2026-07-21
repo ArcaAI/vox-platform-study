@@ -77,7 +77,7 @@ describe('CryptoService', () => {
             await newService.onModuleInit();
 
             expect(mockAppSettingsService.getValueWithDefault).toHaveBeenCalledWith('crypto.saltRounds', 10);
-            // TASK-369 Phase 5 — the cipher is now fixed to AES-256-GCM; the old
+            // The cipher is now fixed to AES-256-GCM; the old
             // operator-selectable algorithm/ivLength knobs were removed.
         });
 
@@ -193,7 +193,7 @@ describe('CryptoService', () => {
         });
     });
 
-    // TASK-369 Phase 5 — new ciphertext is authenticated AES-256-GCM:
+    // New ciphertext is authenticated AES-256-GCM:
     //   gcm:v1:<ivHex(24)>:<authTagHex(32)>:<ciphertextHex>
     const GCM_FORMAT = /^gcm:v1:[a-f0-9]{24}:[a-f0-9]{32}:[a-f0-9]*$/;
 
@@ -335,7 +335,7 @@ describe('CryptoService', () => {
             await expect(service.decrypt(corruptedData, key)).rejects.toThrow();
         });
 
-        // TASK-369 Phase 5 — backward compatibility: ciphertext written by the
+        // Backward compatibility: ciphertext written by the
         // old AES-256-CBC implementation (format `<ivHex>:<dataHex>`, no prefix)
         // must still decrypt so any persisted legacy values remain readable.
         it('should decrypt legacy AES-256-CBC ciphertext (no gcm: prefix)', async () => {
@@ -352,7 +352,7 @@ describe('CryptoService', () => {
             expect(decrypted).toBe(originalData);
         });
 
-        // TASK-369 Phase 5 — authentication: tampering with GCM ciphertext (or
+        // Authentication: tampering with GCM ciphertext (or
         // its auth tag) must be detected and rejected (CBC could not do this).
         it('should reject tampered GCM ciphertext (auth tag mismatch)', async () => {
             const key = '12345678901234567890123456789012';
@@ -441,7 +441,7 @@ describe('CryptoService', () => {
         });
 
         it('uses a fixed AES-256-GCM cipher (algorithm/ivLength are no longer settings)', async () => {
-            // TASK-369 Phase 5 — the cipher is hardcoded to authenticated
+            // The cipher is hardcoded to authenticated
             // AES-256-GCM, so the service must NOT read the removed knobs.
             const newService = new CryptoService(mockAppSettingsService as any);
             await newService.onModuleInit();

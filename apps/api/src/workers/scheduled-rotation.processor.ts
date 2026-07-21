@@ -1,4 +1,4 @@
-// TASK-302 Phase 6 Task 6.6 (Stream B) — Scheduled rotation processor.
+// Scheduled rotation processor.
 //
 // OPTIONAL. Disabled by default; opt-in via VAULT_ROTATION_SCHEDULE
 // (cron string, e.g. '0 3 * * 0' for weekly 03:00 Sunday). Mirrors the

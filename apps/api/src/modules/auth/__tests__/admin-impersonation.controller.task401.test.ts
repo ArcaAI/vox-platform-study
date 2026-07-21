@@ -1,5 +1,5 @@
 /**
- * AdminImpersonationController — TASK-401 global-admin-only impersonation.
+ * AdminImpersonationController — global-admin-only impersonation.
  *
  * Guard matrix, token-claim shape, TTL default/override, and audit emissions
  * for `POST /admin/users/:id/impersonate`. Pure unit tests (no Nest container),
@@ -12,7 +12,7 @@ import { AdminImpersonationController, USER_IMPERSONATION_STARTED } from '../adm
 import { ImpersonationEvents, ImpersonationDeniedReason } from '../impersonation-events';
 
 const GLOBAL_ADMIN = 'GLOBAL_ADMIN';
-// TASK-417 — retired role literal, used only to prove it no longer elevates.
+// Retired role literal, used only to prove it no longer elevates.
 const RETIRED_SUPER_ADMIN = 'SUPER_ADMIN';
 const TENANT_ADMIN = 'TENANT_ADMIN';
 const DOCTOR = 'DOCTOR';
@@ -271,7 +271,7 @@ describe('AdminImpersonationController — TASK-401 audit emissions', () => {
             expect.objectContaining({ adminId: 'admin-A', targetUserId: 'target-B', tenantId: 'tenant-B', success: true, reason: 'support ticket #42' }),
         );
 
-        // TASK-396 pattern: forced audit row, attributed to the RESOLVED tenant
+        // Forced audit row, attributed to the RESOLVED tenant
         // because the global admin's CLS tenant is null.
         const forced = eventEmitter.emit.mock.calls.find(([name]) => name === SysEventType.ResourceViewed);
         expect(forced?.[1]).toEqual(
@@ -300,7 +300,7 @@ describe('AdminImpersonationController — TASK-401 audit emissions', () => {
         expect((forced?.[1] as { tenantId: string }).tenantId).toBe('tenant-CLS');
     });
 
-    // TASK-503 — a global-admin's JWT carries `tenantId: ''` (empty string,
+    // A global-admin's JWT carries `tenantId: ''` (empty string,
     // never `null`; see `resolve-active-tenant.ts`). The prior `?? resolvedTenantId`
     // only falls back on null/undefined, so an unscoped global admin produced a
     // forced audit row with `tenantId: ''`, which `AuditLogProcessor`'s

@@ -139,7 +139,7 @@ describe('TenantBucketController', () => {
     });
 
     // ------------------------------------------------------------------------
-    // TASK-331 doc-03 F7 — object LIST + UPLOAD on the admin plane (by bucket id).
+    // Object LIST + UPLOAD on the admin plane (by bucket id).
     // ------------------------------------------------------------------------
     describe('listObjects', () => {
         it('should list objects via the service with the bucket id and prefix', async () => {
@@ -212,8 +212,7 @@ describe('TenantBucketController', () => {
     });
 
     // ------------------------------------------------------------------------
-    // TASK-307 W3.5 — every bucket-by-id handler must carry @TenantOwnedResource
-    // (AC-8). Closes audit C-4 (TenantBucketController cross-tenant — BLOCKER).
+    // Every bucket-by-id handler must carry @TenantOwnedResource.
     // ------------------------------------------------------------------------
     describe('TASK-307 W3.5 — @TenantOwnedResource metadata', () => {
         const meta = (m: keyof TenantBucketController): TenantOwnedResourceOptions | undefined =>

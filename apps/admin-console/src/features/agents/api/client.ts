@@ -77,8 +77,8 @@ export function activateVersion(id: string, versionNumber: number): Promise<Prom
 }
 
 /**
- * Approve for clinical use — ported from the retired `/prompt-studio` feature
- * by TASK-532 (M-03/OD-6); the Governance tab is now the only surface for it.
+ * Approve for clinical use — ported from the retired `/prompt-studio` feature;
+ * the Governance tab is now the only surface for it.
  *
  * GLOBAL_ADMIN only, enforced SERVER-SIDE (imperative `isSuperAdmin` check in
  * the service, not a decorator — see the AUTH-NOTE on the route). If-Match is

@@ -229,7 +229,7 @@ class TestBuildTranscriptJson:
         assert segments[1]["word_timestamps"][0]["word"] == "World"
 
     def test_build_transcript_text_joins_final_segments(self):
-        """TASK-342 GAP #1 — build_transcript_text() returns the plain-text
+        """build_transcript_text() returns the plain-text
         transcript (final segments only) used to persist the streaming
         TRANSCRIPT context item."""
         from stt_v2.streaming.schemas import SegmentResult
@@ -703,7 +703,7 @@ class TestFinalizeSessionDualCapture:
 
     @pytest.mark.asyncio
     async def test_concurrent_finalize_registers_media_once(self):
-        """C2-07 (TASK-456) — two racing finalize entrypoints must serialize on
+        """Two racing finalize entrypoints must serialize on
         a per-session lock and the second must be a no-op, so Media rows are not
         duplicated and the blob is not uploaded twice."""
         import asyncio
@@ -795,7 +795,7 @@ class TestFinalizeSessionDualCapture:
 
 
 class TestFinalizeTranscriptPersistence:
-    """TASK-342 GAP #1 — _finalize_session persists a streaming TRANSCRIPT
+    """_finalize_session persists a streaming TRANSCRIPT
     (no jobId, keyed by consultation + tenant) so the harness auto-drafts the
     SOAP after a live consultation. All failures are non-fatal."""
 
@@ -893,7 +893,7 @@ class TestFinalizeTranscriptPersistence:
 
 
 class TestFinalizeTranscriptDurability:
-    """C2-03 (TASK-456) — the streaming transcript is the durable system of
+    """The streaming transcript is the durable system of
     record AND the harness trigger. A transient gateway blip must NOT lose it,
     but finalize must ALSO always release the session's capacity (no leak): the
     persist is retried inline, then a transient failure is handed to a durable
@@ -962,7 +962,7 @@ class TestFinalizeTranscriptDurability:
     async def test_transient_exhaustion_enqueues_outbox_and_releases_capacity(self):
         """When inline retries are exhausted on a TRANSIENT error, the transcript
         is durably enqueued to the shared Redis outbox AND the session is closed
-        so its capacity slot is released (C-1: no FINALIZING leak)."""
+        so its capacity slot is released (no FINALIZING leak)."""
         from stt_v2.streaming.schemas import SessionStatus
 
         mgr = _make_manager()
@@ -1027,7 +1027,7 @@ class TestFinalizeTranscriptDurability:
 
     @pytest.mark.asyncio
     async def test_rate_limit_429_is_transient_enqueues_outbox(self):
-        """I-1 — a 429 (throttled by the internal route under an end-of-clinic
+        """A 429 (throttled by the internal route under an end-of-clinic
         burst) is TRANSIENT, not permanent: it is retried inline and then
         enqueued to the outbox, NOT dropped, so the transcript is not lost."""
         from stt_v2.core.exceptions import APIGatewayError
@@ -1056,8 +1056,8 @@ class TestFinalizeTranscriptDurability:
 
 
 class TestTranscriptOutbox:
-    """C2-03 (TASK-456) — the reaper re-drives the durable Redis transcript
-    outbox at-LEAST-once (I-2): an entry is deleted ONLY after a confirmed 2xx,
+    """The reaper re-drives the durable Redis transcript
+    outbox at-LEAST-once: an entry is deleted ONLY after a confirmed 2xx,
     so a worker crash mid-POST leaves it re-drivable. A transient error keeps
     the entry (lease released, attempts bumped); a permanent (4xx) error or
     exhausted attempts drop it with a loud alert. A soft lease lets concurrent
@@ -1137,7 +1137,7 @@ class TestTranscriptOutbox:
 
     @pytest.mark.asyncio
     async def test_redrive_failure_keeps_entry_at_least_once(self):
-        """I-2 — a redrive whose POST fails/does-not-complete must NEVER delete
+        """A redrive whose POST fails/does-not-complete must NEVER delete
         the entry, so a worker crash mid-POST cannot lose the transcript."""
         mgr = _make_manager()
         mgr._transcript_outbox_max_attempts = 5
@@ -1215,7 +1215,7 @@ class TestTranscriptOutbox:
 
     @pytest.mark.asyncio
     async def test_outbox_429_redrive_is_transient(self):
-        """I-1 — a 429 during redrive is TRANSIENT: keep + re-enqueue, not drop."""
+        """A 429 during redrive is TRANSIENT: keep + re-enqueue, not drop."""
         from stt_v2.core.exceptions import APIGatewayError
 
         mgr = _make_manager()

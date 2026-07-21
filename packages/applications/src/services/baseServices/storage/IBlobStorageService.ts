@@ -13,7 +13,7 @@ import {
 } from './providers/IBlobStorageProvider';
 
 /**
- * Provider-agnostic blob-storage entry point (TASK-318 / W1).
+ * Provider-agnostic blob-storage entry point.
  *
  * Thin facade over the factory-selected {@link IBlobStorageProvider}. Consumers
  * depend on this token rather than a concrete provider so the backend can switch

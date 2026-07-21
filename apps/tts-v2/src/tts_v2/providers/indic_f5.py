@@ -1,4 +1,4 @@
-"""Self-hosted AI4Bharat IndicF5 (Malayalam) provider — TASK-494. EXPERIMENTAL.
+"""Self-hosted AI4Bharat IndicF5 (Malayalam) provider. EXPERIMENTAL.
 
 IndicF5 is a flow-matching / F5 diffusion **voice-clone** model: each synthesis
 needs a reference audio + its transcript (unlike Parler's description speakers).
@@ -7,12 +7,12 @@ text into sentences itself and streams PCM per sentence (`native_streaming=True`
 mirroring `IndicParlerProvider`. torch/transformers are imported lazily so hermetic
 tests inject a `generate` callable.
 
-⚠️ PROD/COMMERCIAL ENABLEMENT IS NO-GO pending the owner's license review
-(TASK-494): the released weights are a fine-tune of the CC-BY-NC SWivid F5-TTS
+⚠️ PROD/COMMERCIAL ENABLEMENT IS NO-GO pending the owner's license review:
+the released weights are a fine-tune of the CC-BY-NC SWivid F5-TTS
 base (Emilia) — the MIT tag cannot override the NonCommercial restriction. Ships
 `enabled=false`; NEVER set `TTS_INDICF5_ENABLED=true` in production without written
 clearance. Indic Parler-TTS (Apache-2.0) remains the DEFAULT local ml engine. The
-weights are also HF-gated → mirror internally (TASK-495) before any real use.
+weights are also HF-gated → mirror internally before any real use.
 """
 
 from __future__ import annotations
@@ -52,11 +52,10 @@ class IndicF5Provider:
         time_func: Callable[[], float] = time.monotonic,
     ) -> None:
         self._config = config
-        # TASK-530 (D-09 completion) — the model handle now lives behind the
-        # shared model cache, exactly as Kokoro's has since TASK-529, so it loads
-        # on first use and is RELEASED when idle. TASK-529 made this provider
-        # lazy but never unloaded it. An explicitly injected `generate` bypasses
-        # the cache entirely (hermetic tests that want a permanent fake).
+        # The model handle lives behind the
+        # shared model cache, exactly as Kokoro's does, so it loads
+        # on first use and is RELEASED when idle. An explicitly injected `generate`
+        # bypasses the cache entirely (hermetic tests that want a permanent fake).
         self._generate = generate  # (text) -> float32 samples @ 24 kHz
         self._generate_factory = generate_factory
         self._cache: ModelCache[Callable[[str], np.ndarray]] = ModelCache(
@@ -102,7 +101,7 @@ class IndicF5Provider:
     def _load_model(self) -> Callable[[str], np.ndarray]:
         from transformers import AutoModel
 
-        source = self._config.model_path or self._config.hf_model  # local mirror (TASK-495) or gated hub
+        source = self._config.model_path or self._config.hf_model  # local mirror or gated hub
         model = AutoModel.from_pretrained(source, trust_remote_code=True).to(self._config.device)
         ref_audio = self._config.ref_audio_path
         ref_text = self._config.ref_text

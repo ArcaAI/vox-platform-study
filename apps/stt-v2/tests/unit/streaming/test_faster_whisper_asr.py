@@ -1,4 +1,4 @@
-"""Unit tests for the faster-whisper/CTranslate2 streaming engine (TASK-351 P1-2).
+"""Unit tests for the faster-whisper/CTranslate2 streaming engine.
 
 Covers:
 - CT2 device / compute-type resolution helpers
@@ -40,7 +40,7 @@ from stt_v2.streaming.faster_whisper_asr import (
 
 
 def _bind_asr_dispatch(mgr):
-    """TASK-505 P1 — _make_asr_callable dispatches through registry adapters
+    """_make_asr_callable dispatches through registry adapters
     that call back into per-engine builder methods on the manager; bind the
     real ones onto MagicMock(spec=SessionManager) harnesses."""
     from stt_v2.streaming.session_manager import SessionManager
@@ -189,7 +189,7 @@ class TestAdapterKwargsContract:
         assert kwargs["task"] == "transcribe"
 
     def test_translate_task_passed_when_configured(self):
-        # TASK-351 P2-3 — the gloss pass builds the adapter with task=translate.
+        # The gloss pass builds the adapter with task=translate.
         model = MagicMock()
         model.transcribe.return_value = _transcribe_result()
         loaded = _make_loaded(fake_model=model)
@@ -201,7 +201,7 @@ class TestAdapterKwargsContract:
         assert kwargs["task"] == "translate"
 
     def test_language_pinned_even_when_cs_on(self):
-        # TASK-351 P2-1 — CS + language set now means PINNED matrix language.
+        # CS + language set now means PINNED matrix language.
         cfg = InferenceConfig(language="ml", code_switching=True)
         _args, kwargs = self._call(cfg)
         assert kwargs["language"] == "ml"

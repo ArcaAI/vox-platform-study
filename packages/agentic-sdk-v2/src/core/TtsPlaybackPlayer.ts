@@ -1,5 +1,5 @@
 /**
- * TASK-491 — Streaming TTS playback via Web Audio.
+ * Streaming TTS playback via Web Audio.
  *
  * Converts raw PCM s16le (mono, 24 kHz from tts-v2) → Float32, resamples to the
  * shared AudioContext's rate (capture may hold 48 kHz), and feeds frames into the

@@ -42,7 +42,7 @@ export function createTenant(body: CreateTenantRequest): Promise<Tenant> {
     return postJson(BASE, body);
 }
 
-/** TASK-497 §3.5 — global-admin create-tenant-with-admin (never leaves a tenant adminless). */
+/** Global-admin create-tenant-with-admin (never leaves a tenant adminless). */
 export function provisionTenant(body: ProvisionTenantRequest): Promise<TenantProvisionResult> {
     return postJson(`${BASE}/provision`, body);
 }
@@ -70,7 +70,7 @@ export function restoreTenant(id: string): Promise<Tenant> {
 }
 
 /**
- * TASK-531 — reconcile this tenant's ASR pipeline catalog against the SYSTEM
+ * Reconcile this tenant's ASR pipeline catalog against the SYSTEM
  * templates. Global-admin only (`manage:Tenant`). Missing templates are cloned
  * in as locked copies and pristine locked copies are fast-forwarded; customized
  * (unlocked) pipelines are never touched. Idempotent.

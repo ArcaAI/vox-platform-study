@@ -9,7 +9,7 @@ import { CoreDatabaseService } from '../../databaseServices/core/core.database.s
 type DatabaseContext = any;
 
 /**
- * TASK-306 W5.5.3 — `transactionClient` caller sweep result
+ * `transactionClient` caller sweep result
  * --------------------------------------------------------
  * After the W5.5.2 fix added the canonical `runInTransaction(work)`
  * method, an `rg "transactionClient" packages/applications/src
@@ -18,16 +18,16 @@ type DatabaseContext = any;
  * `startTransaction/endTransaction/transactionClient` wrapper pattern —
  * the proven production transactional flow is
  * `this.databaseService.baseClient.$transaction(callback)` invoked
- * directly (see `TenantService` TASK-302 D.4 for the canonical example).
+ * directly (see `TenantService` for the canonical example).
  *
- * Net: the W5.5.3 sweep was a verification — no migration required.
+ * Net: this sweep was a verification — no migration required.
  */
 @Injectable()
 export class CoreUnitOfWorkService {
   private readonly TRANSACTION_CLIENT_KEY = 'coreTransactionClient';
   private readonly logger = new Logger(CoreUnitOfWorkService.name);
   /**
-   * @deprecated TASK-306 P3.2 / AC-11 — legacy state-machine field. Kept
+   * @deprecated Legacy state-machine field. Kept
    * only so existing tests + (no) production callers continue to compile
    * while they migrate. The canonical Prisma 7 pattern is
    * `runInTransaction(work)` below; do not write new callers against
@@ -52,8 +52,8 @@ export class CoreUnitOfWorkService {
    * This is the canonical Prisma 7 transactional API and the
    * REPLACEMENT for the legacy `startTransaction()/endTransaction()`
    * wrapper pair below — which never actually carried transactional
-   * isolation in Prisma 7 (audit M-6). New callers must use this
-   * method. TASK-306 P3.2 / AC-11.
+   * isolation in Prisma 7 (a previously fixed audit finding). New callers
+   * must use this method.
    */
   async runInTransaction<T>(work: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
     return this.databaseService.baseClient.$transaction(async (tx) => {
@@ -67,7 +67,7 @@ export class CoreUnitOfWorkService {
   }
 
   /**
-   * @deprecated TASK-306 P3.2 / AC-11 — the wrapper pattern (open tx,
+   * @deprecated The wrapper pattern (open tx,
    * return, caller runs ops out-of-band, then `endTransaction`) does
    * NOT carry transactional isolation in Prisma 7: `$transaction`
    * commits when its callback resolves, so the `tx` handed back here
@@ -97,7 +97,7 @@ export class CoreUnitOfWorkService {
   }
 
   /**
-   * @deprecated TASK-306 P3.2 / AC-11 — see `startTransaction()`.
+   * @deprecated See `startTransaction()`.
    * `runInTransaction(work)` manages tx lifecycle automatically.
    */
   endTransaction(): void {

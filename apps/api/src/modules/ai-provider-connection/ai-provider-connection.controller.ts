@@ -11,7 +11,7 @@ import { CanManage, CanRead, ExpectedVersion, RequiresIfMatch } from '../../deco
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
 
 /**
- * AiProviderConnectionController (TASK-524) — the admin surface for provider
+ * AiProviderConnectionController — the admin surface for provider
  * connections (WHERE a serving provider lives, HOW to authenticate), mounted at
  * `/admin/ai-providers` (global prefix → `/api/v1/admin/ai-providers`).
  *
@@ -106,8 +106,8 @@ export class AiProviderConnectionController {
     // `@RequiresIfMatch()` route the param decorator already 428'd if the
     // header was missing, so the `??` fallback only fires for unit tests and
     // off-route service-to-service traffic. The create case travels through
-    // the header too: `If-Match: "0"` parses to 0 (create-intent — TASK-534
-    // G2 owner decision) and the service CAS decides create-vs-412.
+    // the header too: `If-Match: "0"` parses to 0 (create-intent)
+    // and the service CAS decides create-vs-412.
     const dto = { ...request, expectedVersion: expectedFromHeader ?? request.expectedVersion };
     return this.connectionService.upsertRow(provider, dto, this.resolveTenantId(tenantId));
   }

@@ -7,20 +7,19 @@ import { IPolicyService } from './IPolicyService';
 import { PolicyService } from './policy.service';
 
 /**
- * TASK-307 W6.2 — DI module for `PolicyService`. Exports the
+ * DI module for `PolicyService`. Exports the
  * `IPolicyService` token so `PoliciesController` (and any future
  * caller) can depend on the interface, not the concrete class.
  *
- * TASK-311 (D-3) — `PolicyRepository` is registered here rather than
- * in `CoreDatabaseModule` because the per-ticket scope locks
- * `packages/domains/src/common/databaseServices/core/core.database.module.ts`
- * out of edits. `CoreDatabaseModule` is still imported so the
- * `'CORE_DATABASE_SERVICE'` token the repository injects is in scope.
+ * `PolicyRepository` is registered here rather than
+ * in `packages/domains/src/common/databaseServices/core/core.database.module.ts`
+ * to avoid editing that shared module. `CoreDatabaseModule` is still imported
+ * so the `'CORE_DATABASE_SERVICE'` token the repository injects is in scope.
  *
- * TASK-409 — break-glass needs `ICryptoService` (bcrypt step-up verify, via
+ * Break-glass needs `ICryptoService` (bcrypt step-up verify, via
  * CryptoServiceModule) + `UserRepository` (via CoreDatabaseModule) +
- * `RolePolicyRepository` (multi-role blast-radius count, registered here per
- * the TASK-311 D-3 pattern).
+ * `RolePolicyRepository` (multi-role blast-radius count, registered here
+ * rather than in the owning module).
  */
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule, AuthorizationModule, CryptoServiceModule],

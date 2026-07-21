@@ -1,4 +1,4 @@
-"""TDD tests for the provider registry + engine contract (TASK-488 Phase 2)."""
+"""TDD tests for the provider registry + engine contract."""
 
 from __future__ import annotations
 

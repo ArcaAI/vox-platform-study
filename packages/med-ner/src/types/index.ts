@@ -176,10 +176,7 @@ export type MedNERModel = 'default' | 'biomedical' | 'clinical' | string; // Cus
  * A pinned reference to a HuggingFace model: the model id plus the commit
  * SHA we have validated. Pinning the revision prevents a silent re-train or
  * a malicious push on the upstream account from changing inference results
- * underneath production users (see TASK-272 / R-12).
- *
- * To bump a revision, see
- * `docs/implementation/TASK-272-MedNER-Worker/README.md#how-to-bump-a-pinned-model-revision`.
+ * underneath production users.
  */
 export interface ModelReference {
   /** HuggingFace Hub model id (e.g. `Xenova/bert-base-NER`). */
@@ -192,7 +189,7 @@ export interface ModelReference {
  * Pre-configured medical NER models with pinned revisions.
  *
  * Last refreshed against `https://huggingface.co/api/models/<id>` on
- * 2026-05-23. Bump procedure is documented in the TASK-272 README.
+ * 2026-05-23.
  */
 export const MODEL_MAP: Record<string, ModelReference> = {
   default: {
@@ -303,7 +300,7 @@ export interface MedNEROptions {
    * Optional factory that returns a Web Worker hosting `medner.worker.js`.
    *
    * When provided, `MedNERProcessor` delegates **all** inference to the
-   * worker (TASK-272 / C-1) and the main thread never imports
+   * worker and the main thread never imports
    * `@huggingface/transformers`. When omitted, the processor falls back to
    * the legacy main-thread code path — appropriate for SSR, jsdom tests,
    * and environments without `Worker` support.

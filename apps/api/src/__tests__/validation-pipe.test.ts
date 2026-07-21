@@ -10,10 +10,10 @@ class FakeDto {
 }
 
 /**
- * Phase 0 Item 1 (TASK-302 Stream A) — strict ValidationPipe contract pin.
+ * Strict ValidationPipe contract pin.
  *
  * Locks the NestJS 11 ValidationPipe configuration that closes the JWT
- * mass-assignment chain at the HTTP boundary. Mirrors main.ts:221.
+ * mass-assignment chain at the HTTP boundary. Mirrors main.ts.
  */
 describe('Phase 0 Item 1 — global ValidationPipe must strip + reject unknown keys', () => {
   const pipeCfg = {

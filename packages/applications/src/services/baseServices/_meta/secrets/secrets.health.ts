@@ -3,8 +3,7 @@ import { HealthCheckError, HealthIndicator, HealthIndicatorResult } from '@nestj
 import { SecretsService } from './SecretsService';
 
 /**
- * @nestjs/terminus health indicator for the secrets backend (TASK-302
- * Stream B Task 2.19).
+ * @nestjs/terminus health indicator for the secrets backend.
  *
  * Use case: `/readiness` returns 503 if Vault is sealed or unreachable,
  * which protects the rolling-deploy flow from sending traffic to pods
@@ -27,8 +26,8 @@ export class SecretsHealthIndicator extends HealthIndicator {
       provider: h.provider,
       latencyMs: h.latencyMs,
     };
-    // Surface the stale-while-revalidate degraded latch (TASK-312 B.4 token
-    // renewal / Phase 5 DB-lease renewal). `ok` stays true so readiness keeps
+    // Surface the stale-while-revalidate degraded latch (token renewal /
+    // DB-lease renewal). `ok` stays true so readiness keeps
     // the pod in rotation, but the flag + diagnostic must reach Terminus so a
     // dashboard/alert can recycle the pod before the lease actually expires.
     if (h.degraded) {

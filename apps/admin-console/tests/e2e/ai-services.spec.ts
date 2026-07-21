@@ -1,6 +1,6 @@
 /**
- * TASK-532 (M-09) — AI services screen: guardrail + NLP status/config and the
- * agentic instruction set, with the axe gate in both themes (rule 11 §11).
+ * AI services screen: guardrail + NLP status/config and the agentic
+ * instruction set, with the axe gate in both themes (rule 11 §11).
  *
  * WHY THE ERROR-STATE TEST LIVES HERE AND NOT IN VITEST: the jsdom specs stub a
  * 503 and assert the ErrorState, which is necessary but not sufficient — it

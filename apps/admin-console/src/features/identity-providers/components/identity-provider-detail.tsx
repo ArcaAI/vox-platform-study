@@ -85,7 +85,7 @@ function DetailSkeleton() {
 }
 
 /**
- * Console-wide record detail for Identity Providers (TASK-498 P4) — a right
+ * Console-wide record detail for Identity Providers — a right
  * slide-over (full-screen sheet on mobile). Overview (OIDC config edit + test
  * connection) · Directory sync (credentials + admin-triggered pull) tabs;
  * create mode reuses the same surface with a single create form.

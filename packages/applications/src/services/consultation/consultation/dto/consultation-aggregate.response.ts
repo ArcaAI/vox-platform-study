@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 /**
- * TASK-386 (#20 / E4) — one date bucket of the consultation range aggregation.
+ * One date bucket of the consultation range aggregation.
  * `key`/`label` mirror the FE `tenant-dashboard/chart.ts` format
  * (`yyyy-MM-dd` / `MMM d` for days, `yyyy-MM` / `MMM` for months).
  */
@@ -40,7 +40,7 @@ export class ConsultationAggregateTotals {
 }
 
 /**
- * TASK-386 (#20 / E4) — server-side date-bucketed new/revisit counts that do not
+ * Server-side date-bucketed new/revisit counts that do not
  * under-count long ranges (zero-filled across the whole window).
  */
 export class ConsultationAggregateResponse {

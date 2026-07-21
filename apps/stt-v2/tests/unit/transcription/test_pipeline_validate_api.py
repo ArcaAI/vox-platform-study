@@ -1,4 +1,4 @@
-"""TASK-505 P2 — POST /api/v1/pipelines/validate endpoint tests."""
+"""POST /api/v1/pipelines/validate endpoint tests."""
 
 import pytest
 from fastapi import FastAPI

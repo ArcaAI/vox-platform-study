@@ -1,4 +1,4 @@
-"""Self-hosted NLI groundedness verifier — the live output gate core (TASK-479 · SOTA D2).
+"""Self-hosted NLI groundedness verifier — the live output gate core.
 
 Sentence/claim-vs-source entailment over ``(summary_segment, transcript)``: the generated
 running note is split into deterministic segments, each segment is scored against the source
@@ -7,7 +7,7 @@ durable harness JudgeClient sensor for the >500 docs/min live-loop target), and 
 verdicts + flagged spans are returned so ungrounded text can be MARKED before a clinician
 reads it.
 
-Fail posture (pairs with TASK-478's input-side gate): FAIL-CLOSED throughout —
+Fail posture (pairs with the input-side gate): FAIL-CLOSED throughout —
 
 * gate disabled (dev/CI bypass)          → every segment ``unverified``
 * NLI model un-staged / un-loadable      → every segment ``unverified``
@@ -125,8 +125,8 @@ def load_default_scorer(config: GroundednessConfig) -> NliScorer:
     an unloadable model, or a failed calibration self-check all raise
     ``NliModelUnavailableError``, and the verifier degrades to ``unverified`` verdicts.
     Track guardrail: self-hosted, explicit local staging only — clinical text must not
-    leave the host and the gate never auto-downloads weights. See the TASK-479 README
-    enablement checklist. Imported lazily so this module has no llama.cpp import edge.
+    leave the host and the gate never auto-downloads weights. Imported lazily so this
+    module has no llama.cpp import edge.
     """
     from guardrail.services.groundedness_scorer_minicheck import load_minicheck_scorer
 

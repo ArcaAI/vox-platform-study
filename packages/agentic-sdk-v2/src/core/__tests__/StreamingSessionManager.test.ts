@@ -261,7 +261,7 @@ describe('StreamingSessionManager', () => {
     });
 
     // -------------------------------------------------------------------
-    // TASK-431 — BFF split: REST rides a same-origin proxy (baseUrl) while
+    // BFF split: REST rides a same-origin proxy (baseUrl) while
     // the WebSocket must hit the gateway directly. When ApiConfig.wsUrl is
     // set, its ORIGIN wins over baseUrl for the WS URL.
     // -------------------------------------------------------------------
@@ -338,7 +338,7 @@ describe('StreamingSessionManager', () => {
     });
 
     // -------------------------------------------------------------------
-    // TASK-320 B5 — the WS client's tenant-claim guard is now ON BY DEFAULT
+    // The WS client's tenant-claim guard is now ON BY DEFAULT
     // (`requireTenantClaim` defaults to true). `getWebSocketUrl` is the single
     // chokepoint for the SDK's own streaming flow (the STT provider connects
     // with `connect(url)` and no options), so the active tenant id MUST ride
@@ -534,7 +534,7 @@ describe('StreamingSessionManager', () => {
       expect(state.voiceProfileSeeded).toBeNull();
     });
 
-    // TASK-329 P4 / D-3: surface the backend preseed echo on the state
+    // Surface the backend preseed echo on the state
     // snapshot so consumers can show diarization-seeding feedback.
     it('should expose voiceProfileSeeded from the session response', async () => {
       const mockSessionResponse: StreamingSessionResponse = {
@@ -554,7 +554,7 @@ describe('StreamingSessionManager', () => {
   });
 
   // =========================================================================
-  // BUG-13: Server-side session cleanup
+  // Server-side session cleanup
   // =========================================================================
 
   describe('BUG-13: closeSession should notify the backend', () => {

@@ -1,5 +1,5 @@
 /**
- * useRoles Hook Tests (TASK-032 WS-G)
+ * useRoles Hook Tests
  *
  * @vitest-environment jsdom
  */
@@ -113,7 +113,7 @@ describe('useRoles', () => {
     });
 
     // -----------------------------------------------------------------------
-    // TASK-279 R-05: deprecated aliases now route to ADMIN_USER_ROLES_ENDPOINTS
+    // Deprecated aliases now route to ADMIN_USER_ROLES_ENDPOINTS
     // -----------------------------------------------------------------------
 
     describe('getUserRoles (deprecated alias \u2192 listUserRoleAssignments)', () => {
@@ -212,7 +212,7 @@ describe('useRoles', () => {
     });
 
     // -----------------------------------------------------------------------
-    // TASK-279 R-05: new admin user-role assignment surface
+    // New admin user-role assignment surface
     // -----------------------------------------------------------------------
 
     describe('listUserRoleAssignments (new admin surface)', () => {
@@ -427,7 +427,7 @@ describe('useRoles', () => {
             expect(result.current.roles).toEqual([initial[1]]);
         });
 
-        // TASK-409 — break-glass credentials travel as the DELETE body.
+        // Break-glass credentials travel as the DELETE body.
         it('should pass break-glass credentials as the DELETE data option (TASK-409)', async () => {
             mockDelete.mockResolvedValue(undefined);
             const { result } = renderHook(() => useRoles());
@@ -502,7 +502,7 @@ describe('useRoles', () => {
             expect(mockDelete).toHaveBeenCalledWith(ROLE_ENDPOINTS.REMOVE_POLICY('r-1', 'p-1'));
         });
 
-        // TASK-409 — break-glass credentials travel as the DELETE body.
+        // Break-glass credentials travel as the DELETE body.
         it('should pass break-glass credentials as the DELETE data option (TASK-409)', async () => {
             mockDelete.mockResolvedValue(undefined);
             const { result } = renderHook(() => useRoles());
@@ -627,7 +627,7 @@ describe('useRoles', () => {
     });
 
     // -----------------------------------------------------------------------
-    // TASK-265 W0-10 / GAP-04 — typed USER_ROLES tuple re-export
+    // Typed USER_ROLES tuple re-export
     // -----------------------------------------------------------------------
 
     describe('USER_ROLES re-export (TASK-265 W0-10)', () => {

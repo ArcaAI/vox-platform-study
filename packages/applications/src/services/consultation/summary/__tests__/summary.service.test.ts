@@ -1,5 +1,5 @@
 /**
- * SummaryService Unit Tests — extractEntities (GAP-5 Fix)
+ * SummaryService Unit Tests — extractEntities
  *
  * Tests for the sync NER extraction path. The core behavior under test:
  * extractEntities() must call the NLP service AND persist entities to the database,
@@ -45,7 +45,7 @@ vi.mock('@arcaai/domains', async () => {
                     createdAt: new Date('2026-06-06T00:00:00.000Z'),
                 }),
             ),
-            // TASK-330 Phase 1 — attested SIGNED_NOTE version used by approveSummary.
+            // Attested SIGNED_NOTE version used by approveSummary.
             CreateSignedNoteVersion: vi.fn((props) => ({
                 id: 'signed-version-id-1',
                 contextItemId: props.contextItemId,
@@ -102,24 +102,24 @@ const createMockConsultationRepository = () => ({
     update: vi.fn(),
 });
 
-// TASK-330 Phase 1 — Phase-0 WORM audit service (attestation gate).
+// Phase-0 WORM audit service (attestation gate).
 const createMockHarnessAuditService = () => ({
     append: vi.fn().mockResolvedValue({ id: 'audit-evt-1' }),
 });
 
-// TASK-330 Phase 1 (Lane G) — outbound harness gate adapter. approveSummary
+// Outbound harness gate adapter. approveSummary
 // forwards the sign-off to the harness best-effort (after the WORM write).
 const createMockHarnessGatewayService = () => ({
     start: vi.fn().mockResolvedValue({ workflowId: 'wf-1' }),
     signalApproval: vi.fn().mockResolvedValue({ ok: true }),
-    // TASK-355 Phase D (Slice 5c) — updateSummary forwards a clinician edit of an
+    // updateSummary forwards a clinician edit of an
     // optimistically-delivered draft to the harness best-effort.
     signalEdit: vi.fn().mockResolvedValue({ ok: true }),
 });
 
 const createMockSummaryMetaRepository = () => ({
     create: vi.fn(),
-    // TASK-355 Phase D — the sign-off assurance guard reads the draft's meta.
+    // The sign-off assurance guard reads the draft's meta.
     // Default null = no harness assurance meta = guard is a no-op (legacy/manual
     // summaries sign through unchanged).
     findByContextItem: vi.fn().mockResolvedValue(null),
@@ -198,7 +198,7 @@ describe('SummaryService', () => {
     let mockHttpService: ReturnType<typeof createMockHttpService>;
     let mockConfigService: ReturnType<typeof createMockConfigService>;
     let mockPromptAssemblyService: ReturnType<typeof createMockPromptAssemblyService>;
-    // TASK-356 D-7 — the fail-closed SMR-selection seam every caller funnels through.
+    // The fail-closed SMR-selection seam every caller funnels through.
     let mockHarnessPolicyService: { resolveSmrSelection: ReturnType<typeof vi.fn> };
 
     beforeEach(() => {
@@ -233,11 +233,11 @@ describe('SummaryService', () => {
             undefined, // userProfileRepository (@Optional)
             undefined, // harnessAuditService (@Optional)
             undefined, // harnessGatewayService (@Optional)
-            mockHarnessPolicyService as any, // TASK-356 D-7 — HarnessPolicyService resolver
+            mockHarnessPolicyService as any, // HarnessPolicyService resolver
         );
     });
 
-    // ── TASK-356 D-7 (T-C1): callSmrService passes the cascade-resolved model ──
+    // ── callSmrService passes the cascade-resolved model ──
     describe('callSmrService SMR selection', () => {
         const primeGenerateMocks = () => {
             mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
@@ -360,7 +360,7 @@ describe('SummaryService', () => {
     });
 
     // ===========================================================================
-    // extractEntities — Core Persistence Behavior (GAP-5)
+    // extractEntities — Core Persistence Behavior
     // ===========================================================================
 
     describe('extractEntities', () => {
@@ -395,7 +395,7 @@ describe('SummaryService', () => {
             );
         });
 
-        // TASK-476 C1 (AC-3b) — the sync durable path persists the ontology codes
+        // (AC-3b) — the sync durable path persists the ontology codes
         // the NLP producer now emits (same shared mapper as the async path). RED
         // before the mapper maps them (they were dropped → columns null).
         it('passes the NLP ontology codes into the NamedEntity factory', async () => {
@@ -519,7 +519,7 @@ describe('SummaryService', () => {
             );
         });
 
-        // TASK-463 — the REAL NLP contract ({ text, entity_type, confidence,
+        // The REAL NLP contract ({ text, entity_type, confidence,
         // position: { start, end } }; canonical apps/nlp/src/nlp/schemas/common.py).
         // Current code reads className via `type ?? className` and offsets via
         // `start ?? startOffset`, so both resolve undefined for the real shape and
@@ -803,7 +803,7 @@ describe('SummaryService', () => {
     });
 
     // ===========================================================================
-    // GAP-8: NLP URL Path + Service URL Standardization
+    // NLP URL Path + Service URL Standardization
     // ===========================================================================
 
     describe('GAP-8: Service URL Configuration', () => {
@@ -1147,7 +1147,7 @@ describe('SummaryService', () => {
             );
         });
 
-        // TASK-329 (P6) — editing must bump currentVersionNumber on the persisted item (no in-place overwrite)
+        // Editing must bump currentVersionNumber on the persisted item (no in-place overwrite)
         it('should persist the bumped currentVersionNumber on the edited summary', async () => {
             const mockItem = createMockContextItem({
                 id: 'ctx-bump-329',
@@ -1531,11 +1531,11 @@ describe('SummaryService', () => {
     });
 
     // ============================================================
-    // TASK-305 D.4 — Cross-aggregate tenant isolation for SummaryService
+    // Cross-aggregate tenant isolation for SummaryService
     //
     // The summary pipeline takes either `consultationId` (generate*) or
     // `contextItemId` (update/approve/extract) — both reference aggregates
-    // that may be tenant-scoped to a foreign tenant. Audit C-1 / C-3 / M-7.
+    // that may be tenant-scoped to a foreign tenant.
     //
     // All cross-aggregate checks throw `NotFoundException` (no existence
     // leak); legitimate misses produce the same error shape as cross-tenant
@@ -1607,7 +1607,7 @@ describe('SummaryService', () => {
         });
 
         // ===================================================================
-        // TASK-330 Phase 1 — attestation gate (confirm-before-commit)
+        // Attestation gate (confirm-before-commit)
         //
         // approveSummary MUST, in one path that cannot be bypassed:
         //   1. write a SIGNED_NOTE ContextItemVersion carrying attestation fields,
@@ -1728,7 +1728,7 @@ describe('SummaryService', () => {
         });
 
         // ===================================================================
-        // TASK-355 Phase D — RELAXED sign-off governance (Slice 5b)
+        // RELAXED sign-off governance
         //
         // Clinician-autonomy + full-audit model (doc 08 §7.1):
         //   Q2a — signing BEFORE assurance completes is allowed with NO ack; the
@@ -1905,7 +1905,7 @@ describe('SummaryService', () => {
         });
 
         // ===================================================================
-        // TASK-330 Phase 1 (Lane G) — best-effort harness sign-off signal
+        // (Lane G) — best-effort harness sign-off signal
         //
         // AFTER the SIGNED_NOTE + ATTEST + status=SIGNED writes (the WORM trail
         // is the source of truth), approveSummary forwards the sign-off to the
@@ -2018,7 +2018,7 @@ describe('SummaryService', () => {
         });
 
         // ===================================================================
-        // TASK-355 Phase D (Slice 5c) — updateSummary edit-signal SENDER.
+        // updateSummary edit-signal SENDER.
         //
         // A clinician edit of an optimistically-delivered draft that is STILL
         // under assurance (DRAFT_PENDING_SENSORS) is forwarded to the running

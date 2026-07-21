@@ -1,6 +1,6 @@
 """Tests for VAD segment merging before Whisper inference.
 
-TASK-017: Per-Segment Inference Optimization
+Per-Segment Inference Optimization.
 """
 
 from stt_v2.transcription.dto import AudioSegment

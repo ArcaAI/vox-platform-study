@@ -1,5 +1,5 @@
 /**
- * TASK-499 P2 — `RedisSamlCacheProvider` unit tests.
+ * `RedisSamlCacheProvider` unit tests.
  *
  * `@node-saml/node-saml`'s `SAML` class already tracks outstanding AuthnRequest
  * ids via a pluggable `CacheProvider` (default: in-memory, single-pod only) and

@@ -1,5 +1,5 @@
 /**
- * TASK-334 I-1 — remote pipeline-id population.
+ * Remote pipeline-id population.
  *
  * The assigned remote ASR pipeline is resolved per-user server-side
  * (admin override -> tenant default -> global) and returned on

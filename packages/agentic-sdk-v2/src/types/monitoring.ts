@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - Monitoring Types (TASK-032 WS-A)
+ * @arcaai/vox - Monitoring Types
  *
  * Types for service monitoring and health tracking.
  * Matches MonitoringController responses.
@@ -18,8 +18,8 @@ export interface ServiceSessionCount {
 }
 
 /**
- * Session counts, realigned to the backend `SessionsResponse` (TASK-386 /
- * `MonitoringController.getSessions`):
+ * Session counts, realigned to the backend `SessionsResponse`
+ * (`MonitoringController.getSessions`):
  *
  *   { services: { smr|stt|nlp|guardrail|harness: { active } }, totalUsers, refreshedAt }
  *
@@ -42,7 +42,7 @@ export interface SessionCounts {
   /** When the backend computed the payload (ISO-8601). */
   refreshedAt?: string;
 
-  // ── Derived convenience fields (back-compat with pre-TASK-386 consumers) ──
+  // ── Derived convenience fields (back-compat with legacy consumers) ──
   /** Live consultation sessions ≈ STT streams (`services.stt.active`). */
   activeSessions: number;
   /** Background inference jobs ≈ SMR + NLP + guardrail + harness active. */

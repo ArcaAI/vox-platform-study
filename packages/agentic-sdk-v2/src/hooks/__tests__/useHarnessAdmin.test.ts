@@ -1,5 +1,5 @@
 /**
- * useHarnessAdmin Hook Tests (TASK-407)
+ * useHarnessAdmin Hook Tests
  *
  * Read-only Clinical Documentation Harness admin surface. DB-backed reads
  * (policy / audit / eval runs / gate queue) plus the Temporal workflows proxy,

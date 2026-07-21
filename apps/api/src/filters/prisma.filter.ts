@@ -4,23 +4,21 @@ import { BaseExceptionFilter } from '@nestjs/core';
 import { Request, Response } from 'express';
 
 /**
- * TASK-310 W7.A.14 (AC-1) — Prisma error code → HTTP status mapping
- * now lives in `ExceptionInterceptor` (the single registered handler).
- * The interceptor maps each known code (`P2002` → 409, `P2025` → 404,
- * `P2003`/`P2014` → 400) to the same body shape and `error` labels as
- * this filter. The interceptor's branch is the live code path; this
- * filter is NOT currently wired as `APP_FILTER` and so does not run in
- * production.
+ * Prisma error code → HTTP status mapping now lives in `ExceptionInterceptor`
+ * (the single registered handler). The interceptor maps each known code
+ * (`P2002` → 409, `P2025` → 404, `P2003`/`P2014` → 400) to the same body
+ * shape and `error` labels as this filter. The interceptor's branch is the
+ * live code path; this filter is NOT currently wired as `APP_FILTER` and so
+ * does not run in production.
  *
  * The file is retained as defense-in-depth and as a reference shape: if
  * a future refactor unregisters the interceptor's Prisma branch (or
  * wires this filter as `APP_FILTER`), the same sanitised response
- * contract (no `err.meta` / raw `err.message` leak) is preserved.
- * Per TASK-310 carryover, the long-term cleanup is to either:
+ * contract (no `err.meta` / raw `err.message` leak) is preserved. The
+ * long-term cleanup is to either:
  *   (a) wire this filter as `APP_FILTER` and remove the interceptor's
  *       Prisma branch (single source of truth in the filter), OR
  *   (b) delete this file (interceptor is the only handler).
- * Both are out of TASK-310 scope (touches filter-registration wiring).
  */
 @Catch(PrismaClientKnownRequestError)
 export class PrismaClientExceptionFilter extends BaseExceptionFilter {
@@ -36,8 +34,7 @@ export class PrismaClientExceptionFilter extends BaseExceptionFilter {
     const correlationId = (request as any)?.requestId;
 
     // Build structured log context — server-side keeps the full Prisma
-    // detail so SREs can debug. The public body below is sanitised per
-    // TASK-307 W5.6 (AC-20, audit D-6).
+    // detail so SREs can debug. The public body below is sanitised.
     const logContext = {
       errorCode: exception.code,
       errorMessage: message,
@@ -53,10 +50,10 @@ export class PrismaClientExceptionFilter extends BaseExceptionFilter {
       stack: exception.stack,
     });
 
-    // TASK-307 W5.6 (AC-20): generic public body — never echo the raw
-    // exception.message (it embeds column / constraint / row id names)
-    // or exception.meta (same problem). The `error` label is the only
-    // hint we surface to clients about what went wrong.
+    // Generic public body — never echo the raw exception.message (it embeds
+    // column / constraint / row id names) or exception.meta (same problem).
+    // The `error` label is the only hint we surface to clients about what
+    // went wrong.
     switch (exception.code) {
       case 'P2002': {
         // Unique constraint violation

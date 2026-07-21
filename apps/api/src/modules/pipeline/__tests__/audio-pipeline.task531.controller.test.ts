@@ -1,5 +1,5 @@
 /**
- * TASK-531 — clone + resync route surface.
+ * Clone + resync route surface.
  *
  * Route-metadata + delegation tests in the house style (see
  * `audio-pipeline.controller.test.ts`): the controllers hold no logic, so what

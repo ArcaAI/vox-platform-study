@@ -22,7 +22,7 @@ const mockPrismaClient = {
   },
 };
 
-// TASK-305 B.1 — `PolicyEngine.loadUserPolicies` reads the UNSCOPED platform-admin
+// `PolicyEngine.loadUserPolicies` reads the UNSCOPED platform-admin
 // client (`baseClient`) for the cross-tenant RBAC control-plane query, while
 // `invalidateRole`/cache-invalidation paths use the scoped `client`. Mock both
 // (same fake client) so whichever the engine reaches resolves.

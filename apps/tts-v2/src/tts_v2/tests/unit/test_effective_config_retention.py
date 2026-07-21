@@ -1,13 +1,12 @@
-"""TASK-535 (R3) — tts-v2 takes local-engine retention from the control plane.
+"""tts-v2 takes local-engine retention from the control plane.
 
-TASK-529/530 built `configure_retention` on kokoro / indic_parler / indic_f5 and
-left it with NO CALLER, so `tts.modelCache.ttlSeconds` never reached a pipeline.
+`configure_retention` on kokoro / indic_parler / indic_f5 must actually be
+called so `tts.modelCache.ttlSeconds` reaches a pipeline.
 
-The trap worth a dedicated test (§3.4): the gateway maps service `tts-v2` to the
+The trap worth a dedicated test: the gateway maps service `tts-v2` to the
 KEY prefix `tts` (`effective-config.service.ts:116`). A client that asks for
 `service=tts` gets rejected; one that expects keys named `tts-v2.modelCache.*`
-finds nothing. Both directions are a silent no-op — exactly the failure class
-this ticket exists to remove.
+finds nothing. Both directions must not be a silent no-op.
 
 Hermetic — `httpx.MockTransport` + fake pipeline factories; no weights, no
 network.

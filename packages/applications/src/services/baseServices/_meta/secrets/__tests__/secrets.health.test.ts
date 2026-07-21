@@ -1,4 +1,4 @@
-// Phase 2C Task 2.19 (TASK-302 Stream B) - SecretsHealthIndicator test.
+// SecretsHealthIndicator test.
 import { describe, it, expect, vi } from 'vitest';
 import { SecretsHealthIndicator } from '../secrets.health';
 import type { SecretsService } from '../SecretsService';
@@ -47,7 +47,7 @@ describe('SecretsHealthIndicator', () => {
     expect(res.secrets).not.toHaveProperty('detail');
   });
 
-  // TASK-312 B.4 — the AppRole token-renewal / DB-lease-renewal SWR latch sets
+  // The AppRole token-renewal / DB-lease-renewal SWR latch sets
   // degraded=true while ok stays true. Readiness must NOT 503 (the pod still
   // serves on cached creds), but the flag + diagnostic MUST reach Terminus so a
   // dashboard/alert can recycle the pod before the lease actually expires.

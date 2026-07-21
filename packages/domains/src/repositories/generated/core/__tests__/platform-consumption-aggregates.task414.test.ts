@@ -1,10 +1,10 @@
 /**
- * TASK-414 — repository aggregate methods backing
- * `PlatformMetricsService.getConsumptionRollup` (TASK-386 #18).
+ * Repository aggregate methods backing
+ * `PlatformMetricsService.getConsumptionRollup`.
  *
  * The service previously issued these five reads straight off
- * `databaseService.client` (violating the TASK-311 AC-8 layering rule).
- * Each method pins the exact pre-TASK-414 Prisma call shape:
+ * `databaseService.client` (violating the controller/service/repository layering rule).
+ * Each method pins the exact legacy Prisma call shape:
  *
  *   • AudioRecordingRepository.sumDurationForTenant → aggregate _sum.duration
  *   • SummaryMetaRepository.countGeneratedSince     → count generatedAt >= since

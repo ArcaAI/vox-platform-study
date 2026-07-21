@@ -1,6 +1,4 @@
 /**
- * TASK-269 — CRIT-2
- *
  * Default WASM source must not be a hard-coded CDN URL. The binary
  * is bundled with the package and resolved via `import.meta.url`.
  *

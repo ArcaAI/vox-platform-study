@@ -1,4 +1,4 @@
-"""E0 parity instrument tests — the R-8 go/no-go gate (TASK-355 R-8).
+"""E0 parity instrument tests — the R-8 go/no-go gate.
 
 A faster judge is worthless if it loosens a verdict (Phase-B batching proved this is a
 *real* clinical risk, not noise). This module scores the live groundedness sensor with

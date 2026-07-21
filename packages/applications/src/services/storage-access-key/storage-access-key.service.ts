@@ -26,7 +26,7 @@ export class StorageAccessKeyService extends BaseService implements IStorageAcce
     private readonly tenantBucketRepository: TenantBucketRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // TASK-318 W3 (F-2) — pepper source for hashing the secret access key.
+    // Pepper source for hashing the secret access key.
     // Optional so legacy/direct-construction tests still work (they fall back
     // to un-peppered SHA-256), mirroring ApiKeyService.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
@@ -90,7 +90,7 @@ export class StorageAccessKeyService extends BaseService implements IStorageAcce
       }
     }
 
-    // F-2 (TASK-318 W3): generate the raw secret, persist only its hash, and
+    // Generate the raw secret, persist only its hash, and
     // return the plaintext to the caller exactly once. The plaintext is never
     // stored and cannot be retrieved afterwards.
     const rawSecret = StorageAccessKeyFactory.generateRawSecret();
@@ -139,7 +139,7 @@ export class StorageAccessKeyService extends BaseService implements IStorageAcce
     if (!key) return null;
     if (key.isExpired) return null;
 
-    // F-2b (TASK-318 W3): record last-used metadata on each successful
+    // Record last-used metadata on each successful
     // validation. Fire-and-forget so a metadata write failure never blocks the
     // auth path.
     void this.recordUsage(key, ipAddress);
@@ -152,7 +152,7 @@ export class StorageAccessKeyService extends BaseService implements IStorageAcce
   }
 
   /**
-   * F-2b (TASK-318 W3) — stamp `lastUsedAt`/`lastUsedIp` on a validated key.
+   * Stamp `lastUsedAt`/`lastUsedIp` on a validated key.
    * Errors are swallowed (logged) because usage tracking must never fail an
    * otherwise-valid authentication.
    */

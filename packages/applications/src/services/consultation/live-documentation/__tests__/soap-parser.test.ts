@@ -1,5 +1,5 @@
 /**
- * SOAP parser unit tests (TASK-339 follow-up 1 — structured live summary).
+ * SOAP parser unit tests — structured live summary.
  *
  * `parseSoapSections` turns the SMR running-note text into the four canonical
  * S/O/A/P sections (in order); unstructured text falls back to a single

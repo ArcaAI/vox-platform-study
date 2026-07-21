@@ -61,7 +61,7 @@ class NEREntity(BaseModel):
     type: str = ""
     start: int = -1
     end: int = -1
-    # TASK-476 C1 — clinical ontology codes (nullable) carried end to end so the
+    # Clinical ontology codes (nullable) carried end to end so the
     # persisted NamedEntity rows are coded. Mirror the NLP `/classify/tokens`
     # `Entity` code fields; the api_client forwards them to persistEntities.
     umls_cui: str | None = None

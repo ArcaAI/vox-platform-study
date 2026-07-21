@@ -1,5 +1,5 @@
 /**
- * useTenantBuckets Hook Tests (TASK-323 Phase 0 / TASK-318 R9)
+ * useTenantBuckets Hook Tests
  *
  * Per-tenant storage bucket management for TENANT_ADMIN / GLOBAL_ADMIN.
  *
@@ -105,7 +105,7 @@ describe('useTenantBuckets', () => {
         });
     });
 
-    // TASK-407 — read-only object browser for the Stores detail surface.
+    // Read-only object browser for the Stores detail surface.
     describe('listObjects', () => {
         it('GETs LIST_OBJECTS(id) and returns the object rows', async () => {
             const objects = [{ key: '2026/07/a.wav', size: 1024, lastModified: '2026-07-01T00:00:00Z' }];

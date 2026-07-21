@@ -63,7 +63,7 @@ export class ConsultationResponse {
   parentConsultationId?: string;
 
   @ApiPropertyOptional({
-    description: 'Lifecycle status (derived from metadata.status; defaults to OPEN). TASK-322.',
+    description: 'Lifecycle status (derived from metadata.status; defaults to OPEN).',
     enum: ['OPEN', 'CLOSED'],
     example: 'OPEN',
   })

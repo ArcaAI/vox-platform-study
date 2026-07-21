@@ -1,12 +1,10 @@
 /**
- * TASK-307 W5.6 — Prisma client exception filter sanitisation
- * (AC-20, audit D-6).
+ * Prisma client exception filter sanitisation.
  *
- * The filter previously sent the raw `exception.message` (which embeds
- * column / constraint names) in the response body for every Prisma error
- * code it knew about (P2002 / P2025 / P2003 / P2014). Per the audit the
- * public body must collapse to a generic shape; the server-side log keeps
- * the full detail.
+ * The raw `exception.message` (which embeds column / constraint names)
+ * must never reach the response body for any Prisma error code the filter
+ * maps (P2002 / P2025 / P2003 / P2014) — the public body collapses to a
+ * generic shape; the server-side log keeps the full detail.
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

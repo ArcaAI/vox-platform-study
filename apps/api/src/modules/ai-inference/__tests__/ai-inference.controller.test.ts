@@ -1,5 +1,5 @@
 /**
- * AiInferenceController unit tests (TASK-446, extended TASK-506). The
+ * AiInferenceController unit tests. The
  * controller maps the validated camelCase DTOs to the upstream snake_case body
  * (with defaults), resolves the tenant's default NLP model via
  * `IAiTaskDefaultService` (fail-open), and proxies the client response verbatim.
@@ -76,8 +76,6 @@ describe('AiInferenceController — NER entities', () => {
     });
   });
 
-  // TASK-506 — the tenant's effective `nlp.ner` default (AiModel.sourceUri, an
-  // HF id) is injected as `model_name` when the caller supplies none.
   it('injects model_name from the effective nlp.ner default when the caller supplies no model', async () => {
     const aiTaskDefaults = { getEffective: vi.fn().mockResolvedValue(effectiveWithModel('nlp.ner', 'blaze999/Medical-NER')) };
     const { controller, client } = makeController(aiTaskDefaults);

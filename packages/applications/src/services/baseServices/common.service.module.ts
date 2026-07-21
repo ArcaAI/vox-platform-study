@@ -6,7 +6,7 @@ import { CoreDatabaseModule, JobQueue } from '@arcaai/domains';
 
 import { IntegrationsModule, S3ServiceModule, RedisServiceModule, HealthCheckServiceModule, ObservabilityModule } from '.';
 
-// TASK-307 W2.1 follow-up — keys warmed during DI construction so
+// Keys warmed during DI construction so
 // downstream sync consumers (JwtStrategy, the
 // OPENID_CLIENT factory, AuthController JWT sign path) observe a warm
 // cache. SecretsModule.forRoot turns the SecretsService provider into

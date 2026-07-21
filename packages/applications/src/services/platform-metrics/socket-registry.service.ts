@@ -3,7 +3,7 @@ import * as os from 'os';
 import { IRedisCacheService } from '../baseServices/redis/redis-cache.service';
 
 /**
- * TASK-386 (decision #5 / #17) — multi-instance open-socket aggregation.
+ * (decision #5 / #17) — multi-instance open-socket aggregation.
  *
  * Each API instance periodically publishes its LOCAL live-socket count
  * (`SttWsGateway.getActiveSessionCount()`) to Redis under a per-instance key
@@ -17,14 +17,14 @@ export interface ISocketRegistryService {
   /** Sum the live per-instance counts across all instances. */
   getAggregateCount(): Promise<number>;
   /**
-   * TASK-392 (concurrency) — publish THIS instance's per-tenant open-socket
+   * (concurrency) — publish THIS instance's per-tenant open-socket
    * breakdown (`{tenantId: count}`) under a single TTL-bounded key. Zero/dropped
    * tenants are simply omitted from the new map (no per-tenant deletes needed),
    * and a crashed instance's whole map self-expires.
    */
   publishLocalTenantCounts(counts: Record<string, number>): Promise<void>;
   /**
-   * TASK-392 (concurrency) — sum ONE tenant's live open-socket count across
+   * (concurrency) — sum ONE tenant's live open-socket count across
    * every instance's published map. The signal the concurrency gate compares
    * against `maxConcurrentSessions`.
    */
@@ -35,7 +35,7 @@ export const ISocketRegistryService = Symbol('ISocketRegistryService');
 
 /** Redis key prefix for per-instance socket counts. */
 const KEY_PREFIX = 'hope:platform:sockets:inst:';
-/** Redis key prefix for the per-instance {tenantId: count} map (TASK-392). */
+/** Redis key prefix for the per-instance {tenantId: count} map. */
 const TENANT_MAP_PREFIX = 'hope:platform:sockets:tmap:';
 /**
  * Per-instance key TTL. Must exceed the publish cadence (the gateway republishes

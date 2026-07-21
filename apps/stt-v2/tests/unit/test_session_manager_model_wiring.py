@@ -1,4 +1,4 @@
-"""Unit tests for SessionManager model wiring (TASK-020 Track B).
+"""Unit tests for SessionManager model wiring.
 
 Covers the new helper methods added to SessionManager for loading
 VAD and ASR models into streaming sessions:
@@ -137,7 +137,7 @@ class TestLoadPipelineConfig:
                 result = await mgr._load_pipeline_config("pipe-1")
 
         assert result is mock_spec
-        # TASK-298 D-3 — _load_pipeline_config forwards tenant_id (None here) to
+        # _load_pipeline_config forwards tenant_id (None here) to
         # the reader so STT-V2 can refuse cross-tenant pipeline loads.
         mock_reader.get_pipeline.assert_awaited_once_with("pipe-1", tenant_id=None)
 
@@ -661,7 +661,7 @@ class TestCreateSessionModelWiring:
             )
 
         assert session is not None
-        # TASK-298 D-3 — create_session forwards tenant_id to the config loader.
+        # create_session forwards tenant_id to the config loader.
         mgr._load_pipeline_config.assert_awaited_once_with("pipe-1", tenant_id="t-1")
         mgr._load_vad_service.assert_awaited_once()
         mgr._load_asr_pipeline.assert_awaited_once()
@@ -1495,7 +1495,7 @@ class TestReaper:
 
     @pytest.mark.asyncio
     async def test_reaper_loop_spares_active_session_paused_below_audio_idle(self):
-        """C2-02 (TASK-456) task-0 fix — driving the real reaper loop once, a
+        """Driving the real reaper loop once, a
         live ACTIVE session idle 120s (a normal clinical speech pause, well
         under the 300s audio-idle timeout) must NOT be finalized. Before the
         fix the loop reaps at the 60s session timeout and finalizes it."""
@@ -1772,7 +1772,7 @@ class TestFinalizeSessionPendingSegments:
 
     @pytest.mark.asyncio
     async def test_drain_timeout_settles_loop_and_transcribes_tail_into_results(self):
-        """C2-05 + I-2 (TASK-456) — on a drain timeout the racing background
+        """On a drain timeout the racing background
         inference loop is settled FIRST, then the still-queued tail utterance is
         transcribed inline INTO the session transcript (not merely "inline drain
         was called"). The tail (last item enqueued) survives; the backlog item
@@ -1845,10 +1845,10 @@ class TestFinalizeSessionPendingSegments:
         finally:
             release.set()
 
-        # I-2 — the background loop was settled (cancelled + de-registered)
-        # before the inline drain, so it was not a concurrent second consumer.
+        # The background loop was settled (cancelled + de-registered) before
+        # the inline drain, so it was not a concurrent second consumer.
         assert mgr._inference_tasks.get("s-drain") is None
-        # C2-05 — the tail utterance was transcribed inline into the transcript.
+        # The tail utterance was transcribed inline into the transcript.
         assert "tail text" in session.build_transcript_text()
 
     @pytest.mark.asyncio
@@ -2163,7 +2163,7 @@ class TestSessionLeakPrevention:
 
 
 class TestRecoverSessionsWorkerParity:
-    """TASK-505 P1 — a recovered inference worker must be wired identically
+    """A recovered inference worker must be wired identically
     to a freshly created one (shared SessionAssembly).
 
     Recovery previously dropped ``max_segment_text_chars``, both
@@ -2220,7 +2220,7 @@ class TestRecoverSessionsWorkerParity:
 
 
 class TestAssemblyWithRealPipelineSpec:
-    """TASK-505 P2-P5 review — the criticals were masked by MagicMock pipeline
+    """The criticals were masked by MagicMock pipeline
     configs (auto-created `.spec.models…` attributes). These tests drive
     `_assemble_session_runtime` with a REAL `PipelineSpec` parsed from the
     actual seeded default-pipeline YAML shape."""
@@ -2278,7 +2278,7 @@ class TestAssemblyWithRealPipelineSpec:
 
     @pytest.mark.asyncio
     async def test_slug_asr_ref_resolves_db_config_for_streaming(self):
-        # TASK-505 P5 review critical: slug-based seed pipelines must resolve
+        # Critical: slug-based seed pipelines must resolve
         # the DB model row on the STREAMING path too (was batch-only).
         from stt_v2.pipeline.yaml_parser import PipelineYamlParser
 

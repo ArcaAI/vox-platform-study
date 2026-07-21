@@ -1,4 +1,4 @@
-"""Azure AI Foundry (MAI-Transcribe) loader — cloud ASR engine (TASK-505 P3).
+"""Azure AI Foundry (MAI-Transcribe) loader — cloud ASR engine.
 
 Like :mod:`azure_speech_loader`, no model artifact is downloaded: the loader
 validates configuration and returns a lightweight ``LoadedModel`` whose
@@ -7,10 +7,9 @@ validates configuration and returns a lightweight ``LoadedModel`` whose
 API with ``enhancedMode``). Inference lives in
 ``BatchTranscriptionService._run_azure_foundry_inference``.
 
-Decision D4 (owner, 2026-07-16): MAI-Transcribe is a PREVIEW service (no SLA,
-no diarization) — the engine is DISABLED unless ``azure_foundry_enabled`` is
-set, and it is batch-only. Do not route PHI until GA + data-residency
-sign-off.
+MAI-Transcribe is a PREVIEW service (no SLA, no diarization) — the engine is
+DISABLED unless ``azure_foundry_enabled`` is set, and it is batch-only. Do not
+route PHI until GA + data-residency sign-off.
 
 Credentials come from settings only (no ``compute_type`` smuggling — the
 AZURE_SPEECH ``"key:"`` wart is deliberately not repeated).

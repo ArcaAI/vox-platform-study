@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 
 /**
- * TASK-388 #8 — password-reset email delivery boundary.
+ * Password-reset email delivery boundary.
  *
  * Kept behind a thin interface so the reset service does not depend on any
  * concrete provider (e.g. the dormant `MicrosoftGraphIntegration`, which needs

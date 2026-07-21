@@ -9,7 +9,7 @@ import { EntitlementsServiceModule } from '../../entitlements/entitlements.servi
 import { CommonServiceModule } from '../../baseServices';
 
 /**
- * TASK-531 — the module additionally registers the template-resync reconciler
+ * The module additionally registers the template-resync reconciler
  * and its self-scheduling cron. Like `AgentTrajectoryRetentionServiceModule`,
  * the cron relies on the app-level `ScheduleModule.forRoot()` (SchedulerRegistry)
  * and `EventEmitterModule.forRoot()` (@OnEvent) globals; `CommonServiceModule`

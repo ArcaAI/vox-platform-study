@@ -1,5 +1,5 @@
 /**
- * TASK-311 AC-2 — `PolicyFactory` centralises the build of the Prisma
+ * `PolicyFactory` centralises the build of the Prisma
  * `data` payload that `PolicyService` used to inline. The factory has
  * one responsibility: turn an application-shaped request into the
  * Prisma input. It owns no I/O and no NestJS DI surface so it is
@@ -15,7 +15,7 @@ import { ResourceStatusType } from '../../enums';
 
 /**
  * Allowed `Policy.scope` values; mirrors the enum in `db_main/enums.prisma`.
- * TASK-368 — kept as a LOCAL (non-exported) literal union so the canonical
+ * Kept as a LOCAL (non-exported) literal union so the canonical
  * `PolicyScope` enum emitted by generate-data-model into `enums/generated` is
  * the single exported name (avoids a duplicate-export collision at the barrel),
  * while this factory keeps accepting plain string literals.

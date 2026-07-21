@@ -73,7 +73,7 @@ export abstract class IConsultationService {
   }): Promise<PaginatedConsultationResponse>;
 
   /**
-   * TASK-319 F1 — tenant-wide (admin) listing.
+   * Tenant-wide (admin) listing.
    * Lists EVERY consultation in the caller's tenant with no owner/shared-patient
    * scoping. Intended for the admin surface gated by `@CanManage('Consultation')`.
    */
@@ -87,7 +87,7 @@ export abstract class IConsultationService {
   }): Promise<PaginatedConsultationResponse>;
 
   /**
-   * TASK-386 (#20 / E4) — zero-filled, server-side date-range aggregation of
+   * Zero-filled, server-side date-range aggregation of
    * new vs. revisit consultation counts (day/month buckets). GLOBAL_ADMIN with
    * no working tenant aggregates cross-tenant; everyone else is pinned to their
    * CLS tenant.
@@ -106,19 +106,19 @@ export abstract class IConsultationService {
   abstract doctorHasPatientRelationship(doctorId: string, patientId: string, tenantId: string): Promise<boolean>;
 
   /**
-   * TASK-322 — Close a consultation (transition lifecycle status to CLOSED).
+   * Close a consultation (transition lifecycle status to CLOSED).
    * Idempotent: a no-op (no write, no event) when already CLOSED.
    */
   abstract closeConsultation(id: string): Promise<ConsultationResponse>;
 
   /**
-   * TASK-322 — Reopen a consultation (transition lifecycle status back to OPEN).
+   * Reopen a consultation (transition lifecycle status back to OPEN).
    * Idempotent: a no-op (no write, no event) when already OPEN.
    */
   abstract reopenConsultation(id: string): Promise<ConsultationResponse>;
 
   /**
-   * TASK-322 — Update safely-mutable fields of an existing consultation
+   * Update safely-mutable fields of an existing consultation
    * (appointmentDate / departmentId / metadata-merge / status).
    */
   abstract updateConsultation(id: string, request: UpdateConsultationRequest): Promise<ConsultationResponse>;

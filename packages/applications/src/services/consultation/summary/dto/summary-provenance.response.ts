@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * TASK-330 follow-up — read-only provenance for a generated summary.
+ * Read-only provenance for a generated summary.
  *
  * Surfaces the harness-written `SummaryMeta` provenance (per-claim `citationsMap`
  * + the sensor score columns + the full sensor-score detail + `modelName`) over

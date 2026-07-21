@@ -15,7 +15,7 @@ export class AuditLogProcessor extends WorkerHost {
   constructor(
     private readonly auditLogRepository: AuditLogRepository,
     private readonly cls: ClsService<IActiveUserContext>,
-    // TASK-369 Phase 3D — envelope-encrypt data/previousData before the row is
+    // Envelope-encrypt data/previousData before the row is
     // written. @Optional so tests that construct the processor directly without
     // the encryption service degrade to plaintext-only (dual-read soak).
     @Optional() private readonly auditLogEncryption?: AuditLogEncryptionService,
@@ -26,16 +26,16 @@ export class AuditLogProcessor extends WorkerHost {
   async process(job: Job<AuditLogJob>): Promise<void> {
     const { action, responsibleUserId, responsibleIp, resourceId, resourceType, data, previousData, metadata, correlationId, tenantId } = job.data;
 
-    // TASK-305 D.9.3 follow-up — fail-closed when tenantId is missing.
+    // Fail-closed when tenantId is missing.
     // Guards against legacy queue entries that predate the multi-tenancy
     // hardening contract. BullMQ will retry per `attempts` then DLQ.
     if (!tenantId) {
       throw new Error('AuditLogProcessor: job.data.tenantId is required');
     }
 
-    // TASK-305 D.9.1 follow-up — Worker processes run OUTSIDE the API edge
+    // Worker processes run OUTSIDE the API edge
     // ClsModule middleware. Rebind tenantId + user into a fresh CLS scope so
-    // the Phase B tenantScope Prisma extension sees the correct context
+    // the tenantScope Prisma extension sees the correct context
     // (otherwise its "no CLS = super-admin pass-through" branch silently
     // bypasses scoping). Empty roles array — queue workers never have
     // GLOBAL_ADMIN bypass.
@@ -56,14 +56,14 @@ export class AuditLogProcessor extends WorkerHost {
         resourceType,
         data: data ?? {},
         previousData: previousData ?? {},
-        // TASK-401 — impersonation provenance (and any other event metaData)
+        // Impersonation provenance (and any other event metaData)
         // lands on the row's plaintext `metadata` JSONB column (non-PHI).
         metadata: metadata ?? null,
         correlationId,
         tenantId,
       });
 
-      // TASK-369 Phase 3D — best-effort envelope encryption (no-op + plaintext
+      // Best-effort envelope encryption (no-op + plaintext
       // fallback when unavailable); never blocks the audit write.
       await this.auditLogEncryption?.encryptIntoEntity(entity);
 

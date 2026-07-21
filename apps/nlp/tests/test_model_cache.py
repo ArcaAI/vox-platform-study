@@ -1,4 +1,4 @@
-"""Unit tests for the per-slot model instance cache (TASK-506).
+"""Unit tests for the per-slot model instance cache.
 
 Pure asyncio tests — the factory is a stub; no transformers/model loading.
 The default (env-configured) instance never enters this cache (it lives in the

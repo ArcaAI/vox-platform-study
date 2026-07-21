@@ -1,6 +1,5 @@
 /**
- * TASK-326 X2 / X5 — cross-tenant isolation for the admin list ("fetchAll")
- * endpoints.
+ * Cross-tenant isolation for the admin list ("fetchAll") endpoints.
  *
  * Defect X2 (Critical): `GET /admin/users` historically applied NO tenant
  * scope — `User` is not in the Prisma tenant-scope allow-list, so a
@@ -20,7 +19,7 @@
  * the single-tenant admin view — if the X2 scope regresses, the two views
  * collapse to the same set and these assertions fail.
  *
- * NOTE (TASK-336 AC-07): a GLOBAL_ADMIN that authenticates INTO a tenant
+ * NOTE: a GLOBAL_ADMIN that authenticates INTO a tenant
  * (login `tenantKey`, or a console `x-tenant-id` selection) is INTENTIONALLY
  * scoped to that tenant on `/admin/{users,audit-logs}` — the cross-tenant view
  * is the no-tenant-scope mode (mirrors `AuditLogController.exportCsv`'s
@@ -45,7 +44,7 @@ const fetchPaginated = async (
     headers: { Authorization: `Bearer ${token}` },
     // Admin-plane list endpoints (UserController/AuditLogController) bind the
     // shared `PaginatedQuery` DTO, whose page-size key is `limit` — NOT the
-    // RBAC-only `pageSize` (see apps/ui-playground roles.ts AC-04, TASK-336).
+    // RBAC-only `pageSize` (see apps/ui-playground roles.ts).
     // The global ValidationPipe (forbidNonWhitelisted) 400s any other key.
     params: { page: '1', limit: '200' },
   });
@@ -63,7 +62,7 @@ test.describe('TASK-326 X2/X5 — admin fetchAll cross-tenant isolation', () => 
     tenantAdminToken = ta!.token;
 
     // Cross-tenant operator: omit tenantKey so the JWT carries no tenantId
-    // (TASK-336 AC-07 — a tenant-scoped super-admin would collapse to that
+    // (a tenant-scoped super-admin would collapse to that
     // tenant's rows and defeat the cross-tenant comparison below).
     const sa = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
     expect(sa, 'super_admin login (cross-tenant operator) failed').toBeTruthy();

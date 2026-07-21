@@ -72,10 +72,8 @@ function entityMergeWeight(entity: EntitySpan): number {
  *
  *     mergedScore = Σ(score_i × weight_i) / Σ(weight_i)
  *
- * where `weight_i = max(end_i − start_i, 1)`. This fixes the H-2 bug
- * documented in
- * `docs/implementation/TASK-262-Vox-SDK-Deep-Assessment/06-med-ner.md`
- * where the previous implementation collapsed N merges into a biased
+ * where `weight_i = max(end_i − start_i, 1)`. This fixes a bug where the
+ * previous implementation collapsed N merges into a biased
  * running average of the form `((s1+s2)/2 + s3)/2 + …`, heavily
  * favouring the most recently merged entity. With equal weights the new
  * formula reduces to the simple arithmetic mean, preserving the

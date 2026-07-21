@@ -1,6 +1,6 @@
 # HOPE Platform — Cluster Deployment (k3s + ArgoCD)
 
-Last updated: 2026-07-04
+Introduced: 2026-07-04 · Last verified: 2026-07-21
 
 GitOps deployment of the HOPE application services onto the self-hosted k3s cluster. ArgoCD watches this repository's Kustomize overlays and syncs them into per-environment namespaces.
 
@@ -32,9 +32,13 @@ deployment/
     │   ├── admin-console.yaml         # Deployment + Service + Ingress (3000) — Next.js admin console (TASK-415)
     │   ├── guardrail.yaml             # Deployment + Service (8863)
     │   ├── reranker.yaml              # TEI reranker Deployment + Service (public image)
+    │   ├── vllm.yaml                  # StatefulSet + Service (8000, GPU) — production vLLM engine (public image)
+    │   ├── llama-cpp.yaml             # Deployment + Service + PVC (8080) — production llama.cpp GGUF engine (public image)
     │   ├── smr.yaml                   # Deployment + Service (8862)
     │   ├── stt-v2.yaml                # Deployment + Service (8861, GPU)
     │   ├── stt-v2-worker.yaml         # Deployment, no Service
+    │   ├── tts-v2.yaml                # Deployment + Service (8865)
+    │   ├── nlp.yaml                   # Deployment + Service (8864) — present but NOT registered in kustomization.yaml
     │   ├── ui.yaml                    # Deployment + Service + Ingress (3000) — ui-playground (deprecated)
     │   └── db-migrate.yaml            # Job, ArgoCD PreSync hook (runs Prisma migrations)
     ├── components/
@@ -107,18 +111,22 @@ Either way the database itself must exist and accept connections before bootstra
 | hope-api | Deployment | 8868 | Yes |
 | hope-admin-console | Deployment | 3000 | Yes (`admin[-dev].hope.local`) |
 | hope-ui (ui-playground, deprecated) | Deployment | 3000 | Yes |
-| hope-nlp | Deployment | 8864 | No |
 | hope-smr | Deployment | 8862 | No |
 | hope-guardrail | Deployment | 8863 | No |
 | hope-stt-v2 | Deployment (GPU) | 8861 | No |
 | hope-stt-v2-worker | Deployment | — | No |
+| hope-tts-v2 | Deployment | 8865 | No |
 | hope-redis | StatefulSet | 6379 | No |
 | hope-ollama | Deployment (GPU) | 11434 | No |
+| hope-vllm | StatefulSet (GPU, public image) | 8000 | No |
+| hope-llama-cpp | Deployment (public image) | 8080 | No |
 | hope-reranker | Deployment (public TEI image) | 80 | No |
 | hope-lmstudio | ExternalName Service | 1234 | No (alias to external host) |
 | hope-db-migrate | Job (PreSync hook) | — | — |
 
 Resource requests/limits are set per manifest in `k3s/base/` and patched per overlay where needed.
+
+> `k3s/base/nlp.yaml` (hope-nlp, 8864) exists but is **not** listed in `k3s/base/kustomization.yaml`, so the base does not deploy it — register it there before relying on it in-cluster. `vllm.yaml`, `llama-cpp.yaml`, and `tts-v2.yaml` are all registered. Third-party images (`hope-vllm`, `hope-llama-cpp`, `hope-reranker`, `hope-ollama`) are pinned and NOT rewritten by the registry component.
 
 ### Admin console (hope-admin-console) notes
 

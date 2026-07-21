@@ -1,5 +1,5 @@
 /**
- * AuthController#issueStreamTicket — unit tests (TASK-263 W0-1)
+ * AuthController#issueStreamTicket — unit tests
  *
  * Verifies the new `POST /auth/stream-ticket` endpoint that issues a
  * single-use, 30-second SSE ticket scoped to a specific resource. The
@@ -36,7 +36,7 @@ function buildController(opts: {
       isRevoked: vi.fn().mockResolvedValue(false),
     };
   const consultationRepository = opts.consultationRepository ?? { findById: vi.fn() };
-  // TASK-450 C4-01 — default fail-closed: no binding bound for any session.
+  // Default fail-closed: no binding bound for any session.
   const streamSessionTenantBinding = opts.streamSessionTenantBinding ?? { lookup: vi.fn().mockResolvedValue(null) };
 
   return {
@@ -52,12 +52,12 @@ function buildController(opts: {
       cls as never, // clsService
       streamTicketService as never, // streamTicketService
       jwtRevocationService as never, // jwtRevocationService
-      {} as never, // secretsService (TASK-307 W2.3; not exercised by stream-ticket paths)
+      {} as never, // secretsService (not exercised by stream-ticket paths)
       {} as never, // refreshTokenService
       {} as never, // userDepartmentService
       {} as never, // eventEmitter
-      consultationRepository as never, // consultationRepository (TASK-341 B4)
-      streamSessionTenantBinding as never, // streamSessionTenantBinding (TASK-450 C4-01)
+      consultationRepository as never, // consultationRepository
+      streamSessionTenantBinding as never, // streamSessionTenantBinding
     ),
     streamTicketService,
     jwtRevocationService,
@@ -159,7 +159,7 @@ describe('AuthController.issueStreamTicket', () => {
     expect(method).toBe(RequestMethod.POST);
   });
 
-  // TASK-341 B4 — defense-in-depth at mint time for live-summary tickets.
+  // Defense-in-depth at mint time for live-summary tickets.
   // The SSE route is @TenantOwnedResource, but a ticket bypasses that
   // interceptor, so a `consultation_live_summary:<id>` ticket may only be
   // minted for a consultation in the caller's (active) tenant.
@@ -248,7 +248,7 @@ describe('AuthController.issueStreamTicket', () => {
     });
   });
 
-  // TASK-348 / MIN-1 — the mint-time ownership assertion must cover EVERY
+  // The mint-time ownership assertion must cover EVERY
   // consultation-id-keyed scope, not just live-summary: the SSE route's
   // @TenantOwnedResource guard still blocks a cross-tenant stream, but the
   // ticket must not be mintable in the first place (defense-in-depth parity).
@@ -325,7 +325,7 @@ describe('AuthController.issueStreamTicket', () => {
     });
   });
 
-  // TASK-450 C4-01 — `stt_session:<sessionId>` silently bypassed the
+  // `stt_session:<sessionId>` silently bypassed the
   // consultation-only mint check, so any authenticated user in tenant B who
   // learned a tenant-A sessionId could mint a live-transcript WS ticket for
   // it (cross-tenant PHI egress). The mint now resolves the session's owning

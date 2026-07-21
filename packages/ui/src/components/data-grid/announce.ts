@@ -1,5 +1,5 @@
 /**
- * Live-region announcement text (TASK-423 Δ9). Pure so the polite status
+ * Live-region announcement text. Pure so the polite status
  * copy is unit-testable; the grid drives a visually-hidden
  * `role="status" aria-live="polite"` region with the result.
  */

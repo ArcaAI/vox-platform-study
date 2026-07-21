@@ -78,12 +78,10 @@ test.describe('harness policy & live config \u2014 tenant policy editor (frame 3
     });
 
     /**
-     * TASK-532: this spec used to edit "Safety provider" — a key that has been in
-     * `GLOBAL_ADMIN_ONLY_POLICY_KEYS` since long before this ticket, so the tenant
-     * PATCH it asserts has ALWAYS 403'd. It encoded an impossible save as expected
-     * behaviour and was failing for that reason, not because of the E3 locks. It
-     * now edits a genuinely tenant-writable knob (clinical gate SLA), and the two
-     * safety inputs are rendered read-only alongside the safety/PHI toggles.
+     * "Safety provider" is a `GLOBAL_ADMIN_ONLY_POLICY_KEYS` key, so a tenant
+     * PATCH against it always 403s — this spec instead edits a genuinely
+     * tenant-writable knob (clinical gate SLA); the two safety inputs render
+     * read-only alongside the safety/PHI toggles.
      */
     test('editing and reverting a tenant-writable field round-trips with no net mutation', async ({ page }) => {
         await page.goto('/harness/policy');
@@ -146,10 +144,10 @@ test.describe('harness policy & live config \u2014 tenant policy editor (frame 3
     });
 
     /**
-     * TASK-532: was driving "Safety model", another long-standing
-     * global-admin-only key that the tenant tab now renders read-only (see the
-     * round-trip spec above). Dirty-state is a property of the FORM, so any
-     * tenant-writable field proves it — this uses the gate-escalation knob.
+     * "Safety model" is another global-admin-only key the tenant tab renders
+     * read-only (see the round-trip spec above). Dirty-state is a property of
+     * the FORM, so any tenant-writable field proves it — this uses the
+     * gate-escalation knob.
      */
     test('the dirty-state indicator appears on edit and clears after reset', async ({ page }) => {
         await page.goto('/harness/policy');
@@ -173,10 +171,8 @@ test.describe('harness policy & live config \u2014 tenant policy editor (frame 3
 
 test.describe('harness policy & live config \u2014 live config tab (frame 36)', () => {
     /**
-     * TASK-532 (M-02): this tab USED to carry a second editor for
-     * `PATCH admin/harness/live/config` — the same row `/agentic-policy` edits.
-     * The two specs that drove that kill-switch form (toggle + revert, and the
-     * audit-reason control) are gone with it: `/agentic-policy` is now the one
+     * This tab has no editor for `PATCH admin/harness/live/config` — that is
+     * the same row `/agentic-policy` edits, and `/agentic-policy` is the one
      * authoritative editor, so exercising the write here would be testing a
      * surface that must not exist. What is asserted instead is the demotion
      * contract — state is still READABLE, but there is nothing to submit.
@@ -209,8 +205,8 @@ test.describe('harness policy & live config \u2014 global default tab (frame 36)
         await expect(page).toHaveURL(/tab=global/);
         await expect(page.getByRole('heading', { name: 'Global default' })).toBeVisible();
 
-        // TASK-532 (M-02): the second `HarnessPolicyForm` mount is gone — the
-        // values are now a summary list, not an editable form.
+        // The second `HarnessPolicyForm` mount is gone — the values are now
+        // a summary list, not an editable form.
         await expect(page.getByRole('form', { name: 'Policy save panel' })).toHaveCount(0);
         await expect(page.getByRole('button', { name: 'Save \u00b7 If-Match' })).toHaveCount(0);
         await expect(page.getByRole('link', { name: 'Edit in Agentic policy' })).toHaveAttribute('href', '/agentic-policy?tab=policy');

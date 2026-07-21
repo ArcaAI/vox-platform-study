@@ -1,4 +1,4 @@
-// TASK-302 Phase 6 Task 6.6 (Stream B) — Scheduled rotation processor.
+// Scheduled rotation processor.
 import { describe, it, expect, vi } from 'vitest';
 import { ScheduledRotationProcessor } from '../scheduled-rotation.processor';
 

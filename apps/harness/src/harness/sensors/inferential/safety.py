@@ -13,12 +13,12 @@ fraction (1.0 = every dimension clear). A Granite backend failure returns
 :func:`degraded_result` so an unverifiable safety screen never auto-PASSes and
 never raises into the durable loop.
 
-TASK-363 (WS-3): the screen is **content-addressed** so unchanged note content is not
+The screen is **content-addressed** so unchanged note content is not
 re-screened for every criterion on every regen pass. When :meth:`SafetySensor.arun`
-is given the shared ``screen_cache`` (the same dict TASK-359 WS-1 threads across passes),
-each criterion's verdict is keyed on ``(criterion, screened text, granite model)`` via the
-WS-1 key helpers; an unchanged-content pass is a full HIT (no Granite call) and a changed
-note (or model/criterion change) is a MISS that re-screens. The cached verdict is
+is given the shared ``screen_cache`` (the same dict the verdict-cache module threads across
+passes), each criterion's verdict is keyed on ``(criterion, screened text, granite model)``
+via the shared key helpers; an unchanged-content pass is a full HIT (no Granite call) and a
+changed note (or model/criterion change) is a MISS that re-screens. The cached verdict is
 byte-identical to a fresh screen, and a degraded screen is **never** cached (fail-closed).
 """
 
@@ -36,11 +36,11 @@ from harness.sensors.inferential.verdict_cache import (
 
 NAME = "safety"
 
-# TASK-363 — the safety-screen identity fed to ``sensor_identity`` so the content-addressed
+# The safety-screen identity fed to ``sensor_identity`` so the content-addressed
 # key auto-invalidates on a screen-framing change (mirrors the groundedness/citation
 # ``_SYSTEM_PROMPT`` lever). With the Granite *model* id (the dominant lever) and the
 # per-criterion name, the three together make a model swap, a criterion change, OR a
-# screened-text change a cache MISS — guaranteeing a cached verdict equals a fresh one (AC-2).
+# screened-text change a cache MISS — guaranteeing a cached verdict equals a fresh one.
 _SCREEN_PROMPT = (
     "granite-guardian content-safety screen: one no-think BYOC <guardian> verdict per "
     "harm criterion over the whole note (yes => the risk IS present => unsafe)"
@@ -84,21 +84,21 @@ class SafetySensor:
         )
 
     async def _screen(self, text: str, cache: VerdictCache | None) -> dict[str, bool]:
-        """Screen ``text`` across every harm criterion, reusing prior-pass verdicts (TASK-363).
+        """Screen ``text`` across every harm criterion, reusing prior-pass verdicts.
 
-        With ``cache is None`` this is exactly today's single ``screen`` call (the S1/S2 /
-        legacy path, byte-for-byte). With a cache provided, each criterion's verdict is
+        With ``cache is None`` this is exactly the single ``screen`` call the legacy path
+        makes, byte-for-byte. With a cache provided, each criterion's verdict is
         content-addressed on ``(criterion, screened text, granite model)``:
 
         * **Full HIT** (every criterion already cached for this exact text+model) — the
           ordered ``{dimension: is_unsafe}`` dict is rebuilt from the cache and the Granite
-          backend is NOT called (the AC-1 reduction on an unchanged-content pass).
+          backend is NOT called (the cache's reduction on an unchanged-content pass).
         * **MISS** (any criterion absent ⇒ changed/new content, a model swap, or a criterion
           change) — the note is re-screened once and every verdict is populated, so the next
-          unchanged pass is a HIT (AC-5: a miss always re-screens, never assumes safe).
+          unchanged pass is a HIT (a miss always re-screens, never assumes safe).
 
         A ``GraniteServiceError`` propagates to :meth:`arun` (the sensor degrades, fail-closed)
-        and is NEVER cached — a degraded/unverifiable screen is never recorded as safe (AC-4).
+        and is NEVER cached — a degraded/unverifiable screen is never recorded as safe.
         """
         # The fast-path needs the client to enumerate its criteria so it can rebuild the
         # ordered verdict dict without a model call; with no cache, or a client that cannot

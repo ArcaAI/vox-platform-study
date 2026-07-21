@@ -27,7 +27,7 @@ export class UserMediaEntity extends BaseTaggedEntity {
     // UserMedia is the global User<->Media join (no `tenantId` column on
     // core.UserMedia; IUserMediaEntity uses `Omit<IBaseTaggedEntity,
     // 'tenantId'>`). Same rationale as UserEntity: pass a placeholder for
-    // the BaseTenantEntity contract (TASK-305 A.7); never persisted; the
+    // the BaseTenantEntity contract; never persisted; the
     // existing validate() override does not call super.validate() so the
     // base empty-tenantId guard never fires here.
     super({ ...init, tenantId: '' });

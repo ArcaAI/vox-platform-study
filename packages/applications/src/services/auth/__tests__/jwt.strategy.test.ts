@@ -270,7 +270,7 @@ describe('JwtStrategy', () => {
         });
     });
 
-    // ─── TASK-541 A3 — degraded-store posture ─────────────────────────────
+    // ─── degraded-store posture ─────────────────────────────
 
     describe('TASK-541 A3 — revocation store unavailable', () => {
         const jtiPayload = { ...fullPayload, jti: 'auth-user-001-9999' };
@@ -298,7 +298,7 @@ describe('JwtStrategy', () => {
         });
     });
 
-    // ─── TASK-541 A4 — per-user not-before revocation ─────────────────────
+    // ─── per-user not-before revocation ─────────────────────
 
     describe('TASK-541 A4 — user-level revocation (deactivation kills live tokens)', () => {
         it('refuses a token issued BEFORE the user not-before stamp', async () => {

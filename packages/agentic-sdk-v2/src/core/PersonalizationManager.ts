@@ -12,12 +12,12 @@ import { configDBGet, configDBSet, PERSONALIZATION_STORE } from './configDB';
 import type { ISDKLogger } from './logger';
 
 /**
- * TASK-317 W1.1 (AC-1) — prefix for the personalization IDB cache row inside
+ * Prefix for the personalization IDB cache row inside
  * the shared `arcaai-config` DB's `personalization` store. The row is keyed
  * per `${tenantId}::${userId}` namespace via {@link personalizationCacheKey}
  * so a shared workstation cannot hydrate the next user from the previous
- * user's voice-profile / model ids (closes audit C-3). Matches the legacy
- * unscoped key, which the configDB v3 upgrade deletes one-time (AC-2).
+ * user's voice-profile / model ids. Matches the legacy
+ * unscoped key, which the configDB v3 upgrade deletes one-time.
  */
 export const PERSONALIZATION_CACHE_KEY_PREFIX = 'arcaai-personalization' as const;
 
@@ -25,7 +25,7 @@ export const PERSONALIZATION_CACHE_KEY_PREFIX = 'arcaai-personalization' as cons
  * Compose the personalization cache key for a given namespace. Mirrors the
  * `USER_PREFERENCES_STORE` namespacing AgenticProvider already applies.
  *
- * TASK-317 M-3 — fail-closed: a missing/empty namespace maps to the `pre-login`
+ * Fail-closed: a missing/empty namespace maps to the `pre-login`
  * bootstrap namespace, NEVER the bare prefix. The bare prefix is exactly the
  * legacy global row that the configDB v3 upgrade deletes and that every user on
  * an origin would otherwise share, so that path must be unreachable.
@@ -41,7 +41,7 @@ export function personalizationCacheKey(namespace?: string): string {
 export type PreferencesChangeCallback = (preferences: UserPreferences) => void;
 
 /**
- * TASK-297 DEF-H4 — minimal ConfigManager surface the PersonalizationManager
+ * Minimal ConfigManager surface the PersonalizationManager
  * forwards user-editable preference writes into. Kept structurally compatible
  * with `ConfigManager` so the real instance can be passed straight in.
  */
@@ -50,7 +50,7 @@ export interface PersonalizationConfigManager {
 }
 
 /**
- * TASK-297 DEF-H4 — map of `UserPreferences` field → `ConfigManager` dot-path.
+ * Map of `UserPreferences` field → `ConfigManager` dot-path.
  * Only fields with a `CONFIG_PERMISSIONS['user']` entry are forwarded.
  */
 const PERSONALIZATION_FORWARDS: Readonly<Record<string, string>> = {
@@ -92,15 +92,15 @@ export class PersonalizationManager {
   private isSyncing = false;
   private logger?: ISDKLogger;
   /**
-   * TASK-297 H-4 — when true, `updatePreferences` mutates in-memory only:
+   * When true, `updatePreferences` mutates in-memory only:
    * it does NOT call `saveLocal()` or `syncToBackend()`. Wired from
    * `useAuth.impersonate` (true) / `useAuth.endImpersonation` (false).
    */
   private impersonationReadOnly = false;
-  /** TASK-297 DEF-H4 — optional cascade sink. */
+  /** Optional cascade sink. */
   private configManager?: PersonalizationConfigManager;
   /**
-   * TASK-317 W1.1/W1.2 (AC-1) — resolves the active `${tenantId}::${userId}`
+   * Resolves the active `${tenantId}::${userId}`
    * namespace. AgenticProvider passes a live accessor (`() => namespaceRef`),
    * so this manager follows the real namespace once `/auth/me` resolves it
    * instead of capturing `pre-login` by value at construction (review C-1).
@@ -114,7 +114,7 @@ export class PersonalizationManager {
     this.logger = logger;
     this.resolveNamespace = typeof namespace === 'function' ? namespace : () => namespace;
 
-    // TASK-304 Wave 2D — constructor stays synchronous; the IDB hydrate
+    // Constructor stays synchronous; the IDB hydrate
     // step is exposed as the async `hydrate()` method so AgenticProvider
     // can await it before forwarding preferences to PluginManager.
     this.preferences = { ...config.defaults };
@@ -131,10 +131,10 @@ export class PersonalizationManager {
   }
 
   /**
-   * TASK-317 W1.2 (AC-1) — per-access IDB cache key, computed from the live
+   * Per-access IDB cache key, computed from the live
    * namespace so a re-key (after `/auth/me`, on tenant/user switch) takes
    * effect without reconstructing the manager. `personalizationCacheKey`
-   * fail-closes a missing namespace to `pre-login` (M-3).
+   * fails closed on a missing namespace to `pre-login`.
    */
   private get cacheKey(): string {
     return personalizationCacheKey(this.resolveNamespace() ?? undefined);
@@ -148,11 +148,11 @@ export class PersonalizationManager {
    * leave the existing in-memory state intact, so the SDK can still
    * proceed against backend defaults if storage is unavailable.
    *
-   * TASK-304 Wave 2D — replaces the sync `localStorage` read used by
+   * Replaces the sync `localStorage` read used by
    * earlier versions; legacy `arcaai-preferences` localStorage data is
    * intentionally NOT migrated (user choice: `ignore-old-data`).
    *
-   * TASK-317 W1.2 (review I-1) — AUTHORITATIVE per namespace: reset to the
+   * AUTHORITATIVE per namespace: reset to the
    * constructor baseline (config defaults) BEFORE applying the cached row, and
    * do NOT early-return on an empty row. AgenticProvider now calls `hydrate()`
    * on every tenant/user switch and after `/auth/me`, so the previous merge
@@ -246,11 +246,11 @@ export class PersonalizationManager {
       },
     });
 
-    // TASK-297 DEF-H4 — forward overlapping user-editable fields into the
+    // Forward overlapping user-editable fields into the
     // cascade so the resolved config tracks the personalization edit.
     this.forwardToConfigManager(updates);
 
-    // TASK-297 H-4 — under impersonation, the admin's preference edits must
+    // Under impersonation, the admin's preference edits must
     // NOT touch the impersonated user's IDB record nor sync to the backend.
     // We still notify in-memory listeners so the UI reflects the change.
     if (this.impersonationReadOnly) {
@@ -330,7 +330,7 @@ export class PersonalizationManager {
    * level and swallowed — the in-memory state and backend sync are the
    * source of truth.
    *
-   * TASK-304 Wave 2D — replaces `localStorage.setItem`.
+   * Replaces `localStorage.setItem`.
    */
   private async saveLocal(): Promise<void> {
     if (typeof window === 'undefined') return;
@@ -376,7 +376,7 @@ export class PersonalizationManager {
         localConfig: this.preferences.localConfig,
         custom: this.preferences.custom,
       };
-      // TASK-297 DEF-H2 — backend handler is `@Patch()`; using POST returns 405.
+      // Backend handler is `@Patch()`; using POST returns 405.
       await this.apiClient.patch(PERSONALIZATION_ENDPOINTS.UPDATE_PREFERENCES, payload);
       this.lastSyncAt = new Date();
       timer?.end(true);
@@ -586,7 +586,7 @@ export class PersonalizationManager {
   }
 
   /**
-   * TASK-297 H-4 — gate persistence/sync while impersonating.
+   * Gate persistence/sync while impersonating.
    * When `flag === true`, subsequent `updatePreferences` calls update
    * `this.preferences` and `notifyListeners()` only; they do NOT call
    * `saveLocal()` or `syncToBackend()`.
@@ -605,7 +605,7 @@ export class PersonalizationManager {
   }
 
   /**
-   * TASK-297 DEF-H4 — wire a ConfigManager sink so that user-editable
+   * Wire a ConfigManager sink so that user-editable
    * fields written via `updatePreferences` are forwarded into the 4-tier
    * cascade. Safe to call multiple times (replaces the previous sink).
    */

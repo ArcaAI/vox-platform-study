@@ -1,5 +1,5 @@
 /**
- * HighlightService — TASK-369 Phase 3C field-encryption wiring.
+ * HighlightService — field-encryption wiring.
  *
  * Verifies the service dual-writes encrypted highlight fields (exact / prefix /
  * suffix / note via `HighlightRepository.encryptFieldsIntoEntity` + the injected

@@ -4,7 +4,7 @@ import { HOPE_SETTINGS_REGISTRY } from '../registry';
 import { SettingsRegistry } from '../settings-registry';
 import type { SettingDescriptor } from '../registry.types';
 
-// TASK-504 Phase 3a — the capability/settings registry: one typed catalog that
+// The capability/settings registry: one typed catalog that
 // classifies every admin-controllable variable (tier / scope / sensitivity /
 // editor). This increment builds the container + descriptors; the resolver
 // generalization and the catalog endpoint are later sub-phases.
@@ -98,10 +98,10 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
     expect(HOPE_SETTINGS_REGISTRY.has('tts.credential.sarvam')).toBe(true);
   });
 
-  // TASK-532 work-stream A-2 (E3-L2, OD-2) — the two pipeline toggles that gate
-  // guardrail's primary caller (the harness) and NLP auto-extraction become
-  // global-admin-only. Enforcement reads THIS metadata, so the descriptor is the
-  // contract, not a hand-rolled key list in the service.
+  // The two pipeline toggles that gate guardrail's primary caller (the
+  // harness) and NLP auto-extraction are global-admin-only. Enforcement reads
+  // THIS metadata, so the descriptor is the contract, not a hand-rolled key
+  // list in the service.
   it('flags pipeline.harnessEnabled + pipeline.autoNerEnabled as globalOnly, leaving the other two tenant-writable', () => {
     for (const key of ['pipeline.harnessEnabled', 'pipeline.autoNerEnabled']) {
       expect(HOPE_SETTINGS_REGISTRY.getOrThrow(key).globalOnly, key).toBe(true);
@@ -117,7 +117,7 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
     expect(HOPE_SETTINGS_REGISTRY.getOrThrow('pipeline.autoNerEnabled').maxScope).toBe('doctor');
   });
 
-  // TASK-531 (GAP-T3) — the nightly SYSTEM-template resync sweep. Registering
+  // The nightly SYSTEM-template resync sweep. Registering
   // these makes the sweep discoverable and writable through the admin settings
   // surface instead of being an unmanageable pair of magic strings read straight
   // out of AppSettings.
@@ -147,7 +147,7 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
     expect(ks.maxScope).toBe('system');
   });
 
-  // TASK-506 / task-model default descriptors (models.<taskKey>).
+  // Task-model default descriptors (models.<taskKey>).
   it('registers the AI task-model defaults as db-config strings, maxScope tenant', () => {
     for (const key of [
       'models.guardrail.validate',

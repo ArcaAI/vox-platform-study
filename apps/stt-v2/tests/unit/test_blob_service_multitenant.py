@@ -1,4 +1,4 @@
-"""Unit tests for BlobService per-tenant provider routing (TASK-318 W3-C).
+"""Unit tests for BlobService per-tenant provider routing.
 
 Verifies:
 * With NO tenant descriptor, BlobService keeps using the global MinIO client

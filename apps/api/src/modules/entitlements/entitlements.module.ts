@@ -4,7 +4,7 @@ import { EntitlementsAdminController } from './entitlements-admin.controller';
 import { MyEntitlementsController } from './my-entitlements.controller';
 
 /**
- * TASK-392 (Phase 4) — exposes the entitlements HTTP surface. Imports
+ * Exposes the entitlements HTTP surface. Imports
  * `EntitlementsServiceModule` for `IEntitlementsService` (resolution + matrix /
  * override CRUD + kill-switch) and `IEntitlementsLifecycleService` (trial-expiry
  * sweep + explicit downgrade soft-disable). All new entitlements endpoints live

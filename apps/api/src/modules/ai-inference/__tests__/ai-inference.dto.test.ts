@@ -1,5 +1,5 @@
 /**
- * TASK-446 — AI inference request DTO validation, driven through the REAL
+ * AI inference request DTO validation, driven through the REAL
  * global ValidationPipe config (main.ts: transform + whitelist +
  * forbidNonWhitelisted + forbidUnknownValues). The controller unit tests call
  * methods directly and bypass the pipe, so this file is the only unit-level
@@ -80,7 +80,6 @@ describe('ExtractEntitiesRequest validation', () => {
     await expectRejected(ExtractEntitiesRequest, { text: 'x', aggregation_strategy: 'simple' });
   });
 
-  // TASK-506 — explicit model override (HF id) accepted; snake_case smuggle rejected.
   it('accepts an optional modelName override', async () => {
     await expect(runPipe(ExtractEntitiesRequest, { text: 'x', modelName: 'blaze999/Medical-NER' })).resolves.toMatchObject({
       modelName: 'blaze999/Medical-NER',

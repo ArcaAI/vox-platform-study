@@ -2,7 +2,7 @@ import { IsString, IsOptional, IsDateString, IsObject, IsIn } from 'class-valida
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * Consultation lifecycle status (TASK-322).
+ * Consultation lifecycle status.
  *
  * The Consultation model has no dedicated open/closed column; lifecycle
  * state is stored in `metadata.status` and surfaced as `ConsultationResponse.status`.
@@ -18,7 +18,7 @@ export type ConsultationLifecycleStatus = (typeof CONSULTATION_STATUS)[keyof typ
 export const CONSULTATION_STATUS_VALUES: ConsultationLifecycleStatus[] = Object.values(CONSULTATION_STATUS);
 
 /**
- * Update Consultation Request (TASK-322)
+ * Update Consultation Request
  *
  * Partial update of an EXISTING consultation. Only safely-mutable fields are
  * accepted. Identity / ownership fields (`patientId`, `doctorId`, `tenantId`)

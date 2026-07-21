@@ -1,5 +1,5 @@
 /**
- * SDK Exports Verification — TASK-329 P4 (LOCAL voice embedding).
+ * SDK Exports Verification — LOCAL voice embedding.
  *
  * Pins the new in-browser voice-embedding surface to the package barrels so
  * external consumers (`@arcaai/vox` / `@arcaai/vox/core`) can import the local

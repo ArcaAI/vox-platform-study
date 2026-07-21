@@ -123,7 +123,7 @@ describe('VoiceProfileController', () => {
     });
   });
 
-  // TASK-296 C-3: CASL permission tuples per method (no more empty @Authorize()).
+  // CASL permission tuples per method (no more empty @Authorize()).
   describe('CASL permission tuples', () => {
     const REQUIRED_PERMISSIONS_KEY = 'required_permissions';
 
@@ -169,9 +169,9 @@ describe('VoiceProfileController', () => {
   });
 
   // ------------------------------------------------------------------------
-  // TASK-307 W3.7 — every voice-profile-by-id mutation must carry
+  // Every voice-profile-by-id mutation must carry
   // @TenantOwnedResource so the global interceptor 404s probes of a profile
-  // owned by another user (AC-11). Closes audit C-5 (BLOCKER).
+  // owned by another user.
   // ------------------------------------------------------------------------
   describe('TASK-307 W3.7 — @TenantOwnedResource metadata', () => {
     const meta = (m: keyof VoiceProfileController): TenantOwnedResourceOptions | undefined =>

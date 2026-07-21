@@ -12,7 +12,7 @@ export class ContextItem extends BaseTenantDataModel {
   public type: Enums.ContextItemType;
   public source: Enums.ContextItemSource;
   public currentVersionNumber: number;
-  // TASK-369 Phase 6 — plaintext `content` column DROPPED. Persistence is
+  // Plaintext `content` column DROPPED. Persistence is
   // ciphertext-only; the entity keeps `content` as a transient field repopulated
   // by repository decrypt-on-read. Removing it here stops the auto-mapper from
   // writing/reading the now-nonexistent column.

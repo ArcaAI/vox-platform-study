@@ -1,9 +1,9 @@
 /**
- * TenantService — locked-runtime integration tests (TASK-258, Agent D)
+ * TenantService — locked-runtime integration tests.
  *
- * Closes the runtime gap noted in Agent A's "Out of scope" subsection:
- * earlier the `GlobalSettingEntity` did not expose the `locked` column, so
- * Agent A's runtime guards (`(config as unknown as { locked? }).locked === true`)
+ * Closes a runtime gap: earlier the `GlobalSettingEntity` did not expose the
+ * `locked` column, so the runtime guards
+ * (`(config as unknown as { locked? }).locked === true`)
  * were unreachable in production. This file verifies the access-control and
  * provisioning paths end-to-end using REAL `GlobalSettingFactory` /
  * `GlobalSettingEntity` instances (not ad-hoc mock objects) so the typed
@@ -48,17 +48,17 @@ const mockGlobalSettingRepository = {
     count: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
-    // TASK-302 Stream D Phase C — updateTenantConfigs now writes via
+    // UpdateTenantConfigs now writes via
     // Compare-And-Set; the locked guard runs *before* the CAS call.
     updateWithVersion: vi.fn(),
 };
 
 const mockDepartmentRepository = { findAll: vi.fn(), count: vi.fn() };
 const mockPromptTemplateRepository = { findAll: vi.fn(), count: vi.fn() };
-// TASK-356 Phase 2 — `findDefault` returns null so the new pipeline-clone
+// `findDefault` returns null so the new pipeline-clone
 // provisioning step is a clean no-op for this suite (which exercises create()).
 const mockAsrPipelineRepository = { findAll: vi.fn(), count: vi.fn(), findDefault: vi.fn().mockResolvedValue(null) };
-// TASK-302 Stream D Phase C (C.4) — `updateTenantConfigs` wraps writes in
+// (C.4) — `updateTenantConfigs` wraps writes in
 // `databaseService.baseClient.$transaction(callback)`. The stub invokes the
 // callback with a sentinel tx client so the loop executes.
 const mockTxClient = { __tx: true } as const;
@@ -71,8 +71,9 @@ const mockDatabaseService = {
 const mockTenantBucketService = { provisionSystemBuckets: vi.fn() };
 
 /**
- * Minimal mock TenantEntity. The tenant entity is unaffected by the gap
- * Agent D is closing, and the existing `tenant.service.test.ts` already
+ * Minimal mock TenantEntity. The tenant entity is unaffected by the
+ * locked-runtime gap this file closes, and the existing
+ * `tenant.service.test.ts` already
  * proves the tenant-side wiring. We just need the fields the service reads.
  */
 const createMockTenantEntity = (overrides: Partial<{ id: string; key: string; name: string }> = {}) => ({
@@ -188,9 +189,9 @@ describe('TenantService — locked-field runtime plumbing (TASK-258 Agent D)', (
             mockTenantBucketService as never,
             mockEventEmitter as never,
             mockClsService as never,
-            // TASK-356 Phase 1 — model-catalog clone repo (no-op for this suite).
+            // Model-catalog clone repo (no-op for this suite).
             { findAll: async () => [] } as never,
-            // TASK-356 Phase 2 — pipeline-version clone repo (unused; clone is a no-op here).
+            // Pipeline-version clone repo (unused; clone is a no-op here).
             { create: async () => ({}) } as never,
         );
     });
@@ -309,7 +310,7 @@ describe('TenantService — locked-field runtime plumbing (TASK-258 Agent D)', (
     describe('fetchTenantConfigs — locked-value masking via real entity', () => {
         it('masks the value of locked=true rows when caller is non-GLOBAL_ADMIN', async () => {
             installCls(['DOCTOR']);
-            // TASK-306 W5.3.1 — pinned to the CLS tenant (`tenant-1`)
+            // Pinned to the CLS tenant (`tenant-1`)
             // so the new fetchTenantConfigs GLOBAL_ADMIN gate doesn't
             // 404 a non-GLOBAL_ADMIN reading another tenant's configs.
             // The locked-masking behavior under test is orthogonal to

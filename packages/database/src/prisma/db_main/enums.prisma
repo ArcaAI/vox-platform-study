@@ -23,8 +23,8 @@ enum ValueType {
 enum ResourceStatusType {
   ENABLED
   DISABLED
-  // TASK-387 (#1 / F6) — operator "hold" state distinct from the routine
-  // DISABLED on/off toggle. A SUSPENDED tenant is reversible via `restore`.
+  // Operator "hold" state distinct from the routine DISABLED on/off toggle.
+  // A SUSPENDED tenant is reversible via `restore`.
   SUSPENDED
   ARCHIVED
   DELETED
@@ -32,9 +32,9 @@ enum ResourceStatusType {
   @@schema("core")
 }
 
-// TASK-387 (#3) — tenant commercial plan. Nullable on Tenant (existing rows
-// read NULL = "unspecified"). Values are a product default (Enterprise / Pro /
-// Trial / Starter) — see docs/implementation/TASK-387-Tenant-Data-Model-Backlog.
+// Tenant commercial plan. Nullable on Tenant (existing rows read NULL =
+// "unspecified"). Values are a product default (Enterprise / Pro / Trial /
+// Starter).
 enum TenantPlan {
   ENTERPRISE
   PRO
@@ -133,7 +133,7 @@ enum ModelTaskType {
   TEXT2TEXT_GENERATION
   FILL_MASK
   SENTENCE_SIMILARITY
-  GUARDRAIL // TASK-356 — safety/guardrail screening (granite-guardian)
+  GUARDRAIL // Safety/guardrail screening (granite-guardian)
 
   // Audio
   TEXT_TO_SPEECH
@@ -142,8 +142,7 @@ enum ModelTaskType {
   AUDIO_TO_AUDIO
   AUDIO_CLASSIFICATION
   VOICE_ACTIVITY_DETECTION
-  // TASK-505 P5 — diarization stack rows (Python dto.py already had
-  // SPEAKER_DIARIZATION; SPEAKER_EMBEDDING types the feature extractors).
+  // Diarization stack rows; SPEAKER_EMBEDDING types the feature extractors.
   SPEAKER_DIARIZATION
   SPEAKER_EMBEDDING
 
@@ -232,19 +231,19 @@ enum ContextItemType {
   TRANSCRIPT // Transcription of audio
   CASE_NOTE // Case notes - shared across linked consultations as additional context
   ATTACHMENT // Other attachments
-  SIGNED_NOTE // TASK-330 — clinician-attested, immutable signed note (confirm-before-commit gate)
+  SIGNED_NOTE // Clinician-attested, immutable signed note (confirm-before-commit gate)
 
   @@schema("core")
 }
 
-// TASK-330 Phase 1 — first-class consultation lifecycle state machine.
+// First-class consultation lifecycle state machine.
 // Previously the lifecycle lived in the free-form `Consultation.metadata.status`
 // JSON; this enum promotes it to a typed column so the clinical-documentation
 // harness can gate transitions (e.g. PENDING_REVIEW → SIGNED on attestation).
 enum ConsultationStatus {
   OPEN // Active consultation, not yet under review
   RECORDING // Audio capture in progress
-  DRAFT_PENDING_SENSORS // TASK-355 Phase D — draft delivered early (visible/readable); assurance (inferential) pass running concurrently. Cannot be signed until it lands.
+  DRAFT_PENDING_SENSORS // Draft delivered early (visible/readable); assurance (inferential) pass running concurrently. Cannot be signed until it lands.
   PENDING_REVIEW // Summary generated + assurance complete + gate verdict recorded; awaiting clinician review/attestation
   SIGNED // Clinician-attested (immutable signed note committed)
   CLOSED // Consultation closed
@@ -262,7 +261,7 @@ enum ContextItemSource {
   @@schema("core")
 }
 
-// TASK-344 Workstream B — which persisted surface a manual doctor highlight is
+// Which persisted surface a manual doctor highlight is
 // anchored to. Distinct from ContextItemType so manual marks never pollute the
 // AI NER / context-item taxonomy. The live caption transcript is ephemeral
 // (client-only) until Stop; durable highlights anchor to persisted items only.
@@ -284,7 +283,7 @@ enum AiModelSource {
   GITHUB // GitHub releases/raw files
   MLFLOW // Self-hosted MLFlow registry
   LOCAL // Local filesystem
-  S3 // S3/MinIO-compatible object storage (s3://bucket/prefix; OD-4: s3:// only this program)
+  S3 // S3/MinIO-compatible object storage (s3://bucket/prefix; s3:// only)
 
   @@schema("core")
 }
@@ -294,18 +293,18 @@ enum AiModelFormat {
   ONNX // ONNX Runtime
   NEMO // NVIDIA NeMo
   PYTORCH // Raw PyTorch (.pt, .pth)
-  CTRANSLATE2 // TASK-356 — CTranslate2 (faster-whisper CT2 / quantized)
-  FASTER_WHISPER // TASK-356 — faster-whisper engine artifacts
-  MLX // TASK-356 — Apple-silicon MLX (LM Studio)
-  GGUF // TASK-356 — llama.cpp / quantized GGUF
-  // TASK-505 P5 — Prisma↔Python enum sync (Python dto.py had these; DB rows
-  // with them previously crashed config_reader — and vice versa MLX/GGUF).
+  CTRANSLATE2 // CTranslate2 (faster-whisper CT2 / quantized)
+  FASTER_WHISPER // faster-whisper engine artifacts
+  MLX // Apple-silicon MLX (LM Studio)
+  GGUF // llama.cpp / quantized GGUF
+  // Prisma↔Python enum sync — the DB rows and the Python dto.py enum must stay
+  // aligned or config_reader crashes on an unrecognized value.
   ONNX_OPTIMUM // HuggingFace Optimum ONNX (ORTModelForSpeechSeq2Seq)
   AZURE_SPEECH // Cloud — Azure Cognitive Services Speech
-  AZURE_FOUNDRY // TASK-505 — Cloud, Azure AI Foundry MAI-Transcribe (preview)
-  PARAKEET_CPP // TASK-505 — parakeet.cpp ggml runtime (Parakeet/Nemotron)
-  CLOUD_API // TASK-506 — generic cloud-API engine (Sarvam TTS, Azure OpenAI catalog rows)
-  WHISPER_CPP // TASK-507 — whisper.cpp ggml runtime (whisper-large-v3-turbo GGUF)
+  AZURE_FOUNDRY // Cloud, Azure AI Foundry MAI-Transcribe (preview)
+  PARAKEET_CPP // parakeet.cpp ggml runtime (Parakeet/Nemotron)
+  CLOUD_API // Generic cloud-API engine (Sarvam TTS, Azure OpenAI catalog rows)
+  WHISPER_CPP // whisper.cpp ggml runtime (whisper-large-v3-turbo GGUF)
 
   @@schema("core")
 }
@@ -337,7 +336,7 @@ enum TranscriptionJobStatus {
   @@schema("core")
 }
 
-// TASK-356 Phase 4 — tenant default transcription mode (local SDK pipeline vs
+// Tenant default transcription mode (local SDK pipeline vs
 // backend STT-v2). Overridable per-user only when transcriptionModeLocked=false.
 enum TranscriptionMode {
   LOCAL // Browser-side SDK transcription pipeline
@@ -346,7 +345,7 @@ enum TranscriptionMode {
   @@schema("core")
 }
 
-// TASK-356 Phase 4 — tenant audio capture mode (maps onto backend pipeline-YAML
+// Tenant audio capture mode (maps onto backend pipeline-YAML
 // dual_capture booleans and the local captureRawAudio flag).
 enum CaptureMode {
   RAW_AND_PROCESSED // Capture raw + processed
@@ -357,8 +356,8 @@ enum CaptureMode {
   @@schema("core")
 }
 
-// TASK-356 Phase 5 — scope discriminator for the realtime PipelinePolicy cascade
-// (Pillar B). One polymorphic PipelinePolicy table covers all three tiers; the
+// Scope discriminator for the realtime PipelinePolicy cascade. One
+// polymorphic PipelinePolicy table covers all three tiers; the
 // ConfigResolver walks DOCTOR → DEPARTMENT → TENANT → SYSTEM-default → code-default.
 enum PipelinePolicyScope {
   TENANT // Tenant default (scopeId null; SYSTEM tenant's row = platform default)
@@ -368,9 +367,9 @@ enum PipelinePolicyScope {
   @@schema("core")
 }
 
-// TASK-498 — protocol of a tenant's external identity provider. Both values ship
-// now so the data model is protocol-neutral; v1 (this ticket) accepts/validates
-// OIDC only. SAML is delivered by TASK-499 on the same TenantIdentityProvider row.
+// Protocol of a tenant's external identity provider. Both values ship
+// now so the data model is protocol-neutral; only OIDC is currently
+// accepted/validated. SAML shares the same TenantIdentityProvider row.
 enum IdpProtocol {
   OIDC
   SAML
@@ -378,8 +377,8 @@ enum IdpProtocol {
   @@schema("core")
 }
 
-// TASK-498 — lifecycle of a TenantIdentityProvider row. DRAFT until a successful
-// "Test connection" flips it to ENABLED (D7 — prevents self-lockout from a bad
+// Lifecycle of a TenantIdentityProvider row. DRAFT until a successful
+// "Test connection" flips it to ENABLED (prevents self-lockout from a bad
 // config); DISABLED is an explicit tenant-admin pause (distinct from soft delete).
 enum IdpStatus {
   DRAFT

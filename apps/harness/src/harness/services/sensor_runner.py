@@ -103,14 +103,14 @@ def run_computational_sensors(
     # Parse the structured note. The activated response_format requests JSON SOAP,
     # but the common department/CATCHALL path emits a MARKDOWN note (no schema), so
     # fall back to the header-parsed sections. schema_validity then validates the
-    # ACTUAL structure (TASK-358 D-A) — a complete S/O/A/P note scores 1.0 in both the
+    # ACTUAL structure — a complete S/O/A/P note scores 1.0 in both the
     # responseFormat=null and json_schema paths; a truly unparseable note yields ``{}``
     # (schema_validity degrades -> FLAG). Provenance attribution reuses the same parse.
     json_sections = _parse_soap(note_text)
     soap_sections = json_sections or _parse_soap_markdown(note_text)
     parse_mode = "json" if json_sections else ("markdown" if soap_sections else "none")
 
-    # One shared cleanup (TASK-358 D-B): merge ▁/BIO subword NER tokens and drop
+    # One shared cleanup: merge ▁/BIO subword NER tokens and drop
     # non-clinical noise (mic-check counting words, bare stopwords) so the
     # entity-level sensors and the citationsMap consume the SAME clean entities —
     # single source of truth (``provenance.clean_entities_for_sensors``).

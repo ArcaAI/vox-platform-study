@@ -1,5 +1,5 @@
 /**
- * TASK-372 D8 (supporting backend change) — user-settings namespace registry.
+ * (supporting backend change) — user-settings namespace registry.
  */
 import { describe, it, expect } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
@@ -31,7 +31,7 @@ describe('TASK-372 D8 — user-settings namespace registry', () => {
   });
 });
 
-// TASK-375 (item 1 backend) — the `ui.data-grid` round-trip guard is now a
+// (item 1 backend) — the `ui.data-grid` round-trip guard is now a
 // single shared validator so BOTH the self-service controller and the service
 // layer (used by the admin path) enforce the same JSON + byte-cap contract.
 describe('TASK-375 D8 — validateUiDataGridValue', () => {

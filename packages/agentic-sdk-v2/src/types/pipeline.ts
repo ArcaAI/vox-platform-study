@@ -101,7 +101,7 @@ export interface TranscriptionPipelineConfig {
     /** Provider type */
     provider?: 'local' | 'backend' | 'auto';
     /**
-     * TASK-356 Phase 4 — server-resolved EFFECTIVE transcription mode. When set,
+     * Server-resolved EFFECTIVE transcription mode. When set,
      * it is authoritative and `resolveSTTRuntimeProvider()` honors it ahead of
      * `provider`/`location`/`sttSocket` (LOCAL → browser, BACKEND → remote).
      */
@@ -123,7 +123,7 @@ export interface TranscriptionPipelineConfig {
     /** Let model auto-detect language for multilingual/code-switching audio */
     codeSwitching?: boolean;
     /**
-     * TASK-298 D-4 — Pipeline-aware streaming transport injected by the SDK
+     * Pipeline-aware streaming transport injected by the SDK
      * (PluginManager builds it when a remote `pipelineId` is set, then passes
      * it through to the STT stage factory). The transport is `unknown` here
      * to keep this file free of a hard dependency on `@arcaai/stt` types;
@@ -131,7 +131,7 @@ export interface TranscriptionPipelineConfig {
      */
     streamingTransport?: unknown;
     /**
-     * TASK-304 Wave 2 W2-SDK-1 / W2-SDK-2 — voice-profile context resolved from
+     * Voice-profile context resolved from
      * `UserPreferences.activeVoiceProfile` + `UserPreferences.localConfig.voiceProfile`.
      *
      * `id` is the server-side `UserVoiceProfile.id`; `reservedSpeakerId` is the
@@ -147,7 +147,7 @@ export interface TranscriptionPipelineConfig {
       similarityThreshold?: number;
     };
     /**
-     * TASK-304 Wave 2 W2-SDK-6 — Whisper task selector for the local engine
+     * Whisper task selector for the local engine
      * (`'transcribe' | 'translate'`). The local STT processor includes this
      * in its provider cache key.
      */
@@ -294,7 +294,7 @@ export interface TranscriptionPipelineEvents {
   /** Audio level update */
   audioLevel: number;
   /**
-   * TASK-464 — an outbound audio frame was dropped at the streaming STT client's
+   * An outbound audio frame was dropped at the streaming STT client's
    * backpressure watermark (payload: the running per-session dropped-frame
    * count). Sourced from the STT processor's push channel; consumers surface it
    * as a degraded-connection signal (the dropped PCM never reached the transcript).

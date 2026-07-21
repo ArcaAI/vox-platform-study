@@ -1,5 +1,5 @@
 /**
- * TASK-373 — AuditLogService cursor (keyset) pagination.
+ * AuditLogService cursor (keyset) pagination.
  *
  * Behaviour tests for `fetchPageByCursor`, the reference consumer of the
  * generic cursor engine. These assert the keyset query shape, the
@@ -151,7 +151,7 @@ describe('AuditLogService — cursor pagination (TASK-373)', () => {
     );
   });
 
-  // TASK-375 §8 follow-up — the cursor (keyset) path must apply the SAME
+  // The cursor (keyset) path must apply the SAME
   // model-aware CSV `filters` coercion as the offset path (fetchAllFiltered):
   // boolean/number/date/enum values arrive as strings in the `field[op]:value`
   // contract and must be coerced against the 'AuditLog' model before reaching

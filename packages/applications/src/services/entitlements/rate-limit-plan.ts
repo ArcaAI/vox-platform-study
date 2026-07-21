@@ -1,5 +1,5 @@
 /**
- * TASK-392 (Q7) — plan → rate-limit composition.
+ * Plan → rate-limit composition.
  *
  * Pure helper that turns a tenant's resolved rate-limit tier + optional
  * per-tenant absolute override ("increase on demand") into a concrete
@@ -9,7 +9,7 @@
  * NOTE (documented follow-up): the live `TieredThrottlerGuard` runs BEFORE auth
  * resolution (no CLS tenant context yet), so wiring per-tenant limits onto the
  * hot path needs the tenant extracted pre-auth (from the JWT) or a post-auth
- * throttle stage — an architectural change tracked as a TASK-392 follow-up. The
+ * throttle stage — an architectural change not yet implemented. The
  * resolution + per-tenant override below are the source of truth for it.
  */
 

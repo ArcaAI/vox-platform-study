@@ -1,5 +1,5 @@
 /**
- * Consultation-review client (TASK-533 B5). Gateway-relative — the shared core
+ * Consultation-review client. Gateway-relative — the shared core
  * prepends the `/api/hope` BFF mount, so nothing here reaches the gateway direct.
  */
 import { getJson } from '@/shared/api';

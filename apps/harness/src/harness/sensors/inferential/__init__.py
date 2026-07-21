@@ -1,4 +1,4 @@
-"""Phase-2 *inferential* sensors — async, model-backed gate sensors (TASK-330).
+"""Phase-2 *inferential* sensors — async, model-backed gate sensors.
 
 Unlike the pure/deterministic computational sensors
 (:mod:`harness.sensors.computational`), these call models: ``groundedness`` does

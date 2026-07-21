@@ -1,6 +1,6 @@
-"""Cross-family reasoning/channel parsing tests (TASK-330 judge hardening).
+"""Cross-family reasoning/channel parsing tests (judge hardening).
 
-RED-first. These use the REAL captured payload shapes seen on local LM Studio
+These use the REAL captured payload shapes seen on local LM Studio
 runs across reasoning and non-reasoning model families. The judge must extract
 the model's FINAL JSON answer and never mistake a ``{`` that appears inside
 leaked chain-of-thought (an analysis channel, a Gemma ``thought`` block, …) for

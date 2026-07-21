@@ -2,7 +2,7 @@ import * as v from 'valibot';
 import { DEFAULT_AVAILABLE_STT_MODELS } from '../types/models';
 
 /**
- * TASK-297 DEF-C5 — added `'department'` tier so the 4-tier cascade
+ * Adds a `'department'` tier so the 4-tier cascade
  * (`SYSTEM ← tenant ← department ← user`) can mark a path as
  * department-locked. A `'department'` permission means: writable by the
  * department admin tier (server-side), read-only at the `user` tier.
@@ -30,32 +30,32 @@ export const AudioConfigSchema = v.object({
   vadThreshold: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1)), 0.5),
   diarization: v.optional(v.boolean(), false),
   codeSwitching: v.optional(v.boolean(), false),
-  // TASK-332 — local raw-stream dual-capture. Server-computed effective flag
+  // Local raw-stream dual-capture. Server-computed effective flag
   // (platform capability AND tenant toggle); admin-owned so user prefs can't
   // flip it (see CONFIG_PERMISSIONS below). Defaults OFF.
   captureRawAudio: v.optional(v.boolean(), false),
 });
 
 export const SttConfigSchema = v.object({
-  // TASK-364 — default flips local → backend. When the server resolves no
+  // Default flips local → backend. When the server resolves no
   // transcriptionMode, consumers must NOT silently fall into the local Whisper
   // path (which requires a heavy in-browser model download). Backend is the safe
   // default; explicit `provider: 'local'` is still honored for local opt-in.
   provider: v.optional(v.picklist(['local', 'backend', 'auto']), 'backend'),
   defaultModel: v.optional(v.string(), 'whisper-tiny'),
-  // TASK-329 P3 — default derived from DEFAULT_STT_MODELS (single source of
+  // Default derived from DEFAULT_STT_MODELS (single source of
   // truth) so the presented list can never drift from the registry-loadable set.
   availableModels: v.optional(v.array(v.object({ id: v.string(), name: v.string(), size: v.optional(v.string()) })), [
     ...DEFAULT_AVAILABLE_STT_MODELS,
   ]),
   language: v.optional(v.string(), 'en'),
-  // TASK-333 — resolved REMOTE transcription pipeline id (admin/tenant-assigned).
+  // Resolved REMOTE transcription pipeline id (admin/tenant-assigned).
   // Surfaced through the cascade so consumers (e.g. the consultation recording
   // panel) select the right pipeline instead of a hardcoded default. Optional:
   // `undefined` → the caller falls back to its own default. Populating this from
-  // the tenant/user remote-config cascade is tracked in TASK-334.
+  // the tenant/user remote-config cascade.
   transcriptionPipelineId: v.optional(v.string()),
-  // TASK-356 Phase 4 — EFFECTIVE transcription mode resolved SERVER-SIDE in
+  // EFFECTIVE transcription mode resolved SERVER-SIDE in
   // UserPreferencesService (locked ⇒ tenant default; unlocked ⇒ doctor's
   // workflowMode). Surfaced through the cascade as admin-owned (see
   // CONFIG_PERMISSIONS) so user prefs can't flip it; the clinical workspace
@@ -115,7 +115,7 @@ export const CONFIG_PERMISSIONS: Record<string, ConfigFieldMeta> = {
   'audio.vadThreshold': { permission: 'admin', section: 'audio', key: 'vadThreshold', label: 'VAD Sensitivity' },
   'audio.diarization': { permission: 'user', section: 'audio', key: 'diarization', label: 'Speaker Diarization' },
   'audio.codeSwitching': { permission: 'admin', section: 'audio', key: 'codeSwitching', label: 'Code-Switching' },
-  // TASK-332 — admin-owned so the cascade's stripLockedAndAdminPaths prevents a
+  // Admin-owned so the cascade's stripLockedAndAdminPaths prevents a
   // user pref from overriding the server-computed local raw-capture flag.
   'audio.captureRawAudio': { permission: 'admin', section: 'audio', key: 'captureRawAudio', label: 'Capture Raw Audio (Local)' },
 
@@ -123,10 +123,10 @@ export const CONFIG_PERMISSIONS: Record<string, ConfigFieldMeta> = {
   'stt.defaultModel': { permission: 'admin', section: 'stt', key: 'defaultModel', label: 'Default STT Model' },
   'stt.availableModels': { permission: 'admin', section: 'stt', key: 'availableModels', label: 'Available Models' },
   'stt.language': { permission: 'user', section: 'stt', key: 'language', label: 'Transcription Language' },
-  // TASK-333 — which remote pipeline a user runs is admin/tenant-assigned, so the
+  // Which remote pipeline a user runs is admin/tenant-assigned, so the
   // resolved id is admin-owned (user prefs can't override it via the cascade).
   'stt.transcriptionPipelineId': { permission: 'admin', section: 'stt', key: 'transcriptionPipelineId', label: 'Transcription Pipeline' },
-  // TASK-356 — the effective transcription mode is resolved server-side and is
+  // The effective transcription mode is resolved server-side and is
   // authoritative; admin-owned so the cascade's stripLockedAndAdminPaths keeps
   // user prefs from flipping it.
   'stt.transcriptionMode': { permission: 'admin', section: 'stt', key: 'transcriptionMode', label: 'Transcription Mode' },

@@ -1,5 +1,5 @@
 /**
- * TASK-392 (Q7) — plan → rate-limit composition.
+ * Plan → rate-limit composition.
  */
 import { describe, it, expect } from 'vitest';
 import { resolvePlanRateLimit } from '../rate-limit-plan';

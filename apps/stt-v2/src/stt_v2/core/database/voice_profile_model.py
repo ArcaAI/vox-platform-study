@@ -3,7 +3,7 @@
 Used by STT-v2 to read the active voice profile at session start
 for pre-seeding the SpeakerTracker.
 
-PHI posture (TASK-490, TASK-474 findings B-04/B-05):
+PHI posture:
   * The speaker embedding is biometric PHI. Every profile lookup is
     tenant-scoped (``"tenantId" = :tenant_id``) and FAILS CLOSED when no
     tenant scope is supplied — a cross-tenant read returns nothing.
@@ -54,8 +54,7 @@ async def get_voice_embedding(
     profile exists IN THE GIVEN TENANT. Uses raw SQL because the embedding
     column is a pgvector type not mapped in SQLAlchemy.
 
-    TASK-490 (closes the TASK-296 M-6 / roadmap P2-5 TODO): the
-    ``core."UserVoiceProfile"."tenantId"`` column exists and the filter is
+    The ``core."UserVoiceProfile"."tenantId"`` column exists and the filter is
     ENFORCED. When ``tenant_id`` is missing the lookup fails closed (returns
     ``None`` without querying) so an unscoped read is structurally impossible.
     """
@@ -104,11 +103,11 @@ async def get_voice_profile_metadata(
 
     Returns ``{"profile_id": str, "model_id": str | None}`` or ``None`` when
     no active profile exists in the given tenant. Non-fatal on DB errors —
-    returns ``None`` so callers can degrade gracefully (TASK-296 backend-echo:
-    this powers the ``voiceProfileSeeded`` echo payload sent to the SDK).
+    returns ``None`` so callers can degrade gracefully (this powers the
+    ``voiceProfileSeeded`` echo payload sent to the SDK).
 
-    TASK-490: tenant filter enforced; missing ``tenant_id`` fails closed
-    (same contract as :func:`get_voice_embedding`).
+    Tenant filter enforced; missing ``tenant_id`` fails closed (same contract
+    as :func:`get_voice_embedding`).
     """
     if not tenant_id:
         logger.warning(

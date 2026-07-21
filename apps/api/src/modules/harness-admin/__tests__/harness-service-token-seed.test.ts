@@ -1,5 +1,5 @@
 /**
- * Regression guard (TASK-330 Phase 6) — the apps/api <-> apps/harness shared
+ * Regression guard — the apps/api <-> apps/harness shared
  * service-token MUST be provisioned for local dev.
  *
  * Root cause of the original 401 on `GET /api/v1/admin/harness/workflows`: the

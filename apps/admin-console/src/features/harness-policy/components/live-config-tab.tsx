@@ -13,7 +13,7 @@ import { useLiveDocConfig } from '../api';
  * Live config tab (frame 36) — READ-ONLY summary of the live-documentation
  * engine kill-switch.
  *
- * TASK-532 (M-02): this tab used to carry a second editor for
+ * This tab used to carry a second editor for
  * `PATCH /admin/harness/live/config` — the exact row `/agentic-policy` (tier
  * 10-19) already edits. Two editors over one row means two OCC clients and two
  * places to keep in step, so this one demotes to a summary + deep link and

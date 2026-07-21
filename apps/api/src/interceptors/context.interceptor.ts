@@ -45,13 +45,13 @@ export class ContextInterceptor implements NestInterceptor {
     }
 
     if (!request.requestId) {
-      // TASK-310 E-10 (AC-9): source the correlation id from the
-      // standard `x-request-id` header (set by an upstream LB / CDN /
-      // gateway), NOT from `request.body.requestId`. The pre-W7 read of
-      // a body field let any client pin its own correlation id with a
-      // POST payload, polluting CLS / logs and letting two unrelated
-      // requests share an id. Fallback stays uuidv7() so the logs always
-      // get a strictly-increasing identifier.
+      // Source the correlation id from the standard `x-request-id` header
+      // (set by an upstream LB / CDN / gateway), NOT from
+      // `request.body.requestId` — reading a body field would let any
+      // client pin its own correlation id with a POST payload, polluting
+      // CLS / logs and letting two unrelated requests share an id.
+      // Fallback stays uuidv7() so the logs always get a
+      // strictly-increasing identifier.
       const headerRequestId = request.headers?.['x-request-id'];
       const normalisedHeader = Array.isArray(headerRequestId) ? headerRequestId[0] : headerRequestId;
       request.requestId = (typeof normalisedHeader === 'string' && normalisedHeader.length > 0 ? normalisedHeader : undefined) ?? uuidv7();
@@ -62,13 +62,10 @@ export class ContextInterceptor implements NestInterceptor {
     const clientIp = request.ip?.startsWith('::ffff:') ? request.ip.split(':').pop() : request.ip;
     this.tryClsSet('requestIp', clientIp);
 
-    // SEC-J / TASK-295 C-2 + TASK-307 W5.3 (AC-17, audit D-1): the
-    // `x-tenant-id` header MUST NOT override the JWT-derived CLS
+    // The `x-tenant-id` header MUST NOT override the JWT-derived CLS
     // `tenantId` (`JwtStrategy.validate` is the single source of truth).
-    // Previously we warn-logged divergence and silently dropped the
-    // header — that turned the audit's "tenant confusion" probe into
-    // a noisy-but-passing request. We now reject it as 400 Bad Request
-    // so the caller cannot pretend they're in a different tenant.
+    // A divergent header is rejected as 400 Bad Request so the caller
+    // cannot pretend they're in a different tenant.
     const tenantIdHeader = request.headers['x-tenant-id'];
     if (tenantIdHeader) {
       const clsUser = this.tryClsGet('user') as { id?: string; tenantId?: string | null; roles?: string[] | null } | undefined;
@@ -82,8 +79,8 @@ export class ContextInterceptor implements NestInterceptor {
         throw new BadRequestException('x-tenant-id header does not match the authenticated tenant');
       }
 
-      // TASK-331 r2605 Finding #1: a global-admin authenticates with an EMPTY
-      // tenant, so the divergence guard above never fires for them. The
+      // A global-admin authenticates with an EMPTY tenant, so the
+      // divergence guard above never fires for them. The
       // console's "manage as tenant" selection arrives as `x-tenant-id`; for a
       // global-admin with no tenant binding we elevate the CLS `tenantId` to it
       // so downstream CLS-scoped services (Departments, Prompts, Storage, …)

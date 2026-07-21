@@ -8,8 +8,6 @@
  * opaque `ReferenceError: AudioContext is not defined` at runtime.
  *
  * Use the package from a Client Component (a file with `"use client"`).
- *
- * TASK-300 C-XCUT-2.
  */
 
 throw new Error(

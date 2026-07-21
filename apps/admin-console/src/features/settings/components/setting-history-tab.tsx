@@ -8,7 +8,7 @@ import { ErrorState } from '@/shared/state/error-state';
 import { useSettingHistory } from '../api/hooks';
 
 /**
- * Read-only change history for a setting (TASK-439, Open-item 2). There is no
+ * Read-only change history for a setting. There is no
  * versions endpoint, so this reads the audit log
  * (`GET /admin/audit-logs/resource/GlobalSetting/:id`) and lists actor · action ·
  * when · version. `active` gates the fetch to when the History tab is shown.

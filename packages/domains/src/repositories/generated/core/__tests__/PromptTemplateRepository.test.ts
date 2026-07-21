@@ -1,5 +1,5 @@
 /**
- * PromptTemplateRepository — TASK-328 A4 repository-level pagination.
+ * PromptTemplateRepository — repository-level pagination.
  *
  * `findPaginated` resolves the page slice and the total matching count in one
  * call (`db.findMany` + `db.count` against the same extended client), so the

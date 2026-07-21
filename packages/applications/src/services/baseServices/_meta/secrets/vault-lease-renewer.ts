@@ -5,8 +5,6 @@ import { Logger } from '@nestjs/common';
  * lease BEFORE expiry to keep the underlying short-lived PostgreSQL
  * user alive while the pod holds it.
  *
- * TASK-302 Phase 5 Task 5.7 (Stream B).
- *
  * Cadence:
  *   - First renewal is scheduled at 50% of the initial TTL.
  *   - On each successful renew(), the next tick is scheduled at 50%

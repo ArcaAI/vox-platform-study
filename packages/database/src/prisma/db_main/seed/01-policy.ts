@@ -48,7 +48,7 @@ export const DEFAULT_POLICIES = [
         name: 'system-full-access',
         description: 'Full system access - can manage everything across all tenants',
         scope: PolicyScope.GLOBAL,
-        // TASK-409 — anti-lockout protected marker (rename-proof; pairs with the
+        // Anti-lockout protected marker (rename-proof; pairs with the
         // legacy name match in PolicyService.PROTECTED_SYSTEM_POLICIES).
         isProtected: true,
         rules: [
@@ -60,7 +60,7 @@ export const DEFAULT_POLICIES = [
         name: 'rbac-system-manage',
         description: 'System-level RBAC management - manage all roles, policies, and assignments',
         scope: PolicyScope.GLOBAL,
-        // TASK-409 — anti-lockout protected marker (see system-full-access above).
+        // Anti-lockout protected marker (see system-full-access above).
         isProtected: true,
         rules: [
             { action: 'manage', subject: 'Role' },
@@ -74,7 +74,7 @@ export const DEFAULT_POLICIES = [
         name: 'prisma-studio-manage',
         description: 'Access the embedded Prisma Studio database browser (dedicated production-capable grant)',
         scope: PolicyScope.GLOBAL,
-        // TASK-419 item 4 — Prisma Studio runs raw SQL against the unscoped
+        // Prisma Studio runs raw SQL against the unscoped
         // client (untenanted, privileged). Access is a DEDICATED subject so it
         // can be granted/delegated without handing out `manage:all`; the module
         // itself additionally requires the ENABLE_PRISMA_STUDIO env flag
@@ -110,16 +110,16 @@ export const DEFAULT_POLICIES = [
             { action: 'manage', subject: 'Tag', conditions: { tenantId: '${context.tenantId}' } },
             // Storage management
             { action: 'manage', subject: 'Storage', conditions: { tenantId: '${context.tenantId}' } },
-            // Departments & ASR pipelines (TASK-331 doc-04 F1) — close the
+            // Departments & ASR pipelines — close the
             // nav↔backend gap: tenant admins self-serve their own tenant's
             // departments and audio (ASR) pipelines, both tenant-scoped.
             { action: 'manage', subject: 'Department', conditions: { tenantId: '${context.tenantId}' } },
             { action: 'manage', subject: 'AsrPipeline', conditions: { tenantId: '${context.tenantId}' } },
-            // AI model catalog (TASK-356 Phase 1) — tenant admins self-serve
+            // AI model catalog — tenant admins self-serve
             // their own tenant's clone of the SYSTEM model catalog. Tenant-scoped
             // (SUPER_ADMIN already covered by the `manage:all` system grant).
             { action: 'manage', subject: 'AiModel', conditions: { tenantId: '${context.tenantId}' } },
-            // DNA writing-style management (TASK-326 X7) — tenant admins manage
+            // DNA writing-style management — tenant admins manage
             // their own tenant's doctor writing-style reports. The service still
             // enforces the PHI/tenant scope guard (`assertReportInScope`); even
             // SUPER_ADMIN cannot cross tenants on these PHI-derived artifacts.
@@ -131,31 +131,31 @@ export const DEFAULT_POLICIES = [
             { action: 'read', subject: 'Tenant', conditions: { id: '${context.tenantId}' } },
             { action: 'update', subject: 'Tenant', conditions: { id: '${context.tenantId}' } },
             { action: 'read', subject: 'AuditLog', conditions: { tenantId: '${context.tenantId}' } },
-            // TASK-386 (#21) — tenant-scoped telemetry: tenant admins read their
+            // Tenant-scoped telemetry: tenant admins read their
             // own tenant's service sessions/health/uptime (the widened
             // MonitoringController + ApiHealthController `/services` gates accept
             // `read:TenantTelemetry`). SUPER_ADMIN is covered by `manage:all`.
             { action: 'read', subject: 'TenantTelemetry', conditions: { tenantId: '${context.tenantId}' } },
-            // Clinical documentation harness (TASK-330 Phase 6) — tenant admins
+            // Clinical documentation harness — tenant admins
             // self-serve their own tenant's harness: tune the policy + drive the
             // gate/Temporal workflow ops, and read the WORM audit trail + eval
             // runs. All tenant-scoped (the admin controller + policy service
             // additionally pin every read/write to the caller's tenant).
-            // TASK-419 item 1 — HarnessEval upgraded read → manage: golden-set
+            // HarnessEval is manage (not just read): golden-set
             // curation (`POST /admin/harness/golden-sets*`) is a tenant-admin
             // capability. HarnessAudit stays read-only (WORM).
             { action: 'manage', subject: 'HarnessPolicy', conditions: { tenantId: '${context.tenantId}' } },
             { action: 'manage', subject: 'HarnessWorkflow', conditions: { tenantId: '${context.tenantId}' } },
             { action: 'read', subject: 'HarnessAudit', conditions: { tenantId: '${context.tenantId}' } },
             { action: 'manage', subject: 'HarnessEval', conditions: { tenantId: '${context.tenantId}' } },
-            // Realtime-pipeline toggle cascade (TASK-356 Phase 5) — tenant admins
+            // Realtime-pipeline toggle cascade — tenant admins
             // manage their own tenant's PipelinePolicy rows (auto-summary / auto-NER
             // / harness-vs-legacy routing). A SEPARATE subject from HarnessPolicy so
             // realtime-toggle admin stays decoupled from harness-gating admin. `manage`
             // implies `read` (used by the GET routes). Tenant-scoped; the controller
             // pins every read/write to the caller's tenant.
             { action: 'manage', subject: 'PipelinePolicy', conditions: { tenantId: '${context.tenantId}' } },
-            // TASK-532 (M-12) — the MCP registry and the agent-trajectory read
+            // The MCP registry and the agent-trajectory read
             // plane no longer borrow `manage:HarnessPolicy`; these explicit
             // grants preserve exactly the access this role had before the
             // subject swap. MCP WRITES remain global-admin-only regardless —
@@ -164,11 +164,11 @@ export const DEFAULT_POLICIES = [
             // had. `AgentTrajectory` is read-only by design.
             { action: 'manage', subject: 'McpServer', conditions: { tenantId: '${context.tenantId}' } },
             { action: 'read', subject: 'AgentTrajectory', conditions: { tenantId: '${context.tenantId}' } },
-            // TASK-496 — tenant admins manage their own tenant's TTS config + BYO
+            // Tenant admins manage their own tenant's TTS config + BYO
             // provider credentials. Tenant-scoped; the controller pins every op to
             // the caller's tenant. `manage` implies `read` (used by the GET routes).
             { action: 'manage', subject: 'TenantTtsConfig', conditions: { tenantId: '${context.tenantId}' } },
-            // TASK-506 — tenant admins read + manage their own tenant's AI
+            // Tenant admins read + manage their own tenant's AI
             // task-model defaults (AiTaskDefault). Tenant-scoped; global admins
             // are covered by `manage:all`. NOTE (governance): tenant admins DO
             // hold manage:AiTaskDefault here — but ALL FOUR task-key prefixes
@@ -177,7 +177,7 @@ export const DEFAULT_POLICIES = [
             // GLOBAL-ADMIN-ONLY on write, enforced at the application-service
             // layer, not by RBAC. In practice this grant yields reads only.
             { action: ['read', 'manage'], subject: 'AiTaskDefault', conditions: { tenantId: '${context.tenantId}' } },
-            // TASK-498 — tenant admins manage their own tenant's external OIDC
+            // Tenant admins manage their own tenant's external OIDC
             // identity provider config. Tenant-scoped; the controller pins every
             // op to the caller's tenant. `manage` implies `read` (used by the GET
             // routes). GLOBAL_ADMIN already covers this via the wildcard `manage
@@ -365,11 +365,11 @@ export const DEFAULT_POLICIES = [
             { action: ['read', 'list'], subject: 'PromptUsageRecord', conditions: { tenantId: '${context.tenantId}' } },
         ],
     },
-    // TASK-331 doc-09 — end-user (clinician) read-only prompt-template ability.
+    // End-user (clinician) read-only prompt-template ability.
     // Clinicians need to populate the Pre-Summary / Summary template selector
     // via the end-user `GET /prompt-templates/available` route. This grants ONLY
     // `read`+`list` on PromptTemplate (tenant-scoped) — NOT `manage`. Combined
-    // with doc-09 D1 (the admin read surface bumped to `manage:PromptTemplate`),
+    // with the admin read surface (bumped to `manage:PromptTemplate`),
     // this ability satisfies the end-user controller without opening the admin
     // `/admin/prompt-templates` GET routes (list-all / drafts / peers' personal
     // templates / usage analytics) to doctors.
@@ -411,7 +411,7 @@ export const DEFAULT_POLICIES = [
     },
 
     // =========================================================================
-    // CLINICAL DOCUMENTATION HARNESS (TASK-330 Phase 6)
+    // CLINICAL DOCUMENTATION HARNESS
     // =========================================================================
     // Subjects: HarnessPolicy (the runtime knobs that drive the document loop),
     // HarnessWorkflow (Temporal document-workflow ops + the clinician gate queue),
@@ -429,12 +429,12 @@ export const DEFAULT_POLICIES = [
             { action: 'manage', subject: 'HarnessPolicy' },
             { action: 'manage', subject: 'HarnessWorkflow' },
             { action: 'read', subject: 'HarnessAudit' },
-            // TASK-419 item 1 — manage (was read): golden-set curation.
+            // Manage (was read): golden-set curation.
             { action: 'manage', subject: 'HarnessEval' },
-            // TASK-356 Phase 5 — platform-wide realtime-pipeline cascade admin
+            // Platform-wide realtime-pipeline cascade admin
             // (incl. the SYSTEM-tenant global-default row). `manage` implies `read`.
             { action: 'manage', subject: 'PipelinePolicy' },
-            // TASK-532 (M-12) — dedicated subjects for the MCP registry and the
+            // Dedicated subjects for the MCP registry and the
             // agent-trajectory read plane (previously reached via
             // `manage:HarnessPolicy`). Unconditional at platform scope.
             { action: 'manage', subject: 'McpServer' },
@@ -455,12 +455,12 @@ export const DEFAULT_POLICIES = [
             { action: 'manage', subject: 'HarnessPolicy', conditions: { tenantId: '${context.tenantId}' } },
             { action: 'manage', subject: 'HarnessWorkflow', conditions: { tenantId: '${context.tenantId}' } },
             { action: 'read', subject: 'HarnessAudit', conditions: { tenantId: '${context.tenantId}' } },
-            // TASK-419 item 1 — manage (was read): golden-set curation.
+            // Manage (was read): golden-set curation.
             { action: 'manage', subject: 'HarnessEval', conditions: { tenantId: '${context.tenantId}' } },
-            // TASK-356 Phase 5 — tenant-scoped realtime-pipeline cascade admin.
+            // Tenant-scoped realtime-pipeline cascade admin.
             // `manage` implies `read`; the controller pins every op to the tenant.
             { action: 'manage', subject: 'PipelinePolicy', conditions: { tenantId: '${context.tenantId}' } },
-            // TASK-532 (M-12) — dedicated subjects for the MCP registry and the
+            // Dedicated subjects for the MCP registry and the
             // agent-trajectory read plane (previously reached via
             // `manage:HarnessPolicy`). Tenant-scoped; MCP writes stay
             // global-admin-only in the service.
@@ -474,7 +474,7 @@ export const seedPolicy = async (client: CorePrismaClient) => {
     console.log('Seeding policies...');
 
     for (const policyData of DEFAULT_POLICIES) {
-        // TASK-409 — only assert `isProtected` when the seed data explicitly
+        // Only assert `isProtected` when the seed data explicitly
         // defines it (the two system-critical policies). Policies without the
         // marker rely on the column default and are never clobbered here.
         const isProtected = (policyData as { isProtected?: boolean }).isProtected;

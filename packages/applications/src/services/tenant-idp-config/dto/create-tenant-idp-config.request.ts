@@ -6,11 +6,11 @@ import { OidcProviderConfigDto } from './oidc-provider-config.dto';
 import { SamlProviderConfigDto } from './saml-provider-config.dto';
 
 /**
- * TASK-498 D1 — the data model is protocol-neutral (`IdpProtocol` ships both
- * OIDC and SAML); TASK-499 adds the SAML branch on this same shape.
+ * The data model is protocol-neutral (`IdpProtocol` ships both
+ * OIDC and SAML on this same shape).
  * `config`/`clientSecret` are required (via `@ValidateIf`) for OIDC;
  * `samlConfig` is required for SAML. The SP key pair for a SAML provider is
- * generated server-side (D5) — never supplied on create.
+ * generated server-side — never supplied on create.
  */
 export class CreateTenantIdpConfigRequest {
   @ApiProperty({ description: 'Identity provider protocol', enum: [IdpProtocol.OIDC, IdpProtocol.SAML] })

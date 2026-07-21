@@ -4,7 +4,7 @@ import { UserPasswordService, CompletePasswordResetRequest, CompletePasswordRese
 import { Public } from '../../../decorators';
 
 /**
- * TASK-388 #8 — public completion of an admin-minted reset link.
+ * Public completion of an admin-minted reset link.
  *
  * `@Public()` exempts this route from the user-JWT/CASL chain (and the boot-time
  * route-permission audit): the caller is an unauthenticated user finishing their

@@ -4,7 +4,7 @@ import { IBaseService } from '../../../interfaces';
 import { CreateUserRequest, CreateOAuthUserRequest, UpdateUserRequest } from './dto';
 
 /**
- * TASK-398 (P1-7) — per-user export enrichment read-model: the profile email +
+ * Per-user export enrichment read-model: the profile email +
  * active department NAMES that `UserResponse` deliberately does not carry.
  * Export-path only; the regular list DTO is unchanged.
  */
@@ -26,7 +26,7 @@ export interface IUserService extends IBaseService {
   update(id: EntityId, request: UpdateUserRequest): Promise<UserEntity>;
   deleteById(id: EntityId): Promise<UserEntity>;
   /**
-   * TASK-398 (P1-7) — batch-resolve email + department names for an export set
+   * Batch-resolve email + department names for an export set
    * with exactly TWO grouped queries (no N+1). `tenantId` (when supplied)
    * confines department names to that tenant, mirroring the export's row
    * scoping. Every requested id resolves (missing data degrades to ''/[]).

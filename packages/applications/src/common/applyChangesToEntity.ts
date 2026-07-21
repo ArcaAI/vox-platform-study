@@ -4,7 +4,7 @@ import { ArgumentInvalidException } from '@arcaai/exceptions';
 /**
  * Route a `resourceStatus` write to the entity lifecycle method that owns it.
  *
- * TASK-541 — this used to be an inline switch with no `SUSPENDED` branch and
+ * This used to be an inline switch with no `SUSPENDED` branch and
  * no `default`, so a suspend request fell straight through: the entity was
  * never touched, no change was tracked, and the caller still got a 200. The
  * two properties that keep that from recurring:
@@ -102,7 +102,7 @@ export async function applyChangesToEntity<T extends BaseEntity, K extends objec
   customHandlers?: ChangeFieldHandlers<T, K>,
 ): Promise<void> {
   for (const key of Object.keys(changes) as Array<keyof K>) {
-    // TASK-302 Stream D Phase B (B.7) — `version` is database-owned. The only
+    // (B.7) — `version` is database-owned. The only
     // legitimate writer is `Repository.updateWithVersion`. Filtering here is
     // defense in depth on top of the entity having no public setter and the
     // mapper $toPersistence excluding it. The guard runs before custom

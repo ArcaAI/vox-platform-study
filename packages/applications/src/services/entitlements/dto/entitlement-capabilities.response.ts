@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TenantPlan } from '@arcaai/domains';
 
 /**
- * TASK-392 (Q4) — trial-clock snapshot for the countdown/expiry banner. A
+ * Trial-clock snapshot for the countdown/expiry banner. A
  * tenant is "trial" while `plan === TRIAL`; `expired` flips once
  * `trialEndsAt < now` (until the scheduled downgrade job flips the plan).
  */
@@ -20,7 +20,7 @@ export class TrialInfoResponse {
   expired: boolean;
 }
 
-/** One resolved capability with its live usage (proposal §2, display-only in Phase 1). */
+/** One resolved capability with its live usage. */
 export class CapabilityUsageRow {
   @ApiProperty({ description: 'Stable capability key (e.g. "users", "storageBytes", "monthlyConsultations")' })
   key: string;
@@ -28,7 +28,7 @@ export class CapabilityUsageRow {
   @ApiPropertyOptional({ description: 'Resolved limit; null = unlimited/ungated', nullable: true })
   limit?: number | null;
 
-  @ApiPropertyOptional({ description: 'Current usage; null when not yet metered (M1–M3 land in Phase 2)', nullable: true })
+  @ApiPropertyOptional({ description: 'Current usage; null when not metered for this capability', nullable: true })
   used?: number | null;
 
   @ApiPropertyOptional({ description: 'limit − used (floored at 0); null when unlimited or unmetered', nullable: true })
@@ -56,7 +56,7 @@ export class ResolvedFeaturesResponse {
 }
 
 /**
- * TASK-392 (Phase 1) — the read-only capability/usage snapshot for a tenant:
+ * The read-only capability/usage snapshot for a tenant:
  * resolved limits (seeded ← plan row ← tenant override) composed with live
  * usage from `getUsageStats`, plus features, tiers, and the trial clock.
  * Enforcement state is surfaced via `enforcementEnabled` (the kill-switch).
@@ -71,13 +71,13 @@ export class EntitlementCapabilitiesResponse {
   @ApiProperty({ description: 'False for a null-plan (ungated-legacy) tenant' })
   gated: boolean;
 
-  @ApiProperty({ description: 'Global enforcement kill-switch state (entitlements.enabled). Phase 1 ships OFF.' })
+  @ApiProperty({ description: 'Global enforcement kill-switch state (entitlements.enabled). Ships OFF by default.' })
   enforcementEnabled: boolean;
 
   @ApiProperty({ description: 'Quantity capabilities C1–C6 (users, departments, prompt templates, ASR pipelines, API keys, storage bytes)', type: [CapabilityUsageRow] })
   quantities: CapabilityUsageRow[];
 
-  @ApiProperty({ description: 'Rolling-monthly meters M1–M3 (used is null until Phase 2 metering lands)', type: [CapabilityUsageRow] })
+  @ApiProperty({ description: 'Rolling-monthly meters M1–M3', type: [CapabilityUsageRow] })
   meters: CapabilityUsageRow[];
 
   @ApiProperty({ description: 'Resolved feature toggles', type: () => ResolvedFeaturesResponse })

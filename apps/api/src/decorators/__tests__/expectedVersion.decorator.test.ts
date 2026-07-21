@@ -8,7 +8,7 @@
  *
  * Contract:
  *   - `If-Match: "7"` (strong validator)         → returns `7`
- *   - `If-Match: "0"` (create-intent, TASK-534 G2 owner decision) → returns `0`
+ *   - `If-Match: "0"` (create-intent, owner decision) → returns `0`
  *   - Missing header on a NON-`@RequiresIfMatch()` route → returns `undefined`
  *     (allows the body-field fallback to take over for service-to-service)
  *   - Missing header on a `@RequiresIfMatch()`   → throws 428 Precondition
@@ -92,7 +92,7 @@ describe('extractExpectedVersion (TASK-302 Stream D Phase D)', () => {
 
     it('parses If-Match: "0" to 0 (create-intent — owner decision, TASK-534 G2)', () => {
         // "0" is the documented first-edit/create precondition across the
-        // config plane (TASK-506/526 `FIRST_EDIT_ETAG` convention): the caller
+        // config plane (the `FIRST_EDIT_ETAG` convention): the caller
         // read a version-0 placeholder (no row yet) and echoes it. The service
         // CAS decides create-vs-412; the parser must let 0 through.
         expect(extractExpectedVersion(undefined, ctx({ 'if-match': '"0"' }))).toBe(0);

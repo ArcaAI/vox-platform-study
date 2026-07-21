@@ -125,7 +125,7 @@ async function main(): Promise<void> {
                 'Regenerate with "pnpm --filter @arcaai/tools generate-data-entity" once the entity files/barrels are reconciled.',
             );
             // Content-aware drift: every persisted model column is surfaced by the
-            // (curated) entity layer (TASK-370).
+            // (curated) entity layer.
             const coverageExit = await reportSchemaCoverage({
                 layer: 'entity',
                 generatedRoot: options.generatedRoot,

@@ -71,7 +71,7 @@ import { createJwt } from '../createJwt';
 function createStrategy(): OidcStrategy {
     mockAppSettingsService.getValueWithDefault.mockImplementation(
         (key: string, defaultValue: string) => {
-            // TASK-302 Phase 3 Task 3.7 — JWT_SECRET_KEY now resolved via
+            // JWT_SECRET_KEY resolves via
             // SecretsService below; intentionally omitted from this map.
             const settings: Record<string, string> = {
                 OIDC_SCOPES: 'openid profile email',
@@ -272,7 +272,7 @@ describe('OidcStrategy', () => {
                 createMockOAuthResponse({ id: 'cfg-user' }),
             );
 
-            // TASK-302 Phase 3 Task 3.7 — JWT secret is now sourced from
+            // JWT secret is sourced from
             // SecretsService; JWT_EXPIRES_IN stays on AppSettings.
             mockSecretsService.getSecretSync.mockImplementation((key: string) =>
                 key === 'JWT_SECRET_KEY' ? 'custom-production-secret' : undefined,

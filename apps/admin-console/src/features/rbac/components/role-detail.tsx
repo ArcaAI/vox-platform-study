@@ -48,8 +48,8 @@ function useRoleTab() {
 }
 
 /**
- * TASK-501 — SYSTEM-role policy assign/revoke is global-admin only; the
- * effective identity (impersonation-aware, BUG-005) drives the lock so the
+ * SYSTEM-role policy assign/revoke is global-admin only; the
+ * effective identity (impersonation-aware) drives the lock so the
  * UI matches what the gateway will actually accept.
  */
 function useIsGlobalAdmin() {
@@ -191,8 +191,7 @@ function MembersSkeleton() {
 }
 
 /**
- * Members tab — the users holding this role (TASK-444,
- * `GET admin/rbac/roles/:id/members`). The gateway tenant-scopes the rows, so
+ * Members tab — the users holding this role (`GET admin/rbac/roles/:id/members`). The gateway tenant-scopes the rows, so
  * a tenant admin sees only their tenant's members; role changes stay on the
  * Users screen (assign/remove is a per-user operation there).
  */
@@ -393,7 +392,7 @@ function PoliciesTabPanel({ role }: { role: Role }) {
 
 /**
  * Clone is always offered — cloning a SYSTEM role into an editable CUSTOM
- * copy is the point (TASK-501). Edit unlocks for a global admin on a SYSTEM
+ * copy is the point. Edit unlocks for a global admin on a SYSTEM
  * role too (matches the service-layer `isSuperAdmin` carve-out on
  * update/patch). Delete stays hidden for EVERY system role, EVERY caller —
  * `softDelete()` is hard-blocked platform-wide, deleting a seed-managed role

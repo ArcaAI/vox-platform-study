@@ -1,5 +1,5 @@
 /**
- * useUsers Hook — TASK-400 addition: public self-service forgot-password
+ * useUsers Hook — public self-service forgot-password
  * (`requestPasswordReset`). The endpoint always answers 202 with a generic
  * body; the SDK method simply relays it (no token ever crosses this boundary).
  *

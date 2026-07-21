@@ -1,5 +1,5 @@
 /**
- * Click-to-source highlighting (TASK-533 B5, GAP-A2).
+ * Click-to-source highlighting.
  *
  * Pure — no React, no I/O — so the offset arithmetic that decides which words a
  * clinician sees marked as evidence is testable in isolation. That matters more
@@ -11,7 +11,7 @@
 export interface EvidenceSpan {
     startOffset: number;
     endOffset: number;
-    /** Resolved by the D-22 chain; null when the claim has no segment provenance. */
+    /** Resolved server-side; null when the claim has no segment provenance. */
     segmentId?: string | null;
 }
 

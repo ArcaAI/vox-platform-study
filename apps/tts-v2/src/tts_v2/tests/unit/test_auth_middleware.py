@@ -1,7 +1,7 @@
-"""TDD tests for ServiceAuthMiddleware (TASK-488 Phase 1).
+"""TDD tests for ServiceAuthMiddleware.
 
-A non-exempt path is used to exercise auth; in Phase 1 that route does not
-exist yet, so a request that PASSES auth reaches routing and 404s. Auth
+A non-exempt path is used to exercise auth; that route does not
+exist, so a request that PASSES auth reaches routing and 404s. Auth
 therefore asserts on ``401`` vs. ``!= 401`` rather than a 200 body.
 """
 

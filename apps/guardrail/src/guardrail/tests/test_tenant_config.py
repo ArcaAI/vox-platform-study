@@ -1,5 +1,5 @@
-"""Unit tests for per-tenant guardrail config resolution (TASK-338, Phase 4;
-repointed to the AiTaskDefault ⋈ AiModel registry by TASK-506).
+"""Unit tests for per-tenant guardrail config resolution, resolved against
+the AiTaskDefault ⋈ AiModel registry.
 
 The DB is fully mocked — no live database is required. Two seams are used:
 ``_load_from_db`` (subclassed to return canned per-tenant rows, for the TTL
@@ -197,7 +197,7 @@ async def test_cache_valid_within_ttl() -> None:
 
 # ---------------------------------------------------------------------------
 # Fail-safe: DB errors resolve to empty (caller falls back to env) and are
-# negatively cached for one TTL window (TASK-506 review Minor 1) — an env-only
+# negatively cached for one TTL window — an env-only
 # deployment without a reachable Postgres pays at most one connection attempt
 # per tenant per TTL, not one per request.
 # ---------------------------------------------------------------------------
@@ -350,7 +350,7 @@ def test_build_guardian_provider_ollama() -> None:
 
 
 # ---------------------------------------------------------------------------
-# DB layer (TASK-506): AiTaskDefault ⋈ AiModel row preference + field mapping.
+# DB layer: AiTaskDefault ⋈ AiModel row preference + field mapping.
 # The SQLAlchemy session is faked; rows mimic the labeled columns the real
 # query selects (default_tenant_id, model_tenant_id, provider, source_uri,
 # meta_data).
@@ -521,7 +521,7 @@ def test_ai_model_read_maps_prisma_columns() -> None:
 
 
 def test_guardrail_task_key_contract() -> None:
-    # Cross-worker contract with the seed + gateway (TASK-506) — do NOT rename.
+    # Cross-worker contract with the seed + gateway — do NOT rename.
     assert TASK_KEY_GUARDRAIL_VALIDATE == "guardrail.validate"
     assert SYSTEM_TENANT_ID == "00000000-0000-0000-0000-000000000000"
 

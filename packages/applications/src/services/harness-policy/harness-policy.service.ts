@@ -56,7 +56,7 @@ function toJudgeProvider(provider: string): string {
   return provider === 'lm-studio' ? 'openai_compat' : provider;
 }
 
-/** Ciphertext payloads threaded into the change factory (TASK-369 Phase 3D). */
+/** Ciphertext payloads threaded into the change factory. */
 interface EncryptedChangePayloads {
   encryptedBeforeJson: Buffer | null;
   encryptedAfterJson: Buffer | null;
@@ -68,7 +68,7 @@ interface EncryptedChangePayloads {
  * getters are non-enumerable) and from the DTO (sparse) so merge / snapshot /
  * apply operate on a single, fully-populated value shape.
  *
- * (Phase 3A) appended the seven agentic loop knobs. They are NULLABLE
+ * Includes the seven agentic loop knobs. They are NULLABLE
  * overrides: null ⇒ the harness env/code default applies (per-field
  * fallthrough), so the harness only overrides a runtime default when the policy
  * carries an explicit non-null value.
@@ -99,7 +99,7 @@ export interface HarnessPolicyKnobs {
   maxEditReruns: number | null;
   regenFeedbackEnabled: boolean | null;
   /**
-   * TASK-533 D-24 — master gate for the MCP external-tools path. `null ⇒ OFF`, so
+   * Master gate for the MCP external-tools path. `null ⇒ OFF`, so
    * the feature stays dormant until a global admin explicitly flips it AND the
    * referenced `McpServer.enabled` is true.
    *
@@ -118,7 +118,7 @@ export interface HarnessPolicyKnobs {
  * model/provider routing, agentic loop knobs, or turn the safety and PHI gates
  * off for their tenant.
  *
- * TASK-532 (E3-L1, OD-2) added `safetyEnabled`/`phiEnabled`/`phiFailClosed`:
+ * Includes `safetyEnabled`/`phiEnabled`/`phiFailClosed`:
  * guardrail and NLP are controlled by global admins only. Because this list
  * also drives the SYSTEM overlay in `getEffectivePolicy`, pre-existing tenant
  * rows carrying those three are neutralised at READ time (values are ignored,
@@ -139,7 +139,7 @@ const GLOBAL_ADMIN_ONLY_POLICY_KEYS = [
   'safetyEnabled',
   'phiEnabled',
   'phiFailClosed',
-  // TASK-533 D-24 — MCP calls OUT of the platform boundary, so arming it is
+  // MCP calls OUT of the platform boundary, so arming it is
   // global-admin governance, never a tenant-level switch.
   'mcpToolsEnabled',
 ] as const satisfies readonly (keyof HarnessPolicyKnobs)[];
@@ -172,7 +172,7 @@ function entityToKnobs(e: HarnessPolicyEntity): HarnessPolicyKnobs {
     nerPriorsEnabled: e.nerPriorsEnabled ?? null,
     maxEditReruns: e.maxEditReruns ?? null,
     regenFeedbackEnabled: e.regenFeedbackEnabled ?? null,
-    // TASK-533 D-24 — the line whose absence silently dropped the MCP gate from
+    // The line whose absence silently dropped the MCP gate from
     // every response built off a policy row.
     mcpToolsEnabled: e.mcpToolsEnabled ?? null,
   };
@@ -203,7 +203,7 @@ function applyKnobsToEntity(entity: HarnessPolicyEntity, dto: UpdateHarnessPolic
 }
 
 /**
- * HarnessPolicyService (TASK-330 Phase 6) — DB-backed, editable runtime policy
+ * HarnessPolicyService — DB-backed, editable runtime policy
  * that drives the clinical documentation loop.
  *
  *  - `getEffectivePolicy` resolves the tenant's own row, else the SYSTEM-tenant
@@ -227,24 +227,24 @@ export class HarnessPolicyService {
     private readonly policyChangeRepository: HarnessPolicyChangeRepository,
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
     private readonly clsService: ClsService<IActiveUserContext>,
-    // TASK-369 Phase 3D — optional so fixtures keep their 4-arg construction and
+    // Optional so fixtures keep their 4-arg construction and
     // non-Vault deployments degrade to plaintext WORM change rows.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
     // optional so existing fixtures keep their 4/5-arg
     // construction; when absent, `resolveSmrSelection` uses only the legacy
     // HarnessPolicy cascade (the AiTaskDefault-first path is a no-op).
     @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
-    // TASK-533 D-24 — the SYSTEM-shared MCP registry the worker resolves tool
+    // The SYSTEM-shared MCP registry the worker resolves tool
     // calls against. Optional + trailing so existing fixtures keep their arity;
     // absent ⇒ `mcpServers: []`, i.e. nothing callable (the safe default).
     @Optional() @Inject(McpServerRepository) private readonly mcpServerRepository?: McpServerRepository,
-    // TASK-533 B4 — settings-registry read facade for the per-run token budget.
+    // Settings-registry read facade for the per-run token budget.
     // Optional + trailing; absent ⇒ null budget ⇒ the harness stays unbounded.
     @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
   ) {}
 
   /**
-   * Per-run token budget from `agentic.context.tokenBudget.perRun` (TASK-533 B4).
+   * Per-run token budget from `agentic.context.tokenBudget.perRun`.
    *
    * The budget lives in the settings registry (the control plane a global admin
    * edits), not on `HarnessPolicy` — but the harness only fetches ONE document at
@@ -269,7 +269,7 @@ export class HarnessPolicyService {
 
   /**
    * Enabled SYSTEM-shared MCP servers, in the shape `McpServerConfig.from_api`
-   * parses (TASK-533 D-24).
+   * parses.
    *
    * `fetch_policy` on the harness side reads `mcpServers` straight off this
    * response — its `models.py` parser was written for exactly this payload and
@@ -294,7 +294,7 @@ export class HarnessPolicyService {
   }
 
   /**
-   * TASK-369 Phase 3D — best-effort encrypt the before/after policy snapshots so
+   * Best-effort encrypt the before/after policy snapshots so
    * the WORM `HarnessPolicyChange` row stores ciphertext (+ a redaction sentinel
    * in the plaintext JSONB). Done OUTSIDE the change transaction (the Vault
    * round-trip must not hold a DB connection open). Returns null when there is no
@@ -336,7 +336,7 @@ export class HarnessPolicyService {
     // selection-knob overlay below). Null when unconfigured ⇒ the harness falls
     // back to its env/code judge default.
     const judge = await this.resolveJudgeSelection(tid);
-    // TASK-533 D-24 — the MCP registry is SYSTEM-shared and independent of which
+    // The MCP registry is SYSTEM-shared and independent of which
     // policy row wins, so resolve it once and overlay onto every return path
     // below (same pattern as the judge selection above).
     const [mcpServers, tokenBudgetPerRun] = await Promise.all([this.resolveMcpServers(), this.resolveTokenBudgetPerRun(tid)]);
@@ -406,7 +406,7 @@ export class HarnessPolicyService {
   }
 
   /**
-   * TASK-356 D-7 (B2) — the single fail-closed SMR-selection seam every TS
+   * The single fail-closed SMR-selection seam every TS
    * `/api/v1/generate` caller funnels through. Resolves the effective policy
    * (tenant own → SYSTEM default → code default, with the B1 field-level
    * fallthrough) and returns a GUARANTEED-non-null `{ provider, model }`.
@@ -415,13 +415,13 @@ export class HarnessPolicyService {
    * default can never be silently bypassed (SMR itself also fail-closes with a
    * 422).
    *
-   * model-routing precedence (TRACKER D-11): the
+   * Model-routing precedence: the
    * `AiTaskDefault` key for the task (`smr.live` / `smr.finalize`) is consulted
    * FIRST. When it resolves to an ENABLED model, its `{ provider, sourceUri }`
    * wins (sourceUri is the provider-native identifier actually sent to SMR).
    * The legacy `HarnessPolicy.smrProvider/smrModel` cascade is the documented
-   * fallback for tenants that have not migrated to AiTaskDefault. D-10 holds:
-   * SMR stays a stateless gateway; the caller model resolved here is authority.
+   * fallback for tenants that have not migrated to AiTaskDefault. SMR stays
+   * a stateless gateway; the caller model resolved here is authority.
    */
   async resolveSmrSelection(tenantId?: string, task: SmrRoutingTask = 'finalize'): Promise<{ provider: string; model: string }> {
     // Precedence 1 — AiTaskDefault (when wired). A resolved model's sourceUri is
@@ -543,7 +543,7 @@ export class HarnessPolicyService {
     // row itself), then apply the patch over it.
     const inherited = source === 'tenant' ? await this.policyRepository.findSystemDefault() : null;
 
-    // TASK-534 e2e G1 — the create path must honor the precondition too. The
+    // The create path must honor the precondition too. The
     // caller read the effective policy and echoed its version as `If-Match`;
     // what they read is the SYSTEM default's version on BOTH lanes (tenant
     // reads inherit it; the global lane reads the SYSTEM row itself), or the
@@ -601,7 +601,7 @@ function toResponse(e: HarnessPolicyEntity, source: HarnessPolicySource): Harnes
     // SYSTEM `harness.judge` AiTaskDefault; null here (not a policy-row field).
     judgeProvider: null,
     judgeModel: null,
-    // overlaid by `getEffectivePolicy` from the SYSTEM-shared registry (D-24).
+    // overlaid by `getEffectivePolicy` from the SYSTEM-shared registry.
     mcpServers: [],
     tokenBudgetPerRun: null,
     updatedAt: e.updatedAt ? e.updatedAt.toISOString() : null,

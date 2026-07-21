@@ -1,5 +1,5 @@
 /**
- * TASK-491 — useTtsPlayback hook orchestration.
+ * useTtsPlayback hook orchestration.
  *
  * @vitest-environment jsdom
  */

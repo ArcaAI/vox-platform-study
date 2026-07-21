@@ -13,7 +13,7 @@ import type { AgenticConfig } from '../../types';
 import { mockFetch, createMockResponse } from '../../__tests__/setup';
 import { PluginManager } from '../../core/PluginManager';
 
-// TASK-317 W4.2/W4.3 (AC-12) — the provider owns a per-instance store, so these
+// The provider owns a per-instance store, so these
 // tests capture THIS provider's StoreApi via `useStoreApi()` from a descendant
 // (`TestComponent`, or `StoreProbe` where no `TestComponent` is rendered)
 // instead of reading the module singleton.

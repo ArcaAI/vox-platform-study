@@ -25,7 +25,7 @@ import { IActiveUserContext } from '../../../interfaces';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { GLOBAL_ADMIN_ROLE } from '../../tenant/constants';
 
-/** TASK-444 — raw joined shape of the members query (module-private). */
+/** Raw joined shape of the members query (module-private). */
 interface RoleMemberJoinRow {
   id: string;
   userId: string;
@@ -48,14 +48,14 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
     private readonly userRoleAssignmentRepository: UserRoleAssignmentRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // TASK-307 W6.1 — Prisma access at the service layer is legitimate; the
-    // controllers that previously did this directly (audit C-10) now route
-    // through here. The two new read methods need a join (`include: Role`)
+    // Prisma access at the service layer is legitimate; the
+    // controllers that previously did this directly now route
+    // through here. The two read methods below need a join (`include: Role`)
     // and a `select` projection that the generated `Repository<E,M>` base
     // class cannot express, so we fall back to the raw client at this single
     // boundary — same precedent as `TenantService.getTenantUsage`.
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
-    // TASK-392 (Phase 3, C2) — optional (append-only DI); enforces the plan
+    // Optional (append-only DI); enforces the plan
     // `maxUsers` SEAT quota when an assignment adds a NEW distinct member to the
     // tenant (kill-switch-gated, no-op when OFF).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
@@ -64,7 +64,7 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
   }
 
   /**
-   * TASK-392 (Phase 3, C2) — count a tenant's occupied SEATS: distinct users
+   * Count a tenant's occupied SEATS: distinct users
    * with at least one ENABLED role-assignment (mirrors
    * `TenantService.getUsageStats().totalUsers`).
    */
@@ -78,7 +78,7 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
   }
 
   async findActiveAssignmentForUserInTenant(userId: string, tenantId: string): Promise<ActiveUserRoleAssignmentRow | null> {
-    // TASK-314 — baseClient (tenant-scope bypass). This is a pre-auth identity
+    // BaseClient (tenant-scope bypass). This is a pre-auth identity
     // lookup: the login flow calls it BEFORE any tenant context exists in CLS,
     // so the scoped client would throw "tenant context required for model
     // UserRoleAssignment". The tenant boundary is enforced explicitly by the
@@ -94,11 +94,11 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
   }
 
   async findActiveTenantIdsForUser(userId: string): Promise<string[]> {
-    // TASK-314 — baseClient (tenant-scope bypass). This resolves EVERY tenant
+    // BaseClient (tenant-scope bypass). This resolves EVERY tenant
     // the user is assigned to (impersonation target resolution); scoping it to
     // a single CLS tenant would defeat its purpose and it also runs in flows
     // without a tenant context. Cross-tenant by design.
-    // `tenantId` is a non-nullable column (TASK-305 §B4 retired the NULL =
+    // `tenantId` is a non-nullable column (there is no NULL =
     // global semantics), so a `{ not: null }` filter is both invalid in
     // Prisma 7 ("Argument `not` must not be null") and redundant — the loop
     // below already skips empty/blank tenantIds.
@@ -124,7 +124,7 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
   }
 
   async findActiveRolesForUser(userId: string): Promise<AuthRoleSummary[]> {
-    // TASK-314 — baseClient (tenant-scope bypass). Runs at login BEFORE the
+    // BaseClient (tenant-scope bypass). Runs at login BEFORE the
     // user/tenant is in CLS (and for /me, /refresh, impersonation), so the
     // scoped client throws "tenant context required for model
     // UserRoleAssignment". Identity resolution is inherently cross-tenant: we
@@ -155,8 +155,8 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
       throw new ArgumentInvalidException('userId and roleId are required');
     }
 
-    // AC-02 r2605 (Critical, privilege escalation) — defense-in-depth role-tier
-    // + cross-tenant-target guard. Only an authenticated NON-global-admin caller
+    // Defense-in-depth role-tier
+    // + cross-tenant-target guard against privilege escalation. Only an authenticated NON-global-admin caller
     // is constrained; GLOBAL_ADMIN and system/bootstrap (no CLS user) paths keep
     // the existing cross-tenant behaviour. Runs BEFORE any factory/repository
     // call so a rejected attempt never touches the write path.
@@ -165,7 +165,7 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
       await this.assertTargetUserInCallerTenant(request.userId);
     }
 
-    // TASK-305 D.7 (audit C-6) — pin the working tenantId to the caller's CLS
+    // Pin the working tenantId to the caller's CLS
     // context. The only legitimate cross-tenant create is when the caller
     // explicitly passes `request.tenantId` AND holds the GLOBAL_ADMIN role
     // (used by onboarding/bootstrap flows). Otherwise an explicit mismatch
@@ -185,11 +185,11 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
       effectiveTenantId = callerTenantId;
     }
 
-    // TASK-392 (Phase 3, C2) — a "seat" = a distinct user with an ENABLED
+    // A "seat" = a distinct user with an ENABLED
     // assignment in the tenant. Adding an assignment for a user who is NOT yet
     // an active member consumes a new seat; granting an additional role to an
     // existing member does not. Enforce the plan `maxUsers` quota only for the
-    // new-member case. Kill-switch-gated (Q9), no-op for unlimited tenants (Q3).
+    // new-member case. Kill-switch-gated, no-op for unlimited tenants.
     if (effectiveTenantId && this.entitlements?.isEnforcementEnabled()) {
       const alreadyMember = await this.findActiveAssignmentForUserInTenant(request.userId, effectiveTenantId);
       if (!alreadyMember) {
@@ -252,7 +252,7 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
   }
 
   /**
-   * AC-02 r2605 — reject a non-GLOBAL_ADMIN caller's attempt to grant the
+   * Reject a non-GLOBAL_ADMIN caller's attempt to grant the
    * platform-wide GLOBAL_ADMIN role. Per the `03-role` seed, GLOBAL_ADMIN is
    * the only Global role (its assignments are cross-tenant); every other role
    * is tenant-scoped and a TENANT_ADMIN may legitimately delegate it within
@@ -272,7 +272,7 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
   }
 
   /**
-   * AC-02 r2605 — reject a non-GLOBAL_ADMIN caller's attempt to assign a role to
+   * Reject a non-GLOBAL_ADMIN caller's attempt to assign a role to
    * a user that belongs to a DIFFERENT tenant. A user with no ENABLED
    * membership yet (a fresh account being onboarded into the caller's tenant)
    * is allowed; a user whose memberships are all in other tenants is not.
@@ -399,7 +399,7 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
     const { page, pageSize, roleId } = props;
     const skip = (page - 1) * pageSize;
 
-    // TASK-444 — the members listing needs a `User` + profile + department
+    // The members listing needs a `User` + profile + department
     // join the generic `Repository<E,M>` base cannot express, so it uses the
     // raw client at this service's sanctioned Prisma boundary (same precedent
     // as the reads above). Unlike those pre-auth identity reads it goes
@@ -446,7 +446,7 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
     return { data, total };
   }
 
-  /** TASK-444 — project a joined assignment row onto the public member shape. */
+  /** Project a joined assignment row onto the public member shape. */
   private toRoleMemberRow(row: RoleMemberJoinRow): RoleMemberRow {
     const profile = row.User?.UserProfile ?? null;
     const displayName = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ') || row.User?.username || row.userId;

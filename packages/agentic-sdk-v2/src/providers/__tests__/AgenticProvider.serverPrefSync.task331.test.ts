@@ -1,5 +1,5 @@
 /**
- * TASK-331 doc-07 F5a — user preferences sync to the server.
+ * User preferences sync to the server.
  *
  * Before this fix the production `AgenticProvider` wired ONLY local-storage
  * persistence (`makePersistUserPreferencesToStorage`) — a user's SDK prefs
@@ -13,7 +13,7 @@
  * correct `dataType`. Local-storage persistence is untouched (server sync is
  * additive) and a failed PATCH never breaks it.
  *
- * The TASK-245 read-only short-circuit is REUSED: while impersonating the
+ * The read-only short-circuit is REUSED: while impersonating the
  * playground flips `ConfigManager.setReadOnly(true)`, so the server sync is
  * gated off and an admin's impersonated edits never reach the doctor's server
  * profile.

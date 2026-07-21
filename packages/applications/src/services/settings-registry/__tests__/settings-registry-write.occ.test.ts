@@ -1,7 +1,7 @@
 /**
- * Settings-registry write lane — optimistic concurrency (TASK-533 B2 / DR-7).
+ * Settings-registry write lane — optimistic concurrency.
  *
- * TASK-524 shipped this lane doing compare-and-set INTERNALLY, against a version
+ * This lane previously did compare-and-set INTERNALLY, against a version
  * read from `AppSettingsService`'s in-memory snapshot — a map rebuilt on a 45s
  * cron. Two consequences the console could not work around:
  *
@@ -126,7 +126,7 @@ describe('SettingsRegistryWriteService — OCC (TASK-533 B2)', () => {
     expect(globalSettingRepository.findFirst).not.toHaveBeenCalled();
   });
 
-  // ── TASK-534 e2e G5 — the REAL repository contract ────────────────────────
+  // ── the REAL repository contract ────────────────────────
   // `Repository.findFirst` never returns null: on no match it THROWS
   // `DataNotFoundException` (packages/domains/src/common/repository.ts). The
   // earlier tests mocked the null-return that the real seam does not have,

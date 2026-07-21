@@ -111,19 +111,19 @@ export interface StreamingTranscriptMessage {
   /** Whether this is a finalized segment */
   isFinal: boolean;
   /**
-   * TASK-351 P1-1 — committed-prefix length of `text` on partial results
+   * Committed-prefix length of `text` on partial results
    * (stt-v2 local-agreement gate). Absent on finals and on older stt-v2
    * workers that don't emit the field.
    */
   stableChars?: number;
   /**
-   * TASK-351 P1-1 follow-up — utterance ordinal stamped by stt-v2 on every
+   * Utterance ordinal stamped by stt-v2 on every
    * segment result; gloss results carry the same index as the final they
    * translate. Absent on older workers.
    */
   utteranceIndex?: number;
   /**
-   * TASK-351 P1-1 follow-up — result kind from the wire `type` field:
+   * Result kind from the wire `type` field:
    * 'segment' (default; absence means segment) or 'gloss' (a post-final
    * English translation carrying `englishText`).
    */
@@ -133,7 +133,7 @@ export interface StreamingTranscriptMessage {
   /** Speaker identifier from diarization, if available */
   speakerId?: string;
   /**
-   * TASK-489 — human-readable speaker label derived ONCE from `speakerId` by
+   * Human-readable speaker label derived ONCE from `speakerId` by
    * the streaming bridge ({@link deriveSpeakerLabel}). Anonymous (`"Speaker 0"`
    * / `"Unknown speaker"`) — never a raw clinician/patient name. Consumers
    * render this and fall back to `speakerId`; they do NOT re-derive it.

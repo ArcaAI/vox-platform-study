@@ -7,7 +7,7 @@ import { RateLimitSettingsService } from './rate-limit-settings.service';
 import { RateLimitAdminService } from './rate-limit-admin.service';
 
 /**
- * TASK-316 — provides the DB-backed rate-limit read accessor and admin write
+ * Provides the DB-backed rate-limit read accessor and admin write
  * service.
  *
  * `CommonServiceModule` exposes `IAppSettingsService` (the cached read path);

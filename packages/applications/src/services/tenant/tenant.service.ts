@@ -34,14 +34,14 @@ import { GLOBAL_TENANT_KEY, GLOBAL_ADMIN_ROLE, isUuidIdentifier } from './consta
 import { DEFAULT_GEN_DEPARTMENT } from './departmentDefaults';
 import { scrubLockedForAudit } from './scrubbing';
 import { generateUniqueTenantKey } from './tenantKey';
-// TASK-392 (Q8) — plan → model clone-subset. Imported from the specific file
+// Plan → model clone-subset. Imported from the specific file
 // (not the entitlements barrel) to avoid pulling the request-scoped
 // EntitlementsService and creating a module import cycle.
 import { modelAllowedForTier, modelTierForPlan } from '../entitlements/model-access';
 
 /**
  * Reserved system tenant that owns the platform-wide AI model catalog (the
- * master template cloned into every customer tenant — TASK-356 D-5). Declared
+ * master template cloned into every customer tenant). Declared
  * as a local literal rather than a cross-package import, mirroring the
  * precedent in `userPreferences.service.ts` and the duplicate literal in the
  * `tenant-scope` Prisma extension.
@@ -49,7 +49,7 @@ import { modelAllowedForTier, modelTierForPlan } from '../entitlements/model-acc
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 /**
- * TASK-406 (P2-6c) — model-aware filter coercion (TASK-375 §8 scheme): coerces
+ * Model-aware filter coercion: coerces
  * stringly-typed CSV `filters` values to the Tenant columns' real types before
  * the `where` reaches Prisma (`version` → number, `trialEndsAt`/`createdAt` →
  * Date, `plan`/`resourceStatus` → member-validated enums, `metaData` →
@@ -78,11 +78,11 @@ export class TenantService extends BaseService implements ITenantService {
     private readonly tenantBucketService: ITenantBucketService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // TASK-356 Phase 1 (D-5) — appended last so existing positional callers
+    // Appended last so existing positional callers
     // (and tests) stay append-only. Used to clone the SYSTEM AiModel catalog
     // into each new tenant.
     private readonly aiModelRepository: AiModelRepository,
-    // TASK-356 Phase 2 (D — extend_clone) — appended last (append-only). Used
+    // Appended last (append-only). Used
     // to clone the SYSTEM default ASR pipeline's current version into each new
     // tenant alongside the pipeline itself.
     private readonly asrPipelineVersionRepository: AsrPipelineVersionRepository,
@@ -97,7 +97,7 @@ export class TenantService extends BaseService implements ITenantService {
    * @throws InternalServerErrorException if tenant creation fails
    */
   async create(request: CreateTenantRequest): Promise<TenantEntity> {
-    // TASK-497 D3 — auto-generate the key from `name` when the caller omits
+    // Auto-generate the key from `name` when the caller omits
     // it; an explicit `key` (global-admin override) is used as-is (already
     // format/reserved-validated by the DTO).
     const key = request.key ?? (await generateUniqueTenantKey(request.name, (candidate) => this.tenantKeyExists(candidate)));
@@ -105,10 +105,10 @@ export class TenantService extends BaseService implements ITenantService {
     const newTenant = TenantFactory.CreateTenant({
       ...request,
       key,
-      // TASK-497 D2 — new tenants default to STARTER (overridable via
-      // `request.plan`), replacing the prior TASK-392 TRIAL default. TRIAL
+      // New tenants default to STARTER (overridable via
+      // `request.plan`). TRIAL
       // remains a selectable plan and keeps its 7-day PRO-entitled trial
-      // clock in the factory. Enforcement ships OFF (Q9), so this is
+      // clock in the factory. Enforcement ships OFF, so this is
       // display-only until the kill-switch is flipped per-env.
       plan: request.plan ?? TenantPlan.STARTER,
       createdBy: this.requestUser?.id,
@@ -120,10 +120,10 @@ export class TenantService extends BaseService implements ITenantService {
       throw new InternalServerErrorException(`Failed to create TenantEntity: ${request}`);
     }
 
-    // TASK-503 — tenant creation is a cross-tenant, global-admin operation:
+    // Tenant creation is a cross-tenant, global-admin operation:
     // CLS `tenantId` is empty for the whole call (the new tenant isn't
     // "active" yet), so `broadcastSysEvent()`'s CLS-only attribution
-    // (anti-spoofing, TASK-306 AC-10) would stamp every provisioning event
+    // (anti-spoofing) would stamp every provisioning event
     // below with `tenantId: null`. Rebind CLS to the tenant this call is
     // legitimately provisioning, request-scoped, before the first broadcast.
     this.clsService.set('tenantId', tenant.id);
@@ -145,7 +145,7 @@ export class TenantService extends BaseService implements ITenantService {
     }
 
     try {
-      // TASK-497 D4 — write the plan's storageQuotaBytes onto the primary
+      // Write the plan's storageQuotaBytes onto the primary
       // system bucket now that buckets exist.
       await this.tenantBucketService.applyPlanStorageQuota(tenant.id, tenant.plan ?? null);
     } catch (error) {
@@ -177,7 +177,7 @@ export class TenantService extends BaseService implements ITenantService {
     }
 
     try {
-      // TASK-392 (Q8) — clone only the plan-appropriate model subset.
+      // Clone only the plan-appropriate model subset.
       await this.provisionTenantModelCatalog(tenant.id, tenant.plan ?? null);
     } catch (error) {
       this.logger.warn({
@@ -203,7 +203,7 @@ export class TenantService extends BaseService implements ITenantService {
   /**
    * Clones every `AiModel` row from the master `SYSTEM_TENANT_ID` catalog into
    * the newly created tenant so each tenant owns an editable copy of the
-   * platform catalog (TASK-356 D-5). Composes with the `GlobalSetting` clone
+   * platform catalog. Composes with the `GlobalSetting` clone
    * (`provisionTenantConfigs`) as an independent provisioning step.
    *
    * Behaviour mirrors `provisionTenantConfigs`:
@@ -223,7 +223,7 @@ export class TenantService extends BaseService implements ITenantService {
       where: { tenantId: SYSTEM_TENANT_ID },
     });
 
-    // TASK-392 (Q8) — clone only the plan-appropriate SUBSET. Untagged catalog
+    // Clone only the plan-appropriate SUBSET. Untagged catalog
     // rows clone into every tier, so this is a no-op for today's (untagged)
     // seed; ops opt models into higher tiers with a `tier:<full|full_custom>`
     // tag. A null plan (ungated/system) resolves to the full catalog.
@@ -254,10 +254,10 @@ export class TenantService extends BaseService implements ITenantService {
           sourceUri: src.sourceUri,
           sourceRevision: src.sourceRevision ?? undefined,
           format: src.format,
-          // TASK-506 (r2605 Finding C) — carry the registry columns through the
+          // Carry the registry columns through the
           // clone; dropping them left every new tenant with NULL-provider
-          // clones that SHADOW the SYSTEM values in the TASK-506 resolvers
-          // (same defect the seed backfill already fixed).
+          // clones that SHADOW the SYSTEM values in the runtime-provider
+          // resolvers (same defect the seed backfill already fixed).
           provider: src.provider ?? undefined,
           architecture: src.architecture ?? undefined,
           metaData: src.metaData ?? undefined,
@@ -292,9 +292,9 @@ export class TenantService extends BaseService implements ITenantService {
   /**
    * Clones EVERY enabled SYSTEM `AsrPipeline` (plus each one's current
    * `AsrPipelineVersion`) into the newly created tenant, so a new tenant owns
-   * the SAME pipeline catalog as SYSTEM — full parity (TASK-505/356 policy,
-   * owner directive 2026-07-17). This generalizes the original TASK-356 Phase 2
-   * single-default clone; mirroring `provisionTenantModelCatalog`, which already
+   * the SAME pipeline catalog as SYSTEM — full parity by policy. This
+   * generalizes an earlier single-default-only clone; mirroring
+   * `provisionTenantModelCatalog`, which already
    * clones the whole SYSTEM AiModel catalog. Composes as an independent
    * provisioning step.
    *
@@ -307,7 +307,7 @@ export class TenantService extends BaseService implements ITenantService {
    *    copies the source's *current* version (newest by `versionNumber`) as the
    *    clone's v1; when a source has no version rows, v1 is synthesized from the
    *    pipeline-level `configYaml`.
-   *  - TASK-531: stamps template lineage on every clone — `sourceTemplateSlug`
+   *  - Stamps template lineage on every clone — `sourceTemplateSlug`
    *    (the SYSTEM template it descends from) and `templateLocked: true`, which
    *    makes the copy read-only for content edits/delete. Tenant admins clone a
    *    copy to customize it; enable/disable and set-default stay available.
@@ -344,10 +344,10 @@ export class TenantService extends BaseService implements ITenantService {
           description: source.description ?? undefined,
           configYaml: source.configYaml,
           tags: source.tags,
-          // TASK-531 — the clone IS a template copy: it records which SYSTEM
+          // The clone IS a template copy: it records which SYSTEM
           // template it descends from and starts LOCKED, so the tenant admin
-          // clones it to customize rather than editing it in place (owner
-          // expectation E4). `PipelineService.update/delete` enforce the lock.
+          // clones it to customize rather than editing it in place.
+          // `PipelineService.update/delete` enforce the lock.
           sourceTemplateSlug: source.slug,
           templateLocked: true,
           createdBy: this.requestUser?.id,
@@ -398,7 +398,7 @@ export class TenantService extends BaseService implements ITenantService {
 
   /**
    * Provisions a default General Practice (`GEN`) department for a newly
-   * created tenant so its first admin can satisfy the TASK-305 Phase F login
+   * created tenant so its first admin can satisfy the login
    * invariant (an ENABLED role AND an ENABLED department in the tenant).
    *
    * The department is built from the local `DEFAULT_GEN_DEPARTMENT` template
@@ -519,7 +519,7 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * TASK-497 D3 — existence probe for `generateUniqueTenantKey`. `findFirst`
+   * Existence probe for `generateUniqueTenantKey`. `findFirst`
    * throws `DataNotFoundException` on a miss in production; treated the same
    * as a falsy resolved value (test-double convention) — both mean "free".
    */
@@ -649,7 +649,7 @@ export class TenantService extends BaseService implements ITenantService {
   /**
    * Fetches a tenant by ID.
    *
-   * TASK-306 P1.3 (audit H-3 / NEW-6 / AC-3) — short-circuits with
+   * Short-circuits with
    * `NotFoundException` when the resolved row's id does not match the
    * CLS-supplied caller `tenantId`, except for GLOBAL_ADMIN callers, who
    * remain authorized for cross-tenant reads (admin UI tenant pickers).
@@ -677,7 +677,7 @@ export class TenantService extends BaseService implements ITenantService {
   /**
    * Fetches a tenant by code-name (`key`).
    *
-   * TASK-306 P1.3 (audit H-3 / NEW-6 / AC-3) — mirrors the `fetchById`
+   * Mirrors the `fetchById`
    * tenant-scope guard so a caller cannot enumerate another tenant by
    * code-name. GLOBAL_ADMIN callers retain the cross-tenant bypass.
    *
@@ -710,14 +710,14 @@ export class TenantService extends BaseService implements ITenantService {
    * @param id - The tenant ID
    * @param request - The update request containing changes (including
    *   the mandatory `expectedVersion` carried from the prior GET — see
-   *   TASK-302 Stream D Phase E.1 / `UpdateTenantRequest`).
+   *   `UpdateTenantRequest`).
    * @returns Promise resolving to the updated tenant
    * @throws ArgumentInvalidException if no changes are detected
    * @throws OptimisticConcurrencyException if the row's `_version` drifted
    *   under us (CAS predicate matched zero rows). The HTTP layer renders
    *   this as `412 Precondition Failed` via the Phase D ExceptionFilter.
    *
-   * @see TASK-302 Stream D Phase E.1 — Tenant OCC migration
+   * @see Tenant OCC migration
    */
   async update(id: EntityId, request: UpdateTenantRequest): Promise<TenantEntity> {
     const tenant = await this.tenantRepository.findById(id);
@@ -737,10 +737,10 @@ export class TenantService extends BaseService implements ITenantService {
     // Snapshot the row's pre-write version BEFORE the CAS bumps it. After
     // `updateWithVersion` returns, `tenant.version` (round-tripped from the
     // DB) will already be the new version. Mirrors the pattern used by
-    // `updateTenantConfigs` after C.8.
+    // `updateTenantConfigs`.
     const previousVersion = tenant.version;
 
-    // TASK-302 Stream D Phase E.1 — Compare-And-Set against `_version`.
+    // Compare-And-Set against `_version`.
     // The repository wraps `prisma.tenant.updateMany` in a predicate that
     // requires `_version === expectedVersion`; a mismatch surfaces as
     // `OptimisticConcurrencyException`. We deliberately drop the legacy
@@ -752,7 +752,7 @@ export class TenantService extends BaseService implements ITenantService {
       data: {
         ...tenant.changes,
         // Carry the version transition so audit consumers can correlate the
-        // change with the row's prior state (same shape as C.8).
+        // change with the row's prior state.
         previousVersion,
         newVersion: updatedTenant.version,
       },
@@ -764,7 +764,7 @@ export class TenantService extends BaseService implements ITenantService {
   /**
    * Soft deletes a tenant by ID.
    *
-   * TASK-387 (#1 / DEF-ADM-002) — the reserved system/default tenant is loaded
+   * (#1 / DEF-ADM-002) — the reserved system/default tenant is loaded
    * first and blocked from deletion so an operator cannot soft-delete the
    * platform's `__GLOBAL__` (or `SYSTEM_TENANT_ID`) row.
    *
@@ -785,7 +785,7 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * TASK-387 (#1 / DEF-ADM-002) — blocks lifecycle mutations against the
+   * (#1 / DEF-ADM-002) — blocks lifecycle mutations against the
    * reserved system tenant. The system tenant is identified either by its
    * `key` equal to `__GLOBAL__` (compared case-insensitively, mirroring the
    * DEF-ADM-001 key protection) or by the reserved `SYSTEM_TENANT_ID`.
@@ -798,7 +798,7 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * TASK-387 (#1 / F6) — moves a tenant to `SUSPENDED` (reversible operator
+   * Moves a tenant to `SUSPENDED` (reversible operator
    * hold). Blocked on the system tenant. Non-OCC operator transition.
    */
   async suspend(id: EntityId): Promise<TenantEntity> {
@@ -806,7 +806,7 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * TASK-387 (#1 / F6) — moves a tenant to `ARCHIVED` (recoverable cold state).
+   * Moves a tenant to `ARCHIVED` (recoverable cold state).
    * Blocked on the system tenant. Non-OCC operator transition.
    */
   async archive(id: EntityId): Promise<TenantEntity> {
@@ -814,7 +814,7 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * TASK-387 (#1 / F6) — restores a suspended/archived tenant back to
+   * Restores a suspended/archived tenant back to
    * `ENABLED`. Restore is always permitted (a system tenant should never be in
    * a non-enabled state, but restoring it is harmless).
    */
@@ -850,7 +850,7 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * TASK-387 (#2 / F9) — replaces the tenant's full tag set. Non-OCC set
+   * Replaces the tenant's full tag set. Non-OCC set
    * semantics (idempotent). Reuses the existing `Tenant.tags` scalar.
    */
   async setTags(id: EntityId, tags: string[]): Promise<TenantEntity> {
@@ -907,12 +907,12 @@ export class TenantService extends BaseService implements ITenantService {
     const identifier = (tenantId ?? codeName) as string;
     const tenant = await this.resolveTenantByIdentifier(identifier);
 
-    // TASK-306 P2.2 (audit H-1 / AC-4) — caller-identity check. Non-GLOBAL_ADMIN
+    // Caller-identity check. Non-GLOBAL_ADMIN
     // callers are restricted to their CLS tenant; cross-tenant reads (including
     // codeName lookups that resolve to another tenant) short-circuit with
     // `NotFoundException` so the API does not leak the existence of foreign
     // tenants' config rows. GLOBAL_ADMIN retains the cross-tenant bypass for
-    // admin UI tenant pickers + platform-metadata flows (mirrors the W5.1.3
+    // admin UI tenant pickers + platform-metadata flows (mirrors the
     // `fetchById` / `fetchByCodeName` posture).
     if (tenant.id !== this.tenantId && !this.isSuperAdmin()) {
       throw new NotFoundException('Resource not found');
@@ -987,7 +987,7 @@ export class TenantService extends BaseService implements ITenantService {
       throw new ForbiddenException(`Tenant '${GLOBAL_TENANT_KEY}' holds system defaults and can only be modified by ${GLOBAL_ADMIN_ROLE} users.`);
     }
 
-    // TASK-302 Stream D Phase C (C.4) — all-or-nothing via Prisma's
+    // All-or-nothing via Prisma's
     // interactive transaction. Each per-row CAS is issued through the
     // tx client; if any row's `_version` drifted (or any other failure
     // bubbles out of the callback) the SQL transaction is automatically
@@ -1002,11 +1002,11 @@ export class TenantService extends BaseService implements ITenantService {
     // the tx client — i.e., the existing UoW pattern is non-functional.
     // Using `databaseService.baseClient.$transaction(callback)` directly
     // is the canonical Prisma idiom and delivers actual atomicity.
-    // TASK-302 Stream D Phase C (C.8) — snapshot each row's `_version`
+    // Snapshot each row's `_version`
     // BEFORE the CAS so the post-write audit-log SysEvent can carry the
     // exact transition (previousVersion -> newVersion). Investigators then
     // reconstruct history via `metadata->>'newVersion'` without re-deriving
-    // from timestamps (Research §7). Index aligns with `results` below.
+    // from timestamps. Index aligns with `results` below.
     const previousVersions: number[] = [];
 
     const updatedConfigs: GlobalSettingEntity[] = await this.databaseService.baseClient.$transaction(async (tx) => {
@@ -1030,7 +1030,7 @@ export class TenantService extends BaseService implements ITenantService {
           await this.validateProviderModel(existingConfig.key, config.value, tenant.id);
         }
 
-        // Phase 0 Item 2 (TASK-302 Stream A) — explicit allowlist.
+        // Explicit allowlist.
         // NEVER spread `config` directly into `updateEntity`: that path
         // assigns every key on the entity (mass-assignment) and lets a
         // caller smuggle `key`, `tenantId`, `locked`, `defaultValue` into
@@ -1045,7 +1045,7 @@ export class TenantService extends BaseService implements ITenantService {
         }
         this.updateEntity(existingConfig, changes);
 
-        // C.8 — snapshot the pre-write version BEFORE the CAS bumps the
+        // Snapshot the pre-write version BEFORE the CAS bumps the
         // entity's `_version`. The repo round-trips the bumped version,
         // so reading `existingConfig.version` AFTER the CAS would emit
         // `previousVersion === newVersion` and break audit correlation.
@@ -1057,10 +1057,10 @@ export class TenantService extends BaseService implements ITenantService {
           continue;
         }
 
-        // TASK-302 Stream D Phase C (C.3) — Compare-And-Set against `_version`.
+        // Compare-And-Set against `_version`.
         // The `OptimisticConcurrencyException` propagates straight out of
-        // the callback, aborting the outer `$transaction` (C.4 atomicity).
-        // The HTTP layer (Phase D ExceptionFilter) renders `412 Precondition
+        // the callback, aborting the outer `$transaction` atomically.
+        // The HTTP layer's ExceptionFilter renders `412 Precondition
         // Failed` with `{ currentVersion, yourVersion }`.
         const updatedConfig = await this.globalSettingRepository.updateWithVersion(existingConfig.id, existingConfig, config.expectedVersion, tx);
 
@@ -1074,11 +1074,11 @@ export class TenantService extends BaseService implements ITenantService {
       return results;
     });
 
-    // Phase 0 Item 4 (TASK-302 Stream A) — scrub @Secret fields when locked.
+    // Scrub @Secret fields when locked.
     // Per-entity decision: a mixed batch emits a partially-scrubbed array.
-    // C.4 — broadcast lives OUTSIDE the transaction so a rolled-back batch
+    // Broadcast lives OUTSIDE the transaction so a rolled-back batch
     // produces no `Resource.Updated` audit entry.
-    // C.8 — carry the per-row version transition so audit consumers can
+    // Carry the per-row version transition so audit consumers can
     // correlate the change with the row's prior state. Merging happens AFTER
     // `scrubLockedForAudit` so the (potentially frozen) scrubbed object's
     // metadata fields are appended via spread, not in-place mutation.
@@ -1102,7 +1102,7 @@ export class TenantService extends BaseService implements ITenantService {
   /**
    * Get usage statistics for a tenant.
    *
-   * TASK-386 (#4 / #5 / E5) — extended beyond the original four counts with the
+   * Extended beyond a basic user/department/prompt-template count with the
    * storage + clinical roll-ups the Tenant Detail "Overview"/"Storage" tiles
    * need. All aggregates read `databaseService.client` directly (house
    * precedent) and are scoped by the explicit `tenantId` argument:
@@ -1184,7 +1184,7 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * TASK-338 — reusable provider/model validation shared by the SMR and
+   * Reusable provider/model validation shared by the SMR and
    * Guardrail engines (generalised from the original `validateSmrConfigValue`).
    *
    * When a `default-*-provider` / `default-*-model` setting is updated, the new
@@ -1290,22 +1290,22 @@ export class TenantService extends BaseService implements ITenantService {
     return providerSetting?.value?.trim() || 'lm-studio';
   }
 
-  /** SMR provider/model catalog for this tenant (TASK-240). */
+  /** SMR provider/model catalog for this tenant. */
   private loadSmrCatalog(tenantId: string) {
     return this.loadCatalog(tenantId, 'smr-provider-models');
   }
 
-  /** Currently-selected SMR provider for this tenant (TASK-240). */
+  /** Currently-selected SMR provider for this tenant. */
   private getCurrentSmrProvider(tenantId: string) {
     return this.getCurrentProvider(tenantId, 'default-smr-provider');
   }
 
-  /** Guardrail provider/model catalog for this tenant (TASK-338). */
+  /** Guardrail provider/model catalog for this tenant. */
   private loadGuardrailCatalog(tenantId: string) {
     return this.loadCatalog(tenantId, 'guardrail-provider-models');
   }
 
-  /** Currently-selected Guardrail provider for this tenant (TASK-338). */
+  /** Currently-selected Guardrail provider for this tenant. */
   private getCurrentGuardrailProvider(tenantId: string) {
     return this.getCurrentProvider(tenantId, 'default-guardrail-provider');
   }

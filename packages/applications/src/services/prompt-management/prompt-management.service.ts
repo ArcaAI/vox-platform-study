@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-// TASK-389 #14 (AG8/A3) — server-side prompt-version diff. Same `diff` (jsdiff)
+// Server-side prompt-version diff. Same `diff` (jsdiff)
 // engine the SDK used client-side, so the combined line diff is byte-identical.
 import { diffLines, createPatch } from 'diff';
 import { encryptPhiFields } from '../../common';
@@ -50,8 +50,8 @@ import { SecretsService } from '../baseServices/_meta/secrets';
 import { HarnessPolicyService } from '../harness-policy/harness-policy.service';
 import { IDepartmentService } from '../department/IDepartmentService';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
-// TASK-356 Phase 6 (S2) — the doctor self-service "set my preferred template"
-// write delegates to the existing UserProfile upsert (which Phase 5 reads back).
+// The doctor self-service "set my preferred template"
+// write delegates to the existing UserProfile upsert (which is read back for resolution).
 import { IUserProfileService } from '../user/userProfile/IUserProfileService';
 import { DepartmentResponse } from '../department/dto';
 import { BaseService } from '../../common';
@@ -61,7 +61,7 @@ import { IActiveUserContext } from '../../interfaces';
 const SCOPE_TENANT_DEFAULT = 'TENANT_DEFAULT';
 const SCOPE_USER_PERSONAL = 'USER_PERSONAL';
 
-// TASK-328 A4 — word count at which a generated test output earns the full
+// Word count at which a generated test output earns the full
 // quality score. The score is a deterministic, testable proxy for "did the
 // template produce a substantive response", not a semantic judgement.
 const FULL_SCORE_WORD_COUNT = 50;
@@ -70,7 +70,7 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// TASK-331 doc-02 F8 — deterministic output-quality rubric helpers. Kept as
+// Deterministic output-quality rubric helpers. Kept as
 // pure module functions so they are trivially unit-testable in isolation.
 
 /** Context the `scoreOutput` rubric branches on (a slice of the template). */
@@ -142,26 +142,25 @@ export class PromptManagementService extends BaseService implements IPromptManag
     @Inject(IDepartmentService) private readonly departmentService: IDepartmentService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // CC-01 — `baseClient.$transaction(callback)` is the canonical Prisma-7
-    // atomic idiom in this codebase (see TenantService TASK-302 D.4 /
-    // UserService TASK-331 r2605 #3). Required so the version-history insert
+    // `baseClient.$transaction(callback)` is the canonical Prisma-7
+    // atomic idiom in this codebase. Required so the version-history insert
     // and the OCC compare-and-set commit (or roll back) together.
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
-    // TASK-328 A4 — SMR/text-generation client (mirrors SummaryService). These
+    // SMR/text-generation client (mirrors SummaryService). These
     // are @Optional() so existing unit-test fixtures that construct the service
     // directly without the SMR deps keep compiling; the live API always wires
     // HttpModule + ConfigModule via PromptManagementServiceModule.
     @Optional() private readonly httpService?: HttpService,
     @Optional() private readonly configService?: ConfigService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // TASK-356 D-7 — resolver for the tenant's effective SMR {provider, model}.
+    // Resolver for the tenant's effective SMR {provider, model}.
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
-    // TASK-356 Phase 6 (S2) — doctor self-service "set my preferred template"
-    // delegates the WRITE to the existing UserProfile upsert (Phase 5 reads it
-    // back). Optional + trailing so existing positional unit fixtures keep their
-    // arity; production DI supplies it via UserProfileServiceModule.
+    // Doctor self-service "set my preferred template"
+    // delegates the WRITE to the existing UserProfile upsert (which resolution
+    // reads back). Optional + trailing so existing positional unit fixtures keep
+    // their arity; production DI supplies it via UserProfileServiceModule.
     @Optional() @Inject(IUserProfileService) private readonly userProfileService?: IUserProfileService,
-    // TASK-392 (Phase 3, C4) — optional (append-only DI); enforces the plan
+    // Optional (append-only DI); enforces the plan
     // `maxPromptTemplates` quota on the create paths (kill-switch-gated, no-op OFF).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
   ) {
@@ -170,11 +169,11 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
-   * TASK-392 (Phase 3, C4) — shared quota precheck for both create paths. The
+   * Shared quota precheck for both create paths. The
    * plan `maxPromptTemplates` count spans ALL of a tenant's templates
    * (tenant-default + personal), matching the usage snapshot in
-   * `EntitlementsService.getCapabilities`. Kill-switch-gated (Q9) so the COUNT
-   * only runs when enforcement is ON; a no-op for unlimited/ungated tenants (Q3).
+   * `EntitlementsService.getCapabilities`. Kill-switch-gated so the COUNT
+   * only runs when enforcement is ON; a no-op for unlimited/ungated tenants.
    */
   private async assertPromptTemplateQuota(tenantId: string): Promise<void> {
     if (!this.entitlements?.isEnforcementEnabled()) return;
@@ -185,7 +184,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
   private readonly logger = new Logger(PromptManagementService.name);
 
   /**
-   * TASK-369 — encrypt PHI on write through the shared env-gated guard: a soft
+   * Encrypt PHI on write through the shared env-gated guard: a soft
    * no-op in dev/test (SECRETS_PROVIDER!=vault) but FAIL-CLOSED (throws) in
    * staging/prod (SECRETS_PROVIDER=vault) instead of persisting plaintext-only.
    */
@@ -205,7 +204,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     const existing = await this.promptTemplateRepository.findByName(tenantId, dto.name);
     if (existing) throw new BadRequestException(`Prompt template with name '${dto.name}' already exists`);
 
-    // TASK-388 #12 — resolve the requested scope + owner. Default stays
+    // Resolve the requested scope + owner. Default stays
     // TENANT_DEFAULT. USER_PERSONAL provisions a personal prompt owned by
     // `ownerUserId` (an in-tenant user, surfaced by the admin UI; falls back to
     // the caller when omitted). `ownerUserId` is meaningless for the shared
@@ -229,7 +228,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
       description: dto.description ?? null,
       content: dto.content,
       category: dto.category,
-      // TASK-331 doc-02 F5 — persist the publication status (defaults DRAFT).
+      // Persist the publication status (defaults DRAFT).
       status: dto.status ?? 'DRAFT',
       variables: dto.variables ?? null,
       departmentId: dto.departmentId ?? null,
@@ -307,7 +306,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
   /**
    * Update a prompt template.
    *
-   * TASK-302 Stream D Phase E.3 — write path is now Compare-And-Set
+   * Write path is now Compare-And-Set
    * against the row's `_version` column. The `expectedVersion` carried
    * on the DTO is the CAS predicate input. The `@RequiresIfMatch()`
    * HTTP route folds the `If-Match` header value over the body-field
@@ -349,7 +348,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
       }
     }
 
-    // TASK-331 doc-02 F5 — a publication-status change is a mutating edit (it does
+    // A publication-status change is a mutating edit (it does
     // NOT spawn a new PromptVersion snapshot, but it marks the row dirty so the
     // OCC write proceeds). Set it before the `hasChanges` gate below.
     if (dto.status !== undefined) {
@@ -360,13 +359,13 @@ export class PromptManagementService extends BaseService implements IPromptManag
       throw new ArgumentInvalidException('No changes to write to.');
     }
 
-    // Snapshot pre-write `_version` BEFORE the CAS bumps it (audit
-    // correlation mirrors C.8 / E.1 / E.2).
+    // Snapshot pre-write `_version` BEFORE the CAS bumps it, for
+    // audit correlation.
     const previousVersion = template.version;
 
-    // CC-01 — the version-history insert and the OCC Compare-And-Set now run
-    // inside a SINGLE interactive transaction (canonical Prisma-7 idiom, see
-    // TenantService TASK-302 D.4). The next versionNumber is `max(existing) + 1`
+    // The version-history insert and the OCC Compare-And-Set run
+    // inside a SINGLE interactive transaction (canonical Prisma-7 idiom). The
+    // next versionNumber is `max(existing) + 1`
     // queried via the tx client — NOT `currentVersionNumber + 1` — so a lagging
     // counter or an orphaned history row cannot recompute an existing
     // versionNumber and trip the `(promptTemplateId, versionNumber)` unique
@@ -468,7 +467,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     const template = await this.promptTemplateRepository.findById(id);
     if (!template) return null;
     if (this.tenantId && template.tenantId !== this.tenantId) return null;
-    // TASK-388 #12 — a USER_PERSONAL prompt is readable by its owner OR by an
+    // A USER_PERSONAL prompt is readable by its owner OR by an
     // admin holding `manage:PromptTemplate` (tenant-scoped, so the cross-tenant
     // guard above already confines an admin to their own tenant). Non-owner,
     // non-admin callers are denied (null — no existence leak), preserving the
@@ -495,7 +494,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     if (filters?.category) qb.Where({ category: filters.category });
     if (filters?.status) qb.Where({ status: filters.status });
     if (filters?.departmentId) qb.Where({ departmentId: filters.departmentId });
-    // TASK-388 #12 — admin scope/owner narrowing (e.g. list a user's personal prompts).
+    // Admin scope/owner narrowing (e.g. list a user's personal prompts).
     if (filters?.scope) qb.Where({ scope: filters.scope });
     if (filters?.ownerUserId) qb.Where({ ownerUserId: filters.ownerUserId });
     if (filters?.search) qb.Where({ name: { contains: filters.search, mode: 'insensitive' } });
@@ -506,7 +505,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
-   * TASK-328 A4 — repository-level pagination for the admin list.
+   * Repository-level pagination for the admin list.
    *
    * The filtered count and the page slice are resolved in the repository
    * (`countWhere` + `findPaginated`) so we no longer materialize the full
@@ -524,7 +523,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     if (filters?.category) where.category = filters.category;
     if (filters?.status) where.status = filters.status;
     if (filters?.departmentId) where.departmentId = filters.departmentId;
-    // TASK-388 #12 — admin scope/owner narrowing folded into the paginated where.
+    // Admin scope/owner narrowing folded into the paginated where.
     if (filters?.scope) where.scope = filters.scope;
     if (filters?.ownerUserId) where.ownerUserId = filters.ownerUserId;
     if (filters?.search) where.name = { contains: filters.search, mode: 'insensitive' };
@@ -565,7 +564,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
-   * TASK-331 doc-09 — end-user readable templates for the calling clinician.
+   * End-user readable templates for the calling clinician.
    *
    * Serves the doctor-facing template selector WITHOUT the admin
    * `/admin/prompt-templates` plane or the `manage:PromptTemplate` ability.
@@ -582,7 +581,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
    *         OR ( scope = DEPARTMENT_DEFAULT AND status != DRAFT )
    *         OR ( scope = USER_PERSONAL      AND ownerUserId = caller ) )
    *
-   * CC-03 (TASK-336): the publication gate (`status != DRAFT`) applies only to
+   * The publication gate (`status != DRAFT`) applies only to
    * the shared DEFAULT scopes; personal overlays are never publication-gated.
    */
   async listAvailableForCaller(filters?: { category?: string }): Promise<PromptTemplateResponse[]> {
@@ -595,7 +594,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     qb.Where({ tenantId });
     qb.Where({ resourceStatus: ResourceStatusType.ENABLED });
     if (filters?.category) qb.Where({ category: filters.category });
-    // CC-03 (TASK-336) — enforce publication status on the clinician path: the
+    // Enforce publication status on the clinician path: the
     // shared tenant/department DEFAULT templates must be non-DRAFT so doctors
     // never consume an admin's in-progress draft. `{ not: 'DRAFT' }` is the safe
     // fallback — it keeps PUBLISHED plus any legacy/unset (NULL) rows visible,
@@ -624,7 +623,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
-   * TASK-389 #14 (AG8/A3) — compute a structured, field-level diff between two
+   * Compute a structured, field-level diff between two
    * versions of a prompt template SERVER-side (previously the SDK GET both
    * versions and diffed locally). Returns:
    *   - `fields[]`  — per-field (`content`, `variables`) line diffs, each
@@ -698,7 +697,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
-   * TASK-389 #14 — serialize a version's content + variables into one text blob
+   * Serialize a version's content + variables into one text blob
    * (mirrors the SDK's `serializeVersionForDiff`). When `variables` is absent
    * the blob is just the content, preserving the content-only diff behaviour.
    */
@@ -708,7 +707,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
-   * TASK-389 #14 — line-level diff (jsdiff `diffLines`) → the SDK `DiffResult`
+   * Line-level diff (jsdiff `diffLines`) → the SDK `DiffResult`
    * shape (changes/patch/stats), matching the SDK `computeDiff('lines')`.
    */
   private buildLineDiff(oldText: string, newText: string): { changes: PromptDiffChangeDto[]; patch: string; stats: PromptDiffStatsDto } {
@@ -740,7 +739,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
-   * TASK-328 A4 — run a prompt template against the SMR/text-generation
+   * Run a prompt template against the SMR/text-generation
    * service, score the output, and persist `lastTestScore/lastTestOutput/
    * lastTestAt` via a Compare-And-Set write (OCC parity with the PATCH route).
    *
@@ -769,7 +768,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     template.lastTestOutput = output;
     template.lastTestAt = testedAt;
 
-    // TASK-369 Phase 3C — encrypt the free-text test output into the ciphertext
+    // Encrypt the free-text test output into the ciphertext
     // column before the CAS persist (dual-write; plaintext retained for soak).
     await this.encryptBestEffort('PromptTemplate', () =>
       this.promptTemplateRepository.encryptFieldsIntoEntity(template, this.secretsService!),
@@ -794,7 +793,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
-   * TASK-328 A4 — tenant-scoped usage analytics for `PromptUsageRecord`,
+   * Tenant-scoped usage analytics for `PromptUsageRecord`,
    * grouped by department, doctor, and UTC day. An optional `promptTemplateId`
    * narrows the aggregation to a single template.
    */
@@ -815,7 +814,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
-   * TASK-407 — tenant-scoped raw `PromptUsageRecord` listing (newest first)
+   * Tenant-scoped raw `PromptUsageRecord` listing (newest first)
    * for the tenant-detail "Agent Jobs" surface. Complements the aggregated
    * `getUsageAnalytics` with the individual run rows. Read-only; the optional
    * `promptTemplateId` narrows to a single agent.
@@ -872,7 +871,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     return PromptManagementDtoMapper.toTemplateResponse(deleted);
   }
 
-  // ─── TASK-356 Phase 6 (S1/S2) — doctor self-service surface ──────────
+  // ─── doctor self-service surface ──────────
   //
   // These are the END-USER (non-admin) entry points. Unlike the admin
   // `updatePromptTemplate` / `softDeletePromptTemplate` (which also accept a
@@ -898,7 +897,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * the preference. A non-null id MUST be visible to the caller via
    * `listAvailableForCaller` (their own personal prompts + published defaults) —
    * this blocks preferring another doctor's personal/unpublished template. The
-   * write delegates to the existing `UserProfile` upsert that Phase 5 reads back.
+   * write delegates to the existing `UserProfile` upsert used for resolution.
    */
   async setPreferredPromptTemplate(templateId: string | null): Promise<PreferredPromptTemplateResponse> {
     const userId = this.requestUserId;
@@ -916,7 +915,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   async assignToDepartment(dto: AssignDepartmentPromptRequest): Promise<DepartmentResponse> {
-    // TASK-302 Stream D Phase E.2 — `updatePromptConfig` now enforces OCC,
+    // `updatePromptConfig` now enforces OCC,
     // so the caller MUST carry the Department row's `expectedVersion`.
     // Cross-service callers (e.g. the prompt-management UI) read the
     // Department first and echo back its version on this DTO.
@@ -928,7 +927,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     });
   }
 
-  // ─── TASK-328 A4 — prompt-test internals ─────────────────────────────
+  // ─── prompt-test internals ─────────────────────────────
 
   /**
    * Substitute `{{var}}` placeholders in the template content with the
@@ -959,7 +958,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     }
     try {
       const token = (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '';
-      // TASK-356 D-7 — admin prompt-test resolves the tenant's effective
+      // Admin prompt-test resolves the tenant's effective
       // {provider, model} via the policy cascade (parity with prod), since the SMR
       // gateway requires an explicit caller-supplied model (no in-gateway default).
       let provider: string | undefined;
@@ -979,7 +978,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
-   * TASK-331 doc-02 F8 — deterministic, testable output-quality proxy in
+   * Deterministic, testable output-quality proxy in
    * [0, 1] for a prompt test run.
    *
    * This is **not** a semantic or clinical judgement. The previous heuristic
@@ -1038,7 +1037,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     return { score: Math.round(raw * 100) / 100, metrics };
   }
 
-  // ─── Internal authorization helpers (TASK-294 DEF-C2) ────────────────
+  // ─── Internal authorization helpers ────────────────
 
   private assertOwnedByTenant(template: PromptTemplateEntity, id: string): void {
     const callerTenant = this.tenantId;
@@ -1065,7 +1064,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     return ability.can('manage', 'PromptTemplate');
   }
 
-  // ─── TASK-356 Phase 6 (S1) — strict ownership gate for self-service ───
+  // ─── strict ownership gate for self-service ───
   //
   // Fetches the row, hides cross-tenant rows behind NotFound (no existence
   // leak — mirrors `assertOwnedByTenant`), then requires the row be a

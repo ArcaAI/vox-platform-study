@@ -1,6 +1,6 @@
 """Reference-free atomic-fact verifier — a deterministic, model-cheap groundedness gate.
 
-TASK-481 (E2, SOTA S3-F2). A **second, deterministic** groundedness signal that runs
+A **second, deterministic** groundedness signal that runs
 **alongside** the LLM-``JudgeClient`` :mod:`~harness.sensors.inferential.groundedness`
 sensor (defense-in-depth) — it does **NOT** replace it. Where groundedness asks a
 non-deterministic LLM judge to entail each provenance ``citationsMap`` claim, this
@@ -188,7 +188,7 @@ class AtomicFactSensor:
         grounded: list[str] = []
         ungrounded: list[str] = []
         try:
-            # Sequential, in claim order -> byte-deterministic verdict (AC-2). The NLI is a
+            # Sequential, in claim order -> byte-deterministic verdict. The NLI is a
             # local/self-hosted call, so serial iteration is cheap and maximally reproducible.
             for claim in claims:
                 if await self._nli.entail(premise, claim):

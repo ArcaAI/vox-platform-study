@@ -1,4 +1,4 @@
-"""Streaming English gloss — opt-in translate pass (TASK-351 P2-3).
+"""Streaming English gloss — opt-in translate pass.
 
 Covers:
 - ``inference.streaming_english_gloss`` flag (DTO default + YAML parsing)
@@ -26,7 +26,7 @@ from stt_v2.streaming.schemas import SegmentResult
 
 
 def _bind_asr_dispatch(mgr):
-    """TASK-505 P1 — _make_asr_callable dispatches through registry adapters
+    """_make_asr_callable dispatches through registry adapters
     that call back into per-engine builder methods on the manager; bind the
     real ones onto MagicMock(spec=SessionManager) harnesses."""
     from stt_v2.streaming.session_manager import SessionManager

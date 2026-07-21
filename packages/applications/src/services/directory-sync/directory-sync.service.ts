@@ -10,7 +10,7 @@ export interface EnqueueSyncResult {
 }
 
 /**
- * TASK-498 P3 — admin-triggered directory pre-provisioning. Validates the
+ * Admin-triggered directory pre-provisioning. Validates the
  * provider row (tenant-owned, has a `directoryProvider` + sealed
  * `directoryCredentialsRef`) and enqueues a `SyncTenantDirectoryUsers` BullMQ
  * job; `DirectorySyncProcessor` does the actual paged pull + idempotent

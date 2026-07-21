@@ -1,4 +1,4 @@
-"""Tests for the document extraction endpoint (TASK-344 Workstream A2).
+"""Tests for the document extraction endpoint.
 
 The OCR engine is mocked — tests NEVER download RapidOCR models. PyMuPDF runs for
 real on a digitally-generated (text-layer) PDF to prove the no-OCR fast path, and

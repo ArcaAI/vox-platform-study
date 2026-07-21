@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 
 /**
- * Phase 0 Item 4 (TASK-302 Stream A) — field-level metadata marker.
+ * Field-level metadata marker.
  *
  * Apply `@Secret()` to an entity property whose value MUST be redacted
  * before crossing any audit-log boundary. The audit serializer

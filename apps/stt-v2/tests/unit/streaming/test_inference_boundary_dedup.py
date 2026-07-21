@@ -1,4 +1,4 @@
-"""Force-emit boundary word dedup (TASK-505 Phase 1).
+"""Force-emit boundary word dedup.
 
 The preprocessor's force-emit split carries overlap audio into the
 continuation utterance (120 ms smart split / 500 ms hard-split fallback), so
@@ -99,7 +99,7 @@ class TestForcedBoundaryDedup:
 
 
 class TestP1ReviewFixes:
-    """Regression locks for the Phase 1 adversarial-review findings."""
+    """Regression locks for adversarial-review findings."""
 
     def test_timestamp_trim_is_match_based_not_positional(self):
         # Raw timestamps can carry sanitizer-removed artifacts before the

@@ -35,7 +35,7 @@ interface VaultClientLike {
 }
 
 /**
- * VaultSecretsProvider configuration (TASK-302 Stream B).
+ * VaultSecretsProvider configuration.
  *
  * - `wrappedSecretId` is the canonical production path: a one-shot
  *   response-wrapped token unwrapped during `boot()`. The plaintext
@@ -60,8 +60,8 @@ export interface VaultProviderConfig {
   /** Transit key name (default 'hope-globalsetting'). */
   transitKey: string;
   /**
-   * Dedicated PHI Transit key name (default 'hope-phi'). Data Encryption
-   * Initiative Phase 3A: clinical free-text is encrypted under a SEPARATE key
+   * Dedicated PHI Transit key name (default 'hope-phi').
+   * Clinical free-text is encrypted under a SEPARATE key
    * from `transitKey` so rotation cadence and Transit policy blast radius are
    * independent from the secrets key. Optional so existing call sites and the
    * provider-construction tests keep their two-arg transit defaults; resolved
@@ -75,7 +75,7 @@ export interface VaultProviderConfig {
  * VaultSecretsProvider — ISecretsProvider implementation backed by
  * HashiCorp Vault's kv-v2 secrets engine.
  *
- * Phase 2B (TASK-302 Stream B). Boot flow:
+ * Boot flow:
  *   1. Construct client against VAULT_ADDR (no auth yet).
  *   2. boot(): optionally unwrap wrapped secret_id, then AppRole login,
  *      store the client_token on the client. After boot() the provider
@@ -93,7 +93,7 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
   private client: VaultClientLike;
   private booted = false;
 
-  // TASK-312 Phase B (B.1–B.4) — AppRole token self-renewal state. The pre-B
+  // (B.1–B.4) — AppRole token self-renewal state. The pre-B
   // build captured lease_duration/renewable from the login but never renewed,
   // so a prod pod's token expired at token_max_ttl and every read then 403'd.
   private tokenRenewTimer: ReturnType<typeof setTimeout> | null = null;
@@ -122,7 +122,7 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
     try {
       await this.doBoot();
     } catch (err: unknown) {
-      // Fail closed (Phase B B.7/B.8): one clear, secret-free FATAL line so a
+      // Fail closed: one clear, secret-free FATAL line so a
       // sealed/unreachable Vault aborts startup (k8s recycles the pod) instead
       // of surfacing a raw node-vault stack/body.
       throw this.bootFailure(err);
@@ -177,7 +177,7 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
     this.scheduleTokenRenewal(login.auth.lease_duration, login.auth.renewable);
   }
 
-  // ---------- AppRole token renewal (Phase B B.1–B.4) ----------
+  // ---------- AppRole token renewal ----------
   /**
    * Start the token self-renewal loop, mirroring VaultLeaseRenewer: renew at
    * 50% of the latest TTL, reschedule against the freshly-returned TTL, and on
@@ -258,7 +258,7 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
     return `${this.config.kvMount}/data/${this.config.kvPrefix}/${key}`;
   }
 
-  // ---------- transient-error retry (Phase B B.5/B.6) ----------
+  // ---------- transient-error retry ----------
   /** Total attempts (1 initial + retries) for a transient Vault read. */
   private static readonly RETRY_MAX_ATTEMPTS = 3;
 
@@ -407,10 +407,10 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
     }
   }
 
-  // ---------- transit (Phase 4 helpers) ----------
+  // ---------- transit helpers ----------
   /**
    * Resolved PHI Transit key name. Defaults to 'hope-phi' so PHI encryption
-   * works even when `VAULT_TRANSIT_KEY_PHI` is unset (Phase 3A requirement).
+   * works even when `VAULT_TRANSIT_KEY_PHI` is unset.
    */
   get phiTransitKey(): string {
     return this.config.transitKeyPhi ?? 'hope-phi';
@@ -446,7 +446,7 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
   }
 
   /**
-   * TASK-369 Phase 6 — Vault Transit BATCH decrypt. Decrypts many ciphertexts in
+   * Vault Transit BATCH decrypt. Decrypts many ciphertexts in
    * a single round-trip via Transit's `batch_input`/`batch_results`, returning
    * plaintext buffers in the SAME order as the input. Powers repository
    * decrypt-on-read for multi-row/list reads (one Vault call per result set
@@ -474,7 +474,7 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
     });
   }
 
-  // ---------- DB Secrets Engine (Phase 5 helper, available now for tests) ----------
+  // ---------- DB Secrets Engine ----------
   async issueDbCredential(role: string): Promise<{
     username: string;
     password: string;
@@ -500,7 +500,7 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
   }
 
   /**
-   * BUG-006 — renew a Vault DB-engine lease (`sys/leases/renew`) so the
+   * Renew a Vault DB-engine lease (`sys/leases/renew`) so the
    * dynamic PG user issued by issueDbCredential() survives past its
    * default_ttl without a pool rebuild. Called by VaultLeaseRenewer.
    */

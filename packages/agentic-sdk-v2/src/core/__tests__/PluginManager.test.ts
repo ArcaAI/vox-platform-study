@@ -989,7 +989,7 @@ describe('PluginManager', () => {
     });
 
     // =========================================================================
-    // TASK-464: forward the transcription pipeline's `audioDrop` event to the
+    // Forward the transcription pipeline's `audioDrop` event to the
     // consumer callback so the vox hook/store can surface a degraded signal.
     // =========================================================================
 

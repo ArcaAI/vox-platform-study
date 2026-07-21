@@ -5,7 +5,7 @@ import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { REQUIRES_IF_MATCH_KEY } from '../../../decorators';
 import { PromptTemplateController } from '../prompt-template.controller';
 
-// TASK-331 doc-09 — end-user (clinician) prompt-template plane.
+// End-user (clinician) prompt-template plane.
 // This controller is the doctor-facing counterpart to the admin
 // `PromptManagementController`. It must live OFF the `/admin/*` prefix and
 // require only `read:PromptTemplate` (the new clinician policy) so an
@@ -22,7 +22,7 @@ const fakeTemplate = {
 
 const createMockService = () => ({
     listAvailableForCaller: vi.fn(),
-    // TASK-356 Phase 6 (S1/S2) — doctor self-service surface.
+    // Doctor self-service surface.
     createPersonal: vi.fn(),
     updatePersonal: vi.fn(),
     deletePersonal: vi.fn(),
@@ -83,7 +83,7 @@ describe('PromptTemplateController (TASK-331 doc-09 — end-user plane)', () => 
         });
     });
 
-    // ─── TASK-356 Phase 6 (S1/S2) — doctor self-service routes ───────────
+    // ─── Doctor self-service routes ───────────
     // These live on the END-USER plane (NOT /admin). Clinicians hold only
     // `read:PromptTemplate` (01-policy.ts), so every self-service route gates on
     // `read` and relies on the service's STRICT caller-ownership for real authz.

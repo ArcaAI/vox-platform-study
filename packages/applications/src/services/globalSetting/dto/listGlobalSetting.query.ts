@@ -4,7 +4,7 @@ import { IsBoolean, IsOptional } from 'class-validator';
 import { PaginatedQuery } from '../../../common/dto/paginated.query';
 
 /**
- * TASK-443 — the settings LIST query: the generic paginated/filter contract
+ * The settings LIST query: the generic paginated/filter contract
  * plus the bespoke `secretsOnly` facet. `isSecret` is DERIVED (encrypted value
  * OR `secrets` namespace OR convention-named key — see
  * `GlobalSettingDtoMapper.isSecretEntity`), not a column, so it cannot ride

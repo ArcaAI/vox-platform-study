@@ -1,5 +1,5 @@
 /**
- * WebhookController unit tests (TASK-419 item 2).
+ * WebhookController unit tests.
  *
  * CASL enforcement runs in the global UnifiedAuthGuard (e2e-covered); these
  * specs pin the controller's OWN contract: the `@Authorize` metadata tuples,

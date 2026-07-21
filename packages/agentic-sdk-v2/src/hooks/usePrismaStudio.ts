@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - usePrismaStudio Hook (TASK-403)
+ * @arcaai/vox - usePrismaStudio Hook
  *
  * Availability probe for the dev-only Prisma Studio shell. The Studio module
  * itself is conditionally registered (NODE_ENV=development +

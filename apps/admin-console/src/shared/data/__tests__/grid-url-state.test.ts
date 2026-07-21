@@ -92,7 +92,7 @@ describe('grid-url-state — toListParams (pagination / search / sort)', () => {
         // The grid's page index is 0-based (TanStack); the gateway list contract is
         // 1-based (`skip = (page - 1) * limit`). So page index 1 (the SECOND page)
         // must serialize to wire `page: 2` — otherwise the gateway computes skip 0
-        // and returns the first page again (TASK-423 pagination defect).
+        // and returns the first page again (pagination defect).
         expect(toListParams(offsetState({ pagination: { mode: 'offset', page: 1, limit: 50 }, globalSearch: '  sunrise  ' }))).toEqual({
             page: 2,
             limit: 50,

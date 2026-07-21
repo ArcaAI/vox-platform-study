@@ -1,6 +1,6 @@
-"""Per-call timeout + heartbeat tests for ``run_inferential_sensors`` (TASK-354, Defect A).
+"""Per-call timeout + heartbeat tests for ``run_inferential_sensors``.
 
-Defect A: a hung judge/guardian HTTP call burned the full 900 s ``start_to_close``
+A hung judge/guardian HTTP call burned the full 900 s ``start_to_close``
 before Temporal retried, ballooning SOAP-note latency. The fix bounds EACH model call
 at a per-call wall-clock timeout (``HARNESS_LLM_REQUEST_TIMEOUT_S``); a timed-out call
 is transient (retried within the endpoint budget) and, once exhausted, the OWNING
@@ -251,7 +251,7 @@ class _StubNli:
 
 
 class TestAtomicFactWiring:
-    """TASK-481 (E2) — the DETERMINISTIC atomic-fact verifier runs ALONGSIDE the judge
+    """The DETERMINISTIC atomic-fact verifier runs ALONGSIDE the judge
     sensors inside ``run_inferential_sensors`` when ``HARNESS_ATOMIC_FACT_ENABLED`` is on.
 
     Wired as a fresh activity-side signal (read at runtime — no workflow command, replay-

@@ -1,10 +1,9 @@
 /**
- * TASK-406 — backend residuals of TASK-375 (P2-6) + TASK-376 (P2-7).
+ * Backend residuals (P2-6 filter validation + P2-7 recording fixture).
  *
- * AUTHORED-AND-DEFERRED: this spec was written as part of TASK-406 but NOT run
- * against the live stack in that ticket (the API stack was owned by a sibling
- * ticket during the wave); it is executed by the consolidated post-wave
- * verifier. See docs/implementation/TASK-406-Backend-Residuals-375-376/.
+ * AUTHORED-AND-DEFERRED: this spec was NOT run against the live stack when
+ * written (the API stack was owned by a sibling piece of work at the time);
+ * it is executed by the consolidated post-wave verifier.
  *
  * What it verifies:
  *
@@ -22,7 +21,7 @@
  *     (one of the six newly-registered models: Tenant/Media/Role/Tag/Webhook/
  *     Notification) coerces number filters and member-validates enum filters.
  *
- *  4. Recording-shaped audio fixture (P2-7a) — the TASK-376 seed's
+ *  4. Recording-shaped audio fixture (P2-7a) — the seeded media fixture's
  *     AUDIO_RECORDING container + AudioRecording row + WAV media surface
  *     through `GET /consultations/:id/recordings` with the seeded audio
  *     metadata. Read as the consultation's tenant-bound owner, which is
@@ -39,7 +38,7 @@ interface Paginated<T> {
   page: number;
 }
 
-// TASK-376 media-seed fixture ids (see packages/applications/scripts/task-376-media-seed.ts).
+// Media-seed fixture ids (see packages/applications/scripts/task-376-media-seed.ts).
 const MEDIA_CONSULTATION_ID = process.env.E2E_CONSULTATION_ID ?? '90000000-0000-0000-0000-000000000376';
 const RECORDING_MEDIA_ID = '96000000-0000-0000-0000-000000000381';
 
@@ -114,8 +113,8 @@ test.describe('TASK-406 — backend residuals (375 filter validation + 376 recor
   // --- 3. Model-aware coercion for other list resources (P2-6c) --------------
 
   test('Tenants list: number filter coerces via the Tenant registry entry (200)', async ({ request }) => {
-    // Every tenant row has _version ≥ 1; before TASK-406 the value stayed a
-    // string and Prisma rejected `{ version: { gte: '1' } }` server-side.
+    // Every tenant row has _version ≥ 1; without coercion the value stays a
+    // string and Prisma rejects `{ version: { gte: '1' } }` server-side.
     const res = await authGet(request, '/api/v1/admin/tenants', token, {
       limit: '10',
       filters: 'version[gte]:1',

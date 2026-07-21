@@ -17,7 +17,7 @@ export interface IAppConfig {
 
   //=========== AUTH / REGISTRATION ============//
   /**
-   * Verified self-signup master switch (TASK-497 D1). OFF by default — a
+   * Verified self-signup master switch. OFF by default — a
    * healthcare/PHI platform cannot expose open registration without email
    * verification gating tenant provisioning.
    */
@@ -52,8 +52,6 @@ export interface IAppConfig {
    * Optional override for the `PrismaPg` adapter's `max` pool size.
    * Defaults to 5 in `packages/database/src/client.ts`.
    * Budget rule: pods × PRISMA_PG_MAX ≤ 0.7 × PG max_connections.
-   *
-   * @see docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md
    */
   PRISMA_PG_MAX?: number;
 
@@ -61,8 +59,6 @@ export interface IAppConfig {
    * Direct (un-pooled) connection string.
    * Consumed exclusively by `prisma.config.ts` for migrations (advisory locks
    * do not survive PgBouncer transaction-mode swaps).
-   *
-   * @see docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md
    */
   DIRECT_URL?: string;
 }

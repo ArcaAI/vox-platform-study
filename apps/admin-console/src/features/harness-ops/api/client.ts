@@ -45,7 +45,7 @@ export function getEvalRun(evalRunId: string): Promise<EvalRunDetail> {
     return getJson(`${HARNESS}/eval-runs/${encodeURIComponent(evalRunId)}`);
 }
 
-// ───────────────── Golden sets (TASK-532 B-5 / M-09 tenant leg) ─────────────────
+// ───────────────── Golden sets (tenant leg) ─────────────────
 
 const goldenSetPath = (goldenSetId: string) => `${HARNESS}/golden-sets/${encodeURIComponent(goldenSetId)}`;
 

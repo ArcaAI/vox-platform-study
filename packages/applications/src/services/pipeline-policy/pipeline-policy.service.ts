@@ -18,7 +18,7 @@ import { ConfigResolver, PIPELINE_SETTING_DESCRIPTORS, PipelineToggleKey } from 
 import { HOPE_SETTINGS_REGISTRY } from '../settings-registry';
 import { PipelinePolicyEffectiveResponse, PipelinePolicyResponse, PipelinePolicySource, UpdatePipelinePolicyRequest } from './dto';
 
-/** Ciphertext payloads threaded into the change factory (TASK-369 Phase 3D). */
+/** Ciphertext payloads threaded into the change factory. */
 interface EncryptedChangePayloads {
   encryptedBeforeJson: Buffer | null;
   encryptedAfterJson: Buffer | null;
@@ -28,7 +28,7 @@ interface EncryptedChangePayloads {
 /**
  * The three cascade toggles this admin surface may write (NULLABLE = inherit).
  * The doctor-scope `dnaStyleEnabled` column is deliberately excluded — it is
- * READ-only this phase (Phase 6 writes it via the doctor self-service surface).
+ * READ-only here; the doctor self-service surface writes it.
  */
 const WRITABLE_TOGGLE_KEYS = ['autoSummaryEnabled', 'autoNerEnabled', 'harnessEnabled'] as const;
 
@@ -47,7 +47,7 @@ interface PolicyToggleSnapshot {
 }
 
 /**
- * TASK-356 Phase 6 (S3) — the resolved DNA-style settings for one doctor: the
+ * The resolved DNA-style settings for one doctor: the
  * effective decision (`tenant AND doctor`), the tenant gate, the doctor's
  * explicit toggle, and the DOCTOR-row OCC `version` (0 when no row exists yet).
  */
@@ -69,7 +69,7 @@ function entityToToggles(e: PipelinePolicyEntity): PolicyToggleSnapshot {
 }
 
 /**
- * PipelinePolicyService (TASK-356 Phase 5 — Pillar B) — DB-backed, editable
+ * PipelinePolicyService — DB-backed, editable
  * realtime-pipeline policy that drives the auto-summary / auto-NER / harness-vs-
  * legacy cascade. Mirrors `HarnessPolicyService`'s OCC + WORM contract, adapted
  * for the polymorphic (scope/scopeId) table:
@@ -83,11 +83,11 @@ function entityToToggles(e: PipelinePolicyEntity): PolicyToggleSnapshot {
  *    a before/after `PipelinePolicyChange` WORM record in the SAME transaction
  *    (an edit is never recorded without its audit row, and vice versa). Every
  *    supplied toggle is checked against its registered MAX SCOPE first, so e.g.
- *    `harnessEnabled` can never be pinned per-doctor (§12 Q7).
+ *    `harnessEnabled` can never be pinned per-doctor.
  *
- * The doctor-scope `dnaStyleEnabled` column is READ-only here (Phase 5); the
- * Phase 6 doctor self-service surface writes it. This admin write surface is
- * tenant/department only.
+ * The doctor-scope `dnaStyleEnabled` column is READ-only here; the doctor
+ * self-service surface writes it. This admin write surface is tenant/department
+ * only.
  */
 @Injectable()
 export class PipelinePolicyService {
@@ -99,7 +99,7 @@ export class PipelinePolicyService {
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
     private readonly clsService: ClsService<IActiveUserContext>,
     private readonly configResolver: ConfigResolver,
-    // TASK-369 Phase 3D — optional so fixtures keep their 5-arg construction and
+    // Optional so fixtures keep their 5-arg construction and
     // non-Vault deployments degrade to plaintext WORM change rows.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {}
@@ -109,7 +109,7 @@ export class PipelinePolicyService {
   }
 
   /**
-   * TASK-369 Phase 3D — best-effort encrypt the before/after toggle snapshots so
+   * Best-effort encrypt the before/after toggle snapshots so
    * the WORM `PipelinePolicyChange` row stores ciphertext (+ a redaction sentinel
    * in the plaintext JSONB). Done OUTSIDE the change transaction (the Vault
    * round-trip must not hold a DB connection open). Returns null when there is no
@@ -259,7 +259,7 @@ export class PipelinePolicyService {
   }
 
   /**
-   * TASK-356 Phase 6 (S3) — READ the per-doctor DNA settings: the effective
+   * READ the per-doctor DNA settings: the effective
    * decision (`tenant AND doctor`, resolved via {@link ConfigResolver}) plus the
    * DOCTOR-scope row's OCC `version` (0 when no override row exists yet) so a
    * subsequent write can compare-and-set.
@@ -277,7 +277,7 @@ export class PipelinePolicyService {
   }
 
   /**
-   * TASK-356 Phase 6 (S3) — doctor self-service WRITE of the DOCTOR-scope
+   * Doctor self-service WRITE of the DOCTOR-scope
    * `dnaStyleEnabled` toggle. This is the ONLY write path for that column (the
    * admin `upsertRow` surface above deliberately excludes it). Mirrors
    * `upsertRow`'s OCC + WORM contract: the row edit and its before/after
@@ -405,14 +405,14 @@ export class PipelinePolicyService {
    * guard that complements the `ConfigResolver` read-side clamp (§7).
    */
   /**
-   * TASK-532 (E3-L2, OD-2) — PRIVILEGE boundary, descriptor-driven.
+   * PRIVILEGE boundary, descriptor-driven.
    *
    * Reject any supplied toggle whose registry descriptor carries
    * `globalOnly: true` when the caller is not a GLOBAL_ADMIN. Today that is
    * `harnessEnabled` (guardrail's primary caller) and `autoNerEnabled` (NLP
    * auto-extraction) — but this method deliberately holds NO key list: adding
    * `globalOnly` to a `pipeline.*` descriptor is the only edit needed to govern
-   * another toggle (AD-1, the single enforcement point).
+   * another toggle — this is the single enforcement point.
    *
    * 403 not 404: the caller may still READ these toggles and their pinned rows;
    * only the write is gated. That mirrors `GLOBAL_ADMIN_ONLY_TASK_PREFIXES` in
@@ -422,10 +422,10 @@ export class PipelinePolicyService {
    * Runs BEFORE `assertWithinMaxScope` so an unprivileged caller never learns
    * the cascade shape from a 400 they were not allowed to attempt anyway.
    *
-   * NOTE: this mirrors step 3 of `SettingsRegistryWriteService.write`
-   * (TASK-524's write lane), which refuses `db-config` tier keys like these
-   * pending exactly this adoption. Converge on that helper if it is ever
-   * extracted; the metadata and semantics are already identical.
+   * NOTE: this mirrors step 3 of `SettingsRegistryWriteService.write`'s write
+   * lane, which refuses `db-config` tier keys like these pending exactly this
+   * adoption. Converge on that helper if it is ever extracted; the metadata
+   * and semantics are already identical.
    */
   private assertGlobalOnlyToggles(dto: UpdatePipelinePolicyRequest): void {
     if (isSuperAdmin(this.clsService.get('user'))) return;

@@ -14,7 +14,7 @@ import { InternalServerErrorException } from '@arcaai/exceptions';
 import { SecretsService } from '../baseServices/_meta/secrets';
 
 /**
- * HarnessAuditService (TASK-330 Phase 0) — append-only, hash-chained WORM audit
+ * HarnessAuditService — append-only, hash-chained WORM audit
  * trail for the clinical documentation harness.
  *
  * `append` computes the tamper-evident hash chain: it reads the tenant's most
@@ -26,13 +26,13 @@ import { SecretsService } from '../baseServices/_meta/secrets';
  * `verifyChain` re-derives each event's hash and validates the prevHash linkage
  * to detect tampering or splicing.
  *
- * Phase 0 is data-layer only: `tenantId` is supplied explicitly by the caller.
+ * Data-layer only: `tenantId` is supplied explicitly by the caller.
  *
- * NOTE (Phase 0 limitation): `append` reads-then-writes without a serializing
+ * NOTE (known limitation): `append` reads-then-writes without a serializing
  * lock, so two concurrent appends for the same tenant could compute the same
  * `prevHash`. The `hash` UNIQUE constraint still rejects an exact duplicate, but
  * a transactional `SELECT … FOR UPDATE` (or per-tenant advisory lock) should be
- * added when concurrent writers are introduced in a later phase.
+ * added when concurrent writers are introduced.
  */
 export interface AppendHarnessAuditInput {
   tenantId: string;
@@ -57,7 +57,7 @@ export class HarnessAuditService {
 
   constructor(
     private readonly harnessAuditEventRepository: HarnessAuditEventRepository,
-    // TASK-369 Phase 3D — optional + @Inject so existing direct-construction unit
+    // Optional + @Inject so existing direct-construction unit
     // fixtures (which don't wire the @Global SecretsService) keep working, and
     // non-Vault deployments degrade to plaintext. Mirrors ContextService.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
@@ -66,7 +66,7 @@ export class HarnessAuditService {
   /**
    * Append a new audit event, computing its place in the tenant's hash chain.
    *
-   * TASK-369 Phase 3D — ENCRYPT-BEFORE-HASH: when SecretsService (Vault) is
+   * ENCRYPT-BEFORE-HASH: when SecretsService (Vault) is
    * wired, `sensorScores`/`citations` are encrypted first and the factory derives
    * the `hash` over the CIPHERTEXT (writing a redaction sentinel into the
    * plaintext JSONB). Best-effort: if encryption throws (Vault down) or no
@@ -128,7 +128,7 @@ export class HarnessAuditService {
   async verifyChain(tenantId: string): Promise<HarnessAuditChainVerification> {
     const chain = await this.harnessAuditEventRepository.getChainForTenant(tenantId);
 
-    // TASK-369 Phase 3D — map via the shared helper so the verifier hashes over
+    // Map via the shared helper so the verifier hashes over
     // the SAME representation the insert path used (ciphertext for encrypted rows,
     // plaintext for legacy rows). Using this on the writer AND every verifier is
     // what keeps the encrypt-before-hash chain consistent.

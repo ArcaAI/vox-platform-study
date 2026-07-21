@@ -1,6 +1,6 @@
 // Environment is loaded by the parent module or dotenv-cli
 // No need to import dotenv/config here as it would override test env vars
-// eslint-disable-next-line no-restricted-imports -- TASK-305 B.4 allow-list: seed scripts legitimately bypass tenant-scope
+// eslint-disable-next-line no-restricted-imports -- allow-list: seed scripts legitimately bypass tenant-scope
 import { getPlatformAdminPrismaClient_Unscoped } from '../../../client';
 import { getNodeEnv } from '../../../env';
 import { seedPolicy } from './01-policy';
@@ -68,7 +68,7 @@ import { seedUser } from './91-user';
 export const seed = async () => {
     const client = getPlatformAdminPrismaClient_Unscoped();
 
-    // TASK-331 doc-08 F5 — single gate for demo/sensitive fixtures. Demo API
+    // Single gate for demo/sensitive fixtures. Demo API
     // keys embed raw secrets + ACTIVE, broadly-scoped keys, so they must never
     // be seeded outside local dev/test. `shouldSeedApiKeys` (02-apikey) is the
     // single source of truth, reused here and by that step's own guard.
@@ -83,7 +83,7 @@ export const seed = async () => {
         console.log('');
         await seedTenant(client);
         console.log('');
-        // TASK-331 doc-03 F3 — per-tenant frontend pipeline defaults (needs tenants).
+        // Per-tenant frontend pipeline defaults (needs tenants).
         await seedTenantFrontendConfig(client);
         console.log('');
         await seedTenantBucket(client);
@@ -98,21 +98,21 @@ export const seed = async () => {
         console.log('');
         await seedStt(client);
         console.log('');
-        // TASK-356 Phase 2 — SYSTEM HarnessPolicy SMR default (+ WORM audit).
+        // SYSTEM HarnessPolicy SMR default (+ WORM audit).
         // Depends only on the reserved SYSTEM tenant (Phase 1).
         await seedHarnessPolicy(client);
         console.log('');
-        // TASK-356 Phase 5 — SYSTEM + demo PipelinePolicy cascade defaults (+ WORM).
+        // SYSTEM + demo PipelinePolicy cascade defaults (+ WORM).
         // Needs the reserved SYSTEM tenant + the Global demo tenant (both Phase 1).
         await seedPipelinePolicy(client);
         console.log('');
-        // TASK-506 — SYSTEM AiTaskDefault platform defaults (guardrail/NLP task
+        // SYSTEM AiTaskDefault platform defaults (guardrail/NLP task
         // models). CREATE-ONLY; needs the AiModel catalog (seedStt above).
         await seedAiTaskDefault(client);
         console.log('');
-        // TASK-524 — SYSTEM config-plane rows. Connections seed DISABLED and
+        // SYSTEM config-plane rows. Connections seed DISABLED and
         // profiles seed EMPTY, so every resolution still falls through to the
-        // consuming service's env defaults (the §7 silent-change guard).
+        // consuming service's env defaults (the silent-change guard).
         // No FK on either model; ordered after AiTaskDefault for readability.
         await seedAiProviderConnection(client);
         console.log('');
@@ -126,7 +126,7 @@ export const seed = async () => {
         // Phase 4: Depends on Phase 3
         await seedUser(client);
         console.log('');
-        // F5 — API-key fixtures embed raw demo secrets; only seed in dev/test.
+        // API-key fixtures embed raw demo secrets; only seed in dev/test.
         if (SEED_DEMO_DATA) {
             await seedApiKey(client);
         } else {
@@ -138,10 +138,10 @@ export const seed = async () => {
         console.log('');
         await seedGlobalSetting(client);
         console.log('');
-        // TASK-316 — platform-wide rate-limit config (single-tenant rows).
+        // Platform-wide rate-limit config (single-tenant rows).
         await seedRateLimitSettings(client);
         console.log('');
-        // TASK-392 — plan entitlement matrix + enforcement kill-switch (OFF).
+        // Plan entitlement matrix + enforcement kill-switch (OFF).
         await seedEntitlements(client);
         console.log('');
 

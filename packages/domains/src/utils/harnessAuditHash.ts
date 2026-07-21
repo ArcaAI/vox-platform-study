@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 /**
- * Tamper-evident hash chain for `HarnessAuditEvent` (TASK-330 Phase 0).
+ * Tamper-evident hash chain for `HarnessAuditEvent`.
  *
  * Each audit event stores `hash = SHA-256(canonical fields incl. prevHash)` and
  * `prevHash = hash of the previous event for the same tenant`. Because the
@@ -25,7 +25,7 @@ export interface HarnessAuditHashInput {
   promptVersion?: string | null;
   sensorScores: unknown;
   citations: unknown;
-  // TASK-369 Phase 3D (ENCRYPT-BEFORE-HASH) — when an event's PHI payload is
+  // ENCRYPT-BEFORE-HASH — when an event's PHI payload is
   // encrypted, these hold the Vault-Transit ciphertext (Buffer from the `Bytes?`
   // column, or its utf8 string form). The hash is then derived over the
   // CIPHERTEXT instead of the plaintext `sensorScores`/`citations`, per field
@@ -77,7 +77,7 @@ function normalizeCreatedAt(createdAt: Date | string): string {
 }
 
 /**
- * TASK-369 Phase 3D — stable hash representation of an encrypted payload column.
+ * Stable hash representation of an encrypted payload column.
  * Returns the ciphertext as its utf8 string (`vault:vN:<b64>`) when present, or
  * `undefined` when there is no ciphertext (so the caller hashes the plaintext).
  * Bytes columns round-trip as Buffer/Uint8Array; the string branch supports
@@ -148,7 +148,7 @@ export interface HarnessAuditEventLike {
 }
 
 /**
- * TASK-369 Phase 3D — map a persisted audit row/entity to the canonical
+ * Map a persisted audit row/entity to the canonical
  * {@link HarnessAuditChainRecord} for verification, carrying the `encrypted*`
  * ciphertext columns so the verifier hashes over ciphertext for encrypted rows
  * and over plaintext for legacy rows — EXACTLY as the insert path did. Using

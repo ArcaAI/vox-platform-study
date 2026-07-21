@@ -25,7 +25,7 @@ export interface TranscriptWordProps {
 }
 
 /**
- * A single clickable word token (TASK-372 §3.1.1, D9). Clicking seeks the paired
+ * A single clickable word token. Clicking seeks the paired
  * audio to `word.start`. Shared by the timeline audio renderer and `LiveTranscript`.
  */
 export function TranscriptWord({ word, active, interactive = true, label, onSelect, className }: TranscriptWordProps) {

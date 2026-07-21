@@ -46,7 +46,7 @@ const mockResourceSubscriptionRepository = {
  * Helper to create mock resource subscription entity with complete structure.
  * Mocks should be indistinguishable from real entities to catch structural issues.
  *
- * TASK-306 P2.4 — `tenantId` added so the new W5.3 tenant-guard sweep
+ * `tenantId` added so the tenant-guard sweep
  * tests can exercise same-tenant / cross-tenant branches. Defaults to
  * `tenant-1` to match the CLS default in `beforeEach`.
  */
@@ -330,10 +330,9 @@ describe('ResourceSubscriptionService', () => {
             expect(mockResourceSubscriptionRepository.findAll).toHaveBeenCalledWith(
                 expect.objectContaining({
                     where: {
-                        // TASK-306 P2.4 / 5.3.8 — fetchAllByResource now
-                        // injects `tenantId` alongside the resource predicate
-                        // when the caller is not GLOBAL_ADMIN. The CLS default
-                        // for this suite is `tenant-1`.
+                        // `fetchAllByResource` injects `tenantId` alongside the
+                        // resource predicate when the caller is not GLOBAL_ADMIN.
+                        // The CLS default for this suite is `tenant-1`.
                         tenantId: 'tenant-1',
                         resourceId: 'resource-123',
                         resourceTypeName: ResourceType.Consultation,
@@ -992,11 +991,11 @@ describe('ResourceSubscriptionService', () => {
         });
 
         it('rejects reads when CLS has neither user nor tenant context (TASK-306 P2.4 posture)', async () => {
-            // Pre-TASK-306 this returned the row regardless of caller context
-            // — a tenant-blind read that leaked subscriptions across tenants.
-            // The W5.3.9 `assertEqualTenants` guard now fails closed: when
-            // there is no caller tenant in CLS and the caller is not
-            // GLOBAL_ADMIN, the read is rejected (mirrors the TASK-305 D.5.1
+            // Without this guard the read returned the row regardless of
+            // caller context — a tenant-blind read that leaked subscriptions
+            // across tenants. The `assertEqualTenants` guard now fails closed:
+            // when there is no caller tenant in CLS and the caller is not
+            // GLOBAL_ADMIN, the read is rejected (mirrors the
             // NotificationService policy for fail-closed CLS-less calls).
             mockClsService.get.mockImplementation((key: string) => {
                 if (key === 'user') return null;
@@ -1011,21 +1010,20 @@ describe('ResourceSubscriptionService', () => {
     });
 
     /**
-     * TASK-306 P2.4 (audit M-3 / AC-6) — `ResourceSubscriptionService` was
-     * previously tenant-blind on every read/write surface (the existing
-     * `create` already required CLS context but did not check anything
-     * else). This block exercises the full sweep across 5 methods:
-     *   - 5.3.7 fetchAll: inject `{ tenantId: this.tenantId }` filter
+     * `ResourceSubscriptionService` was previously tenant-blind on every
+     * read/write surface (the existing `create` already required CLS context
+     * but did not check anything else). This block exercises the full sweep
+     * across 5 methods:
+     *   - fetchAll: inject `{ tenantId: this.tenantId }` filter
      *     (GLOBAL_ADMIN bypass)
-     *   - 5.3.8 fetchAllByResource: same shape — inject tenantId
+     *   - fetchAllByResource: same shape — inject tenantId
      *     alongside resourceId / resourceTypeName
-     *   - 5.3.9 fetchById: load-then-assert via assertEqualTenants
-     *   - 5.3.10 update: assert tenant after the pre-write findById
-     *   - 5.3.11 deleteById: load + assert + softDelete
+     *   - fetchById: load-then-assert via assertEqualTenants
+     *   - update: assert tenant after the pre-write findById
+     *   - deleteById: load + assert + softDelete
      *
-     * The service did NOT previously have an `isSuperAdmin()` helper —
-     * the W5.3.7 commit adds one mirroring the
-     * `NotificationService.isSuperAdmin` strict-default convention.
+     * The service did NOT previously have an `isSuperAdmin()` helper — it now
+     * mirrors the `NotificationService.isSuperAdmin` strict-default convention.
      *
      * CLS default in `beforeEach` is `tenant-1`. Tests use `tenant-2`
      * for cross-tenant probes. The local `setRequestUserRoles` helper
@@ -1162,7 +1160,7 @@ describe('ResourceSubscriptionService', () => {
                 await expect(service.fetchById('sub-foreign')).rejects.toThrow(NotFoundException);
                 await expect(service.fetchById('sub-foreign')).rejects.toThrow('Resource not found');
 
-                // TASK-306 306-F8 — pin "no audit-log leak on denied read":
+                // Pin "no audit-log leak on denied read":
                 // the assertEqualTenants throw must short-circuit BEFORE the
                 // ResourceViewed broadcast. Structurally guaranteed by the
                 // guard's throw position, but the explicit negative-assertion
@@ -1274,7 +1272,7 @@ describe('ResourceSubscriptionService', () => {
                 const result = await service.deleteById('sub-foreign');
                 expect(result.id).toBe('sub-foreign');
                 expect(mockResourceSubscriptionRepository.softDelete).toHaveBeenCalledWith('sub-foreign');
-                // GLOBAL_ADMIN bypass skips the pre-load `findById` (mirrors W5.3.5)
+                // GLOBAL_ADMIN bypass skips the pre-load `findById`
                 expect(mockResourceSubscriptionRepository.findById).not.toHaveBeenCalled();
             });
         });

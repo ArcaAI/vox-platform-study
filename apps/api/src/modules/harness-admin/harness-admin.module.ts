@@ -12,12 +12,12 @@ import { HarnessAdminController } from './harness-admin.controller';
 import { HarnessOpsClient } from './harness-ops.client';
 
 /**
- * HarnessAdminModule (TASK-330 Phase 6) — mounts the `/admin/harness/*` surface.
+ * HarnessAdminModule — mounts the `/admin/harness/*` surface.
  * HttpModule + ConfigModule back the outbound `HarnessOpsClient` (Temporal proxy);
  * the policy + observability services come from `@arcaai/applications`.
- * `LiveDocumentationServiceModule` (TASK-341) backs the `/admin/harness/live/*`
+ * `LiveDocumentationServiceModule` backs the `/admin/harness/live/*`
  * console (Redis session stats + engine kill-switch).
- * `EvalServiceModule` (TASK-419 item 1) backs the `/admin/harness/golden-sets*`
+ * `EvalServiceModule` backs the `/admin/harness/golden-sets*`
  * dataset surface.
  * `SecretsService` (for the `X-Service-Token`) and `ClsService` resolve from
  * their globally-registered modules.
@@ -30,7 +30,7 @@ import { HarnessOpsClient } from './harness-ops.client';
     HarnessObservabilityServiceModule,
     LiveDocumentationServiceModule,
     EvalServiceModule,
-    // TASK-533 B6 — backs `/admin/harness/gate-edit-exemplars` (SME-gated
+    // Backs `/admin/harness/gate-edit-exemplars` (SME-gated
     // eval regression-corpus export from the gate-edit learning loop).
     GateEditMiningServiceModule,
   ],

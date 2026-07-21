@@ -1,5 +1,5 @@
 /**
- * TASK-409 — RbacRoleService break-glass second confirmation.
+ * RbacRoleService break-glass second confirmation.
  *
  * Matrix pinned here:
  *   1. Role DELETE requires step-up (password + exact role name):
@@ -144,7 +144,7 @@ describe('TASK-409 — RbacRoleService break-glass on detach (removePolicy)', ()
     vi.clearAllMocks();
     mocks = makeMocks();
     service = buildService(mocks);
-    // TASK-501 — removePolicy now pre-checks the role's isSystemRole flag.
+    // RemovePolicy now pre-checks the role's isSystemRole flag.
     mocks.roleRepo.findByIdGuardSelect.mockResolvedValue(PLAIN_ROLE);
   });
 

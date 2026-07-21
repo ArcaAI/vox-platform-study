@@ -1,5 +1,5 @@
 /**
- * TASK-430 — service accounts are API-only principals.
+ * Service accounts are API-only principals.
  *
  * A service account authenticates with an API key; it must never obtain an
  * interactive session. Three interactive doors are closed here:

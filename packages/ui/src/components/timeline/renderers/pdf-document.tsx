@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 // Bundle the pdf.js worker as a code-split asset so the version always matches
 // react-pdf's pinned pdfjs-dist (D3). This module is only ever loaded lazily
 // (client-side) via the `PdfRenderer` `React.lazy` boundary, so it is SSR-safe.
-// TASK-410 re-verified: still a hard error (TS1470) under the CJS dts target — retained.
+// re-verified: still a hard error (TS1470) under the CJS dts target — retained.
 // @ts-expect-error -- import.meta.url is the canonical bundled-worker pattern (Vite/webpack5);
 // tsc rejects it under the package's CJS dts target (TS1470), but esbuild rewrites it for
 // both the ESM and CJS bundles, so it resolves correctly at runtime.

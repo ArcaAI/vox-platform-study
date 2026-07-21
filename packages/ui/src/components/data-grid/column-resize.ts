@@ -1,5 +1,5 @@
 /**
- * Keyboard column-resize logic (TASK-423 Δ3, WCAG 2.5.7 drag alternative).
+ * Keyboard column-resize logic (WCAG 2.5.7 drag alternative).
  * The separator is a focusable `role="separator"`; these helpers turn key
  * presses into size deltas so the behaviour is unit-testable.
  */

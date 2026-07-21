@@ -143,7 +143,7 @@ describe('UserDtoMapper', () => {
             expect(result.isServiceAccount).toBe(true);
         });
 
-        // AC-05 (TASK-336) — the user secret material (secret1/secret2 and their
+        // The user secret material (secret1/secret2 and their
         // expiries) is sensitive and MUST NOT be serialised onto UserResponse,
         // even for service accounts whose entity carries it.
         it('should NOT expose secret fields on the response', () => {

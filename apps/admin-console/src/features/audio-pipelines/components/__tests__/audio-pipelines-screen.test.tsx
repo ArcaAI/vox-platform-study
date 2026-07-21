@@ -25,7 +25,7 @@ function pipeline(overrides: Partial<Pipeline> = {}): Pipeline {
         configYaml: 'models:\n  asr: whisper-large-v4\n',
         resourceStatus: 'ENABLED',
         isDefault: true,
-        // TASK-531 — hand-created pipeline by default; the template-copy cases
+        // Hand-created pipeline by default; the template-copy cases
         // opt in explicitly.
         sourceTemplateSlug: null,
         templateLocked: false,
@@ -107,7 +107,7 @@ function session(overrides: Partial<{ isElevated: boolean; workingTenantId: stri
         impersonatingUsername: null,
         ...overrides,
     };
-    // BUG-005 — WorkingTenantGate now reads the effective identity; mirror the
+    // WorkingTenantGate now reads the effective identity; mirror the
     // (possibly overridden) operator fields since these fixtures never impersonate.
     return { ...base, effectiveUser: { ...base.user, tenantId: null, departmentId: null }, effectiveIsElevated: base.isElevated, effectiveTenantId: base.workingTenantId };
 }

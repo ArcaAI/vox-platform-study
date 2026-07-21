@@ -147,7 +147,7 @@ def score_golden_set_with_sensors(
     return [score_golden_case_with_sensors(c, thresholds=thresholds) for c in golden_set.cases]
 
 
-# --- TASK-482 E3 — concept-F1 + harm-weighted rate wiring --------------------
+# --- Concept-F1 + harm-weighted rate wiring --------------------
 # These deepen the per-case eval run alongside the PDSQI + faithfulness passes.
 # Both are skip-clean: a case with no golden reference (or, for concept-F1, no
 # candidate codes) contributes ``None`` — never a fabricated value.
@@ -158,8 +158,8 @@ def candidate_concepts_for_case(case: GoldenCase) -> list[ConceptCode]:
 
     Sourced from ``metadata["candidate_concepts"]`` — a list of
     ``{cui, snomed, rxnorm, icd, loinc}`` dicts an adapter fills from the generated
-    note's persisted ``NamedEntity`` codes (TASK-476). Absent/empty on the pre-476
-    tree, so concept-F1 skips clean.
+    note's persisted ``NamedEntity`` codes. Absent/empty when the encoder hasn't
+    coded the entities, so concept-F1 skips clean.
     """
     raw = case.metadata.get("candidate_concepts") or []
     concepts = [ConceptCode.model_validate(item) for item in raw]

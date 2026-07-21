@@ -78,7 +78,7 @@ export class ParallelPipeline<TInput, TOutput> implements IPipeline<TInput, Para
    * Per-stage serialization chain. Every call to `executeStage` for the same
    * stage name appends to this chain so concurrent invocations (e.g. multiple
    * `triggerStage('s')` calls, or a `triggerStage` overlapping `execute()`)
-   * never race on the shared `results` / `errors` maps. (TASK-273 H-2)
+   * never race on the shared `results` / `errors` maps.
    */
   private stageLocks: Map<string, Promise<unknown>> = new Map();
 
@@ -392,8 +392,8 @@ export class ParallelPipeline<TInput, TOutput> implements IPipeline<TInput, Para
 
   /**
    * Execute a single stage. Wraps the actual execution in a per-stage lock
-   * (TASK-273 H-2) so concurrent invocations against the same stage name
-   * serialize and do not race on the shared `results` / `errors` maps.
+   * so concurrent invocations against the same stage name serialize and do
+   * not race on the shared `results` / `errors` maps.
    */
   private executeStage(entry: StageEntry & { triggerMode: ParallelTriggerMode }, input: TInput, context: PipelineContext): Promise<void> {
     const stageName = entry.stage.name;
@@ -406,7 +406,7 @@ export class ParallelPipeline<TInput, TOutput> implements IPipeline<TInput, Para
   /**
    * Body of a single stage execution. Races `stage.execute(...)` against the
    * pipeline's abort signal so cancellation surfaces promptly even when the
-   * stage's `onExecute` does not observe `ctx.abortSignal` (TASK-273 H-1).
+   * stage's `onExecute` does not observe `ctx.abortSignal`.
    */
   private async executeStageBody(entry: StageEntry & { triggerMode: ParallelTriggerMode }, input: TInput, context: PipelineContext): Promise<void> {
     const stage = entry.stage;

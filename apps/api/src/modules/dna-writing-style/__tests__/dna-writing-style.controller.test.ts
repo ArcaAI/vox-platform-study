@@ -33,7 +33,7 @@ const createMockDnaService = () => ({
     getVersions: vi.fn(),
     getVersionsForDoctor: vi.fn(),
     listReports: vi.fn(),
-    // TASK-356 Phase 6 (S3) — per-doctor DNA on/off settings.
+    // Per-doctor DNA on/off settings.
     getDnaSettings: vi.fn(),
     setDnaEnabled: vi.fn(),
 });
@@ -90,7 +90,7 @@ describe('DnaWritingStyleController', () => {
             expect(result.status).toBe('PENDING');
         });
 
-        // ─── TASK-331 doc-07 F1 — doctor-scope gate (defense-in-depth) ───
+        // ─── Doctor-scope gate (defense-in-depth) ─────────────────────────
         // The UI hides the generate trigger for a non-impersonating admin, but
         // the route trusts `getDoctorId()` = caller, so a bare admin could
         // self-generate a DNA style under their OWN account (isolation break).
@@ -193,7 +193,7 @@ describe('DnaWritingStyleController', () => {
             expect(result.styleText).toBe('Updated style');
         });
 
-        // ─── TASK-331 doc-02 F12 — doctor self-edit OCC ──────────────────
+        // ─── Doctor self-edit OCC ──────────────────────────────────────────
         // The doctor PATCH route now mirrors the admin route: `@RequiresIfMatch()`
         // + `@ExpectedVersion()` so super/global admin (under a tenant), tenant
         // admin, the doctor, and an admin-impersonated doctor all manage their
@@ -245,7 +245,7 @@ describe('DnaWritingStyleController', () => {
         });
     });
 
-    // ─── TASK-329 P5 — owner-scoped report history (GET mine) ───
+    // ─── Owner-scoped report history (GET mine) ─────────────────
     describe('GET /dna-writing-styles/mine', () => {
         it('should list the current doctor\'s own reports', async () => {
             const reports = [fakeReportEntity, { ...fakeReportEntity, id: 'report-2', isLatest: false }];
@@ -266,7 +266,7 @@ describe('DnaWritingStyleController', () => {
         });
     });
 
-    // ─── TASK-329 P5 — set-default (PATCH :reportId/default) ─────
+    // ─── Set-default (PATCH :reportId/default) ────────────────────
     describe('PATCH /dna-writing-styles/:reportId/default', () => {
         it('should call service.setDefaultReport with the reportId', async () => {
             mockDnaService.setDefaultReport.mockResolvedValue({ ...fakeReportEntity, isLatest: true });
@@ -315,7 +315,7 @@ describe('DnaWritingStyleController', () => {
         });
     });
 
-    // ─── TASK-356 Phase 6 (S3) — per-doctor DNA on/off settings ──────────
+    // ─── Per-doctor DNA on/off settings ──────────────────────────────────
     describe('GET /dna-writing-styles/settings', () => {
         it('returns the caller doctor settings (delegates with current user id)', async () => {
             mockDnaService.getDnaSettings.mockResolvedValue({ doctorToggle: true, tenantEnabled: true, effective: true, version: 2 });

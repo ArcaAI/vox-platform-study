@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-/** TASK-496 — the raw persisted TTS config row for a tenant (unresolved). */
+/** The raw persisted TTS config row for a tenant (unresolved). */
 export class TenantTtsConfigResponse {
   @ApiProperty({ description: 'Owning tenant id' })
   tenantId!: string;
@@ -35,7 +35,7 @@ export class TenantTtsConfigResponse {
   @ApiProperty({ description: 'Whether routing to the Sarvam public API is allowed' })
   sarvamPublicApiAllowed!: boolean;
 
-  // TASK-506 — carries voiceBindings (and any other task-specific extras).
+  // Carries voiceBindings (and any other task-specific extras).
   @ApiPropertyOptional({ description: 'Persisted config extras (incl. voiceBindings)', nullable: true, type: Object })
   configJson?: Record<string, unknown> | null;
 

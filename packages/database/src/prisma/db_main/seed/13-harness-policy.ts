@@ -2,16 +2,16 @@ import type { CorePrismaClient } from '../../../client';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 
 /**
- * HarnessPolicy Seed (TASK-356 Phase 2 — SMR default wiring)
+ * HarnessPolicy Seed (SMR default wiring)
  *
  * The reserved system tenant (`00000000-…`, SYSTEM_TENANT_ID) owns the
  * GLOBAL-DEFAULT HarnessPolicy row that the clinical documentation loop reads
- * via its `fetch_policy` activity (apps/harness). Phase 2 sets the SMR
+ * via its `fetch_policy` activity (apps/harness). This seed sets the SMR
  * generation default on that row:
  *   - smrProvider = 'lm-studio'
  *   - smrModel    = 'gemma-4-e2b-it-qat'
- * (both were NULL → "let the SMR service choose"; TASK-506 moved the model
- * default from `gemma-4-e2b-it-sft-rlvr-medical` to the owner-declared
+ * (both were NULL → "let the SMR service choose"; the model
+ * default moved from `gemma-4-e2b-it-sft-rlvr-medical` to the owner-declared
  * platform default `gemma-4-e2b-it-qat` — registry row `lms-gemma-4-e2b-it-qat`).
  *
  * This step writes ONLY those two columns and is idempotent. It ALSO records a
@@ -21,15 +21,15 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * HarnessPolicyChange table is append-only (the migration REVOKEs UPDATE/DELETE
  * from the app role), so only INSERTs happen here.
  *
- * Scope guard: this seed touches NO gating/threshold/safety columns (TASK-358/
- * 359) and does not change safetyModel (granite-guardian remains the schema
+ * Scope guard: this seed touches NO gating/threshold/safety columns
+ * and does not change safetyModel (granite-guardian remains the schema
  * default). It only sets the two SMR columns.
  */
 
 /** The agreed SMR system default (overrides the NULL "service chooses"). */
 export const SYSTEM_HARNESS_POLICY_SMR_DEFAULTS = {
     smrProvider: 'lm-studio',
-    // TASK-506 (owner decision #7, 2026-07-17) — the platform summarization
+    // Owner decision (2026-07-17) — the platform summarization
     // default is gemma-4-e2b-it-qat (was gemma-4-e2b-it-sft-rlvr-medical).
     smrModel: 'gemma-4-e2b-it-qat',
 } as const;

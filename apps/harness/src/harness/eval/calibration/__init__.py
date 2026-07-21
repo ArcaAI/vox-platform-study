@@ -1,4 +1,4 @@
-"""Judge-calibration reliability (TASK-330, task 0.7).
+"""Judge-calibration reliability.
 
 Compute inter-rater reliability between the LLM-as-judge and clinician ratings,
 and enforce the release gate (ICC ≥ 0.8) before the judge is trusted.

@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - TASK-328 A6 endpoint constants
+ * @arcaai/vox - endpoint constants
  *
  * Guards the SDK endpoint paths for the A6 audio-pipeline-config slice:
  *   • PIPELINE_ENDPOINTS additions: SET_DEFAULT / TOGGLE / VERSIONS / VERSION

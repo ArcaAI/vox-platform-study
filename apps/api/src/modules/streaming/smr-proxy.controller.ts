@@ -207,7 +207,7 @@ export class SmrProxyController {
 
   /**
    * Fold the caller tenant's BYO cloud credential into the forwarded
-   * body as `provider_overrides` (GAP-C1 tenant lane).
+   * body as `provider_overrides`.
    *
    * Three invariants:
    *   - CLOUD ONLY. A self-host provider (ollama/lm-studio/vllm/llama-cpp/
@@ -254,8 +254,7 @@ export class SmrProxyController {
   }
 
   /**
-   * Inject the resolved hyperparameter profile into the forwarded
-   * body (GAP-C2).
+   * Inject the resolved hyperparameter profile into the forwarded body.
    *
    * Two invariants:
    *   - CALLER WINS. Only keys the caller did NOT set are filled in, so SDK

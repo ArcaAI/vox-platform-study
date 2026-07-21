@@ -1,6 +1,6 @@
 """Tests for the token-guarded internal start/signal endpoints.
 
-RED-first: written before the router exists. The Temporal client is mocked and
+The Temporal client is mocked and
 injected on ``app.state`` so these tests assert pure wiring — the start endpoint
 starts ``HarnessDocWorkflow`` with the deterministic ``harness-doc-{id}`` id on
 the configured task queue, the signal endpoint targets that same id with the
@@ -99,7 +99,7 @@ class TestStartDocument:
 
 
 class TestStartSnapshotsOptimisticFlag:
-    """TASK-355 Phase D (R-7) — the start path snapshots ``HARNESS_OPTIMISTIC_DELIVERY_ENABLED``
+    """The start path snapshots ``HARNESS_OPTIMISTIC_DELIVERY_ENABLED``
     (via ``Settings``) into the workflow input's ``HarnessGateConfig`` at workflow start.
 
     This is the determinism-safe injection point: the env is read in NON-workflow
@@ -180,7 +180,7 @@ class TestSignalApprove:
 
 
 class TestSignalEdit:
-    """TASK-355 Phase D Slice 5c — the edit-signal SENDER side.
+    """The edit-signal SENDER side.
 
     apps/api forwards a clinician edit of an optimistically-delivered draft (while
     it is still DRAFT_PENDING_SENSORS) to the running workflow's ``edit`` signal so

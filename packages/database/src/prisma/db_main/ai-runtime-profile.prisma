@@ -1,10 +1,10 @@
 // ============================================================================
-// AI Runtime Profiles (TASK-524 — config-plane core, GAP-C2)
+// AI Runtime Profiles (config-plane core)
 //
 // Hyperparameters / context / concurrency per provider (modelSlug = "") or per
 // model (modelSlug = AiModel.slug — no FK, house slug-reference convention).
-// GLOBAL-ADMIN-ONLY and SYSTEM-tenant-only in this program (E5: "hyperparameters
-// global-admin-only"); tenantId is kept for the house template + forward compat.
+// GLOBAL-ADMIN-ONLY and SYSTEM-tenant-only (hyperparameters are global-admin-only);
+// tenantId is kept for the house template + forward compat.
 // `modelSlug` uses the EMPTY-STRING sentinel for "provider-level default"
 // (NOT null): Postgres treats NULLs as distinct in unique indexes, which would
 // allow duplicate provider-default rows and break compound-unique upserts.

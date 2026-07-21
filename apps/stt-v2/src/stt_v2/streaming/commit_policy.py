@@ -1,13 +1,13 @@
 """LocalAgreement-2 commit policy for streaming partial hypotheses.
 
-TASK-351 P1-1 — stabilizes the partial transcript stream. Consecutive
+Stabilizes the partial transcript stream. Consecutive
 partial ASR hypotheses for the same utterance are compared at token level
 (whitespace-normalized); the longest common prefix between the latest two
 hypotheses is *committed*. A committed token position is frozen at the
 agreed token: the committed prefix grows only while the latest hypothesis
 keeps agreeing with it, and rolls back to the last still-agreeing token
 when a later hypothesis revises an already committed word — the settled
-surface is never silently replaced with different text (TASK-451 C2-01).
+surface is never silently replaced with different text.
 
 The policy is pure (no I/O, no session knowledge). The session manager
 owns one instance per session, calls :meth:`update` per partial, resets
@@ -66,8 +66,8 @@ class LocalAgreementPolicy:
         committed token position is frozen: the committed prefix only grows
         while the latest hypothesis keeps agreeing with it, and rolls back
         to the last still-agreeing token when a later hypothesis revises an
-        already committed word (TASK-451 C2-01) — it is never silently
-        replaced with different text.
+        already committed word — it is never silently replaced with
+        different text.
         """
         tokens = (hypothesis or "").split()
         norm_tokens = [_normalize_token(t) for t in tokens]

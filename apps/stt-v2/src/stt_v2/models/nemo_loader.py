@@ -43,7 +43,7 @@ class NeMoLoader(BaseModelLoader):
                     "pip install 'nemo_toolkit[asr]>=2.0.0,<3.0.0'"
                 ) from e
 
-            # TASK-527 — one resolver contract. `local_path` (operator override)
+            # One resolver contract. `local_path` (operator override)
             # still wins, and `file://` / `s3://` sources are now materialised
             # locally too; a bare HuggingFace id keeps NeMo's own
             # `from_pretrained` download path unchanged.

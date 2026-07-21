@@ -1,6 +1,6 @@
-"""Policy injection into the durable loop (TASK-330 Phase 6 — Phase C.3).
+"""Policy injection into the durable loop.
 
-RED-first: the harness policy (sensor thresholds, guard toggles, gate budgets,
+The harness policy (sensor thresholds, guard toggles, gate budgets,
 model defaults) is read once at workflow start via the ``fetch_policy`` activity
 and threaded into the deterministic body. These tests prove:
 

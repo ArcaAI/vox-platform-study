@@ -1,4 +1,4 @@
-"""Judge transport tests (TASK-330): ``extra_body`` passthrough + reasoning-aware
+"""Judge transport tests: ``extra_body`` passthrough + reasoning-aware
 answer extraction across reasoning / non-reasoning model families.
 
 Empirically (LM Studio, ctx 8192, judge-like JSON task): qwen3.5 can exhaust the

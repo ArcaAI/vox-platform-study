@@ -4,7 +4,7 @@
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 
-// TASK-496 — optional per-(tenant, provider) bring-your-own credential. The
+// Optional per-(tenant, provider) bring-your-own credential. The
 // plaintext API key is NEVER held here; only the Vault-Transit ciphertext
 // (`encryptedApiKey`) + `keyVersion` are persisted.
 export interface ITenantTtsProviderCredentialEntity extends IBaseTenantEntity {

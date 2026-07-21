@@ -275,7 +275,7 @@ describe('SDKLogger', () => {
             expect(entry.user?.userId).toBe('user-123');
             expect(entry.user?.tenantId).toBe('tenant-456');
             // doctorId and patientId are now redacted by redactPHI before dispatch
-            // (TASK-266 W0-2). The legacy assertion that they passed through verbatim
+            // The legacy assertion that they passed through verbatim
             // is intentionally inverted here — this is a HIPAA-driven contract change.
             expect(entry.user?.doctorId).toBe('[REDACTED]');
             expect(entry.user?.patientId).toBe('[REDACTED]');
@@ -698,7 +698,7 @@ describe('SDKLogger', () => {
     });
 
     // =========================================================================
-    // TASK-266 W0-2: defence-in-depth PHI redaction across the WHOLE log entry
+    // Defence-in-depth PHI redaction across the WHOLE log entry
     //
     // The legacy `redactSensitiveFields` only scrubbed `entry.attributes`. The
     // W0-2 contract requires redactPHI to walk the entire entry before any

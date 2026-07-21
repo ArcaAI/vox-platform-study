@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * TASK-331 doc-02 F8 — per-dimension breakdown behind the composite score so
+ * Per-dimension breakdown behind the composite score so
  * the UI can present an honest coverage/quality proxy instead of a single
  * opaque percentage. Dimensions that don't apply to a template are `null`.
  */
@@ -16,7 +16,7 @@ export interface PromptTestMetrics {
 }
 
 /**
- * TASK-328 A4 — result of a prompt quality/score test run.
+ * Result of a prompt quality/score test run.
  *
  * Returned by `POST /admin/prompt-templates/:id/test`. The `version` is the
  * row's new `_version` after the score/output were persisted (the test run is
@@ -26,7 +26,7 @@ export class PromptTestResultResponse {
   @ApiProperty({ description: 'Prompt template ID' })
   id: string;
 
-  // TASK-331 doc-02 F8 — composite, deterministic output-quality proxy (NOT a
+  // Composite, deterministic output-quality proxy (NOT a
   // semantic/clinical judgement). See `metrics` for the per-dimension breakdown.
   @ApiProperty({ description: 'Composite deterministic output-quality proxy in the range [0, 1]', example: 0.75 })
   score: number;
@@ -40,7 +40,7 @@ export class PromptTestResultResponse {
   @ApiProperty({ description: 'Row version after persisting the test result (OCC token)', example: 8 })
   version: number;
 
-  // TASK-331 doc-02 F8 — sub-score breakdown for an honest UI presentation.
+  // Sub-score breakdown for an honest UI presentation.
   @ApiPropertyOptional({ description: 'Per-dimension breakdown behind the composite score' })
   metrics?: PromptTestMetrics;
 }

@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * TASK-388 #9 — per-item outcome of a bulk user action. `error` is present only
+ * Per-item outcome of a bulk user action. `error` is present only
  * on failure (a cross-tenant target, a not-found row, or a downstream error),
  * so admin tooling can surface exactly which ids failed and retry only those.
  */
@@ -17,7 +17,7 @@ export class BulkUserActionItemResult {
 }
 
 /**
- * TASK-388 #9 — aggregate result of a bulk user action with partial-failure
+ * Aggregate result of a bulk user action with partial-failure
  * semantics (the call never throws mid-batch; every id gets an outcome).
  */
 export class BulkUserActionResponse {

@@ -1,11 +1,11 @@
 /**
- * @arcaai/vad — Wave 2 (TASK-304 Wave 2) bug fix tests.
+ * @arcaai/vad — bug fix tests.
  *
  * Covers:
- *   • W2-VAD-1 — `startStatsEmission` is idempotent: calling
+ *   • `startStatsEmission` is idempotent: calling
  *               `updateOptions({ enableStats: true })` twice while stats are already
  *               running does NOT leak the previous `setInterval` handle. This is the
- *               VAD analog of the NoiseFilter MED-10 fix landed in TASK-304 Wave 1.
+ *               VAD analog of the equivalent NoiseFilter fix.
  *
  * @vitest-environment jsdom
  */

@@ -1,5 +1,5 @@
 /**
- * HarnessProgressService Unit Tests (TASK-345).
+ * HarnessProgressService Unit Tests.
  *
  * The ephemeral harness progress feed: the durable workflow POSTs one stage
  * event at a time; the service folds it into the accumulated full-state

@@ -3,7 +3,7 @@ import { FetchResponse, PaginatedQuery, CursorQuery, CursorPage } from '../../co
 import { ResponsibleUserResponse } from './dto';
 
 /**
- * TASK-328 A8 — repository-pushed audit filters. Every field is optional;
+ * Repository-pushed audit filters. Every field is optional;
  * the service translates present fields into a Prisma `where` fragment
  * (date range → `createdAt` gte/lte; the rest → equality).
  */
@@ -21,19 +21,19 @@ export interface AuditLogFilters {
  */
 export type ResponsibleUserMap = Record<string, ResponsibleUserResponse>;
 
-/** TASK-328 A8 — a filtered page plus its resolved acting users. */
+/** A filtered page plus its resolved acting users. */
 export interface FilteredAuditLogResult {
   result: FetchResponse<AuditLogEntity>;
   responsibleUsers: ResponsibleUserMap;
 }
 
-/** TASK-373 — a cursor (keyset) page plus its resolved acting users. */
+/** A cursor (keyset) page plus its resolved acting users. */
 export interface CursorFilteredAuditLogResult {
   page: CursorPage<AuditLogEntity>;
   responsibleUsers: ResponsibleUserMap;
 }
 
-/** TASK-328 A8 — the full filtered set (no pagination) for CSV export. */
+/** The full filtered set (no pagination) for CSV export. */
 export interface AuditLogExportResult {
   rows: AuditLogEntity[];
   responsibleUsers: ResponsibleUserMap;
@@ -51,7 +51,7 @@ export interface AuditLogExportResult {
  * - Direct event handling for authentication events (UserAuthenticated)
  *
  * Audit logs are append-only: there is intentionally no delete capability
- * (OB-10, TASK-336) so the trail stays immutable for compliance.
+ * so the trail stays immutable for compliance.
  *
  * @see SysEventService for the CRUD event → Redis queue pipeline
  */
@@ -64,7 +64,7 @@ export interface IAuditLogService {
   fetchAll(props: PaginatedQuery): Promise<FetchResponse<AuditLogEntity>>;
 
   /**
-   * TASK-328 A8 — fetch a paginated, filtered page of audit logs and resolve
+   * Fetch a paginated, filtered page of audit logs and resolve
    * the acting user for each row. Filters (`from`/`to`/`action`/`resourceType`/
    * `userId`) are pushed to the repository `where` clause; tenant scoping is
    * applied exactly like {@link fetchAll} (CLS tenant, GLOBAL_ADMIN bypass).
@@ -75,7 +75,7 @@ export interface IAuditLogService {
   fetchAllFiltered(props: PaginatedQuery & AuditLogFilters): Promise<FilteredAuditLogResult>;
 
   /**
-   * TASK-373 — fetch a cursor (keyset) page of audit logs and resolve the
+   * Fetch a cursor (keyset) page of audit logs and resolve the
    * acting user for each row. The opt-in cursor counterpart of
    * {@link fetchAllFiltered}: same filters + tenant scoping (CLS tenant,
    * GLOBAL_ADMIN bypass), but ordered by the stable `(createdAt, id)` DESC
@@ -89,7 +89,7 @@ export interface IAuditLogService {
   fetchPageByCursor(props: CursorQuery & AuditLogFilters): Promise<CursorFilteredAuditLogResult>;
 
   /**
-   * TASK-328 A8 — load the ENTIRE filtered, tenant-scoped result set (capped)
+   * Load the ENTIRE filtered, tenant-scoped result set (capped)
    * for CSV export. Same `where`/tenant semantics as
    * {@link fetchAllFiltered}, but without page windowing.
    *
@@ -131,7 +131,7 @@ export interface IAuditLogService {
   ): Promise<void>;
 
   /**
-   * TASK-541 B1 — handle a FAILED authentication attempt.
+   * Handle a FAILED authentication attempt.
    *
    * Counterpart to `handleUserAuthenticatedEvent` (which is success-only).
    * Writes a LOGIN row with `success: false` so rejected access is reviewable
@@ -157,7 +157,7 @@ export interface IAuditLogService {
   }): Promise<void>;
 
   /**
-   * TASK-326 X1 — synchronously record a privileged/system action audit entry
+   * Synchronously record a privileged/system action audit entry
    * via the direct-write path (bypassing the SysEvent → Redis queue pipeline).
    *
    * Intended for privileged surfaces that are NOT BaseService CRUD flows — e.g.

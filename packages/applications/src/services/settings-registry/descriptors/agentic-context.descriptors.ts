@@ -6,13 +6,13 @@
 // service/route layer, not a cross-tenant probe), tier `global-kv`, and each
 // carries its CODE DEFAULT here as the single source of truth.
 //
-// TASK-533 B1 — the consumer (`live-documentation.service.resolveAgenticContext`)
+// The consumer (`live-documentation.service.resolveAgenticContext`)
 // now resolves these through `EffectiveSettingsService` on EVERY flush, so a write
 // through `PUT /admin/settings/registry/:key` governs the running loop with no
 // redeploy. Precedence is STORED VALUE → env override → the code default below;
 // env deliberately loses to a stored value, since the registry is the control
-// plane. (Before B1 the consumer read `env ?? default` once in its constructor, so
-// these descriptors were catalog-only — D-19/GAP-C7.)
+// plane. (Previously the consumer read `env ?? default` once in its
+// constructor, so these descriptors were catalog-only.)
 
 import { SettingDescriptor } from '../registry.types';
 
@@ -32,13 +32,13 @@ export const AGENTIC_CONTEXT_DEFAULTS = {
   // Idle debounce (ms) before a flush when the segment threshold is not met.
   'liveFlush.idleMs': 5000,
   // Payloads at/above this size (bytes) are stored/passed by reference
-  // (claim-check) rather than inlined. Resolved by the live lane (TASK-533 B1);
+  // (claim-check) rather than inlined. Resolved by the live lane;
   // the harness-side claim-check threshold is its own HARNESS_CLAIM_CHECK_MIN_BYTES.
   'claimCheck.minBytes': 65536,
-  // Transcript assembly mode. `windowed` is TASK-533 B3 — still default `whole`,
+  // Transcript assembly mode. `windowed` still defaults to `whole`,
   // and its flip is measurement-gated.
   'transcript.mode': 'whole' as AgenticTranscriptMode,
-  // Per-run token budget. 0 ⇒ unbounded. Enforcement is TASK-533 B4.
+  // Per-run token budget. 0 ⇒ unbounded.
   'tokenBudget.perRun': 0,
 } as const;
 

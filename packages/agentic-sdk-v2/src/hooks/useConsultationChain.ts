@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useConsultationChain Hook (TASK-329 P2)
+ * @arcaai/vox - useConsultationChain Hook
  *
  * Fetches the full consultation chain (structural root + every descendant,
  * multi-hop) via `GET /consultations/:id/chain`. The server walks the entire

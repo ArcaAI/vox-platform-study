@@ -140,7 +140,7 @@ describe('TenantBucket Domain Layer', () => {
             expect(recordingsBucket.bucketType).toBe(TenantBucketType.SYSTEM);
             expect(recordingsBucket.purpose).toBe(TenantBucketPurpose.AUDIO);
 
-            // TASK-426: `misc` is NOT auto-provisioned as a default system
+            // `misc` is NOT auto-provisioned as a default system
             // bucket. MISC survives only as an *assignable* purpose an admin can
             // hand to an existing bucket (TenantBucketService.setDefaultBuckets),
             // so the factory must never emit one.

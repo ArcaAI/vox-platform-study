@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, NotFoundException } from '@nes
 import { isSuperAdmin } from '@arcaai/applications';
 
 /**
- * TASK-504 Phase 2 — canonical tenant-scope resolution for admin controllers.
+ * Canonical tenant-scope resolution for admin controllers.
  *
  * Before this, `tenant`, `harness-admin`, `pipeline-policy-admin`, and
  * `tenant-tts-config-admin` each carried a near-identical private

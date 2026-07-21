@@ -1,5 +1,5 @@
 /**
- * SummaryMetaEntityMapper — versionless persistence (TASK-330).
+ * SummaryMetaEntityMapper — versionless persistence.
  *
  * `core.SummaryMeta` has `id`, `tenantId`, `createdAt`, `updatedAt` but NO
  * `_version` / `_metadata` / `createdBy` / `updatedBy` columns. The shared
@@ -9,7 +9,7 @@
  * `Unknown argument 'version'`. The mapper must strip the absent meta fields
  * while preserving `createdAt`/`updatedAt`, which DO exist.
  *
- * @see TASK-330 Phase 1 — harness `persist_draft` SummaryMeta persistence
+ * Harness `persist_draft` SummaryMeta persistence
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect } from 'vitest';

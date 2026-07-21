@@ -1,5 +1,5 @@
 /**
- * @arcaai/stt - H-6 WebSocket reconnect backoff + destroyed flag tests (TASK-270)
+ * @arcaai/stt - WebSocket reconnect backoff + destroyed flag tests
  *
  * Verifies `WebSocketClient`:
  *   - Uses jittered exponential backoff:

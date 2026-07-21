@@ -12,10 +12,10 @@ export interface IAsrPipelineEntity extends IBaseTaggedEntity {
   slug: string;
   description?: string | null;
   configYaml: string;
-  // TASK-328 A6 — frozen-schema `isDefault` column. Optional on the
+  // Frozen-schema `isDefault` column. Optional on the
   // interface so the factory (create path) can omit it (DB default = false).
   isDefault?: boolean;
-  // TASK-531 — template lineage. `sourceTemplateSlug` records which SYSTEM
+  // Template lineage. `sourceTemplateSlug` records which SYSTEM
   // template this row descends from (null = not template-derived);
   // `templateLocked` marks a pristine template copy, which the application
   // layer treats as read-only for content edits + delete. Optional on the

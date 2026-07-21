@@ -1,9 +1,9 @@
 /**
- * TASK-526 — BYO cloud-credential probes against AiProviderConnectionController
+ * BYO cloud-credential probes against AiProviderConnectionController
  * (`/api/v1/admin/ai-providers`), following the task-307 / task-506 pattern.
  *
- * AUTHORED IN TASK-526, EXECUTED IN P7 (the e2e job needs a live gateway +
- * seeded DB; `pnpm test:api:up` then `pnpm test:e2e`).
+ * The e2e job needs a live gateway +
+ * seeded DB; `pnpm test:api:up` then `pnpm test:e2e`.
  *
  * Locked contracts:
  *  1. SECRET NEVER ECHOED — no response from ANY route on this controller

@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-/** TASK-524 — read view of one (SYSTEM, provider, modelSlug) runtime profile. */
+/** Read view of one (SYSTEM, provider, modelSlug) runtime profile. */
 export class AiRuntimeProfileResponse {
   @ApiProperty({ description: 'Owning tenant — always the reserved SYSTEM tenant in this program.' })
   tenantId!: string;

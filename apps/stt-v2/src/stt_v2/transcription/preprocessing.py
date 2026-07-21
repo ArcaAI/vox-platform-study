@@ -103,7 +103,7 @@ class AudioPreprocessor:
             was_normalized = True
 
         # ----- Denoise (operates at 48 kHz) -----
-        # TASK-505 P2 (decision D2, dual-path): with scope="vad_only" (the
+        # Dual-path: with scope="vad_only" (the
         # default) the denoised signal only GATES the VAD — ASR consumes the
         # raw audio (medical-ASR evidence: enhancement before ASR degraded
         # accuracy in 40/40 tested configurations, arXiv 2512.17562). VAD
@@ -147,8 +147,8 @@ class AudioPreprocessor:
         # ----- Single final resample to target_sample_rate -----
         if current_sr != config.target_sample_rate:
             if not getattr(config, "resample_enabled", True):
-                # TASK-505 P2 — a declared resample skip is honored only when
-                # the input already matches; VAD/ASR require the target rate.
+                # A declared resample skip is honored only when the input
+                # already matches; VAD/ASR require the target rate.
                 logger.warning(
                     f"[{job_id}] [PREPROCESSOR] resample.enabled=false but input is "
                     f"{current_sr}Hz != target {config.target_sample_rate}Hz — "
@@ -300,7 +300,7 @@ class AudioPreprocessor:
         """Normalize audio.
 
         ``peak`` (legacy): scale to [-1, 1] by the absolute peak.
-        ``rms`` (TASK-505 P2): scale to a target RMS of 0.1 (≈ −20 dBFS),
+        ``rms``: scale to a target RMS of 0.1 (≈ −20 dBFS),
         clipped to [-1, 1] — steadier level for VAD than peak scaling when
         the recording contains isolated transients.
         """
@@ -321,9 +321,9 @@ class AudioPreprocessor:
         sample_rate: int,
         vad_model: LoadedModel,
         threshold: float,
-        min_speech_duration_ms: int = 100,  # TASK-505: aligned with VadConfig
+        min_speech_duration_ms: int = 100,  # aligned with VadConfig
         min_silence_duration_ms: int = 100,
-        padding_ms: int = 200,  # TASK-505: aligned with VadConfig
+        padding_ms: int = 200,  # aligned with VadConfig
     ) -> list[AudioSegment]:
         """
         Apply Voice Activity Detection.
@@ -443,9 +443,9 @@ class AudioPreprocessor:
         sample_rate: int,
         session: Any,
         threshold: float,
-        min_speech_ms: int = 100,  # TASK-505: aligned with VadConfig
+        min_speech_ms: int = 100,  # aligned with VadConfig
         min_silence_ms: int = 100,
-        pad_ms: int = 200,  # TASK-505: aligned with VadConfig
+        pad_ms: int = 200,  # aligned with VadConfig
     ) -> list[AudioSegment]:
         """Run Silero-style VAD directly on an ONNX Runtime session."""
         from ..vad.silero_service import SileroVADService
@@ -591,7 +591,7 @@ class AudioPreprocessor:
         sample_rate: int,
         strength: float,
     ) -> tuple[np.ndarray, int]:
-        """Apply DeepFilterNet3 noise suppression (TASK-507).
+        """Apply DeepFilterNet3 noise suppression.
 
         DeepFilterNet3 operates full-band at 48 kHz, like RNNoise, so this
         method follows the exact same upsample → denoise → (caller resamples

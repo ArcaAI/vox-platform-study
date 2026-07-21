@@ -476,7 +476,7 @@ describe('errorUtils', () => {
   });
 
   // ===========================================================================
-  // TASK-264 W0-11 — classifyHttpError
+  // classifyHttpError
   // ===========================================================================
 
   describe('classifyHttpError', () => {
@@ -506,7 +506,7 @@ describe('errorUtils', () => {
     });
   });
 
-  // TASK-299 D-18 — Map SMR errors → AgenticErrorCode.
+  // Map SMR errors → AgenticErrorCode.
   describe('classifySmrError', () => {
     it('maps SMR `model_not_found` → NOT_FOUND regardless of status', () => {
       expect(classifySmrError({ error_code: 'model_not_found' }, 500)).toBe('NOT_FOUND');

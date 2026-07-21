@@ -17,7 +17,7 @@ export class HighlightRepository extends Repository<HighlightEntity, Highlight> 
   // ============================================
 
   /**
-   * TASK-344 Workstream B — list all (non-deleted) manual highlights for a
+   * List all (non-deleted) manual highlights for a
    * consultation. Soft-deleted rows are excluded automatically by the
    * Prisma soft-delete extension. Ordered by anchor offset then creation
    * for stable rendering order on the persisted surface.

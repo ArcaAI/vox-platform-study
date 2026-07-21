@@ -40,26 +40,27 @@ class HarnessGateConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     max_regen: int = 2
-    # TASK-533 B4 — per-run token budget. 0 ⇒ UNBOUNDED, which is the shipped
-    # default and makes the budget stop inert (byte-identical to pre-B4 history).
-    # Snapshotted at workflow start like every other knob here, so the check stays
-    # deterministic across replay; spend is folded from recorded activity outputs.
+    # Per-run token budget. 0 ⇒ UNBOUNDED, which is the shipped
+    # default and makes the budget stop inert (byte-identical to a history predating
+    # this budget feature). Snapshotted at workflow start like every other knob
+    # here, so the check stays deterministic across replay; spend is folded from
+    # recorded activity outputs.
     token_budget_per_run: int = 0
     gate_sla_seconds: float = 86_400.0
     gate_escalation_seconds: float = 43_200.0
-    # TASK-355 Phase D (Slice 4a) — optimistic two-phase delivery. Snapshotted at
+    # Optimistic two-phase delivery. Snapshotted at
     # workflow start (the behaviour key) so it stays deterministic across replay;
     # the durable ``workflow.patched("task-355-optimistic-delivery")`` marker is the
     # separate replay key. BOTH must be set for the optimistic path to run. Default
-    # False ⇒ the legacy single-phase path, byte-identical to pre-Phase-D history.
+    # False ⇒ the legacy single-phase path, byte-identical to before optimistic delivery.
     optimistic_delivery_enabled: bool = False
-    # C1-02 (TASK-458) — TERMINAL gate bound. After this many SLA-breach escalations the
+    # TERMINAL gate bound. After this many SLA-breach escalations the
     # gate ABANDONS (stops escalating + completes, approved=False) instead of escalating
     # forever. Loop-safety bound, not a policy knob (carried from the input over a policy
     # merge, like ``optimistic_delivery_enabled``). Behaviour is patch-gated by
     # ``workflow.patched("task-458-gate-terminal-abandon")`` ⇒ replay-safe.
     gate_max_escalations: int = 3
-    # C1-02 (TASK-458) — cap on clinician-edit-driven optimistic assurance re-runs. After
+    # Cap on clinician-edit-driven optimistic assurance re-runs. After
     # this many edit re-runs the loop binds to the latest edit but STOPS re-running the
     # costly inferential pass, so N rapid edits can't drive N passes. Patch-gated by
     # ``workflow.patched("task-458-edit-rerun-cap")`` ⇒ replay-safe.
@@ -79,7 +80,7 @@ class HarnessDocWorkflowInput(BaseModel):
     # The transcript ContextItem (provenance) + its text (NER + sensor inputs).
     context_item_id: str | None = None
     transcript_text: str = ""
-    # TASK-483 claim-check: OPTIONAL out-of-band reference to the transcript, carried
+    # OPTIONAL out-of-band reference to the transcript, carried
     # ALONGSIDE the inline ``transcript_text`` (never replacing it). Additive-optional
     # default ⇒ no new workflow command, replay-safe: an old start payload (inline only)
     # deserializes it to None. The apps/api-facing seam for a future caller to hand the
@@ -108,13 +109,13 @@ class ApprovalSignal(BaseModel):
 
 
 class EditSignal(BaseModel):
-    """Clinician edited the optimistically delivered draft (TASK-355 Phase D, Slice 4b).
+    """Clinician edited the optimistically delivered draft.
 
     apps/api sends this when the clinician edits the draft WHILE it is still
     ``DRAFT_PENDING_SENSORS`` (assurance running). The workflow re-binds the
-    assurance pass to the edited content and re-runs it (Q3), and — because the
+    assurance pass to the edited content and re-runs it, and — because the
     note is no longer the machine-generated draft — permanently DISABLES the
-    silent regen-if-untouched path (Q1): from the first edit on, a REGEN verdict
+    silent regen-if-untouched path: from the first edit on, a REGEN verdict
     surfaces as flags instead of swapping the note under the clinician's eyes.
 
     ``content`` is the edited note the assurance pass must screen;
@@ -127,7 +128,7 @@ class EditSignal(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     content: str
-    # TASK-483 claim-check: OPTIONAL out-of-band ref to the edited note, alongside the
+    # OPTIONAL out-of-band ref to the edited note, alongside the
     # inline ``content``. Additive-optional default ⇒ replay-safe (an old signal event
     # deserializes it to None). The apps/api-facing seam for a future caller to send the
     # edited note by REF; the assurance pass resolves inline-or-ref before screening.
@@ -148,15 +149,15 @@ class HarnessDocWorkflowResult(BaseModel):
     escalations: int = 0
     approved: bool = False
     clinician_id: str | None = None
-    # TASK-481 (E2) — the optimistically-delivered draft was RETRACTED because the
+    # The optimistically-delivered draft was RETRACTED because the
     # post-delivery assurance pass FLAGged it (the retraction net for the accepted
-    # TASK-453 pre-assurance sign-off window). Additive-optional default ⇒ replay-safe:
+    # pre-assurance sign-off window). Additive-optional default ⇒ replay-safe:
     # an old history's recorded result deserializes it to False (the non-retracted path).
     retracted: bool = False
 
 
 # ---------------------------------------------------------------------------
-# Harness policy (TASK-330 Phase 6 — Phase C.3): the DB-backed knobs the durable
+# Harness policy: the DB-backed knobs the durable
 # loop reads live at workflow start (sensor thresholds, guard toggles, gate
 # budgets, model/tool selection). Snake_case on the Temporal side; the apps/api
 # worker-facing endpoint speaks camelCase (mapped in :meth:`HarnessPolicy.from_api`).
@@ -170,7 +171,8 @@ class TrajectoryContext(BaseModel):
     (non-deterministic) emission lives entirely in activity code while the
     ordering (``seq``) is allocated deterministically in the workflow body — no
     new workflow command, so the recorded command sequence is unchanged and the
-    replay fixtures stay valid (the TASK-483 additive-input precedent).
+    replay fixtures stay valid (the additive-input precedent set by other
+    activity-input fields).
 
     ``seq`` is this activity's monotonic base; an activity that emits >1 step
     (e.g. ``generate`` → ``LLM_CALL`` + ``THINKING``) offsets locally from it.
@@ -279,12 +281,12 @@ class HarnessPolicy(BaseModel):
     # carries an explicit non-null value. Consumed via ``_resolve_flag`` in the
     # activities (ner-priors / atomic-fact / retrieval) and the workflow-body gate
     # merge (optimistic-delivery / max-edit-reruns); warm-start + regen-feedback
-    # are carried for Phase 6 consumption.
+    # are carried for the same live-policy consumption.
     optimistic_delivery_enabled: bool | None = None
     atomic_fact_enabled: bool | None = None
     retrieval_enabled: bool | None = None
     warm_start_enabled: bool | None = None
-    # TASK-533 B4 — per-run token budget from `agentic.context.tokenBudget.perRun`,
+    # Per-run token budget from `agentic.context.tokenBudget.perRun`,
     # served on the effective policy. None ⇒ not configured (the gate keeps its
     # snapshotted default of 0 = unbounded).
     token_budget_per_run: int | None = None
@@ -389,22 +391,22 @@ class ExtractEntitiesInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     text: str
-    # TASK-483 claim-check: OPTIONAL out-of-band ref to ``text``, alongside the inline
+    # OPTIONAL out-of-band ref to ``text``, alongside the inline
     # field. The activity resolves inline-or-ref at entry (ref set ⇒ dereference; ref
     # absent ⇒ use ``text``). Additive-optional ⇒ replay-safe. Set on the NOTE-NER call
     # when the note was offloaded by ``generate``; the transcript-NER call carries the
     # (future) ``HarnessDocWorkflowInput.transcript_ref``.
     text_ref: ClaimCheckRef | None = None
     language: str = "en"
-    # TASK-480 Half-B — NER-priors reuse. The TRANSCRIPT extraction sets
+    # NER-priors reuse. The TRANSCRIPT extraction sets
     # ``reuse_priors=True`` (+ the ids) so the activity may reuse already-persisted
-    # CODED NamedEntity rows (TASK-476) as the transcript entities instead of re-running
+    # CODED NamedEntity rows as the transcript entities instead of re-running
     # the cold NLP pass — the note-NER calls leave these unset. Additive-optional with
     # safe defaults ⇒ no new workflow command, replay-safe (the activity does the
     # non-deterministic load; an old replay history schedules ``extract_entities``
     # exactly as before). The reuse is gated inside the activity by
     # ``HARNESS_NER_PRIORS_ENABLED`` (default OFF) and only fires when a prior carries an
-    # ontology code, so it is inert until TASK-476 populates the codes.
+    # ontology code, so it is inert until coded entities are actually persisted elsewhere.
     reuse_priors: bool = False
     consultation_id: str | None = None
     tenant_id: str | None = None
@@ -421,7 +423,7 @@ class EntitiesResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     entities: list[NEREntity] = Field(default_factory=list)
-    # TASK-480 Half-B — True when ``entities`` were REUSED from persisted coded priors
+    # True when ``entities`` were REUSED from persisted coded priors
     # (the cold NLP pass was skipped). The workflow reads this to skip the redundant
     # re-persist of the already-existing rows. Additive-optional ⇒ an old replay
     # history's recorded result deserializes it to False (the cold-path semantics),
@@ -463,7 +465,7 @@ class McpToolCallResult(BaseModel):
     tool: str = ""
     # Inline tool result text (empty when offloaded to the claim-check store).
     content: str = ""
-    # TASK-483 claim-check ref when the result exceeded the size cap and was offloaded.
+    # Claim-check ref when the result exceeded the size cap and was offloaded.
     content_ref: ClaimCheckRef | None = None
     # True when a server/transport error degraded the call — the workflow OR-s this
     # into ``reduced_assurance`` and NEVER crashes the loop.
@@ -549,13 +551,13 @@ class GenerateInput(BaseModel):
 
     prompt: str
     system_prompt: str | None = None
-    # TASK-483 claim-check: OPTIONAL out-of-band refs for the (large) prompts, carried
+    # OPTIONAL out-of-band refs for the (large) prompts, carried
     # alongside the inline fields. The ``generate`` activity resolves inline-or-ref at
     # entry before the PHI-egress guard + SMR call. Additive-optional ⇒ replay-safe (an
     # old input deserializes them to None ⇒ the inline prompt path, byte-identical).
     prompt_ref: ClaimCheckRef | None = None
     system_prompt_ref: ClaimCheckRef | None = None
-    # TASK-483: the RAG StrictCitations block to append AFTER the (resolved) user prompt.
+    # The RAG StrictCitations block to append AFTER the (resolved) user prompt.
     # Moved off the workflow body (which previously concatenated it) so the workflow can
     # thread the small prompt REF instead of the concatenated blob; the ``generate``
     # activity folds it in before the PHI-egress guard. Default "" ⇒ no append (the
@@ -565,11 +567,12 @@ class GenerateInput(BaseModel):
     hyperparameters: dict[str, Any] = Field(default_factory=dict)
     provider: str | None = None
     model: str | None = None
-    # TASK-357: the run-effective PHI egress policy, snapshotted from the harness
+    # The run-effective PHI egress policy, snapshotted from the harness
     # policy at workflow start so the guard in the ``generate`` activity is
     # deterministic across replay. Defaults mirror the fail-closed code default, so
     # an unset/legacy input still enforces the guard. Optional with safe defaults ⇒
-    # no new workflow command, replay-safe (TASK-355 Slice-5d precedent).
+    # no new workflow command, replay-safe (same additive-field precedent as elsewhere
+    # in this module).
     phi_enabled: bool = True
     phi_fail_closed: bool = True
     # critique-informed regen. ADDITIVE-OPTIONAL: the prior iteration's
@@ -588,7 +591,7 @@ class GenerateInput(BaseModel):
 
 
 class RetrieveContextInput(BaseModel):
-    """Inputs for the Phase-3 ``retrieve_context`` activity (flag-gated, degrade-safe).
+    """Inputs for the ``retrieve_context`` activity (flag-gated, degrade-safe).
 
     The activity builds the hybrid query from the extracted ``entities``; the
     ``tenant_id`` is the load-bearing isolation scope (only that tenant's APPROVED
@@ -628,7 +631,7 @@ class RunSensorsInput(BaseModel):
 
     note_text: str
     transcript_text: str = ""
-    # TASK-483 claim-check: OPTIONAL out-of-band refs for the (large) note + transcript,
+    # OPTIONAL out-of-band refs for the (large) note + transcript,
     # alongside the inline fields. The activity resolves inline-or-ref at entry. Additive-
     # optional ⇒ replay-safe (an old input ⇒ None ⇒ inline path). ``note_text_ref`` is set
     # when ``generate`` offloaded the note; ``transcript_text_ref`` threads the (future)
@@ -639,10 +642,10 @@ class RunSensorsInput(BaseModel):
     transcript_entities: list[NEREntity] = Field(default_factory=list)
     response_format: dict[str, Any] | None = None
     transcript_context_item_id: str | None = None
-    # Phase-3 RAG: the chunk ids the retriever surfaced for this generation, used to
+    # The chunk ids the retriever surfaced for this generation, used to
     # map the model's StrictCitations markers onto each claim's knowledgeChunkIds.
     retrieved_chunk_ids: list[str] = Field(default_factory=list)
-    # Phase-6: policy-driven computational thresholds (None => the sensors' own
+    # Policy-driven computational thresholds (None => the sensors' own
     # env-driven ``SensorThresholds`` defaults).
     thresholds: SensorThresholds | None = None
     # ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
@@ -650,7 +653,7 @@ class RunSensorsInput(BaseModel):
 
 
 class RunInferentialSensorsInput(BaseModel):
-    """Inputs for the Phase-2 ``run_inferential_sensors`` activity.
+    """Inputs for the ``run_inferential_sensors`` activity.
 
     The activity builds the judge + Granite client itself (model calls live in the
     activity, never the workflow); it only needs the generated note (safety screen),
@@ -661,22 +664,22 @@ class RunInferentialSensorsInput(BaseModel):
 
     note_text: str
     transcript_text: str = ""
-    # TASK-483 claim-check: OPTIONAL out-of-band refs for the (large) note + transcript,
+    # OPTIONAL out-of-band refs for the (large) note + transcript,
     # alongside the inline fields; the activity resolves inline-or-ref at entry. Additive-
     # optional ⇒ replay-safe. ``note_text_ref`` is set when ``generate`` (or the edited
     # note) was offloaded; ``transcript_text_ref`` threads the (future) transcript ref.
     note_text_ref: ClaimCheckRef | None = None
     transcript_text_ref: ClaimCheckRef | None = None
     citations_map: dict[str, Any] = Field(default_factory=dict)
-    # Phase-3 RAG: retrieved chunk id -> chunk text, so the citation-verify sensor
+    # Retrieved chunk id -> chunk text, so the citation-verify sensor
     # can entail each cited claim against ONLY its cited chunk(s).
     knowledge_chunks: dict[str, str] = Field(default_factory=dict)
-    # TASK-483 claim-check: OPTIONAL per-chunk out-of-band refs (chunk id -> ref) for the
+    # OPTIONAL per-chunk out-of-band refs (chunk id -> ref) for the
     # (large) knowledge chunk texts, alongside ``knowledge_chunks``. The activity merges
     # inline + resolved-ref chunks at entry. Additive-optional ⇒ replay-safe (an old input
     # ⇒ {} ⇒ the pure-inline chunk path).
     knowledge_chunks_ref: dict[str, ClaimCheckRef] = Field(default_factory=dict)
-    # Phase-6 policy injection: the groundedness pass threshold + the safety toggle.
+    # Live policy injection: the groundedness pass threshold + the safety toggle.
     # ``safety_enabled=False`` skips the Granite safety screen entirely.
     groundedness_threshold: float = DEFAULT_GROUNDEDNESS_THRESHOLD
     safety_enabled: bool = True
@@ -692,28 +695,29 @@ class RunInferentialSensorsInput(BaseModel):
     # policy. None ⇒ the activity falls through to ``HARNESS_ATOMIC_FACT_ENABLED``
     # (env default). Additive-optional ⇒ replay-safe; no new workflow command.
     atomic_fact_enabled: bool | None = None
-    # TASK-357: the run-effective PHI egress policy, snapshotted from the harness
+    # The run-effective PHI egress policy, snapshotted from the harness
     # policy at workflow start so the guard in ``run_inferential_sensors`` is
     # deterministic across replay (defaults mirror the fail-closed code default).
     # Optional with safe defaults ⇒ no new workflow command, replay-safe.
     phi_enabled: bool = True
     phi_fail_closed: bool = True
-    # TASK-355 Phase D Slice 5d (Q5) — live per-claim assurance feed. Populated ONLY
+    # Live per-claim assurance feed. Populated ONLY
     # at the optimistic ASSURANCE call site; when ``live_assurance`` is True and the
     # ids are present, the activity streams each groundedness claim verdict to apps/api
     # as it resolves. Optional with safe defaults ⇒ the legacy call site (and any
-    # pre-5d replay history) schedules the activity exactly as before; the per-claim
+    # earlier replay history) schedules the activity exactly as before; the per-claim
     # publish lives entirely in (non-deterministic) activity code, so it is replay-safe.
     live_assurance: bool = False
     consultation_id: str | None = None
     tenant_id: str | None = None
     job_id: str | None = None
-    # TASK-359 WS-1 — workflow-threaded, data-only verdict cache (L2). Content-addressed
+    # Workflow-threaded, data-only verdict cache (L2). Content-addressed
     # {claim_verdict_key: supported} carried in from earlier inferential passes; the activity
     # seeds its cache from this and re-judges only cache-missing (changed) claims, reusing the
-    # rest byte-identically (AC-2). Additive-optional default ⇒ no new workflow command, no
-    # ``workflow.patched()``; an old replay history without it defaults to {} (T8). Held only in
-    # workflow history (data-only) — never persisted to an external store (L3 is default-OFF, §4.5).
+    # rest byte-identically. Additive-optional default ⇒ no new workflow command, no
+    # ``workflow.patched()``; an old replay history without it defaults to {}. Held only in
+    # workflow history (data-only) — never persisted to an external store (an L3 external
+    # store is default-OFF).
     prior_verdicts: dict[str, bool] = Field(default_factory=dict)
     # ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
     trajectory: TrajectoryContext | None = None
@@ -735,13 +739,13 @@ class InferentialRunOutput(BaseModel):
     guardrail_decisions: dict[str, Any] = Field(default_factory=dict)
     rag_triad_score: float | None = None
     degraded: bool = False
-    # TASK-359 WS-1 — the verdict cache populated by this pass (seed ∪ newly-judged), returned so
+    # The verdict cache populated by this pass (seed ∪ newly-judged), returned so
     # the workflow can thread it into the next regen pass's ``prior_verdicts``. Additive-optional
-    # ⇒ replay-safe; an old history without this field deserializes it to {} (T8).
+    # ⇒ replay-safe; an old history without this field deserializes it to {}.
     verdict_cache: dict[str, bool] = Field(default_factory=dict)
 
 
-# TASK-355 Phase D (Slice 4a) — the early-persist phase discriminator. Mirrors the
+# The early-persist phase discriminator. Mirrors the
 # apps/api ``HARNESS_DRAFT_PHASE.EARLY`` (``HarnessDraftRequest.phase``): the harness
 # sends this value on the optimistic early persist so apps/api withholds the verdict
 # (status ``DRAFT_PENDING_SENSORS``, GENERATE-only audit). Absent ⇒ legacy single-shot.
@@ -754,7 +758,7 @@ class PersistDraftInput(BaseModel):
     consultation_id: str
     tenant_id: str
     content: str
-    # TASK-483 claim-check: OPTIONAL out-of-band ref to the (large) draft ``content``,
+    # OPTIONAL out-of-band ref to the (large) draft ``content``,
     # alongside the inline field. The activity resolves inline-or-ref at entry, then POSTs
     # the fully-materialized note to apps/api (the persist contract is unchanged — apps/api
     # still receives the real content). Additive-optional ⇒ replay-safe.
@@ -765,7 +769,7 @@ class PersistDraftInput(BaseModel):
     model_version: str | None = None
     sensor_scores: dict[str, Any] | None = None
     citations_map: dict[str, Any] | None = None
-    # Phase-2 inferential guardrails: persisted as SummaryMeta.guardrailDecisions;
+    # Inferential guardrails: persisted as SummaryMeta.guardrailDecisions;
     # reduced_assurance=True appends the REDUCED_ASSURANCE WORM event on apps/api.
     guardrail_decisions: dict[str, Any] | None = None
     reduced_assurance: bool | None = None
@@ -777,7 +781,7 @@ class PersistDraftInput(BaseModel):
     dna_style_id: str | None = None
     gate_decision: str | None = None
     is_auto_generated: bool | None = None
-    # TASK-355 Phase D (Slice 4a) — optimistic delivery discriminator. None (legacy)
+    # Optimistic delivery discriminator. None (legacy)
     # ⇒ single-shot persist (full scores, PENDING_REVIEW). ``DRAFT_PENDING_SENSORS``
     # ⇒ early persist: readable draft now, verdict withheld, assurance deferred to
     # ``finalize_assurance``.
@@ -787,7 +791,7 @@ class PersistDraftInput(BaseModel):
 
 
 class FinalizeAssuranceInput(BaseModel):
-    """Inputs for the Phase-D ``finalize_assurance`` activity (Slice 4a, second phase).
+    """Inputs for the ``finalize_assurance`` activity (second phase of optimistic delivery).
 
     The optimistic path delivers the readable draft early (``persist_draft`` with
     ``phase=DRAFT_PENDING_SENSORS``) and then runs the costly inferential pass as
@@ -797,7 +801,7 @@ class FinalizeAssuranceInput(BaseModel):
     records the deferred ``SENSOR_RUN`` (+ ``REDUCED_ASSURANCE``) WORM audit.
     ``context_item_id`` is the RAW_SUMMARY persisted in the early phase (the target).
 
-    TASK-355 Slice 4b: ``context_item_version_id`` is set when a clinician EDIT
+    ``context_item_version_id`` is set when a clinician EDIT
     re-bound assurance to an edited MODIFIED_SUMMARY version (None ⇒ the verdict
     binds to the originally delivered draft). apps/api stamps the verdict on that
     version so a late edit is assured against the note the clinician actually has.
@@ -826,7 +830,7 @@ class FinalizeAssuranceInput(BaseModel):
 
 
 class RetractDraftInput(BaseModel):
-    """Inputs for the TASK-481 (E2) ``retract_draft`` activity (optimistic-delivery net).
+    """Inputs for the ``retract_draft`` activity (optimistic-delivery retraction net).
 
     When the optimistic path's post-delivery assurance FLAGs, the delivered
     ``DRAFT_PENDING_SENSORS`` draft is RETRACTED instead of silently backfilling the FLAG
@@ -890,7 +894,7 @@ class EscalateResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# TASK-345 — live progress feed
+# Live progress feed
 # ---------------------------------------------------------------------------
 
 # Stage catalog: (key, label) in run order; ordinal = index + 1. The keys/labels
@@ -908,7 +912,7 @@ HARNESS_PROGRESS_STAGES: tuple[tuple[str, str], ...] = (
 HARNESS_PROGRESS_TERMINAL_STAGE = "completed"
 HARNESS_PROGRESS_TERMINAL_LABEL = "Draft ready for review"
 
-# Failure terminal pseudo-stage (TASK-348 / MAJ-1): emitted best-effort when
+# Failure terminal pseudo-stage: emitted best-effort when
 # the workflow fails, so the API marks the active stage `failed` and closes
 # the SSE stream instead of freezing on a stale `active` snapshot.
 HARNESS_PROGRESS_FAILED_STAGE = "failed"

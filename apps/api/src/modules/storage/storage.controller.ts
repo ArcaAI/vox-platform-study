@@ -61,7 +61,7 @@ export class StorageController {
     @Inject(IMediaService) private readonly mediaService: IMediaService,
     @Inject(ITenantBucketService) private readonly tenantBucketService: ITenantBucketService,
     private readonly s3HealthService: S3HealthService,
-    // TASK-375 (thumbnails) — produces the downscaled WebP derivative stored on
+    // Produces the downscaled WebP derivative stored on
     // image upload. Provided by StorageModule (no deps; wraps `sharp`).
     private readonly imageThumbnailService: ImageThumbnailService,
   ) {}
@@ -75,7 +75,7 @@ export class StorageController {
   async listBuckets(): Promise<BucketInfoResponse[]> {
     // Tenant-scoped: only the caller's tenant-owned buckets. Using
     // s3Service.listAllBuckets() here would leak every physical bucket across
-    // all tenants (TASK-318 W2, F-1). `creationDate` maps from the tenant
+    // all tenants. `creationDate` maps from the tenant
     // bucket record's createdAt; physical-only fields are not surfaced here.
     const buckets = await this.tenantBucketService.listBuckets();
     return buckets.map((bucket) => ({ name: bucket.name, creationDate: bucket.createdAt }));
@@ -183,8 +183,7 @@ export class StorageController {
     // The route is @TenantOwnedResource-guarded on :name, so `bucketName` is an
     // already-validated, tenant-owned PHYSICAL bucket. Resolve the record by
     // physical name and 404 when absent — never resolve by slug or fall back to
-    // the raw param, which could route the upload to an unintended bucket
-    // (TASK-318 W2, F-8).
+    // the raw param, which could route the upload to an unintended bucket.
     const bucket = await this.tenantBucketService.getBucketByName(bucketName);
     if (!bucket) {
       throw new NotFoundException(`Bucket '${bucketName}' not found`);
@@ -197,7 +196,7 @@ export class StorageController {
       contentType: file.mimetype,
     });
 
-    // TASK-375 (thumbnails) — for image uploads, also store a real downscaled
+    // For image uploads, also store a real downscaled
     // WebP derivative at the deterministic derived key (`<key>.thumb.webp`) so
     // the context timeline can presign a genuinely smaller thumbnail without any
     // schema change. Best-effort: a thumbnail failure must never fail the upload.

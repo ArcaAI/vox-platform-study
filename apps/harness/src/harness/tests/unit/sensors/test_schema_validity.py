@@ -1,10 +1,10 @@
-"""Schema-validity sensor tests (RED-first).
+"""Schema-validity sensor tests.
 
 Heuristic under test: the parsed SOAP note object must conform to the activated
 SOAP JSON Schema (jsonschema, Draft 2020-12). Malformed SOAP -> schema fails,
 and the implicated SOAP section codes (S/O/A/P) are reported for targeted regen.
 
-TASK-358 (D-A): the validator must reflect the *actual* activated output
+The validator must reflect the *actual* activated output
 contract. On the common department/CATCHALL path ``responseFormat`` is null —
 a complete S/O/A/P note must then validate against the default structural
 contract and score 1.0 (it must NOT degrade just because no JSON schema was
@@ -53,8 +53,8 @@ class TestSchemaValidity:
         assert SchemaValiditySensor().run(ctx).passed is False
 
     def test_malformed_schema_degrades_fail_closed(self):
-        # TASK-358 hardening (defensive parsing): a malformed/unprocessable activated
-        # JSON schema (TASK-356 will let admins manage these) must DEGRADE — never
+        # Hardening (defensive parsing): a malformed/unprocessable activated
+        # JSON schema (these are admin-managed) must DEGRADE — never
         # raise an uncaught exception and never auto-PASS — even for a complete note.
         # The required sections are all present, so the failure can only come from the
         # jsonschema pass, which must be caught and turned into a degraded result.
@@ -69,7 +69,7 @@ class TestSchemaValidity:
         ctx = SensorContext(soap_sections=valid_soap(), soap_schema=response_format())
         assert SchemaValiditySensor().run(ctx).passed is True
 
-    # ── TASK-358 (D-A): the responseFormat=null structural contract ────────────
+    # ── The responseFormat=null structural contract ────────────
     def test_complete_note_without_schema_passes_structural_contract(self):
         # The common department/CATCHALL path: no JSON schema activated, but a
         # complete S/O/A/P note must validate against the default contract -> 1.0
@@ -102,7 +102,7 @@ class TestSchemaValidity:
     def test_empty_note_with_schema_is_degraded(self):
         # A truly unparseable note yields no sections; even with a schema present
         # there is nothing to validate -> degraded (never auto-PASS, never REGEN
-        # an empty shell). Preserves AC-5's conservative direction.
+        # an empty shell). Preserves the conservative-failure direction.
         ctx = SensorContext(soap_sections={}, soap_schema=soap_schema())
         result = SchemaValiditySensor().run(ctx)
         assert result.degraded is True

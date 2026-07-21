@@ -1,9 +1,8 @@
 /**
- * Default department template applied to newly provisioned tenants
- * (TASK-331 r2605 Finding #4).
+ * Default department template applied to newly provisioned tenants.
  *
  * A console-created tenant must own at least one ENABLED department so its
- * first admin can satisfy the TASK-305 Phase F login invariant (an ENABLED
+ * first admin can satisfy the login invariant (an ENABLED
  * role AND an ENABLED department in the tenant). `TenantService.create`
  * clones this General Practice (`GEN`) template into every new tenant.
  *

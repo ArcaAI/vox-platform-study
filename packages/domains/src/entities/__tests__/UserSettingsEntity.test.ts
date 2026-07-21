@@ -1,5 +1,5 @@
 /**
- * UserSettingsEntity.validate() Unit Tests — TASK-261 (Tier 2)
+ * UserSettingsEntity.validate() Unit Tests
  *
  * Locks in the real invariant implementation that replaces the previous
  * `throw new BusinessException('Method not implemented.')` stub.
@@ -12,7 +12,7 @@
  *   - namespace: optional; <= 100 chars when present.
  *   - userId: required, non-empty after trim (FK to User).
  *
- * Per Conservative Defaults (TASK-261 README), no JSON-shape parsing is
+ * Per the Conservative Defaults policy, no JSON-shape parsing is
  * applied to `value` here — track-only.
  */
 

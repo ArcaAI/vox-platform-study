@@ -1,10 +1,10 @@
 /**
- * TASK-524 — Config-plane core seed invariants (§5 tests 18 + 19)
+ * Config-plane core seed invariants
  *
  * Static assertions over the EXPORTED seed data (no live DB), following the
  * conventions of `task-506-ai-model-consolidation.test.ts` in this directory.
  *
- * The load-bearing rule these tests encode is the ticket's §7 SILENT-CHANGE
+ * The load-bearing rule these tests encode is the SILENT-CHANGE
  * guard: with the shipped seeds, every request path must resolve exactly
  * today's effective values. Concretely —
  *

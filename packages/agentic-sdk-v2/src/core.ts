@@ -38,13 +38,13 @@ export {
   useAdminTranscriptionJobs,
   useApiKeys,
   useArca,
-  // TASK-374 §5.3.2 follow-up — surface the focused domain hooks (siblings of
+  // Surface the focused domain hooks (siblings of
   // useArcaSession/useArcaSummary) so consumers can use them without the useArca() aggregate.
   useArcaAudio,
   useArcaConfig,
   useArcaContext,
   useArcaSession,
-  // TASK-299 D-13 — surface the dedicated summary hook from the core entry.
+  // Surface the dedicated summary hook from the core entry.
   useArcaSummary,
   useAudioRecordings,
   useAuditLog,
@@ -56,14 +56,14 @@ export {
   useDnaStyle,
   useEntitlements,
   useGlobalSettings,
-  // TASK-407 — read-only Clinical Documentation Harness admin surface
+  // Read-only Clinical Documentation Harness admin surface
   useHarnessAdmin,
   useHealthCheck,
   useMonitoring,
   usePipelines,
   usePlatformMetrics,
   usePolicies,
-  // TASK-403 — global-admin ops-surface hooks
+  // Global-admin ops-surface hooks
   usePrismaStudio,
   usePrompts,
   useQueueAdmin,
@@ -142,7 +142,7 @@ export type {
   UseDepartmentsReturn,
   UseDnaDashboardReturn,
   UseDnaStyleReturn,
-  // TASK-392 Phase 5 — plan-entitlements hook + response/request types
+  // Plan-entitlements hook + response/request types
   UseEntitlementsReturn,
   EntitlementPlan,
   TrialInfo,
@@ -157,7 +157,7 @@ export type {
   DowngradeReport,
   TrialExpiryReport,
   UseGlobalSettingsReturn,
-  // TASK-407 — harness admin hook + read-model types
+  // Harness admin hook + read-model types
   UseHarnessAdminReturn,
   HarnessPolicy,
   HarnessPolicySource,
@@ -175,10 +175,10 @@ export type {
   UsePipelinesReturn,
   UsePlatformMetricsReturn,
   UsePoliciesReturn,
-  // TASK-403 — global-admin ops-surface hook returns
+  // Global-admin ops-surface hook returns
   UsePrismaStudioReturn,
   UsePromptsReturn,
-  // TASK-407 — raw prompt run rows (Agent Jobs surface)
+  // Raw prompt run rows (Agent Jobs surface)
   PromptUsageRecord,
   PaginatedPromptUsageRecords,
   UseQueueAdminReturn,
@@ -194,7 +194,7 @@ export type {
   UseTenantStorageConfigReturn,
   UseUserDepartmentsReturn,
   UserDepartmentAssignment,
-  // TASK-375 client follow-up — full list query forwarded by useUsers().listPaginated.
+  // Full list query forwarded by useUsers().listPaginated.
   UserListQuery,
   AssignUserDepartmentInput,
   UseUserSettingsReturn,
@@ -205,7 +205,7 @@ export type {
   UserRole,
 } from './hooks';
 
-// TASK-265 W0-10 — typed built-in role identifiers
+// Typed built-in role identifiers
 export { USER_ROLES } from './hooks';
 
 // =============================================================================
@@ -276,7 +276,7 @@ export type {
   NERData,
 } from './types';
 
-// Audio recording types (TASK-329 P2 — dual-capture X8)
+// Audio recording types (dual-capture X8)
 export type { AudioRecording, AddAudioRecordingInput } from './types';
 
 // =============================================================================
@@ -292,7 +292,7 @@ export type {
   STTPluginState,
   TranscriptionResult,
   TranscriptionSegment,
-  // WS-B store segment + TASK-372 D9 word-level timestamps it now carries
+  // WS-B store segment + word-level timestamps it now carries
   TranscriptSegment,
   TranscriptWord,
   VADEvent,
@@ -305,11 +305,11 @@ export type {
 
 export type {
   AsyncJobResponse,
-  // TASK-299 D-17 — widened comprehensive summary options.
+  // Widened comprehensive summary options.
   ComprehensiveSummaryGenerationOptions,
   ComprehensiveSummaryOptions,
   ComprehensiveSummaryResponse,
-  // TASK-329 P6 — summary tagging input.
+  // Summary tagging input.
   CreateSummaryTagInput,
   DNAStyle,
   DNAStyleData,
@@ -319,24 +319,24 @@ export type {
   SummaryApprovalResponse,
   // Story 148: Summary approval
   SummaryApprovalStatus,
-  // TASK-299 D-4 — canonical summary-generation options.
+  // Canonical summary-generation options.
   SummaryGenerationOptions,
   SummaryJobStatus,
   SummaryMeta,
   SummaryOptions,
   SummaryResponse,
   SummaryState,
-  // TASK-329 P6 — summary tag.
+  // Summary tag.
   SummaryTag,
   SummaryVersionEntry,
   // WS-3: Summary versioning
   UpdateSummaryOptions,
-  // TASK-329 P6 — version diff result.
+  // Version diff result.
   VersionDiff,
 } from './types';
 
 // =============================================================================
-// Types - Provenance / Citations (TASK-330 Phase 1, Lane J)
+// Types - Provenance / Citations
 // =============================================================================
 
 export type {
@@ -367,7 +367,7 @@ export type {
   DnaUpdateInput,
 } from './types';
 
-// TASK-328 A5 — DNA aggregate dashboard types
+// DNA aggregate dashboard types
 export type { DnaDashboard, DnaDashboardDailyCount, DnaDashboardRecentActivity, DnaDashboardUsageEntry } from './types';
 
 // =============================================================================
@@ -439,7 +439,7 @@ export { AgenticError, DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from './types';
 
 export type { AuthUser, ImpersonateResponse, AdminImpersonateOptions, LoginResponse } from './types/auth';
 
-// Monitoring + platform runtime metrics types (TASK-032 WS-A; TASK-386 #16)
+// Monitoring + platform runtime metrics types
 export type { HeartbeatRecord, ServiceSessionCount, ServiceUptime, SessionCounts } from './types';
 export type {
   ConsumptionConsultations,
@@ -452,7 +452,7 @@ export type {
   RequestVolumePoint,
 } from './types';
 
-// Settings + OCC error (TASK-302 Stream D Phase D.4) — exported here so
+// Settings + OCC error — exported here so
 // admin-UI consumers can `instanceof ConfigConflictError` without
 // pulling in audio/STT plugin code.
 export type {
@@ -465,11 +465,11 @@ export type {
 } from './types';
 export { ConfigConflictError } from './types';
 
-// Frontend pipeline config types (TASK-328 A6; CaptureMode/TranscriptionMode TASK-356 Phase 4)
+// Frontend pipeline config types (incl. CaptureMode/TranscriptionMode)
 export type { CaptureMode, FrontendPipelineConfigJson, TenantFrontendConfig, TranscriptionMode, UpsertTenantFrontendConfigInput } from './types';
 
 // =============================================================================
-// Types - Global-admin ops surfaces (TASK-403)
+// Types - Global-admin ops surfaces
 // =============================================================================
 
 export type {
@@ -523,7 +523,7 @@ export {
   PLATFORM_METRICS_ENDPOINTS,
   POLICY_ENDPOINTS,
   PROMPT_TEMPLATE_ENDPOINTS,
-  // TASK-403 — global-admin ops-surface endpoints
+  // Global-admin ops-surface endpoints
   PSTUDIO_ENDPOINTS,
   QUEUE_ADMIN_ENDPOINTS,
   RATE_LIMIT_ADMIN_ENDPOINTS,
@@ -566,7 +566,7 @@ export { DEFAULT_AVAILABLE_STT_MODELS, DEFAULT_MODELS, DEFAULT_STT_MODELS, DEFAU
 // =============================================================================
 
 export {
-  // TASK-299 D-18 — SMR error → AgenticErrorCode classification helpers.
+  // SMR error → AgenticErrorCode classification helpers.
   classifyHttpError,
   classifySmrError,
   // SDK-207 WS-4: Diff utilities
@@ -574,13 +574,13 @@ export {
   computePromptDiff,
   computeSummaryDiff,
   createUnifiedPatch,
-  // TASK-373 client follow-up — cursor (keyset) response normalizer (offset sibling: extractPaginated).
+  // Cursor (keyset) response normalizer (offset sibling: extractPaginated).
   extractCursorPaginated,
   extractPromptVariables,
   formatDate,
   formatDateTime,
   formatRelativeTime,
-  // TASK-299 D-9 — Idempotency-Key helpers.
+  // Idempotency-Key helpers.
   generateIdempotencyKey,
   getErrorCode,
   getErrorMessage,
@@ -596,7 +596,7 @@ export {
   validatePromptVariables,
   withIdempotencyKey,
   wrapError,
-  // TASK-330 Phase 1 (Lane J): provenance/citations helpers for the review UI.
+  // Provenance/citations helpers for the review UI.
   SOAP_SECTIONS,
   SOAP_SECTION_LABELS,
   isNeedsAttention,
@@ -607,7 +607,7 @@ export {
   confidencePercent,
 } from './utils';
 
-// TASK-373 client follow-up — cursor page result type (PageResult<T>-shaped),
+// Cursor page result type (PageResult<T>-shaped),
 // returned by `extractCursorPaginated`.
 export type { CursorPageResult } from './utils';
 
@@ -622,7 +622,7 @@ export { ModelRegistry, type ModelLoadProgressCallback } from './core/ModelRegis
 export { PersonalizationManager, type PreferencesChangeCallback } from './core/PersonalizationManager';
 
 // =============================================================================
-// LOCAL Voice Embedding (TASK-329 P4)
+// LOCAL Voice Embedding
 // =============================================================================
 //
 // In-browser speaker-embedding provider (Transformers.js WavLM `*-sv`) that
@@ -667,7 +667,7 @@ export type { VoiceEnrollmentProvider, EnrolledEmbeddingRef, VoiceMatchResult } 
 export { FileTranscriptionService, type FileTranscribeOptions } from './core/FileTranscriptionService';
 export { SSEClient, type SSEConnectOptions } from './core/SSEClient';
 
-// Dual-stream recorder (TASK-329 P2 — dual-capture X8): records raw + processed
+// Dual-stream recorder (dual-capture X8): records raw + processed
 // tracks in parallel via two MediaRecorders.
 export { DualStreamRecorder } from './core/DualStreamRecorder';
 export type { DualStreamRecorderOptions, DualStreamRecorderResult } from './core/DualStreamRecorder';
@@ -678,7 +678,7 @@ export { SttV2WebSocketClient, type WsConnectOptions, type WsReconnectOptions } 
 // Store (Advanced Usage)
 // =============================================================================
 
-// TASK-317 W4.3 (AC-12) — the PUBLIC `useAgenticStore` stays the @deprecated
+// The PUBLIC `useAgenticStore` stays the @deprecated
 // module singleton so external importers (`import { useAgenticStore } from
 // '@arcaai/vox'`) keep working without an <AgenticProvider>. Internal SDK code
 // uses the context-backed `useAgenticStore` from `./store` instead (per-tenant
@@ -686,7 +686,7 @@ export { SttV2WebSocketClient, type WsConnectOptions, type WsReconnectOptions } 
 export { agenticStoreSingleton as useAgenticStore } from './store/agenticStore';
 export type { AgenticActions, AgenticState } from './store/agenticStore';
 
-// TASK-317 W4 (review C-1) — publicly expose the per-provider, context-backed
+// Publicly expose the per-provider, context-backed
 // store accessors. Consuming apps (e.g. apps/ui-playground) MUST read
 // provider-initialized state through these, NOT the inert @deprecated
 // `useAgenticStore` singleton above (no provider initializes it, so its
@@ -699,7 +699,7 @@ export type { AgenticActions, AgenticState } from './store/agenticStore';
 export { useAgenticStore as useArcaStore, useStoreApi } from './store/agenticStore';
 export type { AgenticStoreApi } from './store/agenticStore';
 
-// TASK-464 — EXPORTED audio-drop selectors. The external vox consultation UI
+// EXPORTED audio-drop selectors. The external vox consultation UI
 // reads the drop signal via `useArcaStore(selectAudioDropped)` /
 // `useArcaStore(selectAudioDegraded)` (never a direct store import; select
 // atomically). `selectAudioDropped` → per-session dropped-frame count;

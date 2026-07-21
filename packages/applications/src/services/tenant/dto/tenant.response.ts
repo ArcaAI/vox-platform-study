@@ -13,29 +13,28 @@ export class TenantResponse extends BaseResponse {
   description?: string;
 
   /**
-   * TASK-387 (#3) — commercial plan. Nullable/undefined when unspecified
-   * (existing tenants read no plan). See the ticket's product FLAG on defaults.
+   * Commercial plan. Nullable/undefined when unspecified
+   * (existing tenants read no plan).
    */
   @ApiPropertyOptional({ description: 'Commercial plan', enum: TenantPlan })
   plan?: TenantPlan | null;
 
   /**
-   * TASK-387 (#2 / F9) — free-form tenant tags (reuses the existing
-   * `Tenant.tags String[]` scalar; see the ticket's tags-representation decision).
+   * Free-form tenant tags (reuses the existing
+   * `Tenant.tags String[]` scalar).
    */
   @ApiProperty({ description: 'Tenant tags', type: [String], default: [] })
   tags!: string[];
 
   /**
-   * Row version for optimistic concurrency control (TASK-302 Stream D
-   * Phase E.1). Clients echo this back via `If-Match: "<version>"` (or
-   * `expectedVersion` in the body for service-to-service callers) on
-   * the next PATCH. The server's compare-and-set
-   * (`tenantRepository.updateWithVersion`) fails with `412 Precondition
-   * Failed` if `_version` has drifted under the client between read and
-   * write.
+   * Row version for optimistic concurrency control. Clients echo this back
+   * via `If-Match: "<version>"` (or `expectedVersion` in the body for
+   * service-to-service callers) on the next PATCH. The server's
+   * compare-and-set (`tenantRepository.updateWithVersion`) fails with `412
+   * Precondition Failed` if `_version` has drifted under the client between
+   * read and write.
    *
-   * The `ETagInterceptor` (Phase D.1) also stamps `ETag: "<version>"`
+   * The `ETagInterceptor` also stamps `ETag: "<version>"`
    * on the response so SDK clients can use the canonical RFC 7232
    * `If-Match` mechanism without parsing the body.
    */

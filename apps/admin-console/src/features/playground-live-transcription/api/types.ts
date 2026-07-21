@@ -1,5 +1,5 @@
 /**
- * TASK-433 — Playground live transcription (frame 51, matrix row 35).
+ * Playground live transcription (frame 51, matrix row 35).
  * END-USER plane shapes mirrored from the gateway controller
  * (`apps/api/src/modules/streaming/transcription-job.controller.ts` + dto/):
  * owner-scoped jobs, streaming session envelope and the WS wire protocol.
@@ -66,11 +66,11 @@ export interface StreamSessionResponse {
     ticket: string;
     /** Epoch milliseconds. */
     ticketExpiresAt: number;
-    /** TASK-296 bridge to row 36 — caller's enrolled voice profile seeded diarization. */
+    /** bridge to row 36 — caller's enrolled voice profile seeded diarization. */
     voiceProfileSeeded?: boolean;
 }
 
-/** POST …/stream/session/:sessionId/refresh-ticket (TASK-298 D-18). */
+/** POST …/stream/session/:sessionId/refresh-ticket. */
 export interface RefreshTicketResponse {
     ticket: string;
     ticketExpiresAt: number;
@@ -132,7 +132,7 @@ export interface WsTranscriptPayload {
     inference?: number;
     /** Raw diarizer speaker id (`"Speaker 0"` / `"unknown"`); rendered as a fallback. */
     speakerId?: string;
-    /** Canonical human-readable speaker label derived once by the bridge (TASK-489). */
+    /** Canonical human-readable speaker label derived once by the bridge. */
     speakerLabel?: string;
     /** 'gloss' results are follow-up translations and never create a row. */
     resultType?: 'segment' | 'gloss';

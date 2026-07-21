@@ -15,7 +15,7 @@ import { SPEECH_ENDPOINTS } from './constants';
 /**
  * Module-level WeakMap holding the admin JWT during impersonation.
  *
- * TASK-264 W0-3: keeping the token outside any AgenticClient instance field
+ * Keeping the token outside any AgenticClient instance field
  * (and outside the Zustand store) guarantees it cannot leak via:
  *   - `Object.keys(client)` / `Object.getOwnPropertyNames(client)`
  *   - `JSON.stringify(client)` (no enumerable property exists)
@@ -33,7 +33,7 @@ const impersonationTokens = new WeakMap<AgenticClient, string>();
 /**
  * Module-level WeakMap holding the session refresh token in memory.
  *
- * TASK-320 B2: the auto-refresh handler (wired by `AgenticProvider`) needs the
+ * The auto-refresh handler (wired by `AgenticProvider`) needs the
  * refresh token to mint a new access token on a 401. The backend
  * `/auth/refresh` is BODY-based (`{ refreshToken }`), so the SDK must hold the
  * token client-side. We mirror the impersonation-token discipline above and
@@ -60,7 +60,7 @@ export class AgenticClient {
   private rateLimitConfig?: { maxRequests: number; windowMs: number };
   private requestTimestamps: number[] = [];
   /**
-   * TASK-297 L-1 (transports) — hard cap on `requestTimestamps` so a long-
+   * Hard cap on `requestTimestamps` so a long-
    * running tab that never trips the rate limit cannot grow this array
    * unbounded. We keep at most this many recent timestamps; the rate
    * limiter still filters by window for correctness.
@@ -98,7 +98,7 @@ export class AgenticClient {
 
     this.requestTimestamps = this.requestTimestamps.filter((ts) => now - ts < windowMs);
 
-    // TASK-297 L-1 (transports) — also bound the array size so even an
+    // Also bound the array size so even an
     // adversarial / mis-configured window can't grow it unbounded.
     if (this.requestTimestamps.length > AgenticClient.MAX_REQUEST_TIMESTAMPS) {
       this.requestTimestamps = this.requestTimestamps.slice(-AgenticClient.MAX_REQUEST_TIMESTAMPS);
@@ -114,7 +114,7 @@ export class AgenticClient {
   }
 
   /**
-   * TASK-297 H-6 (transports) — endpoints whose 401 must NOT trigger an
+   * Endpoints whose 401 must NOT trigger an
    * automatic refresh. These either ARE the auth flow (login, refresh,
    * stream-ticket, impersonate) or would loop forever if we retried.
    */
@@ -138,8 +138,8 @@ export class AgenticClient {
    *
    * Thin wrapper around `requestWithMeta` that discards response headers.
    * Used by `get`/`post`/`patch`/`put`/`delete`. Callers that need the
-   * response headers (e.g. RFC 7232 `ETag` for OCC — TASK-302 Stream D
-   * Phase D.4) should use `requestWithMeta` directly or the public
+   * response headers (e.g. RFC 7232 `ETag` for OCC) should use
+   * `requestWithMeta` directly or the public
    * `getWithEtag` helper.
    */
   private async request<T>(
@@ -156,7 +156,7 @@ export class AgenticClient {
 
   /**
    * Make an HTTP request and expose response headers + status alongside
-   * the parsed body — TASK-302 Stream D Phase D (D.4).
+   * the parsed body.
    *
    * Identical to the legacy `request<T>` in every behavioral respect
    * (auth, retry, rate-limit, tracing); the ONLY difference is the
@@ -197,7 +197,7 @@ export class AgenticClient {
       ...((options?.headers as Record<string, string>) || {}),
     };
 
-    // TASK-340 — admin-plane routes use the admin's own JWT during
+    // Admin-plane routes use the admin's own JWT during
     // impersonation; user-plane routes keep the active token.
     const authToken = this.resolveAuthToken(endpoint);
     if (authToken) {
@@ -311,7 +311,7 @@ export class AgenticClient {
           },
         });
 
-        // TASK-297 H-6 (transports) — broaden the 401 skip-list so we don't
+        // Broaden the 401 skip-list so we don't
         // attempt a refresh for endpoints that ARE part of the auth flow.
         if (response.status === 401 && !isRetry && this.onUnauthorizedHandler && !AgenticClient.shouldSkipRefresh(endpoint)) {
           try {
@@ -324,7 +324,7 @@ export class AgenticClient {
           }
         }
 
-        // TASK-302 Stream D Phase D — enrich the AgenticError context with
+        // Enrich the AgenticError context with
         // OCC metadata when the server returns a 412 Precondition Failed.
         // The body shape is `{ code, message, metadata: { expectedVersion,
         // currentVersion } }`; we lift `currentVersion` into the error
@@ -457,7 +457,7 @@ export class AgenticClient {
 
   /**
    * GET request that returns the parsed body PLUS the `ETag` response
-   * header — TASK-302 Stream D Phase D (D.4).
+   * header.
    *
    * The server (D.1) renders `ETag: "<n>"` from any response that carries
    * a positive-integer `version`. SDK callers stash this token and replay
@@ -474,7 +474,7 @@ export class AgenticClient {
   }
 
   /**
-   * TASK-328 A8 — GET a `text/csv` (or any text) body WITHOUT JSON parsing.
+   * GET a `text/csv` (or any text) body WITHOUT JSON parsing.
    *
    * The standard `get`/`request` path always calls `response.json()`, which
    * corrupts a CSV export. This bespoke fetch (mirroring `postFormData`'s
@@ -503,7 +503,7 @@ export class AgenticClient {
       'X-Request-ID': requestId,
       Accept: 'text/csv',
     };
-    // TASK-340 — admin-plane routes use the admin's own JWT during
+    // Admin-plane routes use the admin's own JWT during
     // impersonation; user-plane routes keep the active token.
     const authToken = this.resolveAuthToken(endpoint);
     if (authToken) {
@@ -558,7 +558,7 @@ export class AgenticClient {
   }
 
   /**
-   * TASK-388 #10 — GET a BINARY body (e.g. `xlsx`, `pdf`) as a `Blob` WITHOUT
+   * GET a BINARY body (e.g. `xlsx`, `pdf`) as a `Blob` WITHOUT
    * JSON parsing. Mirrors {@link getCsv} (same auth + correlation headers,
    * manual fetch, no 401-refresh retry — a foreground export the operator can
    * repeat after re-auth) but returns the raw bytes so the caller can trigger a
@@ -566,7 +566,7 @@ export class AgenticClient {
    * content-type from the `?format=` query.
    */
   /**
-   * TASK-491 — POST text to the gateway TTS proxy (`/api/v1/speech/synthesize`)
+   * POST text to the gateway TTS proxy (`/api/v1/speech/synthesize`)
    * and return the raw streaming `Response` so the caller can pump audio chunks
    * into the Web Audio ring buffer as they arrive (rather than buffering the
    * whole body). Mirrors `getBlob`'s manual-fetch auth/timeout handling; no
@@ -732,7 +732,7 @@ export class AgenticClient {
 
   /**
    * PATCH request that sends an `If-Match` header carrying a strong
-   * validator — TASK-302 Stream D Phase D (D.4).
+   * validator.
    *
    * Pairs with `getWithEtag`: the SDK fetches a resource, stashes the
    * returned `ETag`, then replays it here. The server (D.2/D.3) runs a
@@ -759,7 +759,7 @@ export class AgenticClient {
    * DELETE request
    */
   async delete<T>(endpoint: string, options?: { signal?: AbortSignal; data?: unknown }): Promise<T> {
-    // TASK-409 — `data` carries an optional DELETE body (e.g. the break-glass
+    // `data` carries an optional DELETE body (e.g. the break-glass
     // `{ password, confirmationName }` confirmation for dangerous RBAC
     // deletes). Omitted for all pre-existing callers, so the wire format is
     // unchanged unless a body is explicitly supplied.
@@ -775,7 +775,7 @@ export class AgenticClient {
     endpoint: string,
     formData: FormData,
     options?: { signal?: AbortSignal },
-    // TASK-297 M-7 (transports) — flag used by the auto-retry path so we
+    // Flag used by the auto-retry path so we
     // don't loop forever when the post-refresh response is still 401.
     isRetry = false,
   ): Promise<T> {
@@ -799,7 +799,7 @@ export class AgenticClient {
       'X-Request-ID': requestId,
     };
 
-    // TASK-340 — admin-plane routes use the admin's own JWT during
+    // Admin-plane routes use the admin's own JWT during
     // impersonation; user-plane routes keep the active token.
     const authToken = this.resolveAuthToken(endpoint);
     if (authToken) {
@@ -853,7 +853,7 @@ export class AgenticClient {
         const errorCode = classifyHttpError(response.status);
         const errorMessage = errorData.message || `HTTP ${response.status}: ${response.statusText}`;
 
-        // TASK-297 M-7 (transports) — postFormData now respects the same
+        // postFormData now respects the same
         // 401-refresh contract as `request()`, so multipart uploads (voice
         // enrollment etc.) don't fail outright on transient token expiry.
         if (response.status === 401 && !isRetry && this.onUnauthorizedHandler && !AgenticClient.shouldSkipRefresh(endpoint)) {
@@ -934,7 +934,7 @@ export class AgenticClient {
       'X-Request-ID': requestId,
     };
 
-    // TASK-340 — admin-plane routes use the admin's own JWT during
+    // Admin-plane routes use the admin's own JWT during
     // impersonation; user-plane routes keep the active token.
     const authToken = this.resolveAuthToken(endpoint);
     if (authToken) {
@@ -1065,7 +1065,7 @@ export class AgenticClient {
   }
 
   /**
-   * TASK-431 — the explicit WebSocket base from `ApiConfig.wsUrl`, when set.
+   * The explicit WebSocket base from `ApiConfig.wsUrl`, when set.
    * Lets a consumer route REST through a same-origin BFF proxy (`baseUrl`)
    * while WebSocket upgrades go directly to the gateway.
    */
@@ -1157,7 +1157,7 @@ export class AgenticClient {
   }
 
   // =========================================================================
-  // Impersonation (TASK-264 W0-3)
+  // Impersonation
   //
   // The admin's original JWT lives in a module-level WeakMap keyed by `this`.
   // It is NOT a field on the instance so it cannot leak via Object.keys,
@@ -1219,7 +1219,7 @@ export class AgenticClient {
   }
 
   /**
-   * TASK-340 — refresh the stashed admin token WITHOUT changing the active
+   * Refresh the stashed admin token WITHOUT changing the active
    * (impersonation) `accessToken`.
    *
    * During impersonation admin-plane requests are sent with the stashed admin
@@ -1236,7 +1236,7 @@ export class AgenticClient {
   }
 
   /**
-   * TASK-340 — resolve the bearer token for a request to `endpoint`.
+   * Resolve the bearer token for a request to `endpoint`.
    *
    * While impersonating, admin-plane routes (`/admin/*`) must carry the
    * admin's OWN JWT (stashed via `startImpersonation`) so backend RBAC sees
@@ -1254,7 +1254,7 @@ export class AgenticClient {
   }
 
   // =========================================================================
-  // Session refresh token (TASK-320 B2)
+  // Session refresh token
   //
   // Held in a module-level WeakMap keyed by `this`, mirroring the
   // impersonation-token discipline above. Captured from the login response

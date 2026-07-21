@@ -1,9 +1,9 @@
-"""TASK-351 P2-5 — Realtime streaming latency replay harness (AC-11 evidence).
+"""Realtime streaming latency replay harness.
 
 Replays a reference WAV (or a deterministic synthetic speech-like signal)
 into a RUNNING stt-v2 instance over the real Redis Streams wire protocol,
 at realtime pace, and measures end-to-end latency against the 800 ms/chunk
-SLA from the TASK-351 project brief.
+SLA.
 
 Wire protocol (discovered from ``stt_v2/streaming/redis_streams.py`` +
 ``stt_v2/streaming/schemas.py`` + the API gateway's

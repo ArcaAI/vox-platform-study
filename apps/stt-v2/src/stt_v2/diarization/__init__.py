@@ -28,7 +28,7 @@ __all__ = [
     "SpeakerTracker",
     "SpeakerEmbedding",
     "SpeakerIdentification",
-    # TASK-475 B2 — streaming Sortformer diarizer scaffold (self-hosted, NeMo).
+    # Streaming Sortformer diarizer scaffold (self-hosted, NeMo).
     "SortformerBackend",
     "SortformerModelUnavailableError",
     "StreamingDiarizationResult",

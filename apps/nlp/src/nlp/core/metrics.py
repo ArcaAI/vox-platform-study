@@ -96,15 +96,14 @@ nlp_metrics = NLPMetrics()
 
 
 # ---------------------------------------------------------------------------
-# Cross-service per-model contract metrics (TASK-386)
+# Cross-service per-model contract metrics
 # ---------------------------------------------------------------------------
 # NLP's domain metrics above use the OpenTelemetry SDK and are exported via
 # OTLP gRPC (NOT Prometheus-scrapable). The platform-metrics backend reads
 # Prometheus, so the standardized {service, model} pair below is defined with
 # prometheus_client so it is exposed on the existing /metrics endpoint
 # (served from the default Prometheus registry by the FastAPI instrumentator).
-# Name + label keys must stay byte-identical to STT/SMR/Guardrail — see
-# docs/implementation/TASK-386-Platform-Metrics-Backend/METRIC-CONTRACT.md.
+# Name + label keys must stay byte-identical to STT/SMR/Guardrail.
 
 SERVICE_NAME = "nlp"
 
@@ -149,7 +148,7 @@ def track_model_inference(model: str, service: str = SERVICE_NAME) -> Iterator[N
 
 
 # ---------------------------------------------------------------------------
-# Model-cache retention metrics (TASK-529 §3.5)
+# Model-cache retention metrics
 # ---------------------------------------------------------------------------
 # FIXED CONTRACT: names and label sets are identical across all five HOPE
 # services so one Grafana dashboard

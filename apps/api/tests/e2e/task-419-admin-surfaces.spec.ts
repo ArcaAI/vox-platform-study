@@ -1,5 +1,5 @@
 /**
- * TASK-419 items 1–3 — new admin REST surfaces feeding the Admin Console.
+ * New admin REST surfaces feeding the Admin Console.
  *
  * Item 1 · Golden datasets (`/admin/harness/golden-sets*`)
  *   - CASL matrix: 401 unauth, 403 doctor, 200 tenant_admin, 200 super_admin
@@ -150,8 +150,8 @@ test.describe('TASK-419 Item 2 — CASL read plane', () => {
   // no manage grant on those subjects). resource-subscriptions ADMITS the
   // doctor at the type level — the seeded `user-profile-own` policy grants
   // conditional `manage:ResourceSubscription (targetUserId=self)`, and the
-  // platform convention (same as `@CanManage('ApiKey')` + `api-key-own-manage`,
-  // TASK-305 M-1) is a type-level guard with tenant scoping in the service.
+  // platform convention (same as `@CanManage('ApiKey')` + `api-key-own-manage`)
+  // is a type-level guard with tenant scoping in the service.
   const LIST_ENDPOINTS: Array<{ url: string; doctorStatus: number }> = [
     { url: '/api/v1/admin/webhooks', doctorStatus: 403 },
     { url: '/api/v1/admin/notifications', doctorStatus: 403 },

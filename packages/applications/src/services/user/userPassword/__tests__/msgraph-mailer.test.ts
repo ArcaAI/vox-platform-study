@@ -1,5 +1,5 @@
 /**
- * TASK-400 — MS-Graph password-reset mail transport + env-driven selection.
+ * MS-Graph password-reset mail transport + env-driven selection.
  *
  * The transport wraps the existing `MicrosoftGraphIntegration.sendEmail`
  * (client-credentials app) behind `IPasswordResetMailer`. Selection contract:

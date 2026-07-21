@@ -1,4 +1,4 @@
-"""Processor registry package (TASK-505 Phase 1).
+"""Processor registry package.
 
 MANIFEST: every spec module must be imported here — a decorator/registration
 that is never imported never registers (the classic registry blind spot). A

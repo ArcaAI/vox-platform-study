@@ -1,7 +1,7 @@
-"""Clinical-significance-weighted error rate (TASK-482 E3, S3-F6).
+"""Clinical-significance-weighted error rate.
 
 A *raw* error rate is not a safety metric: the npj framework finding
-(TASK-448 §S3-F6) is that a 1.47% hallucination rate hid **44% major** errors —
+is that a 1.47% hallucination rate hid **44% major** errors —
 averaging major and minor into one number is actively misleading for a safety
 gate. This module weights every note error by a documented v1 severity table so a
 dropped medication/dose/diagnosis outweighs a narrative/formatting slip:

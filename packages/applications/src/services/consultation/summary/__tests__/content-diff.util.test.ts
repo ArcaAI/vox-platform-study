@@ -1,5 +1,5 @@
 /**
- * TASK-356 Phase 6 (S5) — content-diff util unit tests.
+ * Content-diff util unit tests.
  *
  * `diffContent(old, new)` is the pure, dependency-light delta used to populate
  * the existing `ContextItemVersion.contentDiff` (a unified line diff) and

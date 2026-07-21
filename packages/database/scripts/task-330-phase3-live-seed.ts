@@ -1,5 +1,5 @@
 /**
- * TASK-330 Phase 3 — live institutional-RAG seed + ingest driver (one-off).
+ * Live institutional-RAG seed + ingest driver (one-off).
  *
  * NOT wired into `pnpm db:seed`. This is a manual live-test driver for the
  * Phase-3 full loop. It lives under `packages/database/scripts/**` (the

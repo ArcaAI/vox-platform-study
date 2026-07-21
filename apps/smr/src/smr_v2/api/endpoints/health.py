@@ -91,7 +91,7 @@ async def health_check(
         "checks": checks,
     }
 
-    # TASK-525 §3.7 — which config lane is live, so operators can see per-group
+    # Which config lane is live, so operators can see per-group
     # whether the control plane or env is in force. Health is auth-exempt, so
     # this carries SOURCE LABELS and timestamps only — never resolved values.
     # Deliberately does not affect `overall`: a config-plane outage degrades to

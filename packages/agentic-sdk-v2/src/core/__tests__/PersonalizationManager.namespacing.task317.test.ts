@@ -1,5 +1,5 @@
 /**
- * TASK-317 W1.1 (AC-1) — PersonalizationManager per-(tenant,user) IDB namespacing
+ * PersonalizationManager per-(tenant,user) IDB namespacing
  *
  * Closes audit finding C-3: the personalization cache row used to be a single
  * global `arcaai-personalization` key, so a shared workstation hydrated the

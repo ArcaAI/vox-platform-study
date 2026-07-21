@@ -1,11 +1,11 @@
-// TASK-369 (Data Encryption Initiative) Phase 3C — field encryption for
+// Field encryption for
 // GoldenCase (free-text clinical fields: transcript / referenceNote).
 //
 // Sibling file mirroring ContextItemVersionRepository.encryption.ts (declaration
 // merging + prototype patching so codegen can re-run with --overwrite). Both
 // fields share ONE `keyVersion` column; the shared Buffer/ciphertext primitives
 // live in common/field-encryption.ts and default to the dedicated `hope-phi`
-// Transit key. TASK-369 Phase 6 dropped the plaintext columns; reads decrypt the
+// Transit key. The plaintext columns have been dropped; reads decrypt the
 // ciphertext only (no plaintext fallback).
 
 import { GoldenCaseRepository } from './GoldenCaseRepository';
@@ -86,7 +86,7 @@ GoldenCaseRepository.prototype.decryptFieldsFromEntity = async function (
 ): Promise<GoldenCasePlaintext> {
   const transcript = await decryptCiphertextToString(secrets, entity.encryptedTranscript);
   const referenceNote = await decryptCiphertextToString(secrets, entity.encryptedReferenceNote);
-  // TASK-369 Phase 6 — plaintext columns dropped; decrypt ciphertext only.
+  // Plaintext columns dropped; decrypt ciphertext only.
   return { transcript, referenceNote };
 };
 

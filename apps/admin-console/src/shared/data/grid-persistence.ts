@@ -1,5 +1,5 @@
 /**
- * Server-persisted grid layout adapter (TASK-423, Phase 4).
+ * Server-persisted grid layout adapter.
  *
  * Implements the `@arcaai/ui` `GridLayoutPersistenceAdapter` port over the
  * existing per-user settings BFF endpoints:
@@ -12,7 +12,7 @@
  * failures. The gateway rejects `ui.data-grid` values over 16KB (409/400), so
  * an oversized layout is skipped client-side instead of round-tripping a reject.
  *
- * TASK-428 — the settings read is DEDUPED: every grid on a page (and Strict
+ * The settings read is DEDUPED: every grid on a page (and Strict
  * Mode's dev double-mount) shares one in-flight GET, and the row list is cached
  * for a short TTL (matching the app-wide 30s query staleTime) since the GET
  * gates each grid's first paint (`isLayoutReady`). A successful save

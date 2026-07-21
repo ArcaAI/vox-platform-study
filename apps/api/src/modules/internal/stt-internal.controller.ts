@@ -21,7 +21,7 @@ import type { RequestWithAuth } from '../../types/request-with-auth';
 export class SttInternalController {
   constructor(private readonly sttInternalService: SttInternalService) {}
 
-  // TASK-310 E-6 (AC-6): typed `RequestWithAuth` replaces the pre-W7
+  // Typed `RequestWithAuth` replaces the earlier
   // `request['apiKey']` bracket lookup. The typed dot-access means a
   // typo (`request.aip_key`) now fails TypeScript instead of silently
   // resolving to `undefined` and bypassing the API-key gate below.
@@ -85,7 +85,7 @@ export class SttInternalController {
     return this.sttInternalService.createAudioRecord(dto);
   }
 
-  // TASK-334 I-2b — register a stored object as a Media row (dual-capture).
+  // Register a stored object as a Media row (dual-capture).
   @Post('media')
   @ApiOperation({ summary: 'Register a stored audio object as a Media row' })
   async createMedia(@Req() request: RequestWithAuth, @Body() dto: InternalCreateMediaRequest) {

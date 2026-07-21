@@ -11,7 +11,7 @@ import type { McpServerResponse } from '../../mcp-server/dto';
 export type HarnessPolicySource = 'tenant' | 'system-default' | 'code-default';
 
 /**
- * The effective harness policy (TASK-330 Phase 6). Returned by
+ * The effective harness policy. Returned by
  * `GET /admin/harness/policy`, `GET /admin/harness/policy/global`, the PATCH
  * routes, and the worker-facing `GET /internal/harness/policy`. The 16 knob
  * fields are the runtime values the clinical loop reads; `version` is the OCC
@@ -111,7 +111,7 @@ export class HarnessPolicyResponse {
   regenFeedbackEnabled: boolean | null;
 
   /**
-   * TASK-533 D-24 — MCP external-tools master switch. `null ⇒ OFF`. Global-admin
+   * MCP external-tools master switch. `null ⇒ OFF`. Global-admin
    * governed, so `getEffectivePolicy` always serves the SYSTEM value even when a
    * tenant row wins for the clinical thresholds.
    */
@@ -119,7 +119,7 @@ export class HarnessPolicyResponse {
   mcpToolsEnabled: boolean | null;
 
   /**
-   * TASK-533 D-24 — enabled SYSTEM-shared MCP servers the worker may call.
+   * Enabled SYSTEM-shared MCP servers the worker may call.
    * Overlaid by `getEffectivePolicy` from the `McpServer` registry; the harness
    * `McpServerConfig.from_api` parses this exact shape. `authRef` is a Vault PATH,
    * NEVER secret material — the token itself is resolved out-of-band via
@@ -129,7 +129,7 @@ export class HarnessPolicyResponse {
   mcpServers: McpServerResponse[];
 
   /**
-   * TASK-533 B4 — per-run token budget from `agentic.context.tokenBudget.perRun`.
+   * Per-run token budget from `agentic.context.tokenBudget.perRun`.
    * Served here so the worker gets it in the single policy fetch it already makes.
    * Null ⇒ unconfigured; the workflow then keeps its default of 0 (unbounded).
    */

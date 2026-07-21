@@ -1,7 +1,7 @@
 /**
  * useVoiceEmbedding Hook Tests
  *
- * TASK-265 W0-7 / GAP-02: rewritten against the real `/voice-profile` API.
+ * Rewritten against the real `/voice-profile` API.
  * Enrollment posts multipart via `apiClient.postFormData()`. Listing GETs
  * `/voice-profile`. Deletion targets `/voice-profile/:profileId` (profile id,
  * not user id).
@@ -33,7 +33,7 @@ function createMockStore() {
             delete: vi.fn(),
         },
         logger: createMockLogger(),
-        // TASK-296 H-1: hook needs userId + tenantId to scope SecureStorage cache.
+        // Hook needs userId + tenantId to scope SecureStorage cache.
         authUser: { id: 'user-1' },
         config: { api: { tenantId: 'tenant-1' } },
     };
@@ -250,7 +250,7 @@ describe('useVoiceEmbedding (TASK-265 voice-profile rewrite)', () => {
     });
 
     // ------------------------------------------------------------------
-    // TASK-296 H-3 — enroll opts.label
+    // Enroll opts.label
     // ------------------------------------------------------------------
     describe('TASK-296 H-3 — enroll opts.label', () => {
         function audioFile(name = 'sample.wav'): File {
@@ -283,7 +283,7 @@ describe('useVoiceEmbedding (TASK-265 voice-profile rewrite)', () => {
     });
 
     // ------------------------------------------------------------------
-    // TASK-296 H-7 — Client-side MIME precheck
+    // Client-side MIME precheck
     // ------------------------------------------------------------------
     describe('TASK-296 H-7 — MIME precheck', () => {
         it('throws AgenticError VALIDATION_ERROR when Blob has no type', async () => {
@@ -315,7 +315,7 @@ describe('useVoiceEmbedding (TASK-265 voice-profile rewrite)', () => {
     });
 
     // ------------------------------------------------------------------
-    // TASK-296 C-1 — activate
+    // Activate
     // ------------------------------------------------------------------
     describe('TASK-296 C-1 — activate', () => {
         it('PATCHes the activate endpoint and marks the profile active locally', async () => {
@@ -343,7 +343,7 @@ describe('useVoiceEmbedding (TASK-265 voice-profile rewrite)', () => {
     });
 
     // ------------------------------------------------------------------
-    // TASK-296 C-1 — deactivate
+    // Deactivate
     // ------------------------------------------------------------------
     describe('TASK-296 C-1 — deactivate', () => {
         it('PATCHes the deactivate endpoint and marks the profile inactive locally', async () => {
@@ -367,7 +367,7 @@ describe('useVoiceEmbedding (TASK-265 voice-profile rewrite)', () => {
     });
 
     // ------------------------------------------------------------------
-    // TASK-296 H-1 — SecureStorage cache
+    // SecureStorage cache
     // ------------------------------------------------------------------
     describe('TASK-296 H-1 — SecureStorage cache', () => {
         beforeEach(() => {

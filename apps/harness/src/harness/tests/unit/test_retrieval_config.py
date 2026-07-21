@@ -1,4 +1,4 @@
-"""Phase-3 retrieval configuration tests (TASK-330 Phase 3, Lane A).
+"""Phase-3 retrieval configuration tests.
 
 Phase 3 needs a **retrieval** sub-config (``HARNESS_RETRIEVAL_*``) for the hybrid
 JIT retriever (LM Studio dense embeddings + fastembed BM25 sparse -> Qdrant

@@ -86,7 +86,7 @@ describe('ModelRegistry', () => {
         });
 
         it('should load selected models from localStorage', () => {
-            // TASK-317 M-3 — a registry with no namespace fail-closes to
+            // A registry with no namespace fail-closes to
             // `pre-login`, never the bare global key.
             registryStorageData['arcaai-selected-models/pre-login'] = JSON.stringify({ vad: 'silero-vad-v5' });
 

@@ -18,7 +18,7 @@ import { DualStreamRecorder } from '../core/DualStreamRecorder';
 export type { UseArcaAudio } from './useArca';
 
 /**
- * TASK-489 — vox-path mirror of the canonical `deriveSpeakerLabel`
+ * Vox-path mirror of the canonical `deriveSpeakerLabel`
  * (`@arcaai/applications` `services/stt/streaming/speaker-label.ts`).
  *
  * The admin streaming path reads the `speakerLabel` the streaming bridge derives
@@ -70,7 +70,7 @@ export function useArcaAudio() {
     return store.logger?.child('useArcaAudio');
   }, [store.logger]);
 
-  // TASK-331 doc-06 — capture-session resources that must survive between
+  // Capture-session resources that must survive between
   // start() and stop(): the 2-mic mixer (+ its secondary stream) for F3, and
   // the dual-capture recorder (+ its delivery callback) for F2.
   const mixerRef = useRef<AudioMixer | null>(null);
@@ -88,7 +88,7 @@ export function useArcaAudio() {
       const logger = getLogger();
       if (!pluginManager) throw new Error('SDK not initialized');
 
-      // TASK-464 — a new capture session starts with a clean audio-drop signal.
+      // A new capture session starts with a clean audio-drop signal.
       // Reset BEFORE audio flows (the session-sticky latch clears on start/stop
       // only, so it survives reconnect but never leaks across capture sessions).
       store.resetAudioDropped();
@@ -97,7 +97,7 @@ export function useArcaAudio() {
         store.setAudioLanguage(options.language);
       }
 
-      // TASK-298 D-4 — forward per-capture options to the plugin manager
+      // Forward per-capture options to the plugin manager
       // BEFORE initialize so the streaming transport can be built for the
       // STT stage when a `pipelineId` is provided.
       pluginManager.setRuntimeOptions?.({
@@ -118,7 +118,7 @@ export function useArcaAudio() {
           operation: 'startAudio',
           component: 'useArcaAudio',
         });
-        // TASK-331 doc-06 F3 — honor the selected primary microphone.
+        // Honor the selected primary microphone.
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: options?.deviceId ? { deviceId: { exact: options.deviceId } } : true,
         });
@@ -129,7 +129,7 @@ export function useArcaAudio() {
         store.setActiveStream(stream);
         store.setActiveAudioContext(audioContext);
 
-        // TASK-331 doc-06 F3 — when a second mic is selected, mix both inputs
+        // When a second mic is selected, mix both inputs
         // into one processed graph via @arcaai/room's AudioMixer, then feed the
         // mixed track to the noise-filter/VAD/STT pipeline.
         let track = stream.getAudioTracks()[0];
@@ -166,13 +166,13 @@ export function useArcaAudio() {
                 startTime: result.vadStreamStartSec ?? fallbackTime,
                 endTime: result.vadStreamEndSec ?? fallbackTime,
                 isFinal: true,
-                // TASK-489 — derive the canonical display label instead of
+                // Derive the canonical display label instead of
                 // surfacing the raw diarizer id (so the `"unknown"` sentinel
                 // never reaches the clinician verbatim).
                 speakerLabel: deriveSpeakerLabel(result.speakerId),
                 confidence: result.confidence,
                 language: result.language,
-                // TASK-372 D9 (Option B) — carry word-level timings through to
+                // Carry word-level timings through to
                 // the store so consumers read words from audio.transcriptSegments.
                 words: result.words,
               };
@@ -252,7 +252,7 @@ export function useArcaAudio() {
             });
             store.setAudioError(error);
           },
-          // TASK-464 — an outbound audio frame was dropped at the streaming STT
+          // An outbound audio frame was dropped at the streaming STT
           // client's backpressure watermark. The dropped PCM never reached the
           // durable transcript, so latch the session loss (survives reconnect)
           // and bump the per-session count for the degraded-connection signal.
@@ -269,7 +269,7 @@ export function useArcaAudio() {
         store.setAudioPlugins(pluginManager.getStates());
         store.setAudioError(null);
 
-        // TASK-331 doc-06 F2 — dual capture (RAW + PROCESSED) for the LOCAL
+        // Dual capture (RAW + PROCESSED) for the LOCAL
         // workflow. Record the pre-noise-filter input (getRawInputTrack) and the
         // post-filter pipeline output (getProcessedTrack) in parallel; the blobs
         // are delivered on stop() via the onDualCapture callback.
@@ -319,7 +319,7 @@ export function useArcaAudio() {
   );
 
   /**
-   * TASK-331 doc-06 F3/Q5 — start capture from the user's persisted preferences.
+   * Start capture from the user's persisted preferences.
    *
    * Derives {@link AudioStartOptions} from `store.preferences` (already populated
    * by PersonalizationManager / useArcaConfig — no new config plumbing):
@@ -365,7 +365,7 @@ export function useArcaAudio() {
       sdk: { consultationId: consultation?.id },
     });
 
-    // TASK-331 doc-06 F2 — flush the dual-capture recorder BEFORE tearing down
+    // Flush the dual-capture recorder BEFORE tearing down
     // the pipeline (destroy ends the processed track), then deliver the blobs.
     const recorder = dualRecorderRef.current;
     if (recorder?.isRecording) {
@@ -386,7 +386,7 @@ export function useArcaAudio() {
     await pluginManager.destroy();
     pluginManager.clearRuntimeOptions?.();
 
-    // TASK-331 doc-06 F3 — tear down the 2-mic mixer (stops both source streams).
+    // Tear down the 2-mic mixer (stops both source streams).
     if (mixerRef.current) {
       mixerRef.current.dispose();
       mixerRef.current = null;
@@ -404,7 +404,7 @@ export function useArcaAudio() {
     store.setIsSpeaking(false);
     store.setAudioLevel(0);
     store.setCurrentTranscript('');
-    // TASK-464 — session ended; clear the audio-drop signal (start/stop are the
+    // Session ended; clear the audio-drop signal (start/stop are the
     // ONLY reset points — the latch deliberately survives reconnect).
     store.resetAudioDropped();
 
@@ -524,7 +524,7 @@ export function useArcaAudio() {
       language: store.audioLanguage ?? 'en',
       plugins: store.audioPlugins,
       error: store.audioError,
-      // TASK-464 — surface the audio-drop signal so the vox consultation UI can
+      // Surface the audio-drop signal so the vox consultation UI can
       // render a degraded-connection banner/badge. `droppedFrameCount` is the
       // per-session count; `audioLostThisSession` is the session-sticky latch.
       droppedFrameCount: store.audioDroppedFrameCount,

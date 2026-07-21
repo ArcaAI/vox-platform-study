@@ -1,4 +1,4 @@
-// Provider-agnostic blob-storage providers (TASK-318 / W1).
+// Provider-agnostic blob-storage providers.
 export * from './IBlobStorageProvider';
 export * from './s3-blob.provider';
 export * from './azure-blob.provider';

@@ -7,7 +7,7 @@ import { HarnessAuditEvent } from '../../../models';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 
 /**
- * Append-only WORM audit repository (TASK-330 Phase 0). Writes go through the
+ * Append-only WORM audit repository. Writes go through the
  * inherited `create`; there is intentionally no update/delete surface (the DB
  * REVOKEs those privileges). `id` is a time-sortable UUIDv7, so ordering by
  * `id` reflects append order and anchors the hash chain.

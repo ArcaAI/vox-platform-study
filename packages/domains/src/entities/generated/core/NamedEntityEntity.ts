@@ -20,7 +20,7 @@ export interface INamedEntityEntity extends IBaseTenantEntity {
   aiModelVersion?: string | null;
   processingTimeMs?: number | null;
   metadata?: JsonValue | null;
-  // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the recognized
+  // Vault-Transit (hope-phi) ciphertext of the recognized
   // span (text / normalizedText) + metadata JSONB + shared key version.
   // Phase 6 dropped the plaintext columns; plaintext survives only as transient
   // fields repopulated by decrypt-on-read.
@@ -28,13 +28,13 @@ export interface INamedEntityEntity extends IBaseTenantEntity {
   encryptedNormalizedText?: Buffer | null;
   encryptedMetadata?: Buffer | null;
   keyVersion?: number | null;
-  // TASK-330 Phase 1 — clinical ontology normalization codes
+  // Clinical ontology normalization codes
   umlsCui?: string | null;
   snomedCode?: string | null;
   rxnormCode?: string | null;
   icdCode?: string | null;
   loincCode?: string | null;
-  // TASK-330 Phase 1 — transcript-span provenance
+  // Transcript-span provenance
   transcriptContextItemId?: string | null;
   transcriptStartOffset?: number | null;
   transcriptEndOffset?: number | null;
@@ -105,7 +105,7 @@ export class NamedEntityEntity extends BaseTenantEntity {
     this.setProperty('contextItemId', value);
   }
 
-  // TASK-369 Phase 3C — recognized span is free-text clinical PHI. @Secret()
+  // Recognized span is free-text clinical PHI. @Secret()
   // marks it for audit-log redaction.
   @Secret()
   get text(): INamedEntityEntity['text'] {
@@ -199,7 +199,7 @@ export class NamedEntityEntity extends BaseTenantEntity {
     this.setProperty('metadata', value);
   }
 
-  // TASK-369 Phase 3C — Vault-Transit ciphertext columns. @Secret() guards the
+  // Vault-Transit ciphertext columns. @Secret() guards the
   // ciphertext from audit-log surfaces.
   @Secret()
   get encryptedText(): INamedEntityEntity['encryptedText'] {
@@ -397,7 +397,7 @@ export class NamedEntityEntity extends BaseTenantEntity {
   }
 
   /**
-   * TASK-330 Phase 1 — true when at least one clinical ontology code is set
+   * True when at least one clinical ontology code is set
    * (UMLS / SNOMED / RxNorm / ICD / LOINC). Used by entity-faithfulness scoring
    * and coded list generation.
    */
@@ -406,7 +406,7 @@ export class NamedEntityEntity extends BaseTenantEntity {
   }
 
   /**
-   * TASK-330 Phase 1 — true when this entity carries a transcript-span
+   * True when this entity carries a transcript-span
    * provenance pointer (so summaries can cite the source offsets).
    */
   get hasTranscriptSpan(): boolean {

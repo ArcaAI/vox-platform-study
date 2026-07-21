@@ -1,5 +1,5 @@
 /**
- * Tenant isolation guards — TASK-305 D.1 (Multi-Tenancy Hardening).
+ * Tenant isolation guards enforcing multi-tenancy hardening.
  *
  * Pure helpers that enforce tenant isolation on cross-aggregate writes
  * (Consultation -> Department, ContextItem -> Consultation, ApiKey -> User,
@@ -29,27 +29,27 @@ import {
  * role with cross-tenant administrative rights. Mirrors
  * `services/tenant/constants.GLOBAL_ADMIN_ROLE` (kept local here so
  * `common/` does not import from `services/`). The former `SUPER_ADMIN`
- * role was consolidated into `GLOBAL_ADMIN` and retired (TASK-417).
+ * role was consolidated into `GLOBAL_ADMIN` and retired.
  */
 const GLOBAL_ADMIN_ROLE = 'GLOBAL_ADMIN';
 
 /**
- * AC-06 (TASK-336) — single source of truth for the set of roles that are
- * cross-tenant privileged ("elevated"). Both the pure `isSuperAdmin` predicate
- * below and the DB-layer `ClsTenantContextProvider.isSuperAdmin()` consume this
- * set, so a new elevated role is added in exactly one place. Since TASK-417
- * the set is exactly `[GLOBAL_ADMIN]`.
+ * Single source of truth for the set of roles that are cross-tenant
+ * privileged ("elevated"). Both the pure `isSuperAdmin` predicate below and
+ * the DB-layer `ClsTenantContextProvider.isSuperAdmin()` consume this set, so
+ * a new elevated role is added in exactly one place. The set is exactly
+ * `[GLOBAL_ADMIN]`.
  */
 export const ELEVATED_ROLES: readonly string[] = [GLOBAL_ADMIN_ROLE];
 
 /**
- * TASK-307 W5.5 / W5.7 / W5.9 — pure predicate that names the
+ * Pure predicate that names the
  * "is the caller cross-tenant privileged?" check used by inline
  * controller guards. Mirrors the existing service-side pattern
  * `Array.isArray(roles) && roles.includes(GLOBAL_ADMIN_ROLE)` so we don't
  * scatter the role literal across more controller files.
  *
- * The name `isSuperAdmin` predates TASK-417 and is kept as stable API
+ * The name `isSuperAdmin` is a legacy label kept as stable API
  * surface — it answers "is the caller a GLOBAL_ADMIN?".
  *
  * @example
@@ -136,7 +136,7 @@ async function findFirstTolerant<T>(fn: () => Promise<T>): Promise<T | null> {
 /**
  * Assert that the given `userId` is a member of the given `tenantId`.
  *
- * TASK-305 Phase F — a user's tenant membership is modeled by two
+ * A user's tenant membership is modeled by two
  * tenant-scoped join tables and is only valid when BOTH halves are present:
  *   - an `ENABLED` `UserRoleAssignment` (the **role** half), and
  *   - an `ENABLED` `UserDepartment` (the **department** half).
@@ -144,12 +144,11 @@ async function findFirstTolerant<T>(fn: () => Promise<T>): Promise<T | null> {
  * **Exemption:** service accounts (`User.isServiceAccount === true`) are
  * exempt from the department half — a role assignment alone is sufficient.
  * `GLOBAL_ADMIN`s are global (their assignments live under the SYSTEM tenant),
- * so the role-half check already excludes them from a specific tenant; that
- * is unchanged from the pre-Phase-F behaviour.
+ * so the role-half check already excludes them from a specific tenant.
  *
  * Use BEFORE creating any tenant-scoped row that references a `User`
- * (e.g. `Consultation.doctorId`, `ApiKey.userId`, `Notification.targetUserId`).
- * Closes audit B10 + H-4 and enforces the Phase F membership invariant.
+ * (e.g. `Consultation.doctorId`, `ApiKey.userId`, `Notification.targetUserId`)
+ * to enforce the membership invariant.
  *
  * Throws `NotFoundException` on incomplete/absent membership (NO existence
  * leak) and tolerates each repository's two failure shapes (`null` OR

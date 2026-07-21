@@ -1,5 +1,5 @@
 /**
- * TASK-506 Phase 6 — ai-task-defaults client: gateway paths, the tenantId
+ * Ai-task-defaults client: gateway paths, the tenantId
  * scope passthrough (SYSTEM for the platform screen), and the If-Match OCC
  * PUT (expectedVersion from the read ETag; `"0"` creates the row).
  */
@@ -38,7 +38,7 @@ afterEach(() => {
 });
 
 describe('task keys', () => {
-  // TASK-526 (D-18) — this mirror had drifted to 3 keys while the backend
+  // This mirror had drifted to 3 keys while the backend
   // carried 9. It must stay in lockstep with AI_TASK_KEYS in
   // packages/applications/src/services/ai-task-default/constants.ts.
   it('mirrors all nine backend task keys and the SYSTEM tenant id', () => {

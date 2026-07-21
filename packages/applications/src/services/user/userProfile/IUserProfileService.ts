@@ -11,7 +11,7 @@ export interface IUserProfileService extends IBaseService {
   fetchById(id: EntityId): Promise<UserProfileEntity>;
   /** Fetch the profile row for a user, or null when none exists yet. */
   getByUserId(userId: string): Promise<UserProfileEntity | null>;
-  /** Create-or-update the profile keyed by userId (TASK-328 A1–A3). */
+  /** Create-or-update the profile keyed by userId. */
   upsertByUserId(userId: string, request: UpdateUserProfileRequest): Promise<UserProfileEntity>;
   update(id: EntityId, request: UpdateUserProfileRequest): Promise<UserProfileEntity>;
   deleteById(id: EntityId): Promise<UserProfileEntity>;

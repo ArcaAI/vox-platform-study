@@ -1,5 +1,5 @@
 /**
- * TASK-225 Stream C1: SDK types extension — LocalWorkflowConfig additions
+ * SDK types extension — LocalWorkflowConfig additions
  *
  * TDD tests for VoiceEmbeddingLocalConfig and AudioSilenceLocalConfig.
  * @vitest-environment jsdom

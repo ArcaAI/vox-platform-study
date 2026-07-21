@@ -9,13 +9,13 @@ import * as Models from './';
 
 export class Notification extends BaseTenantDataModel {
   public title: string;
-  // TASK-369 Phase 6 — plaintext messageText / messageRichText / messageContent
+  // Plaintext messageText / messageRichText / messageContent
   // columns DROPPED; persistence is ciphertext-only. The entity keeps these as
   // transient fields repopulated by repository decrypt-on-read. `title` is NOT
   // encrypted and remains a plaintext column.
   public type: Enums.NotificationType;
   public read: boolean;
-  // TASK-369 Phase 3C — Vault-Transit ciphertext columns + shared key version.
+  // Vault-Transit ciphertext columns + shared key version.
   public encryptedMessageText: Uint8Array | null;
   public encryptedMessageRichText: Uint8Array | null;
   public encryptedMessageContent: Uint8Array | null;

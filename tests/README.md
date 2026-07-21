@@ -1,6 +1,6 @@
 # Shared Test Tree
 
-Last updated: 2026-07-04
+Introduced: 2026-07-04 · Last verified: 2026-07-21
 
 This directory holds the monorepo-level test assets: shared helpers, fixtures, global setup, contract schemas, the cross-tenant fixture, SDK E2E specs, and the isolated Docker test infrastructure. Unit tests do NOT live here — they live next to the code they test (see "Where tests belong" below).
 

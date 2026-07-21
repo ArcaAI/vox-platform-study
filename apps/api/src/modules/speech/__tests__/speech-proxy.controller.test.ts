@@ -137,7 +137,7 @@ describe('SpeechProxyController', () => {
     });
   });
 
-  // TASK-506 §3.4 — the resolved effective config's voiceBindings are injected
+  // The resolved effective config's voiceBindings are injected
   // into the forwarded body as `voice_bindings` (tts-v2 falls back to its
   // built-in DEFAULT_VOICES when absent). Fail-open posture unchanged.
   describe('POST /speech/synthesize — tenant config voice_bindings injection (TASK-506)', () => {
@@ -173,7 +173,7 @@ describe('SpeechProxyController', () => {
 
       const body = http.axiosRef.post.mock.calls[0][1];
       expect(body.voice_bindings).toEqual(BINDINGS);
-      // The rest of the TASK-496 injection is preserved.
+      // The rest of the tenant-config injection is preserved.
       expect(body.routing_en).toEqual(['azure']);
       expect(body.allowed_providers).toEqual(['azure']);
     });

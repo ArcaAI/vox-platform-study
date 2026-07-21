@@ -1,5 +1,5 @@
 /**
- * @arcaai/stt - C-1 prompt wiring tests (TASK-270)
+ * @arcaai/stt - prompt wiring tests
  *
  * Verifies the `prompt` field flows end-to-end into the Transformers.js
  * pipeline as `initial_prompt`:

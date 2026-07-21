@@ -34,7 +34,7 @@ _MAX_SENTENCE_CHARS = 400  # Parler practical per-utterance limit
 
 
 def _resolve_model_source(config: IndicParlerConfig) -> tuple[str, dict[str, bool]]:
-    """Where to load the Parler model + prompt tokenizer from (TASK-495).
+    """Where to load the Parler model + prompt tokenizer from.
 
     When ``model_path`` is set (an internal ungated mirror) load from it with
     ``local_files_only=True`` so transformers never touches the gated hub;
@@ -48,7 +48,7 @@ def _resolve_model_source(config: IndicParlerConfig) -> tuple[str, dict[str, boo
 def _resolve_desc_source(
     config: IndicParlerConfig, baked_id: str
 ) -> tuple[str, dict[str, bool]]:
-    """Where to load the description (flan-t5) tokenizer from (TASK-495).
+    """Where to load the description (flan-t5) tokenizer from.
 
     Parler bakes ``google/flan-t5-large`` as a Hub id in its config, so it is
     fetched at load even when the model is local. When ``desc_encoder_path`` is
@@ -75,11 +75,10 @@ class IndicParlerProvider:
         time_func: Callable[[], float] = time.monotonic,
     ) -> None:
         self._config = config
-        # TASK-530 (D-09 completion) — the model handle now lives behind the
-        # shared model cache, exactly as Kokoro's has since TASK-529, so it loads
-        # on first use and is RELEASED when idle. TASK-529 made this provider
-        # lazy but never unloaded it. An explicitly injected `generate` bypasses
-        # the cache entirely (hermetic tests that want a permanent fake).
+        # The model handle lives behind the
+        # shared model cache, exactly as Kokoro's does, so it loads
+        # on first use and is RELEASED when idle. An explicitly injected `generate`
+        # bypasses the cache entirely (hermetic tests that want a permanent fake).
         self._generate = generate
         self._generate_factory = generate_factory
         self._cache: ModelCache[Callable[[str, str], np.ndarray]] = ModelCache(

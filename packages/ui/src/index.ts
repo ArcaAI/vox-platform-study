@@ -90,7 +90,7 @@ export * from './components/custom/dept-prompt-selector';
 export * from './components/custom/dna-style-selector';
 export * from './components/custom/model-selector';
 export * from './components/custom/theme-toggle';
-// The deprecated `custom/transcript-viewer` was removed by TASK-410 (P2-4) — zero
+// The deprecated `custom/transcript-viewer` was removed — zero
 // remaining usages (grep-proven); `LiveTranscript` is the canonical transcript (D6).
 export * from './components/custom/multi-column-layout';
 export * from './components/custom/workflow-toggle';
@@ -382,13 +382,13 @@ export * from './components/registries/blocks';
 export * from './hooks/registries';
 
 // ============================================
-// TASK-372 — Gold-standard shared component system (canonical, D6)
+// Gold-standard shared component system (canonical, D6)
 // ============================================
 
 // Shared contracts: pagination / query-state / async-collection / surface props.
 export * from './lib/shared';
 
-// Shared primitives. `StatusBadge` joined the root barrel in TASK-410 (P2-4): the
+// Shared primitives. `StatusBadge` joined the root barrel: the
 // colliding tool-ui formatter `StatusBadge` was removed together with the deprecated
 // tool-ui `DataTable`. The '@arcaai/ui/components/shared' subpath keeps exporting it too.
 export { DensityProvider, useDensity, type DensityProviderProps } from './components/shared/density-provider';
@@ -397,7 +397,7 @@ export { StatusBadge, type StatusBadgeProps, type StatusColorRole } from './comp
 // VirtualizedDataGrid — canonical data grid (supersedes tool-ui DataTable, D6).
 export * from './components/data-grid';
 // TanStack column/selection types consumers need by name to type `columns`/
-// `selection` without depending on @tanstack/react-table directly (TASK-423 Phase 4).
+// `selection` without depending on @tanstack/react-table directly.
 export type { ColumnDef, RowSelectionState } from '@tanstack/react-table';
 
 // HistoryTimelineList — content-type-aware, virtualized history.
@@ -438,7 +438,7 @@ export type {
   UseScrollSpyResult,
 } from './components/timeline';
 
-// TASK-378 — Collection foundations: CardGrid + EntityCard + ItemList.
+// Collection foundations: CardGrid + EntityCard + ItemList.
 export { CardGrid, EntityCard, ItemList } from './components/collection';
 export type { CardGridProps, EntityCardProps, ItemListProps } from './components/collection';
 
@@ -459,8 +459,8 @@ export type {
 } from './components/live-transcript';
 
 // ============================================
-// TASK-377 — Shared Metrics / Reporting / Chart primitives (PHASE-2-PLAN §3)
-// TASK-404 retired the legacy `components/custom/service-status-bar`, so the
+// Shared Metrics / Reporting / Chart primitives
+// The legacy `components/custom/service-status-bar` was retired, so the
 // canonical semantic `ServiceStatusBar` now owns the root-barrel name (the
 // subpath '@arcaai/ui/components/metrics' keeps exporting it too).
 // ============================================

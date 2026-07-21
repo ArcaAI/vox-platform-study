@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox — useEntitlements Hook (TASK-392 Phase 5)
+ * @arcaai/vox — useEntitlements Hook
  *
  * Front-end contract for the DB-backed plan-entitlements system:
  *   - global-admin: kill-switch, plan-matrix CRUD, per-tenant override + snapshot,

@@ -7,7 +7,7 @@ import * as Entities from '../../../entities';
 import { ResourceStatusType } from '../../../enums';
 import type { PromptVersionEntity } from './PromptVersionEntity';
 
-// TASK-368 — the canonical `PromptTemplateScope` / `PromptTemplateStatus` enums
+// The canonical `PromptTemplateScope` / `PromptTemplateStatus` enums
 // are now emitted by generate-data-model into `enums/generated`. The literal
 // unions are inlined here (rather than re-exported) so callers may keep passing
 // string literals while the generated enums remain the single exported names.
@@ -26,7 +26,7 @@ export interface IPromptTemplateEntity extends IBaseTaggedEntity {
   lastTestScore?: number | null;
   lastTestOutput?: string | null;
   lastTestAt?: Date | null;
-  // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the test-output
+  // Vault-Transit (hope-phi) ciphertext of the test-output
   // field + shared key version. Phase 6 dropped the plaintext column; plaintext
   // survives only as a transient field repopulated by decrypt-on-read.
   encryptedLastTestOutput?: Buffer | null;
@@ -166,7 +166,7 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
     this.setProperty('lastTestScore', value);
   }
 
-  // TASK-369 Phase 3C — free-text clinical PHI. @Secret() marks it for
+  // Free-text clinical PHI. @Secret() marks it for
   // audit-log redaction (defense-in-depth) alongside the encrypted counterpart.
   @Secret()
   get lastTestOutput(): IPromptTemplateEntity['lastTestOutput'] {
@@ -185,7 +185,7 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
     this.setProperty('lastTestAt', value);
   }
 
-  // TASK-369 Phase 3C — Vault-Transit ciphertext columns. @Secret() guards the
+  // Vault-Transit ciphertext columns. @Secret() guards the
   // ciphertext from audit-log surfaces.
   @Secret()
   get encryptedLastTestOutput(): IPromptTemplateEntity['encryptedLastTestOutput'] {

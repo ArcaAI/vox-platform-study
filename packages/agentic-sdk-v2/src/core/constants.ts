@@ -5,7 +5,7 @@
  */
 
 // =============================================================================
-// Route classification (TASK-340)
+// Route classification
 // =============================================================================
 
 /**
@@ -13,10 +13,9 @@
  *
  * Covers `/admin/*` (mirrors the API gateway's own admin-route detection,
  * `AuthorizationGuard`, `/^\/(api\/v\d+\/)?admin\//`) PLUS the admin-only
- * surfaces that live OUTSIDE the `/admin/` prefix (TASK-353):
+ * surfaces that live OUTSIDE the `/admin/` prefix:
  *
- * - `/monitoring/*` — whole controller is `@Authorize(['manage', 'all'])`
- *   (TASK-336 OB-12).
+ * - `/monitoring/*` — whole controller is `@Authorize(['manage', 'all'])`.
  * - `/health/services[/:serviceKey]` — `manage:all`; the other `/health/*`
  *   probes (`/health`, `/health/live`, `/health/ready`) are unrestricted and
  *   deliberately NOT matched.
@@ -69,7 +68,7 @@ export const CONSULTATION_ENDPOINTS = {
 } as const;
 
 /**
- * Audio recording endpoints (TASK-329 P2 — dual-capture X8).
+ * Audio recording endpoints (dual-capture X8).
  * Persist/list raw + processed captures attached to a consultation.
  */
 export const AUDIO_RECORDING_ENDPOINTS = {
@@ -83,7 +82,7 @@ export const AUDIO_RECORDING_ENDPOINTS = {
  * Context endpoints
  */
 export const SPEECH_ENDPOINTS = {
-  /** OpenAI-compatible synthesis; streams audio (or SSE) — TASK-491 */
+  /** OpenAI-compatible synthesis; streams audio (or SSE) */
   SYNTHESIZE: () => '/speech/synthesize',
   /** List available voices */
   VOICES: () => '/speech/voices',
@@ -144,13 +143,13 @@ export const SUMMARY_ENDPOINTS = {
   /** Approve and lock a summary (Story 148) */
   APPROVE: (consultationId: string, contextItemId: string) =>
     `/consultations/${encodeURIComponent(consultationId)}/summary/${encodeURIComponent(contextItemId)}/approve`,
-  /** Diff two versions of a summary — append `?from=&to=` (TASK-329 P6) */
+  /** Diff two versions of a summary — append `?from=&to=` */
   DIFF: (consultationId: string, contextItemId: string) =>
     `/consultations/${encodeURIComponent(consultationId)}/summary/${encodeURIComponent(contextItemId)}/diff`,
-  /** List / create tags on a summary (TASK-329 P6) */
+  /** List / create tags on a summary */
   TAGS: (consultationId: string, contextItemId: string) =>
     `/consultations/${encodeURIComponent(consultationId)}/summary/${encodeURIComponent(contextItemId)}/tags`,
-  /** Delete a single tag from a summary (TASK-329 P6) */
+  /** Delete a single tag from a summary */
   TAG: (consultationId: string, contextItemId: string, tagId: string) =>
     `/consultations/${encodeURIComponent(consultationId)}/summary/${encodeURIComponent(contextItemId)}/tags/${encodeURIComponent(tagId)}`,
 } as const;
@@ -178,11 +177,6 @@ export const PERSONALIZATION_ENDPOINTS = {
 } as const;
 
 /**
- * DNA_ENDPOINTS removed in TASK-210 Phase 6.
- * Was deprecated since SUM-06, replaced by DNA_STYLE_ENDPOINTS.
- */
-
-/**
  * DNA Writing Style endpoints (SDK-207 WS-2)
  *
  * Matches DnaWritingStyleController and DnaWritingStyleAdminController.
@@ -193,23 +187,23 @@ export const DNA_STYLE_ENDPOINTS = {
   JOB_STATUS: (jobId: string) => `/dna-writing-styles/jobs/${encodeURIComponent(jobId)}`,
   JOB_STREAM: (jobId: string) => `/dna-writing-styles/jobs/${encodeURIComponent(jobId)}/stream`,
   MY_STYLE: '/dna-writing-styles/my-style',
-  // TASK-329 P5 — owner-scoped report history (the doctor's own reports). Reuses
+  // Owner-scoped report history (the doctor's own reports). Reuses
   // the existing list service, filtered to the caller's doctorId + tenant.
   MINE: '/dna-writing-styles/mine',
   UPDATE: (reportId: string) => `/dna-writing-styles/${encodeURIComponent(reportId)}`,
-  // TASK-329 P5 — promote a historical report to the doctor's active/default
+  // Promote a historical report to the doctor's active/default
   // (`isLatest`) report. Owner + tenant scoped.
   SET_DEFAULT: (reportId: string) => `/dna-writing-styles/${encodeURIComponent(reportId)}/default`,
   VERSIONS: (reportId: string) => `/dna-writing-styles/${encodeURIComponent(reportId)}/versions`,
   ADMIN_LIST: '/admin/dna-writing-styles',
   ADMIN_JOB_STATUS: (jobId: string) => `/admin/dna-writing-styles/jobs/${encodeURIComponent(jobId)}`,
   ADMIN_JOB_STREAM: (jobId: string) => `/admin/dna-writing-styles/jobs/${encodeURIComponent(jobId)}/stream`,
-  // TASK-328 A5 — aggregate dashboard. `tenantId` is global-admin-only; the
+  // Aggregate dashboard. `tenantId` is global-admin-only; the
   // backend ignores it for tenant admins (CLS tenant wins).
   ADMIN_DASHBOARD: (tenantId?: string) =>
     tenantId ? `/admin/dna-writing-styles/dashboard?tenantId=${encodeURIComponent(tenantId)}` : '/admin/dna-writing-styles/dashboard',
   BY_DOCTOR: (doctorId: string) => `/dna-writing-styles/doctor/${encodeURIComponent(doctorId)}`,
-  // TASK-388 #13 — admin cross-user (PHI-gated) reads. These hit the `/admin`
+  // Admin cross-user (PHI-gated) reads. These hit the `/admin`
   // controller, which requires `manage:DnaWritingStyleReport` and tenant-scopes
   // the caller (even GLOBAL_ADMIN cannot cross tenants). Distinct from the
   // self-only `BY_DOCTOR`/`VERSIONS` end-user routes above.
@@ -221,14 +215,14 @@ export const DNA_STYLE_ENDPOINTS = {
  * Prompt Template endpoints (SDK-207 WS-2)
  *
  * Matches PromptManagementController at @Controller('admin/prompt-templates').
- * TASK-319 F4 — moved under the audited `/admin` prefix (prompt-template
- * management is an admin capability).
+ * Lives under the audited `/admin` prefix — prompt-template management is an
+ * admin capability.
  */
 export const PROMPT_TEMPLATE_ENDPOINTS = {
   CREATE: '/admin/prompt-templates',
   LIST: '/admin/prompt-templates',
   /**
-   * TASK-331 doc-09 — end-user (clinician) read-only template list. Matches
+   * End-user (clinician) read-only template list. Matches
    * `PromptTemplateController` at `@Controller('prompt-templates')`
    * `GET /available`. This is the doctor-safe path (tenant + department
    * defaults + the caller's OWN personal templates) and requires only
@@ -242,19 +236,19 @@ export const PROMPT_TEMPLATE_ENDPOINTS = {
   DELETE: (id: string) => `/admin/prompt-templates/${encodeURIComponent(id)}`,
   VERSIONS: (id: string) => `/admin/prompt-templates/${encodeURIComponent(id)}/versions`,
   VERSION: (id: string, versionNumber: number) => `/admin/prompt-templates/${encodeURIComponent(id)}/versions/${versionNumber}`,
-  // TASK-389 #14 (AG8/A3) — server-side field-level version diff (replaces the
+  // Server-side field-level version diff (replaces the
   // client-side GET-both-then-diff in `compareVersions`).
   DIFF: (id: string, from: number, to: number) => `/admin/prompt-templates/${encodeURIComponent(id)}/versions/${from}/diff/${to}`,
   ASSIGN_DEPARTMENT: '/admin/prompt-templates/assign-department',
-  /** Get usage statistics for a prompt template (TASK-218) */
+  /** Get usage statistics for a prompt template */
   USAGE: (id: string) => `/admin/prompt-templates/${encodeURIComponent(id)}/usage`,
   /** Activate (rollback to) a specific version */
   ACTIVATE_VERSION: (id: string, versionNumber: number) => `/admin/prompt-templates/${encodeURIComponent(id)}/versions/${versionNumber}/activate`,
-  /** Run a quality/score test against the SMR/text-generation service (TASK-328 A4) */
+  /** Run a quality/score test against the SMR/text-generation service */
   TEST: (id: string) => `/admin/prompt-templates/${encodeURIComponent(id)}/test`,
-  /** Usage analytics grouped by department / doctor / day (TASK-328 A4) */
+  /** Usage analytics grouped by department / doctor / day */
   USAGE_ANALYTICS: '/admin/prompt-templates/analytics/usage',
-  /** Paginated raw prompt run rows (PromptUsageRecord), newest first (TASK-407) */
+  /** Paginated raw prompt run rows (PromptUsageRecord), newest first */
   USAGE_RECORDS: '/admin/prompt-templates/usage-records',
 } as const;
 
@@ -273,7 +267,7 @@ export const DEPARTMENT_ENDPOINTS = {
   CHILDREN: (id: string) => `/admin/departments/${encodeURIComponent(id)}/children`,
   BY_CODE: (code: string) => `/admin/departments/code/${encodeURIComponent(code)}`,
   PROMPT_CONFIG: (id: string) => `/admin/departments/${encodeURIComponent(id)}/prompt-config`,
-  // TASK-387 (#6 / D2) — reverse dept->users listing.
+  // Reverse dept->users listing.
   USERS: (id: string) => `/admin/departments/${encodeURIComponent(id)}/users`,
 } as const;
 
@@ -301,7 +295,7 @@ export const MONITORING_ENDPOINTS = {
 } as const;
 
 /**
- * Platform runtime metrics endpoints (TASK-386 #16 / E1·E2·E3).
+ * Platform runtime metrics endpoints.
  *
  * Matches `PlatformMetricsController` at `@Controller('admin/platform')`.
  * GLOBAL_ADMIN-only (class-level `@CanManage('PlatformMetrics')`, satisfied by
@@ -335,13 +329,13 @@ export const TENANT_ENDPOINTS = {
   DELETE: (id: string) => `/admin/tenants/${encodeURIComponent(id)}`,
   GET_CONFIGS: (identifier: string) => `/admin/tenants/configs/${encodeURIComponent(identifier)}`,
   UPDATE_CONFIGS: (identifier: string) => `/admin/tenants/configs/${encodeURIComponent(identifier)}`,
-  // TASK-386 (E5) — tenant usage roll-up (users/depts/storage/clinical) for the Tenant Detail tiles.
+  // Tenant usage roll-up (users/depts/storage/clinical) for the Tenant Detail tiles.
   USAGE: (id: string) => `/admin/tenants/${encodeURIComponent(id)}/usage`,
-  // TASK-387 (#1 / F6) — lifecycle transitions (suspend/archive/restore).
+  // Lifecycle transitions (suspend/archive/restore).
   SUSPEND: (id: string) => `/admin/tenants/${encodeURIComponent(id)}/suspend`,
   ARCHIVE: (id: string) => `/admin/tenants/${encodeURIComponent(id)}/archive`,
   RESTORE: (id: string) => `/admin/tenants/${encodeURIComponent(id)}/restore`,
-  // TASK-387 (#2 / F9) — tenant tags read/set.
+  // Tenant tags read/set.
   TAGS: (id: string) => `/admin/tenants/${encodeURIComponent(id)}/tags`,
 } as const;
 
@@ -377,7 +371,7 @@ export const STT_V2_ENDPOINTS = {
   /** Close/delete a streaming session */
   CLOSE_SESSION: (sessionId: string) => `/audio/transcription-jobs/stream/session/${encodeURIComponent(sessionId)}`,
   /**
-   * Refresh the one-shot stream ticket for a live session (TASK-298 D-18).
+   * Refresh the one-shot stream ticket for a live session.
    * SDK calls this from `SttV2WebSocketClient.attemptReconnect` because the
    * previous ticket is consumed by the gateway on the first WS open.
    */
@@ -427,11 +421,11 @@ export const PIPELINE_ENDPOINTS = {
   GET: (pipelineId: string) => `/audio/pipelines/${encodeURIComponent(pipelineId)}`,
   /** Get pipeline by slug */
   GET_BY_SLUG: (slug: string) => `/audio/pipelines/slug/${encodeURIComponent(slug)}`,
-  /** Create a new ASR pipeline (TASK-218) */
+  /** Create a new ASR pipeline */
   CREATE: '/admin/audio/pipelines',
-  /** Update an ASR pipeline (TASK-218) */
+  /** Update an ASR pipeline */
   UPDATE: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}`,
-  /** Delete an ASR pipeline (soft-delete) (TASK-218) */
+  /** Delete an ASR pipeline (soft-delete) */
   DELETE: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}`,
   /** Validate pipeline YAML configuration */
   VALIDATE: '/admin/audio/pipelines/validate',
@@ -439,13 +433,13 @@ export const PIPELINE_ENDPOINTS = {
   ASSIGN_TENANT: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}/assign-tenant`,
   /** Assign a pipeline to a user */
   ASSIGN_USER: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}/assign-user`,
-  /** TASK-328 A6 — mark a pipeline as the tenant default (POST) */
+  /** Mark a pipeline as the tenant default (POST) */
   SET_DEFAULT: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}/set-default`,
-  /** TASK-328 A6 — enable/disable a pipeline (PATCH, OCC via If-Match) */
+  /** Enable/disable a pipeline (PATCH, OCC via If-Match) */
   TOGGLE: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}/toggle`,
-  /** TASK-328 A6 — list config-version snapshots (newest first) */
+  /** List config-version snapshots (newest first) */
   VERSIONS: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}/versions`,
-  /** TASK-328 A6 — get one config-version snapshot by version number */
+  /** Get one config-version snapshot by version number */
   VERSION: (pipelineId: string, versionNumber: number) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}/versions/${versionNumber}`,
 } as const;
 
@@ -487,29 +481,24 @@ export const DEFAULT_SYNC_INTERVAL = 60000;
 /**
  * Local storage keys.
  *
- * TASK-297 DEF-L1 — `SESSION_STATE` removed; it was unused dead code.
- * TASK-317 W1.7 (AC-6) — dead `PREFERENCES` ('arcaai-preferences') key removed;
- * it had no live writer (personalization moved to IndexedDB in TASK-304, and
- * any legacy localStorage row is ignored).
- *
  * `SELECTED_MODELS` is the BASE key — `ModelRegistry` namespaces it per
- * `${tenantId}::${userId}` as `arcaai-selected-models/${ns}` (TASK-317 W1.5),
- * so selections isolate per tenant/user instead of sharing one global key.
+ * `${tenantId}::${userId}` as `arcaai-selected-models/${ns}`, so selections
+ * isolate per tenant/user instead of sharing one global key.
  */
 export const STORAGE_KEYS = {
   SELECTED_MODELS: 'arcaai-selected-models',
 } as const;
 
 // =============================================================================
-// TASK-032 WS-A: Additional Endpoint Constants
+// Additional Endpoint Constants
 // =============================================================================
 
 /**
- * Auth endpoints (TASK-032 WS-A)
+ * Auth endpoints
  *
- * TASK-274 fu-sse-constants: `STREAM_TICKET` is the single source of truth
- * for the SSE ticket-mint endpoint consumed by `core/SSEClient.ts`. The path
- * is owned by the API at `POST /auth/stream-ticket` (TASK-263 D1).
+ * `STREAM_TICKET` is the single source of truth for the SSE ticket-mint
+ * endpoint consumed by `core/SSEClient.ts`. The path is owned by the API at
+ * `POST /auth/stream-ticket`.
  */
 export const AUTH_ENDPOINTS = {
   LOGIN: '/auth/login',
@@ -533,7 +522,7 @@ export const SERVICE_HEALTH_ENDPOINTS = {
 } as const;
 
 /**
- * Global settings endpoints (TASK-032 WS-A)
+ * Global settings endpoints
  */
 export const GLOBAL_SETTINGS_ENDPOINTS = {
   LIST: '/admin/settings',
@@ -543,12 +532,12 @@ export const GLOBAL_SETTINGS_ENDPOINTS = {
   DELETE: (id: string) => `/admin/settings/${encodeURIComponent(id)}`,
   BY_TENANT: (tenantId: string) => `/admin/settings/tenant/${encodeURIComponent(tenantId)}`,
   TENANT_CONFIG: (tenantId: string) => `/admin/settings/tenant/${encodeURIComponent(tenantId)}/config`,
-  // TASK-396 — global-admin-only, step-up-authenticated, audited secret reveal.
+  // Global-admin-only, step-up-authenticated, audited secret reveal.
   REVEAL: (id: string) => `/admin/settings/${encodeURIComponent(id)}/reveal`,
 } as const;
 
 /**
- * Plan-entitlements endpoints (TASK-392 Phase 4/5).
+ * Plan-entitlements endpoints.
  *
  * `ADMIN` paths are global-admin-only (`/admin/entitlements/*`, admin-plane per
  * `isAdminPlanePath`, so the admin JWT is used during impersonation); `ME` is
@@ -569,12 +558,11 @@ export const ENTITLEMENTS_ENDPOINTS = {
 } as const;
 
 /**
- * User settings endpoints (TASK-265 W0-8 reduction)
+ * User settings endpoints.
  *
  * The API only exposes two real routes — `GET /user/me/settings` and
  * `PATCH /user/me/settings/:namespace/:key`. The previous shape (CRUD by id,
- * MY_SETTINGS by userId) targeted routes that do not exist; see
- * docs/implementation/TASK-265-SDK-Endpoint-Drift/README.md.
+ * MY_SETTINGS by userId) targeted routes that do not exist.
  */
 export const USER_SETTINGS_ENDPOINTS = {
   list: '/user/me/settings',
@@ -582,10 +570,10 @@ export const USER_SETTINGS_ENDPOINTS = {
 } as const;
 
 /**
- * TASK-388 #11 — admin settings endpoints for ANOTHER user. Targets
+ * Admin settings endpoints for ANOTHER user. Targets
  * `apps/api/.../user.controller.ts` (@Controller('admin/users')) at
  * `GET /admin/users/:id/settings` and `PATCH /admin/users/:id/settings/:namespace/:key`
- * (TASK-245, `assertUserInScope`). Distinct from the self-only
+ * (`assertUserInScope`). Distinct from the self-only
  * `USER_SETTINGS_ENDPOINTS` above — these let an admin view/edit a target
  * user's preferences (the typed "preferences" object is an FE aggregation over
  * the `arcaai-sdk` settings namespace).
@@ -597,7 +585,7 @@ export const ADMIN_USER_SETTINGS_ENDPOINTS = {
 } as const;
 
 /**
- * Consultation job endpoints (TASK-032 WS-A)
+ * Consultation job endpoints
  */
 export const CONSULTATION_JOB_ENDPOINTS = {
   GET: (jobId: string) => `/consultations/jobs/${encodeURIComponent(jobId)}`,
@@ -606,7 +594,7 @@ export const CONSULTATION_JOB_ENDPOINTS = {
 } as const;
 
 /**
- * User management endpoints (TASK-032 WS-G)
+ * User management endpoints
  * API controller: @Controller('admin/users')
  */
 export const USER_ENDPOINTS = {
@@ -619,22 +607,22 @@ export const USER_ENDPOINTS = {
   DELETE: (id: string) => `/admin/users/${encodeURIComponent(id)}`,
   BY_TENANT: (tenantId: string) => `/admin/users/tenant/${encodeURIComponent(tenantId)}`,
   ME: '/auth/me',
-  // TASK-388 #8 — admin reset-password (temporary password OR emailed link).
+  // Admin reset-password (temporary password OR emailed link).
   RESET_PASSWORD: (id: string) => `/admin/users/${encodeURIComponent(id)}/reset-password`,
-  // TASK-388 #8 — public completion of a reset link (no auth; token-carried).
+  // Public completion of a reset link (no auth; token-carried).
   PASSWORD_RESET_COMPLETE: '/users/password-reset/complete',
-  // TASK-400 — public self-service forgot-password (no auth; always 202).
+  // Public self-service forgot-password (no auth; always 202).
   FORGOT_PASSWORD: '/auth/forgot-password',
-  // TASK-401 — global-admin-only time-boxed impersonation mint ("act as").
+  // Global-admin-only time-boxed impersonation mint ("act as").
   IMPERSONATE: (id: string) => `/admin/users/${encodeURIComponent(id)}/impersonate`,
-  // TASK-388 #9 — server-side bulk user actions (enable/disable/delete/assign-departments).
+  // Server-side bulk user actions (enable/disable/delete/assign-departments).
   BULK_ACTIONS: '/admin/users/bulk-actions',
-  // TASK-388 #10 — server-side export (csv | xlsx | pdf).
+  // Server-side export (csv | xlsx | pdf).
   EXPORT: '/admin/users/export',
 } as const;
 
 /**
- * API Key management endpoints (TASK-032 WS-G)
+ * API Key management endpoints
  */
 export const API_KEY_ENDPOINTS = {
   LIST: '/admin/api-keys',
@@ -643,21 +631,21 @@ export const API_KEY_ENDPOINTS = {
   UPDATE: (id: string) => `/admin/api-keys/${encodeURIComponent(id)}`,
   DELETE: (id: string) => `/admin/api-keys/${encodeURIComponent(id)}`,
   REVOKE: (id: string) => `/admin/api-keys/${encodeURIComponent(id)}/revoke`,
-  // TASK-390 #23 (K5) — rotate: mint a new secret (returned once); old key
+  // Rotate: mint a new secret (returned once); old key
   // stays valid for a 24h grace window.
   ROTATE: (id: string) => `/admin/api-keys/${encodeURIComponent(id)}/rotate`,
   USAGE: (id: string) => `/admin/api-keys/${encodeURIComponent(id)}/usage`,
 } as const;
 
 /**
- * Storage management endpoints (TASK-032 WS-G)
+ * Storage management endpoints
  */
 export const STORAGE_ENDPOINTS = {
   LIST_BUCKETS: '/storage/buckets',
   GET_BUCKET: (name: string) => `/storage/buckets/${encodeURIComponent(name)}`,
-  /** Create a new bucket (TASK-218) */
+  /** Create a new bucket */
   CREATE_BUCKET: '/storage/buckets',
-  /** Delete a bucket (TASK-218) */
+  /** Delete a bucket */
   DELETE_BUCKET: (name: string) => `/storage/buckets/${encodeURIComponent(name)}`,
   LIST_FILES: (bucketName: string) => `/storage/buckets/${encodeURIComponent(bucketName)}/files`,
   UPLOAD_FILE: (bucketName: string) => `/storage/buckets/${encodeURIComponent(bucketName)}/files`,
@@ -667,7 +655,7 @@ export const STORAGE_ENDPOINTS = {
 } as const;
 
 /**
- * Policy management endpoints (TASK-218)
+ * Policy management endpoints
  */
 export const POLICY_ENDPOINTS = {
   LIST: '/admin/rbac/policies',
@@ -679,14 +667,13 @@ export const POLICY_ENDPOINTS = {
 } as const;
 
 /**
- * Role management endpoints (TASK-032 WS-G)
+ * Role management endpoints
  *
- * Note (TASK-279 / R-05): the `USER_ROLES` / `USER_ROLE` builders below
+ * Note: the `USER_ROLES` / `USER_ROLE` builders below
  * target the canonical end-user self-service path (`/users/:id/roles`),
  * which the backend currently does NOT expose — the only end-user route
  * for "my roles" today is `GET /auth/me`. The forward-looking placeholder
- * is kept for SDK consumers that already integrate against this surface;
- * see TASK-282 follow-up for the missing backend route.
+ * is kept for SDK consumers that already integrate against this surface.
  *
  * For admin user-role assignment operations, use `ADMIN_USER_ROLES_ENDPOINTS`
  * (defined below), which targets the real `apps/api/.../user.controller.ts`
@@ -700,7 +687,7 @@ export const ROLE_ENDPOINTS = {
   DELETE: (id: string) => `/admin/rbac/roles/${encodeURIComponent(id)}`,
   ASSIGN_POLICY: (roleId: string, policyId: string) => `/admin/rbac/roles/${encodeURIComponent(roleId)}/policies/${encodeURIComponent(policyId)}`,
   REMOVE_POLICY: (roleId: string, policyId: string) => `/admin/rbac/roles/${encodeURIComponent(roleId)}/policies/${encodeURIComponent(policyId)}`,
-  /** End-user self-service roles surface — see TASK-279 / TASK-282. */
+  /** End-user self-service roles surface. */
   USER_ROLES: (userId: string) => `/users/${encodeURIComponent(userId)}/roles`,
   /**
    * End-user self-service role assignment row. The second argument is
@@ -713,7 +700,7 @@ export const ROLE_ENDPOINTS = {
 } as const;
 
 /**
- * Admin user-role assignment endpoints (TASK-279 / R-05).
+ * Admin user-role assignment endpoints.
  *
  * Distinct from `ROLE_ENDPOINTS.USER_ROLES`, which targets the end-user
  * self-service surface (`/users/:id/roles`, currently served only by
@@ -723,7 +710,7 @@ export const ROLE_ENDPOINTS = {
  * Backend reality (verified 2026-05-23):
  *   - POST   /admin/users/:id/roles                 → assign     (CreateUserRoleAssignmentRequest)
  *   - DELETE /admin/users/:id/roles/:assignmentId   → remove     (by assignmentId, NOT roleId)
- *   - There is currently no GET listing endpoint   → see TASK-282 follow-up.
+ *   - There is currently no GET listing endpoint.
  */
 export const ADMIN_USER_ROLES_ENDPOINTS = {
   LIST: (userId: string) => `/admin/users/${encodeURIComponent(userId)}/roles`,
@@ -732,7 +719,7 @@ export const ADMIN_USER_ROLES_ENDPOINTS = {
 } as const;
 
 /**
- * Admin user ↔ department assignment endpoints (TASK-328 A1).
+ * Admin user ↔ department assignment endpoints.
  *
  * Targets `apps/api/.../controllers/user-departments.controller.ts` at
  * `/admin/users/:id/departments[/:assignmentId]`. Tenant-scoped via the active
@@ -746,7 +733,7 @@ export const ADMIN_USER_DEPARTMENTS_ENDPOINTS = {
 } as const;
 
 /**
- * Admin user profile endpoints (TASK-328 A1–A3).
+ * Admin user profile endpoints.
  *
  * Targets `apps/api/.../user.controller.ts` at `/admin/users/:id/profile`.
  * Exposes `preferredPromptTemplateId` through the GET/PATCH profile path.
@@ -761,10 +748,10 @@ export const ADMIN_USER_PROFILE_ENDPOINTS = {
  */
 export const AUDIT_LOG_ENDPOINTS = {
   LIST: '/admin/audit-logs',
-  // TASK-373 — cursor (keyset) list; like EXPORT it is a STATIC segment declared
+  // Cursor (keyset) list; like EXPORT it is a STATIC segment declared
   // on the API BEFORE the `/:id` param route so `cursor` is not parsed as an id.
   CURSOR: '/admin/audit-logs/cursor',
-  // TASK-328 A8 — server-side CSV export; declared on the API BEFORE `/:id`.
+  // Server-side CSV export; declared on the API BEFORE `/:id`.
   EXPORT: '/admin/audit-logs/export',
   GET: (id: string) => `/admin/audit-logs/${encodeURIComponent(id)}`,
   BY_RESOURCE: (resourceType: string, resourceId: string) =>
@@ -773,16 +760,15 @@ export const AUDIT_LOG_ENDPOINTS = {
 } as const;
 
 // =============================================================================
-// TASK-323 Phase 0 — admin / storage / SMR endpoint bindings
+// Admin / storage / SMR endpoint bindings
 //
-// Tail of TASK-320 A1 (admin consultation / transcription-job planes) and
-// TASK-318 R9 (per-tenant storage buckets / keys / config). Paths omit the
-// `/api/v1` prefix (the AgenticClient baseUrl carries it). Every path below is
-// source-verified against its API controller (cited per group).
+// Paths omit the `/api/v1` prefix (the AgenticClient baseUrl carries it).
+// Every path below is source-verified against its API controller (cited per
+// group).
 // =============================================================================
 
 /**
- * Admin consultation endpoints (TASK-319 F1 / TASK-320 A1).
+ * Admin consultation endpoints.
  *
  * Tenant-wide consultation supervision — class-level `@CanManage('Consultation')`
  * (TENANT_ADMIN / GLOBAL_ADMIN). A plain DOCTOR is denied (403).
@@ -793,14 +779,14 @@ export const ADMIN_CONSULTATION_ENDPOINTS = {
   /**
    * List ALL consultations in scope (paginated; page/limit + patientId/doctorId/departmentId filters).
    *
-   * TASK-386 (TD3/DEF-1): a GLOBAL_ADMIN with NO working tenant now gets a
+   * A GLOBAL_ADMIN with NO working tenant now gets a
    * cross-tenant list (previously HTTP 400). A tenant-admin is pinned to their tenant.
    */
   LIST: '/admin/consultations',
   /** Get a single consultation by ID (tenant-scoped) */
   GET: (id: string) => `/admin/consultations/${encodeURIComponent(id)}`,
   /**
-   * TASK-386 (#20 / E4): zero-filled new/revisit aggregation over a date range.
+   * Zero-filled new/revisit aggregation over a date range.
    * Requires `?from=&to=`; optional `&granularity=day|month`. Scope mirrors LIST
    * (global-admin cross-tenant when unscoped; tenant-admin pinned to their tenant).
    */
@@ -812,7 +798,7 @@ export const ADMIN_CONSULTATION_ENDPOINTS = {
 } as const;
 
 /**
- * Admin transcription-job endpoints (TASK-319 F3 / TASK-320 A1).
+ * Admin transcription-job endpoints.
  *
  * Tenant-wide transcription-job supervision — class-level `@CanManage('Tenant')`.
  * Distinct from the owner-scoped end-user `STT_V2_ENDPOINTS.*` reads.
@@ -829,7 +815,7 @@ export const ADMIN_TRANSCRIPTION_JOB_ENDPOINTS = {
 } as const;
 
 /**
- * Tenant storage bucket endpoints (TASK-318 / R9).
+ * Tenant storage bucket endpoints.
  *
  * Controller: `apps/api/src/modules/tenant-bucket/tenant-bucket.controller.ts`
  * (`@Controller('admin/tenants/storage/buckets')`, class-level `@CanManage('Tenant')`).
@@ -850,16 +836,16 @@ export const TENANT_BUCKET_ENDPOINTS = {
   CREATE: '/admin/tenants/storage/buckets',
   /** Delete a custom bucket */
   DELETE: (id: string) => `/admin/tenants/storage/buckets/${encodeURIComponent(id)}`,
-  /** List objects in a bucket (storage-provider op; optional `?prefix=`) (TASK-407) */
+  /** List objects in a bucket (storage-provider op; optional `?prefix=`) */
   LIST_OBJECTS: (id: string) => `/admin/tenants/storage/buckets/${encodeURIComponent(id)}/objects`,
-  /** Delete a single object in a bucket (storage-provider op; required `?key=`) (TASK-328 A7) */
+  /** Delete a single object in a bucket (storage-provider op; required `?key=`) */
   DELETE_OBJECT: (id: string) => `/admin/tenants/storage/buckets/${encodeURIComponent(id)}/objects`,
   /** Provision system buckets for a tenant */
   PROVISION: (tenantId: string) => `/admin/tenants/storage/buckets/provision/${encodeURIComponent(tenantId)}`,
 } as const;
 
 /**
- * Tenant storage access-key endpoints (TASK-318 / R9).
+ * Tenant storage access-key endpoints.
  *
  * Controller: `apps/api/src/modules/storage-access-key/storage-access-key.controller.ts`
  * (`@Controller('admin/tenants/storage/keys')`, class-level `@CanManage('Tenant')`).
@@ -875,7 +861,7 @@ export const STORAGE_KEY_ENDPOINTS = {
 } as const;
 
 /**
- * Tenant storage config endpoints (TASK-318 / R9).
+ * Tenant storage config endpoints.
  *
  * Controller: `apps/api/src/modules/tenant-storage-config/tenant-storage-config-admin.controller.ts`
  * (`@Controller('admin/tenants/storage/config')`, class-level `@CanManage('Tenant')`).
@@ -893,7 +879,7 @@ export const TENANT_STORAGE_CONFIG_ENDPOINTS = {
 } as const;
 
 /**
- * Clinical Documentation Harness admin endpoints (TASK-407, read-only subset).
+ * Clinical Documentation Harness admin endpoints (read-only subset).
  *
  * Controller: `apps/api/src/modules/harness-admin/harness-admin.controller.ts`
  * (`@Controller('admin/harness')`). Policy/audit/eval/gate-queue are DB-backed
@@ -917,7 +903,7 @@ export const HARNESS_ADMIN_ENDPOINTS = {
 } as const;
 
 /**
- * Tenant FRONTEND pipeline-config endpoints (TASK-328 A6).
+ * Tenant FRONTEND pipeline-config endpoints.
  *
  * Controller: `apps/api/src/modules/tenant-frontend-config/tenant-frontend-config-admin.controller.ts`
  * (`@Controller('admin/tenant-frontend-config')`, class-level `@CanManage('Tenant')`).
@@ -932,7 +918,7 @@ export const TENANT_FRONTEND_CONFIG_ENDPOINTS = {
 } as const;
 
 /**
- * SMR text-generation proxy endpoints (TASK-318 W3-D).
+ * SMR text-generation proxy endpoints.
  *
  * Controller: `apps/api/src/modules/streaming/smr-proxy.controller.ts`
  * (`@Controller('text')`). `GENERATE_ASSEMBLED` runs server-side prompt
@@ -1003,7 +989,7 @@ export const DEFAULT_NER_CONFIG = {
 };
 
 /**
- * Voice profile endpoints (TASK-265 W0-7 / GAP-02 — D2 Option B)
+ * Voice profile endpoints.
  *
  * Matches `VoiceProfileController` at `@Controller('voice-profile')`. Replaces
  * the previous `/users/:userId/voice-embedding` shape, which never had a
@@ -1019,7 +1005,7 @@ export const VOICE_EMBEDDING_ENDPOINTS = {
 } as const;
 
 /**
- * Rate-limit admin endpoints (TASK-403, backend substrate TASK-316).
+ * Rate-limit admin endpoints.
  *
  * Matches `RateLimitAdminController` at `@Controller('admin/rate-limit')` —
  * global-admin only (`manage all`). Every mutation returns the fresh full
@@ -1033,7 +1019,7 @@ export const RATE_LIMIT_ADMIN_ENDPOINTS = {
 } as const;
 
 /**
- * Queue admin endpoints (TASK-403, backend substrate TASK-250/336).
+ * Queue admin endpoints.
  *
  * Matches `QueueAdminController` at `@Controller('admin/queues')` — global-admin
  * only (`manage all`). Deliberately NON-destructive: the SDK exposes no
@@ -1050,10 +1036,10 @@ export const QUEUE_ADMIN_ENDPOINTS = {
 } as const;
 
 /**
- * Prisma Studio endpoints (TASK-403).
+ * Prisma Studio endpoints.
  *
  * `STATUS` is always registered (`PrismaStudioStatusController`); `SHELL` is
- * the dev-only served HTML (`PrismaStudioController`, TASK-307/336) used for
+ * the dev-only served HTML (`PrismaStudioController`) used for
  * the link-out — it 404s when Studio is disabled.
  */
 export const PSTUDIO_ENDPOINTS = {
@@ -1062,7 +1048,7 @@ export const PSTUDIO_ENDPOINTS = {
 } as const;
 
 /**
- * Built-in user role identifiers (TASK-265 W0-10).
+ * Built-in user role identifiers.
  *
  * Canonical typed tuple of the SDK's recognised system role names. Consumers
  * use these for guards and switch statements on the user's effective roles.

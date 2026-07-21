@@ -1,5 +1,5 @@
 /**
- * SMR proxy — runtime-profile parameter injection (TASK-524 §5 test 16).
+ * SMR proxy — runtime-profile parameter injection.
  *
  * Kept in its own file rather than extending the 1700-line
  * `smr-proxy.controller.test.ts`, so the injection contract reads as one unit.
@@ -53,7 +53,7 @@ function build(profileResolver?: { resolveProfile: ReturnType<typeof vi.fn> }) {
     selection as any, // HarnessPolicyService
     undefined, // aiModelService (@Optional)
     undefined, // aiTaskDefaultService (@Optional)
-    profileResolver as any, // AiRuntimeProfileService (@Optional) — TASK-524
+    profileResolver as any, // AiRuntimeProfileService (@Optional)
   );
 
   return { ctrl, http, selection };

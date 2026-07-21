@@ -1,8 +1,6 @@
 import { defineConfig } from 'tsup';
 
 /**
- * TASK-300 C-XCUT-2 / C-XCUT-3:
- *
  * - No `"use client"` banner: `@arcaai/pipeline` contains zero React
  *   imports (verified via grep). It's pure orchestration logic safe to
  *   import from React Server Components.

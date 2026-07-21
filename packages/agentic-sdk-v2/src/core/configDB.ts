@@ -1,8 +1,6 @@
 /**
  * @arcaai/vox - Shared IndexedDB helpers for the `arcaai-config` database.
  *
- * TASK-304 Wave 2 W2-PM-1
- *
  * Two distinct call sites used to open `arcaai-config` directly:
  *   • {@link AgenticProvider}'s `openConfigDB` (v1, single `user-preferences` store)
  *   • {@link agenticStore.clearOnLogout} (open-only, schema-tolerant)
@@ -20,7 +18,7 @@
  * exactly once to add the new store while keeping its `user-preferences`
  * contents intact.
  *
- * TASK-317 W1.3 (AC-2) — version bumps to 3 to drop the legacy *global*
+ * Version bumps to 3 to drop the legacy *global*
  * `arcaai-personalization` cache row one-time. Personalization is now keyed
  * per `${tenantId}::${userId}` (W1.1), so the unscoped row would otherwise
  * leak the previous user's voice-profile / model ids on a shared workstation
@@ -35,7 +33,7 @@ export const USER_PREFERENCES_STORE = 'user-preferences' as const;
 export const PERSONALIZATION_STORE = 'personalization' as const;
 
 /**
- * TASK-317 W1.3 (AC-2) — the pre-namespacing global personalization cache key.
+ * The pre-namespacing global personalization cache key.
  * Mirrors {@link PersonalizationManager}'s `PERSONALIZATION_CACHE_KEY_PREFIX`;
  * the v3 upgrade deletes this exact row.
  */
@@ -46,7 +44,7 @@ export type ConfigDBStore = typeof USER_PREFERENCES_STORE | typeof PERSONALIZATI
 /**
  * Apply the `arcaai-config` schema for an `onupgradeneeded` event: create any
  * missing stores (non-destructive to existing data) and, crossing into v3,
- * delete the legacy global personalization row (TASK-317 W1.3 / AC-2).
+ * delete the legacy global personalization row.
  *
  * Extracted from {@link openConfigDB} so the upgrade contract is unit-testable
  * without a real IndexedDB. Deleting a non-existent key is a no-op in IDB, so
@@ -60,7 +58,7 @@ export function applyConfigDBUpgrade(db: IDBDatabase, transaction: IDBTransactio
     db.createObjectStore(PERSONALIZATION_STORE);
   }
 
-  // TASK-317 W1.3 (AC-2) — one-time drop of the legacy unscoped personalization
+  // One-time drop of the legacy unscoped personalization
   // row when upgrading into v3. Uses the versionchange transaction supplied by
   // `onupgradeneeded`.
   if (oldVersion < 3 && db.objectStoreNames.contains(PERSONALIZATION_STORE)) {
@@ -77,7 +75,7 @@ export function applyConfigDBUpgrade(db: IDBDatabase, transaction: IDBTransactio
  * during `onupgradeneeded`, so opening from an older v1/v2 browser only
  * adds the new `personalization` store without rebuilding the existing
  * `user-preferences` data, and drops the legacy global personalization
- * row on the v3 upgrade (TASK-317 W1.3).
+ * row on the v3 upgrade.
  */
 export function openConfigDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {

@@ -101,7 +101,7 @@ inference:
 
             assert "not found" in str(exc_info.value).lower()
 
-    # TASK-298 D-3 — tenant filter on get_pipeline.
+    # Tenant filter on get_pipeline.
     @pytest.mark.asyncio
     async def test_get_pipeline_tenant_filter_matches(self, reader, mock_pipeline_row):
         """When tenant_id matches, the row is returned."""

@@ -1,5 +1,5 @@
 /**
- * useAuth Hook Tests (TASK-032 WS-A)
+ * useAuth Hook Tests
  *
  * @vitest-environment jsdom
  */
@@ -41,11 +41,11 @@ describe('useAuth', () => {
                 getApiKey: vi.fn(),
                 getBaseUrl: vi.fn().mockReturnValue('https://api.example.com'),
                 postFormData: vi.fn(),
-                // TASK-264 W0-3: AgenticClient impersonation API
+                // AgenticClient impersonation API
                 startImpersonation: vi.fn(),
                 stopImpersonation: vi.fn(),
                 isImpersonating: vi.fn().mockReturnValue(false),
-                // TASK-320 B2: AgenticClient in-memory refresh-token API
+                // AgenticClient in-memory refresh-token API
                 setRefreshToken: vi.fn(),
                 getRefreshToken: vi.fn(),
                 hasRefreshToken: vi.fn().mockReturnValue(false),
@@ -55,7 +55,7 @@ describe('useAuth', () => {
             authUser: null as unknown,
             authIsAuthenticated: false,
             authImpersonatedUser: null as unknown,
-            // NOTE: `authOriginalToken` removed in TASK-264 W0-3 — admin JWT lives in AgenticClient.
+            // NOTE: `authOriginalToken` removed. Admin JWT lives in AgenticClient.
             authOriginalUser: null as unknown,
             setAuthUser: vi.fn((user: unknown) => { mockStore.authUser = user; }),
             setIsAuthenticated: vi.fn((val: boolean) => { mockStore.authIsAuthenticated = val; }),
@@ -239,7 +239,7 @@ describe('useAuth', () => {
     });
 
     // =========================================================================
-    // BUG-10: Login should store JWT token and configure apiClient
+    // Login should store JWT token and configure apiClient
     // =========================================================================
 
     describe('BUG-10: login should configure apiClient with JWT token', () => {
@@ -295,7 +295,7 @@ describe('useAuth', () => {
     });
 
     // =========================================================================
-    // TASK-320 B2: login captures the refresh token in AgenticClient memory so
+    // Login captures the refresh token in AgenticClient memory so
     // the auto-refresh handler can use it; logout clears it.
     // =========================================================================
 
@@ -338,7 +338,7 @@ describe('useAuth', () => {
     });
 
     // =========================================================================
-    // TASK-212: Token-absent edge cases
+    // Token-absent edge cases
     // =========================================================================
 
     describe('TASK-212: login response without token', () => {
@@ -410,7 +410,7 @@ describe('useAuth', () => {
             expect(mockUpdateAccessToken).not.toHaveBeenCalled();
             expect(mockStore.setImpersonatedUser).toHaveBeenCalledWith(null);
             expect(mockStore.setOriginalUser).toHaveBeenCalledWith(null);
-            // TASK-264 W0-3 — token removed from store, must come from client
+            // Token removed from store, must come from client
             expect(mockStore.apiClient.stopImpersonation).toHaveBeenCalled();
         });
 
@@ -424,7 +424,7 @@ describe('useAuth', () => {
     });
 
     // =========================================================================
-    // TASK-212: Impersonation uses accessToken channel
+    // Impersonation uses accessToken channel
     // =========================================================================
 
     describe('TASK-212 + TASK-264 W0-3: impersonation uses AgenticClient internal stash', () => {
@@ -499,7 +499,7 @@ describe('useAuth', () => {
     });
 
     // =========================================================================
-    // TASK-264 W0-3: low-level startImpersonation / stopImpersonation helpers
+    // Low-level startImpersonation / stopImpersonation helpers
     // =========================================================================
 
     describe('TASK-264 W0-3: low-level impersonation helpers', () => {

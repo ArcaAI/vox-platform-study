@@ -3,7 +3,7 @@ import { CaptureMode, ResourceStatusType, TranscriptionMode } from '@arcaai/doma
 import { FrontendPipelineConfigJson } from './frontend-pipeline-config';
 
 /**
- * Per-tenant frontend audio-pipeline defaults (TASK-328 A6) as returned to
+ * Per-tenant frontend audio-pipeline defaults as returned to
  * admin callers. Applies to ALL users of the tenant. `version` is the OCC
  * token — echo it back as `If-Match: "<version>"` (or `expectedVersion`) on
  * the next PUT.
@@ -30,19 +30,19 @@ export class TenantFrontendConfigResponse {
   @ApiProperty({ description: 'Enable speaker diarization by default' })
   diarization: boolean;
 
-  // TASK-332 — the tenant toggle (persisted). NOTE: this is NOT the SDK-facing
+  // The tenant toggle (persisted). NOTE: this is NOT the SDK-facing
   // enablement; the effective flag is `platformRawCaptureCapable && captureRawAudio`,
   // surfaced separately to `GET /tenant/me/config` as `enable-local-raw-capture`.
   @ApiProperty({ description: 'Tenant toggle for local raw-stream audio capture (persisted; effective only when platformRawCaptureCapable is true)' })
   captureRawAudio: boolean;
 
-  // TASK-332 — server-computed platform capability (the locked SYSTEM_TENANT_ID
+  // Server-computed platform capability (the locked SYSTEM_TENANT_ID
   // `enable-local-raw-capture` GlobalSetting). The admin UI disables the toggle
   // with a hint when this is false. Not persisted on TenantFrontendConfig.
   @ApiProperty({ description: 'Whether the platform capability for local raw capture is enabled (admin UI disables the toggle when false)' })
   platformRawCaptureCapable: boolean;
 
-  // TASK-356 Phase 4 — tenant default transcription mode + lock + capture mode.
+  // Tenant default transcription mode + lock + capture mode.
   @ApiProperty({ description: 'Tenant default transcription mode (LOCAL or BACKEND)', enum: TranscriptionMode })
   transcriptionMode: TranscriptionMode;
 

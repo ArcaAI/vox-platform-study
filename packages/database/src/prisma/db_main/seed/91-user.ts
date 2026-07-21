@@ -21,15 +21,15 @@ import {
  * - password: Hashed password (default: password123)
  * - roleNames: Array of role names to assign
  * - tenantId: Tenant scope (use SYSTEM_TENANT_ID for platform-wide users
- *             such as the System service account or the global admins; per
- *             TASK-305 Phase A, NULL is no longer accepted)
+ *             such as the System service account or the global admins; NULL
+ *             is no longer accepted)
  * - profile: User profile information
  */
 
 /**
  * Primary department (by code) for each non-exempt seeded user.
  *
- * TASK-305 Phase F — a non-exempt user must belong to a tenant via both a role
+ * A non-exempt user must belong to a tenant via both a role
  * AND a department, so every seeded user that is not exempt is given a primary
  * `UserDepartment` in its own tenant. Codes resolve to a `Department` row in the
  * user's `tenantId` (the Global tenant for clinical users; the per-customer GEN
@@ -58,7 +58,7 @@ export const PRIMARY_DEPARTMENT_CODE_BY_USERNAME: Record<string, string> = {
     doctor_sonc: 'SONC',
     doctor_med: 'MED',
     arcaai_admin: 'GEN',
-    // TASK-331 doc-05 F1 — per-customer-tenant impersonatable clinical users.
+    // Per-customer-tenant impersonatable clinical users.
     arcaai_doctor: 'GEN',
     arcaai_nurse: 'GEN',
 };
@@ -76,7 +76,7 @@ export const PRIMARY_DEPARTMENT_CODE_BY_USERNAME: Record<string, string> = {
 // - DEPARTMENT_HEAD: Extends DOCTOR with delegation
 // - SENIOR_NURSE: Extends NURSE with broader access
 //
-// TASK-331 doc-05 F1: exported at module level (was local to seedUser) so the
+// Exported at module level (was local to seedUser) so the
 // impersonation seed invariant can be asserted in unit tests. `seedUser` still
 // iterates this list. Passwords are seeded via the upsert's `?? defaultPassword`
 // fallback below, so each entry carries `password: null`.
@@ -107,7 +107,7 @@ export const SEED_USERS = [
         // SYSTEM ADMINISTRATORS
         // =================================================================
         {
-            // TASK-417 — the `super_admin` USERNAME is a stable login identifier
+            // The `super_admin` USERNAME is a stable login identifier
             // (dev logins + e2e helpers depend on it); its ROLE is GLOBAL_ADMIN
             // since the SUPER_ADMIN role was consolidated away.
             id: SEED_USER_IDS.SUPER_ADMIN,
@@ -115,7 +115,7 @@ export const SEED_USERS = [
             password: null,
             isServiceAccount: false,
             roleNames: ['GLOBAL_ADMIN'],
-            tenantId: SYSTEM_TENANT_ID, // Platform-wide access (system tenant per TASK-305 A.2)
+            tenantId: SYSTEM_TENANT_ID, // Platform-wide access (system tenant)
             profile: {
                 firstName: 'Super',
                 lastName: 'Admin',
@@ -127,7 +127,7 @@ export const SEED_USERS = [
             lastActiveAt: new Date(),
         },
         {
-            // TASK-336 AC-06 — elevated platform-wide "global admin"; the
+            // Elevated platform-wide "global admin"; the
             // canonical elevated role (tenant-guards.ELEVATED_ROLES). Lives
             // on the SYSTEM tenant so it is membership-exempt (no department
             // required) exactly like super_admin, and works cross-tenant.
@@ -518,7 +518,7 @@ export const SEED_USERS = [
         },
 
         // =================================================================
-        // CUSTOMER-TENANT CLINICAL USERS (TASK-331 doc-05 F1)
+        // CUSTOMER-TENANT CLINICAL USERS
         // =================================================================
         // One impersonatable DOCTOR + NURSE per customer tenant so the tenant
         // admin (confined to its own tenant by the backend C-1 cross-tenant
@@ -584,7 +584,7 @@ export const SEED_USERS = [
 ];
 
 // =========================================================================
-// USER VOICE PROFILES (TASK-331 doc-07 F3)
+// USER VOICE PROFILES
 // =========================================================================
 // Deterministic voice-enrollment rows for the two primary seed doctors so the
 // Voice Profile playground, active-profile diarization seeding, and the
@@ -627,7 +627,7 @@ function makeDeterministicEmbedding(seed: number): number[] {
 
 export interface SeedVoiceProfile {
     id: string;
-    /** TASK-490 — enrollment tenant; voice-profile reads are tenant-scoped. */
+    /** Enrollment tenant; voice-profile reads are tenant-scoped. */
     tenantId: string;
     userId: string;
     isActive: boolean;
@@ -679,7 +679,7 @@ export const SEED_VOICE_PROFILES: SeedVoiceProfile[] = [
         modelId: VOICE_PROFILE_MODEL_ID,
         embedding: makeDeterministicEmbedding(4),
     },
-    // TASK-336 EU-05 — one ACTIVE enrollment per customer-tenant doctor so the
+    // One ACTIVE enrollment per customer-tenant doctor so the
     // voice-enrollment / diarization demos are populated for the ArcaAI
     // customer-tenant doctor, not just the Global-tenant doctors above. Distinct
     // embedding seeds keep each vector unique for cosine-similarity demos.
@@ -697,13 +697,11 @@ export const SEED_VOICE_PROFILES: SeedVoiceProfile[] = [
 export const seedUser = async (client: CorePrismaClient) => {
     console.log('Seeding users...');
 
-    // Get all roles
     const roles = await client.role.findMany();
     const roleMap = new Map<string, any>(
       roles.map((r: any) => [r.name as string, r]),
     );
 
-    // Function to hash passwords
     const hashPassword = async (password: string): Promise<string> => {
         const saltRounds = 10;
         return bcryptjs.hash(password, saltRounds);
@@ -759,7 +757,6 @@ export const seedUser = async (client: CorePrismaClient) => {
             for (const roleName of userData.roleNames) {
                 const role = roleMap.get(roleName);
                 if (role) {
-                    // Check if assignment already exists
                     const existingAssignment = await client.userRoleAssignment.findFirst({
                         where: {
                             userId: user.id,
@@ -784,7 +781,7 @@ export const seedUser = async (client: CorePrismaClient) => {
                 }
             }
 
-            // 4. Assign a primary department (TASK-305 Phase F — non-exempt users
+            // 4. Assign a primary department (non-exempt users
             //    must belong to a tenant via both a role AND a department).
             //    Service accounts and platform/system-tenant users are exempt.
             const isMembershipExempt =
@@ -821,7 +818,7 @@ export const seedUser = async (client: CorePrismaClient) => {
     }
 
     // =========================================================================
-    // User Voice Profiles (TASK-331 doc-07 F3)
+    // User Voice Profiles
     // =========================================================================
     // `core."UserVoiceProfile"."embedding"` is pgvector `vector(256)`, declared
     // `Unsupported(...)` in the Prisma schema, so the Prisma client cannot write
@@ -879,7 +876,6 @@ export const seedUser = async (client: CorePrismaClient) => {
         },
     ];
 
-    // Create general user settings
     for (const setting of generalUserSettings) {
         await client.userSettings.upsert({
             where: { id: setting.id },
@@ -907,18 +903,19 @@ export const seedUser = async (client: CorePrismaClient) => {
     // =========================================================================
     console.log('Seeding tenant-wide default pipeline setting...');
 
-    // TASK-336 IC-03 — point the Global tenant's `default-stt-pipeline` at the
+    // Point the Global tenant's `default-stt-pipeline` at the
     // Global tenant's OWN pipeline (06-stt GLOBAL_TENANT_ASR_PIPELINES) instead
     // of the SYSTEM-owned rows. SYSTEM pipelines are not shared-read into
     // customer tenants, so a SYSTEM value would be unreachable for Global
     // doctors; the Global-tenant pipeline lives in SEED_TENANT_ID and is both
     // listable and resolvable for them.
-    // TASK-361 — point the default at the Global tenant's resolvable
-    // production-whisper-large-v3 pipeline (id …0401). TASK-356 Phase 2 had
-    // pointed this at the CT2 int8 pipeline (…0403), whose model carries a
-    // non-resolving placeholder sourceUri (D-4); the CT2 pipeline stays
-    // registered but must not be the default until the artifact is published.
-    // TASK-507 — flipped to the new whisper.cpp GGUF default pipeline (…0404).
+    //
+    // Points the default at the Global tenant's resolvable
+    // production-whisper-large-v3 pipeline (id …0401), rather than the CT2 int8
+    // pipeline (…0403), whose model carries a non-resolving placeholder
+    // sourceUri; the CT2 pipeline stays registered but must not be the default
+    // until the artifact is published.
+    // Since flipped to the new whisper.cpp GGUF default pipeline (…0404).
     await client.globalSetting.upsert({
         where: {
             GlobalSetting_tenantId_name_key_unique: {
@@ -1471,7 +1468,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         },
 
         // =====================================================================
-        // TASK-331 doc-05 F1 — per-customer-tenant DOCTOR preferences.
+        // Per-customer-tenant DOCTOR preferences.
         // Minimal, distinct-per-tenant prefs so impersonation surfaces real
         // values. workflowMode defaults to remote (backend) for all; language
         // stays distinct per tenant: ArcaAI = en.
@@ -1494,7 +1491,7 @@ export const seedUser = async (client: CorePrismaClient) => {
             dataType: ValueType.String,
             namespace: 'arcaai-sdk',
         },
-        // TASK-336 EU-05 — enrich ArcaAI doctor prefs (primary department + DNA
+        // Enrich ArcaAI doctor prefs (primary department + DNA
         // style) so impersonation surfaces a complete, realistic profile.
         {
             id: '84000000-0000-0000-0000-000000000083',
@@ -1516,7 +1513,6 @@ export const seedUser = async (client: CorePrismaClient) => {
         },
     ];
 
-    // Create SDK user preferences
     for (const pref of sdkUserPreferences) {
         await client.userSettings.upsert({
             where: { id: pref.id },

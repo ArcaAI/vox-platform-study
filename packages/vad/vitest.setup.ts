@@ -47,7 +47,7 @@ class MockAudioWorkletNode {
 }
 
 // Mock MediaStreamTrack — `clone` is wired post-construction to avoid
-// an infinite-recursion field-initializer chain in jsdom (TASK-271).
+// an infinite-recursion field-initializer chain in jsdom.
 class MockMediaStreamTrack {
   id = 'mock-track-id';
   kind: 'audio' | 'video' = 'audio';

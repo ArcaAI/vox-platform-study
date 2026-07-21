@@ -38,7 +38,7 @@ export function useMyPreferences() {
     return useQuery({ queryKey: accountKeys.preferences(), queryFn: getMyPreferences });
 }
 
-/** BUG-005 Issue 4 — the caller's own department(s); works impersonated too. */
+/** The caller's own department(s); works impersonated too. */
 export function useMyDepartments() {
     return useQuery({ queryKey: accountKeys.departments(), queryFn: getMyDepartments });
 }

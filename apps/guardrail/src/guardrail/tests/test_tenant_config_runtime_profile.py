@@ -1,7 +1,7 @@
-"""TASK-525 §4.5 — guardrail consumes AiRuntimeProfile rows.
+"""Guardrail consumes AiRuntimeProfile rows.
 
-Per AD-1, guardrail keeps its SQL resolver rather than adopting the HTTP pull
-client; this ticket only EXTENDS that existing read with the provider-level
+Guardrail keeps its SQL resolver rather than adopting the HTTP pull
+client; the read is EXTENDED with the provider-level
 runtime profile (temperature / maxTokens / timeoutS).
 
 The existing fail-safe posture must not be weakened: a DB error still yields env
@@ -30,7 +30,7 @@ class TestProfileFieldsAreOptional:
         assert cfg.timeout_s is None
 
     def test_engine_keeps_env_values_when_no_profile_exists(self, settings: Settings) -> None:
-        """The pre-TASK-525 path must be byte-identical."""
+        """The env-only path must be byte-identical."""
         _provider, engine = resolve_guardian_engine(settings, GuardrailTenantConfig(model="m"))
 
         base = settings.engine
@@ -83,12 +83,8 @@ class TestProfileApplication:
 
 class TestLocalPathScope:
     def test_local_path_landed_with_task_527(self) -> None:
-        """`local_path` (D-12) was deferred by TASK-525 and DELIVERED by TASK-527.
-
-        This started life as `test_no_local_path_field_is_introduced`, a boundary
-        marker asserting the field did not yet exist. TASK-527 closed D-12, so the
-        marker is inverted rather than deleted: the field must now exist and must
-        default to None, keeping "no DB opinion ⇒ env fallback" intact.
+        """`local_path` must exist and default to None, keeping
+        "no DB opinion ⇒ env fallback" intact.
         """
         cfg = GuardrailTenantConfig()
         assert hasattr(cfg, "local_path")

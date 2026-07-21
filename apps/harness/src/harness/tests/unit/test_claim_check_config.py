@@ -1,4 +1,4 @@
-"""Claim-check store configuration tests (TASK-483, AC-7).
+"""Claim-check store configuration tests.
 
 The claim-check needs a ``HARNESS_CLAIM_CHECK_*`` sub-config: the store selector
 (``s3`` self-hosted MinIO | ``memory`` dev/test), the offload byte threshold, the
@@ -39,7 +39,7 @@ class TestClaimCheckConfig:
         assert c.min_bytes > 0
         # Dev/test default store is the process-local in-memory fake; prod sets s3.
         assert c.store == "memory"
-        # Creds are SecretStr (never plain str) — AC-7.
+        # Creds are SecretStr (never plain str).
         assert isinstance(c.access_key, SecretStr)
         assert isinstance(c.secret_key, SecretStr)
         assert c.access_key.get_secret_value() == ""

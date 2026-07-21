@@ -11,7 +11,7 @@ import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags }
 import { CanManage } from '../../decorators';
 
 /**
- * NotificationController (TASK-419 item 2) — admin read/update/delete surface
+ * NotificationController — admin read/update/delete surface
  * over the pre-existing `NotificationService`, mounted at `/admin/notifications`.
  *
  * Deliberately NO create route: notifications are emitted by the platform

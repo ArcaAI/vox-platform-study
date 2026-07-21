@@ -1,12 +1,11 @@
 /**
- * @arcaai/vox - useConsultationJob Hook (TASK-032 WS-A)
+ * @arcaai/vox - useConsultationJob Hook
  *
  * Consultation job tracking with SSE streaming and polling.
  * Uses SSEClient for authenticated, reconnectable SSE connections.
  *
- * TASK-274 fu-useConsultationJob: migrated to the
- * `SSEClient(scope, apiClient, logger)` constructor introduced in TASK-264
- * W0-1. The legacy `authToken` plumbing is gone — SSE auth is now ticket-based
+ * Connects via the `SSEClient(scope, apiClient, logger)` constructor. There
+ * is no `authToken` plumbing — SSE auth is ticket-based
  * (`?ticket=<single-use>`), fetched per-connect by the SSEClient itself.
  */
 

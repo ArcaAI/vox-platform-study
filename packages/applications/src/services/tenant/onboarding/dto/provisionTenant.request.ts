@@ -4,7 +4,7 @@ import { IsDefined, IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength, 
 import { TenantPlan } from '@arcaai/domains';
 import { NotReservedTenantKeyConstraint } from '../../validators/not-reserved-tenant-key.validator';
 
-/** TASK-497 §3.5 — HTTP-validated counterpart of the `TenantAdminSpec` union. */
+/** HTTP-validated counterpart of the `TenantAdminSpec` union. */
 export class ProvisionTenantAdminBlock {
   @ApiProperty({ description: 'existing: pick an existing user by id. new-local: create a local account.', enum: ['existing', 'new-local'] })
   @IsIn(['existing', 'new-local'])
@@ -33,7 +33,7 @@ export class ProvisionTenantAdminBlock {
   password?: string;
 }
 
-/** TASK-497 §3.5 — `POST /admin/tenants/provision` (global-admin create-tenant-with-admin). */
+/** `POST /admin/tenants/provision` (global-admin create-tenant-with-admin). */
 export class ProvisionTenantRequest {
   @ApiProperty({ description: 'Name of the tenant' })
   @IsString()

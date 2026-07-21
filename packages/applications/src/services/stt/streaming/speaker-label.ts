@@ -1,27 +1,26 @@
 /**
- * TASK-489 — canonical speaker-id → display-label mapping.
+ * Canonical speaker-id → display-label mapping.
  *
  * This is the SINGLE place the streaming pipeline turns a raw diarizer
  * `speaker_id` into the human-readable `speakerLabel` that rides the wire
  * ({@link StreamingTranscriptMessage.speakerLabel}). The streaming bridge calls
  * it ONCE, so every downstream consumer (the @arcaai/vox SDK client, the admin
  * console live-transcription hook) reads the derived label off the wire instead
- * of re-deriving its own — closing the fragmented-derivation gap from the
- * TASK-474 review (finding B-01).
+ * of re-deriving its own — closing the fragmented-derivation gap that used to
+ * exist across consumers.
  *
- * Label semantics (consistent with the TASK-475 naming plan):
+ * Label semantics:
  * - the streaming diarizer emits only ANONYMOUS ids — `"Speaker 0"`,
  *   `"Speaker 1"`, … (`speaker_tracker.py`) — plus the `"unknown"` sentinel
  *   stamped when diarization ran but produced no confident match
  *   (`inference.py`).
  * - anonymous ids are already human-readable and pass through verbatim; role
- *   labels ("Clinician"/"Patient") are layered on later by TASK-475 and
- *   preseeded clinician NAMES by TASK-490 (PHI-gated) — this seam is where they
- *   will be injected.
+ *   labels ("Clinician"/"Patient") and preseeded clinician NAMES (PHI-gated)
+ *   are layered on later — this seam is where they will be injected.
  *
  * PHI posture: this mapping NEVER fabricates or surfaces a raw clinician/patient
  * name. It only reshapes the anonymous ids / sentinel the streaming path emits
- * today; name preseed is out of scope (TASK-490) and off here.
+ * today; name preseed is out of scope and off here.
  */
 
 /** stt-v2's no-confident-match sentinel, stamped on the wire as `speaker_id`. */

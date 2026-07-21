@@ -13,16 +13,16 @@ export class ContextItemVersion extends BaseTenantDataModel {
   public changeReason: string | null;
   public changedBy: string | null;
   public changeSource: string | null;
-  // TASK-369 Phase 6 — plaintext content / contentDiff / changeSummary /
+  // Plaintext content / contentDiff / changeSummary /
   // fieldChanges columns DROPPED; persistence is ciphertext-only. The entity
   // keeps these as transient fields repopulated by repository decrypt-on-read.
-  // TASK-369 Phase 3C — Vault-Transit ciphertext columns + shared key version.
+  // Vault-Transit ciphertext columns + shared key version.
   public encryptedContent: Uint8Array | null;
   public encryptedContentDiff: Uint8Array | null;
   public encryptedChangeSummary: Uint8Array | null;
   public encryptedFieldChanges: Uint8Array | null;
   public keyVersion: number | null;
-  // TASK-330 Phase 1 — clinician attestation (confirm-before-commit gate)
+  // Clinician attestation (confirm-before-commit gate)
   public attestedAt: Date | null;
   public attestedBy: string | null;
   public attestationHash: string | null;

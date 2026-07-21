@@ -8,7 +8,7 @@ const DEFAULT_NLP_URL = 'http://localhost:8864';
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 /**
- * Merged guardrail configuration read (TASK-419 item 3): the two read-only
+ * Merged guardrail configuration read: the two read-only
  * config endpoints the Python service actually exposes, joined into one
  * document for the console. Shapes are owned by apps/guardrail — proxied
  * verbatim, never re-validated here.
@@ -21,7 +21,7 @@ export interface GuardrailConfigResult {
 }
 
 /**
- * AiServiceProxyClient (TASK-419 item 3).
+ * AiServiceProxyClient.
  *
  * Outbound half of the `/admin/ai-services` read plane: proxies the Guardrail
  * and NLP Python services' own health/config endpoints through the gateway so

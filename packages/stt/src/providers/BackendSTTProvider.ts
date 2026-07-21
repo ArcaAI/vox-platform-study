@@ -15,7 +15,7 @@ import { prepareFloat32ForWhisper, WHISPER_SAMPLE_RATE } from '../utils/audioRes
 /**
  * Remote STT provider using WebSocket.
  *
- * @deprecated TASK-298 D-4 — Prefer {@link StreamingBackendSTTProvider},
+ * @deprecated Prefer {@link StreamingBackendSTTProvider},
  * which speaks the pipeline-aware STT-V2 protocol (`?ticket=`-authenticated
  * gateway, `{type:'audio', seq, data}` envelope, `lastSeq` resumability).
  * This legacy provider remains for backward compatibility with callers that

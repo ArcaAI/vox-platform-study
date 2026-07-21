@@ -7,7 +7,7 @@ import type { ServiceProbe } from '../api';
 const DOWN_STATUSES = new Set(['down', 'unhealthy']);
 
 /**
- * Local-dev diagnosability affordance (BUG-009). When a downstream service
+ * Local-dev diagnosability affordance. When a downstream service
  * probes `down`/`unhealthy` — the tell-tale of a `pnpm dev:*` terminal that
  * failed to bind its port — a lone red card 30s later is the only signal.
  * This points the developer straight at the aggregated probe instead.

@@ -789,7 +789,7 @@ describe('UnifiedAuthGuard', () => {
         });
     });
 
-    // ─── 14. TASK-343 — Idempotency (single enforcement per request) ──
+    // ─── 14. Idempotency (single enforcement per request) ──
     describe('TASK-343 idempotency', () => {
         it('memoises the success path: two canActivate calls on one request build the CASL ability once and return true twice', async () => {
             const context = createMockContext();
@@ -835,7 +835,7 @@ describe('UnifiedAuthGuard', () => {
         });
     });
 
-    // ─── 15. TASK-343 — Swallowed JWT error is now logged ─────────────
+    // ─── 15. Swallowed JWT error is now logged ─────────────
     describe('TASK-343 swallowed-error diagnostics', () => {
         it('logs a swallowed UnauthorizedException at DEBUG while the client still gets the generic 401', async () => {
             const context = createMockContext();
@@ -882,7 +882,7 @@ describe('UnifiedAuthGuard', () => {
         });
     });
 
-    // ─── 16. TASK-343 — 403 (permission denied) ≠ 401 (unauthenticated) ─
+    // ─── 16. 403 (permission denied) ≠ 401 (unauthenticated) ─
     describe('TASK-343 403 stays distinct from 401', () => {
         it('throws ForbiddenException (403), NOT UnauthorizedException, when JWT succeeds but CASL denies', async () => {
             const context = createMockContext();

@@ -12,7 +12,7 @@ import { IRegistrationService } from './IRegistrationService';
   imports: [CommonServiceModule, CoreDatabaseModule, UserServiceModule, TenantOnboardingServiceModule],
   providers: [
     { provide: IRegistrationService, useClass: RegistrationService },
-    // Same TASK-400 provider-selection factory as UserPasswordServiceModule
+    // Same provider-selection factory as UserPasswordServiceModule
     // (env-selected: MS Graph / dev outbox / log-only) — reused, not exported
     // from that module, so provided again here (module-scoped DI).
     { provide: IPasswordResetMailer, useFactory: () => createPasswordResetMailer() },

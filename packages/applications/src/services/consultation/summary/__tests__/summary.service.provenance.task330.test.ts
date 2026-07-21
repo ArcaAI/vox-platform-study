@@ -1,6 +1,6 @@
 /**
- * SummaryService — getSummaryProvenance (TASK-330 follow-up: expose harness
- * provenance over HTTP).
+ * SummaryService — getSummaryProvenance: expose harness
+ * provenance over HTTP.
  *
  * The harness writes `SummaryMeta.citationsMap` + the sensor score columns
  * (coverageScore / entityFaithfulnessScore / ragTriadScore), its full sensor
@@ -70,7 +70,7 @@ describe('SummaryService.getSummaryProvenance (TASK-330 — provenance over HTTP
   });
 
   it('passes per-claim knowledgeChunkIds through provenance unchanged (TASK-330 Phase 3 institutional RAG)', async () => {
-    // Phase 3 adds `knowledgeChunkIds: string[]` to each citationsMap claim
+    // `knowledgeChunkIds: string[]` is added to each citationsMap claim
     // (the harness RAG path links a claim to the KnowledgeChunk rows that
     // grounded it). citationsMap is a Json passthrough end-to-end, so this is
     // surfaced verbatim — no schema/DTO change. This test locks that contract.

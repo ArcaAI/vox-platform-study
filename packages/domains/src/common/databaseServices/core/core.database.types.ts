@@ -9,7 +9,7 @@
 
 // Re-export from the database package
 export { PrismaClient as CorePrismaClient, Prisma as CorePrisma } from '@arcaai/database';
-// TASK-306 W5.7.12 (§8 F-8) — dropped the `CoreDataModel` wildcard
+// Dropped the `CoreDataModel` wildcard
 // alias of `@arcaai/database`. ESLint `no-restricted-imports`
 // `importNames` allow-list does not follow wildcard re-exports, so
 // the alias was a latent footgun: any consumer reaching for

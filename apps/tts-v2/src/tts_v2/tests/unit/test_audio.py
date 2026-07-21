@@ -1,4 +1,4 @@
-"""TDD tests for audio post-processing utilities (TASK-488 Phase 4)."""
+"""TDD tests for audio post-processing utilities."""
 
 from __future__ import annotations
 

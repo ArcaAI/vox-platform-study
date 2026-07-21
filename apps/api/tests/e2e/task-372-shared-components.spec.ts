@@ -1,12 +1,12 @@
 /**
- * TASK-372 — shared-component BACKEND contract verification.
+ * Shared-component BACKEND contract verification.
  *
  * The `@arcaai/ui` shared-component system (VirtualizedDataGrid /
  * HistoryTimelineList / LiveTranscript) is transport-agnostic (decision D5) —
  * it has no backend of its own. The only server contracts it *depends on* are
  * the two that were spawned by its ratified decisions:
  *
- *   - D7  → CURSOR (keyset) pagination   (TASK-373, GET /admin/audit-logs/cursor)
+ *   - D7  → CURSOR (keyset) pagination   (GET /admin/audit-logs/cursor)
  *           — backs the grid's `pageMode: 'cursor'` + the SDK
  *             `extractCursorPaginated` / `useAuditLog().listByCursor` normalizer.
  *   - D8  → per-user grid-layout persistence under the `ui.data-grid`
@@ -32,7 +32,7 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
-/** TASK-373 — the cursor (keyset) reference endpoint backing the grid's cursor mode. */
+/** The cursor (keyset) reference endpoint backing the grid's cursor mode. */
 const CURSOR_PATH = '/api/v1/admin/audit-logs/cursor';
 
 interface AuditLogRow {

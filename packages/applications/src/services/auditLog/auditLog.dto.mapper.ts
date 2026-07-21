@@ -4,7 +4,7 @@ import { ResponsibleUserMap } from './IAuditLogService';
 import { FetchResponse, CursorPage } from '../../common';
 
 /**
- * TASK-328 A8 — CSV column order. Kept as a single source of truth so the
+ * CSV column order. Kept as a single source of truth so the
  * header row and each data row stay aligned.
  */
 const CSV_COLUMNS = [
@@ -23,7 +23,7 @@ const CSV_COLUMNS = [
 ] as const;
 
 /**
- * TASK-390 #25 (AU2) — a column/row table extracted from an audit set, shaped to
+ * A column/row table extracted from an audit set, shaped to
  * feed the shared `table-export` renderer (structurally compatible with its
  * `TableColumn`). Kept dependency-free here (no `apps/api` import) so the
  * applications layer stays framework-agnostic.
@@ -74,7 +74,7 @@ export class AuditLogDtoMapper {
   }
 
   /**
-   * TASK-373 — map a cursor (keyset) page to its response envelope, preserving
+   * Map a cursor (keyset) page to its response envelope, preserving
    * the opaque `nextCursor`/`hasMore` cursor metadata and enriching each row
    * with its acting user (same as {@link ToPaginatedResponse}).
    */
@@ -91,12 +91,12 @@ export class AuditLogDtoMapper {
   }
 
   /**
-   * TASK-328 A8 — serialise a filtered audit-log set to CSV text. The acting
+   * Serialise a filtered audit-log set to CSV text. The acting
    * user name/email are flattened into dedicated columns and the `data` JSON
    * blob is stringified into a single (escaped) cell so the export is a
    * faithful, spreadsheet-friendly snapshot of the table.
    *
-   * OB-07 (TASK-336) — when `options.includeTenant` is set (cross-tenant /
+   * OB-07 — when `options.includeTenant` is set (cross-tenant /
    * super-admin "global" export), a trailing `tenantId` column is appended so
    * each row keeps its tenant attribution. Tenant-scoped exports omit it (every
    * row belongs to the caller's own tenant, so the column would be noise).
@@ -114,7 +114,7 @@ export class AuditLogDtoMapper {
   }
 
   /**
-   * TASK-390 #25 (AU2) — structured (column/row) view of a filtered audit set,
+   * Structured (column/row) view of a filtered audit set,
    * feeding the shared `table-export` renderer so the same data drives the
    * xlsx and pdf exports. Column order + cell mapping are shared with
    * {@link ToCsv} (via {@link buildExportCells}); `header === key` so the xlsx

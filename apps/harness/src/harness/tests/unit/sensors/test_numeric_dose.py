@@ -1,4 +1,4 @@
-"""Numeric/dose sensor tests (RED-first).
+"""Numeric/dose sensor tests.
 
 Heuristic under test: every number/dose token in the note must cross-check
 against the transcript. A dose in the note that differs from the transcript

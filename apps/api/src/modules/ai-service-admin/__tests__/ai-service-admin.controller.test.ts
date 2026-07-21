@@ -1,5 +1,5 @@
 /**
- * AiServiceAdminController unit tests (TASK-419 item 3).
+ * AiServiceAdminController unit tests.
  *
  * Read-only status/config plane over the Guardrail + NLP Python services via
  * the gateway proxy. Platform-infra tier: class-level `manage:all` (matches

@@ -27,7 +27,7 @@ Status values: `open` · `owned` (ticket exists) · `fixed` · `accepted-risk` �
 | F-016 | 827 bare `eslint-disable` comments without justification | P2 | Quality | owned | TASK-540 |
 | F-017 | TASK-499 SAML: real signed-assertion tampered/expired/replayed/XSW matrix never built | P1 | Security | open | cycle-2 |
 | F-018 | NUL byte at `live-documentation.service.ts:1424` — ripgrep silently skips the file | P2 | Quality | open (quick win) | cycle-1 QW |
-| F-019 | Domain drift gates (`gen:entity:check`/`gen:factory:check`) previously RED at HEAD; believed repaired by 533-A but never re-run | P2 | Quality | open (quick win) | cycle-1 QW |
+| F-019 | Domain drift gates (`gen:entity:check`/`gen:factory:check`) previously RED at HEAD; believed repaired by 533-A but never re-run | P2 | Quality | **fixed/verified 2026-07-21** — both checks green with "schema coverage OK" (ran during TASK-536 batch 2) | cycle-1 QW |
 | F-020 | `docs/research/security/*` corpus deleted in checkpoint `c6c44de2` (owner-directed commit-everything). Recoverable from git history | P3 | Process | accepted-risk (recorded) | — |
 | F-021 | Pre-existing broken suites discovered during TASK-541 (2, per its README) | P2 | Test posture | open — enumerate from TASK-541 README in cycle 1 | cycle-1 §1 |
 

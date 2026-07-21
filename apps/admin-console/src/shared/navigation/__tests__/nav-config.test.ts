@@ -29,7 +29,7 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
         expect(platform?.tier).toBe('10-19');
         expect(platform?.required).toEqual([['manage', 'all']]);
         expect(platform?.implemented).toBe(true);
-        // TASK-526 — renamed from `/ai-model-defaults`; the old route now only
+        // Renamed from `/ai-model-defaults`; the old route now only
         // serves a redirect and must be gone from the nav.
         expect(NAV_ENTRIES.some((entry) => entry.route === '/ai-model-defaults')).toBe(false);
         const tenant = NAV_ENTRIES.find((entry) => entry.route === '/ai-configuration');
@@ -49,7 +49,7 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
         expect(NAV_ENTRIES.some((entry) => entry.route === '/tenants/frontend-config')).toBe(false);
     });
 
-    // TASK-528 — the entry was hidden (`implemented: false`, reachable only by
+    // The entry was hidden (`implemented: false`, reachable only by
     // direct URL) while the screen was registry-only. It is now the AI-models
     // hub (registry + live discovery + register), so it is a first-class,
     // navigable global-admin surface.
@@ -85,7 +85,7 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
     });
 
     /**
-     * TASK-532 (M-03/OD-6, M-08, M-09) — console IA cleanup. The tier-10-19
+     * Console IA cleanup. The tier-10-19
      * count is unchanged at 17: `/prompt-studio` folded into `/agents` and
      * `/ai-services` took its slot; `/pstudio` was renamed, not added.
      */

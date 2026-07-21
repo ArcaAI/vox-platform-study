@@ -1,7 +1,7 @@
-// TASK-525 — Python service-runtime descriptors (the effective-config pull path).
+// Python service-runtime descriptors (the effective-config pull path).
 //
 // These are the SERVICE-LEVEL knobs the stt-v2 and nlp services consume through
-// `GET /api/v1/internal/effective-config` (TASK-525 §3.2). They are deliberately
+// `GET /api/v1/internal/effective-config`. They are deliberately
 // NOT per-request model selection: SMR's stateless-gateway contract
 // (`apps/smr/src/smr_v2/core/config.py:1-9`) stays intact, and SMR's own tunables
 // arrive as `AiRuntimeProfile` rows rather than registry keys.
@@ -16,15 +16,15 @@
 //   stt.modelCache.maxMemoryMb   `models/cache.py` ctor fallback        = 10000
 //   stt.workers.concurrency      `settings.worker_concurrency`          = 4
 //   stt.streaming.maxConcurrent  `settings.streaming_max_concurrent`    = 0 (0 = hardware auto-detect)
-//   nlp.inference.maxConcurrent  NEW — nlp had NO bound at all (GAP-L4)
+//   nlp.inference.maxConcurrent  NEW — nlp had NO bound at all
 //
 // ⚠️ Deliberate divergence from the legacy seed: the orphaned GlobalSetting row
 // `stt.config/model_cache/max_memory_mb` (`seed/06-stt.ts`) carries 16384, but the
 // running code has always used the 10000 ctor fallback — that row never had a
-// reader (D-11). Adopting 16384 here would SILENTLY raise the cache's memory
-// ceiling by 64% on first deploy, which is precisely the D-07 failure mode
-// ("wiring a dead field flips real defaults"). The code value wins; reconciling
-// or retiring the legacy row belongs to the seed owner (TASK-524/529).
+// reader. Adopting 16384 here would SILENTLY raise the cache's memory
+// ceiling by 64% on first deploy ("wiring a dead field flips real defaults").
+// The code value wins; reconciling or retiring the legacy row belongs to the
+// seed owner.
 
 import { SettingDescriptor } from '../registry.types';
 
@@ -42,13 +42,12 @@ export const SERVICE_RUNTIME_DEFAULTS = {
   'stt.streaming.maxConcurrent': 0,
   'nlp.inference.maxConcurrent': 4,
 
-  // ── TASK-529 — the remaining in-process caches ───────────────────────────
-  // TASK-525 froze the `<svc>.modelCache.<knob>` grammar and served stt-v2
-  // only, leaving guardrail/harness/tts-v2 as explicitly reserved subsets. This
+  // ── the remaining in-process caches ───────────────────────────
+  // The `<svc>.modelCache.<knob>` grammar originally served stt-v2 only,
+  // leaving guardrail/harness/tts-v2 as explicitly reserved subsets. This
   // fills them in the SAME family rather than adding a parallel
-  // `models.retention.*` namespace (see the ticket's DR-1 deviation row):
-  // two key families for one knob is exactly the redundancy the program plan's
-  // §2.5 Completion & Cleanup Doctrine forbids.
+  // `models.retention.*` namespace: two key families for one knob would be
+  // pure redundancy.
   //
   // `maxModels` values are transcribed verbatim from each service's own code
   // default, so residency is behaviour-preserving. `vramBudgetMb: 0` means
@@ -71,7 +70,7 @@ export const SERVICE_RUNTIME_DEFAULTS = {
 export type ServiceRuntimeKey = keyof typeof SERVICE_RUNTIME_DEFAULTS;
 
 /**
- * The in-process caches TASK-529 governs. `smr` is deliberately ABSENT: it
+ * The in-process caches this registry family governs. `smr` is deliberately ABSENT: it
  * holds no weights — its `smr.modelCache.ttlSeconds` is forwarded to
  * server-managed engines (Ollama `keep_alive`, LM Studio `ttl`), so it has no
  * `maxModels`/`vramBudgetMb` to speak of.
@@ -105,7 +104,7 @@ const VRAM_DESCRIPTION = (service: string): string =>
 type KeyMeta = { label: string; description: string };
 
 /**
- * TASK-529 — retention metadata for the four services added here, generated so
+ * Retention metadata for the four services added here, generated so
  * the wording can never drift between them. stt-v2's three pre-existing entries
  * keep their hand-written text below (they are equivalent in substance).
  */
@@ -156,8 +155,8 @@ const HAND_WRITTEN_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = {
   'nlp.inference.maxConcurrent': {
     label: 'NLP inference concurrency',
     description:
-      'Ceiling on concurrent NER/classification/diagnosis inferences. Before TASK-525 the nlp service had ' +
-      'no bound of any kind, so concurrent requests piled onto the model unbounded (GAP-L4).',
+      'Ceiling on concurrent NER/classification/diagnosis inferences. Previously the nlp service had ' +
+      'no bound of any kind, so concurrent requests piled onto the model unbounded.',
   },
   'smr.modelCache.ttlSeconds': {
     label: 'SMR engine retention TTL (s)',

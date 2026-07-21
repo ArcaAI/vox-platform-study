@@ -1,4 +1,4 @@
-// TASK-369 (Data Encryption Initiative) Phase 3C — field encryption for
+// Field encryption for
 // NamedEntity (recognized free-text span `text`/`normalizedText` + `metadata`).
 //
 // Sibling file mirroring ContextItemRepository.encryption.ts. The short
@@ -96,7 +96,7 @@ NamedEntityRepository.prototype.decryptFieldsFromEntity = async function (
   const text = await decryptCiphertextToString(secrets, entity.encryptedText);
   const normalizedText = await decryptCiphertextToString(secrets, entity.encryptedNormalizedText);
   const metadata = await decryptCiphertextToJson(secrets, entity.encryptedMetadata);
-  // TASK-369 Phase 6 — plaintext columns dropped; decrypt ciphertext only.
+  // Plaintext columns dropped; decrypt ciphertext only.
   return { text, normalizedText, metadata };
 };
 

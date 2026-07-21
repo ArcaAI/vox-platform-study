@@ -1,9 +1,9 @@
-"""TASK-470 (Theme F) — pure streaming-QUALITY metric functions.
+"""Pure streaming-QUALITY metric functions.
 
 Deterministic, dependency-light (stdlib only — no numpy, no services), so the
 scorecard math is unit-testable with nothing up. Imported by
-``test_streaming_quality_scorecard.py`` alongside TASK-455's transport metrics
-(``compute_metrics`` et al.) to build ONE clinical scorecard and gate it.
+``test_streaming_quality_scorecard.py`` alongside the loss-harness transport
+metrics (``compute_metrics`` et al.) to build ONE clinical scorecard and gate it.
 
 WHAT'S HERE
 -----------
@@ -20,14 +20,14 @@ WHAT'S HERE
 * ``keyphrase_recall(keyphrases, hyp)`` — fraction present as an ordered
   SUBSEQUENCE (gaps allowed) — a looser recall for longer descriptive phrases
   where an inserted filler word shouldn't zero the phrase.
-* ``build_scorecard(...)`` — composes the quality fields + the reused TASK-455
+* ``build_scorecard(...)`` — composes the quality fields + the reused
   transport metrics into one flat scorecard dict.
 * ``regression_report(scorecard, thresholds)`` — pure verdict (never raises).
 * ``assert_no_regression(scorecard, thresholds)`` — the pass/fail gate: raises
-  ``AssertionError`` on any breach (the assertion TASK-455 deferred).
+  ``AssertionError`` on any breach (an assertion the loss harness deferred).
 
 All WER/recall values are surface-form only — NOT UMLS/MEDCON concept linking
-(that is TASK-482 / E3, gated on persisted NamedEntity codes).
+(that is future work, gated on persisted NamedEntity codes).
 """
 
 from __future__ import annotations
@@ -259,7 +259,7 @@ def build_scorecard(
     transport_metrics: Mapping[str, Any],
     synonyms: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Compose quality metrics + the reused TASK-455 transport metrics.
+    """Compose quality metrics + the reused loss-harness transport metrics.
 
     ``transport_metrics`` is the dict returned by the loss harness's
     ``compute_metrics`` — this pulls out the guardrail fields the gate reads.
@@ -285,7 +285,7 @@ def build_scorecard(
             "first_partial_ms": tm.get("first_partial_ms"),
             "ttfw_ms": tm.get("ttfw_ms"),
             "commit_latency_ms": tm.get("commit_latency_ms"),
-            # committed_revision_rate is the GATED A1 churn guardrail (settled-text
+            # committed_revision_rate is the GATED churn guardrail (settled-text
             # rewrite); partial_revision_rate is retained INFORMATIONAL (full-caption
             # churn incl. the by-design tentative tail — useful for cadence tuning).
             "committed_revision_rate": committed.get("rate"),
@@ -320,7 +320,7 @@ def regression_report(
 
     For quality metrics an ABSOLUTE bootstrap ceiling/floor is always enforced; a
     ``baseline`` (null until the orchestrator's live capture) adds a tighter
-    baseline±ε check when present. Transport guardrails use the TASK-455 baseline.
+    baseline±ε check when present. Transport guardrails use the loss-harness baseline.
     Missing observed data (e.g. no finals ⇒ no commit latency) skips that check
     rather than failing — the live test already skips when nothing transcribes.
     """
@@ -354,7 +354,7 @@ def regression_report(
             lim = base - cfg.get("epsilon", 0.0)
             checks.append(_check(f"{name}_vs_baseline", val, lim, val >= lim, ">= baseline-eps"))
 
-    # --- committed-region revision rate: <= baseline+ε (TASK-487 A1 guardrail) --
+    # --- committed-region revision rate: <= baseline+ε (churn guardrail) --------
     # Gates the LA-2 committed-prefix churn (settled-text the user sees rewrite),
     # NOT the full-caption rate — re-transcribing the by-design tentative tail is
     # excluded. The full-caption partial_revision_rate is surfaced but ungated.
@@ -408,8 +408,8 @@ def assert_no_regression(
 ) -> dict[str, Any]:
     """Raise ``AssertionError`` on any threshold breach; else return the verdict.
 
-    This is the concrete pass/fail scorecard gate TASK-455 deferred (its AC-6 was
-    baseline-only). Returns the full ``regression_report`` verdict on success so
+    This is the concrete pass/fail scorecard gate that a baseline-only harness
+    deferred. Returns the full ``regression_report`` verdict on success so
     callers can embed it in the emitted scorecard artifact.
     """
     report = regression_report(scorecard, thresholds)

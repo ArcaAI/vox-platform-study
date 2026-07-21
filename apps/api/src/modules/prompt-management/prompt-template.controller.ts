@@ -11,7 +11,7 @@ import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse
 import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 
 /**
- * TASK-331 doc-09 — end-user (clinician) prompt-template plane.
+ * End-user (clinician) prompt-template plane.
  *
  * The doctor-facing counterpart to the admin `PromptManagementController`.
  * Pre-Summary / Summary in the ui-playground need to populate a template
@@ -22,14 +22,14 @@ import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
  *
  * This controller lives OFF the `/admin/*` prefix. It requires only
  * `read:PromptTemplate` (the clinician policy). Plane separation is preserved
- * because the admin read surface was bumped to `manage:PromptTemplate` (doc-09
- * D1), so this ability grant does NOT open the admin GET routes to clinicians.
+ * because the admin read surface was bumped to `manage:PromptTemplate`, so
+ * this ability grant does NOT open the admin GET routes to clinicians.
  *
- * TASK-356 Phase 6 (S1/S2) — extends this plane with doctor self-service:
- * personal prompt create / update / delete (STRICT caller-ownership enforced in
- * the service — a `read` grant only lets the clinician reach the route; it is
- * NOT a mutate grant) plus set-preferred (writes `UserProfile.preferredPromptTemplateId`,
- * which the Phase-5 resolver cascade reads back).
+ * This plane also extends to doctor self-service: personal prompt create /
+ * update / delete (STRICT caller-ownership enforced in the service — a `read`
+ * grant only lets the clinician reach the route; it is NOT a mutate grant)
+ * plus set-preferred (writes `UserProfile.preferredPromptTemplateId`, which
+ * the resolver cascade reads back).
  */
 @ApiBearerAuth()
 @ApiTags('prompt-templates')
@@ -43,7 +43,7 @@ export class PromptTemplateController {
   @Get('available')
   @Authorize(['read', 'PromptTemplate'])
   @ApiOperation({
-    summary: 'List the prompt templates the calling clinician may use (TASK-331 doc-09)',
+    summary: 'List the prompt templates the calling clinician may use',
     description:
       'Returns only templates the caller can consume for generation: the ' +
       "tenant's defaults, department defaults, and the caller's OWN personal " +
@@ -56,14 +56,14 @@ export class PromptTemplateController {
     return this.promptService.listAvailableForCaller({ category: queryParams.category });
   }
 
-  // ─── TASK-356 Phase 6 (S2) — set / clear preferred template ──────────
+  // ─── Set / clear preferred template ──────────
   // Declared before the `:id` routes for clarity (it's a distinct PUT, so no
   // route collision). The service validates the template is available to the
   // caller before writing; a null `templateId` clears the preference.
   @Put('preferred')
   @Authorize(['read', 'PromptTemplate'])
   @ApiOperation({
-    summary: "Set or clear the calling clinician's preferred prompt template (TASK-356 Phase 6)",
+    summary: "Set or clear the calling clinician's preferred prompt template",
     description:
       'Writes `UserProfile.preferredPromptTemplateId` for the caller. The id MUST be visible to the caller ' +
       '(own personal prompts + published defaults); `templateId: null` clears the preference (revert to the ' +
@@ -75,9 +75,9 @@ export class PromptTemplateController {
     return this.promptService.setPreferredPromptTemplate(dto.templateId);
   }
 
-  // ─── TASK-356 Phase 6 (S1) — personal CRUD (caller-ownership) ────────
+  // ─── Personal CRUD (caller-ownership) ────────────────────────────────
   //
-  // AUTH-NOTE(TASK-532): the three routes below are WRITES declared with
+  // AUTH-NOTE: the three routes below are WRITES declared with
   // `@Authorize(['read','PromptTemplate'])`, which looks wrong and is not.
   // These are clinician SELF-SERVICE routes over USER_PERSONAL prompts: `read`
   // is the "may use prompts at all" ability that clinicians hold, and the real
@@ -89,7 +89,7 @@ export class PromptTemplateController {
   @Post()
   @Authorize(['read', 'PromptTemplate'])
   @ApiOperation({
-    summary: 'Create a personal prompt template owned by the calling clinician (TASK-356 Phase 6)',
+    summary: 'Create a personal prompt template owned by the calling clinician',
     description: "Creates a USER_PERSONAL prompt owned by the caller (overlays the tenant/department defaults in the caller's selector).",
   })
   @ApiResponse({ status: 201, description: 'The created personal template', type: PromptTemplateResponse })
@@ -101,7 +101,7 @@ export class PromptTemplateController {
   @Authorize(['read', 'PromptTemplate'])
   @RequiresIfMatch()
   @ApiOperation({
-    summary: 'Update a personal prompt template the caller owns (TASK-356 Phase 6)',
+    summary: 'Update a personal prompt template the caller owns',
     description:
       'Updates one USER_PERSONAL prompt OWNED by the caller. Optimistic concurrency is enforced: the `If-Match` ' +
       "header (RFC 7232) is REQUIRED and the server runs a Compare-And-Set against the row's `_version`. When " +
@@ -132,7 +132,7 @@ export class PromptTemplateController {
   @Delete(':id')
   @Authorize(['read', 'PromptTemplate'])
   @ApiOperation({
-    summary: 'Soft-delete a personal prompt template the caller owns (TASK-356 Phase 6)',
+    summary: 'Soft-delete a personal prompt template the caller owns',
     description: 'Soft-deletes one USER_PERSONAL prompt OWNED by the caller. A non-personal or non-owned template is rejected (403).',
   })
   @ApiParam({ name: 'id', description: 'Prompt template ID', type: String })

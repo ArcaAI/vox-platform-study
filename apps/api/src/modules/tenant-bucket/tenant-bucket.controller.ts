@@ -32,7 +32,6 @@ import { CanCreate, CanDelete, CanManage, CanRead, CanUpdate } from '../../decor
 @ApiBearerAuth()
 @ApiTags('tenant-storage')
 @Controller('admin/tenants/storage/buckets')
-// Phase 0 Item 3 (TASK-302 Stream A): explicit permission required.
 @CanManage('Tenant')
 export class TenantBucketController {
   constructor(

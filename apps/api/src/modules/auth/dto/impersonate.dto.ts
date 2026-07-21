@@ -11,7 +11,7 @@ export class ImpersonateRequest {
   targetUserId: string;
 
   /**
-   * TASK-295 H-3: optional tenant the admin wants to impersonate the target
+   * Optional tenant the admin wants to impersonate the target
    * "as". Must be one of the target user's enabled `UserRoleAssignment.tenantId`
    * values. For non-GLOBAL_ADMIN callers it MUST equal the admin's own tenant.
    * If omitted, the controller picks the first enabled assignment for backward
@@ -28,7 +28,7 @@ export class ImpersonateRequest {
 }
 
 /**
- * TASK-401 — request body for the global-admin-only
+ * Request body for the global-admin-only
  * `POST /admin/users/:id/impersonate` endpoint. The target user id travels in
  * the PATH (`:id`), unlike the legacy `/auth/impersonate` body shape.
  */
@@ -85,7 +85,7 @@ export class ImpersonateUserResponse {
   @ApiProperty({ description: 'Tenant ID of the impersonated user', required: false })
   tenantId?: string;
 
-  // TASK-331 F-9 — primary department of the impersonated user in the
+  // Primary department of the impersonated user in the
   // impersonation tenant; lets the SDK preference cascade keep the doctor's
   // department tier during impersonation.
   @ApiProperty({ description: 'Primary department ID of the impersonated user in the impersonation tenant', required: false })
@@ -126,7 +126,7 @@ export class ImpersonateResponse {
   @IsString()
   impersonatedBy: string;
 
-  // TASK-401 — expiry surfaced so the FE can render the countdown without
+  // Expiry surfaced so the FE can render the countdown without
   // decoding the JWT. Set by the admin endpoint only; the legacy
   // `/auth/impersonate` response is unchanged (fields stay undefined).
   @ApiProperty({ description: 'ISO timestamp at which the impersonation token expires', required: false })

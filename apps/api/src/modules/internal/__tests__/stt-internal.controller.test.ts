@@ -1,8 +1,8 @@
 /**
- * TASK-310 E-6 (AC-6) — `SttInternalController.ensureInternalApiKey`
+ * `SttInternalController.ensureInternalApiKey`
  * runtime guard, pinned via the typed `RequestWithAuth` parameter.
  *
- * Pre-W7 the controller read `request['apiKey']` via bracket-notation;
+ * Previously the controller read `request['apiKey']` via bracket-notation;
  * a typo (`request['aip_key']`) would silently resolve to `undefined`
  * and skip the auth check. The new typed dot-access (`request.apiKey`)
  * makes that typo a TypeScript error. This test pins the runtime
@@ -61,7 +61,7 @@ describe('SttInternalController.ensureInternalApiKey (TASK-310 E-6 / AC-6)', () 
     ).rejects.toThrow(UnauthorizedException);
   });
 
-  // TASK-334 I-2b — POST internal/stt/media: register a storage object as Media.
+  // POST internal/stt/media: register a storage object as Media.
   describe('createMedia', () => {
     it('throws UnauthorizedException when `apiKey` is undefined', async () => {
       const request = {} as any;

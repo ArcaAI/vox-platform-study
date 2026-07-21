@@ -1,5 +1,5 @@
 /**
- * UpsertTenantFrontendConfigRequest DTO validation (TASK-356 Phase 4, A-T1).
+ * UpsertTenantFrontendConfigRequest DTO validation.
  *
  * Verifies the new audio-console fields validate correctly:
  *   - transcriptionMode (LOCAL | BACKEND), optional

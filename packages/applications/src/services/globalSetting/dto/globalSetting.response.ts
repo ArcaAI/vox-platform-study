@@ -31,7 +31,7 @@ export class GlobalSettingResponse extends BaseResponse {
   namespace?: string;
 
   /**
-   * TASK-430 — owning tenant of the row. The cross-tenant `/settings` list
+   * Owning tenant of the row. The cross-tenant `/settings` list
    * (unscoped GLOBAL_ADMIN) renders a Tenant column and a tenant filter, so
    * the response must carry the row's tenant attribution. `__GLOBAL__`-tenant
    * rows are the platform defaults.
@@ -40,7 +40,7 @@ export class GlobalSettingResponse extends BaseResponse {
   tenantId?: string | null;
 
   /**
-   * TASK-332 / TASK-391 (D2) — platform-owned "locked" default. When true the
+   * Platform-owned "locked" default. When true the
    * row is write-guarded server-side (only GLOBAL_ADMIN may modify it); the admin
    * console mirrors this by rendering a lock affordance and disabling edit/delete
    * for non-super-admins. Exposed so `GET /admin/settings` returns it (the FE
@@ -48,10 +48,7 @@ export class GlobalSettingResponse extends BaseResponse {
    *
    * Required (its intended shape): the backing entity column is non-null
    * (`@default(false)`) and the mapper always populates it, so every response
-   * carries a boolean. (TASK-391 D2 briefly declared this optional only to keep
-   * the tenant controllers' `... as PaginatedTenantConfigResponse` superset cast
-   * compiling; TASK-393 removed that cast via `TenantConfigDtoMapper`, so the
-   * required shape is restored.)
+   * carries a boolean.
    */
   @ApiProperty({
     description: 'Whether the setting is a locked, platform-owned default (super-admin-only write).',
@@ -60,13 +57,13 @@ export class GlobalSettingResponse extends BaseResponse {
   locked!: boolean;
 
   /**
-   * Optimistic-concurrency token — TASK-302 Stream D Phase C.
+   * Optimistic-concurrency token.
    *
    * Clients must echo this value back as `expectedVersion` on the
    * subsequent PATCH; the server's compare-and-set (`updateWithVersion`)
    * fails with 412 Precondition Failed if `_version` has drifted under us.
    *
-   * Phase D adds an `ETag: "<version>"` response header so SDK clients
+   * An `ETag: "<version>"` response header is also set so SDK clients
    * can use the canonical RFC 7232 `If-Match` mechanism instead of
    * threading the field through the body; both shapes remain supported.
    */
@@ -77,7 +74,7 @@ export class GlobalSettingResponse extends BaseResponse {
   version!: number;
 
   /**
-   * TASK-396 — server-authoritative "this row holds a secret" marker. True when
+   * Server-authoritative "this row holds a secret" marker. True when
    * the row has a Vault-encrypted `encryptedValue` OR its key/namespace matches
    * the secret naming convention (see `GlobalSettingDtoMapper`). When true the
    * mapper MASKS `value` (returns `''`) on list/get responses; the plaintext is

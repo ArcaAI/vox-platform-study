@@ -3,17 +3,16 @@ import { describe, expect, it } from 'vitest';
 import { buildSwaggerConfig } from '../swagger.config';
 
 /**
- * TASK-310 E-8 (AC-8) — Swagger `addApiKey(...)` registration.
+ * Swagger `addApiKey(...)` registration.
  *
- * Pre-W7 the bootstrap only called `.addBearerAuth()`. Several controllers
- * carry `@ApiSecurity('api-key')` (e.g. the internal STT controller), but
- * the generated OpenAPI spec had no `'api-key'` scheme to back them — UIs
- * (Swagger / Stoplight / Postman import) rendered the lock icon as
- * undefined or silently dropped the requirement.
+ * Several controllers carry `@ApiSecurity('api-key')` (e.g. the internal STT
+ * controller); without a matching `'api-key'` scheme in the generated
+ * OpenAPI spec, UIs (Swagger / Stoplight / Postman import) render the lock
+ * icon as undefined or silently drop the requirement.
  *
- * The fix registers an `apiKey`-in-header scheme (`name: 'x-api-key'`)
- * under the same security name (`'api-key'`) so the existing controller
- * annotations finally resolve.
+ * `buildSwaggerConfig` registers an `apiKey`-in-header scheme
+ * (`name: 'x-api-key'`) under the same security name (`'api-key'`) so the
+ * existing controller annotations resolve.
  */
 describe('buildSwaggerConfig (TASK-310 E-8 / AC-8)', () => {
   it('registers the bearer scheme', () => {

@@ -1,9 +1,9 @@
 """TTS V2 — Text-to-Speech Service.
 
-FastAPI application factory with a lifespan-managed context. Phase 1 scaffold
-(TASK-488): configuration, inter-service auth, health/liveness/readiness, and
-Prometheus metrics. Provider registry, voice catalog, routing, and the
-``/api/v1/audio/speech`` synthesis surface arrive in later phases.
+FastAPI application factory with a lifespan-managed context: configuration,
+inter-service auth, health/liveness/readiness, Prometheus metrics, the
+provider registry, voice catalog, routing, and the
+``/api/v1/audio/speech`` synthesis surface.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         debug=settings.debug,
     )
 
-    # TASK-535 (R3) — the control-plane pull client for local-engine retention.
+    # The control-plane pull client for local-engine retention.
     # Construction performs NO I/O, so boot never blocks on (or fails because of)
     # the gateway; the first synth request triggers the first fetch, and a
     # failure negative-caches into env behaviour.
@@ -66,10 +66,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         registry.register("sarvam", SarvamProvider(settings.sarvam))
         logger.info("tts_v2.provider_registered", provider="sarvam", model=settings.sarvam.model)
 
-    # TASK-529 (D-09) — local engines register UNCONDITIONALLY and load their
+    # Local engines register UNCONDITIONALLY and load their
     # weights on the first synth request; an idle model is then released by the
-    # cache's TTL sweep. Before this, `warm_and_register` loaded every enabled
-    # engine at boot and nothing ever unloaded it.
+    # cache's TTL sweep.
     #
     # Health-semantics shift: a broken model now surfaces as a first-request 503
     # instead of a missing provider. TTS_WARMUP_ENABLED=true restores boot-warm
@@ -102,7 +101,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 logger=logger,
             )
 
-        # IndicF5 — EXPERIMENTAL, prod enablement NO-GO pending license review (TASK-494).
+        # IndicF5 — EXPERIMENTAL, prod enablement NO-GO pending license review.
         if settings.indic_f5.enabled and "indic_f5" not in registry:
             from tts_v2.providers.indic_f5 import IndicF5Provider
 

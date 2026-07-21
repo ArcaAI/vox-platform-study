@@ -1,5 +1,5 @@
 /**
- * TASK-400 — password security hardening: live API contract.
+ * Password security hardening: live API contract.
  *
  * Real HTTP round-trips against the live API (`pnpm test:e2e`, or a dev stack
  * via `SKIP_DB_PRECHECK=true API_URL=http://localhost:8868/api/v1`). Harness
@@ -20,8 +20,8 @@
  *      `passwordChangedAt` (UPDATE) surface `passwordExpired: true` at login
  *      WITHOUT blocking the login itself.
  *
- * The admin-initiated flow's regression coverage lives in the TASK-388 spec
- * (re-run alongside this file).
+ * The admin-initiated flow's regression coverage lives in
+ * `task-388-users-backend-backlog.spec.ts` (re-run alongside this file).
  */
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { createHash } from 'crypto';
@@ -374,7 +374,7 @@ test.describe.serial('TASK-400 D — rotation warning at login', () => {
       // Restore rotation-off by flipping the VALUE back to 0 — never delete.
       // A soft-DELETED row + a later re-create would leave two platform rows
       // for the same key, which trips the AppSettings boot invariant
-      // (TASK-302 P0-5) and silently breaks every subsequent cache refresh.
+      // and silently breaks every subsequent cache refresh.
       const prisma = await getDb();
       const row = await prisma.globalSetting
         .findFirst({ where: { key: 'security.password.maxAgeDays', resourceStatus: 'ENABLED' } })
@@ -413,7 +413,7 @@ test.describe.serial('TASK-400 D — rotation warning at login', () => {
     // Opt rotation in via the GlobalSettings surface (platform tenant).
     // UPSERT semantics: reuse an existing row for the key (flip its value)
     // and only create when absent — a second row for the same platform key
-    // would trip the AppSettings duplicate-key boot invariant (TASK-302).
+    // would trip the AppSettings duplicate-key boot invariant.
     const existing = await prisma.globalSetting.findFirst({
       where: { key: 'security.password.maxAgeDays', resourceStatus: 'ENABLED' },
     });

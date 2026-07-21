@@ -14,21 +14,21 @@ export interface Tenant extends VersionedResource {
 
 export interface CreateTenantRequest {
     name: string;
-    /** Optional — auto-generated from `name` when omitted (TASK-497 D3). */
+    /** Optional — auto-generated from `name` when omitted. */
     key?: string;
     description?: string;
     plan?: TenantPlan;
     tags?: string[];
 }
 
-/** TASK-497 §3.5 — the tenant's initial TENANT_ADMIN, for POST /admin/tenants/provision. */
+/** The tenant's initial TENANT_ADMIN, for POST /admin/tenants/provision. */
 export type ProvisionTenantAdmin =
     | { mode: 'existing'; userId: string }
     | { mode: 'new-local'; email: string; username?: string; password: string };
 
 export interface ProvisionTenantRequest {
     tenantName: string;
-    /** Optional — auto-generated from `tenantName` when omitted (TASK-497 D3). */
+    /** Optional — auto-generated from `tenantName` when omitted. */
     tenantKey?: string;
     plan?: TenantPlan;
     admin: ProvisionTenantAdmin;
@@ -127,7 +127,7 @@ export interface UpsertTenantFrontendConfigRequest {
 }
 
 /**
- * POST /admin/tenants/:id/pipelines/resync result (TASK-531, global admin only).
+ * POST /admin/tenants/:id/pipelines/resync result (global admin only).
  * Reconciliation counts for one run against the SYSTEM pipeline templates.
  */
 export interface PipelineResyncSummary {

@@ -1,14 +1,24 @@
 # HOPE Traceability Matrix
 
-> **⚠️ This file is being superseded by the per-domain traceability under [`docs/traceability/`](./traceability/index.md).**
-> Start at **[`docs/traceability/index.md`](./traceability/index.md)** — the roll-up index and successor to this single table (TASK-538 rebuild). Domains already migrated there are re-verified against code and carry their own `Last verified` stamp; this file's rows for those domains are **superseded** and kept only until every domain moves.
+> **⚠️ MIGRATION COMPLETE — this file is a historical snapshot, superseded by the per-domain traceability under [`docs/traceability/`](./traceability/index.md).**
+> Start at **[`docs/traceability/index.md`](./traceability/index.md)** — the roll-up index and successor to this single table (TASK-538 rebuild). Every domain below now has a re-verified per-domain file carrying its own `Last verified` stamp; **all rows here are superseded** and preserved only as a historical snapshot (last updated 2026-07-06). Do not edit or cite the rows below — add capability rows to the owning domain file instead.
 >
-> **Migrated (see the linked domain file, not the row below):**
+> **Where each row went:**
 > - Rows **1, 2, 3, 8** → [`traceability/auth-identity.md`](./traceability/auth-identity.md) (also adds SSO/SAML and TASK-541 auth-revocation, which never had rows here).
-> - Rows **26 (`AiModel` registry part), 38, 39** → [`traceability/ai-models-providers.md`](./traceability/ai-models-providers.md) (also adds model discovery/lifecycle, runtime profiles, the AI-inference gateway, task defaults, and agent-trajectory ops).
+> - Rows **4, 5, 6, 7** → [`traceability/tenancy-provisioning.md`](./traceability/tenancy-provisioning.md) (tenant lifecycle/provisioning, frontend config, entitlements + metering, users/profiles, departments — plus the TASK-504 settings control plane that disambiguates row 30).
+> - Rows **9, 12, 16** → [`traceability/consultation.md`](./traceability/consultation.md) (consultation lifecycle, context/timeline/highlights, recordings/media, live documentation).
+> - Rows **10, 11, 13, 26 (ASR pipeline part)** → [`traceability/transcription.md`](./traceability/transcription.md) (also adds TASK-531 pipeline template governance / clone / resync).
+> - Rows **14, 15, 24, 25, 34b** → [`traceability/summarization.md`](./traceability/summarization.md) (summarization, SMR proxy, guardrail interception, prompt management + governance, DNA writing style).
+> - Rows **17, 18** (Medical NLP & guardrails capability services) → **folded** into [`traceability/summarization.md`](./traceability/summarization.md) (G2/G3) and [`traceability/consultation.md`](./traceability/consultation.md) (C5) where the `apps/nlp` / `apps/guardrail` services compose; no standalone file per the 12-file plan.
+> - Rows **19, 20, 21, 22, 23, 34c, 34d (MCP part)** → [`traceability/harness.md`](./traceability/harness.md) (harness workflow/admin, pipeline-policy cascade, RAG ingestion, eval golden sets + edit burden, agentic-policy engine console, MCP registry).
+> - Rows **26 (`AiModel` registry part), 38, 39** → [`traceability/ai-models-providers.md`](./traceability/ai-models-providers.md) (also adds model discovery/lifecycle, runtime profiles, the AI-inference gateway, task defaults, and agent-trajectory ops — including the trajectory half of row **34d**).
+> - Row **27** → [`traceability/storage.md`](./traceability/storage.md) (tenant object storage, bucket/config/key administration, and the `storage-browser` console feature).
+> - Rows **28, 29 (split), 30, 31, 32, 33, 34, 34a** → [`traceability/platform-ops.md`](./traceability/platform-ops.md) (audit, global settings/secrets, rate limiting, metrics/monitoring/health, queues/schedulers, DB browser, AI-service status; row 29's stale "no controller" note is corrected — notifications/webhooks/subscriptions ship full CRUD controllers).
+> - Row **35** → [`traceability/sdk.md`](./traceability/sdk.md) (the `@arcaai/vox` SDK + `room`/`vad`/`noise-filter`/`stt`/`med-ner`/`pipeline` browser packages).
+> - Row **36** (Federated learning) → **schema only** — `FedlClient`/`FedlRound`/`FedlUpdate`/`FedlModelVersion` models with no consuming app; nothing to trace beyond the model names. Row preserved below as-is.
+> - Row **37** → [`traceability/admin-console.md`](./traceability/admin-console.md) (data grids + the authoritative console-feature inventory mapping every `apps/admin-console/src/features/*` to its owning domain file).
 > - **TTS** (had ZERO rows here — an entire service) → [`traceability/tts.md`](./traceability/tts.md).
->
-> All other rows below remain authoritative until their domain is migrated.
+> - **Business workflows** (cross-cutting) → [`traceability/workflows.md`](./traceability/workflows.md).
 
 Last updated: 2026-07-06
 

@@ -34,38 +34,38 @@ _ENERGY_FLOOR = 1e-4
 _ENERGY_MULTIPLIER = 2.5
 _FALLBACK_NOISE_FLOOR_MAX = 0.015
 _NOISE_FLOOR_COOLDOWN_FRAMES = 15
-# TASK-451 C2-06/I-1: TOTAL sub-threshold "dip" frames tolerated across a
+# TOTAL sub-threshold "dip" frames tolerated across a
 # single onset attempt (cumulative — NOT reset by intervening speech frames).
 # One mild VAD-jitter dip must not discard a real utterance, but once the
 # budget is spent the onset attempt resets — so consecutive dips AND periodic
 # near-threshold noise (cleanly alternating above/below threshold) are rejected
 # rather than accreting a false onset.
-# TASK-505: raised 1 → 3. A single 32 ms dip budget meant two jitter dips
+# Raised 1 → 3. A single 32 ms dip budget meant two jitter dips
 # inside a real word onset reset the counter and the word never confirmed.
 _ONSET_HANGOVER_FRAMES = 3
 _DEFAULT_MAX_UTTERANCE_DURATION_MS = 25000
 _FORCE_EMIT_LOOKBACK_MS = 1500
 _FORCE_EMIT_OVERLAP_MS = 500
 _SPLIT_ENERGY_RATIO = 0.3
-# TASK-505: hysteresis gap for the speech-OFF decision (upstream Silero uses
+# Hysteresis gap for the speech-OFF decision (upstream Silero uses
 # neg_threshold = threshold - 0.15). Trailing unvoiced phones hover between
 # the two thresholds and must extend the utterance, not count as silence.
 _NEG_THRESHOLD_GAP = 0.15
-# TASK-505: overlap carried into the continuation when the force-emit smart
+# Overlap carried into the continuation when the force-emit smart
 # split cuts at a low-energy frame — a stop-consonant closure IS low-energy,
 # so a zero-overlap cut splits the word across two ASR calls.
 _SMART_SPLIT_OVERLAP_MS = 120
-# TASK-505: bounded window for the causal peak normalizer. The previous
+# Bounded window for the causal peak normalizer. The previous
 # exponential decay (0.9997/frame ≈ 107 s time constant) let one transient
 # (door slam, cough) suppress speech below the VAD threshold for minutes.
 _NORMALIZER_WINDOW_MS = 3000
-# TASK-505 review — divisor floor (gain ceiling 20×): without it, any pause
+# Divisor floor (gain ceiling 20×): without it, any pause
 # longer than the window collapses the divisor to the ambient-noise peak and
 # amplifies room noise to full scale (false onsets via the energy fallback;
 # defeats the RMS hallucination gate downstream).
 _NORMALIZER_MIN_PEAK = 0.05
 
-# TASK-471 A1 — default minimum wall-clock interval between successive PARTIAL
+# Default minimum wall-clock interval between successive PARTIAL
 # emissions. Lowered from the legacy hardcoded 1.0 s so newly-spoken words
 # surface in near-real-time as a tentative tail; now a constructor default,
 # overridable via settings.streaming_partial_interval_s
@@ -75,7 +75,7 @@ _PARTIAL_INTERVAL_S = 0.4
 # Minimum buffered speech (seconds) before ANY partial — the floor is unchanged
 # (only the cadence dropped): a partial still needs >= 0.5 s of audio.
 _PARTIAL_MIN_AUDIO_S = 0.5
-# TASK-351 P0-4 (C2) — tail window decoded for partials. Bounds per-partial
+# Tail window decoded for partials. Bounds per-partial
 # decode cost on long utterances; finals always carry the full buffer.
 _DEFAULT_PARTIAL_WINDOW_S = 8.0
 
@@ -103,7 +103,7 @@ class _PreprocessorState:
     pcm_remainder: bytearray = field(default_factory=bytearray)
     in_speech: bool = False
     speech_onset_frames: int = 0
-    onset_gap: int = 0  # cumulative dip frames spent this onset attempt (C2-06/I-1)
+    onset_gap: int = 0  # cumulative dip frames spent this onset attempt
     silence_frames: int = 0
     noise_floor_cooldown: int = 0
     utterance_buffer: list[np.ndarray] = field(default_factory=list)
@@ -139,12 +139,12 @@ class StreamingPreprocessor:
         sample_rate: int = 16000,
         vad_service: Any = None,  # SileroVADService
         threshold: float = 0.6,
-        min_speech_duration_ms: int = 100,  # TASK-505: keep short confirmations (was 250)
+        min_speech_duration_ms: int = 100,  # keep short confirmations (was 250)
         min_silence_duration_ms: int = 700,
         target_sample_rate: int | None = None,
         normalize: bool = False,
         denoiser: Any | None = None,
-        denoise_scope: str = "vad_only",  # TASK-505 P2 (D2): vad_only | full
+        denoise_scope: str = "vad_only",  # vad_only | full
         max_utterance_duration_ms: int = _DEFAULT_MAX_UTTERANCE_DURATION_MS,
         pre_speech_context_ms: int = _PRE_SPEECH_CONTEXT_MS,
         force_emit_lookback_ms: int = _FORCE_EMIT_LOOKBACK_MS,
@@ -157,11 +157,11 @@ class StreamingPreprocessor:
         self.sample_rate = sample_rate
         self._vad_service = vad_service
         self._threshold = threshold
-        # TASK-505 — hysteresis: speech is HELD down to neg_threshold.
+        # Hysteresis: speech is HELD down to neg_threshold.
         self._neg_threshold = max(threshold - _NEG_THRESHOLD_GAP, 0.01)
         self._min_speech_duration_ms = min_speech_duration_ms
         self._min_silence_duration_ms = min_silence_duration_ms
-        # TASK-473 A3 — optional self-hosted semantic endpointer. When present
+        # Optional self-hosted semantic endpointer. When present
         # AND enabled, it may cut a final EARLIER than the fixed silence timer at
         # the offset gate below; None/disabled preserves the exact fixed
         # behavior. Duck-typed (SemanticEndpointer) to keep this module import-
@@ -170,7 +170,7 @@ class StreamingPreprocessor:
         self._target_sr = target_sample_rate if target_sample_rate else sample_rate
         self._normalize = normalize
         self._denoiser = denoiser
-        # TASK-505 P2 (D2 dual-path): "vad_only" (default) — the denoised
+        # Dual-path: "vad_only" (default) — the denoised
         # frame only gates the VAD decision; the buffered/emitted audio (what
         # ASR consumes) stays raw. "full" keeps the legacy denoised flow.
         self._denoise_scope = denoise_scope
@@ -194,7 +194,7 @@ class StreamingPreprocessor:
             int(min_speech_duration_ms / self._frame_duration_ms),
         )
 
-        # TASK-505 — the ring holds onset-confirmation frames AND true
+        # The ring holds onset-confirmation frames AND true
         # pre-speech context. Capping it at pre-context alone meant the
         # confirmation lag evicted the utterance's own first frames (clipped
         # word onsets whenever min_speech approached pre_speech_context).
@@ -216,17 +216,17 @@ class StreamingPreprocessor:
         self._force_emit_lookback_ms = force_emit_lookback_ms
         self._force_emit_overlap_ms = force_emit_overlap_ms
         self._partial_window_s = partial_window_s
-        # TASK-471 A1 — configurable partial cadence (lowered default).
+        # Configurable partial cadence (lowered default).
         self._partial_interval_s = partial_interval_s
 
-        # TASK-505 — bounded peak window for the causal normalizer.
+        # Bounded peak window for the causal normalizer.
         from collections import deque
 
         self._peak_window: Any = deque(
             maxlen=max(1, int(_NORMALIZER_WINDOW_MS / self._frame_duration_ms))
         )
 
-        # TASK-505 — stateful anti-aliased resampler (polyphase with context
+        # Stateful anti-aliased resampler (polyphase with context
         # carry). Per-frame np.interp had no low-pass: 48 kHz browser audio
         # folded HF content into the VAD/ASR band.
         from math import gcd
@@ -283,7 +283,7 @@ class StreamingPreprocessor:
 
     @property
     def endpointer(self) -> Any | None:
-        """The attached semantic endpointer (or None). TASK-473 A3."""
+        """The attached semantic endpointer (or None)."""
         return self._endpointer
 
     def drain_processed_samples(self) -> bytes:
@@ -297,7 +297,7 @@ class StreamingPreprocessor:
     def _normalize_frame(self, frame: np.ndarray) -> np.ndarray:
         """Bounded-window peak normalization (causal).
 
-        TASK-505: the divisor is the max frame peak over the last
+        The divisor is the max frame peak over the last
         ``_NORMALIZER_WINDOW_MS`` — attack stays instantaneous (current frame
         is in the window) but a loud transient leaves the window after a few
         seconds instead of suppressing speech for minutes (the previous
@@ -312,7 +312,7 @@ class StreamingPreprocessor:
     def _resample_frame(self, frame: np.ndarray) -> np.ndarray:
         """Resample one frame to the target rate (stateful, anti-aliased).
 
-        TASK-505: polyphase resampling with a carried input-context tail so
+        Polyphase resampling with a carried input-context tail so
         consecutive frames form one continuous filtered stream. The previous
         per-frame ``np.interp`` applied no low-pass filter — content above the
         target Nyquist aliased into the speech band and degraded both Silero
@@ -381,7 +381,7 @@ class StreamingPreprocessor:
             frame_f32 = self._resample_frame(frame_f32)
 
             # ---- Stage 2: Denoise ----
-            # TASK-505 P2 (D2 dual-path): with scope "vad_only" the denoised
+            # Dual-path: with scope "vad_only" the denoised
             # frame feeds ONLY the VAD decision; the buffered audio stays raw.
             vad_frame = frame_f32
             if self._denoiser is not None:
@@ -446,10 +446,10 @@ class StreamingPreprocessor:
                 else:
                     # Sub-threshold frame. Tolerate up to _ONSET_HANGOVER_FRAMES
                     # dips TOTAL across this onset attempt so a jittery but real
-                    # utterance still confirms (C2-06); once the cumulative dip
+                    # utterance still confirms; once the cumulative dip
                     # budget is spent, reset the onset attempt — this rejects
-                    # both consecutive dips and periodic near-threshold noise
-                    # (I-1), not just lone transients.
+                    # both consecutive dips and periodic near-threshold noise,
+                    # not just lone transients.
                     if (
                         state.speech_onset_frames > 0
                         and state.onset_gap < _ONSET_HANGOVER_FRAMES
@@ -474,7 +474,7 @@ class StreamingPreprocessor:
                 if len(state.utterance_buffer) >= self._max_utterance_frames:
                     split_idx = self._find_best_split_point(state.utterance_buffer)
                     if split_idx is not None:
-                        # Smart split: found low-energy point. TASK-505 — the
+                        # Smart split: found low-energy point. The
                         # low-energy frame is often a stop-consonant closure
                         # INSIDE a word; carry overlap from before the split so
                         # the continuation retains the word intact.
@@ -504,7 +504,7 @@ class StreamingPreprocessor:
                     if utt is not None:
                         utterances.append(utt)
                 else:
-                    # TASK-505 — hysteresis with upstream Silero run semantics:
+                    # Hysteresis with upstream Silero run semantics:
                     # the silence run is anchored at the first sub-neg_threshold
                     # frame and counts WALL-CLOCK frames from there; only a
                     # frame >= threshold clears it. Mid-band frames
@@ -518,7 +518,7 @@ class StreamingPreprocessor:
                         state.silence_frames += 1
 
                     if state.silence_frames > 0:
-                        # TASK-473 A3 — semantic endpoint: consult the
+                        # Semantic endpoint: consult the
                         # endpointer first. When it signals a confident complete
                         # turn it cuts the final EARLIER than the fixed timer
                         # (or captures a tail the timer would strand); otherwise
@@ -570,7 +570,7 @@ class StreamingPreprocessor:
                 state.utterance_buffer.append(frame_f32)
                 self._processed_samples.append(frame_f32.copy())
             elif state.speech_onset_frames > 0:
-                # TASK-505 review — the remainder belongs to the pending
+                # The remainder belongs to the pending
                 # unconfirmed onset below; dropping it loses the last <32 ms
                 # of the final word and shifts its timing.
                 state.pre_speech_ring.append(frame_f32)
@@ -579,10 +579,10 @@ class StreamingPreprocessor:
         if state.in_speech and state.utterance_buffer:
             return self._emit_utterance(is_final=True)
 
-        # TASK-505 — pending unconfirmed onset: the session stopped less than
+        # Pending unconfirmed onset: the session stopped less than
         # min_speech_duration after the last word began. Those frames sit in
         # the pre-speech ring; discarding them loses the final word of the
-        # consultation (TASK-470/471 family). Emit them as the final utterance.
+        # consultation. Emit them as the final utterance.
         # Guard: >= 2 onset frames (64 ms) so a single above-threshold noise
         # blip at session stop does not ship a ring of ambient noise to ASR.
         if state.speech_onset_frames >= 2 and state.pre_speech_ring:
@@ -661,7 +661,7 @@ class StreamingPreprocessor:
         return float(np.clip(probability, 0.0, 1.0))
 
     def _should_semantic_endpoint(self, silence_frames: int) -> bool:
-        """TASK-473 A3 — ask the semantic endpointer whether to cut now.
+        """Ask the semantic endpointer whether to cut now.
 
         Returns True only when an attached, ENABLED endpointer signals a
         confident complete turn for the current trailing silence. Fail-safe: no
@@ -709,7 +709,7 @@ class StreamingPreprocessor:
         tail-window snapshot of the current buffer, or ``None`` if
         conditions are not yet met.  The buffer is *not* cleared.
 
-        TASK-351 P0-4 (C2): the snapshot is bounded to the last
+        The snapshot is bounded to the last
         ``partial_window_s`` seconds so per-partial decode cost stops growing
         with utterance length. Finals are unaffected (full buffer).
         """
@@ -846,7 +846,7 @@ class StreamingPreprocessor:
         state.last_partial_emitted_at = 0.0
         state.utterance_count += 1
 
-        # TASK-473 A3 — drop the observed hypothesis at the utterance boundary;
+        # Drop the observed hypothesis at the utterance boundary;
         # the next partial re-populates it for the following utterance.
         self._reset_endpointer()
 

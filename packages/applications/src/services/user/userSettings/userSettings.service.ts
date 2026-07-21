@@ -144,7 +144,7 @@ export class UserSettingsService extends BaseService implements IUserSettingsSer
     key: string,
     request: UpdateUserSettingByKeyRequest,
   ): Promise<UserSettingsEntity> {
-    // TASK-375 (item 1 backend) — solidify D8. Validate the `ui.data-grid`
+    // (item 1 backend) — solidify D8. Validate the `ui.data-grid`
     // round-trip in the SERVICE (not just the self-service controller) so the
     // admin upsert path is covered too. The open registry is preserved: only
     // the `ui.data-grid` namespace is guarded; all others pass through.

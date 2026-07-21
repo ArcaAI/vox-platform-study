@@ -1,5 +1,5 @@
 /**
- * TASK-423 — data-grid filter-grammar enhancements (Phase 2 backend).
+ * Data-grid filter-grammar enhancements (Phase 2 backend).
  *
  * What it verifies (see packages/applications/src/common/paginatedQueryParamConverters.ts):
  *

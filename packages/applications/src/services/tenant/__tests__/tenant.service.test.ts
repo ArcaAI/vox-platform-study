@@ -33,7 +33,7 @@ const mockTenantRepository = {
     count: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
-    // TASK-302 Stream D Phase E.1 — `update()` now writes via Compare-And-Set
+    // `update()` now writes via Compare-And-Set
     // (`updateWithVersion`). Existing tests below still reference `.update`
     // for legacy assertions (kept for paranoia); the live write path uses
     // `updateWithVersion`.
@@ -48,7 +48,7 @@ const mockGlobalSettingRepository = {
     count: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
-    // TASK-302 Stream D Phase C — updateTenantConfigs now writes via
+    // UpdateTenantConfigs now writes via
     // Compare-And-Set; tests below still set up `.update` for back-compat
     // assertions but the live write path uses `updateWithVersion`.
     updateWithVersion: vi.fn(),
@@ -67,9 +67,8 @@ const mockPromptTemplateRepository = {
     count: vi.fn(),
 };
 
-// Mock AsrPipelineRepository
-// TASK-356 Phase 2 (D — extend_clone), extended by the TASK-505/356 full-parity
-// policy — `create()` now clones EVERY enabled SYSTEM ASR pipeline (+ each one's
+// Mock AsrPipelineRepository.
+// `create()` clones EVERY enabled SYSTEM ASR pipeline (+ each one's
 // current version) into each new tenant, so the repo mock exposes the
 // pipeline-clone surface (findEnabledPipelines/isSlugUnique/create/
 // setDefaultForTenant) in addition to the legacy findAll/count.
@@ -82,7 +81,7 @@ const mockAsrPipelineRepository = {
     setDefaultForTenant: vi.fn(),
 };
 
-// Mock AsrPipelineVersionRepository — TASK-356 Phase 2: the pipeline clone also
+// Mock AsrPipelineVersionRepository — the pipeline clone also
 // copies the source pipeline's current version row into the new tenant.
 const mockAsrPipelineVersionRepository = {
     findByPipeline: vi.fn(),
@@ -90,7 +89,7 @@ const mockAsrPipelineVersionRepository = {
     create: vi.fn(),
 };
 
-// Mock AiModelRepository — TASK-356 Phase 1 clone-per-tenant (D-5).
+// Mock AiModelRepository — clone-per-tenant.
 const mockAiModelRepository = {
     findAll: vi.fn(),
     isSlugUnique: vi.fn(),
@@ -98,13 +97,13 @@ const mockAiModelRepository = {
 };
 
 // Mock CoreDatabaseService.
-// TASK-302 Stream D Phase C (C.4) — `updateTenantConfigs` now wraps the
+// (C.4) — `updateTenantConfigs` now wraps the
 // per-row CAS loop in `databaseService.baseClient.$transaction(callback)`
 // for all-or-nothing semantics. The mock `$transaction` simply invokes the
 // callback with a stub tx client so the loop executes; tests then assert
 // on tx propagation, conflict rollback, and broadcast suppression.
 const mockTxClient = { __tx: true } as const;
-// TASK-386 (#4/#5) — `getUsageStats` reads aggregates straight off the extended
+// (#4/#5) — `getUsageStats` reads aggregates straight off the extended
 // client. Delegates default to empty/zero so suites that never call it are
 // unaffected; the getUsageStats tests override per-case.
 const mockExtendedClient = {
@@ -126,7 +125,7 @@ const mockDatabaseService = {
 // Mock TenantBucketService
 const mockTenantBucketService = {
     provisionSystemBuckets: vi.fn(),
-    // TASK-497 D4 — plan storageQuotaBytes -> primary bucket quotaBytes.
+    // Plan storageQuotaBytes -> primary bucket quotaBytes.
     applyPlanStorageQuota: vi.fn(),
 };
 
@@ -162,7 +161,7 @@ const createMockTenantEntity = (overrides: Partial<{
         deletedAt: overrides.deletedAt ?? null,
         hasChanges: overrides.hasChanges ?? false,
         changes: overrides.changes ?? {},
-        // TASK-302 Stream D Phase E.1 — every tenant row carries a server-owned
+        // Every tenant row carries a server-owned
         // `_version` after the B.5 BaseEntity getter + B.6 mapper. The default
         // is the first-write version (1); per-test overrides exercise the CAS
         // bump path.
@@ -190,7 +189,7 @@ const createMockTenantEntity = (overrides: Partial<{
  * Creates a complete mock global setting entity for tenant configuration tests.
  *
  * Includes the additional `locked`, `defaultValue`, `dataType`, `description`,
- * and `name` fields used by the TASK-258 access-control + provisioning paths.
+ * and `name` fields used by the access-control + provisioning paths.
  * `locked` is intentionally optional (defaults to `false`) so existing tests
  * are unaffected.
  */
@@ -288,7 +287,7 @@ vi.mock('@arcaai/domains', async () => {
                 toObject: vi.fn().mockReturnValue({ ...data }),
             })),
         },
-        // TASK-356 Phase 1 — AiModel catalog clone-per-tenant (D-5).
+        // AiModel catalog clone-per-tenant.
         AiModelFactory: {
             CreateAiModel: vi.fn((data) => ({
                 ...data,
@@ -300,7 +299,7 @@ vi.mock('@arcaai/domains', async () => {
                 toObject: vi.fn().mockReturnValue({ ...data }),
             })),
         },
-        // TASK-356 Phase 2 — AsrPipeline + version clone-per-tenant (D — extend_clone).
+        // AsrPipeline + version clone-per-tenant (D — extend_clone).
         AsrPipelineFactory: {
             CreateAsrPipeline: vi.fn((data) => ({
                 ...data,
@@ -355,19 +354,19 @@ describe('TenantService', () => {
             }
         });
 
-        // TASK-331 r2605 #4 — default: echo the persisted department so
+        // Default: echo the persisted department so
         // create()'s post-provision broadcast can read `saved.id` /
         // `saved.createdAt`. Individual tests override this as needed.
         mockDepartmentRepository.create.mockImplementation(async (entity: any) => entity);
 
-        // TASK-356 Phase 1 — default: empty SYSTEM catalog so the model-clone
+        // Default: empty SYSTEM catalog so the model-clone
         // provisioning step is a no-op for the existing create tests. The clone
         // tests below override `findAll` with SYSTEM rows.
         mockAiModelRepository.findAll.mockResolvedValue([]);
         mockAiModelRepository.isSlugUnique.mockResolvedValue(true);
         mockAiModelRepository.create.mockImplementation(async (entity: any) => entity);
 
-        // TASK-356 Phase 2 — default: no SYSTEM pipelines so the pipeline-clone
+        // Default: no SYSTEM pipelines so the pipeline-clone
         // provisioning step is a no-op for the existing create tests. The
         // pipeline-clone tests below override `findEnabledPipelines`.
         mockAsrPipelineRepository.findEnabledPipelines.mockResolvedValue([]);
@@ -414,8 +413,7 @@ describe('TenantService', () => {
             expect(result.name).toBe('New Tenant');
         });
 
-        // TASK-497 D2 — new tenants default to STARTER (overridable), replacing
-        // the prior TASK-392 TRIAL default.
+        // New tenants default to STARTER (overridable).
         it('defaults the plan to STARTER when the request omits it', async () => {
             const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
             mockTenantRepository.create.mockResolvedValue(newTenant);
@@ -434,7 +432,7 @@ describe('TenantService', () => {
             expect(TenantFactory.CreateTenant).toHaveBeenCalledWith(expect.objectContaining({ plan: TenantPlan.ENTERPRISE }));
         });
 
-        // TASK-497 D3 — auto-generated tenant key when the request omits it.
+        // Auto-generated tenant key when the request omits it.
         describe('create — tenant key auto-generation (TASK-497 D3)', () => {
             it('generates a unique key from the name when key is omitted', async () => {
                 const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
@@ -475,7 +473,7 @@ describe('TenantService', () => {
             });
         });
 
-        // TASK-497 D4 — plan storageQuotaBytes applied to the primary bucket
+        // Plan storageQuotaBytes applied to the primary bucket
         // as part of the tenant spin-up (composes with provisionSystemBuckets).
         it('applies the plan storage quota to the new tenant after provisioning buckets', async () => {
             const newTenant = { ...createMockTenantEntity({ id: 'new-tenant-id' }), plan: TenantPlan.STARTER };
@@ -496,7 +494,7 @@ describe('TenantService', () => {
             expect(result.id).toBe('new-tenant-id');
         });
 
-        // TASK-356 Phase 1 (D-5) — clone-per-tenant model catalog.
+        // Clone-per-tenant model catalog.
         const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
         const makeSystemModel = (slug: string, over: Record<string, unknown> = {}) => ({
             id: `sys-${slug}`,
@@ -511,9 +509,9 @@ describe('TenantService', () => {
             sourceUri: `uri/${slug}`,
             sourceRevision: 'main',
             format: 'GGUF',
-            // TASK-506 (r2605 Finding C) — the registry columns every clone
+            // The registry columns every clone
             // must carry; dropping them yields NULL-provider clones that
-            // shadow the SYSTEM values in the TASK-506 resolvers.
+            // shadow the SYSTEM values in the runtime-provider resolvers.
             provider: 'lm-studio',
             architecture: 'granite',
             metaData: { seededBy: 'task-506' },
@@ -587,8 +585,7 @@ describe('TenantService', () => {
             expect(result.id).toBe('new-tenant-id');
         });
 
-        // TASK-356 Phase 2 (D — extend_clone), extended by the TASK-505/356
-        // full-parity policy — clone EVERY enabled SYSTEM ASR pipeline (+ each
+        // Full-parity policy — clone EVERY enabled SYSTEM ASR pipeline (+ each
         // one's current version) into the new tenant, mark the clone of the
         // SYSTEM default as the tenant default, idempotent per slug,
         // failure-isolated.
@@ -646,9 +643,9 @@ describe('TenantService', () => {
                 expect(defaultCall[1]).toBe(productionClone.id);
             });
 
-            // TASK-531 — provisioned clones ARE template copies: they carry the
+            // Provisioned clones ARE template copies: they carry the
             // template's slug as provenance and start locked, so a tenant admin
-            // clones one to customize rather than editing it in place (E4).
+            // clones one to customize rather than editing it in place.
             it('stamps template lineage on every provisioned clone (TASK-531)', async () => {
                 const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
                 mockTenantRepository.create.mockResolvedValue(newTenant);
@@ -1032,11 +1029,11 @@ describe('TenantService', () => {
     });
 
     describe('fetchById', () => {
-        // TASK-306 P1.3 — the CLS `tenantId` is `tenant-1` (see `beforeEach`).
+        // The CLS `tenantId` is `tenant-1` (see `beforeEach`).
         // Happy-path tests therefore set the fetched row's id to `tenant-1`
         // so the new tenant-scope guard does not short-circuit them; the
         // cross-tenant + GLOBAL_ADMIN coverage lives in the dedicated
-        // `TASK-306 P1.3 — fetchById/fetchByCodeName tenant-scoped` block.
+        // tenant-scope guard describe block below.
         it('should return tenant by ID with complete data', async () => {
             const tenant = createMockTenantEntity({
                 id: 'tenant-1',
@@ -1074,10 +1071,10 @@ describe('TenantService', () => {
     });
 
     describe('fetchByCodeName', () => {
-        // TASK-306 P1.3 — happy-path tests use the CLS tenant id (`tenant-1`)
+        // Happy-path tests use the CLS tenant id (`tenant-1`)
         // so the new tenant-scope guard does not short-circuit them; the
         // cross-tenant + GLOBAL_ADMIN coverage lives in the dedicated
-        // `TASK-306 P1.3 — fetchById/fetchByCodeName tenant-scoped` block.
+        // tenant-scope guard describe block below.
         it('should return tenant by code name', async () => {
             const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'MY_CODE' });
             mockTenantRepository.findFirst.mockResolvedValue(tenant);
@@ -1107,7 +1104,7 @@ describe('TenantService', () => {
     });
 
     /**
-     * TASK-306 P1.3 (audit H-3 / NEW-6 / AC-3) — `fetchById` and
+     * `fetchById` and
      * `fetchByCodeName` previously returned ANY tenant row by primary key
      * or code-name without checking the caller's identity. A Tenant-A user
      * could enumerate Tenant-B's tenant record. The new guard short-circuits
@@ -1180,7 +1177,7 @@ describe('TenantService', () => {
     });
 
     /**
-     * TASK-306 P2.2 (audit H-1 / AC-4) — `fetchTenantConfigs` previously
+     * `fetchTenantConfigs` previously
      * resolved ANY tenant by id or code-name and returned the configs
      * (with locked-row scrubbing applied for non-GLOBAL_ADMIN). A Tenant-A
      * user could enumerate Tenant-B's settings list (key names + namespaces
@@ -1513,7 +1510,7 @@ describe('TenantService', () => {
         });
 
         it('should return all tenant configurations filtered by tenantId', async () => {
-            // TASK-306 P2.2 — `fetchTenantConfigs` now refuses cross-tenant
+            // `fetchTenantConfigs` now refuses cross-tenant
             // reads for non-GLOBAL_ADMIN callers. Align this happy-path probe
             // with the CLS default (`tenant-1`) so the new guard does not
             // short-circuit and the assertion still validates the data flow.
@@ -1554,7 +1551,7 @@ describe('TenantService', () => {
         });
 
         it('should fetch configs by tenant code name', async () => {
-            // TASK-306 P2.2 — align with CLS default tenant id.
+            // Align with CLS default tenant id.
             const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'MY_CODE' });
             mockTenantRepository.findFirst.mockResolvedValue(tenant);
             mockGlobalSettingRepository.findAll.mockResolvedValue([]);
@@ -1572,7 +1569,7 @@ describe('TenantService', () => {
         });
 
         it('should emit ResourceViewed event with config IDs', async () => {
-            // TASK-306 P2.2 — align with CLS default tenant id.
+            // Align with CLS default tenant id.
             const tenant = createMockTenantEntity({ id: 'tenant-1' });
             mockTenantRepository.findFirst.mockResolvedValue(tenant);
             const configs = [
@@ -1930,9 +1927,8 @@ describe('TenantService', () => {
     });
 
     /* =================================================================
-     * TASK-258 — Tenant config provisioning, locked enforcement, and
-     * identifier disambiguation. See
-     * docs/implementation/TASK-258-Tenant-Config-Provisioning/README.md
+     * Tenant config provisioning, locked enforcement, and
+     * identifier disambiguation.
      * ================================================================= */
 
     /**
@@ -2097,10 +2093,10 @@ describe('TenantService', () => {
     });
 
     /**
-     * TASK-331 r2605 Finding #4 — A console-created tenant must own at least
-     * one ENABLED department so its first admin can satisfy the TASK-305
-     * Phase F login invariant (an ENABLED role AND an ENABLED department in
-     * the tenant). `create()` now provisions a default General Practice
+     * A console-created tenant must own at least
+     * one ENABLED department so its first admin can satisfy the login
+     * invariant (an ENABLED role AND an ENABLED department in
+     * the tenant). `create()` provisions a default General Practice
      * (`GEN`) department for the NEW tenant after config provisioning. The
      * insert is non-fatal: a failure is logged and swallowed so it never
      * aborts tenant creation (mirrors the bucket/config provisioning blocks).
@@ -2279,7 +2275,7 @@ describe('TenantService', () => {
 
     describe('fetchTenantConfigs / updateTenantConfigs — identifier disambiguation (TASK-258 #7)', () => {
         it('looks up tenant by id when identifier is a UUID (fetchTenantConfigs)', async () => {
-            // TASK-306 P2.2 — the resolved tenant id deliberately differs from
+            // The resolved tenant id deliberately differs from
             // CLS to exercise the UUID-vs-key branch; gate via GLOBAL_ADMIN so
             // the new cross-tenant short-circuit does not fire (the test is
             // about identifier disambiguation, not access control).
@@ -2297,7 +2293,7 @@ describe('TenantService', () => {
         });
 
         it('looks up tenant by key when identifier is a non-UUID string (fetchTenantConfigs)', async () => {
-            // TASK-306 P2.2 — see sibling test above; gate via GLOBAL_ADMIN.
+            // See sibling test above; gate via GLOBAL_ADMIN.
             setRequestUserRoles(['GLOBAL_ADMIN']);
             const tenant = createMockTenantEntity({ id: 'tenant-123', key: 'CODE_NAME' });
             mockTenantRepository.findFirst.mockResolvedValue(tenant);
@@ -2329,7 +2325,7 @@ describe('TenantService', () => {
 
     describe('fetchTenantConfigs — locked value masking (TASK-258 #8)', () => {
         it('replaces value with empty string for locked rows when caller is non-GLOBAL_ADMIN', async () => {
-            // TASK-306 P2.2 — this test deliberately exercises the non-GLOBAL_ADMIN
+            // This test deliberately exercises the non-GLOBAL_ADMIN
             // locked-value scrubbing branch, so GLOBAL_ADMIN bypass is off-limits.
             // Align the resolved tenant id with CLS default (`tenant-1`) so the
             // new cross-tenant guard does not short-circuit before the scrubber.
@@ -2395,7 +2391,7 @@ describe('TenantService', () => {
     });
 
     // ──────────────────────────────────────────────────────────────────────
-    // TASK-302 Stream D Phase C — Optimistic Concurrency on updateTenantConfigs
+    // Optimistic Concurrency on updateTenantConfigs
     // ──────────────────────────────────────────────────────────────────────
     describe('updateTenantConfigs — optimistic concurrency (TASK-302 Stream D Phase C)', () => {
         it('calls updateWithVersion (not update) when expectedVersion is supplied', async () => {
@@ -2478,7 +2474,7 @@ describe('TenantService', () => {
         });
     });
 
-    // TASK-302 Stream D Phase C (C.4) — Prisma `$transaction(callback)` wraps
+    // (C.4) — Prisma `$transaction(callback)` wraps
     // the per-row CAS loop, so a mid-batch conflict rolls back BOTH the
     // already-applied rows and the in-flight one. We rely on Prisma's
     // interactive transaction semantics: if the callback throws, the SQL
@@ -2611,7 +2607,7 @@ describe('TenantService', () => {
         });
     });
 
-    // TASK-302 Stream D Phase C (C.8) — the post-write audit log gets the
+    // (C.8) — the post-write audit log gets the
     // version transition for every persisted row so downstream observers
     // can reconstruct history via `metadata->>'newVersion'` (Research §7).
     // The pre-write `previousVersion` must be snapshotted BEFORE the CAS so
@@ -2703,7 +2699,7 @@ describe('TenantService', () => {
     });
 
     // ============================================================
-    // TASK-386 (#4 / #5 / E5) — getUsageStats extended with storage + clinical
+    // getUsageStats extended with storage + clinical
     // roll-ups. Counts are read straight off the extended client, scoped by the
     // explicit tenantId arg (mirrors the existing distinct-users query).
     // ============================================================

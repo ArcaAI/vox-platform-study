@@ -1,5 +1,5 @@
 /**
- * TDD for the PermissionMatrix component (TASK-438 plan step 2): renders the
+ * TDD for the PermissionMatrix component: renders the
  * three cell states + legend, pairs every glyph with sr-only text (never
  * color-only), offers a card fallback for mobile, and is axe-clean.
  */

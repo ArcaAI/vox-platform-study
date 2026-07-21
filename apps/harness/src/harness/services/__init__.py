@@ -1,4 +1,4 @@
-"""Tool clients + pure loop helpers for the harness durable loop (TASK-330 Lane I).
+"""Tool clients + pure loop helpers for the harness durable loop.
 
 All network I/O the durable workflow needs lives behind these typed, async httpx
 clients (SMR generation, NLP NER, the apps/api internal-harness callbacks). The

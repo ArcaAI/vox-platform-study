@@ -1,15 +1,15 @@
-"""Unit tests for the claim-check core (TASK-483).
+"""Unit tests for the claim-check core.
 
 Hermetic — a fake in-memory store, no live MinIO. Proves the two safety
 properties the claim-check must uphold:
 
 * **Round-trip identity** — ``store_blob`` then ``load_blob`` returns the exact
-  bytes (AC-1); the blob key is content-addressed (sha256) + deterministic.
+  bytes; the blob key is content-addressed (sha256) + deterministic.
 * **Fail LOUD, never silent** — a missing blob raises ``ClaimCheckNotFound`` and
   a corrupt blob raises ``ClaimCheckIntegrityError`` (never returns empty/partial
   clinical text into the loop).
 
-Plus the threshold gate (AC-2) and the inline-or-ref resolve seam (AC-3).
+Plus the threshold gate and the inline-or-ref resolve seam.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ _BIG = "clinical transcript " * 4096  # ~80 KiB of utf-8
 class TestRoundTrip:
     @pytest.mark.asyncio
     async def test_store_then_load_is_byte_identical(self):
-        """AC-1: store→reference→retrieve is the identity function."""
+        """store→reference→retrieve is the identity function."""
         store = InMemoryBlobStore()
         ref = await store_blob(_BIG, store=store, bucket=_BUCKET)
         assert isinstance(ref, ClaimCheckRef)
@@ -48,7 +48,7 @@ class TestRoundTrip:
 
     @pytest.mark.asyncio
     async def test_key_is_content_addressed_sha256_and_deterministic(self):
-        """AC-1: the key is the sha256 of the utf-8 bytes — stable across calls."""
+        """The key is the sha256 of the utf-8 bytes — stable across calls."""
         store = InMemoryBlobStore()
         text = "same content"
         expected = hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -60,7 +60,7 @@ class TestRoundTrip:
 
     @pytest.mark.asyncio
     async def test_ref_carries_integrity_metadata_only_no_content(self):
-        """AC-6 core: the ref carries size/sha/bucket/key — never the clinical text."""
+        """The ref carries size/sha/bucket/key — never the clinical text."""
         store = InMemoryBlobStore()
         ref = await store_blob(_BIG, store=store, bucket=_BUCKET)
         blob = ref.model_dump()
@@ -101,7 +101,7 @@ class TestFailLoud:
 
 class TestThresholdGate:
     def test_small_string_stays_inline(self):
-        """AC-2: below the threshold ⇒ no offload (no store round-trip tax)."""
+        """Below the threshold ⇒ no offload (no store round-trip tax)."""
         assert should_offload("tiny", min_bytes=1024) is False
 
     def test_at_or_above_threshold_offloads(self):
@@ -115,7 +115,7 @@ class TestThresholdGate:
 
     @pytest.mark.asyncio
     async def test_maybe_offload_below_threshold_returns_inline_none(self):
-        """AC-2: small payload ⇒ (inline text, None) — nothing hits the store."""
+        """Small payload ⇒ (inline text, None) — nothing hits the store."""
         store = InMemoryBlobStore()
         inline, ref = await maybe_offload("small", store=store, bucket=_BUCKET, min_bytes=1024)
         assert inline == "small"
@@ -123,7 +123,7 @@ class TestThresholdGate:
 
     @pytest.mark.asyncio
     async def test_maybe_offload_above_threshold_empties_inline_and_refs(self):
-        """AC-6: above threshold ⇒ ("", ref) so the blob stays OUT of history."""
+        """Above threshold ⇒ ("", ref) so the blob stays OUT of history."""
         store = InMemoryBlobStore()
         inline, ref = await maybe_offload(_BIG, store=store, bucket=_BUCKET, min_bytes=1024)
         assert inline == ""  # inline emptied — no clinical text in the carrier
@@ -135,12 +135,12 @@ class TestThresholdGate:
 class TestHistoryFootprintFlat:
     @pytest.mark.asyncio
     async def test_ref_footprint_is_constant_regardless_of_blob_size(self):
-        """AC-5: the recorded footprint is bounded by the REF, not the blob.
+        """The recorded footprint is bounded by the REF, not the blob.
 
         Doubling (here 8×-ing) the blob length does not grow the offloaded payload that
         Temporal records — only the small ``ClaimCheckRef`` (fixed-length sha256 key +
-        an integer size) enters history. This is the size-budget protection the ticket
-        exists for.
+        an integer size) enters history. This is the size-budget protection the
+        claim-check exists for.
         """
         store = InMemoryBlobStore()
         small = "x" * 100_000  # 100 KB
@@ -160,13 +160,13 @@ class TestHistoryFootprintFlat:
 class TestResolveSeam:
     @pytest.mark.asyncio
     async def test_resolve_inline_when_ref_absent(self):
-        """AC-3 backward-compat: ref None ⇒ use the inline field (old-history shape)."""
+        """Backward-compat: ref None ⇒ use the inline field (old-history shape)."""
         store = InMemoryBlobStore()
         assert await resolve("inline-note", None, store=store) == "inline-note"
 
     @pytest.mark.asyncio
     async def test_resolve_dereferences_when_ref_present(self):
-        """AC-3: ref set ⇒ dereference from the store (new-history shape)."""
+        """Ref set ⇒ dereference from the store (new-history shape)."""
         store = InMemoryBlobStore()
         _, ref = await maybe_offload(_BIG, store=store, bucket=_BUCKET, min_bytes=1024)
         assert await resolve("", ref, store=store) == _BIG

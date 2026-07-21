@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - Settings Types (TASK-032 WS-A)
+ * @arcaai/vox - Settings Types
  *
  * Types for global settings and user settings.
  */
@@ -14,7 +14,7 @@ export interface GlobalSetting {
   description?: string;
   tenantId?: string;
   /**
-   * TASK-396 — server-authoritative "this row holds a secret" marker. When
+   * Server-authoritative "this row holds a secret" marker. When
    * true the server masks `value` on list/get; the admin console renders the
    * mask with an enabled "Reveal" affordance, and the plaintext is fetched via
    * `revealSecret(id, { password })`.
@@ -24,7 +24,7 @@ export interface GlobalSetting {
 }
 
 /**
- * TASK-396 — step-up input for {@link UseGlobalSettingsReturn.revealSecret}.
+ * Step-up input for {@link UseGlobalSettingsReturn.revealSecret}.
  * `password` is the caller's CURRENT account password, re-verified server-side;
  * it is sent over TLS and never stored client-side.
  */
@@ -33,7 +33,7 @@ export interface RevealSecretInput {
 }
 
 /**
- * TASK-396 — the transient decrypted-secret payload returned by the reveal
+ * The transient decrypted-secret payload returned by the reveal
  * endpoint. Callers show `value` briefly and must never persist it.
  */
 export interface RevealSecretResult {
@@ -102,7 +102,7 @@ export interface UpdateUserSettingInput {
 
 /**
  * Error thrown when a setting update fails the server's optimistic-concurrency
- * check — TASK-302 Stream D Phase D (D.4).
+ * check.
  *
  * The server returns `412 Precondition Failed` when the client's `If-Match`
  * header points to a stale row version. The SDK transforms that HTTP error

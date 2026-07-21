@@ -1,5 +1,5 @@
 /**
- * @arcaai/stt - H-2 worker crash recovery tests (TASK-270)
+ * @arcaai/stt - worker crash recovery tests
  *
  * Verifies that `WhisperWorkerEngine`:
  *   - Rejects all pending requests with `STTWorkerCrashError` when the worker

@@ -1,4 +1,4 @@
-"""whisper.cpp per-utterance streaming adapter (TASK-507).
+"""whisper.cpp per-utterance streaming adapter.
 
 Wraps a loaded ``pywhispercpp.model.Model`` behind the streaming ASR callable
 contract ``(samples, sample_rate, *, prompt) -> {text, language,

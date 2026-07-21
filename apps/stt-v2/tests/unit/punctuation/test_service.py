@@ -56,7 +56,7 @@ class TestInitialize:
 
     @patch("stt_v2.punctuation.service.get_settings")
     def test_initialize_returns_true_when_model_loaded(self, mock_settings):
-        """TASK-348 MIN-12: callers condition their 'initialized' log on the outcome."""
+        """Callers condition their 'initialized' log on the outcome."""
         settings = MagicMock()
         settings.punctuation_model_name = "Cadence-Fast"
         settings.punctuation_model_cache_dir = None
@@ -117,11 +117,10 @@ class TestInitialize:
 
 
 class TestInitializeFailure:
-    """MIN-10 (TASK-348): a failed model load must flip the service to
-    disabled/passthrough. Leaving ``_enabled=True`` after a failed
-    ``initialize()`` makes every subsequent utterance re-attempt the failing
-    Cadence load (latent crash-loop, dodged today only because the global
-    default is off)."""
+    """A failed model load must flip the service to disabled/passthrough.
+    Leaving ``_enabled=True`` after a failed ``initialize()`` makes every
+    subsequent utterance re-attempt the failing Cadence load (latent
+    crash-loop, dodged today only because the global default is off)."""
 
     @staticmethod
     def _enabled_settings():
@@ -308,8 +307,8 @@ class TestPunctuationDisabled:
     @patch("stt_v2.punctuation.service.logger")
     @patch("stt_v2.punctuation.service.get_settings")
     def test_initialize_returns_false_and_logs_disabled_message(self, mock_settings, mock_logger):
-        """TASK-348 TG-5/MIN-12: the disabled path logs the disabled message and
-        returns False so callers don't log a contradictory 'initialized' line."""
+        """The disabled path logs the disabled message and returns False so
+        callers don't log a contradictory 'initialized' line."""
         settings = MagicMock()
         settings.punctuation_enabled = False
         mock_settings.return_value = settings
@@ -358,7 +357,7 @@ class TestPunctuationDisabled:
 
 
 class TestSuppressionWarning:
-    """TASK-348 MIN-11: the global kill-switch silently overrides per-pipeline
+    """The global kill-switch silently overrides per-pipeline
     `punctuation.enabled: true` YAML. A pipeline-requested punctuation call that
     gets suppressed must emit exactly one warning per process documenting the
     precedence -- not zero (silent) and not one per utterance (log spam)."""

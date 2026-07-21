@@ -1,7 +1,7 @@
 /**
  * Playground consultation wire types (frames 50 + 50.1, matrix row 34) —
  * client subsets of the END-USER consultation plane DTOs, verified against
- * `apps/api/src/modules/consultation/*` + `packages/applications` (TASK-432).
+ * `apps/api/src/modules/consultation/*` + `packages/applications`.
  * This plane has TWO job-state spellings: the async POST replies lowercase
  * (`pending|processing|…`, AsyncJobResponse) while the job status route and
  * its SSE stream reply UPPERCASE (`PENDING|RUNNING|…`, JobStatusResponse) —

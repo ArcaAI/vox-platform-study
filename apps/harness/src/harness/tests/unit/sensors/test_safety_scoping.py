@@ -1,19 +1,18 @@
-"""TASK-363 — safety-screening scoping acceptance contract (split from TASK-359 WS-3).
+"""Safety-screening scoping acceptance contract.
 
-WS-3 was carved out of TASK-359 into its own ticket so a parallel agent can own it.
 This file holds the safety-screen contract:
 
-* **S1 / S2 (GREEN)** regression guards moved from TASK-359's
-  ``test_gating_consolidation.py`` — the per-criterion result dict shape/order and
+* **S1 / S2** regression guards — the per-criterion result dict shape/order and
   the fail-closed degrade that any scoping change MUST preserve byte-for-byte.
-* **S3 (RED)** the not-yet-built scoping behaviour: a content-addressed
+* **S3** the scoping behaviour: a content-addressed
   per-(criterion, screened-text) cache threaded into
   ``SafetySensor.arun(..., screen_cache=...)`` so unchanged note content is not
-  re-screened every regen pass (mirrors TASK-359 WS-1's ``verdict_cache``).
+  re-screened every regen pass (mirrors the groundedness ``verdict_cache``).
 
-RED tests fail with an explicit ``pytest.fail`` naming the missing API, so the module
-always COLLECTS cleanly. Stubs are self-contained (no import from TASK-359's test file)
-so the two tickets' test files can be edited by parallel agents without collision.
+Each test imports the target API via a helper that raises an explicit ``pytest.fail``
+naming the missing API if it is absent, so the module always COLLECTS cleanly even
+against a partial implementation. Stubs are self-contained (no import from
+``test_gating_consolidation.py``) so the two files can be edited independently.
 """
 
 from __future__ import annotations
@@ -70,7 +69,7 @@ def _has_kwarg(func, name: str) -> bool:
 
 
 # ===========================================================================
-# S1 / S2 (GREEN, AC-2/AC-3/AC-4) — the safety contract WS-3 must preserve.
+# S1 / S2 — the safety contract the scoping work must preserve.
 # ===========================================================================
 
 
@@ -101,7 +100,7 @@ class TestSafetyContractPreserved:
 
 
 # ===========================================================================
-# S3 (RED, AC-1/AC-2/AC-5) — unchanged note content is not re-screened per pass.
+# S3 — unchanged note content is not re-screened per pass.
 # ===========================================================================
 
 
@@ -148,7 +147,7 @@ class TestSafetyScreenScopingReusesCache:
     async def test_degraded_screen_is_never_cached_as_safe(self):
         """A backend error degrades FAIL-CLOSED even with a cache, and writes NOTHING to
         it — so a later pass over the SAME content re-screens (never served a cached
-        'safe' verdict). The conservative invariant TASK-355 §7 / AC-4 require."""
+        'safe' verdict). This is the conservative invariant the cache must preserve."""
         cache: dict[str, bool] = {}
 
         # A degraded screen must not populate the cache.

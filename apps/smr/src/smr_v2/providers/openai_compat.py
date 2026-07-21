@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
-# TASK-528 R4 — `main.py` registers the LM Studio instance under BOTH keys with
+# `main.py` registers the LM Studio instance under BOTH keys with
 # the DEFAULT `provider_name`, so the native-REST enrichment below is attempted
 # for both. Engine subclasses (vLLM) carry their own `provider_name` and are
 # excluded — they have no `/api/v0` surface.
@@ -61,7 +61,7 @@ class OpenAICompatProvider:
         # /get_info carry the real engine name, not the generic wire name.
         self._provider_name = provider_name
         self._display_name = display_name
-        # TASK-529 (D-10) — bootstrap retention hint; replaced by the
+        # Bootstrap retention hint; replaced by the
         # control-plane value on the first effective-config refresh.
         self._retention_ttl_s = clamp_cache_ttl_seconds(DEFAULT_RETENTION_TTL_S)
         self._client = AsyncOpenAI(
@@ -72,7 +72,7 @@ class OpenAICompatProvider:
         )
 
     def apply_retention(self, retention: dict[str, int]) -> None:
-        """TASK-529 (D-10) — adopt the control-plane idle-retention TTL.
+        """Adopt the control-plane idle-retention TTL.
 
         An absent key keeps the current (env/bootstrap) value; the product clamp
         [60, 3600] is re-applied here as well as registry-side.
@@ -94,7 +94,7 @@ class OpenAICompatProvider:
         kwargs["extra_body"] = {"ttl": self._retention_ttl_s}
 
     def _resolve_model(self, request: GenerateRequest) -> str | None:
-        # D-7 (TASK-356): no in-gateway default — the caller-supplied model is
+        # No in-gateway default — the caller-supplied model is
         # authoritative. ``_default_model`` is retained for the providers
         # listing (informational) only.
         return request.model
@@ -272,7 +272,7 @@ class OpenAICompatProvider:
             return False
 
     async def _lm_studio_native_models(self) -> dict[str, dict[str, Any]]:
-        """TASK-528 R4 — LM Studio's native REST listing, keyed by model id.
+        """LM Studio's native REST listing, keyed by model id.
 
         `/v1/models` (OpenAI wire) carries no load state, but LM Studio also
         serves `GET {root}/api/v0/models` with `state` / `quantization` /
@@ -305,8 +305,8 @@ class OpenAICompatProvider:
                 models.append(ModelInfo(name=m.id, supports_streaming=True))
             status = "available"
         except (APIError, APIConnectionError, APITimeoutError, ConnectionError, OSError) as exc:
-            # TASK-528 — was `except Exception: pass`, which swallowed every
-            # diagnostic. Mirrors `health_check` above.
+            # Narrower than a bare `except Exception: pass` so diagnostics
+            # aren't swallowed. Mirrors `health_check` above.
             logger.warning("get_info.failed", provider=self._provider_name, error=str(exc))
         except Exception as exc:
             logger.error("get_info.unexpected_error", provider=self._provider_name, error=str(exc))

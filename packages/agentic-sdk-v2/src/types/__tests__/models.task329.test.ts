@@ -1,5 +1,5 @@
 /**
- * TASK-329 P3 — local-model selection constants.
+ * Local-model selection constants.
  *
  * `DEFAULT_AVAILABLE_STT_MODELS` is derived from `DEFAULT_STT_MODELS` so the
  * registry-selectable set and the presented (config-default) set cannot drift

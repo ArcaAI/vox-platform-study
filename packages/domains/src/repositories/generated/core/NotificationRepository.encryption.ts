@@ -1,10 +1,10 @@
-// TASK-369 (Data Encryption Initiative) Phase 3C — field encryption for
+// Field encryption for
 // Notification (messageText / messageRichText free-text + messageContent JSONB).
 //
 // Sibling file mirroring ContextItemVersionRepository.encryption.ts. All three
 // fields share ONE `keyVersion` column; the shared Buffer/ciphertext primitives
 // live in common/field-encryption.ts and default to the dedicated `hope-phi`
-// Transit key. TASK-369 Phase 6 dropped the plaintext columns; reads decrypt the
+// Transit key. The plaintext columns have been dropped; reads decrypt the
 // ciphertext only (no plaintext fallback).
 
 import { NotificationRepository } from './NotificationRepository';
@@ -95,7 +95,7 @@ NotificationRepository.prototype.decryptFieldsFromEntity = async function (
   const messageText = await decryptCiphertextToString(secrets, entity.encryptedMessageText);
   const messageRichText = await decryptCiphertextToString(secrets, entity.encryptedMessageRichText);
   const messageContent = await decryptCiphertextToJson(secrets, entity.encryptedMessageContent);
-  // TASK-369 Phase 6 — plaintext columns dropped; decrypt ciphertext only.
+  // Plaintext columns dropped; decrypt ciphertext only.
   return { messageText, messageRichText, messageContent };
 };
 

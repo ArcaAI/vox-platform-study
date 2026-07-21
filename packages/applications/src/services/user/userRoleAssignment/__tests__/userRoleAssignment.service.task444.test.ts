@@ -1,5 +1,5 @@
 /**
- * TASK-444 — `fetchAllByRoleId`: the users-by-role listing behind
+ * `fetchAllByRoleId`: the users-by-role listing behind
  * `GET /admin/rbac/roles/:id/members`.
  *
  * The read needs a `User` + profile + department join the generic

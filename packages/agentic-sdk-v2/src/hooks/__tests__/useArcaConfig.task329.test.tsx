@@ -1,5 +1,5 @@
 /**
- * TASK-329 P3 — useArcaConfig task-aware model selection.
+ * useArcaConfig task-aware model selection.
  *
  * Adds `selectSttTask(task)` (delegates to the ModelRegistry + busts the
  * model-registry memo) and surfaces the persisted task via

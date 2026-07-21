@@ -1,4 +1,4 @@
-"""TASK-527 — model weight source & path resolution (plan AD-3).
+"""Model weight source & path resolution.
 
 One contract, mirrored across stt-v2 / guardrail / nlp / harness:
 
@@ -16,10 +16,10 @@ One contract, mirrored across stt-v2 / guardrail / nlp / harness:
                                          single-flight + SHA256-verified
            file:///abs/path           -> verify and use IN PLACE, never copied
     3. anything else                   -> ``ModelSourceError``. There is no
-                                          silent fallback (OD-4: ``s3://`` only
-                                          this program; ``azure-blob://`` deferred).
+                                          silent fallback (``s3://`` only
+                                          for now; ``azure-blob://`` deferred).
 
-Design constraints (rule 06 + plan AD-3):
+Design constraints (rule 06):
 
 * The S3 client is imported LAZILY inside ``_make_s3_client`` so a deployment
   that never uses ``s3://`` never imports ``minio``. That function is also the

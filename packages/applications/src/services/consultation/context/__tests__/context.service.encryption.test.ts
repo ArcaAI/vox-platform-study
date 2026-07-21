@@ -1,5 +1,5 @@
 /**
- * ContextService — TASK-369 Phase 3B field-encryption wiring.
+ * ContextService — field-encryption wiring.
  *
  * Verifies that the service dual-writes encrypted `content` (via
  * `ContextItemRepository.encryptContentIntoEntity` + the injected

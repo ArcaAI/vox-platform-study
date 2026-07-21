@@ -1,5 +1,5 @@
 /**
- * `SessionRemovalRetryService` — TASK-351 P1-3 (M6 part 2).
+ * `SessionRemovalRetryService`.
  *
  * The WS gateway removes the upstream STT-v2 session with a fire-and-forget
  * `removeSession` on disconnect. When that DELETE fails (STT-v2 restart,

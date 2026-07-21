@@ -40,7 +40,7 @@ class AssembleResponse(BaseModel):
 
     user_prompt: str = ""
     system_prompt: str = ""
-    # TASK-483 claim-check: OPTIONAL out-of-band refs for the (large) assembled prompts,
+    # OPTIONAL out-of-band refs for the (large) assembled prompts,
     # carried alongside the inline fields for the ``generate`` activity to resolve. The
     # ``assemble_prompt`` activity may offload above the threshold (inline emptied). The
     # apps/api assemble response never carries these (extra="ignore" drops unknowns); they
@@ -71,7 +71,7 @@ class RecordGateResponse(BaseModel):
 
 
 class FinalizeAssuranceResponse(BaseModel):
-    """apps/api ack for the Phase-D ``finalize_assurance`` callback (TASK-355 Slice 4a)."""
+    """apps/api ack for the ``finalize_assurance`` callback (optimistic-delivery second phase)."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -80,7 +80,7 @@ class FinalizeAssuranceResponse(BaseModel):
 
 
 class EscalationRecordResponse(BaseModel):
-    """apps/api ack for the C1-05 SLA-breach escalation record (TASK-458)."""
+    """apps/api ack for the SLA-breach escalation record."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -88,7 +88,7 @@ class EscalationRecordResponse(BaseModel):
 
 
 class RetractDraftResponse(BaseModel):
-    """apps/api ack for the TASK-481 (E2) optimistic-delivery retraction callback."""
+    """apps/api ack for the optimistic-delivery retraction callback."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -103,7 +103,7 @@ class ReportProgressResponse(BaseModel):
 
 
 class AssuranceEventResponse(BaseModel):
-    """apps/api ack for the Phase-D Slice-5d per-claim live feed (TASK-355)."""
+    """apps/api ack for the per-claim live assurance feed."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -116,9 +116,9 @@ class TrajectoryStepInput(BaseModel):
 
     The harness emits a batch of these per phase boundary via
     :meth:`ApiClient.report_trajectory`; the (later) apps/api wave persists them to
-    ``AgentTrajectoryStep`` (AD-2). ``session_id``/``run_id`` are the Temporal
+    ``AgentTrajectoryStep``. ``session_id``/``run_id`` are the Temporal
     workflow/run ids; ``seq`` is the workflow-owned monotonic order. Stats-first /
-    payload-by-reference (PHI posture): ``stats`` carries AD-1 ``GenerationStats``
+    payload-by-reference (PHI posture): ``stats`` carries the ``GenerationStats``
     on ``LLM_CALL`` steps, ``payload_ref`` stays null unless a capture-payload policy
     flag is on (not yet).
     """
@@ -197,7 +197,7 @@ def _entity_payload(entity: NEREntity, context_item_id: str | None) -> dict[str,
             payload["transcriptStartOffset"] = entity.start
         if entity.end >= 0:
             payload["transcriptEndOffset"] = entity.end
-    # TASK-476 C1 — forward the ontology codes (omit None, mirroring offsets) so
+    # Forward the ontology codes (omit None, mirroring offsets) so
     # persistEntities writes the NamedEntity code columns.
     for wire_key, value in (
         ("umlsCui", entity.umls_cui),
@@ -216,9 +216,9 @@ def _entity_payload(entity: NEREntity, context_item_id: str | None) -> dict[str,
 def _entity_from_payload(item: dict[str, Any]) -> NEREntity:
     """Map an apps/api camelCase ``HarnessEntityItem`` row back onto a ``NEREntity``.
 
-    The read inverse of :func:`_entity_payload` (TASK-480 NER priors). apps/api already
+    The read inverse of :func:`_entity_payload` (NER priors). apps/api already
     collapses the transcript-span offsets onto ``startOffset``/``endOffset`` (mirroring
-    its ``loadNerEntities``), so we take those directly; the TASK-476 ontology codes
+    its ``loadNerEntities``), so we take those directly; the ontology codes
     carry through so the caller can gate reuse on ``coded``.
     """
 
@@ -267,7 +267,7 @@ class ApiClient:
 
     def _headers(self, idempotency_key: str | None = None) -> dict[str, str]:
         headers = {"Content-Type": "application/json", "X-Service-Token": self._service_token}
-        # C1-03 (TASK-458): a deterministic idempotency key lets apps/api dedup a
+        # A deterministic idempotency key lets apps/api dedup a
         # retried POST (Temporal ``_API_RETRY`` re-POSTs a lost ack) instead of
         # double-writing the WORM audit / draft. Omitted (None) => header absent.
         if idempotency_key:
@@ -297,7 +297,7 @@ class ApiClient:
             return cast("dict[str, Any]", resp.json())
 
     async def get_policy(self, tenant_id: str) -> dict[str, Any]:
-        """Read the effective harness policy for ``tenant_id`` (Phase-6 worker fetch).
+        """Read the effective harness policy for ``tenant_id`` (worker fetch).
 
         Returns the raw camelCase ``HarnessPolicyResponse`` JSON; the ``fetch_policy``
         activity maps it onto :class:`~harness.temporal.models.HarnessPolicy`. Raises
@@ -307,16 +307,16 @@ class ApiClient:
         return await self._get("/policy", {"tenantId": tenant_id})
 
     async def resolve_mcp_token(self, auth_ref: str) -> str | None:
-        """Resolve an MCP server credential by its registered ``authRef`` (TASK-533 D-24).
+        """Resolve an MCP server credential by its registered ``authRef``.
 
-        The harness holds NO Vault client by design (ticket §3.1) — secret material
+        The harness holds NO Vault client by design — secret material
         stays on the gateway side of the boundary, which already has one. The
         gateway allowlists ``auth_ref`` against registered, ENABLED ``McpServer``
         rows, so this is not an arbitrary secret-path read.
 
         Returns ``None`` when the gateway declines to resolve the ref (unregistered,
         disabled, or unreadable). Callers treat that as "no credential" and call the
-        server unauthenticated — the pre-D-24 behaviour, not a hard failure.
+        server unauthenticated, not a hard failure.
 
         Raises :class:`ApiServiceError` on transport/HTTP failure; the caller in
         ``activities`` degrades that to ``None`` so a bounded tool call can never
@@ -357,8 +357,8 @@ class ApiClient:
     ) -> list[NEREntity]:
         """Read the persisted ``NamedEntity`` rows for a consultation as NER priors.
 
-        The read counterpart of :meth:`persist_entities` (TASK-480 Half-B): the harness
-        reuses these already-persisted (and, once TASK-476 lands, CODED) rows as the
+        The read counterpart of :meth:`persist_entities`: the harness
+        reuses these already-persisted (and, once coded, CODED) rows as the
         transcript NER priors instead of re-extracting cold. Maps the apps/api camelCase
         ``HarnessEntityItem`` rows back onto :class:`NEREntity` (incl. the ontology
         codes). Raises :class:`ApiServiceError` on any transport/HTTP error so the caller
@@ -465,7 +465,7 @@ class ApiClient:
                 "dnaStyleId": dna_style_id,
                 "gateDecision": gate_decision,
                 "isAutoGenerated": is_auto_generated,
-                # TASK-355 Phase D — the optimistic early-persist discriminator.
+                # The optimistic early-persist discriminator.
                 "phase": phase,
             }
         )
@@ -495,7 +495,7 @@ class ApiClient:
         prompt_version: str | None = None,
         idempotency_key: str | None = None,
     ) -> FinalizeAssuranceResponse:
-        """Backfill the early-persisted draft with the inferential verdict (TASK-355 Phase D).
+        """Backfill the early-persisted draft with the inferential verdict.
 
         The optimistic path calls this AFTER the assurance pass to complete the
         two-phase delivery: apps/api stamps the inferential scores + gate verdict +
@@ -578,13 +578,13 @@ class ApiClient:
         job_id: str | None = None,
         idempotency_key: str | None = None,
     ) -> RetractDraftResponse:
-        """Retract an optimistically-delivered draft that later failed assurance (TASK-481 E2).
+        """Retract an optimistically-delivered draft that later failed assurance.
 
         The optimistic path calls this INSTEAD of ``finalize_assurance`` when the
         post-delivery assurance pass FLAGs: apps/api marks the delivered
         ``DRAFT_PENDING_SENSORS`` draft ``RETRACTED``, writes the WORM audit (carrying the
         FLAG verdict + the offending atomic/claim refs), and surfaces a clinician-facing
-        retraction event — the safety net for the accepted TASK-453 pre-assurance sign-off
+        retraction event — the safety net for the accepted pre-assurance sign-off
         window. Idempotent on the apps/api side (a retried retraction re-marks the same
         terminal state). Raises :class:`ApiServiceError` on transport/HTTP error (the
         workflow retries under a bounded ``RetryPolicy``).
@@ -592,12 +592,12 @@ class ApiClient:
         NOTE: the apps/api endpoint that consumes this
         (``POST /internal/harness/consultations/:id/retraction`` — mark the delivered draft
         ``RETRACTED`` + WORM audit + clinician retraction event, idempotent like
-        ``finalizeAssurance``) is a coordinated follow-up, out of this harness ticket's
-        primary (hermetic) gate. Until it lands, an optimistic-FLAG retraction 404s → the
-        activity exhausts its bounded retries → the workflow FAILS (fail-safe: the draft
-        stays ``DRAFT_PENDING_SENSORS`` — it is NEVER silently affirmed to ``PENDING_REVIEW``).
-        So enable the endpoint BEFORE enabling optimistic delivery in production (the
-        optimistic path is itself default-OFF, so this ordering is an explicit ops rollout).
+        ``finalizeAssurance``) has not landed on the apps/api side yet. Until it lands, an
+        optimistic-FLAG retraction 404s → the activity exhausts its bounded retries → the
+        workflow FAILS (fail-safe: the draft stays ``DRAFT_PENDING_SENSORS`` — it is NEVER
+        silently affirmed to ``PENDING_REVIEW``). So enable the endpoint BEFORE enabling
+        optimistic delivery in production (the optimistic path is itself default-OFF, so
+        this ordering is an explicit ops rollout).
         """
         body = _prune(
             {
@@ -634,17 +634,16 @@ class ApiClient:
         job_id: str | None = None,
         idempotency_key: str | None = None,
     ) -> EscalationRecordResponse:
-        """Record a gate SLA-breach escalation to apps/api (C1-05, TASK-458).
+        """Record a gate SLA-breach escalation to apps/api.
 
         The ``escalate_gate`` activity calls this so an SLA breach is durably recorded
         / notifiable instead of being a local log line. ``terminal=True`` marks the
-        final escalation before the gate abandons (C1-02). Raises
+        final escalation before the gate abandons. Raises
         :class:`ApiServiceError` on transport/HTTP error; the *activity* is the layer
         that swallows it (an escalation record must never fail the clinical loop).
 
-        NOTE: the apps/api endpoint that consumes this is a coordinated follow-up (out
-        of the harness manifest) — until it lands, the POST 404s and the activity's
-        best-effort guard keeps the gate waiting.
+        NOTE: if the apps/api endpoint that consumes this has not landed yet, the
+        POST 404s and the activity's best-effort guard keeps the gate waiting.
         """
         body = _prune(
             {
@@ -672,7 +671,7 @@ class ApiClient:
         job_id: str | None = None,
         idempotency_key: str | None = None,
     ) -> ReportProgressResponse:
-        """Publish one workflow stage event to the live progress feed (TASK-345).
+        """Publish one workflow stage event to the live progress feed.
 
         Raises :class:`ApiServiceError` like every other method; the
         ``report_progress`` *activity* is the layer that swallows errors —
@@ -707,9 +706,9 @@ class ApiClient:
         job_id: str | None = None,
         idempotency_key: str | None = None,
     ) -> AssuranceEventResponse:
-        """Publish ONE resolved claim verdict to the live assurance feed (TASK-355 Slice 5d).
+        """Publish ONE resolved claim verdict to the live assurance feed.
 
-        Q5 true mid-pass streaming: the ``run_inferential_sensors`` activity calls
+        True mid-pass streaming: the ``run_inferential_sensors`` activity calls
         this AS EACH claim's verdict resolves. Raises :class:`ApiServiceError` like
         every other method; the *activity*'s per-claim callback is the layer that
         swallows errors — the live feed must never fail the assurance pass.

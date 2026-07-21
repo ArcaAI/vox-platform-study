@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PaginatedResponse } from '../../../common/dto/paginated.response';
 
 /**
- * TASK-407 — one agent/prompt run row for the tenant-detail "Agent Jobs"
+ * One agent/prompt run row for the tenant-detail "Agent Jobs"
  * surface. A `PromptUsageRecord` is written whenever a prompt template is
  * resolved for a consultation (explore/summary generation), so the raw rows
  * ARE the tenant's agent-run history. Read-only; IDs are returned as-is and

@@ -1,5 +1,5 @@
 /**
- * TASK-331 doc-05 F-2 — preference isolation: ONE writer owns
+ * Preference isolation: ONE writer owns
  * `ConfigManager.userPreferences` during impersonation.
  *
  * Two systems used to mutate the user-preferences tier on impersonate/end:
