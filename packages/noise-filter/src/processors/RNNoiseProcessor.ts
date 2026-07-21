@@ -5,15 +5,15 @@
  * Handles frame buffering, allocator-free processing, and a one-frame
  * ring buffer so the audio output is gap-free for any input quantum size.
  *
- * TASK-269:
- *  - CRIT-1: WASM I/O buffers are allocated once at `init()` and freed at
+ * Design constraints:
+ *  - WASM I/O buffers are allocated once at `init()` and freed at
  *    `destroy()` — never on the audio-thread hot path.
- *  - CRIT-3: WASM is instantiated through the official upstream loader
+ *  - WASM is instantiated through the official upstream loader
  *    (`createRNNWasmModule`) via `rnnoiseModule.ts`.
- *  - HIGH-1: Output is produced via a 2×FRAME_SIZE ring buffer that is
+ *  - Output is produced via a 2×FRAME_SIZE ring buffer that is
  *    pre-filled with one priming frame; subsequent samples never include
  *    spurious silence gaps regardless of input quantum size.
- *  - HIGH-5: `process(input, output)` accepts `Float32Array<ArrayBufferLike>`
+ *  - `process(input, output)` accepts `Float32Array<ArrayBufferLike>`
  *    so consumers of both `AudioWorklet` inputs and `WebAssembly.Memory`
  *    views compile under TS strict mode.
  */

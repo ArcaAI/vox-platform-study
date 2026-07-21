@@ -1,5 +1,5 @@
 /**
- * FederatedIdentityFactory Unit Tests (TASK-498)
+ * FederatedIdentityFactory Unit Tests
  *
  * Tests for the FederatedIdentityFactory that links a HOPE user to a subject
  * at a specific tenant IdP, plus the FederatedIdentityEntity.validate()

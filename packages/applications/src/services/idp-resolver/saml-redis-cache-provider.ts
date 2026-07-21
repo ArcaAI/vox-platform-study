@@ -1,5 +1,5 @@
 /**
- * TASK-499 P2 — Redis-backed `CacheProvider` for `@node-saml/node-saml`.
+ * Redis-backed `CacheProvider` for `@node-saml/node-saml`.
  *
  * `SAML.getAuthorizeUrlAsync` saves the outstanding AuthnRequest id via
  * `cacheProvider.saveAsync`; `validatePostResponseAsync` (`InResponseTo`

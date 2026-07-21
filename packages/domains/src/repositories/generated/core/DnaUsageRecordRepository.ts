@@ -53,11 +53,11 @@ export class DnaUsageRecordRepository extends Repository<DnaUsageRecordEntity, D
   }
 
   // ============================================
-  // Aggregate Query Methods (TASK-328 A5 — DNA dashboard)
+  // Aggregate Query Methods (DNA dashboard)
   // ============================================
 
   /**
-   * TASK-328 A5 — Count usage records created on/after `since` (mirrors the
+   * Count usage records created on/after `since` (mirrors the
    * Prisma `count` precedent). `tenantId` omitted ⇒ all tenants.
    */
   async countSince(since: Date, tenantId?: string): Promise<number> {
@@ -67,7 +67,7 @@ export class DnaUsageRecordRepository extends Repository<DnaUsageRecordEntity, D
   }
 
   /**
-   * TASK-328 A5 — Per-day usage counts on/after `since`, returned oldest→newest
+   * Per-day usage counts on/after `since`, returned oldest→newest
    * as `{ date: 'YYYY-MM-DD' (UTC), count }`. Prisma cannot `groupBy` a
    * truncated day on a timestamp column, so we select the in-range timestamps
    * and bucket them in memory — `DnaUsageRecord` is a lightweight, bounded
@@ -92,7 +92,7 @@ export class DnaUsageRecordRepository extends Repository<DnaUsageRecordEntity, D
   }
 
   /**
-   * TASK-328 A5 — The most recent usage records (newest first). `tenantId`
+   * The most recent usage records (newest first). `tenantId`
    * omitted ⇒ all tenants. Delegates to the base `findAll` so mapping stays in
    * one place.
    */

@@ -1,5 +1,5 @@
 /**
- * AdminDataGrid wrapper (TASK-423, Phase 4). Covers the console defaults it adds
+ * AdminDataGrid wrapper. Covers the console defaults it adds
  * over VirtualizedDataGrid: server-driven rows, the block-vs-banner error split,
  * empty vs filtered-empty slots, the selection action bar, and the header-sort
  * query-state emission. The URL binding + page-reset live in useAdminGridParams,
@@ -156,7 +156,7 @@ describe('useAdminGridParams', () => {
         });
 
         // URL `page=2` is the 0-based grid index (the THIRD page); the gateway list contract
-        // is 1-based (`skip=(page-1)*limit`), so `listParams.page` is 3. (TASK-423 fix.)
+        // is 1-based (`skip=(page-1)*limit`), so `listParams.page` is 3. (fix.)
         expect(result.current.listParams).toMatchObject({ page: 3, limit: 50, sort: 'updatedAt:desc', searchFields: 'name,key' });
     });
 

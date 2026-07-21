@@ -12,7 +12,9 @@ docs/
 ├── architecture/                          # Authoritative system design (code-verified)
 │   ├── overview.md                        # System context, topology, flows, deployments
 │   └── data-and-domain-model.md           # Prisma domain model, tenancy, audit, lifecycle
-├── traceability-matrix.md                 # Capability → service → models → routes → tests
+├── traceability/                          # Per-domain capability traceability (successor to the matrix)
+│   └── index.md                           # Roll-up index over the per-domain files
+├── traceability-matrix.md                 # Historical snapshot — superseded by traceability/
 ├── development-patterns-and-standards.md  # Coding patterns & layer standards
 ├── development-guide.md                   # Hands-on developer guide (setup, workflows)
 ├── section-syntax.md                      # Optional tabbed-rendering markers for docs
@@ -29,7 +31,8 @@ docs/
 |---|---|
 | [architecture/overview.md](./architecture/overview.md) | What HOPE does, actors/tenants, service topology (apps, ports, protocols, dependencies), C4-style context and container diagrams, core data-flow sequences (live transcription, summarization, clinical documentation harness), API gateway structure, DDD layering, deployment topologies (local compose, k3s + ArgoCD, Vault) |
 | [architecture/data-and-domain-model.md](./architecture/data-and-domain-model.md) | Prisma schema layout, standard model field template, entity groups (model → purpose → relations → owning module), multi-tenancy mechanics, soft-delete convention, sys-event/audit pipeline, PHI encryption, what lives in Postgres vs MinIO vs Qdrant vs Redis vs Vault |
-| [traceability-matrix.md](./traceability-matrix.md) | One row per business capability: app/service, key packages/modules, Prisma models, verified API endpoints, test locations — with honest gap markers |
+| [traceability/index.md](./traceability/index.md) | Roll-up index over the per-domain traceability files (auth, AI models, TTS, tenancy, consultation, transcription, summarization, harness, storage, platform-ops, admin-console, SDK, workflows) — each re-verified against code with its own `Last verified` stamp (TASK-538 rebuild; successor to the matrix) |
+| [traceability-matrix.md](./traceability-matrix.md) | **Historical snapshot** (superseded) — the original single-table capability matrix; rows migrated to `traceability/`, kept only as a record |
 
 ## Development
 
@@ -56,6 +59,7 @@ Deliberately parked work items with context and pickup instructions:
 |---|---|
 | [2026-07-02-RESIDUALS.md](./backlog/2026-07-02-RESIDUALS.md) | Audit-payload field redaction sweep; MS-Graph live email credentials |
 | [2026-07-04-FEDL-MLFLOW-LEGACY.md](./backlog/2026-07-04-FEDL-MLFLOW-LEGACY.md) | Parked legacy federated-learning schema models + MinIO `mlflow` bucket (removal deferred — data-destructive) |
+| [2026-07-21-TODO-HARVEST.md](./backlog/2026-07-21-TODO-HARVEST.md) | Live register of every TODO/FIXME encountered during the TASK-536 comment cleanup, each with a disposition (kept in code, candidate ticket, or resolved) — none deleted from code |
 
 ## Operations — `operations/`
 

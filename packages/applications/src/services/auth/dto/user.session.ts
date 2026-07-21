@@ -53,7 +53,7 @@ export class UserSession {
   /**
    * When the session is the result of an impersonation grant, this holds the
    * admin user id who initiated the impersonation. Carried through JWT claim
-   * `impersonatedBy` (see TASK-295 H-2).
+   * `impersonatedBy`.
    */
   @ApiProperty({ required: false })
   @IsString()
@@ -78,8 +78,8 @@ export class UserSession {
   exp?: number;
 
   /**
-   * Refresh-token family id carried through the access-token JWT (TASK-307
-   * W1.2 / W1.4). Set at login (and preserved across refresh rotations) so
+   * Refresh-token family id carried through the access-token JWT.
+   * Set at login (and preserved across refresh rotations) so
    * `/auth/logout` can call `RefreshTokenService.revokeFamily(family)` and
    * kill every still-active refresh token in the chain (RFC 6749 §10.4).
    */

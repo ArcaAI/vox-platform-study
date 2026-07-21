@@ -73,11 +73,11 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
 
   constructor(
     private readonly apiKeyRepository: ApiKeyRepository,
-    // TASK-305 D.5.2 — needed by `assertUserBelongsToTenant` to enforce that
+    // Needed by `assertUserBelongsToTenant` to enforce that
     // the user the key is being issued for actually has a role-assignment in
     // the effective tenant.
     private readonly userRoleAssignmentRepository: UserRoleAssignmentRepository,
-    // TASK-305 Phase F — membership is role + department; the guard needs the
+    // Membership is role + department; the guard needs the
     // department join table and the User table. Service-account API keys
     // (`ApiKeyType.SERVICE_ACCOUNT`) are issued to service-account users, which
     // are exempt from the department half via the User lookup.
@@ -85,12 +85,12 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
     private readonly userRepository: UserRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // TASK-302 Phase 3 Task 3.3 — API_KEY_PEPPER now arrives via the
-    // SecretsService (cache-warmed at boot). Optional so legacy test
-    // fixtures that construct ApiKeyService directly still work (they
-    // get plain SHA-256 with no pepper, matching the existing fallback).
+    // API_KEY_PEPPER arrives via the SecretsService (cache-warmed at boot).
+    // Optional so legacy test fixtures that construct ApiKeyService directly
+    // still work (they get plain SHA-256 with no pepper, matching the
+    // existing fallback).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // TASK-392 (Phase 3, C6) — optional (append-only DI); enforces the plan
+    // Optional (append-only DI); enforces the plan
     // `maxApiKeys` quota on create (kill-switch-gated, no-op when OFF).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
   ) {
@@ -119,7 +119,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
    *
    * Pure function: takes the pepper as an explicit parameter instead of
    * reading process.env. The instance-method counterpart `hashKeyForStorage`
-   * resolves the pepper from SecretsService (TASK-302 Phase 3 Task 3.3).
+   * resolves the pepper from SecretsService.
    * Kept static so direct callers (tests, future tools) can compute a
    * hash deterministically given a known pepper.
    */
@@ -204,7 +204,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
   async create(request: CreateApiKeyRequest): Promise<CreateApiKeyResult> {
     const keyType = request.keyType ?? ApiKeyType.SDK;
 
-    // TASK-305 D.5.2 (audit C-8 / M-1) — pin the working tenantId to CLS
+    // Pin the working tenantId to CLS
     // unless the caller is GLOBAL_ADMIN and explicitly overrides via the DTO
     // (legitimate cross-tenant support flow). Anyone else passing a different
     // `request.tenantId` is attempting privilege escalation.
@@ -235,7 +235,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
       );
     }
 
-    // TASK-305 D.5.2 (audit C-8) — verify that the caller's userId actually
+    // (audit C-8) — verify that the caller's userId actually
     // has an enabled role-assignment in the tenant the key is scoped to. The
     // GLOBAL_ADMIN bypass exists for cross-tenant support flows (super_admin
     // is rarely a member of every tenant they administer). SERVICE_ACCOUNT
@@ -250,7 +250,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
       );
     }
 
-    // TASK-392 (Phase 3, C6) — plan quota precheck. Scoped to a concrete tenant
+    // Plan quota precheck. Scoped to a concrete tenant
     // (tenantless SERVICE_ACCOUNT keys are ungated). Kill-switch-gated (Q9); the
     // COUNT only runs when enforcement is ON, and `assertQuantityQuota` throws
     // `QuotaExceededException` (→ 409) if issuing one more exceeds `maxApiKeys`.
@@ -332,13 +332,12 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
   /**
    * Fetch all API keys with pagination.
    *
-   * TASK-305 D.5.2 (audit M-1) — scoped to the caller's CLS tenantId so a
-   * Tenant-A admin cannot enumerate Tenant-B keys. GLOBAL_ADMIN bypasses.
+   * Scoped to the caller's CLS tenantId so a Tenant-A admin cannot enumerate
+   * Tenant-B keys. GLOBAL_ADMIN bypasses.
    *
-   * BUG-005 Issue 1 (TASK-390 follow-up) — also owner-scoped: a caller
-   * without the tenant-wide `manage:ApiKey` grant (i.e. holding only
-   * `api-key-own-manage`) sees only their own keys, mirroring
-   * `assertKeyAccess`'s by-id owner gate.
+   * Also owner-scoped: a caller without the tenant-wide `manage:ApiKey` grant
+   * (i.e. holding only `api-key-own-manage`) sees only their own keys,
+   * mirroring `assertKeyAccess`'s by-id owner gate.
    */
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<ApiKeyEntity>> {
     const { limit, page } = props;
@@ -373,13 +372,12 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
   /**
    * Fetch all API keys scoped to a specific tenant.
    *
-   * TASK-306 P1.5 (audit AC-7 / NEW-4) — refuse cross-tenant list reads
-   * driven by the DTO `tenantId`. Pre-guard, a Tenant-A admin could
-   * enumerate Tenant-B API keys by passing a foreign `tenantId`.
-   * GLOBAL_ADMIN bypasses for admin-tooling cross-tenant listing.
+   * Refuse cross-tenant list reads driven by the DTO `tenantId`. Without this
+   * guard, a Tenant-A admin could enumerate Tenant-B API keys by passing a
+   * foreign `tenantId`. GLOBAL_ADMIN bypasses for admin-tooling cross-tenant
+   * listing.
    *
-   * BUG-005 Issue 1 (TASK-390 follow-up) — also owner-scoped, same gate as
-   * `fetchAll` above.
+   * Also owner-scoped, same gate as `fetchAll` above.
    */
   async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<ApiKeyEntity>> {
     const { tenantId, limit, page } = props;
@@ -418,7 +416,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
   /**
    * Fetch all API keys belonging to a specific user.
    *
-   * TASK-305 D.5.2 — `userId` filter is merged with the caller's CLS
+   * `userId` filter is merged with the caller's CLS
    * tenantId so a Tenant-A admin cannot enumerate keys belonging to that
    * user in Tenant-B. GLOBAL_ADMIN bypasses.
    */
@@ -455,7 +453,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
   /**
    * Fetch a single API key by ID.
    *
-   * TASK-305 D.5.2 (audit M-1) — load-then-assert. Cross-tenant ids throw
+   * Load-then-assert. Cross-tenant ids throw
    * `NotFoundException` (never `Forbidden`) so existence is not leaked.
    */
   async fetchById(id: EntityId): Promise<ApiKeyEntity> {
@@ -529,7 +527,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
   /**
    * Soft-delete an API key.
    *
-   * TASK-305 D.5.2 — load-then-assert-then-soft-delete so a Tenant-A admin
+   * Load-then-assert-then-soft-delete so a Tenant-A admin
    * cannot delete a Tenant-B key by id. Throws `NotFoundException` for
    * cross-tenant ids.
    */
@@ -610,11 +608,11 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
     if (!oldKey) {
       throw new NotFoundException(`API key ${apiKeyId} not found`);
     }
-    // TASK-305 D.5.2 — block cross-tenant rotation. Without this a Tenant-A
+    // Block cross-tenant rotation. Without this a Tenant-A
     // admin could mint a Tenant-B-tagged key by rotating one (the new key
-    // inherits `oldKey.tenantId`). TASK-390 follow-up — `assertKeyAccess` also
-    // enforces owner-scope: an owner-only caller (no `manage:ApiKey`) cannot
-    // rotate another user's key even within the same tenant.
+    // inherits `oldKey.tenantId`). `assertKeyAccess` also enforces
+    // owner-scope: an owner-only caller (no `manage:ApiKey`) cannot rotate
+    // another user's key even within the same tenant.
     this.assertKeyAccess(oldKey, apiKeyId);
 
     if (oldKey.keyStatus === ApiKeyStatus.REVOKED) {
@@ -684,15 +682,15 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
   /**
    * Find API key by hashing the provided key and looking up the hash.
    *
-   * TASK-539 finding S-3 — this used to `catch { return null }`, which mapped
-   * EVERY failure onto "no such key" → 401 Invalid API key. That masked a real
-   * infrastructure fault for as long as it existed: the tenant-scope extension
-   * threw `TenantScope: tenant context required for model ApiKey` on this very
-   * lookup (it runs pre-auth, so CLS is active but empty), and the bare catch
-   * turned that into a credential error. Only `DataNotFoundException` — the
-   * repository's genuine "no row matched" signal — may become `null`; anything
-   * else is a fault and must propagate so it surfaces as a 500 with a real
-   * stack instead of silently rejecting valid credentials.
+   * A bare `catch { return null }` here would map EVERY failure onto "no such
+   * key" → 401 Invalid API key, masking a real infrastructure fault: the
+   * tenant-scope extension throws `TenantScope: tenant context required for
+   * model ApiKey` on this very lookup (it runs pre-auth, so CLS is active but
+   * empty), and a bare catch would turn that into a credential error. Only
+   * `DataNotFoundException` — the repository's genuine "no row matched"
+   * signal — may become `null`; anything else is a fault and must propagate
+   * so it surfaces as a 500 with a real stack instead of silently rejecting
+   * valid credentials.
    */
   async getByKeyHash(rawKey: string): Promise<ApiKeyEntity | null> {
     const keyHash = await this.hashKeyForStorage(rawKey);
@@ -1031,7 +1029,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
   }
 
   /**
-   * TASK-305 D.5.2 — build a Prisma `where` clause that always scopes to the
+   * Build a Prisma `where` clause that always scopes to the
    * caller's CLS tenantId, unless the caller is GLOBAL_ADMIN. Throws
    * `NotFoundException` when a non-super-admin caller has no tenantId in CLS
    * so the query never widens to all tenants by accident (Prisma treats
@@ -1050,7 +1048,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
   }
 
   /**
-   * TASK-305 D.5.2 (audit M-1) — assert the loaded entity belongs to the
+   * Assert the loaded entity belongs to the
    * caller's tenant. GLOBAL_ADMIN bypasses. Throws `NotFoundException` (not
    * `ForbiddenException`) so the API never reveals that a record exists for
    * another tenant.
@@ -1063,7 +1061,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
   }
 
   /**
-   * TASK-390 follow-up (owner-scope) — true when the caller may act on ANY key
+   * (owner-scope) — true when the caller may act on ANY key
    * in scope: a tenant admin holding the tenant-wide `manage:ApiKey` grant, or
    * GLOBAL_ADMIN (`manage:all`). Owner-only callers hold just the seeded
    * `api-key-own-manage` grants (`read`/`update`/`delete` conditioned on
@@ -1079,7 +1077,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
   }
 
   /**
-   * TASK-390 follow-up — access gate for by-id key operations
+   * Access gate for by-id key operations
    * (fetch/update/delete/revoke/rotate). Layers the owner-scope check on top of
    * the tenant gate: a caller WITHOUT the tenant-wide `manage:ApiKey` grant
    * (i.e. holding only `api-key-own-manage`) may act ONLY on keys they own.

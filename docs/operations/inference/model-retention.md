@@ -1,6 +1,6 @@
 # Model Retention & Lifecycle — Operator Runbook
 
-**Owner**: Platform / Inference · **Introduced**: TASK-529 · **Completed by**: TASK-530 · **Last updated**: 2026-07-20
+**Owner**: Platform / Inference · **Introduced**: TASK-529 · **Completed by**: TASK-530 · **Last updated**: 2026-07-20 · **Last verified**: 2026-07-21
 
 How HOPE decides when a model is loaded, how long it stays resident, and how an
 operator changes that at runtime **without a redeploy**.

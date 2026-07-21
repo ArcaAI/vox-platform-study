@@ -7,7 +7,7 @@ import { HarnessPolicyChange } from '../../../models';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 
 /**
- * Append-only WORM policy-change repository (TASK-330 Phase 6). Writes go
+ * Append-only WORM policy-change repository. Writes go
  * through the inherited `create`; there is intentionally no update/delete
  * surface (the DB REVOKEs those privileges). `id` is a time-sortable UUIDv7,
  * so ordering by `id` reflects append order. Mirrors

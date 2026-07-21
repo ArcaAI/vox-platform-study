@@ -3,7 +3,7 @@ import * as Entities from '../../../entities';
 import * as Models from '../../../models';
 import * as Mappers from '../../../mappers';
 
-// TASK-302 Stream D Phase B (B.6) — `_version` is owned by the database and the
+// `_version` is owned by the database and the
 // only legitimate writer is `Repository.updateWithVersion`. Strip it from every
 // write path here so the auto-mappers cannot leak it into a Prisma update.
 const FIELDS_NOT_WRITABLE: string[] = ['version'];
@@ -37,7 +37,7 @@ export class GlobalSettingEntityMapper extends BaseMapper<Entities.GlobalSetting
 
 export const GlobalSettingEntityMapperHandlers = createMapperHandlers<Entities.GlobalSettingEntity, Models.GlobalSetting>({
   $toPersistence: {
-    // TASK-302 Phase 4 — bypass the generic auto-mapper for binary ciphertext.
+    // Bypass the generic auto-mapper for binary ciphertext.
     // BaseEntity.toObject() calls convertEntityValue() which walks Object.keys
     // on objects, which destructively destructures Buffer/Uint8Array into a
     // plain `{0: byte, 1: byte, …}` map (losing the typed-array constructor).

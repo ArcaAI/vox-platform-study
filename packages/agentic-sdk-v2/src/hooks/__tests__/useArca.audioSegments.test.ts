@@ -1,5 +1,5 @@
 /**
- * useArca Audio Segments & Language Tests (TASK-032 WS-B, Task B-2)
+ * useArca Audio Segments & Language Tests
  *
  * Tests that UseArcaAudio exposes:
  * - transcriptSegments: TranscriptSegment[]
@@ -72,14 +72,14 @@ const mockStoreDefaults = {
     setDNAStyle: vi.fn(),
     setTranscriptSegments: vi.fn(),
     setAudioLanguage: vi.fn(),
-    // TASK-267 W1-1: useArca.audio now delegates to useArcaAudio,
+    // useArca.audio now delegates to useArcaAudio,
     // which writes activeStream / activeAudioContext / transcript segments.
     activeStream: null,
     activeAudioContext: null,
     setActiveStream: vi.fn(),
     setActiveAudioContext: vi.fn(),
     addTranscriptSegment: vi.fn(),
-    // TASK-464 — audio-drop actions the hook calls on start/stop and per drop.
+    // Audio-drop actions the hook calls on start/stop and per drop.
     resetAudioDropped: vi.fn(),
     markAudioLost: vi.fn(),
     incrementDroppedFrames: vi.fn(),
@@ -132,7 +132,7 @@ describe('B-2: TranscriptSegment type', () => {
         expect(segment.language).toBe('en');
     });
 
-    // TASK-372 D9 (Option B) — word-level timestamps are carried through the
+    // Word-level timestamps are carried through the
     // store so consumers can read word timings from `audio.transcriptSegments`.
     it('should support an optional word-level `words` field', () => {
         const segment: TranscriptSegment = {
@@ -191,7 +191,7 @@ describe('B-2: UseArcaAudio exposes transcriptSegments and language', () => {
         expect(result.current.audio.language).toBe('en');
     });
 
-    // TASK-372 D9 (Option B) — words on stored segments must reach consumers.
+    // Words on stored segments must reach consumers.
     it('should expose word-level timestamps on exposed segments', () => {
         const words = [
             { word: 'Hello', start: 0.0, end: 0.5, confidence: 0.98 },

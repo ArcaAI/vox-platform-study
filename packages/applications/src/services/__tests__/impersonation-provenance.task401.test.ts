@@ -1,5 +1,5 @@
 /**
- * TASK-401 — impersonation provenance threading contract.
+ * Impersonation provenance threading contract.
  *
  * A write performed under an impersonated session must land an audit row that
  * records BOTH the subject (responsibleUserId = the impersonated user) and the

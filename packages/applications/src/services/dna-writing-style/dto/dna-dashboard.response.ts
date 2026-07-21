@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * TASK-328 A5 — DNA aggregate dashboard DTOs.
+ * DNA aggregate dashboard DTOs.
  *
  * Returned by `GET /admin/dna-writing-styles/dashboard`. All counts are
  * tenant-scoped by the service (a global admin may target a specific tenant

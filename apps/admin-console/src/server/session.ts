@@ -15,7 +15,7 @@ export interface SessionUser {
     roles: string[];
     /**
      * Home tenant of a tenant-bound user (absent for unscoped global admins
-     * and for sessions sealed before TASK-431 — consumers must tolerate
+     * and for sessions sealed before consumers must tolerate
      * undefined). Needed client-side for the STT WS tenant claim.
      */
     tenantId?: string;
@@ -31,7 +31,7 @@ export interface ImpersonationState {
     /** Display name for the global "Impersonating" banner. */
     targetUsername?: string;
     /**
-     * Full target identity (BUG-005 Phase 0), so the client can project an
+     * Full target identity, so the client can project an
      * *effective* session distinct from the operator's own. Optional — absent
      * on sessions sealed before this field existed; consumers must tolerate
      * undefined.
@@ -101,7 +101,7 @@ export async function clearSession(): Promise<void> {
     cookieStore.delete(SESSION_COOKIE_NAME);
 }
 
-/** The elevated cross-tenant check — GLOBAL_ADMIN only (TASK-417 consolidation). */
+/** The elevated cross-tenant check — GLOBAL_ADMIN only (consolidation). */
 export function isElevated(user: Pick<SessionUser, 'roles'> | null | undefined): boolean {
     return rolesAreElevated(user?.roles);
 }

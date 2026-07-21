@@ -6,7 +6,7 @@ import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
 /**
- * TASK-224 Recommendation 3: Impersonation Audit Interceptor
+ * Impersonation Audit Interceptor
  *
  * Intercepts every request and checks whether the authenticated user's JWT
  * contains an `impersonatedBy` claim. If so, it emits an audit event after

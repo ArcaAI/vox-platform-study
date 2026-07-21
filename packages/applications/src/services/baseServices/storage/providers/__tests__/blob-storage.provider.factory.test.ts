@@ -1,5 +1,5 @@
 /**
- * BlobStorageProviderFactory Unit Tests (TASK-318 / W1)
+ * BlobStorageProviderFactory Unit Tests
  *
  * The factory's only real logic is provider *selection* by config and caching;
  * the providers themselves are exercised in their own suites. So we mock both

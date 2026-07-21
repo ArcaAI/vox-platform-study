@@ -17,7 +17,7 @@ export function useTtsCredentials() {
   return useQuery({ queryKey: ttsConfigKeys.credentials(), queryFn: getTtsCredentials });
 }
 
-/** Platform TTS catalog (TASK-506) — a slow-moving reference list. */
+/** Platform TTS catalog — a slow-moving reference list. */
 export function useTtsCatalog() {
   return useQuery({ queryKey: ttsConfigKeys.catalog(), queryFn: getTtsCatalog, staleTime: 5 * 60 * 1000 });
 }

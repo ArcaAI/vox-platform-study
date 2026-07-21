@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useDnaDashboard Hook (TASK-328 A5)
+ * @arcaai/vox - useDnaDashboard Hook
  *
  * DNA aggregate dashboard for the admin DNA page. Reads
  * `GET /admin/dna-writing-styles/dashboard` which the server gates with

@@ -138,7 +138,7 @@ function setupStore(overrides: Record<string, any> = {}) {
     setCurrentTranscript: vi.fn(),
     setAudioPlugins: vi.fn(),
     setAudioError: vi.fn(),
-    // TASK-267 W1-1: useArca.audio now delegates to useArcaAudio,
+    // useArca.audio now delegates to useArcaAudio,
     // which reads/writes activeStream / activeAudioContext / transcript segments
     // / audio language. The mock must expose both the state fields and the
     // matching setters or the delegated start/stop path throws.
@@ -150,7 +150,7 @@ function setupStore(overrides: Record<string, any> = {}) {
     setActiveAudioContext: vi.fn(),
     addTranscriptSegment: vi.fn(),
     setAudioLanguage: vi.fn(),
-    // TASK-464 — audio-drop actions the hook calls on start/stop and per drop.
+    // Audio-drop actions the hook calls on start/stop and per drop.
     resetAudioDropped: vi.fn(),
     markAudioLost: vi.fn(),
     incrementDroppedFrames: vi.fn(),
@@ -348,7 +348,7 @@ describe('useArca — audio actions', () => {
         });
       });
 
-      // TASK-372 D9 (Option B) — word timings emitted on the wire must reach
+      // Word timings emitted on the wire must reach
       // the store via the final-segment bridge so consumers can read words
       // from `audio.transcriptSegments`.
       it('should carry word-level timestamps into the stored transcript segment', () => {

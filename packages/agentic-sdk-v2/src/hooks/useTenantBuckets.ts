@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useTenantBuckets Hook (TASK-323 Phase 0 / TASK-318 R9)
+ * @arcaai/vox - useTenantBuckets Hook
  *
  * Per-tenant storage bucket management for TENANT_ADMIN / GLOBAL_ADMIN. The
  * server gates `/admin/tenants/storage/buckets` with `@CanManage('Tenant')`,
@@ -51,14 +51,14 @@ export interface UseTenantBucketsReturn {
   list: () => Promise<TenantBucket[]>;
   get: (id: string) => Promise<TenantBucket | null>;
   tree: (id: string, prefix?: string) => Promise<TenantBucketTree>;
-  /** Read-only object listing for the Stores detail browser (TASK-407); optional key prefix filter. */
+  /** Read-only object listing for the Stores detail browser; optional key prefix filter. */
   listObjects: (id: string, prefix?: string) => Promise<TenantBucketObject[]>;
   presignedUrl: (id: string, key: string) => Promise<{ url: string }>;
   getDefaults: () => Promise<TenantBucketDefaults>;
   setDefaults: (input: SetTenantBucketDefaultsInput) => Promise<TenantBucketDefaults>;
   create: (input: CreateTenantBucketInput) => Promise<TenantBucket>;
   remove: (id: string) => Promise<TenantBucket>;
-  /** Delete a single object from a bucket via the storage provider (TASK-328 A7). */
+  /** Delete a single object from a bucket via the storage provider. */
   deleteObject: (id: string, key: string) => Promise<DeleteTenantBucketObjectResult>;
   provision: (tenantId: string) => Promise<TenantBucket[]>;
 }
@@ -69,7 +69,7 @@ export interface DeleteTenantBucketObjectResult {
   deleted: boolean;
 }
 
-/** One object row from the read-only bucket browser (TASK-407). */
+/** One object row from the read-only bucket browser. */
 export interface TenantBucketObject {
   key: string;
   size: number;

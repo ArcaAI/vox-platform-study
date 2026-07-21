@@ -22,7 +22,7 @@ def _bounded(process: Callable[[Any], Awaitable[Any]]) -> Callable[[Any], Awaita
     The streaming paths hand `service.process` to the WebSocket manager, so the
     bound has to travel with the callable rather than wrap a request handler.
     Without this, a socket sending messages back-to-back would bypass the
-    ceiling the REST routes respect (GAP-L4).
+    ceiling the REST routes respect.
     """
 
     async def bounded_process(payload: Any) -> Any:

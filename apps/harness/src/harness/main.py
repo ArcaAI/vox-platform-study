@@ -1,4 +1,4 @@
-"""Harness — Clinical Documentation Harness orchestrator (TASK-330).
+"""Harness — Clinical Documentation Harness orchestrator.
 
 FastAPI application. The bounded ``guides → generate → sensors → gate`` loop runs
 as a Temporal durable workflow (see ``harness.temporal``); ``apps/api`` remains
@@ -70,7 +70,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         title="Harness — Clinical Documentation Harness",
         description=(
             "Bounded guides→generate→sensors→gate clinical-documentation loop "
-            "orchestrated as a Temporal durable workflow (TASK-330)."
+            "orchestrated as a Temporal durable workflow."
         ),
         version="0.1.0",
         docs_url="/api/v1/docs",

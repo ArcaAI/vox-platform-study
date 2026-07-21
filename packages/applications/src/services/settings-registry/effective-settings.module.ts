@@ -8,13 +8,13 @@ import { HOPE_SETTINGS_REGISTRY } from './registry';
 import { SettingsRegistryWriteService } from './settings-registry-write.service';
 
 /**
- * TASK-504 — DI module for the EffectiveSettingsService facade. Imports
- * ConfigResolverModule for the pipeline cascade resolver and (TASK-506)
+ * DI module for the EffectiveSettingsService facade. Imports
+ * ConfigResolverModule for the pipeline cascade resolver and
  * AiTaskDefaultServiceModule for the models.* task-default resolver.
  *
- * TASK-524 — also hosts the registry WRITE lane
+ * Also hosts the registry WRITE lane
  * (`SettingsRegistryWriteService`), and enforces the kill-switch governance
- * invariant AT BOOT rather than only in a unit test (GAP-C5).
+ * invariant AT BOOT rather than only in a unit test.
  */
 @Module({
   imports: [ConfigResolverModule, AiTaskDefaultServiceModule, CommonServiceModule, GlobalSettingServiceModule],
@@ -27,9 +27,9 @@ export class EffectiveSettingsModule implements OnModuleInit {
   /**
    * Governance invariant: an ENFORCING kill-switch must default OFF, so a
    * half-rolled-out enforcement path can never be live-by-accident.
-   * `SettingsRegistry.killSwitches()` has asserted this since TASK-504 — but
-   * only ever from a unit test, so a default-ON flip would ship and only fail
-   * CI. Calling it here makes a violation refuse BOOT.
+   * `SettingsRegistry.killSwitches()` asserts this, but only ever from a
+   * unit test, so a default-ON flip would ship and only fail CI. Calling
+   * it here makes a violation refuse BOOT.
    */
   onModuleInit(): void {
     const switches = HOPE_SETTINGS_REGISTRY.killSwitches();

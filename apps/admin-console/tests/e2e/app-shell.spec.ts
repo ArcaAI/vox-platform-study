@@ -1,8 +1,8 @@
 /**
- * BUG-004 — app-shell chrome pinning (frame 07 topbar). The page header
- * (breadcrumb topbar) and session banners are shell chrome: they must stay
- * pinned at the viewport top while the page content scrolls. Regression spec
- * for the bug where the chrome scrolled away with the window.
+ * App-shell chrome pinning (frame 07 topbar). The page header (breadcrumb
+ * topbar) and session banners are shell chrome: they must stay pinned at the
+ * viewport top while the page content scrolls. Regression spec for the bug
+ * where the chrome scrolled away with the window.
  */
 
 import { expect, test } from '@playwright/test';

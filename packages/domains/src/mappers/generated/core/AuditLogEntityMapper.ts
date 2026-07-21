@@ -23,7 +23,7 @@ export class AuditLogEntityMapper extends BaseMapper<Entities.AuditLogEntity, Mo
 
 export const AuditLogEntityMapperHandlers = createMapperHandlers<Entities.AuditLogEntity, Models.AuditLog>({
   $toPersistence: {
-    // TASK-369 Phase 3D — bypass the generic auto-mapper for binary ciphertext.
+    // Bypass the generic auto-mapper for binary ciphertext.
     // BaseEntity.toObject() walks Object.keys on objects, destructively turning a
     // Buffer/Uint8Array into a plain `{0: byte, …}` map (losing the typed-array
     // constructor). Returning the underlying buffer directly preserves it for the

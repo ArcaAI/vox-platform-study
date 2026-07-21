@@ -3,7 +3,7 @@ import { PipelinePolicyEntity, PipelinePolicyRepository, PipelinePolicyScope, Us
 import { CascadeTier, walkCascade } from '../settings-registry/scope-cascade';
 
 /**
- * TASK-356 Phase 5 (Pillar B) — generalized realtime-config cascade resolver.
+ * Generalized realtime-config cascade resolver.
  *
  * Resolves the per-consultation pipeline toggles by walking the policy cascade
  *
@@ -13,7 +13,7 @@ import { CascadeTier, walkCascade } from '../settings-registry/scope-cascade';
  * clamping every setting to its configured MAX SCOPE (so e.g. `harnessEnabled`
  * can never be set per-doctor — §12 Q7). Also threads the consulting doctor's
  * `UserProfile.preferredPromptTemplateId` (read-only here) for every generation
- * path. NO writes happen here — Phase 6 owns the doctor-scope writes.
+ * path. NO writes happen here — the doctor-scope writes live elsewhere.
  */
 
 /** The realtime cascade knobs ConfigResolver resolves. */
@@ -38,7 +38,7 @@ export interface ResolvedPipelineToggles {
 }
 
 /**
- * TASK-356 Phase 6 (S3) — the resolved per-consultation DNA-style decision.
+ * The resolved per-consultation DNA-style decision.
  * `effective = tenantEnabled && (doctorToggle ?? true)`: the tenant gate is the
  * non-doctor cascade resolution; the doctor toggle is an explicit opt-out (or an
  * implicit opt-in when unset).
@@ -63,7 +63,7 @@ interface SettingDescriptor {
  *  - `autoSummaryEnabled` / `autoNerEnabled` may be set down to DOCTOR scope.
  *  - `harnessEnabled` is capped at DEPARTMENT (never per-doctor) and code-defaults
  *    to `false` (fail-closed) when nothing resolves.
- *  - `dnaStyleEnabled` is DOCTOR-scope storage (written in Phase 6); read here.
+ *  - `dnaStyleEnabled` is DOCTOR-scope storage (written elsewhere); read here.
  */
 export const PIPELINE_SETTING_DESCRIPTORS: Record<PipelineToggleKey, SettingDescriptor> = {
   autoSummaryEnabled: { codeDefault: true, maxScope: PipelinePolicyScope.DOCTOR },
@@ -130,7 +130,7 @@ export class ConfigResolver {
   }
 
   /**
-   * TASK-356 Phase 6 (S3) — resolve the effective DNA-style decision for a
+   * Resolve the effective DNA-style decision for a
    * consultation context: `effective = tenantEnabled && (doctorToggle ?? true)`.
    *
    *  - `tenantEnabled` is the `dnaStyleEnabled` cascade resolution with the DOCTOR
@@ -188,7 +188,7 @@ export class ConfigResolver {
   }
 
   /**
-   * TASK-329 P2 / TASK-356 Phase 5 §2.5 — load the consulting doctor's
+   * Load the consulting doctor's
    * `UserProfile.preferredPromptTemplateId` (Tier-0 prompt selection). Returns
    * null (and never throws) when absent so resolution falls through to the
    * department/default prompt tiers.

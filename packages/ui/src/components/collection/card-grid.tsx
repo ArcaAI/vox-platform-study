@@ -22,7 +22,7 @@ export interface CardGridProps<T> extends BaseSurfaceProps, AsyncStateProps {
 }
 
 /**
- * Responsive auto-fill collection grid (TASK-378 §4a.1). Builds the grid wrapper +
+ * Responsive auto-fill collection grid. Builds the grid wrapper +
  * selection/roving-tabindex/states; consumers render each card (typically `EntityCard`)
  * via `renderCard`. ARIA grid pattern: grid → row → gridcell with `aria-selected`.
  */

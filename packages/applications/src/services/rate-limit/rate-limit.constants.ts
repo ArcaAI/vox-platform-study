@@ -1,5 +1,5 @@
 /**
- * TASK-316 — DB-backed, admin-controlled rate-limit configuration.
+ * DB-backed, admin-controlled rate-limit configuration.
  *
  * Central registry of `GlobalSetting` keys, defaults, and the known set of
  * throttled API routes. Mirrors the `DYNAMIC_SCHEDULER_SETTINGS` registry used

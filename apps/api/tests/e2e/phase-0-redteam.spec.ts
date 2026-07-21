@@ -1,8 +1,8 @@
 /**
- * Phase 0 red-team suite (TASK-302 Stream A).
+ * Phase 0 red-team suite.
  *
- * Every test here proves a specific exploit chain from TASK-301 §Phase 0 is
- * closed. Tests live in CI forever per Decision D8.
+ * Every test here proves a specific exploit chain is closed. Tests live in
+ * CI forever per Decision D8.
  *
  * Sections:
  *   - Item 1+2 mass-assignment chain (B.1)
@@ -30,7 +30,7 @@ test.describe('Phase 0 — Item 1+2: mass-assignment chain', () => {
     expect(tenantAdminLogin.status(), 'tenant_admin login failed').toBe(200);
     tenantAdminToken = (await tenantAdminLogin.json()).token;
 
-    // BUG-005 Issue 2 (defense-in-depth) gated PATCH /tenant/me/config behind
+    // Defense-in-depth gated PATCH /tenant/me/config behind
     // `update:Tenant` — a DOCTOR token no longer reaches the ValidationPipe at
     // all (see the dedicated 403 test below), so the mass-assignment chain is
     // now proven through tenant_admin, the caller actually authorized to PATCH.
@@ -45,7 +45,7 @@ test.describe('Phase 0 — Item 1+2: mass-assignment chain', () => {
     tenantAdminConfigVersion = unlocked.version;
   });
 
-  // BUG-005 Issue 2 — a non-elevated end-user (DOCTOR) must never reach the
+  // A non-elevated end-user (DOCTOR) must never reach the
   // config write at all: the authorization guard rejects it before the
   // ValidationPipe (and therefore before mass-assignment checking) runs.
   test('PATCH /tenant/me/config as a non-admin end-user is blocked with 403 (defense-in-depth)', async ({ request }) => {
@@ -60,7 +60,7 @@ test.describe('Phase 0 — Item 1+2: mass-assignment chain', () => {
   });
 
   test('PATCH /tenant/me/config with extra fields (key, tenantId, locked) is rejected with 400', async ({ request }) => {
-    // The route is guarded by @RequiresIfMatch (TASK-302 Stream D Phase D), so a
+    // The route is guarded by @RequiresIfMatch, so a
     // valid strong-validator If-Match is required to clear the 428 gate and let
     // the request reach the ValidationPipe — which is where the mass-assignment
     // (smuggled key/locked/tenantId/defaultValue) is rejected with 400.

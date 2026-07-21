@@ -10,7 +10,7 @@ function indicator(container: HTMLElement) {
   return container.querySelector('[data-slot="progress-indicator"]') as HTMLElement;
 }
 
-// TASK-404 (TASK-377 follow-up): `value` must reach the Radix root so it can
+// (follow-up): `value` must reach the Radix root so it can
 // report aria-valuenow / data-state natively, instead of always "indeterminate".
 describe('Progress value forwarding', () => {
   it('reports aria-valuenow and data-state="loading" for an in-flight value', () => {

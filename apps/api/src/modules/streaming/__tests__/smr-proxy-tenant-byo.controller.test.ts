@@ -1,5 +1,5 @@
 /**
- * SMR proxy — tenant BYO credential injection (TASK-526 §5 test 10).
+ * SMR proxy — tenant BYO credential injection.
  *
  * Sibling of `smr-proxy-runtime-profile.controller.test.ts`, kept separate so
  * the credential-injection contract reads as one unit.
@@ -51,8 +51,8 @@ function build(opts: { overrides?: Record<string, unknown>; resolverThrows?: boo
     selection as any, // HarnessPolicyService
     undefined, // aiModelService (@Optional)
     undefined, // aiTaskDefaultService (@Optional)
-    undefined, // aiRuntimeProfileService (@Optional) — TASK-524
-    connections as any, // aiProviderConnectionService (@Optional) — TASK-526
+    undefined, // aiRuntimeProfileService (@Optional)
+    connections as any, // aiProviderConnectionService (@Optional)
   );
 
   return { ctrl, http, selection, connections };

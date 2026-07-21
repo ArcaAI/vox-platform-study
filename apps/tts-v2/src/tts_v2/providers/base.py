@@ -76,7 +76,7 @@ class TTSEngine(Protocol):
 class SynthesisStream(Protocol):
     """A duplex synthesis stream: push incremental text in, iterate audio out.
 
-    Used by the WS-duplex path (TASK-492) for speak-while-generating: SMR tokens
+    Used by the WS-duplex path for speak-while-generating: SMR tokens
     are pushed in as they stream, and audio frames come out per sentence. A
     non-streaming engine is wrapped by ``SentenceAdapter``; a natively duplex
     engine (Azure text-stream) exposes this directly via ``open_stream``.

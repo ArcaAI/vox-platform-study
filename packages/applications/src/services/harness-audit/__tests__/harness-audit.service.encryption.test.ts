@@ -1,5 +1,5 @@
 /**
- * HarnessAuditService — ENCRYPT-BEFORE-HASH wiring (TASK-369 Phase 3D).
+ * HarnessAuditService — ENCRYPT-BEFORE-HASH wiring.
  *
  * Proves the service-level wiring of the WORM hash chain over ciphertext:
  *  - `append` encrypts `sensorScores`/`citations` via the repo's `encryptPayloads`

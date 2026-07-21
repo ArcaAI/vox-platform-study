@@ -1,7 +1,7 @@
-// TASK-504 Phase 3 — TTS descriptors.
+// TTS descriptors.
 //
 // The BYO provider credentials are the canonical data-class-2 example: per-tenant
-// secrets stored as Vault-Transit ciphertext in a DB column (TASK-496). Registered
+// secrets stored as Vault-Transit ciphertext in a DB column. Registered
 // here as `db-secret` / `secret` sensitivity so the catalog and any UI treat them
 // write-only and masked.
 

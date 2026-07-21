@@ -42,7 +42,7 @@ interface TranscribePayload {
      */
     prompt?: string;
     /**
-     * TASK-300 L-2: Whisper inference task.
+     * Whisper inference task.
      *
      * - `'transcribe'` (default) — output is in the source language.
      * - `'translate'` — translate from the source language to English.
@@ -81,7 +81,7 @@ function isCrossAttentionError(message: string): boolean {
 }
 
 /**
- * TASK-300 L-9: resolve ONNX Runtime WASM thread count.
+ * Resolve ONNX Runtime WASM thread count.
  *
  * Returns `navigator.hardwareConcurrency` (clamped to 8) when the worker is
  * running in a cross-origin-isolated context — the only time
@@ -164,8 +164,8 @@ async function initPipeline(id: string, payload: InitPayload): Promise<void> {
     //
     // Additionally:
     // - proxy=false: we're already in a worker; spawning a sub-worker would fail
-    // - numThreads: TASK-300 L-9 — opt into multi-threaded WASM when the host
-    //   page is cross-origin-isolated. SharedArrayBuffer (required for ORT
+    // - numThreads: opt into multi-threaded WASM when the host page is
+    //   cross-origin-isolated. SharedArrayBuffer (required for ORT
     //   threaded inference) is only available when both COOP and COEP response
     //   headers are set; without isolation we MUST stay at 1 or ORT crashes
     //   immediately. We additionally clamp `hardwareConcurrency` at 8 because
@@ -334,7 +334,7 @@ async function transcribe(id: string, payload: TranscribePayload): Promise<void>
       transcribeOptions.initial_prompt = options.prompt;
     }
 
-    // TASK-300 L-2: forward Whisper `task` when explicitly requested.
+    // Forward Whisper `task` when explicitly requested.
     // English-only checkpoints are gated upstream in WhisperWorkerEngine so
     // we never reach here with `task === 'translate'` on a `.en` model.
     if (options?.task !== undefined && !isEnglishOnlyModel) {

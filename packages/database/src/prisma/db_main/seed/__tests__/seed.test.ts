@@ -1,9 +1,9 @@
 /**
- * Seed Data-Coherence Tests (TASK-331 doc-08 F1 / F6 / F8 + cold-seed bug)
+ * Seed Data-Coherence Tests (cold-seed bug)
  *
  * Static assertions over the EXPORTED seed data (no live DB), mirroring the
  * pattern in `src/__tests__/seed.test.ts` and `seed-impersonation-coverage.ts`.
- * They lock in four invariants surfaced by the doc-08 review:
+ * They lock in four invariants surfaced by review:
  *
  *   - (cold-seed bug) seed usernames are globally unique across 91-user.ts AND
  *     the DNA seed (08), and the DNA seed never invents its own user identities

@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsNotEmpty, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
 /**
- * TASK-506 — diagnosis suggestions. Proxied to the NLP service
+ * Diagnosis suggestions. Proxied to the NLP service
  * `POST /api/v1/diagnosis/suggestions`; the controller maps `minConfidence`
  * to the upstream snake_case `min_confidence` and injects `model_name` from
  * the effective `nlp.diagnosis` default (fail-open).

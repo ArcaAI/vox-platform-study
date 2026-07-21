@@ -1,5 +1,5 @@
 /**
- * TDD screen tests for TASK-532 B-4 (AI services, tier 10-19): the three tabs
+ * TDD screen tests for (AI services, tier 10-19): the three tabs
  * — Guardrail (status + config), NLP (per-model status) and Instructions (the
  * working-tenant-scoped agentic instruction set). The guardrail/NLP documents
  * are UPSTREAM-OWNED, so the fixtures deliberately mix recognizable status
@@ -269,7 +269,7 @@ describe('AiServicesScreen', () => {
         });
 
         /**
-         * M-01 sub-pattern: a (global)-tier screen reading per-tenant data —
+         * A (global)-tier screen reading per-tenant data —
          * the tab is gated on a working tenant, the rest of the screen is not.
          */
         it('gates the tab behind the working-tenant empty state when no tenant is selected', async () => {

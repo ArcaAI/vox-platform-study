@@ -17,7 +17,7 @@ model UserRoleAssignment {
   // accepted: the previous `null = global` semantics relied on the
   // `[userId,roleId,tenantId]` composite unique, which Postgres treats as
   // "distinct" for NULL, allowing a global assignment to shadow a
-  // tenant-scoped one. See TASK-305 audit § B4.
+  // tenant-scoped one.
   tenantId String
 
   // core fields
@@ -63,14 +63,13 @@ model User {
   // core fields
   username         String    @unique
   password         String
-  // TASK-400 — rotation tracking: stamped whenever the password is set through
+  // Rotation tracking: stamped whenever the password is set through
   // the password module (reset completion, temporary password). NULL = legacy /
   // unknown → the max-age check treats it as "never expired" (no lockout).
   passwordChangedAt DateTime?
   lastLoginAt      DateTime?
   lastActiveAt     DateTime?
   externalId       String?   @unique
-  // as service account
   isServiceAccount Boolean   @default(false)
   secret1          String?
   secret1Expiry    DateTime?
@@ -165,7 +164,7 @@ model UserProfile {
   phone     String?
   avatarId  String?
 
-  // Backend preferred prompt template (TASK-328 A1–A3) — soft reference
+  // Backend preferred prompt template — soft reference
   preferredPromptTemplateId String?
 
   // resource status fields
@@ -238,8 +237,7 @@ model UserVoiceProfile {
   id       String @id @default(uuid(7))
 
   // multi tenant fields
-  // TASK-490 (closes the TASK-296 M-6 / roadmap P2-5 TODO): the enrollment
-  // tenant. A voice profile is biometric PHI — reads are tenant-scoped
+  // The enrollment tenant. A voice profile is biometric PHI — reads are tenant-scoped
   // (STT-v2 preseed filters on it; the tenant-scope extension injects it),
   // so a cross-tenant lookup returns nothing. Backfilled from the user's
   // earliest ENABLED UserRoleAssignment; SYSTEM tenant when none exists
@@ -248,14 +246,14 @@ model UserVoiceProfile {
 
   // core fields
   userId String
-  // Data Encryption Initiative Phase 3D — DECISION: the speaker `embedding`
+  // Data Encryption Initiative — DECISION: the speaker `embedding`
   // (pgvector vector(256)) is deliberately NOT field-encrypted. It is a
   // biometric used for cosine-similarity diarization (the ANN/`<->` distance
   // operators require the raw vector); Vault-Transit randomized encryption
   // would make the column opaque and break similarity search entirely. It
-  // stays protected by Phase 1 at-rest disk encryption + RBAC (tenant/user
+  // stays protected by at-rest disk encryption + RBAC (tenant/user
   // scoping). Revisit only if a searchable-encryption / secure-enclave scheme
-  // is adopted. (See plan Phase 3D + TASK-369 README "voiceprint".)
+  // is adopted.
   embedding Unsupported("vector(256)")
   isActive  Boolean                    @default(false)
   label     String?                    @db.VarChar(100)
@@ -283,7 +281,7 @@ model UserVoiceProfile {
 }
 
 // ============================================================================
-// User ↔ Department assignment (TASK-328 A1–A3)
+// User ↔ Department assignment
 // Tenant-scoped join table linking users to the departments they belong to.
 // ============================================================================
 

@@ -8,8 +8,8 @@ export { STTProcessor, createSTT, type STTStreamingTransport } from './STTProces
 
 export { AudioBufferManager, type AudioBufferManagerOptions, type AudioBufferStats, DEFAULT_BUFFER_OPTIONS } from './AudioBufferManager.js';
 
-// TASK-351 P0-5 — AudioWorklet capture utility (ScriptProcessor fallback
-// internal). Exposed so consuming apps stop rolling their own capture loops.
+// AudioWorklet capture utility (ScriptProcessor fallback internal). Exposed
+// so consuming apps stop rolling their own capture loops.
 export {
   createAudioCapture,
   isAudioWorkletUsable,

@@ -1,5 +1,5 @@
 /**
- * HarnessServiceTokenGuard Unit Tests (TASK-330 Phase 1 — Lane G)
+ * HarnessServiceTokenGuard Unit Tests
  *
  * Guards the /internal/harness/* endpoints: the harness must present a valid
  * `X-Service-Token` matching the `HARNESS_SERVICE_TOKEN` secret. Fail-closed —

@@ -3,11 +3,11 @@
  *
  * Configuration and personalization access hook.
  *
- * TASK-297 DEF-H3 — Reads from Zustand via discrete selectors rather than
+ * Reads from Zustand via discrete selectors rather than
  * subscribing to the whole store. Each `useAgenticStore(selectX)` call
  * only triggers re-render when its slice changes.
  *
- * TASK-297 DEF-C6 — Every mutation in this hook (`update`, `reset`,
+ * Every mutation in this hook (`update`, `reset`,
  * `selectModel`, `setUserPreference`, `resetUserPreferences`) is gated on
  * `configReady`. Calling before the cascade is hydrated throws
  * `AgenticError('CONFIG_NOT_READY', ...)` rather than silently writing
@@ -48,7 +48,7 @@ export interface UseArcaConfigReturn {
       stt?: string;
       vad?: string;
       ner?: string;
-      /** TASK-329 P3 — persisted local Whisper task (transcribe|translate). */
+      /** Persisted local Whisper task (transcribe|translate). */
       sttTask?: SttTask;
     };
   };
@@ -58,14 +58,14 @@ export interface UseArcaConfigReturn {
   update: (updates: Partial<UserPreferences>) => Promise<void>;
   /** Select a model for a capability */
   selectModel: (type: 'stt' | 'vad' | 'ner', modelId: string) => void;
-  /** TASK-329 P3 — persist the local STT task (transcribe|translate) */
+  /** Persist the local STT task (transcribe|translate) */
   selectSttTask: (task: SttTask) => void;
   /** Get a specific preference value */
   get: <K extends keyof UserPreferences>(key: K) => UserPreferences[K];
   /** Reset preferences to defaults */
   reset: () => Promise<void>;
 
-  // Three-tier config (TASK-244)
+  // Three-tier config
   /** Merged config from SYSTEM_DEFAULTS <- tenant <- user (null until loaded) */
   resolvedConfig: AppConfig | null;
   /** True once all config tiers have been loaded */
@@ -83,7 +83,7 @@ export interface UseArcaConfigReturn {
 // =============================================================================
 
 export function useArcaConfig(): UseArcaConfigReturn {
-  // TASK-297 DEF-H3 — discrete selector subscriptions; each only re-renders
+  // Discrete selector subscriptions; each only re-renders
   // on its own slice change.
   const preferences = useAgenticStore(selectPreferences);
   const tenantConfig = useAgenticStore(selectTenantConfig);
@@ -102,7 +102,7 @@ export function useArcaConfig(): UseArcaConfigReturn {
     return sdkLogger?.child('useArcaConfig');
   }, [sdkLogger]);
 
-  // TASK-297 DEF-C6 — gate every mutation on `configReady`.
+  // Gate every mutation on `configReady`.
   const requireReady = useCallback(
     (operation: string) => {
       if (!configReady) {

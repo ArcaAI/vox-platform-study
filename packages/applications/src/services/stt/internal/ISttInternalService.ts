@@ -58,7 +58,7 @@ export interface ISttInternalService {
   createAudioRecord(dto: CreateAudioRecordRequest): Promise<AudioRecordResponse>;
 
   /**
-   * Register a stored object as a `Media` row (TASK-334 I-2b)
+   * Register a stored object as a `Media` row.
    * Called by STT-v2 for each dual-capture WAV before `createAudioRecord`.
    */
   createMedia(dto: InternalCreateMediaRequest): Promise<InternalCreateMediaResponse>;

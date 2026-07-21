@@ -3,7 +3,7 @@ import { IsArray, IsString } from 'class-validator';
 import { BaseRequest } from '../../../common';
 
 /**
- * TASK-387 (#2 / F9) — body for `PUT /admin/tenants/:id/tags`. Replaces the
+ * Body for `PUT /admin/tenants/:id/tags`. Replaces the
  * tenant's full tag set (idempotent set-semantics, not append). Non-OCC.
  */
 export class SetTenantTagsRequest extends BaseRequest {

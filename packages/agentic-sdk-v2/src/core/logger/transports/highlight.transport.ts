@@ -51,7 +51,7 @@ interface HighlightOptions {
 /**
  * Highlight.io transport implementation.
  *
- * **TASK-266 W0-2 — gated activation.**
+ * **Gated activation.**
  * Sending healthcare consultation telemetry to a third-party SaaS is a HIPAA
  * exposure. This transport is therefore default-disabled and refuses to
  * initialise unless ALL of the following are true:
@@ -95,7 +95,7 @@ export class HighlightTransport implements ILogTransport {
   }
 
   /**
-   * TASK-266 W0-2 activation predicate.
+   * Activation predicate.
    *
    * Pure & static so `SDKLogger.initializeTransports()` can also call it
    * to skip constructing the transport entirely.
@@ -171,7 +171,7 @@ export class HighlightTransport implements ILogTransport {
   /**
    * Log entry to Highlight.io.
    *
-   * TASK-266 W0-2: when the transport is permanently disabled (production env,
+   * When the transport is permanently disabled (production env,
    * not opted in, or missing DSN) this is a hard no-op — we do not even queue
    * the entry, so a misconfigured deploy cannot silently buffer PHI in memory
    * that a later runtime gate-flip could flush to Highlight.

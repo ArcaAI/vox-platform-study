@@ -1,5 +1,5 @@
 #!/usr/bin/env tsx
-// TASK-302 Phase 6 Task 6.7 (Stream B) — staging end-to-end rotation smoke.
+// Staging end-to-end secret-rotation smoke test.
 //
 // What this script does (single shot, no daemon mode):
 //   1. Bind to Redis as a SUBSCRIBER on `arca:secrets:invalidate` so we

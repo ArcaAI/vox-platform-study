@@ -15,7 +15,7 @@ interface GuardrailProviderCatalogEntry {
   models: GuardrailModelEntry[];
 }
 
-// TASK-338 — Guardrail provider/model catalog. The exact identifiers below are
+// Guardrail provider/model catalog. The exact identifiers below are
 // part of a cross-worker contract with the Guardrail Python service: provider
 // order `['lm-studio', 'ollama', 'azure-openai']` and the lm-studio entry MUST
 // expose `granite-guardian-4.1-8b`.
@@ -113,7 +113,7 @@ describe('Guardrail Provider-Model Catalog Seed Data (TASK-338)', () => {
       });
     }
 
-    // TASK-506 — the guardrail engine settings (GUARDRAIL_PROVIDER /
+    // The guardrail engine settings (GUARDRAIL_PROVIDER /
     // GUARDRAIL_MODEL / GUARDRAIL_AZURE_DEPLOYMENT) were RETIRED: superseded
     // by the AiTaskDefault table (guardrail.validate) + the AiModel registry.
     for (const prefix of SETTING_PREFIXES) {

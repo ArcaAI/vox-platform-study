@@ -1,7 +1,6 @@
-// TASK-302 Phase 6 Task 6.7 (Stream B) — unit tests for the rotation
-// smoke script's argument parser. The script as a whole runs against a
-// live staging Vault + Redis + HOPE API; only the pure parsing helper
-// is unit-testable in isolation.
+// Unit tests for the rotation smoke script's argument parser. The script as a
+// whole runs against a live staging Vault + Redis + HOPE API; only the pure
+// parsing helper is unit-testable in isolation.
 import { describe, it, expect } from 'vitest';
 import { parseArgs } from '../rotation-smoke';
 

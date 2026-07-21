@@ -1,5 +1,5 @@
 /**
- * TASK-330 Phase 3 — Institutional RAG (hybrid retrieval + StrictCitations) e2e.
+ * Institutional RAG (hybrid retrieval + StrictCitations) e2e.
  *
  * Mirrors `task-330-harness-gate.spec.ts`. It proves the Phase-3 safety/quality
  * properties at the HTTP edge, with the SAME evidence policy: assertions that

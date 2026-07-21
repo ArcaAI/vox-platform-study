@@ -1,14 +1,14 @@
-"""TASK-359 WS-1 — content-addressed per-claim verdict cache (L1 intra-pass + L2 carrier).
+"""Content-addressed per-claim verdict cache (L1 intra-pass + L2 carrier).
 
 The inferential judge is the costly part of the harness gate; across a regen loop the SAME
 claim is otherwise re-judged on every pass. This module is the *content-addressed* primitive
 that lets an inferential sensor reuse a prior verdict for an unchanged claim — WITHOUT ever
-changing the verdict (the TASK-355 verdict-parity rail, AC-2):
+changing the verdict (the verdict-parity rail):
 
 * :func:`claim_verdict_key` hashes the **exact bytes the judge receives** — the post-clean
   claim text (already cleaned upstream by ``provenance._clean_claim_text``; we do **not** apply
-  any further lossy ``normalize_text``/lowercasing — a red-team correction, see TASK-359
-  §4.1 WS-1), the sensor's premise, and a stable sensor/judge identity. Same inputs ⇒ same key
+  any further lossy ``normalize_text``/lowercasing — a red-team correction), the sensor's
+  premise, and a stable sensor/judge identity. Same inputs ⇒ same key
   ⇒ (deterministic ``temperature=0`` judge) same verdict; a miss re-judges.
 * :func:`sensor_identity` composes the identity component (sensor name + a prompt-version +
   the judge/model id) so a model swap or a prompt edit yields a different key (auto-invalidation).
@@ -18,11 +18,11 @@ changing the verdict (the TASK-355 verdict-parity rail, AC-2):
   pass's OUTPUT into the next pass's INPUT as additive-optional, data-only fields — no new
   workflow command, no ``workflow.patched()``).
 * :func:`cached_verdict` is the get-or-compute helper the sensors use so the hit/miss/populate
-  semantics (conservative miss) are identical across groundedness (WS-1) and the later
-  citation_verify (WS-2) / safety (TASK-363) reuse.
+  semantics (conservative miss) are identical across groundedness and the later
+  citation_verify / safety reuse.
 
 L3 (a cross-run/persistent store) is intentionally NOT implemented here: it is default-OFF
-pending a privacy review (TASK-359 §4.5). The key is L3-ready (optional HMAC) but nothing in
+pending a privacy review. The key is L3-ready (optional HMAC) but nothing in
 this module writes outside the in-memory ``dict`` the caller owns.
 """
 
@@ -57,7 +57,7 @@ def claim_verdict_key(claim_text: str, premise: str, judge_identity: str) -> str
     Hashes the EXACT bytes the judge receives — ``claim_text`` (the post-clean hypothesis),
     ``premise`` (the sensor's ``_premise(...)`` output) and ``judge_identity`` (a stable
     sensor/prompt/model identity, see :func:`sensor_identity`) — so an identical judge call maps
-    to an identical key and a deterministic judge yields the identical verdict (AC-2). NEVER
+    to an identical key and a deterministic judge yields the identical verdict. NEVER
     keyed on the positional ``claim-{n}`` id (unstable across a regen).
     """
     payload = _SEP.join((KEY_SCHEMA_VERSION, judge_identity, premise, claim_text)).encode("utf-8")
@@ -71,7 +71,7 @@ def sensor_identity(sensor_name: str, system_prompt: str, model: str) -> str:
 
     Combines the sensor name + a prompt-version (a short hash of the sensor system prompt, so a
     prompt edit changes the key) + the judge/model id (so a model swap changes the key) — the
-    two auto-invalidation levers the broader-cache design requires (TASK-359 §4.5).
+    two auto-invalidation levers the broader-cache design requires.
     """
     prompt_version = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()[:16]
     return _SEP.join((sensor_name, prompt_version, model))

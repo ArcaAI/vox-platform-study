@@ -1,5 +1,5 @@
 /**
- * TASK-269 — CRIT-3 (worklet path)
+ * Worklet-path RNNoise WASM loader.
  *
  * The AudioWorklet cannot import `@jitsi/rnnoise-wasm` at runtime, so the
  * worklet uses a hand-port of the upstream Emscripten runtime that targets

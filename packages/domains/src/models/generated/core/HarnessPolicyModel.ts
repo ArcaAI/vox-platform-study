@@ -8,8 +8,8 @@ import * as Enums from '../../../enums';
 import * as Models from './';
 
 /**
- * Persistence model for the editable, tenant-scoped harness runtime policy
- * (TASK-330 Phase 6). Standard model — carries the inherited `_version` OCC
+ * Persistence model for the editable, tenant-scoped harness runtime policy.
+ * Standard model — carries the inherited `_version` OCC
  * token + `resourceStatus` audit fields. Column values mirror the harness
  * runtime defaults (sensors/config.py + core/config.py) so a freshly-created
  * row is a faithful snapshot of the code defaults.

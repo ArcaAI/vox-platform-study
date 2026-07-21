@@ -8,7 +8,7 @@ export class DnaWritingStyleDtoMapper {
     return {
       id: entity.id,
       doctorId: entity.doctorId ?? '',
-      // TASK-424 — human-readable doctor label resolved server-side; left
+      // Human-readable doctor label resolved server-side; left
       // undefined when the user cannot be resolved (deleted/missing id).
       doctorUsername,
       reportData: entity.reportData ?? undefined,
@@ -18,7 +18,7 @@ export class DnaWritingStyleDtoMapper {
       createdAt: entity.createdAt.toISOString(),
       updatedAt: entity.updatedAt.toISOString(),
       resourceStatus: entity.resourceStatus ?? undefined,
-      // TASK-326 X7 / D-2 — surface `_version` (the OCC token, distinct from
+      // Surface `_version` (the OCC token, distinct from
       // `currentVersionNumber`) so SDK clients can echo it back via
       // `If-Match: "<version>"` on the next PATCH.
       version: entity.version,
@@ -38,7 +38,7 @@ export class DnaWritingStyleDtoMapper {
     };
   }
 
-  /** TASK-328 A5 — usage record → dashboard recent-activity entry. */
+  /** Usage record → dashboard recent-activity entry. */
   static toUsageEntry(entity: DnaUsageRecordEntity): DnaDashboardUsageEntry {
     return {
       id: entity.id,

@@ -151,7 +151,7 @@ export interface IRedisCacheService {
   /**
    * Execute a Lua script atomically (Redis EVAL).
    *
-   * TASK-310 W7.A.4 (AC-2): used by `RefreshTokenService.consume()` to
+   * Used by `RefreshTokenService.consume()` to
    * collapse the GET / DEL / DEL / SETEX flip into a single atomic
    * operation. Redis serialises Lua scripts so two concurrent invocations
    * race-replay each other deterministically — exactly one observes the
@@ -647,7 +647,7 @@ export class RedisCacheService implements IRedisCacheService, OnModuleInit, OnMo
   /**
    * Execute a Lua script atomically against Redis.
    *
-   * TASK-310 W7.A.4 (AC-2): see interface TSDoc. Returns `null` when
+   * See interface TSDoc. Returns `null` when
    * Redis is unavailable (graceful degradation, mirroring the rest of
    * this service) — callers must treat `null` as "missing record".
    */

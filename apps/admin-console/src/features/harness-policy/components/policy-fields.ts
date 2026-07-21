@@ -22,7 +22,7 @@ export interface PolicyFieldGroup {
 }
 
 /**
- * TASK-532 (E3-L1) — knobs the TENANT editor renders read-only.
+ * Knobs the TENANT editor renders read-only.
  *
  * The gateway rejects a tenant PATCH carrying any of these with 403 (they joined
  * `GLOBAL_ADMIN_ONLY_POLICY_KEYS`, which also overlays the SYSTEM value at read
@@ -36,7 +36,7 @@ export interface PolicyFieldGroup {
  * actually renders — the remaining locked keys (SMR routing, agentic loop
  * knobs) have no tenant-tab control, so there is nothing to disable.
  *
- * `safetyProvider`/`safetyModel` were locked server-side long before TASK-532,
+ * `safetyProvider`/`safetyModel` were locked server-side before this change,
  * but the tenant tab still rendered them as editable text inputs whose save
  * could only ever 403. An e2e spec had even encoded that impossible save as
  * expected behaviour. Adding them here fixes the same defect class A-1c was

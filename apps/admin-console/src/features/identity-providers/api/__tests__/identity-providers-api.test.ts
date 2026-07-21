@@ -1,5 +1,5 @@
 /**
- * TASK-498 P4 — identity-providers API module. Paths and OCC envelope
+ * Identity-providers API module. Paths and OCC envelope
  * verified against apps/api TenantIdpConfigAdminController: If-Match PUT
  * on :id, plain POST on :id/test and :id/sync (no OCC — the backend reads
  * the row itself for those).

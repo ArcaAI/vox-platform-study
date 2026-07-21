@@ -25,7 +25,7 @@ import {
  *   - admin         (1) — locked config paths
  *   - arcaai-admin  (1) — admin-console menu order
  *
- * TASK-506 — the smr default-provider/default-model keys, the ad-hoc
+ * The smr default-provider/default-model keys, the ad-hoc
  * `smr-provider-models` UI catalog and the entire `guardrail` namespace are
  * RETIRED (superseded by the `AiTaskDefault` table + registry-backed provider
  * listings). They are removed from the seeded arrays and swept to
@@ -76,7 +76,7 @@ const LOCAL_NOISE_SUPPRESSION_MODELS = JSON.stringify([
 ]);
 
 // =============================================================================
-// TASK-506 — the SMR provider-model catalog (`SMR_PROVIDER_MODELS`,
+// The SMR provider-model catalog (`SMR_PROVIDER_MODELS`,
 // `smr-provider-models` ux-constants key) was RETIRED: provider/model listings
 // now come from the AiModel registry (ENABLED rows grouped by `provider`), and
 // the platform text/summarization default lives on HarnessPolicy
@@ -84,7 +84,7 @@ const LOCAL_NOISE_SUPPRESSION_MODELS = JSON.stringify([
 // =============================================================================
 
 // =============================================================================
-// Guardrail Provider-Model Catalog (TASK-338) — available content-safety /
+// Guardrail Provider-Model Catalog — available content-safety /
 // guardrail providers and models.
 //
 // Seeded per-tenant so the admin console can populate the Guardrail
@@ -124,7 +124,7 @@ export const GUARDRAIL_PROVIDER_MODELS = [
 const GUARDRAIL_PROVIDER_MODELS_JSON = JSON.stringify(GUARDRAIL_PROVIDER_MODELS);
 
 // =============================================================================
-// Admin Console Menu Order (TASK-331 doc-04 F4)
+// Admin Console Menu Order
 //
 // Seeds the TENANT tier of the admin console's menu-order resolver
 // (USER → TENANT → DEFAULT). The console reads this under the server-owned
@@ -285,7 +285,7 @@ function tenantSettings(
             namespace: 'stt',
             name: 'Default STT Model',
             key: 'default-stt-model',
-            // TASK-506 — whisper-large-v3 was retired from the AiModel catalog;
+            // whisper-large-v3 was retired from the AiModel catalog;
             // the surviving backend ASR default is the turbo variant.
             value: 'whisper-large-v3-turbo',
             defaultValue: 'whisper-large-v3-turbo',
@@ -307,12 +307,12 @@ function tenantSettings(
         },
 
         // ── smr (1) ─────────────────────────────────────────────────────
-        // TASK-506 — default-smr-provider / default-smr-model RETIRED: the
+        // default-smr-provider / default-smr-model RETIRED: the
         // platform summarization default lives on HarnessPolicy (SYSTEM row,
         // 13-harness-policy.ts); provider/model listings come from the AiModel
         // registry. Only the non-secret Azure deployment name remains here.
         {
-            // TASK-338 — Azure OpenAI deployment NAME for SMR (non-secret).
+            // Azure OpenAI deployment NAME for SMR (non-secret).
             // The Azure API key remains env/Vault only (never a plaintext
             // GlobalSetting); only the deployment name is DB-driven. Not locked
             // so tenant admins can set their own Azure deployment.
@@ -327,8 +327,8 @@ function tenantSettings(
             description: 'Azure OpenAI deployment name used by SMR when provider=azure-openai (non-secret; the API key stays in env/Vault)',
         },
 
-        // ── guardrail (0) — RETIRED (TASK-506) ──────────────────────────
-        // The TASK-338 guardrail namespace (default-guardrail-provider /
+        // ── guardrail (0) — RETIRED ──────────────────────────
+        // The guardrail namespace (default-guardrail-provider /
         // default-guardrail-model / guardrail-azure-deployment) is superseded
         // by the AiTaskDefault table (`guardrail.validate` key, GLOBAL-ADMIN-
         // ONLY writes) + the AiModel registry. Existing rows are swept to
@@ -371,10 +371,10 @@ function tenantSettings(
             description: 'Available local browser-based noise suppression models for the SDK installation page',
             locked: true,
         },
-        // TASK-506 — the `smr-provider-models` catalog key is RETIRED (the
+        // The `smr-provider-models` catalog key is RETIRED (the
         // AiModel registry is the single provider/model catalog).
         {
-            // TASK-338 — Guardrail provider/model catalog mirroring the SMR one.
+            // Guardrail provider/model catalog mirroring the SMR one.
             id: ids.uxGuardrailProviderModels,
             tenantId,
             namespace: 'ux-constants',
@@ -473,7 +473,7 @@ export const ALL_SETTINGS: SettingDef[] = [
 // =============================================================================
 // Platform-owned settings (SYSTEM_TENANT_ID)
 //
-// TASK-332 — the local raw-stream dual-capture capability is a PLATFORM gate,
+// The local raw-stream dual-capture capability is a PLATFORM gate,
 // not a per-tenant flag: a single `locked` row owned by SYSTEM_TENANT_ID. The
 // `AppSettingsService` cache is keyed flat by `key`, so one platform-scoped row
 // resolves deterministically (the key is unique, so it never trips the
@@ -487,7 +487,7 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
         namespace: 'feature-flags',
         name: 'Enable Local Raw Capture',
         key: 'enable-local-raw-capture',
-        // Clinical Workflow Playground (WS6) — platform capability turned ON so
+        // Clinical Workflow Playground — platform capability turned ON so
         // the Global demo tenant's `TenantFrontendConfig.captureRawAudio = true`
         // becomes effective (GET /tenant/me/config returns the AND of the two).
         // `defaultValue` stays 'false' so a reset reverts to the locked default.
@@ -498,7 +498,7 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
             'Platform capability for local raw-stream dual-capture (TASK-332). The SDK-facing enablement is this AND the per-tenant TenantFrontendConfig.captureRawAudio toggle. Locked — only GLOBAL_ADMIN may change it.',
         locked: true,
     },
-    // TASK-531 (GAP-T3) — turn the nightly SYSTEM-template resync sweep ON.
+    // Turn the nightly SYSTEM-template resync sweep ON.
     //
     // The sweep's registry descriptor is a KILL-SWITCH, and the settings
     // registry refuses at assembly to register a kill-switch that defaults ON
@@ -539,7 +539,7 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
 ];
 
 // =============================================================================
-// TASK-506 — superseded GlobalSetting keys (soft-retire sweep)
+// Superseded GlobalSetting keys (soft-retire sweep)
 //
 // These six keys are replaced by the AiTaskDefault table + registry-backed
 // provider listings in this same ticket. `retireSupersededGlobalSettings`
@@ -626,7 +626,7 @@ export const seedGlobalSetting = async (client: CorePrismaClient) => {
 
     console.log(`Seeded ${ALL_SETTINGS.length} Global Settings across all tenants`);
 
-    // TASK-332 — platform-owned capability rows (SYSTEM_TENANT_ID). Idempotent:
+    // Platform-owned capability rows (SYSTEM_TENANT_ID). Idempotent:
     // refresh metadata but NEVER clobber an admin-tuned `value` on re-seed, so a
     // GLOBAL_ADMIN who turned the capability ON keeps it after `db:seed`.
     console.log(`Seeding platform Global Settings (${PLATFORM_SETTINGS.length} SYSTEM rows)...`);
@@ -663,7 +663,7 @@ export const seedGlobalSetting = async (client: CorePrismaClient) => {
         console.log(`  [SYSTEM] ${s.namespace}/${s.key}`);
     }
 
-    // TASK-506 — sweep the superseded smr/guardrail keys AFTER the upserts so
+    // Sweep the superseded smr/guardrail keys AFTER the upserts so
     // existing DBs converge on the retired state (idempotent; see above).
     await retireSupersededGlobalSettings(client);
 };

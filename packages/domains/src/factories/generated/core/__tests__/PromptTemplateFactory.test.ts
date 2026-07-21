@@ -7,7 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PromptTemplateFactory } from '../PromptTemplateFactory';
 
-// TASK-305 A.6: tenantId is now required at the factory layer.
+// tenantId is now required at the factory layer.
 const TEST_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
 vi.mock('../../../../utils', () => ({
@@ -99,7 +99,7 @@ describe('PromptTemplateFactory', () => {
     expect(entity.updatedAt).toBe(customDate);
   });
 
-  // ─── TASK-294 DEF-C1: scope + ownerUserId defaults ────────────────────
+  // ─── Scope + ownerUserId defaults ────────────────────
 
   it('should default scope to TENANT_DEFAULT and ownerUserId to null', () => {
     const entity = PromptTemplateFactory.CreatePromptTemplate({ tenantId: TEST_TENANT_ID });
@@ -125,7 +125,7 @@ describe('PromptTemplateFactory', () => {
     expect(entity.scope).toBe('DEPARTMENT_DEFAULT');
   });
 
-  // ─── TASK-328 A4: prompt quality/score test fields ────────────────────
+  // ─── Prompt quality/score test fields ────────────────────
 
   it('should default lastTestScore/lastTestOutput/lastTestAt to null', () => {
     const entity = PromptTemplateFactory.CreatePromptTemplate({ tenantId: TEST_TENANT_ID });

@@ -15,7 +15,7 @@ import {
 } from './rate-limit.constants';
 
 /**
- * TASK-316 — read accessor over the rate-limit `GlobalSetting` rows.
+ * Read accessor over the rate-limit `GlobalSetting` rows.
  *
  * All reads are O(1) lookups against the `AppSettingsService` in-memory cache,
  * so calling this on the hot request path inside `TieredThrottlerGuard` adds

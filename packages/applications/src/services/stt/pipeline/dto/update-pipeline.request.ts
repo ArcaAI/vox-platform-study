@@ -49,7 +49,7 @@ export class UpdatePipelineRequest {
   @IsOptional()
   tags?: string[];
 
-  // TASK-328 A6 — captured on the AsrPipelineVersion snapshot when the
+  // Captured on the AsrPipelineVersion snapshot when the
   // YAML config changes (audit trail for "why this version exists").
   @ApiPropertyOptional({
     description: 'Reason for the change; recorded on the version snapshot when configYaml changes.',
@@ -60,7 +60,7 @@ export class UpdatePipelineRequest {
   @MaxLength(500)
   changeReason?: string;
 
-  // TASK-302 Stream D Phase E.4 — required CAS predicate (echoed from
+  // Required CAS predicate (echoed from
   // the prior GET). The controller folds the `If-Match` header over
   // this when both are present; missing both yields `428 Precondition
   // Required` (on `@RequiresIfMatch()` routes).

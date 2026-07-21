@@ -6,7 +6,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  * Mirrors the `/api/v1/classify/tokens` NLP response shape, re-keyed for the
  * frontend highlight overlay (`text` → `text`, `entity_type` → `type`).
  *
- * TASK-477 (SOTA C2 · SPEER): NER runs over the RAW TRANSCRIPT (the source of truth), NOT the
+ * (SOTA C2 · SPEER): NER runs over the RAW TRANSCRIPT (the source of truth), NOT the
  * generated note, so a summary hallucination can never be laundered into a clinical entity. Each
  * entity is then GROUNDED — re-located into `runningSummary` — so `start`/`end` are character
  * offsets into that flat text (the same text the panel renders), letting the UI map each entity
@@ -46,7 +46,7 @@ export class LiveSummarySectionDto {
 }
 
 /**
- * Offsets (into `runningSummary`) of a flagged — ungrounded — span (TASK-479 · SOTA D2).
+ * Offsets (into `runningSummary`) of a flagged — ungrounded — span.
  * Same offset contract as {@link LiveSummaryEntityDto} so the panel maps spans into
  * sections the way it already maps entity highlights.
  */
@@ -59,8 +59,8 @@ export class LiveSummaryFlaggedSpanDto {
 }
 
 /**
- * Groundedness verdict for one segment (sentence/line) of `runningSummary`
- * (TASK-479 · SOTA D2). `grounded` = the self-hosted NLI verified the segment against
+ * Groundedness verdict for one segment (sentence/line) of `runningSummary`.
+ * `grounded` = the self-hosted NLI verified the segment against
  * the source transcript; `ungrounded` = the model contradicts/does not support it;
  * `unverified` = the gate could not check it (disabled, model unavailable, or an
  * error) — NEVER presented as verified.
@@ -83,7 +83,7 @@ export class LiveSummaryGroundednessSegmentDto {
 }
 
 /**
- * Output-side groundedness verdict for the running summary (TASK-479 · SOTA D2).
+ * Output-side groundedness verdict for the running summary.
  *
  * Attached by the live-documentation flush AFTER the note is built and BEFORE it is
  * published, so an ungrounded segment can never reach the clinician unmarked. Worst-state
@@ -189,7 +189,7 @@ export class LiveSummaryEventDto {
 
   @ApiPropertyOptional({
     description:
-      'Output-side groundedness verdict (TASK-479). Optional and back-compatible: absent when the gate is disabled; `unverified` when the gate could not check (never silently `grounded`).',
+      'Output-side groundedness verdict. Optional and back-compatible: absent when the gate is disabled; `unverified` when the gate could not check (never silently `grounded`).',
     type: LiveSummaryGroundednessDto,
   })
   groundedness?: LiveSummaryGroundednessDto;

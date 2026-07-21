@@ -103,7 +103,7 @@ describe('useDnaStyle', () => {
                 resp = await result.current.generate({ departmentId: 'dept-1' });
             });
 
-            // TASK-299 D-9 — body carries departmentId + auto-attached idempotencyKey.
+            // Body carries departmentId + auto-attached idempotencyKey.
             const [url, body] = mockPost.mock.calls[0];
             expect(url).toBe(DNA_STYLE_ENDPOINTS.GENERATE);
             expect(body).toMatchObject({ departmentId: 'dept-1' });
@@ -302,7 +302,7 @@ describe('useDnaStyle', () => {
             await act(async () => {
                 await result.current.generate({ departmentId: 'dept-1' });
             });
-            // TASK-299 D-9 — body adds idempotencyKey alongside departmentId.
+            // Body adds idempotencyKey alongside departmentId.
             const [url, body] = mockPost.mock.calls[0];
             expect(url).toBe(DNA_STYLE_ENDPOINTS.GENERATE);
             expect(body).toMatchObject({ departmentId: 'dept-1' });

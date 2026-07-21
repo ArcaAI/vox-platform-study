@@ -1,5 +1,5 @@
 /**
- * TASK-499 — `CreateTenantIdpConfigRequest` protocol-conditional validation.
+ * `CreateTenantIdpConfigRequest` protocol-conditional validation.
  *
  * `config`/`clientSecret` are required for OIDC; `samlConfig` is required for
  * SAML (`@ValidateIf`, keyed off `protocol`). The strict global ValidationPipe

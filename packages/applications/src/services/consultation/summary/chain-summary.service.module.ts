@@ -10,8 +10,8 @@ import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.
 import { ConfigResolverModule } from '../../config-resolver';
 
 @Module({
-  // TASK-356 D-7 — HarnessPolicyServiceModule supplies the SMR-selection resolver.
-  // TASK-362 — ConfigResolverModule supplies the preferred-prompt resolver.
+  // HarnessPolicyServiceModule supplies the SMR-selection resolver.
+  // ConfigResolverModule supplies the preferred-prompt resolver.
   imports: [CommonServiceModule, CoreDatabaseModule, ConfigModule, HttpModule, PromptResolutionServiceModule, HarnessPolicyServiceModule, ConfigResolverModule],
   providers: [PromptAssemblyService, ChainSummaryService],
   exports: [ChainSummaryService],

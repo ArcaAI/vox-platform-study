@@ -1,5 +1,5 @@
 /**
- * useArcaContext Hook Tests (REFACTOR-01; TASK-297 DEF-H3).
+ * useArcaContext Hook Tests (REFACTOR-01).
  *
  * Tests for the focused context management hook extracted from useArca.
  * The hook now reads via selector subscriptions, so the mock store applies
@@ -34,7 +34,7 @@ const mockStore = {
 
 vi.mock('../../store', () => {
   return {
-    // TASK-297 DEF-H3 — apply selector against synthetic mock state. When
+    // Apply selector against synthetic mock state. When
     // called with no selector (or with undefined), return the whole store.
     useAgenticStore: vi.fn((selector?: (s: unknown) => unknown) => {
       if (typeof selector === 'function') return selector(mockStore);

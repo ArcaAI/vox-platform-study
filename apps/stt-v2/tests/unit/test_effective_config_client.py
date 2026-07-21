@@ -1,4 +1,4 @@
-"""TASK-525 §3.3/§4.4 — stt-v2's effective-config pull client + cache adoption.
+"""stt-v2's effective-config pull client + cache adoption.
 
 stt-v2 already had the gateway transport (`api_gateway_url`/`api_gateway_key`),
 so this client reuses it and authenticates with the existing

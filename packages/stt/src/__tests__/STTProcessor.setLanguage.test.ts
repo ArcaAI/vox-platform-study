@@ -1,10 +1,10 @@
 /**
- * @arcaai/stt - STTProcessor.setLanguage tests (TASK-304)
+ * @arcaai/stt - STTProcessor.setLanguage tests
  *
  * Whisper bakes the language into its inference pipeline, so a true language
  * change requires re-initializing the local provider with the new locale.
- * Prior to TASK-304 this method only logged a warning and silently kept the
- * old language alive in the engine.
+ * Previously this method only logged a warning and silently kept the old
+ * language alive in the engine.
  *
  * @vitest-environment jsdom
  */

@@ -1,5 +1,5 @@
 /**
- * ConsultationJobController — TASK-263 / W0-6 (GAP-01)
+ * ConsultationJobController
  *
  * Exposes the existing `IConsultationJobService` over HTTP/SSE at the paths
  * the `@arcaai/vox` SDK already calls (`CONSULTATION_JOB_ENDPOINTS` in
@@ -10,13 +10,11 @@
  *   GET    /consultations/jobs/:jobId/stream     → SSE real-time updates
  *
  * Authorisation: `@Authorize()` at the class level + per-method
- * `@TenantOwnedResource({ modelName: 'ConsultationJob', paramName: 'jobId' })`
- * applied in TASK-307 W3 (closes audit C-3). The W3 carry-through pushed
- * `userId` / `tenantId` onto `ConsultationJobStatus` (see
+ * `@TenantOwnedResource({ modelName: 'ConsultationJob', paramName: 'jobId' })`.
+ * `userId` / `tenantId` live on `ConsultationJobStatus` (see
  * `packages/applications/src/services/consultation/jobs/dto/job.dto.ts`)
  * so the interceptor can resolve the per-job tenant from Redis and 404 on
- * cross-tenant mismatch. The `TODO(TASK-263 §6)` that previously lived
- * here is closed.
+ * cross-tenant mismatch.
  */
 import { Controller, Get, Inject, NotFoundException, Param, Patch, Sse, type MessageEvent } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -51,7 +49,7 @@ export class ConsultationJobController {
   }
 
   @Patch(':jobId/cancel')
-  // TASK-308 AC-2 — `scope: 'creator'` upgrades the tenant-only check to an
+  // `scope: 'creator'` upgrades the tenant-only check to an
   // intra-tenant owner check on this mutating route. A same-tenant peer
   // probing this jobId now 404s (DEF-C3) instead of cancelling someone
   // else's job. The read routes (`getJob`, `streamJob`) intentionally stay

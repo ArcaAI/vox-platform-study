@@ -1,4 +1,4 @@
-"""Streaming noise suppression via DeepFilterNet3 (TASK-507).
+"""Streaming noise suppression via DeepFilterNet3.
 
 Unlike RNNoise (``denoiser.py``), DeepFilterNet3's public API
 (``df.enhance.enhance()``) operates on a WHOLE audio buffer/tensor — there is

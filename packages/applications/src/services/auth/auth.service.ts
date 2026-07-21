@@ -64,9 +64,7 @@ export class AuthService implements IAuthService {
    * client, because login runs before CLS tenant context exists. That handler
    * is the persistence authority; do not add a second write here.
    *
-   * TASK-541 B2 — replaces a stale TODO claiming no audit trail existed.
-   * The successful-auth trail has been persisted since TASK-314/369; what was
-   * genuinely missing was the FAILED-attempt trail, now carried by
+   * The FAILED-attempt trail is carried separately by
    * `EventTypes.UserAuthenticationFailed`.
    *
    * @param userId - The authenticated user ID

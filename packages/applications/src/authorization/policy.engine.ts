@@ -5,7 +5,7 @@ import { CoreDatabaseService, ResourceStatusType } from '@arcaai/domains';
 import { IRedisCacheService } from '../services/baseServices/redis';
 
 /**
- * Reserved system tenant for platform-wide rows (TASK-305 Phase A).
+ * Reserved system tenant for platform-wide rows.
  * Role assignments that used to be global (`tenantId = NULL`) now live under
  * this tenant; NULL is no longer a valid `UserRoleAssignment.tenantId`.
  */
@@ -14,7 +14,7 @@ const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 /**
  * CASL Ability type for the application.
  *
- * casl 7 / casl-prisma 2 (TASK-413): `PureAbility` was renamed to `Ability`,
+ * casl 7 / casl-prisma 2: `PureAbility` was renamed to `Ability`,
  * and `PrismaQuery` is now derived from `@prisma/client`'s generated
  * `Prisma.TypeMap`. This repo generates its client into
  * `packages/database/src/generated` (the bare `@prisma/client` TypeMap is a
@@ -250,7 +250,7 @@ export class PolicyEngine {
     // Resolving a user's effective policies is an authorization-bootstrap step
     // that must span BOTH the SYSTEM tenant (platform-wide assignments such as
     // GLOBAL_ADMIN) and the request tenant — see the `tenantId: { in: [...] }`
-    // filter below. The tenant-scope `$extends` (TASK-305 B.1) is designed for
+    // filter below. The tenant-scope `$extends` is designed for
     // tenant *data* and rejects any non-scalar `where.tenantId` (it throws
     // "TenantScope: tenantId mismatch" on an `in` list), which would make every
     // permissioned request fail with 403 once a tenant context is present.
@@ -261,7 +261,7 @@ export class PolicyEngine {
 
     // 1. Get user's direct role assignments with policies.
     //
-    // Tenant scope (TASK-305 Phase A): `UserRoleAssignment.tenantId` is a
+    // Tenant scope: `UserRoleAssignment.tenantId` is a
     // required, non-nullable column. Platform-wide assignments (e.g.
     // GLOBAL_ADMIN) live under SYSTEM_TENANT_ID, not NULL. We always include
     // the system tenant and add the request tenant only when present. A bare

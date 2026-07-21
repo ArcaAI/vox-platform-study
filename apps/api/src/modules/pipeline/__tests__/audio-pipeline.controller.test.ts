@@ -1,8 +1,8 @@
 /**
  * AudioPipelineController — route metadata tests
  *
- * Covers TASK-263 / W0-9: the validate route must be `validate` (not the
- * legacy `validate-yaml`) so that `PIPELINE_ENDPOINTS.VALIDATE` in the SDK
+ * The validate route must be `validate` (not the legacy `validate-yaml`) so
+ * that `PIPELINE_ENDPOINTS.VALIDATE` in the SDK
  * (`/admin/audio/pipelines/validate`) resolves on the backend.
  *
  * We assert the runtime decorator metadata installed by `@Post(...)` on the
@@ -61,9 +61,6 @@ describe('AudioPipelineController fetchAll — IC-02 admin all-status list', () 
   });
 });
 
-// =============================================================================
-// TASK-298 D-6 — validateConfig body field alignment
-// =============================================================================
 describe('AudioPipelineController validateYaml — TASK-298 D-6 body alignment', () => {
   const buildController = () => {
     const validateYaml = vi.fn().mockResolvedValue({ valid: true });
@@ -90,9 +87,6 @@ describe('AudioPipelineController validateYaml — TASK-298 D-6 body alignment',
   });
 });
 
-// =============================================================================
-// TASK-298 D-10 — narrower @Authorize on the admin controller
-// =============================================================================
 describe('AudioPipelineController authorization metadata — TASK-298 D-10', () => {
   it('uses [manage, AsrPipeline] (tenant admins can self-serve), not [manage, all]', () => {
     const meta = Reflect.getMetadata('required_permissions', AudioPipelineController);
@@ -104,9 +98,6 @@ describe('AudioPipelineController authorization metadata — TASK-298 D-10', () 
   });
 });
 
-// =============================================================================
-// TASK-298 D-7 — assign-tenant endpoint
-// =============================================================================
 describe('AudioPipelineController assignTenant — IC-04 (TASK-336)', () => {
   const buildController = () => {
     const assignToTenant = vi.fn();
@@ -145,9 +136,6 @@ describe('AudioPipelineController assignTenant — IC-04 (TASK-336)', () => {
   });
 });
 
-// =============================================================================
-// TASK-302 Stream D Phase E.4 — optimistic concurrency on PATCH
-// =============================================================================
 describe('AudioPipelineController update — TASK-302 Stream D Phase E.4', () => {
   const buildController = () => {
     const update = vi.fn();
@@ -194,9 +182,6 @@ describe('AudioPipelineController update — TASK-302 Stream D Phase E.4', () =>
   });
 });
 
-// =============================================================================
-// TASK-328 A6 — default / toggle / versioning endpoints
-// =============================================================================
 describe('AudioPipelineController — TASK-328 A6 default/toggle/versions', () => {
   const buildController = () => {
     const svc = {

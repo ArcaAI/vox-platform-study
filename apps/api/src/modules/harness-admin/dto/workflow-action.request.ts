@@ -2,8 +2,8 @@ import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
 import { IsObject, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 /**
- * Body for `POST /admin/harness/workflows/:id/cancel` and `.../terminate`
- * (TASK-330 Phase 6 — Phase B). `reason` is forwarded to Temporal as the
+ * Body for `POST /admin/harness/workflows/:id/cancel` and `.../terminate`.
+ * `reason` is forwarded to Temporal as the
  * cancel/terminate reason for the workflow-history record.
  */
 export class WorkflowActionRequest {

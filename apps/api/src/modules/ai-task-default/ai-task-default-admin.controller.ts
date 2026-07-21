@@ -17,7 +17,7 @@ import { CanManage, CanRead, ExpectedVersion, RequiresIfMatch } from '../../deco
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
 
 /**
- * AiTaskDefaultAdminController (TASK-506) — the admin surface for per-tenant
+ * AiTaskDefaultAdminController — the admin surface for per-tenant
  * "default model for AI task X" rows (`guardrail.validate`, `nlp.ner`,
  * `nlp.classification`), mounted at `/admin/ai-task-defaults` (global prefix →
  * `/api/v1/admin/ai-task-defaults`). Mirrors `TenantTtsConfigAdminController`:

@@ -38,13 +38,13 @@ export class ConsultationService extends BaseService implements IConsultationSer
     private readonly consultationRepository: ConsultationRepository,
     private readonly departmentRepository: DepartmentRepository,
     private readonly userRoleAssignmentRepository: UserRoleAssignmentRepository,
-    // TASK-305 Phase F — membership is role + department; the guard needs the
+    // Membership is role + department; the guard needs the
     // department join table and the User table (service-account exemption).
     private readonly userDepartmentRepository: UserDepartmentRepository,
     private readonly userRepository: UserRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // TASK-392 (Phase 3, M1) — optional (append-only DI); enforces the plan
+    // Optional (append-only DI); enforces the plan
     // `monthlyConsultations` meter when STARTING a new consultation
     // (kill-switch-gated, → 429 when over the rolling-monthly cap).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
@@ -53,7 +53,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
   }
 
   /**
-   * TASK-305 D.2 (audit C-1 / C-2 / C-4) — assert every cross-aggregate
+   * (audit C-1 / C-2 / C-4) — assert every cross-aggregate
    * reference on a Consultation write lives in the caller's tenant before
    * any factory or repository call runs:
    *
@@ -130,7 +130,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       return ConsultationDtoMapper.toResponse(withRelations ?? existing, false);
     }
 
-    // TASK-392 (Phase 3, M1) — a genuinely NEW consultation consumes a monthly
+    // A genuinely NEW consultation consumes a monthly
     // meter unit. Only the create branch is metered (returning an existing
     // consultation does not). Kill-switch-gated; → 429 when over the cap.
     await this.entitlements?.assertMeterQuota(tenantId, 'monthlyConsultations');
@@ -174,7 +174,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // TASK-305 D.2 — verify all cross-aggregate refs (parent, department,
+    // Verify all cross-aggregate refs (parent, department,
     // doctor) live in the caller's tenant before any factory call. The
     // helper throws NotFoundException on miss / cross-tenant to keep this
     // behaviour indistinguishable from "resource does not exist".
@@ -186,7 +186,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
 
     const appointmentDate = request.appointmentDate ? new Date(request.appointmentDate) : new Date(new Date().toISOString().split('T')[0]);
 
-    // TASK-392 (Phase 3, M1) — a re-visit is also a new consultation for meter
+    // A re-visit is also a new consultation for meter
     // purposes. Kill-switch-gated; → 429 when over the rolling-monthly cap.
     await this.entitlements?.assertMeterQuota(tenantId, 'monthlyConsultations');
 
@@ -215,7 +215,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
   /**
    * Get consultation by ID with context
    *
-   * TASK-306 P2.1 (audit C-1 / AC-8) — defense-in-depth: the Prisma
+   * Defense-in-depth: the Prisma
    * `tenantScope` extension already filters foreign-tenant rows on
    * `findWithContext`, but an explicit service-layer assert provides a
    * second line so the method still refuses to leak data if the
@@ -224,7 +224,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
    * `NotFoundException('Resource not found')` on mismatch — no model /
    * id echo — and `BadRequestException` when CLS has no tenant.
    *
-   * TASK-306 W5.7.7 (306-F5) — the missing-CLS check is hoisted to the
+   * The missing-CLS check is hoisted to the
    * top of the method so unprovisioned background calls fail closed
    * BEFORE the repo round-trip, matching the `getConsultationChain`
    * convention.
@@ -250,14 +250,14 @@ export class ConsultationService extends BaseService implements IConsultationSer
   /**
    * Get consultation by ID with all relations (Doctor, Department, Context)
    *
-   * TASK-306 P2.1 (audit C-1 / AC-8) — defense-in-depth: same posture as
+   * Defense-in-depth: same posture as
    * `getById`. The Prisma `tenantScope` extension filters foreign-tenant
    * rows on `findWithRelations`, but the service-layer assert provides
    * an explicit second line on PHI relations so an extension bypass or
    * stale-CLS background call still fails closed with a generic
    * `NotFoundException('Resource not found')`.
    *
-   * TASK-306 W5.7.7 (306-F5) — the missing-CLS check is hoisted to the
+   * The missing-CLS check is hoisted to the
    * top of the method (same posture as `getById`); the relations join
    * is more expensive than a single-row read, so the saved round-trip
    * is even more useful here.
@@ -323,7 +323,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
   /**
    * Get consultation chain (parent + all children)
    *
-   * TASK-306 P2.1 (audit C-1 / AC-8) — defense-in-depth: unlike the two
+   * Defense-in-depth: unlike the two
    * single-id reads, the chain query joins by `parentConsultationId` and
    * can in principle return rows from multiple tenants if the FK was
    * ever poisoned cross-tenant (or the Prisma extension is bypassed).
@@ -498,7 +498,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
   }
 
   /**
-   * TASK-319 F1 — admin/tenant-wide listing.
+   * Admin/tenant-wide listing.
    *
    * Lists EVERY consultation in the caller's tenant (no owner/shared-patient
    * scoping). Reached only from the admin surface (`/admin/consultations`,
@@ -515,7 +515,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     status?: ConsultationStatus;
   }): Promise<PaginatedConsultationResponse> {
     const tenantId = this.tenantId;
-    // TASK-386 (TD3 / DEF-1) — a GLOBAL_ADMIN with NO tenant scope reads
+    // (TD3 / DEF-1) — a GLOBAL_ADMIN with NO tenant scope reads
     // cross-tenant: the Prisma `tenantScope` extension passes through when CLS
     // has no tenant AND the caller is super-admin, so we OMIT the `tenantId`
     // filter and the platform dashboard sees every tenant's consultations
@@ -534,7 +534,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     if (patientId) filters.patientId = patientId;
     if (doctorId) filters.doctorId = doctorId;
     if (departmentId) filters.departmentId = departmentId;
-    // TASK-341 B2 — optional lifecycle-status filter (indexed by [tenantId, status]);
+    // Optional lifecycle-status filter (indexed by [tenantId, status]);
     // the admin live console uses ?status=RECORDING to find in-progress recordings.
     if (status) filters.status = status;
 
@@ -561,7 +561,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
   }
 
   /**
-   * TASK-386 (#20 / E4) — server-side, zero-filled date-range aggregation of
+   * Server-side, zero-filled date-range aggregation of
    * new vs. revisit consultation counts. Replaces the FE's client-side
    * single-page bucketing (`apps/admin/src/features/tenant-dashboard/chart.ts`)
    * which under-counts long ranges.
@@ -603,7 +603,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     const rangeStart = buckets[0]?.start ?? startOfUtcDay(fromDate);
     const rangeEnd = buckets[buckets.length - 1]?.end ?? endOfUtcDay(toDate);
 
-    // TASK-414 — routed through ConsultationRepository (TASK-311 AC-8); the
+    // Routed through ConsultationRepository; the
     // repository applies the same createdAt range + optional-tenant filter.
     const rows = await this.consultationRepository.findCreatedInRange(rangeStart, rangeEnd, tenantId);
 
@@ -643,7 +643,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
   }
 
   // ============================================
-  // TASK-322 — Lifecycle (close / reopen / update)
+  // Lifecycle (close / reopen / update)
   //
   // The Consultation model has no dedicated open/closed column, so the
   // lifecycle status lives in `metadata.status` (OPEN | CLOSED; absent ⇒
@@ -783,13 +783,13 @@ export class ConsultationService extends BaseService implements IConsultationSer
   }
 
   // ============================================
-  // Clinical Workflow Playground (WS2) — recording lifecycle
+  // Recording lifecycle
   //
   // Unlike close/reopen (which use the legacy `metadata.status` JSON), the
-  // recording lifecycle writes the typed `status` COLUMN promoted in TASK-330
-  // — the same column the harness attestation gate writes (RECORDING →
-  // PENDING_REVIEW → SIGNED). The DTO mapper treats a non-OPEN column value as
-  // canonical, so `ConsultationResponse.status` reflects RECORDING immediately.
+  // recording lifecycle writes the typed `status` COLUMN — the same column
+  // the harness attestation gate writes (RECORDING → PENDING_REVIEW →
+  // SIGNED). The DTO mapper treats a non-OPEN column value as canonical, so
+  // `ConsultationResponse.status` reflects RECORDING immediately.
   // The LiveDocumentationService session is started/stopped by the controller
   // around these status transitions.
   // ============================================
@@ -845,7 +845,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
 }
 
 // ---------------------------------------------------------------------------
-// TASK-386 (#20) — UTC date-bucket helpers for aggregateConsultationsForTenant.
+// UTC date-bucket helpers for aggregateConsultationsForTenant.
 //
 // Plain Date math (no date-fns dependency in @arcaai/applications) on UTC
 // boundaries so the result is independent of the server timezone. Key/label

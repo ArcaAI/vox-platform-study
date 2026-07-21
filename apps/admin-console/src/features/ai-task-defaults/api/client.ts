@@ -1,5 +1,5 @@
 /**
- * AI task-default client (TASK-506 Phase 6). Per-tenant "default model for AI
+ * AI task-default client. Per-tenant "default model for AI
  * task X" rows resolved tenant → SYSTEM → service env fallback. Paths are
  * gateway-relative; the shared core prepends the BFF proxy mount. Tenant
  * admins omit `tenantId` (CLS-pinned); the platform screen passes the SYSTEM

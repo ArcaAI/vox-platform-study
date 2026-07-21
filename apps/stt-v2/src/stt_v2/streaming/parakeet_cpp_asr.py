@@ -1,4 +1,4 @@
-"""parakeet.cpp per-utterance streaming adapter (TASK-505 P3).
+"""parakeet.cpp per-utterance streaming adapter.
 
 Wraps a loaded parakeet.cpp handle behind the streaming ASR callable contract
 ``(samples, sample_rate, *, prompt) -> {text, language, word_timestamps,
@@ -6,8 +6,7 @@ segments}`` (see ``faster_whisper_asr.py``). This is the MINIMAL per-utterance
 integration: the model family (cache-aware FastConformer-RNNT,
 nemotron-3.5-asr-streaming) also supports true stateful incremental streaming,
 which does NOT fit the current per-utterance contract — that native mode is a
-separate ticket (per the TASK-505 research: per-utterance first, stateful
-later).
+future integration (per-utterance first, stateful later).
 
 The binding is duck-typed: any object exposing ``transcribe(samples,
 sample_rate, num_threads=...) -> {text, words?[{word,start,end,confidence?}],

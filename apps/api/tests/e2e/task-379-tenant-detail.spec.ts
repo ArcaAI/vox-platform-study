@@ -1,5 +1,5 @@
 /**
- * TASK-379 — Page-based Tenant Detail + App-Shell — backend contract verification.
+ * Page-based Tenant Detail + App-Shell — backend contract verification.
  *
  * Exercises the REAL server side of every data flow the page-based Tenant Detail
  * surface drives, against the live API (`pnpm test:e2e`, or a dev stack via

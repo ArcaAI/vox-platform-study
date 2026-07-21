@@ -1,5 +1,5 @@
 /**
- * KnowledgeDocumentService unit tests (TASK-330 Phase 3 — institutional RAG).
+ * KnowledgeDocumentService unit tests — institutional RAG.
  *
  * Data-layer + approval-workflow service: builds the tenant-scoped
  * KnowledgeDocument via the domain factory, persists through the repository,

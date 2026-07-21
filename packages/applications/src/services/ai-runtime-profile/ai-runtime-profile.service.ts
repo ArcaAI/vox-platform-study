@@ -43,17 +43,17 @@ const RANGES: Record<string, { min: number; max?: number }> = {
 const KNOBS = ['temperature', 'topP', 'maxTokens', 'contextLength', 'maxConcurrent', 'tpmLimit', 'rpmLimit', 'timeoutS', 'keepAliveSeconds'] as const;
 
 /**
- * TASK-524 — runtime-profile service (GAP-C2).
+ * Runtime-profile service.
  *
  * Hyperparameters / context / concurrency are GLOBAL-ADMIN-ONLY and
- * SYSTEM-tenant-only in this program (owner expectation E5). A write from a
+ * SYSTEM-tenant-only by design. A write from a
  * non-global-admin, or targeting any tenant other than SYSTEM, is a PRIVILEGE
  * boundary → 403 (not the 404-over-403 cross-tenant posture).
  *
  * The resolution contract is deliberately forgiving: a missing profile is NOT
  * an error, it resolves to all-null / `isEmpty: true`. That is what lets the
- * gateway inject nothing and leave forwarded requests byte-identical to today
- * (ticket §7 silent-change guard) while zero profile rows are seeded.
+ * gateway inject nothing and leave forwarded requests byte-identical while
+ * zero profile rows are seeded (a silent-change guard).
  */
 @Injectable()
 export class AiRuntimeProfileService extends BaseService implements IAiRuntimeProfileService {

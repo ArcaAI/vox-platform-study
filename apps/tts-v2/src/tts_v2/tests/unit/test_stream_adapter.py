@@ -1,4 +1,4 @@
-"""TDD tests for the WS-duplex streaming path (TASK-492 Phase 1).
+"""TDD tests for the WS-duplex streaming path.
 
 Covers ``split_confirmed`` incremental segmentation, the ``SentenceAdapter``
 (buffer → per-sentence synth → audio out), and ``TTSRouter.stream`` (before-

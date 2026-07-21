@@ -8,7 +8,7 @@ import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
 /**
- * Append-only WORM record of a single harness-policy edit (TASK-330 Phase 6).
+ * Append-only WORM record of a single harness-policy edit.
  *
  * Immutable by design: the backing table has NO `_version` / `_metadata` /
  * `updatedAt` / `resourceStatus` columns and the migration REVOKEs UPDATE/DELETE
@@ -22,7 +22,7 @@ export interface IHarnessPolicyChangeEntity extends IBaseTenantEntity {
   beforeJson?: JsonValue | null;
   afterJson: JsonValue;
   reason?: string | null;
-  // TASK-369 Phase 3D — Vault-Transit (hope-phi) ciphertext of beforeJson/
+  // Vault-Transit (hope-phi) ciphertext of beforeJson/
   // afterJson + shared key version. Set ONLY on encrypted (new) rows; the
   // plaintext JSONB columns then hold a non-PHI redaction sentinel. Null on
   // legacy/plaintext rows. WORM table — immutable once written.
@@ -64,7 +64,7 @@ export class HarnessPolicyChangeEntity extends BaseTenantEntity {
     return this._policyVersion;
   }
 
-  // TASK-369 Phase 3D — @Secret() marks the before/after policy snapshots for
+  // @Secret() marks the before/after policy snapshots for
   // audit-log redaction. On encrypted rows these hold a redaction sentinel; the
   // real value lives in the encrypted* columns (use the repo decrypt helper).
   @Secret()
@@ -81,7 +81,7 @@ export class HarnessPolicyChangeEntity extends BaseTenantEntity {
     return this._reason;
   }
 
-  // TASK-369 Phase 3D — Vault-Transit ciphertext (read-only; WORM).
+  // Vault-Transit ciphertext (read-only; WORM).
   @Secret()
   get encryptedBeforeJson(): IHarnessPolicyChangeEntity['encryptedBeforeJson'] {
     return this._encryptedBeforeJson;

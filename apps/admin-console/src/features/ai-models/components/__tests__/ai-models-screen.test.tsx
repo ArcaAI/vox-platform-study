@@ -285,7 +285,7 @@ describe('AiModelsScreen', () => {
 });
 
 // =============================================================================
-// TASK-528 — the hub header action opening the discovery drawer
+// The hub header action opening the discovery drawer
 // =============================================================================
 describe('AiModelsScreen discovery action (TASK-528)', () => {
     it('renders a "Discover from servers" header action', async () => {

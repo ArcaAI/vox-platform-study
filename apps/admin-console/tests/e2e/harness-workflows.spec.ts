@@ -32,9 +32,9 @@ async function waitForSettled(page: Page) {
 
 test.describe('harness workflows (frame 38)', () => {
     test('shows the header, filter strip and the fill-height grid', async ({ page }) => {
-        // Redesign (TASK-441): the Detail and Signals-&-lifecycle side panels
-        // moved into the detail slide-over (opened by selecting a workflow);
-        // the grid is now primary and polls live while runs are RUNNING.
+        // The Detail and Signals-&-lifecycle side panels moved into the
+        // detail slide-over (opened by selecting a workflow); the grid is
+        // now primary and polls live while runs are RUNNING.
         await page.goto('/harness/workflows');
         await waitForSettled(page);
         await expect(page.getByRole('button', { name: 'Refresh' })).toBeVisible();

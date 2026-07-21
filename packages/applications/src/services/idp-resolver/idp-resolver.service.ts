@@ -37,7 +37,7 @@ const SAML_SIGNATURE_ALGORITHM = 'sha256';
 const SAML_CLOCK_SKEW_MS = 60_000;
 
 /**
- * TASK-498 D4 — per-tenant OIDC client resolver. Resolution is a tenant-scoped
+ * Per-tenant OIDC client resolver. Resolution is a tenant-scoped
  * repository read + a per-provider client cache — deliberately NOT
  * `AppSettingsService` (its cache is key-only and platform-tenant-wins,
  * `appSettings.service.ts:246-251` — the exact failure mode of the old global
@@ -54,10 +54,10 @@ export class IdpResolverService {
     // with an actionable error rather than ever falling back to plaintext.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
     // Optional so non-Redis (dev/test) deploys still boot; the SAML request
-    // cache then falls back to node-saml's own per-pod in-memory provider
-    // (TASK-499 D4 — fine for single-instance dev, NOT for a multi-replica
+    // cache then falls back to node-saml's own per-pod in-memory provider —
+    // fine for single-instance dev, NOT for a multi-replica
     // deployment, matching the same tradeoff `resolveByProviderId` documents
-    // for the OIDC path).
+    // for the OIDC path.
     @Optional() @Inject(IRedisCacheService) private readonly redisCache?: IRedisCacheService,
   ) {}
 
@@ -137,13 +137,13 @@ export class IdpResolverService {
   /**
    * Pure builder — no cache, no persisted-config lookup. `wantAssertionsSigned`
    * / `validateInResponseTo` / `signatureAlgorithm` / `acceptedClockSkewMs`
-   * are hardcoded, NON-NEGOTIABLE per TASK-499 D4/§6 — not a tenant-admin
+   * are hardcoded, NON-NEGOTIABLE — not a tenant-admin
    * knob, so a misconfigured/compromised config row can never weaken
    * assertion validation. `wantAuthnResponseSigned: false` is deliberate:
    * requiring the outer `<Response>` element itself be signed (in addition
    * to the assertion) would reject the common "assertion-signed-only"
-   * default most real IdPs (Okta, Azure AD, OneLogin) ship with — D4 only
-   * requires the assertion be signed.
+   * default most real IdPs (Okta, Azure AD, OneLogin) ship with — only the
+   * assertion itself must be signed.
    */
   async buildSamlClient(config: SamlPersistedConfig, acsUrl: string, spPrivateKeyPem?: string): Promise<SAML> {
     const cacheProvider = this.redisCache

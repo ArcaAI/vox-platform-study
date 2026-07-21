@@ -78,7 +78,7 @@ def get_provider_queues(request: Request) -> dict[str, ProviderQueue]:
 def get_provider_semaphores(request: Request) -> dict[str, ResizableSemaphore]:
     """Retrieve per-provider concurrency semaphores from app.state.
 
-    TASK-525: these are `ResizableSemaphore`s whose capacity tracks the control
+    These are `ResizableSemaphore`s whose capacity tracks the control
     plane. The objects are stable for the process's lifetime — never rebind an
     entry here, or in-flight permits and waiters are stranded.
     """

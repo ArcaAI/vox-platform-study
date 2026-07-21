@@ -1,7 +1,7 @@
-// TASK-369 (Data Encryption Initiative) follow-up — environment-gated PHI
-// field-encryption guard, shared by every service that encrypts PHI on write.
+// Environment-gated PHI field-encryption guard, shared by every service that
+// encrypts PHI on write.
 //
-// Phase 3 wired encrypt-on-write as "best-effort" in each service (a private
+// Encrypt-on-write runs as "best-effort" in each service (a private
 // `encryptBestEffort` / `encryptContent` that silently no-ops when the
 // SecretsService is missing and swallows Vault errors). That dual-write soak
 // behaviour is correct for dev/test, but in staging/prod silently persisting a
@@ -11,11 +11,11 @@
 //   - dev/test  (SECRETS_PROVIDER != 'vault') → SOFT no-op (logged, never PHI)
 //   - staging/prod (SECRETS_PROVIDER == 'vault') → FAIL CLOSED (throw)
 //
-// Only the WRITE path is governed here. TASK-369 Phase 6 has since DROPPED the
-// plaintext PHI columns, so in the soft (dev/test) mode the field is simply left
-// unencrypted-and-unpersisted — there is no plaintext column to fall back to.
-// Any environment that must retain PHI therefore runs SECRETS_PROVIDER=vault
-// (fail-closed); reads decrypt the ciphertext only.
+// Only the WRITE path is governed here. There are no plaintext PHI columns, so
+// in the soft (dev/test) mode the field is simply left unencrypted-and-unpersisted
+// — there is no plaintext column to fall back to. Any environment that must
+// retain PHI therefore runs SECRETS_PROVIDER=vault (fail-closed); reads
+// decrypt the ciphertext only.
 
 /** Minimal logger surface — satisfied structurally by the NestJS `Logger`. */
 export interface PhiEncryptLogger {
@@ -37,8 +37,8 @@ export function isPhiEncryptionRequired(env: NodeJS.ProcessEnv = process.env): b
  * Run a PHI field-encryption step with environment-gated failure semantics.
  *
  * Soft mode (dev/test):
- *   - `secrets` absent → no-op (Phase 6 dropped plaintext, so the field is left
- *     unpersisted; only safe where the env holds no real PHI).
+ *   - `secrets` absent → no-op (there is no plaintext column, so the field is
+ *     left unpersisted; only safe where the env holds no real PHI).
  *   - `run()` throws   → swallowed + logged (message only — never PHI).
  *
  * Required mode (`SECRETS_PROVIDER=vault`):

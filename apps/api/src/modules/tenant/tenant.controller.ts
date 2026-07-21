@@ -21,11 +21,11 @@ import { ClsService } from 'nestjs-cls';
 import { ApiEndpoint, CanAny, CanManage } from '../../decorators';
 import { assertTenantInScope as assertTenantScope } from '../../shared/tenant-scope';
 
-// AC-10 (TASK-336) — canonical RFC 4122 8-4-4-4-12 shape (any version, incl. the
+// Canonical RFC 4122 8-4-4-4-12 shape (any version, incl. the
 // uuidv7 tenant ids the platform mints). Lets the config scope guard decide
 // up-front when a dual `:identifier` is a tenant UUID vs a code-name.
 const TENANT_UUID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-// TASK-302 Stream D Phase E.1 — `@RequiresIfMatch()` route marker +
+// `@RequiresIfMatch()` route marker +
 // `@ExpectedVersion()` param decorator. The route guard fires 428 when
 // the header is missing; the param decorator returns the parsed version
 // when present (or `undefined` when this route is NOT marked, leaving
@@ -34,7 +34,7 @@ import { RequiresIfMatch, ExpectedVersion } from '../../decorators';
 import { TenantUsageResponse } from './dto';
 
 /**
- * TASK-331 doc-04 F1/Q2 — class-level posture is `manage:Tenant` OR
+ * Class-level posture is `manage:Tenant` OR
  * `update:Tenant`, so a TENANT_ADMIN (who has tenant-scoped `update:Tenant`
  * via `tenant-full-access`) can reach the read/update/config routes for their
  * own tenant, while GLOBAL_ADMIN (`manage:all`) keeps full cross-tenant access.
@@ -54,7 +54,7 @@ export class TenantController {
   ) {}
 
   /**
-   * TASK-307 W5.5 (AC-19, audit D-5): the class-level
+   * The class-level
    * `@CanAny(['manage','Tenant'],['update','Tenant'])` authorises any caller
    * with `manage:Tenant` or tenant-scoped `update:Tenant` to reach the per-row
    * routes, but the underlying CASL policy is `tenantId: ${user.tenantId}`. The
@@ -67,7 +67,7 @@ export class TenantController {
   }
 
   /**
-   * AC-10 (TASK-336) — scope guard for the tenant-config routes, which take a
+   * Scope guard for the tenant-config routes, which take a
    * dual `:identifier` (tenant UUID OR code-name). A non-global-admin may only
    * address their own tenant. We can decide this up-front ONLY for a UUID
    * identifier; a code-name is deferred to the service's own
@@ -93,7 +93,7 @@ export class TenantController {
     method: HttpMethod.POST,
   })
   @ApiResponse({ status: 400, description: 'Bad request - invalid input' })
-  // TASK-331 doc-04 Q2 — creating tenants is GLOBAL_ADMIN-only. Method-level
+  // Creating tenants is GLOBAL_ADMIN-only. Method-level
   // metadata overrides the class `@CanAny(...)`, so a TENANT_ADMIN (who lacks
   // `manage:Tenant`) is refused here even though it can reach read/update.
   @CanManage('Tenant')
@@ -109,7 +109,7 @@ export class TenantController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   async fetchAll(@Query() queryParams: PaginatedQuery): Promise<PaginatedTenantResponse> {
-    // TASK-319 F5: `Tenant` rows are NOT covered by the tenantScopeFilter Prisma
+    // `Tenant` rows are NOT covered by the tenantScopeFilter Prisma
     // extension, and the class-level `@CanAny(['manage','Tenant'],['update','Tenant'])`
     // admits any TENANT_ADMIN (their CASL policy is `tenantId: ${user.tenantId}`). Without
     // this guard a tenant admin could enumerate every tenant on the platform.
@@ -194,7 +194,7 @@ export class TenantController {
   @ApiOperation({
     summary: 'Update tenant',
     description:
-      'Updates one tenant row. Optimistic concurrency is enforced (TASK-302 Stream D Phase E.1): ' +
+      'Updates one tenant row. Optimistic concurrency is enforced: ' +
       'the `If-Match` header (RFC 7232) is REQUIRED, and the server runs a Compare-And-Set ' +
       "against the row's `_version`. When the header is present, its value overrides the " +
       'body-field `expectedVersion`. On version drift the response is `412 Precondition Failed`; ' +
@@ -219,7 +219,7 @@ export class TenantController {
     @ExpectedVersion() expectedFromHeader: number | undefined,
   ): Promise<TenantResponse> {
     this.assertTenantInScope(id);
-    // TASK-302 Stream D Phase E.1 — header takes precedence over body
+    // Header takes precedence over body
     // when both are present. On a `@RequiresIfMatch()` route, the param
     // decorator already fired 428 if the header would have been
     // undefined, so the fallback below is only reachable in tests /
@@ -237,7 +237,7 @@ export class TenantController {
   })
   @ApiParam({ name: 'id', description: 'Tenant ID', type: String })
   @ApiResponse({ status: 404, description: 'Tenant not found' })
-  // TASK-331 doc-04 Q2 — deleting tenants is GLOBAL_ADMIN-only (see create()).
+  // Deleting tenants is GLOBAL_ADMIN-only (see create()).
   @CanManage('Tenant')
   async delete(@Param('id') id: string): Promise<TenantResponse> {
     this.assertTenantInScope(id);
@@ -245,7 +245,7 @@ export class TenantController {
     return TenantDtoMapper.ToResponse(result);
   }
 
-  // ── TASK-387 (#1 / F6) — tenant lifecycle transitions ──────────────────────
+  // ── Tenant lifecycle transitions ────────────────────────────────────────────
   // suspend/archive/restore are privileged operator actions (like create/delete)
   // so they are pinned to `manage:Tenant` (GLOBAL_ADMIN). Non-OCC: these are
   // explicit admin state changes, not last-write-wins field edits. The service
@@ -292,7 +292,7 @@ export class TenantController {
     return TenantDtoMapper.ToResponse(result);
   }
 
-  // ── TASK-387 (#2 / F9) — tenant tags ───────────────────────────────────────
+  // ── Tenant tags ──────────────────────────────────────────────────────────
   // Tags are a lightweight `String[]` scalar on Tenant (see ticket doc for the
   // representation decision). Read/set are tenant-scoped: a TENANT_ADMIN may
   // manage tags on their OWN tenant (class-level `update:Tenant`), GLOBAL_ADMIN
@@ -350,7 +350,7 @@ export class TenantController {
     @Body() configs: UpdateTenantConfigRequest[],
   ): Promise<PaginatedTenantConfigResponse> {
     this.assertConfigInScope(identifier);
-    // AC-10 (TASK-336) — explicit updatable-key allow-list. The global
+    // Explicit updatable-key allow-list. The global
     // ValidationPipe does NOT whitelist array-body elements (see
     // `my-tenant.controller.ts`), so the raw body could smuggle extra keys
     // (`locked`, `tenantId`, `key`, …) to the service. Forward ONLY the

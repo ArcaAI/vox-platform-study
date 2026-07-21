@@ -1,5 +1,5 @@
 /**
- * TASK-328 A6 — Typed shape of `TenantFrontendConfig.configJson`.
+ * Typed shape of `TenantFrontendConfig.configJson`.
  *
  * The frozen Prisma column is `Json?`, but per the slice's typing rule the
  * advanced-config section is a TYPED object (never `any`): these are the

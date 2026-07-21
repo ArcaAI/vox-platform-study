@@ -3,7 +3,7 @@ import * as Entities from '../../../entities';
 import * as Models from '../../../models';
 import * as Mappers from '../../../mappers';
 
-// TASK-302 Stream D Phase E.3 — `_version` is owned by the database and the
+// `_version` is owned by the database and the
 // only legitimate writer is `Repository.updateWithVersion`. Strip it from every
 // write path here so the auto-mappers cannot leak it into a Prisma update.
 // Note: `PromptTemplate` has its own version-history sibling (`PromptVersion`).
@@ -41,7 +41,7 @@ export class PromptTemplateEntityMapper extends BaseMapper<Entities.PromptTempla
 
 export const PromptTemplateEntityMapperHandlers = createMapperHandlers<Entities.PromptTemplateEntity, Models.PromptTemplate>({
   $toPersistence: {
-    // TASK-369 Phase 3C — return the raw ciphertext Buffer directly so the
+    // Return the raw ciphertext Buffer directly so the
     // generic auto-mapper does not destructure the typed array.
     encryptedLastTestOutput: (entity) => entity.encryptedLastTestOutput ?? null,
   },

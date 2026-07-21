@@ -5,7 +5,7 @@ import { SecretsService } from '@arcaai/applications';
 import { isAxiosError } from 'axios';
 
 /**
- * Base path of the harness admin surface (TASK-330 Phase 6 — Phase B). The
+ * Base path of the harness admin surface. The
  * Python agent builds matching endpoints under this prefix on apps/harness; the
  * request/response contracts below are the source of truth for that work.
  */
@@ -63,7 +63,7 @@ export interface ListWorkflowsParams {
 }
 
 /**
- * HarnessOpsClient (TASK-330 Phase 6 — Phase B).
+ * HarnessOpsClient.
  *
  * The OUTBOUND half of the apps/api → apps/harness workflow-ops adapter. Speaks
  * HTTP only (the Temporal SDK stays isolated in apps/harness), authenticating

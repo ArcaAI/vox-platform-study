@@ -1,5 +1,5 @@
 /**
- * TASK-492 — useTtsStream hook orchestration (WS duplex).
+ * useTtsStream hook orchestration (WS duplex).
  *
  * @vitest-environment jsdom
  */

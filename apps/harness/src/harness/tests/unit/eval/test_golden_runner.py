@@ -1,6 +1,6 @@
-"""Golden-set runner + pluggable source tests (TASK-330, task 0.5).
+"""Golden-set runner + pluggable source tests.
 
-RED-first. The golden-set source is an interface (Protocol) so the real
+The golden-set source is an interface (Protocol) so the real
 clinician-authored set (SME prerequisite) can be dropped in later; today a small
 synthetic JSON fixture ships with the package. The runner scores every case with
 the PDSQI-9 judge (+ optional faithfulness) and aggregates the results. No live LLM.

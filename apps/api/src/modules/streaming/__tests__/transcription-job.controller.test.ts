@@ -77,10 +77,10 @@ const createMockStreamTicketService = () => ({
     consumeTicket: vi.fn(),
 });
 
-// TASK-310 W7.A.9 (AC-3): the controller now binds on session create and
+// The controller binds on session create and
 // clears on close. Tests stub the binding so we can assert the dependency
 // is invoked (and used in the new annotation contract).
-// TASK-351 P0-2 (C5): the controller also persists session meta (sampleRate)
+// The controller also persists session meta (sampleRate)
 // so the WS gateway can forward frames at the negotiated rate.
 const createMockStreamSessionTenantBinding = () => ({
     bind: vi.fn().mockResolvedValue(undefined),
@@ -90,7 +90,7 @@ const createMockStreamSessionTenantBinding = () => ({
     clear: vi.fn().mockResolvedValue(undefined),
 });
 
-// TASK-392 (concurrency) — the entitlements service gates new streaming
+// The entitlements service gates new streaming
 // sessions against the tenant's resolved `maxConcurrentSessions`. Default:
 // a no-op (kill-switch OFF / under limit) so existing tests are unaffected.
 const createMockEntitlements = () => ({
@@ -173,7 +173,6 @@ describe('TranscriptionJobController', () => {
     });
 
     describe('GET /stats', () => {
-        // TASK-319 F3 — end-user stats are owner-scoped (caller's jobs only).
         it('should return OWNER-scoped job status counts (never tenant-wide)', async () => {
             const stats = { queued: 5, processing: 2, completed: 10, failed: 1, cancelled: 0, dead: 0 };
             mockJobService.getStatusCountsForOwner.mockResolvedValue(stats);
@@ -187,7 +186,6 @@ describe('TranscriptionJobController', () => {
     });
 
     describe('GET /status/:status', () => {
-        // TASK-319 F3 — end-user status listing is owner-scoped.
         it('should return OWNER-scoped jobs for the given status', async () => {
             const jobs = [{ id: 'job-1', status: 'COMPLETED' }];
             mockJobService.getByStatusForOwner.mockResolvedValue(jobs);
@@ -201,7 +199,7 @@ describe('TranscriptionJobController', () => {
     });
 
     describe('GET /consultation/:consultationId', () => {
-        // EU-02 (TASK-336) — owner-scoped: the end-user surface returns only the
+        // Owner-scoped: the end-user surface returns only the
         // caller's OWN jobs for the consultation, not every tenant job on it.
         it('should return the caller-owned jobs for the consultation', async () => {
             const jobs = [{ id: 'job-1' }, { id: 'job-2' }];
@@ -234,7 +232,6 @@ describe('TranscriptionJobController', () => {
     });
 
     describe('GET / (list)', () => {
-        // TASK-319 F3 — end-user list is owner-scoped (caller's jobs only).
         it('should return an OWNER-scoped paginated job list (never tenant-wide)', async () => {
             const paginated = { data: [], total: 0, page: 1, limit: 20, totalPages: 0 };
             mockJobService.listForOwner.mockResolvedValue(paginated);
@@ -263,7 +260,7 @@ describe('TranscriptionJobController', () => {
             expect(mockRealtimeService.subscribeToJob).not.toHaveBeenCalled();
         });
 
-        // TASK-419 item 6 — single-use tickets from POST /auth/stream-ticket must
+        // Single-use tickets from POST /auth/stream-ticket must
         // authenticate this route: the JwtAuthGuard rejects any ticket presented
         // on a route without @StreamScope, so the console's `transcription_job:<id>`
         // scoped tickets 401'd before this declaration existed.
@@ -302,7 +299,6 @@ describe('TranscriptionJobController', () => {
             });
         });
 
-        // TASK-298 D-2 — cross-tenant pipelineId guard.
         it('throws NotFoundException when pipelineId is not in caller tenant (D-2)', async () => {
             mockPipelineService.getById.mockResolvedValueOnce(null);
 
@@ -312,7 +308,6 @@ describe('TranscriptionJobController', () => {
             expect(mockSessionService.createSession).not.toHaveBeenCalled();
         });
 
-        // TASK-298 D-1 — ticket minting.
         it('mints a stream ticket scoped to stt_session:<sessionId> and returns it (D-1)', async () => {
             mockSessionService.createSession.mockResolvedValue({
                 sessionId: 'sess-mint',
@@ -338,9 +333,6 @@ describe('TranscriptionJobController', () => {
             });
         });
 
-        // TASK-351 P0-2 (C5) — the negotiated sampleRate must be persisted as
-        // session meta so the WS gateway forwards frames at the real rate
-        // instead of the previously hardcoded 16000.
         it('persists the negotiated sampleRate as session meta for the gateway (TASK-351 C5)', async () => {
             mockSessionService.createSession.mockResolvedValue({
                 sessionId: 'sess-meta',
@@ -388,7 +380,7 @@ describe('TranscriptionJobController', () => {
 
             await controller.createStreamSession({ pipelineId: 'pipe-1' });
 
-            // TASK-426 — the default system slug is now `recordings`.
+            // The default system slug is now `recordings`.
             expect(mockTenantBucketService.getBucketBySlug).toHaveBeenCalledWith('recordings');
             expect(mockSessionService.createSession).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -397,7 +389,7 @@ describe('TranscriptionJobController', () => {
             );
         });
 
-        // TASK-318 W3-B — the configured AUDIO-purpose bucket is preferred over
+        // The configured AUDIO-purpose bucket is preferred over
         // the legacy 'audio' slug, and a DEDICATED tenant's storage descriptor is
         // forwarded to STT-v2 so the worker connects to the right backend.
         it('prefers the AUDIO-purpose bucket and forwards the storage descriptor (W3-B)', async () => {
@@ -454,7 +446,7 @@ describe('TranscriptionJobController', () => {
             ).rejects.toThrow();
         });
 
-        // TASK-392 (concurrency) — the concurrency gate runs on the caller's
+        // The concurrency gate runs on the caller's
         // tenant before any STT-V2 session is created.
         it('asserts the tenant concurrency quota before creating the session (TASK-392)', async () => {
             mockSessionService.createSession.mockResolvedValue({
@@ -472,7 +464,7 @@ describe('TranscriptionJobController', () => {
             expect(gateOrder).toBeLessThan(createOrder);
         });
 
-        // TASK-392 (concurrency) — a hard-block from the gate rejects the request
+        // A hard-block from the gate rejects the request
         // and never creates a session downstream.
         it('propagates a concurrency hard-block and does not create the session (TASK-392)', async () => {
             const { QuotaExceededException } = await import('@arcaai/exceptions');
@@ -494,7 +486,7 @@ describe('TranscriptionJobController', () => {
     });
 
     // =========================================================================
-    // TASK-298 D-18 — refresh-ticket endpoint
+    // Refresh-ticket endpoint
     // =========================================================================
     describe('POST /stream/session/:sessionId/refresh-ticket (D-18)', () => {
         it('mints a new ticket scoped to the existing session', async () => {
@@ -522,7 +514,7 @@ describe('TranscriptionJobController', () => {
     });
 
     // =========================================================================
-    // TASK-298 D-19 — pipelineId shape validation
+    // pipelineId shape validation
     // =========================================================================
     describe('CreateStreamSessionRequest.pipelineId shape validation (D-19)', () => {
         const validPipelineIds = [
@@ -586,7 +578,7 @@ describe('TranscriptionJobController', () => {
     });
 
     describe('POST /:id/cancel', () => {
-        // EU-01 (TASK-336) — creator-scoped: a same-tenant peer cannot cancel a
+        // Creator-scoped: a same-tenant peer cannot cancel a
         // job they did not create (id enumeration). The controller forwards the
         // caller id so the service can 404 non-creators.
         it('should cancel a job via the creator-scoped service method', async () => {
@@ -602,7 +594,6 @@ describe('TranscriptionJobController', () => {
     });
 
     describe('POST /:id/retry', () => {
-        // EU-01 (TASK-336) — creator-scoped retry (mirrors cancel).
         it('should retry a failed job via the creator-scoped service method', async () => {
             const retried = { id: 'job-1', status: 'QUEUED' };
             mockJobService.retryJobForOwner.mockResolvedValue(retried);
@@ -616,9 +607,8 @@ describe('TranscriptionJobController', () => {
     });
 
     // ------------------------------------------------------------------------
-    // TASK-307 W3.8 — every transcription-job-by-id handler must carry
-    // @TenantOwnedResource so the global interceptor 404s cross-tenant probes
-    // (AC-12). Closes audit D-3.
+    // Every transcription-job-by-id handler must carry
+    // @TenantOwnedResource so the global interceptor 404s cross-tenant probes.
     // ------------------------------------------------------------------------
     describe('TASK-307 W3.8 — @TenantOwnedResource metadata', () => {
         const meta = (m: keyof TranscriptionJobController): TenantOwnedResourceOptions | undefined =>
@@ -661,7 +651,7 @@ describe('TranscriptionJobController', () => {
             expect(meta('createStreamSession')).toBeUndefined();
         });
 
-        // TASK-310 W7.A.9 (AC-3) — closeStreamSession IS now annotated with
+        // closeStreamSession IS now annotated with
         // the new `StreamSession` resolver branch.
         it('closeStreamSession IS annotated with {modelName: StreamSession, paramName: sessionId, lookup: "session"} (TASK-310 W7.A.9)', () => {
             expect(meta('closeStreamSession')).toEqual({
@@ -671,7 +661,7 @@ describe('TranscriptionJobController', () => {
             });
         });
 
-        // TASK-450 I-1 — refreshStreamTicket mints an `stt_session:<sessionId>`
+        // refreshStreamTicket mints an `stt_session:<sessionId>`
         // ticket, so it must carry the SAME StreamSession ownership guard as
         // the sibling DELETE route (it HAS a :sessionId route param — the old
         // "no :id route param" rationale was wrong). Pre-fix it was un-gated:
@@ -688,7 +678,7 @@ describe('TranscriptionJobController', () => {
     });
 
     // ------------------------------------------------------------------------
-    // TASK-310 W7.A.9 (AC-3) — createStreamSession binds sessionId → tenantId
+    // createStreamSession binds sessionId → tenantId
     // in the gateway-side `StreamSessionTenantBindingService` so the
     // interceptor can 404 cross-tenant probes on closeStreamSession.
     // closeStreamSession clears the binding after the downstream remove
@@ -719,11 +709,11 @@ describe('TranscriptionJobController', () => {
     });
 
     // ------------------------------------------------------------------------
-    // EU-07 (TASK-336) — the create endpoints (`create` / `createBatch` /
+    // The create endpoints (`create` / `createBatch` /
     // `createStreaming`) previously accepted `@Body() dto: any`, bypassing the
     // global ValidationPipe. They now bind to typed request DTOs so malformed
     // input (bad enum, malformed ids, missing required fields) is rejected.
-    // Note (TASK-298 D-19 / TASK-350): `CreateJobRequest.pipelineId` accepts
+    // Note: `CreateJobRequest.pipelineId` accepts
     // slug-or-UUID via PIPELINE_ID_PATTERN, so a plain slug is valid input.
     // These tests lock the validation contract those endpoints rely on.
     // ------------------------------------------------------------------------
@@ -740,9 +730,9 @@ describe('TranscriptionJobController', () => {
             expect(await validate(dto)).toHaveLength(0);
         });
 
-        // TASK-350 — probe must fail BOTH branches of PIPELINE_ID_PATTERN
+        // Probe must fail BOTH branches of PIPELINE_ID_PATTERN
         // (slug `[A-Za-z0-9][A-Za-z0-9-]*` or UUID): spaces and '!' do.
-        // The old probe 'not-a-uuid' is a valid slug under TASK-298 D-19.
+        // The old probe 'not-a-uuid' is a valid slug under this pattern.
         it('CreateJobRequest rejects an invalid jobType and a non-slug, non-UUID pipelineId', async () => {
             const dto = plainToInstance(CreateJobRequest, { jobType: 'NOT_A_TYPE', pipelineId: 'not a uuid!' });
             const errors = await validate(dto);
@@ -751,7 +741,7 @@ describe('TranscriptionJobController', () => {
             expect(failedProps).toContain('pipelineId');
         });
 
-        // TASK-350 — pin the widened TASK-298 D-19 contract itself: a plain
+        // Pin the widened pipelineId contract itself: a plain
         // slug pipelineId must keep passing CreateJobRequest validation.
         it('CreateJobRequest accepts a valid slug pipelineId (TASK-298 D-19)', async () => {
             const dto = plainToInstance(CreateJobRequest, {

@@ -8,7 +8,7 @@ import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
 /**
- * Editable, tenant-scoped harness runtime policy (TASK-330 Phase 6).
+ * Editable, tenant-scoped harness runtime policy.
  *
  * The reserved system tenant `00000000-0000-0000-0000-000000000000` owns the
  * GLOBAL-DEFAULT row; a per-tenant row OVERRIDES it. `_version` is the

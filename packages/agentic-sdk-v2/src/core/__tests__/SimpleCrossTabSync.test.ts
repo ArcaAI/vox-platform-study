@@ -1,7 +1,7 @@
 /**
  * @arcaai/vox - SimpleCrossTabSync Tests
  *
- * Covers TASK-266 W0-4 (HMAC-signed cross-tab messages) and W0-5 (per-tenant
+ * Covers W0-4 (HMAC-signed cross-tab messages) and W0-5 (per-tenant
  * BroadcastChannel naming) on top of the original sync contract.
  *
  * @vitest-environment jsdom
@@ -247,7 +247,7 @@ describe('SimpleCrossTabSync', () => {
   });
 
   // ===========================================================================
-  // TASK-266 W0-4: HMAC-signed messages
+  // HMAC-signed messages
   //
   // Every broadcast must wrap its payload as `{ payload, hmac }`. Receivers
   // verify HMAC and drop on mismatch / missing signature. The signing key is
@@ -269,7 +269,7 @@ describe('SimpleCrossTabSync', () => {
 
     it('wraps every postMessage in a {payload, hmac} envelope', async () => {
       const sync = new SimpleCrossTabSync(baseConsultation);
-      // TASK-297 DEF-M1 — channel construction is async without tenantId.
+      // Channel construction is async without tenantId.
       await sync.whenReady();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test introspection.
       const channel = (sync as any).channel as MockBroadcastChannel;
@@ -292,7 +292,7 @@ describe('SimpleCrossTabSync', () => {
       const warn = vi.fn();
       const logger = { debug: vi.fn(), info: vi.fn(), warn, error: vi.fn(), fatal: vi.fn(), trace: vi.fn() };
       const sync = new SimpleCrossTabSync(baseConsultation, { logger });
-      // TASK-297 DEF-M1 — channel construction is async without tenantId.
+      // Channel construction is async without tenantId.
       await sync.whenReady();
       const listener = vi.fn();
       sync.onContextAdded(listener);
@@ -317,7 +317,7 @@ describe('SimpleCrossTabSync', () => {
 
       const sender = new SimpleCrossTabSync(baseConsultation);
       const receiver = new SimpleCrossTabSync(baseConsultation, { logger });
-      // TASK-297 DEF-M1 — channel construction is async without tenantId.
+      // Channel construction is async without tenantId.
       await Promise.all([sender.whenReady(), receiver.whenReady()]);
       const listener = vi.fn();
       receiver.onContextAdded(listener);
@@ -424,7 +424,7 @@ describe('SimpleCrossTabSync', () => {
   });
 
   // ===========================================================================
-  // TASK-266 W0-5: per-tenant BroadcastChannel naming
+  // Per-tenant BroadcastChannel naming
   //
   // Channel name MUST include the active tenant id — `agentic.<tenantId>` —
   // or `agentic.<consultationKey>` when tenantId is not reachable. Never the
@@ -530,10 +530,10 @@ describe('SimpleCrossTabSync', () => {
   });
 
   // ===========================================================================
-  // TASK-280: SharedWorker-backed HMAC key
+  // SharedWorker-backed HMAC key
   //
   // Two tabs of the same origin share a single 32-byte HMAC secret held in
-  // the SharedWorker process. Before TASK-280 each tab had its own module
+  // the SharedWorker process. Before, each tab had its own module
   // singleton and therefore COULD NOT verify cross-tab messages — the
   // pre-refactor `SimpleCrossTabSync` only worked when the receiving page
   // happened to be the same JS process as the sender (vitest jsdom case).
@@ -645,7 +645,7 @@ describe('SimpleCrossTabSync', () => {
     });
 
     it('two SimpleCrossTabSync tabs sharing the SharedWorker verify each other (cross-tab)', async () => {
-      // The CORE TASK-280 guarantee: tab A signs with the shared secret in
+      // The CORE guarantee: tab A signs with the shared secret in
       // the SharedWorker, tab B verifies against THE SAME secret — even
       // though A and B would in real life be separate JS processes.
       const tabA = new SimpleCrossTabSync(baseConsultation);
@@ -671,7 +671,7 @@ describe('SimpleCrossTabSync', () => {
       const logger = { debug: vi.fn(), info: vi.fn(), warn, error: vi.fn(), fatal: vi.fn(), trace: vi.fn() };
       const sender = new SimpleCrossTabSync(baseConsultation);
       const receiver = new SimpleCrossTabSync(baseConsultation, { logger });
-      // TASK-297 DEF-M1 — channel construction is async without tenantId.
+      // Channel construction is async without tenantId.
       await Promise.all([sender.whenReady(), receiver.whenReady()]);
       const listener = vi.fn();
       receiver.onContextAdded(listener);

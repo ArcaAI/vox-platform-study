@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * A single snapshot of an ASR pipeline's YAML config (TASK-328 A6). One row is
+ * A single snapshot of an ASR pipeline's YAML config. One row is
  * written on every config change, with a monotonically increasing
  * `versionNumber`. Surfaced for the versions list + diff/view UI.
  */

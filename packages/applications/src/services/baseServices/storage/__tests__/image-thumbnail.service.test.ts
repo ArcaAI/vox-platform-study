@@ -1,5 +1,5 @@
 /**
- * TASK-375 (thumbnails) — real downscaled image derivatives.
+ * (thumbnails) — real downscaled image derivatives.
  *
  * `ImageThumbnailService.generateWebpThumbnail` must turn an uploaded image into
  * a genuinely smaller WebP derivative (bounded by THUMBNAIL_MAX_DIMENSION, aspect

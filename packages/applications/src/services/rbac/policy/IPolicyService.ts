@@ -1,8 +1,7 @@
 /**
- * TASK-307 W6.2 — `IPolicyService` is the controller-facing seam that
+ * `IPolicyService` is the controller-facing seam that
  * replaces `databaseService.client.policy.*` calls inside
- * `PoliciesController` (C-10 / F-1 / H-9 from the multi-tenancy API
- * design audit). The interface is intentionally structural — the
+ * `PoliciesController`. The interface is intentionally structural — the
  * controller continues to own its NestJS DTOs (which carry class-validator
  * decorators); the service speaks plain TypeScript so it stays platform-
  * agnostic and unit-testable.
@@ -42,7 +41,7 @@ export interface UpdatePolicyRequest {
   /** Currently only `ENABLED` / `DISABLED` are accepted in PATCH bodies. */
   resourceStatus?: string;
   /**
-   * TASK-409 — step-up confirmation, required when the edit changes `rules`
+   * Step-up confirmation, required when the edit changes `rules`
    * on a policy attached to more than one ENABLED role. Never persisted.
    */
   breakGlass?: BreakGlassCredentials;
@@ -61,7 +60,7 @@ export interface PolicyRecord {
   scope: string;
   rules: unknown;
   resourceStatus: string;
-  /** TASK-409 — server-authoritative anti-lockout marker (read-only via API). */
+  /** Server-authoritative anti-lockout marker (read-only via API). */
   isProtected: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -79,7 +78,7 @@ export interface IPolicyService {
   create(request: CreatePolicyRequest): Promise<PolicyRecord>;
   update(id: string, request: UpdatePolicyRequest): Promise<PolicyRecord>;
   patch(id: string, request: UpdatePolicyRequest): Promise<PolicyRecord>;
-  /** TASK-409 — deleting a policy always requires break-glass confirmation. */
+  /** Deleting a policy always requires break-glass confirmation. */
   softDelete(id: string, breakGlass?: BreakGlassCredentials): Promise<{ id: string; name: string }>;
 }
 

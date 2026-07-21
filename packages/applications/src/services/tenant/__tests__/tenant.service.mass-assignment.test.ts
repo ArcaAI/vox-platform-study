@@ -1,18 +1,13 @@
 /**
- * Phase 0 Item 2 (TASK-302 Stream A) — service-layer regression test.
+ * Service-layer mass-assignment regression test.
  *
  * Asserts defense-in-depth: even if the global ValidationPipe is bypassed
  * (internal callers, test harnesses, future refactors), the service MUST
  * NOT apply unauthorized fields onto the GlobalSettingEntity. Only the
- * explicit allowlist (value, description) may be mutated.
- *
- * RED — current code does `const { id, ...changes } = config; updateEntity(entity, changes)`
- *        and `applyChangesToEntity` assigns every key onto the entity.
- *        An evil payload with key/tenantId/locked/defaultValue MUTATES the
- *        entity. This test fails before B.5 (allowlist refactor).
- *
- * GREEN — after B.5, `changes` is constructed from `{ value, description }`
- *         only. Unauthorized fields silently disappear. This test passes.
+ * explicit allowlist (value, description) may be mutated — `changes` is
+ * constructed from `{ value, description }` only, so an evil payload
+ * carrying key/tenantId/locked/defaultValue has those fields silently
+ * dropped rather than applied to the entity.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -36,7 +31,7 @@ const mockGlobalSettingRepository = {
   count: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
-  // TASK-302 Stream D Phase C — write path migrated to Compare-And-Set;
+  // Write path migrated to Compare-And-Set;
   // the mass-assignment guard runs BEFORE the CAS, so dropping unauthorized
   // fields is still proved end-to-end here.
   updateWithVersion: vi.fn(),
@@ -44,7 +39,7 @@ const mockGlobalSettingRepository = {
 const mockDepartmentRepository = { findAll: vi.fn(), count: vi.fn() };
 const mockPromptTemplateRepository = { findAll: vi.fn(), count: vi.fn() };
 const mockAsrPipelineRepository = { findAll: vi.fn(), count: vi.fn() };
-// TASK-302 Stream D Phase C (C.4) — `updateTenantConfigs` wraps writes in
+// (C.4) — `updateTenantConfigs` wraps writes in
 // `databaseService.baseClient.$transaction(callback)`. The stub invokes the
 // callback with a sentinel tx client so the loop executes.
 const mockTxClient = { __tx: true } as const;
@@ -150,9 +145,9 @@ describe('Phase 0 Item 2 — TenantService.updateTenantConfigs must NOT apply un
       mockTenantBucketService as any,
       mockEventEmitter as any,
       mockClsService as any,
-      // TASK-356 Phase 1 — model-catalog clone repo (unused by this suite).
+      // Model-catalog clone repo (unused by this suite).
       { findAll: async () => [] } as any,
-      // TASK-356 Phase 2 — pipeline-version clone repo (unused by this suite).
+      // Pipeline-version clone repo (unused by this suite).
       { create: async () => ({}) } as any,
     );
   });

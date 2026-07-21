@@ -14,8 +14,6 @@ const require_ = createRequire(import.meta.url);
  *   - `dist/assets/rnnoise.wasm`     (mirror for the bundled output)
  *
  * Both locations are referenced by `package.json` and downstream consumers.
- *
- * TASK-269 — CRIT-2.
  */
 function syncWasmAsset(): void {
   const upstream = require_.resolve('@jitsi/rnnoise-wasm/dist/rnnoise.wasm');
@@ -30,14 +28,13 @@ function syncWasmAsset(): void {
 }
 
 /**
- * TASK-300 C-XCUT-2: the main entry exports the React hook
- * `useNoiseFilter` so the bundle is marked `"use client"` for Next.js App
- * Router compatibility.
+ * The main entry exports the React hook `useNoiseFilter` so the bundle is
+ * marked `"use client"` for Next.js App Router compatibility.
  *
- * TASK-300 C-XCUT-3: emit main-entry ESM as `.mjs` (and CJS as `.cjs`).
- * The worklet entry keeps its `.js` extension because `audioWorklet.addModule`
- * loads via URL (not a package import) and changing the extension would
- * break consumers' import paths.
+ * Main-entry ESM is emitted as `.mjs` (and CJS as `.cjs`). The worklet entry
+ * keeps its `.js` extension because `audioWorklet.addModule` loads via URL
+ * (not a package import) and changing the extension would break consumers'
+ * import paths.
  */
 export default defineConfig([
   // Main entry point — main thread, exports React hook
@@ -80,7 +77,7 @@ export default defineConfig([
     target: 'es2022',
     outDir: 'dist/worklets',
   },
-  // TASK-300 C-XCUT-2: react-server stub (ESM-only).
+  // React-server stub (ESM-only).
   {
     entry: { 'react-server-stub': 'src/react-server-stub.ts' },
     format: ['esm'],

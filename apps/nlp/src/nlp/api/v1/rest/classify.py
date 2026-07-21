@@ -36,7 +36,7 @@ async def classify_text(
             if not service.is_initialized:
                 raise HTTPException(status_code=503, detail="Text classification model not available")
 
-            # TASK-525 (GAP-L4) — bound concurrent inference. The semaphore wraps
+            # Bound concurrent inference. The semaphore wraps
             # only the model call, NOT the pin: waiting for capacity must not hold
             # the model-cache pin longer than necessary.
             async with inference_bound:
@@ -74,7 +74,7 @@ async def classify_tokens(
             if not service.is_initialized:
                 raise HTTPException(status_code=503, detail="Token classification model not available")
 
-            # TASK-525 (GAP-L4) — bound concurrent inference.
+            # Bound concurrent inference.
             async with inference_bound:
                 result = await service.process(request)
             logger.info(f"Token classification extracted {len(result.entities)} entities")

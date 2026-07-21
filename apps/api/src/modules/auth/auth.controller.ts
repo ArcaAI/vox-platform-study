@@ -895,7 +895,7 @@ export class AuthController {
   @Authorize()
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Issue a single-use, 30-second ticket for authenticating SSE streams (TASK-263 W0-1)',
+    summary: 'Issue a single-use, 30-second ticket for authenticating SSE streams',
     description:
       'Returns a single-use ticket bound to the requested scope (e.g. `consultation_job:<jobId>`). The SDK passes the ticket as `?ticket=<ticket>` when opening the SSE endpoint, avoiding the HIPAA-sensitive pattern of putting the long-lived JWT in the URL query string.',
   })

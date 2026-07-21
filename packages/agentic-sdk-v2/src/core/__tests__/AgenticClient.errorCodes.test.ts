@@ -1,5 +1,5 @@
 /**
- * TASK-264 W0-11 — AgenticClient HTTP status → AgenticError code mapping
+ * AgenticClient HTTP status → AgenticError code mapping
  *
  * Adds 403 → FORBIDDEN and 429 → RATE_LIMITED mapping. Tested across all
  * three HTTP code paths (request, postFormData, uploadFormData).

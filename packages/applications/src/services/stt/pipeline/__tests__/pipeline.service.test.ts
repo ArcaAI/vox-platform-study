@@ -82,7 +82,7 @@ function createBehavioralPipelineEntity(overrides: {
         tenantId: overrides.tenantId ?? 'tenant-1',
         createdBy: overrides.createdBy ?? 'user-123',
         tags: overrides.tags ?? ['test'],
-        // TASK-302 Stream D Phase E.4 — `_version` is required for the
+        // `_version` is required for the
         // CAS write path. Default = first-write (1); override per test.
         version: overrides.version ?? 1,
 
@@ -183,23 +183,23 @@ const mockPipelineRepository = {
     findBySlug: vi.fn(),
     findAll: vi.fn(),
     findEnabledPipelines: vi.fn(),
-    // IC-02 — admin all-status list (ENABLED + DISABLED, excludes deleted).
+    // Admin all-status list (ENABLED + DISABLED, excludes deleted).
     findAllForAdmin: vi.fn(),
     count: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
-    // TASK-302 Stream D Phase E.4 — `update()` now writes via CAS. The
+    // `update()` now writes via CAS. The
     // legacy `update` stays on the mock so we can assert it is NOT
     // called from the OCC-migrated path.
     updateWithVersion: vi.fn(),
     softDelete: vi.fn(),
     isSlugUnique: vi.fn(),
-    // TASK-328 A6 — default-pipeline + status toggle.
+    // Default-pipeline + status toggle.
     findDefault: vi.fn(),
     setDefaultForTenant: vi.fn(),
 };
 
-// TASK-328 A6 — version-snapshot repository.
+// Version-snapshot repository.
 const mockVersionRepository = {
     getNextVersionNumber: vi.fn(),
     create: vi.fn(),
@@ -212,7 +212,7 @@ describe('PipelineService', () => {
     beforeEach(() => {
         vi.clearAllMocks();
 
-        // TASK-505 review — create/update call validateYaml, which now
+        // Create/update call validateYaml, which now
         // attempts the stt-v2 remote hop; stub fetch file-wide so unit tests
         // never touch the network (specific tests re-stub for remote cases).
         vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
@@ -407,9 +407,9 @@ describe('PipelineService', () => {
     });
 
     // =====================================================================
-    // IC-04 (TASK-336) — assign-tenant persists instead of echoing success.
-    // AsrPipeline has a single, protected `tenantId` (BaseTenantEntity,
-    // TASK-305), so cross-tenant transfer is unsupported; a same-tenant
+    // assign-tenant persists instead of echoing success.
+    // AsrPipeline has a single, protected `tenantId` (`BaseTenantEntity`),
+    // so cross-tenant transfer is unsupported; a same-tenant
     // assignment is persisted by promoting the pipeline to the tenant default.
     // =====================================================================
     describe('assignToTenant — IC-04 (TASK-336)', () => {
@@ -463,7 +463,7 @@ describe('PipelineService', () => {
             expect(result).toBeNull();
         });
 
-        // TASK-298 D-9 — tenant scoping.
+        // Tenant scoping.
         it('should return null when pipeline tenantId does not match caller tenant (D-9)', async () => {
             const otherTenantPipeline = createBehavioralPipelineEntity({
                 id: 'pipeline-other',
@@ -543,7 +543,7 @@ describe('PipelineService', () => {
         });
     });
 
-    // IC-02 — the admin pipelines list must include DISABLED pipelines so a
+    // The admin pipelines list must include DISABLED pipelines so a
     // toggled-off pipeline stays visible and can be re-enabled. This rides the
     // repository's `findAllForAdmin` (ENABLED + DISABLED, excludes deleted) and
     // must NOT reuse the enabled-only `findEnabledPipelines` that hid them.
@@ -607,7 +607,7 @@ describe('PipelineService', () => {
 
             await service.delete('pipeline-to-delete');
 
-            // TASK-326 — delete now routes through the repository's dedicated
+            // Delete now routes through the repository's dedicated
             // softDelete (which applies the OCC version bump) rather than the
             // legacy entity.delete() + update() path. Assert the new call and
             // that the plain update() is no longer used for deletion.
@@ -642,7 +642,7 @@ describe('PipelineService', () => {
     });
 
     describe('validateYaml', () => {
-        // TASK-505 P2 — validateYaml proxies to stt-v2 for authoritative
+        // ValidateYaml proxies to stt-v2 for authoritative
         // validation; unit tests stub fetch (unreachable by default, so the
         // local structural verdict stands).
         beforeEach(() => {
@@ -784,7 +784,7 @@ models:
             // Use behavioral mock for subsequent operations
             pipeline = createBehavioralPipelineEntity({ id: pipeline.id, version: 1 });
             mockPipelineRepository.findById.mockResolvedValue(pipeline);
-            // TASK-302 Stream D Phase E.4 — `update()` writes via CAS;
+            // `update()` writes via CAS;
             // `delete()` still uses the legacy non-versioned `update()`.
             // Set BOTH so the lifecycle test exercises the full path.
             mockPipelineRepository.updateWithVersion.mockImplementation(async (_id: any, entity: any) => entity);

@@ -7,7 +7,7 @@
  * - Use the REAL class-validator validate() function
  * - NO mocks — these tests verify actual validation behavior
  *
- * CC-06 (TASK-336) — the OCC token `expectedVersion` is OPTIONAL on this DTO,
+ * The OCC token `expectedVersion` is OPTIONAL on this DTO,
  * mirroring `UpdateDnaReportRequest`. The PATCH route is `@RequiresIfMatch()`
  * and folds the `If-Match` header value over the body at the controller, so the
  * canonical request carries the version in the header and omits it from the
@@ -57,7 +57,7 @@ describe('UpdatePromptTemplateRequest', () => {
         });
     });
 
-    // CC-06 — lock the symmetric contract: the prompt + DNA update DTOs treat
+    // Lock the symmetric contract: the prompt + DNA update DTOs treat
     // `expectedVersion` identically (optional, header-first; invalid values
     // still rejected), so the two OCC routes share one contract.
     describe('parity with UpdateDnaReportRequest', () => {

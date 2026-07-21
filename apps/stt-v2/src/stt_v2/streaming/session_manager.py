@@ -64,13 +64,13 @@ StreamingAsrCallable = Callable[[np.ndarray, int], Awaitable[dict[str, Any]]]
 
 
 def _build_sortformer_diarizer(diarization_config: Any) -> Any:
-    """TASK-475 (Theme B2) — build the Streaming Sortformer diarizer, or None.
+    """Build the Streaming Sortformer diarizer, or None.
 
     Returns a fresh :class:`StreamingSortformerDiarizer` only when diarization is
     ENABLED and its ``backend`` is ``"sortformer"``; otherwise None (the default
     embedding path is untouched). Used at BOTH session open and crash recovery so
     a recovered sortformer session reconstructs a fresh, stateless diarizer
-    (AC-4) rather than silently losing diarization. The diarizer lazy-loads its
+    rather than silently losing diarization. The diarizer lazy-loads its
     NeMo backend and degrades to "no labels" until the weights are staged, so
     this construction is safe on a model-less host.
     """
@@ -85,13 +85,13 @@ def _build_sortformer_diarizer(diarization_config: Any) -> Any:
 
     return StreamingSortformerDiarizer(diarization_config)
 
-# TASK-456 C2-03 — shared Redis Hash holding transcripts whose durable persist
+# Shared Redis Hash holding transcripts whose durable persist
 # exhausted its inline retries on a transient error. The reaper loop (any
 # worker) re-drives entries with an idempotency key; because it lives on shared
 # Redis, a worker restart does not lose the transcript.
 TRANSCRIPT_OUTBOX_KEY = "stt:transcript_outbox"
 
-# Retryable 4xx back-off signals — treated as TRANSIENT, not permanent (I-1).
+# Retryable 4xx back-off signals — treated as TRANSIENT, not permanent.
 _RETRYABLE_4XX = frozenset({408, 425, 429})
 
 # Soft lease (seconds) a worker stamps on an outbox entry while it re-drives it,
@@ -105,7 +105,7 @@ OUTBOX_LEASE_TTL_S = 90.0
 class _SessionRuntime:
     """Per-session runtime components built by ``_assemble_session_runtime``.
 
-    TASK-505 P1 — one assembly shared by session creation and crash recovery
+    One assembly shared by session creation and crash recovery
     (the duplicated recovery wiring had already drifted from creation).
     """
 
@@ -156,10 +156,10 @@ class SessionManager:
         self._inference_tasks: dict[str, asyncio.Task[None]] = {}
         self._partial_tasks: dict[str, asyncio.Task[None]] = {}
         self._final_published_gates: dict[str, asyncio.Event] = {}
-        # TASK-351 P1-1 — per-session LocalAgreement-2 commit policies
+        # Per-session LocalAgreement-2 commit policies
         # (only sessions whose pipeline enables streaming.commit_policy).
         self._commit_policies: dict[str, LocalAgreementPolicy] = {}
-        # TASK-505 — per-pipeline embedding services, cached per model id
+        # Per-pipeline embedding services, cached per model id
         # (the seeded default pipeline declares one, so every session would
         # otherwise reload the model).
         self._pipeline_embedding_services: dict[str, Any] = {}
@@ -175,9 +175,9 @@ class SessionManager:
         self._processed_chunk_offsets: dict[str, int] = {}
         # Per-session resolved dual-capture flags (raw/processed registration).
         self._dual_capture: dict[str, DualCaptureConfig] = {}
-        # TASK-351 P1-3 — monotonic timestamp of the last XTRIM per session.
+        # Monotonic timestamp of the last XTRIM per session.
         self._last_audio_trim_at: dict[str, float] = {}
-        # TASK-456 C2-07 — per-session lock serializing the four finalize
+        # Per-session lock serializing the four finalize
         # entrypoints so a second entrant is a no-op (no duplicate Media rows).
         self._finalize_locks: dict[str, asyncio.Lock] = {}
         self._running = False
@@ -188,7 +188,7 @@ class SessionManager:
             _settings = get_settings()
             self._reaper_interval_s = _settings.streaming_reaper_interval_s
             self._session_timeout_s = _settings.streaming_session_timeout_s
-            # C2-02 — the reaper reaps on audio-idle (default 300s), not the 60s
+            # The reaper reaps on audio-idle (default 300s), not the 60s
             # session timeout, so a normal clinical speech pause never finalizes
             # a live session. Wires the previously-dead knob.
             self._audio_idle_timeout_s = _settings.streaming_audio_idle_timeout_s
@@ -216,14 +216,14 @@ class SessionManager:
             self._partial_window_s = float(
                 getattr(_settings, "streaming_partial_window_s", 8.0)
             )
-            # TASK-471 A1 — lowered, configurable partial-emit cadence.
+            # Lowered, configurable partial-emit cadence.
             self._partial_interval_s = float(
                 getattr(_settings, "streaming_partial_interval_s", 0.4)
             )
             self._audio_trim_interval_s = float(
                 getattr(_settings, "streaming_audio_trim_interval_s", 30.0)
             )
-            # TASK-473 A3 — semantic endpointing knobs (bare env names; default
+            # Semantic endpointing knobs (bare env names; default
             # OFF so the streaming hot path keeps the fixed silence offset).
             self._semantic_endpoint_enabled = bool(
                 getattr(_settings, "semantic_endpoint_enabled", False)
@@ -259,7 +259,7 @@ class SessionManager:
             self._partial_window_s = 8.0
             self._partial_interval_s = 0.4
             self._audio_trim_interval_s = 30.0
-            # TASK-473 A3 — semantic endpointing defaults (OFF).
+            # Semantic endpointing defaults (OFF).
             self._semantic_endpoint_enabled = False
             self._semantic_endpoint_min_silence_ms = 200
             self._semantic_endpoint_max_silence_ms = 500
@@ -294,21 +294,21 @@ class SessionManager:
     def _build_preprocessor_vad_kwargs(self, pipeline_config: Any) -> dict[str, Any]:
         """Build StreamingPreprocessor kwargs from pipeline + profile + settings.
 
-        Shared by session creation and crash recovery (TASK-351 P0-4):
+        Shared by session creation and crash recovery:
 
         - Pipeline YAML wins when its VAD config is present (per-pipeline
           override, unchanged behavior).
         - Without a pipeline VAD config, ``min_silence_duration_ms`` follows
           the hardware profile (500 ms on every profile) instead of the
-          preprocessor's legacy hardcoded 700 ms (H4 — shaves ~200 ms off
+          preprocessor's legacy hardcoded 700 ms (shaves ~200 ms off
           every final's latency floor).
-        - The partial decode window is settings-driven and always wired (C2).
+        - The partial decode window is settings-driven and always wired.
         - The partial-emit cadence is settings-driven and always wired
-          (TASK-471 A1 — lowered default so partials render in near-real-time).
+          (lowered default so partials render in near-real-time).
         """
         kwargs: dict[str, Any] = {
             "partial_window_s": self._partial_window_s,
-            # TASK-471 A1 — lowered, settings-driven partial-emit cadence.
+            # Lowered, settings-driven partial-emit cadence.
             "partial_interval_s": self._partial_interval_s,
         }
         if pipeline_config and pipeline_config.preprocessing.vad.enabled:
@@ -326,7 +326,7 @@ class SessionManager:
                 kwargs["force_emit_overlap_ms"] = vad_cfg.force_emit_overlap_ms
         else:
             kwargs["min_silence_duration_ms"] = self._profile.vad_silence_threshold_ms
-        # TASK-473 A3 — build + attach the semantic endpointer (None when
+        # Build + attach the semantic endpointer (None when
         # disabled, so the preprocessor keeps the exact fixed silence offset).
         # Shared with crash recovery, so recovered sessions get one too.
         kwargs["endpointer"] = self._make_endpointer(pipeline_config)
@@ -343,7 +343,7 @@ class SessionManager:
         pipeline_config: Any,
         build_speaker_identifier: bool,
     ) -> _SessionRuntime:
-        """Build the per-session runtime components (TASK-505 P1).
+        """Build the per-session runtime components.
 
         ONE assembly shared by ``create_session`` and ``_recover_sessions`` —
         the recovery path previously kept a hand-copied second wiring that
@@ -354,11 +354,11 @@ class SessionManager:
         ``build_speaker_identifier=False`` (recovery) skips the embedding
         SpeakerIdentifier: its in-memory tracker state is lost on crash, so a
         recovered session restarts without it (Sortformer, being stateless
-        per-utterance, IS reconstructed either way — TASK-475 AC-4).
+        per-utterance, IS reconstructed either way).
         """
         publisher = ResultPublisher(redis=self._redis, session_id=session_id)
 
-        # VAD + preprocessor (YAML wins, profile silence default — TASK-351 P0-4)
+        # VAD + preprocessor (YAML wins, profile silence default)
         vad_service = await self._load_vad_service(pipeline_config, session_id)
         vad_enabled = bool(pipeline_config and pipeline_config.preprocessing.vad.enabled)
         vad_kwargs = self._build_preprocessor_vad_kwargs(pipeline_config)
@@ -385,7 +385,7 @@ class SessionManager:
                 if pipeline_config
                 else "rnnoise"
             )
-            # TASK-507 — engine selector (rnnoise = legacy default).
+            # Engine selector (rnnoise = legacy default).
             denoiser = (
                 DeepFilterNet3StreamingDenoiser(input_sr=target_sr, strength=strength)
                 if denoise_engine_name == "deepfilternet3"
@@ -429,12 +429,12 @@ class SessionManager:
             else False
         )
 
-        # TASK-475 (Theme B2) — sortformer sessions use the self-hosted
+        # Sortformer sessions use the self-hosted
         # Streaming Sortformer diarizer INSTEAD of the embedding
         # SpeakerIdentifier; the embedding preseed/tracker path is skipped.
         sortformer_diarizer = _build_sortformer_diarizer(diarization_config)
 
-        # TASK-505 P2-P5 review — resolve the per-pipeline embedding service
+        # Resolve the per-pipeline embedding service
         # ONCE for the whole session (worker utterance-extraction AND the
         # speaker-identifier below); cached per model id on the manager so the
         # seeded default (ECAPA on every session) doesn't reload the model.
@@ -477,7 +477,7 @@ class SessionManager:
             seg_service = None
             if diarization_config.enable_segmentation_refinement:
                 try:
-                    # TASK-505 P2-P5 review — pipeline_config here is a
+                    # pipeline_config here is a
                     # PipelineSpec (already `.spec`); the previous
                     # `pipeline_config.spec.models.…` raised AttributeError —
                     # swallowed here, so per-pipeline segmentation models
@@ -494,7 +494,7 @@ class SessionManager:
                 except Exception:
                     logger.warning("Failed to load segmentation model for session %s", session_id, exc_info=True)
 
-            # TASK-505 P2 — the per-pipeline embedding service resolved above;
+            # The per-pipeline embedding service resolved above;
             # settings singleton is the fallback.
             emb_service = pipeline_embedding_service
             try:
@@ -511,7 +511,7 @@ class SessionManager:
             )
 
             if consultation_id or user_id:
-                # TASK-490 (B-04) — pass the session tenant so the
+                # Pass the session tenant so the
                 # voice-profile lookups are tenant-scoped (they fail
                 # closed without it; a cross-tenant profile is never
                 # served).
@@ -547,7 +547,7 @@ class SessionManager:
             inference_cfg, "hallucination_short_word_count", None
         )
 
-        # TASK-351 P2-3 — opt-in English gloss (None unless enabled)
+        # Opt-in English gloss (None unless enabled)
         gloss_pipeline = await self._load_gloss_pipeline(
             pipeline_config, session_id
         )
@@ -586,7 +586,7 @@ class SessionManager:
     async def _get_pipeline_embedding_service(self, hf_model_id: str) -> Any:
         """Resolve (and cache) a per-pipeline speaker-embedding service.
 
-        TASK-505 P2-P5 review — one initialized service per model id for the
+        One initialized service per model id for the
         manager's lifetime; single-flight via lock so concurrent session
         creation doesn't double-load the model.
         """
@@ -608,7 +608,7 @@ class SessionManager:
     def _make_commit_policy(self, pipeline_config: Any) -> LocalAgreementPolicy | None:
         """Build a LocalAgreement-2 policy when the pipeline enables it.
 
-        TASK-351 P1-1 — gated by ``streaming.commit_policy``; strict
+        Gated by ``streaming.commit_policy``; strict
         equality so MagicMock pipeline configs (unit tests) and unknown
         values keep the policy off (wire format unchanged).
         """
@@ -629,7 +629,7 @@ class SessionManager:
     def _resolve_endpoint_config(self, pipeline_config: Any) -> EndpointConfig | None:
         """Resolve the effective semantic-endpoint config, or None when disabled.
 
-        Resolution order (TASK-473 A3):
+        Resolution order:
         1. A pipeline override — ``preprocessing.endpoint`` is a real
            ``EndpointConfig`` with ``enabled=True`` (the future seed opt-in).
            Strict ``isinstance`` so MagicMock/duck-typed test configs never
@@ -655,7 +655,7 @@ class SessionManager:
         )
 
     def _make_endpointer(self, pipeline_config: Any) -> SemanticEndpointer | None:
-        """Build a per-session semantic endpointer when enabled (TASK-473 A3).
+        """Build a per-session semantic endpointer when enabled.
 
         Mirrors ``_make_commit_policy``: returns None unless endpointing is
         enabled (globally or per-pipeline), so a session with it off keeps the
@@ -822,7 +822,7 @@ class SessionManager:
             await session.force_persist()
 
             # Load pipeline config for VAD and ASR model wiring.
-            # TASK-298 D-3 — pass tenant_id so STT-V2 refuses to load
+            # Pass tenant_id so STT-V2 refuses to load
             # a pipeline owned by a different tenant (defense in depth).
             pipeline_config = await self._load_pipeline_config(
                 pipeline_id, tenant_id=tenant_id
@@ -831,7 +831,7 @@ class SessionManager:
             if language is not None and pipeline_config:
                 pipeline_config.inference.language = language
 
-            # TASK-505 P1 — one shared assembly for creation AND recovery.
+            # One shared assembly for creation AND recovery.
             runtime = await self._assemble_session_runtime(
                 session_id=session_id,
                 tenant_id=tenant_id,
@@ -854,19 +854,19 @@ class SessionManager:
             self._register_inference_runtime(session, inference_worker)
 
             self._sessions[session_id] = session
-            # TASK-386 — sync the active-streaming-sessions gauge + total counter.
+            # Sync the active-streaming-sessions gauge + total counter.
             streaming_session_started(self.active_session_count)
             self._dual_capture[session_id] = self._resolve_dual_capture(pipeline_config)
             self._publishers[session_id] = publisher
             self._preprocessors[session_id] = preprocessor
             self._inference_workers[session_id] = inference_worker
 
-            # TASK-351 P1-1 — per-session commit policy (off by default)
+            # Per-session commit policy (off by default)
             commit_policy = self._make_commit_policy(pipeline_config)
             if commit_policy is not None:
                 self._commit_policies[session_id] = commit_policy
 
-            # Wire up Redis consumers and listeners. TASK-457 C3-02 — the audio
+            # Wire up Redis consumers and listeners. The audio
             # consumer joins a per-session consumer group under this worker's id
             # so a crash hands its in-flight (unacked) audio off to the
             # recovering worker via XAUTOCLAIM instead of stranding it.
@@ -1008,7 +1008,7 @@ class SessionManager:
         self._partial_tasks.pop(session_id, None)
         self._final_published_gates.pop(session_id, None)
         self._commit_policies.pop(session_id, None)
-        # TASK-456 C2-07 — drop the per-session finalize lock (a queued waiter
+        # Drop the per-session finalize lock (a queued waiter
         # already holds its own reference and will no-op on the CLOSED guard).
         self._finalize_locks.pop(session_id, None)
         self._sessions.pop(session_id, None)
@@ -1025,7 +1025,7 @@ class SessionManager:
                     session_id=session_id,
                     error=str(exc),
                 )
-        # TASK-386 — keep the active-streaming-sessions gauge in sync on removal.
+        # Keep the active-streaming-sessions gauge in sync on removal.
         streaming_session_ended(self.active_session_count)
         self._last_snapshot_at.pop(session_id, None)
         self._last_audio_trim_at.pop(session_id, None)
@@ -1063,7 +1063,7 @@ class SessionManager:
         return [s.to_dict() for s in self._sessions.values()]
 
     # ------------------------------------------------------------------
-    # Model loading helpers (B1/B2: VAD + ASR pipeline wiring)
+    # Model loading helpers (VAD + ASR pipeline wiring)
     # ------------------------------------------------------------------
 
     async def _load_pipeline_config(
@@ -1073,9 +1073,9 @@ class SessionManager:
 
         Returns the ``PipelineSpec`` if found.
 
-        TASK-298 D-3 — forwards ``tenant_id`` to the config reader so the
+        Forwards ``tenant_id`` to the config reader so the
         SQL query rejects pipelines belonging to other tenants. The API
-        gateway already enforces D-2; this is the defense-in-depth layer.
+        gateway already enforces its own check; this is the defense-in-depth layer.
 
         Raises
         ------
@@ -1235,8 +1235,8 @@ class SessionManager:
         model_cache = get_model_cache()
         asr_ref = pipeline_config.models.asr
 
-        # TASK-505 P5 review — the seeded matrix pipelines reference ASR
-        # models by CATALOG SLUG (decision D6); only batch resolved slugs
+        # The seeded matrix pipelines reference ASR
+        # models by CATALOG SLUG; only batch resolved slugs
         # before, so streaming raised ModelLoadError on every slug-based
         # pipeline. Resolve the DB row here (tenant-scoped, mirroring
         # batch_service._load_models).
@@ -1297,7 +1297,7 @@ class SessionManager:
         pipeline_config: Any,
         session_id: str,
     ) -> StreamingAsrCallable | None:
-        """TASK-351 P2-3 — build the opt-in English-gloss callable.
+        """Build the opt-in English-gloss callable.
 
         Reuses the cached ASR model (single-flight ``get_or_load``, so this
         never loads twice). Returns ``None`` unless
@@ -1335,7 +1335,7 @@ class SessionManager:
         asr_model: Any,
         inference_config: Any,
     ) -> StreamingAsrCallable | None:
-        """TASK-351 P2-3 — ``task=translate`` callable on the same cached model.
+        """``task=translate`` callable on the same cached model.
 
         Returns ``None`` when the gloss flag is off or the engine cannot
         translate (NeMo, Azure, multimodal LM).
@@ -1349,7 +1349,7 @@ class SessionManager:
         if fmt in (
             AiModelFormat.NEMO,
             AiModelFormat.AZURE_SPEECH,
-            # TASK-505 P3 — no translate task on the new engines either.
+            # No translate task on the new engines either.
             AiModelFormat.AZURE_FOUNDRY,
             AiModelFormat.PARAKEET_CPP,
         ):
@@ -1378,10 +1378,10 @@ class SessionManager:
     ) -> StreamingAsrCallable:
         """Create a standalone callable ASR pipeline for streaming inference.
 
-        TASK-505 P1 — dispatch is registry-driven: the engine adapter is
+        Dispatch is registry-driven: the engine adapter is
         resolved from the processor registry by ``AiModelFormat``, so adding
         an engine registers one spec + one adapter instead of editing an
-        if/elif chain here AND in batch. ``task="translate"`` (TASK-351 P2-3)
+        if/elif chain here AND in batch. ``task="translate"``
         builds the English-gloss variant on the same loaded model
         (Whisper-family engines only — the gloss caller filters out
         NeMo/Azure/multimodal before requesting it).
@@ -1393,7 +1393,7 @@ class SessionManager:
         loaded_model: LoadedModel = asr_model
         engine = resolve_asr_engine(loaded_model.format)
 
-        # TASK-505 P1 — resolve + log the (device, compute) binding once per
+        # Resolve + log the (device, compute) binding once per
         # session so silent downgrades (e.g. faster-whisper MPS→CPU) are
         # visible; a mismatch warns (observability-first, never blocks).
         engine_name = ASR_FORMAT_TO_NAME.get(loaded_model.format)
@@ -1429,7 +1429,7 @@ class SessionManager:
         initial_prompt: str | None = None,
     ) -> StreamingAsrCallable:
         """NeMo (Parakeet) per-utterance streaming callable (moved verbatim
-        from the former _make_asr_callable branch — TASK-505 P1)."""
+        from the former _make_asr_callable branch)."""
         from stt_v2.models.nemo_adapter import NemoAsrAdapter
 
         if initial_prompt:
@@ -1466,8 +1466,7 @@ class SessionManager:
         task: str = "transcribe",
     ) -> StreamingAsrCallable:
         """faster-whisper/CTranslate2 per-utterance streaming callable (moved
-        verbatim from the former _make_asr_callable branch — TASK-505 P1)."""
-        # TASK-351 P1-2 — faster-whisper/CTranslate2 engine.
+        verbatim from the former _make_asr_callable branch)."""
         from stt_v2.streaming.faster_whisper_asr import FasterWhisperAsrAdapter
 
         fw_adapter = FasterWhisperAsrAdapter(
@@ -1494,7 +1493,7 @@ class SessionManager:
         loaded_model: Any,
         inference_config: Any,
     ) -> StreamingAsrCallable:
-        """parakeet.cpp per-utterance streaming callable (TASK-505 P3).
+        """parakeet.cpp per-utterance streaming callable.
 
         Minimal integration: per-utterance decode via the duck-typed binding.
         The model family's native cache-aware stateful streaming does not fit
@@ -1519,7 +1518,7 @@ class SessionManager:
         loaded_model: Any,
         inference_config: Any,
     ) -> StreamingAsrCallable:
-        """whisper.cpp per-utterance streaming callable (TASK-507).
+        """whisper.cpp per-utterance streaming callable.
 
         Per-utterance decode via the pywhispercpp binding — whisper.cpp has no
         native incremental-streaming API either, so this mirrors
@@ -1545,7 +1544,7 @@ class SessionManager:
         inference_config: Any,
     ) -> StreamingAsrCallable:
         """Azure Speech per-utterance streaming callable (moved verbatim from
-        the former _make_asr_callable branch — TASK-505 P1)."""
+        the former _make_asr_callable branch)."""
         from stt_v2.models.azure_speech_loader import normalize_language_for_azure
         from stt_v2.streaming.azure_asr import azure_recognize_utterance
 
@@ -1594,7 +1593,7 @@ class SessionManager:
     ) -> StreamingAsrCallable:
         """Default transformers (Whisper/CTC) streaming callable, including
         the multimodal-LM routing (moved verbatim from the former
-        _make_asr_callable default path — TASK-505 P1)."""
+        _make_asr_callable default path)."""
         import torch
 
         model = loaded_model.model
@@ -1653,7 +1652,7 @@ class SessionManager:
                 )
             )
 
-        # TASK-505 P1 — shared decode-kwargs builder (was one of three
+        # Shared decode-kwargs builder (was one of three
         # hand-kept copies; semantics locked by
         # tests/unit/test_batch_inference_kwargs.py).
         static_kwargs = build_whisper_generate_kwargs(
@@ -1664,7 +1663,7 @@ class SessionManager:
         )
 
         if task == "translate":
-            # TASK-351 P2-3 — mirror the batch English-translation pass:
+            # Mirror the batch English-translation pass:
             # force the English output token for the gloss decode.
             static_kwargs["language"] = "en"
 
@@ -1692,7 +1691,7 @@ class SessionManager:
                         "ASR processor requires inference language, but "
                         "inference_config.language is not set."
                     )
-                # TASK-351 P2-1 — pinned language also flows to processors
+                # Pinned language also flows to processors
                 # that accept it, regardless of code_switching.
                 processor_language = lang
 
@@ -1904,11 +1903,11 @@ class SessionManager:
     async def _drain_inference_queue(self, session_id: str) -> None:
         """Wait for all pending utterances in the inference queue to finish.
 
-        C2-05 — on a drain timeout (e.g. GPU backlog) the utterances still
+        On a drain timeout (e.g. GPU backlog) the utterances still
         queued are transcribed inline before returning, rather than dropped, so
         the closing tail utterance always makes it into the final transcript.
 
-        I-2 — the background inference loop is a concurrent consumer of the same
+        The background inference loop is a concurrent consumer of the same
         queue, so it is settled (cancelled + awaited) FIRST; the inline drain is
         then the sole consumer and cannot race the loop over the same item.
         """
@@ -1928,7 +1927,7 @@ class SessionManager:
             await self._drain_remaining_inline(session_id, queue)
 
     async def _settle_inference_loop(self, session_id: str) -> None:
-        """Cancel + await the background inference consumer (I-2).
+        """Cancel + await the background inference consumer.
 
         Stops the loop racing the inline drain over the queue. The tail
         utterance is the LAST item enqueued, so at a drain timeout it is still in
@@ -1957,7 +1956,7 @@ class SessionManager:
         session_id: str,
         queue: asyncio.Queue[AudioUtterance | None],
     ) -> None:
-        """Transcribe utterances still queued at drain-timeout inline (C2-05).
+        """Transcribe utterances still queued at drain-timeout inline.
 
         Only the finite snapshot currently in the queue is processed — finalize
         enqueues nothing further and the background loop only removes items — so
@@ -2057,13 +2056,13 @@ class SessionManager:
 
                 result = await worker.process_partial(session_id, utterance)
                 if result.text.strip() and publisher is not None:
-                    # TASK-351 P1-1 — LocalAgreement-2: annotate the partial
+                    # LocalAgreement-2: annotate the partial
                     # with the committed (stable) prefix length.
                     policy = self._commit_policies.get(session_id)
                     if policy is not None:
                         committed, _tentative = policy.update(result.text)
                         result.stable_chars = len(committed)
-                    # TASK-473 A3 — feed the running hypothesis to the semantic
+                    # Feed the running hypothesis to the semantic
                     # endpointer (mirrors the LocalAgreement-2 policy.update feed
                     # above). The preprocessor reads it at the silence→final cut
                     # to make a content-driven early-endpoint decision. Inert
@@ -2090,7 +2089,7 @@ class SessionManager:
     def _make_batch_handler(self, session: StreamSession) -> Any:
         """Create the per-batch callback for the ingestion consumer.
 
-        TASK-351 P1-3 — after each processed ``XREAD`` batch:
+        After each processed ``XREAD`` batch:
         1. Persist the last processed entry ID into the session hash so
            crash recovery resumes from it instead of replaying from 0-0.
         2. Periodically ``XTRIM MINID`` the consumed portion of the audio
@@ -2171,7 +2170,7 @@ class SessionManager:
                 for utt in utterances:
                     if utt.is_final:
                         self._cancel_partial(session.session_id)
-                        # TASK-351 P1-1 — next utterance starts a fresh policy
+                        # Next utterance starts a fresh policy
                         self._reset_commit_policy(session.session_id)
                         # Block partials for next utterance until this final publishes
                         gate = self._final_published_gates.get(session.session_id)
@@ -2251,14 +2250,14 @@ class SessionManager:
             elif control.action == ControlAction.CANCEL:
                 await self._cancel_session(session)
             elif control.action in (ControlAction.PAUSE, ControlAction.RESUME):
-                # TASK-462 C2-04 — PAUSE/RESUME have no backend implementation
+                # PAUSE/RESUME have no backend implementation
                 # (the SDK halts audio at the source; only finalize/cancel reach
                 # here). Reject the frame LOUDLY rather than silently swallowing it
                 # as a no-op log: publish a client-visible error to the result
                 # stream so a future client that sends a backend PAUSE/RESUME fails
                 # visibly instead of assuming the session paused. Real pause/resume
-                # semantics are deferred to a follow-up control-frame ticket
-                # (see TASK-467); this only makes the current unsupported case honest.
+                # semantics are deferred to a follow-up control-frame effort;
+                # this only makes the current unsupported case honest.
                 logger.warning(
                     "Unsupported control action rejected",
                     session_id=session.session_id,
@@ -2323,7 +2322,7 @@ class SessionManager:
             if final_utt is None:
                 return
 
-            # TASK-351 P1-1 — flushed final closes the current utterance
+            # Flushed final closes the current utterance
             self._reset_commit_policy(session.session_id)
 
             queue = self._inference_queues.get(session.session_id)
@@ -2493,7 +2492,7 @@ class SessionManager:
     async def _persist_streaming_transcript(self, session: StreamSession) -> None:
         """Persist a streaming-session transcript as a TRANSCRIPT context item.
 
-        TASK-342 GAP #1 — streaming sessions have no TranscriptionJob, so the
+        Streaming sessions have no TranscriptionJob, so the
         transcript is keyed directly to the consultation (+ tenant). Persisting
         it fires ``TranscriptionCreated`` on the API side, which triggers the
         harness auto-draft pipeline. The streaming path is deduped server-side by
@@ -2501,7 +2500,7 @@ class SessionManager:
         re-creating the row or re-emitting the event), so retrying a failed POST
         is safe; a forward-compatible ``Idempotency-Key`` is also sent.
 
-        TASK-456 C2-03 — unlike the best-effort audio/metadata uploads, this
+        Unlike the best-effort audio/metadata uploads, this
         transcript is the durable clinical system of record AND the sole harness
         trigger, so a transient gateway blip must NOT lose it:
 
@@ -2533,7 +2532,7 @@ class SessionManager:
             )
             return
 
-        # TASK-533 D-22 — build the segments alongside the text, from the SAME
+        # Build the segments alongside the text, from the SAME
         # results, so the harness evidence chain has per-utterance provenance
         # (timing, speaker, char spans). Before this the streaming path sent text
         # only and TranscriptSegment was empty in production.
@@ -2603,7 +2602,7 @@ class SessionManager:
         """True for a non-retryable 4xx client error.
 
         The retryable 4xx back-off signals — 408 (Request Timeout), 425 (Too
-        Early) and 429 (Too Many Requests) — are TRANSIENT (I-1): the internal
+        Early) and 429 (Too Many Requests) — are TRANSIENT: the internal
         transcript route is throttled, so an end-of-clinic burst / pod drain that
         finalizes many sessions at once can legitimately return 429, and dropping
         it there would silently lose the clinical system-of-record. 5xx, timeouts
@@ -2633,7 +2632,7 @@ class SessionManager:
             "transcription_source": "streaming",
             "idempotency_key": idempotency_key,
             "attempts": 0,
-            # TASK-533 D-22 — segments ride along so the reaper's re-drive persists
+            # Segments ride along so the reaper's re-drive persists
             # the SAME provenance the inline attempt would have. The session object
             # is long gone by then; if they were not stored here, every outboxed
             # transcript would land segment-less and starve evidence grounding.
@@ -2664,9 +2663,9 @@ class SessionManager:
             )
 
     async def _drain_transcript_outbox(self) -> None:
-        """Re-drive durable-outbox transcripts (TASK-456 C2-03).
+        """Re-drive durable-outbox transcripts.
 
-        Called from the reaper loop. The outbox is at-LEAST-once (I-2): an entry
+        Called from the reaper loop. The outbox is at-LEAST-once: an entry
         is NEVER deleted before a confirmed 2xx, so a worker crash mid-POST
         leaves it re-drivable by any worker's later scan. A short soft lease
         (``OUTBOX_LEASE_TTL_S``) is stamped while a worker re-drives an entry so
@@ -2706,7 +2705,7 @@ class SessionManager:
     async def _redrive_outbox_entry(
         self, field_key: str, payload: dict[str, Any], now: float
     ) -> None:
-        """Re-drive one outbox transcript, at-least-once (I-2).
+        """Re-drive one outbox transcript, at-least-once.
 
         Stamps a soft lease and persists it BEFORE the POST (so the entry
         survives a crash and concurrent workers skip it), then removes the entry
@@ -2741,9 +2740,9 @@ class SessionManager:
                 tenant_id=payload.get("tenant_id"),
                 transcription_source=payload.get("transcription_source", "streaming"),
                 idempotency_key=idempotency_key,
-                # TASK-533 D-22 — replay the stored segments. Entries enqueued
+                # Replay the stored segments. Entries enqueued
                 # before this key existed simply have none (`.get` → None), which
-                # degrades to the pre-D-22 text-only behaviour rather than raising.
+                # degrades to text-only behaviour rather than raising.
                 segments=payload.get("segments"),
             )
         except Exception as exc:
@@ -2839,7 +2838,7 @@ class SessionManager:
             )
 
     async def _finalize_session(self, session: StreamSession) -> None:
-        """Finalize a session under a per-session lock (TASK-456 C2-07).
+        """Finalize a session under a per-session lock.
 
         The four finalize entrypoints (``end_session``, the final audio frame,
         the control-FINALIZE command, and the reaper) can race; without
@@ -2864,7 +2863,7 @@ class SessionManager:
         method so that all utterances have been transcribed. Always invoked
         under the per-session finalize lock (see ``_finalize_session``).
         """
-        # C2-07 — once a session is closed, re-finalizing is a no-op.
+        # Once a session is closed, re-finalizing is a no-op.
         if session.status == SessionStatus.CLOSED:
             return
 
@@ -2989,7 +2988,7 @@ class SessionManager:
                     session, raw_audio_uri, processed_audio_uri
                 )
 
-                # TASK-342 GAP #1 / TASK-456 C2-03 — persist the streaming
+                # Persist the streaming
                 # transcript (no jobId) so the harness auto-drafts the SOAP.
                 # Unlike the uploads above this is the durable system of record:
                 # it is retried inline and, on a transient failure, handed to the
@@ -3098,17 +3097,17 @@ class SessionManager:
                     session = StreamSession(metadata=meta, redis=self._redis)
 
                     # Load pipeline config and models for recovered session.
-                    # TASK-298 D-3 — propagate the session's tenant so a
+                    # Propagate the session's tenant so a
                     # crash-restart still applies the tenant filter.
                     pipeline_config = await self._load_pipeline_config(
                         meta.pipeline_id, tenant_id=meta.tenant_id
                     )
 
-                    # TASK-505 P1 — one shared assembly for creation AND
+                    # One shared assembly for creation AND
                     # recovery (recovery previously kept a drifted hand copy).
                     # build_speaker_identifier=False: the embedding tracker
                     # state is lost on crash; Sortformer (stateless
-                    # per-utterance, TASK-475 AC-4) IS reconstructed inside.
+                    # per-utterance) IS reconstructed inside.
                     runtime = await self._assemble_session_runtime(
                         session_id=meta.session_id,
                         tenant_id=meta.tenant_id,
@@ -3133,11 +3132,11 @@ class SessionManager:
 
                     self._register_inference_runtime(session, inference_worker)
 
-                    # Wire up consumers — TASK-457 C3-02: the audio consumer
+                    # Wire up consumers — the audio consumer
                     # group persists its own cursor in Redis, so on recovery the
                     # new consumer resumes via XREADGROUP ">" and reclaims the
                     # dead consumer's unacked in-flight via XAUTOCLAIM. The
-                    # persisted last_stream_id (TASK-351 P1-3) is now only the
+                    # persisted last_stream_id is now only the
                     # group-create seed used if the group itself was trimmed
                     # away; an existing group keeps its Redis-owned cursor.
                     last_id = meta.last_stream_id or "0-0"
@@ -3170,7 +3169,7 @@ class SessionManager:
                     self._preprocessors[meta.session_id] = preprocessor
                     self._inference_workers[meta.session_id] = inference_worker
 
-                    # TASK-351 P1-1 — re-arm commit policy on recovery
+                    # Re-arm commit policy on recovery
                     recovered_policy = self._make_commit_policy(pipeline_config)
                     if recovered_policy is not None:
                         self._commit_policies[meta.session_id] = recovered_policy
@@ -3211,13 +3210,13 @@ class SessionManager:
     async def _reaper_loop(self) -> None:
         """Periodically finalize sessions that have been idle too long.
 
-        C2-02 — reaps on ``_audio_idle_timeout_s`` (streaming_audio_idle_timeout_s,
+        Reaps on ``_audio_idle_timeout_s`` (streaming_audio_idle_timeout_s,
         default 300s), not the 60s ``_session_timeout_s``, so a live consultation
         with a normal speech pause is never finalized out from under the
         clinician. A genuinely dead session (client gone) still crosses the
         audio-idle threshold and is reclaimed on a later scan.
 
-        C2-03 — the same periodic loop re-drives the durable transcript outbox
+        The same periodic loop re-drives the durable transcript outbox
         (no separate process), so transient-failed transcripts are eventually
         persisted even across worker restarts.
         """

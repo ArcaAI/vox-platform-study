@@ -25,8 +25,8 @@ const CORE_SUFFIXES = [
   'FF_CONSULTATION_SHARING',
   'STT_MODEL',
   'STT_VAD',
-  // TASK-338 — SMR Azure deployment-name (032), seeded for every tenant.
-  // TASK-506 — SMR_PROVIDER/SMR_MODEL (030/031), the guardrail namespace
+  // SMR Azure deployment-name (032), seeded for every tenant.
+  // SMR_PROVIDER/SMR_MODEL (030/031), the guardrail namespace
   // (033/034/035) and UX_SMR_PROVIDER_MODELS (043) were RETIRED (superseded
   // by HarnessPolicy + AiTaskDefault + the AiModel registry); their ids stay
   // reserved but are no longer declared or emitted.
@@ -34,23 +34,23 @@ const CORE_SUFFIXES = [
   'UX_LOCAL_ASR_MODELS',
   'UX_LOCAL_VAD_MODELS',
   'UX_LOCAL_NOISE_SUPPRESSION_MODELS',
-  // TASK-338 — Guardrail provider/model catalog (044).
+  // Guardrail provider/model catalog (044).
   'UX_GUARDRAIL_PROVIDER_MODELS',
   'LOCKED_CONFIG_PATHS',
-  // TASK-331 F4 — per-tenant admin-console menu order (`arcaai-admin`/`menuOrder`),
+  // Per-tenant admin-console menu order (`arcaai-admin`/`menuOrder`),
   // suffix 051 alongside locked-config-paths (050). Seeded for every tenant.
   'ADMIN_MENU_ORDER',
 ] as const;
 
-// TASK-331 doc-08 F4 — every tenant (including ArcaAI) now carries the `general`
+// Every tenant (including ArcaAI) now carries the `general`
 // namespace block (max-concurrent-sessions, default-language, session-timeout) so
 // both tenants are consistent and no admin "General" tab is left empty.
 const PREFIXES_WITH_GENERAL = new Set(['ARCAAI', 'GLOBAL']);
 
-// TASK-316 — platform-wide (NOT per-tenant) settings: DB-backed gateway
+// Platform-wide (NOT per-tenant) settings: DB-backed gateway
 // rate-limit config. These live on the platform tenant only and therefore
 // fall outside the per-prefix model above, so they're counted separately.
-// TASK-392 — ENTITLEMENTS_ENABLED joins the same platform-tenant-only block:
+// ENTITLEMENTS_ENABLED joins the same platform-tenant-only block:
 // the entitlements enforcement kill-switch (seeded OFF in 15-entitlements.ts).
 const PLATFORM_WIDE_KEYS = [
   'RATE_LIMIT_ENABLED',
@@ -68,8 +68,8 @@ const PLATFORM_WIDE_KEYS = [
 // System-tenant (SYSTEM_TENANT_ID) platform rows: not per-tenant and not part of
 // the rate-limit block, so they fall outside the per-prefix model and are counted
 // separately.
-//   TASK-332 — locked capability flag for local raw-stream dual-capture.
-//   TASK-531 — locked controls for the nightly SYSTEM-template resync sweep.
+//   Locked capability flag for local raw-stream dual-capture.
+//   Locked controls for the nightly SYSTEM-template resync sweep.
 const SYSTEM_WIDE_KEYS = [
   'SYSTEM_FF_LOCAL_RAW_CAPTURE',
   'SYSTEM_PIPELINE_TEMPLATE_RESYNC_ENABLED',
@@ -189,7 +189,7 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
     });
   });
 
-  // TASK-331 doc-08 F4 — assert the FACTORY actually EMITS the rows, not just
+  // Assert the FACTORY actually EMITS the rows, not just
   // that the IDs exist. The previous code allocated `*_FF_TRANSCRIPTION` and the
   // GENERAL ids but `tenantSettings()` emitted neither (dead config), leaving the
   // admin "General" tab empty for every tenant. These assertions pin the emitted
@@ -225,7 +225,7 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
           expect(flag).toBeDefined();
         });
 
-        // TASK-506 — the TASK-338 guardrail namespace is RETIRED (superseded
+        // The guardrail namespace is RETIRED (superseded
         // by AiTaskDefault + the AiModel registry); nothing is emitted and
         // `retireSupersededGlobalSettings` sweeps existing rows to DELETED.
         it('emits NO guardrail namespace settings (retired by TASK-506)', () => {
@@ -235,7 +235,7 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
           expect(guardrail).toEqual([]);
         });
 
-        // TASK-338 — SMR Azure deployment-name parity (non-secret, unlocked).
+        // SMR Azure deployment-name parity (non-secret, unlocked).
         it('emits the smr-azure-deployment setting (non-secret, unlocked)', () => {
           const azure = settingsForTenant(tenantId).find(
             (s) => s.namespace === 'smr' && s.key === 'smr-azure-deployment',

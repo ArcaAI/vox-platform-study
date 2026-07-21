@@ -98,7 +98,7 @@ export class SecureStorage {
   }
 
   /**
-   * TASK-296 H-1: cross-session helpers for caches keyed by a stable
+   * Cross-session helpers for caches keyed by a stable
    * passphrase (e.g. `vox-vp-${userId}-${tenantId}`). `create()` uses a
    * random salt per instance, so a SecureStorage created in one session
    * cannot decrypt items written in another. These helpers persist the

@@ -4,7 +4,7 @@
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 
-// TASK-506 — per-tenant "default model for task X" selector: one row per
+// Per-tenant "default model for task X" selector: one row per
 // (tenant, taskKey); the reserved SYSTEM tenant row is the platform default.
 // `modelSlug` references AiModel.slug within [tenant, SYSTEM] scope (no FK —
 // house convention). Resolution (tenant row → SYSTEM row → service env

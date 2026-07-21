@@ -1,5 +1,5 @@
 /**
- * Wire types for the AI task-default admin surface (TASK-506 Phase 6).
+ * Wire types for the AI task-default admin surface.
  * Hand-declared to mirror the gateway DTOs — no server import (BFF boundary).
  * Source: apps/api/src/modules/ai-task-default/ai-task-default-admin.controller.ts
  */
@@ -8,7 +8,7 @@
  * Fixed task-key registry — the console mirror of `AI_TASK_KEYS` in
  * `packages/applications/src/services/ai-task-default/constants.ts`.
  *
- * TASK-526 (D-18): this list had drifted to 3 keys while the backend carried 9,
+ * This list had drifted to 3 keys while the backend carried 9,
  * so the tenant surface could never show the truth about six of them. Keep the
  * two lists in lockstep — a key added on the backend is invisible here until it
  * is added below.

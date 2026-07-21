@@ -4,7 +4,7 @@ import { IsBoolean, IsIn, IsObject, IsOptional, IsString, IsUrl, MaxLength, Vali
 import { ClaimMappingsDto } from './oidc-provider-config.dto';
 
 /**
- * TASK-499 — non-secret SAML config, persisted verbatim into
+ * Non-secret SAML config, persisted verbatim into
  * `TenantIdentityProvider.config` (Json, no migration — D5). SAML's `NameID`
  * maps to `FederatedIdentity.subject` the same way OIDC's `sub` does;
  * `attributeMappings` reuses the OIDC `ClaimMappingsDto` shape

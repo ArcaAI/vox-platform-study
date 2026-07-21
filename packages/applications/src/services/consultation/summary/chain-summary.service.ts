@@ -32,7 +32,7 @@ import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
  * all consultations in the chain (parent-child linked + same-day same-patient).
  *
  * Aggregation strategy:
- * 1. Resolve all linked consultation IDs (GAP-2 combined chain + date strategy)
+ * 1. Resolve all linked consultation IDs (combined chain + date strategy)
  * 2. For each consultation, gather transcripts, summaries, case notes
  * 3. Optionally gather NER entities from all consultations
  * 4. Compose structured sections for the SMR service
@@ -55,12 +55,12 @@ export class ChainSummaryService extends BaseService {
     protected override readonly clsService: ClsService<IActiveUserContext>,
     private readonly promptAssemblyService: PromptAssemblyService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // TASK-356 D-7 — resolve the admin-managed SMR {provider, model} on every
+    // Resolve the admin-managed SMR {provider, model} on every
     // SMR call (the gateway has no model default). Optional + trailing so
     // existing positional test fixtures keep compiling; production DI always
     // supplies it (ChainSummaryServiceModule).
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
-    // TASK-362 — resolve the requesting doctor's preferred prompt template id
+    // Resolve the requesting doctor's preferred prompt template id
     // (UserProfile.preferredPromptTemplateId) so the sync chain-summary path
     // honors Tier-0 prompt selection. Optional + trailing so existing positional
     // test fixtures keep compiling; production DI supplies it (ChainSummaryServiceModule).
@@ -71,7 +71,7 @@ export class ChainSummaryService extends BaseService {
   }
 
   /**
-   * TASK-369 — encrypt PHI on write through the shared env-gated guard: a soft
+   * Encrypt PHI on write through the shared env-gated guard: a soft
    * no-op in dev/test (SECRETS_PROVIDER!=vault) but FAIL-CLOSED (throws) in
    * staging/prod (SECRETS_PROVIDER=vault) instead of persisting plaintext-only.
    */
@@ -93,13 +93,13 @@ export class ChainSummaryService extends BaseService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // TASK-305 D.4 (audit C-1 / C-3 / C-4) — verify the requesting
+    // (audit C-1 / C-3 / C-4) — verify the requesting
     // Consultation belongs to the caller's tenant. `assertParentInScope`
     // throws `NotFoundException` for both missing and cross-tenant so
     // the response never leaks the existence of a foreign-tenant id.
     const consultation = await assertParentInScope(this.consultationRepository, consultationId, tenantId);
 
-    // TASK-362 — resolve the requesting doctor's preferred prompt template id once,
+    // Resolve the requesting doctor's preferred prompt template id once,
     // keyed off the consultation the comprehensive artifact is written to, so it can
     // be threaded into promptAssemblyService.assemble (Tier-0 prompt selection).
     const preferredPromptTemplateId = this.configResolver
@@ -112,7 +112,7 @@ export class ChainSummaryService extends BaseService {
       throw new BadRequestException('No linked consultations found for comprehensive summary');
     }
 
-    // TASK-305 D.4 — `findConsultationChain` is NOT tenant-scoped at the
+    // `findConsultationChain` is NOT tenant-scoped at the
     // repo layer, so a historically poisoned `parentConsultationId`
     // pointer could pull a foreign-tenant consultation into the chain.
     // Refuse to aggregate any chain entry whose tenantId drifts from the
@@ -227,7 +227,7 @@ export class ChainSummaryService extends BaseService {
    *
    * Combines chain-based (parentConsultationId) and date-based
    * (same tenantId, patientId, appointmentDate) strategies, matching
-   * the GAP-2 fix in ContextService.resolveLinkedConsultationIds().
+   * ContextService.resolveLinkedConsultationIds().
    */
   async resolveLinkedConsultations(consultation: ConsultationEntity): Promise<ConsultationEntity[]> {
     // Strategy 1: Chain-based
@@ -395,7 +395,7 @@ export class ChainSummaryService extends BaseService {
   // =========================================================================
 
   /**
-   * TASK-305 D.4 (audit C-1 / C-3 / C-4) — refuse to aggregate any chain
+   * (audit C-1 / C-3 / C-4) — refuse to aggregate any chain
    * entry whose tenantId drifts from the caller. Throws `NotFoundException`
    * (no existence leak) on the first cross-tenant entry. Pre-D.2 data
    * could carry a poisoned `parentConsultationId` pointer into another
@@ -431,7 +431,7 @@ export class ChainSummaryService extends BaseService {
         >
       | undefined,
     request: ComprehensiveSummaryRequest,
-    // TASK-362 — requesting doctor's preferred prompt template id (Tier-0).
+    // Requesting doctor's preferred prompt template id (Tier-0).
     preferredPromptTemplateId: string | null | undefined,
   ): Promise<{
     assembledPrompt: {
@@ -483,7 +483,7 @@ export class ChainSummaryService extends BaseService {
       conversationLanguage: this.resolveConversationLanguage(request.options),
       dnaStyleId: request.dnaStyleId,
       explicitTemplate: request.template ?? 'comprehensive',
-      // TASK-362 — thread the requesting doctor's preferred prompt template id (Tier-0).
+      // Thread the requesting doctor's preferred prompt template id (Tier-0).
       preferredPromptTemplateId: preferredPromptTemplateId ?? undefined,
     });
 
@@ -532,7 +532,7 @@ export class ChainSummaryService extends BaseService {
     outputTokens?: number;
   }> {
     try {
-      // TASK-356 D-7 — resolve the admin-managed {provider, model} (no in-gateway
+      // Resolve the admin-managed {provider, model} (no in-gateway
       // default) as the base so a caller-supplied model still wins.
       let options = payload.options;
       if (this.harnessPolicyService) {

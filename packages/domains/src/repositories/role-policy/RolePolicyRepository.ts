@@ -1,21 +1,21 @@
 /**
- * TASK-311 AC-1 / AC-6 — `RolePolicyRepository` is the thin facade that
+ * `RolePolicyRepository` is the thin facade that
  * encapsulates `databaseService.client.rolePolicy.*` for
  * `RbacRoleService.assignPolicy` / `.removePolicy`.
  *
- * Surface design (README §4.3 D-2):
+ * Surface design:
  *
  *   • `findFirstByRoleAndPolicy(roleId, policyId)` — the assign-path
  *     existence pre-check; intentionally does NOT filter by
  *     `resourceStatus` so the service can re-enable a soft-deleted
- *     row (pre-TASK-311 behaviour).
+ *     row (legacy behaviour).
  *   • `create(data)` — accepts the factory-built input.
  *   • `reEnable(id, data)` — accepts the factory's re-enable shape;
  *     uses Prisma `update` by id.
  *   • `softDeleteByRoleAndPolicy(roleId, policyId, updatedBy?)` —
- *     uses Prisma `updateMany` (matching pre-TASK-311 verbatim) so
+ *     uses Prisma `updateMany` (matching the legacy verbatim) so
  *     the service doesn't have to look up the surrogate `id`. This
- *     closes AC-6 by routing the audit-stamp pattern through the
+ *     routes the audit-stamp pattern through the
  *     repository, not the service.
  */
 import { Inject, Injectable } from '@nestjs/common';
@@ -63,7 +63,7 @@ export class RolePolicyRepository {
   }
 
   /**
-   * TASK-409 — number of ENABLED role assignments carrying this policy.
+   * Number of ENABLED role assignments carrying this policy.
    * `PolicyService` uses it to decide whether a rule-edit needs break-glass
    * (a policy attached to >1 role has a multi-role blast radius).
    */

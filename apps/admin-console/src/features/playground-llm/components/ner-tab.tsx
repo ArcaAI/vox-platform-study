@@ -13,7 +13,7 @@ import { useExtractEntities } from '../api/hooks';
 import type { NerResult } from '../api/types';
 
 /**
- * Agent Playground → NER tab (TASK-446). Input → medical entity list via the
+ * Agent Playground → NER tab. Input → medical entity list via the
  * `ai/nlp/entities` gateway proxy (NLP token classification). Runs under the
  * caller's own account (user-plane `@Authorize()`).
  */

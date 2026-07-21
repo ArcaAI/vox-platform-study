@@ -1,14 +1,14 @@
 /**
- * TASK-414 — ConsultationRepository.findCreatedInRange.
+ * ConsultationRepository.findCreatedInRange.
  *
- * Moves the TASK-386 (#20 / E4) date-range aggregation read out of
+ * Moves the date-range aggregation read out of
  * `ConsultationService` (which accessed `databaseService.client` directly,
- * violating the TASK-311 AC-8 layering rule) into the repository. The query
+ * violating the controller/service/repository layering rule) into the repository. The query
  * semantics are pinned verbatim:
  *
  *   • where: `createdAt` between [rangeStart, rangeEnd] (inclusive)
  *   • tenantId filter ONLY when a truthy tenantId is supplied (GLOBAL_ADMIN
- *     with no working tenant reads cross-tenant — TASK-386 TD3)
+ *     with no working tenant reads cross-tenant)
  *   • minimal projection `{ createdAt, parentConsultationId }` — rows are
  *     returned raw (no entity mapping; the service buckets them itself)
  *

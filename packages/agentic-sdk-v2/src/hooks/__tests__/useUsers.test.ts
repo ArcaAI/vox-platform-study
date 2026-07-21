@@ -1,5 +1,5 @@
 /**
- * useUsers Hook Tests (TASK-032 WS-G)
+ * useUsers Hook Tests
  *
  * @vitest-environment jsdom
  */
@@ -458,7 +458,7 @@ describe('useUsers', () => {
     });
 
     /* ------------------------------------------------------------------ */
-    /*  TASK-218 Priority 6: enable/disable convenience methods            */
+    /*  enable/disable convenience methods            */
     /* ------------------------------------------------------------------ */
 
     describe('enable (TASK-218)', () => {

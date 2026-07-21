@@ -94,7 +94,7 @@ describe('ai-models client', () => {
 });
 
 // =============================================================================
-// TASK-528 — discovery client + query keys
+// Discovery client + query keys
 // =============================================================================
 describe('discovery client (TASK-528)', () => {
     it('GETs admin/ai-models/discovery and passes the provider filter', async () => {

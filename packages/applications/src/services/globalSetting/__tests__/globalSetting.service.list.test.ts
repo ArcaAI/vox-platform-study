@@ -1,5 +1,5 @@
 /**
- * TASK-443 — settings list faceting unit tests.
+ * Settings list faceting unit tests.
  *
  * Covers the LIST path only:
  *   1. `buildSecretSettingFilter` — the ONE shared Prisma fragment for the

@@ -9,7 +9,7 @@ export class CreateTenantRequest extends BaseRequest {
   @IsString()
   name!: string;
 
-  // TASK-497 D3 — optional: auto-generated (slugified from `name`, deduped)
+  // Optional: auto-generated (slugified from `name`, deduped)
   // by `TenantService.create` when omitted. When supplied (global-admin
   // override), it is used as-is after validation.
   @ApiPropertyOptional({ description: 'Unique key for the tenant (auto-generated from name when omitted)' })
@@ -24,13 +24,13 @@ export class CreateTenantRequest extends BaseRequest {
   @IsOptional()
   description?: string;
 
-  // TASK-387 (#3) — optional plan at creation (nullable when omitted).
+  // Optional plan at creation (nullable when omitted).
   @ApiPropertyOptional({ description: 'Commercial plan', enum: TenantPlan })
   @IsOptional()
   @IsIn(Object.values(TenantPlan))
   plan?: TenantPlan;
 
-  // TASK-387 (#2) — optional tags at creation.
+  // Optional tags at creation.
   @ApiPropertyOptional({ description: 'Tenant tags', type: [String] })
   @IsOptional()
   @IsArray()

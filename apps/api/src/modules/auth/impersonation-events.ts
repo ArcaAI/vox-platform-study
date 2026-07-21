@@ -1,5 +1,5 @@
 /**
- * AC-11 (TASK-336) — dedicated impersonation audit events.
+ * Dedicated impersonation audit events.
  *
  * The legacy lifecycle audit reuses `EventTypes.UserAuthenticated` (discriminated
  * by a `phase` field) and is **success-only**. These dedicated, semantically
@@ -23,7 +23,7 @@ export type ImpersonationEventName = (typeof ImpersonationEvents)[keyof typeof I
  * Reasons an impersonation attempt is denied. Stable codes so consumers can
  * alert/aggregate on them without parsing free-text.
  *
- * TASK-417 note: the `*_SUPER_ADMIN` wire codes are PERSISTED audit vocabulary
+ * The `*_SUPER_ADMIN` wire codes are PERSISTED audit vocabulary
  * and are intentionally retained after the SUPER_ADMIN→GLOBAL_ADMIN role
  * consolidation — renaming them would orphan existing audit rows and break
  * alerting. Semantically they now mean "the GLOBAL_ADMIN (elevated) tier".
@@ -33,13 +33,13 @@ export const ImpersonationDeniedReason = {
   TargetIsSuperAdmin: 'TARGET_IS_SUPER_ADMIN',
   TenantAdminTargetNotAllowed: 'TENANT_ADMIN_TARGET_NOT_ALLOWED',
   CrossTenantDenied: 'CROSS_TENANT_DENIED',
-  // TASK-401 — safeguards added with the elevated-only admin endpoint (the
+  // Safeguards added with the elevated-only admin endpoint (the
   // first two are also backported to the legacy /auth/impersonate route).
   SelfImpersonation: 'SELF_IMPERSONATION',
   NestedImpersonation: 'NESTED_IMPERSONATION',
   CallerNotSuperAdmin: 'CALLER_NOT_SUPER_ADMIN',
   TargetDisabled: 'TARGET_DISABLED',
-  // TASK-430 — service accounts are API-only principals; an impersonation
+  // Service accounts are API-only principals; an impersonation
   // token would hand out the interactive session they must never have.
   TargetIsServiceAccount: 'TARGET_IS_SERVICE_ACCOUNT',
 } as const;
@@ -57,10 +57,10 @@ export interface ImpersonationEventPayload {
   success: boolean;
   /**
    * On Denied: an `ImpersonationDeniedReasonCode`.
-   * On Started (TASK-401): the operator-entered free-text justification.
+   * On Started: the operator-entered free-text justification.
    */
   reason?: string;
-  /** TASK-401 — ISO expiry of the minted impersonation token (Started only). */
+  /** ISO expiry of the minted impersonation token (Started only). */
   expiresAt?: string;
   endpoint: string;
   method: string;

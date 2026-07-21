@@ -1,7 +1,7 @@
-"""TASK-338 Phase 4b / TASK-478 — the /generate gate invokes the external guardrail.
+"""The /generate gate invokes the external guardrail.
 
 Verifies the guardrail is called per generate, the consultation X-Tenant-Id is
-forwarded, and the degrade-safe → fail-CLOSED posture (TASK-478): a content
+forwarded, and the degrade-safe → fail-CLOSED posture: a content
 rejection is a 422, a sustained outage is a retryable 503, a missing ``allowed``
 key fails closed, and an unwired client under the enforce posture fails closed —
 while allowed content proceeds and the dev bypass (disabled/unwired) is preserved.
@@ -127,12 +127,12 @@ async def test_no_guardrail_client_skips_validation(_client_factory, mock_provid
     mock_provider.generate.assert_called_once()
 
 
-# --- TASK-478: degrade-safe → fail-CLOSED gate -----------------------------------
+# --- Degrade-safe → fail-CLOSED gate -----------------------------------
 
 
 @pytest.mark.asyncio
 async def test_sustained_outage_returns_503_and_never_generates(_client_factory, mock_provider):
-    # AC-3: a sustained guardrail outage (unavailable verdict) is a RETRYABLE 503
+    # A sustained guardrail outage (unavailable verdict) is a RETRYABLE 503
     # (distinct from a 422 content rejection) and generation never runs.
     guardrail = AsyncMock()
     guardrail.validate = AsyncMock(
@@ -148,7 +148,7 @@ async def test_sustained_outage_returns_503_and_never_generates(_client_factory,
 
 @pytest.mark.asyncio
 async def test_missing_allowed_key_fails_closed(_client_factory, mock_provider):
-    # AC-4: a malformed verdict with no ``allowed`` key must default to fail-CLOSED
+    # A malformed verdict with no ``allowed`` key must default to fail-CLOSED
     # (reject), never proceed.
     guardrail = AsyncMock()
     guardrail.validate = AsyncMock(return_value={"reason": "malformed"})
@@ -164,7 +164,7 @@ async def test_missing_allowed_key_fails_closed(_client_factory, mock_provider):
 async def test_none_client_with_enforce_posture_fails_closed(
     mock_registry, mock_task_manager, mock_provider
 ):
-    # AC-4: enforce posture on (external_guardrail.enabled) but the client is unwired
+    # Enforce posture on (external_guardrail.enabled) but the client is unwired
     # → fail CLOSED (503), not a silent skip that ships unmoderated PHI.
     from smr_v2.core.config import ExternalGuardrailConfig, Settings
 

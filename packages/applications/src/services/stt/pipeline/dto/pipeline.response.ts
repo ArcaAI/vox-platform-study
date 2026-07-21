@@ -20,12 +20,12 @@ export class PipelineResponse {
   @ApiProperty({ description: 'Resource status', enum: ResourceStatusType })
   resourceStatus: ResourceStatusType;
 
-  // TASK-328 A6 — whether this pipeline is the tenant's default. Exactly one
+  // Whether this pipeline is the tenant's default. Exactly one
   // pipeline per tenant carries `isDefault: true`.
   @ApiProperty({ description: "Whether this pipeline is the tenant's default", example: false })
   isDefault: boolean;
 
-  // TASK-531 — template lineage. `sourceTemplateSlug` is the SYSTEM template
+  // Template lineage. `sourceTemplateSlug` is the SYSTEM template
   // this pipeline descends from (null when it is not template-derived);
   // `templateLocked` marks a pristine template copy, which is READ-ONLY for
   // content edits and delete (403 "Template copies are read-only — clone to
@@ -63,7 +63,7 @@ export class PipelineResponse {
   @ApiPropertyOptional({ description: 'Updated by user ID' })
   updatedBy?: string | null;
 
-  // TASK-302 Stream D Phase E.4 — OCC token. Echo via `If-Match: "<n>"`
+  // OCC token. Echo via `If-Match: "<n>"`
   // (the `ETagInterceptor` also renders this as `ETag: "<n>"`) or via
   // the body's `expectedVersion` on the next PATCH.
   @ApiProperty({

@@ -1,15 +1,15 @@
-// TASK-302 Phase 3 Task 3.12 — coverage check.
+// Coverage check.
 //
-// After Phase 3 (sites 3.1–3.11 migrated), no production source file may
+// No production source file may
 // read these secret env vars directly. Allowed exceptions:
 //   - **/__tests__/** and **/*.test.ts (test fixtures)
 //   - **/*.md (documentation — historical context)
-//   - packages/database/src/prisma/db_main/seed/** (Phase 4D will handle)
+//   - packages/database/src/prisma/db_main/seed/** (not yet migrated)
 //   - packages/applications/.../config.service.ts (env fallback for MQTT_PASS
 //     / REDIS_PASS that loadVaultSecrets() overlays — intentional per plan)
 //   - packages/tools/src/gen-dev-token/** (standalone CLI dev tool; no
 //     NestJS DI container available)
-//   - packages/applications/scripts/** (TASK-376 dev-tooling scripts —
+//   - packages/applications/scripts/** (dev-tooling scripts —
 //     build-excluded via tsconfig rootDir=src + ESLint-ignored; they
 //     intentionally bypass the NestJS DI graph / SecretsService and read
 //     MINIO_* from .env.dev, same rationale as gen-dev-token)

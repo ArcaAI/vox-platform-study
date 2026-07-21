@@ -3,7 +3,7 @@ import { Readable } from 'stream';
 import { StorageProvider } from '@arcaai/types';
 
 /**
- * Provider-agnostic blob-storage abstraction (TASK-318 / W1).
+ * Provider-agnostic blob-storage abstraction.
  *
  * A single interface implemented by every storage backend (AWS S3, MinIO,
  * Azure Blob). The "bucket" vocabulary is used throughout; the Azure provider

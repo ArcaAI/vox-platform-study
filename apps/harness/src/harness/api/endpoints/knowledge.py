@@ -1,4 +1,4 @@
-"""Internal institutional-knowledge ingest endpoint (TASK-330 Phase 3, Lane A).
+"""Internal institutional-knowledge ingest endpoint.
 
 ``POST /api/v1/internal/knowledge/ingest`` is the cross-lane contract Lane B's
 BullMQ ``IngestKnowledgeDocument`` processor calls after a ``KnowledgeDocument`` is

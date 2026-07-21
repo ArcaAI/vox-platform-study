@@ -1,4 +1,4 @@
-// TASK-524 — platform-operations descriptors (GAP-C5: the orphaned keys).
+// Platform-operations descriptors (the orphaned keys).
 //
 // These three families were already live `global-kv` settings — their consuming
 // services read them through `IAppSettingsService.getValueWithDefault` — but
@@ -135,7 +135,7 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     description: 'Cron expression for the agent-trajectory retention sweep.',
     default: '0 4 * * *',
   },
-  // ── Pipeline template resync (TASK-531, GAP-T3) ──────────────────────────
+  // ── Pipeline template resync ──────────────────────────
   {
     key: 'pipeline.templateResync.enabled',
     tier: 'global-kv',

@@ -45,7 +45,7 @@ export interface IAiModelService {
   /**
    * Get ENABLED models by task type across [caller tenant, SYSTEM] via the
    * shared-read widening, de-duplicated by slug preferring the caller-tenant
-   * row; SYSTEM-pinned fallback when CLS carries no tenant (r2605 Finding E).
+   * row; SYSTEM-pinned fallback when CLS carries no tenant.
    */
   getByTaskTypeSharedRead(taskType: ModelTaskType): Promise<ModelResponse[]>;
 

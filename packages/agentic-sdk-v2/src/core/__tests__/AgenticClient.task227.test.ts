@@ -1,5 +1,5 @@
 /**
- * TASK-227: AgenticClient — 401 auto-refresh interceptor
+ * AgenticClient — 401 auto-refresh interceptor
  *
  * Tests that the AgenticClient can be configured with an onUnauthorized
  * callback and automatically retries failed 401 requests after the callback

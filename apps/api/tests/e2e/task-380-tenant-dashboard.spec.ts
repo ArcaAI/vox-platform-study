@@ -1,5 +1,5 @@
 /**
- * TASK-380 — Tenant Dashboard (frame 18d) backend contract verification.
+ * Tenant Dashboard (frame 18d) backend contract verification.
  *
  * The `18d` Tenant Dashboard (admin Overview tab) has NO aggregate KPI endpoint;
  * it fans out across the existing list/monitoring sources with
@@ -18,10 +18,10 @@
  *      — @CanRead('AuditLog'); tenant-scoped, super-admin cross-tenant.
  *   3. GET /monitoring/sessions      monitoring.controller.ts 🔒
  *      — controller @CanAny(['manage','all'],['read','TenantTelemetry']):
- *        GLOBAL_ADMIN via manage:all, TENANT_ADMIN via the TASK-386 (#21)
+ *        GLOBAL_ADMIN via manage:all, TENANT_ADMIN via the
  *        read:TenantTelemetry grant; a plain DOCTOR (neither) → 403.
  *   4. GET /health/services          health.controller.ts 🔒
- *      — same @CanAny posture as /monitoring/sessions (TASK-386 #21).
+ *      — same @CanAny posture as /monitoring/sessions.
  *   5. GET /admin/consultations      admin-consultation.controller.ts:52 (list)
  *      — @CanManage('Consultation') → TENANT_ADMIN / GLOBAL_ADMIN; DOCTOR → 403.
  *
@@ -149,10 +149,8 @@ test.describe('TASK-380 — Tenant Dashboard (18d) backend sources', () => {
     expect(typeof body.totalUsers, 'totalUsers is numeric').toBe('number');
   });
 
-  // TASK-410 fix (spec drift) — TASK-386 (#21) intentionally granted
-  // TENANT_ADMIN the seeded `read:TenantTelemetry` rule so the tenant
-  // dashboard can read platform-infra session counts; the previous 403
-  // expectation pinned the pre-TASK-386 posture.
+  // TENANT_ADMIN intentionally holds the seeded `read:TenantTelemetry` rule
+  // so the tenant dashboard can read platform-infra session counts.
   test('TD2: tenant_admin (own tenant, read:TenantTelemetry) reads /monitoring/sessions', async ({ request }) => {
     const res = await authGet(request, '/api/v1/monitoring/sessions', tenantAdminToken);
     expect(res.status(), 'tenant_admin holds read:TenantTelemetry (TASK-386 #21) → 200').toBe(200);
@@ -179,9 +177,9 @@ test.describe('TASK-380 — Tenant Dashboard (18d) backend sources', () => {
     expect(Object.keys(body.services).length, 'at least one downstream service reported').toBeGreaterThan(0);
   });
 
-  // TASK-410 fix (spec drift) — same TASK-386 (#21) widening as TD2: the
+  // Same `read:TenantTelemetry` widening as TD2: the
   // tenant dashboard's audio-pipeline strip reads downstream health, so a
-  // TENANT_ADMIN with read:TenantTelemetry now gets 200 (was 403).
+  // TENANT_ADMIN with read:TenantTelemetry gets 200.
   test('TD5: tenant_admin (own tenant, read:TenantTelemetry) reads /health/services', async ({ request }) => {
     const res = await authGet(request, '/api/v1/health/services', tenantAdminToken);
     expect(res.status(), 'tenant_admin holds read:TenantTelemetry (TASK-386 #21) → 200').toBe(200);

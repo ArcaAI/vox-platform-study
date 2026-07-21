@@ -118,9 +118,9 @@ export interface AgenticConfig {
   /** Debug mode - enables verbose logging */
   debug?: boolean;
   /**
-   * TASK-331 doc-05 F-5 — auto-wire the provider's default 401→refresh handler
+   * Auto-wire the provider's default 401→refresh handler
    * onto the single-slot `AgenticClient.setOnUnauthorized`. Defaults to `true`
-   * (TASK-320 B2 behaviour, refresh works out of the box). Set to `false` when
+   * (refresh works out of the box). Set to `false` when
    * the host owns its own impersonation-aware 401 handling (e.g. the
    * ui-playground's `useAutoRefresh`) so the slot has one deterministic owner.
    */
@@ -213,7 +213,7 @@ export interface STTPluginConfig {
   /** Let model auto-detect language for multilingual/code-switching audio */
   codeSwitching?: boolean;
   /**
-   * TASK-356 Phase 4 — server-resolved EFFECTIVE transcription mode (admin-owned).
+   * Server-resolved EFFECTIVE transcription mode (admin-owned).
    * Injected by `AgenticProvider` from the UserPreferences cascade; honored by
    * `TranscriptionPipeline.resolveSTTRuntimeProvider()` ahead of provider/location.
    */
@@ -485,13 +485,13 @@ export interface UserPreferences {
    */
   activeVoiceProfile?: ActiveVoiceProfileSummary;
   /**
-   * TASK-356 — read-only EFFECTIVE transcription mode resolved server-side
+   * Read-only EFFECTIVE transcription mode resolved server-side
    * (locked ⇒ tenant default wins; unlocked ⇒ `workflowMode` overrides). NOT
    * settable by doctors (see `UserPreferencesUpdate`); the SDK re-projects it
    * into `resolvedConfig.stt.transcriptionMode` (admin-owned).
    */
   transcriptionMode?: 'LOCAL' | 'BACKEND';
-  /** TASK-356 — read-only: whether the tenant locked the transcription mode. */
+  /** Read-only: whether the tenant locked the transcription mode. */
   transcriptionModeLocked?: boolean;
   /** Custom preferences (extensible) */
   custom?: Record<string, unknown>;
@@ -781,7 +781,7 @@ export interface TenantAudioConfig {
   defaultLanguage?: string;
   features: TenantFeatureFlags;
   /**
-   * TASK-332 — server-computed effective local raw-capture flag
+   * Server-computed effective local raw-capture flag
    * (platform capability AND tenant toggle). Read-only from the client's
    * perspective; the provider maps it into `audio.captureRawAudio`.
    */
@@ -832,7 +832,7 @@ export const TENANT_CONFIG_KEYS = {
   ENABLE_CODE_SWITCHING: 'enable-code-switching',
   ENABLE_DNA_STYLE: 'enable-dna-style',
   ENABLE_CROSS_CHAIN_SUMMARY: 'enable-cross-chain-summary',
-  // TASK-332 — server-computed effective flag (platform capability AND tenant
+  // Server-computed effective flag (platform capability AND tenant
   // toggle) for local raw-stream audio capture. Surfaced via GET
   // /tenant/me/config and mapped into audio.captureRawAudio (admin-owned;
   // user preferences cannot override it).

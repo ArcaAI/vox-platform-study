@@ -1,4 +1,4 @@
-"""E0 — offline dual-judge parity instrument for the R-8 entailment swap (TASK-355).
+"""E0 — offline dual-judge parity instrument for the R-8 entailment swap.
 
 The decisive gate for R-8 (a faster groundedness judge) is NOT overall accuracy — it is
 **conservative-direction parity** against the currently-shipped judge. Phase-B batching was

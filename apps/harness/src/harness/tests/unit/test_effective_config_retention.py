@@ -1,18 +1,16 @@
-"""TASK-535 (R2) — harness takes entailer retention from the control plane.
+"""Harness takes entailer retention from the control plane.
 
-TASK-530 built the `configure_entailer_cache` seam and left it with NO CALLER,
-so `harness.modelCache.ttlSeconds` never reached the MiniCheck GGUF.
+The `configure_entailer_cache` seam needs a caller so that
+`harness.modelCache.ttlSeconds` reaches the MiniCheck GGUF.
 
-The placement constraint is the interesting part (§2.4): the entailer is built
+The placement constraint is the interesting part: the entailer is built
 inside a Temporal ACTIVITY, so its weights are resident in the WORKER process,
 not the FastAPI app. A refresh installed in the app's lifespan would reconfigure
 a cache that holds nothing. These tests pin the refresh to the worker's periodic
-path — the same place TASK-530 put the sweep.
+path — the same place the model-cache sweep runs.
 
 Hermetic: `httpx.MockTransport`, a fake clock, and a stub entailer factory. No
 Temporal server, no llama.cpp, no network. `test_replay_compat.py` is untouched.
-
-RED: written before the implementation.
 """
 
 from __future__ import annotations
@@ -169,7 +167,7 @@ async def test_clamp_applied_client_side(served: int, expected: int) -> None:
 
 @pytest.mark.asyncio
 async def test_retention_refresh_runs_in_worker_process() -> None:
-    """The refresh rides the worker's periodic loop, beside the TASK-530 sweep.
+    """The refresh rides the worker's periodic loop, beside the model-cache sweep.
 
     Asserted three ways: the loop actually applies retention on one tick; the
     worker module owns the refresh; and the FastAPI app does NOT — a poll there

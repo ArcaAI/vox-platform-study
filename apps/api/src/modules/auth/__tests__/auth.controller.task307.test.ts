@@ -1,16 +1,11 @@
 /**
- * AuthController — TASK-307 Wave 1 (refresh-token defense + auth-lifecycle).
+ * AuthController — refresh-token defense + auth-lifecycle.
  *
- * Closes audit findings:
- *   - C-1  BLOCKER: refresh tokens are forgeable     (W1.1 + W1.2 + W1.3)
- *   - C-11 HIGH:    logout doesn't revoke jti        (W1.4)
- *   - C-12 HIGH:    refresh ignores tenant scope     (W1.3)
- *   - D-10 MED:     refresh leaks userId in payload  (W1.5 — by removal)
- *   - E-1  LOW:     JWT jti is predictable           (W1.6)
+ * Covers: refresh tokens must not be forgeable, logout revokes the jti,
+ * refresh stays tenant-scoped, the refresh payload does not leak userId,
+ * and the JWT jti is unpredictable (not sequential/derivable).
  *
- * Keeps mocks lightweight — pure unit test, no Nest container, mirrors
- * the auth.controller.task295.test.ts shape so the next maintainer can
- * see all auth-security tests at a glance.
+ * Keeps mocks lightweight — pure unit test, no Nest container.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { UnauthorizedException, BadRequestException } from '@nestjs/common';
@@ -53,7 +48,7 @@ const createMockDatabaseService = (roleAssignments: any[] = [], tenantAssignment
     },
 });
 
-// TASK-307 W6.1 — controller position 4 is now IUserRoleAssignmentService.
+// Controller position 4 is now IUserRoleAssignmentService.
 // This factory accepts the same legacy `[{Role: {name, permissions}}, ...]`
 // shape the W1 tests already pass and unwraps it for `findActiveRolesForUser`.
 const createMockUserRoleAssignmentService = (
@@ -124,7 +119,7 @@ const createMockRequest = () => ({ ip: '127.0.0.1', headers: { 'user-agent': 'te
 const createMockRefreshTokenService = () => ({
     issue: vi.fn(async ({ jti, family }: any) => ({
         // Synthetic opaque token — deliberately NOT echoing userId or tenantId
-        // to mirror the real service's opaque-token contract (D-10).
+        // to mirror the real service's opaque-token contract.
         rawToken: `opaque-${jti}`,
         family: family ?? `family-for-${jti}`,
         expiresAt: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
@@ -138,7 +133,7 @@ const createMockJwtRevocationService = () => ({
     isRevoked: vi.fn().mockResolvedValue(false),
 });
 
-// TASK-307 W2.3 — controller now reads JWT_SECRET_KEY exclusively from
+// Controller now reads JWT_SECRET_KEY exclusively from
 // SecretsService. Mock returns the same value the test JWT_TEST_SECRET
 // constant uses so jwt.verify() works against the controller-issued tokens.
 const createMockSecretsService = () => ({
@@ -148,7 +143,7 @@ const createMockSecretsService = () => ({
     }),
 });
 
-// TASK-307 W6.1 — translates the legacy `databaseService` override (which
+// Translates the legacy `databaseService` override (which
 // previously carried `[{Role: ...}]` rows) into a userRoleAssignmentService
 // mock with the same role-assignment data, so existing test cases keep
 // working without a per-test rewrite. Tests that need finer control can
@@ -188,7 +183,7 @@ function buildController(overrides: any = {}) {
         (overrides.jwtRevocationService ?? createMockJwtRevocationService()) as any,
         (overrides.secretsService ?? createMockSecretsService()) as any,
         (overrides.refreshTokenService ?? createMockRefreshTokenService()) as any,
-        // TASK-305 Phase F — login now also resolves the department half of membership.
+        // Login now also resolves the department half of membership.
         { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
         { emit: vi.fn() } as any,
         {} as any,
@@ -247,7 +242,7 @@ describe('AuthController — TASK-307 W1.2 / W1.5 / W1.6 — login token issuanc
 
         const issuedJti = refreshTokenService.issue.mock.calls[0][0].jti;
         expect(result.refreshToken).toBe('opaque-' + issuedJti);
-        // D-10: the wire-level refresh token MUST NOT start with the legacy "refresh_" prefix
+        // The wire-level refresh token MUST NOT start with the legacy "refresh_" prefix
         // and MUST NOT contain the userId in plaintext.
         expect(result.refreshToken).not.toMatch(/^refresh_/);
         expect(result.refreshToken).not.toContain('doctor-001');
@@ -514,8 +509,8 @@ describe('AuthController — TASK-307 W1.3 — refresh endpoint defense', () => 
 
     it('W1.3 — the legacy private generateRefreshToken helper has been removed (W1.5 final closure)', () => {
         // Once refresh() goes through RefreshTokenService.issue, NO controller
-        // method has a reason to mint a refresh token directly. The transition
-        // shim must be deleted to close audit D-10 structurally.
+        // method has a reason to mint a refresh token directly — the legacy
+        // helper must not come back.
         const controller = buildController();
         expect((controller as any).generateRefreshToken).toBeUndefined();
     });
@@ -551,9 +546,8 @@ describe('AuthController — TASK-307 W1.3 — refresh endpoint defense', () => 
 });
 
 // ---------------------------------------------------------------------------
-// W1.4 — logout revokes both the access-token jti AND the refresh-token
-// family. Closes audit finding C-11 (logout doesn't revoke jti) and AC-2
-// (logout terminates the full session, not just the in-flight request).
+// Logout revokes both the access-token jti AND the refresh-token family —
+// terminating the full session, not just the in-flight request.
 // ---------------------------------------------------------------------------
 describe('AuthController — TASK-307 W1.4 — logout session-revocation', () => {
     beforeEach(() => vi.clearAllMocks());
@@ -660,8 +654,8 @@ describe('AuthController — TASK-307 W1.4 — logout session-revocation', () =>
     });
 });
 
-// Anti-regression: every existing AuthController invariant that the
-// TASK-307 refactor MUST preserve. The login still validates credentials,
+// Anti-regression: every existing AuthController invariant that this
+// refactor MUST preserve. The login still validates credentials,
 // still throws BadRequest on missing tenantKey for non-admins, etc.
 describe('AuthController — TASK-307 W1 anti-regression for existing login behaviours', () => {
     beforeEach(() => vi.clearAllMocks());

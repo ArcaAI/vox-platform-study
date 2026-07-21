@@ -12,8 +12,8 @@ import { BadRequestException, createParamDecorator, ExecutionContext, HttpExcept
 const STRONG_VALIDATOR_RE = /^"(0|[1-9][0-9]*)"$/;
 
 /**
- * Parses the inbound `If-Match` header into a non-negative integer — TASK-302
- * Stream D Phase D (D.2); `"0"` accepted since TASK-534 (owner decision, G2).
+ * Parses the inbound `If-Match` header into a non-negative integer; `"0"` is
+ * accepted as a deliberate owner decision (create-intent semantics).
  *
  * Behavior table:
  *
@@ -29,7 +29,7 @@ const STRONG_VALIDATOR_RE = /^"(0|[1-9][0-9]*)"$/;
  * | `If-Match: "-1"`       | either                    | throws 400 (negative)|
  * | `If-Match: "abc"`      | either                    | throws 400 (NaN)     |
  *
- * `"0"` is the config-plane first-edit/create precondition (the TASK-506/526
+ * `"0"` is the config-plane first-edit/create precondition (the
  * `FIRST_EDIT_ETAG` convention): a GET on a not-yet-materialized row returns a
  * `version: 0` placeholder, and the client echoes it. The parser only carries
  * the number — each service's CAS decides create-vs-412 (a `"0"` against a row

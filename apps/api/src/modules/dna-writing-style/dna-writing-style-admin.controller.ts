@@ -17,7 +17,7 @@ import { ApiTags, ApiBearerAuth, ApiHeader, ApiParam, ApiQuery, ApiResponse, Api
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Observable } from 'rxjs';
-// TASK-326 X7 / D-2 — `@RequiresIfMatch()` + `@ExpectedVersion()` gate the
+// `@RequiresIfMatch()` + `@ExpectedVersion()` gate the
 // OCC-enforced PATCH route below (mirrors PromptManagementController).
 import { ApiEndpoint, Authorize, RequiresIfMatch, ExpectedVersion } from '../../decorators';
 import { StreamScope } from '../auth/decorators/stream-scope.decorator';
@@ -26,9 +26,9 @@ import { getDnaJobStatus, streamDnaJobStatus } from './dna-writing-style-job-str
 @ApiBearerAuth()
 @ApiTags('admin-dna-writing-styles')
 @Controller('admin/dna-writing-styles')
-// TASK-326 X7 — narrowed from `manage:all` (global-admin-only) to
+// Narrowed from `manage:all` (global-admin-only) to
 // `manage:DnaWritingStyleReport` so a TENANT_ADMIN can administer their own
-// tenant's writing-style reports (mirrors the TASK-298 AudioPipelineController
+// tenant's writing-style reports (mirrors the AudioPipelineController
 // narrowing). Tenant isolation is still enforced in the service layer
 // (`assertReportInScope`) and `DnaWritingStyleReport` is tenant-scoped, so this
 // only widens WHO may call — never the data each caller may see. The
@@ -42,7 +42,7 @@ export class DnaWritingStyleAdminController {
     private readonly dnaQueue: Queue,
   ) {}
 
-  // TASK-328 A5 — DNA aggregate dashboard. Declared before the param-less list
+  // DNA aggregate dashboard. Declared before the param-less list
   // route's siblings; `dashboard` is a literal segment so it never collides
   // with `:reportId`-style routes. Tenant scoping is enforced in the service:
   // a global admin may target a tenant via `?tenantId=` (or omit it for an
@@ -72,7 +72,7 @@ export class DnaWritingStyleAdminController {
     description: 'Global-admin only: scope the list to a tenant. Ignored for tenant admins.',
   })
   @ApiQuery({ name: 'includeDisabled', required: false, type: Boolean, description: 'Include disabled reports in results' })
-  // TASK-388 #13 — cross-user read: narrow the list to a single doctor's
+  // Cross-user read: narrow the list to a single doctor's
   // reports. The service already PHI-gates results to the caller's tenant.
   @ApiQuery({ name: 'doctorId', required: false, type: String, description: 'Narrow to one doctor (cross-user admin read; tenant-scoped)' })
   @ApiQuery({ name: 'page', required: false, type: Number })
@@ -80,7 +80,7 @@ export class DnaWritingStyleAdminController {
   async list(
     @Query() queryParams: PaginatedQuery & { tenantId?: string; includeDisabled?: string; doctorId?: string },
   ): Promise<PaginatedDnaReportResponse> {
-    // TASK-331 doc-02 F6 — pagination is pushed down to the repository
+    // Pagination is pushed down to the repository
     // (`findPaginated` → `db.findMany` + `db.count`) instead of materializing
     // the full tenant result set and slicing it in memory. A global admin may
     // scope to a tenant via `?tenantId=`; a tenant admin is pinned to their CLS
@@ -88,14 +88,14 @@ export class DnaWritingStyleAdminController {
     return this.dnaService.listReportsPaginated({
       tenantId: queryParams?.tenantId,
       includeDisabled: queryParams?.includeDisabled === 'true',
-      // TASK-388 #13 — cross-user read filter.
+      // Cross-user read filter.
       doctorId: queryParams?.doctorId,
       page: Number(queryParams?.page) || 1,
       limit: Number(queryParams?.limit) || 10,
     });
   }
 
-  // TASK-388 #13 — admin read of a specific doctor's latest DNA writing-style
+  // Admin read of a specific doctor's latest DNA writing-style
   // report (cross-user). Delegates to the PHI-gated service method, which
   // `assertUserBelongsToTenant` before any repository read — even GLOBAL_ADMIN
   // cannot cross tenants on this PHI-derived artifact. Declared before the
@@ -125,7 +125,7 @@ export class DnaWritingStyleAdminController {
     summary: 'Update a DNA writing-style report (admin)',
     description:
       'Updates one DNA writing-style report row. Optimistic concurrency is ' +
-      'enforced (TASK-326 X7 / D-2): the `If-Match` header (RFC 7232) is REQUIRED ' +
+      'enforced: the `If-Match` header (RFC 7232) is REQUIRED ' +
       "and the server runs a Compare-And-Set against the row's `_version` column " +
       '(DISTINCT from `currentVersionNumber`, the DnaVersion history counter). When ' +
       'the header is present, its value overrides the body-field `expectedVersion`. ' +
@@ -147,7 +147,7 @@ export class DnaWritingStyleAdminController {
     @Body() dto: UpdateDnaReportRequest,
     @ExpectedVersion() expectedFromHeader: number | undefined,
   ): Promise<DnaReportResponse> {
-    // TASK-326 X7 / D-2 — header takes precedence over body when both are
+    // Header takes precedence over body when both are
     // present. On this `@RequiresIfMatch()` route the param decorator already
     // fired 428 if the header was missing. The admin ownership escape
     // (`bypassOwnershipCheck`) is preserved.
@@ -188,7 +188,7 @@ export class DnaWritingStyleAdminController {
     return getDnaJobStatus(this.dnaQueue, jobId);
   }
 
-  // TASK-419 item 6 — @StreamScope lets single-use tickets from
+  // @StreamScope lets single-use tickets from
   // POST /auth/stream-ticket (scope `dna_job:<jobId>`, the namespace the
   // console and the Vox SDK already mint) authenticate this SSE route; without
   // it the JwtAuthGuard rejects every ticket with 401 and the console had to

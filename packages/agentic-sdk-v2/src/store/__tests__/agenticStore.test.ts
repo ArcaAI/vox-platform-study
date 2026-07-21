@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
-    // TASK-317 W4.3 (AC-12) — these unit tests exercise the store-creator logic
+    // These unit tests exercise the store-creator logic
     // (clearOnLogout/clearTenantSessionData/slices) in isolation, so they bind to
     // the module singleton directly. Production code uses the context-backed
     // `useAgenticStore` instead; the singleton no longer carries the `useAgenticStore` name.
@@ -33,7 +33,7 @@ import {
 } from '../agenticStore';
 import type { ContextItem, SummaryResponse, PipelineStateInfo } from '../../types';
 
-// TASK-317 W1.4 (AC-3) — mock the shared `arcaai-config` IDB helpers so the
+// Mock the shared `arcaai-config` IDB helpers so the
 // rewritten `clearOnLogout` contract can assert the outgoing personalization
 // row is deleted by namespace (and that no wholesale `.clear()` runs) without a
 // real IndexedDB. Only `clearOnLogout` touches configDB; other store actions do
@@ -929,7 +929,7 @@ describe('agenticStore', () => {
     });
 
     // =========================================================================
-    // TASK-317 W1.4 (AC-3) — clearOnLogout is scoped to the OUTGOING namespace.
+    // clearOnLogout is scoped to the OUTGOING namespace.
     //
     // CONTRACT INVERSION (was ENH-07 / audit C-2): clearOnLogout previously
     // swept EVERY `arcaai-user-preferences/*` key and wholesale-cleared the IDB
@@ -978,7 +978,7 @@ describe('agenticStore', () => {
             expect(configDBClear).not.toHaveBeenCalled();
         });
 
-        // TASK-297 DEF-H6 — clearOnLogout still drops the in-memory personalization tier.
+        // clearOnLogout still drops the in-memory personalization tier.
         it('TASK-297 DEF-H6: clearOnLogout resets the personalization tier', () => {
             useAgenticStore.setState({
                 preferences: { language: 'th' } as unknown as never,
@@ -1057,7 +1057,7 @@ describe('agenticStore', () => {
     });
 
     // =========================================================================
-    // BUG-01: Granular selectors for performance
+    // Granular selectors for performance
     // =========================================================================
 
     describe('activeStream/activeAudioContext (TASK-237)', () => {
@@ -1139,7 +1139,7 @@ describe('agenticStore', () => {
     });
 
     // =========================================================================
-    // TASK-244: Three-tier config management
+    // Three-tier config management
     // =========================================================================
 
     describe('TASK-244: config management actions and selectors', () => {
@@ -1200,12 +1200,12 @@ describe('agenticStore', () => {
     });
 
     // =========================================================================
-    // TASK-464: SDK audio-drop surfacing (C6-01 sibling)
+    // SDK audio-drop surfacing (C6-01 sibling)
     //
     // The streaming provider counts backpressure drops; the SDK path pushes them
     // up to the store so the vox UI can render a degraded-connection signal. The
     // `audioLostThisSession` latch is session-sticky: it survives reconnect and
-    // clears ONLY on start/stop (mirrors TASK-454), so a transient reset never
+    // clears ONLY on start/stop, so a transient reset never
     // erases the "audio was lost" signal exactly when loss happened.
     // =========================================================================
 

@@ -190,7 +190,7 @@ function BodyRow<TData>({
           aria-colindex={i + 1}
           data-slot="data-grid-cell"
           // h-full caps the cell at the fixed virtual row height: without it a wrapping
-          // renderer grows past the row box and its opaque bg paints over border-b (TASK-429).
+          // renderer grows past the row box and its opaque bg paints over border-b.
           className={cn('flex h-full shrink-0 items-center truncate bg-inherit px-3 text-sm', density === 'compact' ? 'py-1' : 'py-2')}
           style={{ ...getColumnPinningStyle({ column: cell.column, withBorder: pinBorder }), width: cell.column.getSize() }}
         >
@@ -202,7 +202,7 @@ function BodyRow<TData>({
 }
 
 /**
- * TASK-443 — a non-interactive group-header row (label + contiguous count)
+ * A non-interactive group-header row (label + contiguous count)
  * injected by `groupBy`: a full-width `rowheader` cell spanning all columns,
  * outside the row tab sequence, with an sr-only group summary for AT.
  */
@@ -290,7 +290,7 @@ export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData
   const columnOrderIds = table.getState().columnOrder.length ? table.getState().columnOrder : table.getAllLeafColumns().map((c) => c.id);
 
   const totalRowCount = props.manual?.pagination ? (rowCount ?? rows.length) : table.getFilteredRowModel().rows.length;
-  // TASK-443 — injected group headers are real grid rows on this page; count
+  // Injected group headers are real grid rows on this page; count
   // them so aria-rowindex never exceeds aria-rowcount.
   const groupHeaderCount = displayRows.length - rows.length;
 

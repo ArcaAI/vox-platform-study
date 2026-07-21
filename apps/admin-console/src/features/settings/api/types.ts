@@ -8,7 +8,7 @@ export interface GlobalSetting extends BaseResource {
     value: string;
     dataType: string;
     namespace?: string;
-    /** TASK-430 — owning tenant of the row (the GLOBAL tenant holds platform defaults). */
+    /** Owning tenant of the row (the GLOBAL tenant holds platform defaults). */
     tenantId?: string | null;
     /** Locked platform default — only GLOBAL_ADMIN may edit. */
     locked: boolean;
@@ -44,7 +44,7 @@ export interface RevealedGlobalSetting {
 }
 
 /**
- * POST /admin/settings/:id/rotate body (TASK-445) — the step-up password plus
+ * POST /admin/settings/:id/rotate body — the step-up password plus
  * the replacement secret; expectedVersion is added by the client from the
  * read ETag (OCC, same contract as the update PATCH). The response is the
  * MASKED GlobalSetting — the new plaintext is never returned.

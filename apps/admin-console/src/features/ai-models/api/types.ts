@@ -21,9 +21,9 @@ export interface AiModel {
     sourceUri: string;
     sourceRevision?: string | null;
     format: AiModelFormat;
-    /** Canonical runtime provider id (TASK-506): ollama | lm-studio | azure | bedrock | built-in | sarvam. */
+    /** Canonical runtime provider id: ollama | lm-studio | azure | bedrock | built-in | sarvam. */
     provider?: string | null;
-    /** Model architecture family (TASK-506): gemma4, granite, whisper, ... */
+    /** Model architecture family: gemma4, granite, whisper, ... */
     architecture?: string | null;
     memorySizeMb?: number | null;
     computeType?: string | null;
@@ -89,7 +89,7 @@ export interface UpdateModelRequest {
 }
 
 // =============================================================================
-// TASK-528 — discovery (GET admin/ai-models/discovery)
+// Discovery (GET admin/ai-models/discovery)
 // =============================================================================
 
 /** How an entry relates to the two sides of the merge (§3.1). */

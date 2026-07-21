@@ -1,5 +1,5 @@
 /**
- * TASK-330 follow-up (integration) — harness provenance is retrievable over the
+ * Harness provenance is retrievable over the
  * consultation read API.
  *
  * Wires the REAL `ConsultationController` -> REAL `SummaryService` -> REAL

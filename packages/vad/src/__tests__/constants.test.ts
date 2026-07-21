@@ -1,8 +1,8 @@
 /**
  * @arcaai/vad - constants tests
  *
- * Covers TASK-271 C-1 / C-2: pin CDN paths to a single version constant per
- * dependency, matching the installed package version.
+ * Covers pinning CDN paths to a single version constant per dependency,
+ * matching the installed package version.
  *
  * @vitest-environment node
  */

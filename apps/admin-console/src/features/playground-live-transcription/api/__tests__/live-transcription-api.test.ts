@@ -1,5 +1,5 @@
 /**
- * TASK-433 — Playground live-transcription API layer. Everything REST rides
+ * Playground live-transcription API layer. Everything REST rides
  * the BFF catch-all (gateway-relative paths, END-USER plane — no `admin/`
  * prefix); the WS URL builder targets the gateway origin directly with the
  * sessionId/ticket/tenantId trio the handshake guards require.

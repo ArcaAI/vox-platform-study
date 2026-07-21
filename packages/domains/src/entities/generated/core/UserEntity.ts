@@ -11,7 +11,7 @@ import * as Entities from '../../../entities';
 export interface IUserEntity extends Omit<IBaseTaggedEntity, 'tenantId'> {
   username: string;
   password: string;
-  /** TASK-400 — stamped whenever the password is set through the password module. NULL = legacy/unknown. */
+  /** Stamped whenever the password is set through the password module. NULL = legacy/unknown. */
   passwordChangedAt?: Date | null;
   lastLoginAt?: Date | null;
   lastActiveAt?: Date | null;
@@ -53,7 +53,7 @@ export class UserEntity extends BaseTaggedEntity {
     // core.User (IUserEntity uses `Omit<IBaseTaggedEntity, 'tenantId'>`).
     // A user's tenant membership lives on UserRoleAssignment, not on the
     // user row itself. We pass an explicit placeholder so the
-    // BaseTenantEntity constructor (which requires tenantId per TASK-305
+    // BaseTenantEntity constructor (which requires tenantId per
     // A.7) type-checks. The placeholder is never persisted because no
     // column exists, and UserEntity's own validate() override does NOT call
     // super.validate(), so the base "non-empty tenantId" guard never runs

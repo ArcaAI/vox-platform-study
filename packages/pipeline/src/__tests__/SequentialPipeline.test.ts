@@ -386,7 +386,7 @@ describe('SequentialPipeline', () => {
     });
 
     // -----------------------------------------------------------------------
-    // TASK-273 — C-1: cancellation propagates into onExecute, no further
+    // Cancellation propagates into onExecute, no further
     // stages run, cancel returns promptly.
     // -----------------------------------------------------------------------
 

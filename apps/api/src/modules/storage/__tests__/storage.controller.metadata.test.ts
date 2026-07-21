@@ -1,8 +1,8 @@
 /**
- * TASK-307 W3.6 — StorageController must carry `@TenantOwnedResource` with
- * `lookup: 'name'` on every handler that addresses a bucket by name (AC-9).
+ * StorageController must carry `@TenantOwnedResource` with
+ * `lookup: 'name'` on every handler that addresses a bucket by name.
  *
- * Closes audit finding C-2 (BLOCKER, `04-api-design-review.md`). Before this
+ * Before this
  * change, `getBucket`/`deleteBucket`/`updateBucket`/`listFiles`/`uploadFile`/
  * `getFileInfo`/`deleteFile` accepted any free-form S3 bucket name guarded
  * only by a path-traversal regex; a tenant-A user with `delete:Storage`

@@ -1,6 +1,6 @@
-"""Activity-wiring tests for the PHI egress guard (TASK-357).
+"""Activity-wiring tests for the PHI egress guard.
 
-RED-first: written before ``generate`` / ``run_inferential_sensors`` are wired to
+Covers how ``generate`` / ``run_inferential_sensors`` are wired to
 the :mod:`harness.guards.phi.egress` chokepoint. Each test runs the *real*
 activity body in a Temporal ``ActivityEnvironment`` with the client factories +
 ``get_settings`` / ``get_runtime_judge_config`` / ``_phi_redactor`` monkeypatched
@@ -115,7 +115,7 @@ def _infer_input(**kw: Any) -> RunInferentialSensorsInput:
 class TestGeneratePhiEgress:
     @pytest.mark.asyncio
     async def test_cloud_phi_blocks_generate_and_skips_smr(self, env, monkeypatch):
-        # T1 (AC-1, AC-2): cloud + fail-closed block ⇒ SMR client never called.
+        # T1: cloud + fail-closed block ⇒ SMR client never called.
         smr = _FakeSmr()
         monkeypatch.setattr(activities, "_smr_client", lambda s: smr)
         monkeypatch.setattr(activities, "get_settings", _gen_settings)
@@ -130,7 +130,7 @@ class TestGeneratePhiEgress:
 
     @pytest.mark.asyncio
     async def test_cloud_calls_smr_with_cleaned_text(self, env, monkeypatch):
-        # T2 (AC-1): cloud egress ⇒ SMR receives the redacted prompt + system prompt.
+        # T2: cloud egress ⇒ SMR receives the redacted prompt + system prompt.
         smr = _FakeSmr()
         monkeypatch.setattr(activities, "_smr_client", lambda s: smr)
         monkeypatch.setattr(activities, "get_settings", _gen_settings)
@@ -151,7 +151,7 @@ class TestGeneratePhiEgress:
 
     @pytest.mark.asyncio
     async def test_local_provider_passthrough_to_smr(self, env, monkeypatch):
-        # T3 (AC-3): a local provider ⇒ SMR receives the ORIGINAL text (no redaction).
+        # T3: a local provider ⇒ SMR receives the ORIGINAL text (no redaction).
         smr = _FakeSmr()
         monkeypatch.setattr(activities, "_smr_client", lambda s: smr)
         monkeypatch.setattr(activities, "get_settings", _gen_settings)
@@ -169,7 +169,7 @@ class TestGeneratePhiEgress:
 
     @pytest.mark.asyncio
     async def test_phi_disabled_bypasses_guard(self, env, monkeypatch):
-        # T4 (AC-4): phi_enabled=False ⇒ egress allowed unredacted; redactor untouched.
+        # T4: phi_enabled=False ⇒ egress allowed unredacted; redactor untouched.
         smr = _FakeSmr()
         redactor = _ContractRedactor(block=True)  # would block if ever consulted
         monkeypatch.setattr(activities, "_smr_client", lambda s: smr)
@@ -185,7 +185,7 @@ class TestGeneratePhiEgress:
 
     @pytest.mark.asyncio
     async def test_block_emits_structured_log(self, env, monkeypatch, caplog):
-        # T7 (AC-5): a block emits a structured ``harness.phi_egress.blocked`` warning.
+        # T7: a block emits a structured ``harness.phi_egress.blocked`` warning.
         smr = _FakeSmr()
         monkeypatch.setattr(activities, "_smr_client", lambda s: smr)
         monkeypatch.setattr(activities, "get_settings", _gen_settings)
@@ -203,7 +203,7 @@ class TestGeneratePhiEgress:
 class TestRunInferentialSensorsPhiEgress:
     @pytest.mark.asyncio
     async def test_cloud_safety_redacts_note_before_granite(self, env, monkeypatch):
-        # T6 (AC-1): cloud Granite ⇒ the note is redacted before the safety screen.
+        # T6: cloud Granite ⇒ the note is redacted before the safety screen.
         judge = _StubJudge()
         granite = _FakeGranite(dimensions={"harm": False})
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
@@ -234,7 +234,7 @@ class TestRunInferentialSensorsPhiEgress:
     async def test_cloud_block_degrades_whole_pass_and_skips_granite(
         self, env, monkeypatch, caplog
     ):
-        # T6/T7 (AC-2, AC-5): a cloud fail-closed block degrades the pass (reduced
+        # T6/T7: a cloud fail-closed block degrades the pass (reduced
         # assurance) with a PHI reason, never egresses, and logs the block.
         granite = _FakeGranite(dimensions={"harm": False})
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
@@ -264,7 +264,7 @@ class TestRunInferentialSensorsPhiEgress:
 
     @pytest.mark.asyncio
     async def test_local_providers_no_redaction(self, env, monkeypatch):
-        # AC-3: all-local inferential pass ⇒ Granite gets the ORIGINAL note unchanged.
+        # All-local inferential pass ⇒ Granite gets the ORIGINAL note unchanged.
         judge = _StubJudge()
         granite = _FakeGranite(dimensions={"harm": False})
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)

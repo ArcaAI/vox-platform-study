@@ -5,7 +5,7 @@ import { InternalServiceTokenGuard } from './internal-service-token.guard';
 import { SttInternalController } from './stt-internal.controller';
 
 @Module({
-  // TASK-525 — EffectiveConfigServiceModule backs the per-service config pull.
+  // EffectiveConfigServiceModule backs the per-service config pull.
   imports: [SttInternalServiceModule, EffectiveConfigServiceModule],
   controllers: [SttInternalController, EffectiveConfigController],
   // Applied via `@UseGuards` on the controller, but provided here so Nest can

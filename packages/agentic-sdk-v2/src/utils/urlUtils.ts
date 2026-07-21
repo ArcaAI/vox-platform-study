@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - URL Utilities (TASK-039, hardened TASK-215)
+ * @arcaai/vox - URL Utilities
  *
  * Shared helpers for building query strings from pagination params and filters.
  * Safe to compose: appendPagination(appendFilters(url, f), p) produces one `?`.

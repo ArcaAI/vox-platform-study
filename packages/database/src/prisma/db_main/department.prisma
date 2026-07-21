@@ -21,7 +21,7 @@ model Department {
   preSummaryPromptId     String? // Prompt ID for pre-summary generation in this department
   newPatientPromptId     String? // Prompt ID for new/referral patients in this department
   revisitPromptId        String? // Prompt ID for revisit/follow-up patients
-  dnaWritingStylePromptId String? // TASK-387 (#7) — default DNA writing-style PromptTemplate id (loose ref, like siblings)
+  dnaWritingStylePromptId String? // Default DNA writing-style PromptTemplate id (loose ref, like siblings)
   promptConfig           Json?   @db.JsonB // Department prompt configuration (contextVariables, preferredSections, abbreviationDensity)
 
   // Optional: parent department for hierarchy

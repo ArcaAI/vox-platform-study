@@ -1,5 +1,5 @@
 /**
- * TASK-328 A8 — AuditLogService filtered-list + export unit tests.
+ * AuditLogService filtered-list + export unit tests.
  *
  * Focus areas (RED → GREEN):
  * - filters are pushed to the repository `where` clause (NOT in-memory)

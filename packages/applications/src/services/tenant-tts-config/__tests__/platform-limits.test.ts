@@ -74,7 +74,7 @@ describe('resolveEffectiveTtsConfig (TASK-496)', () => {
 });
 
 /**
- * r2605 Finding F — registry-driven provider universe. `resolveEffectiveTtsConfig`
+ * Registry-driven provider universe. `resolveEffectiveTtsConfig`
  * takes an optional `universe` (the ENABLED SYSTEM TTS registry providers) that
  * replaces the code-constant universe in the allowedProviders clamp, the
  * routing-chain clamps AND the code-default fallback chains, so DISABLING a

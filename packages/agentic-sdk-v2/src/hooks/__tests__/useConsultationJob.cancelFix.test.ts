@@ -1,5 +1,5 @@
 /**
- * useConsultationJob — cancelJob HTTP Method Fix Test (TASK-032)
+ * useConsultationJob — cancelJob HTTP Method Fix Test
  *
  * Verifies cancelJob uses PATCH instead of DELETE.
  *

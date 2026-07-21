@@ -2,7 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 /**
- * PATCH body for the admin realtime-pipeline policy routes (TASK-356 Phase 5).
+ * PATCH body for the admin realtime-pipeline policy routes.
  * Every toggle is OPTIONAL with three-valued semantics:
  *  - OMIT a field  → leave it unchanged.
  *  - `true`/`false` → pin the toggle at this scope.
@@ -10,7 +10,7 @@ import { IsBoolean, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-va
  *                    cascade tier up).
  *
  * `dnaStyleEnabled` is intentionally ABSENT — it is doctor-scope storage written
- * by the Phase 6 doctor self-service surface, not by this admin (tenant/department)
+ * by the doctor self-service surface, not by this admin (tenant/department)
  * write surface. `expectedVersion` is the OCC token (folded from the `If-Match`
  * header by the controller; body fallback for service-to-service callers).
  */

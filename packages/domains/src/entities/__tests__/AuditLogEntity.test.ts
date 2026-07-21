@@ -1,5 +1,5 @@
 /**
- * AuditLogEntity.validate() Unit Tests — TASK-261 (Tier 3)
+ * AuditLogEntity.validate() Unit Tests
  *
  * Locks in the real invariant implementation that replaces the previous
  * `throw new BusinessException('Method not implemented.')` stub.
@@ -11,7 +11,7 @@
  *   - responsibleIp: optional; <= 45 chars (IPv6 worst-case) when present
  *   - resourceId: optional; non-empty trimmed when present
  *   - eventType: optional; <= 100 chars when present
- *   - tenantId: REQUIRED (TASK-305 Phase A — schema is NOT NULL,
+ *   - tenantId: REQUIRED (schema is NOT NULL,
  *     entity validate() refuses empty/null/undefined). Global-scope
  *     audits now belong to SYSTEM_TENANT_ID, not a literal NULL.
  *   - data / previousData / metadata: track-only Json (no structural validation
@@ -70,7 +70,7 @@ describe('AuditLogEntity.validate()', () => {
     });
 
     it('should reject tenantId = null (TASK-305 Phase A — global-scope audits now use SYSTEM_TENANT_ID)', () => {
-      // Pre-TASK-305 this case was a positive assertion ("global-scope
+      // Previously this case was a positive assertion ("global-scope
       // audits may omit tenantId"). The new contract requires every
       // audit log row to carry a concrete tenant (the platform-level
       // SYSTEM_TENANT_ID for things that used to be NULL). validate()

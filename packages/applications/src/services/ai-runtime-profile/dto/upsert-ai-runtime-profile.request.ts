@@ -2,7 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsInt, IsNumber, IsObject, IsOptional, Max, Min } from 'class-validator';
 
 /**
- * TASK-524 — upsert one (SYSTEM, provider, modelSlug) runtime profile.
+ * Upsert one (SYSTEM, provider, modelSlug) runtime profile.
  *
  * EVERY field is optional and `null` means "no opinion — fall through the
  * cascade", NOT zero. Omitting a field on an update leaves the stored value

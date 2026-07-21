@@ -17,13 +17,11 @@ interface CacheEntry {
 }
 
 /**
- * SecretsService — consumer-facing wrapper around ISecretsProvider.
- *
- * Phase 2C (TASK-302 Stream B). Adds:
+ * SecretsService — consumer-facing wrapper around ISecretsProvider. Adds:
  * - LRU cache (mnemonist/lru-cache) with per-entry TTL.
  * - invalidate(key) / invalidateAll() for explicit eviction.
- * - boot() to delegate to provider boot + warm up keys (Task 2.18).
- * - Redis Pub/Sub subscriber (Task 2.16) so rotations on one pod evict
+ * - boot() to delegate to provider boot + warm up keys.
+ * - Redis Pub/Sub subscriber so rotations on one pod evict
  *   caches across the fleet.
  */
 @Injectable()
@@ -156,7 +154,7 @@ export class SecretsService {
 
   /**
    * Channel used by all cluster nodes to broadcast cache evictions when a
-   * secret is rotated (Phase 6 rotation worker publishes here).
+   * secret is rotated (the rotation worker publishes here).
    *
    * Payloads:
    *   { key: '<KEY>' }   - evict one key
@@ -196,7 +194,7 @@ export class SecretsService {
   }
 
   /**
-   * Optional VaultLeaseRenewer handle (Phase 5 Task 5.7). When
+   * Optional VaultLeaseRenewer handle. When
    * present, `health()` reports its `.degraded` flag so health
    * indicators can warn without flipping `ok=false`. We intentionally
    * type structurally so this file does not depend on
@@ -216,7 +214,7 @@ export class SecretsService {
   async health(): Promise<SecretsHealth> {
     const base = await this.provider.health();
     if (!this.leaseRenewer || !this.leaseRenewer.degraded) {
-      // TASK-312 B.4: preserve a provider-level degraded signal (e.g. the
+      // Preserve a provider-level degraded signal (e.g. the
       // Vault AppRole token-renew loop crossing its failure threshold) rather
       // than hard-coding false, which previously swallowed it.
       return { ...base, degraded: base.degraded === true };
@@ -232,7 +230,7 @@ export class SecretsService {
   }
 
   /**
-   * Phase 4 Task 4.5 (TASK-302 Stream B) — proxy to provider.encrypt() when
+   * Proxy to provider.encrypt() when
    * the underlying provider implements Vault Transit. We deliberately do
    * NOT widen ISecretsProvider with encrypt/decrypt because the cloud
    * provider stubs (Env/InMemory/AWS/Azure) and the Vault provider have
@@ -281,7 +279,7 @@ export class SecretsService {
   }
 
   /**
-   * TASK-369 Phase 6 — Vault Transit BATCH decrypt. Decrypts many ciphertexts in
+   * Vault Transit BATCH decrypt. Decrypts many ciphertexts in
    * ONE round-trip, preserving input order. Powers repository decrypt-on-read
    * for multi-row/list reads. Capability-checked like encrypt/decrypt: requires
    * the Vault provider; throws fail-fast otherwise (the error omits material).
@@ -297,8 +295,8 @@ export class SecretsService {
   }
 
   /**
-   * Resolved name of the dedicated PHI Transit key. Data Encryption Initiative
-   * Phase 3A — clinical free-text fields encrypt under this key (separate from
+   * Resolved name of the dedicated PHI Transit key.
+   * Clinical free-text fields encrypt under this key (separate from
    * the secrets `transitKey`). When the underlying provider exposes
    * `phiTransitKey` (Vault) that value wins so `VAULT_TRANSIT_KEY_PHI` ops
    * overrides take effect; otherwise we default to 'hope-phi' so the field
@@ -310,7 +308,7 @@ export class SecretsService {
   }
 
   /**
-   * Phase 5 Task 5.3 (TASK-302 Stream B) — issue a short-lived DB
+   * Issue a short-lived DB
    * credential from Vault's database secrets engine. Returns the
    * triple `{ username, password, leaseId, ttlSec }`; the caller (the
    * `@prisma/adapter-pg` password callback in `getPrismaClientWithVault`)
@@ -351,7 +349,7 @@ export class SecretsService {
   }
 
   /**
-   * BUG-006 — renew a Vault DB-engine lease (extends its TTL up to
+   * Renew a Vault DB-engine lease (extends its TTL up to
    * max_ttl without changing the underlying PG user). Called by
    * VaultLeaseRenewer ahead of lease expiry; falls back to a fresh
    * requestDbCredential()-backed pool swap once max_ttl is reached.

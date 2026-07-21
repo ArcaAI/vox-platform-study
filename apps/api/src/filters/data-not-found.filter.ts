@@ -7,7 +7,7 @@ import { DataNotFoundException } from '@arcaai/exceptions';
  * `findByIdInContext` and similar fetch paths) to a generic HTTP 404
  * `{ statusCode: 404, message: "Resource not found" }` response.
  *
- * Why this exists — TASK-306 P3.3 / AC-12 / audit M-8:
+ * Why this exists:
  *
  * The native `DataNotFoundException.message` is
  *   `[DB] User with ID user-123 could not be found.`
@@ -26,15 +26,14 @@ import { DataNotFoundException } from '@arcaai/exceptions';
  *      exists at all (returning 500 with the literal id is functionally
  *      a 200 disguised as an error).
  *
- * Scope (user-locked, §10 Q2 of the plan README): this filter is
- * scoped ONLY to `DataNotFoundException`. The W5.1.3 + W5.2 + W5.3
+ * Scope: this filter is scoped ONLY to `DataNotFoundException`. The
  * cross-tenant `assertEqualTenants` guards already throw
  * `NotFoundException("Resource not found")` directly with the
  * generic body — those do NOT need filter wrapping.
  *
  * Production mode (`NODE_ENV=production`) ALWAYS emits the generic
- * body. Per the plan README §5.5.4 fallback option, the dev-mode echo
- * was intentionally skipped — "generic-always is the safer default".
+ * body — the dev-mode echo was intentionally skipped; generic-always
+ * is the safer default.
  */
 @Catch(DataNotFoundException)
 export class DataNotFoundExceptionFilter implements ExceptionFilter<DataNotFoundException> {

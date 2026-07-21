@@ -1,5 +1,5 @@
 /**
- * TASK-299 D-9 — Idempotency-Key utilities.
+ * Idempotency-Key utilities.
  *
  * The SDK injects an `idempotencyKey` into side-effectful POST bodies so
  * the backend can dedupe duplicate user-actions (double-clicks, retries,
@@ -8,8 +8,7 @@
  *
  * NOTE: we ship the key as a body field instead of an HTTP header because
  * `AgenticClient.post` does not currently accept custom headers and that
- * file is owned by another workstream — see the TASK-299 README hand-off
- * section.
+ * file is owned by another workstream.
  */
 
 /**

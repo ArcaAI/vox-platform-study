@@ -1,4 +1,4 @@
-"""Processor registry tests (TASK-505 Phase 1)."""
+"""Processor registry tests."""
 
 import pytest
 
@@ -194,10 +194,8 @@ class TestManifestContents:
         "nemo",
         "faster_whisper",
         "azure_speech",
-        # TASK-505 P3.
         "parakeet_cpp",
         "azure_foundry",
-        # TASK-507.
         "whisper_cpp",
     }
 
@@ -205,7 +203,7 @@ class TestManifestContents:
         assert set(get_registry().names("asr")) == self.EXPECTED_ASR
 
     def test_faster_whisper_declares_batch_support(self):
-        # Locks the TASK-505 P1 increment-1 parity fix at the capability level.
+        # Locks the increment-1 parity fix at the capability level.
         spec = get_registry().spec("asr", "faster_whisper")
         assert all(c.batch for c in spec.capabilities)
         assert not any(c.device == "mps" for c in spec.capabilities)

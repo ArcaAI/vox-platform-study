@@ -1,4 +1,4 @@
-"""Institutional-RAG hybrid retrieval package (TASK-330 Phase 3, Lane A).
+"""Institutional-RAG hybrid retrieval package.
 
 Components:
 

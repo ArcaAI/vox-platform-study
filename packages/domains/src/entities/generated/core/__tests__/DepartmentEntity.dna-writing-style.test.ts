@@ -1,5 +1,5 @@
 /**
- * TASK-387 (#7 / D3) — DepartmentEntity.dnaWritingStylePromptId
+ * DepartmentEntity.dnaWritingStylePromptId
  *
  * TDD verification that the per-department default DNA writing-style prompt slot
  * is exposed through the entity + factory layers, mirroring the existing prompt

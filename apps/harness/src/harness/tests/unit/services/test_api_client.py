@@ -1,6 +1,6 @@
 """Tests for the apps/api internal-harness tool client.
 
-RED-first: written before ``harness.services.api_client`` exists. The client
+The client
 targets the (configurable) ``{api_base_url}{api_internal_prefix}`` mount, always
 sends ``X-Service-Token`` + ``tenantId`` in the body, maps Lane H ``NEREntity``s
 to Lane G's camelCase ``HarnessEntityItem`` shape, and parses the camelCase
@@ -69,7 +69,7 @@ class TestPersistEntities:
 
     @pytest.mark.asyncio
     async def test_persist_entities_forwards_ontology_codes(self):
-        """TASK-476 C1 — a coded NEREntity forwards its ontology codes into the
+        """A coded NEREntity forwards its ontology codes into the
         HarnessEntityItem body so persistEntities writes the NamedEntity columns.
         Codes with no value are omitted (mirrors the existing offset pruning)."""
         seen: dict[str, httpx.Request] = {}
@@ -286,7 +286,7 @@ class TestRecordGateDecision:
 
 
 class TestRetractDraft:
-    """TASK-481 (E2) — the retraction write path (mirrors finalize_assurance)."""
+    """The retraction write path (mirrors finalize_assurance)."""
 
     @pytest.mark.asyncio
     async def test_retract_draft_posts_flag_verdict_and_reason(self):
@@ -360,7 +360,7 @@ _POLICY_JSON = {
 
 class TestGetPolicy:
     """The worker ``fetch_policy`` activity reads the effective harness policy from
-    the apps/api worker-facing endpoint (TASK-330 Phase 6 — Phase C.3)."""
+    the apps/api worker-facing endpoint."""
 
     @pytest.mark.asyncio
     async def test_get_policy_gets_with_tenant_query_and_token(self):
@@ -393,7 +393,7 @@ class TestGetPolicy:
 
 
 class TestLoadEntityPriors:
-    """TASK-480 Half-B — the read counterpart of persist_entities: the ``extract_entities``
+    """The read counterpart of persist_entities: the ``extract_entities``
     activity reads persisted coded NamedEntity rows as NER priors from apps/api."""
 
     @pytest.mark.asyncio
@@ -455,7 +455,7 @@ class TestLoadEntityPriors:
 
 
 class TestReportProgress:
-    """TASK-345 — live progress feed: the workflow's ``report_progress`` activity
+    """Live progress feed: the workflow's ``report_progress`` activity
     posts one stage event per phase to the internal progress endpoint."""
 
     @pytest.mark.asyncio
@@ -519,7 +519,7 @@ class TestReportProgress:
 
 
 class TestReportAssuranceEvent:
-    """TASK-355 Phase D Slice 5d (Q5 true mid-pass live feed): the
+    """Mid-pass live feed: the
     ``run_inferential_sensors`` activity posts ONE resolved claim verdict per
     claim to the internal assurance-event endpoint as each claim settles."""
 
@@ -597,7 +597,7 @@ class TestReportAssuranceEvent:
 
 
 class TestRecordEscalation:
-    """C1-05 (TASK-458): an SLA breach is recorded to apps/api (was a local no-op).
+    """An SLA breach is recorded to apps/api.
     The apps/api endpoint that consumes this is a coordinated follow-up (out of the
     harness manifest); the harness-side POST is fail-safe at the activity layer."""
 
@@ -667,7 +667,7 @@ class TestRecordEscalation:
 
 
 class TestIdempotencyKey:
-    """C1-03 (TASK-458): every WORM/draft callback carries a deterministic
+    """Every WORM/draft callback carries a deterministic
     ``Idempotency-Key`` header so a retried POST (Temporal ``_API_RETRY``) dedups
     on apps/api instead of double-writing the WORM audit / draft."""
 

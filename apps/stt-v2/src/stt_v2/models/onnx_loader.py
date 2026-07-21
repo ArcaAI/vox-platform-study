@@ -67,7 +67,7 @@ class ONNXLoader(BaseModelLoader):
         try:
             import onnxruntime as ort
 
-            # TASK-527 — local_path (operator override) and the file:// / s3://
+            # local_path (operator override) and the file:// / s3://
             # schemes are materialised by the shared resolver; a bare HuggingFace
             # id still goes through `_download_onnx_model`, whose `allow_patterns`
             # selective fetch saves tens of GB over a full snapshot.

@@ -11,8 +11,7 @@ import { AgenticContextRow } from './agentic-context-row';
 const AGENTIC_CATEGORY = 'Agentic Context';
 
 /**
- * The `agentic.*` settings registry (category "Agentic Context") — READ/WRITE
- * since TASK-533 B2.
+ * The `agentic.*` settings registry (category "Agentic Context") — READ/WRITE.
  *
  * It was a metadata-only inventory that pointed elsewhere for editing, which
  * made the control plane decorative twice over: the values were not editable

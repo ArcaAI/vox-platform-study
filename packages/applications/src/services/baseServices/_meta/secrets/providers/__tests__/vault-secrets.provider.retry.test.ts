@@ -1,4 +1,4 @@
-// TASK-312 Phase B (B.5/B.6) — transient-error retry for Vault reads.
+// (B.5/B.6) — transient-error retry for Vault reads.
 //
 // getSecret() must ride out a short Vault blip (5xx / transport error) with
 // bounded exponential backoff instead of surfacing a 5xx to the end user, but

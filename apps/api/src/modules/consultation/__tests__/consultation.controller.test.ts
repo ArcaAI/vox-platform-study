@@ -585,10 +585,9 @@ describe('ConsultationController', () => {
             expect(consultationService.doctorHasPatientRelationship).not.toHaveBeenCalled();
         });
 
-        // TASK-307 W5.4 — flag must be default-CLOSED (AC-18, audit D-2).
-        // Previously the missing-setting path returned `true` (default-OPEN)
-        // which silently enabled shared-patient reads for tenants that had
-        // never made a sharing decision.
+        // The flag must be default-CLOSED. A missing-setting path returning
+        // `true` (default-OPEN) would silently enable shared-patient reads
+        // for tenants that had never made a sharing decision.
         it('TASK-307 W5.4 — defaults FALSE when globalSettingRepo returns empty array (default-CLOSED)', async () => {
             const { controller, consultationService, globalSettingRepo } = buildController({
                 userId: DOCTOR_B,
@@ -796,7 +795,6 @@ describe('ConsultationController', () => {
             await expect(controller.approveSummary(CONSULTATION_OWN, 'ctx-1')).rejects.toThrow(ForbiddenException);
         });
 
-        // TASK-322 — lifecycle write endpoints
         it('close should enforce ownership', async () => {
             await expect(controller.close(CONSULTATION_OWN)).rejects.toThrow(ForbiddenException);
         });
@@ -811,7 +809,7 @@ describe('ConsultationController', () => {
     });
 
     // ═══════════════════════════════════════════════════════════════════════
-    // TASK-355 Phase D Slice 6a — safety-flag override plumbing (Q4)
+    // Safety-flag override plumbing
     // ═══════════════════════════════════════════════════════════════════════
 
     describe('approveSummary — overrideSafetyFlag plumbing (TASK-355 Q4)', () => {
@@ -839,7 +837,7 @@ describe('ConsultationController', () => {
     });
 
     // ═══════════════════════════════════════════════════════════════════════
-    // TASK-322 — lifecycle endpoints (close / reopen / update) wiring
+    // Lifecycle endpoints (close / reopen / update) wiring
     // ═══════════════════════════════════════════════════════════════════════
 
     describe('TASK-322 lifecycle endpoints', () => {
@@ -987,7 +985,7 @@ describe('ConsultationController', () => {
     });
 
     // ═══════════════════════════════════════════════════════════════════════
-    // TASK-330 — summary provenance read route (citationsMap + sensor scores)
+    // Summary provenance read route (citationsMap + sensor scores)
     // ═══════════════════════════════════════════════════════════════════════
 
     describe('getSummaryProvenance (TASK-330 provenance read)', () => {

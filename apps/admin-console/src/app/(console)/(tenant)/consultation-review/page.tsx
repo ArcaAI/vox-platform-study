@@ -4,7 +4,7 @@ import { ConsultationReviewScreen } from '@/features/consultation-review/compone
 export const metadata: Metadata = { title: 'Consultation Review' };
 
 /**
- * Consultation review — click-to-source evidence (TASK-533 B5, GAP-A2).
+ * Consultation review — click-to-source evidence.
  *
  * Tier 30-49 (tenant-scoped): it reads one tenant's clinical encounter, so it
  * sits under `(tenant)` and inherits that group layout's working-tenant guard.

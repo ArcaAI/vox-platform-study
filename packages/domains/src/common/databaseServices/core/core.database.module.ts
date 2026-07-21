@@ -73,7 +73,7 @@ import { UserVoiceProfileRepository } from '../../../repositories/generated/core
 import { WebhookRepository } from '../../../repositories/generated/core/WebhookRepository';
 import { WebhookRunHistoryRepository } from '../../../repositories/generated/core/WebhookRunHistoryRepository';
 
-// TASK-312 A.5 — async provider so the (possibly Vault-backed) Prisma client
+// Async provider so the (possibly Vault-backed) Prisma client
 // is fully resolved BEFORE the service is injected into the UnitOfWork /
 // repositories / AppSettingsService graph. With the previous `useClass` form
 // the Vault client was only set in onModuleInit, so consumers that touch the
@@ -103,7 +103,7 @@ const repositories = [
   NamedEntityRepository,
   // segment-level transcript structure (per-transcript annotation)
   TranscriptSegmentRepository,
-  // TASK-344 Workstream B — manual doctor highlighting
+  // Manual doctor highlighting
   HighlightRepository,
   // Core domain
   GlobalSettingRepository,
@@ -117,14 +117,14 @@ const repositories = [
   TagRepository,
   TenantRepository,
   TenantFrontendConfigRepository,
-  // Plan entitlements (TASK-392) — per-plan matrix, per-tenant override, rolling meters
+  // Plan entitlements — per-plan matrix, per-tenant override, rolling meters
   PlanEntitlementRepository,
   TenantEntitlementRepository,
   TenantUsageMeterRepository,
   UserMediaRepository,
   UserProfileRepository,
   UserRepository,
-  // Password security (TASK-400) — revocable single-use reset tokens
+  // Password security — revocable single-use reset tokens
   PasswordResetTokenRepository,
   UserDepartmentRepository,
   UserRoleAssignmentRepository,
@@ -135,10 +135,10 @@ const repositories = [
   AsrPipelineRepository,
   AsrPipelineVersionRepository,
   AiModelRepository,
-  // Per-tenant AI task-model defaults (TASK-506)
+  // Per-tenant AI task-model defaults
   AiTaskDefaultRepository,
   GateEditExemplarRepository,
-  // Config-plane core (TASK-524) — provider endpoints/credentials + runtime
+  // Config-plane core — provider endpoints/credentials + runtime
   // hyperparameter profiles. Both are SYSTEM-shared read models.
   AiProviderConnectionRepository,
   AiRuntimeProfileRepository,
@@ -161,10 +161,10 @@ const repositories = [
   TenantStorageConfigRepository,
   // Voice profile domain
   UserVoiceProfileRepository,
-  // Per-tenant TTS configuration (TASK-496)
+  // Per-tenant TTS configuration
   TenantTtsConfigRepository,
   TenantTtsProviderCredentialRepository,
-  // Clinical documentation harness domain (TASK-330 Phase 0)
+  // Clinical documentation harness domain
   GoldenSetRepository,
   GoldenCaseRepository,
   EvalRunRepository,
@@ -173,16 +173,16 @@ const repositories = [
   // Agentic SOTA ordered session trajectory — tenant-scoped
   // ops telemetry, soft-delete + sys-event exempt (see repository/entity docs).
   AgentTrajectoryStepRepository,
-  // Harness Administration Console — editable runtime policy (TASK-330 Phase 6)
+  // Harness Administration Console — editable runtime policy
   HarnessPolicyRepository,
   HarnessPolicyChangeRepository,
-  // Realtime-pipeline policy cascade (TASK-356 Phase 5, Pillar B)
+  // Realtime-pipeline policy cascade
   PipelinePolicyRepository,
   PipelinePolicyChangeRepository,
-  // Institutional RAG knowledge corpus (TASK-330 Phase 3)
+  // Institutional RAG knowledge corpus
   KnowledgeDocumentRepository,
   KnowledgeChunkRepository,
-  // Tenant-scoped external identity provider (TASK-498)
+  // Tenant-scoped external identity provider
   TenantIdentityProviderRepository,
   FederatedIdentityRepository,
   TenantIdentityProviderDomainRepository,

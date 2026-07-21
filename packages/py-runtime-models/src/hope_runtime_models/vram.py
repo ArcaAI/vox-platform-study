@@ -1,7 +1,7 @@
-"""TASK-529 §3.4 — feature-detected NVML VRAM probe.
+"""Feature-detected NVML VRAM probe.
 
 Decentralized budgets, no arbiter: each service bounds its own residency. A
-cross-process arbiter was rejected in AD-4 as over-engineering — it is a new
+cross-process arbiter was rejected as over-engineering — it is a new
 failure domain, a deploy unit and an IPC protocol for a problem that static
 partitioning solves on the only real deployment shape.
 

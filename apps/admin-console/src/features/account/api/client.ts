@@ -40,7 +40,7 @@ export function getMyPreferences(): Promise<UserPreferences> {
     return getJson('user/me/preferences');
 }
 
-/** BUG-005 Issue 4 — the caller's own department(s), incl. while impersonated. */
+/** The caller's own department(s), incl. while impersonated. */
 export function getMyDepartments(): Promise<UserDepartment[]> {
     return getJson('user/me/departments');
 }

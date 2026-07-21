@@ -1,5 +1,5 @@
 /**
- * TASK-224 Recommendation 3: Impersonation Audit Interceptor Tests
+ * Impersonation Audit Interceptor Tests
  *
  * The interceptor detects requests from impersonated sessions
  * (JWT contains `impersonatedBy` claim) and emits an audit event

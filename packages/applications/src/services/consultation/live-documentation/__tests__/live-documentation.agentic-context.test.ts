@@ -1,10 +1,11 @@
 /**
- * LiveDocumentationService — `agentic.context.*` live lane (TASK-533 B1).
+ * LiveDocumentationService — `agentic.context.*` live lane.
  *
- * TASK-524 shipped a governed READ facade (`EffectiveSettingsService`) and a
- * governed WRITE route (`PUT /admin/settings/registry/:key`) — and said so itself:
- * "Live-doc/harness CONSUMPTION of the resolved value is a later ticket; this only
- * makes the read honest" (`effective-settings.service.ts:75-77`).
+ * A governed READ facade (`EffectiveSettingsService`) and a
+ * governed WRITE route (`PUT /admin/settings/registry/:key`) exist — and the read
+ * facade itself notes that live-doc/harness CONSUMPTION of the resolved value
+ * was a later addition; the facade only makes the read honest
+ * (`effective-settings.service.ts:75-77`).
  *
  * Until this slice, live-doc resolved the six knobs from
  * `env ?? AGENTIC_CONTEXT_DEFAULTS` **in its constructor**. Two consequences:
@@ -13,7 +14,7 @@
  *   2. even the env value was frozen at construction, so nothing could move
  *      without a redeploy.
  *
- * The contract pinned here (ticket §5.2): a change through the TASK-524 lane is
+ * The contract pinned here: a change through the registry lane is
  * picked up by the NEXT flush, with no redeploy — and **env now loses to DB**.
  * Env survives only as the fallback when nothing is stored, which keeps an
  * untouched deployment behaving byte-for-byte as before.

@@ -31,16 +31,16 @@ function CredentialsTab() {
 }
 
 /**
- * TASK-526 — tenant "AI Configuration" screen (/ai-configuration, tier 30-49).
+ * Tenant "AI Configuration" screen (/ai-configuration, tier 30-49).
  *
- * Replaces the M-05 dead-end EmptyState that used to live at
+ * Replaces the dead-end EmptyState that used to live at
  * `/ai-model-defaults`. Two tabs, two different postures:
  *
- *  - "Effective models" — READ-ONLY visibility over all 9 AI task keys (M-11 /
- *    owner expectation E2). Model selection stays a GLOBAL_ADMIN-only write
- *    (expectation E3), so there are deliberately no pickers here; the tenant
+ *  - "Effective models" — READ-ONLY visibility over all 9 AI task keys.
+ *    Model selection stays a GLOBAL_ADMIN-only write, so there are
+ *    deliberately no pickers here; the tenant
  *    sees which model serves each task and which cascade tier decided it.
- *  - "Cloud credentials" — the tenant's OWN write surface (GAP-C1 tenant lane):
+ *  - "Cloud credentials" — the tenant's OWN write surface:
  *    BYO Azure/Bedrock endpoints + write-only keys. This tab mutates, so the
  *    "Acting on «Tenant»" banner is pinned for elevated callers (rule 13).
  */

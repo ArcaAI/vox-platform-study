@@ -1,4 +1,4 @@
-"""Unit tests for the batched-entailment helper (TASK-355 Phase B / R-5).
+"""Unit tests for the batched-entailment helper.
 
 The helper turns the per-claim groundedness loop into a few JSON-array calls
 against the shared transcript premise. The parser is **conservative**: anything

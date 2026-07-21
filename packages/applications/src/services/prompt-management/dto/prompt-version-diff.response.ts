@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * TASK-389 #14 (AG8/A3) — server-side prompt-version diff.
+ * Server-side prompt-version diff.
  *
  * A single change segment from a line/word diff. Shape-compatible with the
  * `diff` npm package output and the SDK `DiffChange` type so the SDK can keep

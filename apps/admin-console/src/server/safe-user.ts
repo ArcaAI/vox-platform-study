@@ -21,8 +21,8 @@ export interface SafeSession {
     impersonatingUsername: string | null;
     /**
      * The identity screens should render/authorize against: the impersonated
-     * target while impersonating, otherwise the operator's own `user`
-     * (BUG-005). `user`/`isElevated` above stay operator-only — they drive the
+     * target while impersonating, otherwise the operator's own `user`.
+     * `user`/`isElevated` above stay operator-only — they drive the
      * persona-control chrome (site header, "Impersonating" banner), which must
      * keep showing the real operator.
      */

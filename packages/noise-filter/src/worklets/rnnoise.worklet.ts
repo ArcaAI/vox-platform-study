@@ -4,20 +4,20 @@
  * AudioWorklet processor for real-time noise cancellation using RNNoise.
  * This runs in a separate thread for low-latency audio processing.
  *
- * TASK-269:
- *  - CRIT-1: WASM I/O buffers are preallocated once at init and reused for
+ * Design constraints:
+ *  - WASM I/O buffers are preallocated once at init and reused for
  *    the lifetime of the processor.
- *  - CRIT-3: The WASM is instantiated with the import object the
+ *  - The WASM is instantiated with the import object the
  *    `@jitsi/rnnoise-wasm@0.2.1` binary actually expects
  *    (`{ a: { a: resize_heap, b: memcpy_big } }`) and exports are read by
  *    their stable single-letter names. Mirror of `workletRnnoiseLoader.ts`.
- *  - HIGH-1: Output ring buffer with one frame priming latency; no gaps.
+ *  - Output ring buffer with one frame priming latency; no gaps.
  *
  * NOTE: This TS source compiles to `dist/worklets/rnnoise.worklet.js` for
  * consumers who load the worklet via `audioContext.audioWorklet.addModule`
  * directly. The runtime blob URL used by the package itself is built from
  * the inline string in `worklets/worklet-loader.ts`; the two must stay
- * algorithmically identical (see MED-8 in 05-noise-filter.md — deferred).
+ * algorithmically identical (no automated check enforces this).
  */
 
 import type { NoiseCancellationLevel, NoiseFilterStats, WorkletInboundMessage, WorkletOutboundMessage } from '../types/index.js';

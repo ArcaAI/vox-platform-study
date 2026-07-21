@@ -19,10 +19,10 @@ interface DownstreamService {
 }
 
 /**
- * Public-facing shape of a downstream service probe. TASK-307 W5.1 / AC-15
+ * Public-facing shape of a downstream service probe. This shape
  * intentionally OMITS the upstream `version` and `checks` fields the Python
  * services return — those values leak vulnerable-version reconnaissance
- * (audit E-3) and internal probe details (audit C-8) to whoever holds
+ * and internal probe details to whoever holds
  * `Authorize()` (any authenticated user). Full detail still reaches the
  * server-side log entry in `probeService`.
  */
@@ -46,7 +46,7 @@ interface ServiceProbeResult {
  * health status, eliminating the need for per-service proxy controllers.
  */
 @ApiTags('health')
-// TASK-307 W5.1 / AC-15 / audit D-11 — lowered from 300 → 30 req/min. With
+// Lowered from 300 → 30 req/min. With
 // /services{/:key} now @Authorize()-gated, the SSRF amplifier surface
 // (4 outbound HTTP calls per probe) shrinks, but unauthenticated
 // reconnaissance against /live, /ready, /startup, / still benefits from a
@@ -64,7 +64,7 @@ export class ApiHealthController {
     @Inject(IConfigService)
     private readonly configService: IConfigService,
   ) {
-    // TASK-310 E-5 (AC-5): downstream URLs resolve through the typed
+    // Downstream URLs resolve through the typed
     // `IConfigService.getConfigValue(...)` accessor. The pre-W7 direct
     // `process.env.{SMR,STT_V2,TTS,NLP}_URL` reads are forbidden by
     // the `no-direct-downstream-url-env` lint rule; the env-or-fallback
@@ -180,12 +180,10 @@ export class ApiHealthController {
   }
 
   @Get('services')
-  // TASK-307 W5.1 / AC-15 — close audit C-8 (was unauthenticated). The probe
-  // payload is sanitised below (version + checks stripped per audit E-3).
-  // TASK-336 OB-12 — tightened from any-authenticated to GLOBAL_ADMIN
-  // (`manage all`), matching the other ops/admin surfaces; this downstream
-  // ops health is not for plain doctors.
-  // TASK-386 (#21) — widened so a TENANT_ADMIN can read downstream service
+  // Requires authentication — the probe payload is sanitised below
+  // (version + checks stripped). GLOBAL_ADMIN (`manage all`) has access,
+  // matching the other ops/admin surfaces; this downstream ops health is not
+  // for plain doctors. A TENANT_ADMIN can also read downstream service
   // health for their tenant dashboard (`read:TenantTelemetry`). The payload is
   // already sanitised platform-infra status (no PHI / per-tenant rows); a plain
   // DOCTOR still holds neither grant and is rejected.
@@ -227,9 +225,8 @@ export class ApiHealthController {
   }
 
   @Get('services/:serviceKey')
-  // TASK-307 W5.1 / AC-15 — close audit C-8.
-  // TASK-336 OB-12 — GLOBAL_ADMIN (`manage all`), as for /services above.
-  // TASK-386 (#21) — widened to `read:TenantTelemetry` (see /services above).
+  // Requires authentication. GLOBAL_ADMIN (`manage all`), as for /services
+  // above; also `read:TenantTelemetry` (see /services above).
   @CanAny(['manage', 'all'], ['read', 'TenantTelemetry'])
   @ApiOperation({ summary: 'Health check for a single downstream microservice (admin only)' })
   @ApiParam({ name: 'serviceKey', enum: ['smr', 'nlp', 'stt', 'tts', 'guardrail', 'harness'], description: 'Service key' })
@@ -251,7 +248,7 @@ export class ApiHealthController {
     try {
       const response = await this.httpService.axiosRef.get(`${svc.url}${svc.healthEndpoint}`, { timeout: 5000 });
       const data = response.data;
-      // TASK-307 W5.1 / AC-15 / audit C-8 + E-3 — full payload (including
+      // Full payload (including
       // `version` and `checks`) is logged server-side at debug level for
       // operator visibility. The public response shape OMITS these fields
       // so version + downstream probe details never leak to the client.

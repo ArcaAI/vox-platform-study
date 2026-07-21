@@ -3,8 +3,8 @@ import type { ApiKeyEntity } from '@arcaai/domains';
 import type { UserSession } from '@arcaai/applications';
 
 /**
- * TASK-310 E-6 (AC-6) — narrowed Express `Request` for handlers that
- * touch the authentication pipeline.
+ * Narrowed Express `Request` for handlers that touch the authentication
+ * pipeline.
  *
  * The auth chain (`UnifiedAuthGuard` in `@arcaai/applications` /
  * `JwtAuthGuard` in `apps/api/src/guards`) populates three fields on
@@ -17,10 +17,10 @@ import type { UserSession } from '@arcaai/applications';
  *                 tenant override; the canonical tenant lookup is the
  *                 CLS context, not this field.
  *
- * Pre-W7.A.14, downstream code reached these via `request['apiKey']`
- * (string-key) or via inline anonymous types. Both patterns silently
- * accept typos: `request['aip_key']` evaluates to `undefined`, which
- * skips the authentication check and silently authorises the request.
+ * Reaching these fields via `request['apiKey']` (string-key) or an inline
+ * anonymous type would silently accept typos: `request['aip_key']`
+ * evaluates to `undefined`, which skips the authentication check and
+ * silently authorises the request.
  *
  * Using `RequestWithAuth` as the parameter type forces TypeScript to
  * reject those typos at compile-time. All three auth-pipeline fields

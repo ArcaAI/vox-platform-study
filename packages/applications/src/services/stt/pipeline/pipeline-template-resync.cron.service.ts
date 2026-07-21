@@ -36,7 +36,7 @@ export interface PipelineTemplateResyncCronConfig {
 }
 
 /**
- * TASK-531 (GAP-T3) — settings-gated nightly sweep that runs
+ * Settings-gated nightly sweep that runs
  * {@link PipelineTemplateResyncService.resyncTenant} across every non-SYSTEM
  * tenant.
  *

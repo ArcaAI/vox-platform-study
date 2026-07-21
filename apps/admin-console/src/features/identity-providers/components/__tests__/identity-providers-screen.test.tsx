@@ -1,5 +1,5 @@
 /**
- * TASK-498 P4 — Identity Providers screen. fetch is stubbed at the network
+ * Identity Providers screen. fetch is stubbed at the network
  * boundary; assertions cover the provider grid, the working-tenant gate, the
  * detail drawer following row selection, the create-in-drawer flow, delete,
  * and the block error state.

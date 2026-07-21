@@ -129,7 +129,7 @@ export interface VADOptions {
    * Set to `0` to disable auto-reset (LSTM state then persists for the
    * whole session). For multi-speaker / long-running medical sessions the
    * default is appropriate; downstream consumers can still force a reset
-   * via `VADProcessor.reset()` at any time. (TASK-271 H-1.)
+   * via `VADProcessor.reset()` at any time.
    *
    * @default 5000
    */
@@ -304,8 +304,8 @@ export interface VADSpeechEndPayload {
    * Duration of the speech segment in milliseconds.
    * Convenience alias equal to `endTime - startTime`.
    *
-   * Computed at the source in `VADProcessor` (TASK-271 H-4); consumers
-   * should NOT compute their own duration from `audio.length` because the
+   * Computed at the source in `VADProcessor`; consumers should NOT compute
+   * their own duration from `audio.length` because the
    * pre/post-speech padding skews that figure.
    */
   duration: number;

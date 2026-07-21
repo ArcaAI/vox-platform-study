@@ -26,7 +26,7 @@ export function createStreamSession(input: CreateStreamSessionInput): Promise<St
     return postJson(`${JOB_BASE}/stream/session`, input);
 }
 
-/** Mints a fresh single-use ticket for reconnects (TASK-298 D-18). */
+/** Mints a fresh single-use ticket for reconnects. */
 export function refreshStreamTicket(sessionId: string): Promise<RefreshTicketResponse> {
     return postJson(`${JOB_BASE}/stream/session/${encodeURIComponent(sessionId)}/refresh-ticket`);
 }
@@ -62,7 +62,7 @@ export async function uploadBatchAudio(input: { file: File; pipelineId: string; 
     return (await request<BatchTranscribeResponse>(`${JOB_BASE}/transcribe`, { method: 'POST', body: form })).data;
 }
 
-/** Caller's OWN jobs only (TASK-319 F3); custom envelope with 1-based page. */
+/** Caller's OWN jobs only; custom envelope with 1-based page. */
 export function listMyTranscriptionJobs(params?: { page?: number; limit?: number }): Promise<PaginatedPlaygroundJobs> {
     return getJson(JOB_BASE, params);
 }

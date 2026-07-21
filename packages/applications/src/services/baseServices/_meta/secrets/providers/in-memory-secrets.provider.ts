@@ -2,13 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { ISecretsProvider, SecretFetchOptions, SecretsHealth } from '../ISecretsProvider';
 
 /**
- * Phase 2A Task 2.4 (TASK-302 Stream B) — InMemorySecretsProvider.
+ * InMemorySecretsProvider.
  *
  * Test-only provider that mirrors the public surface of every other
  * provider. Also exposes setSecret() and a rotateSecret(key, newValue)
  * overload so test suites can simulate rotation flows.
  *
- * Never selected in production: Phase 2C's module factory only chooses
+ * Never selected in production: the module factory only chooses
  * it when SECRETS_PROVIDER=in-memory is passed explicitly.
  */
 @Injectable()

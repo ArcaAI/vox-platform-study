@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox — usePlatformMetrics Hook (TASK-386 #16).
+ * @arcaai/vox — usePlatformMetrics Hook
  *
  * Reads the three global-admin platform runtime tiles:
  *   - E1 `/admin/platform/metrics`     → requests/min, error rate, P95, sockets,

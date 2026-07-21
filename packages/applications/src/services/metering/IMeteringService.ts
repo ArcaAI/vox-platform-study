@@ -1,7 +1,7 @@
 import { EntityId } from '@arcaai/domains';
 
 /**
- * TASK-392 (Q5) — the three rolling-monthly meter values for one tenant/window.
+ * The three rolling-monthly meter values for one tenant/window.
  * `transcriptionMinutes` is whole minutes (rounded from summed audio-ms), to
  * match the integer `monthly*` limit columns.
  */
@@ -12,7 +12,7 @@ export interface MeterUsage {
 }
 
 /**
- * TASK-392 (Q5, Phase 2) — rolling-monthly metering contract.
+ * Rolling-monthly metering contract.
  *
  * Reads (`getCurrentUsage`) are a LIVE Postgres aggregate over the current UTC
  * calendar-month window — authoritative and near-realtime, correct even when

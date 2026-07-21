@@ -1,4 +1,4 @@
-"""TASK-455 (S1-EVAL) — Wire-level streaming loss/latency harness (AC-5/6).
+"""Wire-level streaming loss/latency harness.
 
 Extends the pattern of ``test_streaming_latency_harness.py`` but routes audio
 through the **WS gateway** (the API at :8868, path ``/ws/stt-v2/stream``) instead
@@ -7,11 +7,11 @@ of XADD-ing straight onto Redis. It therefore measures the FULL realtime loop �
     mic frames → WS ``/ws/stt-v2/stream`` → Redis ``stt:audio`` → STT-v2
                → Redis ``stt:result`` → WS caption messages
 
-— which is exactly the transport TASK-457 (Redis consumer-groups migration)
-reshapes. This harness is that migration's measurement gate: it emits a
-quantitative BASELINE (first-partial latency, commit/stable-latency P50/P99,
-partial-revision rate, and frames-sent-vs-transcribed loss) as a JSON artifact.
-No pass/fail threshold is asserted on the numbers — baseline only (AC-6).
+— which is exactly the transport a Redis consumer-groups migration reshapes.
+This harness is that migration's measurement gate: it emits a quantitative
+BASELINE (first-partial latency, commit/stable-latency P50/P99,
+partial-revision rate, and frames-sent-vs-transcribed loss) as a JSON
+artifact. No pass/fail threshold is asserted on the numbers — baseline only.
 
 CLOCK DOMAIN
 ------------
@@ -375,7 +375,7 @@ def partial_revision_rate(partial_texts: list[str]) -> dict[str, Any]:
 
 
 def committed_revision_rate(entries: Sequence[tuple[str, int | None]]) -> dict[str, Any]:
-    """Fraction of partials that REWRITE the already-COMMITTED prefix (TASK-487 A1).
+    """Fraction of partials that REWRITE the already-COMMITTED prefix.
 
     Unlike :func:`partial_revision_rate` (which compares the FULL caption), this
     compares only the LocalAgreement-2 committed region ``text[:stable_chars]`` —
@@ -384,7 +384,7 @@ def committed_revision_rate(entries: Sequence[tuple[str, int | None]]) -> dict[s
     is NOT churn, so it does not count here.
 
     ``stable_chars`` None/≤0 carries NO committed-prefix information for that frame:
-    it is a tentative-tail-only refresh (TASK-471 emits stableChars=0 on those), and
+    it is a tentative-tail-only refresh (the gateway emits stableChars=0 on those), and
     the UI carries the previously-settled prefix forward unchanged — it does NOT
     un-settle it. So such frames are SKIPPED, not read as a retraction to empty; each
     committed frame is compared against the last frame that actually reported a
@@ -486,7 +486,7 @@ def compute_metrics(
         "ttfw_ms": ttfw_ms,
         "commit_latency_ms": _stats(commit_latencies),
         # Full-caption revision (informational) + committed-region revision (the
-        # TASK-487 A1 guardrail — measures settled-text churn, excludes the tail).
+        # churn guardrail — measures settled-text churn, excludes the tail).
         "partial_revision": partial_revision_rate([p.text for p in partials]),
         "committed_revision": committed_revision_rate([(p.text, p.stable_chars) for p in partials]),
         "loss": {

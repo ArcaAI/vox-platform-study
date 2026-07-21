@@ -1,4 +1,4 @@
-// TASK-504 Phase 3b — the pure cascade-walk primitive.
+// The pure cascade-walk primitive.
 //
 // Extracted from ConfigResolver so every registry-driven config surface resolves
 // the same way: walk the caller-ordered tiers (deepest → shallowest), return the

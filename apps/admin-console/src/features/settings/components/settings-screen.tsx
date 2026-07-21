@@ -27,17 +27,17 @@ import { SettingCreateDrawer, SettingDetailDrawer } from './setting-drawer';
 /** Omni search targets (→ gateway `searchFields`) and the implicit sort — stable refs for the hook. */
 const SETTING_SEARCH_FIELDS = ['name', 'key'];
 /**
- * TASK-443 — namespace FIRST so the grouped list's groups are contiguous per
+ * Namespace FIRST so the grouped list's groups are contiguous per
  * server page (grouping is display-only; the sort is what forms the groups).
  */
 const SETTING_DEFAULT_SORT: SortRule[] = [
     { id: 'namespace', desc: false },
     { id: 'key', desc: false },
 ];
-/** TASK-443 — namespace group-header rows (label + count) in the grid. */
+/** Namespace group-header rows (label + count) in the grid. */
 const SETTING_GROUP_BY: GroupByConfig<GlobalSetting> = { accessor: (row) => row.namespace ?? null };
 /**
- * TASK-443 — the Secrets-only chip's filter id. `isSecret` is DERIVED on the
+ * The Secrets-only chip's filter id. `isSecret` is DERIVED on the
  * gateway (encrypted value OR `secrets` namespace OR convention-named key),
  * not a column, so the rule is stripped from the bracket grammar and remapped
  * to the bespoke `secretsOnly` query param before the request is built.
@@ -71,17 +71,17 @@ const CREATE_SENTINEL = 'new';
  * Frame 24 — Settings & secrets (/settings, tier 20-29 shared). AdminDataGrid
  * (omni search + sort + pager) over the settings visible to the caller. Rows are
  * read-only in the list — masked secrets, plaintext non-secrets — and clicking a
- * row (or "New setting") opens the console-wide DetailDrawer (TASK-437/439) that
+ * row (or "New setting") opens the console-wide DetailDrawer that
  * carries the type-aware value editor (a real code editor for Json/Array),
  * permission-gated step-up reveal, guided secret rotation, OCC If-Match editing
  * and an audit-log-backed History tab. Scope is decided by the working-tenant
- * switcher; an UNSCOPED super-admin gets the cross-tenant listing (TASK-430) with
+ * switcher; an UNSCOPED super-admin gets the cross-tenant listing with
  * a Tenant column + filter.
  */
 export function SettingsScreen() {
     const query = useAdminGridParams({ searchFields: SETTING_SEARCH_FIELDS, defaultSort: SETTING_DEFAULT_SORT });
 
-    // TASK-443 — remap the Secrets-only chip: strip the derived `isSecret` rule
+    // Remap the Secrets-only chip: strip the derived `isSecret` rule
     // from the serialized bracket filters and carry it as the bespoke
     // `secretsOnly` extra param instead (page-reset/URL behaviour untouched —
     // the rule still lives in the grid's query state like any other filter).
@@ -96,7 +96,7 @@ export function SettingsScreen() {
     const { rows, total } = normalizeList<GlobalSetting>(settingsQuery.data);
     const totalCount = total ?? 0;
 
-    // TASK-430 — Tenant column + filter on the cross-tenant listing.
+    // Tenant column + filter on the cross-tenant listing.
     const tenantNames = useTenantNames();
     const tenantCatalog = useTenantCatalog();
     const tenantOptions = useMemo<FilterOption[]>(
@@ -104,7 +104,7 @@ export function SettingsScreen() {
         [tenantCatalog.data],
     );
 
-    // TASK-443 — Namespace chip options: the cached distinct-namespace catalog,
+    // Namespace chip options: the cached distinct-namespace catalog,
     // merged with any URL-selected values so a shared link always renders its chips.
     const namespaceCatalog = useSettingNamespaces();
     const namespaceOptions = useMemo<FilterOption[]>(() => {
@@ -173,7 +173,7 @@ export function SettingsScreen() {
             accessorKey: 'namespace',
             header: 'Namespace',
             enableSorting: false,
-            // TASK-443 — server-driven multiSelect facet (namespace[in]:…).
+            // Server-driven multiSelect facet (namespace[in]:…).
             meta: { label: 'Namespace', variant: 'multiSelect', options: namespaceOptions },
             size: 140,
             cell: ({ row }) => <span className="text-muted-foreground">{row.original.namespace || '—'}</span>,
@@ -192,7 +192,7 @@ export function SettingsScreen() {
                 ),
         },
         {
-            // TASK-443 — the column id IS the gateway field (`dataType[in]:…`).
+            // The column id IS the gateway field (`dataType[in]:…`).
             accessorKey: 'dataType',
             header: 'Type',
             enableSorting: false,
@@ -201,7 +201,7 @@ export function SettingsScreen() {
             cell: ({ row }) => <span className="text-muted-foreground">{row.original.dataType}</span>,
         },
         {
-            // TASK-443 — Secrets-only: a FILTER-ONLY virtual column (never
+            // Secrets-only: a FILTER-ONLY virtual column (never
             // rendered; `isSecret` is derived server-side). The screen remaps
             // its rule onto the bespoke `secretsOnly` query param.
             accessorKey: SECRETS_FILTER_ID,

@@ -1,11 +1,11 @@
-// TASK-369 (Data Encryption Initiative) Phase 3C — field encryption for
+// Field encryption for
 // PromptTemplate (lastTestOutput free-text test result).
 //
 // Sibling file mirroring ContextItemVersionRepository.encryption.ts. The single
 // encrypted field records its Transit key version in `keyVersion`; the shared
 // Buffer/ciphertext primitives live in common/field-encryption.ts and default
-// to the dedicated `hope-phi` Transit key. TASK-369 Phase 6 dropped the plaintext
-// column; reads decrypt the ciphertext only (no plaintext fallback).
+// to the dedicated `hope-phi` Transit key. The plaintext
+// column has been dropped; reads decrypt the ciphertext only (no plaintext fallback).
 
 import { PromptTemplateRepository } from './PromptTemplateRepository';
 import { PromptTemplateEntity } from '../../../entities';
@@ -77,7 +77,7 @@ PromptTemplateRepository.prototype.decryptFieldsFromEntity = async function (
   secrets: SecretsServiceLike,
 ): Promise<PromptTemplatePlaintext> {
   const lastTestOutput = await decryptCiphertextToString(secrets, entity.encryptedLastTestOutput);
-  // TASK-369 Phase 6 — plaintext column dropped; decrypt ciphertext only.
+  // Plaintext column dropped; decrypt ciphertext only.
   return { lastTestOutput };
 };
 

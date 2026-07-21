@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 /**
- * TASK-496 — the RESOLVED TTS spec for a tenant (tenant row merged over the
+ * The RESOLVED TTS spec for a tenant (tenant row merged over the
  * SYSTEM default, clamped to platform limits). This is what the gateway injects
  * into tts-v2 per request; every field is concrete.
  */
@@ -39,7 +39,7 @@ export class EffectiveTtsConfigResponse {
   @ApiProperty({ description: 'Whether routing to the Sarvam public API is allowed' })
   sarvamPublicApiAllowed!: boolean;
 
-  // TASK-506 — SYSTEM bindings merged under tenant bindings (per-voice-id
+  // SYSTEM bindings merged under tenant bindings (per-voice-id
   // shallow merge, tenant wins). Injected into tts-v2 as `voice_bindings`.
   @ApiProperty({
     description: 'Effective per-voice provider voice-name bindings: { [internalVoiceId]: { [provider]: providerVoiceName } }',

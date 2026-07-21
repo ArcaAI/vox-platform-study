@@ -10,9 +10,9 @@ export class PromptManagementDtoMapper {
       description: entity.description ?? undefined,
       content: entity.content ?? '',
       category: entity.category ?? '',
-      // TASK-356 Phase 6 (S1) — expose scope for the doctor "My Prompts" UI.
+      // Expose scope for the doctor "My Prompts" UI.
       scope: entity.scope ?? undefined,
-      // TASK-331 doc-02 F5 — surface the real status; pre-migration rows default DRAFT.
+      // Surface the real status; pre-migration rows default DRAFT.
       status: (entity.status as 'DRAFT' | 'PUBLISHED') ?? 'DRAFT',
       variables: entity.variables ?? undefined,
       currentVersionNumber: entity.currentVersionNumber ?? 1,
@@ -21,11 +21,11 @@ export class PromptManagementDtoMapper {
       createdAt: entity.createdAt.toISOString(),
       updatedAt: entity.updatedAt.toISOString(),
       resourceStatus: entity.resourceStatus ?? undefined,
-      // TASK-407 — last prompt-test outcome for the Agent Jobs surface.
+      // Last prompt-test outcome for the Agent Jobs surface.
       // Vault-encrypted `lastTestOutput` intentionally omitted.
       lastTestScore: entity.lastTestScore ?? undefined,
       lastTestAt: entity.lastTestAt ? entity.lastTestAt.toISOString() : undefined,
-      // TASK-302 Stream D Phase E.3 — surface `_version` (the OCC token,
+      // Surface `_version` (the OCC token,
       // distinct from `currentVersionNumber`) so SDK clients can echo
       // it back via `If-Match: "<version>"` on the next PATCH.
       version: entity.version,

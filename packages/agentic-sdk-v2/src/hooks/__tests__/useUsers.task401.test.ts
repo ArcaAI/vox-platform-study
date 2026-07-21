@@ -1,5 +1,5 @@
 /**
- * useUsers Hook — TASK-401 additions: global-admin time-boxed impersonation
+ * useUsers Hook — global-admin time-boxed impersonation
  * (`impersonate`) and early end (`endImpersonation`). Both are thin wrappers:
  * the ADMIN APP owns the token swap via its auth store, so the SDK never
  * stashes the impersonation token itself on this path.

@@ -37,7 +37,7 @@ export const SetPermissionMode = (mode: PermissionMode) => SetMetadata(PERMISSIO
 /**
  * Require specific permissions for a route (AND logic - all required)
  *
- * Metadata-only (TASK-343): sets `REQUIRED_PERMISSIONS_KEY` + `PERMISSION_MODE_KEY`
+ * Metadata-only: sets `REQUIRED_PERMISSIONS_KEY` + `PERMISSION_MODE_KEY`
  * and tags Swagger with `@ApiBearerAuth()`. Enforcement is handled by the global
  * `UnifiedAuthGuard` (`APP_GUARD`) reading this metadata — this decorator no
  * longer re-applies `@UseGuards(UnifiedAuthGuard)`, which previously caused the
@@ -71,7 +71,7 @@ export function Authorize(...permissions: [string, string][]) {
  * Require ANY of the specified permissions (OR logic)
  * At least one permission must be satisfied
  *
- * Metadata-only (TASK-343): like {@link Authorize}, enforcement is delegated to
+ * Metadata-only: like {@link Authorize}, enforcement is delegated to
  * the global `UnifiedAuthGuard` (`APP_GUARD`); no route-level guard is attached.
  *
  * @param permissions - Array of [action, subject] tuples

@@ -15,7 +15,7 @@ interface VerifyEmailScreenProps {
 
 type Result = { tenantKey: string } | { error: string };
 
-/** TASK-497 D1 — consumes the emailed verification link, auto-submitting on mount. */
+/** Consumes the emailed verification link, auto-submitting on mount. */
 export function VerifyEmailScreen({ token }: VerifyEmailScreenProps) {
     const [result, setResult] = useState<Result | null>(null);
     const submitted = useRef(false);

@@ -352,7 +352,7 @@ test.describe('RBAC Controllers', () => {
       });
     });
 
-    // TASK-501 — global admin gains create/update on SYSTEM roles + role cloning.
+    // Global admin gains create/update on SYSTEM roles + role cloning.
     test.describe('TASK-501 — SYSTEM-role authoring + clone', () => {
       test('super_admin (GLOBAL_ADMIN) can rename a SYSTEM role; tenant admin cannot', async ({ request }) => {
         if (!rbacEndpointsAvailable || !superAdminToken || !adminToken) {
@@ -974,7 +974,7 @@ test.describe('RBAC Controllers', () => {
       const roleId = testRoleIds[testRoleIds.length - 1];
       const policyId = testPolicyIds[testPolicyIds.length - 1];
 
-      // TASK-409 — detach without step-up confirmation is refused (428).
+      // Detach without step-up confirmation is refused (428).
       const unconfirmed = await request.delete(`/api/v1/admin/rbac/roles/${roleId}/policies/${policyId}`, {
         headers: { Authorization: `Bearer ${superAdminToken}` },
       });

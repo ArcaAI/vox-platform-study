@@ -1,4 +1,4 @@
-"""Fail-closed PHI redaction guard (TASK-330 Phase 2, step 5).
+"""Fail-closed PHI redaction guard.
 
 :class:`PhiRedactor` wraps Microsoft Presidio's :class:`AnalyzerEngine` +
 :class:`AnonymizerEngine` and registers an extra clinical-identifier recognizer

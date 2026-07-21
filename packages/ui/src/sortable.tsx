@@ -1,6 +1,6 @@
 'use client';
 
-// TASK-327 D2 — expose the diceui Sortable primitives under the
+// Expose the diceui Sortable primitives under the
 // `@arcaai/ui/sortable` subpath so consumers (e.g. ui-playground's
 // draggable admin nav) can import drag-reorder primitives without
 // pulling the whole barrel or adding @dnd-kit directly. The Vite

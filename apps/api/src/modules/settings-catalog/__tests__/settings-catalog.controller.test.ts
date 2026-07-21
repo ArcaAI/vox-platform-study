@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { EffectiveSettingsService } from '@arcaai/applications';
 import { SettingsCatalogController } from '../settings-catalog.controller';
 
-// TASK-504 Phase 3c — the catalog serves registry metadata, RBAC-filtered:
+// The catalog serves registry metadata, RBAC-filtered:
 // tenant admins never see GLOBAL_ADMIN-only entries; nothing leaks a value.
 
 function controllerFor(user: unknown, effective: Partial<EffectiveSettingsService> = {}, clsTenantId?: string): SettingsCatalogController {

@@ -30,7 +30,7 @@ text never leaves the host.
 Known calibration-phase limitation: the reference pair is short, so the gate proves
 the template + label-logit read + direction, NOT long-transcript handling. MiniCheck
 windows long documents (~512-token chunks, max-aggregate); staging a long-transcript
-chunker here is a documented follow-up (see the TASK-479 enablement checklist).
+chunker here is a documented follow-up.
 """
 
 from __future__ import annotations

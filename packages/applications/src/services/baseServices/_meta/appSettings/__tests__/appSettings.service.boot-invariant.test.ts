@@ -1,10 +1,10 @@
 /**
- * Phase 0 Item 5 (TASK-302 Stream A) — boot-time invariant pin.
+ * Boot-time invariant pin.
  *
  * AppSettingsService.cacheAppSettings() builds a Map<key, entity>.
  * If multiple GlobalSetting rows share the same key under the
  * GLOBAL_TENANT_ID, the cache silently resolves to whichever row
- * happens to be last — a TASK-301 §P0-1 cross-tenant collision.
+ * happens to be last — a cross-tenant collision.
  *
  * The fix: detect duplicates at boot, throw, refuse to start.
  */

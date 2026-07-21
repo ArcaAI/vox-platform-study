@@ -1,5 +1,5 @@
 /**
- * TASK-392 (Q5, Phase 2) — calendar-month window maths.
+ * Calendar-month window maths.
  *
  * The window must be the UTC month containing `now`, half-open
  * [1st 00:00:00Z, next-1st 00:00:00Z), tiling the timeline with no gap/overlap

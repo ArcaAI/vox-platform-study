@@ -18,7 +18,7 @@ import {
     SEED_TRANSCRIPTION_JOB_IDS,
     SYSTEM_USER_ID,
 } from './00-constants';
-// TASK-369 Phase 6 — plaintext clinical PHI columns were dropped; seed rows must
+// The plaintext clinical PHI columns were dropped; seed rows must
 // persist Vault-Transit ciphertext into the sibling `encrypted*` columns.
 import { encryptSeedRow } from './phi-encryption';
 
@@ -220,7 +220,7 @@ export const DEFAULT_CONSULTATIONS = [
 ];
 
 // =============================================================================
-// CUSTOMER-TENANT CONSULTATIONS (TASK-331 doc-08 F1)
+// CUSTOMER-TENANT CONSULTATIONS
 //
 // ArcaAI seeds clinicians (91-user.ts) but previously had ZERO
 // consultations, so admin clinical lists & analytics rendered empty for the
@@ -687,7 +687,7 @@ export const DEFAULT_SUMMARY_METAS = [
         processingTimeMs: 4200,
         inputTokens: 850,
         outputTokens: 420,
-        // TASK-331 doc-07 F4 — quality analytics so the SavedSummariesPanel
+        // Quality analytics so the SavedSummariesPanel
         // QualityBadge renders on demo data. Freshly generated (not cached),
         // high quality.
         cacheHit: false,
@@ -707,7 +707,7 @@ export const DEFAULT_SUMMARY_METAS = [
         processingTimeMs: 3800,
         inputTokens: 720,
         outputTokens: 380,
-        // TASK-331 doc-07 F4 — served from cache; slightly lower quality so the
+        // Served from cache; slightly lower quality so the
         // QualityBadge demos the cached + lower-score state alongside GEN above.
         cacheHit: true,
         qualityScore: 0.84,
@@ -719,7 +719,7 @@ export const DEFAULT_SUMMARY_METAS = [
 ];
 
 // =============================================================================
-// MEDIA (3) — dual-capture demo blobs for the GEN recording (TASK-331 doc-06 F2)
+// MEDIA (3) — dual-capture demo blobs for the GEN recording
 //
 // `Media` is not seeded by any other seed file, so the dual-capture demo rows
 // live here, immediately before the AudioRecording rows that reference them.
@@ -784,7 +784,7 @@ interface AudioRecordingSeed {
     tenantId: string;
     contextItemId: string;
     mediaId: string;
-    // Dual capture (TASK-329 X8) — optional raw/processed media references.
+    // Dual capture — optional raw/processed media references.
     rawMediaId?: string;
     processedMediaId?: string;
     duration: number | null;
@@ -799,7 +799,7 @@ interface AudioRecordingSeed {
 
 export const DEFAULT_AUDIO_RECORDINGS: AudioRecordingSeed[] = [
     {
-        // TASK-331 doc-06 F2 — dual-capture demo: real primary media + raw and
+        // Dual-capture demo: real primary media + raw and
         // processed media ids so the playground's "Dual capture" badge renders.
         id: SEED_AUDIO_RECORDING_IDS.GEN_AUDIO,
         tenantId: SEED_TENANT_ID,
@@ -1220,7 +1220,7 @@ const DEFAULT_NAMED_ENTITIES = [
 // =============================================================================
 
 // =============================================================================
-// TRANSCRIPTION JOBS (TASK-336 EU-04)
+// TRANSCRIPTION JOBS
 //
 // ASR job-queue rows across the full status lifecycle (QUEUED / PROCESSING /
 // COMPLETED / FAILED) for the Global tenant + one customer tenant (ArcaAI) so
@@ -1470,7 +1470,7 @@ export const seedConsultation = async (client: CorePrismaClient) => {
     }
     console.log(`  Seeded ${DEFAULT_NAMED_ENTITIES.length} named entities`);
 
-    // Transcription jobs (TASK-336 EU-04) — depend on ASR pipelines (FK) which
+    // Transcription jobs depend on ASR pipelines (FK) which
     // are seeded earlier by seedAsrPipelines, and reference seeded consultations.
     for (const job of DEFAULT_TRANSCRIPTION_JOBS) {
         const data = {

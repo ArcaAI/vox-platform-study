@@ -1,5 +1,5 @@
 /**
- * TASK-491 — TtsPlaybackPlayer (PCM→float32, resample, ring-buffer feed).
+ * TtsPlaybackPlayer (PCM→float32, resample, ring-buffer feed).
  *
  * @vitest-environment jsdom
  */

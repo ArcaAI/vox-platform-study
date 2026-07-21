@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsInt, IsNotEmpty, IsObject, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 /**
- * TASK-506 — set a tenant's default model for an AI task key. The task key
+ * Set a tenant's default model for an AI task key. The task key
  * travels in the route; `modelSlug` must resolve to an ENABLED `AiModel` in
  * `[tenant, SYSTEM]` whose `taskType` matches the key's compatibility mapping.
  * `expectedVersion` is the OCC token: `0` = create the row (none yet), `>0` =

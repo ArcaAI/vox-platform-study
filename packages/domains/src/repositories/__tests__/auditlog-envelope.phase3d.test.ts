@@ -1,4 +1,4 @@
-// TASK-369 (Data Encryption Initiative) Phase 3D — AuditLog envelope-encryption
+// AuditLog envelope-encryption
 // repository helpers, exercised via the prototype-augmentation sibling. No real
 // Prisma client is booted; the helpers are pure (local AES-GCM via an injected
 // crypto handle + an already-resolved DEK — zero Vault round-trips).

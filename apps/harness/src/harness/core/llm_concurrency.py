@@ -1,6 +1,6 @@
 """Shared per-endpoint LLM concurrency governor + rate-limit-aware retry.
 
-TASK-330 hardening. The inferential pass fans groundedness + citation_verify +
+The inferential pass fans groundedness + citation_verify +
 safety out concurrently (``asyncio.gather``) and they all hit the **same**
 self-hosted LM Studio box (``:1234``): the judge (``gemma-4-e4b``), the Granite
 Guardian safety screen, and the dense embeddings client share one endpoint. A
@@ -55,7 +55,7 @@ class LlmGovernorConfig:
     backoff_base_s: float = 0.5
     backoff_max_s: float = 20.0
     jitter_s: float = 0.25
-    # Per-call wall-clock timeout (TASK-354 Defect A). Bounds EACH individual model call
+    # Per-call wall-clock timeout. Bounds EACH individual model call
     # so one hung LM Studio request can't burn the whole 900s activity budget before
     # Temporal retries. A timed-out call is classified transient (see :func:`is_retryable`)
     # and retried within ``max_attempts`` before the caller's fail-safe degrade takes over.
@@ -162,12 +162,12 @@ class LlmCallTimeout(TimeoutError):
     lets :func:`governed_request` recognise the per-call timeout specifically and, for a
     NON-idempotent caller (``retry_on_timeout=False`` — e.g. SMR generate), treat it as
     terminal: the request may have already reached the model, so re-issuing it would
-    re-invoke a non-idempotent operation (I-1 / C1-04).
+    re-invoke a non-idempotent operation.
     """
 
 
 async def call_with_timeout(operation: Callable[[], Awaitable[T]], timeout_s: float) -> T:
-    """Run a single LLM call under a per-call wall-clock timeout (TASK-354 Defect A).
+    """Run a single LLM call under a per-call wall-clock timeout.
 
     ``timeout_s <= 0`` disables the bound (legacy behaviour). On expiry ``asyncio.timeout``
     cancels the in-flight call and we re-raise a descriptive :class:`LlmCallTimeout` (a
@@ -302,7 +302,7 @@ async def governed_request(
     ``terminated`` 400; gives up after ``max_attempts`` and re-raises the last error,
     so the caller's existing degrade path owns the final (fail-safe) outcome.
 
-    ``retry_on_timeout`` (I-1 / C1-04): a NON-idempotent ``operation`` (e.g. SMR generate)
+    ``retry_on_timeout``: a NON-idempotent ``operation`` (e.g. SMR generate)
     passes ``False`` so a per-call :class:`LlmCallTimeout` is TERMINAL — the request may
     have already reached and run the model, and the per-call ``asyncio.timeout`` cannot
     tell pre-send from post-send, so re-issuing it risks a second (divergent) generation.
@@ -317,7 +317,7 @@ async def governed_request(
         retry_after: float | None = None
         async with limit_endpoint(base_url, cfg.max_concurrency):
             try:
-                # Per-call timeout (TASK-354): a hung call surfaces as a transient
+                # Per-call timeout: a hung call surfaces as a transient
                 # ``LlmCallTimeout``, retried within ``max_attempts`` like any 5xx —
                 # UNLESS the caller is non-idempotent (``retry_on_timeout=False``).
                 return await call_with_timeout(operation, cfg.request_timeout_s)
@@ -325,7 +325,7 @@ async def governed_request(
                 last_exc = exc
                 if attempt + 1 >= cfg.max_attempts or not is_retryable(exc):
                     raise
-                # I-1 / C1-04: a per-call timeout of a non-idempotent op is terminal
+                # A per-call timeout of a non-idempotent op is terminal
                 # (re-issuing may re-invoke the model). Raise instead of retrying.
                 if isinstance(exc, LlmCallTimeout) and not retry_on_timeout:
                     raise

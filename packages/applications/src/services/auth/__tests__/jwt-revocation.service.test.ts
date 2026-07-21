@@ -142,7 +142,7 @@ describe('JwtRevocationService', () => {
         });
     });
 
-    // ─── TASK-541 A3 — degraded-aware revocation check ────────────────────
+    // ─── degraded-aware revocation check ────────────────────
 
     describe('checkRevoked (TASK-541 A3)', () => {
         it('reports revoked=false, degraded=false when the jti is absent', async () => {
@@ -173,7 +173,7 @@ describe('JwtRevocationService', () => {
         });
     });
 
-    // ─── TASK-541 A4 — user-level not-before revocation ───────────────────
+    // ─── user-level not-before revocation ───────────────────
 
     describe('revokeAllForUser (TASK-541 A4)', () => {
         it('stamps the current epoch under auth:user-nbf:<userId> with a bounded TTL', async () => {

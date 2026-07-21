@@ -88,7 +88,7 @@ const mockUserSettingsRepository = {
     create: vi.fn(),
 };
 
-// TASK-356 Phase 4 (A8/A-T6) — tenant frontend config drives the effective
+// (A8/A-T6) — tenant frontend config drives the effective
 // transcription mode + lock resolved server-side in getPreferences().
 const mockTenantFrontendConfigRepository = {
     findByTenant: vi.fn(),
@@ -118,7 +118,7 @@ describe('UserPreferencesService', () => {
 
         // CLS serves both the user session ('user') and the active tenant
         // ('tenantId'). BaseService.tenantId reads the 'tenantId' key, which the
-        // Q2 tenant-default resolution depends on.
+        // tenant-default resolution depends on.
         mockClsService.get.mockImplementation((key: string) => {
             if (key === 'user') return { id: 'user-id-1', tenantId: 'tenant-1' };
             if (key === 'tenantId') return 'tenant-1';
@@ -383,7 +383,7 @@ describe('UserPreferencesService', () => {
         });
     });
 
-    // TASK-331 doc-03 Q2 — AsrPipeline.isDefault supersedes the GlobalSetting
+    // AsrPipeline.isDefault supersedes the GlobalSetting
     // slug default; admins control the per-tenant backend default. Additive +
     // backward-compatible: when a tenant has no isDefault pipeline we fall back
     // to the existing GlobalSetting behaviour, and the per-user admin override
@@ -476,7 +476,7 @@ describe('UserPreferencesService', () => {
         });
     });
 
-    // TASK-356 Phase 4 (A8/A9, A-T6) — the effective transcription mode + lock is
+    // (A8/A9, A-T6) — the effective transcription mode + lock is
     // resolved SERVER-SIDE in getPreferences(), mirroring the remoteConfig
     // cascade. Precedence: locked ⇒ tenant default wins (user ignored); unlocked
     // ⇒ doctor workflowMode overrides; otherwise fall back to the tenant default.

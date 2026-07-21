@@ -1,4 +1,4 @@
-"""MiniCheck-Flan-T5 GGUF NLI entailer for the atomic-fact verifier (TASK-481).
+"""MiniCheck-Flan-T5 GGUF NLI entailer for the atomic-fact verifier.
 
 The self-hosted ``NliEntailer`` upgrade to the model-free ``DeterministicOverlapEntailer``
 (owner directive 2026-07-11: "GGUF everywhere"). Runs ``nvhf/MiniCheck-Flan-T5-Large-Q6_K-GGUF``
@@ -7,7 +7,7 @@ the flan-t5 variant builds ``'predict: ' + premise + '</s>' + hypothesis`` and r
 softmax over the decoder's "no"/"yes" label tokens (HF vocab ids **3** / **209**, preserved by
 the GGUF conversion) at the first generated position — ``P(yes) >= threshold`` ⇒ entailed.
 
-Mirrors the guardrail TASK-479 scorer (the two services can't share a package). Same SAFETY
+Mirrors the guardrail service's scorer (the two services can't share a package). Same SAFETY
 posture — a load-time CALIBRATION GATE (``verify_calibration``) scores MiniCheck's published
 reference pair and raises ``MiniCheckCalibrationError`` if a mis-wired template/logit read
 (≈0.5 / inverted) or a too-lossy quant can't reproduce its direction+margin, so a miscalibrated
@@ -128,7 +128,7 @@ def _make_llama_logit_fn(llama: object) -> LogitFn:
     Uses llama-cpp-python internals (``_model`` / ``_ctx`` / ``_internals.LlamaBatch``),
     which are version-sensitive — the fail-closed ``verify_calibration`` gate validates this
     wiring end-to-end on the host before the entailer is used. (Mirrors the guardrail
-    TASK-479 scorer; the two services can't share a package.)
+    service's scorer; the two services can't share a package.)
     """
     import llama_cpp
     import numpy as np  # local imports — only when a real model is loaded
@@ -166,15 +166,15 @@ def _make_llama_logit_fn(llama: object) -> LogitFn:
 
 
 # ---------------------------------------------------------------------------
-# Process-level entailer cache (TASK-530 D-08)
+# Process-level entailer cache
 # ---------------------------------------------------------------------------
-# Before TASK-530 this was a plain module dict "loaded once per worker, keyed by
+# This was previously a plain module dict "loaded once per worker, keyed by
 # model path": no TTL, no bound, no unload — a GGUF loaded by one activity stayed
 # resident for the life of the Temporal worker. It is now the shared HOPE cache
-# contract, so retention here means what it means everywhere else (owner
-# expectation E6, no service exempt).
+# contract, so retention here means what it means everywhere else (an owner
+# expectation — no service exempt).
 #
-# The SYNC sibling is deliberate (§2.1): `_atomic_fact_entailer` (activities.py)
+# The SYNC sibling is deliberate: `_atomic_fact_entailer` (activities.py)
 # is a plain `def` and a `llama_cpp.Llama` construction is a blocking CPU/GPU
 # call, not awaited I/O — so wrapping it in an async cache would push `async` up
 # into the clinical activity chain for zero behavioural gain. Policy is shared
@@ -193,7 +193,7 @@ class _EntailerSpec:
 
     @property
     def key(self) -> str:
-        """The composite cache key — unchanged from the pre-TASK-530 module dict."""
+        """The composite cache key — unchanged from the earlier module dict."""
         return (
             f"{self.model_path}|{self.n_ctx}|{self.n_threads}"
             f"|{self.n_gpu_layers}|{self.threshold}"
@@ -289,7 +289,7 @@ def sweep_entailer_cache() -> int:
 
     Lazy eviction on `load_minicheck_entailer` covers a worker that keeps
     verifying; this covers the one that ran a document and then went quiet — the
-    case where the pre-TASK-530 module dict pinned a GGUF forever.
+    case where the earlier module dict pinned a GGUF forever.
     """
     return _entailer_cache().sweep()
 
@@ -321,8 +321,8 @@ def load_minicheck_entailer(
     llama-cpp-python, an unloadable model, or a failed calibration self-check raise —
     ``_atomic_fact_entailer`` catches and falls back to the safe deterministic entailer.
 
-    Signature and return type are unchanged by TASK-530: the sole call site stays
-    synchronous, which is the whole reason the cache is the sync sibling.
+    Signature and return type are unchanged by the cache introduction: the sole call
+    site stays synchronous, which is the whole reason the cache is the sync sibling.
     """
     spec = _EntailerSpec(
         model_path=model_path,

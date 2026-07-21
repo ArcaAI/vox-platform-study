@@ -25,7 +25,7 @@ logger = structlog.get_logger(__name__)
 
 
 async def get_inference_bound(request: Request) -> ResizableSemaphore:
-    """TASK-525 — the inference bound, with its limit refreshed from the control plane.
+    """The inference bound, with its limit refreshed from the control plane.
 
     Used as a route dependency so the ceiling tracks the control plane without a
     background poller. Cheap inside the client's TTL window, and never raises.
@@ -70,7 +70,7 @@ def get_document_extractor() -> DocumentExtractor:
 
 
 # ---------------------------------------------------------------------------
-# Per-request model selection (TASK-506 / ).
+# Per-request model selection.
 #
 # Every classify/diagnosis request carries a REQUIRED `model_name` (the
 # gateway-injected `AiModel.sourceUri` resolved from the DB AiTaskDefault
@@ -83,7 +83,7 @@ def get_document_extractor() -> DocumentExtractor:
 # ---------------------------------------------------------------------------
 
 
-# TASK-527 (D-12) — the cache slot is keyed on the FULL weight identity
+# The cache slot is keyed on the FULL weight identity
 # `(model_name, model_path)`, not the id alone. An admin flipping
 # `AiModel.localPath` must be a cache MISS: reusing the slot would keep serving
 # the old weights under the new configuration until the TTL happened to expire.
@@ -153,7 +153,7 @@ async def _create_medical_suggester(cache_key: str) -> MedicalSuggester:
     return instance
 
 
-# TASK-529 (D-07) — the three singletons are built FROM the resolved retention
+# The three singletons are built FROM the resolved retention
 # config instead of silently taking the module defaults, and are reconfigurable
 # at runtime from the control plane.
 _CACHE_GLOBALS = (
@@ -191,7 +191,7 @@ def _live_caches() -> list[ModelCache[Any]]:
 
 
 def apply_model_cache_retention(retention: dict[str, int]) -> None:
-    """Adopt control-plane retention across all three caches (D-07).
+    """Adopt control-plane retention across all three caches.
 
     An ABSENT key keeps the current value, so a gateway outage leaves behaviour
     byte-identical. Resident models are never dropped — the new limits take
@@ -215,8 +215,8 @@ async def sweep_model_caches() -> int:
     """Release idle-expired models across all three caches; returns how many.
 
     Driven by a periodic task so an idle model whose key is never requested
-    again is still released — the pre-TASK-529 caches evicted lazily on access
-    only, so such a model was retained forever despite its TTL.
+    again is still released — a cache that only evicts lazily on access would
+    retain such a model forever despite its TTL.
     """
     swept = 0
     for cache in _live_caches():
@@ -288,8 +288,8 @@ async def get_medical_suggester_for(model_name: str) -> MedicalSuggester:
 async def pinned_token_classifier(
     model_name: str, model_path: str | None = None
 ) -> AsyncIterator[TokenClassifier]:
-    # TASK-527 — pin the (model_name, model_path) slot; `model_path` defaults to
-    # None so every existing caller keeps its exact pre-527 slot and behaviour.
+    # Pin the (model_name, model_path) slot; `model_path` defaults to
+    # None so every existing caller keeps its exact slot and behaviour.
     key = _model_cache_key(model_name, model_path)
     cache = _token_classifier_cache()
     await cache.pin(key)
@@ -307,8 +307,8 @@ async def pinned_token_classifier(
 async def pinned_text_classifier(
     model_name: str, model_path: str | None = None
 ) -> AsyncIterator[TextClassifier]:
-    # TASK-527 — pin the (model_name, model_path) slot; `model_path` defaults to
-    # None so every existing caller keeps its exact pre-527 slot and behaviour.
+    # Pin the (model_name, model_path) slot; `model_path` defaults to
+    # None so every existing caller keeps its exact slot and behaviour.
     key = _model_cache_key(model_name, model_path)
     cache = _text_classifier_cache()
     await cache.pin(key)
@@ -326,8 +326,8 @@ async def pinned_text_classifier(
 async def pinned_medical_suggester(
     model_name: str, model_path: str | None = None
 ) -> AsyncIterator[MedicalSuggester]:
-    # TASK-527 — pin the (model_name, model_path) slot; `model_path` defaults to
-    # None so every existing caller keeps its exact pre-527 slot and behaviour.
+    # Pin the (model_name, model_path) slot; `model_path` defaults to
+    # None so every existing caller keeps its exact slot and behaviour.
     key = _model_cache_key(model_name, model_path)
     cache = _medical_suggester_cache()
     await cache.pin(key)

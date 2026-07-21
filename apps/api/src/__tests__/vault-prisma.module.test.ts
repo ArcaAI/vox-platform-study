@@ -1,4 +1,4 @@
-// TASK-302 Phase 5 Task 5.6 (Stream B) — VaultPrismaFactoryModule.
+// VaultPrismaFactoryModule.
 //
 // Unit tests for the pure builder. Spins up no Nest DI; asserts the
 // env-toggle branching directly. The downstream VaultPrismaClient is
@@ -102,7 +102,7 @@ describe('buildVaultPrismaFactory env-toggle gating', () => {
     expect(disconnectMock).toHaveBeenCalledTimes(1);
   });
 
-  // TASK-444 — regression for the cross-tenant leak: the Vault-mode
+  // Regression coverage for the cross-tenant leak: the Vault-mode
   // extendedClient MUST compose tenant-scope on top of soft-delete, exactly
   // like env-mode createExtendedPrismaClient. Without it, tenant-scoped reads
   // that rely on the $extends (e.g. UserRoleAssignmentService.fetchAllByRoleId)
@@ -158,7 +158,7 @@ describe('buildVaultPrismaFactory env-toggle gating', () => {
   });
 });
 
-// BUG-006 — the lease-renewal machinery (VaultLeaseRenewer, swap()) existed
+// The lease-renewal machinery (VaultLeaseRenewer, swap()) existed
 // but nothing in this factory ever started it, so dynamic PG creds went
 // stale at lease expiry (~1h) with no reconnect. These tests pin down the
 // wiring: renew before expiry while under max_ttl, fall back to swap() on

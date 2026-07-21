@@ -1,5 +1,5 @@
 /**
- * TASK-373 — generic cursor (keyset) pagination engine.
+ * Generic cursor (keyset) pagination engine.
  *
  * Behaviour-focused unit tests for the transport-agnostic primitives that the
  * cursor contract is built on: opaque cursor encode/decode, limit clamping,

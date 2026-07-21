@@ -13,7 +13,7 @@ import type { ConfigResolutionSource } from '../../config-resolver';
 export type PipelinePolicySource = 'tenant' | 'department' | 'doctor' | 'system-default' | 'code-default';
 
 /**
- * A single realtime-pipeline policy ROW (TASK-356 Phase 5, Pillar B). Returned by
+ * A single realtime-pipeline policy ROW. Returned by
  * the admin GET/PATCH row routes. The toggle fields are NULLABLE — null means
  * "inherit from the next cascade tier up" (resolution lives in `ConfigResolver`).
  * `version` is the OCC token echoed back via `If-Match: "<version>"` on PATCH.
@@ -44,7 +44,7 @@ export class PipelinePolicyResponse {
   harnessEnabled: boolean | null;
 
   @ApiPropertyOptional({
-    description: 'Per-doctor DNA writing-style toggle (null = inherit). Doctor-scope storage; written in Phase 6.',
+    description: 'Per-doctor DNA writing-style toggle (null = inherit). Doctor-scope storage.',
     nullable: true,
   })
   dnaStyleEnabled: boolean | null;

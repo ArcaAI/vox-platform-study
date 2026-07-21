@@ -7,7 +7,7 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
 import { EffectiveSettingResponse, SettingCatalogItemResponse, SettingCatalogResponse } from './dto/setting-catalog.response';
 
 /**
- * TASK-504 Phase 3c — the capability/settings catalog surface.
+ * The capability/settings catalog surface.
  *
  * Serves the machine-readable inventory of admin-controllable settings from the
  * `HOPE_SETTINGS_REGISTRY` (tier / scope / sensitivity / category / editor). It

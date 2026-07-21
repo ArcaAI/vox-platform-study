@@ -1,5 +1,5 @@
 /**
- * Impersonation Seed-Coverage Tests (TASK-331 doc-05 F1)
+ * Impersonation Seed-Coverage Tests
  *
  * Guards the seed-data invariant that the ArcaAI customer tenant has at least
  * one impersonatable DOCTOR and one impersonatable NURSE.
@@ -11,7 +11,7 @@
  * impersonation workflow is untestable.
  *
  * A user is only a valid impersonation target if it can actually log in. Per
- * the TASK-305 Phase F login invariant, a non-exempt user must belong to its
+ * the login invariant, a non-exempt user must belong to its
  * tenant via BOTH a role AND a department. These tests therefore assert, for
  * each customer tenant:
  *   1. at least one DOCTOR and one NURSE user exists, and

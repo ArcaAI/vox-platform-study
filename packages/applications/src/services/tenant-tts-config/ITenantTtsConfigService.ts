@@ -9,11 +9,11 @@ import {
 import { TtsProviderOverrides } from './platform-limits';
 
 /**
- * TASK-496 — per-tenant TTS configuration service.
+ * Per-tenant TTS configuration service.
  *
  * `tenantId` is resolved by the controller (a tenant admin is pinned to their
  * CLS tenant; a platform admin may target another tenant or the SYSTEM default).
- * Credential (BYO-key) methods are added in Phase 6.
+ * Also includes credential (BYO-key) methods.
  */
 export abstract class ITenantTtsConfigService {
   /** Raw persisted row for a tenant (version:0 placeholder when none). */
@@ -23,7 +23,7 @@ export abstract class ITenantTtsConfigService {
   abstract getEffective(tenantId: string): Promise<EffectiveTtsConfigResponse>;
 
   /**
-   * TASK-506 — platform TTS catalog derived from the AiModel registry (SYSTEM
+   * Platform TTS catalog derived from the AiModel registry (SYSTEM
    * ENABLED TEXT_TO_SPEECH rows; code-constant fallback pre-seed).
    */
   abstract getPlatformCatalog(): Promise<TtsPlatformCatalogResponse>;

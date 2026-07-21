@@ -1,5 +1,5 @@
 /**
- * DnaWritingStyleService — TASK-329 P5 (DNA playground completeness)
+ * DnaWritingStyleService — DNA playground completeness
  *
  * New playground-facing behaviour:
  *  - generateDnaReport threads `sourceIds` (generate-from-history) into payload
@@ -32,7 +32,7 @@ const createMockDnaUsageRecordRepository = () => ({
     findRecent: vi.fn().mockResolvedValue([]),
 });
 const createMockUserRoleAssignmentRepository = () => ({ findFirst: vi.fn() });
-// TASK-305 Phase F — membership guard also reads UserDepartment + User.
+// Membership guard also reads UserDepartment + User.
 const createMockUserDepartmentRepository = () => ({ findFirst: vi.fn() });
 const createMockUserRepository = () => ({ findFirst: vi.fn() });
 const createMockQueue = () => ({ add: vi.fn().mockResolvedValue({ id: 'job-mock' }) });
@@ -90,7 +90,7 @@ describe('DnaWritingStyleService — TASK-329 P5', () => {
         mockUserRoleAssignmentRepo.findFirst.mockResolvedValue({
             id: 'ura-1', userId: 'doctor-id-1', tenantId: 'tenant-1', resourceStatus: ResourceStatusType.ENABLED,
         });
-        // TASK-305 Phase F — present in-tenant department so the membership guard passes.
+        // Present in-tenant department so the membership guard passes.
         mockUserDepartmentRepo.findFirst.mockResolvedValue({
             id: 'ud-1', userId: 'doctor-id-1', tenantId: 'tenant-1', resourceStatus: ResourceStatusType.ENABLED,
         });

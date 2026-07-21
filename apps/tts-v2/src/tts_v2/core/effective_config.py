@@ -1,4 +1,4 @@
-"""TASK-535 §3.1 (R3) — effective-config pull client (tts-v2).
+"""Effective-config pull client (tts-v2).
 
 Structurally identical to `guardrail` / `harness` / `nlp` / `smr_v2` / `stt_v2`
 against the same frozen contract, exposing the ONLY subset tts-v2 consumes:
@@ -16,7 +16,7 @@ silent no-op — pinned by `test_service_param_and_key_namespace`.
 
 Mechanics: TTL cache jittered ±10 %, negative cache, single-flight refresh,
 read-triggered — a service that never synthesizes never polls. Duplicated per
-service on purpose (OD-3).
+service on purpose.
 """
 
 from __future__ import annotations
@@ -190,7 +190,7 @@ async def refresh_model_cache_retention(app_state: Any) -> None:
 
     NEVER raises: a synthesis request must not fail because the config plane is
     unavailable. No client, or no opinion from the control plane, ⇒ the env
-    value stays in force — exactly the pre-TASK-535 behaviour.
+    value stays in force — exactly the env-only behaviour.
     """
     client = getattr(app_state, "effective_config_client", None)
     if client is None:

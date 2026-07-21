@@ -1,4 +1,4 @@
-"""fastembed BM25 sparse-embedder tests (RED-first, TASK-330 Phase 3).
+"""fastembed BM25 sparse-embedder tests.
 
 The sparse embedder wraps fastembed's in-process ``Qdrant/bm25`` model and maps
 its ``SparseEmbedding`` (indices/values) onto a Qdrant

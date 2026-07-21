@@ -2,10 +2,10 @@ import { Injectable, NotImplementedException } from '@nestjs/common';
 import { ISecretsProvider, SecretsHealth } from '../ISecretsProvider';
 
 /**
- * Phase 2A Task 2.5 (TASK-302 Stream B) — AwsSecretsManagerProvider stub.
+ * AwsSecretsManagerProvider stub.
  *
- * Future-option placeholder per Decision D2: keeps the ISecretsProvider
- * surface portable so a later ticket can swap providers without touching
+ * Future-option placeholder: keeps the ISecretsProvider
+ * surface portable so a later change can swap providers without touching
  * consumers. Throws NotImplementedException on every call.
  *
  * NestJS maps NotImplementedException to HTTP 501, which is the correct

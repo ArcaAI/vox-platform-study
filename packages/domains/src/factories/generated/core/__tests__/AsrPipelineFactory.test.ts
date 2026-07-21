@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AsrPipelineFactory, CreateAsrPipelineProps } from '../AsrPipelineFactory';
 import { ResourceStatusType } from '../../../../enums';
 
-// TASK-305 A.6: tenantId is now required at the factory layer.
+// tenantId is now required at the factory layer.
 const TEST_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
 // Mock the generateId function

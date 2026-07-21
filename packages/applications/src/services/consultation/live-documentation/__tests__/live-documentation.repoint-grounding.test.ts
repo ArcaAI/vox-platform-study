@@ -1,5 +1,5 @@
 /**
- * TASK-477 (SOTA C2) — live NER transcript re-point + source-grounding (SPEER).
+ * Live NER transcript re-point + source-grounding (SPEER).
  *
  * The live loop generated a running SOAP note from SMR and then ran NER OVER THAT
  * GENERATED NOTE, publishing the entities to the clinician's live panel. Because the
@@ -7,16 +7,16 @@
  * became a highlighted, first-class clinical entity — the loop LAUNDERED summary
  * hallucinations into entities. This suite pins the corrected contract:
  *
- *   - AC-1: NER runs over the RAW TRANSCRIPT DELTA (the same text that feeds SMR),
+ *   - NER runs over the RAW TRANSCRIPT DELTA (the same text that feeds SMR),
  *           not `runningSummary`.  [RED on the old code — it passed the note]
- *   - AC-2: a token present only in the generated note (no transcript support) is
+ *   - A token present only in the generated note (no transcript support) is
  *           NEVER surfaced as an entity.  [RED on the old code — NER saw the note]
- *   - AC-3: published entity offsets index the rendered note (`runningSummary`) — a
+ *   - Published entity offsets index the rendered note (`runningSummary`) — a
  *           re-point must GROUND (re-locate) each transcript entity into the note so no
  *           offset points into a different string than the one the panel renders.
- *   - AC-4: live entities stay EPHEMERAL — only `runningSummary` is persisted (as the
+ *   - Live entities stay EPHEMERAL — only `runningSummary` is persisted (as the
  *           PRE_SUMMARY snapshot); no NamedEntity / entity row is ever written.
- *   - AC-5: the running highlight set is preserved across flushes (recall) even though
+ *   - The running highlight set is preserved across flushes (recall) even though
  *           NER only ever sees the new delta.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
@@ -28,7 +28,8 @@ const TENANT = 'tenant-abc';
 // A small deterministic NER vocabulary. The mock returns an entity for each vocab term
 // it finds in the text it is GIVEN (case-insensitive) — modelling a real NER, which only
 // recognizes spans present in its input. So feeding it the note vs the transcript changes
-// what comes back: that difference is exactly what AC-1/AC-2 turn on.
+// what comes back: that difference is exactly what the transcript-vs-note
+// re-pointing guarantee turns on.
 const NER_VOCAB = ['amlodipine', 'metformin', 'aspirin', 'cough', 'fever', 'hypertension'] as const;
 const TYPE_OF: Record<string, string> = {
   amlodipine: 'MEDICATION',
@@ -129,7 +130,7 @@ describe('LiveDocumentationService — TASK-477 live NER re-point + source-groun
     vi.restoreAllMocks();
   });
 
-  // AC-1 — RED on the old code: NER was handed `runningSummary` (the generated note).
+  // RED on the old code: NER was handed `runningSummary` (the generated note).
   it('AC-1: runs NER over the raw transcript delta, not the generated note', async () => {
     // The note names a medication ('metformin') that the transcript never does.
     const httpMock = buildHttpMock({ note: 'Assessment: cough. Plan: prescribed metformin.' });
@@ -145,7 +146,7 @@ describe('LiveDocumentationService — TASK-477 live NER re-point + source-groun
     expect(nlpCall[1].text).not.toBe(payload!.runningSummary);
   });
 
-  // AC-2 — RED on the old code: NER ran over the note, so 'metformin' (a note-only
+  // RED on the old code: NER ran over the note, so 'metformin' (a note-only
   // hallucination absent from the transcript) was surfaced as a first-class entity.
   it('AC-2: does not launder a note-only hallucination into a clinical entity', async () => {
     const httpMock = buildHttpMock({ note: 'Subjective: cough. Plan: prescribed metformin 500mg.' });
@@ -162,7 +163,7 @@ describe('LiveDocumentationService — TASK-477 live NER re-point + source-groun
     expect(texts).not.toContain('metformin');
   });
 
-  // AC-3 — grounding guard: after re-pointing to the transcript, offsets must be
+  // Grounding guard: after re-pointing to the transcript, offsets must be
   // re-located into the rendered note, or they would index the transcript string.
   it('AC-3: entity highlight offsets index the rendered note (runningSummary)', async () => {
     // 'cough' sits at offset 0 in the transcript but much later in the note — a stale
@@ -180,7 +181,7 @@ describe('LiveDocumentationService — TASK-477 live NER re-point + source-groun
     }
   });
 
-  // AC-4 — ephemeral posture: entities ride the SSE payload only; the sole durable write
+  // Ephemeral posture: entities ride the SSE payload only; the sole durable write
   // is the PRE_SUMMARY snapshot whose content is `runningSummary` — never an entity row.
   it('AC-4: keeps live entities ephemeral — persists only runningSummary, never entity rows', async () => {
     const httpMock = buildHttpMock({ note: 'Subjective: cough. Plan: aspirin daily.' });
@@ -201,7 +202,7 @@ describe('LiveDocumentationService — TASK-477 live NER re-point + source-groun
     expect(JSON.stringify(persisted)).not.toContain('SYMPTOM');
   });
 
-  // AC-5 — recall guard: NER sees only the delta each flush, so the running set must be
+  // Recall guard: NER sees only the delta each flush, so the running set must be
   // merged across flushes; an entity extracted earlier and still present in the cumulative
   // note must not fall out.
   it('AC-5: preserves the running entity set across flushes (recall)', async () => {

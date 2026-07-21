@@ -1,5 +1,5 @@
 /**
- * TASK-531 — pipeline template lineage migrations (GAP-T1/T3).
+ * Pipeline template lineage migrations.
  *
  * Two migrations back the lineage feature:
  *   1. `_task_531_pipeline_template_lineage`          — schema (2 columns + index)

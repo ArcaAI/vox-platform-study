@@ -1,5 +1,5 @@
 /**
- * TASK-330 Phase 1 — Attestation gate persistence + WORM integration guard.
+ * Attestation gate persistence + WORM integration guard.
  *
  * Complements the deterministic service-orchestration unit test
  * (`packages/applications/.../summary.service.test.ts > approveSummary —

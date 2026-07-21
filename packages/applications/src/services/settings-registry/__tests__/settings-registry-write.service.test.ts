@@ -1,5 +1,5 @@
 /**
- * SettingsRegistryWriteService (TASK-524) — unit tests (§5 tests 9–13).
+ * SettingsRegistryWriteService — unit tests (§5 tests 9–13).
  *
  * This is the SINGLE enforcement point for registry-key writes (AD-1). The
  * point of these tests is that enforcement is DESCRIPTOR-DRIVEN — the service
@@ -33,7 +33,7 @@ function makeService(opts: { roles?: string[]; cached?: any } = {}) {
       k === 'user' ? { id: 'u1', roles: opts.roles ?? ['GLOBAL_ADMIN'] } : k === 'tenantId' ? 'tenant-abc' : undefined,
     ),
   };
-  // TASK-533 B2 — the CAS version now comes from a FRESH repository read, not
+  // The CAS version now comes from a FRESH repository read, not
   // from the (45s-stale) AppSettings snapshot. `opts.cached` therefore drives
   // this repository stub; `getFromCache` is no longer consulted for the write.
   const globalSettingRepository = {
@@ -152,7 +152,7 @@ describe('SettingsRegistryWriteService — gates and persistence (§5 test 11)',
     expect(appSettings.refreshCache).toHaveBeenCalledTimes(1);
   });
 
-  // TASK-533 B2 — a write against an EXISTING row now requires the caller's
+  // A write against an EXISTING row now requires the caller's
   // observed version (If-Match). Before B2 the service silently supplied the
   // cached version itself, which is what let two concurrent edits clobber each
   // other; the precondition is now the caller's to state.

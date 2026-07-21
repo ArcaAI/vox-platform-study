@@ -1,10 +1,5 @@
 /**
- * TASK-531 — Pipeline template governance, end to end (GAP-T1 / GAP-T2 / GAP-T3).
- *
- * AUTHORED BY TASK-531, EXECUTED BY TASK-534. Per the program plan §2.2, all
- * cross-service E2E runs in the Phase 7 validation ticket; this file is written
- * now, alongside the implementation, so the contract is pinned while it is
- * fresh — but it is not part of this ticket's green-gate evidence.
+ * Pipeline template governance, end to end.
  *
  * What it proves that the unit suites cannot:
  *  - the LOCK survives the full HTTP stack (guards, pipes, interceptors), not
@@ -24,7 +19,7 @@
 import { test, expect } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
-// TASK-534 e2e G7 — every test in this file reads/mutates the SAME seeded
+// Every test in this file reads/mutates the SAME seeded
 // template-copy row (`TEMPLATE_SLUG`); under `fullyParallel: true` the toggle
 // test's disabled window made concurrent slug reads return empty bodies. Run
 // strictly in order.
@@ -109,7 +104,7 @@ test.describe('TASK-531 — locked template copies are read-only', () => {
     expect(after.status()).toBe(200);
   });
 
-  // OD-1 — the lock is about CONTENT. A tenant still owns its copy's lifecycle.
+  // The lock is about CONTENT. A tenant still owns its copy's lifecycle.
   test('toggle and set-default still work on a locked copy', async ({ request }) => {
     const token = await adminToken(request);
 

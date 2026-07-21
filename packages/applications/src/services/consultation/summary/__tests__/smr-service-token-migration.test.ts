@@ -1,5 +1,5 @@
-// TASK-302 Phase 3 Task 3.4 — pin SMR_SERVICE_TOKEN migration in place.
-// Static grep over the production SMR call sites enumerated in the plan.
+// Pin SMR_SERVICE_TOKEN migration in place.
+// Static grep over the production SMR call sites.
 //
 // Each site must NOT read process.env.SMR_SERVICE_TOKEN and MUST go
 // through SecretsService (async getSecretOptional or sync getSecretSync).

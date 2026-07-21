@@ -27,7 +27,7 @@ import {
 import { AiTaskDefaultResponse, EffectiveAiTaskDefaultResponse, UpsertAiTaskDefaultRequest } from './dto';
 
 /**
- * TASK-506 / "default model for task X" service.
+ * "Default model for task X" service.
  *
  * Effective resolution for GLOBAL_ADMIN-only keys (`guardrail.*`, `smr.*`,
  * `nlp.*`) is SYSTEM-row-only (tenant override rows are ignored at read time).
@@ -92,8 +92,8 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
   async upsertRow(taskKey: string, dto: UpsertAiTaskDefaultRequest, tenantId?: string): Promise<AiTaskDefaultResponse> {
     this.assertKnownTaskKey(taskKey);
 
-    // GOVERNANCE: guardrail (owner, 2026-07-17) and SMR model routing (
-    // Phase 3A) are exclusively global-admin-managed. A privilege rule — 403,
+    // GOVERNANCE: guardrail and SMR model routing are exclusively
+    // global-admin-managed. A privilege rule — 403,
     // not 404 (the caller can already READ these keys; only writes are gated).
     if (GLOBAL_ADMIN_ONLY_TASK_PREFIXES.some((p) => taskKey.startsWith(p)) && !isSuperAdmin(this.requestUser)) {
       throw new ForbiddenException(`AI task '${taskKey}' is managed by global administrators only.`);

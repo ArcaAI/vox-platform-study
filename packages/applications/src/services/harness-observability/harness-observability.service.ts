@@ -55,7 +55,7 @@ export interface ListEvalRunsOptions {
 }
 
 /**
- * HarnessObservabilityService (TASK-330 Phase 6 — Phase A "Observe").
+ * HarnessObservabilityService — read-only "Observe" projections.
  *
  * Read-only projections for the admin console:
  *  - `listAuditEvents` pages the tenant's WORM audit trail (newest-first) and
@@ -79,12 +79,12 @@ export class HarnessObservabilityService {
     private readonly evalScoreRepository: EvalScoreRepository,
     private readonly consultationRepository: ConsultationRepository,
     private readonly policyRepository: HarnessPolicyRepository,
-    // TASK-369 Phase 3D — optional so existing fixtures keep their 5-arg
+    // Optional so existing fixtures keep their 5-arg
     // construction; production DI supplies the @Global SecretsService. Used to
     // decrypt-on-read the WORM audit payloads (sensorScores/citations) that the
     // encrypt-before-hash writer stored as ciphertext.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // TASK-482 E3 — optional (existing fixtures construct without it). Loads the
+    // Optional (existing fixtures construct without it). Loads the
     // delivered RAW_SUMMARY / signed MODIFIED_SUMMARY content for the edit-burden
     // edit-distance signal; when absent the edit distance skips clean (null).
     @Optional()
@@ -221,7 +221,7 @@ export class HarnessObservabilityService {
   }
 
   /**
-   * TASK-482 E3 (S3-F7) — derived clinician edit-burden telemetry for one
+   * Derived clinician edit-burden telemetry for one
    * consultation. Composes over already-persisted WORM rows + summary versions:
    *  - **edit distance**: delivered `RAW_SUMMARY` vs signed `MODIFIED_SUMMARY`,
    *  - **deferral rate**: gate decisions that were not a clean pass,
@@ -304,7 +304,7 @@ export class HarnessObservabilityService {
 
   /** Re-derive the hash chain over the audit entities (oldest→newest). */
   private verifyChainEntities(chain: HarnessAuditEventEntity[]): HarnessAuditVerificationResponse {
-    // TASK-369 Phase 3D — map via the shared helper so the verifier hashes over
+    // Map via the shared helper so the verifier hashes over
     // the SAME representation the writer used (ciphertext for encrypted rows,
     // plaintext for legacy rows). Without this, encrypted rows would be hashed
     // over their redaction sentinel and the chain would (incorrectly) read broken.
@@ -314,7 +314,7 @@ export class HarnessObservabilityService {
   }
 
   /**
-   * TASK-369 Phase 3D — project an audit entity to its response, decrypting the
+   * Project an audit entity to its response, decrypting the
    * WORM payloads for display. On an encrypted (new) row the plaintext columns
    * hold a redaction sentinel, so the real sensorScores/citations are recovered
    * from the ciphertext. Best-effort: no SecretsService, a decrypt failure, or a

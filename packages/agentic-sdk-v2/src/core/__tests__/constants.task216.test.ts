@@ -1,5 +1,5 @@
 /**
- * Endpoint Constants Tests (TASK-216, updated for consolidated health)
+ * Endpoint Constants Tests (updated for consolidated health)
  *
  * SERVICE_HEALTH_ENDPOINTS uses a single consolidated endpoint at /health/services
  * on the API gateway. The gateway fans out health checks to all downstream

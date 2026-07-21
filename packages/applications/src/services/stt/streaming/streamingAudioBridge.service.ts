@@ -6,14 +6,14 @@ import { StreamingTranscriptMessage } from './dto';
 import { deriveSpeakerLabel } from './speaker-label';
 
 /**
- * TASK-351 P1-3 (H5) — XREAD BLOCK window in milliseconds. 500 (down from
+ * XREAD BLOCK window in milliseconds. 500 (down from
  * 2000) so a subscriber abort/unsubscribe is honored within ≤ 500 ms: the
  * abort flag is only observed between blocking reads.
  */
 export const RESULT_STREAM_BLOCK_MS = 500;
 
 /**
- * TASK-457 C3-06 — SINGLE source of truth for the audio-stream bound. This
+ * SINGLE source of truth for the audio-stream bound. This
  * bridge is the sole production writer of `stt:audio`, so this constant IS the
  * bound (the STT-v2 `streaming_audio_stream_maxlen` setting is kept equal to
  * it; that Python default only feeds the test-only `xadd_audio_frame`).
@@ -21,7 +21,7 @@ export const RESULT_STREAM_BLOCK_MS = 500;
 export const AUDIO_STREAM_MAXLEN = 10000;
 
 /**
- * TASK-457 C3-01/C3-02 — default consumer-group name for the `stt:result`
+ * Default consumer-group name for the `stt:result`
  * reader. The result stream is per-session, so the group name only has to
  * distinguish subscriber ROLES on it. The captions WS gateway passes a stable
  * role name (so a reconnect resumes from the group's Redis-owned cursor rather
@@ -44,7 +44,7 @@ export interface SubscribeResultOptions {
 }
 
 /**
- * TASK-457 — minimum idle (ms) before the result reader reclaims another
+ * Minimum idle (ms) before the result reader reclaims another
  * consumer's pending entry via XAUTOCLAIM (dead-reader hand-off). The first
  * reclaim on start uses idle 0 to recover this consumer's own unacked pending.
  */
@@ -56,7 +56,7 @@ type XAutoClaimReply = [string, Array<[string, string[]]>, string[]?] | null;
 /**
  * Per-subscriber controller. `reader` is the subscriber's dedicated ioredis
  * connection — on unsubscribe we abort the loop AND immediately `disconnect()`
- * that reader (TASK-457 C1) so a dead client's reader stops consuming/ACKing
+ * that reader so a dead client's reader stops consuming/ACKing
  * the shared consumer group at once, instead of draining it for the whole
  * grace window (which cross-instance would split the live captions).
  */
@@ -90,12 +90,12 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
 
   /**
    * Redis connection options captured at `connect()` so each subscriber can
-   * get its own reader connection (TASK-351 P1-3 / H5).
+   * get its own reader connection.
    */
   private redisConfig: { host: string; port: number; password?: string } | null = null;
 
   /**
-   * Live per-subscriber reader connections (TASK-351 P1-3 / H5). A blocking
+   * Live per-subscriber reader connections. A blocking
    * XREAD monopolizes its ioredis connection, so sharing one reader across
    * sessions serialized every result stream behind whichever session blocked
    * first. One connection per subscriber lets reads proceed in parallel;
@@ -105,9 +105,9 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
 
   private connected = false;
 
-  /** TASK-457 M3 — timestamp the writer first went unhealthy (null when healthy). */
+  /** Timestamp the writer first went unhealthy (null when healthy). */
   private writerDegradedSince: number | null = null;
-  /** TASK-457 M3 — throttle writer-health logs to at most one per this window. */
+  /** Throttle writer-health logs to at most one per this window. */
   private lastWriterHealthLogAt = 0;
 
   /**
@@ -115,7 +115,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
    * abort flags. The captions WS gateway and `LiveDocumentationService` both
    * subscribe to the same `stt:result:{sessionId}`, so a single sessionId can
    * have multiple independent readers; each gets its own controller so they
-   * tear down independently (TASK-340 P1-B). A `Set` (not a single value) is
+   * tear down independently. A `Set` (not a single value) is
    * what prevents the 2nd subscriber from clobbering the 1st.
    */
   private readonly activeSubscriptions = new Map<string, Set<ResultSubscriberCtrl>>();
@@ -148,7 +148,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       host: config.host,
       port: config.port,
       password: config.password,
-      // TASK-457 C3-02 — do NOT drop audio after 3 retries. `null` lets a
+      // Do NOT drop audio after 3 retries. `null` lets a
       // transient Redis blip queue the XADD on ioredis's FIFO offline queue and
       // flush IN ORDER on reconnect (order-preserving at-least-once), instead
       // of rejecting clinical speech. A permanent outage fails the session via
@@ -157,7 +157,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       lazyConnect: false,
     });
 
-    // TASK-457 M3 — with `maxRetriesPerRequest: null` a Redis outage queues
+    // With `maxRetriesPerRequest: null` a Redis outage queues
     // audio writes silently (offline queue grows). Surface it: log reconnect
     // attempts + errors (throttled) so an outage is visible instead of a
     // droppedAudioFrames-stays-0 blind spot. Never throws (a listener error
@@ -196,7 +196,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     }
     this.activeSubscriptions.clear();
 
-    // Proactively quit per-subscriber readers (TASK-351 P1-3). Their read
+    // Proactively quit per-subscriber readers. Their read
     // loops also self-quit after the ≤500ms BLOCK window; the double quit
     // is harmless and caught.
     for (const reader of this.subscriberReaders) {
@@ -248,7 +248,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       streamKey,
       'MAXLEN',
       '~',
-      String(AUDIO_STREAM_MAXLEN), // TASK-457 C3-06 — single source of truth
+      String(AUDIO_STREAM_MAXLEN), // Single source of truth
       '*', // Auto-generate entry ID
       'seq',
       String(seq),
@@ -319,7 +319,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
 
     const streamKey = `stt:result:${sessionId}`;
 
-    // TASK-457 C3-01 — read through a Redis consumer group. A role-stable
+    // Read through a Redis consumer group. A role-stable
     // group (passed by the captions gateway) resumes from the group's
     // Redis-owned cursor across a reconnect; an omitted group defaults to a
     // per-subscription unique name so every subscriber still gets EVERY result
@@ -327,7 +327,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     const group = options?.consumerGroup ?? `${RESULT_CONSUMER_GROUP_PREFIX}-${this.nextSubscriptionId()}`;
     const consumer = options?.consumerName ?? `reader-${this.nextSubscriptionId()}`;
 
-    // TASK-351 P1-3 (H5) — each subscriber reads on its OWN connection so
+    // Each subscriber reads on its OWN connection so
     // concurrent sessions never serialize behind one blocked read. When the
     // bridge is not connected, no reader starts (the observable simply never
     // emits — same posture as before).
@@ -349,7 +349,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       finalize(() => {
         // Tear down ONLY this subscriber's reader; siblings on the same
         // sessionId keep running until their own unsubscribe / teardown.
-        // TASK-457 C1 — disconnect the reader NOW so it stops consuming/ACKing
+        // Disconnect the reader NOW so it stops consuming/ACKing
         // the shared group immediately (not after the ≤500ms BLOCK window).
         this.abortSubscriber(ctrl);
         const set = this.activeSubscriptions.get(sessionId);
@@ -362,7 +362,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
   }
 
   /**
-   * TASK-457 C1 — abort a subscriber's read loop AND immediately drop its
+   * Abort a subscriber's read loop AND immediately drop its
    * dedicated connection, interrupting any in-flight blocking XREADGROUP so a
    * dead client's reader stops consuming/ACKing the shared consumer group at
    * once. Best-effort; the read loop's own `finally` still quits the reader.
@@ -399,7 +399,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
   // ------------------------------------------------------------------
 
   /**
-   * TASK-351 P1-3 (H5) — dedicated reader connection for one subscriber.
+   * Dedicated reader connection for one subscriber.
    * Returns null when the bridge is not connected (Redis unconfigured).
    */
   private createSubscriberReader(): Redis | null {
@@ -435,7 +435,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     try {
       await this.ensureResultGroup(reader, streamKey, group);
 
-      // TASK-457 C3-01 — drain our own pending (PEL, id '0') first so a
+      // Drain our own pending (PEL, id '0') first so a
       // reconnect re-delivers unacked results at-least-once, THEN read new
       // (id '>'). The group's Redis-owned cursor is the persisted seed: a
       // re-subscription with the same group resumes here, never from '0-0'.
@@ -452,7 +452,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
           }
 
           const readId = pelDrained ? '>' : '0';
-          // BLOCK is 500ms (TASK-351 P1-3) so the abort flag is honored ≤ 500ms.
+          // BLOCK is 500ms so the abort flag is honored ≤ 500ms.
           const result = (await reader.xreadgroup(
             'GROUP',
             group,
@@ -521,7 +521,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
 
       subject.complete();
     } finally {
-      // TASK-351 P1-3 — this subscriber's dedicated connection dies with it.
+      // This subscriber's dedicated connection dies with it.
       this.subscriberReaders.delete(reader);
       await reader.quit().catch(() => {});
     }
@@ -542,7 +542,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
   }
 
   /**
-   * TASK-457 — reclaim + emit a DEAD reader's idle pending results via
+   * Reclaim + emit a DEAD reader's idle pending results via
    * XAUTOCLAIM (min-idle {@link RESULT_CLAIM_MIN_IDLE_MS}), then ack them. This
    * consumer's OWN pending is recovered separately by the initial `0` (PEL)
    * read in {@link readResultStream}, so this one-shot claim targets only
@@ -589,7 +589,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
   }
 
   /**
-   * TASK-457 M3 — surface writer-connection health (throttled) so a Redis
+   * Surface writer-connection health (throttled) so a Redis
    * outage, which silently grows the offline write queue under
    * `maxRetriesPerRequest: null`, is observable rather than a
    * droppedAudioFrames-stays-0 blind spot.
@@ -635,13 +635,13 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
 
     // Emit transcript segment
     const speakerId = data.speaker_id || undefined;
-    // TASK-489 — derive the human-readable label ONCE here (the single canonical
+    // Derive the human-readable label ONCE here (the single canonical
     // id→label seam) so vox/admin consumers read it off the wire, not re-derive.
     const speakerLabel = deriveSpeakerLabel(speakerId);
     const speakerConfidence = data.speaker_confidence ? parseFloat(data.speaker_confidence) : undefined;
     const englishText = data.english_text || data.englishText || undefined;
 
-    // TASK-351 P1-1 — additive committed-prefix length on partials.
+    // Additive committed-prefix length on partials.
     // Only relayed when present and a valid non-negative integer.
     let stableChars: number | undefined;
     if (data.stable_chars != null && data.stable_chars !== '') {
@@ -651,7 +651,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       }
     }
 
-    // TASK-351 P1-1 follow-up — utterance ordinal on every segment
+    // Utterance ordinal on every segment
     // result (gloss results reuse the translated final's index).
     let utteranceIndex: number | undefined;
     if (data.utterance_index != null && data.utterance_index !== '') {
@@ -661,7 +661,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       }
     }
 
-    // TASK-351 P1-1 follow-up — wire `type` is 'segment' (default,
+    // Wire `type` is 'segment' (default,
     // may be absent on old workers) or 'gloss'; anything else is
     // ignored so unknown future kinds stay additive.
     const resultType = data.type === 'segment' || data.type === 'gloss' ? data.type : undefined;

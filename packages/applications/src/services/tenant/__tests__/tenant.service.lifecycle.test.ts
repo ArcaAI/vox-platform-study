@@ -1,5 +1,5 @@
 /**
- * TASK-387 (#1 / #2) — TenantService lifecycle + tags unit tests.
+ * (#1 / #2) — TenantService lifecycle + tags unit tests.
  *
  * Covers the SUSPENDED/ARCHIVED/restore transitions, the DEF-ADM-002
  * system-tenant guard (suspend/archive/delete blocked on `__GLOBAL__`), and the

@@ -1,5 +1,5 @@
 /**
- * AI inference proxy — runtime-profile injection (TASK-524 §5 test 17).
+ * AI inference proxy — runtime-profile injection.
  *
  * The distinguishing contract here is the CONTRAST in failure posture on a
  * single request:
@@ -45,7 +45,7 @@ function build(profileResolver?: { resolveProfile: ReturnType<typeof vi.fn> }) {
     client as any,
     aiTaskDefaults as any,
     undefined, // aiModelService (@Optional)
-    profileResolver as any, // AiRuntimeProfileService (@Optional) — TASK-524
+    profileResolver as any, // AiRuntimeProfileService (@Optional)
   );
   return { controller, client, aiTaskDefaults };
 }

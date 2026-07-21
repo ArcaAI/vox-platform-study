@@ -142,7 +142,7 @@ export class BlobStorageProviderFactory {
   }
 
   // ---------------------------------------------------------------------------
-  // Per-tenant / per-bucket resolution (TASK-318 / W2 — R5)
+  // Per-tenant / per-bucket resolution
   // ---------------------------------------------------------------------------
 
   /**

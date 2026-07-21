@@ -1,6 +1,6 @@
-"""Judge-calibration integration on the synthetic golden set (TASK-330, 0.7).
+"""Judge-calibration integration on the synthetic golden set.
 
-RED-first. Runs a *stubbed* PDSQI-9 judge through the real runner over the
+Runs a *stubbed* PDSQI-9 judge through the real runner over the
 shipped synthetic golden set (which carries fixture clinician ratings), pools the
 Likert scores, and enforces the **ICC ≥ 0.8** release gate. Deterministic and
 offline — no live LLM.

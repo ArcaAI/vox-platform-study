@@ -1,4 +1,4 @@
-"""TASK-386 — Guardrail per-model metrics.
+"""Guardrail per-model metrics.
 
 Proves the standardized cross-service ``model_running_instances`` gauge and
 ``model_inference_latency_seconds`` histogram increment on the real guardian

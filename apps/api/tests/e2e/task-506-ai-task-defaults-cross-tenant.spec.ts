@@ -1,12 +1,11 @@
 /**
- * TASK-506 — cross-tenant + governance probes against AiTaskDefaultAdminController
+ * Cross-tenant + governance probes against AiTaskDefaultAdminController
  * (`/api/v1/admin/ai-task-defaults`), following the task-307 cross-tenant pattern.
  *
- * Locked contracts (REFRESHED by TASK-534 to the post-TASK-532 governance —
- * `GLOBAL_ADMIN_ONLY_TASK_PREFIXES` in
- * `packages/applications/src/services/ai-task-default/constants.ts` now covers
- * `guardrail.`, `smr.`, `nlp.` AND `harness.`, i.e. EVERY registered task key;
- * the original 506-era "nlp.* stays tenant-grantable" premise is retired):
+ * Locked contracts (`GLOBAL_ADMIN_ONLY_TASK_PREFIXES` in
+ * `packages/applications/src/services/ai-task-default/constants.ts` covers
+ * `guardrail.`, `smr.`, `nlp.` AND `harness.`, i.e. EVERY registered task key —
+ * none of them are tenant-grantable):
  *  1. Tenant scoping — a tenant admin is pinned to their CLS tenant; an explicit
  *     foreign `?tenantId=` is REJECTED (403/404, 200 never; no foreign row
  *     content in the body).
@@ -20,10 +19,10 @@
  *  5. Unknown taskKey → 400.
  *
  * OCC create lane: `If-Match: "0"` is the first-edit/create precondition
- * (parser accepts 0 since the TASK-534 G2 owner decision); the service CAS
+ * (parser accepts 0 as a deliberate owner decision); the service CAS
  * decides create-vs-412.
  *
- * Prereqs (seeded by TASK-506 Phase 2): registry slugs `granite-guardian-4.1-8b`
+ * Prereqs (seeded): registry slugs `granite-guardian-4.1-8b`
  * (GUARDRAIL) and `medical-ner` (TOKEN_CLASSIFICATION) exist in the SYSTEM catalog.
  */
 import { test, expect, APIRequestContext } from '@playwright/test';
@@ -72,8 +71,8 @@ test.describe('TASK-506 — AiTaskDefault admin surface (cross-tenant + guardrai
     expect(resp.status()).toBe(200);
     const body = (await resp.json()) as Array<{ taskKey: string }>;
     expect(Array.isArray(body)).toBe(true);
-    // The registry grew after 506: guardrail.safety/groundedness (TASK-535),
-    // nlp.diagnosis, smr.live/finalize and harness.judge (TASK-532/533).
+    // The full registry: guardrail.safety/groundedness,
+    // nlp.diagnosis, smr.live/finalize and harness.judge.
     expect(body.map((e) => e.taskKey)).toEqual([
       'guardrail.validate',
       'guardrail.safety',
@@ -124,10 +123,9 @@ test.describe('TASK-506 — AiTaskDefault admin surface (cross-tenant + guardrai
   });
 
   test('GOVERNANCE: NO task key remains tenant-grantable — nlp.ner PUT by a tenant admin → 403', async ({ request }) => {
-    // REFRESHED (TASK-534): under the post-532 governance every registered
-    // prefix (guardrail./smr./nlp./harness.) is GLOBAL-ADMIN-ONLY, so the
-    // 506-era "nlp.ner succeeds for a tenant admin" contract is retired. The
-    // 403 fires BEFORE the OCC compare, so any valid If-Match sees it.
+    // Every registered prefix (guardrail./smr./nlp./harness.) is
+    // GLOBAL-ADMIN-ONLY. The 403 fires BEFORE the OCC compare, so any valid
+    // If-Match sees it.
     const row = await readRowVersion(request, tenantAdminToken, 'nlp.ner');
     const resp = await request.put(`${BASE}/row?taskKey=nlp.ner`, {
       headers: { Authorization: `Bearer ${tenantAdminToken}`, 'If-Match': `"${row.version}"` },
@@ -139,7 +137,7 @@ test.describe('TASK-506 — AiTaskDefault admin surface (cross-tenant + guardrai
 
   // First edit on a fresh seed: the ARCAAI tenant row is a version-0
   // placeholder, so this PUT travels the `If-Match: "0"` create lane
-  // (accepted since the TASK-534 G2 owner decision).
+  // (accepted as a deliberate owner decision).
   test('global admin PUT with ?tenantId= succeeds cross-tenant (incl. guardrail.validate)', async ({ request }) => {
     const row = await readRowVersion(request, globalAdminToken, 'guardrail.validate', arcaaiTenantId);
     const resp = await request.put(`${BASE}/row?taskKey=guardrail.validate&tenantId=${arcaaiTenantId}`, {
@@ -192,7 +190,7 @@ test.describe('TASK-506 — AiTaskDefault admin surface (cross-tenant + guardrai
   });
 
   test('PUT with a stale If-Match → 412 (Precondition Failed)', async ({ request }) => {
-    // REFRESHED (TASK-534): a tenant admin now gets the governance 403 BEFORE
+    // A tenant admin gets the governance 403 BEFORE
     // the OCC compare on every key, so the 412 contract is asserted where it
     // still lives — a global admin against the seeded SYSTEM row (version ≥ 1).
     const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
@@ -204,8 +202,8 @@ test.describe('TASK-506 — AiTaskDefault admin surface (cross-tenant + guardrai
   });
 
   test('GET row stamps an ETag from the row version once a row exists', async ({ request }) => {
-    // REFRESHED (TASK-534): tenant rows are version-0 placeholders on a fresh
-    // seed (their creation is G2-blocked), so assert on the seeded SYSTEM row.
+    // Tenant rows are version-0 placeholders on a fresh
+    // seed (their creation is governance-blocked), so assert on the seeded SYSTEM row.
     const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
     const resp = await request.get(`${BASE}/row?taskKey=guardrail.validate&tenantId=${SYSTEM_TENANT_ID}`, {
       headers: { Authorization: `Bearer ${globalAdminToken}` },

@@ -40,12 +40,12 @@ class PipelineConfigReader:
         """
         Fetch pipeline by ID from database.
 
-        TASK-298 D-3 — tenant filter.
+        Tenant filter.
 
         When ``tenant_id`` is provided, the query additionally requires
         ``AsrPipelineRead.tenant_id == tenant_id`` so STT-V2 cannot load a
         pipeline owned by a different tenant. This is defense-in-depth on
-        top of the API gateway's D-2 check; both layers must independently
+        top of the API gateway's own check; both layers must independently
         deny cross-tenant access.
 
         Args:
@@ -311,9 +311,9 @@ class ModelRegistryReader:
     def _to_model_config(self, model: AiModelRead) -> AiModelConfig:
         """Convert database model to AiModelConfig.
 
-        TASK-505 P5 — the DB catalog carries formats the STT runtime does not
-        execute (MLX/GGUF are LM-Studio-served LLM rows); referencing one from
-        a pipeline must fail with a clear message, not a bare enum ValueError.
+        The DB catalog carries formats the STT runtime does not execute
+        (MLX/GGUF are LM-Studio-served LLM rows); referencing one from a
+        pipeline must fail with a clear message, not a bare enum ValueError.
         """
         try:
             model_task_type = ModelTaskType(model.task_type)

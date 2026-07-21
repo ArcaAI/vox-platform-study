@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - DualStreamRecorder (TASK-329 P2 — dual-capture X8)
+ * @arcaai/vox - DualStreamRecorder
  *
  * Records a RAW track and a PROCESSED track in parallel via two MediaRecorders,
  * yielding one Blob per stream on stop. The consultation playground uses this to

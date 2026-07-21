@@ -1014,7 +1014,7 @@ describe('ContextDtoMapper', () => {
         });
     });
 
-    // TASK-375 (item 4) — applyMediaUrl enriches an already-mapped response with
+    // ApplyMediaUrl enriches an already-mapped response with
     // a storage-resolved (presigned) URL. Image attachments also get a thumbnail
     // (currently the image URL itself); non-images do not.
     describe('applyMediaUrl (TASK-375)', () => {

@@ -13,7 +13,7 @@ export interface CreatePasswordResetTokenProps extends BaseEntityFactoryCreatePr
   requestedByUserId?: IPasswordResetTokenEntity['requestedByUserId'];
   requestedVia?: IPasswordResetTokenEntity['requestedVia'];
   requestIp?: IPasswordResetTokenEntity['requestIp'];
-  /** TASK-497 §3.4 — arbitrary purpose-specific payload (e.g. `{ pendingTenantName }` for `email_verification`). */
+  /** Arbitrary purpose-specific payload (e.g. `{ pendingTenantName }` for `email_verification`). */
   metaData?: IPasswordResetTokenEntity['metaData'];
 
   createdAt?: IPasswordResetTokenEntity['createdAt'];

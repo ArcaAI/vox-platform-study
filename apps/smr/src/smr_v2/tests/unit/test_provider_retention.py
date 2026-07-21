@@ -1,4 +1,4 @@
-"""TASK-529 §4.8 (D-10) — retention propagation to server-managed engines.
+"""Retention propagation to server-managed engines.
 
 SMR does not hold model weights: Ollama and LM Studio do. Retention therefore
 propagates as a per-request hint rather than an in-process cache:

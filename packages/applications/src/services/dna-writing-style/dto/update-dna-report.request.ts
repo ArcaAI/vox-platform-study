@@ -23,7 +23,7 @@ export class UpdateDnaReportRequest {
   resourceStatus?: ResourceStatusType;
 
   /**
-   * Optimistic-concurrency token (TASK-326 X7 / D-2).
+   * Optimistic-concurrency token.
    *
    * The admin PATCH route (`DnaWritingStyleAdminController`) REQUIRES the
    * `If-Match` header (RFC 7232) and folds it onto this field at the

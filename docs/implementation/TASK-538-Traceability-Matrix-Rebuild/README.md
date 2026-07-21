@@ -49,7 +49,7 @@ Each workflow = ordered step list citing service + endpoint + model + test per s
 ### Wave 4 — SOTA gap column + adversarial verification + tooling
 1. **SOTA pass** (opus high, per domain; web research allowed): 1–3 material gaps per capability/workflow vs best practice, each citing a source (SOTA-Track docs or external) and a concrete observed limitation. Consolidated priority-ranked backlog handed to TASK-539 (merged with its findings register — single backlog, no duplicates).
 2. **Adversarial verify**: independent agents sample every domain file — claimed paths/routes/tests must exist; workflow e2e evidence must actually cover the flow. Failures bounce back to the domain agent.
-3. **Scripted honesty checker** (`scripts/verify-traceability.ts`, CI validate stage): parse rows → assert module paths, `@Controller` route paths, Prisma model names, and test globs exist. Plus a **coverage check**: list `apps/api/src/modules/*` and console features with no matrix row, so new capabilities can't ship rowless. Per-file machine-checkable `last-verified` stamps replace the single global date.
+3. **Scripted honesty checker** (`scripts/verify-traceability.mjs`, CI validate stage): parse rows → assert module paths, `@Controller` route paths, Prisma model names, and test globs exist. Plus a **coverage check**: list `apps/api/src/modules/*` and console features with no matrix row, so new capabilities can't ship rowless. Per-file machine-checkable `last-verified` stamps replace the single global date.
 
 ### Verification criteria (definition of done)
 - [ ] All 46 API modules, all console features/route groups, all 6 Python services, and SDK entries appear in exactly one row (or an explicit exclusion list)

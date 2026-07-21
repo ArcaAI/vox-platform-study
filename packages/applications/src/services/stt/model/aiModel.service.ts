@@ -79,7 +79,7 @@ export class AiModelService extends BaseService implements IAiModelService {
   /**
    * Update an existing model.
    *
-   * TASK-356 Phase 1 — OCC retrofit. Writes via Compare-And-Set against the
+   * OCC retrofit. Writes via Compare-And-Set against the
    * row's `_version` column (mirrors `PipelineService.update`). The DTO's
    * `expectedVersion` (or the controller's `If-Match`-folded value) is the CAS
    * predicate; on version drift the repository raises
@@ -122,7 +122,7 @@ export class AiModelService extends BaseService implements IAiModelService {
     if (dto.architecture !== undefined) existing.architecture = dto.architecture;
     if (dto.memorySizeMb !== undefined) existing.memorySizeMb = dto.memorySizeMb;
     if (dto.computeType !== undefined) existing.computeType = dto.computeType;
-    // TASK-527 (D-12) — operator weight override. Highest precedence in every
+    // Operator weight override. Highest precedence in every
     // service's `resolve_model_dir`; an empty string clears it so that scheme
     // dispatch on `sourceUri` resumes.
     if (dto.localPath !== undefined) existing.localPath = dto.localPath;
@@ -199,7 +199,7 @@ export class AiModelService extends BaseService implements IAiModelService {
    * Get all models for the admin surface (ENABLED + DISABLED), scoped to the
    * EXACT caller tenant.
    *
-   * TASK-356 Phase 1 (D-Q3) — mirrors `PipelineService.getAllForAdmin` so a
+   * Mirrors `PipelineService.getAllForAdmin` so a
    * just-disabled model stays visible and re-enableable. The explicit
    * `tenantId` filter pins the read to the caller's own rows: the tenant-scope
    * extension only widens to include the SYSTEM catalog when NO `tenantId` is
@@ -277,7 +277,7 @@ export class AiModelService extends BaseService implements IAiModelService {
 
   /**
    * Get ENABLED models by task type across [caller tenant, SYSTEM] — the
-   * registry-picker read (r2605 Finding E).
+   * registry-picker read.
    *
    * The legacy `getByTaskType` pins `tenantId` to the CLS tenant, which
    * DEFEATS the tenant-scope extension's SYSTEM-shared-read widening: a

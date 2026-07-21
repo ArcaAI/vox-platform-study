@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { DepartmentController } from '../department.controller';
 
-// TASK-326 X5 — CLS mock so the controller can read the caller's `user`/
+// CLS mock so the controller can read the caller's `user`/
 // `tenantId` for the defence-in-depth tenant guard on the list route.
 function createMockCls(user: { id?: string; tenantId?: string | null; roles?: string[] } | null, tenantId?: string | null) {
     return {
@@ -131,7 +131,7 @@ describe('DepartmentController', () => {
     });
 
     // -------------------------------------------------------------------------
-    // TASK-326 X5 — GET /admin/departments tenant scoping.
+    // GET /admin/departments tenant scoping.
     // `DepartmentService.getAll` already requires `this.tenantId` server-side,
     // but we mirror the AuditLogController guard so a non-global-admin with no
     // tenant context is rejected at the request entry point and never reaches
@@ -158,7 +158,7 @@ describe('DepartmentController', () => {
         });
 
         it('passes a GLOBAL_ADMIN WITH an elevated tenant context through to the service', async () => {
-            // TASK-331 r2605 #1 — after ContextInterceptor elevates the
+            // After ContextInterceptor elevates the
             // console-selected tenant into CLS, a global-admin reads INSIDE that
             // tenant. The controller guard bypasses global-admins; the service
             // then scopes to the elevated CLS tenant.
@@ -171,7 +171,7 @@ describe('DepartmentController', () => {
         });
 
         it('does NOT mask the service tenant rule for a GLOBAL_ADMIN with NO tenant context', async () => {
-            // TASK-331 r2605 #8 — the controller guard intentionally bypasses
+            // The controller guard intentionally bypasses
             // global-admins, so the call reaches the service. But the REAL
             // `DepartmentService.getAll` requires `this.tenantId` and throws
             // `BadRequestException('Tenant ID is required')` for a global-admin's
@@ -185,7 +185,7 @@ describe('DepartmentController', () => {
         });
     });
 
-    // TASK-302 Stream D Phase E.2 — update() now requires `@RequiresIfMatch()`
+    // update() now requires `@RequiresIfMatch()`
     // and the param decorator fires 428 in HTTP land if the header is
     // missing. These unit tests cover the controller-internal logic of
     // folding the header value into the body-field `expectedVersion`.

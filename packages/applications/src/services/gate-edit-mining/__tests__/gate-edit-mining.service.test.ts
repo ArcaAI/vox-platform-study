@@ -1,5 +1,5 @@
 /**
- * GateEditMiningService — the learning loop's write + read halves (TASK-533 B6).
+ * GateEditMiningService — the learning loop's write + read halves.
  *
  * The clinician approve-vs-edit signal was fully captured and consumed by
  * nothing: gate decisions in the WORM `HarnessAuditEvent`, delivered-vs-signed

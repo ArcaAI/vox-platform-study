@@ -1,5 +1,5 @@
 /**
- * TASK-440 step 1 — pure category mapping for the tenant Settings tab:
+ * Pure category mapping for the tenant Settings tab:
  * deterministic key/namespace → category, unknown-key fallback, and the
  * dataType → control mapping.
  */

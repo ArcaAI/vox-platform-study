@@ -36,7 +36,7 @@ describe('DnaWritingStyleReportRepository', () => {
   });
 });
 
-// TASK-331 doc-02 F6 — repository-level pagination for the admin list, mirroring
+// Repository-level pagination for the admin list, mirroring
 // `PromptTemplateRepository.findPaginated` (`db.findMany` + `db.count`).
 describe('DnaWritingStyleReportRepository — findPaginated (TASK-331 doc-02 F6)', () => {
   let findMany: ReturnType<typeof vi.fn>;

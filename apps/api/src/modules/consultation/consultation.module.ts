@@ -10,11 +10,8 @@ import {
   HarnessInternalServiceModule,
   HarnessPolicyServiceModule,
   LiveDocumentationServiceModule,
-  // TASK-344 Workstream B — manual doctor highlighting.
   HighlightServiceModule,
-  // TASK-345 — live harness activity/progress feed.
   HarnessProgressServiceModule,
-  // TASK-355 Phase D Slice 5d — live per-claim assurance feed.
   HarnessAssuranceServiceModule,
   // ordered-trajectory ingest (internal route) + SSE relay.
   AgentTrajectoryServiceModule,
@@ -36,17 +33,17 @@ import { HarnessInternalController } from './harness-internal.controller';
     ChainSummaryServiceModule,
     TagServiceModule,
     CoreDatabaseModule,
-    // TASK-330 Phase 1 (Lane G) — inbound harness gate adapter.
+    // Inbound harness gate adapter.
     HarnessInternalServiceModule,
-    // TASK-330 Phase 6 — effective-policy read for the worker's fetch_policy.
+    // Effective-policy read for the worker's fetch_policy.
     HarnessPolicyServiceModule,
     // Clinical Workflow Playground (WS1/WS2) — live-summary watcher + recording lifecycle.
     LiveDocumentationServiceModule,
-    // TASK-344 Workstream B — manual doctor highlighting.
+    // Manual doctor highlighting.
     HighlightServiceModule,
-    // TASK-345 — harness progress publish (internal POST) + SSE relay (stream route).
+    // Harness progress publish (internal POST) + SSE relay (stream route).
     HarnessProgressServiceModule,
-    // TASK-355 Phase D Slice 5d — assurance per-claim publish (internal POST) + SSE relay.
+    // Assurance per-claim publish (internal POST) + SSE relay.
     HarnessAssuranceServiceModule,
     // IAgentTrajectoryService for the internal ingest route.
     AgentTrajectoryServiceModule,

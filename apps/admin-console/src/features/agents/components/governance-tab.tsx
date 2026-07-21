@@ -3,19 +3,20 @@
 /**
  * Governance tab — prompt approval, versions and diffs.
  *
- * TASK-532 (M-03 / OD-6): folded in from the retired `/prompt-studio` screen.
+ * Folded in from the retired `/prompt-studio` screen.
  * Prompt governance was split across two routes that hit the SAME backend
  * (`admin/prompt-templates`) — `/agents` owned CRUD + versions + diff, while
  * `/prompt-studio` added only the approve write on top of a second copy of the
  * same list. `/agents` is now the single authoritative surface; `/prompt-studio`
  * redirects here for one release.
  *
- * TIER NOTE: `/prompt-studio` sat in tier 10-19 but was `WorkingTenantGate`d and
- * read per-tenant data (the M-01 sub-pattern). Moving to `/agents` (tier 30-49)
- * is therefore behaviour-neutral — both require a working tenant, and both gate
- * the tab itself on an elevated session. Approve authority is NOT a console
- * concern: the service raises a GLOBAL_ADMIN 403 no matter which surface calls
- * it, so hiding the tab is convenience, never the boundary.
+ * TIER NOTE: `/prompt-studio` sat in tier 10-19 but was `WorkingTenantGate`d
+ * and read per-tenant data (a global-admin-only screen over per-tenant
+ * data). Moving to `/agents` (tier 30-49) is therefore behaviour-neutral —
+ * both require a working tenant, and both gate the tab itself on an
+ * elevated session. Approve authority is NOT a console concern: the service
+ * raises a GLOBAL_ADMIN 403 no matter which surface calls it, so hiding the
+ * tab is convenience, never the boundary.
  */
 
 import { useId, useState, type FormEvent } from 'react';

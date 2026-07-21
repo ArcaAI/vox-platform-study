@@ -50,7 +50,7 @@ import { canAny, isElevated, type PermissionRule } from '@/shared/auth/ability';
  * Full route map from the capabilities matrix (section 3, frames 10-40, as
  * reviewed 2026-07-04: AI models re-tiered to 10-19, tenant frontend config
  * folded into the tenant-detail tab). All design gates cleared (B0/B1/B2
- * approved 2026-07-05; Playground 50-59 approved 2026-07-06, TASK-420). The
+ * approved 2026-07-05; Playground 50-59 approved 2026-07-06). The
  * sidebar only renders implemented entries the caller's ability grants;
  * AI models is hidden (implemented: false).
  */
@@ -120,13 +120,13 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
   },
-  // Global-admin only per the 2026-07-04 review (backend guard re-pin: TASK-419).
-  // TASK-528 — unhidden: the screen is now the AI-models HUB (registry grid +
+  // Global-admin only per the 2026-07-04 review (backend guard re-pin:).
+  // Unhidden: the screen is now the AI-models HUB (registry grid +
   // live LM Studio/Ollama discovery + register), i.e. the surface a global admin
   // uses to see what the serving engines actually host. It was hidden only while
   // it was registry-only. The manage:all gate is unchanged.
   { route: '/ai-models', label: 'AI models', tier: '10-19', icon: IconBrain, required: [['manage', 'all']], implemented: true },
-  // TASK-506 — SYSTEM-tenant task-default rows; guardrail config is global-admin-only by owner directive.
+  // SYSTEM-tenant task-default rows; guardrail config is global-admin-only by owner directive.
   {
     route: '/ai-task-defaults',
     label: 'AI task defaults',
@@ -138,10 +138,10 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   { route: '/rate-limits', label: 'Rate limits', tier: '10-19', icon: IconGauge, required: [['manage', 'all']], implemented: true },
   // Phase 3B agentic global-admin console (all GLOBAL_ADMIN-only).
   { route: '/agentic-policy', label: 'Agentic policy', tier: '10-19', icon: IconShieldBolt, required: [['manage', 'all']], implemented: true },
-  // TASK-532 (M-03/OD-6): `/prompt-studio` retired — prompt governance folded
+  // `/prompt-studio` retired — prompt governance folded
   // into the elevated-only Governance tab of `/agents` (one authoritative
   // surface per resource). `/prompt-studio` still resolves for one release
-  // via a redirect page. TASK-532 (M-09): `/ai-services` takes the freed slot,
+  // via a redirect page.: `/ai-services` takes the freed slot,
   // surfacing the guardrail/NLP status + config backends that had no screen.
   { route: '/ai-services', label: 'AI services', tier: '10-19', icon: IconServerCog, required: [['manage', 'all']], implemented: true },
   { route: '/ai-operations/runs', label: 'AI operations — runs', tier: '10-19', icon: IconTimeline, required: [['manage', 'all']], implemented: true },
@@ -157,7 +157,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   { route: '/queues', label: 'Queues & jobs', tier: '10-19', icon: IconStack2, required: [['manage', 'all']], implemented: true },
   { route: '/schedulers', label: 'Schedulers', tier: '10-19', icon: IconCalendarTime, required: [['manage', 'all']], implemented: true },
   { route: '/audit-logs', label: 'Audit logs', tier: '10-19', icon: IconHistory, required: [['read', 'AuditLog']], implemented: true },
-  // TASK-532 (M-08): renamed from `/pstudio` (read as a typo'd "prompt
+  // Renamed from `/pstudio` (read as a typo'd "prompt
   // studio"). Console-only rename — the gateway path stays `/admin/pstudio/*`.
   { route: '/db-studio', label: 'Database Studio', tier: '10-19', icon: IconDatabaseSearch, required: [['manage', 'all']], implemented: true },
 
@@ -318,7 +318,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
   },
-  // TASK-526 (M-05/M-11/D-18) — the tenant AI surface, rebuilt from the static
+  // The tenant AI surface, rebuilt from the static
   // EmptyState dead-end into read-only effective-model visibility for all 9 task
   // keys plus the tenant's OWN bring-your-own cloud credentials. Model selection
   // remains GLOBAL_ADMIN-only (owner expectation E3); the route was renamed
@@ -344,12 +344,12 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     implemented: true,
   },
 
-  // Tier 50-59 — Playground (TASK-420, approved 2026-07-06; moved into the
-  // console shell under (console)/(tenant) by TASK-502). End-user demo
+  // Tier 50-59 — Playground (approved 2026-07-06; moved into the
+  // console shell under (console)/(tenant)). End-user demo
   // planes run under the admin's OWN account, so the backend guards are
   // plain @Authorize() — visibility is role-gated (GLOBAL_ADMIN or
   // TENANT_ADMIN) via visibleNavEntries, mirroring the (tenant) tier guard.
-  // Labels reconciled to the page titles (TASK-442): nav = breadcrumb = title.
+  // Labels reconciled to the page titles: nav = breadcrumb = title.
   { route: '/playground/consultation', label: 'Consultation Demo', tier: '50-59', icon: IconHeartbeat, required: [], implemented: true },
   { route: '/playground/live-transcription', label: 'Live Transcription', tier: '50-59', icon: IconBroadcast, required: [], implemented: true },
   {

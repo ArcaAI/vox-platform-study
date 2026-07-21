@@ -31,14 +31,14 @@ import { GLOBAL_ADMIN_ROLE } from '../tenant/constants';
 import { AuditLogEncryptionService } from './auditLog-encryption.service';
 
 /**
- * TASK-328 A8 — hard cap on rows materialised for a single CSV export so a
+ * Hard cap on rows materialised for a single CSV export so a
  * wide (or unfiltered) range can never stream an unbounded result set into
  * memory. Tune alongside the UI page sizes if exports start truncating.
  */
 const AUDIT_LOG_EXPORT_MAX = 10000;
 
 /**
- * TASK-375 §8 — the audit-log resource's Prisma model name. Passed to
+ * The audit-log resource's Prisma model name. Passed to
  * `withFormatted{Paginated,Count}Props` so the shared deserializer coerces the
  * stringly-typed CSV `filters` values of `AuditLog`'s boolean/number/date
  * columns to their real types before the `where` reaches Prisma (e.g.
@@ -86,16 +86,16 @@ export class AuditLogService extends BaseService implements IAuditLogService {
     private readonly auditLogRepository: AuditLogRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // TASK-314 §7 — the authentication-audit write must bypass the tenant-scope
+    // The authentication-audit write must bypass the tenant-scope
     // `$extends` via the unscoped `baseClient` (see handleUserAuthenticatedEvent).
     // Same sanctioned escape hatch UserRoleAssignmentService uses for the
     // pre-auth identity reads.
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
-    // TASK-328 A8 — resolves responsibleUserId → display name/email for the
+    // Resolves responsibleUserId → display name/email for the
     // admin table. User is a global model (no tenantId column) so a tenant
     // admin can safely label rows authored by cross-tenant/system actors.
     private readonly userRepository: UserRepository,
-    // TASK-369 Phase 3D — envelope encryption for data/previousData on the two
+    // Envelope encryption for data/previousData on the two
     // direct-write paths below, and decrypt-on-read for fetchById. @Optional so
     // direct-construction unit tests keep working (plaintext-only soak).
     @Optional() private readonly auditLogEncryption?: AuditLogEncryptionService,
@@ -107,7 +107,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
    * Fetch all audit logs with pagination and search capabilities.
    * Uses Promise.all to parallelize data fetch and count queries for better performance.
    *
-   * TASK-305 D.8 (HIPAA §164.312(b)): scoped to the caller's CLS tenantId so
+   * (HIPAA §164.312(b)): scoped to the caller's CLS tenantId so
    * a Tenant-A admin can never enumerate Tenant-B audit rows. GLOBAL_ADMIN
    * bypasses the filter (cross-tenant audit access).
    *
@@ -133,7 +133,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
       }),
     ]);
 
-    // OB-04 (TASK-336): reads of the audit log are never themselves audited.
+    // OB-04: reads of the audit log are never themselves audited.
     return new FetchResponse<AuditLogEntity>({
       data: auditLogs,
       count,
@@ -143,7 +143,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
   }
 
   /**
-   * TASK-328 A8 — paginated, filtered audit-log list with acting-user
+   * Paginated, filtered audit-log list with acting-user
    * enrichment.
    *
    * The `from`/`to`/`action`/`resourceType`/`userId` filters are translated to
@@ -170,7 +170,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
 
     const responsibleUsers = await this.resolveResponsibleUsers(auditLogs.map((log) => log.responsibleUserId));
 
-    // OB-04 (TASK-336): reads of the audit log are never themselves audited.
+    // OB-04: reads of the audit log are never themselves audited.
     return {
       result: new FetchResponse<AuditLogEntity>({ data: auditLogs, count, limit, page }),
       responsibleUsers,
@@ -178,7 +178,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
   }
 
   /**
-   * TASK-373 — cursor (keyset) page of the filtered, tenant-scoped audit list.
+   * Cursor (keyset) page of the filtered, tenant-scoped audit list.
    *
    * The opt-in counterpart of {@link fetchAllFiltered}: it reuses the SAME
    * `buildTenantWhere(buildAuditFilterWhere(...))` scope+filter builder (so
@@ -199,7 +199,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
     const limit = clampCursorLimit(props.limit);
     const whereClause = this.buildTenantWhere(this.buildAuditFilterWhere(props));
 
-    // TASK-375 §8 follow-up — apply the SAME model-aware CSV `filters` coercion
+    // Apply the SAME model-aware CSV `filters` coercion
     // as the offset path (fetchAllFiltered): the stringly-typed `field[op]:value`
     // values (e.g. `success`→bool, `version`→number, `createdAt`→Date,
     // `action`→enum) are coerced against the 'AuditLog' model. It is passed as
@@ -216,7 +216,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
     const page = toCursorPage(rows, limit, (row) => this.toCursorKey(row.createdAt));
     const responsibleUsers = await this.resolveResponsibleUsers(page.data.map((log) => log.responsibleUserId));
 
-    // OB-04 (TASK-336): reads of the audit log are never themselves audited.
+    // OB-04: reads of the audit log are never themselves audited.
     return { page, responsibleUsers };
   }
 
@@ -229,7 +229,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
   }
 
   /**
-   * TASK-328 A8 — materialise the ENTIRE filtered, tenant-scoped result set
+   * Materialise the ENTIRE filtered, tenant-scoped result set
    * (capped at {@link AUDIT_LOG_EXPORT_MAX}) for CSV export. Reuses the same
    * `where` builder + tenant scope as {@link fetchAllFiltered} so an export
    * always matches what the operator sees in the table, ordered newest-first.
@@ -246,7 +246,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
 
     const responsibleUsers = await this.resolveResponsibleUsers(rows.map((row) => row.responsibleUserId));
 
-    // OB-04 (TASK-336): exporting the audit log is itself a read of the audit
+    // OB-04: exporting the audit log is itself a read of the audit
     // log and is never audited (no self-inflation of the trail).
     return { rows, responsibleUsers };
   }
@@ -324,7 +324,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
    * Fetch all audit logs related to a specific resource.
    * Uses Promise.all to parallelize data fetch and count queries for better performance.
    *
-   * TASK-305 D.8: caller's tenantId is merged into the resource-scoped
+   * Caller's tenantId is merged into the resource-scoped
    * where clause; GLOBAL_ADMIN bypasses.
    *
    * @param props - Pagination, resource type, and resource ID.
@@ -351,7 +351,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
       }),
     ]);
 
-    // OB-04 (TASK-336): reads of the audit log are never themselves audited.
+    // OB-04: reads of the audit log are never themselves audited.
     return new FetchResponse<AuditLogEntity>({
       data: auditLogs,
       count,
@@ -364,7 +364,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
    * Fetch all audit logs created by a specific user.
    * Uses Promise.all to parallelize data fetch and count queries for better performance.
    *
-   * TASK-305 D.8: caller's tenantId is merged into the user-scoped where
+   * Caller's tenantId is merged into the user-scoped where
    * clause; GLOBAL_ADMIN bypasses.
    *
    * @param props - Pagination and user ID.
@@ -390,7 +390,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
       }),
     ]);
 
-    // OB-04 (TASK-336): reads of the audit log are never themselves audited.
+    // OB-04: reads of the audit log are never themselves audited.
     return new FetchResponse<AuditLogEntity>({
       data: auditLogs,
       count,
@@ -402,7 +402,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
   /**
    * Fetch a specific audit log by its ID.
    *
-   * TASK-305 D.8: after loading the entity we assert it belongs to the
+   * After loading the entity we assert it belongs to the
    * caller's tenant — if not, throw `NotFoundException` (mirrors the
    * DepartmentService pattern; never leak existence with 403).
    *
@@ -413,17 +413,17 @@ export class AuditLogService extends BaseService implements IAuditLogService {
     const auditLog = await this.auditLogRepository.findById(id);
     this.assertTenantOwnership(auditLog, id);
 
-    // TASK-369 Phase 3D — single-record reads decrypt the envelope payloads in
+    // Single-record reads decrypt the envelope payloads in
     // place (with plaintext fallback for legacy rows). Best-effort: never throws.
     // Only fetchById decrypts — the list/export paths stay on the retained
     // plaintext columns to avoid per-row crypto on hot read paths during soak.
     await this.auditLogEncryption?.decryptIntoEntity(auditLog);
 
-    // OB-04 (TASK-336): reading a single audit row is never itself audited.
+    // OB-04: reading a single audit row is never itself audited.
     return auditLog;
   }
 
-  // OB-10 (TASK-336) — the soft-delete capability was intentionally removed for
+  // OB-10 — the soft-delete capability was intentionally removed for
   // audit-log immutability (HIPAA §164.312(b)/(c)(1)). Audit rows are append-only
   // from the admin surface; any retention/archival must be an explicit, separately
   // audited process — never an ad-hoc admin delete.
@@ -491,11 +491,11 @@ export class AuditLogService extends BaseService implements IAuditLogService {
       method?: string;
       endpoint?: string;
       impersonatedUserId?: string;
-      // TASK-331 M-3 — impersonation lifecycle discriminator. Present on the
+      // Impersonation lifecycle discriminator. Present on the
       // explicit start/stop bracket rows emitted by AuthController; absent on
       // the per-request IMPERSONATED_ACTION rows from the audit interceptor.
       phase?: 'START' | 'STOP';
-      // TASK-401 — lifecycle bracket enrichment (super-admin impersonation
+      // Lifecycle bracket enrichment (super-admin impersonation
       // endpoint): operator justification, token expiry, resolved tenant.
       reason?: string;
       expiresAt?: string;
@@ -508,7 +508,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
       const impersonatedUserId = event.impersonatedUserId;
       const isImpersonatedRequest = Boolean(impersonatedUserId);
 
-      // TASK-295 C-3: persist actor + subject + endpoint distinctly for
+      // Persist actor + subject + endpoint distinctly for
       // impersonated per-request audit rows so HIPAA actor-on-subject
       // traceability is queryable. Non-impersonated path (login/logout)
       // continues to use the existing LOGIN row shape.
@@ -527,10 +527,10 @@ export class AuditLogService extends BaseService implements IAuditLogService {
               impersonatedUserId,
               timestamp: timestamp.toISOString(),
               userAgent: event.userAgent || null,
-              // TASK-331 M-3 — START/STOP for the explicit lifecycle bracket;
+              // START/STOP for the explicit lifecycle bracket;
               // null for ordinary per-request impersonated actions.
               phase: event.phase ?? null,
-              // TASK-401 — bracket enrichment; only present on rows emitted by
+              // Bracket enrichment; only present on rows emitted by
               // the super-admin impersonation endpoint (undefined elsewhere,
               // and undefined JSON keys are dropped on serialization).
               ...(event.reason ? { reason: event.reason } : {}),
@@ -545,28 +545,28 @@ export class AuditLogService extends BaseService implements IAuditLogService {
         previousData: {},
         metadata: null,
         createdBy: null,
-        // TASK-305 A.8 follow-up: factory requires tenantId. CLS tenantId is normally set by auth
+        // Factory requires tenantId. CLS tenantId is normally set by auth
         // middleware before this @OnEvent handler fires; for the rare LOGIN-edge case where CLS
         // isn't established yet (true pre-auth path), fall back to the system tenant — LOGIN/
         // IMPERSONATION audits are platform-level events per the cursor rule.
         tenantId: this.tenantId ?? '00000000-0000-0000-0000-000000000000',
       });
 
-      // TASK-369 Phase 3D — envelope-encrypt before mapping so the persisted row
+      // Envelope-encrypt before mapping so the persisted row
       // carries ciphertext (+ plaintext, dual-read soak). Best-effort; no-op when
       // the encryption service is absent or Vault is unavailable.
       await this.auditLogEncryption?.encryptIntoEntity(auditLog);
 
-      // TASK-314 §7 — baseClient (tenant-scope bypass). `trackAuthentication`
+      // BaseClient (tenant-scope bypass). `trackAuthentication`
       // emits `user.authenticated` while CLS still has NO tenant context (login
       // is a public route, so this @OnEvent handler runs in the unauthenticated
-      // request scope). `AuditLog` is tenant-scoped (TASK-305 Phase B), so the
+      // request scope). `AuditLog` is tenant-scoped, so the
       // scoped repository write throws "tenant context required for model
       // AuditLog" and the LOGIN/IMPERSONATION row is silently dropped by the
       // catch below. The row's tenantId is already resolved above (CLS tenant,
       // or SYSTEM_TENANT_ID for tenant-less/system logins), so the scope filter
       // adds nothing here — the unscoped create is the sanctioned path, mirroring
-      // the pre-auth identity reads in UserRoleAssignmentService (TASK-314).
+      // the pre-auth identity reads in UserRoleAssignmentService.
       const persistence = AuditLogEntityMapper.getInstance().toPersistence(auditLog) as unknown as Record<string, unknown>;
       // Drop null scalars so Prisma's JSON columns (`data`/`metadata`) accept the
       // payload, matching Repository.create's `removeNullValues` behaviour.
@@ -592,7 +592,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
   }
 
   /**
-   * TASK-541 B1 — persist a FAILED authentication attempt.
+   * Persist a FAILED authentication attempt.
    *
    * Counterpart to `handleUserAuthenticatedEvent`, which is a success-only
    * bracket. Without this, a rejected login left only a structured warn log,
@@ -677,7 +677,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
   }
 
   /**
-   * TASK-326 X1 — record a privileged/system action audit entry synchronously.
+   * Record a privileged/system action audit entry synchronously.
    *
    * Mirrors `handleUserAuthenticatedEvent`'s sanctioned direct-write path: the
    * row is built via the factory and persisted through the UNSCOPED `baseClient`
@@ -713,7 +713,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
         tenantId: this.tenantId ?? '00000000-0000-0000-0000-000000000000',
       });
 
-      // TASK-369 Phase 3D — envelope-encrypt data/previousData before mapping
+      // Envelope-encrypt data/previousData before mapping
       // (best-effort; plaintext retained for the dual-read soak).
       await this.auditLogEncryption?.encryptIntoEntity(auditLog);
 

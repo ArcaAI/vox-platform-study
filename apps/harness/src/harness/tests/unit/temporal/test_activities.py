@@ -103,7 +103,7 @@ class _FakeApi:
 
 
 class _FakeApiPriors:
-    """apps/api read client stub for TASK-480 NER priors (returns priors or raises)."""
+    """apps/api read client stub for coded NER priors (returns priors or raises)."""
 
     def __init__(
         self, *, priors: list[NEREntity] | None = None, error: Exception | None = None
@@ -174,8 +174,8 @@ class TestExtractEntities:
 
     @pytest.mark.asyncio
     async def test_reuses_coded_priors_and_skips_cold_nlp(self, env, monkeypatch):
-        """TASK-480 AC-2 — flag on + CODED priors present ⇒ reuse them AND skip the cold
-        NLP pass (the redundancy-kill). RED against today's unconditional cold extract."""
+        """Flag on + CODED priors present ⇒ reuse them AND skip the cold
+        NLP pass (the redundancy-kill)."""
         nlp = _FakeNlp()
         priors = [
             NEREntity(text="hypertension", type="DISEASE", start=0, end=12, snomed_code="38341003")
@@ -201,8 +201,8 @@ class TestExtractEntities:
 
     @pytest.mark.asyncio
     async def test_falls_back_to_cold_when_priors_uncoded(self, env, monkeypatch):
-        """TASK-480 AC-3 — priors with NO ontology code fall back to the cold NLP pass
-        (inert until TASK-476 populates the codes)."""
+        """Priors with NO ontology code fall back to the cold NLP pass
+        (inert until the encoder starts populating the codes)."""
         nlp = _FakeNlp()
         api = _FakeApiPriors(priors=[NEREntity(text="cough", type="SYMPTOM", start=0, end=5)])
         monkeypatch.setattr(activities, "get_settings", lambda: Settings(ner_priors_enabled=True))
@@ -330,7 +330,7 @@ class TestGenerate:
 
     @pytest.mark.asyncio
     async def test_passes_stable_idempotency_key_across_reruns(self, env, monkeypatch):
-        """C1-04 (TASK-469): the generate activity supplies a deterministic Idempotency-Key
+        """The generate activity supplies a deterministic Idempotency-Key
         (``workflow_run:activity_id`` via ``_idempotency_key``) so a worker-crash re-delivery
         reuses it and SMR dedups the replay instead of re-billing the model. The key is stable
         across re-runs of the SAME logical activity (ActivityEnvironment fixes the ids)."""
@@ -349,7 +349,7 @@ class TestGenerate:
 
 
 class TestGeneratePostSendFailure:
-    """C1-04 (TASK-458): a post-send SMR failure (the model may have generated) must be
+    """A post-send SMR failure (the model may have generated) must be
     NON-retryable at the Temporal layer too, so ``_GENERATE_RETRY`` never re-runs the
     activity (a re-run re-invokes the model). A pre-send failure stays retryable — the
     model never ran, so a retry is safe (and the SMR-down invariant still fails the loop)."""
@@ -397,7 +397,7 @@ class TestApiActivities:
         assert call["consultation_id"] == "c-1"
         assert call["tenant_id"] == "t-1"
         assert call["context_item_id"] == "ctx-t1"
-        # C1-03 (TASK-458): the write carries a deterministic idempotency key derived
+        # The write carries a deterministic idempotency key derived
         # from the workflow run + this activity invocation (ActivityEnvironment defaults).
         assert call["idempotency_key"] == "test-run:test"
 
@@ -433,7 +433,7 @@ class TestApiActivities:
         assert call["content"] == "DRAFT"
         assert call["gate_decision"] == "PASS"
         assert call["sensor_scores"] == {"entity_faithfulness": 1.0}
-        assert call["idempotency_key"] == "test-run:test"  # C1-03
+        assert call["idempotency_key"] == "test-run:test"
 
     @pytest.mark.asyncio
     async def test_persist_draft_forwards_guardrail_decisions_and_reduced_assurance(
@@ -481,7 +481,7 @@ class TestApiActivities:
         call = fake.calls["record_gate_decision"]
         assert call["decision"] == "SIGNED"
         assert call["clinician_id"] == "doc-1"
-        assert call["idempotency_key"] == "test-run:test"  # C1-03
+        assert call["idempotency_key"] == "test-run:test"
 
     @pytest.mark.asyncio
     async def test_finalize_assurance_forwards_idempotency_key(self, env, monkeypatch):
@@ -499,11 +499,11 @@ class TestApiActivities:
         assert result.recorded is True
         call = fake.calls["finalize_assurance"]
         assert call["context_item_id"] == "ctx-1"
-        assert call["idempotency_key"] == "test-run:test"  # C1-03
+        assert call["idempotency_key"] == "test-run:test"
 
     @pytest.mark.asyncio
     async def test_retract_draft_forwards_flag_and_idempotency_key(self, env, monkeypatch):
-        # TASK-481 (E2) — the retract_draft activity forwards the FLAG verdict + offending
+        # The retract_draft activity forwards the FLAG verdict + offending
         # claims to apps/api under a stable idempotency key (a retried retraction dedups).
         fake = _FakeApi()
         monkeypatch.setattr(activities, "_api_client", lambda s: fake)
@@ -523,7 +523,7 @@ class TestApiActivities:
         assert call["context_item_id"] == "ctx-1"
         assert call["gate_decision"] == "FLAG"
         assert call["claims_flagged"] == ["Start warfarin"]
-        assert call["idempotency_key"] == "test-run:test"  # C1-03 — dedups a retried retraction
+        assert call["idempotency_key"] == "test-run:test"  # dedups a retried retraction
 
 
 _SOAP_SCHEMA = {
@@ -643,8 +643,8 @@ class TestRetrieveContext:
 
 
 class TestEscalateGate:
-    """C1-05 (TASK-458): the SLA-breach escalation RECORDS to apps/api (was a no-op).
-    Still fail-safe: a down escalation endpoint is swallowed so the gate keeps waiting."""
+    """The SLA-breach escalation RECORDS to apps/api. Still fail-safe: a down
+    escalation endpoint is swallowed so the gate keeps waiting."""
 
     @pytest.mark.asyncio
     async def test_escalate_records_breach_to_api(self, env, monkeypatch):
@@ -662,7 +662,7 @@ class TestEscalateGate:
         assert call["tenant_id"] == "t-1"
         assert call["reason"] == "gate_sla_breached"
         assert call["job_id"] == "job-1"
-        # C1-03: the escalation record is retried by _API_RETRY, so it too dedups.
+        # The escalation record is retried by _API_RETRY, so it too dedups.
         assert call["idempotency_key"] == "test-run:test"
 
     @pytest.mark.asyncio
@@ -700,7 +700,7 @@ class _FakeProgressApi:
 
 
 class TestReportProgress:
-    """TASK-345 — fire-and-forget: forwards the stage event, swallows ALL errors."""
+    """Fire-and-forget: forwards the stage event, swallows ALL errors."""
 
     @pytest.mark.asyncio
     async def test_forwards_stage_event_to_api_client(self, env, monkeypatch):
@@ -727,7 +727,7 @@ class TestReportProgress:
         assert call["label"] == "Running safety sensors"
         assert call["ordinal"] == 4
         assert call["total"] == 5
-        assert call["idempotency_key"] == "test-run:test"  # C1-03
+        assert call["idempotency_key"] == "test-run:test"
 
     @pytest.mark.asyncio
     async def test_api_failure_is_swallowed_and_reported_false(self, env, monkeypatch):
@@ -908,7 +908,7 @@ class _FakeAssuranceApi:
 
 
 class TestRunInferentialSensorsLiveAssurance:
-    """TASK-355 Phase D Slice 5d (Q5) — when ``live_assurance`` is set and the ids
+    """When ``live_assurance`` is set and the ids
     are present, the activity streams each groundedness claim verdict to apps/api as
     it resolves (best-effort: a publish failure never degrades the pass)."""
 
@@ -949,7 +949,7 @@ class TestRunInferentialSensorsLiveAssurance:
         # Each event carries a running counter + the claim total for an N/M UI.
         assert by_claim["c-htn"]["total"] == 2
         assert sorted(c["ordinal"] for c in fake.calls) == [1, 2]
-        # C1-03: per-claim idempotency key (activity run/id + claim) so a re-run of the
+        # Per-claim idempotency key (activity run/id + claim) so a re-run of the
         # inferential activity dedups each claim event distinctly (no cross-claim collide).
         assert by_claim["c-htn"]["idempotency_key"] == "test-run:test:c-htn"
         assert by_claim["c-pen"]["idempotency_key"] == "test-run:test:c-pen"

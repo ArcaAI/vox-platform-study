@@ -6,21 +6,21 @@ import { AiModelDiscoveryController } from './ai-model-discovery.controller';
 import { AiModelDiscoveryService } from './ai-model-discovery.service';
 
 /**
- * TASK-356 Phase 1 (Catalog plane) — wires the admin AI model controller to the
+ * Wires the admin AI model controller to the
  * already-existing `AiModelService`. Mirrors `PipelineModule`.
  *
- * TASK-528 adds the discovery surface (merge view + explicit register). It needs
+ * Also wires the discovery surface (merge view + explicit register). It needs
  * `HttpModule` to reach SMR's provider aggregator and `CommonServiceModule` for
  * `IConfigService` (`SMR_URL`) / `SecretsService` — direct `process.env` reads
  * for downstream URLs are lint-banned in `src/modules/**`.
  */
 @Module({
   imports: [AiModelServiceModule, CommonServiceModule, HttpModule],
-  // ORDER MATTERS (TASK-534 e2e G6): Nest registers routes in controller order,
+  // ORDER MATTERS: Nest registers routes in controller order,
   // and `AiModelAdminController` carries `GET ':id'` — if it registers first it
   // captures `GET admin/ai-models/discovery` as id="discovery" (404). The
   // discovery controller's static paths must register BEFORE the `:id` family
-  // (same static-route-wins rule as the settings registry, task-524 spec).
+  // (same static-route-wins rule as the settings registry).
   controllers: [AiModelDiscoveryController, AiModelAdminController],
   providers: [AiModelDiscoveryService],
 })

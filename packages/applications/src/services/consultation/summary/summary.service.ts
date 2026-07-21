@@ -59,7 +59,7 @@ interface SmrGenerationStats {
 }
 
 /**
- * One SMR `/generate` call inside the TASK-533 D-25 bounded auto-repair loop.
+ * One SMR `/generate` call inside the bounded auto-repair loop.
  * Carries the mapped response alongside the raw `text` the repair helper parses,
  * so the caller can attribute cost across the (at most two) calls.
  */
@@ -90,33 +90,33 @@ export class SummaryService extends BaseService implements ISummaryService {
     // mock. When unset we behave exactly like the pre-migration code
     // when env var SMR_SERVICE_TOKEN was unset: no X-Service-Token header.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // TASK-329 P2 (Tier-0 prompt resolution): load the consulting doctor's
+    // (Tier-0 prompt resolution): load the consulting doctor's
     // `UserProfile.preferredPromptTemplateId`. Optional + trailing so existing
     // positional test fixtures keep compiling; production DI (CoreDatabaseModule)
     // always supplies it.
     @Optional() @Inject(UserProfileRepository) private readonly userProfileRepository?: UserProfileRepository,
-    // TASK-330 Phase 1 (attestation gate): append the ATTEST event to the Phase-0
+    // (attestation gate): append the ATTEST event to the Phase-0
     // WORM audit trail on approval. Optional + trailing so existing positional test
     // fixtures keep compiling; production DI (ConsultationServiceModule) always
     // supplies it, making the gate fail-closed (audit failure aborts the approval).
     @Optional() @Inject(HarnessAuditService) private readonly harnessAuditService?: HarnessAuditService,
-    // TASK-330 Phase 1 (Lane G): forward the clinician sign-off to the durable
+    // (Lane G): forward the clinician sign-off to the durable
     // harness workflow (best-effort). Optional + trailing so existing positional
     // test fixtures keep compiling; production DI (SummaryServiceModule) supplies it.
     @Optional() @Inject(HarnessGatewayService) private readonly harnessGatewayService?: HarnessGatewayService,
-    // TASK-356 D-7 — resolve the admin-managed SMR {provider, model} on every
+    // Resolve the admin-managed SMR {provider, model} on every
     // SMR call (the gateway has no model default). Optional + trailing so
     // existing positional test fixtures keep compiling; production DI
     // (SummaryServiceModule) always supplies it, keeping the path fail-closed.
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
-    // TASK-356 Phase 6 (S3) — resolve the effective DNA-style decision
+    // Resolve the effective DNA-style decision
     // (tenant AND doctor) so DNA style is applied at generation only when the
     // doctor is opted in under an enabling tenant. Optional + trailing so
     // existing positional test fixtures keep compiling; production DI
     // (SummaryServiceModule) always supplies it. When unset, DNA gating is a
     // no-op and behaviour is byte-identical to the pre-Phase-6 path.
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
-    // TASK-392 (Phase 3, M3) — optional (append-only DI); enforces the plan
+    // Optional (append-only DI); enforces the plan
     // `monthlySummaries` meter on generation (kill-switch-gated, → 429 over cap).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
     // §2C — one LLM_CALL trajectory step per generate/pre-summary.
@@ -131,7 +131,7 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
-   * TASK-369 — encrypt PHI on write through the shared env-gated guard: a soft
+   * Encrypt PHI on write through the shared env-gated guard: a soft
    * no-op in dev/test (SECRETS_PROVIDER!=vault) but FAIL-CLOSED (throws) in
    * staging/prod (SECRETS_PROVIDER=vault) instead of persisting plaintext-only.
    */
@@ -150,11 +150,11 @@ export class SummaryService extends BaseService implements ISummaryService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // TASK-392 (Phase 3, M3) — a generated summary consumes a monthly meter unit.
+    // A generated summary consumes a monthly meter unit.
     // Kill-switch-gated (Q9); → 429 once the tenant is over the monthly cap.
     await this.entitlements?.assertMeterQuota(tenantId, 'monthlySummaries');
 
-    // TASK-305 D.4 (audit C-1 / C-3) — verify the parent Consultation
+    // (audit C-1 / C-3) — verify the parent Consultation
     // belongs to the caller's tenant before invoking the (expensive) SMR
     // call. `assertParentInScope` throws `NotFoundException` for both
     // missing-parent and cross-tenant cases so no existence leak.
@@ -257,11 +257,11 @@ export class SummaryService extends BaseService implements ISummaryService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // TASK-392 (Phase 3, M3) — a generated summary consumes a monthly meter unit.
+    // A generated summary consumes a monthly meter unit.
     // Kill-switch-gated (Q9); → 429 once the tenant is over the monthly cap.
     await this.entitlements?.assertMeterQuota(tenantId, 'monthlySummaries');
 
-    // TASK-305 D.4 (audit C-1 / C-3) — verify the parent Consultation
+    // (audit C-1 / C-3) — verify the parent Consultation
     // belongs to the caller's tenant, then validate every explicit
     // `contextItemIds` reference. Without the per-id check a cross-tenant
     // id would be silently filtered into the SMR transcript and
@@ -290,7 +290,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     }
 
     const latestPreSummary = await this.contextItemRepository.findLatestPreSummary(consultationId);
-    // TASK-356 Phase 6 (S3) — gate the DNA style on the effective decision
+    // Gate the DNA style on the effective decision
     // (tenant AND doctor). Drops to `undefined` (no DNA prompt) when the doctor
     // has opted out or the tenant flag is off. No-op (passes the requested id
     // through) when ConfigResolver is not wired into this instance.
@@ -322,7 +322,7 @@ export class SummaryService extends BaseService implements ISummaryService {
 
     // Create summary context item
     const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, smrResponse.summary, effectiveDnaStyleId, userId ?? 'system');
-    // TASK-356 Phase 6 (S4) — pin the AI draft to v1 so the immutable
+    // Pin the AI draft to v1 so the immutable
     // `ai_draft_v1` snapshot below IS version 1 and the doctor's first edit
     // becomes v2 (no `@@unique([contextItemId, versionNumber])` collision).
     contextItem.currentVersionNumber = 1;
@@ -364,8 +364,8 @@ export class SummaryService extends BaseService implements ISummaryService {
       data: { consultationId, type: 'summary' },
     });
 
-    // TASK-356 Phase 6 (S4) — capture the immutable AI-draft `v1` snapshot for
-    // the DNA edit-capture corpus (draft↔approved learning, README D-10). Runs
+    // Capture the immutable AI-draft `v1` snapshot for
+    // the DNA edit-capture corpus (draft↔approved learning). Runs
     // AFTER the draft + meta are committed and is best-effort: a snapshot
     // failure must never roll back the (delivered) draft.
     await this.captureAiDraftSnapshot(savedContext);
@@ -436,7 +436,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // TASK-305 D.4 (audit C-3) — assert the target summary lives in
+    // (audit C-3) — assert the target summary lives in
     // the caller's tenant before reading approvals / writing a new
     // version. Missing or cross-tenant both surface as NotFound.
     const contextItem = await assertParentInScope(this.contextItemRepository, contextItemId, tenantId);
@@ -462,12 +462,12 @@ export class SummaryService extends BaseService implements ISummaryService {
       request.changeSummary,
     );
 
-    // TASK-356 Phase 6 (S5) — stamp the edit delta (previous draft → this edit)
-    // onto the existing version columns for the DNA edit-capture corpus
-    // (README D-10). `CreateFromContextItem` snapshots the PREVIOUS content
+    // Stamp the edit delta (previous draft → this edit)
+    // onto the existing version columns for the DNA edit-capture corpus.
+    // `CreateFromContextItem` snapshots the PREVIOUS content
     // (request.content is applied below), so diff(previous, new). A metadata-only
     // edit (no `content`) leaves both columns null. This runs BEFORE the
-    // TASK-355 Slice-5c `signalEdit` hook below — order preserved.
+    // `signalEdit` hook below — order preserved.
     const editDelta = request.content !== undefined ? diffContent(contextItem.content, request.content) : { contentDiff: null, fieldChanges: null };
     version.contentDiff = editDelta.contentDiff;
     version.fieldChanges = editDelta.fieldChanges as unknown as JsonValue | null;
@@ -495,7 +495,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       previousData: previousData as object,
     });
 
-    // TASK-355 Phase D (Slice 5c) — if this edit lands while the draft is still
+    // If this edit lands while the draft is still
     // under optimistic assurance (DRAFT_PENDING_SENSORS), forward it to the
     // harness so the running workflow re-binds + re-runs assurance on the edited
     // version (Q3) and permanently disables silent regen-if-untouched (Q1).
@@ -523,7 +523,7 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
-   * Approve and lock a summary (TASK-330 Phase 1 — attestation gate /
+   * Approve and lock a summary (attestation gate /
    * confirm-before-commit). This is the single, non-bypassable signing path:
    *
    *   1. Writes a SIGNED_NOTE `ContextItemVersion` stamped with the clinician
@@ -535,7 +535,7 @@ export class SummaryService extends BaseService implements ISummaryService {
    *      whole approval is rejected and the consultation is NOT signed.
    *   3. Flips `Consultation.status` → `SIGNED`.
    *
-   * TASK-355 Phase D — RELAXED sign-off governance (clinician autonomy + full
+   * RELAXED sign-off governance (clinician autonomy + full
    * audit, doc 08 §7.1):
    *   Q2a — signing BEFORE assurance lands is allowed with no acknowledgement;
    *         a `SIGNED_BEFORE_ASSURANCE` WORM annotation is appended so the
@@ -553,7 +553,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // TASK-305 D.4 (audit C-3) — assert the target summary belongs to
+    // (audit C-3) — assert the target summary belongs to
     // the caller's tenant before any approval / lock state mutates.
     const contextItem = await assertParentInScope(this.contextItemRepository, contextItemId, tenantId);
 
@@ -572,7 +572,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       };
     }
 
-    // TASK-355 Phase D — RELAXED sign-off assurance guard (defense-in-depth; the
+    // RELAXED sign-off assurance guard (defense-in-depth; the
     // UI mirrors this, but the API is the non-bypassable enforcement point). The
     // draft's SummaryMeta carries the two-phase assurance state:
     //   Q2a — signing while assurance is still running (`assuranceCompletedAt`
@@ -622,12 +622,12 @@ export class SummaryService extends BaseService implements ISummaryService {
       changeSummary: 'Approved and locked',
     });
 
-    // TASK-356 Phase 6 (S5) — stamp the cumulative AI-draft → approved delta on
+    // Stamp the cumulative AI-draft → approved delta on
     // the signed note so the final divergence is captured even when the doctor
-    // signs without an intermediate edit (README D-10). Baseline = the immutable
-    // `ai_draft_v1` snapshot; skipped for legacy drafts that predate Phase 6
-    // (no v1 snapshot) so their signed note keeps the null delta columns. This
-    // is append-only and never blocks the TASK-355 sign-off below.
+    // signs without an intermediate edit. Baseline = the immutable
+    // `ai_draft_v1` snapshot; skipped for legacy drafts that predate the
+    // snapshot mechanism (no v1 snapshot) so their signed note keeps the null
+    // delta columns. This is append-only and never blocks the sign-off below.
     const draftBaseline = await this.resolveAiDraftBaseline(contextItemId);
     if (draftBaseline !== null) {
       const signDelta = diffContent(draftBaseline, contextItem.content);
@@ -713,7 +713,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       data: { approvalStatus: 'APPROVED', consultationStatus: ConsultationStatus.SIGNED, attested: true },
     });
 
-    // 4. TASK-330 Phase 1 (Lane G) — best-effort: forward the sign-off to the
+    // 4. Best-effort: forward the sign-off to the
     //    harness so it can resolve the workflow's approval wait-condition. The
     //    WORM ATTEST write above is the system-of-record; a signal failure here
     //    MUST NOT block or roll back the (already-committed) sign-off.
@@ -741,7 +741,7 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
-   * TASK-330 Phase 1 — deterministic SHA-256 attestation hash binding the
+   * Deterministic SHA-256 attestation hash binding the
    * clinician + timestamp to the exact signed content/version. Stored on the
    * SIGNED_NOTE version and echoed into the ATTEST audit event so tampering
    * with the note after signing is detectable.
@@ -759,7 +759,7 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
-   * TASK-355 Phase D — sign-off safety stop (I4). Reads the inferential safety
+   * Sign-off safety stop (I4). Reads the inferential safety
    * verdict off the draft's `SummaryMeta.guardrailDecisions` and returns true iff
    * the SAFETY dimension is a FLAG. Tolerant of the two shapes the harness emits:
    * `{ safety: 'FLAG' }` and `{ safety: { decision|verdict: 'FLAG' } }`. ONLY the
@@ -809,7 +809,7 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
-   * TASK-330 follow-up — read-only harness provenance for a generated summary.
+   * Read-only harness provenance for a generated summary.
    * Returns the `SummaryMeta` citationsMap + sensor scores + modelName that the
    * harness wrote. Tenant isolation is enforced by the repository's tenant-scoped
    * client (the controller has already verified read access to the consultation).
@@ -833,7 +833,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // TASK-305 D.4 (audit C-3) — assert the target context item belongs
+    // (audit C-3) — assert the target context item belongs
     // to the caller's tenant before invoking the NLP service or
     // persisting NamedEntity rows. A cross-tenant id would otherwise
     // produce NER rows stamped with the CALLER's tenantId.
@@ -885,7 +885,7 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
-   * TASK-305 D.4 (audit C-3) — validate every ContextItem id in the given
+   * (audit C-3) — validate every ContextItem id in the given
    * list belongs to `tenantId`. Used to scrub `generateSummary`'s
    * `contextItemIds` array so a cross-tenant id cannot be silently filtered
    * into the SMR transcript.
@@ -916,7 +916,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     context?: Record<string, unknown>;
   }): Promise<LegacySmrSummaryResponse & { stats: SmrGenerationStats | null }> {
     try {
-      // TASK-356 D-7 — SMR is a stateless gateway with no model default; resolve
+      // SMR is a stateless gateway with no model default; resolve
       // the tenant's effective {provider, model} and merge it in as the base so a
       // caller-supplied model still wins (resolved values fill only when omitted).
       let options = payload.options;
@@ -927,12 +927,12 @@ export class SummaryService extends BaseService implements ISummaryService {
       const smrPayload = buildSmrGeneratePayload(payload.assembledPrompt, options, payload.context);
       const smrServiceToken = (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '';
 
-      // TASK-533 D-25 — the finalize path now carries the SAME bounded corrective
-      // retry as the live-doc flush (Phase 4D.3). Before this, a structured request
+      // The finalize path now carries the SAME bounded corrective
+      // retry as the live-doc flush. Before this, a structured request
       // that came back as malformed JSON was persisted VERBATIM as the clinical note
       // — on the HIGHER-stakes path, since this output is what the clinician signs.
       // The corrective instruction is APPENDED so the prefix-cache-stable lead-in
-      // stays byte-identical between the original and the repair call (Phase 4D.1).
+      // stays byte-identical between the original and the repair call.
       const basePrompt = smrPayload.prompt;
       const structuredRequested = smrPayload.response_format !== undefined;
 
@@ -1017,7 +1017,7 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
-   * TASK-329 P2 (Tier-0): resolve the consulting doctor's preferred prompt template id
+   * (Tier-0): resolve the consulting doctor's preferred prompt template id
    * from their UserProfile. Returns null when the repo isn't wired (legacy fixtures),
    * the doctor has no profile, or the lookup fails — letting prompt resolution fall
    * through to the department/default tiers.
@@ -1039,7 +1039,7 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
-   * TASK-356 Phase 6 (S3) — resolve the DNA style id to actually apply at
+   * Resolve the DNA style id to actually apply at
    * generation: the requested id when DNA is EFFECTIVE (tenant AND doctor), else
    * `undefined` (no DNA prompt). When ConfigResolver is not wired (legacy
    * fixtures) or no id was requested this is a pass-through no-op, so behaviour
@@ -1063,7 +1063,7 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
-   * TASK-356 Phase 6 (S4) — write the immutable AI-draft `v1` snapshot for the
+   * Write the immutable AI-draft `v1` snapshot for the
    * DNA edit-capture corpus. Reuses `ContextItemVersion` with
    * `changeReason='ai_draft_v1'` / `changeSource='ai_model'` (no schema change).
    * Best-effort: a snapshot failure is logged and swallowed so it never rolls
@@ -1087,7 +1087,7 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
-   * TASK-356 Phase 6 (S5) — read the AI-draft `v1` snapshot content as the
+   * Read the AI-draft `v1` snapshot content as the
    * baseline for the draft→approved delta on sign. Returns null (skip delta)
    * when no snapshot exists (legacy pre-Phase-6 drafts) or on a lookup failure,
    * so signing is never blocked by edit-capture.

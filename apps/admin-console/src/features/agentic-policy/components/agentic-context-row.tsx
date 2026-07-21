@@ -14,7 +14,7 @@ import { usePutRegistrySetting, useRegistrySetting } from '../api';
 import type { SettingCatalogItem } from '../api/types';
 
 /**
- * One editable `agentic.context.*` row (TASK-533 B2).
+ * One editable `agentic.context.*` row.
  *
  * Reads its own value + ETag, because the registry lane is key-addressed and
  * every key carries its own version — there is no batch read that could supply

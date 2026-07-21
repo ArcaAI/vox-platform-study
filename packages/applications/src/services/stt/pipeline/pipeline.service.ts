@@ -18,7 +18,7 @@ import { ClonePipelineRequest, CreatePipelineRequest, PaginatedPipelineResponse,
 import { PipelineDtoMapper } from './pipeline.dto.mapper';
 
 /**
- * TASK-531 — the single source of the locked-copy refusal text. The console
+ * The single source of the locked-copy refusal text. The console
  * surfaces it verbatim as the disabled-control reason (rule 11 §5), and the
  * e2e/unit suites assert it, so it must not drift between call sites.
  */
@@ -30,9 +30,9 @@ export class PipelineService extends BaseService implements IPipelineService {
     private readonly pipelineRepository: AsrPipelineRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // TASK-328 A6 — version snapshots written on config-YAML changes.
+    // Version snapshots written on config-YAML changes.
     private readonly versionRepository: AsrPipelineVersionRepository,
-    // TASK-392 (Phase 3, C5) — optional (append-only DI); enforces the plan
+    // Optional (append-only DI); enforces the plan
     // `maxAsrPipelines` quota on create (kill-switch-gated, no-op when OFF).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
   ) {
@@ -50,7 +50,7 @@ export class PipelineService extends BaseService implements IPipelineService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // TASK-392 (Phase 3, C5) — plan quota precheck (kill-switch-gated, Q9/Q10).
+    // Plan quota precheck (kill-switch-gated).
     if (this.entitlements?.isEnforcementEnabled()) {
       const currentCount = await this.pipelineRepository.count({ where: { tenantId } });
       await this.entitlements.assertQuantityQuota(tenantId, 'maxAsrPipelines', currentCount);
@@ -92,7 +92,7 @@ export class PipelineService extends BaseService implements IPipelineService {
   /**
    * Update an existing pipeline.
    *
-   * TASK-302 Stream D Phase E.4 — OCC migration. Writes via Compare-And-Set
+   * OCC migration. Writes via Compare-And-Set
    * against the row's `_version` column. The DTO's `expectedVersion` (or
    * the controller's `If-Match`-folded value) is the CAS predicate; on
    * version drift the repository raises `OptimisticConcurrencyException`,
@@ -115,14 +115,15 @@ export class PipelineService extends BaseService implements IPipelineService {
       throw new NotFoundException(`Pipeline ${id} not found`);
     }
 
-    // TASK-531 (GAP-T1) — locked template copies are read-only for content.
+    // Locked template copies are read-only for content.
     // Ordering is load-bearing: the ownership guard above runs FIRST, so a
     // cross-tenant probe gets 404 and never sees this 403 (which would confirm
     // the row exists). Same-tenant, though, the caller can already see this row
     // in their own list — there is no existence to hide, and answering 404
     // would be a lie that breaks the console UX. So we return an honest,
     // actionable 403, matching the same-tenant error precedents (OCC 412,
-    // quota 409). `toggle`/`setDefault` are deliberately NOT guarded (OD-1).
+    // quota 409). `toggle`/`setDefault` are deliberately NOT guarded — a
+    // tenant may always toggle or default an otherwise-locked pipeline.
     this.assertNotTemplateLocked(existing);
 
     if (dto.slug && dto.slug !== existing.slug) {
@@ -139,7 +140,7 @@ export class PipelineService extends BaseService implements IPipelineService {
       }
     }
 
-    // TASK-328 A6 — detect a config change BEFORE we mutate the entity, so we
+    // Detect a config change BEFORE we mutate the entity, so we
     // can snapshot a version only when the YAML actually changed (name/slug/tag
     // edits don't create versions).
     const configChanged = dto.configYaml !== undefined && dto.configYaml !== existing.configYaml;
@@ -157,7 +158,7 @@ export class PipelineService extends BaseService implements IPipelineService {
 
     const updated = await this.pipelineRepository.updateWithVersion(id, existing, dto.expectedVersion);
 
-    // TASK-328 A6 — after a successful CAS write, snapshot the new YAML config
+    // After a successful CAS write, snapshot the new YAML config
     // as the next AsrPipelineVersion (monotonic versionNumber), capturing the
     // change reason + author. Only on actual config changes.
     if (configChanged) {
@@ -179,7 +180,7 @@ export class PipelineService extends BaseService implements IPipelineService {
   }
 
   /**
-   * TASK-531 (GAP-T1) — reject content mutations on a locked template copy.
+   * Reject content mutations on a locked template copy.
    *
    * Call ONLY after the caller's ownership of the row has been established, so
    * this 403 can never confirm the existence of another tenant's pipeline.
@@ -191,24 +192,24 @@ export class PipelineService extends BaseService implements IPipelineService {
   }
 
   /**
-   * TASK-531 (GAP-T2) — Clone a pipeline into a new, editable copy.
+   * Clone a pipeline into a new, editable copy.
    *
-   * This is the sanctioned way to customize a locked template copy (owner
-   * expectation E4: tenant admins "can clone/copy or create their own"). The
+   * This is the sanctioned way to customize a locked template copy: tenant
+   * admins can clone/copy or create their own. The
    * clone is always UNLOCKED, and it inherits everything but its identity from
    * the source, including:
    *
    *  - `sourceTemplateSlug`, carried verbatim so provenance survives clone
    *    chains. A copy-of-a-copy still reports the template it ultimately came
-   *    from; a clone of a wholly hand-made pipeline keeps `null` (README §3.5).
+   *    from; a clone of a wholly hand-made pipeline keeps `null`.
    *  - the source's CURRENT config, written as the clone's own v1 version
    *    snapshot so the copy starts with an honest version history rather than
    *    an empty one (mirrors `TenantService.provisionTenantPipelineCatalog`).
    *
    * The SOURCE is resolved through the tenant ownership guard, so a tenant
    * clones their OWN copy of a template — not the SYSTEM row directly (which
-   * `findById` can see through the shared-read widening). That matches E4:
-   * every tenant already holds a copy of every template.
+   * `findById` can see through the shared-read widening). Every tenant
+   * already holds a copy of every template.
    */
   async clone(id: string, dto: ClonePipelineRequest): Promise<PipelineResponse> {
     const tenantId = this.tenantId;
@@ -277,7 +278,7 @@ export class PipelineService extends BaseService implements IPipelineService {
   }
 
   /**
-   * TASK-328 A6 — Persist a config-YAML snapshot as the next AsrPipelineVersion.
+   * Persist a config-YAML snapshot as the next AsrPipelineVersion.
    */
   private async snapshotVersion(pipeline: { id: string; name: string; description?: string | null; configYaml: string; tenantId?: string | null }, changeReason?: string, changedBy?: string): Promise<void> {
     const versionNumber = await this.versionRepository.getNextVersionNumber(pipeline.id);
@@ -296,15 +297,15 @@ export class PipelineService extends BaseService implements IPipelineService {
   }
 
   /**
-   * IC-04 (TASK-336) — Assign a pipeline within its owning tenant.
+   * Assign a pipeline within its owning tenant.
    *
-   * The endpoint previously returned success without persisting anything. The
-   * data model does not support a cross-tenant move: `AsrPipeline` has a single
-   * `tenantId` whose entity setter is deliberately *protected* (BaseTenantEntity,
-   * TASK-305), and the tenant-scope Prisma extension constrains writes to the
-   * caller's tenant. We therefore reject a cross-tenant target instead of faking
-   * a transfer, and persist the only meaningful same-tenant assignment:
-   * promoting the pipeline to the tenant default (atomic flip via `setDefault`).
+   * The data model does not support a cross-tenant move: `AsrPipeline` has a
+   * single `tenantId` whose entity setter is deliberately *protected*
+   * (`BaseTenantEntity`), and the tenant-scope Prisma extension constrains
+   * writes to the caller's tenant. We therefore reject a cross-tenant target
+   * instead of faking a transfer, and persist the only meaningful same-tenant
+   * assignment: promoting the pipeline to the tenant default (atomic flip via
+   * `setDefault`).
    */
   async assignToTenant(id: string, targetTenantId: string): Promise<PipelineResponse> {
     const tenantId = this.tenantId;
@@ -326,7 +327,7 @@ export class PipelineService extends BaseService implements IPipelineService {
   }
 
   /**
-   * TASK-328 A6 — Mark a pipeline as the tenant default.
+   * Mark a pipeline as the tenant default.
    *
    * Delegates the multi-row flip to the repository transaction
    * (`setDefaultForTenant`) so the "exactly one default per tenant"
@@ -360,7 +361,7 @@ export class PipelineService extends BaseService implements IPipelineService {
   }
 
   /**
-   * TASK-328 A6 — Enable/disable a pipeline by flipping its resourceStatus.
+   * Enable/disable a pipeline by flipping its resourceStatus.
    * OCC-guarded: `expectedVersion` (the controller's If-Match) is the CAS
    * predicate; drift raises OptimisticConcurrencyException → 412.
    */
@@ -400,7 +401,7 @@ export class PipelineService extends BaseService implements IPipelineService {
   }
 
   /**
-   * TASK-328 A6 — List config-version snapshots for a pipeline (newest first).
+   * List config-version snapshots for a pipeline (newest first).
    * Tenant-scoped: a foreign/missing pipeline yields an empty list (no leak).
    */
   async listVersions(id: string): Promise<PipelineVersionResponse[]> {
@@ -419,7 +420,7 @@ export class PipelineService extends BaseService implements IPipelineService {
   }
 
   /**
-   * TASK-328 A6 — Fetch one config-version snapshot by version number.
+   * Fetch one config-version snapshot by version number.
    * Tenant-scoped; returns null when the pipeline or version is absent.
    */
   async getVersion(id: string, versionNumber: number): Promise<PipelineVersionResponse | null> {
@@ -439,7 +440,7 @@ export class PipelineService extends BaseService implements IPipelineService {
   }
 
   /**
-   * Get pipeline by ID — tenant-scoped (TASK-298 D-9).
+   * Get pipeline by ID — tenant-scoped.
    *
    * Returns `null` when:
    *   • The pipeline does not exist, OR
@@ -509,7 +510,7 @@ export class PipelineService extends BaseService implements IPipelineService {
   /**
    * Get all pipelines for the admin surface, regardless of enabled status.
    *
-   * IC-02 — the enabled-only `getAll` (above) is shared with the public
+   * The enabled-only `getAll` (above) is shared with the public
    * end-user listing. The admin list, however, has a disable toggle and then
    * refetches, so an enabled-only query made a just-disabled pipeline vanish
    * with no way to re-enable it. The admin surface therefore reads
@@ -576,13 +577,13 @@ export class PipelineService extends BaseService implements IPipelineService {
       throw new NotFoundException(`Pipeline ${id} not found`);
     }
 
-    // TASK-531 (GAP-T1) — same guard order as `update`: ownership 404 first,
+    // Same guard order as `update`: ownership 404 first,
     // then the lock 403. Deleting a template copy would silently shrink the
     // tenant's catalog below the SYSTEM baseline; clone-and-delete-your-own is
     // the supported path.
     this.assertNotTemplateLocked(existing);
 
-    // TASK-326 (soft-delete consistency): use the repository's dedicated
+    // (soft-delete consistency): use the repository's dedicated
     // `softDelete` so the OCC version bump + DELETED status are applied the same
     // way as every other module. The prior `entity.delete()` + `update()` path
     // set the status but skipped the CAS version bump in `softDelete`, so a
@@ -606,7 +607,7 @@ export class PipelineService extends BaseService implements IPipelineService {
       return local;
     }
 
-    // TASK-505 P2 — authoritative validation proxied to stt-v2, which runs
+    // Authoritative validation proxied to stt-v2, which runs
     // the SAME PipelineYamlParser the runtime uses (schema v2: provider::model
     // shorthand, stage toggles, engine/quantization/language rules). This
     // replaces hand-duplicating those rules in TypeScript; when the service

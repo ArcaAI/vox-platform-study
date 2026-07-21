@@ -1,4 +1,4 @@
-"""Shared Whisper/transformers ``generate_kwargs`` assembly (TASK-505 P1).
+"""Shared Whisper/transformers ``generate_kwargs`` assembly.
 
 One builder for the decode parameters that were previously triplicated across
 batch transformers inference, batch Optimum-ONNX inference, and the streaming
@@ -24,7 +24,7 @@ def build_whisper_generate_kwargs(
     """Translate an ``InferenceConfig`` into transformers ``generate`` kwargs.
 
     Semantics (locked by ``tests/unit/test_batch_inference_kwargs.py``):
-    - ``language`` is pinned only when not None (TASK-351 P2-1: a configured
+    - ``language`` is pinned only when not None (a configured
       language is always pinned, including with code_switching; null = auto-LID).
     - ``beam_size`` > 1 → ``num_beams`` (1/0/None omitted).
     - ``temperature``: scalar normalized to a 1-list; single value emits a

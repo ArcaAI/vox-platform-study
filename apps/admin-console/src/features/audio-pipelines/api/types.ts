@@ -9,16 +9,16 @@ export interface Pipeline {
     /** Pipeline configuration in YAML form (the config editor's payload). */
     configYaml: string;
     resourceStatus: ResourceStatus;
-    /** Exactly one pipeline per tenant carries true (TASK-328 A6). */
+    /** Exactly one pipeline per tenant carries true. */
     isDefault: boolean;
     /**
-     * TASK-531 — the SYSTEM template this pipeline descends from; null when it
+     * The SYSTEM template this pipeline descends from; null when it
      * is not template-derived. Survives clone chains, so a copy-of-a-copy still
      * reports its original template.
      */
     sourceTemplateSlug?: string | null;
     /**
-     * TASK-531 — true for a pristine template copy. The gateway answers PATCH
+     * True for a pristine template copy. The gateway answers PATCH
      * and DELETE on such a row with 403; enable/disable and set-default still
      * work. The console renders these rows read-only with a Clone action rather
      * than letting the user discover the 403 by hitting Save.

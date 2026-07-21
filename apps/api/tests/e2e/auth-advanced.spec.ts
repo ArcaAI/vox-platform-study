@@ -7,7 +7,7 @@
  * - Uses seeded users (super_admin, tenant_admin, doctor, nurse) for tests
  * - The super-admin-target rejection case creates ONE throwaway user (granted
  *   the seeded GLOBAL_ADMIN role) because the seed has a single elevated admin and
- *   TASK-401's self-impersonation guard fires before the target check; the
+ *   the self-impersonation guard fires before the target check; the
  *   assignment is removed and the user soft-deleted via the API in cleanup
  * - No other test data is created
  */
@@ -202,7 +202,7 @@ test.describe('Auth Advanced Controller', () => {
       const superAdminLogin = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
       expect(superAdminLogin, 'super_admin login failed').toBeTruthy();
 
-      // TASK-410 fix — the seed has exactly ONE super admin, and TASK-401's
+      // The seed has exactly ONE super admin, and the
       // self-impersonation guard evaluates BEFORE the super-admin-target
       // check, so targeting the seeded super admin (= the caller) only ever
       // exercised the self guard ("You cannot impersonate yourself"). To keep

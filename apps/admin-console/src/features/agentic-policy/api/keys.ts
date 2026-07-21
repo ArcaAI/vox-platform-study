@@ -3,6 +3,6 @@ export const agenticPolicyKeys = {
     globalPolicy: () => [...agenticPolicyKeys.root, 'global'] as const,
     liveConfig: () => [...agenticPolicyKeys.root, 'live-config'] as const,
     catalog: () => [...agenticPolicyKeys.root, 'catalog'] as const,
-    /** TASK-533 B2 — one registry setting's effective value + backing-row version. */
+    /** One registry setting's effective value + backing-row version. */
     registrySetting: (key: string) => [...agenticPolicyKeys.root, 'registry', key] as const,
 };

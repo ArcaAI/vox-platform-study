@@ -7,7 +7,7 @@
  *  - exclude `version` from both the full-insert and change-tracked write
  *    paths so the AutoMappers cannot pick it up by accident.
  *
- * @see TASK-302 Stream D Phase B
+ * `_version` is database-owned; mappers strip it from writes.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect } from 'vitest';

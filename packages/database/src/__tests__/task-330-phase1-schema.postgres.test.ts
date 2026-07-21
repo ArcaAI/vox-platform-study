@@ -1,7 +1,7 @@
 /**
- * TASK-330 Phase 1 — additive schema regression guard (live Postgres).
+ * Additive schema regression guard (live Postgres).
  *
- * Proves the Phase 1 ADDITIVE migration
+ * Proves the additive migration
  *   `…_task_330_phase1_clinical_harness_status_attestation_ner`
  * actually landed on the dev database:
  *
@@ -87,7 +87,7 @@ describe('TASK-330 Phase 1 additive schema', () => {
   it('creates core.ConsultationStatus with the lifecycle states (incl. TASK-355 DRAFT_PENDING_SENSORS)', async () => {
     if (!available) return;
     const labels = await enumLabels('ConsultationStatus');
-    // TASK-355 Phase D added DRAFT_PENDING_SENSORS (optimistic two-phase delivery).
+    // DRAFT_PENDING_SENSORS supports optimistic two-phase delivery.
     expect(new Set(labels)).toEqual(
       new Set(['OPEN', 'RECORDING', 'DRAFT_PENDING_SENSORS', 'PENDING_REVIEW', 'SIGNED', 'CLOSED', 'REOPENED']),
     );

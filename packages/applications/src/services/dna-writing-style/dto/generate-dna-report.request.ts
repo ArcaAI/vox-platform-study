@@ -18,7 +18,7 @@ export class GenerateDnaReportRequest {
   @IsString()
   editedSummary?: string;
 
-  // TASK-329 P5 — IDs of historical source items the doctor selected to seed a
+  // IDs of historical source items the doctor selected to seed a
   // fresh generation (generate-from-history). Persisted for explainability.
   @ApiPropertyOptional({ description: 'Source item IDs selected from history to seed this generation', type: [String] })
   @IsOptional()

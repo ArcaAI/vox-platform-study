@@ -1,6 +1,6 @@
-"""Release-gate + report tests for the CI eval runner (TASK-330, task 0.6).
+"""Release-gate + report tests for the CI eval runner.
 
-RED-first. The gate is pure + deterministic (no LLM): it compares a run's
+The gate is pure + deterministic (no LLM): it compares a run's
 aggregates against the configured release-gate thresholds (faithfulness, PDSQI
 accurate/thorough/mean, and judge↔clinician ICC) and decides pass/fail. The
 ``main`` CLI entrypoint must exit non-zero when the gate fails so it is

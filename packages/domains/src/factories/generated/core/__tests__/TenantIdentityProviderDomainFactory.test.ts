@@ -1,5 +1,5 @@
 /**
- * TenantIdentityProviderDomainFactory Unit Tests (TASK-498)
+ * TenantIdentityProviderDomainFactory Unit Tests
  *
  * Tests for the TenantIdentityProviderDomainFactory that creates a verified
  * email-domain → provider allowlist row for home-realm discovery (HRD), plus

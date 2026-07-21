@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
 import { S3Service } from '../s3.service';
 import type { IAppSettingsService } from '../../../_meta/';
 
-// TASK-302 Phase 3 Task 3.9 — S3 secrets now flow through SecretsService.
+// S3 secrets flow through SecretsService.
 // All existing tests construct S3Service with just AppSettings, so we
 // provide a default getSecretSync mock that returns the standard test
 // keys. Individual tests can override this to verify cache-miss behavior.

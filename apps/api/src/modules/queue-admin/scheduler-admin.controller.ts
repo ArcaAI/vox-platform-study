@@ -6,7 +6,7 @@ import { Authorize } from '../../decorators';
 import { SchedulerInfoResponse, SuccessResponse, ToggleSchedulerRequest, UpdateSchedulerCronRequest } from './dto';
 
 /**
- * TASK-250 / TASK-336 OB-03 — guarded admin surface over the existing
+ * Guarded admin surface over the existing
  * scheduler-admin application layer (`@nestjs/schedule` SchedulerRegistry +
  * dynamic, GlobalSetting-backed cron). Reachable at `/api/v1/admin/schedulers`.
  *

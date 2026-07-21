@@ -1,5 +1,5 @@
 /**
- * Phase 7: Environment File Port Standardization Tests (TASK-210)
+ * Environment File Port Standardization Tests.
  *
  * TDD tests for the 886x port migration. Includes:
  *   - Static source-level verification (env files, controller defaults)
@@ -24,9 +24,9 @@
  *
  * apps/tts and apps/fedl were fully removed: the legacy TTS on 8863 and
  * FEDL_PORT/FEDL_URL (8865) are gone. 8863 is now Guardrail; the Clinical
- * Documentation Harness owns 8866. TASK-488 later introduced the NEW tts-v2
- * service (apps/tts-v2) on 8865, so TTS_PORT/TTS_URL exist again — but must
- * reference 8865, never the legacy 8863.
+ * Documentation Harness owns 8866. The NEW tts-v2 service (apps/tts-v2) on
+ * 8865 introduced TTS_PORT/TTS_URL again — but they must reference 8865,
+ * never the legacy 8863.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -149,7 +149,7 @@ describe('Phase 7: API Gateway port standardization (8868)', () => {
 
 // ─── 3. Guardrail Port (8863) ────────────────────────────────────────────────
 // apps/tts (legacy, 8863) was removed; 8863 is now Guardrail (GUARDRAIL_URL).
-// TTS_PORT/TTS_URL exist again for the NEW tts-v2 service (TASK-488) but must
+// TTS_PORT/TTS_URL exist again for the NEW tts-v2 service but must
 // point at 8865 — never the legacy 8863 (see the TTS v2 section below).
 
 describe('Phase 7: Guardrail port standardization (8863)', () => {
@@ -182,7 +182,7 @@ describe('Phase 7: Guardrail port standardization (8863)', () => {
 });
 
 // ─── 3b. TTS v2 Port (8865) ──────────────────────────────────────────────────
-// TASK-488 introduced apps/tts-v2 on 8865 (the port freed by the fedl removal).
+// apps/tts-v2 runs on 8865 (the port freed by the fedl removal).
 
 describe('Phase 7: TTS v2 port standardization (8865)', () => {
     const envFilesWithTts = ['.env', '.env.dev', '.env.production', '.env.test', '.env.example', 'apps/api/.env.example', 'apps/api/.env.production'];

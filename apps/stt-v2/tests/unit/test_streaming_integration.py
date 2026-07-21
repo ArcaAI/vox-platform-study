@@ -36,8 +36,8 @@ def _make_mock_redis():
 
     IMPORTANT: the read loops must yield control via asyncio.sleep to
     prevent the IngestionConsumer/ControlListener background tasks from
-    spin-looping and hanging the event loop. TASK-457 — the audio consumer
-    now uses XREADGROUP (+ XAUTOCLAIM/XACK/XGROUP CREATE); control still XREAD.
+    spin-looping and hanging the event loop. The audio consumer
+    uses XREADGROUP (+ XAUTOCLAIM/XACK/XGROUP CREATE); control still XREAD.
     """
     redis = AsyncMock()
     redis.hset = AsyncMock(return_value=True)
@@ -351,7 +351,7 @@ class TestControlHandlerIntegration:
 
     @pytest.mark.asyncio
     async def test_pause_is_rejected_loudly_not_silently_swallowed(self):
-        """TASK-462 C2-04 — PAUSE must fail LOUDLY, not be a silent no-op log.
+        """PAUSE must fail LOUDLY, not be a silent no-op log.
 
         No backend PAUSE semantics exist yet (the SDK halts audio at the source;
         only finalize/cancel reach the backend). A PAUSE frame that DOES reach the
@@ -387,7 +387,7 @@ class TestControlHandlerIntegration:
 
     @pytest.mark.asyncio
     async def test_resume_is_rejected_loudly_not_silently_swallowed(self):
-        """TASK-462 C2-04 — RESUME, like PAUSE, is unimplemented on the backend and
+        """RESUME, like PAUSE, is unimplemented on the backend and
         must be rejected loudly (client-visible error) rather than silently logged."""
         mgr, redis = self._make_manager()
         session = self._make_session(redis)
@@ -406,10 +406,10 @@ class TestControlHandlerIntegration:
         assert "resume" in msg.lower()
 
     def test_make_control_handler_declares_typed_return_not_any(self) -> None:
-        """TASK-462 M-2 — the C2-04 control-error channel must be TYPED, not ``Any``.
+        """The control-error channel must be TYPED, not ``Any``.
 
         ``_make_control_handler`` builds the callback that decodes each control
-        frame and publishes the PAUSE/RESUME rejection error (C2-04). Declaring its
+        frame and publishes the PAUSE/RESUME rejection error. Declaring its
         return as ``Any`` erases the type on the control/error path, so a
         mis-shaped callback would only fail at runtime. It must declare the
         concrete callback type the ``ControlListener`` consumes

@@ -19,7 +19,7 @@ import { IActiveUserContext } from '../../interfaces';
 import { GLOBAL_ADMIN_ROLE } from '../tenant/constants';
 
 /**
- * TASK-406 (P2-6c) — model-aware filter coercion (TASK-375 §8 scheme):
+ * Model-aware filter coercion:
  * `version` → number, `createdAt` → Date, `resourceStatus` → member-validated
  * enum, `metaData`/`subscriptionMetadata` → JSON-path support.
  */
@@ -31,7 +31,7 @@ export class WebhookService extends BaseService implements IWebhookService {
 
   constructor(
     private readonly webhookRepository: WebhookRepository,
-    // TASK-419 item 2 — delivery-log reads for the admin surface.
+    // Delivery-log reads for the admin surface.
     private readonly webhookRunHistoryRepository: WebhookRunHistoryRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
@@ -40,8 +40,8 @@ export class WebhookService extends BaseService implements IWebhookService {
   }
 
   /**
-   * TASK-306 P1.4 (audit M-2 / NEW-2 / AC-5 partial) — non-GLOBAL_ADMIN
-   * callers can no longer attribute a webhook to another tenant via the
+   * A non-GLOBAL_ADMIN
+   * caller can no longer attribute a webhook to another tenant via the
    * DTO. Effective tenant is resolved through `resolveEffectiveTenantId`,
    * which silently pins to CLS for regular users and honors
    * `request.tenantId` only for GLOBAL_ADMIN (cross-tenant impersonation
@@ -70,11 +70,11 @@ export class WebhookService extends BaseService implements IWebhookService {
   }
 
   /**
-   * TASK-306 P2.3 (audit M-2 / AC-5) — list endpoint scoped to the
+   * List endpoint scoped to the
    * caller's tenant. Non-GLOBAL_ADMIN callers see only their own tenant's
    * webhooks; GLOBAL_ADMIN bypasses the filter so cross-tenant
    * administration tooling can list every webhook in the platform.
-   * Mirrors the W3.2 NotificationService.fetchAll posture.
+   * Mirrors the NotificationService.fetchAll posture.
    */
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<WebhookEntity>> {
     const { limit, page } = props;
@@ -105,11 +105,11 @@ export class WebhookService extends BaseService implements IWebhookService {
   }
 
   /**
-   * TASK-306 P2.3 (audit M-2 / AC-5 + AC-7) — refuse cross-tenant list
+   * Refuse cross-tenant list
    * reads driven by the DTO `tenantId`. Pre-guard, any caller could
    * enumerate another tenant's webhooks by supplying a foreign
    * `tenantId`. GLOBAL_ADMIN bypasses for admin-tooling cross-tenant
-   * listing (mirrors the W5.1.5 Notification + ApiKey
+   * listing (mirrors the Notification + ApiKey
    * `fetchAllByTenantId` posture).
    */
   async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<WebhookEntity>> {
@@ -176,7 +176,7 @@ export class WebhookService extends BaseService implements IWebhookService {
   }
 
   /**
-   * TASK-306 P2.3 (audit M-2 / AC-5) — load-then-assert. Throw
+   * Load-then-assert. Throw
    * `NotFoundException` (never `ForbiddenException`) on a cross-tenant
    * id so the API does not reveal that the row exists in another
    * tenant. GLOBAL_ADMIN bypasses for admin tooling.
@@ -197,7 +197,7 @@ export class WebhookService extends BaseService implements IWebhookService {
   /**
    * Update a webhook.
    *
-   * TASK-302 Stream D Phase E.5 — OCC migration. Writes via Compare-And-Set
+   * OCC migration. Writes via Compare-And-Set
    * against the row's `_version` column. The DTO's `expectedVersion` (or
    * the controller's `If-Match`-folded value, once a controller is
    * wired) is the CAS predicate; on version drift the repository raises
@@ -206,7 +206,7 @@ export class WebhookService extends BaseService implements IWebhookService {
    */
   async update(id: EntityId, request: UpdateWebhookRequest): Promise<WebhookEntity> {
     const webhook = await this.webhookRepository.findById(id);
-    // TASK-306 P2.3 (audit M-2 / AC-5) — load-then-assert defense-in-depth.
+    // Load-then-assert defense-in-depth.
     // Throws NotFoundException on cross-tenant id BEFORE the CAS write
     // fires, so a foreign webhook is never mutated. GLOBAL_ADMIN bypasses
     // for admin tooling.
@@ -222,8 +222,8 @@ export class WebhookService extends BaseService implements IWebhookService {
       throw new ArgumentInvalidException(`No changes to write to.`);
     }
 
-    // Snapshot the pre-write `_version` BEFORE the CAS bumps it (audit
-    // correlation mirrors C.8 / E.1 / E.2 / E.3 / E.4).
+    // Snapshot the pre-write `_version` BEFORE the CAS bumps it, for
+    // audit correlation.
     const previousVersion = webhook.version;
 
     const updatedWebhook = await this.webhookRepository.updateWithVersion(id, webhook, expectedVersion);
@@ -237,7 +237,7 @@ export class WebhookService extends BaseService implements IWebhookService {
   }
 
   /**
-   * TASK-306 P2.3 (audit M-2 / AC-5) — load-then-assert before the
+   * Load-then-assert before the
    * soft-delete write. Pre-guard, `softDelete(id)` ran directly with no
    * tenant check, so a Tenant-A user with knowledge of a foreign id
    * could delete another tenant's webhook. The new pre-load+assert
@@ -262,7 +262,7 @@ export class WebhookService extends BaseService implements IWebhookService {
   }
 
   /**
-   * TASK-419 item 2 — the webhook's delivery log (`WebhookRunHistory`,
+   * The webhook's delivery log (`WebhookRunHistory`,
    * newest-first). The run-history rows carry NO tenantId, so tenancy is
    * enforced through the parent webhook: load-then-assert (404 on a
    * cross-tenant id, never 403 — no existence leak), GLOBAL_ADMIN bypasses
@@ -306,10 +306,10 @@ export class WebhookService extends BaseService implements IWebhookService {
    * Differs from `NotificationService.resolveEffectiveTenantId` only in
    * that a non-super-admin mismatch is silently coerced instead of
    * throwing `ForbiddenException`; webhooks are less sensitive than PHI
-   * notification dispatch and the README W5.1.4 verification contract
-   * mandates "row created with tenant-A" on silent coercion.
+   * notification dispatch, so the contract mandates "row created with
+   * tenant-A" on silent coercion.
    *
-   * TASK-306 W5.7.6 (306-F2) — emit a `logger.warn` ONLY on the
+   * Emit a `logger.warn` ONLY on the
    * cross-tenant-coercion branch (non-GLOBAL_ADMIN passing a foreign
    * tenantId). Persistence is correct either way, but the warn gives
    * SOC the only signal that distinguishes a properly-formed request

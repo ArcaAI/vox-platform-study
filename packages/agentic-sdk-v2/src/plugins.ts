@@ -46,7 +46,7 @@ export { useNoiseFilter } from '@arcaai/noise-filter';
 export type { UseNoiseFilterOptions, UseNoiseFilterReturn } from '@arcaai/noise-filter';
 
 // =============================================================================
-// SDK Audio Hook (TASK-356 Phase 4 Hotfix H-1)
+// SDK Audio Hook
 // =============================================================================
 //
 // `useArcaAudio` is the SDK's first-party audio facade (capture / mute / plugin
@@ -56,7 +56,7 @@ export type { UseNoiseFilterOptions, UseNoiseFilterReturn } from '@arcaai/noise-
 // audio-free; core consumers use `useArca().audio`).
 export { useArcaAudio } from './hooks/useArcaAudio';
 
-// `useTtsPlayback` (TASK-491) — streamed TTS audio playback (summary read-aloud).
+// `useTtsPlayback` — streamed TTS audio playback (summary read-aloud).
 // Lives in the plugins entry so Web Audio / room code stays out of `core`.
 export { useTtsPlayback } from './hooks/useTtsPlayback';
 export type { UseTtsPlayback, SpeakOptions } from './hooks/useTtsPlayback';

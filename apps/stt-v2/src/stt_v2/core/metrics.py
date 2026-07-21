@@ -116,13 +116,12 @@ WORKER_JOBS_TOTAL = Counter(
 )
 
 # ---------------------------------------------------------------------------
-# Cross-service per-model contract metrics (TASK-386)
+# Cross-service per-model contract metrics
 # ---------------------------------------------------------------------------
 # Standardized {service, model} pair emitted IDENTICALLY by every HOPE model
 # service (STT, SMR, NLP, Guardrail) so the platform-metrics backend can read
 # per-model "running" + "avg latency" with ONE PromQL pattern. The name and
-# label keys must stay byte-identical across services — see
-# docs/implementation/TASK-386-Platform-Metrics-Backend/METRIC-CONTRACT.md.
+# label keys must stay byte-identical across services.
 
 SERVICE_NAME = "stt"
 
@@ -164,7 +163,7 @@ def track_model_inference(model: str, service: str = SERVICE_NAME) -> Iterator[N
 
 
 # ---------------------------------------------------------------------------
-# Domain helpers — wired into the real STT code paths (TASK-386)
+# Domain helpers — wired into the real STT code paths
 # ---------------------------------------------------------------------------
 # These wrap the (previously dead) domain metrics above so the call-sites in
 # batch_service / session_manager stay one-liners.
@@ -212,7 +211,7 @@ def streaming_session_ended(active_count: int) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Model-cache retention metrics (TASK-529 §3.5)
+# Model-cache retention metrics
 # ---------------------------------------------------------------------------
 # FIXED CONTRACT: names and label sets are identical across all five HOPE
 # services so one Grafana dashboard

@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useAdminTranscriptionJobs Hook (TASK-323 Phase 0 / TASK-320 A1)
+ * @arcaai/vox - useAdminTranscriptionJobs Hook
  *
  * Tenant-wide transcription-job supervision for TENANT_ADMIN / GLOBAL_ADMIN. The
  * server gates `/admin/audio/transcription-jobs` with `@CanManage('Tenant')`,
@@ -7,7 +7,7 @@
  * `AgenticError('FORBIDDEN')`.
  *
  * IMPORTANT: the end-user `STT_V2_ENDPOINTS` reads (`LIST_JOBS`/`JOB_STATS`/
- * `JOBS_BY_STATUS`) became owner-scoped in TASK-319 F3. Admin consumers that
+ * `JOBS_BY_STATUS`) are owner-scoped. Admin consumers that
  * need every job in the tenant MUST use this hook instead.
  */
 

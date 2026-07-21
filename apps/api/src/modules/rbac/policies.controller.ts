@@ -19,15 +19,14 @@ import {
  * Manages policies in the RBAC system.
  * Read/list endpoints accept `read` or `manage` on 'Policy'; mutations require `manage`.
  *
- * TASK-307 W6.2 (audit C-10 / F-1 / H-9) — every Prisma call used to live
+ * Every Prisma call used to live
  * here. The controller is now a thin transport-layer wrapper around
  * `IPolicyService`; direct `CoreDatabaseService` access is forbidden by
- * the W6.4 ESLint rule.
+ * ESLint rule.
  */
 @ApiTags('RBAC - Policies')
 @ApiBearerAuth()
 @Controller('admin/rbac/policies')
-// Phase 0 Item 3 (TASK-302 Stream A): explicit permission required.
 @CanManage('Policy')
 export class PoliciesController {
   constructor(
@@ -39,7 +38,7 @@ export class PoliciesController {
    * List all policies
    */
   @Get()
-  // AC-03 (TASK-336): read/list reachable by holders of decomposed `read:Policy`
+  // Read/list reachable by holders of decomposed `read:Policy`
   // (e.g. TENANT_ADMIN per seed) OR the `manage:Policy` alias. Mutations below
   // stay `manage`-only.
   @CanAny(['read', 'Policy'], ['manage', 'Policy'])
@@ -77,7 +76,7 @@ export class PoliciesController {
   async findOne(@Param('id') id: string): Promise<PolicyResponse> {
     const policy = await this.policyService.findOne(id);
     if (!policy) {
-      // TASK-307 W7.A.17 — was `throw new Error('Policy not found')` which
+      // Was `throw new Error('Policy not found')` which
       // surfaced as a generic 500 to clients. Aligned with the `remove()`
       // handler below (which already maps the service-thrown
       // NestJS `NotFoundException` to 404 via the global filter) and with
@@ -120,7 +119,7 @@ export class PoliciesController {
       description: dto.description,
       scope: dto.scope as 'GLOBAL' | 'TENANT' | undefined,
       rules: dto.rules,
-      // TASK-409 — step-up confirmation for multi-role rule edits. Note the
+      // Step-up confirmation for multi-role rule edits. Note the
       // explicit field mapping here (and in patch/create) is what implements
       // the "server-side strip": `isProtected` can never reach the service.
       breakGlass: dto.breakGlass,
@@ -143,7 +142,7 @@ export class PoliciesController {
       scope: dto.scope as 'GLOBAL' | 'TENANT' | undefined,
       rules: dto.rules,
       resourceStatus: dto.resourceStatus,
-      // TASK-409 — step-up confirmation for multi-role rule edits.
+      // Step-up confirmation for multi-role rule edits.
       breakGlass: dto.breakGlass,
     });
     return this.toResponse(policy);
@@ -170,7 +169,7 @@ export class PoliciesController {
     // (`apps/api/tests/e2e/rbac.spec.ts` line 159), so the new 404 is
     // within the contract.
     //
-    // TASK-409 — deletion now demands the break-glass step-up (DELETE body:
+    // Deletion demands the break-glass step-up (DELETE body:
     // `{ password, confirmationName }`); missing → 428, wrong → 401/400.
     await this.policyService.softDelete(id, breakGlass);
   }
@@ -205,7 +204,7 @@ export class PoliciesController {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       rules: policy.rules as any[],
       resourceStatus: policy.resourceStatus,
-      // TASK-409 — surface the anti-lockout marker so clients can render the
+      // Surface the anti-lockout marker so clients can render the
       // protected affordance without relying on hard-coded names.
       isProtected: policy.isProtected === true,
       createdAt: policy.createdAt,

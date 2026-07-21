@@ -13,7 +13,7 @@ export interface INotificationEntity extends IBaseTaggedEntity {
   messageText?: string | null;
   messageRichText?: string | null;
   messageContent?: JsonValue | null;
-  // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the message
+  // Vault-Transit (hope-phi) ciphertext of the message
   // fields + shared key version. Phase 6 dropped the plaintext columns;
   // plaintext survives only as transient fields repopulated by decrypt-on-read.
   encryptedMessageText?: Buffer | null;
@@ -70,7 +70,7 @@ export class NotificationEntity extends BaseTaggedEntity {
     this.setProperty('title', value);
   }
 
-  // TASK-369 Phase 3C — free-text clinical PHI. @Secret() marks it for
+  // Free-text clinical PHI. @Secret() marks it for
   // audit-log redaction (defense-in-depth) alongside the encrypted counterpart.
   @Secret()
   get messageText(): INotificationEntity['messageText'] {
@@ -99,7 +99,7 @@ export class NotificationEntity extends BaseTaggedEntity {
     this.setProperty('messageContent', value);
   }
 
-  // TASK-369 Phase 3C — Vault-Transit ciphertext columns. @Secret() guards the
+  // Vault-Transit ciphertext columns. @Secret() guards the
   // ciphertext from audit-log surfaces.
   @Secret()
   get encryptedMessageText(): INotificationEntity['encryptedMessageText'] {

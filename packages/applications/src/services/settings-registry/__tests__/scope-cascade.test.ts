@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { walkCascade, type CascadeTier } from '../scope-cascade';
 
-// TASK-504 Phase 3b — the pure cascade-walk core extracted from ConfigResolver:
+// The pure cascade-walk core extracted from ConfigResolver:
 // first tier with a set (non-null/undefined) value wins; else the code default.
 // Ordering + max-scope filtering are the caller's job — this is only the walk.
 

@@ -13,7 +13,7 @@ import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse
 import { Authorize, CanManage, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 
 /**
- * WebhookController (TASK-419 item 2) — admin CRUD + delivery-log surface over
+ * WebhookController — admin CRUD + delivery-log surface over
  * the pre-existing `WebhookService`, mounted at `/admin/webhooks` (global
  * prefix → `/api/v1/admin/webhooks`). Mirrors `ApiKeyController` (mapper at
  * the edge) and `DepartmentController` (If-Match OCC fold on PATCH).

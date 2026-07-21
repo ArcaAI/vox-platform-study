@@ -114,8 +114,8 @@ export function isOriginAllowed(origin: string | undefined, nodeEnv: string): bo
   } else {
     // Dev fallback (only reachable if a caller misuses isOriginAllowed
     // with nodeEnv='development'; `getCorsOrigins` no longer goes through
-    // this function in dev). Mirrors the AC-4 RegExp so the posture is
-    // identical regardless of which entry point is used.
+    // this function in dev). Mirrors the DEV_LOCALHOST_ORIGIN RegExp so the
+    // posture is identical regardless of which entry point is used.
     return logCorsDecision(origin, DEV_LOCALHOST_ORIGIN.test(origin), 'development_localhost_only');
   }
 }

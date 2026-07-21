@@ -1,10 +1,10 @@
-// TASK-504 Phase 3 — the assembled HOPE settings catalog.
+// The assembled HOPE settings catalog.
 //
 // Feature modules contribute descriptor arrays; this is the single queryable
-// registry. Phase 3a seeds it with the verified, admin-controllable settings
-// across the tiers (pipeline config, TTS BYO secrets, entitlements). Later
-// sub-phases add more registrants and wire consumers (catalog endpoint,
-// server-side categories, the generalized effective-config resolver).
+// registry, seeded with the verified, admin-controllable settings across the
+// tiers (pipeline config, TTS BYO secrets, entitlements). Consumers include
+// the catalog endpoint, server-side categories, and the generalized
+// effective-config resolver.
 
 import { AGENTIC_CONTEXT_SETTINGS } from './descriptors/agentic-context.descriptors';
 import { ENTITLEMENT_SETTINGS } from './descriptors/entitlements.descriptors';
@@ -19,15 +19,15 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   ...PIPELINE_SETTINGS,
   ...TTS_SETTINGS,
   ...ENTITLEMENT_SETTINGS,
-  // TASK-506 — AI task-model defaults (guardrail/NLP/SMR).
+  // AI task-model defaults (guardrail/NLP/SMR).
   ...MODEL_DEFAULT_SETTINGS,
   // agentic context-management strategy knobs.
   ...AGENTIC_CONTEXT_SETTINGS,
-  // TASK-524 — the formerly orphaned platform-ops keys (rate limiting, audit
+  // The formerly orphaned platform-ops keys (rate limiting, audit
   // retention, agent-trajectory retention). Registered at their CURRENT runtime
   // defaults, so cataloging them changes no behaviour.
   ...PLATFORM_OPS_SETTINGS,
-  // TASK-525 — stt-v2/nlp service-runtime knobs, consumed over the internal
+  // Stt-v2/nlp service-runtime knobs, consumed over the internal
   // effective-config route. Registered at their current Python defaults, so
   // cataloging them changes no behaviour.
   ...SERVICE_RUNTIME_SETTINGS,

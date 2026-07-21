@@ -11,7 +11,7 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 type Status = 'idle' | 'submitting' | 'sent' | 'disabled';
 
 /**
- * TASK-497 D1 — self-service registration. Anti-enumeration at the UI layer
+ * Self-service registration. Anti-enumeration at the UI layer
  * too: any non-404 outcome (success, unknown email collision, transient
  * error) renders the SAME "check your email" confirmation — mirrors
  * `RegistrationService.register`'s server-side contract. A 404 (feature flag

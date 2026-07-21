@@ -181,7 +181,7 @@ def _api_client(settings: Settings) -> ApiClient:
 
 
 def _idempotency_key(*parts: str) -> str:
-    """Deterministic Idempotency-Key for a harness→apps/api WORM/draft write (C1-03).
+    """Deterministic Idempotency-Key for a harness→apps/api WORM/draft write.
 
     Derived from the workflow RUN + THIS activity invocation: ``activity_id`` is stable
     across the activity's retry attempts (and worker-crash re-delivery) yet unique per
@@ -195,7 +195,7 @@ def _idempotency_key(*parts: str) -> str:
     return ":".join((base, *parts)) if parts else base
 
 
-# Progress reporting is fire-and-forget (TASK-345): a dedicated short HTTP
+# Progress reporting is fire-and-forget: a dedicated short HTTP
 # timeout so a wedged API never holds a stage transition hostage for the full
 # standard budget.
 _PROGRESS_HTTP_TIMEOUT_S = 5.0
@@ -225,7 +225,7 @@ def _trajectory_api_client(settings: Settings) -> ApiClient:
 
 
 def _reasoning_tokens(stats: dict[str, Any] | None) -> int:
-    """Best-effort reasoning-token count from an AD-1 ``GenerationStats`` dict.
+    """Best-effort reasoning-token count from a ``GenerationStats`` dict.
 
     ``SmrGenerationResult`` has no dedicated reasoning field yet, so we read it
     defensively from the stats block (top-level ``reasoning_tokens`` or the
@@ -252,14 +252,14 @@ def _reasoning_tokens(stats: dict[str, Any] | None) -> int:
 class _TrajectoryBatch:
     """Collects a phase-boundary's trajectory steps and flushes them ONCE.
 
-    (Phase 2C). ``record`` appends one terminal span (status + start/end
+    ``record`` appends one terminal span (status + start/end
     timing + stats) AND always observes the ``harness_step_duration_seconds`` metric
     (metrics are useful even without a session context). ``flush`` posts the batch
     via :meth:`ApiClient.report_trajectory` fire-and-forget: a trajectory/gateway
     outage is swallowed+logged so it can NEVER fail the clinical loop (the same
     posture as ``report_progress``). When the activity input carried no
-    ``TrajectoryContext`` (a legacy / pre-510 call) no step is built and no POST is
-    made (metrics still fire).
+    ``TrajectoryContext`` (a legacy call from before this trajectory feature) no
+    step is built and no POST is made (metrics still fire).
     """
 
     def __init__(self, settings: Settings, ctx: TrajectoryContext | None) -> None:
@@ -373,7 +373,7 @@ def _granite_client(settings: Settings) -> GraniteGuardianClient:
 
 
 def _atomic_fact_entailer(settings: Settings, model_path: str | None = None) -> NliEntailer:
-    """Build the atomic-fact verifier's NLI entailer (TASK-481 E2).
+    """Build the atomic-fact verifier's NLI entailer.
 
     Default = the model-free, deterministic, hermetic :class:`DeterministicOverlapEntailer`
     (no model/network/cloud egress). When ``HARNESS_ATOMIC_FACT_MODEL_PATH`` names a staged
@@ -384,7 +384,7 @@ def _atomic_fact_entailer(settings: Settings, model_path: str | None = None) -> 
     never auto-PASSes) with a loud warning rather than degrading the whole sensor. Factored
     out like the other client factories so tests can monkeypatch it with a stub NLI.
     """
-    # TASK-527 (D-12) — `model_path` may be supplied by the caller after a
+    # `model_path` may be supplied by the caller after a
     # control-plane resolve (`resolve_atomic_fact_model_path`); when it is None
     # this falls back to the env setting, which is today's behaviour verbatim.
     resolved_path = model_path if model_path is not None else settings.atomic_fact_model_path
@@ -408,7 +408,7 @@ def _atomic_fact_entailer(settings: Settings, model_path: str | None = None) -> 
 
 
 def _phi_redactor() -> PhiRedactor:
-    """Build the fail-closed PHI egress redactor (TASK-357; Presidio engines are lazy).
+    """Build the fail-closed PHI egress redactor (Presidio engines are lazy).
 
     Factored out like the other client factories so each cloud-bound activity builds
     it once per invocation (the spaCy model loads only on an actual cloud redaction)
@@ -428,16 +428,14 @@ def _mcp_client(settings: Settings) -> McpToolClient:
 
 
 async def _resolve_mcp_token(settings: Settings, auth_ref: str | None) -> str | None:
-    """Resolve an MCP server credential by its ``authRef`` PATH (TASK-533 D-24).
+    """Resolve an MCP server credential by its ``authRef`` PATH.
 
     ``auth_ref`` is a PATH — NEVER secret bytes in the DB/policy. Resolution goes
     through the GATEWAY (``GET /internal/harness/mcp-token``), not a harness-side
-    Vault client: ticket §3.1 freezes that design so secret material stays on the
+    Vault client: this design keeps secret material on the
     side of the boundary that already holds a secrets backend. The gateway
     allowlists the ref against registered, ENABLED ``McpServer`` rows, so this is
-    not an arbitrary secret-path read. (This supersedes the TASK-504 "Vault seam
-    stub", which returned None unconditionally and made every authenticated MCP
-    server permanently uncallable.)
+    not an arbitrary secret-path read.
 
     Called from INSIDE the activity that performs the MCP call, so the token is an
     activity local: it is handed to :class:`McpToolClient` as the ``Authorization``
@@ -498,7 +496,7 @@ def _hybrid_retriever(settings: Settings) -> HybridRetriever:
 
 
 # ---------------------------------------------------------------------------
-# Claim-check helpers (TASK-483) — the store/load edge lives HERE in activities
+# Claim-check helpers — the store/load edge lives HERE in activities
 # (side effects belong in activities, never the deterministic workflow body).
 # ``_resolve_ref`` dereferences an offloaded field (ALWAYS — even if offload is
 # now disabled, an already-offloaded ref must still be readable); ``_offload_text``
@@ -516,7 +514,7 @@ async def _resolve_ref(settings: Settings, inline: str, ref: ClaimCheckRef | Non
 async def _offload_text(settings: Settings, text: str) -> tuple[str, ClaimCheckRef | None]:
     """Offload a produced field above the threshold (``("", ref)``) when enabled.
 
-    Disabled ⇒ ``(text, None)`` (inline, byte-identical to pre-483). Above the
+    Disabled ⇒ ``(text, None)`` (inline, byte-identical to before offload was introduced). Above the
     threshold the inline is emptied so the blob stays OUT of Temporal history.
     """
     cc = settings.claim_check
@@ -547,7 +545,7 @@ async def _resolve_knowledge_chunks(
 
 @activity.defn
 async def fetch_policy(payload: FetchPolicyInput) -> HarnessPolicy:
-    """Read the effective harness policy for the tenant (Phase-6 live policy injection).
+    """Read the effective harness policy for the tenant (live policy injection).
 
     I/O lives here, never the workflow body. Raises :class:`ApiServiceError` on an
     unreachable endpoint; the workflow catches the resulting ``ActivityError`` and
@@ -570,7 +568,7 @@ async def fetch_policy(payload: FetchPolicyInput) -> HarnessPolicy:
 
 
 def _has_ontology_code(entity: NEREntity) -> bool:
-    """True when a prior carries any TASK-476 ontology code (worth reusing)."""
+    """True when a prior carries any ontology code (worth reusing)."""
     return bool(
         entity.umls_cui
         or entity.snomed_code
@@ -583,11 +581,11 @@ def _has_ontology_code(entity: NEREntity) -> bool:
 async def _load_coded_priors(settings: Settings, payload: ExtractEntitiesInput) -> list[NEREntity]:
     """Read persisted ``NamedEntity`` priors from apps/api; return them ONLY when coded.
 
-    TASK-480 Half-B. Degrade-safe: any apps/api error yields ``[]`` so the caller falls
+    Degrade-safe: any apps/api error yields ``[]`` so the caller falls
     back to the cold NLP extraction (priors are an optimization, never a hard
     dependency). Returns the priors only when at least one carries an ontology code
-    (TASK-476 / AC-3) — so the reuse is a no-op until the codes are populated, and never
-    silently drops coverage to an un-coded pre-476 snapshot.
+    — so the reuse is a no-op until the codes are populated, and never
+    silently drops coverage to an un-coded snapshot.
     """
     if not (payload.consultation_id and payload.tenant_id):
         return []
@@ -604,13 +602,14 @@ async def _load_coded_priors(settings: Settings, payload: ExtractEntitiesInput) 
 async def extract_entities(payload: ExtractEntitiesInput) -> EntitiesResult:
     """Run medical NER over ``text`` via the NLP service.
 
-    TASK-480 Half-B — NER-priors reuse: on the TRANSCRIPT pass (``reuse_priors``) and
+    NER-priors reuse: on the TRANSCRIPT pass (``reuse_priors``) and
     when ``HARNESS_NER_PRIORS_ENABLED`` is on, first try to reuse already-persisted CODED
-    ``NamedEntity`` rows (TASK-476) as the transcript entities instead of re-running the
+    ``NamedEntity`` rows as the transcript entities instead of re-running the
     cold NLP extraction — killing the redundant second NER pass. Falls back to the cold
     NLP extraction when the flag is off, the priors are absent/unreachable, or none carry
-    an ontology code (so it stays inert until TASK-476's codes exist, and never
-    regresses). The note-NER calls leave ``reuse_priors`` unset ⇒ always cold.
+    an ontology code (so it stays inert until coded entities are actually persisted
+    elsewhere, and never regresses). The note-NER calls leave ``reuse_priors`` unset ⇒
+    always cold.
     """
     settings = get_settings()
     started = _now()
@@ -630,7 +629,7 @@ async def extract_entities(payload: ExtractEntitiesInput) -> EntitiesResult:
             )
             await batch.flush()
             return EntitiesResult(entities=priors, reused=True)
-    # TASK-483: resolve the (possibly offloaded) note/transcript before the cold NER pass.
+    # Resolve the (possibly offloaded) note/transcript before the cold NER pass.
     text = await _resolve_ref(settings, payload.text, payload.text_ref)
     entities = await _nlp_client(settings).classify_tokens(text, language=payload.language)
     batch.record(
@@ -732,7 +731,7 @@ async def call_mcp_tool(payload: CallMcpToolInput) -> McpToolCallResult:
         raise
 
     # (3) Bounded tool call. The gateway-resolved credential is NEVER logged/echoed,
-    # and never leaves this activity frame (TASK-533 D-24).
+    # and never leaves this activity frame.
     token = await _resolve_mcp_token(settings, server.auth_ref)
     try:
         tool_result = await _mcp_client(settings).call_tool(
@@ -859,7 +858,7 @@ async def assemble_prompt(payload: AssembleInput) -> AssembleResponse:
         dna_style_id=payload.dna_style_id,
         conversation_language=payload.conversation_language,
     )
-    # TASK-483: offload the (large) assembled prompts so they don't enter Temporal
+    # Offload the (large) assembled prompts so they don't enter Temporal
     # history; ``generate`` resolves them inline-or-ref. Below the threshold they stay
     # inline (refs None) and the response is unchanged.
     user_inline, user_ref = await _offload_text(settings, resp.user_prompt)
@@ -893,7 +892,7 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
     started = _now()
     hp = payload.hyperparameters or {}
 
-    # TASK-483: resolve the (possibly offloaded) prompts inline-or-ref, then fold in the
+    # Resolve the (possibly offloaded) prompts inline-or-ref, then fold in the
     # RAG StrictCitations block (moved here from the workflow so the workflow can thread
     # the small prompt REF instead of the concatenated blob). The PHI-egress guard below
     # then screens the FULLY-assembled prompt, exactly as before.
@@ -922,7 +921,7 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
     else:
         system_prompt_in = payload.system_prompt
 
-    # TASK-357: enforce the fail-closed PHI egress guard before any cloud SMR call.
+    # Enforce the fail-closed PHI egress guard before any cloud SMR call.
     # Local providers (the default) are a pure pass-through. A fail-closed block
     # raises PhiEgressBlocked, which propagates and fails the workflow — no draft is
     # ever persisted (the SMR failure-propagation invariant), never a silent leak.
@@ -965,13 +964,13 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
             max_tokens=hp.get("max_tokens"),
             top_p=hp.get("top_p"),
             response_format=payload.response_format,
-            # C1-04 (TASK-469): a deterministic key (workflow_run:activity_id, stable across
+            # A deterministic key (workflow_run:activity_id, stable across
             # worker-crash re-delivery) so SMR dedups a replayed generate — the durable half
-            # of the fix on top of TASK-458's in-process retry narrowing.
+            # of the fix on top of the in-process retry narrowing.
             idempotency_key=_idempotency_key(),
         )
     except SmrServiceError as exc:
-        # C1-04 / I-1: ``after_send`` means the request reached SMR and the model MAY have
+        # ``after_send`` means the request reached SMR and the model MAY have
         # generated — a dropped-read transport loss OR the governor's per-call timeout
         # firing mid-request (both closed in ``smr_client``). Re-running the activity
         # (Temporal ``_GENERATE_RETRY``) would re-invoke the model (double spend + divergent
@@ -979,17 +978,17 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
         # workflow without a draft. A PRE-send failure propagates unchanged (retryable: the
         # model never ran).
         #
-        # Belt-and-braces with the TASK-469 key above: a genuine worker CRASH mid-activity
+        # Belt-and-braces with the idempotency key above: a genuine worker CRASH mid-activity
         # (no exception to catch) that makes Temporal re-deliver the activity now re-POSTs the
         # SAME ``Idempotency-Key``, so SMR returns the first generation instead of re-billing.
-        # The one residual (documented, accepted for C1-04): an SMR 5xx / LM-Studio
+        # The one residual (documented, accepted): an SMR 5xx / LM-Studio
         # ``terminated`` 400 arriving AFTER the model ran but BEFORE the response was cached —
         # the governor retries it and there is no cached result to replay.
         if exc.after_send:
             raise ApplicationError(str(exc), type="SmrResponseLost", non_retryable=True) from exc
         raise
 
-    # TASK-483: offload the generated note so the (large) content stays OUT of Temporal
+    # Offload the generated note so the (large) content stays OUT of Temporal
     # history; on offload the inline ``content`` is emptied and the workflow threads
     # ``content_ref`` to the consumers (note-NER / sensors / persist) that resolve it.
     content_inline, content_ref = await _offload_text(settings, result.content)
@@ -997,7 +996,7 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
         update={"content": content_inline, "content_ref": content_ref}
     )
 
-    # LLM_CALL step embeds the AD-1 ``stats`` verbatim;
+    # LLM_CALL step embeds the ``stats`` verbatim;
     # a bounded-regen generation bumps ``harness_regen_total``. When SMR returned
     # non-empty reasoning, emit a stats-only THINKING step (payloadRef stays null until
     # a capture-payload policy flag is on — which it is not yet).
@@ -1055,7 +1054,7 @@ async def retrieve_context(payload: RetrieveContextInput) -> RetrievedContext:
     query = build_query(payload.entities)
     result = await _hybrid_retriever(settings).retrieve(query=query, tenant_id=payload.tenant_id)
     # Build the StrictCitations block from the FULL chunk text FIRST (it needs the text),
-    # THEN offload each chunk's text (TASK-483) so the reranked chunk texts don't enter
+    # THEN offload each chunk's text so the reranked chunk texts don't enter
     # Temporal history; the inferential citation-verify pass resolves them inline-or-ref.
     prompt_block = build_strict_citations_block(result.chunks)
     chunks = []
@@ -1079,10 +1078,10 @@ async def retrieve_context(payload: RetrieveContextInput) -> RetrievedContext:
 async def run_sensors(payload: RunSensorsInput) -> SensorRunOutput:
     """Build the SensorContext + provenance and run all computational sensors.
 
-    ``payload.thresholds`` is the policy-driven :class:`SensorThresholds` (Phase 6);
+    ``payload.thresholds`` is the policy-driven :class:`SensorThresholds`;
     ``None`` falls back to the sensors' own env-driven defaults.
     """
-    # TASK-483: resolve the (possibly offloaded) note + transcript inline-or-ref.
+    # Resolve the (possibly offloaded) note + transcript inline-or-ref.
     settings = get_settings()
     started = _now()
     note_text = await _resolve_ref(settings, payload.note_text, payload.note_text_ref)
@@ -1157,7 +1156,7 @@ def _citation_verify_decision(result: SensorResult) -> dict[str, Any]:
 def _atomic_fact_decision(result: SensorResult) -> dict[str, Any]:
     """Map the atomic-fact result to its guardrail-decision entry (regen-fixable).
 
-    TASK-481 (E2). The DETERMINISTIC reference-free groundedness gate; on degrade
+    The DETERMINISTIC reference-free groundedness gate; on degrade
     (self-hosted NLI unavailable) it degrades so an unverifiable pass never auto-PASSes.
     """
     if result.degraded:
@@ -1190,7 +1189,7 @@ def _safety_decision(result: SensorResult) -> dict[str, Any]:
     }
 
 
-# Heartbeat cadence for the long inferential pass (TASK-354 Defect A). The workflow sets
+# Heartbeat cadence for the long inferential pass. The workflow sets
 # ``heartbeat_timeout=60s`` on ``run_inferential_sensors``; a beat well inside that window
 # lets Temporal detect a dead worker / hung attempt promptly (~60s) instead of waiting out
 # the 900s ``start_to_close``. 15s gives ample margin under the 60s cap.
@@ -1214,7 +1213,7 @@ def _assemble_inferential_output(
 ) -> InferentialRunOutput:
     """Fold the inferential sensor results into the activity's typed output.
 
-    ``verdict_cache`` (TASK-359 WS-1) is the content-addressed per-claim verdict map this pass
+    ``verdict_cache`` is the content-addressed per-claim verdict map this pass
     saw + populated; it is echoed on the output so the workflow can thread it into the next
     regen pass. On a degrade it is the unchanged inbound cache (nothing new was judged).
     """
@@ -1254,9 +1253,9 @@ def _build_assurance_publisher(
     payload: RunInferentialSensorsInput,
     ctx: SensorContext,
 ) -> ClaimVerdictCallback | None:
-    """Build the Q5 per-claim live publisher, or ``None`` when not streaming.
+    """Build the per-claim live publisher, or ``None`` when not streaming.
 
-    TASK-355 Phase D Slice 5d: returns a best-effort ``on_claim`` callback only when
+    Returns a best-effort ``on_claim`` callback only when
     the optimistic ASSURANCE pass asked for ``live_assurance`` AND the routing ids are
     present. It reuses the short-timeout, fire-and-forget progress client and swallows
     every error — the live feed can never degrade the durable assurance pass. ``total``
@@ -1283,7 +1282,7 @@ def _build_assurance_publisher(
                 ordinal=next(ordinals),
                 total=total,
                 job_id=job_id,
-                # C1-03: per-claim key (activity run/id + claim) so a re-run of this
+                # Per-claim key (activity run/id + claim) so a re-run of this
                 # inferential activity dedups each claim event rather than double-posting.
                 idempotency_key=_idempotency_key(claim_ref),
             )
@@ -1301,14 +1300,14 @@ async def _run_atomic_fact_sensor(
 ) -> SensorResult:
     """Run the DETERMINISTIC reference-free atomic-fact verifier, degrading on any failure.
 
-    TASK-481 (E2). Builds the self-hosted NLI entailer and runs the verifier over the
+    Builds the self-hosted NLI entailer and runs the verifier over the
     (already PHI-redacted) ``ctx``. Any entailer BUILD failure degrades here (the sensor's
     own ``arun`` already degrades on a RUNTIME entailer error) — so an unverifiable
     atomic-fact pass is never a silent auto-PASS (fail-safe), and never raises into the
     inferential pass.
     """
     try:
-        # TASK-527 (D-12) — resolve the weight path inside the ACTIVITY (never
+        # Resolve the weight path inside the ACTIVITY (never
         # the workflow: no determinism impact, `workflows.py` untouched). The
         # control plane wins; env is the fallback, so behaviour is unchanged
         # until the effective-config `modelWeights` key appears.
@@ -1324,7 +1323,7 @@ async def _run_atomic_fact_sensor(
         )
         # Call the incumbent single-arg form unless the control plane actually
         # supplied a path, so existing one-arg test doubles keep working and the
-        # no-registry path is byte-for-byte the pre-527 call.
+        # no-registry path is byte-for-byte the original call.
         entailer = (
             _atomic_fact_entailer(settings)
             if model_path is None
@@ -1371,19 +1370,19 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
         await batch.flush()
         return out
 
-    # TASK-359 WS-1 — seed the per-claim verdict cache from earlier passes (the L2 carrier).
+    # Seed the per-claim verdict cache from earlier passes (the L2 carrier).
     # The sensors reuse a cached verdict for an unchanged claim and re-judge only cache-missing
     # ones; we echo the (now-populated) cache on the output so the workflow threads it forward.
     # On any early degrade below, the unchanged inbound cache is returned (nothing was judged).
     verdict_cache: dict[str, bool] = dict(payload.prior_verdicts)
 
-    # TASK-357: enforce the fail-closed PHI egress guard before any cloud judge/Granite
+    # Enforce the fail-closed PHI egress guard before any cloud judge/Granite
     # call — redact the Granite-screened note (safety provider) and the judge premise
     # (transcript + per-claim hypotheses/evidence + knowledge chunks, judge provider).
     # Local providers (the default) are an identity no-op. A fail-closed block degrades
     # the whole inferential pass (reduced assurance) rather than raising into the loop —
     # the inferential degrade contract — so an unverifiable note never auto-PASSes.
-    # TASK-483: resolve the (possibly offloaded) note / transcript / chunk texts
+    # Resolve the (possibly offloaded) note / transcript / chunk texts
     # inline-or-ref BEFORE the PHI-egress redaction + sensor pass.
     note_text_in = await _resolve_ref(settings, payload.note_text, payload.note_text_ref)
     transcript_text_in = await _resolve_ref(
@@ -1449,7 +1448,7 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
         knowledge_chunks=knowledge_chunks,
     )
 
-    # TASK-354 Defect A: heartbeat for the whole pass (the costly, many-call part) so a
+    # Heartbeat for the whole pass (the costly, many-call part) so a
     # hung attempt / dead worker is detected at heartbeat_timeout (60s) instead of the
     # 900s start_to_close. Cancelled in ``finally`` once the pass returns either way.
     heartbeat = asyncio.create_task(_heartbeat_periodically())
@@ -1462,15 +1461,15 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
                 degraded_result(GROUNDEDNESS_NAME, reason),
                 degraded_result(CITATION_VERIFY_NAME, reason),
             ]
-            # Phase 6: a disabled safety guard contributes no safety result at all.
+            # A disabled safety guard contributes no safety result at all.
             if payload.safety_enabled:
                 degraded.append(degraded_result(SAFETY_NAME, reason))
             return await _emit(_assemble_inferential_output(degraded, verdict_cache))
 
         thresholds = SensorThresholds()
-        # Phase 6: the groundedness pass threshold is policy-driven; the safety screen
+        # The groundedness pass threshold is policy-driven; the safety screen
         # is skipped entirely when the policy disables the safety guard.
-        # TASK-355 R-5: claim batching is env-driven (HARNESS_JUDGE_ENTAILMENT_BATCH_SIZE);
+        # Claim batching is env-driven (HARNESS_JUDGE_ENTAILMENT_BATCH_SIZE);
         # default 1 keeps the legacy one-call-per-claim path. Read from the same judge
         # config the runtime judge is built from.
         groundedness = GroundednessSensor(
@@ -1478,19 +1477,19 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
             batch_size=judge_config.entailment_batch_size,
         )
         citation_verify = CitationVerifySensor(threshold=thresholds.citation_verify_threshold)
-        # TASK-355 Phase D Slice 5d (Q5) — stream each groundedness claim verdict to
+        # Stream each groundedness claim verdict to
         # apps/api as it resolves (optimistic ASSURANCE pass only). Best-effort: the
         # callback swallows every error so the live feed can NEVER degrade the pass.
         on_claim = _build_assurance_publisher(settings, payload, ctx)
         tasks = [
             groundedness.arun(ctx, judge=judge, on_claim=on_claim, verdict_cache=verdict_cache),
-            # TASK-359 WS-2 — citation_verify reuses the SAME shared cache dict; its keys never
+            # citation_verify reuses the SAME shared cache dict; its keys never
             # collide with groundedness (different premise + sensor identity), so the two verdicts
             # stay separable while both are reused across regen passes.
             citation_verify.arun(ctx, judge=judge, verdict_cache=verdict_cache),
         ]
         if payload.safety_enabled:
-            # TASK-363 WS-3 — the safety screen reuses the SAME shared cache dict: each
+            # The safety screen reuses the SAME shared cache dict: each
             # per-(criterion, screened-text, model) verdict is content-addressed with a
             # "safety" sensor identity, so its keys never collide with groundedness/citation
             # entries while an unchanged-content regen pass reuses the prior screen (no Granite
@@ -1500,7 +1499,7 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
                     ctx, judge=judge, screen_cache=verdict_cache
                 )
             )
-        # TASK-481 (E2) — the DETERMINISTIC reference-free atomic-fact verifier runs
+        # The DETERMINISTIC reference-free atomic-fact verifier runs
         # ALONGSIDE the judge sensors (defense-in-depth), gated by the runtime ops
         # kill-switch (default OFF). It uses a SELF-HOSTED NLI (NOT the judge), so it adds
         # no cloud egress; a degraded backend degrades (never auto-PASS). Read at runtime
@@ -1523,13 +1522,13 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
 async def persist_draft(payload: PersistDraftInput) -> DraftResponse:
     """Persist the generated draft (ContextItem + SummaryMeta + PENDING_REVIEW).
 
-    TASK-355 Phase D: ``payload.phase == "DRAFT_PENDING_SENSORS"`` switches apps/api
+    ``payload.phase == "DRAFT_PENDING_SENSORS"`` switches apps/api
     to the optimistic early persist (verdict withheld, GENERATE-only audit); absent
     (legacy) keeps the single-shot persist (full scores, straight to PENDING_REVIEW).
     """
     settings = get_settings()
     started = _now()
-    # TASK-483: resolve the (possibly offloaded) draft content — apps/api still receives
+    # Resolve the (possibly offloaded) draft content — apps/api still receives
     # the fully-materialized note (the persist contract is unchanged).
     content = await _resolve_ref(settings, payload.content, payload.content_ref)
     result = await _api_client(settings).persist_draft(
@@ -1574,7 +1573,7 @@ async def persist_draft(payload: PersistDraftInput) -> DraftResponse:
 
 @activity.defn
 async def finalize_assurance(payload: FinalizeAssuranceInput) -> FinalizeAssuranceResponse:
-    """Backfill the early-persisted draft with the inferential verdict (TASK-355 Phase D).
+    """Backfill the early-persisted draft with the inferential verdict.
 
     Second phase of optimistic delivery: apps/api stamps the inferential scores +
     gate verdict + ``assuranceCompletedAt`` onto the early ``SummaryMeta``, flips
@@ -1621,13 +1620,13 @@ async def finalize_assurance(payload: FinalizeAssuranceInput) -> FinalizeAssuran
 
 @activity.defn
 async def retract_draft(payload: RetractDraftInput) -> RetractDraftResponse:
-    """Retract an optimistically-delivered draft that later failed assurance (TASK-481 E2).
+    """Retract an optimistically-delivered draft that later failed assurance.
 
     The optimistic path calls this INSTEAD of ``finalize_assurance`` when the post-delivery
     assurance pass FLAGs: apps/api marks the delivered ``DRAFT_PENDING_SENSORS`` draft
     ``RETRACTED``, writes the WORM audit (carrying the FLAG verdict + the offending
     atomic/claim refs), and surfaces a clinician-facing retraction event — the safety net
-    for the accepted TASK-453 pre-assurance sign-off window. Idempotent on the apps/api
+    for the accepted pre-assurance sign-off window. Idempotent on the apps/api
     side (the stable ``_idempotency_key`` dedups a retried retraction, so a bounded retry
     never double-writes). Raises :class:`ApiServiceError` on transport/HTTP error; the
     workflow retries under ``_API_RETRY``.
@@ -1696,7 +1695,7 @@ async def record_gate_decision(payload: RecordGateInput) -> RecordGateResponse:
 
 @activity.defn
 async def report_progress(payload: ReportProgressInput) -> ReportProgressResult:
-    """Publish one workflow stage event to the live UI feed (TASK-345).
+    """Publish one workflow stage event to the live UI feed.
 
     Fire-and-forget by contract: ALL errors are swallowed (logged + ``reported=False``)
     so a down progress pipeline can never fail — or even retry-delay — the loop.
@@ -1730,7 +1729,7 @@ async def report_progress(payload: ReportProgressInput) -> ReportProgressResult:
 async def escalate_gate(payload: EscalateInput) -> EscalateResult:
     """Escalate an un-signed gate past its SLA: RECORD the breach to apps/api + log.
 
-    C1-05 (TASK-458): the breach is now durably recorded / notifiable via apps/api
+    The breach is now durably recorded / notifiable via apps/api
     instead of a local log-only no-op. Fail-safe by contract — a failed record is
     swallowed (logged) and the gate keeps waiting, so a down escalation endpoint (e.g.
     before the coordinated apps/api route lands) never fails the clinical loop. The

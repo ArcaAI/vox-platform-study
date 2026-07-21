@@ -1,10 +1,10 @@
 /**
- * TASK-353 — Admin-only routes OUTSIDE the `/admin/` prefix must also carry
+ * Admin-only routes OUTSIDE the `/admin/` prefix must also carry
  * the admin's own JWT during impersonation.
  *
  * The backend gates `/monitoring/*` (whole controller) and
- * `/health/services[/:serviceKey]` behind `@Authorize(['manage', 'all'])`
- * (TASK-336 OB-12), but TASK-340's `isAdminPlanePath` only matched `/admin/*`.
+ * `/health/services[/:serviceKey]` behind `@Authorize(['manage', 'all'])`,
+ * but `isAdminPlanePath` only matched `/admin/*`.
  * While impersonating a doctor, these endpoints received the impersonation JWT
  * and returned 403 — e.g. the entire /admin/system-health page broke.
  *

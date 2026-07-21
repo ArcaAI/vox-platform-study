@@ -1,5 +1,5 @@
 /**
- * useArca Summary Generation Options Tests (TASK-032 WS-B, Task B-1)
+ * useArca Summary Generation Options Tests
  *
  * Tests that generateSummary, generatePreSummary, generateSummaryAsync,
  * and generatePreSummaryAsync accept and pass through the new parameters:

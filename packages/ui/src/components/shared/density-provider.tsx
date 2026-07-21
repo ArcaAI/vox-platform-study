@@ -10,7 +10,7 @@ export interface DensityProviderProps {
   children: ReactNode;
 }
 
-/** Provides a default `Density` to descendant surfaces (TASK-372 §3.1.3). */
+/** Provides a default `Density` to descendant surfaces. */
 export function DensityProvider({ density, children }: DensityProviderProps) {
   return <DensityContext.Provider value={density}>{children}</DensityContext.Provider>;
 }

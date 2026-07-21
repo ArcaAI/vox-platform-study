@@ -85,7 +85,7 @@ export type {
 
 export { CONSULTATION_STATUS_ORDER, isNewVisit, isRevisit, normalizeConsultationStatus } from './consultation';
 
-// Audio recording types (TASK-329 P2 — dual-capture X8)
+// Audio recording types (dual-capture X8)
 export type { AudioRecording, AddAudioRecordingInput } from './recording';
 
 // Context types
@@ -119,7 +119,7 @@ export type {
   TranscriptionSegment,
   // WS-B: Structured transcript and start options
   TranscriptSegment,
-  // TASK-372 D9 — word-level timestamps carried through the store
+  // Word-level timestamps carried through the store
   TranscriptWord,
   VADEvent,
   VADEventType,
@@ -131,12 +131,12 @@ export { DEFAULT_AUDIO_PLUGIN_STATES, DEFAULT_AUDIO_STATE } from './audio';
 export type {
   // SUM-01: Async summary job types
   AsyncJobResponse,
-  // TASK-299 D-17: widened comprehensive summary options
+  // Widened comprehensive summary options
   ComprehensiveSummaryGenerationOptions,
   ComprehensiveSummaryOptions,
   // SUM-02: Comprehensive summary types
   ComprehensiveSummaryResponse,
-  // TASK-329 P6: summary tagging input
+  // Summary tagging input
   CreateSummaryTagInput,
   DNAStyle,
   DNAStyleData,
@@ -150,12 +150,12 @@ export type {
   SummaryOptions,
   SummaryResponse,
   SummaryState,
-  // TASK-329 P6: summary tag
+  // Summary tag
   SummaryTag,
   SummaryVersionEntry,
   // WS-3: Summary versioning types
   UpdateSummaryOptions,
-  // TASK-329 P6: version diff result
+  // Version diff result
   VersionDiff,
 } from './summary';
 
@@ -163,7 +163,7 @@ export type { SummaryApprovalResponse, SummaryApprovalStatus } from './summary';
 
 export { DEFAULT_SUMMARY_STATE } from './summary';
 
-// Provenance / citations types (TASK-330 Phase 1, Lane J)
+// Provenance / citations types
 export type {
   CitationClaim,
   CitationsMap,
@@ -189,10 +189,10 @@ export type {
   DnaUpdateInput,
 } from './dna';
 
-// DNA aggregate dashboard types (TASK-328 A5)
+// DNA aggregate dashboard types
 export type { DnaDashboard, DnaDashboardDailyCount, DnaDashboardRecentActivity, DnaDashboardUsageEntry } from './dna';
 
-// Prompt Template types (SDK-207 WS-4; TASK-328 A4)
+// Prompt Template types
 export type {
   AssignDepartmentPromptInput,
   CreatePromptInput,
@@ -204,10 +204,10 @@ export type {
   PromptVariable,
   PromptVersion,
   UpdatePromptInput,
-  // TASK-328 A4 — quality/score testing + usage analytics
+  // Quality/score testing + usage analytics
   TestPromptInput,
   PromptTestResult,
-  // TASK-389 #15 (AG12/A5) — raw per-dimension breakdown behind PromptTestResult
+  // Raw per-dimension breakdown behind PromptTestResult
   PromptTestMetrics,
   PromptUsageByDepartment,
   PromptUsageByDoctor,
@@ -215,7 +215,7 @@ export type {
   PromptUsageAnalytics,
 } from './prompt';
 
-// Diff types (SDK-207 WS-4; TASK-394 P0-2 — prompt version diff superset)
+// Diff types (prompt version diff superset)
 export type { DiffChange, DiffMode, DiffResult, DiffStats, PromptVersionDiff, PromptVersionDiffField } from './diff';
 
 // Common types
@@ -295,27 +295,27 @@ export type {
 
 export { AiModelDownloadStatus, ResourceStatus, TranscriptionJobStatus, TranscriptionJobType } from './stt-v2';
 
-// Consultation job types (TASK-032 WS-A)
+// Consultation job types
 export type { ConsultationJob, JobStatus, JobStreamCallbacks, PollOptions } from './consultation-job';
 
 export { isTerminalStatus } from './consultation-job';
 
-// User management types (TASK-032 WS-G)
+// User management types
 export type { AssignDepartmentsInput, CreateUserInput, UpdateUserInput, User } from '../hooks/useUsers';
 
-// API Key types (TASK-032 WS-G)
+// API Key types
 export type { ApiKey, ApiKeyUsage, ApiKeyWithRawKey, CreateApiKeyInput, UpdateApiKeyInput } from '../hooks/useApiKeys';
 
-// Role types (TASK-032 WS-G)
+// Role types
 export type { Role, UserRoleAssignment } from '../hooks/useRoles';
 
-// Health check types (TASK-034 WS-H)
+// Health check types
 export type { ComponentCheck, ComponentStatus, HealthStatus, ServiceHealthStatus } from './health';
 
-// Monitoring types (TASK-032 WS-A; SessionCounts realigned to backend SessionsResponse in TASK-386)
+// Monitoring types (SessionCounts aligned to backend SessionsResponse)
 export type { HeartbeatRecord, ServiceSessionCount, ServiceUptime, SessionCounts } from './monitoring';
 
-// Platform runtime metrics types (TASK-386 #16 — E1/E2/E3)
+// Platform runtime metrics types (E1/E2/E3)
 export type {
   ConsumptionConsultations,
   ConsumptionRollup,
@@ -327,10 +327,10 @@ export type {
   RequestVolumePoint,
 } from './platform-metrics';
 
-// Voice embedding types (TASK-265 W0-7 — voice-profile rewrite)
+// Voice embedding types
 export type { VoiceProfile, EnrollFiles } from '../hooks/useVoiceEmbedding';
 
-// Settings types + OCC error (TASK-302 Stream D Phase D.4)
+// Settings types + OCC error
 export type {
   CreateGlobalSettingInput,
   CreateUserSettingInput,
@@ -338,23 +338,23 @@ export type {
   UpdateGlobalSettingInput,
   UpdateUserSettingInput,
   UserSetting,
-  // TASK-396 — secret reveal (step-up re-auth).
+  // Secret reveal (step-up re-auth).
   RevealSecretInput,
   RevealSecretResult,
 } from './settings';
 export { ConfigConflictError } from './settings';
 
-// Frontend pipeline config types (TASK-328 A6)
+// Frontend pipeline config types
 export type {
   FrontendPipelineConfigJson,
   TenantFrontendConfig,
   UpsertTenantFrontendConfigInput,
-  // TASK-356 Phase 4 — audio-console enums (string unions).
+  // Audio-console enums (string unions).
   CaptureMode,
   TranscriptionMode,
 } from './frontend-pipeline-config';
 
-// Global-admin ops-surface types (TASK-403 — Rate Limits / Queues & Jobs / Prisma Studio)
+// Global-admin ops-surface types (Rate Limits / Queues & Jobs / Prisma Studio)
 export type {
   BulkJobActionResult,
   JobDetail,

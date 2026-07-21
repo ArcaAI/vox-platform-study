@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - Health Check Types (TASK-032 WS-A)
+ * @arcaai/vox - Health Check Types
  *
  * Types for the HOPE standardized health contract.
  *

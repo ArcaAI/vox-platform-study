@@ -1,10 +1,10 @@
 import type { ExtendedCorePrismaClient, CorePrismaClient } from '@arcaai/database';
-// eslint-disable-next-line no-restricted-imports -- TASK-305 B.4: this is the legitimate base-client owner; consumers should default to .client (extended).
+// eslint-disable-next-line no-restricted-imports -- this is the legitimate base-client owner; consumers should default to .client (extended).
 import { getExtendedPrismaClient, getPlatformAdminPrismaClient_Unscoped } from '@arcaai/database';
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 
 /**
- * TASK-302 Phase 5 Task 5.6 (Stream B) — DI token for the optional
+ * DI token for the optional
  * Vault-backed PrismaClient factory.
  *
  * When this token is bound (in `apps/api/app.module.ts` under the
@@ -68,7 +68,7 @@ export class CoreDatabaseService implements OnModuleInit, OnModuleDestroy {
   private extendedPrisma!: ExtendedCorePrismaClient;
   private vaultDisconnect: (() => Promise<void>) | null = null;
   private readonly useVault: boolean;
-  // TASK-312 A.5 — memoizes the (possibly async, Vault-backed) client
+  // Memoizes the (possibly async, Vault-backed) client
   // resolution so it runs exactly once whether invoked by the async DI
   // provider (core.database.module.ts) or the NestJS onModuleInit hook.
   private _initPromise: Promise<void> | null = null;
@@ -110,7 +110,7 @@ export class CoreDatabaseService implements OnModuleInit, OnModuleDestroy {
   /**
    * Get the base Prisma Client instance (without extensions).
    *
-   * ⚠️ TASK-305 Phase B: this client BYPASSES both the soft-delete and
+   * ⚠️ This client BYPASSES both the soft-delete and
    * the tenant-scope `$extends`. Prefer `.client` for routine queries.
    * Use `baseClient` only for legitimate platform-admin paths:
    *   - Querying or restoring soft-deleted records
@@ -147,7 +147,7 @@ export class CoreDatabaseService implements OnModuleInit, OnModuleDestroy {
   /**
    * Resolve the active Prisma client exactly once (memoized).
    *
-   * TASK-312 A.5: in Vault mode the client is produced by an async factory
+   * In Vault mode the client is produced by an async factory
    * (a Vault round-trip), so it is NOT available at construction time the
    * way the env-mode singletons are. The async DI provider in
    * core.database.module.ts awaits this BEFORE the service is injected

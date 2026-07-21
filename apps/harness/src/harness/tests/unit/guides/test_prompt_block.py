@@ -1,4 +1,4 @@
-"""StrictCitations prompt-block + citation-marker tests (RED-first, Phase 3).
+"""StrictCitations prompt-block + citation-marker tests (Phase 3).
 
 The retriever injects retrieved chunks into the generation prompt as a numbered
 Knowledge Context, each item tagged with the chunk id the model MUST cite per

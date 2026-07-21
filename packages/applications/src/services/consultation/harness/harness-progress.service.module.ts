@@ -4,7 +4,7 @@ import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.servi
 import { HarnessProgressService } from './harness-progress.service';
 
 /**
- * HarnessProgressService DI module (TASK-345 — live harness activity feed).
+ * HarnessProgressService DI module — live harness activity feed.
  *
  * Redis-only wiring (no Prisma — progress is ephemeral realtime data):
  * - RedisCacheModule        → publish/setex the folded state to `consultation:harness-progress:{id}`

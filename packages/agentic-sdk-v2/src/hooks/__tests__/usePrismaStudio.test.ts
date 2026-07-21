@@ -1,5 +1,5 @@
 /**
- * usePrismaStudio Hook Tests (TASK-403)
+ * usePrismaStudio Hook Tests
  *
  * @vitest-environment jsdom
  */

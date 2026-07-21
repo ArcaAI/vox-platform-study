@@ -16,7 +16,7 @@ export interface CreateContextItemVersionProps extends BaseEntityFactoryCreatePr
   changedBy?: IContextItemVersionEntity['changedBy'];
   changeSource?: IContextItemVersionEntity['changeSource'];
   fieldChanges?: IContextItemVersionEntity['fieldChanges'];
-  // TASK-330 Phase 1 — clinician attestation fields
+  // Clinician attestation fields
   attestedAt?: IContextItemVersionEntity['attestedAt'];
   attestedBy?: IContextItemVersionEntity['attestedBy'];
   attestationHash?: IContextItemVersionEntity['attestationHash'];
@@ -79,7 +79,7 @@ export class ContextItemVersionFactory {
   }
 
   /**
-   * TASK-330 Phase 1 — create an attested SIGNED_NOTE version (confirm-before-commit
+   * Create an attested SIGNED_NOTE version (confirm-before-commit
    * gate). Keeps `changeReason='approved'` for back-compat with the existing
    * approval idempotency check and stamps the attestation provenance fields.
    */

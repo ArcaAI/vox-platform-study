@@ -111,20 +111,20 @@ export interface UseArcaAudio {
   plugins: AudioPluginStates;
   error: Error | null;
   /**
-   * TASK-464 — running count of outbound audio frames dropped at the streaming
+   * Running count of outbound audio frames dropped at the streaming
    * STT client's backpressure watermark this capture session. Non-zero means PCM
    * was lost from the durable transcript. Resets on start/stop.
    */
   droppedFrameCount: number;
   /**
-   * TASK-464 — session-sticky "audio was lost this session" latch. Survives
+   * Session-sticky "audio was lost this session" latch. Survives
    * reconnect (so a transient drop-then-reconnect never hides the loss); clears
    * only on capture start/stop. Drive a degraded-connection banner off this.
    */
   audioLostThisSession: boolean;
   start: (options?: AudioStartOptions) => Promise<void>;
   /**
-   * TASK-331 doc-06 F3/Q5 — start capture from the user's persisted preferences
+   * Start capture from the user's persisted preferences
    * (device(s), language, workflow mode → local/backend STT, dual-capture).
    */
   startFromPreferences: () => Promise<void>;
@@ -468,7 +468,7 @@ export function useArca(): UseArcaReturn {
   // Audio Actions
   // ==========================================================================
   //
-  // TASK-267 / W1-1: `useArca.audio` is now a thin proxy to `useArcaAudio`.
+  // `useArca.audio` is a thin proxy to `useArcaAudio`.
   // The previous in-line implementation duplicated `useArcaAudio` but missed
   // `AudioContextManager` acquisition, `activeStream`/`activeAudioContext`
   // bookkeeping, and `MediaStreamTrack.stop()` — leaking the microphone and

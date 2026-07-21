@@ -1,5 +1,5 @@
 /**
- * @arcaai/med-ner - MedNERProcessor Worker integration test (TASK-272 / C-1)
+ * @arcaai/med-ner - MedNERProcessor Worker integration test
  *
  * Asserts that when a `workerFactory` is supplied:
  *   1. `MedNERProcessor` posts `init`/`extract`/`destroy` messages to the

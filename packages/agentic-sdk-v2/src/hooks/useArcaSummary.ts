@@ -28,7 +28,7 @@ import { withIdempotencyKey } from '../utils/idempotency';
 import type { ISDKLogger } from '../core/logger';
 
 /**
- * TASK-299 D-4 — Reconcile legacy SDK option field names to the canonical
+ * Reconcile legacy SDK option field names to the canonical
  * backend DTO fields before POSTing. The backend's `GenerateSummaryRequest`
  * does NOT accept `transcript` / `promptTemplateId` / `departmentId`, so we
  * normalise them here and strip the legacy names from the body.
@@ -339,7 +339,7 @@ export function useArcaSummary() {
   );
 
   /**
-   * TASK-329 (P6) — diff two summary versions via the backend `/diff`
+   * Diff two summary versions via the backend `/diff`
    * endpoint. Returns the `from`/`to` snapshots ready for `VersionDiffPanel`.
    */
   const diffSummaryVersions = useCallback(
@@ -354,7 +354,7 @@ export function useArcaSummary() {
     [store],
   );
 
-  /** TASK-329 (P6) — list the tags attached to a summary. */
+  /** List the tags attached to a summary. */
   const getSummaryTags = useCallback(
     async (contextItemId: string): Promise<SummaryTag[]> => {
       const { apiClient, consultation } = store;
@@ -366,7 +366,7 @@ export function useArcaSummary() {
     [store],
   );
 
-  /** TASK-329 (P6) — attach a tag to a summary. */
+  /** Attach a tag to a summary. */
   const tagSummary = useCallback(
     async (contextItemId: string, input: CreateSummaryTagInput): Promise<SummaryTag> => {
       const { apiClient, consultation } = store;
@@ -378,7 +378,7 @@ export function useArcaSummary() {
     [store],
   );
 
-  /** TASK-329 (P6) — remove a tag from a summary. */
+  /** Remove a tag from a summary. */
   const deleteSummaryTag = useCallback(
     async (contextItemId: string, tagId: string): Promise<void> => {
       const { apiClient, consultation } = store;

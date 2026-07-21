@@ -1,7 +1,6 @@
-"""TASK-351 P2-2 — direct Cadence-Fast loader + registry routing tests.
+"""Direct Cadence-Fast loader + registry routing tests.
 
-The D-2 spike (docs/implementation/TASK-351-Realtime-Transcription-Performance/
-spike-cadence-fast.md) verified that ``ai4bharat/Cadence-Fast`` loads under the
+A verification spike found that ``ai4bharat/Cadence-Fast`` loads under the
 pinned transformers 5.5.4 only with ``tie_word_embeddings=False`` and a
 post-load ``use_bidirectional_attention = True``. These tests pin that exact
 load recipe (fully mocked — no weights, no network) and the registry routing
@@ -251,7 +250,7 @@ class TestServiceRouting:
 
 
 class TestPunctuateLazyLoadOffLoop:
-    """TASK-351 P2-2 — lazy model load must not block the event loop.
+    """Lazy model load must not block the event loop.
 
     The streaming worker wraps service.punctuate in asyncio.wait_for; the
     timeout can only fire (and the raw final go out on time) if the blocking

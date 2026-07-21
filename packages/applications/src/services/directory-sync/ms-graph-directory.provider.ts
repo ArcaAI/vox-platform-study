@@ -21,7 +21,7 @@ const GRAPH_SCOPE = 'https://graph.microsoft.com/.default';
 const TOKEN_EXPIRY_BUFFER_MS = 60_000;
 
 /**
- * TASK-498 P3 — Microsoft Graph directory provider. App-only access via the
+ * Microsoft Graph directory provider. App-only access via the
  * OAuth2 client-credentials grant (tenant's own Azure AD app registration —
  * distinct from the OIDC login-time client; directory-pull scopes are
  * `User.Read.All`/`GroupMember.Read.All`, application-permission, admin-consented).

@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { JsonValue } from '@arcaai/domains';
 
-/** One eval run (TASK-330 Phase 6 — read projection of `EvalRun`). */
+/** One eval run — read projection of `EvalRun`. */
 export class EvalRunResponse {
   @ApiProperty({ description: 'Eval run id.' })
   id: string;

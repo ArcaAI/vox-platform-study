@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { HighlightTargetKind } from '@arcaai/domains';
 
 /**
- * Durable manual-doctor highlight (TASK-344 Workstream B).
+ * Durable manual-doctor highlight.
  */
 export class HighlightResponse {
   @ApiProperty()

@@ -1,14 +1,11 @@
 /**
  * Integration test harness for TenantService against a real PostgreSQL database.
  *
- * Used by Phase A's evidence test (`optimisticLockingEvidence.test.ts`) to
- * document the silent lost-write behaviour described in TASK-301 §P2. The
- * harness is intentionally minimal: it wires the real TenantService against
- * a real Prisma client so the evidence test exercises the real CAS path
- * (or, before Phase C lands, the real lack-of-CAS path).
- *
- * @see TASK-302 Stream D Phase A
- * @see docs/implementation/TASK-302-System-Config-Implementation-Roadmap/04-optimistic-locking.md
+ * Used by the evidence test (`optimisticLockingEvidence.test.ts`) to
+ * document the silent lost-write behaviour that motivated the compare-and-set
+ * write path. The harness is intentionally minimal: it wires the real
+ * TenantService against a real Prisma client so the evidence test exercises
+ * the real CAS path.
  */
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { ClsService } from 'nestjs-cls';
@@ -65,9 +62,9 @@ export async function buildTenantServiceTestHarness(): Promise<TenantServiceTest
   const tenantService = new TenantService(
     repoStub, repoStub, repoStub, repoStub, repoStub,
     dbStub, bucketStub, eventEmitter, clsStub,
-    // TASK-356 Phase 1 — appended AiModelRepository (clone-per-tenant).
+    // Appended AiModelRepository (clone-per-tenant).
     repoStub,
-    // TASK-356 Phase 2 — appended AsrPipelineVersionRepository (pipeline clone).
+    // Appended AsrPipelineVersionRepository (pipeline clone).
     repoStub,
   );
 

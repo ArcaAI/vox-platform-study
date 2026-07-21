@@ -51,7 +51,7 @@ const SESSION = {
     workingTenantName: 'Sunrise Medical Group' as string | null,
     impersonatingUserId: null,
     impersonatingUsername: null,
-    // BUG-005 — WorkingTenantGate now reads the effective identity; this
+    // WorkingTenantGate now reads the effective identity; this
     // fixture never impersonates, so it mirrors the operator fields.
     effectiveUser: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['GLOBAL_ADMIN'], tenantId: null, departmentId: null },
     effectiveIsElevated: true,
@@ -196,7 +196,7 @@ describe('HarnessPolicyScreen', () => {
         expect(screen.getByText(/visible to global admins only/)).toBeDefined();
     });
 
-    // TASK-532 (M-02): the elevated tabs still MOUNT for an elevated session —
+    // The elevated tabs still MOUNT for an elevated session —
     // they just read now instead of editing (the editor moved to
     // /agentic-policy). The kill-switch STATE is still surfaced here.
     it('shows the elevated tabs and reports the live-engine state read-only', async () => {
@@ -238,7 +238,7 @@ describe('HarnessPolicyScreen', () => {
     });
 
     /**
-     * TASK-532 B-1 (M-02) — `/agentic-policy` (tier 10-19) is now the ONE
+     * `/agentic-policy` (tier 10-19) is now the ONE
      * authoritative editor for the SYSTEM global-default row and the live engine
      * config. Both screens used to edit the same two backend rows. Here those
      * tabs demote to read-only summaries with a deep link, so there is no second
@@ -273,13 +273,13 @@ describe('HarnessPolicyScreen', () => {
     });
 
     /**
-     * TASK-532 A-1c (E3-L1) — the three safety/PHI switches became
+     * The three safety/PHI switches became
      * global-admin-only server-side. The TENANT tab must render them disabled
      * with a visible reason rather than letting a tenant admin flip a switch
      * that 403s on save (rule 11 §5: a disabled control needs a visible reason).
      */
     describe('E3-L1 locked safety/PHI switches', () => {
-        // TASK-532: every key the TENANT route rejects must render read-only.
+        // Every key the TENANT route rejects must render read-only.
         // `Safety provider`/`Safety model` were already in
         // GLOBAL_ADMIN_ONLY_POLICY_KEYS before this ticket, yet the tenant tab
         // still offered them as editable inputs whose save could only 403 — the

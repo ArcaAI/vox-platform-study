@@ -1,5 +1,5 @@
 /**
- * useStorage Hook Tests (TASK-032 WS-G)
+ * useStorage Hook Tests
  *
  * @vitest-environment jsdom
  */

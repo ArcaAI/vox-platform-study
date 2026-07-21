@@ -1,5 +1,5 @@
 /**
- * Unit tests for the shared NLP → NamedEntity mapper (TASK-463).
+ * Unit tests for the shared NLP → NamedEntity mapper.
  *
  * The mapper is the single source of truth for the NLP `/classify/tokens`
  * contract used by BOTH durable persistence paths (summary.service.extractEntities
@@ -108,7 +108,7 @@ describe('namedEntityPropsFromNlp', () => {
     });
   });
 
-  // TASK-476 C1 — the NLP producer now emits ontology codes; the shared mapper
+  // The NLP producer now emits ontology codes; the shared mapper
   // carries them onto the NamedEntity props so BOTH durable write paths
   // (ner.processor + summary.extractEntities) persist coded rows. RED before the
   // mapper maps them (they were dropped → columns written null).

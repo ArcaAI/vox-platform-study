@@ -1,5 +1,5 @@
 /**
- * UserProfileEntity.validate() Unit Tests — TASK-261 (Tier 2)
+ * UserProfileEntity.validate() Unit Tests
  *
  * Locks in the real invariant implementation that replaces the previous
  * `throw new BusinessException('Method not implemented.')` stub.
@@ -154,7 +154,7 @@ describe('UserProfileEntity.validate()', () => {
     });
   });
 
-  // TASK-328 A1–A3 — backend preferred prompt template soft reference.
+  // Backend preferred prompt template soft reference.
   describe('preferredPromptTemplateId', () => {
     it('should carry preferredPromptTemplateId through the constructor', () => {
       const entity = new UserProfileEntity(

@@ -59,7 +59,7 @@ export class UpdateModelRequest {
   modelType?: ModelType;
 
   @ApiPropertyOptional({
-    description: 'Model source. S3 = S3/MinIO-compatible object storage (OD-4: s3:// only; azure-blob:// is out of scope).',
+    description: 'Model source. S3 = S3/MinIO-compatible object storage (s3:// only; azure-blob:// is out of scope).',
     enum: AiModelSource,
   })
   @IsEnum(AiModelSource)
@@ -79,7 +79,7 @@ export class UpdateModelRequest {
   @MaxLength(500)
   sourceUri?: string;
 
-  // TASK-527 (D-12) — the operator override. Previously unwritable through this
+  // The operator override. Previously unwritable through this
   // DTO, so the global `forbidNonWhitelisted` pipe rejected any PATCH carrying
   // it and the registry row could never point at a staged weight directory.
   @ApiPropertyOptional({
@@ -124,7 +124,7 @@ export class UpdateModelRequest {
   format?: AiModelFormat;
 
   @ApiPropertyOptional({
-    description: 'Canonical runtime provider id (TASK-506)',
+    description: 'Canonical runtime provider id',
     enum: AI_MODEL_PROVIDERS,
   })
   @IsOptional()
@@ -132,7 +132,7 @@ export class UpdateModelRequest {
   provider?: string;
 
   @ApiPropertyOptional({
-    description: 'Model architecture family (TASK-506)',
+    description: 'Model architecture family',
   })
   @IsOptional()
   @IsString()
@@ -162,7 +162,7 @@ export class UpdateModelRequest {
   @IsOptional()
   tags?: string[];
 
-  // TASK-356 Phase 1 — OCC CAS predicate (echoed from the prior GET, e.g. via
+  // OCC CAS predicate (echoed from the prior GET, e.g. via
   // the `ETag` header). The controller folds the `If-Match` header over this
   // when both are present; missing both yields `428 Precondition Required` on
   // `@RequiresIfMatch()` routes. Mirrors `UpdatePipelineRequest.expectedVersion`.

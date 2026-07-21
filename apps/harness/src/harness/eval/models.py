@@ -100,8 +100,8 @@ class PDSQIResult(BaseModel):
 class ConceptCode(BaseModel):
     """One coded clinical concept — the ontology codes a NER span resolves to.
 
-    Mirrors the five ``NamedEntity`` ontology columns populated by TASK-476
-    (``umlsCui``/``snomedCode``/``rxnormCode``/``icdCode``/``loinc``). The
+    Mirrors the five ``NamedEntity`` ontology columns populated by the clinical
+    encoder (``umlsCui``/``snomedCode``/``rxnormCode``/``icdCode``/``loinc``). The
     *canonical key* used for concept matching is the UMLS CUI when present, with a
     documented fallback order (snomed → rxnorm → icd → loinc) when it is absent.
     """
@@ -164,7 +164,7 @@ class GoldenCase(BaseModel):
     reference_note: str | None = None
     contexts: list[str] | None = None
     clinician_pdsqi: PDSQIScore | None = None
-    # TASK-482 E3 — optional golden references for the concept-F1 + harm-weight
+    # Optional golden references for the concept-F1 + harm-weight
     # passes. ``reference_concepts`` are canonical CUI keys (bare = CUI, or
     # ``"system:code"`` for a non-CUI code) scored against the note's candidate
     # codes; ``reference_errors`` are the note's known errors tagged by clinical
@@ -267,7 +267,7 @@ class EvalCaseResult(BaseModel):
     case_id: str
     pdsqi: PDSQIResult | None = None
     faithfulness: FaithfulnessResult | None = None
-    # TASK-482 E3 — omission + harm-severity signals. ``None`` = the pass was
+    # Omission + harm-severity signals. ``None`` = the pass was
     # skipped (no golden reference / no candidate codes), never a fabricated value.
     concept_f1: ConceptF1Result | None = None
     harm_weighted_error_rate: float | None = None

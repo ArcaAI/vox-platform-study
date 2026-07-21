@@ -5,7 +5,7 @@ import { EffectiveConfigService } from './effective-config.service';
 import { IEffectiveConfigService } from './IEffectiveConfigService';
 
 /**
- * TASK-525 §4.1 — read-only composition module for the internal
+ * Read-only composition module for the internal
  * effective-config route. Owns no repositories: `EffectiveSettingsModule`
  * supplies the registry override lane and `AiRuntimeProfileServiceModule` the
  * profile rows.

@@ -1,4 +1,4 @@
-// TASK-369 (Data Encryption Initiative) Phase 3D — field encryption for the
+// Field encryption for the
 // append-only WORM table PipelinePolicyChange (beforeJson / afterJson JSONB).
 //
 // Sibling file mirroring HarnessPolicyChangeRepository.encryption.ts. The table

@@ -1,4 +1,4 @@
-"""TASK-475 — Streaming Sortformer diarizer wired into the stt-v2 hot path.
+"""Streaming Sortformer diarizer wired into the stt-v2 hot path.
 
 These lock the wiring of the already-built :class:`StreamingSortformerDiarizer`
 (``stt_v2.diarization.streaming_sortformer``) into the streaming inference loop:
@@ -6,7 +6,7 @@ These lock the wiring of the already-built :class:`StreamingSortformerDiarizer`
   * ``StreamingInferenceWorker`` accepts a ``sortformer_diarizer=`` and, when
     present, attaches the max-overlap turn label to ``result.speaker_id`` on BOTH
     finals (Step 3) and partials — reusing the existing wire field (no new DTO
-    field; the richer label surface is TASK-489's scope).
+    field; a richer label surface is a future scope).
   * The sortformer path is fail-safe: a degraded/erroring diarizer never crashes
     the hot path and simply leaves ``speaker_id=None``.
   * ``SessionManager`` builds the diarizer for ``backend == "sortformer"`` sessions
@@ -15,7 +15,7 @@ These lock the wiring of the already-built :class:`StreamingSortformerDiarizer`
   * The default ``backend == "embedding"`` path is unchanged.
 
 Hermetic: a tiny deterministic ``SortformerBackend`` stub stands in for the NeMo
-model (AC-1/AC-5/AC-6 GPU-model validation is out of scope on this host).
+model (real GPU-model validation is out of scope on this host).
 """
 
 from __future__ import annotations
@@ -331,8 +331,8 @@ async def test_create_session_wires_sortformer_diarizer():
         mgr._load_pipeline_config = AsyncMock(return_value=pipeline_config)
         mgr._load_vad_service = AsyncMock(return_value=MagicMock())
         mgr._load_asr_pipeline = AsyncMock(return_value=(MagicMock(), None))
-        # TASK-505 P1 — bind the REAL shared assembly (session wiring moved
-        # out of create/recover into _assemble_session_runtime).
+        # Bind the REAL shared assembly (session wiring moved out of
+        # create/recover into _assemble_session_runtime).
         mgr._assemble_session_runtime = (
             lambda **kw: SessionManager._assemble_session_runtime(mgr, **kw)
         )
@@ -433,7 +433,7 @@ async def test_concurrent_forwards_are_serialized():
 
 
 # ---------------------------------------------------------------------------
-# 8. Recovery reconstructs a fresh diarizer for sortformer sessions (AC-4)
+# 8. Recovery reconstructs a fresh diarizer for sortformer sessions
 # ---------------------------------------------------------------------------
 
 
@@ -485,8 +485,8 @@ async def test_recovery_reconstructs_sortformer_diarizer():
     mgr._load_vad_service = AsyncMock(return_value=MagicMock())
     mgr._build_preprocessor_vad_kwargs = MagicMock(return_value={})
     mgr._load_asr_pipeline = AsyncMock(return_value=(MagicMock(), None))
-    # TASK-505 P1 — bind the REAL shared assembly (session wiring moved
-    # out of create/recover into _assemble_session_runtime).
+    # Bind the REAL shared assembly (session wiring moved out of
+    # create/recover into _assemble_session_runtime).
     mgr._assemble_session_runtime = (
         lambda **kw: SessionManager._assemble_session_runtime(mgr, **kw)
     )

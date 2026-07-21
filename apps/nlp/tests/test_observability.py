@@ -1,8 +1,8 @@
 """Tests for NLP observability: OTel LoggerProvider, log export, trace correlation,
 config parsing, PHI sanitization, metrics, and the OTel master switch.
 
-30 tests across 7 groups — characterization tests verifying the TASK-253 implementation
-plus the TASK-411 `NLP_OTEL_ENABLED` master-switch gate.
+30 tests across 7 groups — characterization tests verifying the observability
+implementation plus the `NLP_OTEL_ENABLED` master-switch gate.
 """
 
 from __future__ import annotations
@@ -79,7 +79,7 @@ def _make_service_config(**overrides):
     cfg.resource_attributes = overrides.get("resource_attributes", {})
     cfg.traces_enabled = overrides.get("traces_enabled", True)
     cfg.metrics_enabled = overrides.get("metrics_enabled", True)
-    # TASK-411 master switch: defaults to True here so activation tests keep
+    # Master switch: defaults to True here so activation tests keep
     # exercising the enabled path (the real config defaults to False).
     cfg.otel_enabled = overrides.get("otel_enabled", True)
     return cfg
@@ -387,7 +387,7 @@ class TestConfigParsing:
             assert cfg.otlp_endpoint is None
 
     def test_otel_enabled_defaults_to_false(self, monkeypatch):
-        """TASK-411 A1: otel_enabled must default to False when NLP_OTEL_ENABLED is unset."""
+        """otel_enabled must default to False when NLP_OTEL_ENABLED is unset."""
         from nlp.core.config import NLPServiceConfig
 
         monkeypatch.delenv("NLP_OTEL_ENABLED", raising=False)
@@ -395,7 +395,7 @@ class TestConfigParsing:
         assert cfg.otel_enabled is False
 
     def test_otel_enabled_true_from_env(self, monkeypatch):
-        """TASK-411 A1: NLP_OTEL_ENABLED=true must switch otel_enabled to True."""
+        """NLP_OTEL_ENABLED=true must switch otel_enabled to True."""
         from nlp.core.config import NLPServiceConfig
 
         monkeypatch.setenv("NLP_OTEL_ENABLED", "true")
@@ -494,7 +494,7 @@ class TestMetrics:
 
 
 # ---------------------------------------------------------------------------
-# Test Group 7: OTel Master Switch — NLP_OTEL_ENABLED (TASK-411)
+# Test Group 7: OTel Master Switch — NLP_OTEL_ENABLED
 # ---------------------------------------------------------------------------
 
 class TestOtelMasterSwitch:

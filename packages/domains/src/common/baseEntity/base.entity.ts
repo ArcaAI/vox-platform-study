@@ -94,8 +94,6 @@ export abstract class BaseEntity {
    * `_version` column on every Prisma model. Database-owned — the only
    * legitimate writer is `Repository<T>.updateWithVersion`. Exposed read-only
    * so services and mappers can round-trip it.
-   *
-   * @see TASK-302 Stream D Phase B
    */
   get version(): number {
     return this._version;
@@ -137,7 +135,7 @@ export abstract class BaseEntity {
     return this.resourceStatus === ResourceStatusType.ARCHIVED;
   }
 
-  // Check if the resource is suspended (TASK-541)
+  // Check if the resource is suspended
   get isSuspended(): boolean {
     return this.resourceStatus === ResourceStatusType.SUSPENDED;
   }
@@ -251,8 +249,8 @@ export abstract class BaseEntity {
   /**
    * Suspends the resource, setting its status to `Suspended`.
    *
-   * TASK-541 — `SUSPENDED` has been a `ResourceStatusType` member since
-   * TASK-387 (the operator "hold" state, distinct from the routine
+   * `SUSPENDED` has been a `ResourceStatusType` member (the operator
+   * "hold" state, distinct from the routine
    * `DISABLED` on/off toggle) but had no lifecycle method, so
    * `applyChangesToEntity`'s status switch had nothing to call and a suspend
    * request silently no-opped.
@@ -313,7 +311,7 @@ export abstract class BaseEntity {
    *
    *  - They share the same `id`, AND
    *  - If BOTH are `BaseTenantEntity` subclasses, they ALSO share the
-   *    same `tenantId` (TASK-306 P3.4 / AC-13 / audit L-4 — tenant is
+   *    same `tenantId` (tenant is
    *    part of the entity's identity, not just metadata).
    *
    * The tenant detection is intentionally duck-typed via `'_tenantId'
@@ -323,10 +321,9 @@ export abstract class BaseEntity {
    * plain runtime property, so `_tenantId` is always present on
    * `BaseTenantEntity` instances and absent on every other
    * `BaseEntity` subclass — making the `in` check a safe structural
-   * proxy for `instanceof BaseTenantEntity`. Note this also drops the
-   * pre-W5.5.5 `constructor !== this.constructor` strict-class check;
-   * that check excluded "comparing a tenant entity with a non-tenant
-   * entity of same id" cases that AC-13 explicitly requires to fall
+   * proxy for `instanceof BaseTenantEntity`. There is deliberately no
+   * `constructor !== this.constructor` strict-class check: comparing a
+   * tenant entity with a non-tenant entity of the same id must fall
    * through to id-only equality.
    */
   public equals(object: BaseEntity | null): boolean {

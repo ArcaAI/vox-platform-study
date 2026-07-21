@@ -1,19 +1,19 @@
-"""TASK-535 §3.1 (R2) — effective-config pull client (harness).
+"""Effective-config pull client (harness).
 
 Structurally identical to `guardrail` / `nlp` / `smr_v2` / `stt_v2` against the
 same frozen contract, exposing the ONLY subset harness consumes:
 `retention.{ttlSeconds,maxModels}` for the MiniCheck entailer cache.
 
-PROCESS PLACEMENT (§2.4) — the entailer is constructed inside a Temporal
+PROCESS PLACEMENT — the entailer is constructed inside a Temporal
 ACTIVITY (`temporal/activities.py`), so its GGUF is resident in the WORKER
 process, not the FastAPI app. This client is therefore driven from
-`temporal/worker.py`, beside the TASK-530 cache sweep. A poll installed in the
+`temporal/worker.py`, beside the model-cache sweep. A poll installed in the
 app's lifespan would reconfigure a cache that holds nothing.
 
 Mechanics: TTL cache jittered ±10 %, negative cache (a down gateway costs at
 most one attempt per window, then callers keep their env values), single-flight
-refresh. Duplicated per service on purpose — the shared-package question was
-settled as OD-3 and is not reopened here.
+refresh. Duplicated per service on purpose — the shared-package question is a
+settled, closed decision, not reopened here.
 """
 
 from __future__ import annotations

@@ -1,5 +1,5 @@
 /**
- * HighlightFactory Unit Tests (TASK-344 Workstream B)
+ * HighlightFactory Unit Tests
  *
  * Tests for the HighlightFactory that creates durable manual-doctor-highlight
  * entities, plus the HighlightEntity.validate() business rules.

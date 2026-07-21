@@ -13,7 +13,7 @@ export class AsrPipelineVersionRepository extends Repository<AsrPipelineVersionE
   }
 
   /**
-   * TASK-328 A6 — All snapshots for a pipeline, newest version first.
+   * All snapshots for a pipeline, newest version first.
    */
   async findByPipeline(asrPipelineId: string): Promise<AsrPipelineVersionEntity[]> {
     return this.findAll({
@@ -23,7 +23,7 @@ export class AsrPipelineVersionRepository extends Repository<AsrPipelineVersionE
   }
 
   /**
-   * TASK-328 A6 — The next monotonically-increasing version number for a
+   * The next monotonically-increasing version number for a
    * pipeline (1 when no snapshots exist yet).
    */
   async getNextVersionNumber(asrPipelineId: string): Promise<number> {

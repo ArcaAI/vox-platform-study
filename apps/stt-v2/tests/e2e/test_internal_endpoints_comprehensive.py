@@ -1,7 +1,7 @@
 """Comprehensive E2E tests for internal admin/debug endpoints.
 
-Track C of TASK-019: Covers all /internal/* endpoints with full response
-schema validation, edge cases, type checks, and state verification.
+Covers all /internal/* endpoints with full response schema validation, edge
+cases, type checks, and state verification.
 
 Endpoints under test:
   GET  /internal/cache/stats           — Model cache statistics

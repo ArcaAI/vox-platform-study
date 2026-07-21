@@ -6,16 +6,16 @@ defaults are clinically conservative — fabrication (entity-faithfulness) and
 numeric/dose checks are **zero-tolerance** (1.0) because they are the
 highest-harm errors.
 
-TASK-358 (D-B) validated these defaults against a labeled fixture set rather than
+These defaults were validated against a labeled fixture set rather than
 loosening them: the FLAG-always behaviour was a *bug* (markdown notes failed the
 schema gate; ``▁``/BIO NER artifacts and mic-check counting words drove
 entity-faithfulness below 1.0), not a too-strict threshold. With the inputs
 cleaned (schema_validity validates the actual contract; the entity-level sensors
 consume merged, marker-free, noise-filtered entities), a faithful note legitimately
 reaches 1.0, so the zero-tolerance fabrication/numeric-dose values stay unchanged
-and the gate discriminates good vs bad. Making these admin-editable is TASK-356's
-scope (effective values resolve from the ``HarnessPolicy`` DB row); changing a
-default end-to-end is a TASK-356 coordination item, not a calibration edit here.
+and the gate discriminates good vs bad. Making these admin-editable (effective values
+resolve from the ``HarnessPolicy`` DB row) is a separate, coordinated change; changing
+a default end-to-end is not a calibration edit here.
 """
 
 from __future__ import annotations
@@ -37,15 +37,15 @@ class SensorThresholds(BaseSettings):
     citation_presence_threshold: float = 1.0
     # Zero-tolerance: every numeric/dose value in the note must match the transcript.
     numeric_dose_threshold: float = 1.0
-    # Inferential (Phase-2): >= 80% of provenance claims must be entailed by the
+    # Inferential: >= 80% of provenance claims must be entailed by the
     # transcript/evidence per the LM Studio judge (lower than the zero-tolerance
     # checks — semantic entailment is graded, not exact-match).
     groundedness_threshold: float = 0.8
-    # Inferential (Phase-3 institutional RAG): >= 80% of CITED claims must be
+    # Inferential (institutional RAG): >= 80% of CITED claims must be
     # entailed by their cited knowledge chunk(s) per the same judge — a strict
     # citations check (regen-fixable; degrades to the "unverified" badge on outage).
     citation_verify_threshold: float = 0.8
-    # TASK-481 (E2) — reference-free atomic-fact verifier: >= 80% of the note's atomic
+    # Reference-free atomic-fact verifier: >= 80% of the note's atomic
     # claims must be entailed by the transcript per the DETERMINISTIC self-hosted NLI
     # (a second, model-cheap groundedness gate alongside the LLM-judge groundedness
     # sensor). Regen-fixable; a degraded backend degrades (never auto-PASS).

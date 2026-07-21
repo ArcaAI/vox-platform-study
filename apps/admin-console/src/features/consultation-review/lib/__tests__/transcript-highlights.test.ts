@@ -1,5 +1,5 @@
 /**
- * Click-to-source offset arithmetic (TASK-533 B5, GAP-A2).
+ * Click-to-source offset arithmetic.
  *
  * An off-by-one here silently marks the wrong words as the evidence for a
  * clinical claim — a trust failure, not a cosmetic one — so the edge cases are

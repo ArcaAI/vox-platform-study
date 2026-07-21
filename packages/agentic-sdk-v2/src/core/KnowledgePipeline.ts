@@ -20,7 +20,7 @@ import type { AgenticClient } from './AgenticClient';
 import { SUMMARY_ENDPOINTS } from './constants';
 
 /**
- * TASK-461 C5-05 — derive a STABLE, deterministic entity id from the entity's
+ * Derive a STABLE, deterministic entity id from the entity's
  * content + span. Browser auto-NER re-extracts over overlapping/rolling text,
  * so a random id per run never dedups and identical clinical entities pile up
  * as duplicate rows. Hashing `entityType|text|startOffset|endOffset` keeps the
@@ -447,7 +447,7 @@ export class KnowledgePipeline {
     }
 
     // Phase 0 (0.8) — the API gateway DOES expose NER now
-    // (`POST /api/v1/ai/nlp/entities`, AiInferenceController, TASK-446/506);
+    // (`POST /api/v1/ai/nlp/entities`, AiInferenceController);
     // this KnowledgePipeline just hasn't been wired to call it yet. Fail fast
     // with that accurate limitation rather than the previous (now false)
     // claim that no such gateway endpoint exists.
@@ -474,7 +474,7 @@ export class KnowledgePipeline {
 
         const result = await this.nerProcessor!.extract(text);
         entities = result.entities.map((e) => ({
-          // TASK-461 C5-05 — stable, content/offset-derived id so re-extractions
+          // Stable, content/offset-derived id so re-extractions
           // of the same entity dedup instead of accumulating (was randomUUID()).
           id: stableEntityId(e.type, e.text, e.start, e.end),
           text: e.text,
@@ -519,7 +519,7 @@ export class KnowledgePipeline {
       return text;
     }
 
-    // API gateway no longer proxies NLP endpoints (TASK-216).
+    // API gateway no longer proxies NLP endpoints.
     // If caller configured backend spellcheck, fail fast with a clear error.
     if (stage.location === 'backend') {
       throw new Error(

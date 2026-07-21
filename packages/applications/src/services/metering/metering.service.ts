@@ -11,7 +11,7 @@ import { METERING_CRON_KEY, METERING_DEFAULTS, METERING_ENABLED_KEY, METERING_JO
 const MS_PER_MINUTE = 60_000;
 
 /**
- * TASK-392 (Q5, Phase 2) — rolling-monthly metering.
+ * Rolling-monthly metering.
  *
  * READS are a live Postgres aggregate over the current UTC calendar-month
  * window ({@link getCurrentUsage}) — authoritative and near-realtime, so the

@@ -112,7 +112,7 @@ export function UserDetailScreen({ id }: { id: string }) {
                         }
                         actions={
                             <>
-                                {/* TASK-430 — service accounts are API-only: the gateway refuses to
+                                {/* Service accounts are API-only: the gateway refuses to
                                     impersonate them, so the affordance is hidden outright. */}
                                 {!user.isServiceAccount ? (
                                     <Button variant="outline" onClick={() => setAction({ action: 'impersonate', user })}>

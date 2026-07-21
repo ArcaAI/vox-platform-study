@@ -12,7 +12,7 @@ import type { SafeSession } from '@/shared/auth';
  * Frame 53 gate panel — a DESIGNED state, not an error. DNA styles are
  * per-doctor PHI-derived artifacts, so `generate` and the settings toggle
  * reject a non-impersonating, non-clinical admin with 403
- * (`assertActingAsDoctor`, TASK-331 doc-07 F1). Read surfaces stay live.
+ * (`assertActingAsDoctor`). Read surfaces stay live.
  * When doctor context IS active the same slot confirms it instead.
  */
 export function ImpersonationGatePanel({ session, gated }: { session: SafeSession | undefined; gated: boolean }) {

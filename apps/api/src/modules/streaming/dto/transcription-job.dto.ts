@@ -5,7 +5,7 @@ export const AUDIO_BUCKET = 'hope-audio';
 export const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 
 /**
- * TASK-298 D-19 — `pipelineId` shape validation.
+ * `pipelineId` shape validation.
  *
  * Accepts either:
  *   • Slug (lowercase alphanumeric + dashes, must start alphanumeric): `general-consult`, `cardio2`
@@ -93,24 +93,24 @@ export class StreamSessionResponse {
   currentActive!: number;
 
   /**
-   * TASK-298 D-1 — one-shot stream ticket the SDK appends to the WebSocket URL.
+   * One-shot stream ticket the SDK appends to the WebSocket URL.
    * The gateway consumes the ticket on first WS open; subsequent connects must
    * mint a fresh ticket via `POST /stream/session/:id/refresh-ticket`.
    */
-  @ApiProperty({ description: 'Single-use stream ticket for WS handshake (TASK-298 D-1)' })
+  @ApiProperty({ description: 'Single-use stream ticket for WS handshake' })
   @IsString()
   ticket!: string;
 
-  @ApiProperty({ description: 'Epoch milliseconds when the ticket expires (TASK-298 D-1)' })
+  @ApiProperty({ description: 'Epoch milliseconds when the ticket expires' })
   @IsNumber()
   ticketExpiresAt!: number;
 
   /**
-   * TASK-296 contract — true when the speaker voice profile was preseeded into
+   * True when the speaker voice profile was preseeded into
    * STT-V2 during session creation. Surfaced so the SDK can short-circuit a
    * follow-up `voice-enrollment-status` request.
    */
-  @ApiPropertyOptional({ description: 'Whether the speaker voice profile was preseeded (TASK-296)' })
+  @ApiPropertyOptional({ description: 'Whether the speaker voice profile was preseeded' })
   @IsBoolean()
   @IsOptional()
   voiceProfileSeeded?: boolean;

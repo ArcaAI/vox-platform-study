@@ -1,5 +1,5 @@
 /**
- * Enqueue seam for the gate-edit learning loop (TASK-533 B6).
+ * Enqueue seam for the gate-edit learning loop.
  *
  * A PORT, not the BullMQ queue itself, for one reason: the caller is the
  * clinician sign-off path. It must be able to hand off the signal without

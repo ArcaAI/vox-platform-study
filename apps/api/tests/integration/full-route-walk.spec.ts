@@ -1,5 +1,5 @@
 /**
- * Full-route walker — TASK-309 AC-5.
+ * Full-route walker.
  *
  * Boots the harness in `apps/api/tests/helpers/test-app-module.ts`,
  * enumerates every controller route via `DiscoveryService` +
@@ -10,28 +10,26 @@
  *     → MUST NOT respond 401 to an unauthenticated probe.
  *   - Every other route → MUST respond 401 to an unauthenticated probe.
  *
- * This is the "third leg" the TASK-309 README §3 calls out — the
- * static metadata walker in `auth-coverage.spec.ts` ("W4a") and the
- * synthetic-module runtime walker in the same file ("W4b") already
- * verify the metadata + guard CONTRACT respectively. The piece they
- * couldn't cover (because booting `AppModule` in test was infeasible
- * before AC-4) is verifying the GUARD ACTUALLY RUNS on every real
- * route in the live route table — a regression where a route is
+ * This is the "third leg" — the static metadata walker and the
+ * synthetic-module runtime walker in `auth-coverage.spec.ts` already verify
+ * the metadata + guard CONTRACT respectively. The piece they couldn't cover
+ * (because booting `AppModule` in test was infeasible until the harness in
+ * `test-app-module.ts` existed) is verifying the GUARD ACTUALLY RUNS on
+ * every real route in the live route table — a regression where a route is
  * present in metadata but somehow exempt from the guard at runtime
  * (e.g. a future custom controller wires its own `@UseGuards()` that
  * silently overrides `APP_GUARD`) would be invisible to both prior
  * walkers.
  *
- * ## Status — TASK-309 partial (DEFERRED)
+ * ## Status — blocked (deferred)
  *
- * AC-4's `createTestApp()` does NOT currently return — `compile()`
- * hangs after all `InstanceLoader` dependency-init logs are emitted
- * even with the documented override surface applied. See README
- * §1.5 + the 2026-05-28 Change History entry. Until that blocker is
- * cleared this walker has nothing to point at, so the suite below is
- * pinned `it.skip(...)` to keep the file in tree (and CI green) while
- * making the deferral explicit: removing the `.skip` is the entire
- * AC-5 verification step once AC-4 lands.
+ * `createTestApp()` does NOT currently return — `compile()` hangs after all
+ * `InstanceLoader` dependency-init logs are emitted even with the documented
+ * override surface applied (see `test-app-module.spec.ts` for the trace
+ * evidence). Until that blocker is cleared this walker has nothing to point
+ * at, so the suite below is pinned `it.skip(...)` to keep the file in tree
+ * (and CI green) while making the deferral explicit: removing the `.skip`
+ * is the entire verification step once the blocker lands.
  *
  * The implementation outline that ships under `.skip` is the
  * exact code we will exercise once `createTestApp()` returns —
@@ -41,13 +39,12 @@
  *
  * ## Why not stub more aggressively
  *
- * The README explicitly lists the AC-4 override surface; deepening it
- * to "shadow every transitive ioredis consumer" risks the walker
- * silently bypassing controllers whose modules failed to boot. That
- * defeats the third-leg argument. Per the §1.4 hard constraint, no
- * production code is modified to make AC-4 / AC-5 pass — the fix
- * belongs in a sibling ticket (TASK-310 / TASK-311 may absorb part of
- * the surface) and re-running this walker is the verification gate.
+ * `test-app-module.ts` documents the current override surface; deepening it
+ * to "shadow every transitive ioredis consumer" risks the walker silently
+ * bypassing controllers whose modules failed to boot. That defeats the
+ * third-leg argument, so no production code is modified to make this pass —
+ * the fix belongs in a sibling piece of work and re-running this walker is
+ * the verification gate.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

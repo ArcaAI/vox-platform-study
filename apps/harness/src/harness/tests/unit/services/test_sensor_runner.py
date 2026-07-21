@@ -1,6 +1,6 @@
 """Tests for the deterministic sensor runner that wires the loop to Lane H.
 
-RED-first: written before ``harness.services.sensor_runner`` exists. The runner
+The runner
 parses the generated SOAP JSON, builds the provenance citationsMap, assembles a
 :class:`SensorContext`, runs all five computational sensors, and returns the
 results + citationsMap + scores so the workflow can ``aggregate(...)`` them.
@@ -72,7 +72,7 @@ class TestSensorRunner:
         assert verdict.decision == GateDecision.PASS
 
     def test_malformed_soap_degrades_schema_validity_and_flags(self):
-        # TASK-358: a truly unparseable note (no JSON, no SOAP headers) yields no
+        # A truly unparseable note (no JSON, no SOAP headers) yields no
         # sections at all -> schema_validity is *degraded* (it cannot validate an
         # empty shell), so the gate FLAGs for human review rather than spending the
         # regen budget on garbage. (A note with *partial* structure — e.g. a
@@ -162,7 +162,7 @@ class TestSensorRunner:
         assert amlodipine["knowledgeChunkIds"] == ["kc-htn"]
 
     def test_empty_colon_bold_section_is_detected_as_missing(self):
-        # TASK-358 hardening: a markdown note whose Plan header is present but the
+        # Hardening: a markdown note whose Plan header is present but the
         # body is EMPTY ("**Plan:**" then nothing) must NOT be masked as a present
         # section by the closing "**" emphasis leaking into the body. The section
         # must parse empty, no stray "**" must remain in the other bodies, and
@@ -189,7 +189,7 @@ class TestSensorRunner:
         assert "P" in schema.details["sections"]
 
     def test_markdown_header_variants_parse_to_full_structure(self):
-        # TASK-358 hardening (robustness): the live model emits SOAP headers in
+        # Hardening (robustness): the live model emits SOAP headers in
         # several markdown styles. Each complete variant must split into all four
         # sections so schema_validity scores 1.0 on the responseFormat=null path.
         variants = [

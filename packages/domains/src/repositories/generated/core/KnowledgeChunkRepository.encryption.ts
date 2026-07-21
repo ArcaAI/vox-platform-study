@@ -1,11 +1,11 @@
-// TASK-369 (Data Encryption Initiative) Phase 3C — field encryption for
+// Field encryption for
 // KnowledgeChunk (institutional RAG chunk: text).
 //
 // Sibling file mirroring ContextItemRepository.encryption.ts (declaration
 // merging + prototype patching so codegen can re-run with --overwrite). The
 // field uses ONE `keyVersion` column; the shared Buffer/ciphertext primitives
 // live in common/field-encryption.ts and default to the dedicated `hope-phi`
-// Transit key. TASK-369 Phase 6 dropped the plaintext column; reads decrypt the
+// Transit key. The plaintext column has been dropped; reads decrypt the
 // ciphertext only (no plaintext fallback).
 
 import { KnowledgeChunkRepository } from './KnowledgeChunkRepository';
@@ -78,7 +78,7 @@ KnowledgeChunkRepository.prototype.decryptFieldsFromEntity = async function (
   secrets: SecretsServiceLike,
 ): Promise<KnowledgeChunkPlaintext> {
   const text = await decryptCiphertextToString(secrets, entity.encryptedText);
-  // TASK-369 Phase 6 — plaintext column dropped; decrypt ciphertext only.
+  // Plaintext column dropped; decrypt ciphertext only.
   return { text };
 };
 

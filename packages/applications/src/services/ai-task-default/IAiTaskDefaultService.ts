@@ -1,7 +1,7 @@
 import { AiTaskDefaultResponse, EffectiveAiTaskDefaultResponse, UpsertAiTaskDefaultRequest } from './dto';
 
 /**
- * TASK-506 — per-tenant AI task-model default service.
+ * Per-tenant AI task-model default service.
  *
  * `tenantId` is optional on every method: when omitted the CLS request tenant
  * is used; a global admin may target another tenant explicitly (the controller

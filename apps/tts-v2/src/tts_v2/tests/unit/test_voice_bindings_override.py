@@ -1,4 +1,4 @@
-"""TDD tests for gateway-injected per-request voice-binding overrides (TASK-506).
+"""TDD tests for gateway-injected per-request voice-binding overrides.
 
 ``voice_bindings`` (``{internalVoiceId: {provider: providerVoiceName}}``) is
 resolved by the gateway from the AiModel registry / tenant TTS config and

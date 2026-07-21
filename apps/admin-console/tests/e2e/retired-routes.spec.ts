@@ -1,9 +1,9 @@
 /**
- * TASK-532 — the two routes this ticket retired keep a `redirect()` page for ONE
- * release so bookmarks and deep links survive:
+ * These two retired routes keep a `redirect()` page for ONE release so
+ * bookmarks and deep links survive:
  *
- *   /prompt-studio → /agents?tab=governance   (M-03 / OD-6, governance folded in)
- *   /pstudio       → /db-studio               (M-08, console-only rename)
+ *   /prompt-studio → /agents?tab=governance   (governance folded in)
+ *   /pstudio       → /db-studio               (console-only rename)
  *
  * The vitest specs assert the page modules CALL `redirect()` with those targets;
  * these assert the redirect actually resolves to a working screen in a browser —
@@ -26,8 +26,9 @@ test.describe('retired route redirects', () => {
     test('/prompt-studio lands on the /agents Governance tab', async ({ page }) => {
         // `/agents` is tenant-scoped, so an elevated session needs a working
         // tenant before the tabs mount at all. This is NOT a regression from the
-        // fold: `/prompt-studio` was `WorkingTenantGate`d too (the M-01
-        // sub-pattern), so both surfaces required a tenant before and after.
+        // fold: `/prompt-studio` was `WorkingTenantGate`d too (a global-admin-only
+        // screen over per-tenant data), so both surfaces required a tenant before
+        // and after.
         await selectWorkingTenant(page);
         await page.goto('/prompt-studio');
 

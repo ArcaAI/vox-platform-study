@@ -1,4 +1,4 @@
-"""Live output-moderation + groundedness endpoint (TASK-479 · SOTA D2).
+"""Live output-moderation + groundedness endpoint.
 
 ``POST /guardrail/ground`` verifies a generated summary against its source transcript with
 the self-hosted NLI verifier and returns per-segment verdicts + flagged spans so ungrounded

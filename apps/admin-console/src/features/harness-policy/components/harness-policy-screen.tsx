@@ -185,7 +185,7 @@ function TenantPolicyTab({ isElevated }: { isElevated: boolean }) {
                         mutation={updateMutation}
                         onReloadLatest={() => void policyQuery.refetch()}
                         successMessage="Tenant harness policy saved"
-                        // TASK-532 (E3-L1): safety/PHI switches are global-only
+                        // Safety/PHI switches are global-only
                         // server-side; render them read-only rather than let a
                         // save 403.
                         lockedKeys={TENANT_LOCKED_POLICY_KEYS}
@@ -200,7 +200,7 @@ function TenantPolicyTab({ isElevated }: { isElevated: boolean }) {
  * Global default tab (elevated only) — READ-ONLY summary of the SYSTEM-tenant
  * fallback row.
  *
- * TASK-532 (M-02): this tab used to mount a SECOND `HarnessPolicyForm` against
+ * This tab used to mount a SECOND `HarnessPolicyForm` against
  * `PATCH /admin/harness/policy/global` — the same row `/agentic-policy` (tier
  * 10-19) edits. One authoritative editor per backend resource, so the form is
  * gone and this reads the row and deep-links to the owner. Keeping the READ here

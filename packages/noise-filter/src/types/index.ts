@@ -92,9 +92,9 @@ export interface NoiseFilterOptions {
 /**
  * Default options for NoiseFilterProcessor.
  *
- * TASK-304 (MED-9): frozen at module-load time so consumers cannot accidentally
- * mutate the shared defaults and break every other NoiseFilterProcessor that
- * relies on `Object.assign({}, DEFAULT_NOISE_FILTER_OPTIONS, options)` semantics.
+ * Frozen at module-load time so consumers cannot accidentally mutate the
+ * shared defaults and break every other NoiseFilterProcessor that relies on
+ * `Object.assign({}, DEFAULT_NOISE_FILTER_OPTIONS, options)` semantics.
  */
 export const DEFAULT_NOISE_FILTER_OPTIONS: Readonly<Required<Omit<NoiseFilterOptions, 'wasmPath' | 'debugMode'>>> = Object.freeze({
   noiseCancellation: true,
@@ -175,7 +175,7 @@ export interface NoiseStatsDataPayload {
  *
  * `samples` uses `Float32Array<ArrayBufferLike>` so the same shape covers
  * both AudioWorklet inputs (`ArrayBufferLike`) and WASM-memory-backed
- * views (`ArrayBuffer`). TASK-269 — HIGH-5.
+ * views (`ArrayBuffer`).
  */
 export interface RNNoiseResult {
   /** Processed audio samples (same identity as the `output` argument). */

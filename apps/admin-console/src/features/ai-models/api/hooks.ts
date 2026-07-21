@@ -56,7 +56,7 @@ export function useDeleteModel() {
 }
 
 /**
- * TASK-528 — live merge view. `enabled` gates the probe so it fires only when
+ * Live merge view. `enabled` gates the probe so it fires only when
  * the drawer is open (the registry grid must never wait on an engine probe);
  * a 30 s `staleTime` keeps re-opens instant while `probedAt` + the Refresh
  * button make staleness explicit rather than silent.

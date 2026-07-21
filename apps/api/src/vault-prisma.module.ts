@@ -1,5 +1,5 @@
 /**
- * TASK-302 Phase 5 Task 5.6 (Stream B) — VaultPrismaFactoryModule.
+ * VaultPrismaFactoryModule.
  *
  * Wires the `VAULT_PRISMA_FACTORY` DI token in `@arcaai/domains` to a
  * real Vault-backed PrismaClient when BOTH:
@@ -34,7 +34,7 @@ import {
 
 const logger = new Logger('VaultPrismaFactoryModule');
 
-// BUG-006 — conservative fallback ONLY: the real hope-app-role max_ttl now
+// Conservative fallback ONLY: the real hope-app-role max_ttl now
 // differs per environment (dev 168h/7d, prod 720h/30d — see
 // docs/operations/vault/README.md "Dynamic DB credentials") and MUST be set
 // explicitly via PG_VAULT_MAX_TTL_SEC in each env file. This constant only
@@ -95,17 +95,16 @@ export function buildVaultPrismaFactory(secrets: VaultDbSecretsLike): VaultPrism
     // createExtendedPrismaClient (packages/database/src/client.ts). Order
     // matters: tenant-scope is applied LAST so its handlers run FIRST,
     // merging `tenantId` into `args.where` before soft-delete adds its
-    // `resourceStatus` filter. TASK-444 regression: applying only
-    // soft-delete here left the Vault-mode client UNSCOPED, so reads that
-    // rely on the $extends (e.g. UserRoleAssignmentService.fetchAllByRoleId)
-    // leaked other tenants' rows.
+    // `resourceStatus` filter — applying only soft-delete here leaves the
+    // Vault-mode client UNSCOPED, so reads that rely on the $extends (e.g.
+    // UserRoleAssignmentService.fetchAllByRoleId) leak other tenants' rows.
     const softDeleted = applySoftDeleteExtension(baseClient);
     const extendedClient = applyTenantScopeExtension(softDeleted as unknown as Parameters<typeof applyTenantScopeExtension>[0], {
       getTenantId: () => resolveTenantContext().tenantId,
       isSuperAdmin: () => resolveTenantContext().isSuperAdmin,
     });
 
-    // BUG-006 — without this, the credential fetched above is baked into
+    // Without this, the credential fetched above is baked into
     // the pool for its whole lifetime: Vault revokes the underlying PG user
     // at lease expiry and every subsequent query 401s (P1000) until a
     // manual restart. Renew at 50% TTL while under max_ttl; once renewal

@@ -1,4 +1,4 @@
-"""Verdict aggregator tests (RED-first).
+"""Verdict aggregator tests.
 
 Decision policy under test (clinical-safety > automation, fail-safe):
 * all sensors pass -> PASS
@@ -8,7 +8,7 @@ Decision policy under test (clinical-safety > automation, fail-safe):
 * regen-fixable failure with budget exhausted -> FLAG
 * degraded inputs (sensor degraded, ``degraded`` param, or a missing expected
   sensor) -> FLAG (never auto-PASS)
-* reduced assurance (TASK-330 Phase 2): a degraded *inferential* sensor is
+* reduced assurance (Phase 2): a degraded *inferential* sensor is
   omitted from ``expected`` (and from ``results``) so the gate proceeds on the
   computational verdict instead of a blanket FLAG.
 """
@@ -263,7 +263,7 @@ class TestCitationVerifyRegenFixable:
 
 
 class TestAtomicFactRegenFixable:
-    """TASK-481 (E2) — ``atomic_fact`` is regen-fixable, like groundedness: an ungrounded
+    """``atomic_fact`` is regen-fixable, like groundedness: an ungrounded
     atomic claim regens the note, FLAGs on budget exhaustion (feeding the retraction gate)."""
 
     def test_atomic_fact_registered_as_regen_fixable(self):

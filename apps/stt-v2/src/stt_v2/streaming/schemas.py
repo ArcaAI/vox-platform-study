@@ -141,13 +141,13 @@ class SegmentResult:
     Timestamps are session-relative (offset by the utterance start time).
     Confidence is ``None`` for Whisper (no per-word confidence available).
 
-    ``stable_chars`` (TASK-351 P1-1, additive) is set on partial results
+    ``stable_chars`` (additive) is set on partial results
     when the LocalAgreement-2 commit policy is enabled: the first
     ``stable_chars`` characters of ``text`` are committed (stable across
     subsequent partials). ``None`` (field omitted on the wire) when the
     policy is off and on final results.
 
-    ``utterance_index`` (TASK-351 P2-3, additive) carries the utterance
+    ``utterance_index`` (additive) carries the utterance
     ordinal so follow-up results (e.g. the English gloss) can be correlated
     with their final. ``result_type`` (wire field ``type``) is ``"segment"``
     for regular partials/finals and ``"gloss"`` for the opt-in follow-up
@@ -299,7 +299,7 @@ class SessionMetadata:
     total_duration_seconds: float = 0.0
     utterance_count: int = 0
     last_seq: int = -1
-    # TASK-351 P1-3 — last processed audio stream entry ID; crash recovery
+    # Last processed audio stream entry ID; crash recovery
     # resumes XREAD from here instead of replaying from 0-0.
     last_stream_id: str | None = None
     sample_rate: int = 16000

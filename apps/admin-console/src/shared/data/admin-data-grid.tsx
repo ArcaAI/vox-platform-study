@@ -2,7 +2,7 @@
 
 /**
  * AdminDataGrid — the console's thin wrapper over the @arcaai/ui
- * `VirtualizedDataGrid` (TASK-423, Phase 4). It applies the console defaults and
+ * `VirtualizedDataGrid`. It applies the console defaults and
  * bridges the three Phase-4 adapters that already live in `shared/data`:
  *   • layout persistence → `createGridLayoutPersistenceAdapter` (`ui.data-grid`)
  *   • URL query-state    → `useAdminGridParams` (the `grid-url-state` nuqs codec)
@@ -125,7 +125,7 @@ export interface AdminDataGridProps<TData> {
     pageMode?: 'offset' | 'cursor';
     cursor?: { hasMore?: boolean; nextCursor?: string | null };
 
-    /** TASK-443 — grouped-row display (e.g. namespace sections). Pair with a group-field-first sort so groups are contiguous per page. */
+    /** Grouped-row display (e.g. namespace sections). Pair with a group-field-first sort so groups are contiguous per page. */
     groupBy?: GroupByConfig<TData>;
 
     selection?: { value?: RowSelectionState; onChange?: (selection: RowSelectionState) => void };

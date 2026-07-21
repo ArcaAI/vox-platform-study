@@ -1,5 +1,5 @@
 /**
- * TASK-386 (#21) — shared tenant-scope resolver for admin telemetry / metrics
+ * Shared tenant-scope resolver for admin telemetry / metrics
  * reads.
  *
  * Mirrors the `?tenantId=` override precedent in

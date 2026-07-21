@@ -1,7 +1,7 @@
 """Schema-validity sensor — the SOAP note must conform to its activated contract.
 
 Validates the parsed SOAP note object (``soap_sections``) against the ACTUAL
-activated output contract (TASK-358 D-A):
+activated output contract:
 
 * **JSON schema activated** (``PromptAssemblyService`` emits a ``responseFormat``
   of ``{type: 'json_schema', json_schema, strict}``) — validate the parsed
@@ -102,7 +102,7 @@ class SchemaValiditySensor:
                 validator = Draft202012Validator(schema)
                 errors = sorted(validator.iter_errors(instance), key=lambda e: list(e.path))
             except Exception as exc:
-                # A malformed/unprocessable activated schema (TASK-356 makes these
+                # A malformed/unprocessable activated schema (these are
                 # admin-managed) must fail CLOSED: degrade rather than raise into the
                 # sensor run, so the gate never auto-PASSes against an un-applicable
                 # contract. The exception type (no PHI) is recorded for diagnosis.

@@ -1,4 +1,4 @@
-"""Clinical-documentation eval harness (TASK-330, Phase 0).
+"""Clinical-documentation eval harness (Phase 0).
 
 A **self-contained, offline-first** evaluation harness for the clinical
 documentation loop. It scores transcript→note cases with a model-agnostic

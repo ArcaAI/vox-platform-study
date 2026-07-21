@@ -61,12 +61,12 @@ class TestHealthEndpointE2E:
 
         data = response.json()
 
-        # `/health` is additive by design: TASK-525 §3.7 added "effective_config"
-        # (config-lane diagnostics; auth-exempt, so source labels/timestamps only)
-        # and broke an exact-set assertion here. Re-pinning a new exact set would
-        # break again on the next diagnostics block, so assert the REQUIRED keys
-        # are present instead — a missing key is still a regression, an extra one
-        # is not.
+        # `/health` is additive by design: an "effective_config" block (config-lane
+        # diagnostics; auth-exempt, so source labels/timestamps only) was added and
+        # broke an exact-set assertion here. Re-pinning a new exact set would break
+        # again on the next diagnostics block, so assert the REQUIRED keys are
+        # present instead — a missing key is still a regression, an extra one is
+        # not.
         required_keys = {
             "status",
             "service",

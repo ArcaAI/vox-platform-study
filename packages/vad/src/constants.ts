@@ -11,8 +11,8 @@
  * The unit test in `__tests__/constants.test.ts` enforces the invariant; bump
  * both versions and the constants together.
  *
- * Background: TASK-271 (C-1 / C-2). Previously the default CDN paths pointed
- * at `vad-web@0.0.29` and `onnxruntime-web@1.22.0` while the installed
+ * Background: previously the default CDN paths pointed at
+ * `vad-web@0.0.29` and `onnxruntime-web@1.22.0` while the installed
  * packages were `^0.0.30` and `^1.24.3`. The ONNX Runtime WASM ABI is not
  * stable across minor versions, which made inference silently fail in
  * self-hosted defaults.

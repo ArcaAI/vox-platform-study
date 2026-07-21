@@ -5,7 +5,7 @@ import { EntityId, ValueType } from '@arcaai/domains';
 /**
  * Constructor props for {@link TenantConfigResponse}.
  *
- * TASK-393 — a dedicated props interface (mirroring `ApiKeyResponseProps`) so a
+ * A dedicated props interface (mirroring `ApiKeyResponseProps`) so a
  * `TenantConfigResponse` can be built explicitly from a `GlobalSettingEntity`
  * (which surfaces `Date` timestamps) via {@link TenantConfigDtoMapper}. This
  * replaces the previous `init: TenantConfigResponse & BaseResponseProps`
@@ -69,7 +69,7 @@ export class TenantConfigResponse extends BaseResponse {
    *
    * Surfaced so the SDK's `ConfigManager` can build its `lockedPaths` set and the
    * admin console can render the lock affordance / disable edits for non-super
-   * admins (TASK-244). Server-side write protection is enforced independently in
+   * admins. Server-side write protection is enforced independently in
    * `TenantService.updateTenantConfigs`; this flag is the read-side mirror. The
    * backing entity column is non-null (`@default(false)`), so the mapper always
    * populates it.
@@ -82,13 +82,13 @@ export class TenantConfigResponse extends BaseResponse {
   locked?: boolean;
 
   /**
-   * Optimistic-concurrency token — TASK-302 Stream D Phase C.
+   * Optimistic-concurrency token.
    *
    * Clients must echo this value back as `expectedVersion` on the
    * subsequent PATCH; the server's compare-and-set fails with 412
    * Precondition Failed if `_version` has drifted under us.
    *
-   * Phase D adds an `ETag: "<version>"` response header so SDK clients
+   * The response also carries an `ETag: "<version>"` header so SDK clients
    * can use the canonical RFC 7232 `If-Match` mechanism instead of
    * threading the field through the body; both shapes remain supported.
    */

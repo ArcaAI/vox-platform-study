@@ -9,8 +9,8 @@ import { UserSession } from '../services';
 /**
  * Reserved SYSTEM tenant that owns platform-wide/tenant-less resources.
  * Mirrors `SYSTEM_TENANT_ID` in `tenant.service.ts` and the pre-CLS fallback
- * already used by `AuditLogService` for LOGIN/IMPERSONATION events (TASK-305
- * A.8); duplicated here as a literal (established convention — see
+ * already used by `AuditLogService` for LOGIN/IMPERSONATION events;
+ * duplicated here as a literal (established convention — see
  * `tenant.service.ts`) so this common module carries no dependency on the
  * database package.
  */
@@ -41,12 +41,12 @@ export abstract class BaseService implements IBaseService {
    *
    * `tenantId` is the one exception: it is ALWAYS sourced from the CLS
    * request context and CANNOT be overridden by a caller-supplied
-   * `payload.tenantId`. Tenant attribution is a security boundary
-   * (HIPAA §164.312(a)(1) — TASK-306 P3.1 / AC-10, closes audit M-5);
-   * letting an upstream caller override it would let a foreign-tenant
-   * payload be misattributed to the active tenant context (or vice versa).
+   * `payload.tenantId`. Tenant attribution is a security boundary (HIPAA
+   * §164.312(a)(1)); letting an upstream caller override it would let a
+   * foreign-tenant payload be misattributed to the active tenant context (or
+   * vice versa).
    *
-   * TASK-503 — when CLS carries no tenant at all (a GLOBAL_ADMIN authenticates
+   * When CLS carries no tenant at all (a GLOBAL_ADMIN authenticates
    * with an empty `tenantId` and stays unscoped until they elevate to a
    * working tenant, or a truly tenant-less resource is mutated), falling back
    * to `null` made `AuditLogProcessor`'s fail-closed guard reject the job
@@ -56,7 +56,7 @@ export abstract class BaseService implements IBaseService {
    * crashing the queue. Still CLS-only: the caller-supplied `payload.tenantId`
    * is never consulted, so the anti-spoofing invariant above is unchanged.
    *
-   * TASK-401 — impersonation provenance: when the CLS user carries an
+   * Impersonation provenance: when the CLS user carries an
    * `impersonatedBy` claim (a write performed under an impersonated session),
    * the true actor is threaded into the event's `metaData` so the persisted
    * audit row records BOTH the subject (`responsibleUserId` = the impersonated

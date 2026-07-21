@@ -319,7 +319,7 @@ class TestVadConfig:
         config = VadConfig()
         assert config.enabled is True
         assert config.threshold == 0.6
-        # TASK-505: clinical defaults — 100 ms keeps short confirmations
+        # Clinical defaults — 100 ms keeps short confirmations
         # ("yes"/"no"); 200 ms padding protects onsets/tails.
         assert config.min_speech_duration_ms == 100
         assert config.min_silence_duration_ms == 100
@@ -778,7 +778,7 @@ class TestModelRefEdgeCases:
             assert ref.inline.engine == expected_format, f"Failed for {engine_str}"
 
     def test_unknown_engine_raises(self):
-        """TASK-505 P1 — unknown engine strings are a hard error.
+        """Unknown engine strings are a hard error.
 
         The old silent SAFETENSOR default meant a typo ('faster_wisper')
         loaded a completely different engine and failed obscurely at model

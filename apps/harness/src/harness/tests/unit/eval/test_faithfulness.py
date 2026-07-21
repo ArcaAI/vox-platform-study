@@ -1,6 +1,6 @@
-"""RAGAS-style faithfulness tests (TASK-330, task 0.5).
+"""RAGAS-style faithfulness tests.
 
-RED-first. Faithfulness = (# claims supported by context) / (# total claims)
+Faithfulness = (# claims supported by context) / (# total claims)
 via claim decomposition + per-claim support (entailment) checking. The
 decomposition/verification are model-agnostic (driven by a JudgeClient) and
 fully stubbed here — no live LLM.

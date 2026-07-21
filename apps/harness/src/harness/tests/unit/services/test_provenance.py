@@ -1,6 +1,6 @@
 """Tests for the deterministic Phase-1 provenance (citationsMap) builder.
 
-RED-first: written before ``harness.services.provenance`` exists. Phase-1 has no
+Phase-1 has no
 LLM claim-extractor, so the loop derives a deterministic ``citationsMap`` from the
 note entities: a note entity grounded in the transcript becomes a *verified*
 claim carrying the transcript evidence span; an ungrounded one becomes an
@@ -84,7 +84,7 @@ class TestBuildCitationsMap:
         )
         assert len(cmap["claims"]) == 1
 
-    # ── TASK-330 follow-up: strip SentencePiece word-boundary markers ──────────
+    # ── Strip SentencePiece word-boundary markers ──────────
     # NER spans tokenized by a SentencePiece model carry the U+2581 "▁"
     # word-boundary marker (e.g. "▁October"). It must never leak into the
     # human-readable citation claim text or evidence quotes.
@@ -126,7 +126,7 @@ class TestBuildCitationsMap:
         assert cmap["claims"][0]["text"] == "120/80 mmHg"
 
 
-# ── TASK-330 Phase 3: per-claim knowledgeChunkIds from StrictCitations markers ──
+# ── Per-claim knowledgeChunkIds from StrictCitations markers ──
 class TestKnowledgeChunkCitations:
     def test_attaches_section_cited_ids_strictly(self):
         cmap = build_citations_map(
@@ -158,7 +158,7 @@ class TestKnowledgeChunkCitations:
         assert cmap["claims"][0]["knowledgeChunkIds"] == []
 
 
-# ── TASK-330 ▁-attribution fix: section matching + subword claim aggregation ────
+# ── ▁-attribution fix: section matching + subword claim aggregation ────
 # The live NLP ``/classify/tokens`` returns per-TOKEN BIO entities (``B-``/``I-``
 # tags) whose surface carries the SentencePiece "▁" (U+2581) word-boundary marker.
 # Two interacting defects this guards against:
@@ -280,7 +280,7 @@ class TestSubwordAttribution:
         assert "\u2581" not in claim["evidence"][0]["quote"]
 
 
-# ── TASK-358: the SINGLE shared cleanup the entity-level sensors consume ─────────
+# ── The SINGLE shared cleanup the entity-level sensors consume ─────────
 # ``clean_entities_for_sensors`` reuses the claims-path subword aggregation
 # (``_aggregate_subword_entities`` + ``_clean_claim_text``) AND drops non-clinical
 # NER noise (mic-check counting words, bare stopwords, empty tokens) so the
@@ -327,7 +327,7 @@ class TestCleanEntitiesForSensors:
         assert [e.text for e in cleaned] == ["two week history"]
 
     def test_keeps_short_clinical_lab_markers_no_false_positives(self):
-        # TASK-358 hardening (accuracy): the noise filter must NEVER drop a short or
+        # Hardening (accuracy): the noise filter must NEVER drop a short or
         # ambiguous but clinically meaningful token. Vitamins / labs (B12, T3, T4,
         # A1c, HbA1c, O2), single-letter electrolytes (K = potassium, Na), and bare
         # numeric dose/value tokens (5, 10, 20) must all survive — only mic-check

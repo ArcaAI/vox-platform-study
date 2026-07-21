@@ -1,5 +1,5 @@
 /**
- * TASK-400 — password complexity + rotation policy (pure functions).
+ * Password complexity + rotation policy (pure functions).
  *
  * Defaults (healthcare posture): min 12 / max 128, require upper + lower +
  * digit + special. Rotation OFF by default (maxAgeDays = 0); NULL

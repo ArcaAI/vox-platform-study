@@ -21,7 +21,7 @@ const TYPE_LABELS: Record<GuardrailType, string> = {
 };
 
 /**
- * Agent Playground → Guardrails tab (TASK-446). Input → content-safety / PII /
+ * Agent Playground → Guardrails tab. Input → content-safety / PII /
  * prompt-injection verdict via the `ai/guardrail/analyze` gateway proxy. Runs
  * under the caller's own account (user-plane `@Authorize()`).
  */

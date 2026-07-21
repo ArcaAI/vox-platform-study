@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { HarnessPolicySource } from '../../harness-policy/dto';
 
 /**
- * One consultation awaiting clinician review (TASK-330 Phase 6 gate queue).
+ * One consultation awaiting clinician review (gate queue).
  * The wait clock (`pendingSince`) is sourced from the audit trail — the latest
  * GENERATE event for the consultation — falling back to the consultation's
  * `updatedAt`. SLA/escalation deadlines come from the effective policy timers.

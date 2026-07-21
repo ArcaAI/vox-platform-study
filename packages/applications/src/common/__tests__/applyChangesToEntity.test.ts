@@ -1,9 +1,9 @@
 /**
- * TASK-541 — `resourceStatus` transitions must never silently no-op.
+ * `resourceStatus` transitions must never silently no-op.
  *
  * Gap under test: the status switch in `applyChangesToEntity` handled
  * ENABLED / DISABLED / ARCHIVED / DELETED but had NO branch for SUSPENDED —
- * a first-class `ResourceStatusType` member since TASK-387 (the operator
+ * a first-class `ResourceStatusType` member (the operator
  * "hold" state). A `PATCH { resourceStatus: 'SUSPENDED' }` therefore fell
  * through the switch, left the entity untouched, and returned success. The
  * caller saw 200; nothing changed.

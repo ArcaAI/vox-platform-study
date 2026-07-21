@@ -27,7 +27,7 @@ function makeService(opts: { withVault?: boolean } = {}) {
     update: vi.fn(),
     softDelete: vi.fn(),
   };
-  // TASK-506 — SYSTEM TTS registry rows (empty = pre-seed fallback).
+  // SYSTEM TTS registry rows (empty = pre-seed fallback).
   const modelRepo = { findByTaskType: vi.fn().mockResolvedValue([]) };
   const emitter = { emit: vi.fn() };
   const cls = {
@@ -367,9 +367,9 @@ describe('TenantTtsConfigService — BYO credentials (Phase 6)', () => {
 });
 
 /**
- * r2605 Finding F — `getEffective` must consult the TTS registry catalog so a
- * disabled/absent SYSTEM registry row disables the provider platform-wide
- * (plan §3.4.2). Empty catalog (pre-seed) → code-constant universe, today's
+ * `getEffective` must consult the TTS registry catalog so a
+ * disabled/absent SYSTEM registry row disables the provider platform-wide.
+ * Empty catalog (pre-seed) → code-constant universe, today's
  * behaviour byte-for-byte. The catalog read is TTL-cached because getEffective
  * sits on the speech-proxy/WS hot path.
  */

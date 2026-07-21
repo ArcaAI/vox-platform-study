@@ -32,14 +32,14 @@ const mockWebhookRepository = {
     count: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
-    // TASK-302 Stream D Phase E.5 — `update()` now writes via CAS. The
+    // `update()` now writes via CAS. The
     // legacy `update` stays on the mock so we can assert it is NOT
     // called from the OCC-migrated path.
     updateWithVersion: vi.fn(),
     softDelete: vi.fn(),
 };
 
-// TASK-419 item 2 — delivery-log reads (`fetchRunHistory`).
+// Delivery-log reads (`fetchRunHistory`).
 const mockWebhookRunHistoryRepository = {
     findAll: vi.fn(),
     count: vi.fn(),
@@ -85,7 +85,7 @@ const createMockWebhookEntity = (overrides: Partial<{
         deletedAt: overrides.deletedAt ?? null,
         hasChanges: overrides.hasChanges ?? false,
         changes: overrides.changes ?? {},
-        // TASK-302 Stream D Phase E.5 — `_version` is required for the
+        // `_version` is required for the
         // CAS write path. Default = first-write (1).
         version: overrides.version ?? 1,
         toObject: vi.fn(),
@@ -306,11 +306,11 @@ describe('WebhookService', () => {
     });
 
     /**
-     * TASK-306 P1.4 (audit M-2 / NEW-2 / AC-5 partial) — `WebhookService.create`
+     * `WebhookService.create`
      * previously persisted the caller-supplied `request.tenantId` as-is, so a
      * Tenant-A user could create webhooks attributed to Tenant-B by simply
-     * setting the DTO field. The new `resolveEffectiveTenantId` helper mirrors
-     * the W3.2 NotificationService pattern at the structural level:
+     * setting the DTO field. The `resolveEffectiveTenantId` helper mirrors
+     * the NotificationService pattern at the structural level:
      *   - Non-GLOBAL_ADMIN: silently pin to CLS `tenantId` (ignore the DTO field)
      *   - GLOBAL_ADMIN: honor `request.tenantId` for cross-tenant impersonation
      *     (admin UI flows / migration tooling)
@@ -318,7 +318,7 @@ describe('WebhookService', () => {
      *
      * NOTE: this differs from NotificationService semantically — Notification
      * THROWS ForbiddenException on a non-super-admin explicit mismatch (PHI
-     * dispatch is more sensitive). Webhook follows the README W5.1.4 verification
+     * dispatch is more sensitive). Webhook follows the verification
      * contract ("row created with tenant-A") which mandates silent pinning.
      */
     describe('TASK-306 P1.4 — create resolves effective tenantId', () => {
@@ -397,9 +397,9 @@ describe('WebhookService', () => {
     });
 
     /**
-     * TASK-306 W5.7.6 (306-F2) — `WebhookService.resolveEffectiveTenantId`
+     * `WebhookService.resolveEffectiveTenantId`
      * silently coerces a non-GLOBAL_ADMIN cross-tenant create attempt to
-     * the CLS tenant (the W5.1.4 contract). Persistence is correct, but
+     * the CLS tenant. Persistence is correct, but
      * SOC has no observability for the coercion event — a foreign-tenant
      * DTO `tenantId` produces an identical persisted state to a properly-
      * formed request, so audit logs cannot distinguish the two.
@@ -489,16 +489,16 @@ describe('WebhookService', () => {
     });
 
     /**
-     * TASK-306 P2.3 (audit M-2 / AC-5) — `WebhookService` was previously
-     * tenant-blind on every read/write surface except `create` (W5.1.4).
+     * `WebhookService` was previously
+     * tenant-blind on every read/write surface except `create`.
      * This block exercises the full sweep across the remaining 5 methods:
-     *   - 5.3.2 fetchAll: inject `{ tenantId: this.tenantId }` filter
+     *   - fetchAll: inject `{ tenantId: this.tenantId }` filter
      *     (GLOBAL_ADMIN bypass)
-     *   - 5.3.3 fetchById: load-then-assert via assertEqualTenants
-     *   - 5.3.4 update: assert tenant after the pre-write findById
-     *   - 5.3.5 deleteById: load + assert + softDelete
-     *   - 5.3.6 fetchAllByTenantId: CLS gate (refuse cross-tenant DTO
-     *     tenantId for non-GLOBAL_ADMIN — mirrors W5.1.5
+     *   - fetchById: load-then-assert via assertEqualTenants
+     *   - update: assert tenant after the pre-write findById
+     *   - deleteById: load + assert + softDelete
+     *   - fetchAllByTenantId: CLS gate (refuse cross-tenant DTO
+     *     tenantId for non-GLOBAL_ADMIN — mirrors the
      *     Notification/ApiKey pattern)
      *
      * The CLS default in `beforeEach` is `tenant-1`. Tests use `tenant-2`
@@ -577,7 +577,7 @@ describe('WebhookService', () => {
 
                 await expect(service.fetchById('webhook-foreign')).rejects.toThrow(NotFoundException);
 
-                // TASK-306 306-F8 — pin "no audit-log leak on denied read":
+                // Pin "no audit-log leak on denied read":
                 // the assertEqualTenants throw must short-circuit BEFORE the
                 // ResourceViewed broadcast. Structurally guaranteed by the
                 // guard's throw position, but the explicit negative-assertion
@@ -846,7 +846,7 @@ describe('WebhookService', () => {
         });
 
         it('should return empty result when no webhooks match tenant', async () => {
-            // TASK-306 P2.3 (5.3.6) — `fetchAllByTenantId` now refuses
+            // `fetchAllByTenantId` now refuses
             // cross-tenant reads. Align this empty-result probe with the
             // CLS default (`tenant-1`) so the new guard does not
             // short-circuit and the assertion still validates the
@@ -1101,7 +1101,7 @@ describe('WebhookService', () => {
 
     describe('edge cases', () => {
         it('should handle service creation without user context', async () => {
-            // TASK-306 P1.4 — `create` now requires a CLS `tenantId` (or DTO
+            // `create` now requires a CLS `tenantId` (or DTO
             // tenantId via GLOBAL_ADMIN). Preserve the original test intent
             // ("no user") by still surfacing a valid tenantId from CLS — the
             // missing-tenant edge case is independently covered by the
@@ -1199,7 +1199,7 @@ describe('WebhookService', () => {
     });
 
     // =========================================================================
-    // TASK-419 item 2 — delivery log (`fetchRunHistory`): webhook-scoped read
+    // Delivery log (`fetchRunHistory`): webhook-scoped read
     // of WebhookRunHistory. The run-history rows carry no tenantId; tenancy is
     // enforced through the parent webhook (load-then-assert, 404 cross-tenant).
     // =========================================================================

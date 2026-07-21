@@ -8,7 +8,7 @@ import { HarnessPolicy } from '../../../models';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 
 /**
- * Editable harness-policy repository (TASK-330 Phase 6).
+ * Editable harness-policy repository.
  *
  * One row per tenant (enforced by a UNIQUE index on `tenantId`). The reserved
  * SYSTEM tenant owns the GLOBAL-DEFAULT row; a per-tenant row overrides it.

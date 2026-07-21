@@ -104,7 +104,7 @@ export interface UseDnaJobProgressResult {
 
 /**
  * Progress tracker for a DNA generation job. The ticket-authenticated SSE
- * stream (`@StreamScope dna_job` on the gateway route since TASK-419) is the
+ * stream (`@StreamScope dna_job` on the gateway route) is the
  * PRIMARY transport; a 2s status poll is the documented error fallback, spun
  * up only after the stream exhausts its retry budget (`streamStatus ===
  * 'error'`) so progress keeps flowing on networks that break SSE.

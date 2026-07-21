@@ -5,7 +5,7 @@ import { Authorize } from '../../decorators';
 import { RateLimitPolicyResponse, SetRateLimitEnabledRequest, SetRateLimitRouteRequest, SetRateLimitTierRequest } from './dto';
 
 /**
- * TASK-316 — system-admin surface for live, DB-backed rate-limit configuration.
+ * System-admin surface for live, DB-backed rate-limit configuration.
  *
  * Reachable at `/api/v1/admin/rate-limit`. Gated to GLOBAL_ADMIN only: the
  * `manage all` permission is granted exclusively by the `system-full-access`

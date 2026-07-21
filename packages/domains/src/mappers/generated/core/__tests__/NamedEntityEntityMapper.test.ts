@@ -1,5 +1,5 @@
 /**
- * NamedEntityEntityMapper — versionless, append-only persistence (TASK-330).
+ * NamedEntityEntityMapper — versionless, append-only persistence.
  *
  * The `core.NamedEntity` table is append-only: it has `createdAt` but NO
  * `version`, `updatedAt`, `createdBy`, or `updatedBy` columns. The shared
@@ -8,7 +8,7 @@
  * makes Prisma reject the write with `Unknown argument 'version'`. The mapper
  * must therefore strip every base meta field that the table does not define.
  *
- * @see TASK-330 Phase 1 — harness `persist_entities` + legacy NER persistence
+ * Harness `persist_entities` + legacy NER persistence
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect } from 'vitest';

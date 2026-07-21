@@ -1,4 +1,4 @@
-"""TDD tests for health endpoints (TASK-488 Phase 1 + Phase 2 readiness)."""
+"""TDD tests for health endpoints."""
 
 from __future__ import annotations
 

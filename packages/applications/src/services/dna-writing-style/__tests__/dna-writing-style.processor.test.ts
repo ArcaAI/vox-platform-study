@@ -21,7 +21,7 @@ const createMockContextItemRepository = () => ({
     findAll: vi.fn(),
 });
 
-// TASK-299 D-11 — approval check via ContextItemVersion (changeReason='approved').
+// Approval check via ContextItemVersion (changeReason='approved').
 const createMockContextItemVersionRepository = () => ({
     getVersionsByChangeReason: vi.fn(),
 });
@@ -196,7 +196,7 @@ describe('DnaWritingStyleProcessor', () => {
         mockConfigService = createMockConfigService();
         mockJobMetrics = createMockJobMetrics();
         mockClsService = createMockClsService();
-        // TASK-299 D-11 — default to "everything approved" so the legacy
+        // Default to "everything approved" so the legacy
         // tests below continue to exercise the success path.
         mockContextItemVersionRepo = createMockContextItemVersionRepository();
         mockContextItemVersionRepo.getVersionsByChangeReason.mockImplementation(
@@ -224,7 +224,7 @@ describe('DnaWritingStyleProcessor', () => {
             mockJobMetrics as never,
             mockClsService as never,
             undefined, // secretsService (@Optional)
-            mockHarnessPolicyService as never, // TASK-356 D-7 — HarnessPolicyService resolver
+            mockHarnessPolicyService as never, // HarnessPolicyService resolver
         );
     });
 
@@ -279,7 +279,7 @@ describe('DnaWritingStyleProcessor', () => {
 
             await processor.process(createMockJob({ textSamples: ['sample'] }) as never);
 
-            // TASK-356 D-7 — the SMR gateway now requires an explicit provider+model,
+            // The SMR gateway now requires an explicit provider+model,
             // resolved via the HarnessPolicy cascade and merged into the payload.
             expect(mockHarnessPolicyService.resolveSmrSelection).toHaveBeenCalled();
             expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
@@ -1001,7 +1001,7 @@ describe('DnaWritingStyleProcessor', () => {
         });
     });
 
-    // ─── TASK-299 D-11 — APPROVED-only learning corpus ──────────────────
+    // ─── APPROVED-only learning corpus ──────────────────
 
     describe('TASK-299 D-11 — APPROVED-only learning corpus', () => {
         it('excludes non-approved summaries from the corpus and only feeds approved ones to SMR', async () => {
@@ -1161,7 +1161,7 @@ describe('DnaWritingStyleProcessor', () => {
         });
     });
 
-    // ─── TASK-356 Phase 6 (S6) — draft↔approved pairs + DNA gating ──────────
+    // ─── draft↔approved pairs + DNA gating ──────────
     describe('TASK-356 Phase 6 — draft↔approved learning pairs', () => {
         const createMockConfigResolver = () => ({
             resolveEffectiveDnaStyleEnabled: vi.fn().mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: null }),

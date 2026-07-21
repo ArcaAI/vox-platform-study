@@ -7,7 +7,7 @@ import { Public } from '../../decorators';
 const REGISTRATION_DISABLED_MESSAGE = 'Not found';
 
 /**
- * TASK-497 §3.4 (D1 verified self-signup) — public registration.
+ * Verified self-signup — public registration.
  *
  * Feature-flag gate: both routes 404 when `REGISTRATION_SELF_SIGNUP_ENABLED`
  * is OFF (default), mirroring `ConsultationController.isSharingEnabled`'s

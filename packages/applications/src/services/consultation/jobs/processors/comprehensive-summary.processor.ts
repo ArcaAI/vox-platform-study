@@ -60,9 +60,9 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     private readonly jobMetrics: JobMetricsService,
     private readonly cls: ClsService<IActiveUserContext>,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // TASK-356 D-7 — resolver for the tenant's effective SMR {provider, model}.
+    // Resolver for the tenant's effective SMR {provider, model}.
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
-    // TASK-362 — load the requesting doctor's preferred prompt id so this async
+    // Load the requesting doctor's preferred prompt id so this async
     // comprehensive path threads it into BOTH resolution and assembly (was dropped
     // here before). Optional + trailing so existing positional fixtures keep compiling.
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
@@ -72,7 +72,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
   }
 
   /**
-   * TASK-369 — encrypt PHI on write through the shared env-gated guard: a soft
+   * Encrypt PHI on write through the shared env-gated guard: a soft
    * no-op in dev/test (SECRETS_PROVIDER!=vault) but FAIL-CLOSED (throws) in
    * staging/prod (SECRETS_PROVIDER=vault) instead of persisting plaintext-only.
    */
@@ -82,12 +82,12 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
 
   async process(job: Job<GenerateComprehensiveSummaryJobPayload>): Promise<ComprehensiveSummaryJobResult> {
     const { jobId, consultationId, tenantId, userId, request } = job.data;
-    // TASK-305 D.9.3 — fail-closed when tenantId is missing.
+    // Fail-closed when tenantId is missing.
     if (!tenantId) {
       throw new Error(`Job ${jobId ?? job.id} is missing required tenantId`);
     }
-    // TASK-305 D.9.1 — rebind tenantId + user into a fresh CLS scope so the
-    // Phase B tenantScope Prisma extension sees the correct context.
+    // Rebind tenantId + user into a fresh CLS scope so the
+    // tenantScope Prisma extension sees the correct context.
     return this.cls.run(async () => {
       this.cls.set('tenantId', tenantId);
       this.cls.set('user', createWorkerSession({ userId, tenantId, kind: 'comprehensive-summary' }));
@@ -110,10 +110,10 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
         if (!consultation) {
           throw new Error(`Consultation ${consultationId} not found`);
         }
-        // TASK-305 D.9.2 — defense in depth against a poisoned / stale payload.
+        // Defense in depth against a poisoned / stale payload.
         assertEqualTenants(consultation, { tenantId });
 
-        // TASK-362 — resolve the requesting doctor's preferred prompt id once so
+        // Resolve the requesting doctor's preferred prompt id once so
         // BOTH prompt resolution and assembly thread it (this async comprehensive
         // path dropped it before). Null-safe + no-op when the resolver isn't wired.
         const preferredPromptTemplateId = this.configResolver
@@ -158,14 +158,14 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
           aggregatedEntities = await this.chainSummaryService.gatherNamedEntities(allConsultationIds);
         }
 
-        // Resolve prompt config if template not explicitly provided (TASK-025)
+        // Resolve prompt config if template not explicitly provided
         // DNA style is per-doctor and resolved separately — not part of prompt resolution.
         let resolvedRequest = request;
         if (!request.template) {
           const resolved = await this.promptResolutionService.resolve({
             departmentId: consultation.departmentId ?? undefined,
             explicitTemplate: request.template,
-            // TASK-362 — thread the doctor's preferred prompt id into resolution.
+            // Thread the doctor's preferred prompt id into resolution.
             preferredPromptTemplateId: preferredPromptTemplateId ?? undefined,
           });
           resolvedRequest = {
@@ -272,7 +272,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
         >
       | undefined,
     request: GenerateComprehensiveSummaryJobPayload['request'],
-    // TASK-362 — doctor's preferred prompt id, threaded into assembly below.
+    // Doctor's preferred prompt id, threaded into assembly below.
     preferredPromptTemplateId: string | null | undefined,
     jobId?: string,
   ): Promise<{
@@ -316,13 +316,13 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
       conversationLanguage: this.resolveConversationLanguage(request.options),
       dnaStyleId: request.dnaStyleId,
       explicitTemplate: request.template ?? 'comprehensive',
-      // TASK-362 — thread the doctor's preferred prompt id into assembly.
+      // Thread the doctor's preferred prompt id into assembly.
       preferredPromptTemplateId: preferredPromptTemplateId ?? undefined,
     });
 
     try {
       const smrStart = Date.now();
-      // TASK-356 D-7 — resolve the tenant's effective {provider, model} (CLS tenant
+      // Resolve the tenant's effective {provider, model} (CLS tenant
       // set by process()) and merge as the base so a caller-supplied model wins.
       let options = request.options;
       if (this.harnessPolicyService) {

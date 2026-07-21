@@ -21,7 +21,7 @@ class FakeService:
 # Singleton slots in nlp.dependencies backing the get_* getters. Preset (not
 # just patched) so code holding a direct reference to the ORIGINAL getters —
 # router Depends defaults bound at import, monitoring's check table — also
-# resolves to the fake, independent of module import order (TASK-506).
+# resolves to the fake, independent of module import order.
 _DEP_SLOTS = (
     "_text_classifier_instance",
     "_token_classifier_instance",

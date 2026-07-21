@@ -376,7 +376,7 @@ describe('audioResampler utilities', () => {
   });
 
   // -------------------------------------------------------------------------
-  // TASK-351 P2-4 — anti-aliased downsampling on the Whisper capture path.
+  // Anti-aliased downsampling on the Whisper capture path.
   // Linear interpolation aliases high-frequency content into the speech band;
   // the capture path must attenuate folded aliases by ≥ 40 dB relative to the
   // linear baseline while keeping the passband within 1 dB.

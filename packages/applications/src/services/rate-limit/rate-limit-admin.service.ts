@@ -29,7 +29,7 @@ import {
 } from './rate-limit.constants';
 
 /**
- * TASK-316 — admin write service for DB-backed rate limiting.
+ * Admin write service for DB-backed rate limiting.
  *
  * Writes go through `IGlobalSettingService` (the same path the GlobalSetting
  * admin CRUD uses). Platform `rate-limit.*` rows live under

@@ -1,4 +1,4 @@
-"""WS-duplex streaming synthesis endpoint (TASK-492).
+"""WS-duplex streaming synthesis endpoint.
 
 Incremental text in → binary PCM frames out over a single WebSocket, so audio
 starts after the first sentence instead of the whole summary. Fronted by the
@@ -61,7 +61,7 @@ def _provider_overrides(value: Any) -> dict[str, dict[str, str]] | None:
 
 
 def _voice_bindings(value: Any) -> dict[str, dict[str, str]] | None:
-    """Coerce init-frame voice_bindings to {voiceId: {provider: voiceName}} (TASK-506).
+    """Coerce init-frame voice_bindings to {voiceId: {provider: voiceName}}.
 
     Malformed entries are dropped safely; an empty/invalid frame field → None
     (the catalog's DEFAULT_VOICES bindings stay in effect).
@@ -125,7 +125,7 @@ async def audio_stream(ws: WebSocket) -> None:
         await _send_error(ws, _ERR_INVALID_INPUT, "invalid speed")
         return
 
-    # TASK-496 — per-tenant routing overrides injected by the gateway on the init
+    # Per-tenant routing overrides injected by the gateway on the init
     # frame (resolved from the tenant's config). None → static settings chains.
     routing_en = _str_list(init.get("routing_en"))
     routing_ml = _str_list(init.get("routing_ml"))

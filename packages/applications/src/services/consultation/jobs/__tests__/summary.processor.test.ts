@@ -80,7 +80,7 @@ const createMockJobMetrics = () => ({
     recordSmrCallDuration: vi.fn(),
 });
 
-// Mock ClsService — TASK-305 D.9. Real nestjs-cls.ClsService.run executes the
+// Mock ClsService. Real nestjs-cls.ClsService.run executes the
 // callback inside a fresh AsyncLocalStorage scope; the mock just runs it
 // inline so existing tests stay synchronous, while exposing the underlying
 // `run`/`set`/`get` spies the new D.9 tests use to verify CLS rebinding.
@@ -103,12 +103,12 @@ const createMockClsService = () => {
     return mock;
 };
 
-// Mock NamedEntityRepository (TASK-330 Phase 1 — NER → prompt injection)
+// Mock NamedEntityRepository (NER → prompt injection)
 const createMockNamedEntityRepository = () => ({
     findByConsultation: vi.fn().mockResolvedValue([]),
 });
 
-// Mock ConfigResolver (TASK-356 Phase 5 §2.5 — doctor-preferred prompt id).
+// Mock ConfigResolver (doctor-preferred prompt id).
 const createMockConfigResolver = () => ({
     resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null),
     resolvePipelineToggles: vi.fn(),
@@ -188,11 +188,11 @@ describe('SummaryProcessor', () => {
             mockClsService as any,
             undefined, // secretsService (@Optional)
             undefined, // namedEntityRepository (@Optional)
-            mockHarnessPolicyService as any, // TASK-356 D-7 — HarnessPolicyService resolver
+            mockHarnessPolicyService as any, // HarnessPolicyService resolver
         );
     });
 
-    // ── TASK-356 Phase 5 (§2.5): the BullMQ path threads the preferred prompt id ──
+    // ── (§2.5): the BullMQ path threads the preferred prompt id ──
     describe('preferred-prompt threading (TASK-356 Phase 5)', () => {
         let mockConfigResolver: ReturnType<typeof createMockConfigResolver>;
         let processorWithResolver: SummaryProcessor;
@@ -213,7 +213,7 @@ describe('SummaryProcessor', () => {
                 undefined, // secretsService
                 undefined, // namedEntityRepository
                 mockHarnessPolicyService as any,
-                mockConfigResolver as any, // TASK-356 Phase 5 — ConfigResolver
+                mockConfigResolver as any, // ConfigResolver
             );
 
             mockConsultationRepository.findById.mockResolvedValue(createMockConsultation({ doctorId: 'dr-smith-001' }));
@@ -260,7 +260,7 @@ describe('SummaryProcessor', () => {
         });
     });
 
-    // ── TASK-356 D-7 (T-C3): the SMR call carries the cascade-resolved model ──
+    // ── the SMR call carries the cascade-resolved model ──
     describe('SMR selection', () => {
         it('posts the cascade-resolved provider+model when the request omits a model', async () => {
             mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
@@ -1046,7 +1046,7 @@ Assessment: "Alert" & oriented × 3
     });
 
     // ===========================================================================
-    // GAP-1: SummaryGenerated Pipeline Event Emission
+    // SummaryGenerated Pipeline Event Emission
     // ===========================================================================
 
     describe('SummaryGenerated pipeline event (GAP-1)', () => {
@@ -1204,7 +1204,7 @@ Assessment: "Alert" & oriented × 3
     });
 
     // ==========================================================================='
-    // GAP-3: Prompt Resolution Integration
+    // Prompt Resolution Integration
     // ==========================================================================='
 
     describe('Prompt resolution fallback (GAP-3)', () => {
@@ -1354,10 +1354,10 @@ Assessment: "Alert" & oriented × 3
     });
 
     // ===========================================================================
-    // TASK-305 D.9 — CLS rebind + tenant assert + fail-closed guard
+    // CLS rebind + tenant assert + fail-closed guard
     //
     // Workers run OUTSIDE the API edge ClsModule middleware that the
-    // Phase B tenantScope extension reads from. Without these guards the
+    // tenantScope extension reads from. Without these guards the
     // extension hits its "no CLS = super-admin pass-through" branch and
     // every Prisma op silently bypasses tenant scoping.
     // ===========================================================================
@@ -1440,7 +1440,7 @@ Assessment: "Alert" & oriented × 3
     });
 
     // ===========================================================================
-    // TASK-330 Phase 1 — NER → prompt injection
+    // NER → prompt injection
     //
     // The processor must query the consultation's NER entities and forward them
     // to PromptAssemblyService so they actually reach the LLM.

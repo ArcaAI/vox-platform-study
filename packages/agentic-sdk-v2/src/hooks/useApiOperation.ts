@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useApiOperation Hook (TASK-039)
+ * @arcaai/vox - useApiOperation Hook
  *
  * Generic helper that wraps async API operations with loading tracking,
  * error state, and logger instrumentation. Eliminates the 15-line

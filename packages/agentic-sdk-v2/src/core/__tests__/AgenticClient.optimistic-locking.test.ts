@@ -1,6 +1,5 @@
 /**
  * AgenticClient — Optimistic-locking transport tests
- * — TASK-302 Stream D Phase D (D.4).
  *
  * @vitest-environment jsdom
  *

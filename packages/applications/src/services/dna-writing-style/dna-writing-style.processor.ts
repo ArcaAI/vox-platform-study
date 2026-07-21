@@ -42,7 +42,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     @Inject(IConsultationJobService) private readonly jobService: IConsultationJobService,
     @Inject(IAppSettingsService) private readonly appSettingsService: IAppSettingsService,
     private readonly contextItemRepository: ContextItemRepository,
-    // TASK-299 D-11 — used to filter the learning corpus to APPROVED summaries only.
+    // Used to filter the learning corpus to APPROVED summaries only.
     private readonly contextItemVersionRepository: ContextItemVersionRepository,
     private readonly dnaReportRepository: DnaWritingStyleReportRepository,
     private readonly dnaVersionRepository: DnaWritingStyleVersionRepository,
@@ -54,9 +54,9 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     private readonly jobMetrics: JobMetricsService,
     private readonly clsService: ClsService<IActiveUserContext>,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // TASK-356 D-7 — resolver for the tenant's effective SMR {provider, model}.
+    // Resolver for the tenant's effective SMR {provider, model}.
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
-    // TASK-356 Phase 6 (S3/S6) — gate the AUTOMATIC learning corpus on the
+    // Gate the AUTOMATIC learning corpus on the
     // effective DNA flag (tenant AND doctor): a doctor who has opted out (or whose
     // tenant disabled DNA) is never learned-from. Optional + trailing so existing
     // positional fixtures keep their arity; production DI supplies it via
@@ -74,7 +74,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
   }
 
   /**
-   * TASK-369 — encrypt PHI on write through the shared env-gated guard: a soft
+   * Encrypt PHI on write through the shared env-gated guard: a soft
    * no-op in dev/test (SECRETS_PROVIDER!=vault) but FAIL-CLOSED (throws) in
    * staging/prod (SECRETS_PROVIDER=vault) instead of persisting plaintext-only.
    */
@@ -99,18 +99,18 @@ export class DnaWritingStyleProcessor extends WorkerHost {
       await job.updateProgress(10);
       this.jobService.notifyProgress(job.data.jobId, 10, 'Gathering text samples');
       let samples: string;
-      // TASK-299 D-11 — explainability: track which context items contributed.
+      // Explainability: track which context items contributed.
       let sourceContextItemIds: string[] = [];
 
       if (textSamples && textSamples.length > 0) {
         samples = textSamples.join('\n\n---\n\n');
-        // TASK-329 P5 — generate-from-history passes samples directly plus the
+        // Generate-from-history passes samples directly plus the
         // selected source IDs; record them so the report stays explainable.
         if (sourceIds && sourceIds.length > 0) {
           sourceContextItemIds = sourceIds;
         }
       } else {
-        // TASK-356 Phase 6 (S3/S6) — gate the AUTOMATIC corpus on the effective
+        // Gate the AUTOMATIC corpus on the effective
         // DNA flag (tenant AND doctor). A doctor who has opted out (or whose tenant
         // disabled DNA) is never learned-from. Only the automatic path is gated;
         // an explicit textSamples request (admin/migration) bypasses this. No-op
@@ -135,7 +135,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
           throw new Error('No text samples available for DNA analysis');
         }
 
-        // TASK-299 D-11 — corpus filter:
+        // Corpus filter:
         //   1. Only RAW_SUMMARY or MODIFIED_SUMMARY (final summaries).
         //   2. Only items with at least one ContextItemVersion whose
         //      changeReason is 'approved' (see SummaryService.approveSummary).
@@ -148,10 +148,10 @@ export class DnaWritingStyleProcessor extends WorkerHost {
           (item: any) => item?.type === 'RAW_SUMMARY' || item?.type === 'MODIFIED_SUMMARY',
         );
 
-        // TASK-356 Phase 6 (S6) — build draft↔approved PAIRS: for each approved
+        // Build draft↔approved PAIRS: for each approved
         // summary also fetch its immutable `ai_draft_v1` snapshot so the DNA model
         // learns the doctor's EDIT behaviour (draft → approved), not just the final
-        // prose (README D-10). Back-compat: a legacy summary with no v1 snapshot
+        // prose. Back-compat: a legacy summary with no v1 snapshot
         // falls back to final-only.
         const pairs: Array<{ id: string; draft: string | null; approved: string }> = [];
         for (const item of finalSummaries) {
@@ -202,7 +202,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         styleText = smrResponse.content;
       }
 
-      // TASK-299 D-11 — explainability: persist the corpus source IDs alongside
+      // Explainability: persist the corpus source IDs alongside
       // the analytic report. Consumers can audit which approved summaries
       // shaped this DNA writing-style snapshot.
       if (sourceContextItemIds.length > 0) {
@@ -225,7 +225,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         createdBy: userId,
       });
 
-      // TASK-369 Phase 3C — encrypt reportData/styleText into the ciphertext
+      // Encrypt reportData/styleText into the ciphertext
       // columns before the first persist (dual-write; plaintext retained for the
       // soak). Best-effort: a Vault outage must not fail DNA generation.
       await this.encryptBestEffort('DnaWritingStyleReport', () =>
@@ -295,7 +295,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
   }
 
   /**
-   * TASK-356 Phase 6 (S6) — render the learning corpus from draft↔approved pairs.
+   * Render the learning corpus from draft↔approved pairs.
    * A pair whose captured AI draft DIFFERS from the approved text is rendered as
    * an explicit `AI DRAFT` → `DOCTOR APPROVED` block so the model learns the
    * doctor's edit behaviour. Pairs with no draft snapshot (legacy) or an unchanged
@@ -321,7 +321,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     latency_ms?: number;
   }> {
     const smrStart = Date.now();
-    // TASK-356 D-7 — SMR is a stateless gateway with no model default; resolve the
+    // SMR is a stateless gateway with no model default; resolve the
     // tenant's effective {provider, model} (CLS tenant set by processWithContext)
     // and pass both explicitly on the generate call.
     let provider: string | undefined;

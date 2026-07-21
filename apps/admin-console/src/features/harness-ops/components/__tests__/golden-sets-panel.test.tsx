@@ -1,5 +1,5 @@
 /**
- * TDD tests for TASK-532 B-5 — `GoldenSetsPanel` (M-09 tenant leg).
+ * TDD tests for `GoldenSetsPanel`.
  *
  * Covers the sets list, the PHI-safe detail drawer, the `manage:HarnessEval`
  * gated create flows and axe cleanliness in both themes.

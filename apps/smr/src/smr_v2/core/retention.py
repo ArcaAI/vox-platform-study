@@ -1,4 +1,4 @@
-"""TASK-529 (D-10) — retention propagation helpers for server-managed engines.
+"""Retention propagation helpers for server-managed engines.
 
 SMR holds no model weights: Ollama and LM Studio do. So "retention" here is a
 per-request HINT forwarded to the engine, not an in-process cache. The product
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from hope_runtime_models import clamp_cache_ttl_seconds
 
-#: OD-5 program default. Deliberately 600 s, not the engines' own defaults
+#: Program default. Deliberately 600 s, not the engines' own defaults
 #: (Ollama 5 min, LM Studio 60 min) — one admin-controlled number governs both.
 DEFAULT_RETENTION_TTL_S = 600
 

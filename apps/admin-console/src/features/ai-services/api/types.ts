@@ -1,5 +1,5 @@
 /**
- * Wire types for the read-only AI-services plane (TASK-532 B-4 / M-09).
+ * Wire types for the read-only AI-services plane.
  *
  * ⚠ UPSTREAM-OWNED SHAPES. `GuardrailStatus`, `NlpStatus` and both halves of
  * `GuardrailConfig` are the guardrail/NLP Python services' own health/config

@@ -1,6 +1,6 @@
 """End-to-end tests for HarnessDocWorkflow via Temporal's time-skipping env.
 
-RED-first: written before the workflow/activities exist. Activities are replaced
+Activities are replaced
 with name-matched deterministic stubs (see ``_harness_stubs``) so these tests
 exercise pure orchestration: happy path + gate, bounded regen, regen-budget
 exhaustion, the gate wait-condition + SLA escalation, and degradation paths.
@@ -59,8 +59,8 @@ def _approval() -> ApprovalSignal:
     )
 
 
-# TASK-355 Phase D — the optimistic gate (4a flag ON); 4b assurance signals are
-# patch-gated, not flag-gated, so they are intrinsic to the optimistic path.
+# Builds a gate config with the optimistic gate on (4a flag ON); 4b assurance
+# signals are patch-gated, not flag-gated, so they are intrinsic to the optimistic path.
 def _opt_gate(**kw) -> HarnessGateConfig:
     kw.setdefault("optimistic_delivery_enabled", True)
     kw.setdefault("max_regen", 2)
@@ -379,7 +379,7 @@ class TestGate:
 
     @pytest.mark.asyncio
     async def test_gate_abandons_after_terminal_escalation_bound(self):
-        """C1-02 (TASK-458): the gate escalates a BOUNDED number of times, then ABANDONS
+        """The gate escalates a BOUNDED number of times, then ABANDONS
         (completes, approved=False) — no infinite escalation loop. Never signalled."""
         recorder = StubRecorder()
         config = StubConfig(verdicts=["PASS"])
@@ -426,7 +426,7 @@ class TestInferentialPass:
     async def test_safe_pass_persists_guardrail_decisions_and_rag_triad(self):
         recorder = StubRecorder()
         # Explicit default policy so the fetch SUCCEEDS (no policy-degrade) — this test
-        # verifies a SAFE pass does NOT flag reduced assurance (C1-06 degrade would mask it).
+        # verifies a SAFE pass does NOT flag reduced assurance (a policy-degrade would mask it).
         config = StubConfig(
             verdicts=["PASS"], inferential_verdicts=["SAFE"], policy=HarnessPolicy()
         )
@@ -464,7 +464,7 @@ class TestInferentialPass:
         recorder = StubRecorder()
         # Computational PASSes, but the safety screen flags unsafe content -> FLAG,
         # never auto-regenerated (regen budget is untouched). Explicit policy so the
-        # fetch succeeds (no C1-06 policy-degrade to mask the not-reduced assertion).
+        # fetch succeeds (no policy-degrade to mask the not-reduced assertion).
         config = StubConfig(
             verdicts=["PASS"], inferential_verdicts=["UNSAFE"], policy=HarnessPolicy()
         )
@@ -592,7 +592,7 @@ class TestInstitutionalRetrieval:
             verdicts=["PASS"],
             retrieved_chunks=[("kc-1", "First-line HTN therapy is a thiazide.")],
             # Explicit policy so the fetch succeeds — this test asserts NON-degraded
-            # retrieval keeps reduced_assurance False (C1-06 policy-degrade would mask it).
+            # retrieval keeps reduced_assurance False (a policy-degrade would mask it).
             policy=HarnessPolicy(),
         )
         async with await _env() as env:
@@ -616,9 +616,9 @@ class TestInstitutionalRetrieval:
         assert recorder.calls["retrieve_context"] == 1
         # Retrieval is entity-triggered, scoped to the tenant.
         assert recorder.retrieve_inputs[0].tenant_id == "t-1"
-        # The StrictCitations block is threaded to generate via ``prompt_block`` (TASK-483:
-        # the generate activity folds it into the prompt, so the workflow threads the small
-        # prompt ref instead of the concatenated blob).
+        # The StrictCitations block is threaded to generate via ``prompt_block`` — the
+        # generate activity folds it into the prompt, so the workflow threads the small
+        # prompt ref instead of the concatenated blob.
         gen_block = recorder.generate_inputs[0].prompt_block
         assert "kc-1" in gen_block and "[[kb:" in gen_block
         # Chunk ids are threaded into the computational pass (knowledgeChunkIds mapping)
@@ -765,9 +765,9 @@ class TestPolicyInjection:
         recorder = StubRecorder()
         # policy=None -> the fetch_policy stub raises -> the workflow falls back to
         # the code defaults: default thresholds (None passed through), safety ON,
-        # and the input gate budget governs the loop. Never crashes. C1-06 (TASK-458):
-        # the fetch FAILURE is a policy-degrade — it could relax a stricter tenant policy
-        # — so it now flags reduced assurance (was silently False).
+        # and the input gate budget governs the loop. Never crashes. The fetch FAILURE
+        # is a policy-degrade — it could relax a stricter tenant policy — so it flags
+        # reduced assurance.
         config = StubConfig(verdicts=["PASS"], policy=None)
         async with await _env() as env:
             tq = f"harness-test-{uuid.uuid4()}"
@@ -790,14 +790,14 @@ class TestPolicyInjection:
         assert recorder.calls["fetch_policy"] == 1
         # Fallback: no policy thresholds, safety guard stays ON. But the policy-fetch
         # FAILURE is itself a degrade (a stricter tenant policy may have been relaxed),
-        # so the draft IS flagged reduced-assurance (C1-06).
+        # so the draft IS flagged reduced-assurance.
         assert recorder.run_sensors_inputs[0].thresholds is None
         assert recorder.inferential_inputs[0].safety_enabled is True
         assert recorder.persist_draft_inputs[0].reduced_assurance is True
 
 
 class TestOptimisticDelivery:
-    """TASK-355 Phase D (Slice 4a) — optimistic two-phase delivery.
+    """Optimistic two-phase delivery.
 
     Flag ON (+ patch marker): the computational loop settles, the readable draft is
     DELIVERED early (``persist_draft`` with ``phase=DRAFT_PENDING_SENSORS``, verdict
@@ -816,7 +816,7 @@ class TestOptimisticDelivery:
     async def test_flag_on_delivers_early_then_finalizes_assurance(self):
         recorder = StubRecorder()
         # Explicit policy so the fetch succeeds — this test asserts finalize is NOT
-        # reduced-assurance (a C1-06 policy-degrade would otherwise flag it).
+        # reduced-assurance (a policy-degrade would otherwise flag it).
         config = StubConfig(
             verdicts=["PASS"], inferential_verdicts=["SAFE"], policy=HarnessPolicy()
         )
@@ -983,11 +983,10 @@ class TestOptimisticDelivery:
 
     @pytest.mark.asyncio
     async def test_flag_on_unsafe_safety_delivers_then_retracts(self):
-        """TASK-481 (E2): a delivered draft is still delivered early, but when assurance
-        FLAGs it is RETRACTED (marked RETRACTED + WORM + clinician event) INSTEAD of
-        silently backfilling the FLAG verdict via finalize — the retraction net for the
-        accepted TASK-453 pre-assurance sign-off window. RED against today's finalize-only
-        path (no retraction)."""
+        """A delivered draft is still delivered early, but when assurance FLAGs it is
+        RETRACTED (marked RETRACTED + WORM + clinician event) INSTEAD of silently
+        backfilling the FLAG verdict via finalize — the retraction net for the accepted
+        pre-assurance sign-off window."""
         recorder = StubRecorder()
         config = StubConfig(verdicts=["PASS"], inferential_verdicts=["UNSAFE"])
         async with await _env() as env:
@@ -1080,9 +1079,9 @@ class TestOptimisticDelivery:
 
 
 class TestAssuranceSignals:
-    """TASK-355 Phase D (Slice 4b) — signal-driven assurance dynamics.
+    """Signal-driven assurance dynamics.
 
-    Built ON the optimistic path (4a) and gated by a SECOND patch marker
+    Built ON the optimistic delivery path and gated by a SECOND patch marker
     (``task-355-assurance-signals``). Two LOCKED governance behaviours:
 
     * **Q1 regen-if-untouched** — after early delivery, a REGEN-fixable assurance
@@ -1147,7 +1146,7 @@ class TestAssuranceSignals:
     @pytest.mark.asyncio
     async def test_regen_budget_exhausted_untouched_retracts(self):
         """Q1 — REGEN that never settles is bounded by max_regen, then FLAGs (no infinite
-        swap). TASK-481 (E2): the exhausted FLAG RETRACTS the last re-delivered draft."""
+        swap). The exhausted FLAG RETRACTS the last re-delivered draft."""
         recorder = StubRecorder()
         config = StubConfig(
             verdicts=["PASS", "PASS", "PASS"],
@@ -1183,7 +1182,7 @@ class TestAssuranceSignals:
     @pytest.mark.asyncio
     async def test_edit_disables_silent_regen_surfaces_flag(self):
         """Q1 — once edited, a REGEN verdict does NOT regenerate; it converts to a FLAG,
-        and the edited-version draft is RETRACTED (TASK-481 E2) bound to the edit."""
+        and the edited-version draft is RETRACTED, bound to the edit."""
         recorder = StubRecorder()
         config = StubConfig(verdicts=["PASS", "PASS"], inferential_verdicts=["REGEN", "REGEN"])
         async with await _env() as env:
@@ -1265,7 +1264,7 @@ class TestAssuranceSignals:
 
     @pytest.mark.asyncio
     async def test_edit_reruns_are_capped(self):
-        """C1-02 (TASK-458): N rapid edits do NOT drive N inferential passes. With
+        """N rapid edits do NOT drive N inferential passes. With
         ``max_edit_reruns=1``, edits on TWO passes yield ONE edit re-run (2 passes),
         not two (3 passes) — the loop binds the latest edit but stops re-running."""
         recorder = StubRecorder()
@@ -1360,7 +1359,7 @@ class TestDegradation:
 
 
 class TestProgressFeed:
-    """TASK-345 — the workflow emits one ``report_progress`` event per stage.
+    """The workflow emits one ``report_progress`` event per stage.
 
     Progress is fire-and-forget: stage events thread consultation/tenant/job ids,
     regen iterations re-emit the drafting/sensor stages, and a dead progress
@@ -1447,7 +1446,7 @@ class TestProgressFeed:
     async def test_progress_pipeline_failure_never_fails_the_workflow(self):
         recorder = StubRecorder()
         # Explicit policy so the fetch succeeds — isolates the progress-resilience subject
-        # from the C1-06 policy-degrade reduced_assurance flag.
+        # from the policy-degrade reduced_assurance flag.
         config = StubConfig(verdicts=["PASS"], progress_fails=True, policy=HarnessPolicy())
         async with await _env() as env:
             tq = f"harness-test-{uuid.uuid4()}"
@@ -1470,16 +1469,16 @@ class TestProgressFeed:
         # WITHOUT degradation (progress is non-clinical).
         assert result.decision == "PASS"
         assert result.approved is True
-        # TASK-348 / TG-2: the stub raises a RETRYABLE error, so the EXACT
-        # per-stage count pins _PROGRESS_RETRY's maximum_attempts=1 — any
-        # retry budget creep would multiply this count (5 stages + terminal).
+        # The stub raises a RETRYABLE error, so the EXACT per-stage count pins
+        # _PROGRESS_RETRY's maximum_attempts=1 — any retry budget creep would
+        # multiply this count (5 stages + terminal).
         assert recorder.calls["report_progress"] == 6
         assert recorder.calls["persist_draft"] == 1
         assert recorder.persist_draft_inputs[0].reduced_assurance is False
 
     @pytest.mark.asyncio
     async def test_progress_emissions_bound_total_queue_plus_exec_time(self):
-        """TASK-348 / MAJ-9: every emission carries schedule_to_close_timeout.
+        """Every emission carries schedule_to_close_timeout.
 
         start_to_close alone leaves the queue wait unbounded — a saturated
         activity slot could stall each stage transition. The schedule-to-close
@@ -1509,7 +1508,7 @@ class TestProgressFeed:
 
     @pytest.mark.asyncio
     async def test_workflow_failure_emits_terminal_failed_event_then_propagates(self):
-        """TASK-348 / MAJ-1: on workflow failure the feed must not freeze.
+        """On workflow failure the feed must not freeze.
 
         SMR exhausts its retries -> the workflow MUST still fail (no draft is
         ever persisted on SMR failure), but a best-effort terminal `failed`
@@ -1557,14 +1556,13 @@ class TestProgressFeed:
 
 
 class TestNerPriorsReuse:
-    """TASK-480 Half-B — the transcript pass reuses persisted coded priors and the
-    workflow skips the redundant re-persist, else stays cold (no regression)."""
+    """The transcript pass reuses persisted coded priors and the workflow skips the
+    redundant re-persist, else stays cold (no regression)."""
 
     @pytest.mark.asyncio
     async def test_transcript_pass_asks_for_priors_reuse(self):
         """The workflow seeds the TRANSCRIPT ``extract_entities`` call with reuse_priors +
-        the ids; the note-NER pass does not. RED against today (reuse_priors defaults
-        False everywhere)."""
+        the ids; the note-NER pass does not."""
         recorder = StubRecorder()
         config = StubConfig(verdicts=["PASS"])
         async with await _env() as env:
@@ -1596,8 +1594,7 @@ class TestNerPriorsReuse:
     @pytest.mark.asyncio
     async def test_reused_priors_skip_persist_entities(self):
         """When the transcript entities are REUSED from coded priors, the workflow skips
-        the redundant ``persist_entities`` (the rows already exist). RED against today's
-        unconditional persist."""
+        the redundant ``persist_entities`` (the rows already exist)."""
         recorder = StubRecorder()
         config = StubConfig(verdicts=["PASS"], reuse_transcript_priors=True)
         async with await _env() as env:

@@ -13,14 +13,13 @@ import {
 import { Controller, Body, Param, Get, Inject, Query, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-// TASK-302 Stream D Phase E.2 — `@RequiresIfMatch()` + `@ExpectedVersion()`
+// `@RequiresIfMatch()` + `@ExpectedVersion()`
 // gate the OCC-enforced PATCH routes on this controller.
 import { ApiEndpoint, Authorize, CanManage, RequiresIfMatch, ExpectedVersion } from '../../decorators';
 
 @ApiBearerAuth()
 @ApiTags('admin-departments')
 @Controller('admin/departments')
-// Phase 0 Item 3 (TASK-302 Stream A): explicit permission required.
 @CanManage('Department')
 export class DepartmentController {
   constructor(
@@ -44,7 +43,7 @@ export class DepartmentController {
   })
   @ApiQuery({ name: 'includeDisabled', required: false, type: Boolean, description: 'Include disabled departments in results' })
   async fetchAll(@Query('includeDisabled') includeDisabled?: string): Promise<DepartmentResponse[]> {
-    // TASK-326 X5 (audit X5): `DepartmentService.getAll` already requires
+    // `DepartmentService.getAll` already requires
     // `this.tenantId`, but mirror the AuditLogController guard so a
     // non-global-admin with no tenant context is rejected at the request
     // entry point and never reaches the service. GLOBAL_ADMIN bypasses here
@@ -102,7 +101,7 @@ export class DepartmentController {
     return this.departmentService.getChildren(id);
   }
 
-  // TASK-387 (#6 / D2) — reverse dept->users listing (previously derived
+  // Reverse dept->users listing (previously derived
   // client-side). Tenant-scoped inside the service (no-existence-leak 404 on a
   // cross-tenant department; GLOBAL_ADMIN cross-tenant bypass) and paginated with
   // the house `PaginatedQuery`. Class-level `@CanManage('Department')` gates it.
@@ -127,7 +126,7 @@ export class DepartmentController {
   @ApiOperation({
     summary: 'Update department',
     description:
-      'Updates one department row. Optimistic concurrency is enforced (TASK-302 Stream D Phase E.2): ' +
+      'Updates one department row. Optimistic concurrency is enforced: ' +
       'the `If-Match` header (RFC 7232) is REQUIRED, and the server runs a Compare-And-Set ' +
       "against the row's `_version`. When the header is present, its value overrides the " +
       'body-field `expectedVersion`. On version drift the response is `412 Precondition Failed`; ' +
@@ -148,7 +147,7 @@ export class DepartmentController {
     @Body() request: UpdateDepartmentRequest,
     @ExpectedVersion() expectedFromHeader: number | undefined,
   ): Promise<DepartmentResponse> {
-    // TASK-302 Stream D Phase E.2 — header takes precedence over body
+    // Header takes precedence over body
     // when both are present. On a `@RequiresIfMatch()` route the param
     // decorator fired 428 if the header was missing, so the fallback
     // only fires in unit tests / off-route service-to-service traffic.

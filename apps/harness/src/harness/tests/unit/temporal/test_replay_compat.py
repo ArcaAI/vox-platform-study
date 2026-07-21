@@ -1,4 +1,4 @@
-"""Replay-compatibility tests for HarnessDocWorkflow (TASK-348 / CRIT-1).
+"""Replay-compatibility tests for HarnessDocWorkflow.
 
 A workflow definition change is only deploy-safe when the CURRENT definition
 can replay histories recorded by PREVIOUS definitions: Temporal replays the
@@ -37,9 +37,9 @@ class TestReplayCompatibility:
     async def test_pre_task345_history_replays_on_current_definition(self):
         """In-flight executions started BEFORE the progress feed must survive deploy.
 
-        The fixture history was recorded by the pre-TASK-345 definition (no
-        ``report_progress`` activities). Replaying it through the current
-        definition raises on non-determinism unless every TASK-345 emission
+        The fixture history was recorded by the definition that predates the progress
+        feed (no ``report_progress`` activities). Replaying it through the current
+        definition raises on non-determinism unless every progress-emission
         point is gated behind ``workflow.patched()``.
         """
         replayer = Replayer(
@@ -53,8 +53,8 @@ class TestReplayCompatibility:
     async def test_task345_history_replays_on_current_definition(self):
         """Forward guard: current-era executions must survive FUTURE deploys.
 
-        The fixture history was recorded by the TASK-345 definition (patch
-        marker + six ``report_progress`` events). Any later workflow change
+        The fixture history was recorded by the definition with the progress feed
+        (patch marker + six ``report_progress`` events). Any later workflow change
         that alters the command sequence without its own ``workflow.patched()``
         gate fails this replay. Capture a new-era fixture alongside every new
         patch gate (see ``_capture_replay_fixture.py``).
@@ -67,15 +67,16 @@ class TestReplayCompatibility:
 
     @pytest.mark.asyncio
     async def test_post_task348_history_replays_on_current_definition(self):
-        """Forward guard for the CURRENT (post-TASK-348) era — incl. the Step-1 change.
+        """Forward guard for the CURRENT (failure-terminal) era — incl. the
+        heartbeat_timeout addition.
 
-        The fixture is a post-TASK-348 FAILURE-terminal history: ``persist_draft``
+        The fixture is a FAILURE-terminal history: ``persist_draft``
         fails AFTER the inferential pass, so the recorded history carries BOTH patch
         markers — ``task-345-harness-progress`` (the progress feed) and
         ``task-348-failure-terminal`` (the failed-terminal emission) — as well as the
-        ``run_inferential_sensors`` command whose options TASK-354 Step 1 changed.
+        ``run_inferential_sensors`` command whose options later changed.
 
-        Replaying it through the current definition proves the Step-1 edits are
+        Replaying it through the current definition proves the heartbeat_timeout edit is
         replay-safe: adding ``heartbeat_timeout`` is an activity OPTION (it does not
         alter the recorded command sequence), so no ``workflow.patched()`` gate is
         required. It also forward-guards the failure path: any FUTURE ungated change
@@ -91,7 +92,7 @@ class TestReplayCompatibility:
 
     @pytest.mark.asyncio
     async def test_post_task355_optimistic_history_replays_on_current_definition(self):
-        """Forward guard for the TASK-355 Phase D OPTIMISTIC era (Slice 4a).
+        """Forward guard for the OPTIMISTIC-delivery era.
 
         The fixture is a happy-path history recorded with the optimistic flag ON, so
         it carries the ``task-355-optimistic-delivery`` patch marker AND the reordered
@@ -114,7 +115,7 @@ class TestReplayCompatibility:
 
     @pytest.mark.asyncio
     async def test_post_task355_regen_history_replays_on_current_definition(self):
-        """Forward guard for the TASK-355 Phase D Slice-4b (assurance-signals) era.
+        """Forward guard for the Slice-4b (assurance-signals) era.
 
         The fixture is a regen-if-untouched history recorded with the optimistic flag
         ON and an inferential REGEN-then-SAFE sequence, so it carries BOTH the
@@ -142,7 +143,7 @@ class TestReplayCompatibility:
 
     @pytest.mark.asyncio
     async def test_post_task458_gate_abandon_history_replays_on_current_definition(self):
-        """Forward guard for the TASK-458 C1-02 gate TERMINAL-ABANDON era.
+        """Forward guard for the gate TERMINAL-ABANDON era.
 
         The fixture is a never-signed gate that escalates to its terminal bound and
         ABANDONS (approved=False), so it carries the ``task-458-gate-terminal-abandon``
@@ -164,11 +165,11 @@ class TestReplayCompatibility:
 
     @pytest.mark.asyncio
     async def test_post_task458_edit_cap_history_replays_on_current_definition(self):
-        """Forward guard for the TASK-458 C1-02 edit-rerun-CAP era.
+        """Forward guard for the edit-rerun-CAP era.
 
         The fixture is an optimistic run with clinician edits on TWO assurance passes and
         ``max_edit_reruns=1``, so the loop CAPS the re-runs (one edit re-run, not two). It
-        carries the ``task-458-edit-rerun-cap`` marker (alongside the TASK-355 optimistic +
+        carries the ``task-458-edit-rerun-cap`` marker (alongside the optimistic +
         assurance-signals markers and the gate-terminal marker) plus the capped command
         sequence: only ONE edit-driven ``run_inferential_sensors`` re-run before finalize.
 
@@ -185,11 +186,12 @@ class TestReplayCompatibility:
 
     @pytest.mark.asyncio
     async def test_post_task481_retraction_history_replays_on_current_definition(self):
-        """Forward guard for the TASK-481 (E2) optimistic-delivery RETRACTION era.
+        """Forward guard for the optimistic-delivery RETRACTION era.
 
         The fixture is an optimistic run whose post-delivery assurance FLAGs (UNSAFE), so the
         delivered draft is RETRACTED: it carries the ``task-481-optimistic-retraction`` marker
-        (alongside the TASK-345/355 markers) plus the retraction command sequence — early
+        (alongside the progress-feed and optimistic-delivery markers) plus the retraction
+        command sequence — early
         ``persist_draft(phase=DRAFT_PENDING_SENSORS)`` -> ``run_inferential_sensors`` (FLAG) ->
         ``retract_draft`` -> terminal completion (retracted, NO ``finalize_assurance``, NO
         gate / ``record_gate_decision``).
@@ -208,7 +210,7 @@ class TestReplayCompatibility:
 
     @pytest.mark.asyncio
     async def test_post_task483_claim_check_history_replays_on_current_definition(self):
-        """Forward + backward guard for the TASK-483 claim-check (out-of-band payload) era.
+        """Forward + backward guard for the claim-check (out-of-band payload) era.
 
         The fixture is a happy-path history recorded with the ``generate`` + ``assemble_prompt``
         stubs returning OFFLOADED results — the note + prompts emptied inline and replaced by a
@@ -219,7 +221,7 @@ class TestReplayCompatibility:
         recorded command sequence is byte-identical to the inline happy path: NO new
         ``execute_activity`` command and NO ``workflow.patched()`` marker are introduced (the
         exact ``phi_enabled`` / ``prior_verdicts`` posture). Replaying this ref-threaded history
-        GREEN proves ref-threading is command-neutral (AC-4) — the partner to the 8 pre-483
+        GREEN proves ref-threading is command-neutral — the partner to the pre-claim-check
         (inline-blob) fixtures above, which also replay GREEN under the same definition.
         """
         replayer = Replayer(

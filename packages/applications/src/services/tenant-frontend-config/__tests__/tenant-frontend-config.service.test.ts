@@ -1,5 +1,5 @@
 /**
- * TenantFrontendConfigService Unit Tests (TASK-328 A6)
+ * TenantFrontendConfigService Unit Tests
  *
  * TESTING APPROACH
  * - Real domain entities via the factory (so create/update mutations exercise
@@ -28,7 +28,7 @@ const mockConfigRepository = {
   create: vi.fn(),
   updateWithVersion: vi.fn(),
 };
-// TASK-332 — the service reads the platform capability (a single SYSTEM_TENANT_ID
+// The service reads the platform capability (a single SYSTEM_TENANT_ID
 // `GlobalSetting`) from the boot-time AppSettings cache, keyed flat by `key`.
 const mockAppSettings = { getValueWithDefault: vi.fn() };
 
@@ -207,7 +207,7 @@ describe('TenantFrontendConfigService', () => {
   });
 
   // ===========================================================================
-  // TASK-332 — local raw-stream dual-capture
+  // Local raw-stream dual-capture
   // The tenant toggle persists like the other booleans; the SDK-facing
   // enablement is the SERVER-COMPUTED `platformCapability AND tenantToggle`.
   // ===========================================================================
@@ -292,7 +292,7 @@ describe('TenantFrontendConfigService', () => {
   });
 
   // ===========================================================================
-  // TASK-356 Phase 4 — transcription mode + lock + capture mode
+  // Transcription mode + lock + capture mode
   // ===========================================================================
   describe('TASK-356 audio-console fields', () => {
     it('persists transcriptionMode / transcriptionModeLocked / captureMode on create', async () => {

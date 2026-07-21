@@ -1,4 +1,4 @@
-"""TDD tests for SarvamProvider + catalog/routing wiring (TASK-493)."""
+"""TDD tests for SarvamProvider + catalog/routing wiring."""
 
 from __future__ import annotations
 

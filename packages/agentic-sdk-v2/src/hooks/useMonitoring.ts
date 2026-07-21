@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useMonitoring Hook (TASK-032 WS-A)
+ * @arcaai/vox - useMonitoring Hook
  *
  * Service monitoring hook with uptime, sessions, and heartbeat data.
  */
@@ -15,7 +15,7 @@ const SESSION_SERVICE_KEYS = ['smr', 'stt', 'nlp', 'guardrail', 'harness'] as co
 /**
  * Normalize the backend `SessionsResponse`
  *   `{ services: { smr|stt|nlp|guardrail|harness: { active } }, totalUsers, refreshedAt }`
- * into `SessionCounts`, computing the DERIVED tile values (TASK-386):
+ * into `SessionCounts`, computing the DERIVED tile values:
  *   - `activeSessions` ≈ live consultations ≈ `services.stt.active` (the live STT stream).
  *   - `processingJobs` ≈ background inference ≈ SMR + NLP + guardrail + harness active.
  * Falls back to all-zero on a missing/malformed body so tiles render 0, never NaN.

@@ -84,7 +84,7 @@ async def _app_factory(settings, mock_task_manager):
 
 async def _post_generate(app, payload: dict, *, patch_sleep: bool = False):
     """Helper: POST /api/v1/generate through the ASGI test client."""
-    payload.setdefault("model", "test-model")  # D-7: model is caller-supplied
+    payload.setdefault("model", "test-model")  # model is caller-supplied
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         if patch_sleep:

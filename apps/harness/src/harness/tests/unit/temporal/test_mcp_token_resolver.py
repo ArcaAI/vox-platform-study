@@ -1,11 +1,11 @@
-"""MCP credential resolution via the gateway (TASK-533 D-24).
+"""MCP credential resolution via the gateway.
 
-``_resolve_mcp_token`` was a hardcoded ``return None`` behind a docstring calling
+``_resolve_mcp_token`` was once a hardcoded ``return None`` behind a docstring calling
 itself a "Vault seam stub", and the harness has no Vault client at all (hvac
 appears only in comments). Any MCP server requiring auth was therefore
 uncallable, and any server that WAS reachable received an unauthenticated request.
 
-Ticket §3.1 freezes the design: the harness gets NO Vault client. The gateway
+The design freezes on: the harness gets NO Vault client. The gateway
 resolves the token over the existing X-Service-Token internal route, and the
 worker fetches it INSIDE the activity that performs the call.
 

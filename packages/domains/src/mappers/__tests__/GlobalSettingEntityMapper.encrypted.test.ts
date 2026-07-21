@@ -1,4 +1,4 @@
-// TASK-302 Phase 4 Task 4.3 — mapper round-trips encryptedValue + keyVersion
+// Mapper round-trips encryptedValue + keyVersion
 // between persistence model and domain entity via AutoClassMapper.
 import { describe, it, expect } from 'vitest';
 import { GlobalSettingEntityMapper } from '../generated/core/GlobalSettingEntityMapper';

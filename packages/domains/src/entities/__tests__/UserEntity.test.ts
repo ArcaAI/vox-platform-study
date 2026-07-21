@@ -1,5 +1,5 @@
 /**
- * UserEntity.validate() Unit Tests — TASK-261 (Tier 1)
+ * UserEntity.validate() Unit Tests
  *
  * Locks in the real invariant implementation that replaces the previous
  * `throw new BusinessException('Method not implemented.')` stub.
@@ -13,7 +13,7 @@
  *   - secret1 / secret2: optional; <= 255 chars when present
  *
  * Note: `secret*Expiry` and `lastLoginAt` / `lastActiveAt` dates are
- * track-only per TASK-261 Conservative Defaults.
+ * track-only per the Conservative Defaults policy.
  */
 
 import { describe, it, expect } from 'vitest';

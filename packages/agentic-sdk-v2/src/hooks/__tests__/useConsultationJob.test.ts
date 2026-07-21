@@ -1,5 +1,5 @@
 /**
- * useConsultationJob Hook Tests (TASK-032 WS-A)
+ * useConsultationJob Hook Tests
  *
  * @vitest-environment jsdom
  */
@@ -18,7 +18,7 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
 });
 
 let mockSSEInstance: any;
-// TASK-274 fu-useConsultationJob — capture constructor args so we can assert
+// Capture constructor args so we can assert
 // the migrated `(scope, apiClient, logger)` signature is honoured.
 let sseConstructorSpy: ReturnType<typeof vi.fn<(...args: unknown[]) => void>>;
 
@@ -149,9 +149,9 @@ describe('useConsultationJob', () => {
     });
 
     describe('streamJob', () => {
-        // TASK-274 fu-useConsultationJob — verify migration to the new
-        // `SSEClient(scope, apiClient, logger)` constructor introduced in
-        // TASK-264 W0-1, and confirm the legacy `authToken` plumbing is gone.
+        // Verify migration to the new
+        // `SSEClient(scope, apiClient, logger)` constructor, and confirm
+        // the legacy `authToken` plumbing is gone.
         it('should construct SSEClient with (scope, apiClient, logger) and connect without authToken', () => {
             const { result } = renderHook(() => useConsultationJob());
             const callbacks = { onStatus: vi.fn(), onProgress: vi.fn(), onResult: vi.fn(), onError: vi.fn() };

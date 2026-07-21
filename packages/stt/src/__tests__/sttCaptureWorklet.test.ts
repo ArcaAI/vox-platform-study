@@ -1,5 +1,5 @@
 /**
- * @arcaai/stt - STT capture worklet loader tests (TASK-270, C-3)
+ * @arcaai/stt - STT capture worklet loader tests
  *
  * Verifies the worklet loader registers via blob URL, caches across
  * AudioContexts, and exposes a non-empty processor source.

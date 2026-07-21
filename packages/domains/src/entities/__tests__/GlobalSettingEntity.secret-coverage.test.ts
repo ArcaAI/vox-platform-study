@@ -1,5 +1,5 @@
 /**
- * Phase 0 Item 4 R4 mitigation (TASK-302 Stream A) — coverage pin.
+ * @Secret coverage pin.
  *
  * Every GlobalSettingEntity field is either marked @Secret or sits in
  * the explicit non-secret allowlist below. Adding a new entity field
@@ -31,7 +31,7 @@ const NON_SECRET_ALLOWLIST = new Set([
   'tags',
   'Tags',
   'parsedValue',
-  // TASK-302 Phase 4 — Transit key version is forward-compat metadata
+  // Transit key version is forward-compat metadata
   // (which Transit key produced encryptedValue). It is NOT a secret on
   // its own — just an integer telling the decrypt path which key to use.
   'keyVersion',

@@ -1,5 +1,5 @@
 /**
- * UserDepartmentsMeController — self-service department read (BUG-005 Issue 4)
+ * UserDepartmentsMeController — self-service department read
  *
  * The admin `GET /admin/users/:id/departments` route requires `@CanManage('User')`,
  * so an end-user (or an impersonated one, whose act-as JWT carries their own

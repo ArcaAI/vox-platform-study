@@ -1,5 +1,5 @@
 /**
- * TASK-491 — `useTtsPlayback`: play synthesized speech from the gateway TTS proxy.
+ * `useTtsPlayback`: play synthesized speech from the gateway TTS proxy.
  *
  * Streams `POST /api/v1/speech/synthesize` (PCM, `stream_format:"audio"`) through
  * the SDK's authed `AgenticClient`, pumping chunks into a Web Audio ring buffer

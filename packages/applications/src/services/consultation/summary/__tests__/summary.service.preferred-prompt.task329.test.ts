@@ -1,5 +1,5 @@
 /**
- * TASK-329 P2 — SummaryService Tier-0 wiring.
+ * SummaryService Tier-0 wiring.
  *
  * The summary/pre-summary flows pass the consulting doctor's
  * `UserProfile.preferredPromptTemplateId` into PromptAssembly (→ PromptResolution

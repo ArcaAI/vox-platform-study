@@ -44,10 +44,8 @@ const createMockService = () => ({
     getVersion: vi.fn(),
     diffVersions: vi.fn(),
     getUsageStats: vi.fn(),
-    // TASK-328 A4
     testPromptTemplate: vi.fn(),
     getUsageAnalytics: vi.fn(),
-    // TASK-407
     listUsageRecords: vi.fn(),
     softDeletePromptTemplate: vi.fn(),
     assignToDepartment: vi.fn(),
@@ -96,9 +94,9 @@ describe('PromptManagementController', () => {
     });
 
     describe('GET /prompt-templates (list)', () => {
-        // TASK-328 A4 — pagination is now resolved in the repository; the
-        // controller delegates to `listPromptTemplatesPaginated` and returns
-        // its `{data,count,page,limit}` shape unchanged.
+        // Pagination is resolved in the repository; the controller delegates
+        // to `listPromptTemplatesPaginated` and returns its
+        // `{data,count,page,limit}` shape unchanged.
         const paginated = (data: unknown[], count = data.length, page = 1, limit = 50) => ({ data, count, page, limit });
 
         it('should call service.listPromptTemplatesPaginated with filters + page/limit', async () => {
@@ -208,10 +206,10 @@ describe('PromptManagementController', () => {
 
     describe('PATCH /prompt-templates/:id (update)', () => {
         it('should call service.updatePromptTemplate with id and body (no If-Match header → body wins)', async () => {
-            // TASK-302 Stream D Phase E.3 — when `@ExpectedVersion()` resolves
-            // to `undefined` (header missing on a non-`@RequiresIfMatch()`
-            // route, or in this unit test where the guard does not run), the
-            // controller forwards the request unchanged.
+            // When `@ExpectedVersion()` resolves to `undefined` (header missing
+            // on a non-`@RequiresIfMatch()` route, or in this unit test where
+            // the guard does not run), the controller forwards the request
+            // unchanged.
             const body = { content: 'Updated content', changeReason: 'Fix typo', expectedVersion: 5 };
             mockService.updatePromptTemplate.mockResolvedValue(fakeTemplateEntity);
 
@@ -297,7 +295,6 @@ describe('PromptManagementController', () => {
         });
     });
 
-    // TASK-389 #14 (AG8/A3) — server-side version diff route.
     describe('GET /prompt-templates/:id/versions/:from/diff/:to (diffVersions)', () => {
         it('delegates to service.diffVersions with id + from/to version numbers', async () => {
             const diff = { promptTemplateId: 'tpl-1', fromVersion: 1, toVersion: 2, fields: [], changes: [], patch: '', stats: { additions: 0, deletions: 0, unchanged: 0 } };
@@ -321,7 +318,7 @@ describe('PromptManagementController', () => {
         });
     });
 
-    // ─── TASK-328 A4: prompt test run ────────────────────────────────────
+    // ─── Prompt test run ────────────────────────────────────
 
     describe('POST /prompt-templates/:id/test (testTemplate)', () => {
         const fakeResult = { id: 'tpl-1', score: 0.92, output: 'Generated output', testedAt: '2026-06-02T00:00:00.000Z', version: 6 };
@@ -357,7 +354,7 @@ describe('PromptManagementController', () => {
         });
     });
 
-    // ─── TASK-328 A4: usage analytics ────────────────────────────────────
+    // ─── Usage analytics ────────────────────────────────────
 
     describe('GET /prompt-templates/analytics/usage (getUsageAnalytics)', () => {
         const fakeAnalytics = {
@@ -395,7 +392,7 @@ describe('PromptManagementController', () => {
         });
     });
 
-    // TASK-407 — raw run rows for the tenant-detail Agent Jobs surface.
+    // Raw run rows for the tenant-detail Agent Jobs surface.
     describe('GET /prompt-templates/usage-records (listUsageRecords)', () => {
         const fakePage = {
             count: 42,
@@ -448,11 +445,10 @@ describe('PromptManagementController', () => {
 
     describe('POST /prompt-templates/:id/versions/:versionNumber/activate (activateVersion)', () => {
         it('should get the version content and update the template, passing expectedVersion from the current template (TASK-302 Stream D Phase E.3)', async () => {
-            // TASK-302 Stream D Phase E.3 — `activateVersion` is a
-            // server-driven rollback (no user-supplied If-Match). The
-            // controller now re-reads the current template to capture its
-            // `_version` and forwards it as `expectedVersion` so the CAS
-            // write still has a valid predicate.
+            // `activateVersion` is a server-driven rollback (no user-supplied
+            // If-Match). The controller re-reads the current template to
+            // capture its `_version` and forwards it as `expectedVersion` so
+            // the CAS write still has a valid predicate.
             mockService.getVersion.mockResolvedValue(fakeVersionEntity);
             mockService.getPromptTemplate.mockResolvedValue({ ...fakeTemplateEntity, version: 13 });
             mockService.updatePromptTemplate.mockResolvedValue(fakeTemplateEntity);
@@ -538,7 +534,7 @@ describe('PromptManagementController', () => {
         });
     });
 
-    // ─── TASK-294 DEF-C2: Authorization metadata ─────────────────────────
+    // ─── Authorization metadata ─────────────────────────
 
     describe('Authorization decorators (DEF-C2)', () => {
         const getClassMetadata = () =>
@@ -547,10 +543,10 @@ describe('PromptManagementController', () => {
         const getMethodMetadata = (method: string) =>
             Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, (PromptManagementController.prototype as any)[method]);
 
-        // TASK-331 doc-09 D1 — plane separation. The admin read surface is
-        // bumped class-level `read`→`manage` so that granting clinicians the
-        // new `read:PromptTemplate` ability does NOT also open the admin GET
-        // routes (list/getById/versions/usage/analytics) to them. Admins keep
+        // Plane separation. The admin read surface is bumped class-level
+        // `read`→`manage` so that granting clinicians the `read:PromptTemplate`
+        // ability does NOT also open the admin GET routes
+        // (list/getById/versions/usage/analytics) to them. Admins keep
         // `manage` (no regression); the method-level create/update/delete
         // tuples are unchanged because `getAllAndOverride` lets a handler
         // decorator win over the class one.
@@ -589,15 +585,12 @@ describe('PromptManagementController', () => {
         });
     });
 
-    // ─── TASK-319 F4: prompt-template management moved under /admin ───────
     describe('TASK-319 F4 — mounted under the audited /admin prefix', () => {
         it('is served at admin/prompt-templates (not the unprefixed path)', () => {
             const path = Reflect.getMetadata(PATH_METADATA, PromptManagementController);
             expect(path).toBe('admin/prompt-templates');
         });
     });
-
-    // ─── TASK-294 DEF-C4: assign-department route ────────────────────────
 
     describe('POST /prompt-templates/assign-department (DEF-C4)', () => {
         it('should delegate to service.assignToDepartment with the request body', async () => {

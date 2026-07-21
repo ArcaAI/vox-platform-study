@@ -14,10 +14,10 @@ export class EvalScore extends BaseTenantDataModel {
   public score: number;
   public maxScore: number | null;
   public judgeModel: string | null;
-  // TASK-369 Phase 6 — plaintext rationale / details columns DROPPED;
+  // Plaintext rationale / details columns DROPPED;
   // persistence is ciphertext-only. The entity keeps these as transient fields
   // repopulated by repository decrypt-on-read.
-  // TASK-369 Phase 3C — Vault-Transit ciphertext columns + shared key version.
+  // Vault-Transit ciphertext columns + shared key version.
   public encryptedRationale: Uint8Array | null;
   public encryptedDetails: Uint8Array | null;
   public keyVersion: number | null;

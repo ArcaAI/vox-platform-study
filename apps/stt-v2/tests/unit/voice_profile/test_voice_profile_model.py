@@ -1,8 +1,7 @@
-"""Unit tests for `voice_profile_model` query helpers (TASK-296 M-6 / TASK-490).
+"""Unit tests for `voice_profile_model` query helpers.
 
 Signature-contract tests verify the read-only helpers accept the optional
-``tenant_id`` kwarg. TASK-490 (closing the TASK-296 M-6 / roadmap P2-5 TODO)
-adds the enforcement tests: the ``UserVoiceProfile`` lookups MUST filter by
+``tenant_id`` kwarg, plus enforcement tests: the ``UserVoiceProfile`` lookups MUST filter by
 ``tenantId`` (cross-tenant read returns nothing) and MUST fail closed when no
 tenant scope is supplied. The fake session emulates the database's WHERE
 semantics so the cross-tenant no-leak behaviour is asserted, not just the SQL
@@ -110,7 +109,7 @@ async def test_get_voice_profile_metadata_with_tenant_id_does_not_raise():
 
 
 # ---------------------------------------------------------------------------
-# TASK-490 — tenant scoping is ENFORCED (closes the TASK-296 M-6 TODO)
+# Tenant scoping is ENFORCED
 # ---------------------------------------------------------------------------
 
 

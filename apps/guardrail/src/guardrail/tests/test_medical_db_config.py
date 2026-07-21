@@ -1,5 +1,5 @@
 """Tests for per-tenant guardian-provider resolution at the endpoint dependency
-layer (TASK-338, Phase 4). DB access is mocked via a stub resolver.
+layer. DB access is mocked via a stub resolver.
 
 These exercise ``get_resolved_guardian_provider`` directly with a lightweight
 fake request so no live DB or running server is needed.
@@ -39,7 +39,7 @@ def _env_provider(settings: Settings) -> OpenAICompatGuardianProvider:
 
 
 def test_db_config_enabled_defaults_true(monkeypatch) -> None:
-    # TASK-506: DB-backed model resolution is the default. Safe even without a
+    # DB-backed model resolution is the default. Safe even without a
     # reachable Postgres — the resolver fails open to the env-selected engine.
     monkeypatch.delenv("GUARDRAIL_DB_CONFIG_ENABLED", raising=False)
     from guardrail.core.config import DatabaseConfig
@@ -50,7 +50,7 @@ def test_db_config_enabled_defaults_true(monkeypatch) -> None:
 @pytest.mark.asyncio
 async def test_db_config_disabled_returns_env_provider() -> None:
     settings = Settings()
-    settings.db.db_config_enabled = False  # explicit opt-out (default is True, TASK-506)
+    settings.db.db_config_enabled = False  # explicit opt-out (default is True)
     env_provider = _env_provider(settings)
 
     state = SimpleNamespace(

@@ -1,17 +1,17 @@
 /**
- * TASK-307 W3.9 — aggregator suite for the W3 cross-tenant decorator rollout.
+ * Aggregator suite for the cross-tenant decorator rollout.
  *
  * Provides a single, end-to-end audit pass that touches every endpoint the
- * `@TenantOwnedResource(...)` decorator now protects, so reviewers and CI
- * dashboards can verify the closure of audit C-2, C-3, C-4, C-5, and D-3
- * in one suite. The per-controller specs
+ * `@TenantOwnedResource(...)` decorator protects, so reviewers and CI
+ * dashboards can verify tenant isolation in one suite. The per-controller
+ * specs
  * (`task-307-{consultation-job,tenant-bucket,storage,voice-profile,
  *  transcription-job}-cross-tenant.spec.ts`) carry the deeper assertions;
  * this file only confirms each protected route returns 404 (not 200 / 500)
  * for an out-of-tenant probe.
  *
- * Filter: `pnpm test:e2e -g "TASK-307 W3"` matches this file plus the five
- * per-controller specs in the same directory.
+ * Run together with the per-controller specs in this directory
+ * (`task-307-*-cross-tenant.spec.ts`) for full coverage of the rollout.
  */
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
@@ -72,7 +72,7 @@ const CASES: ReadonlyArray<ProbeCase> = [
   {
     name: 'W3.6 — GET storage/buckets/:name',
     method: 'GET',
-    // TASK-426 — seed slug renamed audio → recordings.
+    // Seed slug is `recordings` (was `audio`).
     path: '/api/v1/storage/buckets/hope-recordings-arcaai',
     principal: 'tenantAdmin',
     expectStatuses: [404],

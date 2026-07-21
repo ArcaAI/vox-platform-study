@@ -3,7 +3,7 @@ import { Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsObject, IsOptional, IsString, IsUrl, MaxLength, ValidateNested } from 'class-validator';
 
 /**
- * TASK-498 — non-secret OIDC config, persisted verbatim into
+ * Non-secret OIDC config, persisted verbatim into
  * `TenantIdentityProvider.config` (Json). `defaultRoleId`/`defaultDepartmentId`
  * are loose refs (validated for shape only — the service resolves them against
  * the configuring tenant). `groupToRoleMap` maps an IdP group claim value to a

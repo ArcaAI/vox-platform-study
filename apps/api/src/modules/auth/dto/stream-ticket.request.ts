@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty, IsString } from 'class-validator';
 
 /**
- * Body for `POST /auth/stream-ticket` (TASK-263 W0-1 / D1).
+ * Body for `POST /auth/stream-ticket`.
  *
  * Format of `scope` is `<namespace>:<resourceId>`, e.g.
  * `consultation_job:01HG7Z…`. The guard on the target SSE route uses

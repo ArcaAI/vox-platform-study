@@ -1,5 +1,5 @@
 /**
- * useLocalVoiceEmbedding hook tests (TASK-329 P4).
+ * useLocalVoiceEmbedding hook tests.
  *
  * The LOCAL provider:
  *   - extracts a speaker embedding in-browser via an injected (mocked) embedder

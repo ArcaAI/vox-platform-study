@@ -4,7 +4,7 @@ import { getQueueToken } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { JobQueue, type QueueStats, type RedisHealthInfo } from '@arcaai/domains';
 
-/** PING round-trips at or above this are reported as `degraded` (TASK-403). */
+/** PING round-trips at or above this are reported as `degraded`. */
 const REDIS_DEGRADED_LATENCY_MS = 250;
 
 @Injectable()
@@ -56,7 +56,7 @@ export class QueueAdminService {
   }
 
   /**
-   * Probe the shared BullMQ Redis connection (TASK-403 Queues & Jobs surface).
+   * Probe the shared BullMQ Redis connection for the Queues & Jobs surface.
    * Uses the first registered queue's ioredis client: PING for latency and
    * INFO for server stats. Never throws — connection errors are reported as
    * `unhealthy` so the admin surface can always render.

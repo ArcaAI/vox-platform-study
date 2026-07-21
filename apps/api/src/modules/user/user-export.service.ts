@@ -2,12 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { buildTableExport, type TableColumn, type TableExportFile, type TableExportFormat } from '../../shared/table-export';
 
 /**
- * TASK-388 #10 — server-side user export (CSV parity + Excel + PDF).
+ * Server-side user export (CSV parity + Excel + PDF).
  *
- * TASK-390 #25 — the csv/xlsx/pdf rendering now lives in the shared, generic
+ * The csv/xlsx/pdf rendering lives in the shared, generic
  * `../../shared/table-export` module (reused by the Audit-log export); this
- * service just declares the Users column set + rows and delegates. The public
- * API (`build`) and the CSV bytes are unchanged.
+ * service just declares the Users column set + rows and delegates.
  */
 export type UserExportFormat = TableExportFormat;
 export type UserExportFile = TableExportFile;
@@ -15,12 +14,12 @@ export type UserExportFile = TableExportFile;
 export interface UserExportRow {
   id: string;
   username: string;
-  /** Human-readable email (TASK-398 P1-7 batched enrichment; blank when no profile). */
+  /** Human-readable email (batched enrichment; blank when no profile). */
   email: string;
   /** 'Service account' | 'User' */
   type: string;
   status: string;
-  /** Comma-joined department NAMES (TASK-398 P1-7; primary first, blank when none). */
+  /** Comma-joined department NAMES (primary first, blank when none). */
   departments: string;
 }
 

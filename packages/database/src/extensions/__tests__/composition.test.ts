@@ -1,5 +1,5 @@
 /**
- * Composition contract test — TASK-305 Phase B.6.
+ * Composition contract test.
  *
  * Verifies that `createExtendedPrismaClient` (the composed factory in
  * `client.ts`) chains soft-delete and tenant-scope in the correct

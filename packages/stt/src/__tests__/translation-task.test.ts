@@ -1,5 +1,5 @@
 /**
- * @arcaai/stt - TASK-300 L-2 translation task wiring
+ * @arcaai/stt - translation task wiring
  *
  * Verifies the `task: 'transcribe' | 'translate'` field flows end-to-end:
  *

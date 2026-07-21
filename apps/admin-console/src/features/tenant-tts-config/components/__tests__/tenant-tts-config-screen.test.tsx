@@ -1,5 +1,5 @@
 /**
- * TASK-504 Phase 4 — TTS Configuration screen tests: effective resolve + OCC
+ * TTS Configuration screen tests: effective resolve + OCC
  * row editor render, the If-Match save with expectedVersion, the 412 reload-merge
  * alert, and the write-only BYO credentials tab — against a URL-branching fetch
  * stub covering the BFF session route.
@@ -30,7 +30,7 @@ async function selectOption(trigger: HTMLElement, optionName: string | RegExp) {
   fireEvent.click(option);
 }
 
-/** TASK-506 registry-derived platform catalog (providers + voices). */
+/** registry-derived platform catalog (providers + voices). */
 const CATALOG: TtsPlatformCatalog = {
   providers: [
     {

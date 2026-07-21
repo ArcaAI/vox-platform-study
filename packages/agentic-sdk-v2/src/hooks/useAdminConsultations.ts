@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useAdminConsultations Hook (TASK-323 Phase 0 / TASK-320 A1)
+ * @arcaai/vox - useAdminConsultations Hook
  *
  * Tenant-wide consultation supervision for TENANT_ADMIN / GLOBAL_ADMIN. The
  * server gates `/admin/consultations` with `@CanManage('Consultation')`, so a

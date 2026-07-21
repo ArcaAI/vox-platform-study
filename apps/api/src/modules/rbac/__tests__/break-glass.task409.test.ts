@@ -1,5 +1,5 @@
 /**
- * TASK-409 — controller-layer contract for the break-glass flow.
+ * Controller-layer contract for the break-glass flow.
  *
  * The heavy matrix lives in the applications-layer suites
  * (`policy.service.break-glass.task409.test.ts` /

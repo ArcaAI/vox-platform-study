@@ -1,6 +1,5 @@
 /**
  * HarnessPolicyChange WORM enforcement — live-Postgres regression guard.
- * TASK-330 Phase 6 (Harness Administration Console).
  *
  * The migration `…_task_330_phase6_harness_policy` runs
  *   REVOKE UPDATE, DELETE ON core."HarnessPolicyChange" FROM <app role>

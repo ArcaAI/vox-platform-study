@@ -1,5 +1,5 @@
 /**
- * AuthController — TASK-295 backend impersonation security tests.
+ * AuthController — backend impersonation security tests.
  *
  * Covers:
  *   - C-1: TENANT_ADMIN(A) → DOCTOR(B) must be rejected with ForbiddenException.
@@ -17,7 +17,7 @@ import { ImpersonationEvents, ImpersonationDeniedReason } from '../impersonation
 
 const SWAGGER_API_OPERATION = 'swagger/apiOperation';
 
-// TASK-417 — SUPER_ADMIN is RETIRED; kept here only for the negative test
+// SUPER_ADMIN is RETIRED; kept here only for the negative test
 // proving the literal no longer grants elevated impersonation rights.
 const RETIRED_SUPER_ADMIN = 'SUPER_ADMIN';
 const GLOBAL_ADMIN = 'GLOBAL_ADMIN';
@@ -62,7 +62,7 @@ function createMockAppSettings() {
     };
 }
 
-// TASK-307 W2.3 — AuthController now reads JWT_SECRET_KEY exclusively
+// AuthController now reads JWT_SECRET_KEY exclusively
 // from SecretsService. Tests inject this mock as the 12th constructor
 // arg.
 function createMockSecrets() {
@@ -86,7 +86,7 @@ interface DatabaseFixture {
 }
 
 /**
- * TASK-307 W6.1 — replaces the previous `createMockDatabaseService` helper.
+ * Replaces the previous `createMockDatabaseService` helper.
  * Same `DatabaseFixture` shape (so existing test setups stay unchanged); the
  * three methods of `IUserRoleAssignmentService` mirror the prior raw-Prisma
  * answer shapes:
@@ -129,7 +129,7 @@ function buildController(opts: {
         revoke: ReturnType<typeof vi.fn>;
         isRevoked: ReturnType<typeof vi.fn>;
     };
-    // TASK-331 F-9 — impersonate() resolves the target's primary department for
+    // impersonate() resolves the target's primary department for
     // the active tenant via this service; default returns a stub assignment id.
     userDepartmentService?: { findActiveDepartmentForUserInTenant: ReturnType<typeof vi.fn> };
 }) {
@@ -154,7 +154,7 @@ function buildController(opts: {
     const refreshTokenService = { issue: vi.fn(), consume: vi.fn(), revokeFamily: vi.fn() };
     const userDepartmentService =
         opts.userDepartmentService ?? { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-default' })) };
-    // TASK-331 M-3 — AuthController emits the impersonation start/stop bracket
+    // AuthController emits the impersonation start/stop bracket
     // through EventEmitter2 (globally provided in prod via EventEmitterModule).
     const eventEmitter = { emit: vi.fn() };
     const controller = new AuthController(
@@ -376,7 +376,7 @@ describe('AuthController — TASK-295 impersonation security', () => {
         });
     });
 
-    // ─── F-4: GLOBAL_ADMIN is the elevated role for impersonation (TASK-417) ─
+    // ─── F-4: GLOBAL_ADMIN is the elevated role for impersonation ───────────
     describe('impersonate — F-4 GLOBAL_ADMIN elevated impersonation', () => {
         it('allows GLOBAL_ADMIN to impersonate cross-tenant', async () => {
             const { controller } = buildController({
@@ -496,7 +496,7 @@ describe('AuthController — TASK-295 impersonation security', () => {
         });
     });
 
-    // ─── M-3: explicit impersonation start/stop audit bracket ────────────────
+    // ─── Explicit impersonation start/stop audit bracket ─────────────────────
     describe('impersonate/revoke — M-3 lifecycle audit emission', () => {
         it('emits UserAuthenticated with phase START on impersonate', async () => {
             const { controller, eventEmitter } = buildController({
@@ -550,7 +550,7 @@ describe('AuthController — TASK-295 impersonation security', () => {
         });
     });
 
-    // ─── AC-11 (TASK-336): dedicated impersonation events + denial audit ──────
+    // ─── Dedicated impersonation events + denial audit ────────────────────────
     // The legacy `UserAuthenticated` phase bracket is preserved (above); these
     // dedicated, semantically named events are emitted IN ADDITION and, unlike
     // the success-only bracket, also record DENIED attempts.
@@ -644,7 +644,7 @@ describe('AuthController — TASK-295 impersonation security', () => {
         });
     });
 
-    // ─── AC-08 (TASK-336): Swagger description matches actual behaviour ───────
+    // ─── Swagger description matches actual behaviour ─────────────────────────
     describe('AC-08 — impersonate Swagger description accuracy', () => {
         it('documents that GLOBAL_ADMIN can impersonate a TENANT_ADMIN and only global-admin targets are blocked', () => {
             const op = Reflect.getMetadata(SWAGGER_API_OPERATION, AuthController.prototype.impersonate);

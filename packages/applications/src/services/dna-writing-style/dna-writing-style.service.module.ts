@@ -22,8 +22,8 @@ import { ConfigResolverModule } from '../config-resolver';
     ConfigModule,
     PromptManagementServiceModule,
     ConsultationJobServiceModule,
-    HarnessPolicyServiceModule, // TASK-356 D-7 — SMR-selection resolver for DnaWritingStyleProcessor
-    // TASK-356 Phase 6 (S3) — PipelinePolicyService backs the per-doctor DNA
+    HarnessPolicyServiceModule, // SMR-selection resolver for DnaWritingStyleProcessor
+    // PipelinePolicyService backs the per-doctor DNA
     // toggle (service); ConfigResolver gates the processor's learning corpus.
     PipelinePolicyServiceModule,
     ConfigResolverModule,

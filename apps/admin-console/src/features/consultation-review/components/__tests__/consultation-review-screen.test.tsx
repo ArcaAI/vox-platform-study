@@ -1,5 +1,5 @@
 /**
- * Consultation review — click-to-source evidence (TASK-533 B5, GAP-A2).
+ * Consultation review — click-to-source evidence.
  *
  * The behaviour that matters clinically is the NEGATIVE case: a claim whose
  * evidence never resolved to a transcript segment must say so. Showing an

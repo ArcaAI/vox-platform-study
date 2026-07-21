@@ -1,5 +1,5 @@
 /**
- * Frame 52 — Playground voice profiles screen (TASK-434, matrix row 36).
+ * Frame 52 — Playground voice profiles screen (matrix row 36).
  * fetch is stubbed at the network boundary by pathname (the api layer has its
  * own tests); MediaRecorder + getUserMedia are faked per test. Covers the
  * wizard validation rules (≤3 samples, ≤10 MB each, audio/* only), the
@@ -136,7 +136,7 @@ describe('VoiceProfilesScreen', () => {
         renderWithProviders(<VoiceProfilesScreen />);
 
         expect(await screen.findByRole('heading', { level: 1, name: 'My Voice Enrollment & Profiles' })).toBeDefined();
-        // Canvas-header description + the user-owned biometric chip (TASK-442 §4:
+        // Canvas-header description + the user-owned biometric chip (
         // the "runs under your own account" framing moved to the top-bar persona
         // control, so there is no page-level playground banner or status footer).
         expect(screen.getByText(/enroll & manage speaker profiles/i)).toBeDefined();

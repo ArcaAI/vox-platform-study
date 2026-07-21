@@ -21,7 +21,7 @@
 
 /**
  * The LEGACY per-segment shape the batch producer used to emit via the untyped
- * `metadata.segments` fallback (TASK-533 D-22): snake_case, SECONDS as floats,
+ * `metadata.segments` fallback: snake_case, SECONDS as floats,
  * `speaker_id`, and no text at all.
  *
  * `apps/stt-v2` now emits the camelCase consumer shape on the typed `segments`
@@ -115,7 +115,7 @@ export function computeSegmentOffsets(
       charEnd,
     };
 
-    // TASK-533 D-22 — a segment carrying NOTHING but its ordinal is the exact
+    // A segment carrying NOTHING but its ordinal is the exact
     // signature of the defect: it persists a row that can never ground a claim
     // (`resolveSegmentIdForOffset` skips null offsets). It used to happen
     // silently on every batch transcript. Report it so the caller can log loudly

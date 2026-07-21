@@ -1,4 +1,4 @@
-// TASK-504 Phase 3b (follow-up) — EffectiveSettingsService facade.
+// (follow-up) — EffectiveSettingsService facade.
 //
 // One registry-key-addressed read surface for "what is the effective value of
 // setting K for this context, and which tier set it?". It delegates to the
@@ -25,11 +25,11 @@ export interface EffectiveSettingResult {
 export class EffectiveSettingsService {
   constructor(
     private readonly configResolver: ConfigResolver,
-    // TASK-506 — resolver for models.* keys. Optional so graphs that never
+    // Resolver for models.* keys. Optional so graphs that never
     // read task-model defaults (and existing unit tests) keep working; an
     // unwired models.* read falls through to the no-resolver error.
     @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
-    // TASK-524 — backs the `global-kv` override lane. Optional so graphs that
+    // Backs the `global-kv` override lane. Optional so graphs that
     // never read KV settings (and existing unit tests) keep working; an unwired
     // resolver simply falls back to the descriptor default.
     @Optional() @Inject(IAppSettingsService) private readonly appSettings?: IAppSettingsService,
@@ -55,7 +55,7 @@ export class EffectiveSettingsService {
       return { key, tier: descriptor.tier, value: resolved[toggle], sourceScope: resolved.trace[toggle] };
     }
 
-    // TASK-506 — models.<taskKey> delegates to AiTaskDefaultService (tenant →
+    // Models.<taskKey> delegates to AiTaskDefaultService (tenant →
     // SYSTEM cascade); never re-implements data access here.
     if (key.startsWith('models.') && this.aiTaskDefaultService) {
       const taskKey = key.slice('models.'.length);
@@ -63,7 +63,7 @@ export class EffectiveSettingsService {
       return { key, tier: descriptor.tier, value: effective.modelSlug, sourceScope: effective.source ?? 'none' };
     }
 
-    // TASK-524 — the `global-kv` override lane (GAP-C5). Every global-kv key,
+    // The `global-kv` override lane. Every global-kv key,
     // INCLUDING `agentic.context.*` (which previously short-circuited to the
     // code default here), now resolves through the AppSettings cache that the
     // registry write lane populates:

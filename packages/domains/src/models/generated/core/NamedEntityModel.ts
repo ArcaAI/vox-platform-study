@@ -10,17 +10,17 @@ import * as Models from './';
 export class NamedEntity extends BaseTenantDataModel {
   public contextItemId: string;
   public className: string;
-  // TASK-369 Phase 6 — plaintext text / normalizedText columns DROPPED;
+  // Plaintext text / normalizedText columns DROPPED;
   // persistence is ciphertext-only. The entity keeps these as transient fields
   // repopulated by repository decrypt-on-read. The coded ontology fields below
   // (umlsCui/snomedCode/…) are NOT encrypted and remain plaintext columns.
-  // TASK-330 Phase 1 — clinical ontology normalization codes
+  // Clinical ontology normalization codes
   public umlsCui: string | null;
   public snomedCode: string | null;
   public rxnormCode: string | null;
   public icdCode: string | null;
   public loincCode: string | null;
-  // TASK-330 Phase 1 — transcript-span provenance
+  // Transcript-span provenance
   public transcriptContextItemId: string | null;
   public transcriptStartOffset: number | null;
   public transcriptEndOffset: number | null;
@@ -32,7 +32,7 @@ export class NamedEntity extends BaseTenantDataModel {
   public aiModelId: string | null;
   public aiModelVersion: string | null;
   public processingTimeMs: number | null;
-  // TASK-369 Phase 3C — Vault-Transit ciphertext columns + shared key version.
+  // Vault-Transit ciphertext columns + shared key version.
   public encryptedText: Uint8Array | null;
   public encryptedNormalizedText: Uint8Array | null;
   public encryptedMetadata: Uint8Array | null;

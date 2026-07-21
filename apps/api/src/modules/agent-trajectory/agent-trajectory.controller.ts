@@ -17,12 +17,10 @@ import { AggregateGenerationMetricsQuery, ListAgentTrajectorySessionsQuery, List
  * for the ordered session trajectory, mounted at `/admin/agent-trajectory/*`
  * (global prefix → `/api/v1/admin/agent-trajectory/*`).
  *
- * Gated at the class level by `@CanRead('AgentTrajectory')` (TASK-532 M-12).
- * Two things changed from the original borrowed `@CanManage('HarnessPolicy')`:
- * the subject is now this controller's own, and the action is `read` — nothing
- * here mutates, so `manage` was overkill. No Prisma migration was required: the
- * audit `ResourceType` enum only needs values for subjects that emit audit
- * rows, and this read-only surface broadcasts no mutation sys-event. A later
+ * Gated at the class level by `@CanRead('AgentTrajectory')` — read-only, so
+ * `manage` would be overkill. No Prisma migration is required: the audit
+ * `ResourceType` enum only needs values for subjects that emit audit rows,
+ * and this read-only surface broadcasts no mutation sys-event. A later
  * ticket adding trajectory writes appends the enum value then.
  *
  * Tenant scoping mirrors `HarnessAdminController`: tenant admins are

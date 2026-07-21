@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useTenantStorageConfig Hook (TASK-323 Phase 0 / TASK-318 R9)
+ * @arcaai/vox - useTenantStorageConfig Hook
  *
  * Per-tenant / per-bucket storage provider configuration (backend + topology)
  * for TENANT_ADMIN / GLOBAL_ADMIN. The server gates

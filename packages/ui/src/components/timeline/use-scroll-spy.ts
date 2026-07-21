@@ -18,7 +18,7 @@ export interface UseScrollSpyResult {
 }
 
 /**
- * Scroll-spy controller (TASK-378 §4a.3). An `IntersectionObserver` watches each
+ * Scroll-spy controller. An `IntersectionObserver` watches each
  * registered entry; the **topmost in-view** entry is reported as active. CSS-first
  * (no scroll listeners on the hot path); `offset` shrinks the observer root from
  * the top so the active line sits where the sticky marker pins.

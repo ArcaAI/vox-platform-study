@@ -79,7 +79,7 @@ export {
 } from './types/index.js';
 
 // ============================================================================
-// Constants (CDN version pinning — TASK-271 C-1 / C-2)
+// Constants (CDN version pinning)
 // ============================================================================
 
 export { VAD_WEB_VERSION, ORT_WEB_VERSION, DEFAULT_BASE_ASSET_PATH, DEFAULT_ONNX_WASM_BASE_PATH } from './constants.js';

@@ -1,6 +1,6 @@
 /**
- * TASK-310 E-6 (AC-6) — `RequestWithAuth` interface narrows the
- * authentication-pipeline-set fields on the Express `Request` so that
+ * `RequestWithAuth` interface narrows the authentication-pipeline-set
+ * fields on the Express `Request` so that
  * controllers, guards, and interceptors reading `request.apiKey`,
  * `request.user`, and `request.tenantId` get a typed handle instead of
  * an `any` / bracket-notation lookup that silently swallows typos

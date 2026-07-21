@@ -1,8 +1,8 @@
 /**
- * @arcaai/noise-filter — Wave 2 (TASK-304 Wave 2) bug fix tests.
+ * @arcaai/noise-filter — bug fix tests.
  *
  * Covers:
- *   • W2-NF-1 — `NoiseFilterProcessor.updateOptions({ noiseCancellation })` actually
+ *   • `NoiseFilterProcessor.updateOptions({ noiseCancellation })` actually
  *               propagates the toggle to the worklet / fallback processor. Prior to
  *               this fix the field was stored in `this.options` only; the audio kept
  *               being filtered (or kept passing through) regardless.

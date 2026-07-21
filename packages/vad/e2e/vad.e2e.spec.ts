@@ -821,8 +821,8 @@ test.describe('@arcaai/vad UI Interaction Tests', () => {
   });
 });
 
-// TASK-271 (C-3 / C-4): the `@arcaai/vad Worklet Loader Tests` describe block
-// was removed when the dead custom worklet code (`registerVADWorklet`,
+// The `@arcaai/vad Worklet Loader Tests` describe block was removed when
+// the dead custom worklet code (`registerVADWorklet`,
 // `createVADWorkletNode`, `cleanupVADWorkletResources`, `isVADWorkletRegistered`,
 // `WORKLET_PROCESSOR_NAME`) was deleted from the package public surface.
 // The production VAD path uses `@ricky0123/vad-web`'s own worklet; no custom

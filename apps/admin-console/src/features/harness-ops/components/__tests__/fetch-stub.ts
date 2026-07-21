@@ -20,7 +20,7 @@ export function sessionPayload(overrides: { isElevated?: boolean; workingTenantI
         workingTenantName: workingTenantId ? 'Sunrise Medical Group' : null,
         impersonatingUserId: null,
         impersonatingUsername: null,
-        // BUG-005 — WorkingTenantGate now reads the effective identity; these
+        // WorkingTenantGate now reads the effective identity; these
         // fixtures never impersonate, so it mirrors the operator fields.
         effectiveUser: { ...user, tenantId: null, departmentId: null },
         effectiveIsElevated: isElevated,

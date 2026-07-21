@@ -1,9 +1,9 @@
 /**
- * @arcaai/vox - useRoles Hook (TASK-032 WS-G, refactored TASK-039, TASK-279 R-05)
+ * @arcaai/vox - useRoles Hook
  *
  * Role management and user-role assignment hook for admin operations.
  *
- * TASK-279 R-05: split user-role assignment into the canonical admin path.
+ * User-role assignment uses the canonical admin path.
  * The pre-existing `getUserRoles` / `assignRole` / `removeRole` API surface
  * is kept as deprecated aliases that delegate to the new methods, with a
  * one-time `console.warn` per hook instance. The aliases will be removed in
@@ -18,7 +18,7 @@ import { extractArray } from '../utils/responseUtils';
 import type { BreakGlassCredentials } from './usePolicies';
 
 /**
- * Built-in user role identifiers (TASK-265 W0-10).
+ * Built-in user role identifiers.
  *
  * Re-exported from `core/constants` so consumers importing the role hook get
  * the canonical typed tuple alongside the API surface.
@@ -70,24 +70,24 @@ export interface UseRolesReturn {
   getRole: (id: string) => Promise<Role>;
   createRole: (input: CreateRoleInput) => Promise<Role>;
   updateRole: (id: string, input: UpdateRoleInput) => Promise<Role>;
-  /** TASK-409 — deletion requires break-glass confirmation (confirm the ROLE name). */
+  /** Deletion requires break-glass confirmation (confirm the ROLE name). */
   deleteRole: (id: string, breakGlass?: BreakGlassCredentials) => Promise<void>;
   assignPolicy: (roleId: string, policyId: string, priority?: number) => Promise<unknown>;
-  /** TASK-409 — detach requires break-glass confirmation (confirm the POLICY name). */
+  /** Detach requires break-glass confirmation (confirm the POLICY name). */
   removePolicy: (roleId: string, policyId: string, breakGlass?: BreakGlassCredentials) => Promise<void>;
 
-  // TASK-279 R-05 — admin user-role assignment surface
+  // Admin user-role assignment surface
   // (uses ADMIN_USER_ROLES_ENDPOINTS → /admin/users/:id/roles[/:assignmentId])
   listUserRoleAssignments: (userId: string) => Promise<UserRoleAssignment[]>;
   assignRoleToUser: (userId: string, roleId: string, tenantId?: string) => Promise<UserRoleAssignment>;
   removeUserRoleAssignment: (userId: string, assignmentId: string) => Promise<void>;
 
-  /** @deprecated TASK-279 R-05 — use `listUserRoleAssignments` instead. */
+  /** @deprecated Use `listUserRoleAssignments` instead. */
   getUserRoles: (userId: string) => Promise<UserRoleAssignment[]>;
-  /** @deprecated TASK-279 R-05 — use `assignRoleToUser` instead. */
+  /** @deprecated Use `assignRoleToUser` instead. */
   assignRole: (userId: string, roleId: string, tenantId?: string) => Promise<UserRoleAssignment>;
   /**
-   * @deprecated TASK-279 R-05 — use `removeUserRoleAssignment` instead. The
+   * @deprecated Use `removeUserRoleAssignment` instead. The
    * second argument is `assignmentId` (a join-table row id), NOT a roleId.
    */
   removeRole: (userId: string, assignmentId: string) => Promise<void>;
@@ -140,7 +140,7 @@ export function useRoles(): UseRolesReturn {
   const deleteRole = useCallback(
     (id: string, breakGlass?: BreakGlassCredentials) =>
       execute<void>('deleteRole', async (client) => {
-        // Conditional arity keeps the pre-TASK-409 wire shape for callers
+        // Conditional arity keeps the legacy wire shape for callers
         // that pass no confirmation (the API then replies 428).
         if (breakGlass) {
           await client.delete(ROLE_ENDPOINTS.DELETE(id), { data: breakGlass });
@@ -173,7 +173,7 @@ export function useRoles(): UseRolesReturn {
   );
 
   // -------------------------------------------------------------------------
-  // TASK-279 R-05 — admin user-role assignment surface
+  // Admin user-role assignment surface
   // -------------------------------------------------------------------------
 
   const listUserRoleAssignments = useCallback(

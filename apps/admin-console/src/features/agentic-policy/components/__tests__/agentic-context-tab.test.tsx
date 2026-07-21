@@ -1,5 +1,5 @@
 /**
- * Agentic Context tab — READ/WRITE registry lane (TASK-533 B2).
+ * Agentic Context tab — READ/WRITE registry lane.
  *
  * The tab was a metadata-only inventory that pointed elsewhere for editing, so
  * the `agentic.context.*` knobs a global admin could see were not editable here

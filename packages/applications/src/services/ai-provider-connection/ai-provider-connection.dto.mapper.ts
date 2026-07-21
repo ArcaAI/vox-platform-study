@@ -2,7 +2,7 @@ import { AiProviderConnectionEntity } from '@arcaai/domains';
 import { AiProviderConnectionResponse } from './dto';
 
 /**
- * TASK-524 — entity → masked response projection.
+ * Entity → masked response projection.
  *
  * The ONLY place a connection entity becomes client-visible. `encryptedApiKey`
  * is never copied onto the response — presence is reported through `hasKey`.

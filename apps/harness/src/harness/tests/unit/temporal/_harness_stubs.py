@@ -63,7 +63,7 @@ _OK_NOTE = '{"subjective": "s", "objective": "o", "assessment": "a", "plan": "p"
 
 
 def _stub_ref(name: str) -> ClaimCheckRef:
-    """A dummy claim-check ref for the offloaded-payload replay fixture (TASK-483).
+    """A dummy claim-check ref for the offloaded-payload replay fixture.
 
     Replay never dereferences it (activities are not re-run on replay — the recorded
     result is fed back), so the key/sha need only be well-formed, not resolvable.
@@ -80,10 +80,10 @@ class StubConfig:
     verdicts: list[str] = field(default_factory=lambda: ["PASS"])
     nlp_fails: bool = False
     generate_fails: bool = False
-    # TASK-354 (replay fixture): make ``persist_draft`` raise so the workflow reaches the
-    # TASK-348 failure-terminal path AFTER the inferential pass has run. Used to capture a
-    # post-TASK-348 history that exercises BOTH patch gates and includes the
-    # ``run_inferential_sensors`` command for the replay-compat suite.
+    # Makes ``persist_draft`` raise so the workflow reaches the failure-terminal path
+    # AFTER the inferential pass has run. Used to capture a replay-fixture history that
+    # exercises BOTH patch gates and includes the ``run_inferential_sensors`` command
+    # for the replay-compat suite.
     persist_draft_fails: bool = False
     note_content: str = _OK_NOTE
     # Inferential pass (Phase 2): one kind per ``run_inferential_sensors`` invocation
@@ -101,15 +101,15 @@ class StubConfig:
     # makes the stub raise (endpoint unavailable) so the workflow degrades to the
     # code defaults — i.e. unchanged Phase 1-3 behaviour for the existing tests.
     policy: HarnessPolicy | None = None
-    # TASK-345 progress feed: make the ``report_progress`` stub raise (progress
+    # Progress feed: make the ``report_progress`` stub raise (progress
     # pipeline down) — the workflow must shrug it off and complete normally.
     progress_fails: bool = False
-    # TASK-480 Half-B: make the TRANSCRIPT ``extract_entities`` stub return
+    # Make the TRANSCRIPT ``extract_entities`` stub return
     # ``reused=True`` (simulating CODED priors available) so tests can assert the
     # workflow SKIPS the redundant ``persist_entities``. The note-NER calls
     # (reuse_priors=False) always return reused=False. Default False ⇒ the cold path.
     reuse_transcript_priors: bool = False
-    # TASK-483 claim-check: make the ``generate`` + ``assemble_prompt`` stubs return
+    # Claim-check: make the ``generate`` + ``assemble_prompt`` stubs return
     # OFFLOADED results (inline emptied + a ClaimCheckRef) so the captured history carries
     # the ref-threaded (new-run) command sequence for the replay-compat fixture. The
     # command sequence is identical to the inline happy path — only the payloads differ.
@@ -131,20 +131,19 @@ class StubRecorder:
     """Captures what the workflow drove (call counts + payloads)."""
 
     calls: Counter = field(default_factory=Counter)
-    # TASK-355 Phase D (Slice 4a): ordered call trace so tests can assert the
-    # optimistic REORDER (early persist BEFORE the inferential pass, "completed"
-    # progress BEFORE assurance, finalize AFTER). Progress entries are
-    # ``progress:<stage>``; activities are recorded by name.
+    # Ordered call trace so tests can assert the optimistic REORDER (early persist
+    # BEFORE the inferential pass, "completed" progress BEFORE assurance, finalize
+    # AFTER). Progress entries are ``progress:<stage>``; activities are recorded by name.
     call_order: list[str] = field(default_factory=list)
     fetch_policy_inputs: list[FetchPolicyInput] = field(default_factory=list)
-    # TASK-480 Half-B: the ExtractEntitiesInput of each extract pass (transcript then
+    # The ExtractEntitiesInput of each extract pass (transcript then
     # note), so tests can assert the transcript pass carried reuse_priors + the ids.
     extract_entities_inputs: list[ExtractEntitiesInput] = field(default_factory=list)
     persist_entities_inputs: list[PersistEntitiesInput] = field(default_factory=list)
     persist_draft_inputs: list[PersistDraftInput] = field(default_factory=list)
-    # TASK-355 Phase D (Slice 4a): the finalize_assurance payloads (optimistic path).
+    # The finalize_assurance payloads (optimistic path).
     finalize_inputs: list[FinalizeAssuranceInput] = field(default_factory=list)
-    # TASK-481 (E2): the retract_draft payloads (optimistic FLAG -> retraction net).
+    # The retract_draft payloads (optimistic FLAG -> retraction net).
     retract_inputs: list[RetractDraftInput] = field(default_factory=list)
     record_inputs: list[RecordGateInput] = field(default_factory=list)
     escalate_inputs: list[EscalateInput] = field(default_factory=list)
@@ -155,10 +154,10 @@ class StubRecorder:
     generate_inputs: list[GenerateInput] = field(default_factory=list)
     run_sensors_inputs: list[RunSensorsInput] = field(default_factory=list)
     progress_inputs: list[ReportProgressInput] = field(default_factory=list)
-    # TASK-348 / MAJ-9: the schedule_to_close_timeout each report_progress
+    # The schedule_to_close_timeout each report_progress
     # emission was scheduled with (None = unbounded queue wait).
     progress_schedule_to_close: list[timedelta | None] = field(default_factory=list)
-    # TASK-355 Phase D (Slice 4b): edit-injection hook. To test the signal-driven
+    # Edit-injection hook. To test the signal-driven
     # edit-during-assurance path (Q3) deterministically with instant stubs, the
     # run_inferential_sensors stub fires an ``edit`` signal back at the running
     # workflow from INSIDE its Nth invocation — so the signal lands while that
@@ -167,7 +166,7 @@ class StubRecorder:
     # 0-based invocation index to inject on + the payload.
     edit_signal_handle: object | None = None
     edit_on_inferential_index: int | None = None
-    # C1-02 (TASK-458): inject an edit on EACH of these inferential invocations (a set of
+    # Inject an edit on EACH of these inferential invocations (a set of
     # 0-based indices) so the edit-rerun CAP can be exercised — N edits across N passes.
     edit_on_inferential_indices: set[int] | None = None
     edit_payload: EditSignal | None = None
@@ -310,7 +309,7 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
         recorder.extract_entities_inputs.append(payload)
         if config.nlp_fails:
             raise ApplicationError("nlp unavailable", non_retryable=True)
-        # TASK-480 Half-B: only the transcript pass (reuse_priors=True) can reuse; the
+        # Only the transcript pass (reuse_priors=True) can reuse; the
         # note-NER calls stay cold. Models the real activity's contract at the workflow
         # boundary (the apps/api load + code gate is covered in test_activities).
         reused = bool(config.reuse_transcript_priors and payload.reuse_priors)
@@ -345,7 +344,7 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
     @activity.defn(name="assemble_prompt")
     async def assemble_prompt(payload: AssembleInput) -> AssembleResponse:
         recorder.calls["assemble_prompt"] += 1
-        # TASK-483: on the claim-check fixture, return the prompts OFFLOADED (inline
+        # On the claim-check fixture, return the prompts OFFLOADED (inline
         # emptied + refs) so the captured history threads the ref shape.
         user_prompt, user_ref = ("", _stub_ref("uprompt")) if config.claim_check else ("U", None)
         system_prompt, system_ref = ("", _stub_ref("sprompt")) if config.claim_check else ("S", None)
@@ -385,7 +384,7 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
         recorder.generate_inputs.append(payload)
         if config.generate_fails:
             raise ApplicationError("smr unavailable", non_retryable=True)
-        # TASK-483: on the claim-check fixture, return the note OFFLOADED (content emptied
+        # On the claim-check fixture, return the note OFFLOADED (content emptied
         # + ref) so the captured history threads content_ref to the downstream activities.
         content, content_ref = ("", _stub_ref("note")) if config.claim_check else (config.note_content, None)
         return SmrGenerationResult(
@@ -418,7 +417,7 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
         recorder.calls["run_inferential_sensors"] += 1
         recorder.call_order.append("run_inferential_sensors")
         recorder.inferential_inputs.append(payload)
-        # TASK-355 Slice 4b: fire a clinician EDIT back at the workflow DURING this
+        # Fire a clinician EDIT back at the workflow DURING this
         # assurance pass (the signal is recorded mid-activity, so it is buffered and
         # delivered when the workflow resumes after this activity completes —
         # deterministic on replay). Drives the Q3 re-bind/re-run path.
@@ -448,7 +447,7 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
 
     @activity.defn(name="finalize_assurance")
     async def finalize_assurance(payload: FinalizeAssuranceInput) -> FinalizeAssuranceResponse:
-        # TASK-355 Phase D (Slice 4a): second phase of optimistic delivery — apps/api
+        # Second phase of optimistic delivery — apps/api
         # backfills the early SummaryMeta + flips to PENDING_REVIEW. The stub just
         # records the payload so tests can assert the verdict that was finalized.
         recorder.calls["finalize_assurance"] += 1
@@ -458,7 +457,7 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
 
     @activity.defn(name="retract_draft")
     async def retract_draft(payload: RetractDraftInput) -> RetractDraftResponse:
-        # TASK-481 (E2): the optimistic FLAG retraction net — apps/api marks the delivered
+        # The optimistic FLAG retraction net — apps/api marks the delivered
         # draft RETRACTED + WORM + clinician event. The stub records the payload so tests can
         # assert the FLAG verdict + offending claims that drove the retraction.
         recorder.calls["retract_draft"] += 1
@@ -485,7 +484,7 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
         recorder.progress_inputs.append(payload)
         recorder.progress_schedule_to_close.append(activity.info().schedule_to_close_timeout)
         if config.progress_fails:
-            # RETRYABLE on purpose (TASK-348 / TG-2): the workflow's
+            # RETRYABLE on purpose: the workflow's
             # _PROGRESS_RETRY pins maximum_attempts=1, so each emission must be
             # attempted EXACTLY once even though the server would retry this.
             raise ApplicationError("progress pipeline down")

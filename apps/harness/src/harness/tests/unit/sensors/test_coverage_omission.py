@@ -1,4 +1,4 @@
-"""Coverage / omission sensor tests (RED-first).
+"""Coverage / omission sensor tests.
 
 Heuristic under test: every clinical entity extracted from the *transcript* must
 be reflected in the note (by a note NER span or a verbatim mention). Transcript

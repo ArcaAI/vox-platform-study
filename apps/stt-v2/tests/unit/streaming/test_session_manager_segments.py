@@ -1,4 +1,4 @@
-"""Streaming transcript SEGMENTS reach the gateway (TASK-533 D-22).
+"""Streaming transcript SEGMENTS reach the gateway.
 
 The evidence-grounding pillar (harness ``segment_citations`` → click-to-source)
 depends on ``TranscriptSegment`` rows. The NestJS ingest side was built and wired

@@ -1,4 +1,4 @@
-"""faster-whisper (CTranslate2) streaming ASR engine adapter — TASK-351 P1-2.
+"""faster-whisper (CTranslate2) streaming ASR engine adapter.
 
 Exposes the same ASR-callable contract as the other streaming engines
 (``(samples, sample_rate, *, prompt) -> {text, language, word_timestamps,
@@ -148,7 +148,7 @@ class FasterWhisperAsrAdapter:
         ``WhisperModel``; ``extra["batched_pipeline"]`` optionally carries a
         ``BatchedInferencePipeline`` (preferred when present).
     inference_config:
-        Pipeline ``InferenceConfig``. Language semantics (TASK-351 P2-1): a
+        Pipeline ``InferenceConfig``. Language semantics: a
         configured ``language`` is always pinned (even with code_switching
         enabled); ``language: null`` → auto-LID. BCP-47 tags are normalized
         to the primary subtag.
@@ -170,7 +170,7 @@ class FasterWhisperAsrAdapter:
                 "FasterWhisperAsrAdapter requires a FASTER_WHISPER "
                 f"LoadedModel, got {loaded_model.format}"
             )
-        # TASK-351 P2-3 — "translate" builds the English-gloss variant.
+        # "translate" builds the English-gloss variant.
         self._task = task
         self._loaded = loaded_model
         self._model = loaded_model.model
@@ -184,7 +184,7 @@ class FasterWhisperAsrAdapter:
             else None
         )
 
-        # TASK-351 P2-1 — a configured language is always pinned (passed to
+        # A configured language is always pinned (passed to
         # the engine), including when code_switching is enabled. language:
         # null keeps auto-LID.
         lang = getattr(inference_config, "language", None)

@@ -1,11 +1,11 @@
-// TASK-369 (Data Encryption Initiative) Phase 3C — field encryption for
+// Field encryption for
 // Highlight (W3C quote selectors `exact`/`prefix`/`suffix` + free-text `note`).
 //
 // Sibling file mirroring ContextItemRepository.encryption.ts (declaration
 // merging + prototype patching). All four fields share ONE `keyVersion`
 // column; shared Buffer/ciphertext primitives live in
 // common/field-encryption.ts and default to the `hope-phi` Transit key.
-// Phase 6 dropped the plaintext columns; reads decrypt the ciphertext only.
+// The plaintext columns have been dropped; reads decrypt the ciphertext only.
 
 import { HighlightRepository } from './HighlightRepository';
 import { HighlightEntity } from '../../../entities';
@@ -97,7 +97,7 @@ HighlightRepository.prototype.decryptFieldsFromEntity = async function (
   const prefix = await decryptCiphertextToString(secrets, entity.encryptedPrefix);
   const suffix = await decryptCiphertextToString(secrets, entity.encryptedSuffix);
   const note = await decryptCiphertextToString(secrets, entity.encryptedNote);
-  // TASK-369 Phase 6 — plaintext columns dropped; decrypt ciphertext only.
+  // Plaintext columns dropped; decrypt ciphertext only.
   return { exact, prefix, suffix, note };
 };
 

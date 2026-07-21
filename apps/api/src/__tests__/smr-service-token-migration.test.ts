@@ -1,4 +1,4 @@
-// TASK-302 Phase 3 Task 3.4 — pin the apps/api SMR_SERVICE_TOKEN sites.
+// Pin the apps/api SMR_SERVICE_TOKEN sites.
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';

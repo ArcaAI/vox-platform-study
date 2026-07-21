@@ -1,4 +1,4 @@
-"""Tests for the shared per-endpoint LLM concurrency governor + retry (TASK-330).
+"""Tests for the shared per-endpoint LLM concurrency governor + retry.
 
 The governor exists so the concurrent inferential pass (groundedness +
 citation_verify + safety) can no longer burst the shared LM Studio box: all
@@ -269,12 +269,12 @@ def test_is_retryable_classification():
 
 
 # --------------------------------------------------------------------------- #
-# per-call wall-clock timeout (TASK-354 Defect A)
+# per-call wall-clock timeout
 # --------------------------------------------------------------------------- #
 
 
 def test_request_timeout_default_is_120():
-    # Safety net for the raised HARNESS_LLM_MAX_CONCURRENCY (TASK-355 Phase A): a hung
+    # Safety net for the raised HARNESS_LLM_MAX_CONCURRENCY: a hung
     # call must be bounded by default, not only when an operator opts in.
     assert LlmGovernorConfig().request_timeout_s == 120.0
 

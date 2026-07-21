@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - usePipelines Hook (TASK-032 WS-A, refactored TASK-039)
+ * @arcaai/vox - usePipelines Hook
  *
  * Pipeline discovery and selection hook.
  */
@@ -13,7 +13,7 @@ import { appendPagination } from '../utils/urlUtils';
 import type { PaginationParams } from '../types/common';
 
 /**
- * TASK-298 D-5 — Namespace + key used to persist the doctor's chosen
+ * Namespace + key used to persist the doctor's chosen
  * pipeline through the existing UserSettings backend
  * (`PATCH /user/me/settings/:namespace/:key`). The server-side validator
  * in `UserSettingsController` rejects cross-tenant pipeline ids.
@@ -31,10 +31,10 @@ export interface Pipeline {
   configYaml?: string;
   tags?: string[];
   resourceStatus?: string;
-  /** TASK-328 A6 — whether this pipeline is the tenant's default. */
+  /** Whether this pipeline is the tenant's default. */
   isDefault?: boolean;
   /**
-   * Row's optimistic-concurrency version (TASK-302 Stream D Phase E.4) —
+   * Row's optimistic-concurrency version —
    * `_version` in the database. Echo back via the `If-Match` header (or
    * the body's `expectedVersion`) on the next PATCH so the server can
    * run a Compare-And-Set.
@@ -44,7 +44,7 @@ export interface Pipeline {
 }
 
 /**
- * TASK-328 A6 — a single config-version snapshot of a pipeline. Written on
+ * A single config-version snapshot of a pipeline. Written on
  * every YAML config change; surfaced for the versions list + diff/view UI.
  */
 export interface PipelineVersion {
@@ -74,7 +74,7 @@ export interface UpdatePipelineInput {
   description?: string;
   tags?: string[];
   /**
-   * Optimistic-concurrency token (TASK-302 Stream D Phase E.4) — should
+   * Optimistic-concurrency token — should
    * match the `version` the SDK read from the prior `get()`. The server
    * fails with `412 Precondition Failed` when the row drifted. When the
    * caller uses `If-Match` instead, the header wins.
@@ -96,7 +96,7 @@ export interface UsePipelinesReturn {
   get: (id: string) => Promise<Pipeline>;
   getBySlug: (slug: string) => Promise<Pipeline>;
   /**
-   * Set the active pipeline. TASK-298 D-5 — also persists the choice to
+   * Set the active pipeline. Also persists the choice to
    * `PATCH /user/me/settings/arcaai-sdk/selectedPipelineId`. Backwards
    * compatible: the return type is `Promise<void>`, but synchronous callers
    * that drop the promise still get the immediate local-state update.
@@ -107,17 +107,17 @@ export interface UsePipelinesReturn {
   deletePipeline: (id: string) => Promise<void>;
   validateConfig: (configYaml: string) => Promise<PipelineValidationResult>;
   assignToTenant: (pipelineId: string, tenantId: string) => Promise<{ message: string }>;
-  /** TASK-328 A6 — mark a pipeline as the tenant default (unsets the previous). */
+  /** Mark a pipeline as the tenant default (unsets the previous). */
   setDefault: (pipelineId: string) => Promise<Pipeline>;
   /**
-   * TASK-328 A6 — enable/disable a pipeline. OCC-guarded: pass the `version`
+   * Enable/disable a pipeline. OCC-guarded: pass the `version`
    * read from `list`/`get`; it is replayed as the `If-Match` header so the
    * server can run a Compare-And-Set (stale version → 412).
    */
   toggle: (pipelineId: string, enabled: boolean, expectedVersion: number) => Promise<Pipeline>;
-  /** TASK-328 A6 — list config-version snapshots (newest first). */
+  /** List config-version snapshots (newest first). */
   listVersions: (pipelineId: string) => Promise<PipelineVersion[]>;
-  /** TASK-328 A6 — get one config-version snapshot by version number. */
+  /** Get one config-version snapshot by version number. */
   getVersion: (pipelineId: string, versionNumber: number) => Promise<PipelineVersion>;
 }
 
@@ -155,7 +155,7 @@ export function usePipelines(): UsePipelinesReturn {
         return;
       }
 
-      // TASK-298 D-5 — persist selection through the existing UserSettings
+      // Persist selection through the existing UserSettings
       // backend. The server validator rejects cross-tenant pipeline ids
       // with `BadRequestException`; we swallow the failure here so the UI
       // remains responsive (the caller's `error` state still surfaces it).
@@ -213,7 +213,7 @@ export function usePipelines(): UsePipelinesReturn {
     [execute],
   );
 
-  // TASK-328 A6 — mark a pipeline as the tenant default; reflect the flipped
+  // Mark a pipeline as the tenant default; reflect the flipped
   // `isDefault` flags locally (the newly-default one true, all others false).
   const setDefault = useCallback(
     (pipelineId: string) =>
@@ -225,7 +225,7 @@ export function usePipelines(): UsePipelinesReturn {
     [execute],
   );
 
-  // TASK-328 A6 — enable/disable. OCC: replay the row version as `If-Match`
+  // Enable/disable. OCC: replay the row version as `If-Match`
   // (RFC 7232 strong validator) so the server runs a Compare-And-Set.
   const toggle = useCallback(
     (pipelineId: string, enabled: boolean, expectedVersion: number) =>

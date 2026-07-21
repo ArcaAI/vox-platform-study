@@ -1,5 +1,5 @@
 /**
- * TASK-392 (Q4 trial-expiry + Q10 downgrade soft-disable) — lifecycle service.
+ * (Q4 trial-expiry + Q10 downgrade soft-disable) — lifecycle service.
  *
  * Behaviour under test (not the mock plumbing):
  *   - expireTrials: downgrades ONLY expired TRIAL tenants to STARTER, PLAN-ONLY

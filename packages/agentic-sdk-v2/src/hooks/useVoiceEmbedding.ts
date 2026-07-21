@@ -1,16 +1,14 @@
 /**
- * @arcaai/vox - useVoiceEmbedding Hook (TASK-265 W0-7 / GAP-02 rewrite; TASK-296 C-1/H-1/H-3/H-7)
+ * @arcaai/vox - useVoiceEmbedding Hook
  *
  * Targets the real `/voice-profile` API surface:
  *   POST   /voice-profile/enroll              (multipart, up to 3 files)
  *   GET    /voice-profile                     (current user's profiles)
  *   DELETE /voice-profile/:id                 (by profile id, not user id)
- *   PATCH  /voice-profile/:id/activate        (TASK-296 C-1)
- *   PATCH  /voice-profile/:id/deactivate      (TASK-296 C-1)
+ *   PATCH  /voice-profile/:id/activate
+ *   PATCH  /voice-profile/:id/deactivate
  *
  * Replaces the legacy `/users/:userId/voice-embedding` flow which 100% 404'd.
- * See docs/implementation/TASK-265-SDK-Endpoint-Drift/README.md and
- * docs/implementation/TASK-296-Voice-Profile-End-to-End/README.md.
  */
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
@@ -54,7 +52,7 @@ export interface UseVoiceEmbeddingReturn {
 }
 
 /**
- * TASK-296 H-1: namespace cache keys per (userId, tenantId) so logout / tenant
+ * Namespace cache keys per (userId, tenantId) so logout / tenant
  * switch evicts the cache automatically. Passphrase is non-PHI and stable per
  * (user, tenant) — only used to derive a localStorage encryption key for
  * defence-in-depth (the cached payload is just metadata, no embeddings).
@@ -82,7 +80,7 @@ function normalizeFiles(files: EnrollFiles): ReadonlyArray<File | Blob> {
 }
 
 /**
- * TASK-296 H-7: refuse non-audio inputs at the SDK boundary so the user gets
+ * Refuse non-audio inputs at the SDK boundary so the user gets
  * a friendly error instead of an opaque 400 from `FileTypeValidator`.
  */
 function assertAllAudio(fileList: ReadonlyArray<File | Blob>): void {

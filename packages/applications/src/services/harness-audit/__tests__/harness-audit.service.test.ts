@@ -1,5 +1,5 @@
 /**
- * HarnessAuditService unit tests (TASK-330 Phase 0).
+ * HarnessAuditService unit tests.
  *
  * Verifies the append-only write computes the hash chain correctly (genesis
  * anchor for the first event, prevHash → previous hash thereafter) and that

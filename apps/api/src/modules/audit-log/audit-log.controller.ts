@@ -26,8 +26,8 @@ import { buildTableExport } from '../../shared/table-export';
  *
  * Note: Audit logs are created automatically by the system when resources are
  * created, viewed, updated, or deleted. There is no manual create endpoint, and
- * (OB-10, TASK-336) no delete endpoint either — the trail is append-only/immutable
- * for compliance (HIPAA §164.312(b)). Retention/archival is a separate, audited
+ * no delete endpoint either — the trail is append-only/immutable for
+ * compliance (HIPAA §164.312(b)). Retention/archival is a separate, audited
  * process owned outside the admin surface.
  *
  * Permissions are defined in database policies and assigned to roles.
@@ -36,7 +36,6 @@ import { buildTableExport } from '../../shared/table-export';
 @ApiTags('admin-audit-logs')
 @ApiBearerAuth()
 @Controller('admin/audit-logs')
-// Phase 0 Item 3 (TASK-302 Stream A): explicit permission required.
 // Read-only by design — auditors must never mutate audit data.
 @CanRead('AuditLog')
 export class AuditLogController {
@@ -56,7 +55,7 @@ export class AuditLogController {
   @ApiOperation({
     summary: 'Fetch all audit logs',
     description:
-      'Returns a paginated list of audit logs. Supports the TASK-328 A8 filters ' +
+      'Returns a paginated list of audit logs. Supports filters ' +
       '(from/to date range, action, resourceType, userId) pushed to the database, ' +
       'and enriches each row with the resolved responsible user.',
   })
@@ -64,20 +63,19 @@ export class AuditLogController {
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   @CanRead('AuditLog')
   async fetchAll(@Query() queryParams: AuditLogQuery): Promise<PaginatedAuditLogResponse> {
-    // TASK-326 X5 (audit X5): the unscoped list route is the cross-tenant
-    // enumeration surface. The service `buildTenantWhere` already scopes
-    // every query, but mirror the `fetchByUser` guard here so the rule is
-    // observable at the request entry point and a non-global-admin with no
-    // tenant context never reaches the service. GLOBAL_ADMIN keeps the
-    // cross-tenant read.
+    // The unscoped list route is the cross-tenant enumeration surface. The
+    // service `buildTenantWhere` already scopes every query, but mirror the
+    // `fetchByUser` guard here so the rule is observable at the request entry
+    // point and a non-global-admin with no tenant context never reaches the
+    // service. GLOBAL_ADMIN keeps the cross-tenant read.
     const user = this.cls.get('user');
     const callerTenantId = this.cls.get('tenantId');
     if (!isSuperAdmin(user) && !callerTenantId) {
       throw new ForbiddenException('Tenant context required to query audit logs');
     }
 
-    // TASK-328 A8: filters are pushed to the repository where-clause and each
-    // row is enriched with its acting user (resolved in one batch).
+    // Filters are pushed to the repository where-clause and each row is
+    // enriched with its acting user (resolved in one batch).
     const { result, responsibleUsers } = await this.auditLogService.fetchAllFiltered({
       ...queryParams,
       sort: queryParams.sort || 'createdAt:desc',
@@ -86,19 +84,19 @@ export class AuditLogController {
   }
 
   /**
-   * TASK-328 A8 / TASK-390 #25 (AU2) — export the CURRENT filtered result set.
+   * Export the CURRENT filtered result set.
    *
    * Declared BEFORE the `/:id` route so `GET /admin/audit-logs/export` is never
    * captured as an id lookup. Honours the same filters + tenant scope as
    * {@link fetchAll}; the service materialises the full (capped) filtered set
    * server-side so the download always respects tenant boundaries.
    *
-   * TASK-390 #25 — `?format=csv|xlsx|pdf` (default `csv`, unchanged legacy
-   * behaviour). `csv` still serialises via {@link AuditLogDtoMapper.ToCsv};
-   * `xlsx`/`pdf` render the SAME structured rows ({@link AuditLogDtoMapper.ToExportRows})
-   * through the shared `table-export` util (reused from TASK-388, not rebuilt).
-   * Returns a {@link StreamableFile} so the per-format content-type/filename are
-   * set from the payload (a static `@Header('text/csv')` could not vary).
+   * `?format=csv|xlsx|pdf` (default `csv`, unchanged legacy behaviour). `csv`
+   * still serialises via {@link AuditLogDtoMapper.ToCsv}; `xlsx`/`pdf` render
+   * the SAME structured rows ({@link AuditLogDtoMapper.ToExportRows}) through
+   * the shared `table-export` util. Returns a {@link StreamableFile} so the
+   * per-format content-type/filename are set from the payload (a static
+   * `@Header('text/csv')` could not vary).
    */
   @Get('export')
   @ApiOperation({
@@ -117,9 +115,9 @@ export class AuditLogController {
       throw new ForbiddenException('Tenant context required to export audit logs');
     }
 
-    // OB-07 (TASK-336): a global (cross-tenant) export is a global-admin reading
-    // without a tenant scope — those rows span tenants, so the export must carry
-    // a tenantId column. A tenant-scoped export omits it (every row is the same
+    // OB-07: a global (cross-tenant) export is a global-admin reading without
+    // a tenant scope — those rows span tenants, so the export must carry a
+    // tenantId column. A tenant-scoped export omits it (every row is the same
     // tenant, so the column would be noise).
     const includeTenant = isSuperAdmin(user) && !callerTenantId;
     const format = queryParams.format ?? 'csv';
@@ -127,8 +125,8 @@ export class AuditLogController {
     const { rows, responsibleUsers } = await this.auditLogService.exportFiltered(queryParams);
 
     if (format === 'csv') {
-      // Preserve the exact TASK-328 CSV bytes (header, RFC-4180 escaping,
-      // OB-07 tenant column) — just wrapped in a StreamableFile.
+      // Preserve the exact CSV bytes (header, RFC-4180 escaping, OB-07 tenant
+      // column) — just wrapped in a StreamableFile.
       const csv = AuditLogDtoMapper.ToCsv(rows, responsibleUsers, { includeTenant });
       return new StreamableFile(Buffer.from(csv, 'utf-8'), {
         type: 'text/csv; charset=utf-8',
@@ -151,7 +149,7 @@ export class AuditLogController {
   }
 
   /**
-   * TASK-373 — cursor (keyset) page of the audit-log list.
+   * Cursor (keyset) page of the audit-log list.
    *
    * Declared BEFORE the `/:id` route so `GET /admin/audit-logs/cursor` is never
    * captured as an id lookup. The opt-in, count-free counterpart of
@@ -165,7 +163,7 @@ export class AuditLogController {
     description:
       'Returns a keyset (cursor) page of audit logs ordered by (createdAt, id) DESC. ' +
       "Pass the previous response's `nextCursor` to page forward; `hasMore` signals more pages. " +
-      'Supports the same TASK-328 A8 filters (from/to/action/resourceType/userId) as the offset list.',
+      'Supports the same filters (from/to/action/resourceType/userId) as the offset list.',
   })
   @ApiOkResponse({ type: CursorPaginatedAuditLogResponse, description: 'A cursor page of audit logs.' })
   @ApiResponse({ status: 400, description: 'Invalid cursor' })
@@ -265,12 +263,10 @@ export class AuditLogController {
   })
   @CanRead('AuditLog')
   async fetchByUser(@Param('userId') userId: string, @Query() queryParams: PaginatedQuery): Promise<PaginatedAuditLogResponse> {
-    // TASK-307 W5.7 (AC-21, audit D-7): defence-in-depth tenant scope.
-    // The service-side `buildTenantWhere` already throws when a
-    // non-global-admin has no CLS tenantId, but the audit asks for an
-    // explicit controller-layer assertion so the rule is observable at
-    // the request entry point. GLOBAL_ADMIN keeps the cross-tenant
-    // read (mirrors TASK-305 W1.4).
+    // Defence-in-depth tenant scope. The service-side `buildTenantWhere`
+    // already throws when a non-global-admin has no CLS tenantId, but this
+    // adds an explicit controller-layer assertion so the rule is observable
+    // at the request entry point. GLOBAL_ADMIN keeps the cross-tenant read.
     const user = this.cls.get('user');
     const callerTenantId = this.cls.get('tenantId');
     if (!isSuperAdmin(user) && !callerTenantId) {
@@ -285,7 +281,7 @@ export class AuditLogController {
     return AuditLogDtoMapper.ToPaginatedResponse(result);
   }
 
-  // OB-10 (TASK-336): the soft-delete route was removed. Audit logs are
+  // OB-10: the soft-delete route was removed. Audit logs are
   // append-only/immutable from the admin surface; any retention/archival must
   // be a separate, explicitly audited process — never an ad-hoc admin delete.
 }

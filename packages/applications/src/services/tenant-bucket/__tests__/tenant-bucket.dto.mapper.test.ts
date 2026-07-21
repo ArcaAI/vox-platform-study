@@ -1,7 +1,7 @@
 /**
- * TenantBucketDtoMapper unit tests (TASK-407 B1).
+ * TenantBucketDtoMapper unit tests.
  *
- * `TenantBucket.quotaBytes` (BigInt, TASK-386) must surface on the response so
+ * `TenantBucket.quotaBytes` (BigInt) must surface on the response so
  * the tenant-detail Stores surface can render per-bucket quota. Pure function
  * testing — no mocks.
  */

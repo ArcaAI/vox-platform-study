@@ -4,7 +4,7 @@
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 
-// TASK-524 — hyperparameters / context / concurrency per provider
+// Hyperparameters / context / concurrency per provider
 // (`modelSlug = ''`) or per model (`modelSlug = AiModel.slug`, no FK — house
 // slug-reference convention).
 //

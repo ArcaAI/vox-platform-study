@@ -1,10 +1,9 @@
 /**
- * TASK-307 W6.2 → TASK-311 — `PolicyService` regression tests. The
- * service was originally TDD'd against a `databaseService.client.policy.*`
- * mock; TASK-311 moves the persistence layer behind `PolicyRepository`,
- * so the mocks here now stub the repository instead. The OBSERVABLE
- * behaviour (audit-event payloads, log messages, exception types and
- * messages, returned shape) is unchanged.
+ * `PolicyService` regression tests. The service was originally TDD'd against
+ * a `databaseService.client.policy.*` mock; the persistence layer now sits
+ * behind `PolicyRepository`, so the mocks here stub the repository instead.
+ * The OBSERVABLE behaviour (audit-event payloads, log messages, exception
+ * types and messages, returned shape) is unchanged.
  *
  * Coverage targets:
  *   - `validateRules`     — pure, moved verbatim from the controller
@@ -73,7 +72,7 @@ function makeMocks() {
 
   const engine = { invalidatePolicy: vi.fn().mockResolvedValue(undefined) };
 
-  // TASK-409 — break-glass dependencies (delete path verifies the caller's
+  // Break-glass dependencies (delete path verifies the caller's
   // password and confirmation name before mutating).
   const rolePolicyRepo = { countEnabledByPolicy: vi.fn().mockResolvedValue(0) };
   const userRepo = { findById: vi.fn().mockResolvedValue({ id: ADMIN_USER.id, password: 'stored-hash' }) };
@@ -94,7 +93,7 @@ function buildService(mocks: ReturnType<typeof makeMocks>) {
   );
 }
 
-/** TASK-409 — the delete path now requires break-glass confirmation. */
+/** The delete path now requires break-glass confirmation. */
 const BREAK_GLASS = (name: string) => ({ password: 'pw', confirmationName: name });
 
 describe('TASK-307 W6.2 — PolicyService (closes C-10 / H-9 / AC-24)', () => {

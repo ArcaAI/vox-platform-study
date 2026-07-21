@@ -1,10 +1,10 @@
 /**
- * TASK-445 — rotateSecret unit tests.
+ * RotateSecret unit tests.
  *
  * Rotation = an atomic, step-up-gated, distinctly-audited replace-with-new-value
- * under OCC (encryption-at-rest is still unwired — Phase 4C — so there is no
- * envelope re-wrap; the plaintext `value` column is replaced in ONE versioned
- * write). Mirrors revealSecret's gating (super-admin + password step-up) and
+ * under OCC: the plaintext `value` column is replaced, and — when the provider
+ * has Vault Transit — `encryptedValue` is envelope re-wrapped, in ONE versioned
+ * write. Mirrors revealSecret's gating (super-admin + password step-up) and
  * update's OCC write (`updateWithVersion`); audited via ResourceUpdated +
  * `data.action: GLOBAL_SETTING_SECRET_ROTATED` + `forceAuditLog: true`, with
  * the secret plaintext (old AND new) excluded from the event.
@@ -213,7 +213,7 @@ describe('GlobalSettingService.rotateSecret (TASK-445)', () => {
         expect(result.value).toBe(NEW_SECRET);
     });
 
-    // TASK-447 — Phase 4C envelope re-wrap: when the provider has Vault Transit,
+    // Envelope re-wrap: when the provider has Vault Transit,
     // rotation envelope-encrypts the NEW value into `encryptedValue` under the
     // current key version BEFORE the versioned write, so the ciphertext (which
     // the reveal path prefers) is refreshed atomically with the value.

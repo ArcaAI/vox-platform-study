@@ -1,4 +1,4 @@
-"""TASK-525 §4.2 — apply control-plane limits to SMR's live runtime state.
+"""Apply control-plane limits to SMR's live runtime state.
 
 The bridge between the effective-config pull client and the objects the request
 path actually uses: per-provider concurrency semaphores and request timeouts.
@@ -49,7 +49,7 @@ def apply_provider_limits(
 
 
 def apply_provider_retention(snapshot: EffectiveConfigSnapshot, registry: Any) -> None:
-    """TASK-529 (D-10) — push the retention TTL into every live provider.
+    """Push the retention TTL into every live provider.
 
     Providers are lazily built and memoized by `ProviderRegistry`, so this runs
     on every refresh rather than only at construction. A provider instantiated
@@ -125,7 +125,7 @@ async def refresh_runtime_limits(state: Any) -> None:
         timeouts: dict[str, int] = timeouts_attr if isinstance(timeouts_attr, dict) else {}
         apply_provider_limits(snapshot, semaphores, timeouts)
 
-        # TASK-529 (D-10) — same refresh, same fail-safe posture.
+        # Same refresh, same fail-safe posture.
         registry = getattr(state, "provider_registry", None)
         if registry is not None:
             apply_provider_retention(snapshot, registry)

@@ -1,5 +1,5 @@
 /**
- * useConsultationJob Auto-Refresh Tests (TASK-032 WS-B, Task B-3)
+ * useConsultationJob Auto-Refresh Tests
  *
  * Tests that useConsultationJob automatically refreshes context items
  * when a transcription job completes (via polling or SSE).

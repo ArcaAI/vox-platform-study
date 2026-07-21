@@ -1,14 +1,11 @@
 /**
- * TASK-307 W5.7 — AuditLogController tenant scoping (AC-21, audit D-7).
+ * AuditLogController tenant scoping.
  *
- * Pre-W5.7 `fetchByUser` forwarded the URL's `userId` straight to the
- * service without re-asserting the caller's tenant context. The service
- * already scopes via `buildTenantWhere(...)`, but the audit asks for a
- * defence-in-depth assertion at the controller layer so the rule is
- * visible at the request entry point.
- *
- * Pattern mirrors TASK-305 W1.4: GLOBAL_ADMIN bypasses the tenant scope;
- * every other caller must have a tenantId in CLS.
+ * `fetchByUser` re-asserts the caller's tenant context: the service already
+ * scopes via `buildTenantWhere(...)`, but the controller layer adds a
+ * defence-in-depth assertion so the rule is visible at the request entry
+ * point. GLOBAL_ADMIN bypasses the tenant scope; every other caller must
+ * have a tenantId in CLS.
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -36,7 +33,7 @@ function createMockAuditLogService() {
         fetchById: vi.fn(),
         fetchAllByResource: vi.fn(),
         fetchAllCreatedByUser: vi.fn().mockResolvedValue({ data: [], count: 0, limit: 10, page: 1 }),
-        // TASK-373 — cursor (keyset) page envelope.
+        // Cursor (keyset) page envelope.
         fetchPageByCursor: vi
             .fn()
             .mockResolvedValue({ page: { data: [], nextCursor: null, hasMore: false, limit: 10 }, responsibleUsers: {} }),
@@ -104,10 +101,10 @@ describe('TASK-307 W5.7 — AuditLogController.fetchByUser tenant scoping (AC-21
 });
 
 // -----------------------------------------------------------------------------
-// TASK-326 X5 — AuditLogController.fetchAll tenant scoping.
-// The unscoped `fetchAll` list route is the cross-tenant enumeration surface
-// (audit X5). The service already scopes via `buildTenantWhere`, but we mirror
-// the `fetchByUser` controller guard so the rule is observable at the request
+// AuditLogController.fetchAll tenant scoping.
+// The unscoped `fetchAll` list route is the cross-tenant enumeration surface.
+// The service already scopes via `buildTenantWhere`, but we mirror the
+// `fetchByUser` controller guard so the rule is observable at the request
 // entry point and a non-global-admin with no tenant cannot reach the service.
 // -----------------------------------------------------------------------------
 describe('TASK-326 X5 — AuditLogController.fetchAll tenant scoping', () => {
@@ -145,7 +142,7 @@ describe('TASK-326 X5 — AuditLogController.fetchAll tenant scoping', () => {
 });
 
 // -----------------------------------------------------------------------------
-// TASK-328 A8 — AuditLogController filters + CSV export.
+// AuditLogController filters + CSV export.
 // fetchAll must forward the audit filters to the service (which pushes them to
 // the repository); the export route must respect the same tenant guard and
 // return a text/csv body produced by the DTO mapper.
@@ -221,8 +218,7 @@ describe('TASK-328 A8 — AuditLogController.exportCsv', () => {
             responsibleUsers: { u1: { id: 'u1', displayName: 'Alice Nguyen', email: 'alice@example.com' } },
         });
 
-        // TASK-390 #25 — csv is now streamed (StreamableFile) but the bytes are
-        // the same TASK-328 CSV; read the stream back to assert content.
+        // csv is streamed (StreamableFile); read the stream back to assert content.
         const file = await controller.exportCsv({ action: 'CREATE' } as never);
         expect(file).toBeInstanceOf(StreamableFile);
         expect(file.options.type).toContain('text/csv');
@@ -236,8 +232,8 @@ describe('TASK-328 A8 — AuditLogController.exportCsv', () => {
         expect(lines[1]).toContain('Alice Nguyen');
     });
 
-    // TASK-390 #25 (AU2) — xlsx/pdf reuse the same filtered set through the shared
-    // table exporter, returning the matching content-type + filename.
+    // xlsx/pdf reuse the same filtered set through the shared table exporter,
+    // returning the matching content-type + filename.
     it('streams an .xlsx (spreadsheet content-type, PK zip signature) for format=xlsx', async () => {
         const cls = createMockCls({ id: 'u-1', tenantId: 't-OWN', roles: ['DOCTOR'] }, 't-OWN');
         const controller = new AuditLogController(svc as never, cls as never);
@@ -279,7 +275,7 @@ describe('TASK-328 A8 — AuditLogController.exportCsv', () => {
         expect(svc.exportFiltered).toHaveBeenCalledTimes(1);
     });
 
-    // OB-07 (TASK-336) — the controller decides tenant attribution: a global
+    // OB-07 — the controller decides tenant attribution: a global
     // (cross-tenant) export = GLOBAL_ADMIN with no tenant scope → ToCsv must be
     // asked to include the tenant column; a tenant-scoped export must not. The
     // column rendering itself is covered by the applications mapper unit test.
@@ -309,7 +305,7 @@ describe('TASK-328 A8 — AuditLogController.exportCsv', () => {
 });
 
 // -----------------------------------------------------------------------------
-// TASK-373 — AuditLogController.fetchByCursor (cursor/keyset pagination).
+// AuditLogController.fetchByCursor (cursor/keyset pagination).
 // The cursor route mirrors the same tenant guard as fetchAll, forwards the
 // cursor/limit/filters to the service, and maps the keyset page into the
 // nextCursor/hasMore response envelope. The offset routes are untouched.
@@ -364,7 +360,7 @@ describe('TASK-373 — AuditLogController.fetchByCursor (cursor pagination)', ()
 });
 
 // -----------------------------------------------------------------------------
-// OB-10 (TASK-336) — audit logs are append-only. The admin delete route/handler
+// OB-10 — audit logs are append-only. The admin delete route/handler
 // was removed so the trail can never be mutated from the admin surface.
 // -----------------------------------------------------------------------------
 describe('OB-10 — AuditLogController has no delete capability', () => {

@@ -169,7 +169,7 @@ function AudioPipelinesBody() {
                     ),
             },
             {
-                // TASK-531 — locked SYSTEM template copies are read-only for
+                // Locked SYSTEM template copies are read-only for
                 // content edits; surfacing that in the grid stops an admin
                 // opening a row expecting to edit it.
                 id: 'template',

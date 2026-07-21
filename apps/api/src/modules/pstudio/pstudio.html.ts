@@ -6,17 +6,15 @@ const STUDIO_VERSION = '0.31.2';
 /**
  * Server-rendered standalone Prisma Studio shell.
  *
- * BUG-003 — the shell is consumed through an authenticating BFF proxy (the
+ * The shell is consumed through an authenticating BFF proxy (the
  * admin console's /api/hope/admin/pstudio route): the GET that served this
  * HTML carried the operator's credential injected server-side from the sealed
  * session cookie. The shell therefore posts its queries back to the SAME
  * path it was served from (`window.location.pathname`), so the session cookie
  * rides along and the proxy injects the bearer on every query too. No token
- * ever reaches the browser (supersedes the TASK-336 OB-11 `#token=` fragment
- * hand-off, which was unsatisfiable under the BFF cookie session and left the
- * POSTs hitting the gateway directly with an empty bearer → 401).
+ * ever reaches the browser.
  *
- * TASK-336 BR-02 — HOPE's tables all live in the `core` schema; studio-core's
+ * HOPE's tables all live in the `core` schema; studio-core's
  * postgres adapter hardcodes `defaultSchema: "public"`, which is empty here and
  * makes the UI render "No tables found". We override the adapter's
  * `defaultSchema` to `core` so the table list resolves.
@@ -108,7 +106,7 @@ export function getStudioHtml(): string {
 
         function App() {
             const adapter = useMemo(() => {
-                // BUG-003: query the exact path that served this shell. The
+                // Query the exact path that served this shell. The
                 // authenticating proxy in front of it (console BFF) receives
                 // the session cookie on these same-origin POSTs and injects
                 // the operator's bearer server-side — no token in the browser.

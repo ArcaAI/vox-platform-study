@@ -1,8 +1,8 @@
 /**
- * TASK-311 AC-1/AC-2/AC-6 — RolePolicyRepository / RolePolicyFactory /
+ * RolePolicyRepository / RolePolicyFactory /
  * RolePolicyEntityMapper unit tests.
  *
- * Pinned behaviour (mirrors the Prisma calls inlined in the pre-TASK-311
+ * Pinned behaviour (mirrors the Prisma calls inlined in the legacy
  * `RbacRoleService.assignPolicy` / `.removePolicy`):
  *
  *   • `findFirstByRoleAndPolicy(roleId, policyId)` — existence
@@ -12,7 +12,7 @@
  *   • `reEnable(id, data)` — wraps `client.rolePolicy.update({ where: { id }, data })`.
  *   • `softDeleteByRoleAndPolicy(roleId, policyId, updatedBy?)` —
  *     wraps `client.rolePolicy.updateMany({ where: { roleId, policyId }, data: { DELETED stamps } })`.
- *     Uses `updateMany` (not `update`) per the verbatim pre-TASK-311
+ *     Uses `updateMany` (not `update`) per the verbatim legacy
  *     code — `update` would require `where: { id }` which the
  *     service doesn't carry.
  */
@@ -115,7 +115,7 @@ describe('TASK-311 — RolePolicyRepository', () => {
     });
   });
 
-  // TASK-409 — break-glass trigger needs "how many ENABLED roles carry this
+  // Break-glass trigger needs "how many ENABLED roles carry this
   // policy" to decide whether a rule-edit is dangerous (>1 role blast radius).
   describe('countEnabledByPolicy (TASK-409)', () => {
     it('counts only ENABLED assignments for the policy', async () => {

@@ -1,5 +1,5 @@
 /**
- * TASK-526 — wire types for the tenant BYO cloud-credential lane.
+ * Wire types for the tenant BYO cloud-credential lane.
  * Hand-declared to mirror the gateway DTOs (BFF boundary — no server import).
  * Source: apps/api/src/modules/ai-provider-connection/ai-provider-connection.controller.ts
  *         packages/applications/src/services/ai-provider-connection/dto/

@@ -3,7 +3,7 @@
  *
  * Lightweight cross-tab synchronisation using `BroadcastChannel`.
  *
- * Hardenings landed under TASK-266:
+ * Security hardening:
  *
  *   - **W0-4 — HMAC-signed messages.** Every outgoing message is wrapped in
  *     a `{ payload, hmac }` envelope. The HMAC is `HMAC-SHA-256` using a
@@ -20,7 +20,7 @@
  *   - `setTenantId(id)` closes the existing channel and reopens a new one
  *     with the updated namespace so a runtime tenant switch is honoured.
  *
- * Updated under TASK-280:
+ * Multi-tab HMAC key sharing:
  *
  *   - HMAC sign / verify is now delegated to `CrossTabHmacKeyManager`,
  *     which routes through a SharedWorker so that ALL tabs of the same
@@ -30,7 +30,7 @@
  *     contexts, vitest/jsdom without a mock).
  *
  *   - `isUsingSharedWorkerHmac()` exposes the active mode for diagnostics
- *     and for the new TASK-280 tests.
+ *     and for tests.
  *
  * The `broadcastContext*` methods are `async` because Web Crypto's
  * `sign('HMAC')` is async — callers may `await` them in tests but the
@@ -83,7 +83,7 @@ export interface SimpleCrossTabSyncOptions {
 }
 
 // =============================================================================
-// Test-only re-exports — preserve the pre-TASK-280 surface for existing tests.
+// Test-only re-exports — preserve the legacy surface for existing tests.
 // Underscore-prefixed; NOT exported from the public SDK barrel.
 // =============================================================================
 
@@ -124,12 +124,12 @@ export class SimpleCrossTabSync {
   private readonly logger?: MinimalLogger;
   private listeners: Map<CrossTabEventType, Set<(data: unknown) => void>> = new Map();
   private isSupported: boolean;
-  // TASK-280: SharedWorker-backed HMAC key. Constructed lazily on the first
+  // SharedWorker-backed HMAC key. Constructed lazily on the first
   // broadcast / handleIncoming / isUsingSharedWorkerHmac call so the
   // constructor stays side-effect-free beyond opening the BroadcastChannel.
   private hmacKey: CrossTabHmacKeyManager | null = null;
   /**
-   * TASK-297 DEF-M1 — channel creation may need to compute a SHA-256 hash
+   * Channel creation may need to compute a SHA-256 hash
    * of the consultation key when no tenantId is set. The hash work is async,
    * so we expose a promise so callers (tests, broadcast) can await it.
    */
@@ -148,7 +148,7 @@ export class SimpleCrossTabSync {
   }
 
   /**
-   * TASK-297 DEF-M1 — await the asynchronous channel creation (needed when
+   * Await the asynchronous channel creation (needed when
    * the fallback name requires SHA-256 hashing of the consultation key).
    * Returns immediately once the channel is open. Tests call this before
    * spying on `(sync as any).channel.postMessage`.
@@ -170,7 +170,7 @@ export class SimpleCrossTabSync {
   }
 
   isAvailable(): boolean {
-    // TASK-297 DEF-M1 — `channel` may still be null between construction and
+    // `channel` may still be null between construction and
     // the async channelName resolution. Treat capability (isSupported) as
     // the truthful answer; consumers awaiting full readiness should call
     // `whenReady()`.
@@ -178,7 +178,7 @@ export class SimpleCrossTabSync {
   }
 
   /**
-   * TASK-280: report whether HMAC sign/verify is currently routed through
+   * Report whether HMAC sign/verify is currently routed through
    * the SharedWorker (true) or the per-session fallback secret (false).
    * Materialises the manager lazily so the answer is available even before
    * any broadcast.
@@ -190,14 +190,14 @@ export class SimpleCrossTabSync {
   /**
    * Update the active tenant id at runtime.
    *
-   * TASK-266 W0-5: closes the old channel and reopens a new one with the
+   * Closes the old channel and reopens a new one with the
    * tenant-namespaced name so cross-tenant messages cannot leak after a
    * tenant switch (e.g. user impersonation flow).
    */
   setTenantId(tenantId: string): void {
     if (this.tenantId === tenantId) return;
     this.tenantId = tenantId;
-    // TASK-317 E-4 (AC-11) — rotate the HMAC subkey alongside the channel so
+    // Rotate the HMAC subkey alongside the channel so
     // post-switch envelopes can't be forged with the prior tenant's subkey.
     if (this.hmacKey) {
       this.hmacKey.setTenantId(tenantId);
@@ -260,7 +260,7 @@ export class SimpleCrossTabSync {
    *
    * - With `tenantId` → synchronous `agentic.<tenantId>`.
    * - Without `tenantId` → `agentic.<sha256-first8-hex>` of the consultation
-   *   key (TASK-297 DEF-M1). The hash is async; openChannel awaits it. This
+   *   key. The hash is async; openChannel awaits it. This
    *   prevents the raw `patientId_doctorId_appointmentDate` triple — which
    *   is PHI — from appearing in DevTools / BroadcastChannel inspectors.
    */
@@ -275,7 +275,7 @@ export class SimpleCrossTabSync {
   private ensureHmacKey(): CrossTabHmacKeyManager {
     if (this.hmacKey === null) {
       this.hmacKey = new CrossTabHmacKeyManager({ logger: this.logger });
-      // TASK-317 E-4 (AC-11) — bind the HMAC subkey to the active tenant so
+      // Bind the HMAC subkey to the active tenant so
       // envelopes are signed/verified with HKDF(secret, tenantId).
       if (this.tenantId !== undefined) {
         this.hmacKey.setTenantId(this.tenantId);
@@ -286,7 +286,7 @@ export class SimpleCrossTabSync {
 
   private async openChannel(): Promise<void> {
     try {
-      // TASK-280: When SharedWorker is unavailable the manager falls back
+      // When SharedWorker is unavailable the manager falls back
       // to the per-session module singleton owned by CrossTabHmacKeyManager.
       // Materialise that secret eagerly so the legacy invariant — the
       // 32-byte secret exists immediately after `new SimpleCrossTabSync()` —
@@ -359,7 +359,7 @@ export class SimpleCrossTabSync {
   }
 
   private async broadcast(type: CrossTabEventType, data: unknown): Promise<void> {
-    // TASK-297 DEF-M1 — wait for the (potentially async) channel name hash.
+    // Wait for the (potentially async) channel name hash.
     await this.channelReady;
     if (!this.channel) return;
 
@@ -404,7 +404,7 @@ export class SimpleCrossTabSync {
 }
 
 // =============================================================================
-// Hash helper (TASK-297 DEF-M1)
+// Hash helper
 // =============================================================================
 
 /**

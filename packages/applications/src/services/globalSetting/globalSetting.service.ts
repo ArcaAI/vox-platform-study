@@ -22,10 +22,10 @@ import { SecretsService } from '../baseServices/_meta/secrets';
 
 const GLOBAL_ADMIN_ROLE = 'GLOBAL_ADMIN';
 
-/** TASK-396 — audit action tag written into the reveal SysEvent (never the plaintext). */
+/** Audit action tag written into the reveal SysEvent (never the plaintext). */
 export const GLOBAL_SETTING_SECRET_REVEALED = 'GLOBAL_SETTING_SECRET_REVEALED';
 
-/** TASK-445 — audit action tag written into the rotation SysEvent (never the old or new plaintext). */
+/** Audit action tag written into the rotation SysEvent (never the old or new plaintext). */
 export const GLOBAL_SETTING_SECRET_ROTATED = 'GLOBAL_SETTING_SECRET_ROTATED';
 
 @Injectable()
@@ -42,7 +42,7 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
   }
 
   /**
-   * TASK-447 (Phase 4C) — envelope-encrypt a SECRET setting's plaintext `value`
+   * Envelope-encrypt a SECRET setting's plaintext `value`
    * into `encryptedValue` under the CURRENT Vault Transit key version, so the
    * ciphertext the reveal path prefers always reflects the latest value (and,
    * after a Transit key rotation, the freshest key version — this is the
@@ -52,7 +52,7 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
    * Gated: secrets only (non-secret config stays plaintext), and only when the
    * provider exposes Transit (env / aws / azure / in-memory have none). The
    * plaintext `value` column is deliberately RETAINED as the dual-read fallback
-   * — its removal is Phase 4D (user-gated). When the value just changed but no
+   * — its removal is a user-gated future change. When the value just changed but no
    * Transit is available, any prior ciphertext is now stale, so it is cleared
    * so the read path falls back to the fresh plaintext instead of decrypting
    * the previous secret. Mutates the entity via the tracked setters, so the
@@ -69,7 +69,7 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
   }
 
   async create(request: CreateGlobalSettingRequest): Promise<GlobalSettingEntity> {
-    // TASK-402 (Defect 2) — revive-on-create. The DB unique index
+    // (Defect 2) — revive-on-create. The DB unique index
     // `(tenantId, name, key)` counts soft-DELETED rows, so a plain create
     // after a soft-delete 409s (P2002) and the key can never come back.
     // When a DELETED row matches the identity the new row would take, RESTORE
@@ -99,7 +99,7 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
           namespace: request.namespace,
           description: request.description,
         });
-        // TASK-447 (Phase 4C) — encrypt the revived secret's value at rest.
+        // Encrypt the revived secret's value at rest.
         await this.applySecretEncryption(restored);
         const revived = restored.hasChanges ? await this.globalSettingRepository.update(restored.id, restored) : restored;
 
@@ -121,7 +121,7 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
       createdBy: this.requestUser?.id,
     });
 
-    // TASK-447 (Phase 4C) — encrypt a new secret at rest from birth (no-op for
+    // Encrypt a new secret at rest from birth (no-op for
     // non-secrets / no Transit).
     await this.applySecretEncryption(newGlobalSetting);
 
@@ -140,7 +140,7 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
   }
 
   /**
-   * TASK-443 — resolve the OPTIONAL `secretsOnly` list facet to the shared
+   * Resolve the OPTIONAL `secretsOnly` list facet to the shared
    * derived-secret fragment ({@link buildSecretSettingFilter}); there is no
    * `isSecret` column, so this is the only server-side transport for the
    * "Secrets only" chip. `true` narrows to secrets, `false` to non-secrets,
@@ -156,7 +156,7 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
 
   async fetchAll(props: PaginatedQuery & { secretsOnly?: boolean }): Promise<FetchResponse<GlobalSettingEntity>> {
     const { limit, page, secretsOnly } = props;
-    // TASK-443 — 'GlobalSetting' opts the list into model-aware filter
+    // 'GlobalSetting' opts the list into model-aware filter
     // coercion: `dataType` (enum ValueType) member-validates with a 400 on an
     // unknown member instead of a Prisma server-side error.
     const where = GlobalSettingService.resolveListWhere(secretsOnly);
@@ -185,7 +185,7 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
 
   async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string; secretsOnly?: boolean }): Promise<FetchResponse<GlobalSettingEntity>> {
     const { tenantId, limit, page, secretsOnly } = props;
-    // TASK-443 — with the secretsOnly facet the tenant scope moves INSIDE the
+    // With the secretsOnly facet the tenant scope moves INSIDE the
     // AND group (formatFindAllProps drops sibling keys next to `where.AND`);
     // without it the bare `{ tenantId }` shape is kept byte-for-byte.
     const where = GlobalSettingService.resolveListWhere(secretsOnly, { tenantId }) ?? { tenantId };
@@ -254,7 +254,7 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
   async update(id: EntityId, request: UpdateGlobalSettingRequest): Promise<GlobalSettingEntity> {
     const globalSetting = await this.globalSettingRepository.findById(id);
 
-    // TASK-332 — `locked` rows are platform-owned defaults (e.g. the
+    // `locked` rows are platform-owned defaults (e.g. the
     // `enable-local-raw-capture` capability). Only a GLOBAL_ADMIN may write
     // them; everyone else is refused BEFORE any mutation. Mirrors the
     // `TenantService.updateTenantConfigs` locked posture.
@@ -263,7 +263,7 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
     }
 
     const previousData = globalSetting.toObject();
-    // TASK-302 Stream D Phase C (C.7/C.8) — snapshot the row version BEFORE
+    // (C.7/C.8) — snapshot the row version BEFORE
     // we mutate the entity so the post-write SysEvent can carry
     // `{ previousVersion, newVersion }` for audit-log correlation.
     const previousVersion = globalSetting.version;
@@ -273,7 +273,7 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
       throw new ArgumentInvalidException(`No changes to write to.`);
     }
 
-    // TASK-447 (Phase 4C) — when a SECRET's value changes on the ordinary
+    // When a SECRET's value changes on the ordinary
     // update path, re-wrap its ciphertext (or drop a now-stale ciphertext when
     // Transit is unavailable) so a later reveal never decrypts a previous
     // value. No-op for non-secrets and for value-unchanged edits (e.g. a
@@ -282,16 +282,16 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
       await this.applySecretEncryption(globalSetting);
     }
 
-    // TASK-302 Stream D Phase C (C.7) — Compare-And-Set against `_version`.
+    // Compare-And-Set against `_version`.
     // The `OptimisticConcurrencyException` propagates out so the HTTP layer
-    // (Phase D ExceptionFilter) renders `412 Precondition Failed` with
+    // (the ExceptionFilter) renders `412 Precondition Failed` with
     // `{ currentVersion, expectedVersion }`. No `$transaction` here because
     // this is the single-row path (vs. the multi-row tenant config batch).
     const updatedGlobalSetting = await this.globalSettingRepository.updateWithVersion(id, globalSetting, request.expectedVersion);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updatedGlobalSetting.id,
-      // C.8 — carry the version transition in the audit log so downstream
+      // Carry the version transition in the audit log so downstream
       // observers can correlate previous and new state.
       data: { ...globalSetting.changes, previousVersion, newVersion: updatedGlobalSetting.version },
       previousData,
@@ -310,7 +310,7 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
   }
 
   /**
-   * TASK-396 — reveal ONE secret setting's plaintext.
+   * Reveal ONE secret setting's plaintext.
    *
    * Order of guards (fail-closed):
    *   1. Super-admin re-check (defense in depth; the controller's CASL
@@ -381,14 +381,14 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
   }
 
   /**
-   * TASK-445 — rotate ONE secret setting.
+   * Rotate ONE secret setting.
    *
    * Semantics: an atomic, step-up-gated, distinctly-audited REPLACE-WITH-NEW-
    * VALUE under optimistic concurrency. The secret is operator-supplied (no
    * server-generatable material, unlike an api-key token), so the caller
    * provides the replacement; the old value is invalidated by the SAME
    * versioned write (`updateWithVersion` compare-and-set) — no window where
-   * both values are valid. TASK-447 (Phase 4C) wired the envelope re-wrap:
+   * both values are valid. The envelope re-wrap:
    * `applySecretEncryption` encrypts the new value into `encryptedValue` under
    * the current Transit key version in the same write (no-op without Transit).
    *
@@ -446,11 +446,11 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
       throw new BadRequestException('The replacement value matches the current secret — nothing to rotate.');
     }
 
-    // TASK-447 (Phase 4C) — envelope re-wrap: encrypt the new value into
+    // Envelope re-wrap: encrypt the new value into
     // `encryptedValue` under the current Transit key version BEFORE the CAS
     // write, so the ciphertext is refreshed atomically with the value in the
     // single versioned write. No-op when Transit is unavailable (plaintext
-    // replace, unchanged v1 behavior).
+    // replace, unchanged legacy behavior).
     await this.applySecretEncryption(globalSetting);
 
     const rotated = await this.globalSettingRepository.updateWithVersion(id, globalSetting, request.expectedVersion);

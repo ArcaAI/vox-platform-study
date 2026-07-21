@@ -2,7 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, IsInt } from 'class-validator';
 
 /**
- * TASK-328 A4 — request body for `POST /admin/prompt-templates/:id/test`.
+ * Request body for `POST /admin/prompt-templates/:id/test`.
  *
  * Runs the template against the SMR/text-generation service and persists the
  * resulting score/output via an optimistic-concurrency write, so it carries

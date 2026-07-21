@@ -21,7 +21,7 @@ describe('useDepartments', () => {
     let mockStore: any;
     const mockGet = vi.fn();
     const mockPatch = vi.fn();
-    // TASK-302 Stream D OCC — `updatePromptConfig` replays the read version as `If-Match`.
+    // `updatePromptConfig` replays the read version as `If-Match`.
     const mockPatchWithIfMatch = vi.fn();
 
     beforeEach(() => {
@@ -375,7 +375,7 @@ describe('useDepartments', () => {
     });
 
     /* ------------------------------------------------------------------ */
-    /*  TASK-218 Priority 7: create, remove, getByCode, updatePromptConfig */
+    /*  create, remove, getByCode, updatePromptConfig */
     /* ------------------------------------------------------------------ */
 
     describe('create (TASK-218)', () => {
@@ -469,9 +469,9 @@ describe('useDepartments', () => {
             expect(resp).toEqual(updated);
         });
 
-        // TASK-302 Stream D OCC: `PATCH admin/departments/:id/prompt-config` is
+        // `PATCH admin/departments/:id/prompt-config` is
         // `@RequiresIfMatch()`. When the caller supplies the read `expectedVersion`
-        // (DNA writing-style slot flow, TASK-387 #7), it is replayed as the strong
+        // (DNA writing-style slot flow), it is replayed as the strong
         // `If-Match` validator so the server CAS-checks it instead of 428-ing.
         it('should PATCH with If-Match when expectedVersion is supplied', async () => {
             const updated = { id: 'd-1', name: 'Cardiology', dnaWritingStylePromptId: 'p-9', version: 6 };

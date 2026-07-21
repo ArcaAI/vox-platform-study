@@ -1,5 +1,5 @@
 /**
- * TASK-311 AC-1 / AC-6 — `PolicyRepository` is the thin facade that
+ * `PolicyRepository` is the thin facade that
  * encapsulates `databaseService.client.policy.*` for `PolicyService`.
  *
  * It deliberately does **not** extend the generic
@@ -7,10 +7,9 @@
  * because (a) the per-ticket constraint blocks the creation of a
  * matching `PolicyEntity` aggregate under `packages/domains/src/entities/`
  * and (b) the consuming service speaks in the structural `PolicyRecord`
- * (declared in `IPolicyService`), not in a domain aggregate. See
- * README §4.3 D-2 for the design rationale.
+ * (declared in `IPolicyService`), not in a domain aggregate.
  *
- * The repository preserves the pre-TASK-311 Prisma call shapes verbatim:
+ * The repository preserves the legacy Prisma call shapes verbatim:
  *
  *   • `findMany(args)` / `count(args)` — pass-through; caller owns
  *     `where`, `skip`, `take`, `orderBy`, `include`. This preserves
@@ -18,10 +17,9 @@
  *     filters DELETED on `findMany`/`count`).
  *   • `findById(id)` uses `findUnique`, not `findFirst`, so a
  *     soft-deleted row is still visible to the existence check on the
- *     `softDelete` re-entry path (verbatim pre-TASK-311 behaviour).
+ *     `softDelete` re-entry path (verbatim legacy behaviour).
  *   • `softDelete` is the only place where the audit-stamp pattern is
- *     centralised (closes AC-6 — see README §4.2 audit confirming all
- *     existing deletes were soft already).
+ *     centralised (all existing deletes were confirmed soft already).
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { CoreDatabaseService } from '../../common/databaseServices/core/core.database.service';

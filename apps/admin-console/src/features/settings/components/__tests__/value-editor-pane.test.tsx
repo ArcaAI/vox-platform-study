@@ -1,5 +1,5 @@
 /**
- * TDD unit tests for the type-aware ValueEditorPane (TASK-439): the control
+ * TDD unit tests for the type-aware ValueEditorPane: the control
  * mapping per dataType and the `isValueValid` gate that drives Save-disabled.
  */
 

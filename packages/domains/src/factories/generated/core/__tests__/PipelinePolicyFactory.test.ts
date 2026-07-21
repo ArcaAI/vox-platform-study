@@ -1,5 +1,5 @@
 /**
- * PipelinePolicyFactory Unit Tests (TASK-356 Phase 5, Pillar B)
+ * PipelinePolicyFactory Unit Tests
  *
  * A freshly-built row defaults to the TENANT tier with ALL toggles `null`
  * (overrides nothing — the cascade keeps inheriting). Overrides are built by

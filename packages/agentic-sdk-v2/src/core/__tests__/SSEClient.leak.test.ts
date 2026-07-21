@@ -1,7 +1,7 @@
 /**
- * TASK-264 W2-1 — SSEClient must not leak event listeners across reconnects.
+ * SSEClient must not leak event listeners across reconnects.
  *
- * Originally TASK-262 H-2 / R-13 — anonymous closures were registered via
+ * Originally, anonymous closures were registered via
  * `addEventListener(eventName, () => ...)` and never removed before the old
  * `EventSource` was closed. After 50 reconnects each `EventSource` accumulated
  * additional listener references.

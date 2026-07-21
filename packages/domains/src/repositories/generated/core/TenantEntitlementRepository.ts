@@ -13,7 +13,7 @@ export class TenantEntitlementRepository extends Repository<TenantEntitlementEnt
   }
 
   /**
-   * TASK-392 (Q1) — resolve the single per-tenant override row (`tenantId`
+   * Resolve the single per-tenant override row (`tenantId`
    * is `@unique`). Returns `null` when the tenant has no override yet, so the
    * resolver can fall back to the plan default matrix.
    */

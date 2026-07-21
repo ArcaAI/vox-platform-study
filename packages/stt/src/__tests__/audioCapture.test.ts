@@ -1,5 +1,5 @@
 /**
- * @arcaai/stt - C-3 AudioWorklet capture tests (TASK-270)
+ * @arcaai/stt - AudioWorklet capture tests
  *
  * Verifies `createAudioCapture` prefers `AudioWorkletNode` and gracefully
  * falls back to `ScriptProcessorNode` (with a `console.warn`) when the

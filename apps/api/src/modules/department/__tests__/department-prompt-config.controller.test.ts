@@ -1,5 +1,5 @@
 /**
- * DepartmentController.updatePromptConfig — TASK-294 DEF-C3
+ * DepartmentController.updatePromptConfig
  *
  * The PATCH /:id/prompt-config endpoint MUST be gated on
  * `@Authorize(['manage', 'Department'])`. Only that single handler

@@ -98,7 +98,7 @@ class BatchTranscriptionService:
         Returns:
             *current_text* with any duplicated leading words removed.
         """
-        # TASK-505 P1 — body extracted to stt_v2.postprocessing.overlap so the
+        # Body extracted to stt_v2.postprocessing.overlap so the
         # streaming force-emit boundary reuses the same semantics without
         # importing this (Azure-SDK-heavy) module.
         from stt_v2.postprocessing.overlap import dedup_overlap
@@ -321,7 +321,7 @@ class BatchTranscriptionService:
                 if not first_word_time:
                     first_word_time.append(time.time())
 
-            # TASK-386 — per-model running gauge + inference latency for the
+            # Per-model running gauge + inference latency for the
             # ASR model (e.g. whisper-large-v3-turbo). The context manager is
             # exception-safe so the gauge never leaks on inference failure.
             with track_model_inference(asr_model.model_slug):
@@ -509,7 +509,7 @@ class BatchTranscriptionService:
             if diarization_meta:
                 result.metadata["diarization"] = diarization_meta
 
-            # Include per-segment results when available (Phase 2.2)
+            # Include per-segment results when available
             if (
                 raw_result.model_output is not None
                 and isinstance(raw_result.model_output, dict)
@@ -524,7 +524,7 @@ class BatchTranscriptionService:
 
             update_progress(100)
 
-            # TASK-386 — wire the (previously dead) transcription domain metrics.
+            # Wire the (previously dead) transcription domain metrics.
             # audio_seconds feeds stt_v2_audio_duration_seconds (_sum/60 = the
             # platform "transcription minutes" signal).
             record_transcription(
@@ -548,7 +548,7 @@ class BatchTranscriptionService:
 
         except Exception as e:
             logger.error(f"[{job_id}] Transcription failed: {e}")
-            # TASK-386 — record the failed job + error type (engine is "unknown"
+            # Record the failed job + error type (engine is "unknown"
             # when the failure happened before the ASR model resolved).
             record_transcription(
                 pipeline=pipeline_config.slug,
@@ -799,7 +799,7 @@ class BatchTranscriptionService:
 
         # Load ASR model (required)
         asr_ref = model_refs.asr
-        # TASK-505 P1 — capability sanity check for the batch mode: a
+        # Capability sanity check for the batch mode: a
         # platform/engine mismatch warns loudly here at load time
         # (observability-first, never blocks — see processors/binding.py).
         try:
@@ -1008,7 +1008,7 @@ class BatchTranscriptionService:
             processor, "return_attention_mask"
         ):
             processor_kwargs["return_attention_mask"] = True
-        # TASK-351 P2-1 — a configured language is always pinned (passed to
+        # A configured language is always pinned (passed to
         # the processor), including when code_switching is enabled
         # (code_switching is retained in the signature for call-site
         # compatibility but no longer gates the language kwarg).
@@ -1114,11 +1114,11 @@ class BatchTranscriptionService:
         speech_segments = [s for s in segments if s.is_speech]
         original_count = len(speech_segments)
 
-        # TASK-017: Merge adjacent short segments to reduce generate() calls.
+        # Merge adjacent short segments to reduce generate() calls.
         # Each Whisper generate() incurs ~6s encoder overhead regardless of
         # audio length.  Merging 28 segments into ~4-5 chunks cuts total
         # inference time from ~180s to ~40s for 60s audio.
-        # TASK-505 P2 — per-pipeline override (postprocessing.segment_merge):
+        # Per-pipeline override (postprocessing.segment_merge):
         # enabled True/False overrides the global setting gate; None inherits
         # it (the v1 behavior). gap/max values override when set.
         sm = segment_merge_config
@@ -1143,7 +1143,7 @@ class BatchTranscriptionService:
             if isinstance(sm_enabled, bool)
             else settings.segment_merge_gap_threshold_s > 0
         )
-        # TASK-505 review — an explicit per-pipeline `enabled: true` must not
+        # An explicit per-pipeline `enabled: true` must not
         # be defeated by a global gap of 0 (the operator's way of disabling
         # merging globally): fall back to the historical default gap.
         if sm_enabled is True and merge_gap <= 0:
@@ -1548,7 +1548,7 @@ class BatchTranscriptionService:
     ) -> RawTranscription:
         """Run ASR model inference.
 
-        TASK-505 P1 — dispatch is registry-driven (same table as the streaming
+        Dispatch is registry-driven (same table as the streaming
         path): the engine adapter is resolved from the processor registry by
         ``AiModelFormat``, so adding an engine registers one spec + one
         adapter instead of editing this chain. For engines that support
@@ -1877,7 +1877,7 @@ class BatchTranscriptionService:
         with torch.no_grad():
             # Check if model supports generate (Whisper, Seq2Seq)
             if hasattr(asr_model, "generate"):
-                # TASK-505 P1 — shared decode-kwargs builder (was one of three
+                # Shared decode-kwargs builder (was one of three
                 # hand-kept copies; semantics locked by
                 # tests/unit/test_batch_inference_kwargs.py).
                 generate_kwargs = build_whisper_generate_kwargs(
@@ -2152,7 +2152,7 @@ class BatchTranscriptionService:
         code_switching = getattr(config, "code_switching", False)
         lang = getattr(config, "language", None)
 
-        # TASK-505 P1 — shared decode-kwargs builder (was one of three
+        # Shared decode-kwargs builder (was one of three
         # hand-kept copies). return_timestamps=False: Optimum decodes offsets
         # per chunk itself for speed.
         generate_kwargs = build_whisper_generate_kwargs(
@@ -2282,7 +2282,7 @@ class BatchTranscriptionService:
                     generate_kwargs,
                 )
 
-            # ---- Word timestamps via output_offsets (Phase 3.1) ----
+            # ---- Word timestamps via output_offsets ----
             chunk_word_timestamps: list[dict[str, Any]] = []
             chunk_end_s = min(
                 chunk_start_s + len(chunk_audio) / sample_rate,
@@ -2541,10 +2541,10 @@ class BatchTranscriptionService:
     ) -> RawTranscription:
         """Run inference via faster-whisper (CTranslate2).
 
-        TASK-505 Phase 1 — batch parity: the engine was streaming-only since
-        TASK-351, so batch jobs on FASTER_WHISPER pipelines hard-failed with
-        "Unsupported model format". Reuses the streaming adapter (true
-        word-level timestamps + probabilities).
+        Batch parity: the engine was streaming-only, so batch jobs on
+        FASTER_WHISPER pipelines hard-failed with "Unsupported model
+        format". Reuses the streaming adapter (true word-level timestamps +
+        probabilities).
         """
         import asyncio
 
@@ -2578,7 +2578,7 @@ class BatchTranscriptionService:
         config: Any,
         progress_callback: Callable[[float], None] | None = None,
     ) -> RawTranscription:
-        """Run inference via parakeet.cpp (ggml) — TASK-505 P3."""
+        """Run inference via parakeet.cpp (ggml)."""
         import asyncio
 
         from stt_v2.streaming.parakeet_cpp_asr import ParakeetCppAsrAdapter
@@ -2612,7 +2612,7 @@ class BatchTranscriptionService:
         *,
         prompt: str | None = None,
     ) -> RawTranscription:
-        """Run inference via whisper.cpp (ggml, pywhispercpp) — TASK-507."""
+        """Run inference via whisper.cpp (ggml, pywhispercpp)."""
         import asyncio
 
         from stt_v2.streaming.whisper_cpp_asr import WhisperCppAsrAdapter
@@ -2639,7 +2639,7 @@ class BatchTranscriptionService:
         progress_callback: Callable[[float], None] | None = None,
     ) -> RawTranscription:
         """Run inference via the Azure AI Foundry LLM Speech API
-        (MAI-Transcribe) — TASK-505 P3, decision D4 (preview, batch-only).
+        (MAI-Transcribe) — preview, batch-only.
 
         REST ``POST {endpoint}/speechtotext/transcriptions:transcribe`` with
         multipart WAV + an ``enhancedMode`` definition selecting the MAI

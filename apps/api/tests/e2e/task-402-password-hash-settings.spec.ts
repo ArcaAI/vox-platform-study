@@ -1,5 +1,5 @@
 /**
- * TASK-402 — live API contract for the two pre-existing-defect fixes.
+ * Live API contract for the two pre-existing-defect fixes.
  *
  * Run against the live test stack (`SKIP_DB_PRECHECK=true API_URL=http://localhost:8868/api/v1`),
  * harness mirrors task-400 (seeded `super_admin` on `__GLOBAL__`; throwaway
@@ -9,8 +9,8 @@
  *   A1. create user (creation-time password) → that user logs in immediately.
  *   A2. the stored password is bcrypt-format (`$2…`), NOT the plaintext, and
  *       `passwordChangedAt` is stamped (rotation parity).
- *   A3. weak creation password → clear 400 listing the unmet rules (TASK-400
- *       policy enforced on this path), no row written.
+ *   A3. weak creation password → clear 400 listing the unmet rules (password
+ *       complexity policy enforced on this path), no row written.
  *   A4. the generic PATCH update path hashes too: update the password, old
  *       login stops working, new one works, hash at rest.
  *

@@ -1,6 +1,6 @@
-"""Tests for the PHI egress chokepoint (TASK-357).
+"""Tests for the PHI egress chokepoint.
 
-RED-first: written before ``harness.guards.phi.egress`` exists. The chokepoint
+The chokepoint
 wraps the existing fail-closed :class:`PhiRedactor` with the run-effective policy
 flags (``phi_enabled`` / ``phi_fail_closed`` snapshotted at workflow start) and a
 fan-out helper that redacts every cloud-bound field of the inferential pass once.
@@ -116,7 +116,7 @@ class _ContractRedactor:
 
 class TestEnsureEgressSafe:
     def test_disabled_bypasses_guard_even_for_cloud(self) -> None:
-        # AC-4: phi_enabled=False ⇒ egress allowed unredacted; redactor never built/called.
+        # phi_enabled=False ⇒ egress allowed unredacted; redactor never built/called.
         guard = PhiRedactor(analyzer=_ForbiddenAnalyzer())
         out = ensure_egress_safe(
             _PHI_TEXT,
@@ -141,7 +141,7 @@ class TestEnsureEgressSafe:
         assert out == _PHI_TEXT
 
     def test_local_provider_passthrough_without_redacting(self) -> None:
-        # AC-3: a non-cloud provider returns text untouched (no redaction).
+        # A non-cloud provider returns text untouched (no redaction).
         guard = PhiRedactor(analyzer=_ForbiddenAnalyzer())
         out = ensure_egress_safe(
             _PHI_TEXT,
@@ -154,7 +154,7 @@ class TestEnsureEgressSafe:
         assert out == _PHI_TEXT
 
     def test_cloud_returns_cleaned_text(self) -> None:
-        # AC-1: cloud egress receives the cleaned text.
+        # Cloud egress receives the cleaned text.
         redactor = _ContractRedactor(transform=lambda t: t.replace("John Smith", "<PERSON>"))
         out = ensure_egress_safe(
             _PHI_TEXT,
@@ -168,7 +168,7 @@ class TestEnsureEgressSafe:
         assert out == _PHI_TEXT.replace("John Smith", "<PERSON>")
 
     def test_cloud_fail_closed_blocks_when_analyzer_raises(self) -> None:
-        # AC-2: fail-closed + redaction failure ⇒ block (degrade-closed).
+        # Fail-closed + redaction failure ⇒ block (degrade-closed).
         guard = PhiRedactor(analyzer=_RaisingAnalyzer())
         with pytest.raises(PhiEgressBlocked):
             ensure_egress_safe(
@@ -181,7 +181,7 @@ class TestEnsureEgressSafe:
             )
 
     def test_cloud_fail_closed_blocks_when_removal_unconfirmed(self) -> None:
-        # AC-2: detection succeeded but PHI survived ⇒ block.
+        # Detection succeeded but PHI survived ⇒ block.
         with pytest.raises(PhiEgressBlocked):
             ensure_egress_safe(
                 _PHI_TEXT,
@@ -193,7 +193,7 @@ class TestEnsureEgressSafe:
             )
 
     def test_policy_fail_closed_false_overrides_settings_true(self) -> None:
-        # AC-4: the run-effective policy flag governs — phi_fail_closed=False degrades
+        # The run-effective policy flag governs — phi_fail_closed=False degrades
         # OPEN even though settings.phi.fail_closed is True.
         out = ensure_egress_safe(
             _PHI_TEXT,
@@ -234,7 +234,7 @@ def _citations() -> dict[str, Any]:
 
 class TestEnsureInferentialEgressSafe:
     def test_all_local_is_identity_noop(self) -> None:
-        # AC-3: both consumers local ⇒ inputs returned unchanged (same objects),
+        # Both consumers local ⇒ inputs returned unchanged (same objects),
         # the redactor is never touched ⇒ byte-identical / no added latency.
         guard = PhiRedactor(analyzer=_ForbiddenAnalyzer())
         note, transcript, citations, chunks = (
@@ -278,7 +278,7 @@ class TestEnsureInferentialEgressSafe:
         assert out[2] is citations  # untouched
 
     def test_cloud_redacts_every_field(self) -> None:
-        # AC-1: note + transcript + claim text + evidence quote + chunk all redacted;
+        # Note + transcript + claim text + evidence quote + chunk all redacted;
         # ids/sections + sibling keys preserved.
         redactor = _ContractRedactor(transform=lambda t: t.replace("John Smith", "<PERSON>"))
         note, transcript, citations, chunks = (
@@ -311,7 +311,7 @@ class TestEnsureInferentialEgressSafe:
         assert citations["claims"][0]["text"] == "John Smith has HTN"
 
     def test_redacts_only_the_cloud_consumer_payload(self) -> None:
-        # AC-1 routing: judge local + safety cloud ⇒ only the Granite note is redacted;
+        # Routing: judge local + safety cloud ⇒ only the Granite note is redacted;
         # the judge-bound transcript/claims/chunks pass through untouched.
         redactor = _ContractRedactor(transform=lambda t: t.replace("John Smith", "<PERSON>"))
         safe_note, safe_tx, safe_cit, safe_chunks = ensure_inferential_egress_safe(
@@ -332,7 +332,7 @@ class TestEnsureInferentialEgressSafe:
         assert safe_chunks["kc1"] == "John Smith chunk"
 
     def test_cloud_block_propagates(self) -> None:
-        # AC-2: a fail-closed block raises so the activity can degrade the whole pass.
+        # A fail-closed block raises so the activity can degrade the whole pass.
         with pytest.raises(PhiEgressBlocked):
             ensure_inferential_egress_safe(
                 note_text=_PHI_TEXT,

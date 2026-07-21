@@ -1,8 +1,8 @@
 /**
- * AiInferenceClient unit tests (TASK-446). URL resolution from IConfigService
+ * AiInferenceClient unit tests. URL resolution from IConfigService
  * (code defaults when absent), the two POST inference proxies, and the error
  * contract (upstream status passthrough, 503 on transport failure).
- * TASK-460 C4-02: every PHI-bearing hop attaches a fail-closed
+ * Every PHI-bearing hop attaches a fail-closed
  * `X-Service-Token` (mirrors the harness outbound `buildHeaders` pattern).
  */
 import { HttpException, ServiceUnavailableException } from '@nestjs/common';
@@ -55,7 +55,7 @@ describe('AiInferenceClient — URL resolution', () => {
     expect(axiosPost).toHaveBeenCalledWith('http://localhost:8864/api/v1/classify/tokens', { text: 'x' }, expect.anything());
   });
 
-  // TASK-460 C4-02 — INVERTED from "never sends an X-Service-Token header":
+  // INVERTED from "never sends an X-Service-Token header":
   // both hops carry caller clinical text (PHI), so the outbound request must
   // authenticate fail-closed exactly like the harness/STT internal hops.
   it('always sends an X-Service-Token header, empty when unresolved (fail-closed)', async () => {
@@ -92,7 +92,7 @@ describe('AiInferenceClient — URL resolution', () => {
     expect(nlpOptions?.headers?.['X-Service-Token']).toBe('nlp-secret');
   });
 
-  // TASK-506 — the guardrail/NLP services resolve per-tenant model defaults, so
+  // The guardrail/NLP services resolve per-tenant model defaults, so
   // BOTH hops now carry the caller's tenant context.
   it('attaches X-Tenant-Id from the CLS tenant on guardrail AND NLP calls', async () => {
     const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? 'tenant-42' : undefined)) };

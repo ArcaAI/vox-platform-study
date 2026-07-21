@@ -5,7 +5,7 @@ import { Logger } from '@nestjs/common';
 import { IPasswordResetMailer, PasswordResetMailPayload } from './IPasswordResetMailer';
 
 /**
- * TASK-400 — dev/test transport: captures would-be reset emails to a local
+ * Dev/test transport: captures would-be reset emails to a local
  * JSONL outbox so the live E2E suite (and a developer) can read the token
  * WITHOUT the API ever returning it. Non-production only — the factory never
  * selects this in production. Reports `false` (not delivered) and never throws.

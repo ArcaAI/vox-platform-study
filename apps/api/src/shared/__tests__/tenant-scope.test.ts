@@ -6,7 +6,7 @@ import {
   resolveScopedTenantIdOptional,
 } from '../tenant-scope';
 
-// TASK-504 Phase 2 — one shared home for the tenant-resolution logic that was
+// One shared home for the tenant-resolution logic that was
 // copy-pasted across tenant / harness-admin / pipeline-policy-admin /
 // tenant-tts-config-admin controllers. Global-admin acts cross-tenant via a
 // query tenant (or the working tenant elevated into CLS); a tenant-bound caller

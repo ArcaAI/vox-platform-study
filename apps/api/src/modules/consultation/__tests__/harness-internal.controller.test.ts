@@ -1,5 +1,5 @@
 /**
- * HarnessInternalController Unit Tests (TASK-330 Phase 1 — Lane G)
+ * HarnessInternalController Unit Tests
  *
  * The inbound /internal/harness/* surface. Thin controller: it delegates each
  * route to HarnessInternalService and is class-guarded by HarnessServiceTokenGuard.
@@ -12,14 +12,14 @@ import { HarnessServiceTokenGuard } from '../harness-service-token.guard';
 
 const mockService = {
     persistEntities: vi.fn(),
-    // TASK-480 Half-B — read NamedEntity rows the harness reuses as NER priors.
+    // Read NamedEntity rows the harness reuses as NER priors.
     getEntities: vi.fn(),
     assemble: vi.fn(),
     persistDraft: vi.fn(),
     recordGateDecision: vi.fn(),
-    // TASK-355 Phase D Slice 5d — second phase of optimistic delivery.
+    // Second phase of optimistic delivery.
     finalizeAssurance: vi.fn(),
-    // TASK-466 (C1-05) — gate SLA-breach escalation record.
+    // Gate SLA-breach escalation record.
     recordEscalation: vi.fn(),
 };
 
@@ -45,7 +45,7 @@ describe('HarnessInternalController', () => {
 
     it('is @Public() so the boot route-audit passes and the global auth chain defers to the service-token guard', () => {
         // The routes are service-to-service (X-Service-Token), not user-JWT. Without
-        // @Public() the boot-time route-permission audit (TASK-307 W4a.1) refuses to
+        // @Public() the boot-time route-permission audit refuses to
         // start, AND a future global APP_GUARD would reject the harness's token calls
         // before HarnessServiceTokenGuard runs. @Public() only sets SKIP_AUTH_KEY — the
         // class-level HarnessServiceTokenGuard still enforces the token.
@@ -53,7 +53,7 @@ describe('HarnessInternalController', () => {
         expect(skipAuth).toBe(true);
     });
 
-    // TASK-466 (C1-03) — the 4 WORM/draft callbacks forward the Idempotency-Key
+    // The 4 WORM/draft callbacks forward the Idempotency-Key
     // header into the service so a retried harness callback dedups.
     it('POST entities -> persistEntities(consultationId, dto, idempotencyKey)', async () => {
         mockService.persistEntities.mockResolvedValue({ savedCount: 1, entityIds: ['ne-1'] });
@@ -65,7 +65,7 @@ describe('HarnessInternalController', () => {
         expect(result).toEqual({ savedCount: 1, entityIds: ['ne-1'] });
     });
 
-    // TASK-480 Half-B — the read route the harness `load_entity_priors` activity calls.
+    // The read route the harness `load_entity_priors` activity calls.
     it('GET entities -> getEntities(consultationId, tenantId)', async () => {
         mockService.getEntities.mockResolvedValue({ entities: [{ text: 'X', type: 'DISEASE', umlsCui: 'C1' }] });
 
@@ -119,7 +119,7 @@ describe('HarnessInternalController', () => {
         expect(mockService.persistEntities).toHaveBeenCalledWith('consultation-1', dto, undefined);
     });
 
-    // TASK-466 (C1-05 + C1-03) — the escalation route delegates to recordEscalation
+    // The escalation route delegates to recordEscalation
     // and forwards the Idempotency-Key header so a re-delivered escalate_gate dedups.
     it('POST escalation -> recordEscalation(consultationId, dto, idempotencyKey)', async () => {
         mockService.recordEscalation.mockResolvedValue({ recorded: true });
@@ -140,7 +140,6 @@ describe('HarnessInternalController', () => {
         expect(mockService.recordEscalation).toHaveBeenCalledWith('consultation-1', dto, undefined);
     });
 
-    // TASK-345 — live harness activity/progress feed.
     describe('POST consultations/:id/progress', () => {
         const mockProgressService = { reportProgress: vi.fn() };
 
@@ -180,7 +179,6 @@ describe('HarnessInternalController', () => {
         });
     });
 
-    // TASK-355 Phase D Slice 5d — optimistic delivery second phase + live feed.
     describe('POST consultations/:id/assurance (finalize) + assurance-event (per-claim)', () => {
         const mockAssuranceService = { reportClaim: vi.fn(), publishComplete: vi.fn() };
 

@@ -1,12 +1,12 @@
-// TASK-504 Phase 3 — capability/settings registry types.
+// Capability/settings registry types.
 //
-// The typed vocabulary that classifies every admin-controllable variable per the
-// TASK-504 §3 framework (data class → storage tier, scope, sensitivity, editor).
-// A descriptor is pure metadata; it does NOT store the value — it says WHERE the
-// value lives, WHO may edit it, and HOW DEEP the scope may go.
+// The typed vocabulary that classifies every admin-controllable variable by
+// data class → storage tier, scope, sensitivity, and editor. A descriptor is
+// pure metadata; it does NOT store the value — it says WHERE the value
+// lives, WHO may edit it, and HOW DEEP the scope may go.
 
 /**
- * Storage tier = the §3 data class the setting belongs to. Determines the
+ * Storage tier = the data class the setting belongs to. Determines the
  * physical home and whether/how it is encrypted.
  *  - `vault-kv`    class 1: shared platform secret in Vault kv-v2 (operator-set).
  *  - `db-secret`   class 2: per-tenant secret as Vault-Transit ciphertext in a DB column.

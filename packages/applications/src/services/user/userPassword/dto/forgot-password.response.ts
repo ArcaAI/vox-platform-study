@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 /**
- * TASK-400 — generic acknowledgement. The body is IDENTICAL whether or not the
+ * Generic acknowledgement. The body is IDENTICAL whether or not the
  * email matched an account (anti-enumeration); the token is never returned.
  */
 export class ForgotPasswordResponse {

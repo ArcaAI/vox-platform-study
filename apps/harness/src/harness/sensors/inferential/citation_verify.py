@@ -95,7 +95,7 @@ class CitationVerifySensor:
         if not cited:
             return _vacuous_pass()
 
-        # TASK-359 WS-2: reuse the WS-1 content key — keyed on this sensor's OWN premise (the
+        # WS-2: reuse the WS-1 content key — keyed on this sensor's OWN premise (the
         # cited chunk(s), NOT the transcript) + its own identity, so a dually-checked cited claim
         # gets a citation_verify entry DISTINCT from its groundedness entry (different premise +
         # sensor/prompt) and the two verdicts stay separable. NO prompt merge (parity-unsafe).
@@ -127,7 +127,7 @@ class CitationVerifySensor:
                             return False  # unparseable -> not confirmed (conservative)
 
                     # HIT reuses the cached verdict; MISS re-judges (conservative) + populates.
-                    # The cached bool is byte-identical to a fresh judgement (AC-2) and flows
+                    # The cached bool is byte-identical to a fresh judgement and flows
                     # unchanged into the scoring below — citation_verify stays separable.
                     ok = await cached_verdict(verdict_cache, key=key, compute=_judge_once)
                 # No premise (unresolvable cited id) or empty hypothesis -> unverifiable.

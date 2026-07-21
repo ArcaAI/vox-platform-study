@@ -1,5 +1,5 @@
 /**
- * ResourceSubscriptionController unit tests (TASK-419 item 2).
+ * ResourceSubscriptionController unit tests.
  *
  * CRUD + toggle plane over ResourceSubscriptionService. CASL enforcement is
  * guard-side; these specs pin the metadata and delegation/projection contract.

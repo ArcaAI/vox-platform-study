@@ -1,4 +1,4 @@
-"""Per-run token budget — graceful regen stop (TASK-533 B4).
+"""Per-run token budget — graceful regen stop.
 
 The budget must bound the regen loop WITHOUT changing the command sequence, so it
 is folded from values already recorded in activity outputs (`generated.stats`) and
@@ -9,7 +9,7 @@ fixture — the posture the codebase already uses for the WS-1 verdict cache.
 
 Pinned here:
   * `token_budget_per_run = 0` ⇒ UNBOUNDED (the shipped default), so the loop is
-    byte-identical to pre-B4;
+    byte-identical to before the budget was added;
   * an old history whose stats carry no usage ⇒ zero spend ⇒ also inert;
   * both the flat and the nested `usage` token shapes are counted;
   * exhaustion is `>=`, so a run that exactly meets its budget stops.

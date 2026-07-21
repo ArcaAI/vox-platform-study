@@ -1,5 +1,5 @@
 /**
- * HarnessAssuranceService Unit Tests (TASK-355 Phase D Slice 5d — live assurance feed).
+ * HarnessAssuranceService Unit Tests — live assurance feed.
  *
  * The ephemeral per-claim assurance feed: the harness `run_inferential_sensors`
  * activity POSTs one claim verdict at a time (Q5 true-live); the service folds it

@@ -1,5 +1,5 @@
 /**
- * TASK-387 (#6 / D2) — DepartmentService.getDepartmentUsers unit tests.
+ * DepartmentService.getDepartmentUsers unit tests.
  *
  * Verifies the reverse dept->users listing: tenant scoping (no-existence-leak on
  * cross-tenant, super-admin cross-tenant bypass), the `UserDepartment` relational
@@ -14,7 +14,7 @@ import { ResourceStatusType } from '@arcaai/domains';
 
 vi.mock('../../user/user/user.dto.mapper', () => ({
   UserDtoMapper: {
-    // TASK-441 — `getDepartmentUsers` now maps members MANUALLY (per-row, so it
+    // `getDepartmentUsers` now maps members MANUALLY (per-row, so it
     // can stamp `isLead`), so it calls `ToResponse` not `ToPaginatedResponse`.
     // Echo the user id so the service can key `isLead` off the mocked membership.
     ToResponse: vi.fn((u: { id: string }) => ({ id: u.id })),
@@ -60,7 +60,7 @@ describe('DepartmentService.getDepartmentUsers (TASK-387 #6)', () => {
     mockDepartmentRepository.findById.mockResolvedValue({ id: 'dept-1', tenantId: 'tenant-1' });
     mockUserRepository.findAll.mockResolvedValue([{ id: 'ua' }, { id: 'ub' }]);
     mockUserRepository.count.mockResolvedValue(2);
-    // TASK-441 — `ua` is the primary/lead member; `ub` is not.
+    // `ua` is the primary/lead member; `ub` is not.
     mockUserDepartmentRepository.findAll.mockResolvedValue([{ userId: 'ua', isPrimary: true }]);
 
     const result = await service.getDepartmentUsers('dept-1', { page: 1, limit: 10 });
@@ -70,7 +70,7 @@ describe('DepartmentService.getDepartmentUsers (TASK-387 #6)', () => {
     expect(result.page).toBe(1);
     expect(result.limit).toBe(10);
 
-    // TASK-441 — `isLead` derived from the `isPrimary` membership set.
+    // `isLead` derived from the `isPrimary` membership set.
     const byId = Object.fromEntries(result.data.map((r) => [r.id, r]));
     expect(byId['ua'].isLead).toBe(true);
     expect(byId['ub'].isLead).toBe(false);
@@ -84,7 +84,7 @@ describe('DepartmentService.getDepartmentUsers (TASK-387 #6)', () => {
       resourceStatus: { not: ResourceStatusType.DELETED },
     });
 
-    // TASK-441 — the membership lookup is scoped to this department + tenant,
+    // The membership lookup is scoped to this department + tenant,
     // primary-only, and excludes soft-deleted rows.
     const udArg = mockUserDepartmentRepository.findAll.mock.calls[0][0] as { where: Record<string, unknown> };
     expect(udArg.where).toMatchObject({

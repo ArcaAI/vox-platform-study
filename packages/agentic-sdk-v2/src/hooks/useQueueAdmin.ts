@@ -1,12 +1,12 @@
 /**
- * @arcaai/vox - useQueueAdmin Hook (TASK-403)
+ * @arcaai/vox - useQueueAdmin Hook
  *
- * Global-admin BullMQ introspection over the TASK-250/336 queue-admin surface
+ * Global-admin BullMQ introspection over the queue-admin surface
  * (`/admin/queues`, `manage all` only).
  *
  * Deliberately NON-destructive: only read operations plus retry (single/bulk)
  * are exposed. Clean/remove/pause exist server-side but are intentionally
- * absent here so the admin console cannot invoke them (TASK-403 constraint).
+ * absent here so the admin console cannot invoke them.
  */
 
 import { useState, useCallback } from 'react';

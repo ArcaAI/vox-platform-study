@@ -1,7 +1,7 @@
 /**
  * Unit tests for consultation-job type helpers.
  *
- * TASK-299 D-8 — `isTerminalStatus` must be case-insensitive so the SDK can
+ * `isTerminalStatus` must be case-insensitive so the SDK can
  * cope with backend payloads that emit upper-case statuses (e.g. 'COMPLETED').
  */
 

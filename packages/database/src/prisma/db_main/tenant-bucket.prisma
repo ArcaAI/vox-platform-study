@@ -24,7 +24,7 @@ model TenantBucket {
   // Path layout for file organization within the bucket
   pathPattern String @default("{yyyy}/{MM}/{dd}/{user_name}")
 
-  // TASK-386 (#5) — optional storage quota in bytes for this bucket. NULL means
+  // Optional storage quota in bytes for this bucket. NULL means
   // "no quota configured" (the consumption roll-up surfaces null, not 0). BigInt
   // so TB-scale quotas are representable; the read-API converts to a JS number
   // (bytes stay well within 2^53 for any realistic quota).
@@ -73,10 +73,10 @@ model StorageAccessKey {
 
   // Credentials.
   //   accessKeyId     — public identifier (queryable; unique).
-  //   secretAccessKey — NOT a recoverable secret: TASK-318 W3 (F-2) stores a
+  //   secretAccessKey — NOT a recoverable secret: stores a
   //     one-way PEPPERED HMAC-SHA256 hash of the issued secret (the plaintext is
   //     returned to the caller exactly once at creation and never persisted).
-  //     TASK-369 Phase 5: deliberately NOT Vault-encrypted — encrypting a
+  //     Deliberately NOT Vault-encrypted — encrypting a
   //     one-way verifier hash adds no protection (it is not reversible and is
   //     never decrypted). The actual object-store backend credentials live in
   //     Vault via SecretsService (TenantStorageConfig.credentialsRef / S3_SECRET_KEY),

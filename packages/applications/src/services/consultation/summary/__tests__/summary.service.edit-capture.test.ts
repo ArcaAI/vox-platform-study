@@ -1,5 +1,5 @@
 /**
- * TASK-356 Phase 6 (S4 + S5) — DNA edit-capture on the sync SummaryService path.
+ * (S4 + S5) — DNA edit-capture on the sync SummaryService path.
  *
  *  - S4: `generateSummary` writes an immutable AI-draft v1 snapshot
  *    (`ContextItemVersion`, changeReason='ai_draft_v1', changeSource='ai_model')

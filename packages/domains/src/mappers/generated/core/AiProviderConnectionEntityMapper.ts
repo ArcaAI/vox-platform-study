@@ -2,7 +2,7 @@ import { AutoClassMapper, AutoEntityChangeMapper, BaseMapper, createMapperHandle
 import * as Entities from '../../../entities';
 import * as Models from '../../../models';
 
-// TASK-524 — HAND-AUTHORED (the `gen:mapper` generator crashes pre-existingly;
+// HAND-AUTHORED (the `gen:mapper` generator crashes pre-existingly;
 // see the AiTaskDefaultEntityMapper precedent in this folder).
 //
 // `_version` is owned by the database and the only legitimate writer is

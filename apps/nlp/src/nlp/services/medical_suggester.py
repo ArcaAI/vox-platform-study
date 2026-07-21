@@ -218,7 +218,7 @@ class MedicalSuggester:
             return {}
 
         try:
-            # TASK-386 — per-model running gauge + inference latency
+            # Per-model running gauge + inference latency
             # (symps-disease-bert).
             with track_model_inference(MODEL_SYMPTOMS_DISEASE):
                 pipeline_results = self.text_classifier_pipeline(symptom_text)

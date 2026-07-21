@@ -1,12 +1,12 @@
 /**
- * TASK-311 AC-2 — `RbacRoleFactory` centralises the Prisma input shape
+ * `RbacRoleFactory` centralises the Prisma input shape
  * for `Role` mutations. Same simplification rationale as
- * `PolicyFactory` (see README §4.3 D-2).
+ * `PolicyFactory`.
  *
- * Prefixed `Rbac` per README §4.3 D-1 — there is a stale
+ * Prefixed `Rbac` because there is a stale
  * `entities/factories/mappers/repositories/generated/core/Role*` chain
- * that this ticket cannot rename. The `Rbac` prefix follows the
- * `RbacRoleService` precedent set in TASK-307 W6.
+ * that cannot be renamed. The `Rbac` prefix follows the
+ * `RbacRoleService` precedent.
  */
 import { ResourceStatusType } from '../../enums';
 
@@ -17,14 +17,14 @@ export interface RbacRoleCreateProps {
   externalName?: string;
   externalId?: string;
   parentRoleId?: string;
-  /** TASK-501 — defaults to `false`; only a global admin may pass `true`
+  /** Defaults to `false`; only a global admin may pass `true`
    *  (enforced by `RbacRoleService.create`, not the factory). */
   isSystemRole?: boolean;
   createdBy?: string;
 }
 
 /** Properties that may participate in a `Role` update. `null` is
- *  treated as an explicit clear (preserves the verbatim pre-TASK-311
+ *  treated as an explicit clear (preserves the verbatim legacy
  *  Prisma payload shape for `parentRoleId`/`description` clears). */
 export interface RbacRoleUpdateProps {
   name?: string;

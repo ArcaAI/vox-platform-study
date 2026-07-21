@@ -1,5 +1,5 @@
 /**
- * useUsers().listPaginated — sort/filter/search forwarding (TASK-375 client follow-up)
+ * useUsers().listPaginated — sort/filter/search forwarding
  *
  * `listPaginated` previously only forwarded `page`/`limit`. It now forwards the
  * full backend `PaginatedQuery` contract (CSV `filters` + `sort` + `search`

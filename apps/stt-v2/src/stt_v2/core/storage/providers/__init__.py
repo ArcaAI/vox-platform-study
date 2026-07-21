@@ -1,4 +1,4 @@
-"""Pluggable per-tenant blob-storage providers (TASK-318 W3-C).
+"""Pluggable per-tenant blob-storage providers.
 
 Exposes a provider-agnostic surface (:class:`BlobStorageProvider`) with S3/MinIO
 and Azure Blob implementations, plus a factory that maps a storage descriptor

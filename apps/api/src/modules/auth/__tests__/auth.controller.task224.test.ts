@@ -1,5 +1,5 @@
 /**
- * TASK-224: Auth Controller Security Tests
+ * Auth Controller Security Tests
  *
  * Tests for:
  * 1. Refresh token uses cryptographically secure randomness
@@ -67,7 +67,7 @@ const createMockTenantRepository = () => ({
 });
 
 /**
- * TASK-307 W6.1 — replaces the previous `createMockDatabaseService` factory.
+ * Replaces the previous `createMockDatabaseService` factory.
  * `AuthController` no longer touches Prisma directly; its 4th constructor
  * arg is now `IUserRoleAssignmentService`. This helper preserves the
  * `(roleAssignments, tenantAssignment)` signature the existing tests use:
@@ -90,7 +90,7 @@ const createMockUserRoleAssignmentService = (roleAssignments: any[] = [], tenant
 };
 
 /**
- * TASK-307 W6.1 — sequential-mock helper for impersonation tests. The
+ * Sequential-mock helper for impersonation tests. The
  * controller calls `findActiveRolesForUser` twice per impersonation
  * (admin first, target second). Pass an array of [adminRoles, targetRoles]
  * and an optional list of `targetTenantIds`.
@@ -138,7 +138,7 @@ const createMockJwtRevocationService = () => ({
     isRevoked: vi.fn().mockResolvedValue(false),
 });
 
-// TASK-307 W2.3 — AuthController now reads JWT_SECRET_KEY exclusively
+// AuthController now reads JWT_SECRET_KEY exclusively
 // from SecretsService. Tests inject this mock as the 12th constructor
 // arg.
 const createMockSecretsService = () => ({
@@ -147,9 +147,9 @@ const createMockSecretsService = () => ({
     ),
 });
 
-// TASK-307 W1.2 — replaces the legacy `generateRefreshToken` controller
+// Replaces the legacy `generateRefreshToken` controller
 // helper. Default mock issues a deterministic opaque token + family so
-// existing TASK-224 login / refresh tests can keep their `result.refreshToken`
+// existing login / refresh tests can keep their `result.refreshToken`
 // assertions (e.g. `toBeDefined()` / `toBe(string)`) without re-wiring.
 const createMockRefreshTokenService = () => ({
     issue: vi.fn(async ({ jti, family }: any) => ({
@@ -176,9 +176,9 @@ describe('AuthController — TASK-224 Security Tests', () => {
     // =========================================================================
     // Refresh Token Security
     //
-    // The `generateRefreshToken` private helper that TASK-224 pinned has
-    // been removed by TASK-307 W1.5 — the legacy `refresh_<userId>_<ts>_<hex>`
-    // format is itself the audit-flagged finding (C-1 / D-10). The
+    // The `generateRefreshToken` private helper this file originally pinned has
+    // been removed — the legacy `refresh_<userId>_<ts>_<hex>`
+    // format was itself an audit-flagged finding. The
     // refresh-token surface is now owned by `RefreshTokenService`, with
     // tighter invariants (opaque base64url, server-side persistence,
     // single-use + family-revoke) pinned in
@@ -544,7 +544,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
         });
 
         it('should return success true when called by an actively-impersonating caller', async () => {
-            // TASK-295 L-3: the caller is only allowed through when their JWT
+            // The caller is only allowed through when their JWT
             // carries an `impersonatedBy` claim.
             const impersonatedSession = {
                 id: 'doctor-001',
@@ -679,7 +679,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
         });
 
         it('should throw UnauthorizedException for an unknown / forged token (RefreshTokenService rejects)', async () => {
-            // TASK-307 W1.3: the format is no longer client-verifiable —
+            // The format is no longer client-verifiable —
             // the server determines validity via sha256 lookup in Redis.
             // RefreshTokenService.consume throws UnauthorizedException for
             // any token it does not recognise.
@@ -753,9 +753,9 @@ describe('AuthController — TASK-224 Security Tests', () => {
         });
 
         it('should return new token pair for valid refresh token with existing user', async () => {
-            // TASK-307 W1.3: server-side single-use rotation through
+            // Server-side single-use rotation through
             // RefreshTokenService.consume + .issue. The new refresh token
-            // is opaque (D-10) and the response shape stays { token, refreshToken }.
+            // is opaque and the response shape stays { token, refreshToken }.
             const targetUser = createTargetUser('user-123');
             const doctorRole = createRole('doctor');
             const users = new Map([['user-123', targetUser]]);
@@ -796,7 +796,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
             expect(result).toHaveProperty('token');
             expect(result).toHaveProperty('refreshToken');
             expect(typeof result.token).toBe('string');
-            // TASK-307 W1.5 / D-10: opaque refresh token — no userId leak in plaintext.
+            // Opaque refresh token — no userId leak in plaintext.
             expect(result.refreshToken).not.toMatch(/^refresh_/);
             expect(result.refreshToken).not.toContain('user-123');
         });
@@ -925,7 +925,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
             expect(result).toHaveProperty('refreshToken');
             expect(result).toHaveProperty('user');
             expect(result.user.id).toBe('user-001');
-            // TASK-307 W1.2 / D-10: opaque refresh token — no userId or
+            // Opaque refresh token — no userId or
             // legacy `refresh_<userId>_<ts>` prefix in the wire format.
             expect(result.refreshToken).not.toMatch(/^refresh_/);
             expect(result.refreshToken).not.toContain('user-001');

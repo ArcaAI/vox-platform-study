@@ -1,9 +1,9 @@
 /**
- * TestAppModule — TASK-309 AC-4 (closes TASK-307 W7.A.19).
+ * TestAppModule.
  *
- * Boots the real `AppModule` for the AC-5 full-route walker without
+ * Boots the real `AppModule` for the full-route walker without
  * actually contacting Redis / BullMQ workers / Vault / OIDC / Postgres.
- * The W4b synthetic-module test in `auth-coverage.spec.ts` validates
+ * The synthetic-module test in `auth-coverage.spec.ts` validates
  * the `APP_GUARD` contract; this module is the third leg that walks
  * the production route tree end-to-end.
  *
@@ -45,7 +45,7 @@
  *     Replaces `RedisServiceModule.register(...)`'s
  *     `BullModule.forRootAsync` shared config. Falls back to lazy
  *     connection options so any Queue construction that slips through
- *     doesn't actively retry. Per README §AC-4 spec
+ *     doesn't actively retry
  *     (`BullModule.forRoot({ connection: { host: 'localhost', port: 0 } })`).
  *
  * - `getQueueToken(JobQueue.X)` → stub Queue (every queue in
@@ -75,11 +75,11 @@
  *     stray env var doesn't surface a partially-initialized client.
  *
  * - `SecretsService` → in-memory stub with synthetic JWT secret
- *     `JwtStrategy` (TASK-307 W2.1) refuses to boot if
+ *     `JwtStrategy` refuses to boot if
  *     `SecretsService.getSecretSync('JWT_SECRET_KEY')` returns the
  *     literal placeholder. The stub returns a test-only secret so the
  *     strategy constructor passes — the secret is NEVER exposed via
- *     issued tokens because the AC-5 walker hits routes with NO
+ *     issued tokens because the route walker hits routes with NO
  *     Authorization header (every authenticated route → 401 before
  *     the secret would be used).
  *
@@ -97,7 +97,7 @@
  *     Prisma's default `connect_timeout` (which can be tens of seconds
  *     in some adapter configurations). The stub provides only the
  *     `client`/`baseClient` getter shape that repositories touch at
- *     module load — the AC-5 walker never executes a query because
+ *     module load — the route walker never executes a query because
  *     every authenticated route 401s before the handler runs.
  *
  * ## Failure mode if drift is undetected

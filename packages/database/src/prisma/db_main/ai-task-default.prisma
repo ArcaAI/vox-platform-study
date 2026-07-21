@@ -1,5 +1,5 @@
 // ============================================================================
-// AI Task Defaults (TASK-506)
+// AI Task Defaults
 //
 // Per-tenant "default model for task X" selector — the Class-3 generalization
 // of HarnessPolicy.smrProvider/smrModel for non-pipeline AI tasks. One row per

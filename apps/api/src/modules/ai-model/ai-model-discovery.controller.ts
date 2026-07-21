@@ -5,10 +5,10 @@ import { Authorize } from '../../decorators';
 import { AiModelDiscoveryService, DiscoveryResponse } from './ai-model-discovery.service';
 
 /**
- * TASK-528 — LM Studio / Ollama model discovery.
+ * LM Studio / Ollama model discovery.
  *
  * Joins the `admin/ai-models` controller family with the identical guard
- * (`manage:all`, the global-admin registry plane pinned in TASK-419). Thin by
+ * (`manage:all`, the global-admin registry plane). Thin by
  * rule 05: the SMR fetch and the merge live in `AiModelDiscoveryService`.
  *
  * The registry stays authoritative for task routing (`AiTaskDefault` reads the

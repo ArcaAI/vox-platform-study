@@ -226,7 +226,7 @@ describe('RedisCacheService', () => {
         });
     });
 
-    // TASK-307 W7.A.1 — non-blocking SCAN alternative to `keys()`.
+    // Non-blocking SCAN alternative to `keys()`.
     describe('scan', () => {
         it('should return empty array when not connected', async () => {
             service = new RedisCacheService();

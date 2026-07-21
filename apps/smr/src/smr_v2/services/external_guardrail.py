@@ -21,12 +21,12 @@ GUARDRAIL_UNAVAILABLE_REASON = "external_guardrail_unavailable"
 class ExternalGuardrailClient:
     """Calls the Guardrail service for medical-content validation.
 
-    Fail posture (TASK-478, degrade-safe → fail-CLOSED): a transient error is
+    Fail posture (degrade-safe → fail-CLOSED): a transient error is
     absorbed by a bounded retry (``max_retries`` / ``retry_backoff_ms``); once the
     budget is exhausted the client returns a deterministic NOT-allowed verdict — an
     errored guardrail can NEVER return ``allowed: True`` (there is no fail-open
     branch). The only allow-without-check path is the intentional ``enabled=False``
-    dev/CI bypass, preserved exactly (mirrors TASK-465's empty-token bypass).
+    dev/CI bypass, preserved exactly (mirrors the empty-token bypass).
     """
 
     def __init__(
@@ -59,11 +59,11 @@ class ExternalGuardrailClient:
         if service_token:
             headers["X-Service-Token"] = service_token
         # Forward the consultation tenant so guardrail can resolve per-tenant
-        # provider/model from the DB (TASK-338, OQ1).
+        # provider/model from the DB.
         if tenant_id:
             headers["X-Tenant-Id"] = tenant_id
 
-        # Bounded retry (TASK-478): total tries = max_retries + 1. A transient blip is
+        # Bounded retry: total tries = max_retries + 1. A transient blip is
         # absorbed (a clean re-check proceeds); only a sustained outage exhausts the
         # budget and fails CLOSED below.
         #

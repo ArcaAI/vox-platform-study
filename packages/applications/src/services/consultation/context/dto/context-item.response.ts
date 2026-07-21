@@ -11,10 +11,10 @@ export class AudioRecordingResponse {
   @ApiProperty()
   mediaId: string;
 
-  @ApiPropertyOptional({ description: 'Media ID of the RAW (unprocessed) capture (TASK-329 X8 dual capture)' })
+  @ApiPropertyOptional({ description: 'Media ID of the RAW (unprocessed) capture (dual capture)' })
   rawMediaId?: string;
 
-  @ApiPropertyOptional({ description: 'Media ID of the PROCESSED capture (TASK-329 X8 dual capture)' })
+  @ApiPropertyOptional({ description: 'Media ID of the PROCESSED capture (dual capture)' })
   processedMediaId?: string;
 
   @ApiPropertyOptional({ description: 'Duration in milliseconds' })
@@ -226,16 +226,16 @@ export class ContextItemResponse {
 
   @ApiPropertyOptional({
     description:
-      'TASK-375 — short-lived accessible (presigned) download URL for the attached media, resolved from storage when available. Absent when the item has no media or storage resolution is unavailable.',
+      'Short-lived accessible (presigned) download URL for the attached media, resolved from storage when available. Absent when the item has no media or storage resolution is unavailable.',
   })
   url?: string;
 
-  @ApiPropertyOptional({ description: 'TASK-375 — MIME type of the attached media (e.g. image/png, application/pdf, audio/wav)' })
+  @ApiPropertyOptional({ description: 'MIME type of the attached media (e.g. image/png, application/pdf, audio/wav)' })
   mimeType?: string;
 
   @ApiPropertyOptional({
     description:
-      'TASK-375 — presigned URL of a real downscaled WebP thumbnail for image attachments (generated on upload, addressed by a deterministic derived key). Falls back to the full-size image URL for media without a derivative; absent for non-images.',
+      'Presigned URL of a real downscaled WebP thumbnail for image attachments (generated on upload, addressed by a deterministic derived key). Falls back to the full-size image URL for media without a derivative; absent for non-images.',
   })
   thumbnailUrl?: string;
 

@@ -10,7 +10,7 @@ import { RoomError, RoomErrorCode, type RoomOptions } from '../types/index.js';
 import { RoomResumeTimeoutError, RoomSampleRateMismatchError } from './RoomErrors.js';
 
 /**
- * TASK-300 L-1: optional sample-rate enforcement for {@link AudioContextManager.acquire}.
+ * Optional sample-rate enforcement for {@link AudioContextManager.acquire}.
  *
  * Downstream processors hard-code the audio sample rate they were designed
  * for (RNNoise → 48 000 Hz; Silero VAD → 16 000 Hz with internal resampling).
@@ -22,10 +22,10 @@ import { RoomResumeTimeoutError, RoomSampleRateMismatchError } from './RoomError
  *   `sampleRate` against this value.
  * - `allowMismatch` (default `false`) — when `true`, a mismatch logs
  *   `console.warn` instead of throwing.
- * - `tenantId` — TASK-317 W5.2 (AC-15): optional caller identity used purely to
- *   emit a dev-mode warning when the process-wide singleton is acquired
- *   concurrently by a different tenant (see {@link AudioContextManager.acquire}).
- *   It has no effect on the context lifecycle and is safe to omit.
+ * - `tenantId` — optional caller identity used purely to emit a dev-mode
+ *   warning when the process-wide singleton is acquired concurrently by a
+ *   different tenant (see {@link AudioContextManager.acquire}). It has no
+ *   effect on the context lifecycle and is safe to omit.
  */
 export interface AudioContextAcquireOptions {
   requireSampleRate?: number;
@@ -77,10 +77,10 @@ export class AudioContextManager {
   private pendingClose = false;
 
   /**
-   * TASK-317 W5.2 (AC-15): tenant ids of the current holders, tracked solely to
-   * power the dev-mode cross-tenant warning in {@link acquire}. Cleared whenever
-   * the reference count returns to zero (no holders). Has no bearing on the
-   * AudioContext lifecycle.
+   * Tenant ids of the current holders, tracked solely to power the dev-mode
+   * cross-tenant warning in {@link acquire}. Cleared whenever the reference
+   * count returns to zero (no holders). Has no bearing on the AudioContext
+   * lifecycle.
    */
   private readonly acquiredTenantIds = new Set<string>();
 
@@ -153,8 +153,8 @@ export class AudioContextManager {
     this.pendingClose = false;
     this.referenceCount++;
 
-    // TASK-317 W5.2 (AC-15): surface concurrent cross-tenant use of the
-    // process-wide singleton in development (warning only — no behaviour change).
+    // Surface concurrent cross-tenant use of the process-wide singleton in
+    // development (warning only — no behaviour change).
     this.warnOnCrossTenantAcquire(opts.tenantId);
 
     // If custom AudioContext is provided in options, use it
@@ -178,8 +178,8 @@ export class AudioContextManager {
   }
 
   /**
-   * TASK-300 L-1: validate the active context's `sampleRate` against the
-   * caller's requirement.
+   * Validate the active context's `sampleRate` against the caller's
+   * requirement.
    *
    * - No-op when {@link AudioContextAcquireOptions.requireSampleRate} is
    *   unset (preserves backwards compatibility).
@@ -204,9 +204,9 @@ export class AudioContextManager {
   }
 
   /**
-   * TASK-317 W5.2 (AC-15 / audit D-6): emit a development-only warning when the
-   * shared, process-wide AudioContext is acquired by a tenant while it is still
-   * held by a *different* tenant.
+   * Emit a development-only warning when the shared, process-wide
+   * AudioContext is acquired by a tenant while it is still held by a
+   * *different* tenant.
    *
    * The singleton is structurally correct (browsers cap the number of
    * AudioContexts), but combined with concurrent `AgenticProvider`s it means
@@ -261,8 +261,8 @@ export class AudioContextManager {
       this.referenceCount--;
     }
 
-    // TASK-317 W5.2 (AC-15): no holders left → forget tracked tenants so the
-    // next acquire() starts a fresh cross-tenant warning window.
+    // No holders left → forget tracked tenants so the next acquire() starts
+    // a fresh cross-tenant warning window.
     if (this.referenceCount === 0) {
       this.acquiredTenantIds.clear();
     }

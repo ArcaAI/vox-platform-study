@@ -1,4 +1,4 @@
-"""TASK-530 §5.3 — the shared cache contract, instantiated against stt-v2's wiring.
+"""The shared cache contract, instantiated against stt-v2's wiring.
 
 `tests/unit/test_model_cache.py` + `test_model_cache_ttl.py` are the PARITY gate
 (they passed unmodified across the refactor, which is what proves no behaviour
@@ -8,8 +8,8 @@ things stt-v2 injects into the shared contract — the format→loader map and t
 
 Without this, a future edit could quietly drop the unload hook and the parity
 suite would still pass: it never asserts that an EVICTED model gets released.
-That is exactly the defect class TASK-529's TDD caught inside the shared cache
-(R4), one layer up.
+That is exactly the defect class TDD caught inside the shared cache,
+one layer up.
 """
 
 from __future__ import annotations

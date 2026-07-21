@@ -113,7 +113,7 @@ export {
   type AudioMixerSource,
   type AudioMixerEventMap,
 
-  // Typed Room errors (TASK-300 L-1 + others)
+  // Typed Room errors
   RoomPermissionError,
   RoomDeviceError,
   RoomSecurityError,

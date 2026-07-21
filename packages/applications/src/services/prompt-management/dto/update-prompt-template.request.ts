@@ -20,7 +20,7 @@ export class UpdatePromptTemplateRequest {
   @IsString()
   content?: string;
 
-  // TASK-331 doc-02 F5 — publication status; a status change is a mutating edit.
+  // Publication status; a status change is a mutating edit.
   @ApiPropertyOptional({ description: 'Publication status', enum: ['DRAFT', 'PUBLISHED'] })
   @IsOptional()
   @IsIn(['DRAFT', 'PUBLISHED'])
@@ -48,7 +48,7 @@ export class UpdatePromptTemplateRequest {
   resourceStatus?: ResourceStatusType;
 
   /**
-   * Optimistic-concurrency token (TASK-302 Stream D Phase E.3).
+   * Optimistic-concurrency token.
    *
    * The client reads the row first, then echoes back the `version` it observed.
    * The service issues a Compare-And-Set (`promptTemplateRepository.
@@ -56,7 +56,7 @@ export class UpdatePromptTemplateRequest {
    * HTTP 412 Precondition Failed if `_version` has drifted under the client
    * between read and write.
    *
-   * CC-06 (TASK-336) — OPTIONAL, mirroring `UpdateDnaReportRequest`. The PATCH
+   * OPTIONAL, mirroring `UpdateDnaReportRequest`. The PATCH
    * route is `@RequiresIfMatch()`: the controller folds the RFC 7232 `If-Match`
    * header over this field, so the canonical request carries the version in the
    * header and omits it from the body. Keeping it required here 400'd that

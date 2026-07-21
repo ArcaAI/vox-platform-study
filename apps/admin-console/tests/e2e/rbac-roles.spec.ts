@@ -1,6 +1,6 @@
 /**
- * Frame 21 — RBAC Roles two-pane redesign (TASK-438). Authenticated smoke of
- * the grouped role list, list→select→permission-matrix, system-role lockdown,
+ * Frame 21 — RBAC Roles two-pane layout. Authenticated smoke of the grouped
+ * role list, list→select→permission-matrix, system-role lockdown,
  * the break-glass delete cancelled path, and the rule 11 §11 axe gate in both
  * themes. Requires a running stack (skips otherwise, see helpers/stack.ts).
  */
@@ -84,8 +84,8 @@ test.describe('RBAC roles screen (two-pane)', () => {
         await waitForList(page);
         await roleListItems(page).first().click();
 
-        // TASK-444 — the role reads now carry memberCount; the detail header
-        // renders it as an accessible badge ("N member(s)").
+        // Role reads carry memberCount; the detail header renders it as an
+        // accessible badge ("N member(s)").
         await expect(page.getByText(/\d+ members?/).first()).toBeVisible();
 
         await page.getByRole('tab', { name: 'Members' }).click();

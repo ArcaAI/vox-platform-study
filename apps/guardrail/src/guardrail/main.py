@@ -54,7 +54,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     redis_client = aioredis.from_url(settings.redis.redis_url, decode_responses=True)
     app.state.redis = redis_client
 
-    # TASK-535 (R1) — the control-plane pull client for aux-cache retention.
+    # The control-plane pull client for aux-cache retention.
     # Construction performs NO I/O, so boot never blocks on (or fails because of)
     # the gateway; the first analyze/groundedness request triggers the first
     # fetch, and a failure negative-caches into env behaviour.
@@ -66,7 +66,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             token=settings.service_token.get_secret_value(),
         )
 
-    # Per-tenant config resolver (TASK-338, Q3c). Only initialized when DB-config
+    # Per-tenant config resolver. Only initialized when DB-config
     # is enabled; otherwise the env-only engine path below is used unchanged.
     if not hasattr(app.state, "tenant_config_resolver"):
         app.state.tenant_config_resolver = None
@@ -222,7 +222,7 @@ def create_app() -> FastAPI:
     # Store settings in app state (read by ServiceAuthMiddleware at dispatch).
     app.state.settings = settings
 
-    # Inter-service auth (TASK-465): enforce X-Service-Token on non-exempt paths.
+    # Inter-service auth: enforce X-Service-Token on non-exempt paths.
     # An empty service_token is a dev / hermetic-CI bypass.
     from guardrail.api.middleware.auth import ServiceAuthMiddleware
 
@@ -238,7 +238,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router, prefix="/api", tags=["health"])
     app.include_router(medical_router, prefix="/api", tags=["medical"])  # Primary endpoint
     app.include_router(guardrails_router, prefix="/api", tags=["guardrails"])
-    # TASK-479 (SOTA D2): live output-side groundedness gate — behind X-Service-Token.
+    # Live output-side groundedness gate — behind X-Service-Token.
     app.include_router(groundedness_router, prefix="/api", tags=["groundedness"])
     app.include_router(jobs_router, prefix="/api", tags=["jobs"])
 

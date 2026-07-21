@@ -1,6 +1,6 @@
-"""Tests for the reference-free atomic-fact verifier (TASK-481 E2, Deliverable 1).
+"""Tests for the reference-free atomic-fact verifier.
 
-RED-first: written before ``sensors/inferential/atomic_fact.py`` exists. The verifier
+The verifier
 is a **deterministic, reference-free** gate — it decomposes the note into atomic claims
 (rule-based, NO model) and entails each against the transcript via an injected
 :class:`NliEntailer` (a **self-hosted deterministic NLI**, NOT the LLM ``JudgeClient``;
@@ -127,7 +127,7 @@ class TestAtomicFactSensor:
 
     @pytest.mark.asyncio
     async def test_deterministic_byte_identical_verdict_on_repeat(self):
-        # AC-2: same input -> byte-identical SensorResult (no temperature/LLM nondeterminism).
+        # Same input -> byte-identical SensorResult (no temperature/LLM nondeterminism).
         note = '{"plan": "Start warfarin."}'
         sensor = AtomicFactSensor(_StubNli(ungrounded_markers=("warfarin",)), threshold=0.8)
         first = await sensor.arun(_ctx(note, _TRANSCRIPT))

@@ -1,5 +1,5 @@
 /**
- * @arcaai/stt — TASK-304 Wave 3 hotfix
+ * @arcaai/stt — setReservedSpeakerId forwarding
  *
  * Covers:
  *   • `STTProcessor.setReservedSpeakerId` delegates to the live `LocalSTTProvider`

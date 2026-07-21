@@ -1,5 +1,5 @@
 /**
- * TASK-531 (GAP-T3) — nightly template-resync scheduler.
+ * Nightly template-resync scheduler.
  *
  * Mirrors the `AgentTrajectoryRetentionService` precedent: self-scheduling via
  * SchedulerRegistry, configured from AppSettings, re-synced on the settings

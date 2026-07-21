@@ -1,6 +1,5 @@
 /**
- * Unit tests for `DataNotFoundExceptionFilter` (TASK-306 P3.3 / AC-12,
- * closes audit M-8).
+ * Unit tests for `DataNotFoundExceptionFilter`.
  *
  * `DataNotFoundException` is thrown by `Repository<T>.findById` and
  * similar fetch paths whenever a row is absent. Its native message

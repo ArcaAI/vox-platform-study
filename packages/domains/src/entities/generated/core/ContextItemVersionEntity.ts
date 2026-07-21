@@ -16,7 +16,7 @@ export interface IContextItemVersionEntity extends IBaseTenantEntity {
   changedBy?: string | null;
   changeSource?: string | null;
   fieldChanges?: JsonValue | null;
-  // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the free-text
+  // Vault-Transit (hope-phi) ciphertext of the free-text
   // snapshot fields + shared key version. Phase 6 dropped the plaintext columns;
   // plaintext survives only as transient fields repopulated by decrypt-on-read.
   encryptedContent?: Buffer | null;
@@ -24,7 +24,7 @@ export interface IContextItemVersionEntity extends IBaseTenantEntity {
   encryptedChangeSummary?: Buffer | null;
   encryptedFieldChanges?: Buffer | null;
   keyVersion?: number | null;
-  // TASK-330 Phase 1 — clinician attestation fields
+  // Clinician attestation fields
   attestedAt?: Date | null;
   attestedBy?: string | null;
   attestationHash?: string | null;
@@ -98,7 +98,7 @@ export class ContextItemVersionEntity extends BaseTenantEntity {
     this.setProperty('versionNumber', value);
   }
 
-  // TASK-369 Phase 3C — free-text clinical PHI snapshot. @Secret() marks it for
+  // Free-text clinical PHI snapshot. @Secret() marks it for
   // audit-log redaction (defense-in-depth) alongside the encrypted counterpart.
   @Secret()
   get content(): IContextItemVersionEntity['content'] {
@@ -160,7 +160,7 @@ export class ContextItemVersionEntity extends BaseTenantEntity {
     this.setProperty('fieldChanges', value);
   }
 
-  // TASK-369 Phase 3C — Vault-Transit ciphertext columns. @Secret() guards the
+  // Vault-Transit ciphertext columns. @Secret() guards the
   // ciphertext from audit-log surfaces.
   @Secret()
   get encryptedContent(): IContextItemVersionEntity['encryptedContent'] {
@@ -288,7 +288,7 @@ export class ContextItemVersionEntity extends BaseTenantEntity {
   }
 
   /**
-   * TASK-330 Phase 1 — true when this version carries a clinician attestation
+   * True when this version carries a clinician attestation
    * (i.e. it is an immutable, signed note produced by the confirm-before-commit
    * gate). Anchored by the SHA-256 `attestationHash` linking to the WORM audit.
    */

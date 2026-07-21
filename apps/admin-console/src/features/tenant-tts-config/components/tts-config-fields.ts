@@ -1,6 +1,6 @@
 /**
- * Declarative field metadata + sparse-patch builder for the TTS config row
- * (TASK-504 Phase 4), mirroring harness-policy's `policy-fields.ts`. Drafts are
+ * Declarative field metadata + sparse-patch builder for the TTS config row,
+ * mirroring harness-policy's `policy-fields.ts`. Drafts are
  * held as strings/booleans; the patch emits only changed fields, parsing lists
  * (comma-separated) and coercing empty scalars to null (= inherit).
  */
@@ -10,7 +10,7 @@ import type { TtsConfigRow, TtsFormat, TtsVoiceBindings, UpdateTtsConfigRequest 
 export type TtsFieldKind = 'string' | 'select' | 'integer' | 'fraction' | 'switch' | 'list';
 
 /**
- * Stable INTERNAL voice ids (TASK-506) — mirror tts-v2's DEFAULT_VOICES
+ * Stable INTERNAL voice ids — mirror tts-v2's DEFAULT_VOICES
  * (`catalog/voices.py`). These are the values `defaultVoiceEn/Ml` and the
  * bindings editor key on; per-provider voice names live in the bindings map.
  */

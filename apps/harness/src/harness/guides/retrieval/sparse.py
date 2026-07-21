@@ -1,4 +1,4 @@
-"""In-process fastembed ``Qdrant/bm25`` sparse embedder (TASK-330 Phase 3).
+"""In-process fastembed ``Qdrant/bm25`` sparse embedder.
 
 BM25 sparse vectors are produced **in-process** on CPU (no extra service): the
 ingest endpoint embeds document chunks (the passage path, :meth:`embed_documents`)

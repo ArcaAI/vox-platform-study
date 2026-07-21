@@ -53,7 +53,7 @@ export function deletePipeline(id: string): Promise<void> {
 }
 
 /**
- * TASK-531 — clone into a NEW editable copy. Allowed even when the source is a
+ * Clone into a NEW editable copy. Allowed even when the source is a
  * locked template copy: this is how a tenant customizes one. No If-Match — it
  * creates a row rather than editing one.
  */

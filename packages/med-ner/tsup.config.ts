@@ -11,8 +11,8 @@ import { defineConfig } from 'tsup';
  *      `new Worker(new URL('@arcaai/med-ner/dist/workers/medner.worker.js', import.meta.url), { type: 'module' })`.
  *      The worker bundles `@huggingface/transformers` because workers run
  *      in isolation and cannot share imports with the main thread.
- *   3. E2E bundle (`src/index.ts` → `dist/e2e/index.js`) — TASK-289.
- *      A fully-bundled, browser-resolvable variant of the public API used
+ *   3. E2E bundle (`src/index.ts` → `dist/e2e/index.js`) — a fully-bundled,
+ *      browser-resolvable variant of the public API used
  *      only by the Playwright fixture at `e2e/fixtures/index.html`. The
  *      consumer-facing main bundle (output #1) intentionally leaves
  *      `react` / `@huggingface/transformers` as bare-specifier imports so
@@ -38,9 +38,9 @@ export default defineConfig([
     clean: true,
     treeshake: true,
     external: ['react', 'react-dom', '@arcaai/room'],
-    // TASK-300 C-XCUT-3: emit ESM as `.mjs` (CJS as `.cjs`) for unambiguous
-    // resolution. Worker / E2E entries keep their `.js` extension since
-    // they're loaded via explicit URL paths.
+    // Emit ESM as `.mjs` (CJS as `.cjs`) for unambiguous resolution. Worker /
+    // E2E entries keep their `.js` extension since they're loaded via
+    // explicit URL paths.
     outExtension({ format }) {
       return { js: format === 'esm' ? '.mjs' : '.cjs' };
     },
@@ -79,7 +79,7 @@ export default defineConfig([
       options.conditions = ['browser', 'module', 'import', 'default'];
     },
   },
-  // TASK-300 C-XCUT-2: react-server stub (ESM-only). Separate entry so it
+  // React-server stub (ESM-only). Separate entry so it
   // does NOT inherit the `"use client"` banner from the main bundle —
   // RSC bundlers should be able to evaluate it server-side and throw.
   {

@@ -334,7 +334,7 @@ describe('HighlightTransport', () => {
   });
 
   // =========================================================================
-  // TASK-266 W0-2: gated activation
+  // Gated activation
   //
   // Default-disabled. Highlight may only activate when ALL of:
   //   1. NODE_ENV !== 'production' (or process is undefined)

@@ -1,6 +1,6 @@
-"""Calibration-lever tests (TASK-330 eval hardening).
+"""Calibration-lever tests.
 
-RED-first. Two levers raise the eval gate honestly:
+Two levers raise the eval gate honestly:
 
 * **Lever 1 (golden-set lanes):** a ``role`` field splits cases into a
   ``quality`` lane (good reference notes -> PDSQI quality + faithfulness gate)

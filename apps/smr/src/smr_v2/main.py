@@ -127,8 +127,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             stream_max_len=settings.redis.stream_max_len,
         )
 
-    # External Guardrail client (TASK-338 Phase 4b) — invoked per generate to
-    # validate medical content. Degrade-safe → fail-CLOSED posture (TASK-478) is
+    # External Guardrail client — invoked per generate to
+    # validate medical content. Degrade-safe → fail-CLOSED posture is
     # enforced inside the client (bounded retry, then a not-allowed verdict).
     if not hasattr(app.state, "guardrail_client") or app.state.guardrail_client is None:
         from smr_v2.services.external_guardrail import ExternalGuardrailClient
@@ -209,7 +209,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "vllm": settings.vllm,
             "llama-cpp": settings.llama_cpp,
         }
-        # TASK-525 — ResizableSemaphore, not asyncio.Semaphore: an admin changing
+        # ResizableSemaphore, not asyncio.Semaphore: an admin changing
         # `maxConcurrent` must move the ceiling of the LIVE object rather than
         # swap in a new one (which would strand in-flight permits and waiters).
         from smr_v2.services.resizable_semaphore import ResizableSemaphore
@@ -221,7 +221,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             sems[name] = ResizableSemaphore(max_conc)
         app.state.provider_semaphores = sems
 
-    # TASK-525 — the control-plane pull client. Construction performs NO I/O, so
+    # The control-plane pull client. Construction performs NO I/O, so
     # boot never blocks on (or fails because of) the gateway; the first request
     # triggers the first fetch, and a failure negative-caches into env behaviour.
     if getattr(app.state, "effective_config_client", None) is None:
@@ -288,7 +288,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.state.provider_queues = {}
     app.state.shutdown_manager = None
     app.state.provider_semaphores = {}
-    # TASK-525 — control-plane overrides; empty ⇒ every provider keeps its env timeout.
+    # Control-plane overrides; empty ⇒ every provider keeps its env timeout.
     app.state.provider_timeouts = {}
     app.state.effective_config_client = None
     app.state.tracer_provider = None

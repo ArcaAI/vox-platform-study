@@ -1,5 +1,5 @@
 /**
- * @arcaai/stt - TASK-300 L-9 multi-threaded WASM
+ * @arcaai/stt - multi-threaded WASM
  *
  * Verifies whisper.worker.ts opts into multi-threaded ONNX Runtime WASM when
  * (and only when) the page is cross-origin-isolated.

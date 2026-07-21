@@ -1,4 +1,4 @@
-"""Streaming dispatch tests for NeMo (TASK-258 Phase D)."""
+"""Streaming dispatch tests for NeMo."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from stt_v2.streaming.session_manager import SessionManager
 
 
 def _bind_asr_dispatch(mgr):
-    """TASK-505 P1 — _make_asr_callable dispatches through registry adapters
+    """_make_asr_callable dispatches through registry adapters
     that call back into per-engine builder methods on the manager; bind the
     real ones onto MagicMock(spec=SessionManager) harnesses."""
     from stt_v2.streaming.session_manager import SessionManager

@@ -1,13 +1,11 @@
 import { Injectable } from '@nestjs/common';
 
 /**
- * TASK-375 (thumbnails) — real downscaled image derivatives for context-item
- * media.
+ * Real downscaled image thumbnail derivatives for context-item media.
  *
- * `thumbnailUrl` originally returned the FULL-size presigned image URL (flagged
- * as a follow-up in TASK-375 §7). This module produces a genuinely smaller
- * derivative on upload and addresses it by a DETERMINISTIC key convention so no
- * schema change / DB column is needed:
+ * `thumbnailUrl` previously returned the FULL-size presigned image URL. This
+ * module produces a genuinely smaller derivative on upload and addresses it
+ * by a DETERMINISTIC key convention so no schema change / DB column is needed:
  *
  *   original key  →  `<key>.thumb.webp`
  *

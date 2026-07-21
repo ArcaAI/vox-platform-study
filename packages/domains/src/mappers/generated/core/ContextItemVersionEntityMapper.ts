@@ -41,7 +41,7 @@ export class ContextItemVersionEntityMapper extends BaseMapper<Entities.ContextI
 
 export const ContextItemVersionEntityMapperHandlers = createMapperHandlers<Entities.ContextItemVersionEntity, Models.ContextItemVersion>({
   $toPersistence: {
-    // TASK-369 Phase 3C — return the raw ciphertext Buffer directly so the
+    // Return the raw ciphertext Buffer directly so the
     // generic auto-mapper does not destructure the typed array (see
     // ContextItemEntityMapper for the rationale).
     encryptedContent: (entity) => entity.encryptedContent ?? null,

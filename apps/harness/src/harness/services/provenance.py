@@ -7,7 +7,7 @@ in the transcript (a same-text transcript NER span, or a verbatim transcript
 mention) carries that transcript evidence span and is ``verified``; an
 ungrounded one is ``unverified`` with no evidence — never silently asserted, so
 citation-presence / entity-faithfulness can act on it (per the degradation
-policy in TASK-330 README §4.6).
+policy).
 
 Shape matches the ``SummaryMeta.citationsMap`` contract:
 ``{"claims": [{id, text, section(S|O|A|P), confidence, status, evidence:[...],

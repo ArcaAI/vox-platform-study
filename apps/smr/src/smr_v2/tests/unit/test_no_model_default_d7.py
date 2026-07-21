@@ -1,4 +1,4 @@
-"""TASK-356 Phase 3 (D-7) — SMR is a stateless gateway with NO model default.
+"""SMR is a stateless gateway with NO model default.
 
 RED-first tests for the fail-closed contract:
   * POST /api/v1/generate with a missing/blank model ⇒ HTTP 422 (no silent default).
@@ -137,9 +137,9 @@ def _azure():
     # deployment_name explicitly forced empty (not merely omitted — some test
     # environments leak SMR_V2_AZURE_DEPLOYMENT_NAME, e.g. the e2e conftest's
     # module-level os.environ mutation from the monorepo-root .env) so this
-    # suite reliably pins the D-7 "no silent default_model substitution"
+    # suite reliably pins the "no silent default_model substitution"
     # contract, which is orthogonal to deployment_name's own precedence
-    # contract ( D6, covered by TestAzureDeploymentName in
+    # contract (covered by TestAzureDeploymentName in
     # test_azure_provider.py) — when set, deployment_name is *meant* to
     # override request.model.
     return AzureOpenAIProvider(
@@ -179,7 +179,7 @@ class TestProviderResolveModelNoFallback:
     def test_resolve_model_does_not_fall_back_to_default(self, name, factory, default):
         provider = factory()
         req = GenerateRequest(prompt="hi")  # model omitted
-        # D-7: the generation path no longer substitutes the configured default.
+        # The generation path no longer substitutes the configured default.
         assert provider._resolve_model(req) != default
         assert provider._resolve_model(req) is None
 

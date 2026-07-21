@@ -649,7 +649,7 @@ class TestModelCacheEdgeCases:
 
 
 class TestModelCacheSingleFlight:
-    """TASK-351 P0-3 (H1) — concurrent get_or_load for the same slug must
+    """Concurrent get_or_load for the same slug must
     load the model exactly once (single-flight), instead of the pre-fix
     TOCTOU where every concurrent session loaded its own copy (N× VRAM,
     N× load latency)."""

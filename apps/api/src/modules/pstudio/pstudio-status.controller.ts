@@ -10,14 +10,14 @@ export class PrismaStudioStatusResponse {
 }
 
 /**
- * TASK-403 — always-registered availability probe for the Prisma Studio
+ * Always-registered availability probe for the Prisma Studio
  * module. `PrismaStudioModule` (the shell + BFF) is only registered when
  * `shouldEnablePrismaStudio()` is true, so from the admin console a 404 on
  * `/admin/pstudio` is ambiguous (disabled? wrong URL? server down?). This
  * controller is registered unconditionally and reports the same env decision,
  * letting the Prisma Studio surface render a truthful enabled/disabled card.
  *
- * TASK-419 item 4 — the enablement is production-capable (`ENABLE_PRISMA_STUDIO`
+ * The enablement is production-capable (`ENABLE_PRISMA_STUDIO`
  * only, fail-closed when unset) and the probe is gated by the same DEDICATED
  * `manage:PrismaStudio` subject as the studio itself. Read-only, leaks no
  * connection details.

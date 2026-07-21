@@ -4,10 +4,10 @@
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 
-// TASK-498 — links a HOPE user to a subject at a specific tenant IdP. `userId`
+// Links a HOPE user to a subject at a specific tenant IdP. `userId`
 // is a loose ref to User.id (no Prisma relation — matches the `createdBy`/
 // `updatedBy` audit-field convention). OIDC `sub`; SAML `NameID` reuses
-// `subject` (TASK-499). One HOPE user may federate with multiple providers;
+// `subject`. One HOPE user may federate with multiple providers;
 // unique on `(providerId, subject)` at the schema level.
 export interface IFederatedIdentityEntity extends IBaseTenantEntity {
   userId: string;

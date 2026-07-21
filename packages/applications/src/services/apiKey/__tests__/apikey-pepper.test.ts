@@ -1,4 +1,4 @@
-// TASK-302 Phase 3 Task 3.3 — pin the API_KEY_PEPPER migration.
+// Pin the API_KEY_PEPPER migration.
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -18,10 +18,10 @@ describe('apikey.service.ts — API_KEY_PEPPER migration', () => {
   });
 
   it('hashKeyForStorage resolves the pepper via SecretsService', async () => {
-    // TASK-305 D.5.2 added `userRoleAssignmentRepository` at constructor
-    // position 2; TASK-305 Phase F added `userDepartmentRepository` +
-    // `userRepository` at positions 3 and 4, so the SecretsService param is
-    // now at position 7 (index 6).
+    // `userRoleAssignmentRepository` is at constructor
+    // position 2; `userDepartmentRepository` +
+    // `userRepository` are at positions 3 and 4, so the SecretsService param is
+    // at position 7 (index 6).
     const mockSecrets = {
       getSecretOptional: vi.fn().mockResolvedValue('integration-test-pepper'),
     } as unknown as ConstructorParameters<typeof ApiKeyService>[6];

@@ -1,4 +1,4 @@
-// TASK-369 (Data Encryption Initiative) Phase 3 — shared field-encryption
+// Shared field-encryption
 // primitives for the repository encryption sibling files
 // (`XxxRepository.encryption.ts`).
 //
@@ -26,7 +26,7 @@
 export const PHI_TRANSIT_KEY = 'hope-phi';
 
 /**
- * TASK-369 Phase 3D — non-PHI placeholder written into a plaintext JSONB column
+ * Non-PHI placeholder written into a plaintext JSONB column
  * when its real value has been encrypted into the sibling `encrypted*` column.
  * Used by the IMMUTABLE WORM tables (HarnessAuditEvent / HarnessPolicyChange /
  * PipelinePolicyChange) whose plaintext columns are NOT NULL and can never be
@@ -49,7 +49,7 @@ export interface SecretsServiceLike {
   encrypt(plaintext: Buffer, keyName?: string): Promise<string>;
   decrypt(ciphertext: string, keyName?: string): Promise<Buffer>;
   /**
-   * TASK-369 Phase 6 — optional Vault Transit BATCH decrypt. When present, the
+   * Optional Vault Transit BATCH decrypt. When present, the
    * repository decrypt-on-read path uses it to decrypt every ciphertext in a
    * multi-row/list read with ONE round-trip (the real SecretsService provides
    * it; unit-test mocks may omit it and fall back to per-item `decrypt`).

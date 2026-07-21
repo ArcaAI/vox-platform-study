@@ -5,7 +5,7 @@ export const GUARDRAIL_TYPES = ['content_safety', 'pii_detection', 'prompt_injec
 export type GuardrailType = (typeof GUARDRAIL_TYPES)[number];
 
 /**
- * Agent Playground → Guardrails tab (TASK-446). Proxied to the Guardrail
+ * Agent Playground → Guardrails tab. Proxied to the Guardrail
  * service `POST /api/guardrail/analyze`; the controller maps `guardrailType`
  * to the upstream snake_case `guardrail_type`.
  */

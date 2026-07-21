@@ -3,7 +3,7 @@ import * as crypto from 'node:crypto';
 import { IRedisCacheService } from '../baseServices/redis/redis-cache.service';
 
 /**
- * RefreshTokenService (TASK-307 W1.1 — audit 04 §C-1 / C-12 / D-10)
+ * RefreshTokenService
  *
  * Closes the BLOCKER refresh-token forgery finding from the API-gateway
  * audit. The legacy `refresh_<userId>_<ts>_<random>` format was forgeable
@@ -36,10 +36,9 @@ import { IRedisCacheService } from '../baseServices/redis/redis-cache.service';
  *   refresh-token-consumed:<sha256>            → "<family>"
  *
  * TTL is configurable via `REFRESH_TOKEN_TTL_SECONDS` env var; default
- * 7 days (`604800`) per the user-locked decision in
- * `docs/implementation/TASK-307-API-Gateway-Hardening/README.md` §1.5.
+ * 7 days (`604800`) per a deliberate, locked product decision.
  *
- * Documented trade-offs (TASK-307 W7.A — carryover from W1 review):
+ * Documented trade-offs:
  *
  *   - **Sliding TTL via rotation.** Every successful `consume()` issues
  *     a fresh token whose TTL is `Date.now() + REFRESH_TOKEN_TTL_SECONDS`.
@@ -48,10 +47,10 @@ import { IRedisCacheService } from '../baseServices/redis/redis-cache.service';
  *     the same behaviour) — it is NOT a TTL leak. Sessions stop only
  *     when (a) the user logs out (`revokeFamily`), (b) reuse is detected
  *     (auto-revoke of the family), or (c) the user is disabled
- *     server-side. See TASK-307 §10 deferrals for the "absolute family
- *     lifetime" follow-up if a hard cap is ever needed.
+ *     server-side. An "absolute family lifetime" hard cap remains a
+ *     possible follow-up if ever needed.
  *
- *   - **Atomic `consume()` flip via Lua (TASK-310 W7.A.4 / AC-2).** The
+ *   - **Atomic `consume()` flip via Lua.** The
  *     active → consumed transition is collapsed into a single
  *     `EVAL`-driven script (`REFRESH_TOKEN_CONSUME_LUA`) so the
  *     GET / DEL / DEL / SETEX sequence runs as one atomic Redis op.
@@ -81,7 +80,7 @@ const REFRESH_FAMILY_RAW_BYTES = 16;
 const DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
 
 /**
- * TASK-310 W7.A.4 (AC-2) — atomic consume Lua script.
+ * Atomic consume Lua script.
  *
  * Inputs:
  *   KEYS[1] = active-token key   (e.g. `refresh-token:<sha256>`)
@@ -208,7 +207,7 @@ export class RefreshTokenService implements IRefreshTokenService {
 
     const hash = this.hash(rawToken);
 
-    // TASK-310 W7.A.4 (AC-2): atomic GET / DEL / DEL / SETEX via Lua.
+    // Atomic GET / DEL / DEL / SETEX via Lua.
     // Redis serialises EVAL scripts, so two concurrent `consume()` calls
     // race-replay deterministically: exactly one observes the active row
     // and wins, the other sees null and falls through to the reuse-
@@ -257,8 +256,8 @@ export class RefreshTokenService implements IRefreshTokenService {
   async revokeFamily(family: string): Promise<void> {
     if (!family) return;
 
-    // TASK-307 W7.A.1 — switched from blocking `KEYS` to non-blocking
-    // `SCAN` (cursor iteration). The previous implementation called
+    // Uses non-blocking `SCAN` (cursor iteration) rather than blocking
+    // `KEYS`. The naive implementation would call
     // `cache.keys(pattern)`, which Redis services as O(N) over the
     // entire keyspace and BLOCKS the server thread for the duration —
     // a 1M-key store can stall every other Redis client for tens of

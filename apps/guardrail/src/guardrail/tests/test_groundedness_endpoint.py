@@ -1,5 +1,5 @@
 """TDD tests for ``POST /guardrail/ground`` — the live output-moderation +
-groundedness endpoint (TASK-479 · SOTA D2).
+groundedness endpoint.
 
 Hermetic: the app is built with ``create_app()`` and driven over an ASGI
 transport WITHOUT entering the lifespan (no Redis / GLiNER / LLM providers).
@@ -118,7 +118,7 @@ async def test_ground_empty_summary_returns_no_segments() -> None:
     assert resp.json()["segments"] == []
 
 
-# ── X-Service-Token posture (TASK-465 middleware covers the new route) ──
+# ── X-Service-Token posture (the middleware covers this route) ──
 
 
 async def test_ground_is_behind_service_token() -> None:

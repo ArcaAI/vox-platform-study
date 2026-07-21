@@ -174,9 +174,9 @@ Exclusive file-ownership manifest — no file below is owned by another in-fligh
 | 1 | UPDATE ⚠ | `packages/applications/src/services/ai-provider-connection/ai-provider-connection.service.ts` — tenant-lane methods (`getTenantCredentials`, `getTenantCredential`, `setTenantCredential`, `removeTenantCredential` — masked DTOs, cloud-only 403, Vault-gate, OCC via `updateWithVersion`) + `resolveTenantCloudOverrides` (fail-open per credential, non-secret warn log) |
 | 2 | UPDATE ⚠ | same folder: `ITenantAiProviderConnectionService` additions, DTOs (`set-provider-credential.request.ts` with `expectedVersion`, masked `provider-credential.response.ts`), dto.mapper, barrel `index.ts` (append-only, plan §7) |
 | 3 | NEW | `packages/applications/src/services/ai-provider-connection/__tests__/ai-provider-connection.tenant-lane.test.ts` (RED first — §5) |
-| 4 | UPDATE ⚠ | `apps/api/src/modules/ai-provider/ai-provider-admin.controller.ts` (524's controller; folder name per 524) — the four tenant routes of §3.6 |
+| 4 | UPDATE ⚠ | `apps/api/src/modules/ai-provider-connection/ai-provider-connection.controller.ts` (524's controller; §4 originally guessed an `ai-provider/ai-provider-admin.controller.ts` folder — see §9.1) — the four tenant routes of §3.6 |
 | 5 | UPDATE | `apps/api/src/modules/streaming/smr-proxy.controller.ts` — `applyTenantProviderOverrides` + calls after `:393`/`:582` selection; `provider_overrides` on the forwarded interface |
-| 6 | NEW/UPDATE | controller unit tests: `apps/api/src/modules/ai-provider/__tests__/ai-provider-admin.controller.tenant.test.ts`; UPDATE the existing smr-proxy controller test file (path re-verified in-ticket — unverified) |
+| 6 | NEW/UPDATE | controller/e2e coverage: `apps/api/tests/e2e/task-526-ai-provider-byo-cross-tenant.spec.ts` (authored) + UPDATE the existing smr-proxy controller test file; no standalone `ai-provider-admin` controller unit test — the four tenant routes already existed on 524's controller (§9.1 D-1) |
 | 7 | UPDATE | `apps/admin-console/src/features/ai-task-defaults/api/types.ts` — `AI_TASK_KEYS` 3→9 keys (mirror `constants.ts`); delete dead `NLP_TASK_KEYS` + its test refs if TASK-523 §0.9 hasn't already (coordination check at start) |
 | 8 | NEW | `…/ai-task-defaults/api/providers-client.ts`, `providers-hooks.ts`, `providers-types.ts`, `providers-keys.ts` — the §3.6 routes via the BFF |
 | 9 | NEW | `…/ai-task-defaults/components/tenant-ai-configuration-screen.tsx` (replaces the EmptyState screen — old file deleted), `effective-models-table.tsx` (EffectiveLine reuse), `byo-credential-card.tsx` (CredentialCard pattern + OCC via `OccConflictAlert`) |
@@ -263,7 +263,7 @@ The §4 manifest was written before 524 landed and guessed several names. Actual
 
 | Ticket assumption | Reality |
 |---|---|
-| `apps/api/src/modules/ai-provider/ai-provider-admin.controller.ts` | `apps/api/src/modules/ai-provider-connection/ai-provider-connection.controller.ts` |
+| assumed `ai-provider/ai-provider-admin.controller.ts` | `apps/api/src/modules/ai-provider-connection/ai-provider-connection.controller.ts` |
 | `ITenantAiProviderConnectionService` additions needed | `IAiProviderConnectionService` exists; extended in place |
 | `set-provider-credential.request.ts` / `provider-credential.response.ts` to be created | `UpsertAiProviderConnectionRequest` / `AiProviderConnectionResponse` already exist and already carry `expectedVersion` + the masked `hasKey`/`keyVersion` shape |
 | The four §3.6 tenant routes to be added | **Already present** at `admin/ai-providers` — with tenant pinning (`resolveScopedTenantId`), cloud-only 403, Vault-gate, `@RequiresIfMatch()` OCC, and a `version: 0` placeholder GET |

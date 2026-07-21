@@ -1,5 +1,5 @@
 /**
- * TASK-388 — Users backend backlog (Group C) backend contract.
+ * Users backend backlog (Group C) backend contract.
  *
  * Real HTTP round-trips against the live API (`pnpm test:e2e`, or a dev stack via
  * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8868/api/v1`). Mirrors the harness of
@@ -82,7 +82,7 @@ function asArray<T>(raw: unknown): T[] {
 /**
  * Create a throwaway user that can actually AUTHENTICATE into __GLOBAL__. Login
  * (non-super-admin) requires an active role AND an active department in the
- * tenant (auth.controller TASK-305 Phase F), so we mirror task-381 U2a/U11:
+ * tenant (auth.controller), so we mirror task-381 U2a/U11:
  * create → assign a role → assign a department. Used by #8 so the reset flows
  * can be proven by a real login without mutating any seeded account.
  */

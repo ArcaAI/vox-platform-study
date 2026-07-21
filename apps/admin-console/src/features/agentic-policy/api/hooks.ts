@@ -27,7 +27,7 @@ export function useSettingsCatalog(enabled: boolean) {
 }
 
 /**
- * TASK-533 B2 — one registry setting's effective value + ETag.
+ * One registry setting's effective value + ETag.
  *
  * Kept per-key rather than batched: the gateway's registry lane is key-addressed
  * and each key carries its OWN version, so a batched read would have no single
@@ -42,7 +42,7 @@ export function useRegistrySetting(key: string, enabled: boolean) {
 }
 
 /**
- * TASK-533 B2 — write one registry setting under OCC.
+ * Write one registry setting under OCC.
  *
  * Invalidates that key AND the live-engine config, because the loop reports its
  * effective `agentic.context.*` knobs there — leaving it stale would show the

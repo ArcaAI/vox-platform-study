@@ -50,7 +50,7 @@ import type {
 } from './dto';
 
 /**
- * HarnessInternalService (TASK-330 Phase 1 — Lane G).
+ * HarnessInternalService.
  *
  * The INBOUND apps/api half of the gate adapter. The durable harness workflow
  * (apps/harness) calls back into apps/api — which stays the sole DB writer and
@@ -64,16 +64,16 @@ import type {
 export class HarnessInternalService {
   private readonly logger = new Logger(HarnessInternalService.name);
 
-  // TASK-355 Phase C (R-6) — warm-start kill-switch. When OFF the harness injects no
-  // prior draft and records no preSummaryIds provenance (exact pre-Phase-C behavior);
-  // enable for the doc-07 §3 cold-vs-warm A/B.
+  // Warm-start kill-switch. When OFF the harness injects no
+  // prior draft and records no preSummaryIds provenance; enable for a
+  // cold-vs-warm A/B.
   //
-  // TASK-533 D-23 — `HarnessPolicy.warmStartEnabled` is now the authority, resolved
+  // `HarnessPolicy.warmStartEnabled` is now the authority, resolved
   // per call (see `resolveWarmStartEnabled`). This env var survives only as the
-  // fallback for a null policy value, reproducing the pre-D-23 behaviour exactly.
+  // fallback for a null policy value, reproducing the legacy behaviour exactly.
   private readonly warmStartEnvFallback: boolean;
 
-  // TASK-466 (C1-03) — Idempotency-Key dedup namespace + TTL for the WORM/draft
+  // Idempotency-Key dedup namespace + TTL for the WORM/draft
   // callbacks. The key value is the harness `{run_id}:{activity_id}` (globally
   // unique); the Redis key additionally namespaces by operation + tenantId.
   private readonly IDEMPOTENCY_KEY_PREFIX = 'idempotency:harness:';
@@ -91,47 +91,47 @@ export class HarnessInternalService {
     // Optional so unit fixtures can omit it. Production DI supplies it via
     // ConsultationJobServiceModule; draft SSE progress is best-effort either way.
     @Optional() @Inject(IConsultationJobService) private readonly jobService?: IConsultationJobService,
-    // TASK-344 Workstream B — optional so existing unit fixtures keep their
+    // Optional so existing unit fixtures keep their
     // constructor arity; production DI supplies it via CoreDatabaseModule. The
     // manual-highlight SOAP feed is best-effort enrichment either way.
     @Optional() @Inject(HighlightRepository) private readonly highlightRepository?: HighlightRepository,
-    // TASK-355 Phase C (R-6) — optional so existing unit fixtures keep their
+    // Optional so existing unit fixtures keep their
     // constructor arity; production DI supplies it via ConfigModule (added to
     // HarnessInternalServiceModule). Absent ⇒ flag OFF, matching the prod default.
     @Optional() private readonly configService?: ConfigService,
-    // TASK-355 Phase D Slice 5d — optional so existing unit fixtures keep their
+    // Optional so existing unit fixtures keep their
     // constructor arity; production DI supplies it via HarnessAssuranceServiceModule.
     // finalizeAssurance publishes the terminal `assurance_complete` here to close
     // the live SSE feed (best-effort — a Redis hiccup must not break finalize).
     @Optional() private readonly assuranceService?: HarnessAssuranceService,
-    // TASK-356 Phase 5 — optional so existing unit fixtures keep their constructor
+    // Optional so existing unit fixtures keep their constructor
     // arity; production DI supplies it via ConfigResolverModule. Threads the
     // doctor's preferred prompt id (UserProfile.preferredPromptTemplateId, read-only)
     // into assemble so the async/harness path honors Tier-0 like the sync/REST path.
-    // TASK-356 Phase 6 (S3) — also resolves the effective DNA-style decision
+    // Also resolves the effective DNA-style decision
     // (tenant AND doctor) so DNA style is applied on the harness generation path
     // only when the doctor is opted in under an enabling tenant.
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
-    // TASK-356 Phase 6 (S4) — write the immutable AI-draft `v1` snapshot at the
+    // Write the immutable AI-draft `v1` snapshot at the
     // harness generation boundary (`persistDraft`) for the DNA edit-capture
     // corpus. Optional + trailing so existing positional unit fixtures keep their
     // arity; production DI supplies it via CoreDatabaseModule. When unset the
-    // snapshot is a no-op (best-effort), matching the pre-Phase-6 path.
+    // snapshot is a no-op (best-effort), matching the legacy path.
     @Optional() @Inject(ContextItemVersionRepository) private readonly contextItemVersionRepository?: ContextItemVersionRepository,
-    // TASK-369 Phase 3C — application-level field encryption for the clinical
+    // Application-level field encryption for the clinical
     // models this callback half persists (NamedEntity spans, SummaryMeta
     // provenance JSONB, ContextItemVersion snapshots). Optional + trailing so
     // existing positional unit fixtures keep their arity; production DI supplies
     // it via CoreDatabaseModule. Absent ⇒ these PHI fields are left unpersisted
-    // (Phase 6 dropped the plaintext columns); SECRETS_PROVIDER=vault is fail-closed.
+    // (there are no plaintext columns); SECRETS_PROVIDER=vault is fail-closed.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // TASK-466 (C1-03) — Idempotency-Key dedup for the WORM/draft callbacks. The
+    // Idempotency-Key dedup for the WORM/draft callbacks. The
     // durable harness workflow re-invokes these on each Temporal activity retry;
     // dedup keyed on the harness `Idempotency-Key` (`{run_id}:{activity_id}`) makes
     // the re-append a no-op that replays the prior response. Optional + trailing so
     // existing positional unit fixtures keep their arity; production DI supplies it
     // via RedisCacheModule. Absent (or a Redis hiccup) ⇒ best-effort fall-through to
-    // normal processing (mirrors TASK-299 D-10).
+    // normal processing (mirrors the consultation-job dedup).
     @Optional() @Inject(IRedisCacheService) private readonly redisCache?: IRedisCacheService,
     // optional + trailing (arity-preserving) segment reader. When
     // wired, the persisted transcript segments enrich `SummaryMeta.citationsMap`
@@ -141,11 +141,11 @@ export class HarnessInternalService {
     @Optional()
     @Inject(TranscriptSegmentRepository)
     private readonly transcriptSegmentRepository?: TranscriptSegmentRepository,
-    // TASK-533 D-23 — effective-policy source for `warmStartEnabled`. Optional +
+    // Effective-policy source for `warmStartEnabled`. Optional +
     // trailing so existing positional unit fixtures keep their arity; production DI
-    // supplies it. Absent ⇒ the env fallback governs (exact pre-D-23 behaviour).
+    // supplies it. Absent ⇒ the env fallback governs (the legacy behaviour).
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
-    // TASK-533 D-24 — the MCP registry, used ONLY as the authRef allowlist for
+    // The MCP registry, used ONLY as the authRef allowlist for
     // `resolveMcpToken`. Optional + trailing; absent ⇒ no token resolves (the
     // fail-closed default: nothing is callable).
     @Optional() @Inject(McpServerRepository) private readonly mcpServerRepository?: McpServerRepository,
@@ -157,7 +157,7 @@ export class HarnessInternalService {
   }
 
   /**
-   * Resolve an MCP server's credential from its `authRef` (TASK-533 D-24).
+   * Resolve an MCP server's credential from its `authRef`.
    *
    * The harness deliberately gets NO Vault client — secret material stays on the
    * side of the boundary that already holds it. The worker calls
@@ -173,7 +173,7 @@ export class HarnessInternalService {
    * Returns null (never throws, never logs the value) for: an empty ref, an
    * unregistered or disabled ref, an unwired registry/secrets backend, or a
    * backend failure. Null means "no token" — the server must then be public /
-   * in-boundary, which is the pre-D-24 behaviour rather than a silent leak.
+   * in-boundary, which is the intended behaviour rather than a silent leak.
    */
   async resolveMcpToken(authRef: string): Promise<string | null> {
     if (!authRef || !authRef.trim()) return null;
@@ -201,7 +201,7 @@ export class HarnessInternalService {
   }
 
   /**
-   * Effective warm-start decision for `tenantId` (TASK-533 D-23).
+   * Effective warm-start decision for `tenantId`.
    *
    * Policy wins; a null policy value means "not configured" and falls through to the
    * env fallback. Resolved on every call so a global admin's console flip takes
@@ -226,7 +226,7 @@ export class HarnessInternalService {
   }
 
   /**
-   * TASK-369 — encrypt PHI on write through the shared env-gated guard: a soft
+   * Encrypt PHI on write through the shared env-gated guard: a soft
    * no-op in dev/test (SECRETS_PROVIDER!=vault) but FAIL-CLOSED (throws) in
    * staging/prod (SECRETS_PROVIDER=vault) instead of persisting plaintext-only.
    * The harness WORM audit payloads are built from the inbound DTO (not the
@@ -273,7 +273,7 @@ export class HarnessInternalService {
             confidence: entity.confidence,
             // persist the assertion polarity the harness NER carries.
             assertion: entity.assertion,
-            // TASK-476 C1 — persist the ontology codes the harness NER carries.
+            // Persist the ontology codes the harness NER carries.
             umlsCui: entity.umlsCui,
             snomedCode: entity.snomedCode,
             rxnormCode: entity.rxnormCode,
@@ -295,10 +295,10 @@ export class HarnessInternalService {
   }
 
   /**
-   * TASK-480 Half-B — read a consultation's persisted NamedEntity rows so the durable
+   * Read a consultation's persisted NamedEntity rows so the durable
    * loop can reuse them as NER priors (the read counterpart of persistEntities). Reuses
    * the same transcript-offset-preferring projection as the prompt injection
-   * (loadNerEntities), carrying the TASK-476 ontology codes through; the harness gates
+   * (loadNerEntities), carrying the ontology codes through; the harness gates
    * reuse on those codes, so this is inert until they are populated. Read-only — no WORM
    * audit, no sys-event.
    */
@@ -357,7 +357,7 @@ export class HarnessInternalService {
 
       const nerEntities = await this.loadNerEntities(consultationId);
 
-      // TASK-342 GAP #2 — fold the doctor's case-notes / work-notes / attachments
+      // Fold the doctor's case-notes / work-notes / attachments
       // into the authoritative-SOAP prompt. Read entities directly from the
       // repository (reads already filter resourceStatus = ENABLED, so soft-deleted
       // items drop out). Work notes are labeled `[work note]`; attachments use the
@@ -374,7 +374,7 @@ export class HarnessInternalService {
       ];
       const attachments = attachmentItems
         .map((a) => {
-          // TASK-342 GAP #5 — prefer the extracted file text (txt / csv / md /
+          // Prefer the extracted file text (txt / csv / md /
           // json, threaded onto `metaData.extractedText` at upload); fall back to
           // the stored "Lab/exam result: <name>" filename label when none exists.
           const meta = a.metaData as Record<string, unknown> | undefined;
@@ -383,22 +383,22 @@ export class HarnessInternalService {
         })
         .filter((c): c is string => !!c);
 
-      // TASK-344 Workstream B — thread the doctor's manual highlight spans into
-      // the authoritative SOAP prompt, labeled `[highlight]` alongside the GAP #2
+      // Thread the doctor's manual highlight spans into
+      // the authoritative SOAP prompt, labeled `[highlight]` alongside the
       // clinician notes. Best-effort: optional repo + soft-deleted rows already
       // excluded by the repository's resourceStatus filter. A SEPARATE aggregate
       // from NamedEntity, so manual marks never pollute the NER aggregation.
       const highlightEntities = this.highlightRepository ? await this.highlightRepository.findByConsultation(consultationId) : [];
       const highlights = highlightEntities.filter((h) => h.exact?.trim()).map((h) => `[highlight] ${h.exact.trim()}`);
 
-      // TASK-355 Phase C (R-6) — warm-start `generate` from the live SOAP
+      // Warm-start `generate` from the live SOAP
       // snapshot instead of cold-generating: inject the running SOAP note as
       // {pre_summary_text} so the model refines it. Cold path when absent.
       // Gated behind the kill-switch (default OFF): when disabled we skip the
-      // snapshot lookup entirely so nothing is injected (exact pre-Phase-C path).
+      // snapshot lookup entirely so nothing is injected.
       const liveSnapshot = (await this.resolveWarmStartEnabled(tenantId)) ? await this.loadLiveSoapSnapshot(consultationId) : null;
 
-      // TASK-356 Phase 5 (§2.5) — thread the doctor's preferred prompt id (Tier-0)
+      // Thread the doctor's preferred prompt id (Tier-0)
       // through the async/harness path too. Read-only from UserProfile via the
       // ConfigResolver, keyed off the consultation's doctor. Best-effort: when the
       // resolver is unwired (unit fixtures) or there is no doctor, the id is omitted
@@ -407,14 +407,14 @@ export class HarnessInternalService {
         ? await this.configResolver.resolvePreferredPromptTemplateId(consultation?.doctorId ?? null)
         : undefined;
 
-      // TASK-356 Phase 6 (S3) — gate the DNA style on the effective decision
+      // Gate the DNA style on the effective decision
       // (tenant AND doctor). Drops to `undefined` (no DNA prompt) when the doctor
       // has opted out or the tenant flag is off. No-op (passes the requested id
       // through) when ConfigResolver is unwired (legacy fixtures).
       const effectiveDnaStyleId = await this.resolveEffectiveDnaStyleId(tenantId, consultation?.departmentId, consultation?.doctorId, dto.dnaStyleId);
 
       const assembled = await this.promptAssemblyService.assemble({
-        // TASK-533 D-23 — explicit tenant so prompt assembly resolves the SAME
+        // Explicit tenant so prompt assembly resolves the SAME
         // effective warm-start policy this method just gated the snapshot on
         // (the harness runs outside the API-edge CLS middleware).
         tenantId,
@@ -461,7 +461,7 @@ export class HarnessInternalService {
    * Persist the generated draft: RAW_SUMMARY ContextItem + SummaryMeta + status
    * + SSE progress + WORM audit.
    *
-   * TASK-355 Phase D — two-phase (optimistic) delivery, gated by `dto.phase`:
+   * Two-phase (optimistic) delivery, gated by `dto.phase`:
    *   - EARLY (`DRAFT_PENDING_SENSORS`): persist the readable draft BEFORE the
    *     inferential assurance pass finishes. SummaryMeta carries the
    *     computational scores only; the inferential scores, gate verdict, and
@@ -486,32 +486,32 @@ export class HarnessInternalService {
         this.cls.set('user', createWorkerSession({ userId: dto.userId, tenantId, kind: 'harness-internal' }));
 
         const userId = dto.userId ?? 'system';
-        // Phase D delivery discriminator. Default (absent) == legacy single-shot.
+        // Two-phase delivery discriminator. Default (absent) == legacy single-shot.
         const isEarly = dto.phase === HARNESS_DRAFT_PHASE.EARLY;
         const consultation = await this.consultationRepository.findById(consultationId);
         assertEqualTenants(consultation, { tenantId });
 
         // 1. RAW_SUMMARY context item for the generated note.
         const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, dto.content, dto.dnaStyleId, userId);
-        // TASK-356 Phase 6 (S4) — pin the AI draft to v1 so the `ai_draft_v1`
+        // Pin the AI draft to v1 so the `ai_draft_v1`
         // snapshot below IS version 1 and the doctor's first edit becomes v2.
         contextItem.currentVersionNumber = 1;
         const savedContext = await this.contextItemRepository.create(contextItem);
         const contextItemId = savedContext?.id ?? contextItem.id;
 
-        // TASK-356 Phase 6 (S4) — capture the immutable AI-draft `v1` snapshot at
+        // Capture the immutable AI-draft `v1` snapshot at
         // this (harness/optimistic) generation boundary too, so the DNA
         // edit-capture corpus is populated regardless of which path generated the
         // draft. Best-effort: a snapshot failure must never roll back the draft.
         await this.captureAiDraftSnapshot(savedContext ?? contextItem);
 
         // 2. SummaryMeta — sensor score columns + full sensor detail + citation map.
-        // TASK-355 Phase C (R-6) — record warm-start provenance. The consumed
+        // Record warm-start provenance. The consumed
         // snapshot id can't be threaded assemble->generate->persist_draft (no
         // Temporal workflow change), so re-resolve the same frozen LIVE_SOAP_SNAPSHOT
         // row via the shared helper (deterministic post-stop) and write its id.
         // Gated behind the kill-switch (default OFF): when disabled we skip the
-        // lookup and record empty provenance (exact pre-Phase-C behavior).
+        // lookup and record empty provenance.
         const liveSnapshot = (await this.resolveWarmStartEnabled(tenantId)) ? await this.loadLiveSoapSnapshot(consultationId) : null;
         // enrich the verdict's citation map with per-segment provenance
         // (LEGACY path only; EARLY withholds citationsMap until finalizeAssurance).
@@ -568,7 +568,7 @@ export class HarnessInternalService {
         // 5. WORM audit trail. GENERATE (provenance) is written in BOTH phases.
         // SENSOR_RUN (the verdict, carrying sensorScores + guardrailDecisions) and
         // REDUCED_ASSURANCE are written only when a verdict EXISTS — the legacy
-        // single-shot path here, or `finalizeAssurance()` in Phase D. Early delivery
+        // single-shot path here, or `finalizeAssurance()` in the two-phase flow. Early delivery
         // emits NO SENSOR_RUN (WORM truthfulness: a gate decision is recorded only
         // once it has been computed).
         await this.harnessAuditService.append({
@@ -630,7 +630,7 @@ export class HarnessInternalService {
   }
 
   /**
-   * TASK-355 Phase D — second phase of optimistic delivery. The inferential
+   * Second phase of optimistic delivery. The inferential
    * assurance pass has finished, so backfill the early-persisted SummaryMeta with
    * the inferential scores + gate verdict, stamp `assuranceCompletedAt`, flip the
    * consultation `DRAFT_PENDING_SENSORS → PENDING_REVIEW`, and record the
@@ -663,7 +663,7 @@ export class HarnessInternalService {
         const consultation = await this.consultationRepository.findById(consultationId);
         assertEqualTenants(consultation, { tenantId });
 
-        // TASK-355 Phase D (Q2b) — did the clinician early-sign (Q2a) before this
+        // (Q2b) — did the clinician early-sign (Q2a) before this
         // verdict landed? If so the note is already immutable and STANDS; a late
         // adverse verdict is recorded as POST_SIGN_FLAG (below), never regressing it.
         const alreadySigned = consultation?.status === ConsultationStatus.SIGNED;
@@ -688,7 +688,7 @@ export class HarnessInternalService {
         meta.guardrailDecisions = (dto.guardrailDecisions ?? null) as never;
         meta.gateDecision = dto.gateDecision ?? null;
         meta.assuranceCompletedAt = new Date();
-        // TASK-369 Phase 3C — the EARLY persist wrote these JSONB blobs as NULL
+        // The EARLY persist wrote these JSONB blobs as NULL
         // (verdict withheld); this finalize is where citationsMap/guardrailDecisions
         // actually get their values, so re-encrypt here (after the backfill, before
         // the update) to keep the ciphertext columns in sync with the plaintext.
@@ -750,11 +750,11 @@ export class HarnessInternalService {
           });
         }
 
-        // 4b. TASK-355 Phase D (Q2b) — a late ADVERSE verdict (FLAG/REGEN) for a
+        // 4b. A late ADVERSE verdict (FLAG/REGEN) for a
         // note the clinician already early-signed. The signed note is immutable and
         // STANDS — never regressed (step 2's flip is skipped for SIGNED) — but we
         // append a POST_SIGN_FLAG WORM annotation so the amendment/follow-up path
-        // (and the assurance SSE terminal event, Slice 5d) can surface an alert.
+        // (and the assurance SSE terminal event) can surface an alert.
         const lateAdverseVerdict = dto.gateDecision === 'FLAG' || dto.gateDecision === 'REGEN';
         if (alreadySigned && lateAdverseVerdict) {
           await this.harnessAuditService.append({
@@ -778,7 +778,7 @@ export class HarnessInternalService {
           });
         }
 
-        // 5. TASK-355 Phase D Slice 5d — close the live assurance SSE feed with the
+        // 5. Close the live assurance SSE feed with the
         // terminal `assurance_complete` (aggregate verdict + safetyFlag + postSignAlert)
         // so the browser can stop the spinner, enable sign-off, or raise the Q2b
         // amendment alert. Best-effort: the service swallows Redis errors, but guard
@@ -855,11 +855,11 @@ export class HarnessInternalService {
   }
 
   /**
-   * TASK-466 (C1-05) — record a harness gate SLA-breach escalation as an
+   * Record a harness gate SLA-breach escalation as an
    * append-only WORM audit event. The durable workflow's `escalate_gate` activity
    * POSTs this when an un-signed gate passes its SLA; the `reason` encodes
    * terminal-ness (`gate_sla_abandoned` = the terminal escalation before the gate
-   * abandons, C1-02) and maps to GATE_ABANDONED, else GATE_ESCALATED. Re-establishes
+   * abandons) and maps to GATE_ABANDONED, else GATE_ESCALATED. Re-establishes
    * CLS from the body `tenantId` (like the other handlers) and enforces the
    * 404-over-403 tenancy posture: a cross-tenant consultation surfaces as
    * NotFoundException, never leaking that it exists under another tenant.
@@ -870,7 +870,7 @@ export class HarnessInternalService {
       throw new BadRequestException('tenantId is required');
     }
 
-    // TASK-466 (C1-03) — the harness ships an Idempotency-Key on this POST too, so
+    // The harness ships an Idempotency-Key on this POST too, so
     // a re-delivered escalate_gate (worker restart / SLA-timeout racing a
     // slow-but-successful POST) must not double-append the hash-chained WORM row.
     return this.withHarnessIdempotency('recordEscalation', tenantId, idempotencyKey, () =>
@@ -907,7 +907,7 @@ export class HarnessInternalService {
   }
 
   /**
-   * TASK-466 (C1-03) — build the Redis dedup key for a WORM/draft callback. The
+   * Build the Redis dedup key for a WORM/draft callback. The
    * `idempotencyKey` value is the harness `{run_id}:{activity_id}` (already
    * globally unique); we additionally namespace by operation + tenantId so two
    * tenants can never collide and each callback dedups independently.
@@ -917,7 +917,7 @@ export class HarnessInternalService {
   }
 
   /**
-   * TASK-466 (C1-03) — dedup a WORM/draft callback on the harness `Idempotency-Key`.
+   * Dedup a WORM/draft callback on the harness `Idempotency-Key`.
    * The durable workflow re-invokes these callbacks on each Temporal activity
    * retry; without dedup every retry re-appends the WORM/draft rows. This
    * caches-and-replays the prior RESPONSE BODY (not a bare seen-marker — e.g.
@@ -925,7 +925,7 @@ export class HarnessInternalService {
    * exactly one effect. The key is recorded AFTER a successful write; Temporal
    * activity retries are sequential, so a get-then-setex is adequate (no lock).
    * Best-effort: no key, no Redis, or a Redis throw ⇒ fall through to normal
-   * processing (mirrors the consultation-job dedup, TASK-299 D-10).
+   * processing (mirrors the consultation-job dedup).
    */
   private async withHarnessIdempotency<T>(
     operation: string,
@@ -973,7 +973,7 @@ export class HarnessInternalService {
   }
 
   /**
-   * TASK-355 Phase C (R-6) — the latest live SOAP snapshot for warm-start.
+   * The latest live SOAP snapshot for warm-start.
    * The live session upserts ONE PRE_SUMMARY row tagged metaData.subType =
    * 'LIVE_SOAP_SNAPSHOT'. Distinct from legacy case-notes pre-summaries, so we
    * filter on subType (findLatestPreSummary is NOT subType-aware). Returns the
@@ -989,7 +989,7 @@ export class HarnessInternalService {
   }
 
   /**
-   * TASK-356 Phase 6 (S3) — resolve the DNA style id to actually apply at the
+   * Resolve the DNA style id to actually apply at the
    * harness generation boundary: the requested id when DNA is EFFECTIVE (tenant
    * AND doctor), else `undefined`. No-op pass-through when ConfigResolver is
    * unwired or no id was requested. `resolveEffectiveDnaStyleEnabled` fails closed
@@ -1011,7 +1011,7 @@ export class HarnessInternalService {
   }
 
   /**
-   * TASK-356 Phase 6 (S4) — write the immutable AI-draft `v1` snapshot for the
+   * Write the immutable AI-draft `v1` snapshot for the
    * DNA edit-capture corpus. Reuses `ContextItemVersion` with
    * `changeReason='ai_draft_v1'` / `changeSource='ai_model'` (no schema change),
    * mirroring the sync `SummaryService` path so both generation boundaries snapshot.
@@ -1132,7 +1132,7 @@ export class HarnessInternalService {
   }
 
   /**
-   * TASK-355 Phase D Slice 5d — true iff the inferential SAFETY dimension is a
+   * True iff the inferential SAFETY dimension is a
    * FLAG, derived from the harness `guardrailDecisions`. Tolerant of the two
    * shapes the harness emits (`{ safety: 'FLAG' }` and
    * `{ safety: { decision|verdict: 'FLAG' } }`), mirroring

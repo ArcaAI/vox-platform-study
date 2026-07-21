@@ -39,7 +39,7 @@ export function useRole(id: string) {
     return useQuery({ queryKey: rbacKeys.role(id), queryFn: () => getRole(id), enabled: !!id });
 }
 
-/** TASK-444 — paginated users-by-role for the role detail Members tab. */
+/** Paginated users-by-role for the role detail Members tab. */
 export function useRoleMembers(roleId: string, params?: RbacListParams) {
     return useQuery({
         queryKey: rbacKeys.roleMembers(roleId, params),
@@ -67,7 +67,7 @@ export function useCreateRole() {
     return useMutation({ mutationFn: (body: CreateRoleRequest) => createRole(body), onSuccess: invalidate });
 }
 
-/** TASK-501 — clone a role (SYSTEM or CUSTOM) into a new CUSTOM role. */
+/** Clone a role (SYSTEM or CUSTOM) into a new CUSTOM role. */
 export function useCloneRole() {
     const invalidate = useInvalidateRbac();
     return useMutation({

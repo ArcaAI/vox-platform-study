@@ -8,7 +8,7 @@ import { KnowledgeIngestClient } from './knowledge-ingest.client';
 import { IngestKnowledgeDocumentProcessor } from './ingest-knowledge-document.processor';
 
 /**
- * KnowledgeServiceModule (TASK-330 Phase 3 — institutional RAG).
+ * KnowledgeServiceModule — institutional RAG.
  *
  * Wires the institutional-knowledge CRUD/approval service, the harness ingest
  * HTTP client, and the BullMQ ingestion worker. The IngestKnowledgeDocument

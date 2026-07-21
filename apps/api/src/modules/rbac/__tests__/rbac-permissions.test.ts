@@ -4,7 +4,7 @@ import { RolesController } from '../roles.controller';
 import { PoliciesController } from '../policies.controller';
 
 /**
- * AC-03 (TASK-336) — RBAC admin screens 403'd for TENANT_ADMIN because the
+ * RBAC admin screens 403'd for TENANT_ADMIN because the
  * read/list routes required the `manage` alias while the seed grants the
  * decomposed `read:<Subject>` permission. Read/list routes must therefore be
  * satisfied by `read` OR `manage` (OR mode); every mutation stays `manage`-only

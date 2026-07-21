@@ -16,7 +16,7 @@ export * as DataMapper from './mappers';
 export * as DataModel from './models';
 export * as DataRepository from './repositories';
 
-// TASK-330 Phase 6 — re-export the reserved system-tenant id from the database
+// Re-export the reserved system-tenant id from the database
 // layer so the applications layer (which depends on @arcaai/domains, not
 // @arcaai/database) can reference the harness GLOBAL-DEFAULT policy owner.
 export { SYSTEM_TENANT_ID } from '@arcaai/database';

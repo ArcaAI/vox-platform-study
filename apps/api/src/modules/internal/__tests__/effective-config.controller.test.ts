@@ -1,6 +1,6 @@
-// TASK-525 §4.1 — the internal effective-config route.
+// The internal effective-config route.
 //
-// Tests 1 & 2 of the ticket's RED list: the controller delegates to the read
+// The controller delegates to the read
 // service and rejects unknown service names, and its decorator stack satisfies
 // the boot-time route-permission audit exactly like HarnessInternalController.
 

@@ -49,7 +49,7 @@ function StatRow({ label, loading, children }: { label: string; loading: boolean
 
 /**
  * Assign the selected template to one of a department's prompt slots. The
- * gateway body requires the DEPARTMENT row's expectedVersion (TASK-302 E.2),
+ * gateway body requires the DEPARTMENT row's expectedVersion (E.2),
  * which the departments list read supplies per row.
  */
 function AssignDepartmentDialog({ template, open, onOpenChange }: { template: PromptTemplate; open: boolean; onOpenChange: (open: boolean) => void }) {

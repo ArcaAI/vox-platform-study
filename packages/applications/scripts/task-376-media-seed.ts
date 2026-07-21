@@ -1,9 +1,9 @@
 /**
- * TASK-376 — media seed (additive / idempotent). Resolves DEFECT-M1.
+ * Media seed (additive / idempotent).
  *
  * Creates ONE Global-tenant consultation whose context items cover every media
  * shape the admin timeline renders — an image, a PDF, an audio clip, a
- * "mixed" item (image + attached file + text), and (TASK-406 P2-7a) a
+ * "mixed" item (image + attached file + text), and a
  * RECORDING-shaped fixture (AUDIO_RECORDING container + AudioRecording row +
  * linked WAV media) — backed by REAL small sample
  * files uploaded into MinIO at the canonical `s3://<bucket>/<key>` convention
@@ -60,7 +60,7 @@ const MEDIA_IDS = {
   audio: '96000000-0000-0000-0000-000000000378',
   mixedImage: '96000000-0000-0000-0000-000000000379',
   mixedFile: '96000000-0000-0000-0000-000000000380',
-  // TASK-406 (P2-7a) — the media behind the RECORDING-shaped fixture.
+  // The media behind the RECORDING-shaped fixture.
   recordingWav: '96000000-0000-0000-0000-000000000381',
 } as const;
 const CTX_IDS = {
@@ -68,16 +68,15 @@ const CTX_IDS = {
   pdf: '91000000-0000-0000-0000-000000000377',
   audio: '91000000-0000-0000-0000-000000000378',
   mixed: '91000000-0000-0000-0000-000000000379',
-  // TASK-406 (P2-7a) — AUDIO_RECORDING container (production shape: the
-  // container itself carries no media; the AudioRecording row references it).
+  // AUDIO_RECORDING container (production shape: the container itself
+  // carries no media; the AudioRecording row references it).
   recording: '91000000-0000-0000-0000-000000000380',
 } as const;
 /**
- * TASK-406 (P2-7a) — the AudioRecording row id (the TASK-375 residual asked for
- * a "recording-shaped" fixture: an AUDIO_RECORDING context-item container + an
+ * The AudioRecording row id: an AUDIO_RECORDING context-item container + an
  * AudioRecording row with duration/format/sampleRate/channels metadata pointing
  * at a real uploaded WAV — exactly what `ContextService.addAudioRecording`
- * produces and `GET /consultations/:id/recordings` returns).
+ * produces and `GET /consultations/:id/recordings` returns.
  */
 const RECORDING_ID = '93000000-0000-0000-0000-000000000376';
 const RECORDING_META = {
@@ -91,7 +90,7 @@ const RECORDING_META = {
 
 // --- Canonical Global-tenant buckets (seed/05a-tenant-bucket.ts) -------------
 const ATTACH_BUCKET = 'hope-attachments-global';
-// TASK-426 — the audio-purpose system bucket slug is `recordings`.
+// The audio-purpose system bucket slug is `recordings`.
 const AUDIO_BUCKET = 'hope-recordings-global';
 
 const KEY_PREFIX = 'task-376';
@@ -107,7 +106,7 @@ const KEYS = {
 /**
  * `Media.size` (bytes) used when blob storage is unavailable and the real sample
  * files are therefore not built/uploaded (e.g. CI without MinIO). These are the
- * approximate sizes of the generated samples (see §4 of the TASK-376 README);
+ * approximate sizes of the generated samples;
  * `size` is metadata only — the media E2E asserts on the presigned url/mimeType,
  * not byte length — so a nominal value keeps the row valid and deterministic.
  */
@@ -253,8 +252,8 @@ async function main(): Promise<void> {
       'attachment download + admin PDF rendering end-to-end.',
     ]);
     const wavBuf = buildSampleWav();
-    // TASK-406 (P2-7a) — a second, distinct tone so the recording fixture is a
-    // different real playable file than the plain audio attachment.
+    // A second, distinct tone so the recording fixture is a different real
+    // playable file than the plain audio attachment.
     const recordingWavBuf = buildSampleWav(2, RECORDING_META.sampleRate, 330);
     const noteBuf = Buffer.from(
       'HOPE TASK-376 — mixed attachment note.\nAttached alongside a clinical photo to exercise the image+file+text shape.\n',
@@ -409,7 +408,7 @@ async function main(): Promise<void> {
     console.log(`[contextItem] upserted ${c.id} (ATTACHMENT) → media ${c.mediaId}`);
   }
 
-  // 8) TASK-406 (P2-7a) — the RECORDING-shaped fixture. Mirrors what
+  // 8) The RECORDING-shaped fixture. Mirrors what
   //    `ContextService.addAudioRecording` writes in production:
   //    an AUDIO_RECORDING container (SYSTEM-sourced, NO mediaId — the container
   //    only groups recordings) + an AudioRecording row that references the

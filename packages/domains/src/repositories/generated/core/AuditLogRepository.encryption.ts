@@ -1,4 +1,4 @@
-// TASK-369 (Data Encryption Initiative) Phase 3D — envelope field encryption for
+// Envelope field encryption for
 // AuditLog.data / AuditLog.previousData (the highest-volume write path).
 //
 // Sibling file mirroring ContextItemRepository.encryption.ts (declaration merging

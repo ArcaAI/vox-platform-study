@@ -229,7 +229,7 @@ describe('ConfigSchema', () => {
     });
 
     // =========================================================================
-    // TASK-332 — audio.captureRawAudio (local raw-stream dual-capture flag)
+    // audio.captureRawAudio (local raw-stream dual-capture flag)
     // =========================================================================
     describe('TASK-332: audio.captureRawAudio', () => {
         it('should default captureRawAudio to false', () => {
@@ -256,7 +256,7 @@ describe('ConfigSchema', () => {
     });
 
     // =========================================================================
-    // TASK-333 — stt.transcriptionPipelineId (resolved remote pipeline id)
+    // stt.transcriptionPipelineId (resolved remote pipeline id)
     // =========================================================================
     describe('TASK-333: stt.transcriptionPipelineId', () => {
         it('should be undefined by default (no system default)', () => {
@@ -266,7 +266,7 @@ describe('ConfigSchema', () => {
 
         it('should PRESERVE an explicit id through parse (regression guard for I-1)', () => {
             // The field MUST survive valibot so a surfaced remote pipeline id can
-            // reach consumers (e.g. the consultation panel). Before TASK-333 the
+            // reach consumers (e.g. the consultation panel). Before, the
             // field was absent from the schema and v.parse() stripped it.
             const parsed = v.parse(AppConfigSchema, { stt: { transcriptionPipelineId: 'pipe-remote-1' } });
             expect(parsed.stt.transcriptionPipelineId).toBe('pipe-remote-1');
@@ -285,7 +285,7 @@ describe('ConfigSchema', () => {
     });
 
     // =========================================================================
-    // TASK-356 Phase 4 — stt.transcriptionMode (server-resolved effective mode)
+    // stt.transcriptionMode (server-resolved effective mode)
     // =========================================================================
     describe('TASK-356: stt.transcriptionMode', () => {
         it('should be undefined by default (no system default)', () => {
@@ -311,7 +311,7 @@ describe('ConfigSchema', () => {
     });
 
     // =========================================================================
-    // TASK-364 — stt.provider default flips local → backend so an absent
+    // stt.provider default flips local → backend so an absent
     // server transcriptionMode no longer drags consumers into the local path.
     // =========================================================================
     describe('TASK-364: stt.provider default', () => {

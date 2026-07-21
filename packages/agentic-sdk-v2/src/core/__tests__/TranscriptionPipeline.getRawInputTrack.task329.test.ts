@@ -1,5 +1,5 @@
 /**
- * TranscriptionPipeline.getRawInputTrack (TASK-329 P2 — dual-capture X8)
+ * TranscriptionPipeline.getRawInputTrack (dual-capture X8)
  *
  * The dual-capture flow records the RAW input track alongside the processed
  * output (`getProcessedTrack`). This verifies the new accessor returns the

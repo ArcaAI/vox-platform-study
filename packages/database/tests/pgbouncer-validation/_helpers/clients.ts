@@ -1,7 +1,6 @@
 // packages/database/tests/pgbouncer-validation/_helpers/clients.ts
 //
-// Small client factory for the PgBouncer validation rig
-// (TASK-302 Stream C Phase 1).
+// Small client factory for the PgBouncer validation rig.
 //
 // * `createPooledPrisma()`         — Prisma 7 client through PgBouncer (port 6532)
 // * `createExtendedPooledPrisma()` — same as above, with soft-delete extension applied

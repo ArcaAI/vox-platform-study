@@ -1,5 +1,5 @@
 /**
- * useAdminConsultations Hook Tests (TASK-323 Phase 0 / TASK-320 A1)
+ * useAdminConsultations Hook Tests
  *
  * Tenant-wide consultation supervision binding for TENANT_ADMIN / GLOBAL_ADMIN.
  *

@@ -1,13 +1,13 @@
 /**
- * TASK-455 (S-10) AC-3 — backpressure / overload recovery over a REAL socket.
+ * Backpressure / overload recovery over a REAL socket.
  *
- * SCOPE (honest, and documented so TASK-457 inherits a real baseline)
+ * SCOPE (honest, and documented as a real baseline for the eventual fix)
  * ------------------------------------------------------------------
  * Two backpressure surfaces exist on the realtime loop:
  *
  *   (a) INGEST overload — the client floods audio frames far faster than
  *       realtime into `stt:audio:{sid}` (XADD `MAXLEN ~ 10000`). This is
- *       client-drivable over a real socket and is exactly the path TASK-457's
+ *       client-drivable over a real socket and is exactly the path the
  *       consumer-groups migration reshapes, so it IS the measurement here:
  *       flood, then assert the loop RECOVERS (socket stays open, captions still
  *       flow, the session still finalizes) and record any client-observable
@@ -21,8 +21,8 @@
  *       cadence, and the watermark cannot be lowered on the shared live stack.
  *       That contract is pinned in-process by
  *       `apps/api/src/modules/streaming/__tests__/stt-ws.gateway.test.ts`
- *       (TASK-351 P1-4 block) and is captured here only as a `test.fixme`
- *       target (it ties to TASK-454's dropped-frame counters).
+ *       and is captured here only as a `test.fixme`
+ *       target (it ties to the dropped-frame counters).
  *
  * Live-stack requirement: needs STT-V2 behind the gateway; self-skips with an
  * explicit reason when unreachable. Prereqs + invocation: ticket README
@@ -79,10 +79,8 @@ test.describe('TASK-455 AC-3 — backpressure / overload recovery', () => {
 
       // The loop must drain and keep producing captions (recovery).
       const gotTranscripts = await socket.waitForTranscripts(1, 30_000);
-      // TASK-467: `{type:'stop'}` is a JSON TEXT control frame. It USED to be a
-      // no-op (ws@8 delivers text as Buffer; the gateway misclassified it as
-      // binary audio), so finalize happened only via VAD silence / the STT-v2
-      // reaper. The gateway now branches on the `message` event's `isBinary`
+      // `{type:'stop'}` is a JSON TEXT control frame. The gateway branches on
+      // the `message` event's `isBinary`
       // arg, so stop reaches `writeControlCommand(finalize)`. Whether a `closed`
       // status then arrives within the window depends on the upstream finalize
       // completing — recorded (not asserted) as `reachedClosedStatusAfterStop`.
@@ -132,12 +130,12 @@ test.describe('TASK-455 AC-3 — backpressure / overload recovery', () => {
   // `STT_WS_EGRESS_HIGH_WATERMARK_BYTES` or a synthetic egress stall, neither
   // available on the shared live stack. Pinned in-process by
   // stt-ws.gateway.test.ts; `test.fixme` here documents the wire-level bar and
-  // ties dropped-partial / dropped-final visibility to TASK-454's counters.
+  // ties dropped-partial / dropped-final visibility to the dropped-frame counters.
   // ---------------------------------------------------------------------------
   test.fixme('TARGET (TASK-454/457): under egress backpressure, partials are dropped and finals are preserved & observable', async () => {
     // Requires lowering the 512 KiB egress high-watermark (env
     // STT_WS_EGRESS_HIGH_WATERMARK_BYTES) so a stalled reader crosses it, and
-    // a client-observable dropped-frame signal (TASK-454). Neither is present
+    // a client-observable dropped-frame signal. Neither is present
     // on the shared live stack; encoded here so the bar is explicit.
     expect(true).toBe(true);
   });

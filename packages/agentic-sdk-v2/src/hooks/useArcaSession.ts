@@ -94,7 +94,7 @@ export function useArcaSession(): UseArcaSessionReturn {
       if (crossTabSyncRef.current) {
         crossTabSyncRef.current.close();
       }
-      // TASK-317 D-5 (AC-9) — namespace the cross-tab channel per tenant
+      // Namespace the cross-tab channel per tenant
       // (`agentic.<tenantId>`) so context never bleeds across tenants sharing
       // an origin. Resolve the active tenant from the api client.
       const tenantId = store.apiClient?.getTenantId();

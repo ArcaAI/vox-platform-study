@@ -164,7 +164,7 @@ export function TenantDetailScreen({ id }: { id: string }) {
                                         Archive
                                     </Button>
                                 ) : null}
-                                {/* TASK-531 — reconcile this tenant's pipeline
+                                {/* Reconcile this tenant's pipeline
                                     catalog against the SYSTEM templates. */}
                                 <ResyncPipelineTemplatesAction tenant={tenant} />
                                 <Button variant="destructive" onClick={() => setLifecycle({ action: 'delete', tenant })}>

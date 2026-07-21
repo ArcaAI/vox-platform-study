@@ -22,7 +22,7 @@ export interface IAuditLogEntity extends IBaseTenantEntity {
   data: JsonValue;
   previousData: JsonValue;
   metadata?: JsonValue | null;
-  // TASK-369 Phase 3D — envelope-encryption columns. `encryptedData` /
+  // Envelope-encryption columns. `encryptedData` /
   // `encryptedPreviousData` are the AES-256-GCM ciphertext (under a cached DEK);
   // `dekWrapped` is the Vault-Transit-wrapped DEK (vault:vN:...) and
   // `dekKeyVersion` the Transit key version that wrapped it. All nullable (NULL
@@ -153,7 +153,7 @@ export class AuditLogEntity extends BaseTenantEntity {
     this.setProperty('success', value);
   }
 
-  // TASK-369 Phase 3D — `data`/`previousData` can carry PHI. @Secret() marks them
+  // `data`/`previousData` can carry PHI. @Secret() marks them
   // for audit-log redaction (defense-in-depth). Plaintext is retained for the
   // dual-read soak; the encrypted ciphertext lives in `encrypted*` columns.
   @Secret()
@@ -182,7 +182,7 @@ export class AuditLogEntity extends BaseTenantEntity {
     this.setProperty('metadata', value);
   }
 
-  // TASK-369 Phase 3D — envelope-encryption ciphertext + wrapped-DEK metadata.
+  // Envelope-encryption ciphertext + wrapped-DEK metadata.
   // @Secret() keeps the ciphertext off any audit-log surface. Set by the
   // applications-layer AuditLog encryption helper before persistence.
   @Secret()
@@ -253,7 +253,7 @@ export class AuditLogEntity extends BaseTenantEntity {
     if (this._eventType && this._eventType.length > 100) {
       throw new BusinessException('AuditLog eventType must not exceed 100 characters.');
     }
-    // Note: data, previousData, metadata are Json columns. Per TASK-261
+    // Note: data, previousData, metadata are Json columns. Per the audit contract,
     // Conservative Defaults, JSON shapes are track-only — no structural
     // validation at the domain layer.
   }

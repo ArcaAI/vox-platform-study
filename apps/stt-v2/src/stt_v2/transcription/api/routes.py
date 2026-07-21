@@ -266,7 +266,7 @@ def _build_response(result: TranscriptionResult) -> TranscriptionResponse:
     response_model=PipelineValidateResponse,
     summary="Validate a pipeline configuration YAML",
     description=(
-        "TASK-505 P2 — authoritative pipeline-config validation using the same "
+        "Authoritative pipeline-config validation using the same "
         "parser/validator the runtime uses (versions 1.0/1.1/2.0, provider :: "
         "model shorthand, stage toggles). The gateway's admin validate surface "
         "proxies here so TypeScript never hand-duplicates the rules."
@@ -280,7 +280,7 @@ async def validate_pipeline_yaml(
     parser = get_yaml_parser()
     try:
         spec = parser.parse(request.config_yaml)
-    except Exception as exc:  # noqa: BLE001 — TASK-505 review: the parser can
+    except Exception as exc:  # noqa: BLE001 — the parser can
         # raise TypeError/AttributeError on malformed stage blocks (e.g.
         # `endpoint: true`); a 500 here made the gateway treat the service as
         # unreachable and fall back to its loose local verdict, so the invalid

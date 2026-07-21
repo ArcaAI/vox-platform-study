@@ -1,6 +1,5 @@
 /**
- * TASK-376 — shared MinIO/S3 helpers for the media seed + thumbnail backfill
- * scripts.
+ * Shared MinIO/S3 helpers for the media seed + thumbnail backfill scripts.
  *
  * These dev-tooling scripts talk to the SAME physical MinIO the API's
  * `IBlobStorageService` presigns against, using the AWS S3 SDK configured from

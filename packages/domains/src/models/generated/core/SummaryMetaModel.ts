@@ -27,19 +27,19 @@ export class SummaryMeta extends BaseTenantDataModel {
   public generatedAt: Date | null;
   public promptResolvedFrom: string | null;
   public resolvedPromptId: string | null;
-  // TASK-330 Phase 1 — clinical-harness sensor scores + citation provenance
+  // Clinical-harness sensor scores + citation provenance
   public entityFaithfulnessScore: number | null;
   public coverageScore: number | null;
   public ragTriadScore: number | null;
-  // TASK-369 Phase 6 — plaintext citationsMap / guardrailDecisions columns
+  // Plaintext citationsMap / guardrailDecisions columns
   // DROPPED; persistence is ciphertext-only. The entity keeps these as transient
   // fields repopulated by repository decrypt-on-read.
   public attestationRef: string | null;
   public modelName: string | null;
-  // TASK-355 Phase D — two-phase (optimistic) assurance state
+  // Two-phase (optimistic) assurance state
   public gateDecision: string | null;
   public assuranceCompletedAt: Date | null;
-  // TASK-369 Phase 3C — Vault-Transit ciphertext columns + shared key version.
+  // Vault-Transit ciphertext columns + shared key version.
   public encryptedCitationsMap: Uint8Array | null;
   public encryptedGuardrailDecisions: Uint8Array | null;
   public keyVersion: number | null;

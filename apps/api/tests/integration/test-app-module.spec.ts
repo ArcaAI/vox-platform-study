@@ -1,45 +1,42 @@
 /**
- * TestAppModule sanity test — TASK-309 AC-4.
+ * TestAppModule sanity test.
  *
- * Closes the W7.A.19 follow-up deferred from TASK-307 W4b. The helper
- * in `apps/api/tests/helpers/test-app-module.ts` re-exports `AppModule`
- * with a documented override surface so the full route tree can boot
- * inside an integration test without contacting Postgres/Redis/Vault/OIDC.
+ * The helper in `apps/api/tests/helpers/test-app-module.ts` re-exports
+ * `AppModule` with a documented override surface so the full route tree can
+ * boot inside an integration test without contacting Postgres/Redis/Vault/OIDC.
  *
  * This sanity test asserts the harness can `app.init()` + `app.close()`
- * in under 5 seconds — the contract the AC-5 walker relies on.
+ * in under 5 seconds — the contract the full-route walker in
+ * `full-route-walk.spec.ts` relies on.
  *
- * ## Current status (TASK-309 partial — see README §1.5)
+ * ## Current status (blocked)
  *
- * The helper covers the W4b-documented blocker surface
- * (BullMQ + RedisServiceModule + OIDC + AppSettings) plus several more
- * surfaces uncovered during AC-4 (SecretsService JWT-secret gate,
+ * The helper covers a documented blocker surface (BullMQ +
+ * RedisServiceModule + OIDC + AppSettings) plus several more surfaces
+ * uncovered since (SecretsService JWT-secret gate,
  * `ServiceHealthMonitoringService` infinite-retry on Redis,
  * `CoreDatabaseService.$connect`). Even with those overrides applied
  * `compile()` still does not return — all per-module
  * `InstanceLoader … dependencies initialized` logs are emitted, but the
- * compile promise never resolves. See README §5 (Change History,
- * 2026-05-28: AC-4 / AC-5 blocker post-mortem) for the trace evidence
- * and the next-step plan (introduce a stub `IConfigService` whose
- * `isRedisConfigured() === false` shadows every transitive ioredis
- * consumer, instead of stubbing each consumer one-by-one).
+ * compile promise never resolves. The next-step plan is to introduce a stub
+ * `IConfigService` whose `isRedisConfigured() === false` shadows every
+ * transitive ioredis consumer, instead of stubbing each consumer one-by-one.
  *
  * The test is intentionally LEFT IN the suite and asserts the under-5s
- * contract. It will FAIL until the remaining surface is identified —
- * that failure is the gate the README's verification step calls for.
+ * contract. It will FAIL until the remaining surface is identified — that
+ * failure is the gate this suite's re-enablement depends on.
  *
- * ## Merge-time pin (TASK-309 wave merge)
+ * ## Merge-time pin
  *
- * Pinned to `describe.skip` at merge time so `fix/2605-review` retains
- * a green `pnpm test --filter @arcaai/api` suite. The skeleton helper
- * remains in tree as the starting point for the follow-up; the next
- * task should (a) implement the IConfigService-shadowing approach,
- * (b) re-enable this describe, (c) remove the `.skip` on the
- * `full-route-walk.spec.ts` AC-5 walker that depends on this contract.
+ * Pinned to `describe.skip` so the suite stays green in the meantime. The
+ * skeleton helper remains in tree as the starting point for the follow-up:
+ * (a) implement the IConfigService-shadowing approach, (b) re-enable this
+ * describe, (c) remove the `.skip` on the `full-route-walk.spec.ts` walker
+ * that depends on this contract.
  *
- * TODO: TASK-309 follow-up — unblock this gate by shadowing
- * IConfigService so isRedisConfigured() === false cascades to every
- * transitive ioredis consumer.
+ * TODO: unblock this gate by shadowing IConfigService so
+ * isRedisConfigured() === false cascades to every transitive ioredis
+ * consumer.
  */
 
 import { afterEach, describe, expect, it } from 'vitest';

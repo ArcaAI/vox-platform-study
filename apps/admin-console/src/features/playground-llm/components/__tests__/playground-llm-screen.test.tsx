@@ -74,7 +74,7 @@ function session(overrides: Partial<{ isElevated: boolean; workingTenantId: stri
         impersonatingUsername: null,
         ...rest,
     };
-    // BUG-005 — WorkingTenantGate now reads the effective identity; mirror the
+    // WorkingTenantGate now reads the effective identity; mirror the
     // (possibly overridden) operator fields since these fixtures never impersonate.
     return { ...base, effectiveUser: { ...base.user, departmentId: null }, effectiveIsElevated: base.isElevated, effectiveTenantId: base.workingTenantId };
 }
@@ -440,7 +440,7 @@ describe('PlaygroundLlmScreen', () => {
         renderWithProviders(<PlaygroundLlmScreen />);
 
         await screen.findByLabelText('Provider');
-        // The request-summary strip sits under the canvas header (TASK-442 §4: the
+        // The request-summary strip sits under the canvas header (the
         // playground banner moved to the top-bar persona control).
         const strip = (text: string) => screen.getByText((_, element) => element?.textContent === text);
         expect(strip('Provider azure-openai')).toBeDefined();

@@ -308,7 +308,7 @@ describe('TranscriptionPipeline', () => {
       );
     });
 
-    // TASK-364 — the backend workflow injects a `streamingTransport` (pipeline-aware
+    // The backend workflow injects a `streamingTransport` (pipeline-aware
     // WebSocket) but never sets an `sttSocket`. Before this fix the final fallback
     // only checked `sttSocket`, so an absent `transcriptionMode` resolved to LOCAL
     // and dragged backend consumers into the (broken) local Whisper path. The
@@ -358,7 +358,7 @@ describe('TranscriptionPipeline', () => {
       ).rejects.toThrow('stt.sttSocket or stt.streamingTransport is required when STT provider resolves to backend/remote');
     });
 
-    // TASK-356 Phase 4 — the server-resolved transcriptionMode is authoritative
+    // The server-resolved transcriptionMode is authoritative
     // and overrides provider/location/sttSocket in resolveSTTRuntimeProvider.
     it('honors transcriptionMode=BACKEND over provider=local (resolves remote → fails fast without a socket)', async () => {
       const pipeline = new TranscriptionPipeline(
@@ -765,7 +765,7 @@ describe('TranscriptionPipeline', () => {
   });
 
   // =========================================================================
-  // BUG-02: AudioContext/MediaStream leak
+  // AudioContext/MediaStream leak
   // =========================================================================
 
   describe('BUG-02: stop() should release audio resources', () => {
@@ -837,7 +837,7 @@ describe('TranscriptionPipeline', () => {
   });
 
   // =========================================================================
-  // BUG-15: pause()/resume() should be async
+  // pause()/resume() should be async
   // =========================================================================
 
   describe('BUG-15: pause/resume should await processor operations', () => {

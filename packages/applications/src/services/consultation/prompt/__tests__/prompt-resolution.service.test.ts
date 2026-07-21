@@ -308,7 +308,7 @@ describe('PromptResolutionService', () => {
     });
 
     // =========================================================================
-    // Tier-0 — Preferred Prompt Template (TASK-329 P2)
+    // Tier-0 — Preferred Prompt Template
     // =========================================================================
 
     describe('resolve — preferred prompt template (Tier-0)', () => {
@@ -369,7 +369,7 @@ describe('PromptResolutionService', () => {
     });
 
     // =========================================================================
-    // 3-tier resolvedFrom regression (TASK-331 doc-06 F9)
+    // 3-tier resolvedFrom regression
     //
     // The header JSDoc previously claimed a "two-tier" chain; the code resolves
     // three tiers. This guards that `resolvedFrom` keeps returning the correct

@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, Matches, MaxLength, MinLength } from 'class-validator';
 
 /**
- * TASK-531 (GAP-T2) — clone an existing pipeline into a new, editable copy.
+ * Clone an existing pipeline into a new, editable copy.
  *
  * Deliberately NARROW: a clone takes only its own identity (`name` + `slug`)
  * and inherits everything else — config YAML, description, tags — from the

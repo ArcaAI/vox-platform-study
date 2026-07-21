@@ -1,5 +1,5 @@
 /**
- * useRateLimits Hook Tests (TASK-403)
+ * useRateLimits Hook Tests
  *
  * @vitest-environment jsdom
  */

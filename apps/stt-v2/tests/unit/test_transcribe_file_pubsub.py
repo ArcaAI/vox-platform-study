@@ -915,7 +915,7 @@ class TestWorkerWithPublisherDisabled:
 
 
 # =============================================================================
-# Per-tenant storage descriptor (TASK-318 W3-C)
+# Per-tenant storage descriptor
 # =============================================================================
 
 

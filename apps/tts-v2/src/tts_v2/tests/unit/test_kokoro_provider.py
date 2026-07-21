@@ -1,4 +1,4 @@
-"""TDD tests for KokoroProvider (TASK-488 Phase 4)."""
+"""TDD tests for KokoroProvider."""
 
 from __future__ import annotations
 

@@ -121,7 +121,7 @@ async def initialize_streaming() -> None:
     # 2. Detect hardware and build execution profile
     _execution_profile = detect_execution_profile()
 
-    # TASK-525 — the control plane may cap concurrent streams above what the
+    # The control plane may cap concurrent streams above what the
     # hardware auto-detect chose. Resolved AFTER detection so an unserved value
     # (or an unreachable gateway) leaves the auto-detected profile untouched;
     # `settings.streaming_max_concurrent` keeps its 0 = auto-detect meaning.

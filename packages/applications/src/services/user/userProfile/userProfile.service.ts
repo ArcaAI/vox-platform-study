@@ -101,7 +101,7 @@ export class UserProfileService extends BaseService implements IUserProfileServi
   }
 
   /**
-   * Fetch the profile row for a user (TASK-328 A1–A3). Returns null when the
+   * Fetch the profile row for a user. Returns null when the
    * user has no profile yet so callers can render an empty/editable state.
    */
   async getByUserId(userId: string): Promise<UserProfileEntity | null> {
@@ -122,7 +122,7 @@ export class UserProfileService extends BaseService implements IUserProfileServi
   }
 
   /**
-   * Create-or-update the profile keyed by userId (TASK-328 A1–A3). The
+   * Create-or-update the profile keyed by userId. The
    * user-detail dialog edits a profile by user, not by profile id, and a user
    * may not have a profile row yet — so this upserts. Idempotent: a no-op
    * update returns the existing row rather than throwing.

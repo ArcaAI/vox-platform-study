@@ -1,13 +1,13 @@
 'use client';
 
 /**
- * Frame 50 — Consultation Demo (TASK-432, matrix row 34). An `@arcaai/vox`
+ * Frame 50 — Consultation Demo (matrix row 34). An `@arcaai/vox`
  * SDK showcase: open a consultation, capture mic audio through the
  * noise-filter/VAD/streaming-STT pipeline, watch the live transcript and the
  * SSE live summary, then generate the clinical note (sync or async job) and
  * hand off to the Documentation Review phase (frame 50.1).
  *
- * Transport split (TASK-431): SDK/REST calls go through the BFF proxy
+ * Transport split: SDK/REST calls go through the BFF proxy
  * (`/api/hope`, auth injected server-side — no token in the browser); the
  * STT WebSocket and all SSE streams connect DIRECTLY to the gateway
  * (`publicEnv.apiHost`) — WS via the SDK `wsUrl` config, SSE via single-use
@@ -219,7 +219,7 @@ function SdkBoundary() {
         if (!mounted) return null;
         return {
             // REST → BFF proxy (auth injected server-side; SDK carries no token).
-            // WS → gateway directly (AgenticClient.getWsUrl, TASK-431).
+            // WS → gateway directly (AgenticClient.getWsUrl).
             api: {
                 baseUrl: `${window.location.origin}/api/hope`,
                 wsUrl: publicEnv.apiHost,
@@ -457,7 +457,7 @@ function DemoScreen() {
                     <TabsTrigger value="demo">Consultation demo</TabsTrigger>
                     <TabsTrigger value="review">Documentation review</TabsTrigger>
                 </TabsList>
-                {/* End-user preview (TASK-442 §4): one centered top-to-bottom flow —
+                {/* End-user preview: one centered top-to-bottom flow —
                     setup → capture → live transcript → live summary → document — instead
                     of the old 3-column console grid. */}
                 <TabsContent value="demo" className="flex flex-col gap-4">

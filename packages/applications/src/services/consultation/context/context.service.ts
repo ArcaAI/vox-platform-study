@@ -56,14 +56,14 @@ import {
 const LIVE_CONTEXT_TYPES = new Set<ContextItemType>([ContextItemType.WORKNOTE, ContextItemType.CASE_NOTE, ContextItemType.ATTACHMENT]);
 
 /**
- * TASK-375 (item 4) — lifetime of presigned context-attachment download URLs.
+ * Lifetime of presigned context-attachment download URLs.
  * Mirrors StorageController's `PRESIGNED_GET_EXPIRY_SECONDS` (1h) so links live
  * roughly as long as an admin session view.
  */
 const CONTEXT_MEDIA_URL_TTL_SECONDS = 3600;
 
 /**
- * TASK-375 (item 4) — parse a `MediaEntity.uri` of the canonical
+ * Parse a `MediaEntity.uri` of the canonical
  * `s3://<bucket>/<key>` form (written by StorageController on upload) into a
  * provider-agnostic `{ bucket, key }` for {@link IBlobStorageService.presignGet}.
  * Returns `null` for any other shape (e.g. legacy absolute URLs) so callers
@@ -91,13 +91,13 @@ export class ContextService extends BaseService implements IContextService {
     private readonly consultationRepository: ConsultationRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // TASK-369 Phase 3B — Vault-Transit field encryption for `content`.
+    // Vault-Transit field encryption for `content`.
     // Optional + @Inject so legacy/direct-construction tests (which don't wire
     // the @Global SecretsService) still work, mirroring ApiKeyService /
     // StorageAccessKeyService. When absent, `content` is left unpersisted
-    // (Phase 6 dropped the plaintext column).
+    // (there is no plaintext column).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // TASK-375 (item 4) — storage-resolved media URLs for context attachments.
+    // Storage-resolved media URLs for context attachments.
     // Optional + @Inject so the many direct-construction tests that don't wire
     // storage still work (mirrors the SecretsService pattern above); when
     // absent, attachments simply carry no resolved `url`. Both are provided by
@@ -111,11 +111,11 @@ export class ContextService extends BaseService implements IContextService {
   private readonly logger = new Logger(ContextService.name);
 
   /**
-   * TASK-369 — dual-write: encrypt the entity's plaintext `content` into
+   * Dual-write: encrypt the entity's plaintext `content` into
    * `encryptedContent` / `contentKeyVersion` (Vault Transit `hope-phi`) before
    * persistence, via the shared env-gated guard: a soft no-op in dev/test, but
    * fail-closed (throws) in staging/prod (SECRETS_PROVIDER=vault) so a populated
-   * `content` is never persisted plaintext-only. Phase 6 has dropped the plaintext
+   * `content` is never persisted plaintext-only. There is no plaintext
    * column; reads decrypt the ciphertext only.
    */
   private async encryptContent(entity: ContextItemEntity): Promise<void> {
@@ -128,7 +128,7 @@ export class ContextService extends BaseService implements IContextService {
   }
 
   /**
-   * TASK-369 — encrypt-on-write for the sibling clinical models persisted by
+   * Encrypt-on-write for the sibling clinical models persisted by
    * this service (ContextItemVersion snapshots, SummaryMeta provenance,
    * NamedEntity spans). Mirrors {@link encryptContent}: a soft no-op in dev/test,
    * fail-closed (throws) in staging/prod (SECRETS_PROVIDER=vault).
@@ -152,7 +152,7 @@ export class ContextService extends BaseService implements IContextService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // TASK-305 D.3 (audit C-3) — verify the parent consultation lives in
+    // (audit C-3) — verify the parent consultation lives in
     // the caller's tenant. `assertParentInScope` throws
     // `NotFoundException` for both missing-parent and cross-tenant cases
     // so the response never reveals the existence of a foreign-tenant
@@ -183,7 +183,7 @@ export class ContextService extends BaseService implements IContextService {
       contextItem.metaData = request.metadata;
     }
 
-    // TASK-369 Phase 3B — encrypt `content` into the ciphertext columns before
+    // Encrypt `content` into the ciphertext columns before
     // the first persist (dual-write; plaintext column is retained for the soak).
     await this.encryptContent(contextItem);
 
@@ -214,7 +214,7 @@ export class ContextService extends BaseService implements IContextService {
     // inputs.
     if (LIVE_CONTEXT_TYPES.has(request.type)) {
       const subType = typeof request.metadata?.subType === 'string' ? (request.metadata.subType as string) : undefined;
-      // TASK-342 GAP #5 — for uploaded lab/exam files the client extracts the
+      // For uploaded lab/exam files the client extracts the
       // file's text (txt / csv / md / json) into `metadata.extractedText`; thread
       // the real contents into the live summary instead of the "Lab/exam result:
       // <name>" filename label. Falls back to `content` when nothing was extracted.
@@ -248,7 +248,7 @@ export class ContextService extends BaseService implements IContextService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // TASK-305 D.3 (audit C-3) — verify the ContextItem being mutated
+    // (audit C-3) — verify the ContextItem being mutated
     // belongs to the caller's tenant before any version snapshot / update.
     const contextItem = await assertParentInScope(this.contextItemRepository, contextItemId, tenantId);
 
@@ -287,7 +287,7 @@ export class ContextService extends BaseService implements IContextService {
 
     contextItem.updatedBy = userId;
 
-    // TASK-369 Phase 3B — re-encrypt only when `content` actually changed, so
+    // Re-encrypt only when `content` actually changed, so
     // metadata-only updates don't rewrite the ciphertext column needlessly.
     if (request.content !== undefined) {
       await this.encryptContent(contextItem);
@@ -295,7 +295,7 @@ export class ContextService extends BaseService implements IContextService {
 
     const updated = await this.contextItemRepository.update(contextItemId, contextItem);
 
-    // TASK-369 Phase 3B — never surface the ciphertext columns in the audit
+    // Never surface the ciphertext columns in the audit
     // payload (defense-in-depth; also avoids serialising a raw Buffer into the
     // SysEvent). The plaintext `content` change is unchanged from prior behavior.
     const { encryptedContent: _encryptedContent, contentKeyVersion: _contentKeyVersion, ...auditableChanges } =
@@ -310,7 +310,7 @@ export class ContextService extends BaseService implements IContextService {
   }
 
   /**
-   * Soft-delete a context item (TASK-342 GAP #3).
+   * Soft-delete a context item.
    *
    * Removes a note / case-note / work-note / attachment via the base
    * `Repository.softDelete` (sets `resourceStatus = DELETED`). Every
@@ -337,7 +337,7 @@ export class ContextService extends BaseService implements IContextService {
       data: { consultationId: contextItem.consultationId, type: contextItem.type },
     });
 
-    // TASK-342 GAP #3d — live drop-out. Mirror the `addContext` ContextAdded
+    // Live drop-out. Mirror the `addContext` ContextAdded
     // fan-out: when a live-tracked note/lab/file (WORKNOTE / CASE_NOTE /
     // ATTACHMENT) is removed, signal the LiveDocumentationService so the matching
     // entry leaves the in-flight running summary on the next flush. Other types
@@ -369,7 +369,7 @@ export class ContextService extends BaseService implements IContextService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // TASK-305 D.3 (audit C-3) — verify the parent consultation lives in
+    // (audit C-3) — verify the parent consultation lives in
     // the caller's tenant before any AudioRecording / container write.
     await assertParentInScope(this.consultationRepository, consultationId, tenantId);
 
@@ -448,7 +448,7 @@ export class ContextService extends BaseService implements IContextService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // TASK-305 D.3 (audit C-3) — verify parent consultation lives in the
+    // (audit C-3) — verify parent consultation lives in the
     // caller's tenant, then verify every ContextItem id captured in the
     // SummaryMeta context arrays. A poisoned `previousSummaryIds`
     // entry pointing into another tenant would otherwise be persisted
@@ -461,7 +461,7 @@ export class ContextService extends BaseService implements IContextService {
     // Create summary context item
     const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, request.content, request.dnaWritingStyleId, userId ?? 'system');
 
-    // TASK-369 Phase 3B — encrypt summary `content` before persist (dual-write).
+    // Encrypt summary `content` before persist (dual-write).
     await this.encryptContent(contextItem);
 
     const saved = await this.contextItemRepository.create(contextItem);
@@ -543,7 +543,7 @@ export class ContextService extends BaseService implements IContextService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // TASK-305 D.3 (audit C-3) — verify the parent ContextItem belongs to
+    // (audit C-3) — verify the parent ContextItem belongs to
     // the caller's tenant before any NER row is written. Without this
     // check a cross-tenant `contextItemId` would be stamped with the
     // CALLER's tenantId on the new NamedEntity rows, silently moving
@@ -621,7 +621,7 @@ export class ContextService extends BaseService implements IContextService {
    * When scope=single, only returns entities from the specified consultation.
    */
   async getAggregateNamedEntities(consultationId: string, scope: 'single' | 'chain'): Promise<AggregateNerResponse> {
-    // TASK-306 W5.7.8 (306-F11) — for scope=single, verify the root
+    // For scope=single, verify the root
     // consultation lives in the caller's CLS tenant before doing any
     // work. The Prisma `tenantScope` extension already scopes the
     // downstream per-id reads to empty for a foreign-tenant root, so
@@ -789,7 +789,7 @@ export class ContextService extends BaseService implements IContextService {
    * Diff two versions of a context item (summary). Returns both version
    * snapshots so the caller (UI `version-diff-panel`) can render the diff.
    *
-   * TASK-329 (P6) — the parent context item is asserted to live in the
+   * The parent context item is asserted to live in the
    * caller's tenant before any version content is returned; a missing or
    * cross-tenant item — or a missing version number — surfaces as NotFound.
    */
@@ -837,7 +837,7 @@ export class ContextService extends BaseService implements IContextService {
     const items = await this.contextItemRepository.findByConsultation(consultationId, filters as any);
 
     const responses = items.map(ContextDtoMapper.toResponse);
-    // TASK-375 (item 4) — populate accessible (presigned) media URLs so the
+    // Populate accessible (presigned) media URLs so the
     // admin timeline can render image/pdf/audio/file attachments.
     await this.attachMediaUrls(responses);
 
@@ -849,7 +849,7 @@ export class ContextService extends BaseService implements IContextService {
   }
 
   /**
-   * TASK-375 (item 4) — enrich mapped context items with storage-resolved media
+   * Enrich mapped context items with storage-resolved media
    * URLs. No-op unless BOTH the MediaRepository and IBlobStorageService are
    * wired (they are in the NestJS runtime; absent in legacy direct-construction
    * tests). Batches the lookup + presigns per DISTINCT mediaId, so a timeline
@@ -878,7 +878,7 @@ export class ContextService extends BaseService implements IContextService {
   }
 
   /**
-   * TASK-375 (item 4) — resolve a presigned download URL (+ mimeType / image
+   * Resolve a presigned download URL (+ mimeType / image
    * thumbnail) for each distinct mediaId. A media row whose `uri` is not an
    * `s3://bucket/key` URL, or whose presign fails, is skipped (warn-logged) so
    * one bad attachment never fails the whole timeline read.
@@ -914,7 +914,7 @@ export class ContextService extends BaseService implements IContextService {
           resolved.set(media.id, {
             url,
             mimeType: media.mimeType ?? undefined,
-            // TASK-375 (thumbnails) — images resolve to the real downscaled
+            // (thumbnails) — images resolve to the real downscaled
             // `.thumb.webp` derivative generated on upload; pre-existing media
             // with no derivative falls back to the full-size URL.
             thumbnailUrl: isImage ? await this.resolveThumbnailUrl(blobStorage, location, url) : undefined,
@@ -931,7 +931,7 @@ export class ContextService extends BaseService implements IContextService {
   }
 
   /**
-   * TASK-375 (thumbnails) — resolve the presigned URL of an image's downscaled
+   * (thumbnails) — resolve the presigned URL of an image's downscaled
    * `.thumb.webp` derivative, addressed by the deterministic key convention
    * ({@link deriveThumbnailKey}) the upload path writes. Existence is confirmed
    * via a 1-key prefix list so older media (no derivative) — or any storage
@@ -987,8 +987,8 @@ export class ContextService extends BaseService implements IContextService {
       data: { consultationId, page, limit, count: allItems.length },
     });
 
-    // TASK-406 (P2-6a) — same storage-resolved media enrichment as
-    // getContextItems (TASK-375 item 4), applied to the PAGE slice only so we
+    // Same storage-resolved media enrichment as
+    // getContextItems, applied to the PAGE slice only so we
     // never presign URLs for items that are not returned. Degrades to a no-op
     // when the storage deps are not wired.
     const responses = pageItems.map(ContextDtoMapper.toResponse);
@@ -1187,7 +1187,7 @@ export class ContextService extends BaseService implements IContextService {
    * 1. Chain-based — follows parentConsultationId links
    * 2. Date-based — all consultations for the same (tenantId, patientId, appointmentDate)
    *
-   * TASK-306 P2.5 / AC-9 — Audit surface for array-input ContextItem reads.
+   * Audit surface for array-input ContextItem reads.
    *
    * Three public methods consume the consultation-ID array returned by this
    * helper and pass it as `ids: string[]` to ContextItemRepository methods:
@@ -1201,7 +1201,7 @@ export class ContextService extends BaseService implements IContextService {
    * through `findMany`/`findFirst`/`findById`/etc., so single-id paths are
    * already covered. The defense-in-depth concern here is
    * `findConsultationChain`: if `parentConsultationId` was ever set
-   * cross-tenant by a buggy write pre-TASK-305-W3.1 (or if the extension
+   * cross-tenant by a buggy write (or if the extension
    * is bypassed), the chain array could include foreign-tenant ids.
    * Filter the chain to the caller's CLS tenant BEFORE the downstream
    * repository calls. GLOBAL_ADMIN bypass is intentionally NOT applied
@@ -1277,7 +1277,7 @@ export class ContextService extends BaseService implements IContextService {
   }
 
   /**
-   * TASK-305 D.3 (audit C-3) — validate every ContextItem id in the given
+   * (audit C-3) — validate every ContextItem id in the given
    * list lives in `tenantId`. Used to scrub the metadata arrays on
    * `addRawSummary` (`caseNoteIds`, `preSummaryIds`, `previousSummaryIds`)
    * which would otherwise persist cross-tenant pointers into SummaryMeta.

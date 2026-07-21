@@ -1,13 +1,13 @@
 /**
- * TASK-531 — Pipeline template governance (GAP-T1 / GAP-T2).
+ * Pipeline template governance.
  *
- * Covers the two service-layer behaviours this ticket adds to `PipelineService`:
+ * Covers two service-layer behaviours of `PipelineService`:
  *
  *   1. LOCKED TEMPLATE COPIES are read-only for content edits and delete.
  *      A tenant's 9 provisioned pipelines are copies of the SYSTEM templates;
  *      `update()`/`delete()` on one answers 403 with actionable guidance.
- *      `toggle()` and `setDefault()` stay ALLOWED (owner decision OD-1) — a
- *      tenant may still enable/disable a copy or elect it as their default.
+ *      `toggle()` and `setDefault()` stay ALLOWED — a tenant may still
+ *      enable/disable a copy or elect it as their default.
  *
  *   2. CLONE is the sanctioned customization path: it produces an UNLOCKED row
  *      that keeps its template provenance and carries the source's current
@@ -198,7 +198,7 @@ describe('PipelineService — TASK-531 template governance', () => {
       expect(mockPipelineRepository.softDelete).toHaveBeenCalled();
     });
 
-    // OD-1: the lock covers CONTENT only. A tenant still owns the lifecycle of
+    // The lock covers CONTENT only. A tenant still owns the lifecycle of
     // their copy — enabling/disabling it and choosing it as their default.
     it('toggle() on a locked copy still succeeds (OD-1)', async () => {
       mockPipelineRepository.findById.mockResolvedValue(createPipelineEntity({ templateLocked: true }));

@@ -3,7 +3,7 @@ import { CanActivate, ExecutionContext, Inject, Injectable, Logger, Optional, Un
 import { timingSafeEqual } from 'node:crypto';
 
 /**
- * HarnessServiceTokenGuard (TASK-330 Phase 1 — Lane G).
+ * HarnessServiceTokenGuard.
  *
  * Service-to-service auth for the `/internal/harness/*` endpoints. The harness
  * presents `X-Service-Token`, which must match the `HARNESS_SERVICE_TOKEN`

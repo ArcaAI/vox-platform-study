@@ -1,7 +1,7 @@
 /**
  * AudioRecordingFactory + AudioRecordingEntityMapper — rawMediaId/processedMediaId.
  *
- * TASK-329 (P2 / X8 — dual capture): the Prisma columns
+ * Dual capture: the Prisma columns
  * `AudioRecording.rawMediaId` (String?) and `AudioRecording.processedMediaId` (String?)
  * already exist; this slice threads them through the domain layer
  * (entity ⇄ model) so the application/API layers can persist both streams.

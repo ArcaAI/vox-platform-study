@@ -1,5 +1,5 @@
 /**
- * Typed filter-control helpers (TASK-423 Δ6). Pure so the boolean 3-state and
+ * Typed filter-control helpers. Pure so the boolean 3-state and
  * relative-date presets are unit-testable; the interactive controls live in
  * `data-grid-faceted-filter.tsx`.
  */

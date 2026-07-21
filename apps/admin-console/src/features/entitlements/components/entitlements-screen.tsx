@@ -83,7 +83,7 @@ function EnforcementCard() {
     );
 }
 
-/** Feature chips shown before the +N overflow badge (single-line cell, TASK-429). */
+/** Feature chips shown before the +N overflow badge (single-line cell). */
 const FEATURE_BADGE_LIMIT = 2;
 
 /** Frame 13 plans table: fill-height grid with in-toolbar search over the fixed plan set. */
@@ -116,7 +116,7 @@ function PlansTab() {
             header: 'Features',
             enableSorting: false,
             meta: { label: 'Features' },
-            // Single line, capped at +N — wrapping badges outgrow the fixed-height grid row (TASK-429).
+            // Single line, capped at +N — wrapping badges outgrow the fixed-height grid row.
             cell: ({ row }) => {
                 const enabled = FEATURE_FIELDS.filter((field) => row.original[field.key]);
                 if (enabled.length === 0) return <span className="text-muted-foreground">{'\u2014'}</span>;

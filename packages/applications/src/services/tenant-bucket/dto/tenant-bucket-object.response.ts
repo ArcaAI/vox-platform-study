@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
  * A single object within a tenant bucket as returned by the admin object-list
- * and object-upload routes (TASK-331 doc-03 F7). There is no DB row per object;
+ * and object-upload routes. There is no DB row per object;
  * this is the provider-side object summary, shaped to match the data plane the
  * non-admin `/storage/buckets/:name/files` route returned previously.
  */

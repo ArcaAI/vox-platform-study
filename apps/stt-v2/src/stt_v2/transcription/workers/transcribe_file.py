@@ -79,7 +79,7 @@ def transcribe_file(
             when absent, the global MinIO client and ``audio_bucket_name`` are
             used (unchanged behaviour).
     """
-    # TASK-525 DR-7 — bound concurrent batch jobs HERE, inside the actor, so the
+    # Bound concurrent batch jobs HERE, inside the actor, so the
     # ceiling holds under any launch mode. The dramatiq CLI (the shipped
     # Dockerfile CMD) imports this module rather than running `worker.py:main()`,
     # so a Worker(worker_threads=...) value set there would never apply. The
@@ -123,7 +123,7 @@ async def _transcribe_file_async(
     publishes real-time events to Redis Pub/Sub so the NestJS API
     Gateway can relay them to clients via SSE.
     """
-    # TASK-525 DR-7 — track the control-plane job ceiling. This job already holds
+    # Track the control-plane job ceiling. This job already holds
     # its slot, so a resize applies to SUBSEQUENT admissions: the bound converges
     # monotonically instead of disturbing work in flight. Never raises.
     await refresh_job_concurrency_limit()
@@ -333,10 +333,10 @@ async def _transcribe_file_async(
                     transcript_text=result.text,
                     metadata=result.to_dict(),
                     consultation_id=consultation_id,
-                    # TASK-533 D-22 — on the TYPED field, not smuggled inside
-                    # `metadata`. The metadata path was how the wrong (text-less,
-                    # seconds, snake_case) shape used to slip past validation and
-                    # write all-null segment rows.
+                    # Sent on the TYPED field, not smuggled inside `metadata`.
+                    # The metadata path was how the wrong (text-less, seconds,
+                    # snake_case) shape used to slip past validation and write
+                    # all-null segment rows.
                     segments=result.build_transcript_segments(),
                 )
                 context_item_id = response.get("contextItemId")

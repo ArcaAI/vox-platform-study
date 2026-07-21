@@ -1,5 +1,5 @@
 /**
- * Read seam for the gate-edit learning loop (TASK-533 B6, GAP-A1 consumption b).
+ * Read seam for the gate-edit learning loop.
  *
  * A narrow port for the same reason as {@link IPhiRedactor}: the consumer is
  * `PromptAssemblyService`, which must be able to enrich a prompt without taking

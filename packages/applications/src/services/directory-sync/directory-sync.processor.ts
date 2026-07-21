@@ -28,7 +28,7 @@ export interface SyncTenantDirectoryUsersResult {
 }
 
 /**
- * DirectorySyncProcessor (TASK-498 P3) — admin-triggered directory
+ * DirectorySyncProcessor — admin-triggered directory
  * pre-provisioning worker. Mirrors `IngestKnowledgeDocumentProcessor`: a
  * fail-closed `tenantId` guard, CLS rebind via `createWorkerSession` (workers
  * run outside the API's ClsModule middleware), and `assertEqualTenants`
@@ -53,7 +53,7 @@ export class DirectorySyncProcessor extends WorkerHost {
     private readonly cls: ClsService<IActiveUserContext>,
     @Inject(SecretsService) private readonly secretsService: SecretsService,
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
-    // TASK-392 (Q9) — optional + kill-switch-gated, same posture as UserService.create().
+    // Optional + kill-switch-gated, same posture as UserService.create().
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
   ) {
     super();

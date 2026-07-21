@@ -18,7 +18,7 @@ export interface CreateAiModelProps extends BaseEntityFactoryCreateProps {
   sourceUri: IAiModelEntity['sourceUri'];
   sourceRevision?: IAiModelEntity['sourceRevision'];
   format: IAiModelEntity['format'];
-  // TASK-506 — canonical runtime provider + architecture family.
+  // Canonical runtime provider + architecture family.
   provider?: IAiModelEntity['provider'];
   architecture?: IAiModelEntity['architecture'];
   metaData?: IAiModelEntity['metaData'];

@@ -1,9 +1,6 @@
-"""TASK-527 (D-12) — guardrail carries the model weight path, not just the id.
+"""Guardrail carries the model weight path, not just the id.
 
-Before this ticket ``AiModelRead`` selected only ``provider``/``sourceUri``/
-``_metadata``, so an admin editing ``AiModel.localPath`` changed nothing for
-guardrail: the MiniCheck weight path came 100 % from the environment. These
-tests lock the DB-first path (and its 60 s TTL pickup) in place.
+These tests lock the DB-first path (and its 60 s TTL pickup) in place.
 """
 
 from __future__ import annotations

@@ -1,5 +1,5 @@
 /**
- * TASK-392 Phase 5 — plan-entitlements endpoint constants.
+ * Plan-entitlements endpoint constants.
  *
  * Verifies the admin surface stays on the admin plane (so the impersonation
  * admin JWT is used) while the self-view stays on the user plane, and that the

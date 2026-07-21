@@ -1,5 +1,5 @@
 /**
- * Factory tenantId-required regression tests — TASK-305 Phase A.9.
+ * Factory tenantId-required regression tests.
  *
  * Red-then-green proof that the schema-hardening work (A.0 → A.7) has
  * actually closed the "factory silently invents a tenantId" hole at
@@ -43,7 +43,7 @@ describe('Factory tenantId is structurally required (TASK-305 A.6 / A.9)', () =>
 
     it('TS refuses to compile a CreateConsultation call without tenantId', () => {
       // @ts-expect-error — `tenantId` is now REQUIRED in
-      // CreateConsultationProps (TASK-305 A.6). This line MUST fail to
+      // CreateConsultationProps. This line MUST fail to
       // compile; if it ever stops being a TS error, the @ts-expect-error
       // directive itself becomes a build failure — closing the loophole
       // permanently.
@@ -89,7 +89,7 @@ describe('Factory tenantId is structurally required (TASK-305 A.6 / A.9)', () =>
     // default to `''` via `?? ''` and then fail the entity's "non-blank
     // when provided" guard. Passing valid values explicitly keeps this
     // test focused on the tenantId guard rather than the unrelated
-    // blank-string default (out of scope for TASK-305 A).
+    // blank-string default (out of scope here).
     const validAuditLogProps = {
       responsibleUserId: '60000000-0000-0000-0000-000000000000',
       responsibleIp: '127.0.0.1',

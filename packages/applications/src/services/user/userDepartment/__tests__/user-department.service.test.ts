@@ -1,5 +1,5 @@
 /**
- * UserDepartmentService Unit Tests (TASK-328 A1)
+ * UserDepartmentService Unit Tests
  *
  * Behavioral coverage:
  * - assign creates a tenant-scoped assignment and broadcasts ResourceCreated
@@ -33,7 +33,7 @@ const mockRepo = {
   restore: vi.fn(),
 };
 
-// TASK-305 Phase F — assign() must verify the target department belongs to the
+// Assign() must verify the target department belongs to the
 // caller's tenant (cross-tenant referential integrity), so the service now
 // depends on the DepartmentRepository.
 const mockDepartmentRepo = {
@@ -41,7 +41,7 @@ const mockDepartmentRepo = {
   findAll: vi.fn(),
 };
 
-// TASK-305 Phase F — `findActiveDepartmentForUserInTenant` reads via the
+// `findActiveDepartmentForUserInTenant` reads via the
 // tenant-scope-bypassing baseClient (pre-auth login lookup).
 const mockDatabaseService = {
   baseClient: {
@@ -117,10 +117,10 @@ describe('UserDepartmentService', () => {
       }
     });
 
-    // TASK-305 Phase F — default to an in-tenant department so the integrity
+    // Default to an in-tenant department so the integrity
     // check passes for the happy-path tests. Cross-tenant tests override this.
     mockDepartmentRepo.findById.mockResolvedValue({ id: 'dept-1', tenantId: 'tenant-1' });
-    // TASK-424 — getByUser batch-resolves department labels; default to none so
+    // GetByUser batch-resolves department labels; default to none so
     // pre-existing tests keep the fields undefined unless they opt in.
     mockDepartmentRepo.findAll.mockResolvedValue([]);
 
@@ -240,7 +240,7 @@ describe('UserDepartmentService', () => {
       );
     });
 
-    // TASK-424 — the admin console renders department NAMES/CODES, not raw UUIDs.
+    // The admin console renders department NAMES/CODES, not raw UUIDs.
     // getByUser batch-resolves the distinct departmentIds in ONE query.
     it('resolves departmentName/departmentCode from a single batch lookup', async () => {
       mockRepo.findAll.mockResolvedValueOnce([
@@ -285,7 +285,7 @@ describe('UserDepartmentService', () => {
       expect(mockDepartmentRepo.findAll).not.toHaveBeenCalled();
     });
 
-    // TASK-430 — an unscoped GLOBAL_ADMIN (no working tenant) reads the user's
+    // An unscoped GLOBAL_ADMIN (no working tenant) reads the user's
     // memberships CROSS-TENANT instead of failing with "Tenant ID is required".
     it('lists cross-tenant assignments for a GLOBAL_ADMIN with no tenant context', async () => {
       mockClsService.get.mockImplementation((key: string) =>
@@ -314,7 +314,7 @@ describe('UserDepartmentService', () => {
     });
   });
 
-  // TASK-381 V2 — bulk reconcile a user's memberships to EXACTLY the target set.
+  // Bulk reconcile a user's memberships to EXACTLY the target set.
   describe('setDepartments', () => {
     it('reconciles to exactly the target set — adds missing, soft-deletes extras, leaves matches', async () => {
       mockRepo.findAll
@@ -443,7 +443,7 @@ describe('UserDepartmentService', () => {
     });
   });
 
-  // TASK-305 Phase F — pre-auth (baseClient) membership lookup for the login flow.
+  // Pre-auth (baseClient) membership lookup for the login flow.
   describe('findActiveDepartmentForUserInTenant', () => {
     it('returns the row when an enabled department exists for (userId, tenantId)', async () => {
       mockDatabaseService.baseClient.userDepartment.findFirst.mockResolvedValue({ id: 'ud-7' });

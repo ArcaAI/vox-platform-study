@@ -15,7 +15,7 @@ import { ClsService } from 'nestjs-cls';
 import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 
 /**
- * TenantTtsConfigAdminController (TASK-496) — the admin surface for a tenant's
+ * TenantTtsConfigAdminController — the admin surface for a tenant's
  * TTS spec + BYO provider credentials, mounted at `/admin/tts-config` (global
  * prefix → `/api/v1/admin/tts-config`). Mirrors `PipelinePolicyAdminController`:
  * `@Authorize`, `If-Match` OCC, CLS tenant resolution.
@@ -102,7 +102,7 @@ export class TenantTtsConfigAdminController {
   @Get('catalog')
   @Authorize(['read', 'TenantTtsConfig'])
   @ApiOperation({
-    summary: 'Platform TTS catalog — providers + voices derived from the AiModel registry (TASK-506)',
+    summary: 'Platform TTS catalog — providers + voices derived from the AiModel registry',
     description:
       'SYSTEM ENABLED TEXT_TO_SPEECH registry rows (code-constant fallback pre-seed). Tenant-agnostic: the catalog is the ' +
       'platform-wide universe voice bindings are validated against — no tenant scoping.',

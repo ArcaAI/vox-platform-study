@@ -1,4 +1,4 @@
-"""Unit tests for the rewritten NeMoLoader (TASK-258)."""
+"""Unit tests for the rewritten NeMoLoader."""
 
 from __future__ import annotations
 

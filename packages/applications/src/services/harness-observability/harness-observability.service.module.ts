@@ -3,7 +3,7 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { HarnessObservabilityService } from './harness-observability.service';
 
 /**
- * HarnessObservabilityService DI module (TASK-330 Phase 6 — Phase A). Imports
+ * HarnessObservabilityService DI module. Imports
  * CoreDatabaseModule for the audit / eval / consultation / policy repositories.
  */
 @Module({

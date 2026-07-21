@@ -3,7 +3,7 @@ import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 
 /**
- * TASK-533 B6 (§3.4) — the mined clinician signal.
+ * The mined clinician signal.
  *
  * `APPROVED_CLEAN` = the gate output was signed with little or no editing (a
  * positive exemplar). `HEAVILY_EDITED` = the clinician substantially rewrote it

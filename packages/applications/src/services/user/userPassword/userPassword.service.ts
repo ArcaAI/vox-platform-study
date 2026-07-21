@@ -20,7 +20,7 @@ import { DEFAULT_PASSWORD_RESET_BASE_URL, IPasswordResetMailer } from './IPasswo
 import { resolvePasswordPolicy, validatePasswordComplexity, PasswordPolicy } from './password-policy';
 
 /**
- * TASK-388 #8 — password reset. Reworked by TASK-400.
+ * Password reset.
  *
  * Flows:
  *  - `setTemporaryPassword` — admin sets (or has the server generate) a
@@ -34,7 +34,7 @@ import { resolvePasswordPolicy, validatePasswordComplexity, PasswordPolicy } fro
  *    the token or reveals whether the account exists (always resolves).
  *  - `completeReset` — public: consumes the token to set a new password.
  *
- * TASK-400 token model: the raw token is 32 random bytes (base64url), only its
+ * Token model: the raw token is 32 random bytes (base64url), only its
  * SHA-256 hex is persisted (`PasswordResetToken.tokenHash`). Tokens are
  * single-use (`usedAt`), TTL-bound (1h), and revocable: issuing a new token
  * revokes prior active ones and any password change revokes all outstanding

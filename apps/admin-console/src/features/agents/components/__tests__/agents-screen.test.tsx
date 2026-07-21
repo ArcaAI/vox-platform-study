@@ -126,7 +126,7 @@ function session(overrides: Partial<{ workingTenantId: string | null }> = {}) {
         impersonatingUsername: null,
         ...overrides,
     };
-    // BUG-005 — WorkingTenantGate now reads the effective identity; mirror the
+    // WorkingTenantGate now reads the effective identity; mirror the
     // (possibly overridden) operator fields since these fixtures never impersonate.
     return { ...base, effectiveUser: { ...base.user, tenantId: null, departmentId: null }, effectiveIsElevated: base.isElevated, effectiveTenantId: base.workingTenantId };
 }
@@ -350,7 +350,7 @@ describe('AgentsScreen', () => {
     });
 
     /**
-     * TASK-532 (M-03 / OD-6) — prompt governance folded in from the retired
+     * Prompt governance folded in from the retired
      * `/prompt-studio`. The Governance tab is elevated-only in the CONSOLE;
      * approve authority stays server-side (GLOBAL_ADMIN 403 in the service)
      * regardless of what the console renders.

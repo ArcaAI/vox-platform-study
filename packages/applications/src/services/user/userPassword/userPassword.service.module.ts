@@ -7,7 +7,7 @@ import { IPasswordResetMailer } from './IPasswordResetMailer';
 import { createPasswordResetMailer } from './msgraph-mailer';
 
 /**
- * TASK-388 #8 — reset-password service wiring. Reworked by TASK-400.
+ * Reset-password service wiring.
  *
  * - `CommonServiceModule` provides `IAppSettingsService` (complexity/rotation
  *   policy overrides) + `CoreDatabaseModule` (User / UserProfile /

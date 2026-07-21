@@ -1,5 +1,5 @@
 /**
- * TASK-506 Phase 2 — AI Model Registry Consolidation seed invariants
+ * AI Model Registry Consolidation seed invariants
  *
  * Static + mock-client assertions over the EXPORTED seed data (no live DB),
  * following the conventions of `seed.test.ts` (this dir) and
@@ -7,8 +7,8 @@
  *
  *   1. The final `DEFAULT_AI_MODELS` catalog is EXACTLY the 26 expected slugs,
  *      ids/slugs unique, every `provider` canonical, all 5 TTS rows carry a
- *      non-empty `metaData.voices`, and `indic-f5` seeds DISABLED (TASK-494
- *      prod NO-GO).
+ *      non-empty `metaData.voices`, and `indic-f5` seeds DISABLED (prod
+ *      NO-GO).
  *   2. `RETIRED_AI_MODEL_SLUGS` is exactly the 50 retired slugs, disjoint from
  *      the catalog, and retired ∪ keepers === the previous 60-row catalog.
  *   3. Regression lock — every slug referenced by seeded pipeline YAML
@@ -41,7 +41,7 @@ const {
     ModelTaskType,
 } = stt;
 
-// Loose views over exports that only exist after the TASK-506 implementation
+// Loose views over exports that only exist after the seed consolidation
 // lands (namespace access keeps this file compiling against the OLD seed so
 // the TDD RED run shows real assertion failures, not transform errors).
 const RETIRED_AI_MODEL_SLUGS = (stt as Record<string, unknown>)
@@ -96,7 +96,7 @@ const NEW_TTS_SLUGS = [
     'indic-f5',
 ] as const;
 
-// TASK-507 — two rows added on top of the closed 60→26 TASK-506
+// Two rows added on top of the closed 60→26
 // consolidation: a whisper.cpp GGUF ASR engine and a reinstated
 // DeepFilterNet3 denoise engine (fresh slug — NOT the retired
 // `deepfilternet-v3`; see EXPECTED_RETIRED_SLUGS below).
@@ -266,7 +266,7 @@ describe('TASK-506 — consolidated AI model catalog (26 rows) + TASK-507 extens
     });
 
     it('seeds indic-f5 + the doc-type placeholder DISABLED and no other row with a non-default status', () => {
-        // indic-f5 — TASK-494 prod NO-GO; nlp-doc-type-classifier —
+        // indic-f5 — prod NO-GO; nlp-doc-type-classifier —
         // explicit fail-closed placeholder (no doc-type model deployed yet).
         const disabledSlugs = ['indic-f5', 'nlp-doc-type-classifier'];
         disabledSlugs.forEach((slug) => expect(bySlug(slug)?.resourceStatus).toBe('DISABLED'));

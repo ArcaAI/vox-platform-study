@@ -15,7 +15,7 @@ import { Authorize } from '../../decorators';
 import { EntitlementsEnabledResponse, SetEnforcementEnabledRequest, TriggerDowngradeRequest } from './dto';
 
 /**
- * TASK-392 (Phase 4) — GLOBAL_ADMIN surface for the DB-backed plan-entitlements
+ * GLOBAL_ADMIN surface for the DB-backed plan-entitlements
  * system. Reachable at `/api/v1/admin/entitlements`.
  *
  * Gated to GLOBAL_ADMIN via `@Authorize(['manage','all'])` — exactly like

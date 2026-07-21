@@ -1,5 +1,5 @@
 /**
- * PromptAssemblyService — per-department few-shot exemplars (TASK-533 B6, GAP-A1).
+ * PromptAssemblyService — per-department few-shot exemplars.
  *
  * The clinician approve-vs-edit signal now reaches the prompt: `APPROVED_CLEAN`
  * exemplars for the caller's department are injected as few-shot examples of the

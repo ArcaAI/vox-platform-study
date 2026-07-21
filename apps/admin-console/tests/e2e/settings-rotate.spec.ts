@@ -1,7 +1,7 @@
 /**
- * TASK-445 — secret rotation flow (frame 24, Settings & secrets): the drawer's
- * Rotate affordance drives the REAL endpoint (`POST /admin/settings/:id/rotate`
- * — step-up password + If-Match OCC), replacing the TASK-439 guided-replace.
+ * Secret rotation flow (frame 24, Settings & secrets): the drawer's Rotate
+ * affordance drives the REAL endpoint (`POST /admin/settings/:id/rotate` —
+ * step-up password + If-Match OCC), replacing the former guided-replace flow.
  * Covers the happy path (success toast, version bump, plaintext never shown)
  * and the step-up rejection (in-dialog error, dialog stays open). Requires a
  * running stack; the fixture secret is created and cleaned up via the BFF.

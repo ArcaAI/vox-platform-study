@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsInt, IsOptional, Min } from 'class-validator';
 
 /**
- * Update a user-department assignment (TASK-328 A1).
+ * Update a user-department assignment.
  *
  * Currently only the `isPrimary` flag is mutable. Optimistic concurrency is
  * enforced: the client echoes the `version` it read via `If-Match` (folded

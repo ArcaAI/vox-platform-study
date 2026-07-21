@@ -7,7 +7,7 @@ import { PipelinePolicyChange } from '../../../models';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 
 /**
- * Append-only WORM pipeline-policy-change repository (TASK-356 Phase 5). Writes
+ * Append-only WORM pipeline-policy-change repository. Writes
  * go through the inherited `create`; there is intentionally no update/delete
  * surface (the DB REVOKEs those privileges). `id` is a time-sortable UUIDv7, so
  * ordering by `id` reflects append order. Mirrors `HarnessPolicyChangeRepository`.

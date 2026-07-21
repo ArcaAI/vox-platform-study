@@ -1,4 +1,4 @@
-"""Admin workflow-ops endpoints (apps/api → apps/harness, TASK-330 Phase 6 — Phase B).
+"""Admin workflow-ops endpoints (apps/api → apps/harness).
 
 The OUTBOUND apps/api ``HarnessOpsClient`` is HTTP-only (the Temporal SDK stays
 isolated here); these endpoints wrap the Temporal client so platform/tenant

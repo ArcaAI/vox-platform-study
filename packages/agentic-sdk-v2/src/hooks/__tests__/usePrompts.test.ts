@@ -120,7 +120,7 @@ describe('usePrompts', () => {
         });
     });
 
-    // TASK-331 doc-09 — end-user (clinician) read-only template list.
+    // End-user (clinician) read-only template list.
     describe('listAvailable', () => {
         it('should GET from PROMPT_TEMPLATE_ENDPOINTS.AVAILABLE (the end-user plane, not /admin)', async () => {
             const templates = [{ id: 'pt-1', name: 'T1', category: 'SUMMARY', content: 'c', tags: [], currentVersionNumber: 1, createdAt: '', updatedAt: '' }];
@@ -250,7 +250,7 @@ describe('usePrompts', () => {
         });
     });
 
-    // TASK-389 #14 (AG8/A3) — compareVersions now hits the SERVER-side diff
+    // compareVersions now hits the SERVER-side diff
     // endpoint in ONE request (was: GET both versions + diff client-side).
     describe('compareVersions', () => {
         it('should GET the server diff endpoint once and return the diff result', async () => {
@@ -299,7 +299,7 @@ describe('usePrompts', () => {
         });
     });
 
-    // TASK-328 A4 — prompt quality/score test run
+    // Prompt quality/score test run
     describe('test', () => {
         it('should POST to PROMPT_TEMPLATE_ENDPOINTS.TEST(id) with the input body', async () => {
             const testResult = { id: 'pt-1', score: 0.9, output: 'Generated text', testedAt: '2026-06-02T00:00:00.000Z', version: 6 };
@@ -324,7 +324,7 @@ describe('usePrompts', () => {
             expect(mockPost).toHaveBeenCalledWith(PROMPT_TEMPLATE_ENDPOINTS.TEST('pt-1'), {});
         });
 
-        // TASK-389 #15 (AG12/A5) — the raw backend PromptTestMetrics is kept on
+        // The raw backend PromptTestMetrics is kept on
         // `metricDetail` and projected into the flat [0,1] `metrics` display map.
         it('maps the backend metrics breakdown into a [0,1] display map + raw detail', async () => {
             mockPost.mockResolvedValue({
@@ -379,7 +379,7 @@ describe('usePrompts', () => {
         });
     });
 
-    // TASK-328 A4 — usage analytics
+    // Usage analytics
     describe('analytics', () => {
         it('should GET from PROMPT_TEMPLATE_ENDPOINTS.USAGE_ANALYTICS', async () => {
             const analytics = { totalUsages: 5, byDepartment: [], byDoctor: [], byDay: [] };
@@ -403,7 +403,7 @@ describe('usePrompts', () => {
         });
     });
 
-    // TASK-407 — raw run rows for the Agent Jobs surface.
+    // Raw run rows for the Agent Jobs surface.
     describe('listUsageRecords', () => {
         it('should GET the bare USAGE_RECORDS path when no params are given', async () => {
             const page = { data: [], count: 0, page: 0, limit: 20 };
@@ -665,7 +665,7 @@ describe('usePrompts', () => {
     });
 
     /* ------------------------------------------------------------------ */
-    /*  TASK-218 Priority 8: getUsageStats                                 */
+    /*  getUsageStats                                 */
     /* ------------------------------------------------------------------ */
 
     describe('getUsageStats (TASK-218)', () => {

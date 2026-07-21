@@ -1,14 +1,15 @@
-"""MEDCON/UMLS concept-F1 tests (TASK-482 E3, AC-1 / AC-5).
+"""MEDCON/UMLS concept-F1 tests.
 
-RED-first. Concept-F1 scores the generated note's coded entities (candidate CUIs,
-populated by TASK-476) against a golden reference concept set. Recall is the
+Concept-F1 scores the generated note's coded entities (candidate CUIs,
+populated by the clinical encoder) against a golden reference concept set. Recall is the
 omission catcher: dropping a reference medication CUI from the candidate set must
 lower recall below 1.0. Matching is keyed on the canonical UMLS CUI with a
 documented code-system fallback (snomed → rxnorm → icd → loinc) when a CUI is
 absent. Pure, offline, deterministic — no services, no model.
 
-Skip-clean is load-bearing: on the pre-476 tree every candidate code is ``None``,
-so the scorer must return ``None`` (skip) rather than a false 1.0/0.0.
+Skip-clean is load-bearing: when every candidate code is ``None`` (no encoder
+codes on this note), the scorer must return ``None`` (skip) rather than a false
+1.0/0.0.
 """
 
 from __future__ import annotations
@@ -77,7 +78,7 @@ class TestCodeSystemFallback:
 
 class TestSkipClean:
     def test_skips_clean_when_candidate_codes_all_null(self):
-        # The pre-476 reality: the linker has not run, so every candidate carries
+        # When the linker has not run, every candidate carries
         # no code. The scorer must SKIP (None), not report a false 0.0 recall.
         candidate = [ConceptCode(), ConceptCode()]
         reference = ["C0004057", "C0020538"]

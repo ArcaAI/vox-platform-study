@@ -56,7 +56,7 @@ def _load_model(model_name: str) -> Any:
     """Load a PunctuationModel by name (not thread-safe -- caller must hold _lock)."""
     from stt_v2.punctuation import cadence_fast
 
-    # TASK-351 P2-2 — the exact name 'cadence-fast' selects the direct
+    # The exact name 'cadence-fast' selects the direct
     # transformers loader (the wrapper cannot load under transformers 5.x).
     # Wrapper spellings ('Cadence', 'Cadence-Fast') keep the legacy path.
     if model_name == cadence_fast.MODEL_NAME:
@@ -195,9 +195,9 @@ async def punctuate(text: str, model_name: str | None = None) -> str:
     """Punctuate a single text string.
 
     Model lookup (including any lazy load) and inference both run in the
-    executor so the event loop is never blocked (TASK-351 P2-2 — the
+    executor so the event loop is never blocked — the
     streaming worker's ``asyncio.wait_for`` timeout can only fire on time
-    if a first-use model load happens off the loop thread).
+    if a first-use model load happens off the loop thread.
     """
     if not text.strip():
         return text

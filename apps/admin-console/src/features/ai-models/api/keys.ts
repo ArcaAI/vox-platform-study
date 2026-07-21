@@ -7,6 +7,6 @@ export const aiModelKeys = {
     list: (params?: ListParams) => [...aiModelKeys.root, 'list', params ?? {}] as const,
     detail: (id: string) => [...aiModelKeys.root, 'detail', id] as const,
     bySlug: (slug: string) => [...aiModelKeys.root, 'slug', slug] as const,
-    /** TASK-528 — live merge view, keyed per provider filter. */
+    /** Live merge view, keyed per provider filter. */
     discovery: (provider?: string) => [...aiModelKeys.root, 'discovery', provider ?? 'all'] as const,
 };

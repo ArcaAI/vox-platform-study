@@ -1,5 +1,5 @@
 /**
- * TASK-433 — live STT session hook. `@arcaai/vox/core` and `@arcaai/stt` are
+ * Live STT session hook. `@arcaai/vox/core` and `@arcaai/stt` are
  * module-mocked (fake WS client + fake capture), fetch is stubbed by pathname,
  * so the state machine is exercised end to end: mic → session create → WS
  * connect (tenant claim in the URL) → frames → transcripts → stop/teardown,
@@ -51,7 +51,7 @@ const { FakeSttWsClient, capture } = vi.hoisted(() => {
 
         sendAudioFrame(data: ArrayBuffer | ArrayBufferView): boolean {
             // Mirrors SttV2WebSocketClient: above the bufferedAmount watermark the
-            // frame is dropped and a backpressure event fires (TASK-298 D-15).
+            // frame is dropped and a backpressure event fires.
             if (this.dropFrames) {
                 this.handlers.backpressureDrop?.('buffered_amount_high');
                 return false;

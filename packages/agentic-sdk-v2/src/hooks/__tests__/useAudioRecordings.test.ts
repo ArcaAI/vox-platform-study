@@ -1,5 +1,5 @@
 /**
- * useAudioRecordings Hook Tests (TASK-329 P2 — dual-capture X8)
+ * useAudioRecordings Hook Tests (dual-capture X8)
  *
  * @vitest-environment jsdom
  */

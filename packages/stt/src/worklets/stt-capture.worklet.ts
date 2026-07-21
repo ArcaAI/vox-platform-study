@@ -5,7 +5,7 @@
  * the audio graph to the main thread. Replaces the deprecated
  * `ScriptProcessorNode` capture path used by `STTProcessor`.
  *
- * Frame coalescing (TASK-351 P0-1 / C4): instead of posting every 128-sample
+ * Frame coalescing: instead of posting every 128-sample
  * render quantum (~2.7 ms at 48 kHz → ~375 messages/s), quanta accumulate in
  * a preallocated buffer and are posted as one coalesced frame every
  * `frameMs` (default 80 ms → ~12 messages/s). This cuts main-thread message
@@ -31,7 +31,7 @@ import { createWorkletLoader } from '@arcaai/room';
 export const STT_CAPTURE_PROCESSOR_NAME = 'stt-capture-worklet-processor';
 
 /**
- * Default coalesced frame size in milliseconds (TASK-351 P0-1).
+ * Default coalesced frame size in milliseconds.
  */
 export const DEFAULT_STT_CAPTURE_FRAME_MS = 80;
 

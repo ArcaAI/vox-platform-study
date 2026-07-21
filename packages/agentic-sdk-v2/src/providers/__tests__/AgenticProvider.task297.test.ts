@@ -1,5 +1,5 @@
 /**
- * TASK-297 AgenticProvider integration coverage.
+ * AgenticProvider integration coverage.
  *
  * - DEF-C6: /auth/me is awaited before `configReady` flips.
  * - DEF-H5: tenant-config fetch happens once per mount.
@@ -83,7 +83,7 @@ async function renderProvider(configOverride: Record<string, unknown> = {}) {
   const { AgenticProvider } = await import('../AgenticProvider.js');
   const { useStoreApi } = await import('../../store/agenticStore.js');
 
-  // TASK-317 W4.2/W4.3 (AC-12) — the provider owns a per-instance store (fresh
+  // The provider owns a per-instance store (fresh
   // `createAgenticStore()` at the initial state), so no pre-render reset is
   // needed. Capture this provider's StoreApi via `useStoreApi()` and return it;
   // the test body's `useAgenticStore.getState()` then observes the provider's store.

@@ -26,7 +26,7 @@ export interface WriteRegistrySettingOptions {
   /** Scope the value is being set at. Defaults to `system` for global-kv keys. */
   scope?: SettingScope;
   /**
-   * TASK-533 B2 — the row version the caller last observed, folded from
+   * The row version the caller last observed, folded from
    * `If-Match` by the controller (house pattern). REQUIRED when a backing row
    * already exists: without it the write is refused 428 rather than blindly
    * overwriting a concurrent edit. Absent on a FIRST write, where there is no
@@ -41,7 +41,7 @@ export interface WriteRegistrySettingResult {
   value: unknown;
   scope: SettingScope;
   /**
-   * TASK-533 B2 — the row version AFTER this write. Echoed so the caller can use
+   * The row version AFTER this write. Echoed so the caller can use
    * it as the next `If-Match`, and so the `ETagInterceptor` renders an ETag on
    * this response (it keys off a top-level positive-integer `version`).
    */
@@ -49,7 +49,7 @@ export interface WriteRegistrySettingResult {
 }
 
 /**
- * TASK-524 — the settings WRITE LANE (AD-1: a single enforcement point).
+ * The settings WRITE LANE (AD-1: a single enforcement point).
  *
  * Before this service there was no write route for ANY registry key anywhere in
  * the gateway: descriptors declared `globalOnly` / `editableBy` / `maxScope`,
@@ -77,7 +77,7 @@ export class SettingsRegistryWriteService extends BaseService {
     @Inject(IGlobalSettingService) private readonly globalSettings: IGlobalSettingService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // TASK-533 B2 — direct repository access for a FRESH row read. The CAS
+    // Direct repository access for a FRESH row read. The CAS
     // version must never come from the AppSettings snapshot: that map is rebuilt
     // on a 45s cron, so two admins editing inside one window would compare
     // against the same stale number and the second would silently clobber the
@@ -152,8 +152,8 @@ export class SettingsRegistryWriteService extends BaseService {
   private async findBackingRow(key: string): Promise<{ id: string; version: number } | null> {
     // `Repository.findFirst` THROWS `DataNotFoundException` on no match (it
     // never returns null) — on a fresh DB with no registry rows that exception
-    // used to escape as a blanket 404 on every `GET registry/:key` (TASK-534
-    // e2e G5). "No backing row yet" is a normal state here (code-default /
+    // used to escape as a blanket 404 on every `GET registry/:key`.
+    // "No backing row yet" is a normal state here (code-default /
     // first write), so it maps to null, not an error.
     try {
       const row = await this.globalSettingRepository.findFirst({

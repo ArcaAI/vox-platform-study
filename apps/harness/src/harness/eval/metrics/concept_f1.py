@@ -1,10 +1,10 @@
-"""MEDCON/UMLS concept-F1 (TASK-482 E3, S3-F3 — the omission catcher).
+"""MEDCON/UMLS concept-F1 — the omission catcher.
 
 PDSQI + faithfulness catch what a note says *wrong*; nothing catches what it left
 *out*. Concept-F1 scores the generated note's coded entities (candidate concepts,
-populated by TASK-476) against a golden reference concept set, making **recall** a
-first-class metric — "did we drop the drug / dose / finding" at the concept
-(not surface-string) level:
+populated by the clinical encoder) against a golden reference concept set, making
+**recall** a first-class metric — "did we drop the drug / dose / finding" at the
+concept (not surface-string) level:
 
     precision = |matched| / |candidate|
     recall    = |matched| / |reference|   ← the omission signal
@@ -16,9 +16,9 @@ namespaced by system so codes from different ontologies never collide.
 
 Pure, offline, deterministic — no services, no model, unit-testable in isolation.
 
-Skip-clean is load-bearing: on the pre-476 tree every candidate code is ``None``,
-so :func:`score_concept_f1` returns ``None`` (skip) rather than a false 0.0 recall.
-It only lights up once TASK-476 populates the codes.
+Skip-clean is load-bearing: when every candidate code is ``None`` (no encoder
+codes on this note), :func:`score_concept_f1` returns ``None`` (skip) rather
+than a false 0.0 recall.
 """
 
 from __future__ import annotations
@@ -100,8 +100,8 @@ def score_concept_f1(
 ) -> ConceptF1Result | None:
     """Skip-clean wrapper: ``None`` when the metric cannot be measured.
 
-    Returns ``None`` when the candidate carries **no** codes (the pre-476 reality —
-    the linker has not run, so recall is unmeasurable, NOT zero) or when the
+    Returns ``None`` when the candidate carries **no** codes (the encoder
+    has not run, so recall is unmeasurable, NOT zero) or when the
     reference set is empty. Otherwise delegates to :func:`compute_concept_f1` — a
     partially-coded candidate that dropped some concepts is a REAL measurement
     (recall < 1.0), never a skip.

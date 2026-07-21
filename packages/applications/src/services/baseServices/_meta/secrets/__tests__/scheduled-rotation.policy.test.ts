@@ -1,4 +1,4 @@
-// TASK-302 Phase 6 Task 6.6 (Stream B) — Scheduled rotation policy.
+// Scheduled rotation policy.
 import { describe, it, expect } from 'vitest';
 import {
   policyDueKeys,

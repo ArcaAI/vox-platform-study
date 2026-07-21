@@ -1,5 +1,5 @@
 /**
- * AiTaskDefaultAdminController unit tests (TASK-506 Phase 4).
+ * AiTaskDefaultAdminController unit tests.
  *
  * CASL `@CanRead/@CanManage` + `If-Match`/`@RequiresIfMatch` are exercised by the
  * guard/interceptor (+ e2e). These specs cover the controller's OWN logic:

@@ -76,7 +76,7 @@ export function useCreateTenant() {
     return useMutation({ mutationFn: (body: CreateTenantRequest) => createTenant(body), onSuccess: invalidate });
 }
 
-/** TASK-497 §3.5 — global-admin create-tenant-with-admin. */
+/** Global-admin create-tenant-with-admin. */
 export function useProvisionTenant() {
     const invalidate = useInvalidateTenants();
     return useMutation({ mutationFn: (body: ProvisionTenantRequest) => provisionTenant(body), onSuccess: invalidate });
@@ -101,7 +101,7 @@ export function useSuspendTenant() {
 }
 
 /**
- * TASK-531 — global-admin SYSTEM-template resync for one tenant.
+ * Global-admin SYSTEM-template resync for one tenant.
  *
  * No tenant-cache invalidation: the run mutates the target tenant's ASR
  * pipelines, not the tenant record itself, and that catalog belongs to a

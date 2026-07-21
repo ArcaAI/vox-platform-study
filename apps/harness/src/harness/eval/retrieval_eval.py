@@ -1,4 +1,4 @@
-"""Retrieval eval for the institutional-RAG hybrid retriever (TASK-330 Phase 3).
+"""Retrieval eval for the institutional-RAG hybrid retriever.
 
 Closes the Phase-3 retrieval-eval exit-gate item ("% claims with a valid citation;
 basic recall sanity") with a deterministic, offline run. It ingests a small
@@ -18,7 +18,7 @@ for each query and scores:
 
 Only the dense embedder (LM Studio ``/v1/embeddings`` BAAI/bge-m3) and the
 cross-encoder reranker (TEI ``hope-reranker``) are stubbed — those GPU-loaded
-models are the documented prerequisite handoff (TASK-330 README §10). So the
+models are a documented prerequisite handoff. So the
 recall reported here is the **BM25 + RRF + tenant/APPROVED-filter** lexical
 channel; the real dense + rerank channels lift it further once the models load.
 

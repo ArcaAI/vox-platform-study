@@ -236,16 +236,11 @@ describe('MonitoringController', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// TASK-336 OB-12 / TASK-386 #21·E6 — admin-gate the monitoring surface
-//   Pre-OB-12 the controller carried a bare @Authorize() (any authenticated
-//   caller — a plain doctor could read ops uptime/sessions). OB-12 tightened
-//   the whole controller to the GLOBAL_ADMIN `manage all` gate.
-//
-//   TASK-386 (#21/E6) WIDENS that gate to `@CanAny(['manage','all'],
+// Admin-gate the monitoring surface
+//   The controller is gated to `@CanAny(['manage','all'],
 //   ['read','TenantTelemetry'])` so a tenant-admin holding the seeded
 //   read:TenantTelemetry rule can read their own tenant's sessions/health,
-//   while a plain doctor (neither permission) still gets 403. The mode flips
-//   to OR.
+//   while a plain doctor (neither permission) still gets 403. The mode is OR.
 //
 //   Asserted against the REAL controller via dynamic import (the suite above
 //   uses a local mirror to dodge the @arcaai/applications circular dep; the

@@ -1,5 +1,5 @@
 /**
- * S3BlobProvider Unit Tests (TASK-318 / W1)
+ * S3BlobProvider Unit Tests
  *
  * Strategy: mock the AWS SDK (external boundary) exactly like the existing
  * s3.service.test.ts. Verify each IBlobStorageProvider method constructs the

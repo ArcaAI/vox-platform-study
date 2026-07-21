@@ -1,4 +1,4 @@
-"""Route-level tests for required per-request model selection (TASK-506 / ).
+"""Route-level tests for required per-request model selection.
 
 Hermetic: transformers loading is mocked and the FastAPI app is a minimal
 shell mounting only the REST v1 routers (no lifespan → no eager model loads).

@@ -37,7 +37,7 @@ if (typeof Element !== 'undefined' && typeof HTMLElement !== 'undefined') {
 }
 
 /**
- * Register the `vitest-axe` matchers ONCE for every test (TASK-532).
+ * Register the `vitest-axe` matchers ONCE for every test.
  *
  * Each a11y test file previously repeated `expect.extend(axeMatchers)` at
  * module scope. Doing it here means a new screen test only needs

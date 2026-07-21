@@ -145,7 +145,7 @@ class ReportTrajectoryAck {
 }
 
 /**
- * HarnessInternalController (TASK-330 Phase 1 — Lane G).
+ * HarnessInternalController.
  *
  * The inbound half of the apps/api <-> apps/harness gate adapter. Service-to-service
  * only (guarded by HarnessServiceTokenGuard / `X-Service-Token`), so it is excluded
@@ -167,15 +167,15 @@ class ReportTrajectoryAck {
 export class HarnessInternalController {
   constructor(
     private readonly harnessInternalService: HarnessInternalService,
-    // TASK-330 Phase 6 — the durable worker's `fetch_policy` activity reads the
-    // effective harness policy here; HarnessPolicyService comes from the
+    // The durable worker's `fetch_policy` activity reads the effective
+    // harness policy here; HarnessPolicyService comes from the
     // HarnessPolicyServiceModule imported by ConsultationModule.
     private readonly harnessPolicyService: HarnessPolicyService,
     private readonly cls: ClsService<IActiveUserContext>,
-    // TASK-345 — live harness activity feed; ephemeral Redis publish, no CLS needed.
+    // Live harness activity feed; ephemeral Redis publish, no CLS needed.
     private readonly harnessProgressService: HarnessProgressService,
-    // TASK-355 Phase D Slice 5d — live per-claim assurance feed; ephemeral Redis
-    // publish, no CLS needed (carries no PHI, only ids/sensor keys/verdict labels).
+    // Live per-claim assurance feed; ephemeral Redis publish, no CLS needed
+    // (carries no PHI, only ids/sensor keys/verdict labels).
     private readonly harnessAssuranceService: HarnessAssuranceService,
     // ordered-trajectory batch ingest (idempotent, tenant-scoped).
     @Inject(IAgentTrajectoryService) private readonly agentTrajectoryService: IAgentTrajectoryService,
@@ -200,7 +200,7 @@ export class HarnessInternalController {
   }
 
   /**
-   * TASK-533 D-24 — resolve an MCP server credential for the worker.
+   * Resolve an MCP server credential for the worker.
    *
    * The harness has no Vault client by design (ticket §3.1): secret material stays
    * on the gateway side of the boundary. The worker calls this INSIDE the activity
@@ -224,7 +224,7 @@ export class HarnessInternalController {
     return { token: await this.harnessInternalService.resolveMcpToken(authRef) };
   }
 
-  // TASK-466 (C1-03) — the harness sends a deterministic `Idempotency-Key`
+  // The harness sends a deterministic `Idempotency-Key`
   // (`{run_id}:{activity_id}`) on the WORM/draft callbacks so apps/api can dedup a
   // Temporal activity retry (which would otherwise re-append). The header is
   // forwarded into the service, which caches-and-replays the prior response.
@@ -235,7 +235,7 @@ export class HarnessInternalController {
     return this.harnessInternalService.persistEntities(id, dto, idempotencyKey);
   }
 
-  // TASK-480 Half-B — the read counterpart of persistEntities: the harness
+  // The read counterpart of persistEntities: the harness
   // `load_entity_priors` activity GETs the persisted NamedEntity rows to reuse them as
   // NER priors (skip the redundant cold transcript re-extraction). `tenantId` rides the
   // query (like `GET /policy`), and the service re-establishes CLS + 404-over-403 from it.
@@ -271,7 +271,7 @@ export class HarnessInternalController {
     return this.harnessInternalService.recordGateDecision(id, dto, idempotencyKey);
   }
 
-  // TASK-466 (C1-05) — the harness `escalate_gate` activity POSTs here when an
+  // The harness `escalate_gate` activity POSTs here when an
   // un-signed gate passes its SLA; the service records a WORM audit event
   // (GATE_ESCALATED, or GATE_ABANDONED for the terminal `gate_sla_abandoned`).
   @Post('consultations/:id/escalation')
@@ -281,7 +281,7 @@ export class HarnessInternalController {
     return this.harnessInternalService.recordEscalation(id, dto, idempotencyKey);
   }
 
-  // TASK-355 Phase D (optimistic delivery, second phase) — the harness calls this
+  // Optimistic delivery, second phase — the harness calls this
   // AFTER the inferential assurance pass: backfill the early-persisted SummaryMeta
   // with the verdict + assuranceCompletedAt, flip DRAFT_PENDING_SENSORS →
   // PENDING_REVIEW, record the deferred SENSOR_RUN WORM audit, and publish the
@@ -297,7 +297,7 @@ export class HarnessInternalController {
     return this.harnessInternalService.finalizeAssurance(id, dto, idempotencyKey);
   }
 
-  // TASK-355 Phase D Slice 5d (Q5 true mid-pass live feed) — the workflow's
+  // Mid-pass live feed — the workflow's
   // `run_inferential_sensors` activity posts ONE resolved claim verdict here as
   // each claim settles; the service folds it into the full-state snapshot and
   // publishes to `consultation:harness-assurance:{id}` for the browser SSE relay.
@@ -313,13 +313,13 @@ export class HarnessInternalController {
     return this.harnessAssuranceService.reportClaim(id, dto);
   }
 
-  // TASK-345 — the workflow's `report_progress` activity posts one stage event
+  // The workflow's `report_progress` activity posts one stage event
   // here per phase; the service folds it into the full-state snapshot and
   // publishes to `consultation:harness-progress:{id}` for the browser SSE
   // relay. Best-effort by contract: always acks ({ ok: boolean }), never 5xxs
   // the workflow over a progress hiccup.
   @Post('consultations/:id/progress')
-  // TASK-348 / MIN-4: nothing is created — the ack is best-effort and can be
+  // Nothing is created — the ack is best-effort and can be
   // `{ ok: false }`, so the default POST 201 would misreport the outcome.
   @HttpCode(200)
   @ApiOperation({ summary: 'Publish a harness workflow progress stage to the live UI feed (ephemeral, best-effort)' })

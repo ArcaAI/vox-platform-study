@@ -19,7 +19,7 @@ const nextConfig: NextConfig = {
     experimental: {
         // The @arcaai/ui root barrel re-exports the entire catalog (incl. heavy
         // registries); rewrite barrel imports to direct ones so a screen only
-        // compiles/bundles the components it uses (TASK-428).
+        // compiles/bundles the components it uses.
         optimizePackageImports: ['@arcaai/ui'],
     },
     output: 'standalone',

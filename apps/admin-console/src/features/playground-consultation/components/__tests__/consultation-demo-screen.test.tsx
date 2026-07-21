@@ -1,5 +1,5 @@
 /**
- * Frame 50 — Consultation Demo screen (TASK-432, matrix row 34). The
+ * Frame 50 — Consultation Demo screen (matrix row 34). The
  * `@arcaai/vox` module is mocked at the boundary (the SDK has its own suite);
  * fetch is stubbed by pathname; SSE via a FakeEventSource global. Covers the
  * NoTenant gate, the setup → open flow, capture wiring (SDK audio.start +
@@ -147,7 +147,7 @@ function session(overrides: Partial<{ isElevated: boolean; workingTenantId: stri
         impersonatingUsername: null,
         ...overrides,
     };
-    // BUG-005 — WorkingTenantGate now reads the effective identity; mirror the
+    // WorkingTenantGate now reads the effective identity; mirror the
     // (possibly overridden) operator fields since these fixtures never impersonate.
     return { ...base, effectiveUser: { ...base.user, departmentId: null }, effectiveIsElevated: base.isElevated, effectiveTenantId: base.workingTenantId };
 }

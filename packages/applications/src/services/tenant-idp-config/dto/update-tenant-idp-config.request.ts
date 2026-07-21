@@ -5,7 +5,7 @@ import { OidcProviderConfigDto } from './oidc-provider-config.dto';
 import { SamlProviderConfigDto } from './saml-provider-config.dto';
 
 /**
- * TASK-498/499 — partial update of an existing provider row. `protocol` is
+ * Partial update of an existing provider row. `protocol` is
  * immutable after creation (delete + recreate to change it), so this DTO
  * carries no `protocol` field — the service reads the existing row's
  * protocol to decide whether `config` or `samlConfig` applies (whichever

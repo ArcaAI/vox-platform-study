@@ -34,7 +34,7 @@ logger = structlog.get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Consumer-group constants (TASK-457 C3-01/C3-02)
+# Consumer-group constants
 # ---------------------------------------------------------------------------
 
 #: Consumer-group name on every per-session ``stt:audio:{sid}`` stream. Because
@@ -97,7 +97,7 @@ def worker_key(worker_id: str) -> str:
 class IngestionConsumer:
     """Asyncio task that reads audio frames from a per-session Redis Stream.
 
-    TASK-457 C3-01/C3-02 — reads ``stt:audio:{session_id}`` through a Redis
+    Reads ``stt:audio:{session_id}`` through a Redis
     **consumer group** (``XREADGROUP`` + ``XACK``), so delivery is
     at-least-once and a worker crash never strands in-flight audio: on
     recovery a new consumer reclaims the dead consumer's pending (unacked)
@@ -115,7 +115,7 @@ class IngestionConsumer:
         Async callback invoked for each decoded ``AudioFrame``.
     on_batch:
         Optional async callback invoked once per processed batch with the
-        last processed stream entry ID (TASK-351 P1-3 — used to persist the
+        last processed stream entry ID (used to persist the
         resume position and trim the consumed audio stream). Errors raised by
         the callback are logged and never stop the consumer.
     last_id:
@@ -370,7 +370,7 @@ class IngestionConsumer:
 
                 await self._ack(stream_key, ack_ids)
 
-                # TASK-351 P1-3 — report the batch position for resume
+                # Report the batch position for resume
                 # tracking and audio stream trimming. Never fatal.
                 if processed_any and self._on_batch is not None:
                     try:
@@ -396,7 +396,7 @@ class IngestionConsumer:
 class ResultPublisher:
     """Publishes transcription results to ``stt:result:{session_id}``.
 
-    TASK-457 C3-05 — every ``XADD`` carries an approximate ``MAXLEN`` so the
+    Every ``XADD`` carries an approximate ``MAXLEN`` so the
     result stream stays bounded DURING an active session (previously it grew
     unbounded until the post-close ``EXPIRE``). The bound is high enough that
     a keeping-up reader never misses a result; overflowed finals remain in the
@@ -612,7 +612,7 @@ async def xadd_audio_frame(
     The ``~`` (approximate) flag lets Redis optimise by trimming in
     blocks rather than entry-by-entry.
 
-    TASK-457 C3-06 — the default (``settings.streaming_audio_stream_maxlen``)
+    The default (``settings.streaming_audio_stream_maxlen``)
     is the SINGLE source of truth for the audio-stream bound and is kept equal
     to the TS gateway bridge's ``XADD MAXLEN`` (the sole production writer of
     ``stt:audio``); this helper's only caller is the test suite.

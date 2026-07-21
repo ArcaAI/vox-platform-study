@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IRedisCacheService } from '../baseServices/redis/redis-cache.service';
 
 /**
- * JwtRevocationService (TASK-295 / C-4; extended by TASK-541)
+ * JwtRevocationService
  *
  * Redis-backed revocation authority for issued access tokens. Two independent
  * revocation axes:
@@ -12,7 +12,7 @@ import { IRedisCacheService } from '../baseServices/redis/redis-cache.service';
  *    Wire-format: `jwt-revoked:<jti>` → `"1"`, TTL bounded by the token `exp`
  *    so the entry self-cleans once the token would have expired anyway.
  *
- * 2. **Per-user not-before (TASK-541 A4)** — `revokeAllForUser()` /
+ * 2. **Per-user not-before** — `revokeAllForUser()` /
  *    `getUserNotBefore()`. Kills EVERY token already issued to a user without
  *    having to track their jtis. Set when a user is disabled, suspended or
  *    soft-deleted; `JwtStrategy` refuses any token whose `iat` predates the
@@ -120,7 +120,7 @@ export class JwtRevocationService implements IJwtRevocationService {
   }
 
   /**
-   * TASK-541 A4 — invalidate every access token already issued to `userId`.
+   * Invalidate every access token already issued to `userId`.
    *
    * Best-effort by contract: a Redis failure is logged at ERROR (it leaves a
    * disabled user's outstanding token live until its own `exp`) but never

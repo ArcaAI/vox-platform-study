@@ -1,12 +1,12 @@
 /**
- * TASK-352 — Vault-aware API_KEY_PEPPER resolution for the API-key seed.
+ * Vault-aware API_KEY_PEPPER resolution for the API-key seed.
  *
  * Dev runs with SECRETS_PROVIDER=vault: the API validates keys with
  * HMAC-SHA256 using the pepper stored in Vault KV
  * (secret/hope/API_KEY_PEPPER, seeded by dev-init.sh), while the seed
  * historically hashed with `process.env.API_KEY_PEPPER` only — blank in
- * the tracked .env.dev (TASK-348 MAJ-7) — producing plain-SHA-256 rows
- * that 401 against the running API (recurrence of the TASK-342
+ * the tracked .env.dev — producing plain-SHA-256 rows
+ * that 401 against the running API (recurrence of a
  * 2026-06-10 incident).
  *
  * `resolveApiKeyPepper` closes the gap at the seed level:

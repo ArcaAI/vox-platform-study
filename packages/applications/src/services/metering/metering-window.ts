@@ -1,5 +1,5 @@
 /**
- * TASK-392 (Q5, Phase 2) — pure calendar-month window maths for rolling-monthly
+ * Pure calendar-month window maths for rolling-monthly
  * metering.
  *
  * A metering window is a UTC calendar month, half-open:

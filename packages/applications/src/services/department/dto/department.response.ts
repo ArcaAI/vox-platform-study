@@ -38,7 +38,7 @@ export class DepartmentResponse {
   @ApiPropertyOptional({ description: 'Prompt template ID for revisit patients' })
   revisitPromptId?: string;
 
-  @ApiPropertyOptional({ description: 'Default DNA writing-style prompt template ID for this department (TASK-387 #7)' })
+  @ApiPropertyOptional({ description: 'Default DNA writing-style prompt template ID for this department' })
   dnaWritingStylePromptId?: string;
 
   @ApiPropertyOptional({ description: 'Department prompt configuration' })
@@ -48,15 +48,15 @@ export class DepartmentResponse {
   resourceStatus?: ResourceStatusType;
 
   /**
-   * Row version for optimistic concurrency control (TASK-302 Stream D
-   * Phase E.2). Clients echo this back via `If-Match: "<version>"` (or
+   * Row version for optimistic concurrency control. Clients echo this
+   * back via `If-Match: "<version>"` (or
    * `expectedVersion` in the body for service-to-service callers) on
    * the next PATCH. The server's compare-and-set
    * (`departmentRepository.updateWithVersion`) fails with `412
    * Precondition Failed` if `_version` has drifted under the client
    * between read and write.
    *
-   * The `ETagInterceptor` (Phase D.1) also stamps `ETag: "<version>"`
+   * The `ETagInterceptor` also stamps `ETag: "<version>"`
    * on the response so SDK clients can use the canonical RFC 7232
    * `If-Match` mechanism without parsing the body.
    */

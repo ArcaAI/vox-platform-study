@@ -4,7 +4,7 @@
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 
-// TASK-496 — one row per tenant (SYSTEM tenant = platform default). Nullable /
+// One row per tenant (SYSTEM tenant = platform default). Nullable /
 // empty-array fields mean "inherit from the SYSTEM default / code default"; the
 // application resolver merges + clamps to PLATFORM_TTS_LIMITS.
 export interface ITenantTtsConfigEntity extends IBaseTenantEntity {

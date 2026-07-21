@@ -1,9 +1,9 @@
 /**
- * TASK-492 — `useTtsStream`: speak-while-generating over a WS duplex.
+ * `useTtsStream`: speak-while-generating over a WS duplex.
  *
  * Opens the gateway WS (`/ws/tts-v2/stream`) with a single-use stream ticket,
  * pushes summary tokens in as SMR streams them, and plays the returned PCM
- * frames through the TASK-491 `TtsPlaybackPlayer` — so the clinician hears the
+ * frames through the `TtsPlaybackPlayer` — so the clinician hears the
  * summary forming instead of waiting for the whole read-aloud.
  *
  * Typical use:

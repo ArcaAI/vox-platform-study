@@ -4,7 +4,7 @@ import { GateEditMiningService } from './gate-edit-mining.service';
 import { IGateEditExemplarRetriever } from './IGateEditExemplarRetriever';
 
 /**
- * GateEditMiningService DI module (TASK-533 B6, GAP-A1).
+ * GateEditMiningService DI module.
  *
  * Note what is NOT provided here: `IPhiRedactor`. The redactor is supplied by
  * the host that owns the guardrail client, and its absence is FAIL-CLOSED by

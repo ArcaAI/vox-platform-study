@@ -14,7 +14,7 @@ import { InMemorySecretsProvider } from './providers/in-memory-secrets.provider'
 /**
  * Token under which the concrete ISecretsProvider instance is registered.
  * Exposed alongside SECRETS_PROVIDER_TOKEN so callers that want the raw
- * provider (e.g. Phase 4's envelope helper that needs encrypt/decrypt)
+ * provider (e.g. an envelope helper that needs encrypt/decrypt)
  * can inject it without relying on the more permissive interface token.
  */
 export const SECRETS_PROVIDER_INSTANCE = Symbol.for('SECRETS_PROVIDER_INSTANCE');
@@ -65,7 +65,7 @@ function requireEnv(envKey: string): string {
 }
 
 /**
- * TASK-312 B.10 — resolve a value from `${envKey}` OR, if that is unset/empty,
+ * Resolve a value from `${envKey}` OR, if that is unset/empty,
  * from the file named by `${envKey}_FILE`. The file form is how production
  * (systemd-creds / k8s Secret mounts) delivers AppRole credentials without
  * inlining secret material in `.env.production`. The file is read once at
@@ -106,7 +106,7 @@ function createProvider(name: SecretsProviderName): ISecretsProvider {
         kvPrefix: process.env.VAULT_KV_PREFIX ?? 'hope',
         transitMount: process.env.VAULT_TRANSIT_MOUNT ?? 'transit',
         transitKey: process.env.VAULT_TRANSIT_KEY ?? 'hope-globalsetting',
-        // Data Encryption Initiative Phase 3A — dedicated PHI Transit key.
+        // Dedicated PHI Transit key.
         // Defaults to 'hope-phi' so clinical field encryption works even if
         // VAULT_TRANSIT_KEY_PHI is never set (env files are owned elsewhere).
         transitKeyPhi: process.env.VAULT_TRANSIT_KEY_PHI ?? 'hope-phi',
@@ -124,7 +124,7 @@ function createProvider(name: SecretsProviderName): ISecretsProvider {
 }
 
 /**
- * SecretsModule (TASK-302 Stream B). `@Global()` so consumers across the
+ * SecretsModule. `@Global()` so consumers across the
  * monorepo can inject SecretsService without re-importing.
  *
  * forRoot() selects the provider at module-instantiation time based on:
@@ -175,7 +175,7 @@ export class SecretsModule {
             if (options.warmupKeys && options.warmupKeys.length > 0) {
               await svc.boot({ warmupKeys: options.warmupKeys });
             }
-            // TASK-369 Phase 6 — activate repository decrypt-on-read for the
+            // Activate repository decrypt-on-read for the
             // dropped plaintext PHI columns. Gated on the provider actually
             // being transit-capable (only the Vault provider implements
             // `decrypt`); env/in-memory/aws/azure leave it unwired so reads

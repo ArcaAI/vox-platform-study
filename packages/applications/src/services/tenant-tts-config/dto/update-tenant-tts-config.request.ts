@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
 /**
- * TASK-496 — upsert a tenant's TTS spec. Every field is optional (null/empty =
+ * Upsert a tenant's TTS spec. Every field is optional (null/empty =
  * inherit from the SYSTEM default); the resolver clamps to PLATFORM_TTS_LIMITS.
  * `expectedVersion` is the OCC token: `0` = create the row (none yet), `>0` =
  * compare-and-set against the current `_version` (drift → 412). The controller
@@ -71,7 +71,7 @@ export class UpdateTenantTtsConfigRequest {
   @IsBoolean()
   sarvamPublicApiAllowed?: boolean;
 
-  // TASK-506 — persisted under configJson.voiceBindings; providers must be in
+  // Persisted under configJson.voiceBindings; providers must be in
   // the (registry-derived) universe and voice names in that provider's catalog
   // voices (name validation skipped pre-seed). Structural validation is
   // service-side (nested string maps are awkward for class-validator).

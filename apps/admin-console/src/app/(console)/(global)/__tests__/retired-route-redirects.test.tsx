@@ -1,5 +1,5 @@
 /**
- * TASK-532 (M-03/OD-6, M-08) — the two retired console routes.
+ * The two retired console routes.
  *
  * `/prompt-studio` folded into the `/agents` Governance tab and `/pstudio` was
  * renamed `/db-studio`. Both keep a redirect page for ONE release so bookmarks

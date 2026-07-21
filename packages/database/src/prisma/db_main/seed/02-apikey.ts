@@ -12,7 +12,7 @@ import {
 import { resolveApiKeyPepper } from './api-key-pepper';
 
 /**
- * TASK-331 doc-08 F5 — dev/test gate predicate (single source of truth).
+ * Dev/test gate predicate (single source of truth).
  *
  * The demo API keys below embed raw secrets (from 00-constants), ACTIVE status
  * and broad scopes. They are LOCAL DEV fixtures only and must never be seeded
@@ -25,7 +25,7 @@ export function shouldSeedApiKeys(env: Environment = getNodeEnv()): boolean {
 }
 
 /**
- * TASK-331 doc-08 F5 — build a non-secret, masked preview of a raw key for
+ * Build a non-secret, masked preview of a raw key for
  * confirmation logging. Exposes at most the first 4 characters (the shared,
  * non-sensitive `hope` prefix) and masks the remainder, e.g. `hope****`.
  */
@@ -35,7 +35,7 @@ export function maskSecret(rawKey: string): string {
 
 /**
  * Hash an API key — HMAC-SHA256 when a pepper is provided, plain SHA-256
- * otherwise. This must match `ApiKeyService.hashKey`. TASK-352: the pepper
+ * otherwise. This must match `ApiKeyService.hashKey`. The pepper
  * is resolved once per seed run via `resolveApiKeyPepper` (env first, then
  * Vault KV when SECRETS_PROVIDER=vault) so seeded hashes always match what
  * the running API computes at validation time.
@@ -200,7 +200,7 @@ export const DEFAULT_API_KEYS = [
 ];
 
 export const seedApiKey = async (client: CorePrismaClient) => {
-  // TASK-331 doc-08 F5 — defence in depth. The orchestrator already gates this
+  // Defence in depth. The orchestrator already gates this
   // step behind `SEED_DEMO_DATA` (dev/test only); refuse to run if invoked
   // directly outside dev/test so the raw-secret fixtures can never reach
   // production/staging even if the gate is bypassed.
@@ -214,7 +214,7 @@ export const seedApiKey = async (client: CorePrismaClient) => {
 
   console.log('Seeding API keys...');
 
-  // TASK-352 — resolve OUTSIDE the try/catch: in vault mode a resolution
+  // Resolve OUTSIDE the try/catch: in vault mode a resolution
   // failure must abort the seed loudly, not be swallowed by the catch below
   // (plain-SHA hashes seeded in vault mode 401 against the running API).
   const pepper = await resolveApiKeyPepper();

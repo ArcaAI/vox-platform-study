@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - usePolicies Hook (TASK-218)
+ * @arcaai/vox - usePolicies Hook
  *
  * Policy management hook for admin RBAC operations.
  */
@@ -19,7 +19,7 @@ export interface Policy {
   rules: unknown[];
   resourceStatus?: string;
   /**
-   * TASK-409 — true for the anti-lockout protected system policies
+   * True for the anti-lockout protected system policies
    * (seed-managed, read-only; the API refuses delete/detach/disable).
    */
   isProtected?: boolean;
@@ -27,7 +27,7 @@ export interface Policy {
 }
 
 /**
- * TASK-409 — break-glass step-up confirmation for dangerous RBAC mutations.
+ * Break-glass step-up confirmation for dangerous RBAC mutations.
  * The API replies 428 when it is required but missing, 401 on a wrong
  * password, and 400 on a confirmation-name mismatch.
  */
@@ -52,7 +52,7 @@ export interface UpdatePolicyInput {
   scope?: string;
   rules?: unknown[];
   /**
-   * TASK-409 — required when editing the rules of a policy attached to more
+   * Required when editing the rules of a policy attached to more
    * than one role (the API replies 428 until it is supplied).
    */
   breakGlass?: BreakGlassCredentials;
@@ -74,7 +74,7 @@ export interface UsePoliciesReturn {
   get: (id: string) => Promise<Policy>;
   create: (input: CreatePolicyInput) => Promise<Policy>;
   update: (id: string, input: UpdatePolicyInput) => Promise<Policy>;
-  /** TASK-409 — deletion requires break-glass confirmation (428 without it). */
+  /** Deletion requires break-glass confirmation (428 without it). */
   remove: (id: string, breakGlass?: BreakGlassCredentials) => Promise<void>;
   validate: (input: CreatePolicyInput) => Promise<PolicyValidationResult>;
 }
@@ -130,7 +130,7 @@ export function usePolicies(): UsePoliciesReturn {
   const remove = useCallback(
     (id: string, breakGlass?: BreakGlassCredentials) =>
       execute<void>('remove', async (client) => {
-        // Conditional arity keeps the pre-TASK-409 wire shape for callers
+        // Conditional arity keeps the legacy wire shape for callers
         // that pass no confirmation (the API then replies 428).
         if (breakGlass) {
           await client.delete(POLICY_ENDPOINTS.DELETE(id), { data: breakGlass });

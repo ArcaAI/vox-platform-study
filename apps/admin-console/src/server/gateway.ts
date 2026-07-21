@@ -8,7 +8,7 @@ export function gatewayUrl(path: string, search = ''): string {
 }
 
 /**
- * TASK-422 — the browser's User-Agent, forwarded on BFF → gateway calls so
+ * The browser's User-Agent, forwarded on BFF → gateway calls so
  * audit rows (LOGIN, impersonation brackets, per-request impersonated
  * actions) record the operator's real client. Without it, Node's fetch
  * (undici) sends its hardcoded default and the gateway audits "node".

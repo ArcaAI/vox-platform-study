@@ -4,9 +4,9 @@
  * Utilities for resampling audio to 16kHz mono for Whisper processing.
  *
  * The Whisper capture path uses an anti-aliased Kaiser-windowed-sinc
- * polyphase resampler (TASK-351 P2-4). The legacy linear-interpolation
- * resampler (delegating to @arcaai/room's resampleAudio) remains exported
- * for backward compatibility.
+ * polyphase resampler. The legacy linear-interpolation resampler (delegating
+ * to @arcaai/room's resampleAudio) remains exported for backward
+ * compatibility.
  */
 
 import { resampleAudio } from '@arcaai/room';
@@ -17,7 +17,7 @@ import { resampleAudio } from '@arcaai/room';
 export const WHISPER_SAMPLE_RATE = 16000;
 
 // ---------------------------------------------------------------------------
-// Windowed-sinc anti-aliased resampling (TASK-351 P2-4)
+// Windowed-sinc anti-aliased resampling
 //
 // Linear interpolation performs no low-pass filtering, so when downsampling
 // (e.g. a 48 kHz capture to Whisper's 16 kHz) any content above the target
@@ -211,8 +211,7 @@ function resampleSincDirect(input: Float32Array, fromRate: number, toRate: numbe
 }
 
 /**
- * Resample audio with an anti-aliasing Kaiser-windowed-sinc polyphase filter
- * (TASK-351 P2-4).
+ * Resample audio with an anti-aliasing Kaiser-windowed-sinc polyphase filter.
  *
  * Unlike {@link resampleLinear}, this path low-passes the signal below the
  * target Nyquist before decimation (≈7.2 kHz cutoff for a 16 kHz target), so
@@ -331,8 +330,8 @@ export function prepareAudioForWhisper(audioBuffer: AudioBuffer): Float32Array {
   }
 
   if (inputSampleRate !== WHISPER_SAMPLE_RATE) {
-    // TASK-351 P2-4 — anti-aliased path (linear interpolation folded >8 kHz
-    // content into the speech band and hurt Whisper consonant accuracy).
+    // Anti-aliased path (linear interpolation folded >8 kHz content into
+    // the speech band and hurt Whisper consonant accuracy).
     return resampleSinc(monoAudio, inputSampleRate, WHISPER_SAMPLE_RATE);
   }
 
@@ -350,8 +349,8 @@ export function prepareFloat32ForWhisper(samples: Float32Array, sampleRate: numb
   if (sampleRate === WHISPER_SAMPLE_RATE) {
     return samples;
   }
-  // TASK-351 P2-4 — anti-aliased path (linear interpolation folded >8 kHz
-  // content into the speech band and hurt Whisper consonant accuracy).
+  // Anti-aliased path (linear interpolation folded >8 kHz content into
+  // the speech band and hurt Whisper consonant accuracy).
   return resampleSinc(samples, sampleRate, WHISPER_SAMPLE_RATE);
 }
 

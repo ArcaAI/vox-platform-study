@@ -1,5 +1,5 @@
 /**
- * Endpoint Constants Tests (TASK-032)
+ * Endpoint Constants Tests
  *
  * Verifies all new endpoint constants added for WS-G features.
  *

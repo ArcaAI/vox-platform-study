@@ -292,7 +292,7 @@ class TestTranscriptionJobContext:
 
 
 # =============================================================================
-# TIMING METRICS TESTS (TASK-009)
+# TIMING METRICS TESTS
 # =============================================================================
 
 
@@ -429,7 +429,7 @@ class TestTranscriptionResultWithTimingMetrics:
 
 
 # =============================================================================
-# TIMING METRICS EDGE CASES (TASK-009)
+# TIMING METRICS EDGE CASES
 # =============================================================================
 
 
@@ -556,12 +556,12 @@ class TestProcessedAudioEdgeCases:
 
 
 # =============================================================================
-# VAD MERGED WAV SILENCE PADDING TESTS (TASK-012)
+# VAD MERGED WAV SILENCE PADDING TESTS
 # =============================================================================
 
 
 class TestVadMergedWavSilencePadding:
-    """Tests for get_vad_merged_wav_bytes() silence padding (TASK-012).
+    """Tests for get_vad_merged_wav_bytes() silence padding.
 
     When diarization is enabled, 500ms of silence is added before and after
     each VAD speech segment during the merge-for-storage step.

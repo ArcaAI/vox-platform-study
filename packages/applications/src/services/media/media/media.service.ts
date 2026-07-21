@@ -10,7 +10,7 @@ import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, wi
 import { IActiveUserContext } from '../../../interfaces';
 
 /**
- * TASK-406 (P2-6c) — model-aware filter coercion (TASK-375 §8 scheme): coerces
+ * Model-aware filter coercion: coerces
  * CSV `filters` values to the Media columns' real types (`size`/`version` →
  * number, `createdAt` → Date, `resourceStatus` → member-validated enum,
  * `metaData` → JSON-path support). Passed to BOTH the data and count builders.
@@ -23,7 +23,7 @@ export class MediaService extends BaseService implements IMediaService {
     private readonly mediaRepository: MediaRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // TASK-392 (Phase 3, C1) — optional (append-only DI); evaluates the tenant
+    // Optional (append-only DI); evaluates the tenant
     // storage SOFT-WARN on upload (kill-switch-gated, never blocks).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
   ) {
@@ -31,7 +31,7 @@ export class MediaService extends BaseService implements IMediaService {
   }
 
   async create(request: CreateMediaRequest): Promise<MediaEntity> {
-    // TASK-392 (Phase 3, C1) — storage soft-warn (Q6). SOFT: emits a warning
+    // Storage soft-warn (Q6). SOFT: emits a warning
     // signal when this upload crosses the tenant quota but NEVER blocks the
     // upload. Defensive swallow so a telemetry failure can't fail an upload.
     if (request.tenantId && this.entitlements) {

@@ -12,7 +12,7 @@ export interface RateLimitRouteOverride {
 }
 
 /**
- * TASK-316 — read-only accessor over the rate-limit `GlobalSetting` rows,
+ * Read-only accessor over the rate-limit `GlobalSetting` rows,
  * resolved through the in-memory `AppSettingsService` cache (45s auto-refresh +
  * instant `refreshCache()`). A thin, typed analog of
  * `DnaRegenerationScheduler.getConfig()`.

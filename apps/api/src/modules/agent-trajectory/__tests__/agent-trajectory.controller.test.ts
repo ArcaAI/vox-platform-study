@@ -41,9 +41,7 @@ function makeController(ctx: Ctx) {
 describe('AgentTrajectoryController', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  // TASK-532 (M-12) — the borrowed `HarnessPolicy` subject is retired in favour
-  // of the dedicated read-only `AgentTrajectory` subject. `read` not `manage`:
-  // this controller exposes no mutation.
+  // `read` not `manage`: this controller exposes no mutation.
   it('is class-gated by @CanRead(AgentTrajectory), not the borrowed HarnessPolicy subject', () => {
     const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, AgentTrajectoryController) as
       | { action: string; subject: string }[]

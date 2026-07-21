@@ -3,7 +3,7 @@ import { DirectorySyncServiceModule, TenantIdpConfigServiceModule } from '@arcaa
 import { TenantIdpConfigAdminController } from './tenant-idp-config-admin.controller';
 
 /**
- * TenantIdpConfigModule (TASK-498) — mounts the `/admin/tenant-idp-config`
+ * TenantIdpConfigModule — mounts the `/admin/tenant-idp-config`
  * surface. `TenantIdpConfigService` (CRUD + Vault seal + test-connection)
  * and `DirectorySyncService` (P3 — admin-triggered directory pull) come from
  * `@arcaai/applications`; `ClsService` resolves from its global module.

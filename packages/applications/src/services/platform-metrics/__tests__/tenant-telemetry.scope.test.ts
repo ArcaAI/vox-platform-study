@@ -1,5 +1,5 @@
 /**
- * TASK-386 (#21) unit #3 — admin telemetry tenant-scope resolution.
+ * Admin telemetry tenant-scope resolution.
  *
  * super-admin may target `?tenantId=` (or omit for all-tenants); a tenant-admin
  * is pinned to their CLS tenant and any supplied tenantId is ignored; a non-super

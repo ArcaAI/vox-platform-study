@@ -1,5 +1,5 @@
 /**
- * TASK-496 — platform limits + the pure effective-config resolver.
+ * Platform limits + the pure effective-config resolver.
  *
  * A tenant's editable TTS spec is layered over the SYSTEM-tenant platform default
  * and clamped to these platform limits (mirrors the Entitlements / ConfigResolver
@@ -15,7 +15,7 @@ export const BYO_PROVIDERS = ['azure', 'sarvam'] as const;
 export type TtsProviderOverrides = Record<string, { api_key: string; region?: string; base_url?: string }>;
 
 /**
- * TASK-506 — admin-selectable voice bindings persisted under
+ * Admin-selectable voice bindings persisted under
  * `TenantTtsConfig.configJson.voiceBindings`:
  * `{ [internalVoiceId]: { [provider]: providerVoiceName } }`.
  */
@@ -107,8 +107,8 @@ function pickArray(tenant: string[] | null | undefined, system: string[] | null 
  * `allowedProviders` bounds the routing chains; when the Sarvam PHI toggle is
  * off, `sarvam` is stripped from routing + the whitelist (fail-safe).
  *
- * r2605 Finding F — `universe` is the registry-derived provider universe (the
- * ENABLED SYSTEM `TEXT_TO_SPEECH` registry rows, plan §3.4.2): it replaces the
+ * `universe` is the registry-derived provider universe (the
+ * ENABLED SYSTEM `TEXT_TO_SPEECH` registry rows): it replaces the
  * code-constant universe in the whitelist clamp, the routing-chain clamps AND
  * the code-default fallback chains, so disabling a registry row disables the
  * provider platform-wide, and a registry-only provider survives the clamps.

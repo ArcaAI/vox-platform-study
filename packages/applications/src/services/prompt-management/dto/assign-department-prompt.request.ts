@@ -23,7 +23,7 @@ export class AssignDepartmentPromptRequest {
 
   /**
    * Optimistic-concurrency token for the target Department row
-   * (TASK-302 Stream D Phase E.2). Required. The caller must have read
+   * . Required. The caller must have read
    * the Department first and echo back the `version` it observed.
    */
   @ApiProperty({

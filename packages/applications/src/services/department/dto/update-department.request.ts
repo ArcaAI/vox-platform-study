@@ -57,7 +57,7 @@ export class UpdateDepartmentRequest {
   resourceStatus?: ResourceStatusType;
 
   /**
-   * Optimistic-concurrency token (TASK-302 Stream D Phase E.2).
+   * Optimistic-concurrency token.
    *
    * Required. The client must read the row first, then echo back the
    * `version` it observed. The service issues a Compare-And-Set
@@ -65,7 +65,7 @@ export class UpdateDepartmentRequest {
    * `OptimisticConcurrencyException` → HTTP 412 Precondition Failed
    * if `_version` has drifted under the client between read and write.
    *
-   * Phase D's `ETagInterceptor` + `@RequiresIfMatch()` exposes the
+   * The `ETagInterceptor` + `@RequiresIfMatch()` exposes the
    * canonical RFC 7232 `If-Match` mechanism; the body field stays as
    * the documented service-to-service fallback (the controller folds
    * the header value over this when both are present).

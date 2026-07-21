@@ -30,7 +30,7 @@ export class SummaryDtoMapper {
   }
 
   /**
-   * TASK-330 follow-up — map a SummaryMeta entity to the read-only provenance
+   * Map a SummaryMeta entity to the read-only provenance
    * DTO (citationsMap + sensor scores + modelName). The harness persists its
    * full sensor-score detail object in the `guardrailDecisions` column, so we
    * surface that as `sensorScores` for provenance consumers.

@@ -1,5 +1,5 @@
 /**
- * TASK-340 — Impersonation must not block administration interfaces.
+ * Impersonation must not block administration interfaces.
  *
  * During impersonation the SDK stashes the admin's own JWT in a WeakMap while
  * `accessToken` holds the short-lived impersonation JWT. Admin-plane routes

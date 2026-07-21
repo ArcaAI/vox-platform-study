@@ -140,7 +140,7 @@ export class WhisperEngine extends BaseEngine {
       const isEnglishOnlyModel = modelId.endsWith('.en');
       const allowAutoLanguage = Boolean(this.config.codeSwitching) || language.toLowerCase() === 'auto';
 
-      // TASK-300 L-2: English-only checkpoints cannot translate.
+      // English-only checkpoints cannot translate.
       if (task === 'translate' && isEnglishOnlyModel) {
         throw new STTError(
           STTErrorCode.NOT_SUPPORTED,
@@ -156,8 +156,8 @@ export class WhisperEngine extends BaseEngine {
         transcribeOptions.language = this.normalizeLanguage(language);
       }
 
-      // TASK-300 L-2: only forward `task` when explicitly requested; the
-      // multilingual checkpoints default to `task=transcribe` server-side.
+      // Only forward `task` when explicitly requested; the multilingual
+      // checkpoints default to `task=transcribe` server-side.
       if (task !== undefined && !isEnglishOnlyModel) {
         transcribeOptions.task = task;
       }

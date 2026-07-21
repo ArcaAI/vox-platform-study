@@ -135,9 +135,9 @@ describe('Entity Utilities', () => {
     });
 
     // ------------------------------------------------------------------
-    // H-2 (TASK-277) — count-aware weighted-average score on merge.
+    // Count-aware weighted-average score on merge.
     //
-    // Before TASK-277, mergeAdjacentEntities averaged scores via
+    // Previously, mergeAdjacentEntities averaged scores via
     // `current.score = (current.score + entity.score) / 2`, which is a
     // biased running average for N > 2 and ignores per-token weight for
     // any N. These four tests pin the new behaviour:

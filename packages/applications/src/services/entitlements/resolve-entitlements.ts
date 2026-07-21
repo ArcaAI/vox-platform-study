@@ -1,5 +1,5 @@
 /**
- * TASK-392 — pure entitlement resolution (proposal Q1/Q3).
+ * Pure entitlement resolution (proposal Q1/Q3).
  *
  * `resolveEntitlements` is a side-effect-free merge of three layers, in
  * increasing precedence:

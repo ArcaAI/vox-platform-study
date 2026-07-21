@@ -1,5 +1,5 @@
 /**
- * TASK-407 — tenant-admin tail surfaces (Stores detail · Audio processing ·
+ * Tenant-admin tail surfaces (Stores detail · Audio processing ·
  * Agent Jobs · Harness).
  *
  * Real HTTP round-trips against the live API (`pnpm test:e2e`, or a dev stack
@@ -10,8 +10,8 @@
  *   CASL   · every surface read → 401 unauthenticated, 403 doctor,
  *            200 tenant_admin (own tenant), 200 super_admin;
  *            cross-tenant id probes → 404 (DEF-C3 generic shape).
- *   Stores · bucket list exposes `quotaBytes` (TASK-386 field, may be null);
- *            read-only object listing per bucket (TASK-376 MinIO listing).
+ *   Stores · bucket list exposes `quotaBytes` (may be null);
+ *            read-only object listing per bucket (MinIO listing).
  *   Audio  · tenant-wide job list (paginated envelope) + status→count stats +
  *            by-status filter.
  *   Agents · NEW `GET /admin/prompt-templates/usage-records` paginated

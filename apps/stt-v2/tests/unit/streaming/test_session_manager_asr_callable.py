@@ -9,7 +9,7 @@ torch = pytest.importorskip("torch")
 
 
 def _bind_asr_dispatch(mgr):
-    """TASK-505 P1 — _make_asr_callable dispatches through registry adapters
+    """_make_asr_callable dispatches through registry adapters
     that call back into per-engine builder methods on the manager; bind the
     real ones onto MagicMock(spec=SessionManager) harnesses."""
     from stt_v2.streaming.session_manager import SessionManager
@@ -92,7 +92,7 @@ class TestSessionManagerAsrCallable:
 
     @pytest.mark.asyncio
     async def test_code_switching_with_language_pins_language(self):
-        """TASK-351 P2-1 — CS + language set means PINNED matrix language:
+        """CS + language set means PINNED matrix language:
         the language kwarg must reach generate() (previously omitted)."""
         from stt_v2.streaming.session_manager import SessionManager
 

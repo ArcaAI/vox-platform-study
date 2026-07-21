@@ -1,5 +1,5 @@
 /**
- * UserProfileService — TASK-328 A1–A3 coverage.
+ * UserProfileService — `preferredPromptTemplateId` coverage.
  *
  * Verifies `preferredPromptTemplateId` is threaded through the create + update
  * paths and that `getByUserId` / `upsertByUserId` behave by-user. Uses the REAL

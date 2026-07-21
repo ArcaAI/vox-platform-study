@@ -59,8 +59,8 @@ export function getSettingsCatalog(): Promise<SettingCatalog> {
 }
 
 /**
- * Read one registry setting's EFFECTIVE VALUE plus its backing-row version
- * (TASK-533 B2). The catalog above is metadata-only; this is the value lane.
+ * Read one registry setting's EFFECTIVE VALUE plus its backing-row version.
+ * The catalog above is metadata-only; this is the value lane.
  *
  * The gateway emits `ETag: "<version>"` when a row exists. A key still on its
  * code default reports `version: 0` and emits no ETag — correct, since there is
@@ -71,7 +71,7 @@ export function getRegistrySetting(key: string): Promise<WithEtag<EffectiveSetti
 }
 
 /**
- * Write one registry setting under optimistic concurrency (TASK-533 B2).
+ * Write one registry setting under optimistic concurrency.
  *
  * `etag` comes from the prior read. When it is null the key has no stored row
  * yet, so the PUT goes out WITHOUT `If-Match` — the gateway only demands the

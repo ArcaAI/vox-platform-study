@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useTenantFrontendConfig Hook (TASK-328 A6)
+ * @arcaai/vox - useTenantFrontendConfig Hook
  *
  * Per-tenant FRONTEND audio-pipeline defaults (ASR model + feature switches +
  * a typed advanced `configJson`) applied to every user in the tenant. The

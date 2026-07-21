@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
 
 /**
- * Per-session live-documentation engine stats (TASK-341 B1).
+ * Per-session live-documentation engine stats.
  *
  * The PHI-safe snapshot the {@link LiveDocumentationService} publishes to Redis
  * (`live-doc:stats:{consultationId}`) on each flush and the admin live console

@@ -1,6 +1,6 @@
-"""TASK-525 §4.3 — nlp gains the inference bound it never had (GAP-L4).
+"""nlp gains the inference bound it never had.
 
-Before this ticket the service had ZERO `asyncio.Semaphore`: concurrent
+Without it the service had ZERO `asyncio.Semaphore`: concurrent
 NER/classification/diagnosis requests all piled onto the model unbounded. These
 tests lock the bound itself and its live resize.
 """
@@ -41,7 +41,7 @@ class TestSingleton:
 
 class TestBoundsConcurrency:
     async def test_at_most_n_inferences_run_concurrently(self) -> None:
-        """The GAP-L4 fix: an instrumented fake model never sees more than N."""
+        """An instrumented fake model never sees more than N concurrent calls."""
         sem = ResizableSemaphore(3)
         concurrent = 0
         peak = 0

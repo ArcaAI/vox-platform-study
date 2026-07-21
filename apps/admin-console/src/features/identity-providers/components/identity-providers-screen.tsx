@@ -216,7 +216,7 @@ function IdentityProvidersScreenBody() {
     );
 }
 
-/** Tier 30-49 — tenant-scoped external identity provider (OIDC) administration (TASK-498 P4). */
+/** Tier 30-49 — tenant-scoped external identity provider (OIDC) administration. */
 export function IdentityProvidersScreen() {
     return (
         <WorkingTenantGate

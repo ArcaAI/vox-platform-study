@@ -24,7 +24,7 @@ export class AuditLog {
   public data: JsonValue;
   public previousData: JsonValue;
   public metadata: JsonValue | null;
-  // TASK-369 Phase 3D — envelope-encryption columns (nullable; NULL on legacy
+  // Envelope-encryption columns (nullable; NULL on legacy
   // plaintext rows). Prisma maps Bytes → Uint8Array.
   public encryptedData: Uint8Array | null;
   public encryptedPreviousData: Uint8Array | null;

@@ -1,4 +1,4 @@
-"""Tests for the consolidated observability module (TASK-257).
+"""Tests for the consolidated observability module.
 
 Covers: setup_opentelemetry, shutdown_opentelemetry, LoggerProvider,
 LoggingHandler, LoggingInstrumentor, PHI hook, uvicorn logging taming.

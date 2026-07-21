@@ -123,7 +123,7 @@ async function main(): Promise<void> {
                 'Regenerate with "pnpm --filter @arcaai/tools generate-factory" once the factory files/barrels are reconciled.',
             );
             // Content-aware drift: every persisted model column is constructed by
-            // the (curated) factory layer (TASK-370).
+            // the (curated) factory layer.
             const coverageExit = await reportSchemaCoverage({
                 layer: 'factory',
                 generatedRoot: options.generatedRoot,

@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 /**
- * Body for `POST /admin/harness/golden-sets` (TASK-419 item 1). The owning
+ * Body for `POST /admin/harness/golden-sets`. The owning
  * tenant is resolved server-side (CLS tenant, or `?tenantId=` for platform
  * admins) — never taken from the body.
  */
@@ -27,7 +27,7 @@ export class CreateGoldenSetRequest {
 }
 
 /**
- * Body for `POST /admin/harness/golden-sets/:id/cases` (TASK-419 item 1).
+ * Body for `POST /admin/harness/golden-sets/:id/cases`.
  * `transcript`/`referenceNote` are PHI: encrypted at rest on write and NEVER
  * echoed back through the admin read plane (responses carry metadata only).
  */

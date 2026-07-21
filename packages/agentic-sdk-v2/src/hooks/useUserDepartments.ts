@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useUserDepartments Hook (TASK-328 A1)
+ * @arcaai/vox - useUserDepartments Hook
  *
  * Admin hook for managing a user's department assignments. Mirrors the
  * `/admin/users/:id/departments` controller; tenant scoping is carried by the

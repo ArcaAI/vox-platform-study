@@ -1,4 +1,4 @@
-"""TASK-535 §3.1 (R1) — effective-config pull client (guardrail).
+"""Effective-config pull client (guardrail).
 
 Structurally identical to `nlp.core.effective_config` / `smr_v2` / `stt_v2`
 against the same frozen contract, exposing the ONLY subset guardrail consumes:
@@ -9,11 +9,7 @@ registry and fails closed (`core/dependencies.py`).
 Mechanics: TTL cache jittered ±10 %, negative cache (a down gateway costs at most
 one attempt per window, then callers keep their env values), single-flight
 refresh, read-triggered. Duplicated per service on purpose — the shared-package
-question was settled as OD-3 and is not reopened here.
-
-Before this ticket guardrail had NO client at all and both caches took
-`ttl_seconds=settings.model_cache_ttl_s`, so the admin console's
-`guardrail.modelCache.ttlSeconds` was a knob that silently did nothing.
+question was settled and is not reopened here.
 """
 
 from __future__ import annotations

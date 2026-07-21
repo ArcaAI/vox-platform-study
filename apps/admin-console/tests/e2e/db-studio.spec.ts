@@ -3,8 +3,8 @@
  * the truthful disabled card or the guarded iframe shell (never a broken
  * iframe), with the axe gate in both themes (rule 11 §11).
  *
- * TASK-532 (M-08) renamed the CONSOLE surface `/pstudio` → `/db-studio` and its
- * copy "Prisma Studio" → "Database Studio". The GATEWAY paths below stay
+ * The console surface was renamed from `/pstudio` to `/db-studio`, and its
+ * copy from "Prisma Studio" to "Database Studio". The GATEWAY paths below stay
  * `/api/hope/admin/pstudio*` on purpose — the rename was console-only — so the
  * mixed naming in this file is intentional, not stale.
  */
@@ -72,12 +72,11 @@ test.describe('database studio screen', () => {
     });
 
     /**
-     * BUG-003 regression: the served shell posts queries back to the path it
-     * was served from, so the session-cookie-authenticated proxy carries the
-     * credential on the POST too. Before the fix the shell posted directly to
-     * the gateway with an empty bearer and every query 401ed. Runs in-page so
-     * the httpOnly session cookie applies (page.request drops it — see
-     * helpers/auth.ts).
+     * The served shell posts queries back to the path it was served from, so
+     * the session-cookie-authenticated proxy carries the credential on the
+     * POST too — posting directly to the gateway would carry an empty bearer
+     * and every query would 401. Runs in-page so the httpOnly session cookie
+     * applies (page.request drops it — see helpers/auth.ts).
      */
     test('executes a studio query through the session-guarded proxy', async ({ page }) => {
         await openDbStudio(page);

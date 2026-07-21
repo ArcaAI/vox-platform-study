@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Frame 50.1 — Documentation Review phase (TASK-432). Streams the harness
+ * Frame 50.1 — Documentation Review phase. Streams the harness
  * stage checklist (`consultation_harness_progress:<id>`) and the per-claim
  * assurance verdicts (`consultation_harness_assurance:<id>`, terminal named
  * event `assurance_complete`), shows the persisted draft note with

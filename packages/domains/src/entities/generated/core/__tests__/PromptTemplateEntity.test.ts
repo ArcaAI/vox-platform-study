@@ -137,7 +137,7 @@ describe('PromptTemplateEntity', () => {
     expect(entity.name).toBe('');
   });
 
-  // ─── TASK-294 DEF-C1: scope + ownerUserId ─────────────────────────────
+  // ─── Scope + ownerUserId ─────────────────────────────
 
   it('should default scope to TENANT_DEFAULT when omitted', () => {
     const entity = createEntity({ scope: undefined, ownerUserId: undefined });
@@ -170,7 +170,7 @@ describe('PromptTemplateEntity', () => {
     expect(entity.changes.ownerUserId).toBe('user-99');
   });
 
-  // ─── TASK-328 A4: prompt quality/score test fields ────────────────────
+  // ─── Prompt quality/score test fields ────────────────────
 
   it('should accept lastTestScore/lastTestOutput/lastTestAt in constructor', () => {
     const testedAt = new Date('2026-06-01T09:00:00.000Z');

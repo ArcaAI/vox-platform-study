@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 /**
- * TASK-373 — generic cursor (keyset) response envelope.
+ * Generic cursor (keyset) response envelope.
  *
  * Mirrors the offset {@link PaginatedResponse} (same `data` array key) but
  * carries the cursor half of the client `PageResult` contract — `nextCursor`

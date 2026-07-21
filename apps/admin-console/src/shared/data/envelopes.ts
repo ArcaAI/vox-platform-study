@@ -1,5 +1,5 @@
 /**
- * List-envelope normalizers (TASK-423, Phase 4).
+ * List-envelope normalizers.
  *
  * Console gateway endpoints ship several pagination envelope shapes. This maps
  * each to the `@arcaai/ui` `PageResult<T>` the grid consumes, computing

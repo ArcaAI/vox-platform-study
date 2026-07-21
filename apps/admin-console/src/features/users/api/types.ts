@@ -33,7 +33,7 @@ export type UserExportFormat = 'csv' | 'xlsx' | 'pdf';
 
 export interface ExportUsersParams extends ListParams {
     format: UserExportFormat;
-    /** TASK-430 — membership-based tenant scope (in-page tenant filter). */
+    /** Membership-based tenant scope (in-page tenant filter). */
     tenantId?: string;
 }
 

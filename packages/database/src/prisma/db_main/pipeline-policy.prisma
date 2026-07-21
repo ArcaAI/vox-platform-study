@@ -1,5 +1,5 @@
 // =============================================================================
-// TASK-356 Phase 5 — Realtime cascade (Pillar B)
+// Realtime cascade policy
 //
 // DB-backed, editable realtime-toggle policy for the harness/documentation
 // pipeline. Mirrors the HarnessPolicy/HarnessPolicyChange pattern, but adds a

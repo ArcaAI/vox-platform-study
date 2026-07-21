@@ -1,22 +1,21 @@
 /**
- * TASK-307 W6.3 — `IRbacRoleService` is the controller-facing seam that
+ * `IRbacRoleService` is the controller-facing seam that
  * replaces every `databaseService.client.role.*` and
- * `databaseService.client.rolePolicy.*` call inside `RolesController`
- * (audit C-10 / F-1 / H-9). The role/role-policy mutations stayed in the
+ * `databaseService.client.rolePolicy.*` call inside `RolesController`.
+ * The role/role-policy mutations stayed in the
  * controller historically because there was no generated
  * `RolePolicyRepository` and no `PolicyEntity`/`PolicyMapper`. This
  * service intentionally takes the pragmatic path used by `TenantService`
  * et al. — direct `CoreDatabaseService` access at the service layer —
  * rather than generating a whole DDD slab just to satisfy the lint rule
- * in W6.4 (out of scope for a behaviour-preserving refactor; see
- * README.md §3 W6 / §7 risks).
+ * (out of scope for a behaviour-preserving refactor).
  *
  * The name is prefixed with `Rbac` to disambiguate from the legacy
  * `services/security/role` skeleton, which is unused by the API gateway
  * (no `@Inject(IRoleService)` consumers) but still occupies the
  * `IRoleService` / `RoleService` / `RoleServiceModule` symbols in the
  * `@arcaai/applications` barrel. Renaming the legacy skeleton was
- * explicitly out of W6 scope.
+ * explicitly deferred.
  */
 
 import type { BreakGlassCredentials } from '../breakGlass';
@@ -40,11 +39,11 @@ export interface CreateRbacRoleRequest {
   externalName?: string;
   externalId?: string;
   parentRoleId?: string;
-  /** TASK-501 — only a global admin may set `true` (service-enforced). */
+  /** Only a global admin may set `true` (service-enforced). */
   isSystemRole?: boolean;
 }
 
-/** TASK-501 — clone always produces a new CUSTOM role, any admin may call it. */
+/** Clone always produces a new CUSTOM role, any admin may call it. */
 export interface CloneRbacRoleRequest {
   name: string;
 }
@@ -77,7 +76,7 @@ export interface RbacRoleRecord {
   updatedAt: Date;
   RolePolicies: RbacRolePolicyRow[];
   /**
-   * TASK-444 — tenant-scoped member count, present only on the read paths
+   * Tenant-scoped member count, present only on the read paths
    * (`findAll`/`findOne` merge the `_count` include; mutations do not).
    */
   _count?: { UserRoleAssignments: number };
@@ -94,12 +93,12 @@ export interface IRbacRoleService {
   create(request: CreateRbacRoleRequest): Promise<RbacRoleRecord>;
   update(id: string, request: UpdateRbacRoleRequest): Promise<RbacRoleRecord>;
   patch(id: string, request: UpdateRbacRoleRequest): Promise<RbacRoleRecord>;
-  /** TASK-501 — clone a role (SYSTEM or CUSTOM) into a new CUSTOM role with copied policies. */
+  /** Clone a role (SYSTEM or CUSTOM) into a new CUSTOM role with copied policies. */
   clone(sourceId: string, request: CloneRbacRoleRequest): Promise<RbacRoleRecord>;
-  /** TASK-409 — deleting a role always requires break-glass confirmation. */
+  /** Deleting a role always requires break-glass confirmation. */
   softDelete(id: string, breakGlass?: BreakGlassCredentials): Promise<{ id: string; name: string }>;
   assignPolicy(roleId: string, policyId: string, dto: RbacRolePolicyAssignmentInput): Promise<void>;
-  /** TASK-409 — detaching a policy requires break-glass (confirm the POLICY name). */
+  /** Detaching a policy requires break-glass (confirm the POLICY name). */
   removePolicy(roleId: string, policyId: string, breakGlass?: BreakGlassCredentials): Promise<void>;
 }
 

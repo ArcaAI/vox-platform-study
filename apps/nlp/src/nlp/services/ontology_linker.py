@@ -1,11 +1,11 @@
-"""Deterministic clinical ontology linker (TASK-476 C1 · SOTA Theme C).
+"""Deterministic clinical ontology linker.
 
 Resolves a recognized clinical span to standardized ontology codes — a UMLS CUI
 plus cross-walks to SNOMED CT / RxNorm / ICD-10 / LOINC — against a **bundled,
 self-hosted** vocabulary subset (a MedCAT-class lookup). This is the authoritative
 producer of the ``NamedEntity`` ontology codes the durable summarizer reads
-(prompt-assembly / harness / summary processor), closing the read-everywhere /
-written-nowhere gap TASK-462 could only annotate.
+(prompt-assembly / harness / summary processor), closing a read-everywhere /
+written-nowhere gap that was previously only annotated.
 
 Design — fully deterministic and offline:
   * NO network, NO cloud vendor, NO model download (track guardrail: self-hosted
@@ -113,8 +113,7 @@ _VOCABULARY_ENTRIES: tuple[tuple[tuple[str, ...], OntologyCodes], ...] = (
         # deliberately NOT mapped here — an unqualified mention may be Type 1,
         # gestational, or unspecified, so mapping it to the Type-2 codes (E11.9)
         # would systematically mislabel non-T2 patients. Unqualified "diabetes"
-        # resolves all-None → stays un-coded → the TASK-462 groundedness guard
-        # covers it. (TASK-476 review I1.)
+        # resolves all-None → stays un-coded → the groundedness guard covers it.
         ("type 2 diabetes", "type ii diabetes", "t2dm"),
         OntologyCodes(icd_code="E11.9", snomed_code="44054006", umls_cui="C0011860"),
     ),

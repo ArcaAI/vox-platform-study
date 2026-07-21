@@ -1,5 +1,5 @@
 /**
- * HarnessObservabilityService — WORM encrypted-payload read paths (TASK-369 3D).
+ * HarnessObservabilityService — WORM encrypted-payload read paths.
  *
  *  - the integrity verdict over a chain of ENCRYPTED events is valid, because
  *    `verifyChainEntities` maps via `toHarnessAuditChainRecord` and hashes over

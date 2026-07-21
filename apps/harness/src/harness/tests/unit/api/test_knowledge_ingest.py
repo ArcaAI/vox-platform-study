@@ -1,4 +1,4 @@
-"""Internal knowledge-ingest endpoint tests (RED-first, TASK-330 Phase 3, Lane A).
+"""Internal knowledge-ingest endpoint tests.
 
 ``POST /api/v1/internal/knowledge/ingest`` is the cross-lane contract Lane B's
 BullMQ ingest processor calls: it chunks the approved document, dense+sparse

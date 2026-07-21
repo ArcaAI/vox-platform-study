@@ -1,13 +1,12 @@
 /**
- * TASK-311 AC-2 — `RolePolicyEntityMapper` provides a strict
+ * `RolePolicyEntityMapper` provides a strict
  * projection from a Prisma `RolePolicy` row to a stable record shape.
  *
  * Today `RbacRoleService.assignPolicy/removePolicy` does not return
  * the join row to its caller — both methods return `Promise<void>`.
- * The mapper still lives here as the per-aggregate AC-2 deliverable
- * and is exercised by the unit tests so the projection contract is
- * pinned for any future consumer (e.g. a "list policies on this role"
- * endpoint).
+ * The mapper still lives here, exercised by unit tests, so the
+ * projection contract is pinned for any future consumer (e.g. a
+ * "list policies on this role" endpoint).
  */
 
 export interface RolePolicyRecord {

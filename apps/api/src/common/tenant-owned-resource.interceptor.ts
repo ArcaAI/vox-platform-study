@@ -7,10 +7,9 @@
  * the caller's CLS tenant before letting the handler run.
  *
  * The 404 response on tenant mismatch (DEF-C3 "no existence leak") is the
- * uniform behaviour — there is no `@PlatformAdmin()` bypass per the W3 plan
- * decision (`docs/implementation/TASK-307-API-Gateway-Hardening/README.md`
- * §1.5). GLOBAL_ADMIN cross-tenant access continues to flow through service
- * methods that opt in explicitly (e.g. `TenantService.fetchById`).
+ * uniform behaviour — there is no `@PlatformAdmin()` bypass. GLOBAL_ADMIN
+ * cross-tenant access continues to flow through service methods that opt in
+ * explicitly (e.g. `TenantService.fetchById`).
  *
  * Model-specific resolution rules:
  *

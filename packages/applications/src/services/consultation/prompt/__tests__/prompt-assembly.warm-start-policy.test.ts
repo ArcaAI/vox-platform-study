@@ -1,5 +1,5 @@
 /**
- * PromptAssemblyService — effective `warmStartEnabled` precedence (TASK-533 D-23).
+ * PromptAssemblyService — effective `warmStartEnabled` precedence.
  *
  * `HarnessPolicy.warmStartEnabled` was fully WRITE-plumbed — DTO, response,
  * GLOBAL_ADMIN gate, admin-console knob, even parsed into the Python dataclass —

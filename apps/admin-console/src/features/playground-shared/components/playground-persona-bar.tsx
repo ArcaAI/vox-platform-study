@@ -5,8 +5,8 @@ import { useSession } from '@/shared/auth/hooks';
 import { PersonaControl } from './persona-control';
 
 /**
- * Content-level persona/impersonation control (TASK-502, supersedes the
- * TASK-442 PlaygroundTopBar chrome). Playground routes now render inside the
+ * Content-level persona/impersonation control (supersedes the
+ * PlaygroundTopBar chrome). Playground routes now render inside the
  * console shell, so the persona control lives as ordinary scrolling content
  * above each screen instead of a replacement top bar — it self-fetches the
  * session rather than receiving it from a route-group server layout.

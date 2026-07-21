@@ -340,7 +340,7 @@ class TestAPIGatewayClientMethods:
     async def test_create_transcript_without_job_id_omits_jobid_and_keys_by_consultation(
         self, client
     ):
-        """TASK-342 GAP #1 — streaming transcripts have no TranscriptionJob, so
+        """Streaming transcripts have no TranscriptionJob, so
         the payload must omit ``jobId`` and key the transcript by
         ``consultationId`` + ``tenantId`` (with the streaming source label)."""
         captured_payload = None
@@ -394,7 +394,7 @@ class TestAPIGatewayClientMethods:
             )
 
             # Test all audio metadata is included. The duration is forwarded as
-            # `durationMs` to match the NestJS DTO whitelist (TASK-334 I-2c).
+            # `durationMs` to match the NestJS DTO whitelist.
             assert captured_payload["contextItemId"] == "ctx-123"
             assert captured_payload["mediaId"] == "m-456"
             assert captured_payload["durationMs"] == 60000

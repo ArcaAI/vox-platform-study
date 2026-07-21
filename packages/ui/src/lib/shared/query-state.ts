@@ -1,10 +1,10 @@
 /**
- * Cross-component query-state contract (TASK-372 §3.1.4, TASK-423 Phase 3).
+ * Cross-component query-state contract.
  *
  * `DataQueryState` is the shared sort/filter/search/pagination model the grid
  * (and timeline) speak. `toPaginatedQuery` serializes it to the backend
  * `PaginatedQuery` params, emitting the **bracket filter grammar** the gateway
- * parser requires (TASK-423 Phase 2): `field[op]:value` tokens separated by
+ * parser requires: `field[op]:value` tokens separated by
  * `;` (comma is reserved for `AND[…]`/`OR[…]` group internals). `sort` stays a
  * comma-joined `field:asc|desc` list.
  */

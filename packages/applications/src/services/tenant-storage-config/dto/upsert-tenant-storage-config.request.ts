@@ -3,7 +3,7 @@ import { StorageProviderType, StorageTopologyType } from '@arcaai/domains';
 import { IsBoolean, IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 
 /**
- * Upsert a tenant's storage configuration (TASK-318 / R5).
+ * Upsert a tenant's storage configuration.
  *
  * - `bucketId` omitted/null → the tenant-wide default config.
  * - `bucketId` set → a per-bucket override (takes precedence over the default).

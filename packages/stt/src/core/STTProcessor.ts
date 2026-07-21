@@ -47,9 +47,9 @@ import { createAudioCapture, type AudioCaptureHandle } from './audioCapture.js';
 
 /**
  * Externally-constructed streaming transport injected into the STT
- * processor by the SDK glue layer (TASK-298 D-4). When set, the processor
- * routes `initializeRemoteProvider` through `StreamingBackendSTTProvider`
- * instead of the legacy `RemoteSTTProvider`.
+ * processor by the SDK glue layer. When set, the processor routes
+ * `initializeRemoteProvider` through `StreamingBackendSTTProvider` instead
+ * of the legacy `RemoteSTTProvider`.
  */
 export interface STTStreamingTransport {
   sessionManager: StreamingSessionLike;
@@ -114,15 +114,15 @@ export class STTProcessor extends BaseProcessor {
   private debugSegmentCounter = 0;
 
   /**
-   * Optional streaming transport injected by the SDK (TASK-298 D-4).
-   * When set, `initializeRemoteProvider` uses `StreamingBackendSTTProvider`
+   * Optional streaming transport injected by the SDK. When set,
+   * `initializeRemoteProvider` uses `StreamingBackendSTTProvider`
    * (pipeline-aware) instead of the deprecated `RemoteSTTProvider`.
    */
   private streamingTransport: STTStreamingTransport | null = null;
 
   /**
-   * TASK-464 — PUSH channel for backpressure drops, re-emitted from the
-   * streaming provider's `onDrop`. Consumers (the vox `TranscriptionPipeline`)
+   * PUSH channel for backpressure drops, re-emitted from the streaming
+   * provider's `onDrop`. Consumers (the vox `TranscriptionPipeline`)
    * register this to forward drops up to the store/hook/UI. Only the streaming
    * remote provider produces drops; other providers never invoke it.
    */
@@ -331,8 +331,8 @@ export class STTProcessor extends BaseProcessor {
    * Inject (or clear) the streaming transport used by the remote provider
    * path. Must be called BEFORE `onInit` for the new path to take effect.
    *
-   * TASK-298 D-4: when a transport is set with a `pipelineId`, the next
-   * call to `initializeRemoteProvider()` constructs `StreamingBackendSTTProvider`
+   * When a transport is set with a `pipelineId`, the next call to
+   * `initializeRemoteProvider()` constructs `StreamingBackendSTTProvider`
    * instead of the legacy `RemoteSTTProvider`. Pass `null` to revert.
    */
   setStreamingTransport(transport: STTStreamingTransport | null): void {
@@ -347,7 +347,7 @@ export class STTProcessor extends BaseProcessor {
   }
 
   /**
-   * TASK-464 — register a callback fired once per outbound frame dropped at the
+   * Register a callback fired once per outbound frame dropped at the
    * streaming client's backpressure watermark (with the running total). Only the
    * streaming remote provider produces drops. This is the PUSH complement to the
    * `droppedFrames` field in {@link getStats}; the vox `TranscriptionPipeline`
@@ -383,7 +383,6 @@ export class STTProcessor extends BaseProcessor {
   /**
    * Update language dynamically.
    *
-   * TASK-304 Wave 1: previously this only logged a warning for the local provider.
    * Whisper bakes the language into the inference pipeline, so a true language change
    * requires re-initializing the provider with the new locale. The local cache key
    * includes `language` so a hot pool entry will be reused if the user toggles back
@@ -391,11 +390,11 @@ export class STTProcessor extends BaseProcessor {
    * stateless w.r.t. language — it picks the locale up on the next session
    * establishment.
    *
-   * TASK-304 Wave 2 W2-STT-2 + W2-STT-6: capture the previous language and provider
-   * BEFORE mutating state so we can (a) restore on reinit failure — otherwise the
-   * short-circuit guard at the top of this method blocks a retry with the same value
-   * — and (b) pool / destroy the old provider after a successful swap so it does not
-   * leak as an orphaned listener target.
+   * Capture the previous language and provider BEFORE mutating state so we can
+   * (a) restore on reinit failure — otherwise the short-circuit guard at the
+   * top of this method blocks a retry with the same value — and (b) pool /
+   * destroy the old provider after a successful swap so it does not leak as
+   * an orphaned listener target.
    */
   async setLanguage(language: LanguageLocale): Promise<void> {
     if (!this.options.audio) {
@@ -444,8 +443,8 @@ export class STTProcessor extends BaseProcessor {
   }
 
   /**
-   * TASK-304 Wave 3 hotfix — forward a late-arriving reserved-speaker id to the
-   * underlying local provider's diarizer. Used by
+   * Forward a late-arriving reserved-speaker id to the underlying local
+   * provider's diarizer. Used by
    * `PluginManager.propagateUserPreferenceDelta` so the SDK can pin the doctor's
    * slot after `UserPreferences.activeVoiceProfile` changes without rebuilding
    * the provider.
@@ -480,8 +479,8 @@ export class STTProcessor extends BaseProcessor {
     }
 
     // For remote provider, sttSocket is required UNLESS a streaming
-    // transport has been injected (TASK-298 D-4) — the transport already
-    // owns the WebSocket URL via StreamingSessionManager.getWebSocketUrl().
+    // transport has been injected — the transport already owns the
+    // WebSocket URL via StreamingSessionManager.getWebSocketUrl().
     if (provider === 'remote' && !this.options.sttSocket && !this.streamingTransport) {
       throw new STTError(STTErrorCode.INVALID_CONFIG, 'sttSocket is required when provider is "remote"');
     }
@@ -571,8 +570,8 @@ export class STTProcessor extends BaseProcessor {
       vadGate: features.vadGate ?? false,
       diarization: features.diarization ?? false,
       numSpeakers: features.numSpeakers ?? 2,
-      // TASK-304 Wave 2 W2-STT-3: `task` must shape the pool key, otherwise a
-      // transcribe-warm provider gets reused for a translate request.
+      // `task` must shape the pool key, otherwise a transcribe-warm provider
+      // gets reused for a translate request.
       task: features.task ?? 'transcribe',
     });
   }
@@ -605,13 +604,13 @@ export class STTProcessor extends BaseProcessor {
       codeSwitching: features.codeSwitching ?? false,
       diarization: features.diarization ?? false,
       numSpeakers: features.numSpeakers ?? 2,
-      // TASK-304 Wave 2 W2-STT-3: forward the default Whisper task baked into the engine.
+      // forward the default Whisper task baked into the engine.
       task: features.task ?? 'transcribe',
       prompt: this.options.prompt,
       onProgress: this.options.onModelProgress,
-      // TASK-304 Wave 2 W2-STT-4 + W2-SDK-1/2: forward the resolved voice profile so the
-      // LocalSpeakerDiarizer can both pin the doctor's reserved-speaker slot and honour
-      // the user-tuned similarity threshold.
+      // Forward the resolved voice profile so the LocalSpeakerDiarizer can
+      // both pin the doctor's reserved-speaker slot and honour the
+      // user-tuned similarity threshold.
       ...(this.options.voiceProfile ? { voiceProfile: this.options.voiceProfile } : {}),
     };
 
@@ -657,7 +656,7 @@ export class STTProcessor extends BaseProcessor {
   /**
    * Initialize the remote WebSocket provider.
    *
-   * TASK-298 D-4: when a streaming transport has been injected via
+   * When a streaming transport has been injected via
    * `setStreamingTransport(...)`, construct the pipeline-aware
    * `StreamingBackendSTTProvider` instead of the legacy `RemoteSTTProvider`.
    * The legacy path remains in place so existing callers that pass only an
@@ -708,7 +707,7 @@ export class STTProcessor extends BaseProcessor {
 
   /**
    * Initialize the pipeline-aware `StreamingBackendSTTProvider` using the
-   * externally-injected transport (TASK-298 D-4).
+   * externally-injected transport.
    */
   private async initializeStreamingRemoteProvider(transport: STTStreamingTransport): Promise<void> {
     const provider = new StreamingBackendSTTProvider({
@@ -729,8 +728,8 @@ export class STTProcessor extends BaseProcessor {
     provider.onError((error) => {
       this.handleError(error);
     });
-    // TASK-464 — consume the provider's backpressure-drop PUSH channel and
-    // re-emit it so the vox pipeline/store can surface a degraded signal. The
+    // Consume the provider's backpressure-drop PUSH channel and re-emit it
+    // so the vox pipeline/store can surface a degraded signal. The
     // provider is the single source of truth for the count (avoids double-
     // counting the ws client's own watermark drops).
     provider.onDrop((droppedFrameCount) => {

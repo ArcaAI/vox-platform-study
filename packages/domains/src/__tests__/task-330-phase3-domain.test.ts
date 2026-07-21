@@ -1,5 +1,5 @@
 /**
- * TASK-330 Phase 3 — institutional-RAG domain layer.
+ * Institutional-RAG domain layer.
  *
  * Proves the additive KnowledgeDocument / KnowledgeChunk models are threaded
  * through the domain layer (enum ⇄ entity ⇄ factory ⇄ data-model mapper) so the

@@ -1,6 +1,6 @@
 /**
- * TASK-502 — content-level persona bar. Supersedes PlaygroundTopBar chrome
- * (TASK-442): the persona/impersonation control now renders as ordinary
+ * Content-level persona bar. Supersedes PlaygroundTopBar chrome:
+ * the persona/impersonation control now renders as ordinary
  * scrolling content inside the console shell, self-fetching the session
  * instead of receiving it as a server-passed prop.
  */

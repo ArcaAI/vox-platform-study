@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * TASK-506 — the platform TTS catalog derived from the AiModel registry
+ * The platform TTS catalog derived from the AiModel registry
  * (SYSTEM-tenant ENABLED `TEXT_TO_SPEECH` rows, voices from `metaData.voices`).
  * Falls back to the code-constant provider universe (with no voice metadata)
  * when the registry has no TTS rows yet (pre-seed).

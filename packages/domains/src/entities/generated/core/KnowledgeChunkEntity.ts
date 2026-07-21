@@ -11,7 +11,7 @@ export interface IKnowledgeChunkEntity extends IBaseTenantEntity {
   knowledgeDocumentId: string;
   chunkIndex: number;
   text: string;
-  // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the chunk text
+  // Vault-Transit (hope-phi) ciphertext of the chunk text
   // + shared key version. Phase 6 dropped the plaintext column; plaintext
   // survives only as a transient field repopulated by decrypt-on-read.
   encryptedText?: Buffer | null;
@@ -71,7 +71,7 @@ export class KnowledgeChunkEntity extends BaseTenantEntity {
     this.setProperty('chunkIndex', value);
   }
 
-  // TASK-369 Phase 3C — clinical PHI field. @Secret() marks it for audit-log
+  // Clinical PHI field. @Secret() marks it for audit-log
   // redaction (defense-in-depth) alongside the encrypted counterpart.
   @Secret()
   get text(): IKnowledgeChunkEntity['text'] {
@@ -82,7 +82,7 @@ export class KnowledgeChunkEntity extends BaseTenantEntity {
     this.setProperty('text', value);
   }
 
-  // TASK-369 Phase 3C — Vault-Transit ciphertext column. @Secret() guards the
+  // Vault-Transit ciphertext column. @Secret() guards the
   // ciphertext from audit-log surfaces.
   @Secret()
   get encryptedText(): IKnowledgeChunkEntity['encryptedText'] {

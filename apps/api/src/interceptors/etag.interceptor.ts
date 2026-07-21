@@ -4,8 +4,7 @@ import { map } from 'rxjs/operators';
 
 /**
  * Sets a strong-comparison `ETag` header on responses whose body carries a
- * positive-integer `version` field at the top level — TASK-302 Stream D
- * Phase D (D.1).
+ * positive-integer `version` field at the top level.
  *
  * Why a strong validator (`"<n>"`, not `W/"<n>"`)?
  * RFC 7232 §2.3.2 requires `If-Match` to use strong comparison. Weak
@@ -29,7 +28,6 @@ import { map } from 'rxjs/operators';
  *
  * @see https://www.rfc-editor.org/rfc/rfc7232.html#section-2.3.2
  * @see https://www.rfc-editor.org/rfc/rfc7232.html#section-3.1
- * @see docs/implementation/TASK-302-System-Config-Implementation-Roadmap/04-optimistic-locking.md §D.1
  */
 @Injectable()
 export class ETagInterceptor implements NestInterceptor {

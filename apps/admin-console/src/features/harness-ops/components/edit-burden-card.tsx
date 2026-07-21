@@ -34,7 +34,7 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
 }
 
 /**
- * TASK-532 B-5 (M-09 tenant leg) — clinician edit-burden telemetry for ONE
+ * Clinician edit-burden telemetry for ONE
  * consultation. The endpoint composes over already-persisted WORM audit rows +
  * summary versions and returns DERIVED SCALARS only: the note text never leaves
  * the service, so there is nothing clinical to render here.

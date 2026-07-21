@@ -16,11 +16,11 @@ export class PromptTemplate extends BaseTenantDataModel {
   public variables: JsonValue | null;
   public lastTestScore: number | null;
   public lastTestAt: Date | null;
-  // TASK-369 Phase 6 — plaintext lastTestOutput column DROPPED; persistence is
+  // Plaintext lastTestOutput column DROPPED; persistence is
   // ciphertext-only. The entity keeps `lastTestOutput` as a transient field
   // repopulated by repository decrypt-on-read. (`content` is the prompt body and
   // is NOT encrypted — it remains a plaintext column.)
-  // TASK-369 Phase 3C — Vault-Transit ciphertext column + key version.
+  // Vault-Transit ciphertext column + key version.
   public encryptedLastTestOutput: Uint8Array | null;
   public keyVersion: number | null;
   public currentVersionNumber: number;

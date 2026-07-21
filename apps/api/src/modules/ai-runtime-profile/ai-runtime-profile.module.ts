@@ -3,7 +3,7 @@ import { Module } from '@nestjs/common';
 import { AiRuntimeProfileController } from './ai-runtime-profile.controller';
 
 /**
- * AiRuntimeProfileModule (TASK-524) — mounts the `/admin/ai-runtime-profiles`
+ * AiRuntimeProfileModule — mounts the `/admin/ai-runtime-profiles`
  * surface. `AiRuntimeProfileService` (the per-field injection cascade, range
  * clamps, global-admin/SYSTEM-only governance, OCC row writes) comes from
  * `@arcaai/applications`.

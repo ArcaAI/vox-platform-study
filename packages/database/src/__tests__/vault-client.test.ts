@@ -1,5 +1,5 @@
 /**
- * Vault-backed PrismaClient factory tests (TASK-302 Phase 5 Task 5.5).
+ * Vault-backed PrismaClient factory tests.
  *
  * Verifies that `getPrismaClientWithVault` and the `VaultPrismaClient`
  * wrapper:

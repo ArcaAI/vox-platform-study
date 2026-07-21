@@ -3,7 +3,7 @@ import { RedisCacheModule } from '../baseServices/redis/redis-cache.module';
 import { JwtRevocationService, IJwtRevocationService } from './jwt-revocation.service';
 
 /**
- * TASK-541 — standalone module for the revocation authority.
+ * Standalone module for the revocation authority.
  *
  * Extracted from `AuthServiceModule` so NON-auth modules can consume it
  * without importing the whole auth graph (which imports `UserServiceModule`

@@ -1,5 +1,5 @@
 /**
- * @arcaai/med-ner - Token-aware chunking (TASK-272 / C-2)
+ * @arcaai/med-ner - Token-aware chunking
  *
  * BERT-base NER has a hard 512 WordPiece-token attention window. Splitting
  * input on raw character windows (as the original implementation did) breaks
@@ -58,7 +58,7 @@ export interface ChunkEntities {
 }
 
 /**
- * Default chunking budget. Aligned with TASK-272 spec (max=384, stride=64).
+ * Default chunking budget (max=384, stride=64).
  */
 export const DEFAULT_MAX_TOKENS = 384;
 export const DEFAULT_STRIDE = 64;

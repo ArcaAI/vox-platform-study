@@ -11,7 +11,7 @@ export interface PermissionRule {
 }
 
 /**
- * GLOBAL_ADMIN is the single elevated role — TASK-417 consolidated the legacy
+ * GLOBAL_ADMIN is the single elevated role — consolidated the legacy
  * SUPER_ADMIN into it (dev DBs are migrated; the backend no longer issues it).
  */
 export const ELEVATED_ROLES = ['GLOBAL_ADMIN'] as const;

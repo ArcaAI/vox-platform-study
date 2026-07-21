@@ -31,10 +31,10 @@ import { Authorize } from '../../decorators';
 import { AdminImpersonateRequest, ImpersonateResponse, ImpersonateUserResponse } from './dto';
 import { ImpersonationEvents, ImpersonationDeniedReason, ImpersonationEventPayload } from './impersonation-events';
 
-// TASK-417 — the elevated tier is exactly GLOBAL_ADMIN (GLOBAL_ADMIN retired).
+// The elevated tier is exactly GLOBAL_ADMIN (the legacy SUPER_ADMIN role has been retired).
 const ELEVATED_TIER_ROLES = ['GLOBAL_ADMIN'];
 
-/** Forced-audit action codes for the impersonation lifecycle rows (TASK-401). */
+/** Forced-audit action codes for the impersonation lifecycle rows. */
 export const USER_IMPERSONATION_STARTED = 'USER_IMPERSONATION_STARTED';
 export const USER_IMPERSONATION_ENDED = 'USER_IMPERSONATION_ENDED';
 
@@ -43,7 +43,7 @@ const MIN_TTL_SECONDS = 10;
 const MAX_TTL_SECONDS = 1800;
 
 /**
- * TASK-401 — global-admin-only impersonation start endpoint.
+ * Global-admin-only impersonation start endpoint.
  *
  * `POST /admin/users/:id/impersonate` mints a time-boxed (default 30m),
  * NON-refreshable "act-as" token whose claims carry BOTH the subject identity
@@ -52,7 +52,7 @@ const MAX_TTL_SECONDS = 1800;
  * `JwtStrategy` threads into CLS for the per-request audit interceptor and the
  * `BaseService.broadcastSysEvent` provenance metadata.
  *
- * Posture mirrors the TASK-396 secret reveal: the method-level
+ * Posture mirrors the secret reveal endpoint: the method-level
  * `@Authorize(['manage','all'])` limits the route to holders of the
  * `system-full-access` policy (GLOBAL_ADMIN); tenant admins keep the legacy
  * `/auth/impersonate` endpoint with its own-tenant restrictions. A DB-role
@@ -78,10 +78,10 @@ export class AdminImpersonationController {
   ) {}
 
   @Post(':id/impersonate')
-  // Same envelope as the legacy /auth/impersonate route (TASK-308 AC-5).
+  // Same envelope as the legacy /auth/impersonate route.
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
-  // TASK-396 posture: only `system-full-access` (GLOBAL_ADMIN) holds manage:all.
+  // Only `system-full-access` (GLOBAL_ADMIN) holds manage:all.
   @Authorize(['manage', 'all'])
   @ApiBearerAuth()
   @ApiOperation({
@@ -142,7 +142,7 @@ export class AdminImpersonationController {
       throw new BadRequestException('Target user is not enabled');
     }
 
-    // TASK-430 — a service account is an API-only principal; impersonating one
+    // A service account is an API-only principal; impersonating one
     // would mint the interactive session it must never have.
     if (targetUser.isServiceAccount) {
       this.recordDenied(req, actor.id, targetUser.id, ImpersonationDeniedReason.TargetIsServiceAccount);
@@ -158,7 +158,7 @@ export class AdminImpersonationController {
 
     const targetPermissions = this.collectPermissions(targetRoles);
 
-    // Tenant resolution mirrors the legacy route (TASK-295 H-3): caller may pin
+    // Tenant resolution mirrors the legacy route: caller may pin
     // one of the target's enabled assignments; default = oldest assignment.
     const targetTenantIds = await this.userRoleAssignmentService.findActiveTenantIdsForUser(targetUser.id);
     let resolvedTenantId: string;
@@ -179,7 +179,7 @@ export class AdminImpersonationController {
       throw new UnauthorizedException('Authentication system not configured');
     }
 
-    // TASK-401 default is 30m (the legacy route keeps its 15m default). An env
+    // Default is 30m (the legacy route keeps its 15m default). An env
     // JWT_IMPERSONATION_EXPIRES_IN overrides both; `expiresInSeconds` (clamped,
     // test-only affordance) overrides per-request.
     const configuredTtl = this.appSettingsService.getValueWithDefault('JWT_IMPERSONATION_EXPIRES_IN', '30m') as string;
@@ -221,8 +221,8 @@ export class AdminImpersonationController {
       method: 'POST',
     });
 
-    // Explicit lifecycle START bracket (TASK-331 M-3 shape) enriched with the
-    // TASK-401 fields — persisted synchronously by
+    // Explicit lifecycle START bracket enriched with impersonation
+    // fields — persisted synchronously by
     // AuditLogService.handleUserAuthenticatedEvent.
     this.eventEmitter?.emit(EventTypes.UserAuthenticated, {
       userId: actor.id,
@@ -238,7 +238,7 @@ export class AdminImpersonationController {
       impersonationTenantId: resolvedTenantId,
     });
 
-    // Dedicated semantic signal (AC-11, TASK-336) with the TASK-401 extras.
+    // Dedicated semantic signal with the impersonation extras.
     this.eventEmitter?.emit(ImpersonationEvents.Started, {
       adminId: actor.id,
       targetUserId: targetUser.id,
@@ -253,13 +253,13 @@ export class AdminImpersonationController {
       timestamp: new Date(),
     } satisfies ImpersonationEventPayload);
 
-    // TASK-396 pattern — forced audit row for the sensitive action. Direct emit
+    // Forced audit row for the sensitive action. Direct emit
     // (not broadcastSysEvent): a global-admin's CLS tenant is usually EMPTY
     // STRING (never null — their JWT carries `tenantId: ''`, see
     // `resolve-active-tenant.ts`) and the AuditLogProcessor fail-closes on a
     // falsy tenant, so the row is attributed to the RESOLVED impersonation
     // tenant (a persisted assignment, never caller-supplied free text).
-    // TASK-503 — `??` only falls back on null/undefined and let the real
+    // `??` only falls back on null/undefined and let the real
     // empty-string CLS value through, producing a job the processor rejected;
     // `||` catches the actual falsy shape.
     this.eventEmitter?.emit(SysEventType.ResourceViewed, {
@@ -281,7 +281,7 @@ export class AdminImpersonationController {
       },
     });
 
-    // TASK-331 F-9 — carry the target's primary department for the SDK
+    // Carry the target's primary department for the SDK
     // preference cascade (same as the legacy mint).
     const targetPrimaryDepartment = await this.userDepartmentService.findActiveDepartmentForUserInTenant(targetUser.id, resolvedTenantId);
 

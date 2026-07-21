@@ -7,7 +7,7 @@ import type {
 import { SEED_CUSTOMER_TENANT_IDS, SEED_DEPARTMENT_IDS } from './00-constants';
 
 /**
- * TASK-336 CC-03 — publication baseline.
+ * Publication baseline.
  *
  * Templates default to DRAFT in the DB, but the clinician resolution path
  * (`PromptManagementService.listAvailableForCaller`) filters TENANT_DEFAULT /
@@ -29,7 +29,7 @@ export const DEFAULT_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 export const SYSTEM_USER_ID = '60000000-0000-0000-0000-000000000000';
 
 /**
- * TASK-330 Phase 1 — structured SOAP output schema.
+ * Structured SOAP output schema.
  *
  * Seeded into the SOAP template's `metaData.promptConfig.outputSchema` so
  * `PromptAssemblyService.assemble()` emits a non-null `responseFormat`
@@ -252,7 +252,7 @@ export const DEFAULT_PROMPT_TEMPLATES = [
             department: { type: 'string', required: false },
             severity: { type: 'string', required: false },
         },
-        // TASK-330 Phase 1 — activate structured SOAP output (json_schema).
+        // Activate structured SOAP output (json_schema).
         metaData: { promptConfig: SOAP_PROMPT_CONFIG } as Prisma.InputJsonValue,
         currentVersionNumber: 3,
         departmentId: null,
@@ -2171,7 +2171,7 @@ export const DEFAULT_PROMPT_VERSIONS = DEFAULT_PROMPT_TEMPLATES.map((t, i) => ({
 }));
 
 // =============================================================================
-// CUSTOMER-TENANT PROMPT TEMPLATES (TASK-331 doc-02 F7)
+// CUSTOMER-TENANT PROMPT TEMPLATES
 //
 // The DEFAULT_PROMPT_TEMPLATES above all belong to the Global customer tenant
 // (DEFAULT_TENANT_ID). The ArcaAI customer tenant had
@@ -2286,7 +2286,7 @@ export const seedPromptTemplate = async (client: CorePrismaClient) => {
         const data = {
             ...rest,
             category: rest.category as PromptTemplateCategory,
-            // TASK-336 CC-03 — publish clinician-facing templates (keep DNA DRAFT).
+            // Publish clinician-facing templates (keep DNA DRAFT).
             status: resolvePromptStatus(rest.category),
             ...(variables != null ? { variables: variables as Prisma.InputJsonValue } : {}),
         };
@@ -2376,14 +2376,14 @@ export const seedPromptTemplate = async (client: CorePrismaClient) => {
 
     console.log(`Seeded ${DEFAULT_PROMPT_VERSIONS.length + extraVersions.length} prompt versions`);
 
-    // Customer-tenant templates + initial versions (TASK-331 doc-02 F7).
+    // Customer-tenant templates + initial versions.
     console.log('Seeding customer-tenant prompt templates...');
     for (const template of CUSTOMER_PROMPT_TEMPLATES) {
         const { variables, ...rest } = template;
         const data = {
             ...rest,
             category: rest.category as PromptTemplateCategory,
-            // TASK-336 CC-03 — publish clinician-facing templates (keep DNA DRAFT)
+            // Publish clinician-facing templates (keep DNA DRAFT)
             // so every customer tenant has >= 1 PUBLISHED template to resolve.
             status: resolvePromptStatus(rest.category),
             ...(variables != null ? { variables: variables as Prisma.InputJsonValue } : {}),

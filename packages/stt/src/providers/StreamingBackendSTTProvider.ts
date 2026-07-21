@@ -1,5 +1,5 @@
 /**
- * @arcaai/stt - StreamingBackendSTTProvider (TASK-298 D-4)
+ * @arcaai/stt - StreamingBackendSTTProvider
  *
  * Pipeline-aware remote STT provider that replaces the dead-code path
  * through the legacy `RemoteSTTProvider` (`BackendSTTProvider.ts`). This
@@ -8,10 +8,10 @@
  *
  *   - a `StreamingSessionLike` that owns the REST session lifecycle and
  *     exposes `createSession`, `getWebSocketUrl`, `closeSession`, and the
- *     `refreshTicket` callback used on reconnects (TASK-298 D-18).
+ *     `refreshTicket` callback used on reconnects.
  *   - a `StreamingWsClientLike` that owns the new STT-V2 WebSocket
  *     protocol (`{type:'audio', seq, data}`, ticket-authenticated, with
- *     `lastSeq` resumability — TASK-298 D-1 / D-15 / D-17 / D-18).
+ *     `lastSeq` resumability).
  *
  * Both interfaces are duck-typed on purpose: the concrete classes live in
  * `@arcaai/vox` (`packages/agentic-sdk-v2`), which already imports
@@ -60,7 +60,7 @@ export interface StreamingTranscriptPayload {
   inference?: number;
   seq?: number;
   /**
-   * Word-level timestamps from the backend transcript (TASK-372 D9, Option B).
+   * Word-level timestamps from the backend transcript.
    * Mirrors `WsTranscriptResult.wordTimestamps` from `@arcaai/vox`; carried
    * through to {@link TranscriptionResult.words} so the SDK store can expose
    * word timings to consumers.
@@ -76,7 +76,7 @@ export interface StreamingTranscriptPayload {
 export interface StreamingWsClientLike {
   /**
    * Connect to the WebSocket URL produced by `getWebSocketUrl`. The URL
-   * already contains the one-shot stream ticket (TASK-298 D-1).
+   * already contains the one-shot stream ticket.
    */
   connect(url: string): Promise<void>;
   /** Reports the most recent connection state. */
@@ -84,7 +84,7 @@ export interface StreamingWsClientLike {
   /**
    * Send a binary PCM frame (Int16 LE, mono). Accepts a typed-array view.
    * Returns `false` when the client dropped the frame at its bufferedAmount
-   * watermark (TASK-298 D-15 backpressure), `true` when it was sent.
+   * watermark (backpressure), `true` when it was sent.
    */
   sendAudioFrame(data: ArrayBuffer | ArrayBufferView): boolean;
   /** Tell the server we have finished streaming audio for this turn. */
@@ -112,7 +112,7 @@ export interface StreamingSessionLike {
   }>;
   getWebSocketUrl(token?: string): string | null;
   closeSession(): Promise<void>;
-  /** TASK-298 D-18 — refresh the one-shot stream ticket before reconnect. */
+  /** Refresh the one-shot stream ticket before reconnect. */
   refreshTicket?(): Promise<string>;
   getSessionId(): string | null;
 }
@@ -136,7 +136,7 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
    */
   private droppedFrameCount = 0;
   /**
-   * TASK-464 — PUSH channel for backpressure drops. `getDroppedFrameCount()` is
+   * PUSH channel for backpressure drops. `getDroppedFrameCount()` is
    * a passive getter that nothing polls on the SDK path, so the loss dead-ends.
    * This callback fires once per dropped frame (with the running total) so the
    * STT processor / vox pipeline can propagate a degraded signal to the store.
@@ -219,15 +219,15 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     const resampled = prepareFloat32ForWhisper(audio, sampleRate);
     const int16 = float32ToInt16(resampled);
     this.totalAudioProcessed += resampled.length / 16000;
-    // TASK-351 P0-5 — forward the view directly; `WebSocket.send` accepts
-    // typed arrays natively, so the previous ArrayBuffer.slice copy is gone.
-    // C6-01 — honor the backpressure return: a dropped frame is real audio lost
+    // Forward the view directly; `WebSocket.send` accepts typed arrays
+    // natively, so the previous ArrayBuffer.slice copy is gone.
+    // Honor the backpressure return: a dropped frame is real audio lost
     // from the durable transcript, so count it instead of silently discarding it.
     const sent = this.wsClient.sendAudioFrame(int16);
     if (sent === false) {
       this.droppedFrameCount++;
-      // TASK-464 — push the drop so it reaches the store/hook/UI instead of
-      // dead-ending in the unpolled `droppedFrameCount` getter.
+      // Push the drop so it reaches the store/hook/UI instead of dead-ending
+      // in the unpolled `droppedFrameCount` getter.
       this.onDropCallback?.(this.droppedFrameCount);
     }
   }
@@ -256,8 +256,8 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     return {
       ...super.getStats(),
       bufferSizeS: 0,
-      // TASK-464 — surface the drop count so a poller (STTProcessor.getStats)
-      // can read it alongside the push channel below.
+      // Surface the drop count so a poller (STTProcessor.getStats) can read
+      // it alongside the push channel below.
       droppedFrames: this.droppedFrameCount,
     };
   }
@@ -277,8 +277,8 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
   }
 
   /**
-   * TASK-464 — register a callback fired once per dropped frame (with the
-   * running total). This is the PUSH complement to {@link getDroppedFrameCount}:
+   * Register a callback fired once per dropped frame (with the running
+   * total). This is the PUSH complement to {@link getDroppedFrameCount}:
    * nothing polls the getter on the SDK path, so the count must be pushed up to
    * the store/hook/UI. Single-slot (like `onTranscription`); re-registering
    * replaces the callback.
@@ -300,8 +300,8 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     if (payload.speakerConfidence !== undefined) {
       result.confidence = payload.speakerConfidence;
     }
-    // TASK-372 D9 (Option B) — preserve word-level timings so they survive into
-    // the SDK store (`audio.transcriptSegments[].words`) instead of being dropped.
+    // Preserve word-level timings so they survive into the SDK store
+    // (`audio.transcriptSegments[].words`) instead of being dropped.
     if (payload.wordTimestamps && payload.wordTimestamps.length > 0) {
       result.words = payload.wordTimestamps;
     }

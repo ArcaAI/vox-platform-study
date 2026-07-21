@@ -10,10 +10,10 @@ import * as Models from './';
 export class DnaWritingStyleVersion extends BaseTenantDataModel {
   public dnaReportId: string;
   public versionNumber: number;
-  // TASK-369 Phase 6 — plaintext reportData / styleText columns DROPPED;
+  // Plaintext reportData / styleText columns DROPPED;
   // persistence is ciphertext-only. The entity keeps these as transient fields
   // repopulated by repository decrypt-on-read.
-  // TASK-369 Phase 3C — Vault-Transit ciphertext columns + shared key version.
+  // Vault-Transit ciphertext columns + shared key version.
   public encryptedReportData: Uint8Array | null;
   public encryptedStyleText: Uint8Array | null;
   public keyVersion: number | null;

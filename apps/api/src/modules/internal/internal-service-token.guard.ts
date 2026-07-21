@@ -3,7 +3,7 @@ import { CanActivate, ExecutionContext, Inject, Injectable, Logger, Optional, Un
 import { timingSafeEqual } from 'node:crypto';
 
 /**
- * InternalServiceTokenGuard (TASK-525 §3.2).
+ * InternalServiceTokenGuard.
  *
  * Generalizes `HarnessServiceTokenGuard` from one hardcoded secret to a
  * per-service map: the presented token is validated against the secret belonging

@@ -43,7 +43,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    // TASK-281 — hybrid_wrapper: a tiny ESM wrapper around `http-server`'s
+    // `e2e/serve.mjs` is a tiny ESM wrapper around `http-server`'s
     // programmatic API that injects COOP/COEP headers (required for
     // SharedArrayBuffer / worker-mode) and serves the package root so the
     // fixture's `/dist/...` bundle imports resolve.

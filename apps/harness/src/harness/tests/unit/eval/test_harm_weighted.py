@@ -1,6 +1,6 @@
-"""Clinical-significance-weighted error rate tests (TASK-482 E3, AC-2).
+"""Clinical-significance-weighted error rate tests.
 
-RED-first. The harm-weighted error rate encodes the npj framing that a *raw*
+The harm-weighted error rate encodes the npj framing that a *raw*
 error rate is not a safety metric: `Σ(error × severity_weight) / Σ(weightable)`.
 A major clinical error (dropped medication/dose/diagnosis) must outweigh a minor
 narrative/formatting one, so two error sets with the SAME raw count but different

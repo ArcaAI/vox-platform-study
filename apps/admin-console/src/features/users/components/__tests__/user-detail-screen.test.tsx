@@ -181,7 +181,7 @@ function stubDetailFetch(overrides?: (url: string, init?: RequestInit) => Respon
         if (method === 'GET' && url === '/api/hope/admin/users/u-1/profile') return Response.json(PROFILE);
         if (method === 'GET' && url === '/api/hope/admin/users/u-1/voice-profiles') return Response.json(VOICE_PROFILES);
         if (method === 'GET' && url === '/api/hope/admin/users/u-1/api-keys') return Response.json({ data: [API_KEY], count: 1, limit: 25, page: 0 });
-        // Shared id -> name catalogs (TASK-424): tenants (Paginated), rbac roles ({data,total,page,pageSize}), departments (plain array).
+        // Shared id -> name catalogs: tenants (Paginated), rbac roles ({data,total,page,pageSize}), departments (plain array).
         if (method === 'GET' && url.startsWith('/api/hope/admin/tenants')) {
             return Response.json({
                 data: [
@@ -254,7 +254,7 @@ describe('UserDetailScreen', () => {
 
         expect(await screen.findByRole('heading', { level: 1, name: 'mia.okafor' })).toBeDefined();
         expect(screen.getByText('u-1')).toBeDefined();
-        // Status is shown in the header meta AND the ScreenTemplate footer (TASK-427).
+        // Status is shown in the header meta AND the ScreenTemplate footer.
         expect(screen.getAllByText('Active').length).toBeGreaterThan(0);
         for (const tab of ['Roles', 'Departments', 'Settings', 'Profile', 'Security']) {
             expect(screen.getByRole('tab', { name: tab })).toBeDefined();
@@ -395,7 +395,7 @@ describe('UserDetailScreen', () => {
         expect(screen.getByText('d-cardio')).toBeDefined();
     });
 
-    // TASK-430 — cross-tenant memberships are attributed to their tenant.
+    // Cross-tenant memberships are attributed to their tenant.
     it('renders a Tenant column on the departments tab with the catalog name', async () => {
         stubDetailFetch();
         renderWithProviders(<UserDetailScreen id="u-1" />, { searchParams: '?tab=departments' });

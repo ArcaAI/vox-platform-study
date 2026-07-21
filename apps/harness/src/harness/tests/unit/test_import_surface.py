@@ -1,4 +1,4 @@
-"""RED-first import-surface test Phase 0 item 0.3 (D1).
+"""Import-surface test Phase 0 item 0.3 (D1).
 
 The production harness image installs the ``rag``/``guardrails``/``atomic-fact``
 extras (0.1), but nothing should require them just to *import* the app or the

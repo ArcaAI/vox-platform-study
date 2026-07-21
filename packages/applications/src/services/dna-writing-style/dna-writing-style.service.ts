@@ -30,7 +30,7 @@ import {
   UpdateDnaSettingsRequest,
 } from './dto';
 import { DnaWritingStyleDtoMapper } from './dna-writing-style.dto.mapper';
-// TASK-356 Phase 6 (S3) — the per-doctor DNA toggle is stored on the Phase-5
+// The per-doctor DNA toggle is stored on the Phase-5
 // DOCTOR-scope `PipelinePolicy.dnaStyleEnabled` column; this service is the
 // doctor self-service surface that writes/reads it via PipelinePolicyService.
 import { PipelinePolicyService } from '../pipeline-policy';
@@ -45,7 +45,7 @@ export interface GenerateDnaReportJobPayload {
   tenantId: string;
   userId: string;
   textSamples?: string[];
-  // TASK-329 P5 — historical source IDs the generation was seeded from.
+  // Historical source IDs the generation was seeded from.
   sourceIds?: string[];
 }
 
@@ -60,31 +60,31 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   constructor(
     private readonly dnaReportRepository: DnaWritingStyleReportRepository,
     private readonly dnaVersionRepository: DnaWritingStyleVersionRepository,
-    // TASK-328 A5 — source for the aggregate dashboard's recent-activity feed.
+    // Source for the aggregate dashboard's recent-activity feed.
     private readonly dnaUsageRecordRepository: DnaUsageRecordRepository,
-    // TASK-305 D.5.3 (audit C-9) — needed by `assertUserBelongsToTenant` to
+    // (audit C-9) — needed by `assertUserBelongsToTenant` to
     // verify a `doctorId` is a member of the caller's tenant before any
     // DNA-style operation runs against PHI-derived artifacts.
     private readonly userRoleAssignmentRepository: UserRoleAssignmentRepository,
-    // TASK-305 Phase F — membership is role + department; the guard needs the
+    // Membership is role + department; the guard needs the
     // department join table and the User table (service-account exemption).
     private readonly userDepartmentRepository: UserDepartmentRepository,
     private readonly userRepository: UserRepository,
     @InjectQueue(JobQueue.GenerateDnaReport) private readonly dnaQueue: Queue,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // CC-01 — `baseClient.$transaction(callback)` is the canonical Prisma-7
-    // atomic idiom in this codebase (see TenantService TASK-302 D.4 /
+    // `baseClient.$transaction(callback)` is the canonical Prisma-7
+    // atomic idiom in this codebase (see TenantService /
     // PromptManagementService). Required so the version-history insert and the
     // OCC compare-and-set commit (or roll back) together.
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
-    // TASK-356 Phase 6 (S3) — DOCTOR-scope DNA toggle write/read. Optional +
+    // DOCTOR-scope DNA toggle write/read. Optional +
     // trailing so existing positional unit fixtures keep their arity; production
     // DI supplies it via PipelinePolicyServiceModule.
     @Optional() @Inject(PipelinePolicyService) private readonly pipelinePolicyService?: PipelinePolicyService,
-    // TASK-369 Phase 3C — optional + trailing (same arity rationale). When wired,
+    // Optional + trailing (same arity rationale). When wired,
     // manual report edits encrypt reportData/styleText into the ciphertext
-    // columns before persisting; left unpersisted when unset (Phase 6 dropped plaintext).
+    // columns before persisting; left unpersisted when unset (there is no plaintext column).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super(eventEmitter, clsService, ResourceType.DnaWritingStyleReport);
@@ -93,7 +93,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   private readonly logger = new Logger(DnaWritingStyleService.name);
 
   /**
-   * TASK-369 — encrypt PHI on write through the shared env-gated guard: a soft
+   * Encrypt PHI on write through the shared env-gated guard: a soft
    * no-op in dev/test (SECRETS_PROVIDER!=vault) but FAIL-CLOSED (throws) in
    * staging/prod (SECRETS_PROVIDER=vault) instead of persisting plaintext-only.
    */
@@ -102,7 +102,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   }
 
   /**
-   * TASK-305 D.5.3 (audit C-9) — Queue a DNA-style generation job for a
+   * (audit C-9) — Queue a DNA-style generation job for a
    * doctor. The doctor must be a role-assigned member of the caller's
    * tenant; GLOBAL_ADMIN does NOT bypass this guard because writing-style
    * artifacts are derived from PHI (transcripts, prior notes), and exposing
@@ -131,7 +131,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       tenantId,
       userId,
       textSamples: dto.textSamples,
-      // TASK-329 P5 — only carry sourceIds when the caller seeded from history;
+      // Only carry sourceIds when the caller seeded from history;
       // keeps the legacy payload shape unchanged for plain generations.
       ...(dto.sourceIds && dto.sourceIds.length > 0 ? { sourceIds: dto.sourceIds } : {}),
     };
@@ -140,7 +140,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       jobId,
     });
 
-    // TASK-326 X9 — audit the generation REQUEST. The report row itself is
+    // Audit the generation REQUEST. The report row itself is
     // created asynchronously by the worker, but the privileged act of triggering
     // DNA (PHI-derived) generation for a doctor must appear on the audit trail.
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
@@ -152,7 +152,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   }
 
   /**
-   * TASK-305 D.5.3 (audit C-9) — `doctorId` must belong to the caller's
+   * (audit C-9) — `doctorId` must belong to the caller's
    * tenant; we surface a `NotFoundException` (no existence leak) for any
    * cross-tenant lookup attempt before the repository is consulted.
    */
@@ -171,13 +171,13 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
 
     const report = await this.dnaReportRepository.findLatestForDoctor(doctorId);
     if (!report) return null;
-    // TASK-424 — resolve the doctor's username server-side for display.
+    // Resolve the doctor's username server-side for display.
     const doctorUsername = await this.resolveDoctorUsername(report.doctorId ?? doctorId);
     return DnaWritingStyleDtoMapper.toReportResponse(report, doctorUsername);
   }
 
   /**
-   * TASK-424 — resolve a single doctor's `User.username` for display. `User`
+   * Resolve a single doctor's `User.username` for display. `User`
    * is a global (non-tenant-scoped) model, so this read is safe for tenant
    * admins. `userRepository.findById` THROWS `DataNotFoundException` when the
    * user is missing (deleted id), so we swallow it and leave the label
@@ -195,7 +195,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   }
 
   /**
-   * TASK-424 — batch-resolve a page's distinct `doctorId`s to a
+   * Batch-resolve a page's distinct `doctorId`s to a
    * `id → username` map in ONE query (no N+1), mirroring
    * `AuditLogService.resolveResponsibleUsers`. Returns an empty map (and
    * issues NO query) when there are no ids to resolve.
@@ -218,7 +218,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   }
 
   /**
-   * TASK-356 Phase 6 (S3) — READ the caller doctor's DNA on/off settings. The
+   * READ the caller doctor's DNA on/off settings. The
    * effective decision is `tenant AND doctor`, resolved through the Phase-5
    * pipeline-policy cascade; the response also carries the tenant gate (so the
    * UI can disable + explain the switch when the tenant disabled DNA) and the
@@ -235,7 +235,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   }
 
   /**
-   * TASK-356 Phase 6 (S3) — WRITE the caller doctor's DNA on/off toggle onto the
+   * WRITE the caller doctor's DNA on/off toggle onto the
    * DOCTOR-scope `PipelinePolicy.dnaStyleEnabled` column (via
    * {@link PipelinePolicyService}, which keeps the OCC + WORM contract). A null
    * `enabled` clears the override (revert to the implicit opt-in default). A
@@ -280,7 +280,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     const report = await this.dnaReportRepository.findById(reportId);
     if (!report) throw new NotFoundException(`DNA report ${reportId} not found`);
 
-    // TASK-305 D.5.3 (audit C-9) — PHI guard. Even an admin caller using
+    // (audit C-9) — PHI guard. Even an admin caller using
     // `bypassOwnershipCheck` (the per-doctor ownership escape) cannot reach
     // across tenants, and even GLOBAL_ADMIN cannot — the writing style
     // captures the doctor's voice/style derived from PHI.
@@ -319,7 +319,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       if (dto.styleText !== undefined) report.styleText = dto.styleText;
       report.currentVersionNumber = nextVersionNumber;
 
-      // TASK-369 Phase 3C — re-encrypt the new content into both the version
+      // Re-encrypt the new content into both the version
       // snapshot and the report row before they are persisted in the tx below.
       // Only runs when content actually changed (status-only edits skip it).
       await this.encryptBestEffort('DnaWritingStyleVersion', () =>
@@ -334,9 +334,9 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       await this.updateEntity(report, { resourceStatus: dto.resourceStatus });
     }
 
-    // CC-01 — the version-history insert and the OCC Compare-And-Set now run
+    // The version-history insert and the OCC Compare-And-Set now run
     // inside a SINGLE interactive transaction (canonical Prisma-7 idiom, see
-    // TenantService TASK-302 D.4 / PromptManagementService). Previously these
+    // TenantService / PromptManagementService). Previously these
     // were two independent awaits, so a stale `If-Match` that (correctly)
     // rejected the CAS with 412 still left the freshly-inserted version row
     // committed — a live-reproduced orphan. Running both writes in one tx means
@@ -344,7 +344,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     // inside the callback when the CAS matches 0 rows — aborts the transaction
     // and rolls the version row back, so NO orphan persists.
     //
-    // TASK-326 X7 / D-2 — the CAS guards the report row's `_version` OCC column.
+    // The CAS guards the report row's `_version` OCC column.
     // `dto.expectedVersion` (folded from the admin route's required `If-Match`
     // header) is the CAS predicate input; it is DISTINCT from the DNA domain's
     // `currentVersionNumber` / `DnaVersion` history bumped above.
@@ -364,7 +364,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   }
 
   /**
-   * TASK-329 P5 — Promote a historical report to the caller's active/default
+   * Promote a historical report to the caller's active/default
    * (`isLatest`) report. The previous default is demoted so the doctor always
    * has exactly one latest report. Tenant scope (PHI guard) + owner scope are
    * both enforced; even an admin cannot set another doctor's default here (the
@@ -404,7 +404,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   }
 
   /**
-   * TASK-305 D.5.3 (audit C-9) — load the parent report first, assert it
+   * (audit C-9) — load the parent report first, assert it
    * belongs to the caller's tenant, and only then enumerate its versions.
    * Without this, a Tenant-A admin could enumerate versions of a Tenant-B
    * report by passing the foreign reportId.
@@ -424,7 +424,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   async getVersionsForDoctor(reportId: string, doctorId: string): Promise<DnaVersionResponse[]> {
     const report = await this.dnaReportRepository.findById(reportId);
     if (!report) throw new NotFoundException(`DNA report ${reportId} not found`);
-    // TASK-305 D.5.3 — tenant scope is the structural guard. The doctorId
+    // Tenant scope is the structural guard. The doctorId
     // ownership check below is the per-user escalation guard preserved from
     // the existing flow.
     this.assertReportInScope(report, reportId);
@@ -446,7 +446,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   }
 
   /**
-   * TASK-305 D.5.3 (audit C-9) — Assert the loaded report belongs to the
+   * (audit C-9) — Assert the loaded report belongs to the
    * caller's tenant. Throws `NotFoundException` (not `Forbidden`) so the API
    * never reveals that a record exists for another tenant. Note: writing
    * style is PHI-derived, so GLOBAL_ADMIN does NOT bypass this check.
@@ -478,7 +478,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   }
 
   /**
-   * TASK-331 doc-02 F6 — repository-level paginated admin list.
+   * Repository-level paginated admin list.
    *
    * Pushes pagination down to the repository (`findPaginated` → `db.findMany` +
    * `db.count`) instead of materializing the full tenant result set and slicing
@@ -499,7 +499,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     if (filters?.doctorId) where.doctorId = filters.doctorId;
 
     const { data, count } = await this.dnaReportRepository.findPaginated(where, page, limit);
-    // TASK-424 — batch-resolve the page's distinct doctors to usernames in a
+    // Batch-resolve the page's distinct doctors to usernames in a
     // single query (skipped entirely when the page is empty).
     const usernameById = await this.resolveDoctorUsernames(data.map((report) => report.doctorId));
     return {
@@ -513,7 +513,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   }
 
   /**
-   * TASK-328 A5 — Aggregate DNA dashboard.
+   * Aggregate DNA dashboard.
    *
    * Tenant scoping mirrors `listReports`: a global admin
    * (GLOBAL_ADMIN) may target a specific tenant via `tenantId`, or
@@ -548,7 +548,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   }
 
   /**
-   * CC-02 (TASK-336) — resolve the tenant the admin *list* runs against.
+   * CC-02 — resolve the tenant the admin *list* runs against.
    *
    * Mirrors `resolveDashboardScope`, EXCEPT a global admin who supplied no
    * explicit `tenantId` falls back to their ACTIVE tenant (the `X-Tenant-Id`

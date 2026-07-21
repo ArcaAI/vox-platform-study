@@ -10,7 +10,7 @@ import {
 } from './shared';
 
 /**
- * NLP task-model catalog (TASK-506 §4.3) — the two `built-in`
+ * NLP task-model catalog — the two `built-in`
  * (transformers-library) models the NLP service serves. Registry-backed
  * defaults for the `nlp.ner` / `nlp.classification` AiTaskDefault keys.
  */

@@ -69,14 +69,14 @@ const SESSION = {
     workingTenantName: 'Sunrise Medical Group' as string | null,
     impersonatingUserId: null,
     impersonatingUsername: null,
-    // BUG-005 — WorkingTenantGate now reads the effective identity; this
+    // WorkingTenantGate now reads the effective identity; this
     // fixture never impersonates, so it mirrors the operator fields.
     effectiveUser: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['GLOBAL_ADMIN'], tenantId: null, departmentId: null },
     effectiveIsElevated: true,
     effectiveTenantId: 'tnt-1' as string | null,
 };
 
-// TASK-532 A-2d — a non-elevated (tenant admin) session. `harnessEnabled` and
+// A non-elevated (tenant admin) session. `harnessEnabled` and
 // `autoNerEnabled` became global-admin-only server-side, so this session must
 // see them read-only.
 const TENANT_ADMIN_SESSION = {
@@ -267,7 +267,7 @@ describe('PipelinePolicyScreen', () => {
     });
 
     /**
-     * TASK-532 A-2d (E3-L2) — the two governed toggles are global-admin-only in
+     * The two governed toggles are global-admin-only in
      * `PipelinePolicyService.upsertRow` (descriptor `globalOnly`). A tenant
      * admin sees them, and their pinned values, but cannot edit them.
      */

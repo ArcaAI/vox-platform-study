@@ -4,7 +4,7 @@
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 
-// TASK-498 — verified email-domain → provider allowlist for home-realm
+// Verified email-domain → provider allowlist for home-realm
 // discovery (HRD) at login. `domain` is globally unique at the schema level
 // (one domain routes to exactly one provider). DNS-TXT domain verification is
 // deferred/optional in v1.

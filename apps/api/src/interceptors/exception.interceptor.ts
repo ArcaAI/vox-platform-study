@@ -50,12 +50,11 @@ export class ExceptionInterceptor implements NestInterceptor {
         };
 
         if (err instanceof PrismaClientKnownRequestError) {
-          // TASK-307 W5.6 (AC-20, audit D-6): the full Prisma error
-          // detail (code + meta + raw message) stays in the server-side
-          // log so SREs can debug, but the public response body collapses
-          // to {statusCode, error, correlationId} only — Prisma's meta
-          // and raw message leak column names, constraint names, and row
-          // ids.
+          // The full Prisma error detail (code + meta + raw message) stays
+          // in the server-side log so SREs can debug, but the public
+          // response body collapses to {statusCode, error, correlationId}
+          // only — Prisma's meta and raw message leak column names,
+          // constraint names, and row ids.
           this.logger.error({
             message: 'Prisma database error',
             ...baseContext,
@@ -65,17 +64,15 @@ export class ExceptionInterceptor implements NestInterceptor {
             stack: err.stack,
           });
 
-          // TASK-310 W7.A.14 (AC-1): map Prisma codes to RFC-correct HTTP
-          // statuses at the interceptor (the registered handler — the
-          // `PrismaClientExceptionFilter` is dead code because it isn't
-          // wired as APP_FILTER). Pre-W7.A.14 every code collapsed to 400
-          // / 'Bad Request'; clients couldn't distinguish a duplicate
-          // (409) from a missing row (404) from a generic validation
-          // failure (400). The `error` labels mirror the filter's labels
-          // so any future filter-revival doesn't introduce a body-shape
-          // skew. Sanitisation is preserved: only the label changes per
-          // code; `err.meta` and raw `err.message` never reach the
-          // client.
+          // Map Prisma codes to RFC-correct HTTP statuses at the interceptor
+          // (the registered handler — the `PrismaClientExceptionFilter` is
+          // dead code because it isn't wired as APP_FILTER), so clients can
+          // distinguish a duplicate (409) from a missing row (404) from a
+          // generic validation failure (400). The `error` labels mirror the
+          // filter's labels so any future filter-revival doesn't introduce a
+          // body-shape skew. Sanitisation is preserved: only the label
+          // changes per code; `err.meta` and raw `err.message` never reach
+          // the client.
           const { status, label } = mapPrismaCodeToHttp(err.code);
           return throwError(
             () =>
@@ -98,10 +95,7 @@ export class ExceptionInterceptor implements NestInterceptor {
             stack: err.stack,
           });
 
-          // TASK-307 W5.6 — same sanitisation: no Prisma message in the
-          // public body. The pre-W5.6 body shape also already omitted
-          // `meta`, so this only flips `status` → `statusCode` and drops
-          // the raw validation message string.
+          // Same sanitisation: no Prisma message in the public body.
           return throwError(
             () =>
               new HttpException(
@@ -140,15 +134,13 @@ export class ExceptionInterceptor implements NestInterceptor {
           }
         }
 
-        // TASK-302 Stream D Phase C (C.5) — Compare-And-Set conflicts map to
-        // RFC 7232 `412 Precondition Failed`. This branch MUST run before the
-        // generic `BaseException` branch below because OCC extends BaseException
-        // and the generic branch would otherwise misclassify it as a 500.
-        // The body shape is `err.toJSON()`, which carries `code:
-        // 'PERSISTENCE.CONCURRENCY_CONFLICT'` and
+        // Compare-And-Set conflicts map to RFC 7232 `412 Precondition Failed`.
+        // This branch MUST run before the generic `BaseException` branch below
+        // because OCC extends BaseException and the generic branch would
+        // otherwise misclassify it as a 500. The body shape is `err.toJSON()`,
+        // which carries `code: 'PERSISTENCE.CONCURRENCY_CONFLICT'` and
         // `metadata: { expectedVersion, currentVersion }` — both consumed by
-        // the SDK's conflict handler (Phase D.4) and the UI's conflict modal
-        // (Phase D.5).
+        // the SDK's conflict handler and the UI's conflict modal.
         if (err instanceof OptimisticConcurrencyException) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const metadata = err.metadata as { expectedVersion?: number; currentVersion?: number } | undefined;
@@ -162,8 +154,8 @@ export class ExceptionInterceptor implements NestInterceptor {
             currentVersion: metadata?.currentVersion,
           });
 
-          // TASK-302 Stream D Phase E.6 — increment the OCC conflict counter
-          // BEFORE rethrowing as 412. Model + route labels are bounded
+          // Increment the OCC conflict counter BEFORE rethrowing as 412.
+          // Model + route labels are bounded
           // (route comes from the templated Express path) so cardinality
           // stays cheap. Failure to record the metric MUST NOT swallow the
           // 412 — we wrap in try/catch and only debug-log a metric failure.
@@ -179,8 +171,8 @@ export class ExceptionInterceptor implements NestInterceptor {
           return throwError(() => new HttpException(err.toJSON(), HttpStatus.PRECONDITION_FAILED));
         }
 
-        // TASK-306 P3.3 / AC-12 / audit M-8 — `DataNotFoundException`
-        // (thrown by `Repository<T>.findById` and friends) MUST pass
+        // `DataNotFoundException` (thrown by `Repository<T>.findById` and
+        // friends) MUST pass
         // through unwrapped so the global `DataNotFoundExceptionFilter`
         // (registered as `APP_FILTER` in `app.module.ts`) can map it to
         // a generic `404 { message: "Resource not found" }`. If we
@@ -200,10 +192,10 @@ export class ExceptionInterceptor implements NestInterceptor {
           return throwError(() => err);
         }
 
-        // TASK-392 (Q10, Phase 4) — entitlements quota blocks map to precise
-        // client statuses instead of the generic 500 the `BaseException` branch
-        // below would produce (QuotaExceededException extends BaseException, so
-        // this MUST run first — same ordering rationale as the OCC branch). The
+        // Entitlements quota blocks map to precise client statuses instead of
+        // the generic 500 the `BaseException` branch below would produce
+        // (QuotaExceededException extends BaseException, so this MUST run
+        // first — same ordering rationale as the OCC branch). The
         // body is `err.toJSON()`, carrying `code: 'DOMAIN.QUOTA_EXCEEDED'` +
         // `metadata: { capability, limit, used, requested, tenantId }` so the SDK
         // / admin console can point at the exact capability that blocked.
@@ -220,7 +212,7 @@ export class ExceptionInterceptor implements NestInterceptor {
           return throwError(() => new HttpException(err.toJSON(), status));
         }
 
-        // TASK-534 e2e G4 — services signal invalid input with
+        // Services signal invalid input with
         // `ArgumentInvalidException` (the rule-04 house pattern: unwritable
         // tiers, type mismatches, no-op updates, bad slugs, …). It extends
         // BaseException, so without this branch it fell through to the generic
@@ -279,7 +271,7 @@ export class ExceptionInterceptor implements NestInterceptor {
   }
 }
 
-// TASK-310 W7.A.14 (AC-1) — Prisma error code → HTTP status mapping.
+// Prisma error code → HTTP status mapping.
 //
 // Mirrors the labels in `apps/api/src/filters/prisma.filter.ts` so the
 // dead filter and the live interceptor produce identical body shapes —
@@ -287,7 +279,7 @@ export class ExceptionInterceptor implements NestInterceptor {
 // removed), the response contract doesn't shift. Any code outside the
 // table below falls back to 400 / 'Bad Request' to preserve the legacy
 // generic-default behaviour.
-// TASK-392 (Q10) — entitlements capability → HTTP status.
+// Entitlements capability → HTTP status.
 //
 //   - rolling-monthly METER caps (Q5)         → 429 Too Many Requests
 //   - concurrency cap (simultaneous sessions) → 429 Too Many Requests
@@ -302,9 +294,8 @@ const QUOTA_RATE_CAPABILITIES = new Set([
   'monthlyConsultations',
   'monthlyTranscriptionMinutes',
   'monthlySummaries',
-  // TASK-392 (concurrency) — a simultaneous-session cap is retry-later, not a
-  // permanent conflict; 429 lets the caller back off and retry once a session
-  // frees up.
+  // A simultaneous-session cap is retry-later, not a permanent conflict; 429
+  // lets the caller back off and retry once a session frees up.
   'maxConcurrentSessions',
 ]);
 

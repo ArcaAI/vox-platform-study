@@ -1,4 +1,4 @@
-"""faster-whisper (CTranslate2) model loader — TASK-351 P1-2.
+"""faster-whisper (CTranslate2) model loader.
 
 Loads a CT2-converted Whisper model via ``faster_whisper.WhisperModel`` and
 pre-builds a ``BatchedInferencePipeline`` (stored in
@@ -56,7 +56,7 @@ class FasterWhisperLoader(BaseModelLoader):
                 compute_type = self._profile_compute_type()
             compute_type = resolve_ct2_compute_type(compute_type, device)
 
-            # TASK-527 — one resolver contract: local_path (operator override)
+            # One resolver contract: local_path (operator override)
             # first, then scheme dispatch on source_uri (hf: / file:// / s3://).
             # faster-whisper also accepts a bare HF id, so a hub source_uri is
             # handed through unchanged when the resolver reports no local dir.

@@ -1,5 +1,5 @@
 /**
- * TASK-386 unit #1 — PlatformMetricsService.getPlatformMetrics.
+ * PlatformMetricsService.getPlatformMetrics.
  *
  * Per the APPROVED Prometheus-source decision (#1), the rate/error/p95 maths are
  * performed by PromQL (rate()/histogram_quantile()/clamp_min) — the service
@@ -59,7 +59,7 @@ describe('PlatformMetricsService.getPlatformMetrics (#1)', () => {
     prometheus = makePrometheus();
     sockets = { getAggregateCount: vi.fn(async () => 7), publishLocalCount: vi.fn() };
     cache = makeCache();
-    // TASK-414 — repository args (never exercised by these Prometheus-focused
+    // Repository args (never exercised by these Prometheus-focused
     // specs; getConsumptionRollup has its own suite with real repo stubs).
     service = new PlatformMetricsService(prometheus as any, sockets as any, cache as any, {} as any, {} as any, {} as any, {} as any, {} as any);
   });

@@ -1,6 +1,6 @@
 /**
- * Tenant-scoped external OIDC identity provider administration
- * (TASK-498 P4). All paths are gateway-relative under the /api/hope BFF
+ * Tenant-scoped external OIDC identity provider administration.
+ * All paths are gateway-relative under the /api/hope BFF
  * proxy. `update`/`testConnection` are If-Match OCC writes (mirrors
  * `TenantIdpConfigAdminController`); `syncDirectory` is fire-and-forget
  * (202 + jobId — see the module doc on `useSyncDirectory` for why there's no

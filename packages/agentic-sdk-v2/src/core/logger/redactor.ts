@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - PHI Redactor (TASK-266 W0-2)
+ * @arcaai/vox - PHI Redactor
  *
  * Defense-in-depth PHI scrubbing for log payloads. `redactPHI()` recursively
  * walks any structured value, returns a deep clone with values for known PHI
@@ -29,13 +29,13 @@
  * Canonical list of PHI key names. Lookup is case-sensitive (matches the
  * existing camelCase convention across SDK call sites).
  *
- * Drawn from the TASK-266 brief plus a few obvious extensions
+ * Drawn from the PHI-redaction brief plus a few obvious extensions
  * (`patientName`, `doctorName`, `mrn`, `ssn`, `password`, tokens) that
  * `SDKLogger.DEFAULT_PHI_REDACT_FIELDS` already covered. The merged set
  * preserves backwards compatibility with the pre-W0-2 redaction surface.
  */
 export const PHI_KEYS: readonly string[] = Object.freeze([
-  // TASK-266 W0-2 explicit list
+  // Explicit list
   'patientId',
   'doctorId',
   'consultationId',

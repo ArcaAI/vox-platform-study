@@ -1,13 +1,13 @@
 /**
- * Seed-Policy Regression Test — TASK-259 (re-pointed to GLOBAL_ADMIN by TASK-417)
+ * Seed-Policy Regression Test (re-pointed to GLOBAL_ADMIN).
  *
- * Locks in the invariant flagged in TASK-258 Note (3): the seeded elevated
+ * Locks in the invariant that the seeded elevated
  * role (`GLOBAL_ADMIN` — the former `SUPER_ADMIN` was consolidated into it)
  * must resolve to a CASL ability that grants `manage:Tenant`, otherwise
- * `MyTenantController.create/update/delete` (guarded after TASK-258) would 403
+ * `MyTenantController.create/update/delete` would 403
  * its own global admins.
  *
- * Strategy — "Option B" from the TASK-259 plan: the test feeds the actual
+ * Strategy: the test feeds the actual
  * seed data shapes (`DEFAULT_POLICIES` from `01-policy.ts`, role/policy linkage
  * from `03-role.ts`) through the production `PolicyEngine.buildAbility` path
  * with the Prisma client mocked. This exercises the engine's loader code, so a
@@ -44,7 +44,7 @@ const mockPrismaClient = {
   },
 };
 
-// TASK-305 B.1 — `PolicyEngine.loadUserPolicies` reads the UNSCOPED platform-admin
+// `PolicyEngine.loadUserPolicies` reads the UNSCOPED platform-admin
 // client (`baseClient`) for the cross-tenant RBAC control-plane query. Mock both
 // `client` and `baseClient` (same fake client) so the loader resolves.
 const mockDatabaseService = {
@@ -142,7 +142,7 @@ describe('Tenant-ability regression — seeded GLOBAL_ADMIN policy linkage', () 
       );
     });
 
-    // TASK-331 doc-04 F1 — the tenant-admin nav↔backend gap is closed by
+    // The tenant-admin nav↔backend gap is closed by
     // widening `tenant-full-access` with tenant-scoped manage rules for
     // Departments and ASR pipelines. Lock the seed shape so a future edit
     // that drops either rule fails here before reaching production.
@@ -265,7 +265,7 @@ describe('Tenant-ability regression — seeded GLOBAL_ADMIN policy linkage', () 
   });
 
   describe('TENANT_ADMIN via PolicyEngine.buildAbility', () => {
-    // TASK-331 doc-04 F1 + Q2 — a seeded TENANT_ADMIN must be able to
+    // A seeded TENANT_ADMIN must be able to
     // self-serve their own departments, ASR pipelines, storage, and their
     // own tenant row (read/update), so the admin nav stops linking to
     // backend-403 pages. The same posture must NOT leak tenant create/delete

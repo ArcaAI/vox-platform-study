@@ -45,7 +45,7 @@ describe('TenantFrontendConfigAdminController', () => {
       expect(mockService.upsert).toHaveBeenCalledWith({ vad: false, expectedVersion: 7 }, 't-2');
     });
 
-    // TASK-356 Phase 4 (API-T1) — the new audio-console fields ride the existing
+    // The new audio-console fields ride the existing
     // UpsertTenantFrontendConfigRequest DTO; the controller forwards them to the
     // service unchanged (no signature change, gating unchanged).
     it('round-trips the new transcriptionMode / transcriptionModeLocked / captureMode fields through the service', async () => {

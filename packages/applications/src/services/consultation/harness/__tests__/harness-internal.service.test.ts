@@ -1,5 +1,5 @@
 /**
- * HarnessInternalService Unit Tests (TASK-330 Phase 1 — Lane G)
+ * HarnessInternalService Unit Tests
  *
  * The INBOUND apps/api half of the gate adapter. Three operations the harness
  * calls back into apps/api (which stays the sole DB writer / system-of-record):
@@ -36,7 +36,7 @@ vi.mock('@arcaai/domains', async () => {
                 type: 'RAW_SUMMARY',
             })),
         },
-        // TASK-356 Phase 6 (S4) — echo the AI-draft v1 snapshot args so the
+        // Echo the AI-draft v1 snapshot args so the
         // persistDraft snapshot test can assert on the version written.
         ContextItemVersionFactory: {
             CreateFromContextItem: vi.fn((contextItem, versionNumber, changeReason, changedBy, changeSource, changeSummary) => ({
@@ -78,20 +78,20 @@ const createMockContextItemRepository = () => ({
     findCaseNotes: vi.fn().mockResolvedValue([]),
     findWorknotes: vi.fn().mockResolvedValue([]),
     findAttachments: vi.fn().mockResolvedValue([]),
-    // TASK-355 Phase C (R-6) — the live SOAP snapshot lookup; default empty
+    // The live SOAP snapshot lookup; default empty
     // (cold path) so pre-existing assemble/persistDraft tests stay green.
     findPreSummaries: vi.fn().mockResolvedValue([]),
     create: vi.fn().mockResolvedValue({ id: 'ctx-draft-1', content: 'S: ...', tenantId: 'tenant-1' }),
 });
 
-// TASK-356 Phase 6 (S4) — the AI-draft v1 snapshot sink (best-effort).
+// The AI-draft v1 snapshot sink (best-effort).
 const createMockContextItemVersionRepository = () => ({
     create: vi.fn().mockResolvedValue({ id: 'ver-1' }),
-    // TASK-369 Phase 3C — encrypt-on-write helper (declaration-merged sibling).
+    // Encrypt-on-write helper (declaration-merged sibling).
     encryptFieldsIntoEntity: vi.fn().mockResolvedValue(undefined),
 });
 
-// TASK-369 Phase 3C — mocked SecretsService. encryptBestEffort only checks it is
+// Mocked SecretsService. encryptBestEffort only checks it is
 // truthy and delegates to the repo helper, so a minimal stub suffices.
 const createMockSecretsService = () => ({
     encrypt: vi.fn().mockResolvedValue('vault:v1:x'),
@@ -114,7 +114,7 @@ const createMockConsultationRepository = () => ({
 
 const createMockNamedEntityRepository = () => ({
     create: vi.fn().mockImplementation((e) => Promise.resolve({ id: `ne-${e.text}` })),
-    // TASK-369 Phase 3C — encrypt-on-write helper (declaration-merged sibling).
+    // Encrypt-on-write helper (declaration-merged sibling).
     encryptFieldsIntoEntity: vi.fn().mockResolvedValue(undefined),
     findByConsultation: vi.fn().mockResolvedValue([
         {
@@ -131,9 +131,9 @@ const createMockNamedEntityRepository = () => ({
 
 const createMockSummaryMetaRepository = () => ({
     create: vi.fn().mockResolvedValue({ id: 'sm-1' }),
-    // TASK-369 Phase 3C — encrypt-on-write helper (declaration-merged sibling).
+    // Encrypt-on-write helper (declaration-merged sibling).
     encryptFieldsIntoEntity: vi.fn().mockResolvedValue(undefined),
-    // TASK-355 Phase D — finalizeAssurance backfills the early-persisted meta.
+    // FinalizeAssurance backfills the early-persisted meta.
     findByContextItem: vi.fn().mockResolvedValue({
         id: 'sm-early-1',
         contextItemId: 'ctx-draft-1',
@@ -170,12 +170,12 @@ const createMockJobService = () => ({
     notifyComplete: vi.fn().mockResolvedValue(undefined),
 });
 
-// TASK-344 Workstream B — manual doctor highlights threaded into assemble.
+// Manual doctor highlights threaded into assemble.
 const createMockHighlightRepository = () => ({
     findByConsultation: vi.fn().mockResolvedValue([]),
 });
 
-// TASK-355 Phase C (R-6) — warm-start kill-switch. Default OFF (prod default);
+// Warm-start kill-switch. Default OFF (prod default);
 // pass `true` to exercise the ON behavior. Mirrors how sibling harness/summary
 // services read config (ConfigService.get).
 const createMockConfigService = (warmStartEnabled = false) => ({
@@ -184,7 +184,7 @@ const createMockConfigService = (warmStartEnabled = false) => ({
     ),
 });
 
-// TASK-355 Phase D Slice 5d — the live assurance feed. finalizeAssurance publishes
+// The live assurance feed. finalizeAssurance publishes
 // the terminal `assurance_complete` (aggregate verdict + safetyFlag + postSignAlert)
 // to close the SSE stream. Best-effort: a publish failure must not break finalize.
 const createMockHarnessAssuranceService = () => ({
@@ -192,18 +192,18 @@ const createMockHarnessAssuranceService = () => ({
     publishComplete: vi.fn().mockResolvedValue({ ok: true }),
 });
 
-// TASK-356 Phase 5 — the realtime ConfigResolver. The harness assemble path
+// The realtime ConfigResolver. The harness assemble path
 // threads the doctor's preferred prompt id (UserProfile.preferredPromptTemplateId,
 // read-only) so async/harness generation honors Tier-0 like the sync/REST path.
 const createMockConfigResolver = () => ({
     resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null),
     resolvePipelineToggles: vi.fn(),
-    // TASK-356 Phase 6 (S3) — effective DNA decision (tenant AND doctor). Default
+    // Effective DNA decision (tenant AND doctor). Default
     // effective so existing fixtures (which never pass a dnaStyleId) are unaffected.
     resolveEffectiveDnaStyleEnabled: vi.fn().mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: null }),
 });
 
-// TASK-466 (C1-03) — a real cache-behaving IRedisCacheService stub: an internal
+// A real cache-behaving IRedisCacheService stub: an internal
 // Map so get returns what a prior setex wrote (so the idempotency guard can
 // replay). Optional + trailing in the ctor; unwired in the pre-existing fixtures.
 const createMockRedisCache = () => {
@@ -240,23 +240,23 @@ describe('HarnessInternalService', () => {
     let contextItemVersionRepository: ReturnType<typeof createMockContextItemVersionRepository>;
     let secretsService: ReturnType<typeof createMockSecretsService>;
 
-    // TASK-355 Phase C (R-6) — (re)build the service with the warm-start flag in a
+    // (re)build the service with the warm-start flag in a
     // known state. Default OFF mirrors prod; warm-start tests call buildService(true).
-    // TASK-356 Phase 5 — optional configResolver (13th arg) so existing fixtures
+    // Optional configResolver (13th arg) so existing fixtures
     // keep their arity; the preferred-prompt threading tests pass one explicitly.
-    // TASK-356 Phase 6 (S4) — optional contextItemVersionRepository (14th arg) for
+    // Optional contextItemVersionRepository (14th arg) for
     // the AI-draft v1 snapshot; always wired here so persistDraft snapshots.
-    // TASK-369 Phase 3C — optional `withSecrets` (default ON) appends the mocked
+    // Optional `withSecrets` (default ON) appends the mocked
     // SecretsService as the 15th arg. Pass `false` to exercise the unwired path
     // (encrypt-on-write must no-op and never call the repo helper).
-    // TASK-466 (C1-03) — optional `redisCache` (16th arg) so the idempotency-dedup
+    // Optional `redisCache` (16th arg) so the idempotency-dedup
     // tests wire a real cache-behaving stub; existing fixtures pass 15 args and the
     // trailing @Optional() ctor param stays undefined (dedup no-ops, exact prior path).
     // optional `transcriptSegmentRepository` (17th arg) for assemble
     // segment-citation refs + citationsMap enrichment; unwired ⇒ empty refs.
-    // TASK-533 D-23 — optional `harnessPolicyService` (18th arg): the effective
+    // Optional `harnessPolicyService` (18th arg): the effective
     // `warmStartEnabled` authority. Unwired ⇒ the env fallback governs, which is the
-    // exact pre-D-23 behaviour every fixture below relies on.
+    // legacy behaviour every fixture below relies on.
     const buildService = (
         warmStartEnabled = false,
         configResolver?: ReturnType<typeof createMockConfigResolver>,
@@ -346,7 +346,7 @@ describe('HarnessInternalService', () => {
             expect(result.entityIds).toEqual(['ne-Metformin', 'ne-Diabetes']);
         });
 
-        // TASK-476 C1 (AC-3c) — the harness NER round-trips ontology codes; the
+        // (AC-3c) — the harness NER round-trips ontology codes; the
         // DTO → factory mapping now sets the five NamedEntity code columns. RED
         // before the mapping forwards them (they were dropped → columns null).
         it('persists the five ontology codes from the coded HarnessEntityItem', async () => {
@@ -402,7 +402,7 @@ describe('HarnessInternalService', () => {
     });
 
     // =========================================================================
-    // getEntities (TASK-480 Half-B — the read counterpart the harness reuses as
+    // getEntities (the read counterpart the harness reuses as
     // NER priors instead of re-extracting cold)
     // =========================================================================
 
@@ -579,7 +579,7 @@ describe('HarnessInternalService', () => {
             );
         });
 
-        // ── Effective warm-start policy beats env (TASK-533 D-23) ──
+        // ── Effective warm-start policy beats env ──
         // `HarnessPolicy.warmStartEnabled` was write-plumbed to the admin console and
         // read by nothing; the real switch was the env var, cached at construction.
         // Policy is now the authority, resolved per call, env only the null-fallback.
@@ -640,7 +640,7 @@ describe('HarnessInternalService', () => {
             });
         });
 
-        // ── Warm-start from the live SOAP snapshot (TASK-355 Phase C — R-6) ──
+        // ── Warm-start from the live SOAP snapshot ──
         it('injects the LIVE_SOAP_SNAPSHOT content as preSummaryText when a snapshot exists', async () => {
             service = buildService(true); // warm-start ON
             contextItemRepository.findPreSummaries.mockResolvedValue([
@@ -716,7 +716,7 @@ describe('HarnessInternalService', () => {
             expect(contextItemRepository.findPreSummaries).not.toHaveBeenCalled();
         });
 
-        // ── Doctor preferred-prompt threading (TASK-356 Phase 5 — §2.5) ──
+        // ── Doctor preferred-prompt threading ──
         // The async/harness assemble path must honor the doctor's preferred prompt
         // (Tier-0) exactly like the sync REST + processor paths. The id is resolved
         // read-only from UserProfile via ConfigResolver, keyed off consultation.doctorId.
@@ -754,7 +754,7 @@ describe('HarnessInternalService', () => {
             expect(call.preferredPromptTemplateId ?? undefined).toBeUndefined();
         });
 
-        // ── DNA-style application gating (TASK-356 Phase 6 — S3, tenant AND doctor) ──
+        // ── DNA-style application gating (tenant AND doctor) ──
         // The harness generation path must apply DNA style only when EFFECTIVE,
         // exactly like the sync SummaryService path, keyed off consultation.doctorId.
         it('applies the requested DNA style on the harness path when effective', async () => {
@@ -909,7 +909,7 @@ describe('HarnessInternalService', () => {
             expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
         });
 
-        // ── AI-draft v1 snapshot (TASK-356 Phase 6 — S4) ──
+        // ── AI-draft v1 snapshot ──
         it('captures an ai_draft_v1 ContextItemVersion (v1, ai_model) and pins the draft to currentVersionNumber=1', async () => {
             await service.persistDraft('consultation-1', draftBody());
 
@@ -1010,7 +1010,7 @@ describe('HarnessInternalService', () => {
             expect(contextItemRepository.create).not.toHaveBeenCalled();
         });
 
-        // ── Warm-start provenance (TASK-355 Phase C — R-6) ──
+        // ── Warm-start provenance ──
         it('records the consumed LIVE_SOAP_SNAPSHOT id in SummaryMeta.preSummaryIds', async () => {
             service = buildService(true); // warm-start ON
             contextItemRepository.findPreSummaries.mockResolvedValue([
@@ -1068,7 +1068,7 @@ describe('HarnessInternalService', () => {
     });
 
     // =========================================================================
-    // persistDraft — TASK-355 Phase D early delivery (DRAFT_PENDING_SENSORS)
+    // persistDraft — early delivery (DRAFT_PENDING_SENSORS)
     // =========================================================================
 
     describe('persistDraft — Phase D early delivery', () => {
@@ -1134,7 +1134,7 @@ describe('HarnessInternalService', () => {
     });
 
     // =========================================================================
-    // finalizeAssurance — TASK-355 Phase D second phase
+    // finalizeAssurance — second phase
     // =========================================================================
 
     describe('finalizeAssurance', () => {
@@ -1306,7 +1306,7 @@ describe('HarnessInternalService', () => {
         });
 
         // -----------------------------------------------------------------
-        // Slice 5d-2 — terminal `assurance_complete` published to the SSE feed.
+        // Terminal `assurance_complete` published to the SSE feed.
         // Closes the live stream with the aggregate verdict so the browser can
         // stop the spinner, enable sign-off, or surface a flag/amendment alert.
         // -----------------------------------------------------------------
@@ -1434,10 +1434,10 @@ describe('HarnessInternalService', () => {
     });
 
     // =========================================================================
-    // recordEscalation (TASK-466 C1-05) — gate SLA-breach escalation record.
+    // recordEscalation — gate SLA-breach escalation record.
     //
     // The harness `escalate_gate` activity POSTs {tenantId, reason, jobId?}; the
-    // reason encodes terminal-ness (gate_sla_abandoned = terminal abandon, C1-02).
+    // reason encodes terminal-ness (gate_sla_abandoned = terminal abandon).
     // apps/api persists it as a WORM audit event, mapping the reason to the
     // GATE_ESCALATED / GATE_ABANDONED action, and honours 404-over-403 on a
     // cross-tenant consultation.
@@ -1497,13 +1497,13 @@ describe('HarnessInternalService', () => {
     });
 
     // =========================================================================
-    // Idempotency-Key dedup (TASK-466 C1-03)
+    // Idempotency-Key dedup
     //
     // The 4 WORM/state-mutating callbacks re-append on each Temporal retry today.
     // The harness now sends a deterministic Idempotency-Key ({run_id}:{activity_id});
     // apps/api caches-and-replays the prior RESPONSE BODY so a retried callback with
     // the SAME key is exactly one effect. A DIFFERENT/ABSENT key is not suppressed;
-    // a Redis throw falls through to normal processing (best-effort, mirrors TASK-299).
+    // a Redis throw falls through to normal processing (best-effort, mirrors the consultation-job dedup).
     // =========================================================================
 
     describe('Idempotency-Key dedup (C1-03)', () => {
@@ -1591,7 +1591,7 @@ describe('HarnessInternalService', () => {
             expect(second).toEqual({ recorded: true, contextItemId: 'ctx-draft-1' });
         });
 
-        // TASK-466 (C1-05 dedup) — the harness ships + tests an Idempotency-Key on the
+        // The harness ships + tests an Idempotency-Key on the
         // escalation POST too, so a re-delivered escalate_gate (worker restart / SLA
         // timeout racing a slow-but-successful POST) must not double-append the
         // hash-chained GATE_ESCALATED / terminal GATE_ABANDONED WORM row. The key
@@ -1630,7 +1630,7 @@ describe('HarnessInternalService', () => {
     });
 
     // =========================================================================
-    // TASK-369 Phase 3C — field encryption (encrypt-on-write)
+    // Field encryption (encrypt-on-write)
     //
     // The harness callback half persists NamedEntity (persistEntities),
     // SummaryMeta (persistDraft create + finalizeAssurance update), and the

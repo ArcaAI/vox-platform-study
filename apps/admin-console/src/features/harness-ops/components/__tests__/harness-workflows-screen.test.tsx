@@ -74,7 +74,7 @@ const ACTION_ACK = { workflowId: 'harness-doc-c1', runId: 'run-abc', status: 'RU
 function stubRoutes(overrides: { workflows?: Response | HarnessWorkflowList; workingTenantId?: string | null } = {}) {
     return installFetchStub(({ url, method }: RecordedCall) => {
         if (url === '/api/auth/session') return sessionPayload({ workingTenantId: overrides.workingTenantId });
-        // Best-effort per-user grid-layout persistence (TASK-423): no saved layout in tests.
+        // Best-effort per-user grid-layout persistence: no saved layout in tests.
         if (url.includes('/user/me/settings')) return method === 'GET' ? [] : { ok: true };
         if (url.startsWith('/api/hope/admin/harness/workflows?')) return overrides.workflows ?? WORKFLOWS;
         if (method === 'POST' && url.endsWith('/signal')) return { ...ACTION_ACK, action: 'signal' };

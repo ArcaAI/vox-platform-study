@@ -10,13 +10,13 @@ import * as Models from './';
 export class KnowledgeChunk extends BaseTenantDataModel {
   public knowledgeDocumentId: string;
   public chunkIndex: number;
-  // TASK-369 Phase 6 — plaintext text column DROPPED; persistence is
+  // Plaintext text column DROPPED; persistence is
   // ciphertext-only. The entity keeps `text` as a transient field repopulated by
   // repository decrypt-on-read.
   public tokenCount: number;
   public startOffset: number;
   public endOffset: number;
-  // TASK-369 Phase 3C — Vault-Transit ciphertext column + shared key version.
+  // Vault-Transit ciphertext column + shared key version.
   public encryptedText: Uint8Array | null;
   public keyVersion: number | null;
   public qdrantPointId: string;

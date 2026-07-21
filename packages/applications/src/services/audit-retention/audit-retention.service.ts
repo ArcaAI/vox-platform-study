@@ -10,7 +10,7 @@ const JOB_NAME = 'audit-log-retention';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
- * TASK-336 OB-05 / TH6 — defaults for the AuditLog retention purge.
+ * Defaults for the AuditLog retention purge.
  *
  * `enabled` is OFF by default: retention HARD-DELETES audit rows, so an
  * operator must explicitly opt in (and review the window) before any data is
@@ -41,7 +41,7 @@ export interface AuditRetentionResult {
 }
 
 /**
- * TASK-336 OB-05 / TH6 — bounds unbounded `AuditLog` growth by purging rows
+ * Bounds unbounded `AuditLog` growth by purging rows
  * older than a configurable retention window on a schedule.
  *
  * Mirrors the {@link DnaRegenerationScheduler} pattern: a self-scheduling
@@ -63,7 +63,7 @@ export class AuditRetentionService implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(IAppSettingsService) private readonly appSettingsService: IAppSettingsService,
     private readonly schedulerRegistry: SchedulerRegistry,
-    // TASK-336 OB-05 — retention is a platform-wide, tenant-less maintenance
+    // Retention is a platform-wide, tenant-less maintenance
     // job, so it must use the UNSCOPED base client: the tenant-scope `$extends`
     // would (a) reject the write with "tenant context required for model
     // AuditLog" since the scheduler runs with no CLS tenant, and (b) only ever

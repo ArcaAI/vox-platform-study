@@ -73,7 +73,7 @@ describe('AuditLogController - OpenAPI/Swagger metadata', () => {
         });
     });
 
-    // OB-10 (TASK-336): the delete route was removed for audit-log immutability,
+    // OB-10: the delete route was removed for audit-log immutability,
     // so there is no `delete` handler (and therefore no Swagger metadata) at all.
     describe('delete (removed — OB-10)', () => {
         it('exposes no delete handler', () => {

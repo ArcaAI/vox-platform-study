@@ -43,7 +43,7 @@ class HuggingFaceLoader(BaseModelLoader):
             device = self._get_device(requested_device)
             torch_dtype = self._get_torch_dtype(model_config.compute_type or "auto")
 
-            # TASK-527 — model source via the one resolver contract: local_path
+            # Model source via the one resolver contract: local_path
             # (operator override) first, then file:// / s3:// materialised
             # locally. A bare HuggingFace id is passed through so transformers'
             # own `from_pretrained` download path is unchanged.

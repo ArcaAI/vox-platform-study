@@ -1,5 +1,5 @@
 /**
- * Tenant Access Control E2E Tests (TASK-258 Issues #2 & #3)
+ * Tenant Access Control E2E Tests.
  *
  * Verifies the access control hardening on tenant endpoints:
  *   1. /admin/tenants/* now requires manage:Tenant (super-admin) — non-super-admin

@@ -1,5 +1,5 @@
 /**
- * UserSettingsController — selectedPipelineId validator (TASK-298 D-5)
+ * UserSettingsController — selectedPipelineId validator
  *
  * Verifies that `PATCH /user/me/settings/arcaai-sdk/selectedPipelineId`
  * rejects cross-tenant pipeline ids with `BadRequestException` before
@@ -124,9 +124,9 @@ describe('UserSettingsController — selectedPipelineId validator (TASK-298 D-5)
     });
   });
 
-  // TASK-372 D8 — the VirtualizedDataGrid persists per-user layout under the
+  // The VirtualizedDataGrid persists per-user layout under the
   // `ui.data-grid` namespace via the existing PATCH endpoint. The namespace is
-  // now explicitly recognised and its value is guarded (valid JSON + size),
+  // explicitly recognised and its value is guarded (valid JSON + size),
   // without breaking the open-namespace behaviour for other clients.
   describe('updateSetting — ui.data-grid namespace (TASK-372 D8)', () => {
     it('persists a valid JSON layout value (PATCH round-trip)', async () => {

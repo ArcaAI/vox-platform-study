@@ -19,7 +19,7 @@ export class DepartmentDtoMapper {
       dnaWritingStylePromptId: entity.dnaWritingStylePromptId ?? undefined,
       promptConfig: (entity.promptConfig as Record<string, unknown>) ?? undefined,
       resourceStatus: entity.resourceStatus ?? undefined,
-      // TASK-302 Stream D Phase E.2 — surface `_version` so SDK clients
+      // Surface `_version` so SDK clients
       // can echo it back via `If-Match: "<version>"` (or body-field
       // `expectedVersion`) on the next PATCH.
       version: entity.version,

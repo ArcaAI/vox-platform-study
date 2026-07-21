@@ -1,4 +1,4 @@
-"""Granite Guardian client tests (TASK-337 Phase B — OpenAI-compatible engine).
+"""Granite Guardian client tests (OpenAI-compatible engine).
 
 The safety sensor screens the generated note through IBM Granite Guardian. By
 default the engine is **LM Studio** (OpenAI-compatible): the client posts the
@@ -136,7 +136,7 @@ class TestScreen:
 
     @pytest.mark.asyncio
     async def test_parallel_screen_keeps_criteria_order_and_mapping(self):
-        # TASK-355 R-4: screen() now fans the criteria out via asyncio.gather; the
+        # screen() fans the criteria out via asyncio.gather; the
         # result dict must stay byte-identical to the serial version — same per-criterion
         # verdicts AND same key order (criteria order), independent of completion order.
         def handler(request: httpx.Request) -> httpx.Response:

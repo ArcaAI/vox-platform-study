@@ -1,5 +1,5 @@
 /**
- * TASK-330 Phase 3 — live full-loop consultation seed (one-off).
+ * Live full-loop consultation seed (one-off).
  *
  * NOT wired into `pnpm db:seed`. Companion to `task-330-phase3-live-seed.ts`
  * (which ingested the institutional corpus). This seeds the *input* the durable

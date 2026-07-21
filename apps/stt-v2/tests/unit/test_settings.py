@@ -251,7 +251,7 @@ class TestSettings:
     def test_vad_defaults(self):
         """Test Silero VAD default configuration.
 
-        TASK-505: `_env_file=None` so the CODE defaults are asserted — a local
+        `_env_file=None` so the CODE defaults are asserted — a local
         untracked .env previously masked the defaults (and diverged from CI).
         """
         with patch.dict(os.environ, {}, clear=True):

@@ -1,8 +1,7 @@
 /**
- * TASK-311 AC-2 — `RolePolicyFactory` centralises the Prisma input
+ * `RolePolicyFactory` centralises the Prisma input
  * shape for the `RolePolicy` join-table mutations that
- * `RbacRoleService.assignPolicy` performs. Same simplification
- * rationale as the other two factories (see README §4.3 D-2).
+ * `RbacRoleService.assignPolicy` performs.
  */
 import { ResourceStatusType } from '../../enums';
 

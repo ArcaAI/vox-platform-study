@@ -40,17 +40,17 @@ const mockConsultationRepository = {
     update: vi.fn(),
 };
 
-// TASK-305 D.2 — DepartmentRepository for cross-aggregate tenant check
+// DepartmentRepository for cross-aggregate tenant check
 const mockDepartmentRepository = {
     findById: vi.fn(),
 };
 
-// TASK-305 D.2 — UserRoleAssignmentRepository for doctor-in-tenant check
+// UserRoleAssignmentRepository for doctor-in-tenant check
 const mockUserRoleAssignmentRepository = {
     findFirst: vi.fn(),
 };
 
-// TASK-305 Phase F — membership guard now also reads the UserDepartment join
+// Membership guard now also reads the UserDepartment join
 // table and the User table (service-account exemption).
 const mockUserDepartmentRepository = {
     findFirst: vi.fn(),
@@ -138,7 +138,7 @@ describe('ConsultationService', () => {
         // Default: findWithRelations returns null (callers override as needed)
         mockConsultationRepository.findWithRelations.mockResolvedValue(null);
 
-        // TASK-305 D.2 — defaults that pass the tenant guard checks. Cross-tenant
+        // Defaults that pass the tenant guard checks. Cross-tenant
         // negative tests override these per-test.
         mockUserRoleAssignmentRepository.findFirst.mockResolvedValue({
             id: 'ura-1',
@@ -146,7 +146,7 @@ describe('ConsultationService', () => {
             tenantId: 'tenant-1',
             resourceStatus: ResourceStatusType.ENABLED,
         });
-        // TASK-305 Phase F — default to a present in-tenant department so the
+        // Default to a present in-tenant department so the
         // role+department membership guard passes for the happy path. Negative
         // tests override the role repo to null (short-circuits before this).
         mockUserDepartmentRepository.findFirst.mockResolvedValue({
@@ -276,7 +276,7 @@ describe('ConsultationService', () => {
 
         it('should set parentConsultationId when provided', async () => {
             mockConsultationRepository.findByUniqueKey.mockResolvedValue(null);
-            // TASK-305 D.2 — parent must be resolvable and live in caller's tenant.
+            // Parent must be resolvable and live in caller's tenant.
             mockConsultationRepository.findById.mockResolvedValue(
                 createMockConsultationEntity({ id: 'parent-consultation-id' }),
             );
@@ -398,7 +398,7 @@ describe('ConsultationService', () => {
             ).rejects.toThrow(BadRequestException);
         });
 
-        // TASK-305 D.2 — the "parent not found" path is now routed through
+        // The "parent not found" path is now routed through
         // `assertParentInScope`, which throws `NotFoundException` (no
         // existence leak) instead of `BadRequestException`. This is a
         // behaviour change vs. the previous error type, but it is required
@@ -929,7 +929,7 @@ describe('ConsultationService', () => {
     });
 
     // ============================================================
-    // TASK-319 F1 — tenant-wide admin listing (scope: all-in-tenant)
+    // Tenant-wide admin listing (scope: all-in-tenant)
     //
     // listConsultationsForTenant is the admin counterpart to
     // listConsultations: it MUST NOT scope to the caller's doctorId,
@@ -981,7 +981,7 @@ describe('ConsultationService', () => {
             });
         });
 
-        // TASK-341 B2 — admin live console filters the tenant list to in-progress
+        // Admin live console filters the tenant list to in-progress
         // recordings (?status=RECORDING) to find the consultations that may have a
         // live-documentation session.
         it('applies an optional status filter (e.g. RECORDING)', async () => {
@@ -1026,11 +1026,11 @@ describe('ConsultationService', () => {
     });
 
     // ============================================================
-    // TASK-386 (#20 / E4) — server-side consultation range aggregation.
+    // Server-side consultation range aggregation.
     //
     // Replaces the FE's client-side single-page bucketing. Counts are read
-    // via `ConsultationRepository.findCreatedInRange` (TASK-414 moved the
-    // read behind the repository per TASK-311 AC-8), zero-filled across the
+    // via `ConsultationRepository.findCreatedInRange` (the
+    // read is behind the repository), zero-filled across the
     // whole window, and split into new (parentConsultationId IS NULL) vs
     // revisit. Bucket key/label mirror the FE chart (UTC boundaries).
     // ============================================================
@@ -1086,7 +1086,7 @@ describe('ConsultationService', () => {
     });
 
     // ============================================================
-    // TASK-386 (TD3 / DEF-1) — cross-tenant platform read for super-admin.
+    // (TD3 / DEF-1) — cross-tenant platform read for super-admin.
     //
     // The platform dashboard runs as a GLOBAL_ADMIN with NO working tenant; the
     // old hard 400 (`Tenant ID is required`) broke it. A super-admin with no
@@ -1121,7 +1121,7 @@ describe('ConsultationService', () => {
     });
 
     // ============================================================
-    // TASK-305 D.2 — Cross-aggregate tenant isolation
+    // Cross-aggregate tenant isolation
     //
     // The Consultation aggregate owns three cross-aggregate references
     // that the multi-tenancy audit flagged as leak vectors:
@@ -1312,7 +1312,7 @@ describe('ConsultationService', () => {
     });
 
     // ============================================================
-    // TASK-306 P2.1 (audit C-1 / AC-8) — Consultation read-paths
+    // Consultation read-paths
     // defense-in-depth.
     //
     // The three read methods (`getById`, `getByIdWithRelations`,
@@ -1333,11 +1333,11 @@ describe('ConsultationService', () => {
     // ============================================================
     describe('TASK-306 P2.1 — Consultation read-paths defense-in-depth', () => {
         describe('getById', () => {
-            // TASK-306 P2.1 regression-pin (306-F7) — intentional duplicate
-            // of the pre-W5.2 happy-path test. Kept under the P2.1 marker
-            // so the describe block is self-contained: deleting the
-            // pre-W5.2 happy-path test elsewhere must not silently delete
-            // the P2.1 marker's positive control.
+            // Regression-pin — intentional duplicate
+            // of the happy-path test elsewhere. Kept under this describe
+            // block so it is self-contained: deleting the
+            // happy-path test elsewhere must not silently delete
+            // this block's positive control.
             it('returns DTO when the fetched entity tenant matches caller CLS tenant (sanity)', async () => {
                 const consultation = createMockConsultationEntity({
                     id: 'consultation-id-1',
@@ -1376,7 +1376,7 @@ describe('ConsultationService', () => {
             });
 
             it('throws fail-closed when CLS tenantId is missing and the repo returns a row (belt-and-suspenders for the post-fetch assertEqualTenants guard)', async () => {
-                // TASK-306 W5.7.7 (306-F5) note — after the hoisted CLS check
+                // After the hoisted CLS check
                 // landed in `getById`, this test's `findWithContext` mock
                 // is structurally unreachable: the hoist throws before the
                 // repo call. The test is retained as a defense-in-depth
@@ -1404,7 +1404,7 @@ describe('ConsultationService', () => {
             });
 
             it('throws BadRequestException without calling repo when CLS tenantId is missing (306-F5 hoist)', async () => {
-                // TASK-306 W5.7.7 (306-F5) — the hoisted CLS check short-
+                // The hoisted CLS check short-
                 // circuits BEFORE the repo round-trip, matching the
                 // `getConsultationChain` convention. Saves a useless DB
                 // call on background / unprovisioned contexts that have
@@ -1446,8 +1446,8 @@ describe('ConsultationService', () => {
             });
 
             it('throws fail-closed when CLS tenantId is missing and the repo returns a row (belt-and-suspenders for the post-fetch assertEqualTenants guard)', async () => {
-                // TASK-306 W5.7.7 (306-F5) note — sibling of the getById
-                // test's annotation above: the W5.7.7 hoist makes this
+                // Sibling of the getById
+                // test's annotation above: the hoisted CLS check makes this
                 // `findWithRelations` mock unreachable, but the test is
                 // retained as a defense-in-depth regression-pin for the
                 // post-fetch `assertEqualTenants` guard. See the getById
@@ -1471,7 +1471,7 @@ describe('ConsultationService', () => {
             });
 
             it('throws BadRequestException without calling repo when CLS tenantId is missing (306-F5 hoist)', async () => {
-                // TASK-306 W5.7.7 (306-F5) — sibling of the getById hoist
+                // Sibling of the getById hoist
                 // test: the missing-CLS check now short-circuits BEFORE the
                 // relations round-trip (which is more expensive than a
                 // plain findById on Consultation given the Doctor /
@@ -1491,8 +1491,8 @@ describe('ConsultationService', () => {
 
         describe('getConsultationChain', () => {
             it('returns [] when repo returns an empty chain (vs. all-foreign chain → throw)', async () => {
-                // TASK-306 306-F6 — pin the empty-vs-all-foreign distinction
-                // self-contained under the P2.1 marker. Empty repo result is
+                // Pin the empty-vs-all-foreign distinction,
+                // self-contained in this block. Empty repo result is
                 // a legitimate "no chain exists" case (return [], emit
                 // ResourceViewed with chainCount=0). Non-empty all-foreign is
                 // a leak attempt and MUST throw (see "throws … EVERY returned
@@ -1583,7 +1583,7 @@ describe('ConsultationService', () => {
     });
 
     // ============================================================
-    // TASK-322 — Consultation lifecycle (close / reopen / update)
+    // Consultation lifecycle (close / reopen / update)
     //
     // The Consultation model has no dedicated open/closed column, so
     // lifecycle status lives in `metadata.status` (OPEN | CLOSED;

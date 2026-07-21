@@ -2,7 +2,7 @@ import { IBaseService } from '../../../interfaces';
 import { AssignUserDepartmentRequest, SetUserDepartmentsRequest, UpdateUserDepartmentRequest, UserDepartmentResponse } from './dto';
 
 /**
- * Tenant-scoped CRUD for user ↔ department assignments (TASK-328 A1).
+ * Tenant-scoped CRUD for user ↔ department assignments.
  */
 export interface IUserDepartmentService extends IBaseService {
   /** List a user's active department assignments in the active tenant. */
@@ -10,7 +10,7 @@ export interface IUserDepartmentService extends IBaseService {
   /** Assign a user to a department (reactivates a prior soft-deleted row). */
   assign(userId: string, dto: AssignUserDepartmentRequest): Promise<UserDepartmentResponse>;
   /**
-   * TASK-381 V2 — reconcile a user's department memberships to EXACTLY
+   * Reconcile a user's department memberships to EXACTLY
    * `dto.departmentIds` (adds missing, soft-deletes the rest) and set
    * `dto.primaryDepartmentId` as the single primary. Returns the resulting
    * active assignments.
@@ -22,7 +22,7 @@ export interface IUserDepartmentService extends IBaseService {
   unassign(id: string): Promise<UserDepartmentResponse>;
 
   /**
-   * TASK-305 Phase F — pre-auth (baseClient) membership lookup used by the
+   * Pre-auth (baseClient) membership lookup used by the
    * login flow BEFORE any tenant context exists in CLS: does `userId` have an
    * ENABLED `UserDepartment` in `tenantId`? Bypasses the tenant-scope extension
    * (the explicit `tenantId` predicate is the boundary), mirroring

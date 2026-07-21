@@ -8,7 +8,7 @@ import { GlobalSettingEntity, GlobalSettingRepository, ResourceStatusType } from
 import { IActiveUserContext } from '../../../../interfaces';
 import { IAppSettingsService } from './IAppSettingsService';
 
-// Phase 0 Item 5 (TASK-302 Stream A) — canonical platform tenant id.
+// Canonical platform tenant id.
 // Matches the seed UUID used across the system (see packages/database/seeds).
 // Inlined to avoid pulling tenant/constants.ts into this baseService.
 const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
@@ -199,7 +199,7 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
       // Fetch all global settings from database
       const fetchedSettings = await this.globalSettingRepository.findAll({});
 
-      // TASK-402 (Defect 2) — drop soft-DELETED rows at the SERVICE layer.
+      // (Defect 2) — drop soft-DELETED rows at the SERVICE layer.
       // The repository's DELETED filtering is an invisible property of which
       // Prisma client variant served the query (the CLS transaction client
       // inside `runInTransaction` windows bypasses the soft-delete extension),
@@ -211,8 +211,8 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
       // the live one. Genuine duplicates (2× live rows) still refuse to start.
       const globalSettings = fetchedSettings.filter((s) => s.resourceStatus !== ResourceStatusType.DELETED);
 
-      // Phase 0 Item 5 (TASK-302 Stream A) — boot-time duplicate-key invariant.
-      // TASK-301 §P0-1: if >1 row exists for the same platform key
+      // Boot-time duplicate-key invariant.
+      // If >1 row exists for the same platform key
       // (tenantId === GLOBAL_TENANT_ID), the Map<key>-keyed cache silently
       // resolves to a non-deterministic winner. Refuse to start.
       const allowSkip = process.env.NODE_ENV === 'development' && process.env.APP_SETTINGS_BOOT_INVARIANT === 'skip';
@@ -235,13 +235,13 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
       }
 
       // Populate the new cache.
-      // TASK-403 — deterministic winner for cross-tenant duplicates: tenant
+      // Deterministic winner for cross-tenant duplicates: tenant
       // provisioning clones every `__GLOBAL__` row (including platform-only
-      // namespaces like `rate-limit.*`) into new tenants, and the P0-5
+      // namespaces like `rate-limit.*`) into new tenants, and the
       // invariant above only guards duplicates WITHIN the platform tenant.
       // With plain last-row-wins a tenant clone could shadow the platform row
-      // (surfaced by TASK-403: the rate-limit admin surface resolved a tenant
-      // clone's id and its updates 404'd). The platform row always wins; rows
+      // (e.g. the rate-limit admin surface resolving a tenant clone's id and
+      // its updates 404'ing). The platform row always wins; rows
       // for keys that exist only on customer tenants still cache as before.
       globalSettings.forEach((setting) => {
         const existing = newCache.get(setting.key);

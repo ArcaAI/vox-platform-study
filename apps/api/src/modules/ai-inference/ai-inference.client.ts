@@ -14,11 +14,11 @@ const NLP_TIMEOUT_MS = 15_000;
 // PHI hygiene: the Guardrail/NLP upstream error body can ECHO the caller's
 // clinical text (Guardrail moderates it; NLP runs NER over it), so it is NEVER
 // forwarded to the console — only the upstream status is preserved. Mirrors the
-// smr-proxy C4-05 posture (TASK-462).
+// smr-proxy posture.
 const UPSTREAM_ERROR_MESSAGE = 'The AI inference service returned an error.';
 
 /**
- * AiInferenceClient (TASK-446) — the OUTBOUND half of the user-plane
+ * AiInferenceClient — the OUTBOUND half of the user-plane
  * `/ai/*` inference proxy that backs the Agent Playground's Guardrails and NER
  * tabs. Distinct from the read-only `AiServiceProxyClient` (`/admin/ai-services`,
  * health/config): this one POSTs caller-supplied text to the services' inference
@@ -32,7 +32,7 @@ const UPSTREAM_ERROR_MESSAGE = 'The AI inference service returned an error.';
  * Base URLs resolve from `IConfigService` (`GUARDRAIL_URL` / `NLP_URL`), falling
  * back to the local-dev ports.
  *
- * TASK-460 C4-02 — both hops carry caller clinical text (PHI), so each POST
+ * Both hops carry caller clinical text (PHI), so each POST
  * attaches a FAIL-CLOSED `X-Service-Token` (`GUARDRAIL_SERVICE_TOKEN` /
  * `NLP_SERVICE_TOKEN` via SecretsService), mirroring the harness outbound
  * `HarnessOpsClient.buildHeaders` pattern: an unresolved secret still sends an
@@ -50,9 +50,9 @@ export class AiInferenceClient {
     @Optional() @Inject(IConfigService) private readonly configService?: IConfigService,
     // Optional so unit fixtures compile without a mock; an unset token yields an
     // empty `X-Service-Token`, which a token-requiring receiver rejects
-    // (fail-closed — TASK-460 C4-02, same posture as `HarnessOpsClient`).
+    // (fail-closed, same posture as `HarnessOpsClient`).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // TASK-506 — guardrail + NLP resolve per-tenant model defaults, so both
+    // Guardrail + NLP resolve per-tenant model defaults, so both
     // hops carry the caller's tenant in `X-Tenant-Id`. Optional so unit
     // fixtures (and internal callers without a request context) keep working;
     // no CLS tenant simply omits the header.
@@ -69,7 +69,7 @@ export class AiInferenceClient {
     return this.post(this.nlpUrl(), '/api/v1/classify/tokens', body, NLP_TIMEOUT_MS, 'NLP_SERVICE_TOKEN');
   }
 
-  /** Diagnosis suggestions (text classification, TASK-506). Body is the upstream snake_case shape. */
+  /** Diagnosis suggestions (text classification). Body is the upstream snake_case shape. */
   async suggestDiagnosis(body: Record<string, unknown>): Promise<Record<string, unknown>> {
     return this.post(this.nlpUrl(), '/api/v1/diagnosis/suggestions', body, NLP_TIMEOUT_MS, 'NLP_SERVICE_TOKEN');
   }
@@ -83,7 +83,7 @@ export class AiInferenceClient {
   }
 
   /**
-   * TASK-460 C4-02 — mirror the harness outbound `buildHeaders` pattern: the
+   * Mirror the harness outbound `buildHeaders` pattern: the
    * `X-Service-Token` header is ALWAYS attached. When the secret is unset the
    * empty value is still sent so the receiver rejects it (fail-closed), never
    * silently downgrading a PHI-bearing hop to unauthenticated HTTP.
@@ -94,7 +94,7 @@ export class AiInferenceClient {
       'Content-Type': 'application/json',
       'X-Service-Token': token,
     };
-    // TASK-506 — tenant context for per-tenant model-default resolution in the
+    // Tenant context for per-tenant model-default resolution in the
     // receiving service. Omitted (not empty) without a CLS tenant: the services
     // treat a missing tenant as "use the platform default", so this hop stays
     // usable for internal/service callers.

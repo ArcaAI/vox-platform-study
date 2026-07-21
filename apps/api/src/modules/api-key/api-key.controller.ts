@@ -19,7 +19,6 @@ import { CreateApiKeyResponse, ApiKeyUsageResponse } from './dto';
 @ApiBearerAuth()
 @ApiTags('admin-api-keys')
 @Controller('admin/api-keys')
-// Phase 0 Item 3 (TASK-302 Stream A): explicit permission required.
 @CanManage('ApiKey')
 export class ApiKeyController {
   constructor(
@@ -128,7 +127,7 @@ export class ApiKeyController {
     return ApiKeyDtoMapper.ToResponse(result);
   }
 
-  // TASK-390 #23 (K5) — rotate: mint a NEW key inheriting the old key's config,
+  // Rotate: mint a NEW key inheriting the old key's config,
   // link old→new, and (per the pre-existing service) keep BOTH valid for a 24h
   // grace window (`rotationExpiresAt`) rather than invalidating immediately.
   // The new raw key is returned exactly ONCE (same contract as create).

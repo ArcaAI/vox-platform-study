@@ -17,7 +17,7 @@ export interface IHighlightEntity extends IBaseTenantEntity {
   color?: string | null;
   label?: string | null;
   note?: string | null;
-  // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the quote
+  // Vault-Transit (hope-phi) ciphertext of the quote
   // selectors + note + shared key version. Phase 6 dropped the plaintext
   // columns; plaintext survives only as transient fields repopulated by
   // decrypt-on-read.
@@ -90,7 +90,7 @@ export class HighlightEntity extends BaseTenantEntity {
     this.setProperty('targetKind', value);
   }
 
-  // TASK-369 Phase 3C — quote selectors + note are free-text clinical PHI.
+  // Quote selectors + note are free-text clinical PHI.
   // @Secret() marks them for audit-log redaction.
   @Secret()
   get exact(): IHighlightEntity['exact'] {
@@ -160,7 +160,7 @@ export class HighlightEntity extends BaseTenantEntity {
     this.setProperty('note', value);
   }
 
-  // TASK-369 Phase 3C — Vault-Transit ciphertext columns. @Secret() guards the
+  // Vault-Transit ciphertext columns. @Secret() guards the
   // ciphertext from audit-log surfaces.
   @Secret()
   get encryptedExact(): IHighlightEntity['encryptedExact'] {

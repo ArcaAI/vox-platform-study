@@ -1,5 +1,5 @@
 /**
- * TASK-332 — TDD tests for the local raw-capture flag in TenantAudioConfig.
+ * TDD tests for the local raw-capture flag in TenantAudioConfig.
  *
  * The server appends a synthetic `enable-local-raw-capture` GlobalSetting row
  * (namespace `feature-flags`) to GET /tenant/me/config carrying the

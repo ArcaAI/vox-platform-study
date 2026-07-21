@@ -1,4 +1,4 @@
-"""Tests for the document-type text-classifier default model (TASK-330 corrective).
+"""Tests for the document-type text-classifier default model.
 
 The `/classify/text` endpoint is meant for *clinical document-type* classification,
 but historically defaulted to an *emotion* model (`michellejieli/emotion_text_classifier`)

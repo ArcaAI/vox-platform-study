@@ -1,4 +1,4 @@
-// TASK-369 (Data Encryption Initiative) Phase 3D — field encryption for the
+// Field encryption for the
 // append-only, hash-chained WORM table HarnessAuditEvent (sensorScores /
 // citations JSONB).
 //

@@ -123,7 +123,7 @@ def get_job_processor(request: Request) -> JobProcessor:
 # ---------------------------------------------------------------------------
 
 
-# TASK-535 (R1) — retention comes from the control plane, not env.
+# Retention comes from the control plane, not env.
 #
 # Two halves, both required: a cache built AFTER a refresh is born with the
 # current values (`_retention_kwargs`), and a cache that is ALREADY LIVE adopts
@@ -176,7 +176,7 @@ async def refresh_model_cache_retention(app_state: Any) -> None:
 
     NEVER raises: a safety request must not fail because the config plane is
     unavailable. No client, or no opinion from the control plane, ⇒ the env
-    values stay in force — exactly the pre-TASK-535 behaviour.
+    values stay in force — exactly the env-only behaviour.
     """
     client = getattr(app_state, "effective_config_client", None)
     if client is None:
@@ -228,7 +228,7 @@ def get_groundedness_scorer_cache(app_state: Any) -> ModelCache[NliScorer]:
                 load_minicheck_scorer,
             )
 
-            # TASK-527 (D-12) — the weight path is resolved DB-first (registry
+            # The weight path is resolved DB-first (registry
             # `localPath` / file:// / s3://) with the env path as fallback. The
             # clinical-gate posture is unchanged: `allow_network=False` inside
             # the resolver means an hf:-only row never auto-downloads.

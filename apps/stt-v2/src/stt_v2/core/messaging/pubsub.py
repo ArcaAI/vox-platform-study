@@ -10,7 +10,7 @@ Uses ``redis.asyncio`` for non-blocking I/O.  The publisher is designed
 to be created per-worker-invocation (Dramatiq actors run in separate
 processes) and closed after each job completes.
 
-Event types (matching the SSE schema defined in TASK-015):
+Event types (matching the SSE schema):
 - ``status``     — job lifecycle transitions
 - ``progress``   — processing percentage
 - ``chunk``      — partial transcript as each audio segment completes

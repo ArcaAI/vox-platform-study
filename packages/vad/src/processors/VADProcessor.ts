@@ -29,7 +29,7 @@ import { getVADBrowserSupport, isVADSupported } from '../utils/browserSupport.js
 import { DEFAULT_BASE_ASSET_PATH, DEFAULT_ONNX_WASM_BASE_PATH } from '../constants.js';
 
 /**
- * TASK-300 L-10: resolve a safe ONNX Runtime WASM thread count.
+ * Resolve a safe ONNX Runtime WASM thread count.
  *
  * Returns `min(8, navigator.hardwareConcurrency)` when the host page is
  * cross-origin-isolated (SharedArrayBuffer is available), `1` otherwise.
@@ -103,12 +103,12 @@ export class VADProcessor extends BaseProcessor {
 
   // Active input stream backing the current MicVAD instance. Kept so that
   // `reset()` can rebuild the engine without a stream argument, and so the
-  // silence-triggered auto-reset (TASK-271 H-1) has a stream to reuse.
+  // silence-triggered auto-reset has a stream to reuse.
   private currentStream: MediaStream | null = null;
 
   // Wall-clock timestamp (Date.now) of the most recent frame whose
   // speech probability exceeded `positiveSpeechThreshold`. Used to detect
-  // long silence and trigger an LSTM hidden-state reset (TASK-271 H-1).
+  // long silence and trigger an LSTM hidden-state reset.
   private lastSpeechActivityMs = 0;
 
   // Re-entrancy guard: prevents the silence-triggered reset from firing
@@ -147,15 +147,15 @@ export class VADProcessor extends BaseProcessor {
   // Speech tracking
   private speechStartTime = 0;
 
-  // Sliding-window probability stats (TASK-271 H-2 / TASK-300 L-4).
+  // Sliding-window probability stats.
   // At 31.25 v5 frames/sec a 1024-slot window covers ~32.8s of audio. Using
   // a fixed Float32Array keeps memory constant regardless of session
   // length (previously the running average accumulated unboundedly,
   // eroding precision over multi-hour consultations).
   //
-  // TASK-300 L-4 raised the window from 300 → 1024 to span the typical
-  // pause/turn boundary in a doctor-patient consultation; the audit found
-  // 300 was too aggressive for medical dictation.
+  // The window was raised from 300 → 1024 to span the typical pause/turn
+  // boundary in a doctor-patient consultation; 300 was too aggressive for
+  // medical dictation.
   private readonly PROB_WINDOW_SIZE = 1024;
   private readonly probWindow = new Float32Array(this.PROB_WINDOW_SIZE);
   private probWindowIdx = 0;
@@ -248,7 +248,7 @@ export class VADProcessor extends BaseProcessor {
 
     // Initialize MicVAD against the current input stream and seed the
     // silence tracker so the first frame isn't immediately classified as
-    // "long silence" (TASK-271 H-1).
+    // "long silence".
     this.currentStream = stream;
     this.lastSpeechActivityMs = Date.now();
     await this.initMicVAD(stream);
@@ -267,8 +267,8 @@ export class VADProcessor extends BaseProcessor {
    */
   private async initMicVAD(stream: MediaStream): Promise<void> {
     try {
-      // TASK-300 L-10: opt into multi-threaded ONNX Runtime WASM when the host
-      // page is cross-origin-isolated. SharedArrayBuffer (required for ORT's
+      // Opt into multi-threaded ONNX Runtime WASM when the host page is
+      // cross-origin-isolated. SharedArrayBuffer (required for ORT's
       // threaded inference) is only available under COOP/COEP isolation.
       // Without isolation we leave the default (1) intact — promoting it
       // crashes ORT immediately. We clamp to 8 because Silero VAD sees no
@@ -372,7 +372,7 @@ export class VADProcessor extends BaseProcessor {
    * Handle speech end event.
    *
    * The underlying `@ricky0123/vad-web` library only exposes `preSpeechPadMs` and
-   * `redemptionMs`; it does not have a true `postSpeechPadMs`. TASK-304: when callers
+   * `redemptionMs`; it does not have a true `postSpeechPadMs`. When callers
    * set `postSpeechPadMs > 0` we append that many milliseconds of zero-valued samples
    * to the end of the buffer so the published option produces the documented effect
    * (extra room for downstream chunking / boundary alignment).
@@ -397,9 +397,9 @@ export class VADProcessor extends BaseProcessor {
       streamStartSec,
       streamEndSec,
       durationSec: streamEndSec - streamStartSec,
-      // TASK-271 H-4: compute duration in ms at the source so consumers
-      // (and the published README example) get a meaningful value rather
-      // than `undefined ms`.
+      // Compute duration in ms at the source so consumers (and the
+      // published README example) get a meaningful value rather than
+      // `undefined ms`.
       duration: endTime - this.speechStartTime,
     };
 
@@ -411,9 +411,9 @@ export class VADProcessor extends BaseProcessor {
   }
 
   /**
-   * TASK-304: forward the public `postSpeechPadMs` option by zero-padding the
-   * speech buffer. Returns the original buffer when the option is unset or 0
-   * to avoid an unnecessary allocation.
+   * Forward the public `postSpeechPadMs` option by zero-padding the speech
+   * buffer. Returns the original buffer when the option is unset or 0 to
+   * avoid an unnecessary allocation.
    */
   private appendPostSpeechPad(audio: Float32Array): Float32Array {
     const padMs = this.options.postSpeechPadMs;
@@ -458,7 +458,7 @@ export class VADProcessor extends BaseProcessor {
     this.stats.framesProcessed++;
     this.stats.speechProbability = probabilities.isSpeech;
 
-    // Sliding-window average (TASK-271 H-2): subtract the slot we are about
+    // Sliding-window average: subtract the slot we are about
     // to overwrite from the running sum, then add the new sample. This keeps
     // the average bounded to the last PROB_WINDOW_SIZE frames in O(1).
     const slotIdx = this.probWindowIdx;
@@ -474,7 +474,7 @@ export class VADProcessor extends BaseProcessor {
       this.stats.currentSpeechDuration = now - this.speechStartTime;
     }
 
-    // Silence-triggered LSTM reset (TASK-271 H-1).
+    // Silence-triggered LSTM reset.
     // The Silero v5 hidden state can carry stale activations across long
     // gaps between speakers / sessions; rebuilding MicVAD zeroes `h` and
     // `c`. Disabled when `silenceResetMs <= 0`.
@@ -508,11 +508,11 @@ export class VADProcessor extends BaseProcessor {
   /**
    * Start periodic stats emission.
    *
-   * TASK-304 Wave 2 W2-VAD-1: idempotent — if a previous interval is still running,
-   * clear it before starting a new one. Without this guard, repeated
+   * Idempotent — if a previous interval is still running, clear it before
+   * starting a new one. Without this guard, repeated
    * `updateOptions({ enableStats: true })` calls leak `setInterval` handles (the
-   * old timer keeps running, never garbage-collected). Analog of the NoiseFilter
-   * MED-10 fix landed in TASK-304 Wave 1.
+   * old timer keeps running, never garbage-collected). Analog of the
+   * equivalent NoiseFilter fix.
    */
   private startStatsEmission(): void {
     if (this.statsInterval) {
@@ -626,7 +626,7 @@ export class VADProcessor extends BaseProcessor {
    * Update thresholds dynamically. Triggers a `restart()` when the new
    * thresholds differ from the active ones — vad-web does not support
    * mutating thresholds on a live `MicVAD`, so the underlying ONNX session
-   * is rebuilt with the new values (TASK-300 L-3).
+   * is rebuilt with the new values.
    *
    * Safe to call before `init()`; the new values are stored and applied on
    * the next `init()` call.
@@ -635,7 +635,7 @@ export class VADProcessor extends BaseProcessor {
    * @param negativeSpeechThreshold - New negative threshold
    */
   async updateThresholds(positiveSpeechThreshold: number, negativeSpeechThreshold: number): Promise<void> {
-    // TASK-304: guard against nonsensical values reaching the VAD inference loop.
+    // Guard against nonsensical values reaching the VAD inference loop.
     // The library treats thresholds in [0, 1] and assumes `positive >= negative`;
     // violating either invariant silently degrades detection.
     this.validateThreshold('positiveSpeechThreshold', positiveSpeechThreshold);
@@ -753,8 +753,6 @@ export class VADProcessor extends BaseProcessor {
    *
    * Note: this destroys and reloads the ONNX session, so it is comparable
    * in cost to an `init`. Do not call it on every frame.
-   *
-   * TASK-271 H-1.
    */
   async reset(): Promise<void> {
     if (!this.micVAD || !this.currentStream) {
@@ -787,8 +785,6 @@ export class VADProcessor extends BaseProcessor {
    * a known noise burst that poisoned the LSTM activations.
    *
    * No-op when the processor has not been initialized.
-   *
-   * TASK-300 L-3.
    */
   async restart(): Promise<void> {
     return this.reset();
@@ -799,8 +795,6 @@ export class VADProcessor extends BaseProcessor {
    * `MicVAD` against the new stream, which also resets the LSTM hidden
    * state. Throws when called before `init()` because there is no
    * audio-graph plumbing to attach the new stream to.
-   *
-   * TASK-271 H-1.
    *
    * @param stream - The new MediaStream to use for VAD inference
    */

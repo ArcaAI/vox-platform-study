@@ -12,7 +12,7 @@ import {
 } from './dto';
 
 /**
- * HarnessProgressService (TASK-345 — live harness activity feed).
+ * HarnessProgressService — live harness activity feed.
  *
  * Ephemeral, Redis-only (no Prisma): the durable harness workflow reports one
  * stage event at a time via the internal `/internal/harness/consultations/:id/progress`
@@ -33,7 +33,7 @@ export class HarnessProgressService {
   private readonly CHANNEL_PREFIX = 'consultation:harness-progress:';
   private readonly SNAPSHOT_TTL = 3600; // 1h — transient last-state for SSE late-join
   private readonly HEARTBEAT_MS = 15000; // keep idle streams alive through proxies (inferential pass can run minutes)
-  // TASK-348 / MAJ-6: hard ceiling on snapshot growth. The DTO's @IsIn already
+  // Hard ceiling on snapshot growth. The DTO's @IsIn already
   // rejects unknown stage keys at the HTTP edge; this cap is defense-in-depth
   // for any other caller of reportProgress. Matches the @Max(50) ordinal bound.
   private readonly MAX_STAGES = 50;
@@ -84,11 +84,11 @@ export class HarnessProgressService {
    * `closed: true` event, with a periodic heartbeat so idle streams survive
    * proxies. Mirrors `LiveDocumentationService.subscribeToLiveSummary`.
    *
-   * TASK-348 / MIN-3: subscribe-before-snapshot closes the window where an
+   * Subscribe-before-snapshot closes the window where an
    * event published between the snapshot read and the channel subscription
    * (including the terminal `closed`) was silently dropped.
    *
-   * TASK-348 / MAJ-3: channel teardown relies EXCLUSIVELY on the refcounted
+   * Channel teardown relies EXCLUSIVELY on the refcounted
    * finalize inside `RedisSubscriberService.subscribeToChannel`. An explicit
    * `unsubscribeFromChannel` here would force-complete the SHARED per-channel
    * Subject and starve every other concurrent viewer of the same consultation.

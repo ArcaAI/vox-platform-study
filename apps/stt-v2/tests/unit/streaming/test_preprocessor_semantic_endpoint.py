@@ -1,4 +1,4 @@
-"""Preprocessor ↔ semantic-endpointer integration (TASK-473 · Theme A3).
+"""Preprocessor ↔ semantic-endpointer integration.
 
 Proves the safety-critical contract at the silence→final cut
 (``preprocessor.py`` ``_min_silence_frames`` gate):

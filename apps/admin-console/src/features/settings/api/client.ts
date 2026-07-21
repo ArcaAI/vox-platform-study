@@ -40,7 +40,7 @@ export function revealGlobalSetting(id: string, password: string): Promise<Revea
 }
 
 /**
- * TASK-445 — rotate a secret: atomic server-side replace under OCC (If-Match
+ * Rotate a secret: atomic server-side replace under OCC (If-Match
  * required, 428/412 semantics like the update PATCH) with step-up re-auth.
  * Returns the masked setting + fresh ETag; the plaintext never comes back.
  */

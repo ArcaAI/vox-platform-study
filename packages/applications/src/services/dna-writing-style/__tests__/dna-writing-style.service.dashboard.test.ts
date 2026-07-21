@@ -1,5 +1,5 @@
 /**
- * DnaWritingStyleService — getDashboard (TASK-328 A5)
+ * DnaWritingStyleService — getDashboard
  *
  * Aggregate dashboard: distinct doctors with a latest report, average current
  * version across latest reports, and recent usage activity from DnaUsageRecord.
@@ -34,7 +34,7 @@ const createMockDnaUsageRecordRepository = () => ({
 });
 
 const createMockUserRoleAssignmentRepository = () => ({ findFirst: vi.fn() });
-// TASK-305 Phase F — membership guard also reads UserDepartment + User.
+// Membership guard also reads UserDepartment + User.
 const createMockUserDepartmentRepository = () => ({ findFirst: vi.fn() });
 const createMockUserRepository = () => ({ findFirst: vi.fn() });
 const createMockQueue = () => ({ add: vi.fn() });

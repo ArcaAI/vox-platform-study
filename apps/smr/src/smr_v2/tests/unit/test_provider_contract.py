@@ -1,21 +1,21 @@
-"""shared provider-contract suite (AD-1 dev/prod parity).
+"""shared provider-contract suite (dev/prod parity).
 
 Parametrized over EVERY registered SMR provider (LM Studio / generic
 ``openai_compat``, Ollama, Azure OpenAI, Bedrock) with stub fakes, this suite
-locks the invariants every provider MUST hold so the production-inference wave
-(``vllm`` + ``llama_cpp``, /514) can be added to ``ADAPTERS`` and must
+locks the invariants every provider MUST hold so a future production-inference
+provider (e.g. ``vllm`` + ``llama_cpp``) can be added to ``ADAPTERS`` and must
 pass UNCHANGED:
 
 1. ``generate`` returns ``(content, reasoning, GenerationStats)`` with a REAL
    normalized stop reason + engine-native token counts (never the frozen
    ``"stop"``).
 2. ``generate_stream`` DRAINS past the finish chunk and yields
-   ``chunk* → usage(full AD-1 stats) → done`` in that order (the streaming-usage
+   ``chunk* → usage(full stats) → done`` in that order (the streaming-usage
    drop is fixed).
 3. ``response_format=json_schema`` passes through to the wire (or its documented
    per-engine emulation).
 4. an underlying timeout is surfaced (not swallowed) to the endpoint.
-5. ``_resolve_model`` honors the caller-supplied model verbatim (TASK-356/D-7).
+5. ``_resolve_model`` honors the caller-supplied model verbatim.
 6. registry key ↔ ``get_info().name`` are consistent.
 
 The fakes are deliberately provider-shaped (OpenAI-wire objects, Ollama NDJSON,
@@ -128,7 +128,7 @@ def _make_azure() -> Any:
             api_key="k",
             endpoint="https://test.openai.azure.com",
             default_model="m",
-            deployment_name="",  # D-7 contract under test; deployment override is separate
+            deployment_name="",  # no-default-substitution contract under test; deployment override is separate
         )
     )
     provider._client = AsyncMock()
@@ -286,7 +286,7 @@ def _make_vllm() -> Any:
 
 # ---------------------------------------------------------------------------
 # llama.cpp fakes — native ``/completion`` over httpx (richer than
-# the OpenAI shim): ``timings`` block + ``stopped_*`` flags → exact AD-1 stats.
+# the OpenAI shim): ``timings`` block + ``stopped_*`` flags → exact stats.
 # This engine is the REFERENCE for the owner's metric names.
 # ---------------------------------------------------------------------------
 
@@ -473,7 +473,7 @@ class TestProviderContract:
         assert done_idx == len(types) - 1, types
 
         usage_data = chunks[usage_idx].data or {}
-        # the usage chunk carries the FULL AD-1 stats dict (predicted_tokens, not
+        # the usage chunk carries the FULL stats dict (predicted_tokens, not
         # a bare completion_tokens) — the streaming drop is fixed.
         assert usage_data.get("predicted_tokens") == _PREDICTED_TOKENS
         assert usage_data.get("total_tokens") == _TOTAL_TOKENS
@@ -511,7 +511,7 @@ class TestProviderContract:
 
 # ---------------------------------------------------------------------------
 # llama.cpp reference-engine specifics — the native ``/completion``
-# ``timings`` block is the source of truth for AD-1's owner-named metrics, so it
+# ``timings`` block is the source of truth for the owner-named metrics, so it
 # gets extra assertions the OpenAI-wire providers cannot make.
 # ---------------------------------------------------------------------------
 

@@ -1,7 +1,7 @@
 /**
- * UserPasswordService Unit Tests (TASK-388 #8 → reworked by TASK-400).
+ * UserPasswordService Unit Tests.
  *
- * TASK-400 replaces the stateless JWT reset token with a revocable, DB-backed
+ * Password reset uses a revocable, DB-backed
  * `PasswordResetToken`: only a SHA-256 hash is stored, issuing revokes prior
  * active tokens (UPDATE `revokedAt` — never DELETE), completion is single-use
  * (`usedAt`) and TTL-bound, and every set path enforces the configurable

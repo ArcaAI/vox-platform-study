@@ -1,5 +1,5 @@
 /**
- * TASK-328 A5 — Behavioural tests for the DNA dashboard aggregate repo methods.
+ * Behavioural tests for the DNA dashboard aggregate repo methods.
  *
  * The base `Repository.db` getter returns `unitOfWork.getDatabaseService()[modelName]`,
  * so we hand each repository a fake unit-of-work whose delegate is a set of

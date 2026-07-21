@@ -80,12 +80,11 @@ describe('TenantController', () => {
         });
     });
 
-    // TASK-331 F2 — the class-level guard widened from @CanManage('Tenant')
-    // (mode AND) to @CanAny(['manage','Tenant'], ['update','Tenant']) (mode OR)
+    // The class-level guard is @CanAny(['manage','Tenant'], ['update','Tenant']) (mode OR)
     // so a TENANT_ADMIN (who holds tenant-scoped update:Tenant, not manage)
     // clears the controller guard for self-service tenant config reads/updates.
     // create()/delete() stay GLOBAL_ADMIN-only via method-level @CanManage('Tenant')
-    // — covered behaviorally by the W5.5 inline-guard block below and by the
+    // — covered behaviorally by the inline-guard block below and by the
     // PolicyEngine TENANT_ADMIN regression in @arcaai/applications.
     describe('Authorization metadata (@CanAny manage|update Tenant)', () => {
         it('should declare BOTH manage:Tenant and update:Tenant as class-level permissions', () => {
@@ -107,7 +106,7 @@ describe('TenantController', () => {
         });
     });
 
-    // TASK-302 Stream D Phase E.1 — update() now requires `@RequiresIfMatch()`
+    // update() requires `@RequiresIfMatch()`
     // and the param decorator fires 428 in HTTP land if the header is
     // missing. These unit tests cover the controller-internal logic of
     // folding the header value into the body-field `expectedVersion`.
@@ -186,7 +185,7 @@ describe('TenantController', () => {
         });
     });
 
-    // TASK-307 W5.5 (AC-19, audit D-5) — every per-row endpoint must
+    // Every per-row endpoint must
     // inline-assert that the caller is either a GLOBAL_ADMIN or operating
     // on their own tenant. The class-level @CanManage('Tenant') was
     // insufficient because that policy is `tenantId: ${user.tenantId}`
@@ -343,7 +342,7 @@ describe('TenantController', () => {
         });
     });
 
-    // TASK-319 F5 — fetchAll tenant scoping.
+    // fetchAll tenant scoping.
     //
     // `Tenant` rows are NOT tenant-scoped by the Prisma extension, and the
     // class-level @CanManage('Tenant') admits any TENANT_ADMIN (their policy is
@@ -352,7 +351,7 @@ describe('TenantController', () => {
     // only their own tenant; GLOBAL_ADMIN keeps the full cross-tenant listing.
     //
     // (fetchById / fetchByCodeName / fetchTenantConfigs are already tenant-scoped
-    // at the service layer — TASK-306 P1.3 / P2.2 — so they are intentionally not
+    // at the service layer, so they are intentionally not
     // re-guarded here; a controller 403 would weaken their no-existence-leak 404.)
     describe('TASK-319 F5 — fetchAll tenant scoping', () => {
         function build(user: { id?: string; tenantId?: string | null; roles?: string[] } | null) {
@@ -403,7 +402,7 @@ describe('TenantController', () => {
         });
     });
 
-    // AC-10 (TASK-336) — the tenant-config read/update routes take a dual
+    // The tenant-config read/update routes take a dual
     // `:identifier` (tenant UUID OR code-name) and previously forwarded it (and
     // the raw config body) straight to the service. Add a controller-layer scope
     // guard (404, NOT 403 — preserves the service's no-existence-leak posture for

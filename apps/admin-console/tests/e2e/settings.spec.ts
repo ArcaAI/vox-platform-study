@@ -1,6 +1,6 @@
 /**
- * Frame 24 — Settings & secrets screen spec (TASK-439 redesign): authenticated
- * smoke of the list (h1, New-setting action, data grid or empty state), the row →
+ * Frame 24 — Settings & secrets screen spec: authenticated smoke of the list
+ * (h1, New-setting action, data grid or empty state), the row →
  * DetailDrawer flow (Value/Details/History tabs, real value editor — no modal),
  * the create drawer, and the rule 11 §11 axe gate in both themes. Requires a
  * running stack.
@@ -47,7 +47,7 @@ test.describe('settings & secrets screen (frame 24)', () => {
         await page.goto('/settings');
         await waitForListSettled(page);
 
-        // TASK-443 — group-header rows are non-interactive, so target a DATA row.
+        // Group-header rows are non-interactive, so target a DATA row.
         await expect(page.locator('[data-slot="data-grid-row"]').first()).toBeVisible();
         const grid = page.locator('[data-slot="virtualized-data-grid"] [role="grid"]');
         const heightBefore = await grid.evaluate((element) => element.getBoundingClientRect().height);
@@ -65,7 +65,7 @@ test.describe('settings & secrets screen (frame 24)', () => {
         await expect(dialog.getByRole('tab', { name: 'History' })).toBeVisible();
     });
 
-    // TASK-443 — namespace grouping + Namespace/Type/Secrets-only chips.
+    // Namespace grouping + Namespace/Type/Secrets-only chips.
     test('groups the list by namespace with header rows and offers the three faceting chips', async ({ page }) => {
         // Wide desktop: below a ~1024px grid container the chips collapse into the Filters control.
         await page.setViewportSize({ width: 1600, height: 900 });

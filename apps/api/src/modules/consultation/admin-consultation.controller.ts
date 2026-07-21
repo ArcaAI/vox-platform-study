@@ -12,7 +12,7 @@ import { ApiTags, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse } from '@nestjs
 import { ApiEndpoint, CanManage } from '../../decorators';
 
 /**
- * TASK-319 F1 — admin consultation surface (tenant-wide scope).
+ * Admin consultation surface (tenant-wide scope).
  *
  * Separate-controller (Pattern A) admin counterpart to {@link ConsultationController}.
  * Where the end-user controller scopes every list/read to the caller (own +
@@ -79,8 +79,8 @@ export class AdminConsultationController {
   }
 
   /**
-   * TASK-386 (#20 / E4) — server-side, zero-filled new/revisit aggregation over a
-   * date range. Scope follows the same model as `list` (TD3): a GLOBAL_ADMIN with
+   * Server-side, zero-filled new/revisit aggregation over a
+   * date range. Scope follows the same model as `list`: a GLOBAL_ADMIN with
    * no working tenant aggregates cross-tenant; everyone else is pinned to their
    * CLS tenant. Declared BEFORE the `:id` route so `GET /aggregate` is not
    * captured by the `:id` param matcher.

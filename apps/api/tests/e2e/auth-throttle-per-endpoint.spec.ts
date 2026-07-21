@@ -1,7 +1,7 @@
 /**
- * TASK-308 AC-6 — per-endpoint throttle granularity on `AuthController`.
+ * Per-endpoint throttle granularity on `AuthController`.
  *
- * Pins AC-5's contract at the HTTP layer:
+ * Pins the contract at the HTTP layer:
  *
  *   - `/auth/login`   is throttled at 5/min  → 6+ rapid attempts produce
  *                                              at least one 429 within the

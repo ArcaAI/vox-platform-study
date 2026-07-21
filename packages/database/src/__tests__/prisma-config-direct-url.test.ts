@@ -1,6 +1,4 @@
 /**
- * TASK-302 Stream C Phase 2A Task 2A.3.2
- *
  * `prisma.config.ts` MUST prefer `DIRECT_URL` over `DATABASE_URL` for
  * Prisma Migrate operations. In production, `DATABASE_URL` points at
  * the pgbouncer pool (port 6432, transaction mode) and Prisma Migrate's

@@ -17,7 +17,7 @@ import { TenantFrontendConfigDtoMapper } from './tenant-frontend-config.dto.mapp
 import { captureModeToLocalRawCapture } from './capture-mode.translation';
 
 /**
- * TASK-332 — platform-capability flag for local raw-stream dual-capture. A
+ * Platform-capability flag for local raw-stream dual-capture. A
  * single `locked` GlobalSetting owned by `SYSTEM_TENANT_ID` (namespace
  * `feature-flags`). The `AppSettingsService` cache is keyed flat by `key`, so a
  * single platform-scoped row resolves deterministically regardless of tenant.
@@ -25,7 +25,7 @@ import { captureModeToLocalRawCapture } from './capture-mode.translation';
 export const LOCAL_RAW_CAPTURE_CAPABILITY_KEY = 'enable-local-raw-capture';
 
 /**
- * Manages per-tenant frontend audio-pipeline defaults (TASK-328 A6).
+ * Manages per-tenant frontend audio-pipeline defaults.
  *
  * There is exactly one row per tenant (`tenantId @unique`); `upsert` creates it
  * on first save and updates it thereafter. Updates run via the OCC
@@ -56,7 +56,7 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
   }
 
   /**
-   * TASK-332 — the SDK-facing enablement for local raw-stream capture:
+   * The SDK-facing enablement for local raw-stream capture:
    * `platformCapability AND tenantToggle`, computed server-side. The platform
    * capability comes from the boot-cached `enable-local-raw-capture`
    * GlobalSetting; the tenant toggle is the `captureRawAudio` column. Returns
@@ -68,11 +68,11 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
     const config = await this.configRepository.findByTenant(tenantId);
     if (!config) return false;
 
-    // TASK-356 Phase 4 (A7) — when the tenant has set a `captureMode`, the
+    // When the tenant has set a `captureMode`, the
     // translation layer is the source of truth for the local raw flag. When
     // `captureMode` is null (no tenant override) we fall back to the legacy
-    // `captureRawAudio` column so TASK-332-configured tenants keep today's
-    // behaviour (back-compat, R-6).
+    // `captureRawAudio` column so previously-configured tenants keep today's
+    // behaviour (back-compat).
     const fromCaptureMode = captureModeToLocalRawCapture(config.captureMode);
     if (fromCaptureMode !== null) return fromCaptureMode;
     return config.captureRawAudio === true;
@@ -116,7 +116,7 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
       voiceEnrollment: dto.voiceEnrollment ?? false,
       diarization: dto.diarization ?? false,
       captureRawAudio: dto.captureRawAudio ?? false,
-      // TASK-356 Phase 4 — the factory defaults transcriptionMode=BACKEND,
+      // The factory defaults transcriptionMode=BACKEND,
       // transcriptionModeLocked=false, captureMode=null when these are omitted.
       transcriptionMode: dto.transcriptionMode,
       transcriptionModeLocked: dto.transcriptionModeLocked,
@@ -135,7 +135,7 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
     if (dto.voiceEnrollment !== undefined) entity.voiceEnrollment = dto.voiceEnrollment;
     if (dto.diarization !== undefined) entity.diarization = dto.diarization;
     if (dto.captureRawAudio !== undefined) entity.captureRawAudio = dto.captureRawAudio;
-    // TASK-356 Phase 4 — captureMode is nullable: `null` is a meaningful value
+    // CaptureMode is nullable: `null` is a meaningful value
     // (clears the tenant override), so we only skip the assignment when the
     // field is entirely absent from the payload.
     if (dto.transcriptionMode !== undefined) entity.transcriptionMode = dto.transcriptionMode;

@@ -141,7 +141,7 @@ describe('TtsWsGateway', () => {
     expect(client.close).toHaveBeenCalledWith(TTS_WS_CLOSE_CODES.UPSTREAM_ERROR);
   });
 
-  // TASK-506 §3.4 — the first `init` frame is additionally enriched with the
+  // The first `init` frame is additionally enriched with the
   // tenant's resolved `voice_bindings` (mirrors the batch speech proxy).
   describe('init-frame voice_bindings enrichment (TASK-506)', () => {
     const BINDINGS = { 'en-female-1': { azure: 'en-IN-NeerjaNeural' } };

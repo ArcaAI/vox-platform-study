@@ -1,4 +1,4 @@
-"""Fail-closed PHI redaction guard (TASK-330 Phase 2).
+"""Fail-closed PHI redaction guard.
 
 Public API:
 
@@ -6,7 +6,7 @@ Public API:
   recognizer; ``redact(text)`` + fail-closed ``ensure_safe_for_cloud(...)``.
 * :class:`RedactionResult` / :class:`RedactedEntity` — the redaction outputs.
 * :class:`PhiEgressBlocked` — raised when fail-closed refuses a cloud egress.
-* :func:`ensure_egress_safe` / :func:`ensure_inferential_egress_safe` (TASK-357) —
+* :func:`ensure_egress_safe` / :func:`ensure_inferential_egress_safe` —
   the policy-aware egress chokepoint the activities enforce before cloud LLM calls.
 """
 

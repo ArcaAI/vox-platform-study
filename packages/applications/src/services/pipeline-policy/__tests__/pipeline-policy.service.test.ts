@@ -1,5 +1,5 @@
 /**
- * PipelinePolicyService unit tests (TASK-356 Phase 5, Pillar B).
+ * PipelinePolicyService unit tests.
  *
  * Mirrors HarnessPolicyService's gold-standard OCC + WORM behaviour, adapted for
  * the polymorphic (scope/scopeId) realtime-pipeline policy table:
@@ -51,7 +51,7 @@ const cls = {
 
 const configResolver = {
   resolvePipelineToggles: vi.fn(),
-  // TASK-356 Phase 6 (S3) — effective DNA decision (tenant AND doctor).
+  // Effective DNA decision (tenant AND doctor).
   resolveEffectiveDnaStyleEnabled: vi.fn(),
 };
 
@@ -66,7 +66,7 @@ function makeService(): PipelinePolicyService {
 }
 
 /**
- * TASK-532 A-2 — a GLOBAL_ADMIN caller. The two locked toggles
+ * A GLOBAL_ADMIN caller. The two locked toggles
  * (`harnessEnabled`, `autoNerEnabled`) are writable only by this caller shape;
  * the default `cls` above is a plain tenant admin (no roles).
  */
@@ -275,7 +275,7 @@ describe('PipelinePolicyService', () => {
     });
 
     it('REJECTS pinning harnessEnabled at DOCTOR scope (exceeds its max scope) before any DB write', async () => {
-      // Elevated caller: isolates the SCOPE clamp (400) from the TASK-532
+      // Elevated caller: isolates the SCOPE clamp (400) from the global-only
       // privilege lock (403) — a tenant admin would now fail on the latter first.
       await expect(
         makeElevatedService().upsertRow({
@@ -308,10 +308,10 @@ describe('PipelinePolicyService', () => {
   });
 
   /**
-   * TASK-532 work-stream A-2 (E3-L2, OD-2) — guardrail's primary caller (the
-   * harness) and NLP auto-extraction may no longer be switched off by a tenant
-   * admin. The check is DESCRIPTOR-DRIVEN (`globalOnly` on the registry
-   * descriptor), not a second hand-rolled key list in this service.
+   * Guardrail's primary caller (the harness) and NLP auto-extraction may no
+   * longer be switched off by a tenant admin. The check is DESCRIPTOR-DRIVEN
+   * (`globalOnly` on the registry descriptor), not a second hand-rolled key
+   * list in this service.
    */
   describe('upsertRow — globalOnly toggle lock', () => {
     beforeEach(() => {
@@ -382,7 +382,7 @@ describe('PipelinePolicyService', () => {
     });
   });
 
-  // ─── TASK-356 Phase 6 (S3) — per-doctor DNA toggle (DOCTOR-scope write) ────
+  // ─── per-doctor DNA toggle (DOCTOR-scope write) ────
   describe('getDnaSettings', () => {
     it('delegates to ConfigResolver.resolveEffectiveDnaStyleEnabled and returns the DOCTOR-row OCC version', async () => {
       const row = PipelinePolicyFactory.CreatePipelinePolicy({ tenantId: TENANT, scope: PipelinePolicyScope.DOCTOR, scopeId: DOCTOR, dnaStyleEnabled: false });

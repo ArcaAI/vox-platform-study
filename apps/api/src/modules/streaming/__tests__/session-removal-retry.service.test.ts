@@ -1,5 +1,5 @@
 /**
- * SessionRemovalRetryService unit tests (TASK-351 P1-3 / M6 part 2).
+ * SessionRemovalRetryService unit tests.
  *
  * When the gateway's fire-and-forget `removeSession` fails on WS disconnect,
  * the session id is parked on a Redis-backed retry set and the upstream

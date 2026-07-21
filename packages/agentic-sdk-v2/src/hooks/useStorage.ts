@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useStorage Hook (TASK-032 WS-G)
+ * @arcaai/vox - useStorage Hook
  *
  * Storage management hook for admin operations.
  */

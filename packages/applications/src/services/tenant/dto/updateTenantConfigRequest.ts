@@ -19,12 +19,12 @@ export class UpdateTenantConfigRequest extends BaseRequest {
   value!: string;
 
   /**
-   * Optimistic-concurrency token. Required since TASK-302 Stream D Phase C.
+   * Optimistic-concurrency token.
    * Must equal the row's current `_version`; the bulk update inside a single
    * `$transaction` is all-or-nothing on conflict and returns 412 Precondition
    * Failed if any row's version drifted since the prior GET.
    *
-   * @see TASK-302 Stream D `04-optimistic-locking.md`
+   * @see `04-optimistic-locking.md`
    */
   @ApiProperty({
     description: "Current version of the row (from the prior GET). The PATCH fails with 412 if any row's version drifted.",

@@ -1,4 +1,4 @@
-"""Groundedness inferential-sensor tests (RED-first, TASK-330 Phase 2).
+"""Groundedness inferential-sensor tests.
 
 Heuristic under test: each ``citationsMap`` claim is entailment-checked against
 (transcript ∪ that claim's own evidence) via the injected
@@ -188,7 +188,7 @@ class TestDegradeAndEmpty:
 
 
 class TestOnClaimCallback:
-    """TASK-355 Phase D Slice 5d (Q5) — the per-claim path notifies an optional
+    """Q5 — the per-claim path notifies an optional
     ``on_claim(claim_id, supported)`` callback AS EACH verdict resolves, so the
     activity can stream it live. Best-effort + verdict-preserving: a callback that
     raises must NEVER degrade the pass or change the aggregate verdict."""

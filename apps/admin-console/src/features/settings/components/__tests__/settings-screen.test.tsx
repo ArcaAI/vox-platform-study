@@ -1,7 +1,7 @@
 /**
  * TDD screen tests for frame 24 (Settings & secrets): list states, the
- * cross-tenant Tenant column/filter (TASK-430), and the row → DetailDrawer wiring
- * (TASK-439) that replaced the per-row edit/create modals. Value editing, secret
+ * cross-tenant Tenant column/filter, and the row → DetailDrawer wiring
+ * that replaced the per-row edit/create modals. Value editing, secret
  * reveal/rotate, OCC and the create payload are covered in setting-drawer.test.
  */
 
@@ -162,7 +162,7 @@ describe('SettingsScreen', () => {
         expect(await screen.findByText('smtp.host')).toBeDefined();
     });
 
-    // TASK-430 — cross-tenant admin surface: Tenant column + tenant filter.
+    // Cross-tenant admin surface: Tenant column + tenant filter.
     it('renders the Tenant column with the catalog name and a dash for rows without a tenant', async () => {
         stubFetch({
             rows: [setting({ tenantId: 't-1' }), setting({ id: 's-9', name: 'Retention days', key: 'retention.days', tenantId: null })],
@@ -190,7 +190,7 @@ describe('SettingsScreen', () => {
         expect(requested.searchParams.get('filters')).toBe('tenantId[equals]:t-1');
     });
 
-    // TASK-443 — namespace grouping + Namespace/Type/Secrets-only filter chips.
+    // Namespace grouping + Namespace/Type/Secrets-only filter chips.
     it('renders namespace group-header rows with counts between contiguous groups', async () => {
         stubFetch({ rows: [setting(), SECRET, setting({ id: 's-3', name: 'LLM model', key: 'llm.model', namespace: 'llm' })] });
         renderWithProviders(<SettingsScreen />);

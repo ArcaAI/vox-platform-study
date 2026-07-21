@@ -1,5 +1,5 @@
 /**
- * TASK-225 Stream A2: useUsers search method
+ * useUsers search method
  *
  * Tests that useUsers exposes a `search(query, options?)` method
  * that calls GET /users?search={query}&limit={limit} and returns

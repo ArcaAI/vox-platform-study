@@ -1,12 +1,12 @@
 /**
- * TASK-444 — role-members cross-tenant contract
+ * Role-members cross-tenant contract
  * (`GET /api/v1/admin/rbac/roles/:id/members` + `memberCount` on the role reads).
  *
  * Mirrors the task-307 cross-tenant posture specs: live-stack proof that the
  * members listing is TENANT-SCOPED and that cross-tenant access never leaks
  * (404-over-403; other tenants' member rows are simply absent).
  *
- * Contract under test (TASK-444 README, Implementation Summary):
+ * Contract under test:
  *   M1. Envelope — `{ data, total, page, pageSize }`; rows carry the
  *       RoleMemberResponse projection (assignmentId, userId, tenantId,
  *       username, displayName, resourceStatus, assignedAt).

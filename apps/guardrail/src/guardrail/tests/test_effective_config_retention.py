@@ -1,11 +1,6 @@
-"""TASK-535 (R1) — guardrail takes model-cache retention from the control plane.
+"""Guardrail takes model-cache retention from the control plane.
 
-Before this ticket guardrail had NO effective-config client at all: both aux
-caches (GLiNER + MiniCheck) were constructed with `ttl_seconds=settings.
-model_cache_ttl_s`, so `guardrail.modelCache.ttlSeconds` in the admin console
-was a knob that silently did nothing.
-
-The four clauses are the same for all three services adopted here (§5):
+The four clauses are the same for all three services adopted here:
 
 1. a control-plane value beats the env default;
 2. an ALREADY-LIVE cache is reconfigured, not only a freshly built one — the

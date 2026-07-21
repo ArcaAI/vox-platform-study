@@ -4,12 +4,11 @@ import { tap } from 'rxjs/operators';
 import { IMonitoringService } from '@arcaai/applications';
 
 /**
- * TASK-310 E-7 (AC-7) — when a request never matched a NestJS route
- * (404 fall-throughs, OPTIONS preflights handled by middleware, scanner
- * noise) `request.route?.path` is undefined. Pre-W7 we fell back to
- * `request.url`, which expanded to the raw URL and minted a new
- * Prometheus series per unique `/api/v1/<random>` — cardinality grew
- * linearly with traffic, eventually breaking the metrics scrape.
+ * When a request never matched a NestJS route (404 fall-throughs, OPTIONS
+ * preflights handled by middleware, scanner noise) `request.route?.path` is
+ * undefined. Falling back to `request.url` would mint a new Prometheus
+ * series per unique `/api/v1/<random>` — cardinality grows linearly with
+ * traffic, eventually breaking the metrics scrape.
  *
  * Labelling unmatched requests with this constant keeps the series
  * count bounded by the templated-route set + 1.

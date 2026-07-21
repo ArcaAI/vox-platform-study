@@ -28,7 +28,7 @@ export interface IngestKnowledgeDocumentResult {
 }
 
 /**
- * IngestKnowledgeDocumentProcessor (TASK-330 Phase 3 — institutional RAG).
+ * IngestKnowledgeDocumentProcessor — institutional RAG.
  *
  * Mirrors SummaryProcessor: a fail-closed `tenantId` guard, a CLS rebind via
  * `createWorkerSession` (worker processes run outside the API edge ClsModule
@@ -50,7 +50,7 @@ export class IngestKnowledgeDocumentProcessor extends WorkerHost {
     private readonly knowledgeChunkRepository: KnowledgeChunkRepository,
     private readonly ingestClient: KnowledgeIngestClient,
     private readonly cls: ClsService<IActiveUserContext>,
-    // TASK-369 Phase 3C — optional + trailing so existing positional fixtures
+    // Optional + trailing so existing positional fixtures
     // keep their arity; when wired, each chunk's `text` is encrypted into the
     // `encryptedText` column before persist (dual-write soak).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
@@ -59,7 +59,7 @@ export class IngestKnowledgeDocumentProcessor extends WorkerHost {
   }
 
   /**
-   * TASK-369 — encrypt PHI on write through the shared env-gated guard: a soft
+   * Encrypt PHI on write through the shared env-gated guard: a soft
    * no-op in dev/test (SECRETS_PROVIDER!=vault) but FAIL-CLOSED (throws) in
    * staging/prod (SECRETS_PROVIDER=vault) instead of persisting plaintext-only.
    */

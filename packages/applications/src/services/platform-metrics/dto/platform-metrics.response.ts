@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 /**
- * TASK-386 E1 — per-service HTTP health row (sourced from Prometheus via the
+ * Per-service HTTP health row (sourced from Prometheus via the
  * canonical PromQL in METRIC-CONTRACT.md §9). `null` = the metric is not
  * available for that service (e.g. Prometheus unreachable, or guardrail which
  * exposes no `http_*` series).
@@ -21,7 +21,7 @@ export class PlatformServiceMetric {
 }
 
 /**
- * TASK-386 E1 / #19 — per-model running-instances + avg-latency row. `running`
+ * Per-model running-instances + avg-latency row. `running`
  * / `avgLatencyMs` are `null` (NOT `0`) when the model is absent from the
  * Prometheus scrape, so the UI can distinguish "not reporting" from "idle".
  */
@@ -59,7 +59,7 @@ export class RequestVolumePoint {
 }
 
 /**
- * TASK-386 E1 — platform runtime metrics (super-admin). Prometheus-derived
+ * Platform runtime metrics (super-admin). Prometheus-derived
  * fields (requests/error/p95/per-service/per-model/series) degrade to 0/[]/null
  * when Prometheus is unreachable; `openSockets` is sourced live from the
  * Redis-aggregated socket registry (#17) so it is accurate without Prometheus.

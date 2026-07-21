@@ -1,4 +1,4 @@
-// TASK-369 (Data Encryption Initiative) Phase 3D — repository encryption helpers
+// Repository encryption helpers
 // for the immutable WORM tables (HarnessAuditEvent / HarnessPolicyChange /
 // PipelinePolicyChange), exercised via the prototype-augmentation siblings. No
 // real Prisma client is booted; the helpers are pure (encrypt/decrypt only).

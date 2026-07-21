@@ -20,7 +20,6 @@ import './env.js';
 import { Prisma, PrismaClient } from './generated/core-prisma-client/client.js';
 import { applyTenantScopeExtension, resolveTenantContext } from './extensions/tenant-scope.js';
 
-// Re-export types and enums from the generated client
 export * from './generated/core-prisma-client/client.js';
 export { Prisma } from './generated/core-prisma-client/client.js';
 
@@ -53,8 +52,6 @@ export type PrismaClientValidationError = Prisma.PrismaClientValidationError;
  * When DATABASE_URL points at PgBouncer (port 6432 in production), migrations
  * must use DIRECT_URL via `prisma.config.ts` to keep advisory locks intact —
  * they do not survive PgBouncer transaction-mode swaps.
- *
- * @see docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md
  */
 function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL;
@@ -103,11 +100,11 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   'ContextItemVersion',
   'PromptVersion',
   'DnaWritingStyleVersion',
-  // AsrPipelineVersion (TASK-328 A6) is an immutable config-snapshot history
+  // AsrPipelineVersion is an immutable config-snapshot history
   // table with NO `resourceStatus` column — same shape as the version tables
   // above. Without this entry the soft-delete extension injected
   // `resourceStatus: { not: 'DELETED' }` into every read and Prisma rejected it
-  // (PrismaClientValidationError → bare 400 on GET /admin/audio/pipelines/:id/versions). TASK-364.
+  // (PrismaClientValidationError → bare 400 on GET /admin/audio/pipelines/:id/versions).
   'AsrPipelineVersion',
   'DnaUsageRecord',
   'PromptUsageRecord',
@@ -118,15 +115,15 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // COMPLETED/FAILED/CANCELLED) and has no `resourceStatus` column, so the
   // soft-delete filter would otherwise emit an invalid Prisma `where`.
   'TranscriptionJob',
-  // HarnessAuditEvent (TASK-330) is an append-only WORM audit table — no
+  // HarnessAuditEvent is an append-only WORM audit table — no
   // `resourceStatus` column and no soft-delete (rows are immutable; the
   // migration REVOKEs UPDATE/DELETE from the app role).
   'HarnessAuditEvent',
-  // GateEditExemplar (TASK-533 B6) is the derived, append-only gate-edit mining
+  // GateEditExemplar is the derived, append-only gate-edit mining
   // store — no `resourceStatus` column. Rows are pruned/deleted wholesale rather
   // than soft-deleted, so without this entry the soft-delete extension would
   // inject `resourceStatus: { not: 'DELETED' }` and Prisma would reject every
-  // read (same failure shape as AsrPipelineVersion in TASK-364).
+  // read (same failure shape as AsrPipelineVersion above).
   'GateEditExemplar',
   // AgentTrajectoryStep is high-volume ordered ops
   // telemetry with HARD RETENTION (a nightly prune job hard-deletes aged rows)
@@ -203,7 +200,7 @@ export function applySoftDeleteFilter(args: { where?: Record<string, unknown> })
 /**
  * Apply the shared soft-delete extension to ANY PrismaClient instance.
  *
- * TASK-302 Phase 5 Task 5.6 (Stream B) extracted this from the
+ * Extracted from the
  * `createExtendedPrismaClient` body so the Vault-backed prisma client
  * (constructed in `apps/api/src/vault-prisma.module.ts`) can reuse the
  * exact same extension config — keeping soft-delete semantics
@@ -262,8 +259,8 @@ export function applySoftDeleteExtension(prisma: PrismaClient) {
  * merge `tenantId` into `args.where` before the soft-delete handler
  * adds `resourceStatus: { not: 'DELETED' }`. The final query the
  * Prisma engine sees carries BOTH filters in a single pass, matching
- * the audit's "defence-in-depth" recommendation
- * (`docs/multi-tenancy-audit/02-prisma-schema-review.md` §B7).
+ * the "defence-in-depth" recommendation
+ * (`docs/multi-tenancy-audit/02-prisma-schema-review.md`).
  *
  * The tenant-scope extension reads from `resolveTenantContext()` —
  * which returns the host-registered provider (NestJS wires
@@ -292,7 +289,7 @@ let extendedPrismaInstance: ExtendedCorePrismaClient | null = null;
  *
  * ⚠️ DANGER — this client BYPASSES the tenant-scope `$extends` and the
  * soft-delete filter. Importing it from a NestJS service is almost
- * certainly a multi-tenancy bug; an ESLint guard (TASK-305 B.5) blocks
+ * certainly a multi-tenancy bug; an ESLint guard blocks
  * the import everywhere except the explicit allow-list:
  *
  *   - `packages/database/src/prisma/db_main/seed/**`
@@ -304,8 +301,6 @@ let extendedPrismaInstance: ExtendedCorePrismaClient | null = null;
  *
  * For every other call site use {@link getExtendedPrismaClient} which
  * returns the composed (soft-delete + tenant-scope) client.
- *
- * @see docs/implementation/TASK-305-Multi-Tenancy-Hardening/README.md
  */
 export function getPlatformAdminPrismaClient_Unscoped(): CorePrismaClient {
   if (!prismaInstance) {

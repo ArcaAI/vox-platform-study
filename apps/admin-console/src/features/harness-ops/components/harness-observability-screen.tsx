@@ -128,7 +128,7 @@ function ObservabilityBody() {
         />
         <EvalRunsPanel />
         <GateQueueCard />
-        {/* TASK-532 B-5 (M-09 tenant leg) — golden datasets + per-consultation
+        {/* (M-09 tenant leg) — golden datasets + per-consultation
             edit-burden telemetry; both are PHI-safe metadata/derived scalars. */}
         <GoldenSetsPanel />
         <EditBurdenCard />

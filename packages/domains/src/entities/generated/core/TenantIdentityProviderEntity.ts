@@ -5,9 +5,9 @@ import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 import * as Enums from '../../../enums';
 
-// TASK-498 — a tenant admin's configured external IdP (OIDC v1; `protocol`
+// A tenant admin's configured external IdP (OIDC v1; `protocol`
 // ships both OIDC and SAML values so the model is protocol-neutral, but v1
-// service-layer validation accepts OIDC only — TASK-499 extends this row for
+// service-layer validation accepts OIDC only — a future SAML extension of this row is
 // SAML). Non-secret config lives in `config`; `encryptedSecretRef` /
 // `directoryCredentialsRef` are Vault Transit ciphertext refs — plaintext is
 // never stored here.

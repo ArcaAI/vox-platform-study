@@ -1,7 +1,6 @@
 """harness trajectory emitters + Prometheus metrics.
 
-RED-first: written before ``ApiClient.report_trajectory`` / the activity
-emitters / ``harness.core.metrics`` exist. Two layers, both hermetic:
+Two layers, both hermetic:
 
 * Per-activity emission (``ActivityEnvironment`` + a capturing trajectory client
   monkeypatched onto ``activities._trajectory_api_client``): each real activity

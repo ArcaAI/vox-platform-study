@@ -1,5 +1,5 @@
 /**
- * TASK-419 item 6 — stream-ticket scopes on the two SSE routes the Admin
+ * Stream-ticket scopes on the two SSE routes the Admin
  * Console consumes:
  *
  *   GET /api/v1/admin/dna-writing-styles/jobs/:jobId/stream

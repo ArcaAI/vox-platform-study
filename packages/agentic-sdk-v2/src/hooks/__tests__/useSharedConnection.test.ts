@@ -1,15 +1,15 @@
 /**
  * useSharedConnection Hook Tests — userId/tenant threading
  *
- * TASK-317 W3.1 (review I-1) — verifies the React hooks forward the
+ * Verifies the React hooks forward the
  * `(userId, tenantId)` discriminator into the SharedConnectionManager so the
- * AC-8 per-user WebSocket dedup is actually LIVE in production.
+ * per-user WebSocket dedup is actually LIVE in production.
  *
- * `useSharedSSE` has threaded `userId` since TASK-297 H-SSE-5 (sibling
- * baseline below). `useSharedWS` must MIRROR it (C-4): without it every WS
+ * `useSharedSSE` has threaded `userId` (sibling
+ * baseline below). `useSharedWS` must MIRROR it: without it every WS
  * subscription collapses to the worker dedup key `id::anon`, so two distinct
- * users on the same connection id still share ONE upstream socket — the
- * cross-user PHI leak AC-8 was meant to close.
+ * users on the same connection id still share ONE upstream socket — a
+ * cross-user PHI leak.
  *
  * The hooks take the user/tenant from their `options` argument (same source
  * the SSE sibling uses), so these tests assert on the manager call shape.
@@ -34,7 +34,7 @@ function createMockManager() {
 
 describe('useSharedConnection — userId/tenant threading (AC-8 / C-4)', () => {
   // ===========================================================================
-  // Sibling baseline — useSharedSSE already threads userId (TASK-297 H-SSE-5).
+  // Sibling baseline — useSharedSSE already threads userId.
   // useSharedWS must reach parity with this.
   // ===========================================================================
   describe('useSharedSSE (sibling baseline — already correct)', () => {
@@ -66,8 +66,8 @@ describe('useSharedConnection — userId/tenant threading (AC-8 / C-4)', () => {
   });
 
   // ===========================================================================
-  // TASK-317 W3.1 — useSharedWS threads userId/tenantId (AC-8 / C-4 production
-  // wiring) so dedup is keyed per-user
+  // useSharedWS threads userId/tenantId (production wiring) so dedup is
+  // keyed per-user
   // ===========================================================================
   describe('TASK-317 W3.1 — useSharedWS threads userId/tenantId (AC-8 / C-4 production wiring) so dedup is keyed per-user', () => {
     it('forwards userId AND tenantId into subscribeWS (worker dedup key becomes (id, userId), not id::anon)', () => {

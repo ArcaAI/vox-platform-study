@@ -1,5 +1,5 @@
 /**
- * TASK-386 (#17 / decision #5) — multi-instance socket aggregation.
+ * (#17 / decision #5) — multi-instance socket aggregation.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SocketRegistryService } from '../socket-registry.service';
@@ -57,7 +57,7 @@ describe('SocketRegistryService (#17)', () => {
     expect(await service.getAggregateCount()).toBe(0);
   });
 
-  // TASK-392 (concurrency) — per-tenant open-socket aggregation.
+  // (concurrency) — per-tenant open-socket aggregation.
   describe('per-tenant concurrency (TASK-392)', () => {
     it('publishes THIS instance per-tenant map under a TTL-bounded key', async () => {
       await service.publishLocalTenantCounts({ 't1': 2, 't2': 3 });

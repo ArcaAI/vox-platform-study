@@ -1,11 +1,10 @@
 /**
- * TASK-307 W6.3 → TASK-311 — `RbacRoleService` regression tests. The
- * service was originally TDD'd against `databaseService.client.role.*`
- * / `databaseService.client.rolePolicy.*` mocks; TASK-311 moves the
- * persistence layer behind `RbacRoleRepository` + `RolePolicyRepository`,
- * so the mocks here now stub the two repositories. The OBSERVABLE
- * behaviour (audit-event payloads, log messages, exception types and
- * messages, returned shape) is unchanged.
+ * `RbacRoleService` regression tests. The service was originally TDD'd
+ * against `databaseService.client.role.*` / `databaseService.client.rolePolicy.*`
+ * mocks; the persistence layer now sits behind `RbacRoleRepository` +
+ * `RolePolicyRepository`, so the mocks here stub the two repositories. The
+ * OBSERVABLE behaviour (audit-event payloads, log messages, exception types
+ * and messages, returned shape) is unchanged.
  *
  * Coverage targets:
  *   - `findAll` / `findOne`               (pagination + RolePolicies include)
@@ -27,7 +26,7 @@
  *                                          row through the
  *                                          RolePolicyRepository;
  *                                          ResourceType.RolePermission
- *                                          on audit — verbatim per AC-5)
+ *                                          on audit)
  */
 
 import { describe, beforeEach, it, expect, vi } from 'vitest';
@@ -35,7 +34,7 @@ import { ResourceStatusType, ResourceType, ROLE_POLICIES_INCLUDE, SysEventType }
 import { RbacRoleService } from '../role.service';
 
 const ADMIN_USER = { id: 'admin-001', firstName: 'Su', lastName: 'Admin', email: 'admin@arcaai.com', roles: ['GLOBAL_ADMIN'] };
-/** TASK-501 — a non-elevated caller; used to assert the SYSTEM-role gates reject tenant admins. */
+/** A non-elevated caller; used to assert the SYSTEM-role gates reject tenant admins. */
 const TENANT_ADMIN_USER = { id: 'tadmin-001', firstName: 'Ten', lastName: 'Admin', email: 'tadmin@arcaai.com', roles: ['TENANT_ADMIN'] };
 const TENANT_ID = 'tenant-001';
 
@@ -74,7 +73,7 @@ function makeMocks(user: typeof ADMIN_USER = ADMIN_USER) {
     findMany: vi.fn(),
     count: vi.fn(),
     findByIdWithPolicies: vi.fn(),
-    // TASK-501 — assignPolicy/removePolicy now pre-check isSystemRole via this
+    // AssignPolicy/removePolicy now pre-check isSystemRole via this
     // select; default to a non-system role so the pre-existing tests (which
     // don't care about the SYSTEM-role gate) don't need to stub it.
     findByIdGuardSelect: vi.fn().mockResolvedValue({ isSystemRole: false, name: 'doctor' }),
@@ -94,9 +93,9 @@ function makeMocks(user: typeof ADMIN_USER = ADMIN_USER) {
 
   const engine = { invalidateRole: vi.fn().mockResolvedValue(undefined) };
 
-  // TASK-409 — break-glass dependencies (delete/detach verify the caller's
+  // Break-glass dependencies (delete/detach verify the caller's
   // password + confirmation name; these mocks accept any password so the
-  // TASK-307 behaviour matrix stays focused on the wiring).
+  // behaviour matrix stays focused on the wiring).
   const policyRepo = { findById: vi.fn().mockResolvedValue({ id: 'policy-1', name: 'team-policy', isProtected: false }) };
   const userRepo = { findById: vi.fn().mockResolvedValue({ id: ADMIN_USER.id, password: 'stored-hash' }) };
   const crypto = { verify: vi.fn().mockResolvedValue(true) };
@@ -105,7 +104,7 @@ function makeMocks(user: typeof ADMIN_USER = ADMIN_USER) {
 }
 
 /**
- * TASK-444 — the read paths now merge a tenant-filtered member `_count` into
+ * The read paths now merge a tenant-filtered member `_count` into
  * the canonical policies include (see role.service.task444.test.ts).
  */
 const ROLE_READ_INCLUDE = {
@@ -132,7 +131,7 @@ function buildService(mocks: ReturnType<typeof makeMocks>) {
   );
 }
 
-/** TASK-409 — the delete/detach paths now require break-glass confirmation. */
+/** The delete/detach paths now require break-glass confirmation. */
 const BREAK_GLASS = (name: string) => ({ password: 'pw', confirmationName: name });
 
 describe('TASK-307 W6.3 — RbacRoleService (closes C-10 / H-9 / AC-24)', () => {

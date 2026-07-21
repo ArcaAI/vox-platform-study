@@ -1,5 +1,5 @@
 /**
- * TASK-392 (Phase 3) — pure enforcement logic (Q10 + Q4).
+ * Pure enforcement logic (Q10 + Q4).
  *
  * Kept free of NestJS/DB so the sensitive "block-new" comparison, the
  * newest-first soft-disable selection, and the trial-expiry predicate are

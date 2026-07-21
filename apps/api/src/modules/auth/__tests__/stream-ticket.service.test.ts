@@ -1,5 +1,5 @@
 /**
- * StreamTicketService — unit tests (TASK-263 W0-1)
+ * StreamTicketService — unit tests
  *
  * Locked contract (D1):
  *   - `issueTicket({ userId, tenantId, scope })` writes a 30s-TTL record at
@@ -151,7 +151,7 @@ describe('StreamTicketService', () => {
     });
   });
 
-  // ─── TASK-295 SEC-A5-6 / M-8: impersonatedBy ─────────────────────────────
+  // ─── impersonatedBy ───────────────────────────────────────────────────────
   describe('impersonatedBy propagation (TASK-295 SEC-A5-6)', () => {
     it('persists impersonatedBy on the stored ticket when supplied at issue time', async () => {
       const issued = await service.issueTicket({
@@ -194,7 +194,7 @@ describe('StreamTicketService', () => {
         tenantId: 'tenant-1',
         scope: 'consultation_job:job-1',
         exp: Date.now() + 30_000,
-        // No impersonatedBy — simulating a ticket minted before TASK-295.
+        // No impersonatedBy — simulating a ticket minted before impersonation support.
       };
       cache.store.set(`${STREAM_TICKET_KEY_PREFIX}${legacyTicket}`, JSON.stringify(legacyPayload));
 

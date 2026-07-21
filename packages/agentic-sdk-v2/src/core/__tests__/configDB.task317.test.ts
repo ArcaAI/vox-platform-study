@@ -1,5 +1,5 @@
 /**
- * TASK-317 W1.3 (AC-2) — configDB v2→v3 upgrade drops the legacy *global*
+ * configDB v2→v3 upgrade drops the legacy *global*
  * personalization cache row.
  *
  * Personalization is now keyed per `${tenantId}::${userId}` (W1.1), so the old

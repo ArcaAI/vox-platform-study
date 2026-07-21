@@ -1,9 +1,9 @@
-// TASK-369 (Data Encryption Initiative) Phase 3C — field encryption for
+// Field encryption for
 // SummaryMeta (citation provenance + guardrail decision JSONB blobs, which can
 // echo clinical content / transcript spans).
 //
 // Sibling file mirroring ContextItemRepository.encryption.ts. Both JSONB fields
-// share ONE `keyVersion` column. Phase 6 dropped the plaintext JSONB columns;
+// share ONE `keyVersion` column. The plaintext JSONB columns have been dropped;
 // reads decrypt the ciphertext only.
 
 import { SummaryMetaRepository } from './SummaryMetaRepository';
@@ -79,7 +79,7 @@ SummaryMetaRepository.prototype.decryptFieldsFromEntity = async function (
 ): Promise<SummaryMetaPlaintext> {
   const citationsMap = await decryptCiphertextToJson(secrets, entity.encryptedCitationsMap);
   const guardrailDecisions = await decryptCiphertextToJson(secrets, entity.encryptedGuardrailDecisions);
-  // TASK-369 Phase 6 — plaintext columns dropped; decrypt ciphertext only.
+  // Plaintext columns dropped; decrypt ciphertext only.
   return { citationsMap, guardrailDecisions };
 };
 

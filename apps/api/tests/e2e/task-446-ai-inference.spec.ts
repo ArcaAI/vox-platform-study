@@ -1,5 +1,5 @@
 /**
- * TASK-446 — user-plane AI inference proxy (`/ai/*`, Agent Playground
+ * User-plane AI inference proxy (`/ai/*`, Agent Playground
  * Guardrails/NER tabs). Verifies the gateway contract against a RUNNING API:
  * deny-by-default auth, strict DTO validation, and that an authenticated
  * user-plane caller REACHES the proxy (never 401/403). The upstream Guardrail

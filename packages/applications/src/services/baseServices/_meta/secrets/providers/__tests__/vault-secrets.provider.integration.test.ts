@@ -1,4 +1,4 @@
-// Phase 2B Task 2.13 (TASK-302 Stream B) - VaultSecretsProvider integration test.
+// VaultSecretsProvider integration test.
 //
 // Gated by INTEG_VAULT=1; without it `describe.skipIf` short-circuits the
 // suite so default `pnpm test` runs (and CI's unit job) stay hermetic. To
@@ -100,12 +100,12 @@ describe.skipIf(!enabled)('VaultSecretsProvider (integration)', () => {
     expect(h.latencyMs).toBeGreaterThanOrEqual(0);
   });
 
-  // Phase 6 Task 6.1 (TASK-302 Stream B) — Transit rotation round-trip.
+  // Transit rotation round-trip.
   //
   // Verifies the production-critical invariant: after rotating the
   // hope-globalsetting Transit key, ciphertexts produced with the
   // PREVIOUS key version still decrypt successfully. This is the
-  // single most important assurance for the Phase 6 rotation worker
+  // single most important assurance for the rotation worker
   // because if min_decryption_version drops historical versions, every
   // encrypted GlobalSetting row goes dark.
   //

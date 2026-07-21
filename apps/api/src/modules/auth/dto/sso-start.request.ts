@@ -2,7 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEmail, IsOptional, IsString } from 'class-validator';
 
 /**
- * TASK-498 D5 — home-realm discovery (HRD). Prefer `email` so the client can
+ * Home-realm discovery (HRD). Prefer `email` so the client can
  * route the user to the right IdP from their email domain; `tenantKey`
  * remains an explicit fallback (consistent with today's password-login
  * `tenantKey` requirement) when the domain is unmapped/ambiguous.

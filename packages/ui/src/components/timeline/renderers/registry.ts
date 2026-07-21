@@ -8,7 +8,7 @@ import { MarkdownRenderer } from './markdown-renderer';
 import { MixedRenderer } from './mixed-renderer';
 import { PdfRenderer } from './pdf-renderer';
 
-/** Default per-variant renderer registry (TASK-372 §3.5). */
+/** Default per-variant renderer registry. */
 export const DEFAULT_RENDERERS: Record<TimelineContentVariant, TimelineRenderer> = {
   markdown: MarkdownRenderer,
   pdf: PdfRenderer,

@@ -47,7 +47,7 @@ export interface SummaryResponse {
   /** Named entities extracted when includeNER was true */
   entities?: NEREntity[];
   /**
-   * TASK-329 (P6) — summary metadata as returned by the backend
+   * Summary metadata as returned by the backend
    * `SummaryResponse.structuredData`. `cacheHit`/`qualityScore` are surfaced
    * here so the version browser / list can badge cache and quality.
    */
@@ -61,19 +61,19 @@ export interface SummaryResponse {
     cacheHit?: boolean;
     qualityScore?: number;
     /**
-     * TASK-331 doc-06 F4 — which tier of the 3-tier prompt fallback produced
+     * Which tier of the 3-tier prompt fallback produced
      * this summary (server `PromptResolutionTier`). Surfaced so the UI can badge
      * "Preferred prompt" / "Dept prompt" / "Default". The value already flows
      * server→SMR; this just types it on the SDK boundary (no runtime change).
      */
     promptResolvedFrom?: 'preferred' | 'department' | 'default';
-    /** TASK-331 doc-06 F4 — id of the resolved department/preferred prompt template. */
+    /** Id of the resolved department/preferred prompt template. */
     resolvedPromptId?: string;
     [key: string]: unknown;
   };
-  /** TASK-329 (P6) — current version number for the version browser. */
+  /** Current version number for the version browser. */
   versionNumber?: number;
-  /** TASK-329 (P6) — lifecycle status (DRAFT/APPROVED/LOCKED). */
+  /** Lifecycle status (DRAFT/APPROVED/LOCKED). */
   status?: string;
   /** Last-updated timestamp. */
   updatedAt?: string;
@@ -315,7 +315,7 @@ export interface SummaryMeta {
 }
 
 // =============================================================================
-// Summary Tagging Types (TASK-329 P6)
+// Summary Tagging Types
 // =============================================================================
 
 /**
@@ -365,7 +365,7 @@ export interface VersionDiff {
 /**
  * Extended options for summary generation via useArca hook.
  *
- * TASK-299 D-4 — field reconciliation between SDK and backend
+ * Field reconciliation between SDK and backend
  * (`GenerateSummaryRequest`):
  *
  *   - `transcript`       → backend `transcription` (DEPRECATED legacy name).
@@ -394,7 +394,7 @@ export interface SummaryGenerationOptions {
   /** Free-form options bag forwarded verbatim to the backend. */
   options?: Record<string, unknown>;
   /**
-   * TASK-299 D-9 — explicit idempotency key. If omitted the hook mints a
+   * Explicit idempotency key. If omitted the hook mints a
    * UUID per user-action so duplicate POSTs (double-clicks, retries, hot
    * reloads) dedupe to the same job server-side.
    */
@@ -402,7 +402,7 @@ export interface SummaryGenerationOptions {
 }
 
 /**
- * TASK-299 D-17 — Comprehensive (cross-chain) summary options.
+ * Comprehensive (cross-chain) summary options.
  *
  * Widened from `{ dnaStyleId; includeNER }` to mirror
  * `ComprehensiveSummaryRequest` on the backend, which also accepts
@@ -414,7 +414,7 @@ export interface ComprehensiveSummaryGenerationOptions {
   includeLabResults?: boolean;
   template?: string;
   options?: Record<string, unknown>;
-  /** TASK-299 D-9 — see {@link SummaryGenerationOptions.idempotencyKey}. */
+  /** See {@link SummaryGenerationOptions.idempotencyKey}. */
   idempotencyKey?: string;
 }
 

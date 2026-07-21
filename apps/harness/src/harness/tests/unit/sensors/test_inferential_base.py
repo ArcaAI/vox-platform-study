@@ -1,6 +1,6 @@
-"""Contract tests for the inferential-sensor foundation (TASK-330 Phase 2).
+"""Contract tests for the inferential-sensor foundation.
 
-RED-first. Inferential sensors are **async + model-calling**, so they cannot use
+Inferential sensors are **async + model-calling**, so they cannot use
 the pure sync :class:`~harness.sensors.base.Sensor` protocol. This covers:
 
 * the new ``groundedness_threshold`` knob on :class:`SensorThresholds`,

@@ -11,8 +11,8 @@ const THROTTLER_LIMIT = 'THROTTLER:LIMIT';
 const THROTTLER_TTL = 'THROTTLER:TTL';
 
 /**
- * TASK-315 — Option 2 (named throttlers, non-default opt-in).
- * TASK-316 — DB-backed, admin-controlled limits resolved live per request.
+ * Named throttlers, non-default opt-in.
+ * DB-backed, admin-controlled limits resolved live per request.
  *
  * Under throttler v6 a global guard enforces EVERY configured named throttler
  * on EVERY route unless that tier is skipped. With four registered tiers
@@ -30,11 +30,11 @@ const THROTTLER_TTL = 'THROTTLER:TTL';
  *   2. `rate-limit.route.<id>.enabled === false` → skip that route
  *   3. limit/ttl = per-endpoint DB override
  *                  > `@Throttle` decorator value
- *                  > per-tenant plan tier (TASK-392 Q7)
+ *                  > per-tenant plan tier
  *                  > tier DB baseline
  *                  > static tier default
  *
- * TASK-392 (Q7) — per-request plan rate-limits. The guard runs BEFORE auth, so
+ * Per-request plan rate-limits. The guard runs BEFORE auth, so
  * it derives the tenant identity early from the request (the JWT bearer /
  * SSE token payload — matching how the app identifies tenants) and asks
  * `IEntitlementsService.getTenantRateLimitPolicy` for that tenant's plan tier +
@@ -45,7 +45,7 @@ const THROTTLER_TTL = 'THROTTLER:TTL';
  * IP-based tracker is intentionally left untouched (so brute-force tiers keep
  * their per-IP semantics); only the effective limit/ttl is plan-aware.
  *
- * Both service dependencies are `@Optional()` so the standalone TASK-315
+ * Both service dependencies are `@Optional()` so the standalone
  * integration test (which wires only `ThrottleConfigModule`, no settings /
  * entitlements service) keeps its exact static behavior.
  */
@@ -64,17 +64,17 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
     const context: ExecutionContext = requestProps.context;
 
     // The per-route `@Throttle` value for this tier (undefined = the route did
-    // not decorate this tier). Doubles as the TASK-315 opt-in signal.
+    // not decorate this tier). Doubles as the opt-in signal.
     const decoratorLimit = this.reflector.getAllAndOverride<number>(THROTTLER_LIMIT + name, [context.getHandler(), context.getClass()]);
 
-    // TASK-315 — non-default tiers only gate routes that opted in.
+    // Non-default tiers only gate routes that opted in.
     if (name !== 'default' && decoratorLimit === undefined) {
       return true;
     }
 
     const settings = this.rateLimitSettings;
 
-    // No DB settings wired → preserve the exact static (TASK-315) behavior.
+    // No DB settings wired → preserve the exact static behavior.
     if (!settings) {
       return super.handleRequest(requestProps);
     }
@@ -97,7 +97,7 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
     const tier = settings.getTier(name);
     const decoratorTtl = this.reflector.getAllAndOverride<number>(THROTTLER_TTL + name, [context.getHandler(), context.getClass()]);
 
-    // (3a) TASK-392 (Q7) — per-tenant plan tier, applied only to the always-on
+    // (3a) Per-tenant plan tier, applied only to the always-on
     // `default` tier. Sits between the `@Throttle` decorator and the tier
     // baseline in the precedence chain.
     const plan = name === 'default' ? await this.resolvePlanRateLimit(context, settings) : undefined;
@@ -109,7 +109,7 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
   }
 
   /**
-   * TASK-392 (Q7) — resolve the caller-tenant's effective `{ limit, ttl }` from
+   * Resolve the caller-tenant's effective `{ limit, ttl }` from
    * its plan rate-limit tier + per-tenant override, or `undefined` to leave the
    * global tiers unchanged (kill-switch OFF, no tenant resolvable, or an ungated
    * null-plan/system tenant). Never throws — a Redis/DB blip or a bad token
@@ -139,7 +139,7 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
   }
 
   /**
-   * TASK-392 (Q7) — best-effort pre-auth tenant extraction. The throttler runs
+   * Best-effort pre-auth tenant extraction. The throttler runs
    * before `UnifiedAuthGuard`, so there is no CLS tenant yet; we read the tenant
    * from the JWT bearer (or the SSE `?token=` fallback the auth guard also
    * honours), DECODING the payload without verifying the signature. This is a
@@ -167,7 +167,7 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
 
 /**
  * Decode the `tenantId` claim from a JWT WITHOUT verifying its signature. Used
- * only for pre-auth rate-limit tiering (TASK-392 Q7) — returns `null` on any
+ * only for pre-auth rate-limit tiering — returns `null` on any
  * malformed input rather than throwing.
  */
 function decodeJwtTenantId(token: string): string | null {

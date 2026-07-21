@@ -39,14 +39,14 @@ export interface Role {
     updatedAt: string;
     policies?: { id: string; name: string; priority: number }[];
     /**
-     * TASK-444 — users holding this role, tenant-scoped for tenant-scoped
+     * Users holding this role, tenant-scoped for tenant-scoped
      * callers. Present on read responses only (mutations return no count).
      */
     memberCount?: number;
 }
 
 /**
- * TASK-444 — one member of a role (`GET admin/rbac/roles/:id/members`).
+ * One member of a role (`GET admin/rbac/roles/:id/members`).
  * `resourceStatus` is the membership (assignment) status; `userResourceStatus`
  * the account status; `department` is scoped to the assignment's tenant.
  */
@@ -69,11 +69,11 @@ export interface CreateRoleRequest {
     externalName?: string;
     externalId?: string;
     parentRoleId?: string;
-    /** Global admin only — server rejects for a non-elevated caller (TASK-501). */
+    /** Global admin only — server rejects for a non-elevated caller. */
     isSystemRole?: boolean;
 }
 
-/** TASK-501 — clone a role (SYSTEM or CUSTOM) into a new CUSTOM role. */
+/** Clone a role (SYSTEM or CUSTOM) into a new CUSTOM role. */
 export interface CloneRoleRequest {
     name: string;
 }

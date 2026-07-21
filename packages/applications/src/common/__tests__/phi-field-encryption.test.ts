@@ -1,4 +1,4 @@
-// TASK-369 follow-up — unit tests for the environment-gated PHI field-encryption
+// Unit tests for the environment-gated PHI field-encryption
 // guard shared by every encrypt-on-write service. Asserts the two regimes:
 //   - soft (dev/test): missing secrets no-ops; an encryption error is swallowed.
 //   - required (SECRETS_PROVIDER=vault): missing secrets OR an encryption error

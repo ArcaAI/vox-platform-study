@@ -4,7 +4,7 @@ import { CommonServiceModule } from '../baseServices';
 import { AuditRetentionService } from './audit-retention.service';
 
 /**
- * TASK-336 OB-05 / TH6 — registers the self-scheduling {@link AuditRetentionService}.
+ * Registers the self-scheduling {@link AuditRetentionService}.
  *
  * Relies on the app-level globals `ScheduleModule.forRoot()` (SchedulerRegistry)
  * and `EventEmitterModule.forRoot()` (@OnEvent). `CommonServiceModule` provides

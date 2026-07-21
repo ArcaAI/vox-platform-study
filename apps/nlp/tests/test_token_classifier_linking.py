@@ -1,4 +1,4 @@
-"""TASK-476 C1 — NLP token-classification contract carries ontology codes.
+"""NLP token-classification contract carries ontology codes.
 
 RED-first: the ``Entity`` schema gains five nullable code fields and the token
 classifier wires the deterministic :class:`OntologyLinker` into ``process()``
@@ -7,7 +7,7 @@ classifier wires the deterministic :class:`OntologyLinker` into ``process()``
 Pins:
   * ``Entity`` serializes ``umls_cui``/``snomed_code``/``rxnorm_code``/
     ``icd_code``/``loinc_code`` (nullable, default None);
-  * a recognized medication returns a populated ``rxnorm_code`` (AC-2);
+  * a recognized medication returns a populated ``rxnorm_code``;
   * a recognized condition returns ICD/SNOMED codes;
   * an unrecognized span keeps codes None (null-safe);
   * the existing type/offset/confidence output is UNCHANGED (encoder parity);
@@ -66,7 +66,7 @@ async def test_process_populates_rxnorm_for_recognized_medication():
 
     assert len(resp.entities) == 1
     ent = resp.entities[0]
-    # AC-2 — the recognized medication comes back CODED.
+    # The recognized medication comes back CODED.
     assert ent.rxnorm_code == "6809"
     assert ent.umls_cui == "C0025598"
     # Existing output unchanged (encoder parity).

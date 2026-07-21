@@ -1,5 +1,5 @@
 // ============================================================================
-// Tenant-Scoped External Identity Provider (TASK-498, OIDC v1)
+// Tenant-Scoped External Identity Provider (OIDC v1)
 //
 // Per-tenant federated authentication. Three models:
 //
@@ -9,7 +9,7 @@
 //      with Vault Transit (`encryptedSecretRef` / `directoryCredentialsRef`) —
 //      plaintext is never stored. `protocol` ships both OIDC and SAML values
 //      now so the model is protocol-neutral, but v1 accepts/validates OIDC
-//      only; SAML lands on this same table via TASK-499.
+//      only; SAML lands on this same table.
 //
 //   2. FederatedIdentity — links a HOPE user to a subject at a specific
 //      provider (`userId` is a loose ref, matching the `createdBy`/`updatedBy`
@@ -35,12 +35,12 @@ model TenantIdentityProvider {
   protocol    IdpProtocol // OIDC | SAML — v1 accepts/validates OIDC only
   displayName String
   // Lifecycle: DRAFT until a successful "Test connection" flips it to ENABLED
-  // (D7 — prevents self-lockout from a bad config); DISABLED is an explicit pause.
+  // (prevents self-lockout from a bad config); DISABLED is an explicit pause.
   providerStatus IdpStatus @default(DRAFT)
   // Non-secret config: issuer/discoveryUrl, clientId, scopes, claimMappings,
   // groupToRoleMap, defaultRoleId, defaultDepartmentId (loose refs), jitEnabled,
   // enforceSsoOnly. Validated by the DTO; the DB column stays untyped JSON so
-  // TASK-499's SAML fields slot in without a schema break.
+  // future SAML fields can slot in without a schema break.
   config Json @db.JsonB
   // Vault Transit ciphertext refs — plaintext never stored.
   encryptedSecretRef      String? // OIDC client secret
@@ -78,7 +78,7 @@ model FederatedIdentity {
 
   // core fields
   userId      String // loose ref to User.id — no Prisma relation (audit-field convention)
-  subject     String // OIDC `sub`; SAML `NameID` reuses this field (TASK-499)
+  subject     String // OIDC `sub`; SAML `NameID` reuses this field
   lastLoginAt DateTime?
 
   // resource status fields

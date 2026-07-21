@@ -27,7 +27,7 @@ export function useGlobalSetting(id: string) {
 const NAMESPACE_CATALOG_PARAMS: ListParams = { limit: 500 };
 
 /**
- * TASK-443 — distinct namespaces for the Namespace filter chip. There is no
+ * Distinct namespaces for the Namespace filter chip. There is no
  * dedicated distinct endpoint, so this derives the catalog from one wide,
  * cached page of the list (same tradeoff as the tenant catalog); the screen
  * merges in any URL-selected values so persisted filters always render.
@@ -81,7 +81,7 @@ export function useRevealGlobalSetting() {
 }
 
 /**
- * TASK-445 — server-side secret rotation (step-up + OCC). The response is the
+ * Server-side secret rotation (step-up + OCC). The response is the
  * MASKED setting (never the plaintext), so invalidating the settings caches is
  * safe and propagates the new version/ETag to the drawer.
  */

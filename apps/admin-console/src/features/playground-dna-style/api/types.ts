@@ -58,7 +58,7 @@ export interface UpdateMyReportRequest {
 }
 
 /**
- * DnaSettingsResponse — the per-doctor DNA on/off settings (TASK-356 Phase 6).
+ * DnaSettingsResponse — the per-doctor DNA on/off settings.
  * `effective = tenantEnabled && (doctorToggle ?? true)`; `version` is the
  * DOCTOR-scope policy row's OCC token (0 when no override row exists yet).
  */

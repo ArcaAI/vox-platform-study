@@ -79,9 +79,8 @@ export class OidcStrategy extends PassportStrategy(Strategy, 'oidc') {
       throw new UnauthorizedException('User could not be found/created');
     }
 
-    // TASK-302 Phase 3 Task 3.7 — JWT_SECRET_KEY now sourced from SecretsService
-    // (cache-warmed at bootstrap). JWT_EXPIRES_IN stays on AppSettings (it
-    // is not a secret per the plan — surgical-scope rule).
+    // JWT_SECRET_KEY is sourced from SecretsService (cache-warmed at
+    // bootstrap). JWT_EXPIRES_IN stays on AppSettings — it is not a secret.
     const jwtSecretKey = this.secretsService.getSecretSync('JWT_SECRET_KEY') ?? 'default-secret-key';
     const jwtExpiresIn = this.appSettingsService.getValueWithDefault('JWT_EXPIRES_IN', '1h') as StringValue;
 

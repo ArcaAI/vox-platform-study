@@ -10,7 +10,7 @@ import {
 
 /**
  * LLM (text generation / summarization) + guardrail model catalog
- * (TASK-506 consolidation, §4.3 — the owner-approved 10-model matrix).
+ * (the owner-approved 10-model matrix).
  *
  * Replaces the previous 31 LLM/guardrail rows. `sourceUri` carries the
  * provider-native identifier actually sent to the runtime (Ollama tag,
@@ -38,7 +38,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
         provider: 'lm-studio',
         architecture: 'granite',
         memorySizeMb: 4900,
-        // TASK-507 — precision refresh (owner-specified exact quant scheme).
+        // Precision refresh (owner-specified exact quant scheme).
         computeType: 'q4_k_s',
         tags: ['guardrail', 'safety', 'granite'],
     },
@@ -62,7 +62,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
         provider: 'ollama',
         architecture: 'gemma4',
         memorySizeMb: 8192,
-        // TASK-507 — precision refresh (owner-specified exact quant scheme).
+        // Precision refresh (owner-specified exact quant scheme).
         computeType: 'nvfp4',
         tags: ['llm', 'ollama'],
     },
@@ -82,7 +82,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
         provider: 'ollama',
         architecture: 'gemma4',
         memorySizeMb: 2048,
-        // TASK-507 — precision refresh (owner-specified exact quant scheme).
+        // Precision refresh (owner-specified exact quant scheme).
         computeType: 'Q4_0',
         tags: ['llm', 'ollama'],
     },
@@ -102,7 +102,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
         provider: 'ollama',
         architecture: 'qwen3.5',
         memorySizeMb: 1536,
-        // TASK-507 — precision refresh (owner-specified exact quant scheme).
+        // Precision refresh (owner-specified exact quant scheme).
         computeType: 'Q8_0',
         tags: ['llm', 'ollama'],
     },
@@ -126,7 +126,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
         provider: 'lm-studio',
         architecture: 'gemma4',
         memorySizeMb: 2048,
-        // TASK-507 — precision refresh (owner-specified exact quant scheme).
+        // Precision refresh (owner-specified exact quant scheme).
         computeType: 'q4_0',
         tags: ['llm', 'lm-studio', 'default', 'summarization'],
     },
@@ -146,7 +146,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
         provider: 'lm-studio',
         architecture: 'gemma4',
         memorySizeMb: 3072,
-        // TASK-507 — precision refresh (owner-specified exact quant scheme).
+        // Precision refresh (owner-specified exact quant scheme).
         computeType: 'q4_0',
         tags: ['llm', 'lm-studio'],
     },
@@ -166,7 +166,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
         provider: 'lm-studio',
         architecture: 'gemma4',
         memorySizeMb: 3072,
-        // TASK-507 — precision refresh (owner-specified exact quant scheme).
+        // Precision refresh (owner-specified exact quant scheme).
         computeType: 'q5_k_m',
         tags: ['llm', 'lm-studio', 'medical'],
     },
@@ -186,7 +186,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
         provider: 'lm-studio',
         architecture: 'gemma4',
         memorySizeMb: 8192,
-        // TASK-507 — precision refresh (owner-specified exact quant scheme).
+        // Precision refresh (owner-specified exact quant scheme).
         computeType: 'q4_0',
         tags: ['llm', 'lm-studio'],
     },
@@ -206,7 +206,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
         provider: 'lm-studio',
         architecture: 'gemma3',
         memorySizeMb: 3072,
-        // TASK-507 — precision refresh (owner-specified exact quant scheme).
+        // Precision refresh (owner-specified exact quant scheme).
         computeType: 'q5_k_xl',
         tags: ['llm', 'lm-studio', 'medical'],
     },

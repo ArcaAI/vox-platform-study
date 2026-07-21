@@ -1,21 +1,20 @@
 /**
- * TASK-317 W1.2 (AC-1 / AC-4) — AgenticProvider namespace wiring.
+ * AgenticProvider namespace wiring.
  *
- * Review finding C-1: the provider constructed PersonalizationManager and
+ * The provider previously constructed PersonalizationManager and
  * ModelRegistry up-front with `userId = null`, so their storage keys collapsed
  * to the constant `pre-login` namespace and were captured BY VALUE in the ctor
  * (`PersonalizationManager.cacheKey`, `ModelRegistry.selectedModelsStorageKey`).
  * After `/auth/me` resolved the real `${tenantId}::${userId}` the two managers
  * were never re-keyed, so every user on an origin shared
- * `arcaai-personalization/pre-login` + `arcaai-selected-models/pre-login`
- * (AC-1 / AC-4 not actually met — a default-config cross-user leak: with
- * `storage: 'local'` the pre-login IDB cache is authoritative, so user B
- * hydrates user A's personalization).
+ * `arcaai-personalization/pre-login` + `arcaai-selected-models/pre-login` — a
+ * default-config cross-user leak: with `storage: 'local'` the pre-login IDB
+ * cache is authoritative, so user B hydrates user A's personalization.
  *
  * These tests drive the REAL managers through the provider (mount → /auth/me →
  * tenant/user switch) and assert the browser-storage keys track the
- * authenticated namespace. The W1 unit tests construct managers with explicit
- * namespaces, so they never exercised this provider wiring.
+ * authenticated namespace. Unit tests elsewhere construct managers with
+ * explicit namespaces, so they never exercised this provider wiring.
  *
  * @vitest-environment jsdom
  */
@@ -120,7 +119,7 @@ const USER = 'user-77';
 const NS = `${TENANT}::${USER}`;
 
 function renderProvider() {
-  // TASK-317 W4.2/W4.3 (AC-12) — the provider now owns a per-instance store; a
+  // The provider now owns a per-instance store; a
   // fresh `createAgenticStore()` is already at the initial state, so no
   // pre-render reset is needed. Capture THIS provider's StoreApi via
   // `useStoreApi()` from a child and return it; the test body's `store.getState()`
@@ -221,7 +220,7 @@ describe('TASK-317 W1.2 — provider namespace wiring (AC-1/AC-4) re-keys manage
 });
 
 // =============================================================================
-// TASK-317 W1.2 (review I-1) — personalization re-hydrate must be AUTHORITATIVE
+// Personalization re-hydrate must be AUTHORITATIVE
 // per namespace. The provider now calls `personalizationManager.hydrate()` on
 // every tenant/user switch (re-hydrate effect) and after `/auth/me`. Because the
 // old `hydrate()` MERGED the cached row over the in-memory state (and early-

@@ -1,4 +1,4 @@
-"""TASK-525 §3.4 — a semaphore whose capacity can move at runtime.
+"""A semaphore whose capacity can move at runtime.
 
 `asyncio.Semaphore` has no public resize, and swapping the object out from under
 `app.state.provider_semaphores` is unsafe: requests already holding permits on

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mirror the gated Indic Parler-TTS weights into an internal store (TASK-495).
+"""Mirror the gated Indic Parler-TTS weights into an internal store.
 
 The ``ai4bharat/indic-parler-tts`` HuggingFace repo is Apache-2.0 but sits behind
 a click-through gate — a production/cluster deploy must NOT pull it (or use a

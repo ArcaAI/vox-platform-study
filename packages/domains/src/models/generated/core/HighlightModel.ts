@@ -15,10 +15,10 @@ export class Highlight extends BaseTenantDataModel {
   public endOffset: number;
   public color: string | null;
   public label: string | null;
-  // TASK-369 Phase 6 — plaintext exact / prefix / suffix / note columns DROPPED;
+  // Plaintext exact / prefix / suffix / note columns DROPPED;
   // persistence is ciphertext-only. The entity keeps these as transient fields
   // repopulated by repository decrypt-on-read.
-  // TASK-369 Phase 3C — Vault-Transit ciphertext columns + shared key version.
+  // Vault-Transit ciphertext columns + shared key version.
   public encryptedExact: Uint8Array | null;
   public encryptedPrefix: Uint8Array | null;
   public encryptedSuffix: Uint8Array | null;

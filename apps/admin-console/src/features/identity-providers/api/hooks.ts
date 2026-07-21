@@ -7,7 +7,7 @@
  *
  * `useSyncDirectory` deliberately does NOT poll for job progress: the
  * gateway's job-status endpoint (`GET /admin/queues/:queue/jobs/:jobId`) is
- * platform-admin-only today (a documented TASK-498 P3 gap, out of scope to
+ * platform-admin-only today (a documented gap, out of scope to
  * widen here), so a tenant admin who triggers a sync cannot poll it anyway —
  * the UI shows a single "sync started" toast instead of a live progress bar.
  */

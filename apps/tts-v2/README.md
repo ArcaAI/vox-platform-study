@@ -1,43 +1,103 @@
 # tts-v2 — Text-to-Speech Service
 
-Realtime, multi-provider text-to-speech for the HOPE platform. English + Malayalam,
-self-hosted (Kokoro, AI4Bharat Indic Parler-TTS) and cloud (Azure AI Speech; Sarvam
-Bulbul planned) behind a common provider abstraction. Ticket: **TASK-488**
-(`docs/implementation/TASK-488-Realtime-TTS-Service/`).
+**Owner**: Platform / Voice · **Introduced**: TASK-488 · **Last verified**: 2026-07-21
+
+Realtime, multi-provider text-to-speech for the HOPE platform (English + Malayalam).
+Cloud and self-hosted engines sit behind one provider abstraction with per-locale
+fallback chains; the service is stateless and per-tenant behaviour is resolved by
+the NestJS gateway and injected per request.
 
 - **Port:** 8865
 - **Package:** `tts_v2` (src-layout under `src/`)
-- **Gateway:** browsers never call this service directly — the NestJS gateway proxies
-  `/api/v1/speech/*` and injects `X-Service-Token`.
+- **Gateway:** browsers never call this service directly. The NestJS gateway
+  proxies `POST /api/v1/speech/synthesize` → `/api/v1/audio/speech`,
+  `GET /api/v1/speech/voices` → `/api/v1/voices`, and the WS gateway
+  `/ws/tts-v2/stream` → `/api/v1/audio/stream`, injecting `X-Service-Token`.
 
-## Status
+## Providers
 
-Phase 1 scaffold: configuration, inter-service auth, health/metrics, `create_app()`
-factory. Synthesis endpoints, provider registry, routing, and streaming arrive in
-later phases (see the ticket README for the phased plan).
+Registered in `create_app()` / lifespan, each gated by its own `enabled` flag
+(`src/tts_v2/providers/`). Cloud providers register at boot; local engines
+register unconditionally and load weights on the first synth request, then release
+on an idle TTL (TASK-529 lazy lifecycle — see `docs/operations/inference/model-retention.md`).
+
+| Provider | Key | Kind | Locale(s) | Notes |
+|---|---|---|---|---|
+| Azure AI Speech | `azure` | cloud (managed) | en, ml | Primary managed path; shares the stt-v2 Azure Speech credential |
+| Sarvam Bulbul | `sarvam` | cloud | ml (code-switch), en | `bulbul:v3`; public API is NOT PHI-safe — point `base_url` at an enterprise VPC/on-prem host before real patient data (TASK-493) |
+| Kokoro | `kokoro` | self-hosted | en | Local English engine |
+| AI4Bharat Indic Parler-TTS | `indic_parler` | self-hosted | ml | Loads from an ungated local mirror in prod (TASK-495) |
+| AI4Bharat IndicF5 | `indic_f5` | self-hosted (voice-clone) | ml | **EXPERIMENTAL, gated OFF** — prod/commercial enablement is NO-GO pending license review (CC-BY-NC base weights; TASK-494). Never set `TTS_INDICF5_ENABLED=true` in production without written clearance |
+
+Routing: per-locale ordered fallback chains, first healthy wins
+(`TTS_ROUTING_EN`, default `azure,kokoro`; `TTS_ROUTING_ML`, default
+`azure,sarvam,indic_parler`). The gateway can override the chains, provider
+whitelist, per-tenant BYO credentials, and voice bindings per request.
+
+## Endpoints
+
+All under the `/api/v1` prefix (Swagger at `/api/v1/docs`).
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/audio/speech` | OpenAI-compatible synthesis. `input`/`voice`/`response_format`/`speed` mirror OpenAI Create speech, plus `stream_format`: unset → full audio (batch); `"audio"` → chunked raw audio bytes; `"sse"` → `speech.audio.delta` (base64) + `speech.audio.done` events |
+| `WS` | `/audio/stream` | WS-duplex streaming (TASK-492): incremental text frames in (`init`/`text`/`flush`/`end`), binary PCM (s16le/mono) frames out — audio starts after the first sentence. `init` is validated up front; errors are generic/PHI-safe |
+| `GET` | `/voices` | Voice catalog: stable internal voice IDs, locale, and bound providers |
+| `GET` | `/health` `/health/live` `/health/ready` | Liveness / readiness |
+| `GET` | `/metrics` | Prometheus metrics (unprefixed) |
+
+Per-request tenant overrides accepted on both synthesis surfaces (gateway-injected
+from the tenant's resolved config): `routing_en` / `routing_ml`,
+`allowed_providers`, `provider_overrides` (decrypted BYO credentials, TASK-496),
+and `voice_bindings` (`{internalVoiceId: {provider: voiceName}}`, TASK-506 —
+merged over the catalog's default bindings).
 
 ## Layout
 
 ```
 src/tts_v2/
-├── main.py                 # create_app() + lifespan
-├── core/{config,logging,dependencies}.py
-├── api/middleware/auth.py  # ServiceAuthMiddleware (X-Service-Token)
-├── api/endpoints/health.py # /api/v1/health[/live|/ready]
-└── tests/                  # pytest (in-package)
+├── main.py                    # create_app() + lifespan (provider registration, retention client)
+├── core/
+│   ├── config.py              # pydantic-settings (Settings + per-provider sub-configs)
+│   ├── effective_config.py    # control-plane pull client for local-engine retention (TASK-535)
+│   ├── audio.py · metrics.py · logging.py · dependencies.py
+├── providers/                 # azure_speech · sarvam · kokoro · indic_parler · indic_f5 · base (ProviderRegistry) · registration
+├── routing/                   # router (fallback chains + circuit breaker) · chunking · sentence_adapter · circuit_breaker
+├── catalog/voices.py          # VoiceCatalog: internal voice IDs → per-provider bindings
+├── api/
+│   ├── middleware/auth.py     # ServiceAuthMiddleware (X-Service-Token, constant-time)
+│   └── endpoints/             # speech · stream_ws · voices · health
+└── tests/                     # pytest (in-package, unit/)
 ```
 
 ## Configuration
 
-Root env prefix `TTS_`; provider sub-configs use `TTS_AZURE_`, `TTS_KOKORO_`,
-`TTS_PARLER_`. The Azure credential falls back to the shared `AZURE_SPEECH_KEY` /
+Root env prefix `TTS_`; each provider sub-config carries its own prefix
+(`TTS_AZURE_`, `TTS_SARVAM_`, `TTS_KOKORO_`, `TTS_PARLER_`, `TTS_INDICF5_`). The
+Azure credential falls back to the shared `AZURE_SPEECH_KEY` /
 `AZURE_SPEECH_REGION` already used by stt-v2.
+
+| Variable | Description | Default |
+|---|---|---|
+| `TTS_PORT` (`port`) | Service port | `8865` |
+| `TTS_SERVICE_TOKEN` | Inter-service auth (empty = auth disabled for local dev) | — |
+| `TTS_MAX_INPUT_CHARS` | Max synthesis input length | `4096` |
+| `TTS_SAMPLE_RATE` | PCM sample rate | `24000` |
+| `TTS_ROUTING_EN` / `TTS_ROUTING_ML` | Per-locale provider fallback chains (CSV) | `azure,kokoro` / `azure,sarvam,indic_parler` |
+| `TTS_<PROVIDER>_ENABLED` | Per-provider enable flag | `false` |
+| `TTS_WARMUP_ENABLED` | Load local-engine weights at boot instead of first request (fail-at-boot) | `false` |
+| `TTS_GATEWAY_URL` | Control-plane bootstrap transport for retention config (TASK-535) | `http://localhost:8868/api/v1` |
+| `TTS_MODEL_CACHE_TTL_SECONDS` | Idle TTL for local-engine weights (bootstrap fallback; runtime value comes from the control plane) | `600` |
 
 ## Develop
 
 ```bash
 pnpm dev:tts-v2            # uvicorn on :8865 (conda arcaenv)
-pnpm py:tts-v2:test        # pytest
+pnpm dev:tts-v2:watch      # + reload
+pnpm py:tts-v2:test        # pytest (src/tts_v2/tests/)
+pnpm py:tts-v2:test:unit   # unit only
+pnpm py:tts-v2:test:cov    # with coverage
 pnpm py:tts-v2:lint        # ruff
+pnpm py:tts-v2:format      # black
 pnpm py:tts-v2:typecheck   # mypy
 ```

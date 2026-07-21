@@ -54,8 +54,8 @@ export class PlatformMetricsService implements IPlatformMetricsService {
     @Inject(IPrometheusQueryService) private readonly prometheus: IPrometheusQueryService,
     @Inject(ISocketRegistryService) private readonly sockets: ISocketRegistryService,
     @Inject(IRedisCacheService) private readonly cache: IRedisCacheService,
-    // TASK-414 — the consumption roll-up reads route through domain
-    // repositories (TASK-311 AC-8) instead of the raw Prisma client.
+    // The consumption roll-up reads route through domain
+    // repositories instead of the raw Prisma client.
     private readonly audioRecordingRepository: AudioRecordingRepository,
     private readonly summaryMetaRepository: SummaryMetaRepository,
     private readonly mediaRepository: MediaRepository,

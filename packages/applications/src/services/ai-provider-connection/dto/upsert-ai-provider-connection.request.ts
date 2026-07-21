@@ -2,7 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsInt, IsObject, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
 
 /**
- * TASK-524 — upsert one (tenant, provider) connection row.
+ * Upsert one (tenant, provider) connection row.
  *
  * Every accepted field is declared here: the global pipe runs
  * `whitelist + forbidNonWhitelisted`, so an undeclared field 400s.

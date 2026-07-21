@@ -1,5 +1,5 @@
 /**
- * PipelinePolicyEntity Unit Tests (TASK-356 Phase 5, Pillar B)
+ * PipelinePolicyEntity Unit Tests
  *
  * Covers the scope/scopeId invariant of the polymorphic realtime-pipeline
  * policy table: a TENANT-default row must NOT carry a scopeId, while

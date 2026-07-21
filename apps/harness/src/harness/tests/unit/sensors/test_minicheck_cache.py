@@ -1,22 +1,17 @@
-"""TASK-530 §5.2 (D-08) — the MiniCheck entailer becomes bounded and evictable.
+"""The MiniCheck entailer is bounded and evictable.
 
-Before this ticket ``minicheck_entailer`` held a module dict
-(``_ENTAILER_CACHE: dict[str, LlamaCppMiniCheckEntailer]``) with the comment
-"loaded once per worker, keyed by model path": a GGUF loaded by one activity
-stayed resident for the life of the Temporal worker, with no TTL, no bound and
-no unload. That is D-08 verbatim, and it is the last service exempt from owner
-expectation E6.
-
-After: the entailer lives behind ``hope_runtime_models.SyncModelCache`` — the
+The entailer lives behind ``hope_runtime_models.SyncModelCache`` — the
 same policy as every other HOPE cache, driven by threads rather than asyncio
 because ``_atomic_fact_entailer`` (activities.py) is a plain ``def`` and a
 ``llama_cpp.Llama`` construction is a blocking CPU/GPU call, not awaited I/O.
+This bounds and evicts what would otherwise be a module dict
+(``_ENTAILER_CACHE: dict[str, LlamaCppMiniCheckEntailer]``) that keeps a GGUF
+loaded by one activity resident for the life of the Temporal worker, with no
+TTL, no bound and no unload.
 
 Hermetic by construction: no llama.cpp, no weights, no network. The construction
 seam ``_build_entailer`` is monkeypatched, so what is exercised here is the
 CACHE behaviour (evict → reload → re-calibrate) over a fake entailer.
-
-RED: written before the implementation.
 """
 
 from __future__ import annotations
@@ -135,7 +130,7 @@ def test_load_minicheck_entailer_signature_unchanged() -> None:
 
 
 def test_module_dict_cache_is_gone() -> None:
-    """D-08: the unbounded, never-evicting module dict must not come back."""
+    """The unbounded, never-evicting module dict must not come back."""
     assert not hasattr(me, "_ENTAILER_CACHE")
 
 
@@ -172,11 +167,11 @@ def test_entailer_evicted_after_ttl_and_reloaded(
 def test_unload_releases_llama_handle(
     monkeypatch: pytest.MonkeyPatch, clock: FakeClock
 ) -> None:
-    """The D-08 point: an eviction that frees nothing is not an eviction.
+    """An eviction that frees nothing is not an eviction.
 
     The llama handle is reachable ONLY through the entailer's logit closure, so
     once the cache drops the entailer and the caller lets go, a weakref to the
-    handle must die. Before this ticket the module dict held it forever.
+    handle must die. Before this, the module dict held it forever.
     """
     builds: list[FakeLlama] = []
     _install_builder(monkeypatch, builds)
@@ -271,7 +266,7 @@ def test_failed_load_is_not_cached(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_retention_defaults_come_from_settings() -> None:
     settings = Settings()
-    assert settings.model_cache_ttl_seconds == 600  # OD-5
+    assert settings.model_cache_ttl_seconds == 600
     assert settings.model_cache_max_models == 1
 
 

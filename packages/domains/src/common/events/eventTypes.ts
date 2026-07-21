@@ -12,7 +12,7 @@ export enum EventTypes {
   MediaUpdated = 'media.updated',
 
   UserAuthenticated = 'user.authenticated',
-  // TASK-541 B1 — the success-only `UserAuthenticated` bracket left failed
+  // The success-only `UserAuthenticated` bracket left failed
   // attempts with no persisted trail; HIPAA §164.312(b) access auditing wants
   // rejected access reviewable, not just granted access.
   UserAuthenticationFailed = 'user.authentication_failed',

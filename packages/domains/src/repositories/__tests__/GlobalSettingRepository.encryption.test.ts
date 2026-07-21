@@ -1,4 +1,4 @@
-// TASK-302 Phase 4 Tasks 4.6 + 4.9 — GlobalSettingRepository encryption
+// GlobalSettingRepository encryption
 // helpers, exercised via the prototype-augmentation sibling file. We don't
 // touch a real Prisma client here; the repository's findById is monkeypatched
 // per test where needed.

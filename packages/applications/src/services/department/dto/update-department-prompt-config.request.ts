@@ -17,7 +17,7 @@ export class UpdateDepartmentPromptConfigRequest {
   @IsString()
   revisitPromptId?: string;
 
-  // TASK-387 (#7) — default DNA writing-style prompt template id for the
+  // Default DNA writing-style prompt template id for the
   // department. Loose string ref (parity with the sibling *PromptId slots).
   @ApiPropertyOptional({ description: 'Default DNA writing-style prompt template ID' })
   @IsOptional()
@@ -25,7 +25,7 @@ export class UpdateDepartmentPromptConfigRequest {
   dnaWritingStylePromptId?: string;
 
   /**
-   * Optimistic-concurrency token (TASK-302 Stream D Phase E.2).
+   * Optimistic-concurrency token.
    *
    * Required. The client must read the row first, then echo back the
    * `version` it observed. The service issues a Compare-And-Set

@@ -1,6 +1,6 @@
-"""JIT hybrid retriever tests (RED-first, TASK-330 Phase 3, Lane A).
+"""JIT hybrid retriever tests.
 
-The retriever is the retrieve half of plan §D: build a query from the extracted
+The retriever is the retrieve half of the pipeline: build a query from the extracted
 entities -> dense (LM Studio) + sparse (fastembed) embed -> Qdrant hybrid RRF
 (tenant + APPROVED scoped) -> TEI rerank -> top-k. Every backend is faked so these
 tests assert the wiring, the top-k truncation/reorder, and — the load-bearing

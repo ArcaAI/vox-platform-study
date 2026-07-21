@@ -1,4 +1,4 @@
-"""TDD tests for IndicF5Provider (TASK-494) — EXPERIMENTAL, gated OFF.
+"""TDD tests for IndicF5Provider — EXPERIMENTAL, gated OFF.
 
 Prod/commercial enablement is NO-GO pending the owner's license review; these
 tests verify the code works (mocked model) and that it stays OUT of the default

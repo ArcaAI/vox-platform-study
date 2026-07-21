@@ -1,6 +1,4 @@
 /**
- * TASK-269 — HIGH-5
- *
  * Compile-time type checks for the `process()` signature: tight enough that
  * consumers see correct types under TypeScript strict mode, lax enough that
  * both `Float32Array<ArrayBuffer>` (WASM-backed views) and

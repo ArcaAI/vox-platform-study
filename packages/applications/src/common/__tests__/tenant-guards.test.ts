@@ -1,5 +1,5 @@
 /**
- * Unit tests for tenant-guards helper module (TASK-305 D.1).
+ * Unit tests for tenant-guards helper module.
  *
  * The helper exists so cross-aggregate service writes can enforce tenant
  * isolation without leaking the existence of cross-tenant resources. The
@@ -83,7 +83,7 @@ describe('tenant-guards', () => {
     });
   });
 
-  // TASK-305 Phase F — membership = enabled UserRoleAssignment (role) AND
+  // Membership = enabled UserRoleAssignment (role) AND
   // enabled UserDepartment (department); service accounts are exempt from the
   // department half. Signature: (roleRepo, deptRepo, userRepo, userId, tenantId).
   describe('assertUserBelongsToTenant', () => {
@@ -245,7 +245,7 @@ describe('tenant-guards', () => {
     });
   });
 
-  // TASK-307 W5.5 (AC-19) — pure predicate used by inline controller
+  // Pure predicate used by inline controller
   // guards (W5.5 TenantController, W5.7 AuditLogController, W5.9 SmrProxy).
   describe('isSuperAdmin', () => {
     it('returns false for null / undefined user', () => {
@@ -269,14 +269,14 @@ describe('tenant-guards', () => {
       expect(isSuperAdmin({ roles: ['DOCTOR', 'NURSE', 'ADMIN'] })).toBe(false);
     });
 
-    // TASK-417 — SUPER_ADMIN was consolidated into GLOBAL_ADMIN; the retired
+    // SUPER_ADMIN was consolidated into GLOBAL_ADMIN; the retired
     // role string grants NOTHING anymore.
     it('returns false for the retired "SUPER_ADMIN" literal (TASK-417)', () => {
       expect(isSuperAdmin({ roles: ['SUPER_ADMIN'] })).toBe(false);
       expect(isSuperAdmin({ roles: ['DOCTOR', 'SUPER_ADMIN'] })).toBe(false);
     });
 
-    // AC-06 (TASK-336) / TASK-417 — GLOBAL_ADMIN is THE platform-wide
+    // GLOBAL_ADMIN is THE platform-wide
     // elevated role (cross-tenant privileged).
     it('returns true when user.roles includes "GLOBAL_ADMIN"', () => {
       expect(isSuperAdmin({ roles: ['GLOBAL_ADMIN'] })).toBe(true);

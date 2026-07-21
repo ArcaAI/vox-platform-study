@@ -1,5 +1,5 @@
 /**
- * useConsultationChain Hook Tests (TASK-329 P2)
+ * useConsultationChain Hook Tests
  *
  * @vitest-environment jsdom
  */

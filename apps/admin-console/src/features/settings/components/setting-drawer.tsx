@@ -112,7 +112,7 @@ function RevealSecretDialog({
 }
 
 /**
- * Server-side rotation (TASK-445): POST :id/rotate — an atomic, audited,
+ * Server-side rotation: POST :id/rotate — an atomic, audited,
  * step-up-gated replace of the secret under OCC (If-Match from the drawer's
  * read ETag). Collects the replacement value + the caller's password; errors
  * surface in-dialog per the house break-glass style. The response is the
@@ -231,7 +231,7 @@ function SettingMeta({ setting }: { setting: GlobalSetting }) {
     );
 }
 
-/** The secret Value pane: reveal current value (audited) + a write-only replace field + server-side Rotate (TASK-445). */
+/** The secret Value pane: reveal current value (audited) + a write-only replace field + server-side Rotate. */
 function SecretValuePane({
     setting,
     newValue,
@@ -270,7 +270,7 @@ function SecretValuePane({
                             <Button variant="ghost" size="icon-sm" aria-label={`Reveal ${setting.key}`} onClick={() => setRevealTarget(setting)}>
                                 <IconEye aria-hidden />
                             </Button>
-                            {/* TASK-445 — opens the audited server-side rotation dialog (no longer a guided replace). */}
+                            {/* Opens the audited server-side rotation dialog (no longer a guided replace). */}
                             <Button variant="ghost" size="sm" onClick={onRotate}>
                                 <IconRefreshDot aria-hidden />
                                 Rotate
@@ -436,7 +436,7 @@ function SettingDetailBody({
                 <TabsContent value="history">
                     <SettingHistoryTab settingId={setting.id} active={tab === 'history'} />
                 </TabsContent>
-                {/* TASK-445 — server-side rotation; on success the settings caches
+                {/* Server-side rotation; on success the settings caches
                     invalidate so the drawer picks up the new version/ETag in place. */}
                 {rotateOpen ? (
                     <RotateSecretDialog
@@ -462,7 +462,7 @@ function MetaRow({ label, children }: { label: string; children: React.ReactNode
 }
 
 /**
- * Detail/edit drawer (TASK-439): reads `{ data, etag }` through useGlobalSetting
+ * Detail/edit drawer: reads `{ data, etag }` through useGlobalSetting
  * so the PATCH carries If-Match + expectedVersion; a 412 surfaces the OCC alert
  * with "reload latest" (refreshes the ETag in place, local edits kept). Replaces
  * the retired EditSettingDialog.
@@ -508,7 +508,7 @@ export function SettingDetailDrawer({ settingId, onClose, onDelete }: { settingI
 }
 
 /**
- * Create drawer (TASK-439): the "New setting" surface, replacing the retired
+ * Create drawer: the "New setting" surface, replacing the retired
  * CreateSettingDialog. Value tab carries the type-aware editor; Details tab
  * carries name/key/namespace/description.
  */

@@ -1,5 +1,5 @@
 /**
- * BUG-005 Issue 2 — end-user-safe Settings tab. `TenantSettingsTab` is shared
+ * End-user-safe Settings tab. `TenantSettingsTab` is shared
  * by admins (editable) and end-users/impersonated sessions (read-only): the
  * `readOnly` prop disables every control and suppresses the Save/Cancel bar,
  * regardless of `locked`/synthetic row state.

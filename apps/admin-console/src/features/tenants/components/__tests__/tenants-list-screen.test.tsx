@@ -2,7 +2,7 @@
  * Frame 12 — Tenants list screen (AdminDataGrid). fetch is stubbed at the
  * network boundary (the api layer has its own tests); assertions here are the
  * rendered list states, the request the typed filters produce (the NEW gateway
- * BRACKET grammar `field[op]:value` joined by `;` — TASK-423), and the wizard POST.
+ * BRACKET grammar `field[op]:value` joined by `;`), and the wizard POST.
  *
  * The grid persists per-user layout via `GET user/me/settings`, so every render
  * fires that call too; `settingsResponse` answers it and assertions locate the
@@ -155,7 +155,7 @@ describe('TenantsListScreen', () => {
         expect(requested.searchParams.get('searchFields')).toBe('name,key');
         expect(requested.searchParams.get('filters')).toBe('resourceStatus[equals]:SUSPENDED;plan[equals]:PRO');
         // URL `page=1` is the 0-based grid index (the SECOND page); the gateway is 1-based
-        // (`skip=(page-1)*limit`), so the wire page is 2. (TASK-423 pagination fix.)
+        // (`skip=(page-1)*limit`), so the wire page is 2. (pagination fix.)
         expect(requested.searchParams.get('page')).toBe('2');
         expect(requested.searchParams.get('limit')).toBe('50');
     });
@@ -207,7 +207,7 @@ describe('TenantsListScreen', () => {
         await waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url === '/api/hope/admin/tenants/t-1/suspend')).toBe(true));
     });
 
-    // TASK-497 §3.5 — the wizard now has a mandatory 3rd (tenant-admin) step
+    // The wizard now has a mandatory 3rd (tenant-admin) step
     // (existing user picked via the UserPicker combobox) and submits through
     // POST /admin/tenants/provision, never adminless.
     it('creates a tenant with an admin through the wizard and navigates to the new detail page', async () => {

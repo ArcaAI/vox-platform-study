@@ -11,7 +11,7 @@ export type PromptTemplateCategory = 'SYSTEM' | 'SUMMARY' | 'DNA_ANALYSIS' | 'CU
  * Mirrors the `PromptTemplateStatus` Prisma enum
  * (`packages/database/src/prisma/db_main/prompt-template.prisma`).
  *
- * TASK-532: `APPROVED` was MISSING here — the retired `/prompt-studio` feature
+ * `APPROVED` was MISSING here — the retired `/prompt-studio` feature
  * declared all three while this copy stopped at PUBLISHED, so an approved row
  * coming back from the list endpoint was already outside the declared type. The
  * governance fold made it load-bearing (the approve write returns APPROVED), so

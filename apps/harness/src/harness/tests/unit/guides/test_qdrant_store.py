@@ -1,4 +1,4 @@
-"""Qdrant knowledge-store wrapper tests (RED-first, TASK-330 Phase 3).
+"""Qdrant knowledge-store wrapper tests.
 
 The wrapper owns the named dense+sparse ``knowledge_chunks`` shape and the hybrid
 Query API call. The Qdrant client is mocked, so these tests assert pure wiring:

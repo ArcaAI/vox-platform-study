@@ -1,5 +1,5 @@
 /**
- * TASK-444 — `GET /admin/rbac/roles/:id/members` + `memberCount` on the role
+ * `GET /admin/rbac/roles/:id/members` + `memberCount` on the role
  * responses. The controller stays a thin transport wrapper: role existence is
  * checked through `IRbacRoleService.findOne` (missing → 404 — roles are
  * global, so there is no cross-tenant role case; the MEMBER rows themselves

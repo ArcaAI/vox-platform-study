@@ -956,7 +956,7 @@ describe('ContextService', () => {
     });
 
     // ============================================
-    // deleteContext Tests (TASK-342 GAP #3)
+    // deleteContext Tests
     // ============================================
 
     describe('deleteContext', () => {
@@ -1278,7 +1278,7 @@ describe('ContextService', () => {
             );
         });
 
-        // TASK-329 (P6) — cacheHit/qualityScore must thread through to the persisted SummaryMeta
+        // CacheHit/qualityScore must thread through to the persisted SummaryMeta
         it('should persist cacheHit and qualityScore on the summary metadata', async () => {
             mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const newSummary = createMockContextItemEntity({
@@ -1731,7 +1731,7 @@ describe('ContextService', () => {
     });
 
     // -------------------------------------------------------------------------
-    // TASK-375 (item 4) — storage-resolved media URLs. getContextItems feeds the
+    // Storage-resolved media URLs. getContextItems feeds the
     // admin timeline (GET /consultations/:id/context); ATTACHMENT items must
     // carry an accessible (presigned) `url` (+ mimeType / image thumbnail) so the
     // UI can render image/pdf/audio/file attachments. Resolution is OPTIONAL:
@@ -2565,7 +2565,7 @@ describe('ContextService', () => {
     });
 
     // -------------------------------------------------------------------------
-    // TASK-406 (P2-6a, closing the TASK-375 §7 residual) — the PAGINATED variant
+    // The PAGINATED variant
     // must run the same storage-resolved media enrichment as getContextItems,
     // and only on the returned page slice (never the whole result set).
     // -------------------------------------------------------------------------
@@ -2690,7 +2690,7 @@ describe('ContextService', () => {
 
         const setupChainResolution = () => {
             mockConsultationRepository.findById.mockResolvedValue(mockConsultationA);
-            // TASK-306 P2.5 — chain/sameDay rows MUST carry `tenantId` so
+            // Chain/sameDay rows MUST carry `tenantId` so
             // the new in-tenant filter in `resolveLinkedConsultationIds`
             // accepts them. Pre-fix mocks omitted the field; today's
             // service code filters such rows out.
@@ -3595,7 +3595,7 @@ describe('ContextService', () => {
     });
 
     // ============================================================
-    // TASK-305 D.3 — Cross-aggregate tenant isolation for ContextService
+    // Cross-aggregate tenant isolation for ContextService
     //
     // The ContextItem aggregate owns three cross-aggregate references the
     // multi-tenancy audit (C-3) flagged as leak vectors:
@@ -3756,7 +3756,7 @@ describe('ContextService', () => {
     });
 
     // ============================================================
-    // TASK-306 P2.5 / AC-9 — ContextItem array-input defense-in-depth.
+    // ContextItem array-input defense-in-depth.
     //
     // The three public read paths that consume the consultation-ID
     // array resolved by `resolveLinkedConsultationIds` and pass it to
@@ -4016,7 +4016,7 @@ describe('ContextService', () => {
         });
 
         /**
-         * TASK-306 W5.7.8 (306-F11) — scope=single broadcast gate.
+         * Scope=single broadcast gate.
          *
          * Pre-W5.7.8, `getAggregateNamedEntities(consultationId, 'single')`
          * passed `[consultationId]` straight to the downstream

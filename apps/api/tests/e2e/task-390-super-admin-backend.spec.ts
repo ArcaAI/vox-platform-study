@@ -1,5 +1,5 @@
 /**
- * TASK-390 — Super-admin tier backend backlog (Group E) backend contract.
+ * Super-admin tier backend backlog (Group E) backend contract.
  *
  * Real HTTP round-trips against the live API (`pnpm test:e2e`, or a dev stack via
  * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8868/api/v1`). Mirrors the
@@ -28,7 +28,7 @@ import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/h
 
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
-// TASK-409 — policy DELETE now demands break-glass step-up (caller's current
+// Policy DELETE demands break-glass step-up (caller's current
 // password + type-the-exact-name). Protected-policy deletes stay 403 with or
 // without it (absolute anti-lockout).
 const breakGlass = (confirmationName: string) => ({
@@ -88,7 +88,7 @@ test.describe.serial('TASK-390 #22 — policy CRUD + system-lockout guard', () =
       await request
         .delete(`/api/v1/admin/rbac/policies/${throwawayId}`, {
           headers: bearer(saGlobalToken),
-          data: breakGlass(`t390-throwaway-${UNIQUE}`), // TASK-409 step-up
+          data: breakGlass(`t390-throwaway-${UNIQUE}`), // break-glass step-up
         })
         .catch(() => undefined);
     }
@@ -121,7 +121,7 @@ test.describe.serial('TASK-390 #22 — policy CRUD + system-lockout guard', () =
     expect(patch.status(), 'patch policy rules').toBe(200);
     expect(((await patch.json()) as PolicyDto).rules.length).toBe(2);
 
-    // TASK-409 — deletes now require break-glass step-up confirmation.
+    // Deletes require break-glass step-up confirmation.
     const del = await request.delete(`/api/v1/admin/rbac/policies/${throwawayId}`, {
       headers: bearer(saGlobalToken),
       data: breakGlass(`t390-throwaway-${UNIQUE}`),
@@ -228,8 +228,8 @@ test.describe.serial('TASK-390 #23 — api-key rotate', () => {
     expect(newExists.status()).toBe(200);
   });
 
-  // NOTE (auth posture — RESOLVED, see README §3.2): the shared by-id gate now
-  // enforces OWNER-scope on top of tenant isolation (TASK-390 follow-up), so an
+  // NOTE (auth posture — RESOLVED, see README §3.2): the shared by-id gate
+  // enforces OWNER-scope on top of tenant isolation, so an
   // owner-only clinician can rotate/revoke/delete/fetch only their OWN keys;
   // GLOBAL_ADMIN and tenant-admins keep their broader scope. The full
   // owner/tenant-admin/super-admin/cross-tenant matrix lives in

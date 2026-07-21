@@ -1,4 +1,4 @@
-"""Phase-2 egress guards (TASK-330).
+"""Phase-2 egress guards.
 
 Guards sit on the boundary between the harness loop and anything that could send
 clinical text off-box. The first guard is :mod:`harness.guards.phi` — a

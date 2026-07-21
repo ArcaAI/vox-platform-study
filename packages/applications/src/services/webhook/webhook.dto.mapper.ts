@@ -16,7 +16,7 @@ export class WebhookDtoMapper {
     });
   }
 
-  // TASK-419 item 2 — delivery-log projections.
+  // Delivery-log projections.
   static ToRunHistoryResponse(entity: WebhookRunHistoryEntity): WebhookRunHistoryResponse {
     return AutoClassMapper(entity, WebhookRunHistoryResponse);
   }

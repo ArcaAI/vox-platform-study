@@ -40,7 +40,7 @@ export function WorkingTenantGate({
         );
     }
 
-    // BUG-005 Issue 3 — key off the EFFECTIVE identity, not the operator's:
+    // Key off the EFFECTIVE identity, not the operator's:
     // while impersonating, isElevated/workingTenantId stay the operator's
     // (always elevated, often no working tenant picked), which fired this
     // gate even though the impersonated target is tenant-bound.

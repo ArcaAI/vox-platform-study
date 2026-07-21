@@ -1,5 +1,5 @@
 /**
- * TASK-524 — provider-connection governance vocabulary.
+ * Provider-connection governance vocabulary.
  *
  * Extension recipe: a new serving provider is added to `AI_MODEL_PROVIDERS`
  * (`packages/database/src/prisma/db_main/seed/ai-models/shared.ts`) plus a seed

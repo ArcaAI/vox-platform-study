@@ -1,4 +1,4 @@
-"""TASK-330 Phase 3 — citation_verify positive/negative controls (REAL sensor + judge).
+"""``citation_verify`` positive/negative controls (REAL sensor + judge).
 
 The full live driver (task_330_phase3_cite_verify_check.py) proves the cite->parse
 machinery end to end, but its score is confounded by the Phase-1 deterministic

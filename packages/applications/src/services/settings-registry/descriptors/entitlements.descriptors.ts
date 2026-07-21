@@ -1,4 +1,4 @@
-// TASK-504 Phase 3 — entitlements descriptors.
+// Entitlements descriptors.
 //
 // The global kill-switch (data class 4) and the plan feature flags (data class 5)
 // — both GLOBAL_ADMIN-only. Keys mirror the entitlements constants:

@@ -9,13 +9,13 @@ import {
 } from './shared';
 
 /**
- * Audio / STT model catalog (TASK-506 consolidation, §4.1 keepers).
+ * Audio / STT model catalog (consolidated keepers).
  *
- * Exactly the engines the 8-pipeline product matrix (TASK-505) references —
+ * Exactly the engines the 8-pipeline product matrix references —
  * every row here is either referenced by a seeded pipeline `models:` block or
  * (ECAPA) inline-referenced as the diarization feature extractor. ids/slugs
  * are UNCHANGED from the pre-split `06-stt.ts` (update-in-place on re-seed);
- * TASK-506 backfills `provider`/`architecture`.
+ * backfills `provider`/`architecture`.
  */
 export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // =========================================================================
@@ -60,14 +60,14 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
         tags: ['multilingual', 'fast', 'recommended'],
     },
     {
-        // TASK-356 Phase 2 / TASK-505 — faster-whisper whisper-large-v3-turbo,
-        // CTranslate2. D-4 resolved: points at the community deepdml
-        // conversion (owner decision D3, 2026-07-16); loads via
+        // faster-whisper whisper-large-v3-turbo,
+        // CTranslate2. Points at the community deepdml
+        // conversion (2026-07-16); loads via
         // FasterWhisperLoader at runtime.
-        // TASK-507 — precision bumped int8 → f16 per the refreshed product
+        // Precision bumped int8 → f16 per the refreshed product
         // matrix. Slug/id kept for pipeline-YAML continuity even though it
         // still reads "int8" (cosmetic; not renamed to avoid an unrelated
-        // slug-rename churn — see TASK-507 README).
+        // slug-rename churn).
         id: '80000000-0000-0000-0001-000000000007',
         tenantId: SYSTEM_TENANT_ID,
         name: 'Faster-Whisper Large V3 Turbo (CT2 f16)',
@@ -79,7 +79,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
         source: AiModelSource.LOCAL,
         sourceUri: 'deepdml/faster-whisper-large-v3-turbo-ct2',
         sourceRevision: 'main',
-        // TASK-505 review — FASTER_WHISPER (was CTRANSLATE2, which is the
+        // FASTER_WHISPER (was CTRANSLATE2, which is the
         // legacy transformers-path alias and dispatched to the WRONG loader).
         format: AiModelFormat.FASTER_WHISPER,
         provider: 'built-in',
@@ -89,7 +89,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
         // ggml-style "f16" shorthand — resolve_ct2_compute_type() hard-rejects
         // anything outside its validated set (see faster_whisper_asr.py).
         computeType: 'float16',
-        // TASK-361/505 — registered + catalog-visible; production/recommended
+        // Registered + catalog-visible; production/recommended
         // tags stay off until the CT2 pipeline earns the default via benchmarks.
         tags: ['multilingual', 'faster-whisper', 'ctranslate2', 'float16'],
     },
@@ -150,12 +150,12 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
         architecture: null,
         memorySizeMb: 800,
         computeType: 'q8_0',
-        // TASK-505 review — the NVIDIA repo carries the raw .nemo checkpoint;
+        // The NVIDIA repo carries the raw .nemo checkpoint;
         // parakeet.cpp needs the GGUF conversion (convert script) staged first.
         tags: ['streaming', 'multilingual', 'ggml', 'parakeet.cpp', 'requires-conversion'],
     },
     {
-        // TASK-507 — whisper-large-v3-turbo served by the whisper.cpp ggml
+        // whisper-large-v3-turbo served by the whisper.cpp ggml
         // runtime (pywhispercpp binding). Pre-converted GGUF repo — unlike
         // parakeet.cpp, no separate conversion step is required.
         id: '80000000-0000-0000-0001-000000000014',
@@ -258,9 +258,9 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
         tags: ['noise-reduction', 'real-time', 'lightweight', 'cpu-friendly'],
     },
     {
-        // TASK-507 — reinstates full-band DNN denoising (superseding the
-        // TASK-506-retired `deepfilternet-v3` slug with a fresh row/id, not a
-        // resurrection of the deleted one — keeps the TASK-506 retirement
+        // Reinstates full-band DNN denoising (superseding the
+        // retired `deepfilternet-v3` slug with a fresh row/id, not a
+        // resurrection of the deleted one — keeps the retirement
         // ledger historically accurate). Served via the `deepfilternet`
         // Python package (`df.enhance.init_df/enhance`), which auto-downloads
         // its own pretrained checkpoint — sourceUri is the model NAME passed
@@ -285,14 +285,14 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     },
 
     // =========================================================================
-    // Diarization embedding (TASK-505 D1)
+    // Diarization embedding
     // =========================================================================
     {
-        // Decision D1: ECAPA-TDNN is the chosen diarization embedding
+        // ECAPA-TDNN is the chosen diarization embedding
         // extractor. Catalog row is informational — pipelines reference the
         // embedding model INLINE (models.embedding slug resolution is not
-        // implemented; see TASK-505 README). Cutover (vector(192) migration +
-        // re-enrollment) is owner-scheduled — README Phase 4 runbook.
+        // implemented). Cutover (vector(192) migration +
+        // re-enrollment) is owner-scheduled.
         id: '80000000-0000-0000-0001-000000000013',
         tenantId: SYSTEM_TENANT_ID,
         name: 'ECAPA-TDNN Speaker Embedding',

@@ -8,7 +8,7 @@ const RESERVED_KEY_PATTERN = /^__.+__$/;
 
 /**
  * True when `key` (after trimming) matches the reserved `__*__` shape used by
- * platform-internal tenants (`__SYSTEM__`, `__GLOBAL__`) — TASK-497 D3. Shared
+ * platform-internal tenants (`__SYSTEM__`, `__GLOBAL__`). Shared
  * by `generateUniqueTenantKey` (auto-generation) and the explicit-key DTO
  * validator (global-admin override).
  */
@@ -19,7 +19,7 @@ export function isReservedTenantKeyShape(key: string): boolean {
 /**
  * Slugifies a tenant display name into a `key` candidate: lowercase,
  * `[a-z0-9-]` only, repeated separators collapsed to a single hyphen,
- * leading/trailing hyphens trimmed, capped at `MAX_KEY_LENGTH` (TASK-497 D3).
+ * leading/trailing hyphens trimmed, capped at `MAX_KEY_LENGTH`.
  */
 export function slugifyTenantName(name: string): string {
   return (
@@ -35,13 +35,13 @@ export function slugifyTenantName(name: string): string {
   );
 }
 
-/** A `t-<8hex>` fallback key for empty or reserved slugs (TASK-497 D3). */
+/** A `t-<8hex>` fallback key for empty or reserved slugs. */
 function randomFallbackKey(): string {
   return `t-${randomBytes(4).toString('hex')}`;
 }
 
 /**
- * Generates a unique tenant `key` from a display name (TASK-497 D3): slugify
+ * Generates a unique tenant `key` from a display name: slugify
  * the name, then probe `exists` and append a numeric collision suffix
  * (`-2`, `-3`, ...) until a free key is found. An empty slug or one matching
  * the reserved `__*__` shape (e.g. `__SYSTEM__`, `__GLOBAL__`) short-circuits

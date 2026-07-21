@@ -7,7 +7,7 @@ import { Public } from '../../decorators';
 import { LoginResponse, LoginUserResponse, SamlAcsRequest, SsoStartRequest, SsoStartResponse } from './dto';
 
 /**
- * AuthSsoController (TASK-498 OIDC, TASK-499 SAML) — the tenant-scoped
+ * AuthSsoController (OIDC + SAML) — the tenant-scoped
  * federated login round-trips:
  * - OIDC: `POST /auth/sso/start` (HRD/tenantKey → authorize URL + PKCE +
  *   signed state) and `GET /auth/sso/callback`.

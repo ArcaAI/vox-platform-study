@@ -1,12 +1,12 @@
 /**
- * TASK-455 (S-10) AC-4 — ticket-refresh mid-session over a REAL socket.
+ * Ticket-refresh mid-session over a REAL socket.
  *
  * Exercises the documented re-auth path for a live streaming session: each
  * stream ticket is one-shot (consumed by the gateway on first WS open), so a
  * reconnect MUST mint a fresh ticket via
- * `POST /audio/transcription-jobs/stream/session/:sessionId/refresh-ticket`
- * (TASK-298 D-18). This is the ONE clearly-passing path of the three — the
- * re-auth mechanism exists and works today; the suite pins it so TASK-457's
+ * `POST /audio/transcription-jobs/stream/session/:sessionId/refresh-ticket`.
+ * This is the ONE clearly-passing path of the three — the
+ * re-auth mechanism exists and works today; the suite pins it so the
  * consumer-groups transport migration cannot regress it.
  *
  * Contract verified:

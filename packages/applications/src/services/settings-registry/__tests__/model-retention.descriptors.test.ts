@@ -1,9 +1,8 @@
-// TASK-529 §5 — retention descriptor contract tests.
+// Retention descriptor contract tests.
 //
-// TASK-525 established the key grammar `<svc>.modelCache.<knob>` and shipped the
-// stt-v2 subset. TASK-529 extends the SAME family to the remaining four
-// in-process services rather than introducing a second, parallel
-// `models.retention.*` namespace — see the ticket's DR-1 deviation row.
+// The key grammar `<svc>.modelCache.<knob>` covers all five in-process
+// services under one family rather than introducing a second, parallel
+// `models.retention.*` namespace.
 
 import { describe, expect, it } from 'vitest';
 import { HOPE_SETTINGS_REGISTRY } from '../registry';
@@ -34,7 +33,7 @@ describe('TASK-529 model-cache retention descriptors', () => {
 
   it('preserves each service’s existing maxModels (behaviour-preserving)', () => {
     // Transcribed from each service's own code default — changing residency
-    // limits is NOT part of the OD-5 TTL change.
+    // limits is NOT part of the idle-TTL default change.
     expect(SERVICE_RUNTIME_DEFAULTS['stt.modelCache.maxModels']).toBe(5);
     expect(SERVICE_RUNTIME_DEFAULTS['guardrail.modelCache.maxModels']).toBe(2);
     expect(SERVICE_RUNTIME_DEFAULTS['nlp.modelCache.maxModels']).toBe(3);

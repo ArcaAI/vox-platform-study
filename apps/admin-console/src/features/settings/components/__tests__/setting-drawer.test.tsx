@@ -1,8 +1,8 @@
 /**
- * TDD tests for the Settings detail/create drawer (TASK-439): the type-aware
+ * TDD tests for the Settings detail/create drawer: the type-aware
  * value editor (real code editor for Json — no modal), OCC If-Match PATCH with
  * the 412 path, the permission-gated step-up reveal + the server-side rotate
- * endpoint flow (TASK-445), the create flow, and the audit-log-backed History tab.
+ * endpoint flow, the create flow, and the audit-log-backed History tab.
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -196,7 +196,7 @@ describe('SettingDetailDrawer', () => {
         expect(calls.find((call) => call.method === 'PATCH')?.body).toEqual({ value: 'newpass', expectedVersion: 4 });
     });
 
-    // TASK-445 — Rotate is a REAL server-side call (POST :id/rotate with step-up
+    // Rotate is a REAL server-side call (POST :id/rotate with step-up
     // + If-Match), no longer the guided-replace that focused the write-only field.
     it('rotates a secret through the rotate endpoint (step-up password + new value, If-Match)', async () => {
         const { toast } = await import('sonner');

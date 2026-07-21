@@ -23,7 +23,7 @@ export class RoleEntityMapper extends BaseMapper<Entities.RoleEntity, Models.Rol
 export const RoleEntityMapperHandlers = createMapperHandlers<Entities.RoleEntity, Models.Role>({
   $toPersistence: {},
   $toDomain: {
-    // TASK-368 — the policy-based RBAC migration removed `RolePermissions`,
+    // The policy-based RBAC migration removed `RolePermissions`,
     // `UserRoleAssignment`, and `userRoleAssignmentId` from the `Role` Prisma
     // model (roles now bind via `RolePolicies` / `UserRoleAssignments`). The
     // legacy RoleEntity fields are retained for backward-compatible shape but are

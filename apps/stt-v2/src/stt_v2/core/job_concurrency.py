@@ -1,8 +1,8 @@
-"""TASK-525 DR-7 (revised) — an ENFORCED, resizable ceiling on batch jobs.
+"""An ENFORCED, resizable ceiling on batch jobs.
 
 Why this exists rather than `settings.worker_threads`
 -----------------------------------------------------
-The first cut of DR-7 fed the control-plane worker ceiling into
+An earlier attempt fed the control-plane worker ceiling into
 ``dramatiq.Worker(worker_threads=...)`` inside ``worker.py:main()``. That is dead
 code in the shipped image: the Dockerfile runs
 
@@ -11,8 +11,8 @@ code in the shipped image: the Dockerfile runs
 and the dramatiq CLI *imports* ``stt_v2.worker`` (``importlib.import_module``)
 rather than executing it as ``__main__``, then builds its own Worker from its own
 ``--threads`` flag. So ``worker.py:main()`` never runs in production and the
-operator knob reached nothing — precisely the D-07 "wiring a dead field" failure
-this ticket exists to close.
+operator knob reached nothing — a "wiring a dead field" failure this module
+exists to close.
 
 This gate is acquired INSIDE the actor, so it bounds jobs under ANY launch mode:
 the dramatiq CLI, ``worker.py:main()``, or a direct call in a test.
@@ -26,8 +26,8 @@ attempt. This gate is the INNER, operator-adjustable bound. Setting it above
 **PER-PROCESS scope.** ``--processes N`` forks N independent interpreters, each
 with its own gate, so the fleet ceiling is ``N x limit``, not ``limit`` — the same
 per-process caveat as the streaming ``CapacityGuard``. A fleet-wide bound would
-need a shared (Redis) counter; that is out of scope here and belongs with the
-retention/limits work in TASK-529.
+need a shared (Redis) counter; that is out of scope here and belongs with
+broader retention/limits work.
 
 Threading, not asyncio: Dramatiq actors run on worker THREADS, so this mirrors
 ``ResizableSemaphore`` (asyncio) with a ``Condition``-based implementation. Like

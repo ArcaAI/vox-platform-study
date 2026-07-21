@@ -1,5 +1,5 @@
 /**
- * LocalVoiceEmbedder tests (TASK-329 P4).
+ * LocalVoiceEmbedder tests.
  *
  * The heavy ONNX model (`@huggingface/transformers` WavLM speaker-verification)
  * is fully MOCKED — no weights are downloaded and nothing touches the network

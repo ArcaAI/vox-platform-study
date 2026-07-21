@@ -1,4 +1,4 @@
-"""Document text extraction (TASK-344 Workstream A2).
+"""Document text extraction.
 
 Route, don't OCR everything (2026 best practice): cheaply read a PDF's text layer
 with PyMuPDF, and run OCR (RapidOCR — PaddleOCR models on ONNX Runtime, CPU-only)

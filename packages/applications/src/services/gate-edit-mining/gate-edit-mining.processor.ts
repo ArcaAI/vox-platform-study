@@ -10,7 +10,7 @@ import { GateEditMiningService } from './gate-edit-mining.service';
 import { GateEditMiningJob, IGateEditMiningQueue } from './IGateEditMiningQueue';
 
 /**
- * TASK-533 B6 (GAP-A1) — the enqueue half of the gate-edit learning loop.
+ * The enqueue half of the gate-edit learning loop.
  *
  * Implements {@link IGateEditMiningQueue} so the sign-off path can hand off the
  * signal without importing queue infrastructure.

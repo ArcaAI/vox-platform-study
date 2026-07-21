@@ -1,4 +1,4 @@
-"""Embeddings tool-client tests (RED-first, TASK-330 Phase 3).
+"""Embeddings tool-client tests.
 
 Dense embeddings come from the self-hosted LM Studio OpenAI-compatible endpoint
 (``POST {base_url}/embeddings``). The client sends ``{model, input:[...]}`` and

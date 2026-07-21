@@ -1,6 +1,6 @@
-"""PDSQI-9 LLM-as-judge tests (TASK-330, task 0.5).
+"""PDSQI-9 LLM-as-judge tests.
 
-RED-first. Pins the contract of the model-agnostic PDSQI-9 judge built on
+Pins the contract of the model-agnostic PDSQI-9 judge built on
 Epic's open-source instrument (JSON in / JSON out; 1–5 Likert per dimension +
 justifications). No live LLM: the judge is driven by a deterministic stub client.
 """

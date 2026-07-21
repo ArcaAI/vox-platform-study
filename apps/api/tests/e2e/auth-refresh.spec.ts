@@ -1,7 +1,7 @@
 /**
- * Auth Refresh-Token Defense — TASK-307 W1 E2E
+ * Auth Refresh-Token Defense E2E.
  *
- * Pins the AC-1 / AC-2 / AC-3 / AC-6 contract end-to-end against a running
+ * Pins the contract end-to-end against a running
  * API. Covers the four invariants that the unit tests can only mock:
  *
  *   1. Rotation        — every refresh issues a new (token, refreshToken)
@@ -17,12 +17,9 @@
  *      revocation       revoked) and the refresh token (family revoked)
  *                        are dead. Re-using either yields 401.
  *
- * Closes audit findings:
- *   - C-1  refresh token forgery (BLOCKER)
- *   - C-11 logout doesn't revoke jti
- *   - C-12 refresh ignores tenant scope
- *   - D-10 refresh leaks userId in payload
- *   - E-1  JWT jti is predictable
+ * Guards against: refresh-token forgery, logout not revoking jti, refresh
+ * ignoring tenant scope, refresh leaking userId in the payload, and a
+ * predictable JWT jti.
  *
  * TEST DATA MANAGEMENT:
  *   - Uses seeded users (`admin` against `__GLOBAL__`, `doctor` against
@@ -59,7 +56,7 @@ function decodeJwtPayload(token: string): DecodedJwt {
 
 test.describe('TASK-307 W1 — Refresh-token defense (E2E)', () => {
   // ---------------------------------------------------------------------------
-  // 1. Single-use rotation — AC-1 / C-1
+  // 1. Single-use rotation
   // ---------------------------------------------------------------------------
   test('TASK-307 W1.7 — rotation issues a fresh pair and invalidates the prior refresh token (single-use)', async ({ request }) => {
     const login = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
@@ -81,7 +78,7 @@ test.describe('TASK-307 W1 — Refresh-token defense (E2E)', () => {
 
     expect(firstRotated.refreshToken).not.toBe(firstRefreshToken);
     expect(secondAccessJti).not.toBe(firstAccessJti);
-    // AC-6 / E-1: jti is a 32-char lowercase-hex string (randomBytes(16).hex)
+    // jti is a 32-char lowercase-hex string (randomBytes(16).hex)
     expect(secondAccessJti).toMatch(/^[0-9a-f]{32}$/);
 
     // ---- Replay the original refresh token ----
@@ -95,7 +92,7 @@ test.describe('TASK-307 W1 — Refresh-token defense (E2E)', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // 2. Reuse-detection + family-revoke — AC-1 / RFC 6749 §10.4
+  // 2. Reuse-detection + family-revoke (RFC 6749 §10.4)
   // ---------------------------------------------------------------------------
   test('TASK-307 W1.7 — replaying a consumed refresh token revokes the rotated successor too (family-revoke)', async ({ request }) => {
     const login = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
@@ -127,15 +124,13 @@ test.describe('TASK-307 W1 — Refresh-token defense (E2E)', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // 3. Cross-tenant carry-through — AC-3 / C-12 (TASK-309 AC-1 upgrade)
+  // 3. Cross-tenant carry-through
   // ---------------------------------------------------------------------------
   //
-  // TASK-309 AC-1 — replaces the TASK-307 W7.A.2 stability test. The
-  // older test logged in a single tenant and asserted that the rotated
-  // access token kept the same tenantId — which was sufficient to pin
-  // the C-12 fix but did not actively prove that rotation is BOUND to
-  // the refresh token's stored tenantId (and not, say, derived from a
-  // bearer header or from `user.tenantId`).
+  // Proves that rotation is BOUND to the refresh token's stored tenantId
+  // (and not, say, derived from a bearer header or from `user.tenantId`) —
+  // a single-tenant login alone only proves the rotated access token keeps
+  // the same tenantId, not that it's actively bound to it.
   //
   // The genuine probe in this revision:
   //
@@ -230,7 +225,7 @@ test.describe('TASK-307 W1 — Refresh-token defense (E2E)', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // 4. Logout revokes both jti and refresh family — AC-2 / C-11
+  // 4. Logout revokes both jti and refresh family
   // ---------------------------------------------------------------------------
   test('TASK-307 W1.7 — logout revokes the access-token jti (subsequent /auth/me is 401)', async ({ request }) => {
     const login = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);

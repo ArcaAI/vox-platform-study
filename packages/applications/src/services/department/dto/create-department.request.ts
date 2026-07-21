@@ -25,7 +25,7 @@ export class CreateDepartmentRequest {
   @IsString()
   parentDepartmentId?: string;
 
-  // CC-04 (TASK-336) — the admin create modal collects a default summary
+  // CC-04 — the admin create modal collects a default summary
   // template. The field must be whitelisted here or the global
   // `forbidNonWhitelisted` ValidationPipe rejects the request (400) before it
   // reaches the service. `UpdateDepartmentRequest` already exposes it; this

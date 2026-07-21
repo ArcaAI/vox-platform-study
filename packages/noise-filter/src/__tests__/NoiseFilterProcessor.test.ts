@@ -212,7 +212,7 @@ describe('NoiseFilterProcessor', () => {
       expect(newOptions).toEqual(originalOptions);
     });
 
-    // TASK-304 MED-10: repeated enableStats updates must not leak setInterval handles.
+    // Repeated enableStats updates must not leak setInterval handles.
     it('does not leak setInterval handles when enableStats is toggled on repeatedly', async () => {
       const setSpy = vi.spyOn(globalThis, 'setInterval');
       const clearSpy = vi.spyOn(globalThis, 'clearInterval');

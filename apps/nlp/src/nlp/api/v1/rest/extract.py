@@ -15,7 +15,7 @@ async def extract_document(
     file: UploadFile = File(...),
     service: DocumentExtractor = Depends(get_document_extractor),
 ) -> ExtractionResponse:
-    """Extract text from an uploaded lab/exam document (TASK-344 Workstream A2).
+    """Extract text from an uploaded lab/exam document.
 
     Routes PDFs through PyMuPDF (text layer) + RapidOCR (scanned pages) and images
     through RapidOCR. Always returns HTTP 200 — unsupported/empty/corrupt inputs

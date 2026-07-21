@@ -1,10 +1,10 @@
 /**
- * @arcaai/stt - C-2 transferable postMessage tests (TASK-270)
+ * @arcaai/stt - transferable postMessage tests
  *
  * Audio `Float32Array` buffers must be transferred (not structured-cloned) to
  * the worker on every `transcribe`. Without this, each 30 s @ 16 kHz chunk
  * causes a ~1.9 MB copy on every call, accumulating GC pressure in long
- * sessions (see 04-stt.md C-2 / P-1).
+ * sessions.
  *
  * @vitest-environment jsdom
  */

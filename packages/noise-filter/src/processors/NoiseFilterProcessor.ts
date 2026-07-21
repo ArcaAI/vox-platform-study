@@ -218,9 +218,9 @@ export class NoiseFilterProcessor extends BaseProcessor {
    *
    * Uses the bundled asset at `assets/rnnoise.wasm` (resolved via
    * `getDefaultWasmUrl()`) unless an explicit `wasmPath` override is set.
-   * TASK-269 — CRIT-2: the previous default was a `cdn.jsdelivr.net` URL
-   * that violated strict CSP, broke offline/corporate deployments, and
-   * had no SRI integrity guarantee.
+   * The previous default was a `cdn.jsdelivr.net` URL that violated strict
+   * CSP, broke offline/corporate deployments, and had no SRI integrity
+   * guarantee.
    */
   private async loadWasmBinary(): Promise<ArrayBuffer> {
     const wasmPath = this.options.wasmPath ?? getDefaultWasmUrl();
@@ -307,8 +307,8 @@ export class NoiseFilterProcessor extends BaseProcessor {
   /**
    * Start periodic stats emission.
    *
-   * TASK-304 (MED-10): idempotent — if a previous interval is still running we clear
-   * it before starting the new one. Without this guard, repeated
+   * Idempotent — if a previous interval is still running we clear it
+   * before starting the new one. Without this guard, repeated
    * `updateOptions({ enableStats: true })` calls would leak `setInterval` handles
    * (the old timer keeps running, never garbage-collected).
    */
@@ -454,8 +454,8 @@ export class NoiseFilterProcessor extends BaseProcessor {
    * @param options - New options to merge
    */
   async updateOptions(options: Partial<NoiseFilterOptions>): Promise<void> {
-    // TASK-304 Wave 2 W2-NF-1: previously the `noiseCancellation` toggle was silently
-    // dropped — the field was stored in `this.options` but never reached the worklet
+    // Previously the `noiseCancellation` toggle was silently dropped — the
+    // field was stored in `this.options` but never reached the worklet
     // / fallback processor, so audio kept being filtered (or kept passing through).
     // Dispatch the setEnabled message exactly the same way `onEnable` / `onDisable`
     // would, but without touching the BaseProcessor `_enabled` flag (that controls

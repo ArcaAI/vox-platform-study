@@ -85,7 +85,7 @@ export {
 
   // Transcription
   type TranscriptionTimestamp,
-  type WordTimestamp, // TASK-372 D9 — word-level timestamps carried through TranscriptionResult.words
+  type WordTimestamp, // word-level timestamps carried through TranscriptionResult.words
   type TranscriptionResult,
 
   // Statistics
@@ -132,7 +132,7 @@ export {
   // Main Processor
   STTProcessor,
   createSTT,
-  type STTStreamingTransport, // TASK-298 D-4
+  type STTStreamingTransport,
 
   // Audio Buffer Manager
   AudioBufferManager,
@@ -140,7 +140,7 @@ export {
   type AudioBufferStats,
   DEFAULT_BUFFER_OPTIONS,
 
-  // Audio Capture (TASK-351 P0-5 — worklet path with coalesced frames)
+  // Audio Capture (worklet path with coalesced frames)
   createAudioCapture,
   isAudioWorkletUsable,
   type AudioCaptureHandle,
@@ -164,7 +164,7 @@ export {
   RemoteSTTProvider,
   BackendSTTProvider, // Deprecated alias
 
-  // TASK-298 D-4 — pipeline-aware streaming provider.
+  // Pipeline-aware streaming provider.
   StreamingBackendSTTProvider,
   type StreamingRemoteProviderConfig,
   type StreamingSessionLike,

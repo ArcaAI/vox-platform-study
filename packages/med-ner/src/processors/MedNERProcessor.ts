@@ -136,7 +136,7 @@ export class MedNERProcessor {
    */
   private tokenizer: Tokenizer | null = null;
 
-  /** Worker client when running off-main-thread (TASK-272 / C-1). */
+  /** Worker client when running off-main-thread. */
   private workerClient: MedNERWorkerClient | null = null;
 
   // NER pipeline from Transformers.js
@@ -262,7 +262,7 @@ export class MedNERProcessor {
       console.info(`[@arcaai/med-ner] resolved compute device='${device}' for model='${modelRef.id}'`);
     }
 
-    // Off-main-thread path (TASK-272 / C-1). The worker imports
+    // Off-main-thread path. The worker imports
     // `@huggingface/transformers` itself; we never touch it here.
     if (this.options.workerFactory) {
       try {
@@ -478,9 +478,9 @@ export class MedNERProcessor {
   }
 
   /**
-   * Extract entities from long text using token-aware sentence chunking
-   * (TASK-272 / C-2). Falls back to a single-chunk pass if no tokenizer
-   * is available yet (e.g. before init() resolved).
+   * Extract entities from long text using token-aware sentence chunking.
+   * Falls back to a single-chunk pass if no tokenizer is available yet
+   * (e.g. before init() resolved).
    */
   private async extractChunked(text: string): Promise<EntitySpan[]> {
     if (!this.tokenizer) {

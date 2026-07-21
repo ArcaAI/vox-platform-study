@@ -1,4 +1,4 @@
-"""TASK-525 §4.4 — apply control-plane values to stt-v2's live runtime state.
+"""Apply control-plane values to stt-v2's live runtime state.
 
 The bridge between the effective-config pull client and the objects that
 actually consume the values: the model cache's retention knobs, the Dramatiq

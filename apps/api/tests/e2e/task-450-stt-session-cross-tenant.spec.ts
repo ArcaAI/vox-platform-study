@@ -1,15 +1,15 @@
 /**
- * TASK-450 C4-01 — cross-tenant live-transcript (stt_session) egress probes.
+ * Cross-tenant live-transcript (stt_session) egress probes.
  *
- * Before the fix, `POST /auth/stream-ticket` minted `stt_session:<sessionId>`
- * tickets with NO ownership check (the scope silently bypassed the
- * consultation-only regex), and the WS gateway validated only the ticket's
+ * Without the ownership guard, `POST /auth/stream-ticket` would mint `stt_session:<sessionId>`
+ * tickets with NO ownership check (the scope would silently bypass the
+ * consultation-only regex), and the WS gateway would validate only the ticket's
  * SCOPE STRING — so any authenticated user in tenant B who learned a
  * tenant-A sessionId could subscribe to tenant A's live transcript (PHI).
  *
- * The fix wires the existing gateway-side sessionId → tenantId binding
+ * The gateway-side sessionId → tenantId binding
  * (`StreamSessionTenantBindingService`, already enforced on
- * `DELETE /stream/session/:sessionId`) into BOTH paths, defense-in-depth:
+ * `DELETE /stream/session/:sessionId`) is wired into BOTH paths, defense-in-depth:
  *
  *   1. Mint: `stt_session:<sessionId>` may only be minted when the session
  *      binding matches the caller's active tenant — missing binding OR
@@ -21,7 +21,7 @@
  * Because gate 1 now refuses to mint a cross-tenant ticket at all, a
  * black-box probe can no longer reach gate 2 with a foreign-tenant ticket —
  * that layer is pinned by the unit suite
- * (`src/modules/streaming/__tests__/stt-ws.gateway.test.ts`, TASK-450 block).
+ * (`src/modules/streaming/__tests__/stt-ws.gateway.test.ts`).
  * This spec covers the wire-visible contract:
  *
  *   - fail-closed mint for an unbound (synthetic) sessionId → 404
@@ -56,7 +56,7 @@ const PRODUCTION_PIPELINE_ID = '81000000-0000-0000-0001-000000000001';
  */
 const SYNTHETIC_SESSION_ID = '018f0000-0000-7450-8000-000000000000';
 
-/** Generic WS close contract (TASK-307 W5.8 — single enumeration-proof tuple). */
+/** Generic WS close contract (single enumeration-proof tuple). */
 const WS_AUTH_FAILED_CODE = 4401;
 const WS_GENERIC_AUTH_REASON = 'Authentication failed';
 

@@ -30,7 +30,7 @@ function makeController(ctx: Ctx) {
 }
 
 /**
- * TASK-532 (M-12) — the MCP registry stops borrowing the `HarnessPolicy`
+ * The MCP registry stops borrowing the `HarnessPolicy`
  * authorization subject and uses its own `McpServer` subject (already present in
  * the audit `ResourceType` enum, so no migration is needed). Reads stay `read`,
  * writes stay `manage`; the service-level GLOBAL-ADMIN 403 on writes is

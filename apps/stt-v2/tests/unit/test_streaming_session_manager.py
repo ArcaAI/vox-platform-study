@@ -136,7 +136,7 @@ class TestFirePartial:
 
 
 class TestFirePartialCommitPolicy:
-    """TASK-351 P1-1 — LocalAgreement-2 wiring in the partial publish flow."""
+    """LocalAgreement-2 wiring in the partial publish flow."""
 
     @pytest.mark.asyncio
     async def test_consecutive_partials_publish_stable_chars(self, session_manager):

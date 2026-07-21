@@ -1,13 +1,13 @@
 /**
- * Cross-tenant test coverage aggregator — TASK-305 Phase E.2 / E.3.
+ * Cross-tenant test coverage aggregator.
  *
- * The plan's original E.2 layout convention (a separate
+ * The plan's original layout convention (a separate
  * `**\/__tests__/cross-tenant.*.test.ts` per service) was NOT followed.
- * Wave 1-3 instead added cross-tenant negative tests INLINE to each
+ * Services instead added cross-tenant negative tests INLINE to each
  * service's existing test file, plus dedicated test blocks for queue
  * processors and event handlers. Both approaches achieve the same
  * coverage goal; this aggregator pins the inline approach so a future
- * regression (e.g. someone deletes the `describe('TASK-305 D.x ...')`
+ * regression (e.g. someone deletes the `describe('Multi-tenant scoping ...')`
  * block) trips CI.
  *
  * For each entry in the allow-list:
@@ -17,11 +17,8 @@
  *  - the `it()` blocks nested under those matching describes MUST be
  *    at least `minTests` in count
  *
- * The minimums come from the W3 progress report (`docs/implementation/
- * TASK-305-Multi-Tenancy-Hardening/README.md` §6) cross-referenced
- * with the Phase E spec. They are conservative floors, not ceilings —
- * the actual counts at the time of writing exceed them in every case
- * (see `docs/multi-tenancy-audit/06-implementation-summary.md`).
+ * The minimums are conservative floors, not ceilings — the actual counts
+ * at the time of writing exceed them in every case.
  *
  * Heuristic for counting: walk the source line-by-line, track brace
  * depth, push the current depth whenever we hit a `describe(...)` line
@@ -50,12 +47,10 @@ interface CoverageEntry {
 }
 
 /**
- * Phase E.2 — service-layer cross-tenant tests.
+ * Service-layer cross-tenant tests.
  *
- * Service / minTests cross-references with W1.4, W2.D6, W3.1, W3.2,
- * W3.3, W1.3, W1.4 (`§6` table in the plan README). The marker regex
- * matches the `describe('...TASK-305 D.x — ...')` /
- * `describe('Multi-tenant scoping (TASK-305 D.x)')` /
+ * The marker regex matches the `describe('... D.x — ...')` /
+ * `describe('Multi-tenant scoping (D.x)')` /
  * `describe('Cross-Tenant Isolation')` patterns used across the codebase.
  */
 const SERVICE_COVERAGE: readonly CoverageEntry[] = [
@@ -68,43 +63,40 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
   {
     name: 'audit/authorization-audit',
     file: 'services/audit/__tests__/authorization-audit.service.test.ts',
-    // TASK-306 P1.2 added 3 new it() blocks under the `TASK-306 P1.2`
-    // marker (CLS-derived tenantId on logToDatabase). Bumped 5 → 8.
+    // 3 it() blocks were added under this marker (CLS-derived tenantId
+    // on logToDatabase). Bumped 5 → 8.
     minTests: 8,
     marker: /TASK-305 D\.8|Multi-tenant scoping|TASK-306/,
   },
   {
     name: 'apiKey',
     file: 'services/apiKey/__tests__/apikey.service.test.ts',
-    // TASK-306 P1.5 added 3 new it() blocks under the `TASK-306 P1.5`
-    // marker (fetchAllByTenantId CLS gate). Bumped 10 → 13.
+    // 3 it() blocks were added under this marker (fetchAllByTenantId
+    // CLS gate). Bumped 10 → 13.
     minTests: 13,
     marker: /TASK-305 D\.5|Multi-tenant scoping|TASK-306/,
   },
   {
     name: 'consultation/consultation',
     file: 'services/consultation/consultation/__tests__/consultation.service.test.ts',
-    // TASK-306 P2.1 added 9 new it() blocks under the `TASK-306 P2.1 —
-    // Consultation read-paths defense-in-depth` marker (3 getById +
-    // 2 getByIdWithRelations + 4 getConsultationChain). Bumped 5 → 14.
+    // 9 it() blocks were added under the `Consultation read-paths
+    // defense-in-depth` marker (3 getById + 2 getByIdWithRelations +
+    // 4 getConsultationChain). Bumped 5 → 14.
     minTests: 14,
     marker: /TASK-305 D\.2|cross-aggregate tenant|TASK-306/i,
   },
   {
     name: 'consultation/context',
     file: 'services/consultation/context/__tests__/context.service.test.ts',
-    // TASK-306 W5.5.7 / 306-F10 fold-in. Pre-W5.5.7 the marker had
-    // been narrowed from `/TASK-305 D\.3|cross-aggregate tenant/i`
-    // → `/TASK-306/` (W5.4.2 / W5.3.12 single-token convention).
-    // The narrowing left the 8 TASK-305 D.3 cross-aggregate tenant
-    // tests pinned only by the W5.5.6 FS-introspection — fine for
-    // existence, but the explicit floor only tracked the 9 TASK-306
-    // P2.5 tests. 306-F10 broadens the marker back to a 3-token
-    // pattern (matching the `consultation/consultation` entry above)
-    // so the floor explicitly tracks BOTH cross-tenant test blocks
-    // in the file. Floor bumped 9 → 17 (= 8 TASK-305 D.3 + 9 TASK-306
-    // P2.5). Verified by counting it() blocks against the broad
-    // marker before commit.
+    // The marker was previously narrowed to a single generic signal. That
+    // narrowing left the 8
+    // cross-aggregate tenant tests pinned only by FS-introspection —
+    // fine for existence, but the explicit floor only tracked the 9
+    // later tests. The marker was broadened back to a 3-signal pattern
+    // (matching the `consultation/consultation` entry above) so the
+    // floor explicitly tracks BOTH cross-tenant test blocks in the
+    // file. Floor bumped 9 → 17 (= 8 + 9). Verified by counting it()
+    // blocks against the broad marker before commit.
     minTests: 17,
     marker: /TASK-305 D\.3|cross-aggregate tenant|TASK-306/i,
   },
@@ -121,7 +113,7 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     marker: /TASK-305 D\.4|cross-aggregate tenant/i,
   },
   {
-    // TASK-466 (C1-05) — the harness callback receiver's recordEscalation
+    // The harness callback receiver's recordEscalation
     // asserts the 404-over-403 posture (a cross-tenant consultation surfaces as
     // NotFoundException, via assertEqualTenants) alongside the missing-tenant
     // guard, so the file now carries cross-tenant coverage. Floor is the two
@@ -146,21 +138,20 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
   {
     name: 'notification',
     file: 'services/notification/__tests__/notification.service.test.ts',
-    // TASK-306 P1.5 added 3 new it() blocks under the `TASK-306 P1.5`
-    // marker (fetchAllByTenantId CLS gate). Bumped 10 → 13.
+    // 3 it() blocks were added under this marker (fetchAllByTenantId
+    // CLS gate). Bumped 10 → 13.
     minTests: 13,
     marker: /TASK-305 D\.5|Multi-tenant scoping|TASK-306/,
   },
   /*
-   * Surfaced by the TASK-306 W5.5.6 FS-introspection (NEW-7 / F-4):
+   * Surfaced by FS-introspection:
    * `prompt-management.service.test.ts` exercises cross-tenant
-   * isolation under two describes — `Cross-Tenant Isolation` (the
-   * pre-TASK-305 informal convention) and `Authorization & tenant
-   * scope (DEF-C2)` (the TASK-294 DEF-C2 convention). Both were never
-   * registered in this allow-list before; the introspection harden
-   * exposed the gap. Marker captures both describes; floor is the
-   * conservative current count of the DEF-C2 block (10) so any
-   * future deletion of either describe is caught.
+   * isolation under two describes — an earlier informal convention
+   * and the current one — neither of which was registered in this
+   * allow-list before the introspection walker exposed the gap. The
+   * marker captures both describes; the floor is the conservative
+   * current count of the later block (10) so any future deletion of
+   * either describe is caught.
    */
   {
     name: 'prompt-management',
@@ -175,32 +166,30 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     marker: /TASK-305 D\.7|tenantId pinning/i,
   },
   /*
-   * TASK-306 W5.1 + W5.3 — services that previously had no cross-tenant
-   * aggregator entry. Each tracks its own `describe('TASK-306 P1.x ...')`
-   * / `describe('TASK-306 P2.x ...')` block via a `TASK-306` marker so a
-   * future delete of the block trips CI (mirrors the W5.5.6
-   * anti-regression intent). The marker is intentionally broad
-   * (`/TASK-306/`) so subsequent waves can extend the same coverage
-   * without churning this allow-list.
+   * Services that previously had no cross-tenant
+   * aggregator entry. Each tracks its own describe block via the
+   * marker below so a future delete of the block trips CI. The
+   * marker is intentionally broad so subsequent additions can extend
+   * the same coverage without churning this allow-list.
    */
   {
     name: 'tenant',
     file: 'services/tenant/__tests__/tenant.service.test.ts',
-    // TASK-306 P1.3 added 6 it() blocks (3 per method: fetchById +
+    // 6 it() blocks were added (3 per method: fetchById +
     // fetchByCodeName, same-tenant / cross-tenant non-admin /
     // cross-tenant GLOBAL_ADMIN).
-    // TASK-306 P2.2 / W5.3.1 added 6 more (same matrix for
-    // fetchTenantConfigs by tenantId + by codeName). 6 → 12.
+    // 6 more were added for the same matrix on
+    // fetchTenantConfigs by tenantId + by codeName. 6 → 12.
     minTests: 12,
     marker: /TASK-306/,
   },
   {
     name: 'webhook',
     file: 'services/webhook/__tests__/webhook.service.test.ts',
-    // TASK-306 P1.4 added 3 it() blocks under the
+    // 3 it() blocks were added under the
     // `resolveEffectiveTenantId` describe (non-admin cross-tenant pin,
     // non-admin no-DTO pin, GLOBAL_ADMIN cross-tenant honor).
-    // TASK-306 P2.3 / W5.3.2-5.3.6 added 14 more:
+    // 14 more were added:
     //   - fetchAll (5.3.2): 2 (CLS-injected filter, GLOBAL_ADMIN bypass)
     //   - fetchById (5.3.3): 3 (same / cross 404 / GLOBAL_ADMIN)
     //   - update (5.3.4): 3 (same / cross 404 / GLOBAL_ADMIN)
@@ -211,43 +200,40 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     marker: /TASK-306/,
   },
   /*
-   * TASK-306 W5.3 — ResourceSubscriptionService had no cross-tenant
-   * aggregator entry pre-W5.3 because the service was tenant-blind on
-   * every surface. W5.3.7-5.3.11 added a full DEF-C3 sweep across 5
-   * methods. All tests live under
-   * `describe('TASK-306 P2.4 — ResourceSubscription tenant-guard
+   * ResourceSubscriptionService is tenant-blind on every surface, so
+   * the guard sweep spans all 5 methods. All tests live under
+   * `describe('ResourceSubscription tenant-guard
    * sweep')`. Floor counts:
-   *   - fetchAll (5.3.7): 2
-   *   - fetchAllByResource (5.3.8): 2
-   *   - fetchById (5.3.9): 3
-   *   - update (5.3.10): 3
-   *   - deleteById (5.3.11): 3
+   *   - fetchAll: 2
+   *   - fetchAllByResource: 2
+   *   - fetchById: 3
+   *   - update: 3
+   *   - deleteById: 3
    * Total ≥ 13.
    */
   {
     name: 'resourceSubscription',
     file: 'services/resourceSubscription/__tests__/resourceSubscription.service.test.ts',
-    // TASK-306 W5.5.7 / 306-F9 fold-in (cosmetic): dropped the `/i`
-    // flag from the marker. `TASK-306` is always written upper-case
-    // in describe titles per the W5.3.12 convention; the `/i` flag
-    // was a copy-paste from the older `/cross-aggregate tenant/i`
-    // shape and serves no purpose here.
+    // Cosmetic fold-in: dropped the `/i` flag from the marker. The
+    // marker text is always written upper-case in describe titles by
+    // convention; the `/i` flag was a copy-paste from the older
+    // `/cross-aggregate tenant/i` shape and serves no purpose here.
     minTests: 13,
     marker: /TASK-306/,
   },
   /*
-   * TASK-306 W5.5.7 — W5.5 base-layer additions.
+   * Base-layer additions.
    *
    * These entries point OUTSIDE `services/` (one in `common/`, one in
-   * `services/baseServices/`) so the W5.5.6 FS-introspection walker
+   * `services/baseServices/`) so the FS-introspection walker
    * does not auto-discover them — but the cross-tenant assertions
    * they hold are central to the multi-tenancy contract, so the
    * aggregator pins them explicitly:
    *
-   *   - `base.service` (W5.5.1 / audit M-5): `broadcastSysEvent` CLS
+   *   - `base.service`: `broadcastSysEvent` CLS
    *     wins on tenantId. Floor 3 per spec — actual count is 4 and
    *     can grow; floor catches a 2-test regression.
-   *   - `core.unitOfWork` (W5.5.2 / audit M-6): the new
+   *   - `core.unitOfWork`: the new
    *     `runInTransaction` canonical `$transaction(callback)`
    *     contract. Floor 3 per spec — actual count is 4.
    */
@@ -266,7 +252,7 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
 ];
 
 /**
- * Phase E.3 — BullMQ processor + NestJS event-handler CLS-rebind tests.
+ * BullMQ processor + NestJS event-handler CLS-rebind tests.
  *
  * All 6 queue/event handlers wrap their work body in `cls.run(...)`
  * with the tenant id pulled from the job/event payload, fail-closed if
@@ -351,13 +337,12 @@ function readSource(relativePath: string): string {
 }
 
 /*
- * TASK-306 W5.5.6 / NEW-7 / F-4 — FS-introspection harden.
+ * FS-introspection harden.
  *
  * Before this commit `SERVICE_COVERAGE` was a hand-maintained allow-list.
  * A new cross-tenant test added in a service that had no entry (or a
- * service that gained its FIRST cross-tenant negative test in a later
- * wave) would never trip CI — the gap was structural. NEW-7 / F-4
- * called that out; W5.5 promotes the fix in-scope.
+ * service that gained its FIRST cross-tenant negative test later)
+ * would never trip CI — the gap was structural.
  *
  * The harden walks `packages/applications/src/services/` end-to-end,
  * picks every `<name>.service.test.ts` file whose CONTENTS reference at
@@ -373,11 +358,12 @@ function readSource(relativePath: string): string {
  * tenantId in setup code (logger setup, JWT issuance, AppSettings
  * boot) would flood the gap list. The narrower set targets the
  * actual guard helpers exposed by `packages/applications/src/common/
- * tenant-guards.ts` (TASK-305 W1.2), the cross-tenant test describe
- * conventions (`TASK-305 D.x`, `TASK-306`, `Multi-tenant scoping`,
- * `Cross-Tenant Isolation`, `cross-aggregate tenant`), and the
- * legacy `DEF-C2` block convention from TASK-294. A file matches if
- * ANY of these tokens appears anywhere in its source.
+ * tenant-guards.ts`, the several `describe(...)` label conventions
+ * used historically for inline cross-tenant tests (both ticket-scoped
+ * labels and the newer semantic labels `Multi-tenant scoping`,
+ * `Cross-Tenant Isolation`, `cross-aggregate tenant`), and one older
+ * block-naming convention still present in a few files. A file
+ * matches if ANY of these tokens appears anywhere in its source.
  */
 const TENANT_SCOPED_DETECTION =
   /assertEqualTenants|assertParentInScope|assertUserBelongsToTenant|assertCrossAggregateRefsInTenant|resolveEffectiveTenantId|TASK-305 D\.|TASK-306|Multi-tenant scoping|Cross-Tenant Isolation|cross-aggregate tenant|DEF-C2/;
@@ -486,7 +472,7 @@ describe('Cross-tenant test coverage aggregator (TASK-305 E.2/E.3)', () => {
   });
 
   /*
-   * TASK-306 W5.5.6 / NEW-7 / F-4 — FS-introspection harden. See the
+   * FS-introspection harden. See the
    * block comment on `TENANT_SCOPED_DETECTION` above for the design
    * rationale. The live assertion walks the real filesystem; the
    * two meta-tests below pin the detection algorithm itself against
@@ -503,7 +489,7 @@ describe('Cross-tenant test coverage aggregator (TASK-305 E.2/E.3)', () => {
       // test (or one of the tenant-guard helper calls) but its file is
       // not yet in SERVICE_COVERAGE. Add an entry with the appropriate
       // marker + minTests floor — see the existing entries for the
-      // pattern. This is exactly the gap NEW-7 / F-4 was tracking.
+      // pattern.
       expect(uncovered).toEqual([]);
     });
 

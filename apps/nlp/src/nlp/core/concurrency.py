@@ -1,13 +1,12 @@
-"""TASK-525 §4.3 — the inference bound nlp never had (GAP-L4).
+"""The inference bound nlp never had.
 
 Before this module the service had ZERO semaphores anywhere: every concurrent
 NER / classification / diagnosis request went straight at the model, so load was
-bounded only by however many requests happened to arrive. That is the failure
-mode GAP-L4 records.
+bounded only by however many requests happened to arrive.
 
 `ResizableSemaphore` is mirrored from `smr_v2.services.resizable_semaphore` —
 deliberately duplicated rather than shared, because factoring the per-service
-clients and primitives into a common package is TASK-529's OD-3 and must not be
+clients and primitives into a common package is a settled decision and must not be
 preempted here. Keep the two implementations in step.
 """
 
@@ -138,7 +137,7 @@ async def refresh_inference_limit(client: Any) -> ResizableSemaphore:
 
     NEVER raises: an inference must not fail because the config plane is
     unavailable. No opinion from the control plane ⇒ the env bound stays in force,
-    which is exactly the pre-TASK-525 behaviour.
+    which is exactly the env-only behaviour.
     """
     semaphore = get_inference_semaphore()
     if client is None:
@@ -147,7 +146,7 @@ async def refresh_inference_limit(client: Any) -> ResizableSemaphore:
     try:
         snapshot = await client.get()
 
-        # TASK-529 (D-07) — same refresh, same fail-safe posture: retention
+        # Same refresh, same fail-safe posture: retention
         # rides the existing pull rather than opening a second poll loop.
         # Imported here to avoid a dependencies↔concurrency import cycle.
         from nlp.dependencies import apply_model_cache_retention

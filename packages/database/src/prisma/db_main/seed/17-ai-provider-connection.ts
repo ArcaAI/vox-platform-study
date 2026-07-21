@@ -3,13 +3,13 @@ import { AI_MODEL_PROVIDERS } from './ai-models/shared';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 
 /**
- * AiProviderConnection Seed (TASK-524 — config-plane core, GAP-C1)
+ * AiProviderConnection Seed (config-plane core)
  *
  * Seeds one SYSTEM-tenant (`00000000-…`) row per canonical serving provider —
  * the platform-default catalog entry recording WHERE a provider lives and (once
  * an admin sets one) HOW to authenticate to it.
  *
- * SILENT-CHANGE GUARD (ticket §7 — the D-07 lesson: wiring a dead field must
+ * SILENT-CHANGE GUARD (wiring a dead field must
  * not flip a live default). Every row seeds:
  *
  *   - `enabled: false`   → `resolveConnection` skips it and falls through to
@@ -21,7 +21,7 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * transcribed from the current `.env.dev` / `.env.production` reference values
  * so a global admin has a sane starting point in the console. They are inert
  * while `enabled: false`, and each such row is flagged `metaData.placeholder`
- * so the admin surface (TASK-526) can render them as suggestions rather than
+ * so the admin surface can render them as suggestions rather than
  * as configured values.
  *
  * CREATE-ONLY: an existing (tenantId, provider) row is NEVER overwritten — the

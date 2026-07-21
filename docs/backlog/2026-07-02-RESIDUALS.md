@@ -4,7 +4,7 @@ Two items deliberately parked at the close of the TASK-386→402 program. Revisi
 
 ## 1. Audit-payload field redaction sweep
 
-- **Source:** TASK-402 §5 flags (`docs/implementation/TASK-402-Password-Hash-And-Settings-Fixes/README.md`).
+- **Source:** TASK-402 §5 flags (`docs/archive/TASK-402-Password-Hash-And-Settings-Fixes/README.md`).
 - **Context:** TASK-402 stopped plaintext passwords from entering the SysEvent pipeline — user `ResourceCreated`/`ResourceUpdated` audit payloads now carry only the bcrypt hash. Ideally password (and similar secret) fields are **redacted entirely** from audit payloads rather than carried as hashes.
 - **Scope when picked up:**
   1. Field-level redaction (denylist: `password`, `tokenHash`, `encryptedValue`, etc.) applied where SysEvent payloads are built before enqueue.
@@ -13,7 +13,7 @@ Two items deliberately parked at the close of the TASK-386→402 program. Revisi
 
 ## 2. MS-Graph live email credentials
 
-- **Source:** TASK-400 (`docs/implementation/TASK-400-Password-Security-Hardening/README.md`).
+- **Source:** TASK-400 (`docs/archive/TASK-400-Password-Security-Hardening/README.md`).
 - **Context:** The public forgot-password flow ships with a fully implemented MS-Graph mail transport, but **no credentials exist in any env file**, so non-prod uses the dev JSONL outbox and prod would WARN no-op.
 - **To activate real delivery**, set:
   - `MSGRAPH_CLIENT_ID`

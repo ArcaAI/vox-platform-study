@@ -1,4 +1,4 @@
-"""ASR engine adapter dispatch tests (TASK-505 Phase 1)."""
+"""ASR engine adapter dispatch tests."""
 
 from unittest.mock import AsyncMock
 
@@ -54,7 +54,7 @@ class TestResolve:
 
 
 class TestBindingResolution:
-    """Platform-aware binding resolution (TASK-505 P1 tail)."""
+    """Platform-aware binding resolution."""
 
     def test_platform_device_preferences(self):
         from stt_v2.processors.binding import platform_device_preferences
@@ -123,7 +123,7 @@ class TestBindingResolution:
 
 
 class TestP1ReviewFixes:
-    """Regression locks for the Phase 1 adversarial-review findings."""
+    """Regression locks for adversarial-review findings."""
 
     def test_profile_compute_mismatch_still_resolves(self):
         # NeMo declares only float32; a CUDA profile prefers float16 — the
@@ -177,7 +177,7 @@ class TestP1ReviewFixes:
 
 
 class TestP3NewEngines:
-    """TASK-505 P3 — PARAKEET_CPP + AZURE_FOUNDRY engines (inline-YAML-only)."""
+    """PARAKEET_CPP + AZURE_FOUNDRY engines (inline-YAML-only)."""
 
     def test_new_formats_exist_and_map(self):
         from stt_v2.processors.asr_engines import (
@@ -203,8 +203,8 @@ class TestP3NewEngines:
         assert ref2.inline.engine == AiModelFormat.AZURE_FOUNDRY
 
     def test_azure_foundry_is_batch_only(self):
-        # Decision D4: preview → capability streaming=False AND the adapter
-        # refuses to build a streaming callable.
+        # Azure Foundry is a preview (batch-only) engine: capability
+        # streaming=False AND the adapter refuses to build a streaming callable.
         from unittest.mock import MagicMock
 
         from stt_v2.processors import get_registry
@@ -220,7 +220,7 @@ class TestP3NewEngines:
 
     @pytest.mark.asyncio
     async def test_azure_foundry_disabled_by_default(self):
-        # Decision D4: the loader refuses unless azure_foundry_enabled is set.
+        # The Azure Foundry loader refuses unless azure_foundry_enabled is set.
         from unittest.mock import MagicMock, patch
 
         from stt_v2.core.exceptions import CloudASRAuthError
@@ -359,7 +359,7 @@ class TestP3NewEngines:
 
 
 class TestP507WhisperCppEngine:
-    """TASK-507 — WHISPER_CPP engine (pywhispercpp binding)."""
+    """WHISPER_CPP engine (pywhispercpp binding)."""
 
     def test_new_format_exists_and_maps(self):
         from stt_v2.processors.asr_engines import WhisperCppEngine
@@ -443,7 +443,7 @@ class TestP507WhisperCppEngine:
 
 
 class TestP4EmbeddingDim:
-    """TASK-505 P4 (decision D1) — settings-driven voice-profile embedding dim."""
+    """Settings-driven voice-profile embedding dim."""
 
     def test_extraction_dim_follows_settings(self):
         from unittest.mock import MagicMock, patch

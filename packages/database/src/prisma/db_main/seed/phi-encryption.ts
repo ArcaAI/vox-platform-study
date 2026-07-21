@@ -1,7 +1,7 @@
 /**
- * TASK-369 (Data Encryption Initiative) Phase 6 — seed-time PHI encryption.
+ * Data Encryption Initiative — seed-time PHI encryption.
  *
- * Phase 6 DROPPED the plaintext clinical-PHI columns, so the seeds can no longer
+ * The plaintext clinical-PHI columns were DROPPED, so the seeds can no longer
  * write free-text into them. Instead they must persist Vault-Transit (`hope-phi`)
  * ciphertext into the sibling `encrypted*` columns — byte-identical to what the
  * application services write through `@arcaai/domains` `field-encryption.ts`

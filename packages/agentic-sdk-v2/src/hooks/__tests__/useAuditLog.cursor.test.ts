@@ -1,5 +1,5 @@
 /**
- * useAuditLog().listByCursor — cursor (keyset) audit-log query (TASK-373 client follow-up)
+ * useAuditLog().listByCursor — cursor (keyset) audit-log query
  *
  * First-class SDK sibling of the offset `list()`. Calls
  * `GET /admin/audit-logs/cursor` with `cursor` + `limit` + the SAME A8 filters

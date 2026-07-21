@@ -1,7 +1,7 @@
 """Word-overlap dedup between consecutive transcribed chunks.
 
 Shared by the batch chunk pipeline (stride overlap) and the streaming
-force-emit boundary (carry overlap) — TASK-505 Phase 1. Pure text function;
+force-emit boundary (carry overlap). Pure text function;
 import-cheap by design (the streaming worker must not import batch_service,
 which pulls the Azure SDK at module import).
 """

@@ -1,5 +1,5 @@
 /**
- * useDnaStyle Hook Tests — New Methods (TASK-032 WS-H)
+ * useDnaStyle Hook Tests — New Methods
  *
  * Tests for getJobStatus, pollJobStatus, getByDoctor.
  *

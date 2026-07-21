@@ -6,7 +6,7 @@
  * (sync or streaming, assembled mode with the admin-only debug meta,
  * provider/guardrail catalogs with the elevated __GLOBAL__ view; streaming
  * rides a same-origin BFF-proxied EventSource — see use-task-stream.ts). The
- * Guardrails and NER tabs (TASK-446) proxy the Guardrail / NLP services through
+ * Guardrails and NER tabs proxy the Guardrail / NLP services through
  * the user-plane `ai/*` gateway routes.
  */
 
@@ -364,7 +364,7 @@ function PlaygroundLlmBody() {
                     </div>
                 </TabsContent>
 
-                {/* Guardrails + NER (TASK-446): user-plane `ai/*` gateway proxies over
+                {/* Guardrails + NER: user-plane `ai/*` gateway proxies over
                     the Guardrail (:8863) and NLP (:8864) services. */}
                 <TabsContent value="guardrails">
                     <GuardrailsTab />

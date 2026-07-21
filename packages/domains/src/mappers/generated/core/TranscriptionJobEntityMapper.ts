@@ -25,7 +25,7 @@ export const TranscriptionJobEntityMapperHandlers = createMapperHandlers<Entitie
   $toPersistence: {
     // Handle Pipeline relation - exclude from persistence (use pipelineId)
     Pipeline: () => undefined,
-    // TASK-369 Phase 3C — return the raw ciphertext Buffer directly so the
+    // Return the raw ciphertext Buffer directly so the
     // generic auto-mapper does not destructure the typed array.
     encryptedResultText: (entity) => entity.encryptedResultText ?? null,
     encryptedResultMetadata: (entity) => entity.encryptedResultMetadata ?? null,

@@ -12,7 +12,7 @@ export interface IPipelineService {
   update(id: string, dto: UpdatePipelineRequest): Promise<PipelineResponse>;
 
   /**
-   * TASK-531 (GAP-T2) — Clone a pipeline into a new, editable copy.
+   * Clone a pipeline into a new, editable copy.
    *
    * The sanctioned way to customize a locked template copy: the clone is always
    * unlocked, keeps the source's template provenance (`sourceTemplateSlug`), and
@@ -21,10 +21,10 @@ export interface IPipelineService {
   clone(id: string, dto: ClonePipelineRequest): Promise<PipelineResponse>;
 
   /**
-   * IC-04 (TASK-336) — Assign a pipeline within its owning tenant.
+   * Assign a pipeline within its owning tenant.
    *
    * `AsrPipeline` carries a single, deliberately *protected* `tenantId`
-   * (BaseTenantEntity, TASK-305 multi-tenancy hardening), so a pipeline cannot
+   * (`BaseTenantEntity`, multi-tenancy hardening), so a pipeline cannot
    * be transferred across tenants from this path. Cross-tenant targets are
    * rejected (rather than silently echoed) and the only meaningful same-tenant
    * assignment — promoting the pipeline to the tenant default — is persisted.
@@ -32,24 +32,24 @@ export interface IPipelineService {
   assignToTenant(id: string, targetTenantId: string): Promise<PipelineResponse>;
 
   /**
-   * TASK-328 A6 — Mark a pipeline as the tenant default (unsets the previous
+   * Mark a pipeline as the tenant default (unsets the previous
    * default atomically/transactionally).
    */
   setDefault(id: string): Promise<PipelineResponse>;
 
   /**
-   * TASK-328 A6 — Enable/disable a pipeline via its resourceStatus. OCC-guarded
+   * Enable/disable a pipeline via its resourceStatus. OCC-guarded
    * (expectedVersion folds the controller's If-Match header).
    */
   toggle(id: string, enabled: boolean, expectedVersion?: number): Promise<PipelineResponse>;
 
   /**
-   * TASK-328 A6 — List config-version snapshots for a pipeline (newest first).
+   * List config-version snapshots for a pipeline (newest first).
    */
   listVersions(id: string): Promise<PipelineVersionResponse[]>;
 
   /**
-   * TASK-328 A6 — Fetch one config-version snapshot by version number.
+   * Fetch one config-version snapshot by version number.
    */
   getVersion(id: string, versionNumber: number): Promise<PipelineVersionResponse | null>;
 

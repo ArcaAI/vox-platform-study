@@ -1,5 +1,5 @@
 /**
- * TASK-506 Phase 6 — screen tests for the two AI task-default surfaces:
+ * Screen tests for the two AI task-default surfaces:
  *  - the PLATFORM screen (tier 10-19) editing the SYSTEM-tenant rows for all
  *    three task keys (guardrail card labeled global-admin-only),
  *  - the TENANT screen (tier 30-49) editing the NLP keys only (guardrail is
@@ -44,7 +44,7 @@ function model(overrides: Partial<TaskModelOption> & Pick<TaskModelOption, 'id' 
   };
 }
 
-// TASK-526 widened AI_TASK_KEYS 3 -> 9 to match the backend. The platform
+// widened AI_TASK_KEYS 3 -> 9 to match the backend. The platform
 // screen still edits only the three keys below (the remaining six are covered
 // by the tenant read-only view); this fixture stays deliberately partial.
 const OPTIONS: Partial<Record<AiTaskKey, TaskModelOption[]>> = {
@@ -230,7 +230,7 @@ describe('AiTaskDefaultsPlatformScreen', () => {
 });
 
 // =============================================================================
-// TASK-528 — the platform screen links out to the AI-models hub
+// The platform screen links out to the AI-models hub
 // =============================================================================
 describe('AiTaskDefaultsPlatformScreen — Manage models link (TASK-528)', () => {
   it('links "Manage models" to /ai-models', async () => {

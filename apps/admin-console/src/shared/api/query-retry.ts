@@ -1,7 +1,7 @@
 import { GatewayError } from './http';
 
 /**
- * App-wide TanStack Query retry policy (TASK-428): one retry for transient
+ * App-wide TanStack Query retry policy: one retry for transient
  * failures (network errors, gateway 5xx), none for 4xx — a client error is
  * deterministic, so a retry just replays the same failure and doubles the
  * request count. 401 is covered by the BFF proxy's own single-flight

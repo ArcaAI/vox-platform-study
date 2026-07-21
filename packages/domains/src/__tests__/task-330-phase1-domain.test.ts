@@ -1,5 +1,5 @@
 /**
- * TASK-330 Phase 1 — domain-layer threading of the new clinical-harness fields.
+ * Domain-layer threading of the new clinical-harness fields.
  *
  * Proves the additive DB columns are reflected through the domain layer
  * (enum ⇄ entity ⇄ factory ⇄ data-model mapper) so the application/API layers
@@ -27,7 +27,7 @@ const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
 describe('TASK-330 Phase 1 — enums', () => {
   it('ConsultationStatus has exactly the 7 lifecycle states', () => {
-    // TASK-355 Phase D added DRAFT_PENDING_SENSORS (optimistic two-phase delivery).
+    // DRAFT_PENDING_SENSORS supports optimistic two-phase delivery.
     expect(new Set(Object.values(ConsultationStatus))).toEqual(
       new Set(['OPEN', 'RECORDING', 'DRAFT_PENDING_SENSORS', 'PENDING_REVIEW', 'SIGNED', 'CLOSED', 'REOPENED']),
     );
@@ -288,7 +288,7 @@ describe('TASK-330 Phase 1 — SummaryMeta sensor/citation provenance', () => {
     });
     const model = mapper.toPersistence(entity);
     expect(model.entityFaithfulnessScore).toBe(0.5);
-    // TASK-369 Phase 6 — citationsMap/guardrailDecisions plaintext columns were
+    // CitationsMap/guardrailDecisions plaintext columns were
     // dropped; they survive only as transient fields persisted as ciphertext
     // (encryptedCitationsMap/encryptedGuardrailDecisions), never as plaintext.
     expect(model).not.toHaveProperty('citationsMap');

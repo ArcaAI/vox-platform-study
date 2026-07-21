@@ -1,4 +1,4 @@
-"""TASK-525 §3.3 — the effective-config pull client.
+"""The effective-config pull client.
 
 Mechanics are the guardrail `tenant_config.py` resolver's, with HTTP instead of
 SQL: a TTL cache, a NEGATIVE cache so an unreachable gateway costs at most one

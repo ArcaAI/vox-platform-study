@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox — Wave 2 (TASK-304 Wave 2) PluginManager preference wire-up tests.
+ * @arcaai/vox — Wave 2 PluginManager preference wire-up tests.
  *
  * Covers:
  *   • W2-SDK-1 / W2-SDK-2 — `activeVoiceProfile.id` flows into the STT stage as
@@ -110,7 +110,7 @@ describe('PluginManager — Wave 2 (TASK-304 Wave 2)', () => {
       const cfg = manager.getTranscriptionPipelineConfig();
       expect(cfg.stt.voiceProfile).toBeDefined();
       expect(cfg.stt.voiceProfile?.id).toBe('profile-uuid-9');
-      // TASK-304 Wave 3 hotfix: when no profile label is available, fall back to
+      // When no profile label is available, fall back to
       // "Doctor" (display-friendly) rather than the lowercase magic constant.
       expect(cfg.stt.voiceProfile?.reservedSpeakerId).toBe('Doctor');
     });

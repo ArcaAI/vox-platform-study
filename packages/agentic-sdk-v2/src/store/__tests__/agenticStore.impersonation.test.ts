@@ -1,5 +1,5 @@
 /**
- * TASK-264 W0-3 — Store no longer holds the admin impersonation token.
+ * Store no longer holds the admin impersonation token.
  *
  * After this ticket, `authOriginalToken` and `setOriginalToken` no longer
  * exist on the Zustand store. The admin JWT lives only inside `AgenticClient`
@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-// TASK-317 W4.3 (AC-12) — store-logic unit test binds to the module singleton
+// Store-logic unit test binds to the module singleton
 // directly (the `useAgenticStore` name now refers to the context-backed hook).
 import { agenticStoreSingleton as useAgenticStore } from '../agenticStore';
 
@@ -37,7 +37,7 @@ describe('TASK-264 W0-3: store impersonation token removed', () => {
 
   it('clearOnLogout should not throw and should not reference the removed field', () => {
     const state = useAgenticStore.getState();
-    // TASK-317 W1.4 (AC-3) — clearOnLogout now takes the outgoing namespace.
+    // clearOnLogout now takes the outgoing namespace.
     expect(() => state.clearOnLogout('pre-login')).not.toThrow();
   });
 });

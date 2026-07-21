@@ -1,6 +1,6 @@
 """Tests for the NLP tool client (POST /api/v1/classify/tokens).
 
-RED-first: written before ``harness.services.nlp_client`` exists. The client
+The client
 sends the documented body and maps the NLP NER response shape
 (``{text, normalized_text, entity_type, confidence, position:{start,end}}``)
 to Lane H's ``NEREntity{text, type, start, end}``.
@@ -83,7 +83,7 @@ class TestNlpClient:
 
     @pytest.mark.asyncio
     async def test_classify_tokens_maps_ontology_codes(self):
-        """TASK-476 C1 — the NLP entity now carries ontology codes; the client
+        """The NLP entity carries ontology codes; the client
         maps them onto ``NEREntity`` so harness NER round-trips coded entities."""
 
         def handler(request: httpx.Request) -> httpx.Response:

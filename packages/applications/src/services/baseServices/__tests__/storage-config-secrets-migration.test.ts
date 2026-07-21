@@ -1,4 +1,4 @@
-// TASK-302 Phase 3C Tasks 3.9-3.11 — pin S3 + Config secrets migrations.
+// Pin S3 + Config secrets migrations.
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';

@@ -3,7 +3,7 @@ import { Module } from '@nestjs/common';
 import { TenantFrontendConfigAdminController } from './tenant-frontend-config-admin.controller';
 
 /**
- * Admin frontend-pipeline-config feature module (TASK-328 A6). Imports only the
+ * Admin frontend-pipeline-config feature module. Imports only the
  * application service module; tenant scoping + OCC live in the service layer.
  */
 @Module({

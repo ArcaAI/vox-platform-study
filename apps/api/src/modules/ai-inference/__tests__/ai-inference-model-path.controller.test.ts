@@ -1,5 +1,5 @@
 /**
- * TASK-527 (D-12) — the gateway carries `AiModel.localPath` to NLP.
+ * The gateway carries `AiModel.localPath` to NLP.
  *
  * NLP is deliberately stateless (no DB), so the registry's weight path can only
  * reach it by request injection — `_MODEL_IDENTITY_FIELDS` in

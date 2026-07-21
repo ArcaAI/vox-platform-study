@@ -3,7 +3,7 @@ import { IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, Max, MaxLeng
 
 /**
  * PATCH body for `/admin/harness/policy` and `/admin/harness/policy/global`
- * (TASK-330 Phase 6). Every knob is OPTIONAL — only supplied fields are
+ * . Every knob is OPTIONAL — only supplied fields are
  * applied over the current effective policy (a sparse patch). Thresholds are
  * fractions in [0, 1]; the regen budget + gate timers are non-negative
  * integers. `expectedVersion` is the OCC token (folded from the `If-Match`
@@ -155,7 +155,7 @@ export class UpdateHarnessPolicyRequest {
   regenFeedbackEnabled?: boolean | null;
 
   /**
-   * TASK-533 D-24 — master gate for the MCP external-tools path. GLOBAL_ADMIN
+   * Master gate for the MCP external-tools path. GLOBAL_ADMIN
    * only (see `GLOBAL_ADMIN_ONLY_POLICY_KEYS`): a tenant PATCH carrying it is
    * rejected 403. `null ⇒ OFF`; arming it additionally requires the referenced
    * `McpServer.enabled` to be true, so this alone cannot open an egress path.

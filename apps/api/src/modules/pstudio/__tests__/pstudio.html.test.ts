@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { getStudioHtml } from '../pstudio.html';
 
 // -----------------------------------------------------------------------------
-// BUG-003 (supersedes the TASK-336 OB-11 fragment hand-off)
 //   The shell is served through an authenticating BFF proxy (admin console
 //   /api/hope/admin/pstudio) whose session is an httpOnly cookie — no token is
 //   ever client-readable, so a `#token=` fragment contract is unsatisfiable.
@@ -10,9 +9,8 @@ import { getStudioHtml } from '../pstudio.html';
 //   (window.location.pathname): the session cookie rides the same-origin POST
 //   and the proxy injects the bearer server-side. A Host-derived absolute
 //   endpoint would bypass the proxy (empty bearer → UnifiedAuthGuard 401).
-// TASK-336 (still enforced)
-//   OB-11: no credential material in the served HTML.
-//   BR-02: HOPE's tables all live in the `core` schema. studio-core's postgres
+//   No credential material in the served HTML.
+//   HOPE's tables all live in the `core` schema. studio-core's postgres
 //          adapter hardcodes `defaultSchema: "public"` (empty here) → the UI
 //          renders "No tables found". The shell overrides defaultSchema = core.
 // -----------------------------------------------------------------------------

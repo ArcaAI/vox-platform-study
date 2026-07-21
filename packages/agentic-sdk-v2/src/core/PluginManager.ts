@@ -30,7 +30,7 @@ import { SttV2WebSocketClient } from './SttV2WebSocketClient';
 /**
  * Runtime audio start options forwarded by `useArcaAudio.startAudio(...)`.
  *
- * TASK-298 D-4 — the SDK consumer chooses `pipelineId` (and the active
+ * The SDK consumer chooses `pipelineId` (and the active
  * consultation) per-capture rather than statically in `AudioPluginConfig`.
  * `PluginManager.setRuntimeOptions` stores these so the next call to
  * `initialize(track, audioContext)` can build the streaming transport for
@@ -73,7 +73,7 @@ export interface PluginEventCallbacks {
   onNERExtraction?: (result: NERExtractionResult) => void;
   onError?: (error: Error, plugin: string) => void;
   /**
-   * TASK-464 — fired once per outbound audio frame dropped at the streaming STT
+   * Fired once per outbound audio frame dropped at the streaming STT
    * client's backpressure watermark (payload: the running per-session count).
    * The vox hook latches the loss + increments the store count so the UI can
    * render a degraded-connection signal.
@@ -139,10 +139,10 @@ export class PluginManager {
   private knowledgePipeline: KnowledgePipeline | null = null;
   private apiClient?: AgenticClient;
 
-  // TASK-298 D-4 — per-capture runtime options (set via setRuntimeOptions).
+  // Per-capture runtime options (set via setRuntimeOptions).
   private runtimeOptions: PluginManagerRuntimeOptions = {};
 
-  // TASK-304 Wave 2 W2-SDK-1 → W2-SDK-7 — latest UserPreferences snapshot
+  // Latest UserPreferences snapshot
   // injected from `PersonalizationManager`. Read at `getTranscriptionPipelineConfig`
   // time to override the static `AudioPluginConfig` (so local-workflow settings
   // persist end-to-end) and, when the pipeline is already running, to propagate
@@ -174,7 +174,7 @@ export class PluginManager {
   }
 
   /**
-   * TASK-298 D-4 — Record the per-capture runtime options. Must be called
+   * Record the per-capture runtime options. Must be called
    * BEFORE `initialize(track, audioContext)` for the streaming transport
    * to be built. Subsequent calls overwrite previous options.
    */
@@ -195,7 +195,7 @@ export class PluginManager {
   }
 
   /**
-   * TASK-304 Wave 2 — inject the latest `UserPreferences` snapshot.
+   * Inject the latest `UserPreferences` snapshot.
    *
    * Called by `AgenticProvider` whenever `PersonalizationManager.onChange` fires,
    * and once after `loadFromBackend()` resolves. The next call to
@@ -526,7 +526,7 @@ export class PluginManager {
    * Build transcription pipeline config from audio plugin config.
    * Public to allow inspection (e.g., for testing or advanced configuration).
    *
-   * TASK-304 Wave 2 — when `setUserPreferences()` has been called, the user's
+   * When `setUserPreferences()` has been called, the user's
    * persisted `UserPreferences.localConfig` and `activeVoiceProfile` override
    * the static `AudioPluginConfig`. Precedence (highest → lowest):
    *
@@ -541,13 +541,13 @@ export class PluginManager {
     const vadConfig = this.getConfig<VADPluginConfig>('vad');
     const sttConfig = this.getConfig<STTPluginConfig>('stt');
 
-    // TASK-298 D-4 — the runtime pipelineId (from `startAudio({pipelineId})`)
+    // The runtime pipelineId (from `startAudio({pipelineId})`)
     // takes precedence over the static plugin config; the streaming transport
     // is only built when we have BOTH an apiClient and a pipelineId.
     const effectivePipelineId = this.runtimeOptions.pipelineId ?? sttConfig.pipelineId;
     const streamingTransport = this.buildStreamingTransport(sttConfig, effectivePipelineId);
 
-    // TASK-304 Wave 2 — pull user-persisted overrides.
+    // Pull user-persisted overrides.
     const prefs = this.userPreferences;
     const localConfig = prefs?.localConfig;
     const activeVoiceProfile = prefs?.activeVoiceProfile;
@@ -557,7 +557,7 @@ export class PluginManager {
     // optional so we can carry partial state — e.g. threshold tweak before
     // the doctor has enrolled, or activated profile without custom threshold.
     //
-    // TASK-304 Wave 3 hotfix: resolve the reserved-speaker id from the profile's
+    // Resolve the reserved-speaker id from the profile's
     // user-supplied label when present (e.g. "Dr. Alice") and fall back to a
     // display-friendly "Doctor" instead of the lowercase magic constant — the
     // value flows through `LocalSpeakerDiarizer` straight to the transcript UI
@@ -597,7 +597,7 @@ export class PluginManager {
         numSpeakers: sttConfig.numSpeakers ?? 2,
         returnTimestamps: sttConfig.returnTimestamps ?? 'word',
         codeSwitching: sttConfig.codeSwitching ?? false,
-        // TASK-356 Phase 4 — carry the server-resolved EFFECTIVE transcription
+        // Carry the server-resolved EFFECTIVE transcription
         // mode through to the pipeline so resolveSTTRuntimeProvider() honors it.
         // Omitted when absent to preserve today's provider/location behavior.
         ...(sttConfig.transcriptionMode ? { transcriptionMode: sttConfig.transcriptionMode } : {}),
@@ -608,7 +608,7 @@ export class PluginManager {
   }
 
   /**
-   * TASK-304 Wave 2 W2-SDK-7 — propagate user-preference deltas to the live
+   * Propagate user-preference deltas to the live
    * pipeline. Only fields whose runtime processor supports a live `updateOptions`
    * / `setLanguage` / `setReservedSpeakerId` hop are dispatched; fields that
    * require a full re-init (e.g. STT modelId, diarization toggle) are left to
@@ -682,7 +682,7 @@ export class PluginManager {
 
     // Active voice profile → STT LocalSpeakerDiarizer.setReservedSpeakerId (best
     // effort: the diarizer only honours this before the first segment, but the
-    // call is still safe to fire on every change). TASK-304 Wave 3 hotfix:
+    // call is still safe to fire on every change).
     // route via the same label-resolution helper used by the static config path
     // so the live delta and the next pipeline build agree on the speaker label.
     const nextProfileId = next?.activeVoiceProfile?.id;
@@ -702,7 +702,7 @@ export class PluginManager {
   }
 
   /**
-   * TASK-304 Wave 3 hotfix — resolve the speaker label that the local diarizer
+   * Resolve the speaker label that the local diarizer
    * pins to its first slot. The user-supplied `UserVoiceProfile.label` wins
    * when non-empty (e.g. "Dr. Alice"); otherwise we fall back to a
    * display-friendly "Doctor" so the transcript UI badge reads naturally.
@@ -717,7 +717,7 @@ export class PluginManager {
   }
 
   /**
-   * TASK-298 D-4 — Build the streaming transport (StreamingSessionManager
+   * Build the streaming transport (StreamingSessionManager
    * + SttV2WebSocketClient) when the runtime config asks for a pipeline.
    *
    * The transport is `unknown` in `TranscriptionPipelineConfig.stt` to keep
@@ -806,7 +806,7 @@ export class PluginManager {
       this.callbacks.onVADEvent?.(event);
     });
 
-    // TASK-464 — forward outbound-audio backpressure drops so the hook/store can
+    // Forward outbound-audio backpressure drops so the hook/store can
     // surface a degraded-connection signal to the clinician.
     this.transcriptionPipeline.on('audioDrop', (droppedFrameCount) => {
       this.callbacks.onAudioDrop?.(droppedFrameCount);

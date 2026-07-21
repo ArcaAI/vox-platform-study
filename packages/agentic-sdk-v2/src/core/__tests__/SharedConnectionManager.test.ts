@@ -502,13 +502,13 @@ describe('SharedConnectionManager', () => {
   });
 
   // ===========================================================================
-  // TASK-317 W3.1/3.2 — AC-8: SharedWorker WebSocket dedup keys on (id, userId)
+  // SharedWorker WebSocket dedup keys on (id, userId)
   //
   // The SharedWorker shares ONE upstream WebSocket across tabs that subscribe
-  // with the same connection id. Before TASK-317 the dedup key was the bare
+  // with the same connection id. Before, the dedup key was the bare
   // `id`, so two DIFFERENT users (or tenants) that happened to subscribe with
   // the same id were silently wired onto a SINGLE socket — a cross-user PHI
-  // leak. AC-8 mirrors the SSE `sseDedupKey(id, userId)` fix: WS now keys on
+  // leak. This mirrors the SSE `sseDedupKey(id, userId)` fix: WS now keys on
   // `(id, userId)`, so distinct users get distinct sockets.
   //
   // These drive the real worker message handler (`__handleMessageForTests`)

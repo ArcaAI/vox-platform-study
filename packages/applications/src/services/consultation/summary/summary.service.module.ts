@@ -14,11 +14,11 @@ import { EntitlementsServiceModule } from '../../entitlements/entitlements.servi
 import { AgentTrajectoryServiceModule } from '../../agent-trajectory/agent-trajectory.service.module';
 
 @Module({
-  // TASK-330 Phase 1 — HarnessAuditServiceModule supplies the WORM audit trail
+  // HarnessAuditServiceModule supplies the WORM audit trail
   // used by approveSummary's attestation gate (ATTEST event on signing).
   // HarnessGatewayServiceModule (Lane G) supplies the outbound sign-off signal.
-  // TASK-356 D-7 — HarnessPolicyServiceModule supplies the SMR-selection resolver.
-  // TASK-392 Phase 3 — EntitlementsServiceModule supplies the monthlySummaries meter.
+  // HarnessPolicyServiceModule supplies the SMR-selection resolver.
+  // EntitlementsServiceModule supplies the monthlySummaries meter.
   imports: [
     CommonServiceModule,
     CoreDatabaseModule,

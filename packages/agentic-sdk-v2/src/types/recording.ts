@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - Audio Recording Types (TASK-329 P2 — dual-capture X8)
+ * @arcaai/vox - Audio Recording Types
  *
  * Mirrors the API DTOs (`AudioRecordingResponse` / `AddAudioRecordingRequest`)
  * for the public `/consultations/:id/recordings` routes. A recording carries an

@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useVoiceEnrollmentStatus Hook (TASK-296 C-4)
+ * @arcaai/vox - useVoiceEnrollmentStatus Hook
  *
  * Lightweight gate helper that tells the consumer whether the current user
  * has an active enrolled voice profile. Used to gate on-device diarization:
@@ -7,11 +7,11 @@
  * should refuse to start the local STT provider (or downgrade the feature
  * with a user-visible explanation).
  *
- * TASK-300 ownership note
+ * Ownership note
  * -----------------------
- * `packages/stt/src/core/STTProcessor.ts` is owned by TASK-300. This file
+ * `packages/stt/src/core/STTProcessor.ts` is owned by the STT package. This file
  * publishes a stable `VoiceEnrollmentChecker` interface and a
- * `createVoiceEnrollmentChecker(apiClient)` factory so TASK-300 can wire
+ * `createVoiceEnrollmentChecker(apiClient)` factory so that package can wire
  * the gate without depending on React or on this hook's internals.
  */
 
@@ -31,7 +31,7 @@ export interface UseVoiceEnrollmentStatusReturn {
 
 /**
  * Stable interface that non-React consumers (e.g. `STTProcessor` in
- * `@arcaai/stt`, owned by TASK-300) can rely on to gate on-device
+ * `@arcaai/stt`) can rely on to gate on-device
  * diarization on voice enrollment.
  *
  * Implementations MUST be side-effect-free and idempotent. The default

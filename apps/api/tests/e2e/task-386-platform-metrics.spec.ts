@@ -1,5 +1,5 @@
 /**
- * TASK-386 — Platform Runtime Metrics backend contract verification (PM1–PM7).
+ * Platform Runtime Metrics backend contract verification (PM1–PM7).
  *
  * Real HTTP round-trips against the live API (`pnpm test:e2e`, or a dev stack via
  * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8868`). Mirrors the harness of
@@ -195,7 +195,7 @@ test.describe('TASK-386 — platform runtime metrics (PM1–PM7)', () => {
     for (const k of ['totalUsers', 'totalDepartments', 'totalPromptTemplates', 'totalPipelines'] as const) {
       expect(isNonNegInt(body[k]), `usage.${k} ≥ 0 integer`).toBe(true);
     }
-    // … plus the TASK-386 extensions (#5 storage, #16 clinical).
+    // … plus the storage (#5) and clinical (#16) extensions.
     expect(isNonNegNum(body.storageUsedBytes), 'storageUsedBytes ≥ 0 (#5)').toBe(true);
     expect(body.storageQuotaBytes === null || isNonNegNum(body.storageQuotaBytes), 'storageQuotaBytes null or ≥ 0 (#5)').toBe(true);
     expect(isNonNegNum(body.transcriptionMinutes), 'transcriptionMinutes ≥ 0 (#16)').toBe(true);
@@ -238,7 +238,7 @@ test.describe('TASK-386 — platform runtime metrics (PM1–PM7)', () => {
   // --- PM7 · TD3 / DEF-1 cross-tenant contract -------------------------------
 
   test('PM7: super_admin GET /admin/consultations with NO tenant scope → 200 cross-tenant (TD3/DEF-1)', async ({ request }) => {
-    // Regression for TASK-380 TD3: this previously returned 400 because the list
+    // Regression coverage: this previously returned 400 because the list
     // required a working tenant. The approved contract (Decision #4) makes a
     // super_admin with no scope aggregate cross-tenant — which unblocks the
     // Platform Dashboard's consultations sources (DEF-1).

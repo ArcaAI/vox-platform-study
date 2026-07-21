@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { cn } from '@arcaai/ui';
 
 /**
- * In-canvas page header (TASK-442 §3). The slim top bar names the page as
+ * In-canvas page header. The slim top bar names the page as
  * chrome ("Playground / {page}"); this is the page's own semantic heading —
  * one h1 per page (rule 11 §6) — with an optional description, badges and a
  * primary action, sized for the centered canvas rather than the console frame.
@@ -21,7 +21,7 @@ export function CanvasHeader({ title, description, badges, actions }: { title: s
 }
 
 /**
- * The playground work column (TASK-442 §3, artboard 4a): one centered column
+ * The playground work column (artboard 4a): one centered column
  * (~760px) that reads configure → run → result top-to-bottom. Fluid below the
  * cap (full width on mobile, 5i). Scrolls inside the layout's canvas region.
  */
@@ -30,7 +30,7 @@ export function PlaygroundCanvas({ children, className }: { children: ReactNode;
 }
 
 /**
- * Two-pane canvas for realtime tools (TASK-442 §3): input (config/capture) and
+ * Two-pane canvas for realtime tools: input (config/capture) and
  * live-output side by side on lg+, stacking below. Wider cap than the single
  * column since two panes need the room; still centered.
  */

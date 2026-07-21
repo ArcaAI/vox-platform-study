@@ -29,7 +29,7 @@ export class GenerationMetricsAggregateResponse {
   @ApiProperty({ type: [GenerationStopReasonCount] })
   stopReasons: GenerationStopReasonCount[];
 
-  // TASK-533 B4 — token + $ accounting. Null (not 0) when nothing in the window
+  // Token + $ accounting. Null (not 0) when nothing in the window
   // reported the figure: for a budget panel, "unknown" and "zero" differ.
   @ApiPropertyOptional({ nullable: true, description: 'Summed prompt tokens across samples.' })
   promptTokensTotal: number | null;

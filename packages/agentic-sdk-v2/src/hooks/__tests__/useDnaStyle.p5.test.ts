@@ -1,5 +1,5 @@
 /**
- * useDnaStyle Hook Tests — TASK-329 P5 (DNA playground completeness)
+ * useDnaStyle Hook Tests (DNA playground completeness)
  *
  * Covers the playground-facing additions:
  *  - generateFromHistory(sourceIds) — POST generate with selected source IDs

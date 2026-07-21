@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ConfigResolver, ResolvedPipelineToggles } from '../../config-resolver/config-resolver.service';
 import { EffectiveSettingsService } from '../effective-settings.service';
 
-// TASK-504 — the facade delegates pipeline keys to ConfigResolver, threads the
+// The facade delegates pipeline keys to ConfigResolver, threads the
 // cascade trace through, and refuses secret keys.
 
 function resolved(over: Partial<ResolvedPipelineToggles> = {}): ResolvedPipelineToggles {
@@ -25,7 +25,7 @@ function resolved(over: Partial<ResolvedPipelineToggles> = {}): ResolvedPipeline
 function serviceWith(
   toggles: ResolvedPipelineToggles,
   aiTaskDefaults?: { getEffective: ReturnType<typeof vi.fn> },
-  // TASK-524 — backs the global-kv override lane. Omitted ⇒ no DB override, so
+  // Backs the global-kv override lane. Omitted ⇒ no DB override, so
   // global-kv keys resolve to their descriptor default.
   appSettings?: { getValueWithDefault: ReturnType<typeof vi.fn> },
 ): EffectiveSettingsService {
@@ -56,10 +56,10 @@ describe('EffectiveSettingsService', () => {
     await expect(svc.resolveEffective('nope.key', CTX)).rejects.toThrow(/unknown setting/i);
   });
 
-  // TASK-524 — the tier that genuinely has no resolver is `entitlement` (the
+  // The tier that genuinely has no resolver is `entitlement` (the
   // plan feature-flag matrix). `entitlements.enabled` USED to land here too,
-  // because no global-kv lane existed — that was GAP-C5, and it now resolves
-  // (see the global-kv describe block below).
+  // because no global-kv lane existed; it now resolves (see the global-kv
+  // describe block below).
   it('throws for a non-secret key whose tier has no registered resolver', async () => {
     const svc = serviceWith(resolved());
     await expect(svc.resolveEffective('entitlements.featureDnaReports', CTX)).rejects.toThrow(
@@ -67,7 +67,7 @@ describe('EffectiveSettingsService', () => {
     );
   });
 
-  // TASK-524 §5 test 12 — the global-kv override lane (GAP-C5). Before this,
+  // The global-kv override lane. Before this,
   // `agentic.context.*` short-circuited to the descriptor default and a value
   // written to the KV store was invisible here, so the read surface lied.
   describe('global-kv override lane (TASK-524)', () => {
@@ -121,7 +121,7 @@ describe('EffectiveSettingsService', () => {
     });
   });
 
-  // TASK-506 — models.* keys delegate to AiTaskDefaultService.getEffective
+  // Models.* keys delegate to AiTaskDefaultService.getEffective
   // (never re-implementing data access).
   describe('models.* branch (TASK-506)', () => {
     it('delegates models.<taskKey> to AiTaskDefaultService and threads the winning tier through', async () => {

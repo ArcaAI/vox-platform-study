@@ -1,5 +1,5 @@
 /**
- * TASK-506 — retired AI-model slug ledger + pipeline-reference guard.
+ * Retired AI-model slug ledger + pipeline-reference guard.
  *
  * The 50 slugs of the previous 60-row `DEFAULT_AI_MODELS` catalog that the
  * consolidation retires (soft-`DELETED`, never hard-deleted — recoverable).

@@ -1,5 +1,5 @@
 /**
- * TASK-375 (thumbnails) — generate-on-upload image derivatives.
+ * Generate-on-upload image derivatives.
  *
  * When an IMAGE is uploaded via `StorageController.uploadFile`, the controller
  * also produces a real downscaled WebP thumbnail and stores it at the

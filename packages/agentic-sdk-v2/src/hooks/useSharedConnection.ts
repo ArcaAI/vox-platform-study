@@ -77,14 +77,14 @@ export function useSharedConnection(workerUrl?: string): UseSharedConnectionRetu
 export interface UseSharedSSEOptions {
   url: string;
   /**
-   * TASK-297 C-SSE-1 — short-lived stream ticket minted via
+   * Short-lived stream ticket minted via
    * `POST /auth/stream-ticket`. Replaces the legacy `authToken` field
    * which embedded a raw JWT directly into the URL and leaked it to
    * webserver logs and `Referer` headers.
    */
   ticket?: string;
   /**
-   * TASK-297 H-SSE-5 — owner user id. The SharedWorker dedup key now
+   * Owner user id. The SharedWorker dedup key now
    * includes `userId` so an upstream connection cannot be shared across
    * distinct user contexts even when the base id matches.
    */
@@ -145,8 +145,8 @@ export interface UseSharedWSOptions {
   url: string;
   protocols?: string[];
   /**
-   * TASK-317 C-4 (AC-8) — owner user id. Mirrors `UseSharedSSEOptions.userId`
-   * (TASK-297 H-SSE-5): the SharedWorker WebSocket dedup key is `(id, userId)`,
+   * Owner user id. Mirrors `UseSharedSSEOptions.userId`
+   * — the SharedWorker WebSocket dedup key is `(id, userId)`,
    * so an upstream socket is never shared across distinct user contexts even
    * when the base connection id collides. Without it every subscription
    * collapses to the worker key `id::anon` and two users on the same id share
@@ -154,7 +154,7 @@ export interface UseSharedWSOptions {
    */
   userId?: string;
   /**
-   * TASK-317 C-4 (AC-8) — active tenant id, carried alongside `userId` for
+   * Active tenant id, carried alongside `userId` for
    * diagnostics / defense-in-depth and forwarded into the `WSSubscription`
    * so a future cross-tenant guard has the discriminator without a round-trip.
    */

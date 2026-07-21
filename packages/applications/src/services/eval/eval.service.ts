@@ -19,13 +19,13 @@ import { encryptPhiFields } from '../../common';
 import { GoldenCaseListResponse, GoldenCaseMetaResponse, GoldenSetListResponse, GoldenSetResponse } from './dto';
 
 /**
- * EvalService (TASK-330 Phase 0) — offline evaluation storage for the clinical
+ * EvalService — offline evaluation storage for the clinical
  * documentation harness. Builds the tenant-scoped eval entities via the domain
  * factories and persists them through the repositories.
  *
- * Phase 0 is data-layer only: `tenantId` is supplied explicitly by the caller
- * (the API layer wiring — CLS-derived tenant + SysEvent audit broadcasting —
- * lands in a later phase).
+ * Data-layer only for now: `tenantId` is supplied explicitly by the caller
+ * (API-layer wiring — CLS-derived tenant + SysEvent audit broadcasting — is
+ * not yet implemented).
  */
 export interface CreateGoldenSetInput {
   tenantId: string;
@@ -76,7 +76,7 @@ export interface RecordEvalScoreInput {
 /** A score recorded as part of a run — run id + tenant are taken from the run. */
 export type RecordEvalScoreForRunInput = Omit<RecordEvalScoreInput, 'tenantId' | 'evalRunId'>;
 
-/** Pagination for the golden-set/golden-case read projections (TASK-419 item 1). */
+/** Pagination for the golden-set/golden-case read projections. */
 export interface ListGoldenSetsOptions {
   page?: number;
   limit?: number;
@@ -89,16 +89,16 @@ export class EvalService {
     private readonly goldenCaseRepository: GoldenCaseRepository,
     private readonly evalRunRepository: EvalRunRepository,
     private readonly evalScoreRepository: EvalScoreRepository,
-    // TASK-369 Phase 3C — optional so the data-layer service still works when
+    // Optional so the data-layer service still works when
     // Vault/SecretsService is not provisioned; in that soft (non-vault) mode the
-    // write is a no-op for these fields (Phase 6 dropped the plaintext columns).
+    // write is a no-op for these fields (there are no plaintext columns).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {}
 
   private readonly logger = new Logger(EvalService.name);
 
   /**
-   * TASK-369 — encrypt PHI on write through the shared env-gated guard: a soft
+   * Encrypt PHI on write through the shared env-gated guard: a soft
    * no-op in dev/test (SECRETS_PROVIDER!=vault) but FAIL-CLOSED (throws) in
    * staging/prod (SECRETS_PROVIDER=vault) instead of persisting plaintext-only.
    */
@@ -223,7 +223,7 @@ export class EvalService {
   }
 
   // ===========================================================================
-  // TASK-419 item 1 — read projections for the /admin/harness golden-set
+  // Read projections for the /admin/harness golden-set
   // surface. Mirrors HarnessObservabilityService.listEvalRuns: repository
   // count + findAll pinned to the tenant, newest-first, {items,total}.
   // ===========================================================================

@@ -1,5 +1,5 @@
 /**
- * SummaryResponse.structuredData prompt-tier typing (TASK-331 doc-06 F4).
+ * SummaryResponse.structuredData prompt-tier typing.
  *
  * Compile-time guard (enforced by `tsc --noEmit`, which includes test files)
  * that the 3-tier prompt fallback is explicitly typed on `structuredData`:

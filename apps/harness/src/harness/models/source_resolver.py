@@ -1,4 +1,4 @@
-"""TASK-527 — model weight source & path resolution (plan AD-3), harness mirror.
+"""Model weight source & path resolution, harness mirror.
 
 MIRROR of ``apps/stt-v2/src/stt_v2/models/source_resolver.py`` — the conformance
 suite in ``apps/harness/src/harness/tests/unit/test_model_source_resolver.py`` is the same named quartet, so a
@@ -20,10 +20,11 @@ One contract, mirrored across stt-v2 / guardrail / nlp / harness:
                                          single-flight + SHA256-verified
            file:///abs/path           -> verify and use IN PLACE, never copied
     3. anything else                   -> ``ModelSourceError``. There is no
-                                          silent fallback (OD-4: ``s3://`` only
-                                          this program; ``azure-blob://`` deferred).
+                                          silent fallback: ``s3://`` is the only
+                                          supported cloud-style scheme;
+                                          ``azure-blob://`` is deferred.
 
-Design constraints (rule 06 + plan AD-3):
+Design constraints (rule 06):
 
 * The S3 client is imported LAZILY inside ``_make_s3_client`` so a deployment
   that never uses ``s3://`` never imports ``minio``. That function is also the
@@ -433,7 +434,7 @@ def _verify_dir_checksum(
 
 
 # ---------------------------------------------------------------------------
-# TASK-527 (D-12) — atomic-fact weight resolution
+# Atomic-fact weight resolution
 # ---------------------------------------------------------------------------
 
 # Harness's MiniCheck use has NO `AiTaskDefault` task key (it is not one of the
@@ -449,15 +450,14 @@ async def resolve_atomic_fact_model_path(
 ) -> str | None:
     """Resolve the MiniCheck GGUF path: control plane first, env second.
 
-    Precedence: `modelWeights[<slug>].localPath` (TASK-525 effective-config
+    Precedence: `modelWeights[<slug>].localPath` (effective-config
     client, cached + fail-safe) -> a resolvable `file://` / `s3://` `sourceUri`
     -> `HARNESS_ATOMIC_FACT_MODEL_PATH`.
 
-    Harness holds NO database handle (AD-1), so the control plane is the only
-    registry lane. TASK-525 shipped the client but not yet the `modelWeights`
-    contract, so in practice every deployment takes the env branch today — this
-    is the "env-first until 525's follow-up lands" posture, flipped by one key
-    appearing in the response.
+    Harness holds NO database handle, so the control plane is the only
+    registry lane. Until the control plane populates `modelWeights` for this
+    slug, every deployment takes the env branch — an "env-first" posture,
+    flipped by one key appearing in the response.
 
     `allow_network=False`: an activity must not stall on a multi-GB hub download,
     so an `hf:`-only entry degrades to env rather than pulling. Every failure

@@ -16,7 +16,7 @@ import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
 
 /**
- * TenantIdpConfigAdminController (TASK-498) — the admin surface for a
+ * TenantIdpConfigAdminController — the admin surface for a
  * tenant's external OIDC identity provider config, mounted at
  * `/admin/tenant-idp-config` (global prefix → `/api/v1/admin/tenant-idp-config`).
  * Mirrors `TenantTtsConfigAdminController`: `@Authorize`, `If-Match` OCC, CLS

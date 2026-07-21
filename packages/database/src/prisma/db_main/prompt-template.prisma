@@ -23,8 +23,8 @@ enum PromptTemplateScope {
 enum PromptTemplateStatus {
   DRAFT
   PUBLISHED
-  // governance gate. A template is only resolvable for
-  // clinical generation flows once a GLOBAL_ADMIN has APPROVED it (prompt
+  // APPROVED is a governance gate: a template is only resolvable for
+  // clinical generation flows once a GLOBAL_ADMIN has approved it (prompt
   // publishing becomes approval-gated at resolution time).
   APPROVED
 
@@ -48,15 +48,15 @@ model PromptTemplate {
   status      PromptTemplateStatus   @default(DRAFT)
   variables   Json?                  @db.JsonB
 
-  // Quality/score testing (TASK-328 A4) — last SMR-scored test run.
-  // TASK-369 Phase 6 — plaintext `lastTestOutput` column DROPPED; persisted as
+  // Quality/score testing — last SMR-scored test run.
+  // The plaintext `lastTestOutput` column has been DROPPED; persisted as
   // Vault-Transit ciphertext only. (`content` is the prompt body and is NOT
   // encrypted — it remains a plaintext column.)
   lastTestScore  Float?
   lastTestAt     DateTime?
 
   // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the last
-  // SMR-scored test output plus the shared Transit key version. Phase 6: this
+  // SMR-scored test output plus the shared Transit key version. This
   // ciphertext column is now the system of record.
   encryptedLastTestOutput Bytes?
   keyVersion              Int?
@@ -68,7 +68,7 @@ model PromptTemplate {
   departmentId String?
   Department   Department? @relation(fields: [departmentId], references: [id])
 
-  // Scope discriminator (TASK-294 DEF-C1): tenant default vs department default vs user-personal overlay
+  // Scope discriminator: tenant default vs department default vs user-personal overlay
   scope       PromptTemplateScope @default(TENANT_DEFAULT)
   ownerUserId String?
   Owner       User?               @relation("_User_OwnedPromptTemplates", fields: [ownerUserId], references: [id])

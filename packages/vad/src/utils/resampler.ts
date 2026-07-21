@@ -143,7 +143,7 @@ export function upsampleFrom16kHz(samples: Float32Array, targetSampleRate: numbe
  * `VADProcessor`. The processor itself delegates real-time resampling to
  * `MicVAD`'s internal worklet, but callers that pre-buffer audio or run
  * non-real-time inference should funnel through this helper instead of
- * implementing their own conversion. (TASK-271 L-2.)
+ * implementing their own conversion.
  *
  * @param samples - Input audio samples
  * @param inputSampleRate - Sample rate of the input samples

@@ -343,7 +343,7 @@ class TestAiModelSource:
         assert AiModelSource.LOCAL.value == "LOCAL"
 
     def test_s3_enum_value_exists(self):
-        """TASK-527: S3/MinIO-compatible object storage source."""
+        """S3/MinIO-compatible object storage source."""
         assert hasattr(AiModelSource, "S3")
         assert AiModelSource.S3.value == "S3"
         assert AiModelSource.S3 == "S3"
@@ -687,12 +687,12 @@ class TestONNXLoaderSubfolderResolution:
 
 
 # =============================================================================
-# DIARIZATION CONFIG — SILENCE PADDING (TASK-012)
+# DIARIZATION CONFIG — SILENCE PADDING
 # =============================================================================
 
 
 class TestDiarizationConfigSilencePadding:
-    """Tests for DiarizationConfig.segment_silence_padding_ms (TASK-012)."""
+    """Tests for DiarizationConfig.segment_silence_padding_ms."""
 
     def test_default_silence_padding_is_100(self):
         """Default segment_silence_padding_ms should be 100."""

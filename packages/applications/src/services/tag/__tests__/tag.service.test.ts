@@ -402,7 +402,7 @@ describe('TagService', () => {
         });
     });
 
-    // TASK-329 (P6) — resource-scoped tag lookup used for summary tagging
+    // Resource-scoped tag lookup used for summary tagging
     describe('fetchByResource', () => {
         it('returns tags for a specific resource scoped to the tenant', async () => {
             const tags = [

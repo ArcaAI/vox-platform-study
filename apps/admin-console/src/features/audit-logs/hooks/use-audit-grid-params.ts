@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Audit-logs grid params (TASK-423, Phase 6).
+ * Audit-logs grid params.
  *
  * `useAdminGridParams` (shared) is offset-only, but the audit list is a keyset
  * (cursor) scan whose gateway DTO (`AuditLogCursorQuery`) whitelists ONLY the

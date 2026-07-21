@@ -36,13 +36,10 @@ import {
   StartRecordingRequest,
   StopRecordingRequest,
   RecordingStateResponse,
-  // TASK-344 Workstream B — manual doctor highlighting.
   IHighlightService,
   CreateHighlightRequest,
   HighlightResponse,
-  // TASK-345 — live harness activity/progress feed.
   HarnessProgressService,
-  // TASK-355 Phase D Slice 5d — live per-claim assurance feed.
   HarnessAssuranceService,
   // dedicated Redis subscriber for the trajectory SSE relay.
   RedisSubscriberService,
@@ -168,12 +165,9 @@ export class ConsultationController {
     private readonly tagService: ITagService,
     // Clinical Workflow Playground (WS1/WS2) — per-consultation realtime watcher.
     private readonly liveDocumentationService: LiveDocumentationService,
-    // TASK-344 Workstream B — manual doctor highlighting.
     @Inject(IHighlightService)
     private readonly highlightService: IHighlightService,
-    // TASK-345 — live harness activity/progress feed (SSE relay).
     private readonly harnessProgressService: HarnessProgressService,
-    // TASK-355 Phase D Slice 5d — live per-claim assurance feed (SSE relay).
     private readonly harnessAssuranceService: HarnessAssuranceService,
     // dedicated Redis subscriber for the trajectory SSE relay.
     private readonly redisSubscriber: RedisSubscriberService,
@@ -198,8 +192,8 @@ export class ConsultationController {
    * Check if consultation sharing is enabled for the current tenant.
    * Reads the `enable-consultation-sharing` feature flag from GlobalSetting.
    *
-   * TASK-307 W5.4 (AC-18, audit D-2): default-CLOSED. The flag must be
-   * EXPLICITLY set to the string `'true'` to enable shared-patient reads.
+   * Default-CLOSED. The flag must be EXPLICITLY set to the string `'true'`
+   * to enable shared-patient reads.
    *   - missing row    -> false
    *   - any other value -> false
    *   - DB error       -> false (fail-closed, log for ops)
@@ -411,7 +405,7 @@ export class ConsultationController {
     return this.consultationService.getConsultationChain(id);
   }
 
-  // ─── Lifecycle (TASK-322) ────────────────────────────────────────
+  // ─── Lifecycle ────────────────────────────────────────
 
   @ApiEndpoint({
     returnedModel: ConsultationResponse,
@@ -525,9 +519,9 @@ export class ConsultationController {
     return this.liveDocumentationService.subscribeToLiveSummary(id);
   }
 
-  // TASK-345 — relays `consultation:harness-progress:{id}` (published by the
-  // internal POST /internal/harness/consultations/:id/progress route) so the
-  // review panel can show the live stage checklist while the draft generates.
+  // Relays `consultation:harness-progress:{id}` (published by the internal
+  // POST /internal/harness/consultations/:id/progress route) so the review
+  // panel can show the live stage checklist while the draft generates.
   @Get(':id/harness-progress/stream')
   @Sse()
   @TenantOwnedResource({ modelName: 'Consultation', paramName: 'id' })
@@ -542,11 +536,11 @@ export class ConsultationController {
     return this.harnessProgressService.subscribeToProgress(id);
   }
 
-  // TASK-355 Phase D Slice 5d — relays `consultation:harness-assurance:{id}`
-  // (published per-claim by the internal POST .../assurance-event route and closed
-  // by .../assurance) so the review panel can stream each verdict live, enable
-  // sign-off when assurance lands, and surface a safety flag / amendment alert.
-  // Its OWN @StreamScope namespace: a progress ticket must not read verdicts.
+  // Relays `consultation:harness-assurance:{id}` (published per-claim by the
+  // internal POST .../assurance-event route and closed by .../assurance) so
+  // the review panel can stream each verdict live, enable sign-off when
+  // assurance lands, and surface a safety flag / amendment alert. Its OWN
+  // @StreamScope namespace: a progress ticket must not read verdicts.
   @Get(':id/harness-assurance/stream')
   @Sse()
   @TenantOwnedResource({ modelName: 'Consultation', paramName: 'id' })
@@ -688,7 +682,7 @@ export class ConsultationController {
     return this.contextService.getContextItems(id, { type: 'CASE_NOTE' });
   }
 
-  // ─── Audio Recordings (TASK-329 P2 — dual-capture X8) ────────────
+  // ─── Audio Recordings (dual-capture) ────────────
 
   @ApiEndpoint({
     returnedModel: ContextItemResponse,
@@ -731,9 +725,9 @@ export class ConsultationController {
     return this.contextService.updateContext(contextId, request);
   }
 
-  // TASK-342 GAP #3 — soft-delete a context item (note / case-note / work-note
-  // / attachment). Ownership-guarded like the other write routes; the service
-  // performs the tenant-scoped soft-delete + ResourceDeleted broadcast.
+  // Soft-delete a context item (note / case-note / work-note / attachment).
+  // Ownership-guarded like the other write routes; the service performs the
+  // tenant-scoped soft-delete + ResourceDeleted broadcast.
   @ApiEndpoint({
     returnedModel: OkResponseDto,
     method: HttpMethod.DELETE,
@@ -756,7 +750,7 @@ export class ConsultationController {
     return new OkResponseDto();
   }
 
-  // ─── Manual Highlights (TASK-344 Workstream B) ───────────────────
+  // ─── Manual Highlights ───────────────────
   // Doctor-authored highlights anchored to a persisted surface (transcript /
   // case note / work note / summary) via W3C dual selectors. A SEPARATE
   // aggregate from NamedEntity so manual marks never pollute the AI NER
@@ -929,9 +923,9 @@ export class ConsultationController {
     return this.contextService.getVersionHistory(contextItemId);
   }
 
-  // TASK-330 follow-up — read-only harness provenance (citationsMap + sensor
-  // scores + modelName) for a generated summary. Normal clinician auth (inherits
-  // the class-level @Authorize() + verifyConsultationAccess read gate); NOT the
+  // Read-only harness provenance (citationsMap + sensor scores + modelName)
+  // for a generated summary. Normal clinician auth (inherits the class-level
+  // @Authorize() + verifyConsultationAccess read gate); NOT the
   // service-to-service HarnessServiceTokenGuard.
   @ApiEndpoint({
     returnedModel: SummaryProvenanceResponse,
@@ -945,7 +939,7 @@ export class ConsultationController {
     return this.summaryService.getSummaryProvenance(contextItemId);
   }
 
-  // TASK-329 (P6) — diff two summary versions; the UI version-diff-panel renders the result
+  // Diffs two summary versions; the UI version-diff-panel renders the result.
   @ApiEndpoint({
     returnedModel: VersionDiffResponse,
     path: ':id/summary/:contextItemId/diff',
@@ -965,7 +959,7 @@ export class ConsultationController {
     return this.contextService.diffVersions(contextItemId, Number(from), Number(to));
   }
 
-  // ─── Summary Tags (TASK-329) ─────────────────────────────────────
+  // ─── Summary Tags ─────────────────────────────────────
 
   @ApiEndpoint({
     returnedModel: TagResponse,
@@ -1079,7 +1073,7 @@ export class ConsultationController {
         options: (request as any)?.options,
       },
       undefined,
-      // TASK-299 D-10 — forward the SDK-supplied idempotency key.
+      // Forward the SDK-supplied idempotency key.
       (request as any)?.idempotencyKey,
     );
     /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -1113,7 +1107,7 @@ export class ConsultationController {
         options: (request as any)?.options,
       },
       undefined,
-      // TASK-299 D-10 — forward the SDK-supplied idempotency key.
+      // Forward the SDK-supplied idempotency key.
       (request as any)?.idempotencyKey,
     );
     /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -1184,7 +1178,7 @@ export class ConsultationController {
         options: request.options,
       },
       undefined,
-      // TASK-299 D-10 — forward the SDK-supplied idempotency key.
+      // Forward the SDK-supplied idempotency key.
       request.idempotencyKey,
     );
     return new AsyncJobResponseDto({
@@ -1206,7 +1200,7 @@ export class ConsultationController {
   async approveSummary(
     @Param('id') id: string,
     @Param('contextItemId') contextItemId: string,
-    // TASK-355 Phase D Slice 6a — optional one-click safety-flag override (Q4).
+    // Optional one-click safety-flag override.
     @Body() body?: SummaryApprovalRequest,
   ): Promise<SummaryApprovalResponseDto> {
     await this.verifyConsultationOwnership(id);

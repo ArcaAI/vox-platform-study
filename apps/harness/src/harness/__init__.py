@@ -1,4 +1,4 @@
-"""Clinical Documentation Harness (TASK-330).
+"""Clinical Documentation Harness.
 
 A Python/FastAPI orchestrator that runs the bounded
 ``guides → generate → sensors → gate`` clinical-documentation loop as a

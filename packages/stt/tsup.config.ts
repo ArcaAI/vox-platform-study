@@ -30,9 +30,8 @@ export default defineConfig([
     },
   },
 
-  // TASK-300 C-XCUT-2: react-server stub (ESM-only). Lives as a separate
-  // tsup entry so it never picks up the `"use client"` banner from the
-  // main bundle.
+  // React-server stub (ESM-only). Lives as a separate tsup entry so it
+  // never picks up the `"use client"` banner from the main bundle.
   {
     entry: { 'react-server-stub': 'src/react-server-stub.ts' },
     format: ['esm'],

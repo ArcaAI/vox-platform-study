@@ -4,13 +4,12 @@ import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse
 import { ApiEndpoint, Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 
 /**
- * TASK-356 Phase 1 (Catalog plane) — admin AI model catalog controller.
+ * Admin AI model catalog controller.
  *
  * Mirrors `audio-pipeline.controller.ts` 1:1: a thin delegation surface over
  * the already-existing `AiModelService`.
  *
- * Authorization (TASK-419 item 5, per TASK-415 Decision 6 / matrix row 11,
- * review 2026-07-04): the registry is a GLOBAL-ADMIN plane — the guard is
+ * Authorization: the registry is a GLOBAL-ADMIN plane — the guard is
  * pinned to `manage:all`, and the tenant-scoped `manage:AiModel` grant no
  * longer opens this controller. Global admins manage per-tenant clones of the
  * SYSTEM catalog through the working-tenant context. Event broadcasting +
@@ -39,7 +38,7 @@ export class AiModelAdminController {
   })
   async fetchAll(): Promise<ModelResponse[]> {
     // The admin surface lists models of ALL statuses (ENABLED + DISABLED) for
-    // the EXACT caller tenant (TASK-356 Phase 1): a disabled model stays
+    // the EXACT caller tenant: a disabled model stays
     // visible/re-enableable, and a tenant admin sees only its own clone — never
     // the SYSTEM original. The public, enabled-only `getAll` is unaffected.
     return this.aiModelService.getAllForAdmin();
@@ -65,7 +64,7 @@ export class AiModelAdminController {
   async fetchById(@Param('id') id: string): Promise<ModelResponse> {
     const model = await this.aiModelService.getById(id);
     if (!model) {
-      // TASK-534 e2e G7 — a null service result used to serialize as HTTP 200
+      // A null service result used to serialize as HTTP 200
       // with an EMPTY body; an absent row is a 404.
       throw new NotFoundException(`Model '${id}' not found`);
     }
@@ -82,7 +81,7 @@ export class AiModelAdminController {
   async fetchBySlug(@Param('slug') slug: string): Promise<ModelResponse> {
     const model = await this.aiModelService.getBySlug(slug);
     if (!model) {
-      // TASK-534 e2e G7 — see fetchById: null must be a 404, not a 200-empty.
+      // See fetchById: null must be a 404, not a 200-empty.
       throw new NotFoundException(`Model with slug '${slug}' not found`);
     }
     return model;
@@ -98,8 +97,8 @@ export class AiModelAdminController {
   @ApiOperation({
     summary: 'Update an AI model',
     description:
-      'Updates one AiModel row. Optimistic concurrency is enforced (TASK-356 ' +
-      'Phase 1): the `If-Match` header (RFC 7232) is REQUIRED, and the server ' +
+      'Updates one AiModel row. Optimistic concurrency is enforced: ' +
+      'the `If-Match` header (RFC 7232) is REQUIRED, and the server ' +
       "runs a Compare-And-Set against the row's `_version` column. When the " +
       'header is present, its value overrides the body-field `expectedVersion`. ' +
       'On version drift the response is `412 Precondition Failed`; a missing ' +

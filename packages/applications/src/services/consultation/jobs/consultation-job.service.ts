@@ -24,7 +24,7 @@ export interface IConsultationJobService {
     userId: string,
     request: GeneratePreSummaryJobPayload['request'],
     callbackUrl?: string,
-    /** TASK-299 D-10 — Redis-backed dedupe key for the POST creation. */
+    /** Redis-backed dedupe key for the POST creation. */
     idempotencyKey?: string,
   ): Promise<JobResponse>;
 
@@ -34,7 +34,7 @@ export interface IConsultationJobService {
     userId: string,
     request: GenerateSummaryJobPayload['request'],
     callbackUrl?: string,
-    /** TASK-299 D-10 — Redis-backed dedupe key for the POST creation. */
+    /** Redis-backed dedupe key for the POST creation. */
     idempotencyKey?: string,
   ): Promise<JobResponse>;
 
@@ -44,7 +44,7 @@ export interface IConsultationJobService {
     userId: string,
     request: GenerateComprehensiveSummaryJobPayload['request'],
     callbackUrl?: string,
-    /** TASK-299 D-10 — Redis-backed dedupe key for the POST creation. */
+    /** Redis-backed dedupe key for the POST creation. */
     idempotencyKey?: string,
   ): Promise<JobResponse>;
 
@@ -54,7 +54,7 @@ export interface IConsultationJobService {
     tenantId: string,
     userId: string,
     callbackUrl?: string,
-    /** TASK-299 D-10 — Redis-backed dedupe key for the POST creation. */
+    /** Redis-backed dedupe key for the POST creation. */
     idempotencyKey?: string,
   ): Promise<JobResponse>;
 
@@ -74,7 +74,7 @@ export class ConsultationJobService implements IConsultationJobService {
   private readonly JOB_TTL = 86400; // 24 hours
   private readonly JOB_KEY_PREFIX = 'consultation_job:';
   private readonly JOB_CHANNEL_PREFIX = 'consultation_job_updates:';
-  // TASK-299 D-10 — Idempotency-Key dedupe. The key namespace is intentionally
+  // Idempotency-Key dedupe. The key namespace is intentionally
   // scoped by tenantId + userId so two doctors (or two tenants) cannot collide
   // on the same UUID and leak each other's jobIds.
   private readonly IDEMPOTENCY_KEY_PREFIX = 'idempotency:';
@@ -102,7 +102,7 @@ export class ConsultationJobService implements IConsultationJobService {
     callbackUrl?: string,
     idempotencyKey?: string,
   ): Promise<JobResponse> {
-    // TASK-299 D-10 — return the prior jobId on idempotency-key collision.
+    // Return the prior jobId on idempotency-key collision.
     const prior = await this.lookupIdempotentJobId('pre-summary', tenantId, userId, idempotencyKey);
     if (prior) {
       return { jobId: prior, status: 'PENDING', sseUrl: `/api/consultations/jobs/${prior}/sse`, estimatedSeconds: 30 };
@@ -426,7 +426,7 @@ export class ConsultationJobService implements IConsultationJobService {
    * channel `consultation_job_updates:{jobId}` and streams updates until
    * a terminal state (COMPLETED, FAILED, CANCELLED) is received.
    *
-   * Replaces the previous polling-based SSE implementation (GAP-7).
+   * Replaces the previous polling-based SSE implementation.
    */
   subscribeToJobUpdates(jobId: string): Observable<MessageEvent> {
     const channel = `${this.JOB_CHANNEL_PREFIX}${jobId}`;
@@ -542,7 +542,7 @@ export class ConsultationJobService implements IConsultationJobService {
   }
 
   /**
-   * TASK-299 D-10 — Build the Redis key for an Idempotency-Key. Scoped by
+   * Build the Redis key for an Idempotency-Key. Scoped by
    * job type, tenantId, and userId so two doctors or two tenants cannot
    * collide on the same UUID and inadvertently reuse each other's jobIds.
    */
@@ -551,7 +551,7 @@ export class ConsultationJobService implements IConsultationJobService {
   }
 
   /**
-   * TASK-299 D-10 — Look up a prior jobId for this Idempotency-Key. Returns
+   * Look up a prior jobId for this Idempotency-Key. Returns
    * `null` when no key was provided or when no prior call exists; callers
    * proceed to create a new job in that case.
    */
@@ -582,7 +582,7 @@ export class ConsultationJobService implements IConsultationJobService {
   }
 
   /**
-   * TASK-299 D-10 — Persist the newly-created jobId under the Idempotency-Key
+   * Persist the newly-created jobId under the Idempotency-Key
    * with a 24h TTL. No-op when no key is supplied.
    */
   private async recordIdempotentJobId(

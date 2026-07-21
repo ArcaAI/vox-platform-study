@@ -1,4 +1,4 @@
-"""TASK-527 §5.2 — integration lane: `s3://` resolution against the real test MinIO.
+"""Integration lane: `s3://` resolution against the real test MinIO.
 
 The unit suite (`tests/unit/test_model_source_resolver.py`) stubs the client at the
 lazy-import seam and stays hermetic. This file is the one place the resolver is

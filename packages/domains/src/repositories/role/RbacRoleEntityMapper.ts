@@ -1,5 +1,5 @@
 /**
- * TASK-311 AC-2 — `RbacRoleEntityMapper` projects a Prisma `Role` row
+ * `RbacRoleEntityMapper` projects a Prisma `Role` row
  * (with the `RolePolicies` include) onto the structural
  * `RbacRoleRecord` shape that `RbacRoleService` returns. The
  * `ROLE_POLICIES_INCLUDE` constant is the SINGLE source of truth for

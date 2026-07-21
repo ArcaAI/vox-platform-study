@@ -1,5 +1,5 @@
 /**
- * TASK-330 Phase 1 — Clinical Documentation Harness gate e2e.
+ * Clinical Documentation Harness gate e2e.
  *
  * Proves two safety properties of the harness gate adapter at the HTTP edge:
  *
@@ -18,8 +18,7 @@
  *     approve → GATE_DECISION) additionally needs apps/harness + Temporal + SMR
  *     + NLP + Postgres + Redis. Those assertions live under the
  *     `HARNESS_E2E_FULL`-gated describe and are SKIPPED unless that env flag is
- *     set, so CI never reports a fabricated pass. See the TASK-330 README
- *     "Phase 1 … evidence / what ran vs blocked" note.
+ *     set, so CI never reports a fabricated pass.
  *
  * Note: the gate is ALSO covered at the unit/integration layer — Lane E's
  * live-Postgres attestation-gate test and Lane I's time-skipping workflow tests

@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty, IsString } from 'class-validator';
 
 /**
- * TASK-298 D-7 — request body for `POST /admin/audio/pipelines/:id/assign-tenant`.
+ * Request body for `POST /admin/audio/pipelines/:id/assign-tenant`.
  */
 export class AssignTenantRequest {
   @ApiProperty({ description: 'Tenant ID to assign the pipeline to' })

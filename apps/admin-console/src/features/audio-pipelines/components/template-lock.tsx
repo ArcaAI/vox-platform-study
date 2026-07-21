@@ -21,7 +21,7 @@ import { useClonePipeline } from '../api';
 import type { Pipeline } from '../api';
 
 /**
- * TASK-531 — the gateway's refusal text for a locked copy, mirrored here as the
+ * The gateway's refusal text for a locked copy, mirrored here as the
  * visible reason on the disabled/absent edit controls (rule 11 §5: a disabled
  * control needs a stated reason). Kept identical to
  * `TEMPLATE_LOCKED_MESSAGE` in `pipeline.service.ts`.

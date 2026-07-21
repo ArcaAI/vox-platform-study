@@ -1,4 +1,4 @@
-"""Sarvam AI Bulbul TTS provider (cloud) — TASK-493.
+"""Sarvam AI Bulbul TTS provider (cloud).
 
 Best-quality path for code-switched clinical Malayalam. Calls the REST
 `POST /text-to-speech` endpoint; the response is a base64 audio string. Output
@@ -8,7 +8,7 @@ is a phase-2 upgrade (`use_streaming`).
 
 ⚠️ PHI: the public Sarvam API is NOT India-resident / zero-retention and has no
 HIPAA/BAA — point `base_url` at the enterprise VPC/on-prem host before enabling
-for real patient data (TASK-493 §5).
+for real patient data.
 
 NOTE (wav/mp3): with the per-sentence adapter, `wav`/`mp3` yield one container per
 sentence. PCM (the realtime/browser path) concatenates gaplessly; single-container

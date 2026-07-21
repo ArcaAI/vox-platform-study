@@ -1,7 +1,7 @@
 /**
- * PipelineService — TASK-328 A6 extensions.
+ * PipelineService — backend audio-pipeline admin surface.
  *
- * Covers the backend audio-pipeline admin surface added in A6:
+ * Covers:
  *   • setDefault  — marks one pipeline as the tenant default (delegates the
  *                   "exactly one default" flip to the repository transaction).
  *   • toggle      — enable/disable via resourceStatus, OCC-guarded.

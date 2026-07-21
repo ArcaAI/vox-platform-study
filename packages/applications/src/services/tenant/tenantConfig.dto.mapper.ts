@@ -6,7 +6,7 @@ import { FetchResponse } from '../../common';
  * Maps tenant configuration rows — persisted as tenant-scoped `GlobalSetting`
  * entities — into the standalone {@link TenantConfigResponse} DTO.
  *
- * TASK-393 — this mapper replaces the fragile
+ * This mapper replaces the fragile
  * `GlobalSettingDtoMapper.ToPaginatedResponse(...) as PaginatedTenantConfigResponse`
  * superset cast used by the tenant-config endpoints. That cast only compiled
  * while `GlobalSettingResponse` stayed structurally assignable-into

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { AdminTranscriptionJobController } from '../admin-transcription-job.controller';
 
-// TASK-319 F3 — admin (tenant-wide) transcription-job surface. Counterpart to
+// Admin (tenant-wide) transcription-job surface. Counterpart to
 // the owner-scoped end-user `TranscriptionJobController`.
 const mockJobService = {
     list: vi.fn(),
@@ -66,7 +66,7 @@ describe('AdminTranscriptionJobController', () => {
             expect(meta).toEqual([{ action: 'manage', subject: 'Tenant' }]);
         });
 
-        // TASK-407 — the guard resolves permissions with getAllAndOverride, so a
+        // The guard resolves permissions with getAllAndOverride, so a
         // class-only `manage Tenant` gate actually EXCLUDED tenant admins (the
         // seed grants them read/update Tenant, not manage). The design (§5.8)
         // scopes Audio Processing on AsrPipeline, which `tenant-full-access`

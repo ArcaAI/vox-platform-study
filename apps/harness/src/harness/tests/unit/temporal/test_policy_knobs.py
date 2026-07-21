@@ -1,6 +1,6 @@
 """ (Phase 3A) item C — the seven additive agentic loop knobs.
 
-RED-first: the DB-backed ``HarnessPolicy`` (worker snapshot) gains seven nullable
+The DB-backed ``HarnessPolicy`` (worker snapshot) gains seven nullable
 knobs. ``null ⇒ env default`` (per-field fallthrough): the harness only overrides
 its runtime env/code default when the policy carries an explicit non-null value.
 

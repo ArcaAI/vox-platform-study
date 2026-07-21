@@ -1,5 +1,5 @@
 /**
- * TASK-311 AC-2 — `PolicyEntityMapper` is the single recorded site that
+ * `PolicyEntityMapper` is the single recorded site that
  * projects a raw Prisma `Policy` row onto the structural `PolicyRecord`
  * shape `PolicyService` returns to its controller. Today the projection
  * is a strict subset of the Prisma row (no field renames, no
@@ -17,7 +17,7 @@ export interface PolicyRecord {
   scope: string;
   rules: unknown;
   resourceStatus: string;
-  /** TASK-409 — server-authoritative anti-lockout marker (read-only via API). */
+  /** Server-authoritative anti-lockout marker (read-only via API). */
   isProtected: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -33,7 +33,7 @@ export interface PolicyRowLike {
   scope: string;
   rules: unknown;
   resourceStatus: string;
-  /** Optional so legacy test fixtures without the TASK-409 column still map. */
+  /** Optional so legacy test fixtures without the `isProtected` column still map. */
   isProtected?: boolean;
   createdAt: Date;
   updatedAt: Date;

@@ -1,4 +1,4 @@
-// TASK-302 Phase 6 Task 6.5 (Stream B) — VaultRotationWorker deployment unit.
+// VaultRotationWorker deployment unit.
 //
 // Registers VaultRotationWorker as a NestJS provider that starts on
 // `onApplicationBootstrap` ONLY when:
@@ -10,8 +10,8 @@
 //
 // Why single-leader? Multiple workers tailing the same audit log
 // would publish duplicate invalidation events. The events are
-// structurally idempotent (cache.delete on an absent key is a no-op,
-// see Phase 6 Task 6.8), so this is "correct" with N pods — but
+// structurally idempotent (cache.delete on an absent key is a no-op),
+// so this is "correct" with N pods — but
 // wasteful (N×Redis publish ops, N×log lines). The leader lease
 // keeps exactly one pod active.
 import { Inject, Injectable, Logger, Module, OnApplicationBootstrap, OnModuleDestroy, Optional } from '@nestjs/common';

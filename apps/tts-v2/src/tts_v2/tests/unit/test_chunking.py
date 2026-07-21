@@ -1,4 +1,4 @@
-"""TDD tests for text segmentation / chunking (TASK-488 Phase 2)."""
+"""TDD tests for text segmentation / chunking."""
 
 from __future__ import annotations
 

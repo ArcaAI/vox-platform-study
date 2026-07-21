@@ -1,15 +1,15 @@
 /**
- * TASK-409 — break-glass second confirmation for dangerous-but-allowed RBAC
+ * Break-glass second confirmation for dangerous-but-allowed RBAC
  * mutations (policy delete, role delete, detach-from-role, multi-role rule
  * edits).
  *
- * Reuses the TASK-396 step-up primitives: the caller re-proves identity with
+ * Reuses the step-up primitives: the caller re-proves identity with
  * their CURRENT password (verified via `ICryptoService` against the stored
  * bcrypt hash — never logged, never persisted) and additionally types the
  * exact name of the policy/role being mutated (`confirmationName`), the same
  * "type the name to confirm" contract GitHub uses for repo deletion.
  *
- * Error contract (pinned by the TASK-409 unit + E2E matrices):
+ * Error contract (pinned by the unit + E2E matrices):
  *   • missing password or confirmationName → 428 Precondition Required
  *     (RFC 6585 §3 — "you forgot the confirmation", distinct from "wrong")
  *   • wrong password                       → 401 Unauthorized
@@ -64,7 +64,7 @@ export async function checkBreakGlass(args: {
   /** Authenticated caller id from CLS (null → unauthenticated). */
   userId: string | null | undefined;
   credentials: BreakGlassCredentials | undefined;
-  /** Loads the caller's stored password hash (TASK-396: `user.password`). */
+  /** Loads the caller's stored password hash (`user.password`). */
   loadPasswordHash: () => Promise<string>;
   /** `ICryptoService.verify` (bcrypt compare). */
   verifyPassword: (password: string, hash: string) => Promise<boolean>;

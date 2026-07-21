@@ -171,7 +171,7 @@ class TestEmbeddingService:
 
 
 class TestEmbeddingServicePipelineOverride:
-    """Tests for the hf_model_id pipeline override feature (TASK-008 1.3)."""
+    """Tests for the hf_model_id pipeline override feature."""
 
     def test_default_hf_model_id_is_none(self):
         """Default constructor should have no pipeline override."""
@@ -210,7 +210,7 @@ class TestEmbeddingServicePyannoteWarnings:
 
 @patch.dict(sys.modules, {"torch": _make_mock_torch()})
 class TestEmbeddingServiceBatch:
-    """Tests for extract_batch method (TASK-008 3.2)."""
+    """Tests for extract_batch method."""
 
     async def test_extract_batch_returns_embeddings(self):
         """Batch extraction should return one embedding per segment."""

@@ -13,7 +13,7 @@ export class TenantFrontendConfigRepository extends Repository<TenantFrontendCon
   }
 
   /**
-   * TASK-328 A6 — Resolve the single frontend-pipeline config row for a
+   * Resolve the single frontend-pipeline config row for a
    * tenant (`tenantId` is `@unique` on the model). Returns `null` rather
    * than throwing when the tenant has no config yet, so the application
    * service can branch into "create" on first save.

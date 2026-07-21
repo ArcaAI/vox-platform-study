@@ -6,13 +6,13 @@ import { clearSession, getSession, isElevated, setSession, type SessionPayload }
 /**
  * Request headers forwarded verbatim to the gateway (allowlist).
  * `user-agent` rides along so gateway audit rows record the operator's
- * browser, not undici's "node" default (TASK-422).
+ * browser, not undici's "node" default.
  */
 const FORWARDED_REQUEST_HEADERS = ['content-type', 'if-match', 'idempotency-key', 'user-agent'] as const;
 
 /** Response headers surfaced back to the browser (allowlist). Cache-Control
  * rides along so the gateway's `no-store` surfaces (e.g. the Prisma Studio
- * shell, TASK-336 OB-11 / BUG-003) keep their caching posture. */
+ * shell) keep their caching posture. */
 const FORWARDED_RESPONSE_HEADERS = ['content-type', 'etag', 'cache-control'] as const;
 
 const BODYLESS_METHODS = new Set(['GET', 'HEAD']);
@@ -30,7 +30,7 @@ function buildHeaders(request: Request, session: SessionPayload): Headers {
     // While impersonating, the act-as JWT is already bound to the target's
     // own tenant — the operator's working-tenant pick (selected before
     // impersonating started) must never ride along, or it diverges from the
-    // JWT and the gateway 400s every proxied call (BUG-005 Issue 3).
+    // JWT and the gateway 400s every proxied call.
     if (!session.impersonation && session.workingTenantId && isElevated(session.user)) {
         headers.set('x-tenant-id', session.workingTenantId);
     }
@@ -45,7 +45,7 @@ function buildHeaders(request: Request, session: SessionPayload): Headers {
  * segment holding real slashes. A plain `path.join('/')` would forward those
  * as separator slashes, and the gateway's single-segment
  * `@Get('buckets/:name/files/:key')` route can't match the multi-segment tail
- * → 404. Encoding each segment restores the `%2F` so `:key` matches (BUG-006).
+ * → 404. Encoding each segment restores the `%2F` so `:key` matches.
  */
 function encodeGatewayPath(path: string[]): string {
     return path.map(encodeURIComponent).join('/');

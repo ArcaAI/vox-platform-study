@@ -1,14 +1,14 @@
 /**
- * Vault-backed PrismaClient factory (TASK-302 Phase 5 Task 5.5 — Stream B).
+ * Vault-backed PrismaClient factory.
  *
  * Wires `@prisma/adapter-pg` to a Vault-issued short-lived credential
  * from the database secrets engine (`database/creds/<role>`). The
  * issued `{ username, password }` pair drives a pg.Pool which the
  * PrismaPg adapter wraps; the wrapper class encapsulates lease
- * lifecycle (rotate, drain, disconnect) so the VaultLeaseRenewer
- * (Task 5.7) can safely swap the pool when the lease nears expiry.
+ * lifecycle (rotate, drain, disconnect) so a lease renewer can safely
+ * swap the pool when the lease nears expiry.
  *
- * Gate-5 design promises:
+ * Design promises:
  *   1. The credential pair is held in a single private field; it is
  *      never stringified, never logged, never written to disk.
  *   2. The pool is rebuilt — not merely refreshed in place — on swap,
@@ -22,14 +22,14 @@
  *
  * Limitations (deliberate, documented):
  *   - Username rotation requires a pool rebuild (see #2 above). The
- *     renewer (Task 5.7) is responsible for calling `swap()` ahead of
+ *     lease renewer is responsible for calling `swap()` ahead of
  *     lease expiry. Without an active renewer, queries WILL FAIL when
  *     the lease's underlying PG user is dropped by Vault revocation.
- *   - The PgBouncer-userlist tension (Gate 5, decision Q2) is NOT
- *     resolved at this layer; the wrapper assumes the credential
- *     pair authenticates against whatever is on port `PG_PORT`.
- *     Production cutover (Phase 7) must decide between auth_query
- *     (preferred), Vault static roles, or direct-PG bypass.
+ *   - The PgBouncer-userlist tension is NOT resolved at this layer;
+ *     the wrapper assumes the credential pair authenticates against
+ *     whatever is on port `PG_PORT`. Production cutover must decide
+ *     between auth_query (preferred), Vault static roles, or
+ *     direct-PG bypass.
  */
 
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -47,12 +47,12 @@ export interface DbCredential {
 /** Minimum SecretsService surface required by the Vault factory. */
 export interface VaultDbSecretsLike {
   requestDbCredential(role: string): Promise<DbCredential>;
-  /** BUG-006 — renew the active lease ahead of expiry (Vault-mode only). */
+  /** Renew the active lease ahead of expiry (Vault-mode only). */
   renewDbLease?(leaseId: string, incrementSec: number): Promise<{ ttlSec: number }>;
 }
 
 /**
- * Pool tunables. Defaults mirror Stream C's createPrismaClient() so a
+ * Pool tunables. Defaults mirror createPrismaClient() so a
  * Vault-backed pool occupies the same connection budget as a static one.
  */
 export interface VaultPrismaClientOpts {

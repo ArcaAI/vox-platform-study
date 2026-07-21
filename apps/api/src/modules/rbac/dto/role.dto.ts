@@ -29,14 +29,14 @@ export class CreateRoleDto {
   @IsUUID()
   parentRoleId?: string;
 
-  @ApiPropertyOptional({ description: 'Create as a SYSTEM role — global admin only (TASK-501)', example: false })
+  @ApiPropertyOptional({ description: 'Create as a SYSTEM role — global admin only', example: false })
   @IsOptional()
   @IsBoolean()
   isSystemRole?: boolean;
 }
 
 /**
- * TASK-501 — DTO for cloning a role (SYSTEM or CUSTOM) into a new CUSTOM role.
+ * DTO for cloning a role (SYSTEM or CUSTOM) into a new CUSTOM role.
  */
 export class CloneRoleDto {
   @ApiProperty({ description: 'Name for the cloned CUSTOM role', example: 'DOCTOR (copy)' })
@@ -133,7 +133,7 @@ export class RoleResponse {
 
   @ApiPropertyOptional({
     description:
-      'Users holding this role (tenant-scoped for tenant-scoped callers; platform-wide for unscoped platform admins). Present on read paths only (TASK-444).',
+      'Users holding this role (tenant-scoped for tenant-scoped callers; platform-wide for unscoped platform admins). Present on read paths only.',
   })
   memberCount?: number;
 }
@@ -153,7 +153,7 @@ export class PolicySummary {
 }
 
 /**
- * TASK-444 — one member of a role: a UserRoleAssignment joined to its user.
+ * One member of a role: a UserRoleAssignment joined to its user.
  * `department` is the user's department in the ASSIGNMENT's tenant;
  * `resourceStatus` is the membership status, `userResourceStatus` the account.
  */
@@ -190,7 +190,7 @@ export class RoleMemberResponse {
 }
 
 /**
- * TASK-444 — paginated members envelope (same shape as the other RBAC lists).
+ * Paginated members envelope (same shape as the other RBAC lists).
  */
 export class PaginatedRoleMemberResponse {
   @ApiProperty({ type: [RoleMemberResponse], description: 'Members of the role' })

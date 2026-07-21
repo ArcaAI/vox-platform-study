@@ -10,26 +10,26 @@ import type { AuditLog, GlobalSetting, Media, Notification, Role, Tag, Tenant, U
 import { AuditAction, NotificationType, ResourceStatusType, ResourceType, TenantPlan, ValueType } from '@arcaai/domains';
 
 /**
- * TASK-375 §8 — model-aware filter-value coercion.
+ * Model-aware filter-value coercion.
  *
  * The `field[op]:value` CSV `filters` contract is stringly-typed, so a Bool /
- * Int / DateTime column arrives as a string and Prisma rejects it. The previous
- * fix (DEFECT-F1) coerced ONLY booleans, and only for fields a resource opted
+ * Int / DateTime column arrives as a string and Prisma rejects it. A previous
+ * fix coerced ONLY booleans, and only for fields a resource opted
  * into by name. This generalises that to a model-aware scheme driven by the
  * generated Prisma model types: a resource passes its model NAME and every
  * boolean / number / date column of that model coerces automatically — no
  * per-column opt-in.
  *
- * TASK-406 (P2-6b/c) extends the scheme:
+ * (P2-6b/c) extends the scheme:
  *   - enum columns now carry a RUNTIME member allow-list (an
  *     {@link EnumFilterFieldSpec}) so an invalid member is rejected with a 400
  *     at deserialization time instead of surfacing as a Prisma server-side
  *     error;
  *   - the registry covers Tenant / Media / Role / Tag / Webhook / Notification
- *     in addition to User / AuditLog. (`Permission` was named by TASK-375 but
- *     has NO Prisma model — the legacy `PermissionRepository` points at a
- *     nonexistent `prisma.permission` delegate — so there is no generated type
- *     to drive an entry; it is intentionally skipped.)
+ *     in addition to User / AuditLog. (`Permission` has NO Prisma model — the
+ *     legacy `PermissionRepository` points at a nonexistent `prisma.permission`
+ *     delegate — so there is no generated type to drive an entry; it is
+ *     intentionally skipped.)
  *
  * Why the generated *types* and not DMMF: Prisma 7's `prisma-client` generator
  * does NOT expose a runtime `Prisma.dmmf` (`Prisma.dmmf === undefined`), so the
@@ -39,7 +39,7 @@ import { AuditAction, NotificationType, ResourceStatusType, ResourceType, Tenant
 export type FilterFieldType = 'boolean' | 'number' | 'date' | 'enum' | 'json';
 
 /**
- * TASK-406 — an enum column's registry entry: the discriminating `type` plus
+ * An enum column's registry entry: the discriminating `type` plus
  * the runtime member allow-list used to validate filter values. `TMember` is
  * the generated string-literal union of the column, so the `satisfies` guards
  * below reject a member that does not exist on the database enum.
@@ -52,7 +52,7 @@ export type EnumFilterFieldSpec<TMember extends string = string> = {
 /**
  * What a registry / explicit map declares for one column: a plain scalar tag,
  * or a member-carrying enum spec. A plain `'enum'` tag (only possible in an
- * explicit caller-provided map) stays the TASK-375 unvalidated pass-through.
+ * explicit caller-provided map) stays an unvalidated pass-through.
  */
 export type FilterFieldSpec = FilterFieldType | EnumFilterFieldSpec;
 
@@ -71,12 +71,12 @@ export function enumFilterSpec<T extends Record<string, string>>(enumObject: T):
  * union distribution so `boolean` (`true | false`) and enum unions classify as
  * a whole.
  *
- * How enum / Json columns are discriminated (TASK-375 §8 follow-up):
+ * How enum / Json columns are discriminated:
  *   - A Prisma **enum** column is generated as a string-LITERAL union
  *     (`'CREATE' | 'READ' | …`). It is a subtype of `string`, but `string` is
  *     NOT assignable back to it — so `string extends NonNullable<V>` is `false`
  *     for an enum and `true` for a plain `string`. That's the discriminator.
- *     TASK-406: the required entry is an `EnumFilterFieldSpec` whose `members`
+ *     The required entry is an `EnumFilterFieldSpec` whose `members`
  *     are typed against the column's literal union — a wrong/unknown member in
  *     the registry fails the build.
  *   - A Prisma **Json** column is generated as `JsonValue`
@@ -110,7 +110,7 @@ type CoercibleFilterSpec<V> = [NonNullable<V>] extends [Date]
  *   - rejects a mislabelled type (e.g. a Bool column tagged `'number'`, or an
  *     enum column tagged `'json'`),
  *   - rejects an enum member list containing a value that is not a member of
- *     the column's generated literal union (TASK-406),
+ *     the column's generated literal union,
  *   - and forces EVERY boolean/number/date/enum/json column to be listed
  *     (completeness).
  * A schema change to any covered model therefore fails the build until the
@@ -124,15 +124,15 @@ export type ModelFilterFieldTypes<TModel> = {
 };
 
 /**
- * User columns exposed to the admin Users grid filter (TASK-375 item 3).
- * `resourceStatus` (enum) is member-validated (TASK-406); `metaData` (Json)
+ * User columns exposed to the admin Users grid filter.
+ * `resourceStatus` (enum) is member-validated; `metaData` (Json)
  * passes through at the whole-column level and supports dotted-path filters
  * (see `deserializeFilterString`).
  */
 export const USER_FILTER_FIELD_TYPES = {
   version: 'number',
   isServiceAccount: 'boolean',
-  // TASK-400 — rotation tracking column.
+  // Rotation tracking column.
   passwordChangedAt: 'date',
   lastLoginAt: 'date',
   lastActiveAt: 'date',
@@ -146,9 +146,9 @@ export const USER_FILTER_FIELD_TYPES = {
 } satisfies ModelFilterFieldTypes<User>;
 
 /**
- * AuditLog columns exposed to the admin audit-log grid filter (TASK-328 A8).
+ * AuditLog columns exposed to the admin audit-log grid filter.
  * The enum columns (`resourceType`/`action`/`resourceStatus`) are
- * member-validated (TASK-406); the Json columns
+ * member-validated; the Json columns
  * (`metaData`/`data`/`previousData`/`metadata`) pass through at the
  * whole-column level and support dotted-path filters.
  */
@@ -168,7 +168,7 @@ export const AUDIT_LOG_FILTER_FIELD_TYPES = {
   metadata: 'json',
 } satisfies ModelFilterFieldTypes<AuditLog>;
 
-/** Tenant list filters (TASK-406 P2-6c) — admin tenants grid. */
+/** Tenant list filters — admin tenants grid. */
 export const TENANT_FILTER_FIELD_TYPES = {
   version: 'number',
   plan: enumFilterSpec(TenantPlan),
@@ -180,7 +180,7 @@ export const TENANT_FILTER_FIELD_TYPES = {
   metaData: 'json',
 } satisfies ModelFilterFieldTypes<Tenant>;
 
-/** Media list filters (TASK-406 P2-6c). */
+/** Media list filters. */
 export const MEDIA_FILTER_FIELD_TYPES = {
   version: 'number',
   size: 'number',
@@ -191,7 +191,7 @@ export const MEDIA_FILTER_FIELD_TYPES = {
   metaData: 'json',
 } satisfies ModelFilterFieldTypes<Media>;
 
-/** Role list filters (TASK-406 P2-6c). */
+/** Role list filters. */
 export const ROLE_FILTER_FIELD_TYPES = {
   version: 'number',
   isSystemRole: 'boolean',
@@ -202,7 +202,7 @@ export const ROLE_FILTER_FIELD_TYPES = {
   metaData: 'json',
 } satisfies ModelFilterFieldTypes<Role>;
 
-/** Tag list filters (TASK-406 P2-6c). */
+/** Tag list filters. */
 export const TAG_FILTER_FIELD_TYPES = {
   version: 'number',
   resourceStatus: enumFilterSpec(ResourceStatusType),
@@ -212,7 +212,7 @@ export const TAG_FILTER_FIELD_TYPES = {
   metaData: 'json',
 } satisfies ModelFilterFieldTypes<Tag>;
 
-/** Webhook list filters (TASK-406 P2-6c). */
+/** Webhook list filters. */
 export const WEBHOOK_FILTER_FIELD_TYPES = {
   version: 'number',
   subscriptionMetadata: 'json',
@@ -224,7 +224,7 @@ export const WEBHOOK_FILTER_FIELD_TYPES = {
 } satisfies ModelFilterFieldTypes<Webhook>;
 
 /**
- * Notification list filters (TASK-406 P2-6c). The `encryptedMessage*` Bytes
+ * Notification list filters. The `encryptedMessage*` Bytes
  * columns are excluded by the type guard (they stay strings / unfilterable).
  */
 export const NOTIFICATION_FILTER_FIELD_TYPES = {
@@ -240,7 +240,7 @@ export const NOTIFICATION_FILTER_FIELD_TYPES = {
 } satisfies ModelFilterFieldTypes<Notification>;
 
 /**
- * GlobalSetting list filters (TASK-443) — admin settings grid faceting
+ * GlobalSetting list filters — admin settings grid faceting
  * (Namespace rides through as a plain String column; `dataType` is the
  * member-validated `ValueType` enum; `encryptedValue` is Bytes and stays
  * unfilterable by the type guard).

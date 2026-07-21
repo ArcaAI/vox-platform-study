@@ -27,10 +27,10 @@ import { ConfigResolverModule } from '../../config-resolver';
     CoreDatabaseModule,
     ObservabilityModule,
     ChainSummaryServiceModule, // Required for ComprehensiveSummaryProcessor
-    PromptResolutionServiceModule, // Required for prompt fallback chain (GAP-3)
-    HarnessGatewayServiceModule, // TASK-330 (Lane G) — harnessEnabled routing in ConsultationEventHandler
-    HarnessPolicyServiceModule, // TASK-356 D-7 — SMR-selection resolver for the summary/pre-summary/comprehensive processors
-    ConfigResolverModule, // TASK-356 Phase 5 — realtime cascade + preferred-prompt threading (handler + summary processor)
+    PromptResolutionServiceModule, // Required for prompt fallback chain
+    HarnessGatewayServiceModule, // harnessEnabled routing in ConsultationEventHandler
+    HarnessPolicyServiceModule, // SMR-selection resolver for the summary/pre-summary/comprehensive processors
+    ConfigResolverModule, // Realtime cascade + preferred-prompt threading (handler + summary processor)
     EventEmitterModule, // Required for @OnEvent handlers and EventEmitter2 injection
     RedisCacheModule.register(), // For job status storage and pub/sub
     BullModule.registerQueue(
@@ -51,7 +51,7 @@ import { ConfigResolverModule } from '../../config-resolver';
     PreSummaryProcessor,
     NerProcessor,
     ComprehensiveSummaryProcessor,
-    ConsultationEventHandler, // Auto-pipeline event handler (GAP-1)
+    ConsultationEventHandler, // Auto-pipeline event handler
   ],
   exports: [IConsultationJobService, ConsultationEventHandler],
 })

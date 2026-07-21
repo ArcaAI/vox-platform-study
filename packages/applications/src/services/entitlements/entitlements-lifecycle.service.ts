@@ -42,7 +42,7 @@ interface SoftDisableDelegate {
 }
 
 /**
- * TASK-392 (Q4 trial-expiry + Q10 downgrade) — cross-tenant lifecycle jobs.
+ * (Q4 trial-expiry + Q10 downgrade) — cross-tenant lifecycle jobs.
  *
  * Deliberately separate from the request-scoped {@link EntitlementsService}:
  * both actions run OUTSIDE a normal request (a scheduled sweep, or a

@@ -1,7 +1,7 @@
 import { TenantFrontendConfigResponse, UpsertTenantFrontendConfigRequest } from './dto';
 
 /**
- * Per-tenant frontend audio-pipeline defaults (TASK-328 A6). One config row per
+ * Per-tenant frontend audio-pipeline defaults. One config row per
  * tenant (`tenantId @unique`), applied to all of that tenant's users.
  *
  * Tenant scoping mirrors the other admin services: a global admin
@@ -16,7 +16,7 @@ export abstract class ITenantFrontendConfigService {
   abstract upsert(dto: UpsertTenantFrontendConfigRequest, tenantId?: string): Promise<TenantFrontendConfigResponse>;
 
   /**
-   * TASK-332 — the server-computed SDK-facing enablement for local raw-stream
+   * The server-computed SDK-facing enablement for local raw-stream
    * capture: `platformCapability AND tenantToggle`. Surfaced to
    * `GET /tenant/me/config` as the `enable-local-raw-capture` row.
    */

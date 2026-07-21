@@ -53,7 +53,7 @@ export function useUsers(params?: ListParams, options?: { enabled?: boolean }) {
         queryKey: userKeys.list(params),
         queryFn: () => listUsers(params),
         placeholderData: keepPreviousData,
-        // TASK-430 — the list screen swaps to the by-tenant route when the
+        // The list screen swaps to the by-tenant route when the
         // in-page tenant filter is active; the cross-tenant query pauses.
         enabled: options?.enabled ?? true,
     });

@@ -1,4 +1,4 @@
-"""TDD tests for the self-hosted NLI groundedness verifier (TASK-479 · SOTA D2).
+"""TDD tests for the self-hosted NLI groundedness verifier.
 
 The verifier is the core of the live OUTPUT gate: sentence/claim-vs-source
 entailment over ``(summary_segment, transcript)`` with per-segment verdicts.
@@ -40,7 +40,7 @@ HALLUCINATED_CLAIM = "MRI confirmed metastatic pancreatic carcinoma."
 
 
 class KeywordOverlapScorer:
-    """Deterministic tiny stand-in NLI (the AC-1 'tiny/stub NLI in tests').
+    """Deterministic tiny stand-in NLI for use in tests.
 
     Entailment score = fraction of the claim's content words present in the
     source. Enough signal to separate a transcript-supported claim from an
@@ -83,7 +83,7 @@ def _verifier(scorer: object | None = None, **config_overrides: object) -> Groun
     return GroundednessNliVerifier(config, scorer=scorer)  # type: ignore[arg-type]
 
 
-# ── AC-1: grounded vs hallucinated, deterministic, offline ──
+# ── Grounded vs hallucinated, deterministic, offline ──
 
 
 def test_supported_claim_grounded_hallucinated_claim_ungrounded() -> None:
@@ -127,7 +127,7 @@ def test_flagged_spans_cover_exactly_the_ungrounded_segments() -> None:
     assert len(result.flagged_spans) == 1
 
 
-# ── AC-2: throughput as a batching property (never a flaky wall-clock test) ──
+# ── Throughput as a batching property (never a flaky wall-clock test) ──
 
 
 def test_batched_scoring_respects_configured_batch_size() -> None:
@@ -228,7 +228,7 @@ def test_split_segments_empty_input() -> None:
     assert split_segments("   \n  ") == []
 
 
-# ── AC-6: the D2-owned metric machinery (precision/recall on a labelled sample) ──
+# ── Metric machinery (precision/recall on a labelled sample) ──
 
 
 def test_metric_harness_precision_recall_on_labelled_sample() -> None:

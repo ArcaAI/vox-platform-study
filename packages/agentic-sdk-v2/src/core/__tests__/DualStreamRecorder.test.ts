@@ -1,5 +1,5 @@
 /**
- * DualStreamRecorder Tests (TASK-329 P2 — dual-capture X8)
+ * DualStreamRecorder Tests (dual-capture X8)
  *
  * @vitest-environment jsdom
  */

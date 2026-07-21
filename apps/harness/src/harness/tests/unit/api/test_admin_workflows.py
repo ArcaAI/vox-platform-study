@@ -1,4 +1,4 @@
-"""Admin workflow-ops endpoint tests (RED-first, TASK-330 Phase 6 — Phase B).
+"""Admin workflow-ops endpoint tests.
 
 The apps/api ``HarnessOpsClient`` calls these EXACT paths/shapes under
 ``/api/v1/internal/harness``. A fake Temporal client (no server, no network)

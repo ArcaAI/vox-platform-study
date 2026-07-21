@@ -1,4 +1,4 @@
-"""Shared model-lifecycle contract for the HOPE Python services (TASK-529 AD-4).
+"""Shared model-lifecycle contract for the HOPE Python services.
 
 See the package README for the contract and its conformance clauses.
 """

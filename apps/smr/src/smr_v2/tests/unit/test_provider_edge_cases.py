@@ -90,7 +90,7 @@ class TestOllamaEdgeCases:
 
     @pytest.mark.asyncio
     async def test_generate_uses_caller_supplied_model(self, ollama_config, mock_http):
-        # D-7 (TASK-356): SMR has no in-gateway default — the caller-supplied
+        # SMR has no in-gateway default — the caller-supplied
         # model is used verbatim (the provider's informational ``default_model``
         # is NOT substituted into the generation payload).
         from smr_v2.providers.ollama import OllamaProvider

@@ -141,7 +141,7 @@ If 523 has not landed when this ticket starts, this ticket adds BOTH guards (own
 | UPDATE | `apps/admin-console/src/features/tenants/components/tenant-detail-screen.tsx` (+ its client/tests) |
 | NEW | `apps/api/tests/e2e/task-531-pipeline-template-governance.spec.ts` + `task-531-pipeline-clone-resync-cross-tenant.spec.ts` (authored, executed in TASK-534) |
 
-Comment deltas (binding, program §2.3): `06-stt.ts:845-859` policy block gains the lineage note · `tenant.service.ts:292-314` doc-block · `docs/implementation/TASK-415-Hope-Admin-Console/capabilities-matrix.md` pipelines row if the screen contract changes (badge/clone/resync) · `docs/architecture/data-and-domain-model.md` pipeline-lineage note (program §6).
+Comment deltas (binding, program §2.3): `06-stt.ts:845-859` policy block gains the lineage note · `tenant.service.ts:292-314` doc-block · `docs/archive/TASK-415-Hope-Admin-Console/capabilities-matrix.md` pipelines row if the screen contract changes (badge/clone/resync) · `docs/architecture/data-and-domain-model.md` pipeline-lineage note (program §6).
 
 ## 5. TDD Plan (RED first — paste failing runs here before implementing)
 

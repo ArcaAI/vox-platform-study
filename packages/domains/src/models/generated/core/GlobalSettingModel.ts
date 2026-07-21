@@ -14,7 +14,7 @@ export class GlobalSetting extends BaseTenantDataModel {
   public key: string;
   public defaultValue: string | null;
   public value: string;
-  // TASK-302 Phase 4 — Vault-Transit-encrypted ciphertext + Transit key version.
+  // Vault-Transit-encrypted ciphertext + Transit key version.
   public encryptedValue: Uint8Array | null;
   public keyVersion: number | null;
   public dataType: Enums.ValueType;

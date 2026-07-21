@@ -1,5 +1,5 @@
 /**
- * AgenticProvider — auto-wired token refresh (TASK-320 B2)
+ * AgenticProvider — auto-wired token refresh
  *
  * `AgenticClient` already had a 401→refresh-once mutex
  * (`deduplicatedRefresh`/`setOnUnauthorized`), but nothing in the SDK ever
@@ -257,7 +257,7 @@ describe('AgenticProvider — TASK-320 B2 auto-wired token refresh', () => {
         expect(setOnUnauthorizedSpy).toHaveBeenCalledTimes(1);
     });
 
-    // TASK-331 doc-05 F-5 — a host that owns its own 401 handling (e.g. the
+    // A host that owns its own 401 handling (e.g. the
     // ui-playground's impersonation-aware `useAutoRefresh`) can opt OUT of the
     // provider's default auto-wire so the single-slot `setOnUnauthorized` has a
     // deterministic owner. Default (undefined / true) preserves B2 behaviour.

@@ -129,8 +129,8 @@ class Settings(BaseSettings):
     api_gateway_timeout: int = 30
 
     # Model Cache
-    # TASK-525 — the two fields below are BOOTSTRAP FALLBACKS; their runtime
-    # values come from the control plane (effective-config → ModelCache.apply_retention).
+    # The two fields below are BOOTSTRAP FALLBACKS; their runtime values come
+    # from the control plane (effective-config → ModelCache.apply_retention).
     model_cache_max_models: int = Field(
         default=5,
         description=(
@@ -161,7 +161,7 @@ class Settings(BaseSettings):
         description="HuggingFace API token (optional)",
     )
 
-    # TASK-527 — bootstrap credentials for `s3://` model sources (MinIO-compatible).
+    # Bootstrap credentials for `s3://` model sources (MinIO-compatible).
     # All optional: unset simply means an `s3://` source_uri errors cleanly rather
     # than silently falling back. This `Settings` class carries NO env_prefix, so
     # the documented `STT_V2_MODEL_S3_*` names are wired via explicit aliases —
@@ -230,13 +230,13 @@ class Settings(BaseSettings):
         description="Azure Speech service region (e.g., eastus, westeurope)",
     )
 
-    # Azure AI Foundry — MAI-Transcribe (TASK-505 P3, engine AZURE_FOUNDRY).
-    # Decision D4: PREVIEW service (no SLA, no diarization) — disabled by
-    # default, batch-only, and PHI must not flow until GA + data-residency
-    # sign-off. Env vars: AZURE_FOUNDRY_ENABLED / _ENDPOINT / _API_KEY / _MODEL.
+    # Azure AI Foundry — MAI-Transcribe (engine AZURE_FOUNDRY).
+    # PREVIEW service (no SLA, no diarization) — disabled by default,
+    # batch-only, and PHI must not flow until GA + data-residency sign-off.
+    # Env vars: AZURE_FOUNDRY_ENABLED / _ENDPOINT / _API_KEY / _MODEL.
     azure_foundry_enabled: bool = Field(
         default=False,
-        description="Enable the Azure AI Foundry MAI-Transcribe engine (D4: preview, off by default)",
+        description="Enable the Azure AI Foundry MAI-Transcribe engine (preview, off by default)",
     )
     azure_foundry_endpoint: str | None = Field(
         default=None,
@@ -252,8 +252,8 @@ class Settings(BaseSettings):
     )
 
     # parakeet.cpp — ggml runtime for NVIDIA Parakeet/Nemotron ASR
-    # (TASK-505 P3, engine PARAKEET_CPP). No official Python bindings exist
-    # upstream (mudler/parakeet.cpp is C API + CLI); the loader lazy-imports a
+    # (engine PARAKEET_CPP). No official Python bindings exist upstream
+    # (mudler/parakeet.cpp is C API + CLI); the loader lazy-imports a
     # binding module when present, else loads the shared library path below.
     parakeet_cpp_library_path: str | None = Field(
         default=None,
@@ -264,8 +264,8 @@ class Settings(BaseSettings):
         description="CPU threads for parakeet.cpp inference",
     )
 
-    # whisper.cpp — ggml runtime for GGUF whisper-large-v3-turbo (TASK-507,
-    # engine WHISPER_CPP), via the maintained `pywhispercpp` binding.
+    # whisper.cpp — ggml runtime for GGUF whisper-large-v3-turbo
+    # (engine WHISPER_CPP), via the maintained `pywhispercpp` binding.
     whisper_cpp_library_path: str | None = Field(
         default=None,
         description="Optional path to a prebuilt libwhisper shared library (env WHISPER_CPP_LIBRARY_PATH)",
@@ -286,7 +286,7 @@ class Settings(BaseSettings):
     )
     vad_min_speech_duration_ms: int = Field(
         default=100,
-        description="Minimum speech segment length in ms (TASK-505: 100 so short clinical confirmations survive)",
+        description="Minimum speech segment length in ms (100 so short clinical confirmations survive)",
     )
     vad_min_silence_duration_ms: int = Field(
         default=500,
@@ -294,7 +294,7 @@ class Settings(BaseSettings):
     )
     vad_speech_pad_ms: int = Field(
         default=200,
-        description="Padding applied to both segment ends in ms (TASK-505: 200 per production ASR guidance)",
+        description="Padding applied to both segment ends in ms (200 per production ASR guidance)",
     )
     vad_sample_rate: int = Field(
         default=16000,
@@ -332,8 +332,8 @@ class Settings(BaseSettings):
         description=(
             "Speaker-embedding dimension — must match the deployed "
             "UserVoiceProfile.embedding vector(N) column. 256 = wespeaker "
-            "(current); 192 = ECAPA-TDNN (TASK-505 D1 cutover: apply the "
-            "vector(192) migration + re-enroll, see TASK-505 README Phase 4)"
+            "(current); 192 = ECAPA-TDNN (cutover requires applying the "
+            "vector(192) migration and re-enrolling)"
         ),
     )
 
@@ -436,7 +436,7 @@ class Settings(BaseSettings):
         ),
     )
 
-    # VAD segment merging (TASK-017)
+    # VAD segment merging
     segment_merge_gap_threshold_s: float = Field(
         default=2.0,
         description=(
@@ -521,7 +521,7 @@ class Settings(BaseSettings):
         default=3,
         description=(
             "Max attempts to persist the durable streaming transcript to the "
-            "gateway during finalize (TASK-456 C2-03). The transcript is the "
+            "gateway during finalize. The transcript is the "
             "clinical system of record AND the harness auto-draft trigger, so a "
             "transient gateway blip is retried rather than silently swallowed. "
             "The persist endpoint is idempotent, so retries never double-create "
@@ -531,8 +531,8 @@ class Settings(BaseSettings):
     streaming_transcript_persist_backoff_s: float = Field(
         default=0.5,
         description=(
-            "Base backoff (seconds) between durable-transcript persist retries "
-            "(TASK-456 C2-03); the delay scales with the attempt number. 0 "
+            "Base backoff (seconds) between durable-transcript persist retries; "
+            "the delay scales with the attempt number. 0 "
             "disables the wait (used in tests)."
         ),
     )
@@ -540,7 +540,7 @@ class Settings(BaseSettings):
         default=10,
         description=(
             "Max re-drive attempts for a transcript in the durable Redis outbox "
-            "(TASK-456 C2-03) before it is dropped with a loud alert. When the "
+            "before it is dropped with a loud alert. When the "
             "inline persist exhausts its retries on a TRANSIENT error the "
             "transcript is enqueued to a shared Redis outbox and re-driven by "
             "the reaper loop (any worker) with an idempotency key; a PERMANENT "
@@ -551,7 +551,7 @@ class Settings(BaseSettings):
         default=60.0,
         description=(
             "Max seconds finalize waits for the inference queue to drain before "
-            "building the transcript (TASK-456 C2-05). On timeout (e.g. GPU "
+            "building the transcript. On timeout (e.g. GPU "
             "backlog) the still-queued tail utterances are transcribed inline "
             "rather than dropped, so the last utterance is never lost."
         ),
@@ -568,7 +568,7 @@ class Settings(BaseSettings):
         default=10000,
         description=(
             "Approximate MAXLEN for Redis audio streams (per-session). "
-            "TASK-457 C3-06 — the SINGLE source of truth for the audio-stream "
+            "The SINGLE source of truth for the audio-stream "
             "bound: kept equal to the TS gateway bridge's XADD MAXLEN (the sole "
             "production writer of stt:audio). At ~30-80ms/frame this retains "
             "minutes of audio, comfortably ahead of the consumer group."
@@ -578,7 +578,7 @@ class Settings(BaseSettings):
         default=10000,
         description=(
             "Approximate MAXLEN for the per-session Redis result stream "
-            "(stt:result). TASK-457 C3-05 — bounds the stream DURING an active "
+            "(stt:result). Bounds the stream DURING an active "
             "session (previously unbounded until the post-close EXPIRE). High "
             "enough that a keeping-up bridge/consumer never misses a result; "
             "overflowed finals remain in the durable transcript."
@@ -588,7 +588,7 @@ class Settings(BaseSettings):
         default=30.0,
         description=(
             "Minimum interval (seconds) between XTRIM MINID calls on the "
-            "consumed portion of stt:audio:{session_id} (TASK-351 P1-3). "
+            "consumed portion of stt:audio:{session_id}. "
             "0 disables consumed-portion trimming (MAXLEN bound still applies)."
         ),
     )
@@ -596,7 +596,7 @@ class Settings(BaseSettings):
         default="",
         description=(
             "Pipe-separated extra regex alternates appended to the streaming "
-            "hallucination filler pattern (TASK-351 P2-1). Default empty — "
+            "hallucination filler pattern. Default empty — "
             "built-in English + Malayalam filler forms only."
         ),
     )
@@ -604,8 +604,8 @@ class Settings(BaseSettings):
         default=0.4,
         description=(
             "Max seconds a streaming FINAL waits for Cadence-Fast "
-            "punctuation before the raw text is published (TASK-351 P2-2; "
-            "0.3-0.5 s recommended). Applies only when the punctuation "
+            "punctuation before the raw text is published "
+            "(0.3-0.5 s recommended). Applies only when the punctuation "
             "model resolves to 'cadence-fast'."
         ),
     )
@@ -614,15 +614,14 @@ class Settings(BaseSettings):
         description=(
             "Tail window (seconds) of the current utterance decoded for "
             "PARTIAL transcripts. Bounds per-partial decode cost on long "
-            "utterances; finals always decode the full utterance "
-            "(TASK-351 P0-4 / C2)."
+            "utterances; finals always decode the full utterance."
         ),
     )
     streaming_partial_interval_s: float = Field(
         default=0.4,
         description=(
             "Minimum wall-clock interval (seconds) between successive PARTIAL "
-            "transcript emissions for a live utterance (TASK-471 A1). Lowered "
+            "transcript emissions for a live utterance. Lowered "
             "from the legacy hardcoded 1.0 s so newly-spoken words surface in "
             "near-real-time as a tentative tail; the LocalAgreement-2 commit "
             "policy still governs when a word is *committed* (unchanged). The "
@@ -632,7 +631,7 @@ class Settings(BaseSettings):
         ),
     )
     # -------------------------------------------------------------------------
-    # Semantic endpointing (TASK-473 A3) — content-driven end-of-utterance.
+    # Semantic endpointing — content-driven end-of-utterance.
     # The Settings class has NO env_prefix, so these are the bare uppercased
     # env names (e.g. SEMANTIC_ENDPOINT_ENABLED), NOT STT_V2_*.
     # -------------------------------------------------------------------------
@@ -640,9 +639,9 @@ class Settings(BaseSettings):
         default=False,
         description=(
             "Enable content-driven semantic end-of-utterance detection on the "
-            "streaming hot path (TASK-473 A3). Default OFF — the preprocessor "
+            "streaming hot path. Default OFF — the preprocessor "
             "keeps the fixed Silero-VAD silence offset until this is enabled and "
-            "measured on the TASK-470 scorecard. Env: SEMANTIC_ENDPOINT_ENABLED."
+            "measured against the accuracy/latency scorecard. Env: SEMANTIC_ENDPOINT_ENABLED."
         ),
     )
     semantic_endpoint_min_silence_ms: int = Field(
@@ -758,15 +757,15 @@ class Settings(BaseSettings):
             "transformers/cadence combination that is known to load the "
             "model — e.g. an Indic ASR path whose engine does not "
             "self-punctuate, running transformers <5 in a dedicated "
-            "environment — or with the direct-load 'cadence-fast' option "
-            "(TASK-351 P2-2), which works under the pinned transformers 5.x."
+            "environment — or with the direct-load 'cadence-fast' option, "
+            "which works under the pinned transformers 5.x."
         ),
     )
     punctuation_model_name: str = Field(
         default="Cadence",
         description="Default punctuation model: 'Cadence' (1B) or 'Cadence-Fast' "
         "(270M) via the cadence-punctuation wrapper, or 'cadence-fast' for the "
-        "direct transformers load (TASK-351 P2-2; works under transformers 5.x). "
+        "direct transformers load (works under transformers 5.x). "
         "Can be overridden per-pipeline via YAML.",
     )
     punctuation_model_cache_dir: str | None = Field(

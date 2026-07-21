@@ -68,7 +68,7 @@ const LEGACY_KEYS = {
  *
  * Pipeline resolution chain:
  * 1. Per-user admin override (UserSettings, namespace='arcaai-admin', key='assigned-pipeline')
- * 2. Tenant default pipeline (AsrPipeline.isDefault) — TASK-331 doc-03 Q2
+ * 2. Tenant default pipeline (AsrPipeline.isDefault)
  * 3. Tenant-wide default (GlobalSettings, key='default-stt-pipeline')
  */
 @Injectable()
@@ -87,7 +87,7 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
      */
     @Optional() private readonly voiceProfileRepository?: UserVoiceProfileRepository,
     /**
-     * TASK-356 Phase 4 (A8/A10) — the tenant-scoped frontend config carries the
+     * The tenant-scoped frontend config carries the
      * default transcription mode + lock. Optional for the same test-construction
      * reason as `voiceProfileRepository`; provided in production via
      * `CoreDatabaseModule` (already imported by `UserPreferencesServiceModule`).
@@ -112,7 +112,7 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
 
     const response: UserPreferencesResponse = {
       updatedAt: new Date().toISOString(),
-      // TASK-356 Phase 4 (A8) — back-compat defaults (BACKEND / unlocked). The
+      // Back-compat defaults (BACKEND / unlocked). The
       // effective values are resolved below and overwrite these; initializing
       // here keeps the response valid even if resolution is ever short-circuited.
       transcriptionMode: 'BACKEND',
@@ -181,7 +181,7 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
     // Resolve read-only remoteConfig from admin settings
     response.remoteConfig = await this.resolveRemoteConfig(userId);
 
-    // TASK-356 Phase 4 (A8) — resolve the EFFECTIVE transcription mode + lock
+    // Resolve the EFFECTIVE transcription mode + lock
     // server-side (mirrors the remoteConfig cascade). Uses the workflowMode
     // already aggregated above.
     const effectiveMode = await this.resolveEffectiveTranscriptionMode(response.workflowMode);
@@ -197,7 +197,7 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
   /**
    * Resolve the EFFECTIVE transcription mode + lock for the current user/tenant.
    *
-   * Precedence (server-authoritative, TASK-356 §6 / D-8):
+   * Precedence (server-authoritative):
    *   1. tenant `transcriptionModeLocked` → tenant `transcriptionMode` wins; the
    *      doctor's `workflowMode` is ignored.
    *   2. unlocked + the doctor set `workflowMode` → `'local'`→LOCAL, `'remote'`→BACKEND.
@@ -302,7 +302,7 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
    *
    * Resolution order:
    *   1. Per-user admin override (UserSettings 'arcaai-admin'/'assigned-pipeline')
-   *   2. Tenant's default pipeline (AsrPipeline.isDefault) — TASK-331 doc-03 Q2:
+   *   2. Tenant's default pipeline (AsrPipeline.isDefault):
    *      admins control the per-tenant backend default, which supersedes the
    *      GlobalSetting slug default below.
    *   3. Tenant-wide GlobalSetting default ('default-stt-pipeline').

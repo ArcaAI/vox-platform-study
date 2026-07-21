@@ -33,11 +33,11 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
     private readonly pipelineRepository: AsrPipelineRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // TASK-369 Phase 3C — optional + trailing so existing positional fixtures
+    // Optional + trailing so existing positional fixtures
     // keep their arity; when wired, the completed job's resultText/resultMetadata
     // are encrypted before persist (dual-write soak).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // TASK-392 (Phase 3, M2) — optional (append-only DI); enforces the plan
+    // Optional (append-only DI); enforces the plan
     // `monthlyTranscriptionMinutes` meter on submit (kill-switch-gated, → 429
     // once the tenant has consumed its rolling-monthly minutes).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
@@ -48,7 +48,7 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
   private readonly logger = new Logger(TranscriptionJobService.name);
 
   /**
-   * TASK-369 — encrypt PHI on write through the shared env-gated guard: a soft
+   * Encrypt PHI on write through the shared env-gated guard: a soft
    * no-op in dev/test (SECRETS_PROVIDER!=vault) but FAIL-CLOSED (throws) in
    * staging/prod (SECRETS_PROVIDER=vault) instead of persisting plaintext-only.
    */
@@ -78,9 +78,9 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
       throw new BadRequestException('Media ID is required for batch transcription jobs');
     }
 
-    // TASK-392 (Phase 3, M2) — block a new transcription submit once the tenant
+    // Block a new transcription submit once the tenant
     // has consumed its rolling-monthly transcription-minutes allowance.
-    // Kill-switch-gated (Q9); → 429 when at/over the cap.
+    // Kill-switch-gated; → 429 when at/over the cap.
     await this.entitlements?.assertMeterQuota(tenantId, 'monthlyTranscriptionMinutes');
 
     const job = TranscriptionJobFactory.CreateTranscriptionJob({
@@ -155,7 +155,7 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
   /**
    * Get jobs by consultation.
    *
-   * TASK-307 W3.8 (AC-12) — defense-in-depth: the TASK-305 Prisma
+   * Defense-in-depth: the Prisma
    * `tenantScopeFilter` extension already auto-applies `tenantId` for
    * any caller bound to a tenant, but super-admins bypass that extension
    * by design. Explicitly anchor the tenant filter at the service layer
@@ -176,7 +176,7 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
   }
 
   /**
-   * EU-02 (TASK-336) — owner-scoped variant of {@link getByConsultation} for
+   * EU-02 — owner-scoped variant of {@link getByConsultation} for
    * the end-user surface. In addition to the tenant filter, it restricts the
    * result to the caller's OWN jobs (`createdBy`), so a same-tenant peer cannot
    * read another user's transcription jobs by guessing a consultation id. The
@@ -240,7 +240,7 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
   }
 
   /**
-   * TASK-319 F3 — owner-scoped variant of {@link list}. Returns only the jobs
+   * Owner-scoped variant of {@link list}. Returns only the jobs
    * the given user created (`createdBy`). Used by the end-user
    * `/audio/transcription-jobs` surface so a caller never sees other users'
    * jobs in their tenant.
@@ -267,7 +267,7 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
   }
 
   /**
-   * TASK-319 F3 — owner-scoped variant of {@link getByStatus}.
+   * Owner-scoped variant of {@link getByStatus}.
    */
   async getByStatusForOwner(ownerId: string, status: TranscriptionJobStatus): Promise<TranscriptionJobResponse[]> {
     const tenantId = this.tenantId;
@@ -284,7 +284,7 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
   }
 
   /**
-   * TASK-319 F3 — owner-scoped variant of {@link getStatusCounts}.
+   * Owner-scoped variant of {@link getStatusCounts}.
    */
   async getStatusCountsForOwner(ownerId: string): Promise<TranscriptionJobStatusCountResponse> {
     const tenantId = this.tenantId;
@@ -392,7 +392,7 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
 
     job.complete(resultText, resultMetadata);
 
-    // TASK-369 Phase 3C — encrypt resultText/resultMetadata into the ciphertext
+    // Encrypt resultText/resultMetadata into the ciphertext
     // columns before the completing persist (dual-write; plaintext kept for soak).
     await this.encryptBestEffort('TranscriptionJob', () =>
       this.jobRepository.encryptFieldsIntoEntity(job, this.secretsService!),
@@ -475,7 +475,7 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
   }
 
   /**
-   * EU-01 (TASK-336) — creator-scoped cancel for the end-user surface.
+   * EU-01 — creator-scoped cancel for the end-user surface.
    *
    * The plain {@link cancelJob} stays tenant-scoped for internal/admin use.
    * This variant additionally requires the caller to be the job's `createdBy`,
@@ -491,7 +491,7 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
   }
 
   /**
-   * EU-01 (TASK-336) — creator-scoped retry (mirrors {@link cancelJobForOwner}).
+   * EU-01 — creator-scoped retry (mirrors {@link cancelJobForOwner}).
    */
   async retryJobForOwner(ownerId: string, id: string): Promise<TranscriptionJobResponse> {
     await this.assertCreatedBy(id, ownerId);
@@ -500,8 +500,8 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
 
   /**
    * Assert the job exists AND was created by `ownerId`. Both "not found" and
-   * "not yours" collapse to the same `NotFoundException` (DEF-C3: no existence
-   * leak between same-tenant peers).
+   * "not yours" collapse to the same `NotFoundException` — no existence
+   * leak between same-tenant peers.
    */
   private async assertCreatedBy(id: string, ownerId: string): Promise<void> {
     const job = await this.jobRepository.findById(id);

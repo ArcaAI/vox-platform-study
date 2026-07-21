@@ -1,4 +1,4 @@
-// TASK-302 Phase 5 Task 5.7 (Stream B) — VaultLeaseRenewer.
+// VaultLeaseRenewer.
 //
 // Verifies:
 //   - First renewal is scheduled at 50% of the initial TTL.

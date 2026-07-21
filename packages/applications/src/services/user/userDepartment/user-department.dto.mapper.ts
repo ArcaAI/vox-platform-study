@@ -2,7 +2,7 @@ import { UserDepartmentEntity } from '@arcaai/domains';
 import { UserDepartmentResponse } from './dto';
 
 export class UserDepartmentDtoMapper {
-  // TASK-424 — the optional `department` arg carries the human-readable label
+  // The optional `department` arg carries the human-readable label
   // data (name/code) resolved by the caller; when provided its non-null values
   // are surfaced so the admin console renders names instead of raw UUIDs.
   static toResponse(entity: UserDepartmentEntity, department?: { name?: string | null; code?: string | null }): UserDepartmentResponse {

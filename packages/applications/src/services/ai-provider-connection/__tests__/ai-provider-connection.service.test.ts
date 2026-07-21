@@ -1,5 +1,5 @@
 /**
- * AiProviderConnectionService (TASK-524) — unit tests (§5 tests 1–5).
+ * AiProviderConnectionService — unit tests (§5 tests 1–5).
  *
  * Mirrors the `ai-task-default` / `tenant-tts-config` test style: repositories,
  * EventEmitter2, ClsService and the Vault SecretsService are mocked.
@@ -179,7 +179,7 @@ describe('AiProviderConnectionService — secret containment (§5 test 3)', () =
     await expect(svc.upsertRow('azure', { enabled: true, apiKey: 'sk-live' }, TENANT)).rejects.toThrow(/Vault/i);
   });
 
-  // ── TASK-534 e2e G3 — precondition verdicts come BEFORE any Vault call ────
+  // ── Precondition verdicts come BEFORE any Vault call ────
 
   it('G3: a stale expectedVersion on an ABSENT row 412s without ever calling Transit (even with an apiKey in the body)', async () => {
     const { svc, secrets } = makeService();
@@ -190,8 +190,8 @@ describe('AiProviderConnectionService — secret containment (§5 test 3)', () =
   });
 
   it('G2: expectedVersion 0 (create-intent) against an EXISTING row at version >= 1 is STALE → 412', async () => {
-    // With `If-Match: "0"` now accepted by the gateway parser (TASK-534 G2
-    // owner decision), the service CAS is the line of defense: 0 only means
+    // With `If-Match: "0"` accepted by the gateway parser (G2
+    // decision), the service CAS is the line of defense: 0 only means
     // "create" when no row exists; against a materialized row it is drift.
     const { svc, repo } = makeService();
     repo.findByTenantAndProvider.mockResolvedValue(makeRow()); // factory rows start at version 1

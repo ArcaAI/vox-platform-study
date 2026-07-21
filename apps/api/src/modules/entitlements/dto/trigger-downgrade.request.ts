@@ -3,7 +3,7 @@ import { IsEnum } from 'class-validator';
 import { TenantPlan } from '@arcaai/domains';
 
 /**
- * TASK-392 (Q10) — explicitly downgrade a tenant's plan. The plan change always
+ * Explicitly downgrade a tenant's plan. The plan change always
  * applies; the newest-first soft-disable of overflow resources runs only when
  * the enforcement kill-switch is ON (a reversible `DISABLED` flip, never a
  * delete). GLOBAL_ADMIN-only at the route.

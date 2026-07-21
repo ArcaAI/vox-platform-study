@@ -95,7 +95,7 @@ export const EmbeddedFixedHeight: Story = {
 };
 
 /**
- * TASK-443 — grouped rows: non-interactive group-header rows (label + count)
+ * Grouped rows: non-interactive group-header rows (label + count)
  * between contiguous groups of the page. Data is pre-sorted by the group field
  * (the server's job on manual grids) so groups are contiguous.
  */

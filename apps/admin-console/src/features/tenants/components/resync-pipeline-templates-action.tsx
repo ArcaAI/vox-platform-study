@@ -11,7 +11,7 @@ import { useResyncTenantPipelineTemplates } from '../api/hooks';
 import type { Tenant } from '../api/types';
 
 /**
- * TASK-531 (GAP-T3) — "Resync pipeline templates" on the tenant detail header.
+ * "Resync pipeline templates" on the tenant detail header.
  *
  * Reconciles the tenant's ASR pipeline catalog against the 9 SYSTEM templates:
  * templates the tenant never received are cloned in, and pristine locked copies

@@ -1,5 +1,5 @@
 /**
- * MyTenantController.updateMyConfig — BUG-005 Issue 2 defense-in-depth.
+ * MyTenantController.updateMyConfig — defense-in-depth authorization test.
  *
  * PATCH /tenant/me/config was previously bare `@Authorize()` (auth-only) —
  * any authenticated tenant member, including a real end-user or an

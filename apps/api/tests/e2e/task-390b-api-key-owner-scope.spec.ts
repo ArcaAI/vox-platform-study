@@ -1,5 +1,5 @@
 /**
- * TASK-390 follow-up (§3.2) — api-key OWNER-SCOPE enforcement (backend contract).
+ * Api-key OWNER-SCOPE enforcement (backend contract).
  *
  * Real HTTP round-trips against the live API (`pnpm test:e2e`, or a dev stack via
  * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8868/api/v1`).

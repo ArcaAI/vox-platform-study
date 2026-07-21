@@ -17,7 +17,7 @@ export class UserProfileResponse extends BaseResponse {
   @ApiProperty({ description: 'Avatar media ID', required: false })
   avatarId?: string;
 
-  @ApiProperty({ description: 'Preferred backend prompt template ID (TASK-328 A1–A3)', required: false })
+  @ApiProperty({ description: 'Preferred backend prompt template ID', required: false })
   preferredPromptTemplateId?: string;
 
   @ApiProperty({ description: 'ID of the associated user' })

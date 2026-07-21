@@ -7,7 +7,7 @@ import { IActiveUserContext } from '../../interfaces';
 import { IBlobStorageService } from '../baseServices/storage/IBlobStorageService';
 import { IS3Service } from '../baseServices/storage/s3/IS3Service';
 import { ITenantBucketService } from './ITenantBucketService';
-// TASK-497 D4 — plan-tier storageQuotaBytes matrix (STARTER default etc.).
+// Plan-tier storageQuotaBytes matrix (STARTER default etc.).
 // Imported directly (not IEntitlementsService) since bucket provisioning runs
 // before any per-tenant TenantEntitlement override can exist, so the seeded
 // per-plan default IS the resolved value at tenant-creation time.
@@ -52,7 +52,7 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
   }
 
   async listBuckets(options?: { includeDisabled?: boolean }): Promise<TenantBucketResponse[]> {
-    // TASK-430 — an unscoped GLOBAL_ADMIN (no working tenant selected) lists
+    // An unscoped GLOBAL_ADMIN (no working tenant selected) lists
     // buckets CROSS-TENANT; every other caller keeps the strict tenant
     // requirement.
     const tenantId = this.tenantId;
@@ -297,7 +297,7 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
   }
 
   /**
-   * TASK-497 D4 — writes the plan's `storageQuotaBytes` onto the tenant's
+   * Writes the plan's `storageQuotaBytes` onto the tenant's
    * primary (AUDIO) system bucket as `TenantBucket.quotaBytes`, so
    * `getUsageStats`'s `SUM(TenantBucket.quotaBytes)` reflects the plan's
    * capacity. Best-effort/idempotent: a `null` plan (ungated/system tenant),
@@ -378,7 +378,7 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
    * to, so registration is skipped and `null` is returned — the S3 bucket is
    * still created by the caller, it just isn't a tenant-owned managed resource.
    * This keeps `POST /storage/buckets` succeeding for platform admins while the
-   * tenant-owned management routes stay 404 for non-tenant callers (W3.2).
+   * tenant-owned management routes stay 404 for non-tenant callers.
    */
   async registerBucket(name: string, description?: string): Promise<TenantBucketResponse | null> {
     const tenantId = this.tenantId;
@@ -555,7 +555,7 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
   }
 
   /**
-   * TASK-426 — seeded/system bucket rows can predate the physical bucket (the
+   * Seeded/system bucket rows can predate the physical bucket (the
    * DB seed provisions rows only and defers provider buckets to "the storage
    * flow"). Ensure the provider-side bucket exists before a data-plane call so
    * a freshly-seeded bucket lists as empty instead of failing with

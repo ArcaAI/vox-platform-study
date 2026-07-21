@@ -53,7 +53,7 @@ export function useDeletePipeline() {
     return useMutation({ mutationFn: (id: string) => deletePipeline(id), onSuccess: invalidate });
 }
 
-/** TASK-531 — clone a pipeline (the customization path for locked copies). */
+/** Clone a pipeline (the customization path for locked copies). */
 export function useClonePipeline() {
     const invalidate = useInvalidatePipelines();
     return useMutation({

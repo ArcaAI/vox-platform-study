@@ -313,8 +313,8 @@ Gate: `pnpm build:api` + `pnpm test:unit`; boot-time route audit passes (every r
 | 11 | (same file) | Secret-sensitivity key → 400; unknown key → 400; unwritable tier → 400; successful PUT persists GlobalSetting row + sys-event + `forceRefresh` |
 | 12 | `packages/applications/src/services/settings-registry/__tests__/effective-settings.service.test.ts` (UPDATE) | `agentic.context.liveDelta.maxChars` with a DB override → `{value: <db>, sourceScope: 'global-kv'}`; without → `'code-default'` (replaces the stub assertions) |
 | 13 | (same file / registry test) | Boot guard: module init with a default-ON `killSwitch` descriptor throws (registry `killSwitches()` invariant now boot-enforced) |
-| 14 | `apps/api/src/modules/ai-provider-connection/__tests__/ai-provider-connection.controller.test.ts` | PATCH without `If-Match` → 428; version drift → 412 (`OptimisticConcurrencyException` mapped); by-id from another tenant → 404 |
-| 15 | `apps/api/src/modules/ai-runtime-profile/__tests__/ai-runtime-profile.controller.test.ts` | Same OCC 428/412 chain; undeclared DTO field → 400 (`forbidNonWhitelisted`) |
+| 14 | `apps/api/tests/e2e/task-524-config-plane.spec.ts` (controller OCC folded into the authored e2e spec — no standalone controller unit test) | PATCH without `If-Match` → 428; version drift → 412 (`OptimisticConcurrencyException` mapped); by-id from another tenant → 404 |
+| 15 | (same e2e spec) | Same OCC 428/412 chain; undeclared DTO field → 400 (`forbidNonWhitelisted`) |
 | 16 | `apps/api/src/modules/streaming/__tests__/` (extend existing smr-proxy tests) | Body with caller-set `temperature` keeps it; absent → resolved profile value injected; no profile → body unchanged |
 | 17 | `apps/api/src/modules/ai-inference/__tests__/` (extend) | Profile injection fail-open: resolver throwing ⇒ request still forwarded with `model_name` only |
 | 18 | `packages/database/src/prisma/db_main/seed/__tests__/task-524-config-plane.test.ts` | Seed rows: 8 SYSTEM connections, all `enabled: false`, no `encryptedApiKey`, provider set matches `AI_MODEL_PROVIDERS`; profile seed empty; SYSTEM ownership |

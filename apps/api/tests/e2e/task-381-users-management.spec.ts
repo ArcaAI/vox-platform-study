@@ -1,5 +1,5 @@
 /**
- * TASK-381 — Users Management (20u grid + 38u detail) · backend contract E2E.
+ * Users Management (20u grid + 38u detail) · backend contract E2E.
  *
  * Proves the **REAL** server flows the Users surface depends on, against a live
  * seeded API (`process.env.API_URL`, default `http://localhost:8868`). Scope =
@@ -229,7 +229,7 @@ test.describe('TASK-381 — Users Management (backend contract)', () => {
     test('U2 · POST /admin/users creates a user (minimal identity payload)', async ({ request }) => {
       username = uniqueUsername();
       // This case exercises the minimal identity-only create. The optional
-      // `email` field (TASK-381 §V1) is now whitelisted on CreateUserRequest and
+      // `email` field is whitelisted on CreateUserRequest and
       // upserted onto the user profile — verified end-to-end in the
       // "V1/V2 — gap fixes" block below.
       const res = await authPost(request, saGlobalToken, '/api/v1/admin/users', {

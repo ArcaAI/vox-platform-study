@@ -1,10 +1,10 @@
-"""TASK-529 §5 / TASK-530 §5.1 — the cache-contract conformance suite.
+"""The cache-contract conformance suite.
 
-Every clause of the AD-4 contract (README "Contract") is one test here. The same
-suite is re-instantiated per adopting service against its own wiring, so a
-service that composes the shared cache proves the same guarantees.
+Every clause of the shared cache contract (README "Contract") is one test here.
+The same suite is re-instantiated per adopting service against its own wiring,
+so a service that composes the shared cache proves the same guarantees.
 
-TASK-530 (R1) added a second concurrency skin — `SyncModelCache` — for consumers
+A second concurrency skin — `SyncModelCache` — exists for consumers
 that are genuinely synchronous (the harness MiniCheck entailer). Policy is
 shared; only the concurrency primitive differs. Every policy clause below is
 therefore parameterized over BOTH cache classes, so the two cannot drift.
@@ -652,10 +652,10 @@ async def test_unload_failure_never_fails_the_caller(kind: str) -> None:
     assert cache.cached_keys() == []
 
 
-# ── 8b. R4 — every eviction path releases the weights, exactly once ──────────
+# ── every eviction path releases the weights, exactly once ──────────────────
 
-#: The six ways an entry can leave either cache. TASK-529's TDD caught TWO real
-#: defects here (lru-overflow and lazy-TTL evicted WITHOUT calling `unload`, so
+#: The six ways an entry can leave either cache. TDD here caught TWO real
+#: defects (lru-overflow and lazy-TTL evicted WITHOUT calling `unload`, so
 #: the weights were never freed and the byte budget silently stopped meaning
 #: anything). This clause generalizes those spot fixes: a future eviction path
 #: cannot regress the guarantee by construction.

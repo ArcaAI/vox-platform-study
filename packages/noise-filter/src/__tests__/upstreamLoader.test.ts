@@ -1,6 +1,4 @@
 /**
- * TASK-269 — CRIT-3
- *
  * Verifies that the package uses the official `@jitsi/rnnoise-wasm`
  * loader (`createRNNWasmModule`) rather than a hand-rolled
  * `WebAssembly.instantiate` with the wrong import object.

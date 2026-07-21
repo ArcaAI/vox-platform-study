@@ -1,4 +1,4 @@
-"""SessionManager ↔ semantic-endpointer wiring (TASK-473 · Theme A3).
+"""SessionManager ↔ semantic-endpointer wiring.
 
 Proves the endpointer is built + threaded per session, gated OFF by default, and
 overridable per pipeline — mirroring the ``_make_commit_policy`` gating.

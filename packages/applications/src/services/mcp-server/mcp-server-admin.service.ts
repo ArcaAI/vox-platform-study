@@ -23,7 +23,7 @@ import { CreateMcpServerRequest, McpServerListResponse, McpServerResponse, Updat
  *
  * SECURITY: no secret material ever enters the DB or a response. `authRef` is a
  * Vault PATH only (the DTO validates it path-like); the credential lives in
- * Vault via the TASK-504 secrets flow and is never echoed.
+ * Vault and is never echoed.
  */
 @Injectable()
 export class McpServerAdminService extends BaseService implements IMcpServerAdminService {

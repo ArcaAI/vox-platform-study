@@ -103,7 +103,7 @@ interface DataFlowConfig {
  */
 /**
  * Listener triplet held per registered pipeline so `unregister`/`destroy`
- * can deterministically remove them from the pipeline's emitter (TASK-273 L-7).
+ * can deterministically remove them from the pipeline's emitter.
  */
 interface RegisteredListeners {
   stateChange: (state: PipelineState) => void;
@@ -117,7 +117,7 @@ export class PipelineOrchestrator {
   /**
    * Last successful execute() result per pipeline name. Captured so
    * `handlePipelineCompleted` can pass the actual value to a downstream
-   * `autoExecute` target (TASK-273 H-4).
+   * `autoExecute` target.
    */
   private pipelineResults: Map<string, unknown> = new Map();
   private dataFlows: DataFlowConfig[] = [];
@@ -151,7 +151,7 @@ export class PipelineOrchestrator {
    *
    * Listener references are stored so `unregister`/`destroy` can remove
    * them from the pipeline's emitter — without this bookkeeping, repeated
-   * register/unregister cycles leak listeners (TASK-273 L-7).
+   * register/unregister cycles leak listeners.
    */
   register<TInput, TOutput>(name: string, pipeline: IPipeline<TInput, TOutput>): void {
     if (this.pipelines.has(name)) {
@@ -296,10 +296,9 @@ export class PipelineOrchestrator {
   /**
    * Execute a specific pipeline. Successful results are captured per-pipeline
    * so that connected targets configured with `autoExecute` can be invoked
-   * with the actual produced value (TASK-273 H-4). Data flows are fired
-   * after the result is captured, not from the source pipeline's `Completed`
-   * event (which fires before this method has the chance to store the
-   * resolved value).
+   * with the actual produced value. Data flows are fired after the result
+   * is captured, not from the source pipeline's `Completed` event (which
+   * fires before this method has the chance to store the resolved value).
    */
   async execute<TInput, TOutput>(pipelineName: string, input: TInput, context?: Partial<PipelineContext>): Promise<TOutput> {
     const pipeline = this.pipelines.get(pipelineName);
@@ -329,7 +328,7 @@ export class PipelineOrchestrator {
   /**
    * Emit `DataFlow` events for every flow rooted at `pipelineName`, and
    * for those configured with `autoExecute`, run the target pipeline with
-   * the (optionally transformed) source result. (TASK-273 H-4)
+   * the (optionally transformed) source result.
    */
   private fireDataFlows(pipelineName: string): void {
     const flows = this.dataFlows.filter((flow) => flow.source === pipelineName);
@@ -429,7 +428,7 @@ export class PipelineOrchestrator {
   /**
    * Destroy all pipelines and the orchestrator. Listener references stored
    * during `register` are removed first so we never leave handlers attached
-   * to a long-lived pipeline emitter (TASK-273 L-7).
+   * to a long-lived pipeline emitter.
    */
   async destroy(): Promise<void> {
     this.logger?.info('Destroying orchestrator');
@@ -503,8 +502,7 @@ export class PipelineOrchestrator {
   /**
    * Reserved for completion side-effects on the orchestrator state. Data
    * flow / autoExecute is handled by `fireDataFlows` from `execute()` so
-   * the source result is guaranteed to have been captured first
-   * (TASK-273 H-4).
+   * the source result is guaranteed to have been captured first.
    */
   private handlePipelineCompleted(_pipelineName: string, _payload: PipelineEventMap[PipelineEvent.Completed]): void {
     // No-op today — kept for symmetry and future hook points.

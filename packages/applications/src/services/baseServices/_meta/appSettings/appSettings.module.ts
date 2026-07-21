@@ -6,7 +6,7 @@ import { IAppSettingsService } from './IAppSettingsService';
 @Global()
 @Module({})
 export class AppSettingsModule {
-  // TASK-401 — memoize the DynamicModule. `forRoot()` is called from more
+  // Memoize the DynamicModule. `forRoot()` is called from more
   // than one place (CommonServiceModule directly + S3ServiceModule.forRoot()).
   // Each call used to return a NEW object, which Nest treats as a distinct
   // module: two AppSettingsService instances booted, both registered the

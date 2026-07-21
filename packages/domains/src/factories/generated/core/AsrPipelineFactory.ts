@@ -14,7 +14,7 @@ export interface CreateAsrPipelineProps extends BaseEntityFactoryCreateProps {
   configYaml: IAsrPipelineEntity['configYaml'];
   tenantId: IAsrPipelineEntity['tenantId'];
   tags?: IAsrPipelineEntity['tags'];
-  // TASK-531 — template lineage, set at construction by the two paths that
+  // Template lineage, set at construction by the two paths that
   // produce template copies: tenant provisioning and the resync reconciler.
   // Omitted everywhere else, so a hand-created pipeline is unlocked with no
   // provenance (the DB defaults). `isDefault` stays out of this props bag on

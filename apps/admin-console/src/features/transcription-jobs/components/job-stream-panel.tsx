@@ -73,7 +73,7 @@ function JobDetail({ job }: { job: TranscriptionJob }) {
 /**
  * Frame 35 right panel — selected job detail plus the live SSE feed
  * (ticket-authenticated EventSource straight to the gateway; the route
- * declares `@StreamScope transcription_job` since TASK-419). The stream is
+ * declares `@StreamScope transcription_job`). The stream is
  * the primary live transport; if it exhausts its retry budget the detail
  * query re-polls every 5 s as the documented error fallback until the job
  * settles or the stream is reconnected.

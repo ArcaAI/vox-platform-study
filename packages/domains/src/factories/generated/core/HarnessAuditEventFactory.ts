@@ -18,7 +18,7 @@ export interface CreateHarnessAuditEventProps extends BaseEntityFactoryCreatePro
   promptVersion?: IHarnessAuditEventEntity['promptVersion'];
   sensorScores: IHarnessAuditEventEntity['sensorScores'];
   citations: IHarnessAuditEventEntity['citations'];
-  // TASK-369 Phase 3D — when supplied (by the service, after Vault-Transit
+  // When supplied (by the service, after Vault-Transit
   // encryption), the `hash` is derived over THIS ciphertext (encrypt-before-hash)
   // and the plaintext sensorScores/citations are replaced with a redaction
   // sentinel before persistence. Omitted ⇒ legacy plaintext row (hash over JSON).

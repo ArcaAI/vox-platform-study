@@ -1,5 +1,5 @@
 /**
- * TASK-398 (P1-7) — export enrichment read-model.
+ * Export enrichment read-model.
  *
  * `UserService.getExportEnrichment(userIds, tenantId?)` batch-resolves, for the
  * whole export set, the profile `email` + active department NAMES so the users
@@ -34,7 +34,7 @@ const mockDatabaseService = {
     userDepartment: { findMany: departmentFindMany },
   },
 };
-// TASK-402 — constructor now takes crypto + appSettings (unused by enrichment).
+// Constructor now takes crypto + appSettings (unused by enrichment).
 const mockCryptoService = { hash: vi.fn(), verify: vi.fn() };
 const mockAppSettings = { getValueWithDefault: vi.fn(<T,>(_key: string, defaultValue: T): T => defaultValue) };
 

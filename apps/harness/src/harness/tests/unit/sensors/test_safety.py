@@ -1,4 +1,4 @@
-"""Safety inferential-sensor tests (RED-first, TASK-330 Phase 2).
+"""Safety inferential-sensor tests.
 
 The safety sensor screens the generated note through the constructor-injected
 Granite Guardian client (the shared ``judge`` is accepted for a uniform call site

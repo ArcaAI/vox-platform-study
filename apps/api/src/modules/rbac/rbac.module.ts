@@ -19,13 +19,12 @@ import { PermissionCheckController } from './permission-check.controller';
  * - POST /rbac/check/bulk - Check multiple permissions
  * - POST /rbac/check/my-permissions - Get current user's permissions
  *
- * TASK-307 W6.2 / W6.3 — `PolicyServiceModule` + `RbacRoleServiceModule`
+ * `PolicyServiceModule` + `RbacRoleServiceModule`
  * are wired so `PoliciesController` and `RolesController` can drop their
- * direct `CoreDatabaseService` dependency (closes audit C-10 / F-1 /
- * H-9).
+ * direct `CoreDatabaseService` dependency.
  */
 @Module({
-  // TASK-444 — `UserRoleAssignmentServiceModule` backs the new
+  // `UserRoleAssignmentServiceModule` backs the new
   // `GET admin/rbac/roles/:id/members` listing on `RolesController`.
   imports: [CoreDatabaseModule, PolicyServiceModule, RbacRoleServiceModule, UserRoleAssignmentServiceModule],
   controllers: [RolesController, PoliciesController, PermissionCheckController],

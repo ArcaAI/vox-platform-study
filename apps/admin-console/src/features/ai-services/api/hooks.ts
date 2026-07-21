@@ -18,7 +18,7 @@ export function useNlpStatus() {
 }
 
 /**
- * Tenant-scoped read from a (global)-tier screen (the M-01 sub-pattern) —
+ * Tenant-scoped read from a (global)-tier screen —
  * `enabled` keeps the query parked until a working tenant is known, so an
  * elevated session without one never fires a request that can only 400.
  */

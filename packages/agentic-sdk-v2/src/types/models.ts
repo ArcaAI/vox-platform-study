@@ -32,14 +32,14 @@ export interface ModelRegistryState {
  * - `'translate'` — translate the source audio to English (multilingual
  *   checkpoints only; English-only `.en` models reject this upstream).
  *
- * @see TASK-329 P3
+ * @see the STT models module for background.
  */
 export type SttTask = 'transcribe' | 'translate';
 
 /**
  * Selected models by type.
  *
- * TASK-329 P3 — `sttTask` persists the user's chosen Whisper task alongside the
+ * `sttTask` persists the user's chosen Whisper task alongside the
  * selected STT model in the SAME tenant/user-namespaced row, so a user's local
  * transcribe/translate choice survives reload.
  */
@@ -132,7 +132,7 @@ export const DEFAULT_STT_MODELS: ModelDefinition[] = [
 ];
 
 /**
- * TASK-329 P3 — display metadata for the browser-viable STT models. Co-located
+ * Display metadata for the browser-viable STT models. Co-located
  * with `DEFAULT_STT_MODELS` so the presented list and the loadable list share
  * one source of truth (the previous drift advertised `whisper-medium` in the
  * registry while the config default only ever offered tiny/base/small).
@@ -158,7 +158,7 @@ export interface AvailableSttModel {
  *
  * `ConfigSchema.SttConfigSchema.availableModels` defaults to this so the
  * "presented" set can never drift from the registry-"selectable/loadable" set
- * again (TASK-329 P3 single-source-of-truth fix).
+ * again (single-source-of-truth).
  */
 export const DEFAULT_AVAILABLE_STT_MODELS: AvailableSttModel[] = DEFAULT_STT_MODELS.map((model) => ({
   id: model.id,

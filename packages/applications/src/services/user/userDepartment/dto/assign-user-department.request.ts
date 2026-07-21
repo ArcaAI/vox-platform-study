@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsOptional, IsString } from 'class-validator';
 
 /**
- * Assign a user to a department (TASK-328 A1).
+ * Assign a user to a department.
  *
  * `userId` is taken from the `/admin/users/:id/departments` route param,
  * NOT the body, so it cannot be spoofed. The active tenant is sourced from

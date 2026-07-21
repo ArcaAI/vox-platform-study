@@ -1,12 +1,12 @@
 /**
- * useArcaAudio — TASK-464 SDK audio-drop surfacing.
+ * useArcaAudio — SDK audio-drop surfacing.
  *
  * The streaming STT provider counts backpressure drops, but on the SDK path the
  * count dead-ends. These tests lock the hook's role in the push chain:
  *   - it registers `onAudioDrop` in the plugin callbacks and, on each drop,
  *     latches the loss (`markAudioLost`) and bumps the count (`incrementDroppedFrames`);
  *   - it exposes `droppedFrameCount` + `audioLostThisSession` from the store;
- *   - it resets the signal on start AND stop (session-sticky latch, mirrors TASK-454).
+ *   - it resets the signal on start AND stop (session-sticky latch).
  *
  * @vitest-environment jsdom
  */
@@ -85,7 +85,7 @@ function setupStore(overrides: Record<string, any> = {}) {
     activeStream: null,
     activeAudioContext: null,
 
-    // TASK-464 state
+    // Audio-drop state
     audioDroppedFrameCount: 0,
     audioLostThisSession: false,
 
@@ -102,7 +102,7 @@ function setupStore(overrides: Record<string, any> = {}) {
     addTranscriptSegment: vi.fn(),
     addContextItem: vi.fn(),
     addEntities: vi.fn(),
-    // TASK-464 actions
+    // Audio-drop actions
     markAudioLost: vi.fn(),
     incrementDroppedFrames: vi.fn(),
     resetAudioDropped: vi.fn(),

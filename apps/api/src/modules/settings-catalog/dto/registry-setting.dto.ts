@@ -5,7 +5,7 @@ import { IsDefined, IsIn, IsInt, IsOptional, IsString, Min } from 'class-validat
 export const SETTING_SCOPES = ['system', 'tenant', 'department', 'doctor'] as const;
 
 /**
- * TASK-524 — body for `PUT /admin/settings/registry/:key`.
+ * Body for `PUT /admin/settings/registry/:key`.
  *
  * `value` is intentionally untyped here: its shape is governed by the
  * descriptor's declared `dataType` and validated server-side by
@@ -35,7 +35,7 @@ export class WriteRegistrySettingRequest {
   scope?: (typeof SETTING_SCOPES)[number];
 
   /**
-   * TASK-533 B2 — optimistic-concurrency token: the `version` from the prior GET.
+   * Optimistic-concurrency token: the `version` from the prior GET.
    * The canonical form carries it in the `If-Match` header (which wins over this
    * field); service-to-service callers may pass it here. REQUIRED when a stored
    * value already exists — omitting it is refused 428 rather than silently
@@ -51,7 +51,7 @@ export class WriteRegistrySettingRequest {
 /** Response for a successful registry write. */
 export class WriteRegistrySettingResponse {
   /**
-   * TASK-533 B2 — the row version after this write. The `ETagInterceptor` renders
+   * The row version after this write. The `ETagInterceptor` renders
    * it as `ETag: "<version>"`, so a client can chain edits without re-reading.
    */
   @ApiProperty({ description: 'Row version after the write. Echo as the next `If-Match`.', example: 4 })

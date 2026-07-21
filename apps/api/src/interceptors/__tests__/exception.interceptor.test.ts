@@ -1,10 +1,8 @@
 /**
- * Unit tests for ExceptionInterceptor's OCC -> 412 mapping
- * (TASK-302 Stream D Phase C, task C.5) and the
- * `optimistic_lock_conflict_total` Prometheus counter wiring
- * (Phase E.6).
+ * Unit tests for ExceptionInterceptor's OCC -> 412 mapping and the
+ * `optimistic_lock_conflict_total` Prometheus counter wiring.
  *
- * The Phase C Playwright e2e (`apps/api/tests/e2e/optimistic-locking.spec.ts`)
+ * The Playwright e2e (`apps/api/tests/e2e/optimistic-locking.spec.ts`)
  * is the on-API guarantee. These unit tests pin the contract without
  * requiring a live Postgres + API server, so the mapping is locked down
  * even if the e2e suite is skipped.
@@ -126,15 +124,13 @@ describe('ExceptionInterceptor — OptimisticConcurrencyException -> 412 (TASK-3
   });
 
   /*
-   * TASK-306 P3.3 / AC-12 / audit M-8 — `DataNotFoundException` MUST
-   * pass through this interceptor UNWRAPPED so the global
-   * `DataNotFoundExceptionFilter` (registered as `APP_FILTER` in
+   * `DataNotFoundException` MUST pass through this interceptor UNWRAPPED so
+   * the global `DataNotFoundExceptionFilter` (registered as `APP_FILTER` in
    * `app.module.ts`) catches the ORIGINAL exception and maps it to a
-   * generic `404 { message: "Resource not found" }`. If the
-   * interceptor wraps it as the legacy `HttpException(err.toJSON(),
-   * 500)` branch did pre-W5.5.4, the filter never sees the
-   * `DataNotFoundException` (it sees an HttpException) and the model
-   * name + row id leak to the response body.
+   * generic `404 { message: "Resource not found" }`. If the interceptor
+   * wraps it as a generic `HttpException(err.toJSON(), 500)` instead, the
+   * filter never sees the `DataNotFoundException` (it sees an
+   * HttpException) and the model name + row id leak to the response body.
    *
    * This branch is structurally analogous to the OCC pre-empt branch
    * above and MUST stay ordered before the generic `BaseException`
@@ -206,7 +202,7 @@ describe('ExceptionInterceptor — OptimisticConcurrencyException -> 412 (TASK-3
 });
 
 // ───────────────────────────────────────────────────────────────────────────
-// TASK-392 (Q10, Phase 4) — QuotaExceededException → 409 / 429 / 413 / 403.
+// QuotaExceededException → 409 / 429 / 413 / 403.
 //
 // QuotaExceededException extends BaseException, so without a dedicated branch
 // (ordered BEFORE the generic BaseException → 500 branch) an entitlements
@@ -259,8 +255,8 @@ describe('ExceptionInterceptor — QuotaExceededException → precise client sta
     expect(caught.getStatus()).toBe(HttpStatus.PAYLOAD_TOO_LARGE);
   });
 
-  // TASK-392 (concurrency) — a simultaneous-session cap is retry-later (429),
-  // not a permanent conflict (409).
+  // A simultaneous-session cap is retry-later (429), not a permanent
+  // conflict (409).
   it('maps the concurrency capability (maxConcurrentSessions) to 429 Too Many Requests', async () => {
     const caught = await catchHttp(
       new QuotaExceededException('at capacity', { capability: 'maxConcurrentSessions', limit: 5, used: 5, requested: 1, tenantId: 't-1' }),
@@ -279,7 +275,7 @@ describe('ExceptionInterceptor — QuotaExceededException → precise client sta
 });
 
 // ───────────────────────────────────────────────────────────────────────────
-// TASK-302 Stream D Phase E.6 — `optimistic_lock_conflict_total`
+// `optimistic_lock_conflict_total` counter
 //
 // Every 412 must increment a Prometheus counter labelled by model + route so
 // operators can spot a noisy client (chatty UI, bug in SDK ETag capture) and
@@ -440,17 +436,13 @@ describe('ExceptionInterceptor — optimistic_lock_conflict_total counter (TASK-
 });
 
 // ───────────────────────────────────────────────────────────────────────────
-// TASK-307 W5.6 (AC-20, audit D-6) — Prisma error meta & raw-message strip.
+// Prisma error meta & raw-message strip.
 //
-// Pre-W5.6 the PrismaClientKnownRequestError branch passed `err.meta` and
-// `err.message` straight to the client response body, which leaks column
+// The PrismaClientKnownRequestError branch MUST NOT pass `err.meta` or
+// `err.message` straight to the client response body — they leak column
 // names, constraint names, and (depending on the Prisma version) row id
 // values. The server-side log MUST keep the full detail; only the public
 // body needs sanitising.
-//
-// Deploy-time gate (executed before this work landed):
-//   rg "err\.meta"    packages/ apps/ --type ts  -> only the interceptor
-//   rg "modelName"    packages/ apps/ --type ts  -> no Prisma-error consumer
 // ───────────────────────────────────────────────────────────────────────────
 describe('TASK-307 W5.6 — Prisma error sanitisation (AC-20, audit D-6)', () => {
   let interceptor: ExceptionInterceptor;
@@ -539,8 +531,7 @@ describe('TASK-307 W5.6 — Prisma error sanitisation (AC-20, audit D-6)', () =>
   });
 
   it('client body shape is {statusCode, error, correlationId} only (no message, no meta)', async () => {
-    // TASK-310 W7.A.14 (AC-1): P2002 maps to 409 with the proper error label.
-    // Pre-W7.A.14 every PrismaClientKnownRequestError collapsed to 400 / 'Bad Request'.
+    // P2002 maps to 409 with the proper error label.
     const err = makePrismaError({
       code: 'P2002',
       meta: { target: ['email'] },
@@ -589,14 +580,12 @@ describe('TASK-307 W5.6 — Prisma error sanitisation (AC-20, audit D-6)', () =>
 });
 
 // ───────────────────────────────────────────────────────────────────────────
-// TASK-310 W7.A.14 (AC-1) — Prisma error code → HTTP status mapping.
+// Prisma error code → HTTP status mapping.
 //
-// Pre-W7.A.14, every `PrismaClientKnownRequestError` collapsed to
-// `HttpException(400, { error: 'Bad Request' })` in the interceptor. The
-// `PrismaClientExceptionFilter` had the proper code-to-status branches but
-// never ran because the interceptor runs first and converts the error
-// before any filter sees it. AC-1 brings the code-to-status mapping into
-// the interceptor (the single registered handler) so clients see the
+// The `PrismaClientExceptionFilter` has the proper code-to-status branches
+// but never runs, because the interceptor runs first and converts the error
+// before any filter sees it. The code-to-status mapping lives in the
+// interceptor (the single registered handler) so clients see the
 // classification matching RFC semantics:
 //   P2002 (unique constraint)        → 409 Conflict
 //   P2025 (record not found)         → 404 Not Found
@@ -604,7 +593,7 @@ describe('TASK-307 W5.6 — Prisma error sanitisation (AC-20, audit D-6)', () =>
 //   P2014 (required relation)        → 400 Bad Request
 //   <other / unknown code>           → 400 Bad Request (legacy default)
 //
-// Sanitisation from W5.6 is preserved: the public body stays
+// Sanitisation is preserved: the public body stays
 // `{ statusCode, error, correlationId }` with no `err.meta` / raw message
 // leak. Server-side log retains the full Prisma detail for SRE debugging.
 // ───────────────────────────────────────────────────────────────────────────
@@ -720,13 +709,14 @@ describe('TASK-310 W7.A.14 — Prisma error code → HTTP status mapping (AC-1)'
 });
 
 // ───────────────────────────────────────────────────────────────────────────
-// TASK-534 e2e G4 — ArgumentInvalidException -> 400 Bad Request.
+// ArgumentInvalidException -> 400 Bad Request.
 //
 // Services signal invalid input with `ArgumentInvalidException` (rule-04 house
 // pattern: unwritable registry tiers, descriptor type mismatches, no-op
-// updates, bad slugs, …). It extends BaseException, and before this mapping it
-// fell into the generic BaseException branch and surfaced as a 500 "Internal
-// server error" — observed live on `PUT /admin/settings/registry/:key`.
+// updates, bad slugs, …). It extends BaseException; without a dedicated
+// branch it falls into the generic BaseException branch and surfaces as a
+// 500 "Internal server error" — observed live on
+// `PUT /admin/settings/registry/:key`.
 // ───────────────────────────────────────────────────────────────────────────
 describe('TASK-534 G4 — ArgumentInvalidException -> 400', () => {
   let interceptor: ExceptionInterceptor;

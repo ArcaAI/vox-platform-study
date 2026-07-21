@@ -27,7 +27,7 @@ export interface UseTimelineResult {
 }
 
 /**
- * Headless controller for `HistoryTimelineList` (TASK-372 §3.5): ordering,
+ * Headless controller for `HistoryTimelineList`: ordering,
  * expansion (controlled or uncontrolled; single/multiple), and infinite-scroll
  * triggering against a transport-agnostic `AsyncCollection` (D5).
  */

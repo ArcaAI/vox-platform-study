@@ -42,7 +42,7 @@ class KokoroProvider:
         time_func: Callable[[], float] = time.monotonic,
     ) -> None:
         self._config = config
-        # TASK-529 (D-09) — the pipeline handle now lives behind the shared
+        # The pipeline handle lives behind the shared
         # model cache, so it loads on first use and is RELEASED when idle. An
         # explicitly injected `pipeline` bypasses the cache entirely (hermetic
         # tests that want a permanent fake).

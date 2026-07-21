@@ -1,7 +1,6 @@
 """TDD tests for STT-v2 observability: logging, trace context, OTLP export.
 
-Follows Red-Green-Refactor per TASK-255 LOG-CAPTURE-PLAN.md.
-Tests are grouped by implementation unit.
+Follows Red-Green-Refactor. Tests are grouped by implementation unit.
 """
 
 from __future__ import annotations

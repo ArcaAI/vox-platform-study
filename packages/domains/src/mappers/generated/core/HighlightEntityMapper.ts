@@ -22,7 +22,7 @@ export class HighlightEntityMapper extends BaseMapper<Entities.HighlightEntity, 
 
 export const HighlightEntityMapperHandlers = createMapperHandlers<Entities.HighlightEntity, Models.Highlight>({
   $toPersistence: {
-    // TASK-369 Phase 3C — Bytes-safe: return the raw ciphertext Buffer directly.
+    // Bytes-safe: return the raw ciphertext Buffer directly.
     encryptedExact: (entity) => entity.encryptedExact ?? null,
     encryptedPrefix: (entity) => entity.encryptedPrefix ?? null,
     encryptedSuffix: (entity) => entity.encryptedSuffix ?? null,

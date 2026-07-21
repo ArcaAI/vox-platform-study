@@ -19,7 +19,7 @@ export class AudioPipelinePublicController {
   }
 
   /**
-   * TASK-298 D-8 — public read-by-id (tenant-scoped via `getById`).
+   * Public read-by-id (tenant-scoped via `getById`).
    *
    * Cross-tenant lookups return 404 (not 403) to avoid existence leaks.
    */
@@ -39,7 +39,7 @@ export class AudioPipelinePublicController {
   }
 
   /**
-   * TASK-298 D-8 — public read-by-slug (tenant-scoped via `getBySlug`).
+   * Public read-by-slug (tenant-scoped via `getBySlug`).
    */
   @ApiEndpoint({
     returnedModel: PipelineResponse,

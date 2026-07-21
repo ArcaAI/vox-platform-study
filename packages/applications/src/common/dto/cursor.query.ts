@@ -3,7 +3,7 @@ import { IsInt, Min, IsOptional, IsString } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 /**
- * TASK-373 — generic cursor (keyset) request DTO.
+ * Generic cursor (keyset) request DTO.
  *
  * Symmetric counterpart of the offset {@link PaginatedQuery}. `cursor` is the
  * opaque token returned as the previous page's `nextCursor` (omit it for the
@@ -34,7 +34,7 @@ export class CursorQuery {
    * The CSV `field[op]:value` (`;`-separated) filter contract — the symmetric
    * counterpart of {@link PaginatedQuery.filters}. A cursor consumer threads
    * this through `deserializeFilterString(filters, <modelName>)` so values are
-   * coerced to their column's scalar type (TASK-375 §8) identically to the
+   * coerced to their column's scalar type identically to the
    * offset path before the keyset query runs.
    */
   @IsOptional()

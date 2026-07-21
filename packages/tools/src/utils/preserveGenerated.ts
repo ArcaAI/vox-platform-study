@@ -5,7 +5,7 @@ import Logger from './Logger';
 
 /**
  * Shared "hand-edit preservation" plumbing for the `generate-data-model`,
- * `generate-data-entity` and `generate-factory` generators (TASK-368 / TASK-370).
+ * `generate-data-entity` and `generate-factory` generators.
  *
  * The committed `domains/src/**\/generated` trees are the source-of-truth: they
  * carry hand-curated content (business methods, `@Secret()` decorators, custom

@@ -1,4 +1,4 @@
-"""Unit tests for the LocalAgreement-2 commit policy (TASK-351 P1-1).
+"""Unit tests for the LocalAgreement-2 commit policy.
 
 Covers:
 - ``LocalAgreementPolicy`` — pure policy behaviour (agreement, disagreement,
@@ -44,9 +44,9 @@ class TestLocalAgreementPolicy:
         assert tentative == "are"
 
     def test_contradiction_rolls_back_commit_never_substitutes(self):
-        # TASK-451 C2-01: once a token position is committed, its surface
-        # text must be frozen or explicitly rolled back — never silently
-        # substituted from a later, contradicting hypothesis.
+        # Once a token position is committed, its surface text must be frozen
+        # or explicitly rolled back — never silently substituted from a
+        # later, contradicting hypothesis.
         policy = LocalAgreementPolicy()
         policy.update("hello world foo")
         committed, _ = policy.update("hello world foo bar")
@@ -80,7 +80,7 @@ class TestLocalAgreementPolicy:
         # When the later hypothesis AGREES on the tokens (only case/punctuation
         # differ), re-rendering the committed surface from the latest text is
         # safe: the settled meaning is unchanged. This is the benign twin of
-        # the C2-01 contradiction case above.
+        # the contradiction case above.
         policy = LocalAgreementPolicy()
         policy.update("hello world")
         latest = "Hello, world again"
@@ -104,16 +104,16 @@ class TestLocalAgreementPolicy:
         assert tentative == ""
 
         # Grow back with a DIFFERENT tail: the earlier "c d" commit must not
-        # resurrect as "x y" (TASK-451 C2-01 — that is a silent substitution).
+        # resurrect as "x y" (that is a silent substitution).
         # "x y" has been seen in only one hypothesis, so LocalAgreement-2 keeps
         # them tentative; the settled region stays "a b".
         committed, _ = policy.update("a b x y z")
         assert committed == "a b"
 
     def test_negation_revision_never_commits_inverted_meaning(self):
-        # TASK-451 C2-01 (clinical): a settled "no known" prefix must never
-        # flip to "known" in the committed region when a later partial drops
-        # the negation. The settled region carries clinical meaning.
+        # Clinical: a settled "no known" prefix must never flip to "known" in
+        # the committed region when a later partial drops the negation. The
+        # settled region carries clinical meaning.
         policy = LocalAgreementPolicy()
         policy.update("patient has no known")
         committed, _ = policy.update("patient has no known allergies")

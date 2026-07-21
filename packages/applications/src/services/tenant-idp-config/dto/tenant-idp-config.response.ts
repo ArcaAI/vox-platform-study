@@ -3,7 +3,7 @@ import { IdpProtocol, IdpStatus } from '@arcaai/domains';
 import { OidcProviderConfigDto } from './oidc-provider-config.dto';
 import { SamlProviderConfigDto } from './saml-provider-config.dto';
 
-/** TASK-498/499 — a tenant's configured external IdP row. Secrets are never included. */
+/** A tenant's configured external IdP row. Secrets are never included. */
 export class TenantIdpConfigResponse {
   @ApiProperty({ description: 'Row id' })
   id!: string;

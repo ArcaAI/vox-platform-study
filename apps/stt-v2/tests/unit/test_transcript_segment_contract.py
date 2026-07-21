@@ -1,4 +1,4 @@
-"""stt-v2 → apps/api transcript-segment PRODUCER contract (TASK-533 D-22).
+"""stt-v2 → apps/api transcript-segment PRODUCER contract.
 
 The consumer half of this contract (``computeSegmentOffsets`` →
 ``persistTranscriptSegments`` → ``TranscriptSegment`` rows) was correct and wired
@@ -14,7 +14,7 @@ Both suites assert against the SAME checked-in fixture
 (``tests/contracts/stt-transcript-segments/transcript-segments.fixture.json``), so
 neither side can drift without failing the other. That cross-boundary lock is what
 the pre-existing tests lacked: they hand-fed ideal camelCase payloads no producer
-ever sent, which is why D-22 survived review with a green suite.
+ever sent, which is why the producer gap survived review with a green suite.
 """
 
 from __future__ import annotations

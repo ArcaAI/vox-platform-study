@@ -4,7 +4,7 @@ import { CaptureMode, TranscriptionMode } from '@arcaai/domains';
 import { FrontendPipelineConfigJson } from './frontend-pipeline-config';
 
 /**
- * Create-or-update the tenant's frontend audio-pipeline defaults (TASK-328 A6).
+ * Create-or-update the tenant's frontend audio-pipeline defaults.
  *
  * Every field is optional: on first save the tenant config is created from the
  * provided fields (missing booleans default to `false`); on subsequent saves
@@ -39,7 +39,7 @@ export class UpsertTenantFrontendConfigRequest {
   @IsBoolean()
   diarization?: boolean;
 
-  // TASK-332 — tenant toggle for local raw-stream dual-capture. Honored only
+  // Tenant toggle for local raw-stream dual-capture. Honored only
   // when the platform capability (`enable-local-raw-capture` GlobalSetting) is
   // ON; the SDK-facing enablement is the server-computed AND of the two.
   @ApiPropertyOptional({ description: 'Enable local raw-stream audio capture for the tenant (effective only when the platform capability is on)' })
@@ -47,7 +47,7 @@ export class UpsertTenantFrontendConfigRequest {
   @IsBoolean()
   captureRawAudio?: boolean;
 
-  // TASK-356 Phase 4 (G-7 / D-8) — tenant default transcription mode + lock.
+  // Tenant default transcription mode + lock.
   // The effective mode is resolved server-side in UserPreferencesService; a
   // locked tenant wins over the doctor's workflowMode.
   @ApiPropertyOptional({ description: 'Tenant default transcription mode (LOCAL or BACKEND)', enum: TranscriptionMode })
@@ -60,7 +60,7 @@ export class UpsertTenantFrontendConfigRequest {
   @IsBoolean()
   transcriptionModeLocked?: boolean;
 
-  // TASK-356 Phase 4 (G-9) — tenant-scoped capture mode. Translated onto the
+  // Tenant-scoped capture mode. Translated onto the
   // backend dual_capture booleans + the local captureRawAudio flag. `null`
   // clears the override (legacy captureRawAudio column wins again, R-6).
   @ApiPropertyOptional({ description: 'Tenant audio capture mode', enum: CaptureMode, nullable: true })

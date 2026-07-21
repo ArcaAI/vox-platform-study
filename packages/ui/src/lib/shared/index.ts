@@ -1,5 +1,5 @@
 /**
- * @arcaai/ui shared component contracts (TASK-372).
+ * @arcaai/ui shared component contracts.
  *
  * The reusable cross-component "interfaces": pagination, query-state,
  * async-collection, and surface (density/base/async-state) props consumed by

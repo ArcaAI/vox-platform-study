@@ -108,7 +108,7 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
     private readonly databaseService: CoreDatabaseService,
     @Optional() @Inject(IRedisCacheService) private readonly cache?: IRedisCacheService,
     /**
-     * TASK-305 D.8: CLS handle is `@Optional()` so the service can still be
+     * CLS handle is `@Optional()` so the service can still be
      * constructed from non-request contexts (background jobs, tests) without
      * tenant scoping. In every HTTP request path NestJS injects the real
      * `ClsService` and the read methods scope to the caller's tenant.
@@ -162,13 +162,12 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
   /**
    * Log to database
    *
-   * TASK-306 P1.2 (audit C-7 finale / NEW-1 / HIPAA §164.312(b)) — derive
-   * the persisted row's `tenantId` from CLS, NOT from the caller-supplied
-   * `entry.tenantId`. The caller-supplied value is allowed only as a back-
-   * compat fallback when no CLS context is wired (background jobs, legacy
-   * boot paths). When neither source resolves a tenant, the write is
-   * SKIPPED with a warning — audit rows with NULL tenantId would violate
-   * the schema NOT NULL constraint introduced in TASK-305 Phase A.
+   * (HIPAA §164.312(b)) — derive the persisted row's `tenantId` from CLS,
+   * NOT from the caller-supplied `entry.tenantId`. The caller-supplied value
+   * is allowed only as a back-compat fallback when no CLS context is wired
+   * (background jobs, legacy boot paths). When neither source resolves a
+   * tenant, the write is SKIPPED with a warning — audit rows with NULL
+   * tenantId would violate the schema NOT NULL constraint.
    */
   private async logToDatabase(entry: AuthorizationAuditEntry): Promise<void> {
     const prisma = this.databaseService.client;
@@ -248,7 +247,7 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
    * Get authorization history for a user
    * Uses optimized index: AuditLog_event_user_time_idx (eventType, responsibleUserId, createdAt)
    *
-   * TASK-305 D.8 (HIPAA §164.312(b)): scoped to the caller's CLS tenantId
+   * (HIPAA §164.312(b)): scoped to the caller's CLS tenantId
    * so a Tenant-A admin can never query Tenant-B authorization history.
    * GLOBAL_ADMIN bypasses the filter.
    */
@@ -302,7 +301,7 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
   /**
    * Get recent denied access attempts
    *
-   * TASK-305 D.8 (HIPAA §164.312(b)): scoped to the caller's CLS tenantId
+   * (HIPAA §164.312(b)): scoped to the caller's CLS tenantId
    * so denial monitoring cannot fan-out across tenants. GLOBAL_ADMIN may
    * query all tenants.
    */
@@ -356,7 +355,7 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
    * Get denial count for a user in the last hour
    * Useful for detecting potential security issues
    *
-   * TASK-305 D.8: tenant scoping is enforced via `getAuthorizationHistory`
+   * Tenant scoping is enforced via `getAuthorizationHistory`
    * — denials are counted within the caller's tenant only (GLOBAL_ADMIN
    * sees all tenants).
    */
@@ -371,7 +370,7 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
 
   /**
    * Build the tenant slice of a Prisma `where` clause for raw audit-log
-   * queries (TASK-305 D.8).
+   * queries.
    *
    * Behaviour:
    * - When CLS is not wired in: returns `{}` (back-compat, system contexts).

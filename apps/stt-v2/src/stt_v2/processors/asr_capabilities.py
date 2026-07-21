@@ -1,8 +1,8 @@
-"""ASR engine capability declarations (TASK-505 Phase 1).
+"""ASR engine capability declarations.
 
 Spec-only module (import-cheap — no torch/onnx imports): the single source of
 truth for which (device, compute, mode) each ASR engine supports, verified
-against the loaders/adapters in the TASK-505 engine inventory. The
+against the loaders/adapters in the engine inventory. The
 ``lazy_target``s point at the delegation adapters in ``asr_engines.py`` —
 the registry IS the dispatch surface for both the batch and streaming paths.
 
@@ -91,7 +91,6 @@ register_processor(
         # MPS unsupported by CTranslate2 → resolver must fall through to CPU.
         Capability(device="cpu", compute=_CT2_COMPUTE),
     ],
-    # Batch support since TASK-505 P1 increment 1 (_run_faster_whisper_inference).
     traits=("initial_prompt", "word_timestamps", "gloss"),
 )
 
@@ -103,8 +102,6 @@ register_processor(
     traits=("word_timestamps",),
     metadata={"aliases": ("azure",)},
 )
-
-# TASK-505 P3 — new engines.
 
 register_processor(
     kind="asr",
@@ -125,14 +122,14 @@ register_processor(
     name="azure_foundry",
     lazy_target="stt_v2.processors.asr_engines:AzureFoundryEngine",
     capabilities=[
-        # Decision D4: preview → batch-only; realtime needs Voice Live API.
+        # Preview → batch-only; realtime needs Voice Live API.
         Capability(device="cloud", streaming=False),
     ],
     traits=("word_timestamps", "phrase_list"),
     metadata={"aliases": ("foundry", "mai")},
 )
 
-# TASK-507 — whisper.cpp (GGUF whisper-large-v3-turbo), via pywhispercpp.
+# whisper.cpp (GGUF whisper-large-v3-turbo), via pywhispercpp.
 
 register_processor(
     kind="asr",

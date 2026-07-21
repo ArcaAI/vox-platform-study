@@ -24,7 +24,7 @@ export class WebhookResponse extends BaseResponse {
   @ApiProperty({ description: 'Subscription metadata', required: false })
   subscriptionMetadata?: JsonValue;
 
-  // TASK-302 Stream D Phase E.5 — OCC token. Echo via `If-Match: "<n>"`
+  // OCC token. Echo via `If-Match: "<n>"`
   // (the `ETagInterceptor` also renders this as `ETag: "<n>"`) or via
   // the body's `expectedVersion` on the next PATCH.
   @ApiProperty({

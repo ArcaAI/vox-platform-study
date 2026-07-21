@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * TASK-388 #8 — result of an admin-initiated reset. Shape depends on `mode`.
+ * Result of an admin-initiated reset. Shape depends on `mode`.
  */
 export class ResetPasswordResponse {
   @ApiProperty({ description: 'The flow that was executed', enum: ['temporary', 'link'] })

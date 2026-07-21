@@ -6,7 +6,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ResourceType, JsonValue, AuditAction } from '@arcaai/domains';
 
 /**
- * TASK-328 A8 — the acting (responsible) user resolved for an audit row.
+ * The acting (responsible) user resolved for an audit row.
  *
  * `responsibleUserId` is only a foreign key; the admin table needs a
  * human-readable label. The service resolves the id to this shape (display
@@ -37,8 +37,8 @@ export class ResponsibleUserResponse {
 
 export class AuditLogResponse extends BaseResponse {
   /**
-   * TASK-331 doc-03 F6 — owning tenant id. The column is NOT NULL on the entity
-   * (TASK-305 Phase A); the global-scope admin console resolves it to a tenant
+   * Owning tenant id. The column is NOT NULL on the entity
+   * ; the global-scope admin console resolves it to a tenant
    * name and renders a Tenant column. It is declared here because
    * `AutoEntityMapper` only copies fields present on the target DTO — without
    * this property the id is silently dropped and never reaches the wire.
@@ -94,7 +94,7 @@ export class AuditLogResponse extends BaseResponse {
 
   @ApiPropertyOptional({
     type: ResponsibleUserResponse,
-    description: 'TASK-328 A8 — the acting user resolved from responsibleUserId.',
+    description: 'The acting user resolved from responsibleUserId.',
   })
   @IsOptional()
   @ValidateNested()

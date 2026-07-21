@@ -1,8 +1,8 @@
 /**
- * TASK-455 (S-10) AC-2 — resume-after-drop over a REAL socket (C3-01 surface).
+ * Resume-after-drop over a REAL socket.
  *
  * Streams audio, forces a MID-STREAM socket drop (`terminate()` — no close
- * frame, a real network cut), reconnects with a fresh ticket + the D-17 resume
+ * frame, a real network cut), reconnects with a fresh ticket + the resume
  * handshake, and measures what today's plain-XREAD transport actually does.
  *
  * WHY THIS IS A BASELINE, NOT A GREEN ASSERTION
@@ -16,9 +16,8 @@
  * `resumed fromSeq:0`, not `lastSeq`), and because the upstream session is gone
  * the caption stream goes SILENT — the "duplicate-then-frozen" C3-01 failure.
  *
- * So this spec:
- * DISCOVERED WHILE MEASURING (reported to TASK-457): the gateway never even
- * processes the D-17 resume/stop/close handshake. It splits WS frames with
+ * DISCOVERED WHILE MEASURING: the gateway never even processes the
+ * resume/stop/close handshake. It splits WS frames with
  * `Buffer.isBuffer(rawData)`, but ws@8 delivers TEXT frames as Buffer too, so
  * the JSON control channel is misclassified as binary audio and the resume is a
  * no-op. The "recovery" on reconnect is therefore purely the new subscription
@@ -28,12 +27,12 @@
  *
  * So this spec:
  *   • RECORDS the observed transport behavior as the reproducible baseline
- *     (attached JSON — the number TASK-457 is measured against), asserting only
- *     the invariant that holds today (the reconnect handshake is accepted). It
- *     does NOT green-wash the defect.
- *   • Encodes the TARGET contract TASK-457 must satisfy as a `test.fixme`
- *     (replay-from-lastSeq, no duplicate flood, no silent freeze) so the desired
- *     bar is visible and cannot pass by accident.
+ *     (attached JSON — the number the eventual fix is measured against),
+ *     asserting only the invariant that holds today (the reconnect handshake
+ *     is accepted). It does NOT green-wash the defect.
+ *   • Encodes the TARGET contract the eventual fix must satisfy as a
+ *     `test.fixme` (replay-from-lastSeq, no duplicate flood, no silent
+ *     freeze) so the desired bar is visible and cannot pass by accident.
  *
  * Live-stack requirement: needs STT-V2 behind the gateway; self-skips with an
  * explicit reason when unreachable. Prereqs + invocation: ticket README
@@ -121,7 +120,7 @@ test.describe('TASK-455 AC-2 — resume-after-drop (C3-01 baseline)', () => {
         });
         handshakeAccepted = second.raw.readyState === WsCtor.OPEN;
 
-        // TASK-457 I1 — the gateway registers the SessionInfo + subscribes to
+        // The gateway registers the SessionInfo + subscribes to
         // results AFTER async auth/lookup, then emits an explicit {type:'ready'}
         // ack. Gate the resume on THAT ack (deterministic) instead of a timing
         // guess, so a resume can never race registration into a NO_SESSION.
@@ -129,7 +128,7 @@ test.describe('TASK-455 AC-2 — resume-after-drop (C3-01 baseline)', () => {
         const readyAck = await second.waitForMessage((raw) => raw.type === 'ready', 5_000).catch(() => null);
         if (!readyAck) await sleep(600);
 
-        // D-17 resume handshake from the last seq we saw pre-drop.
+        // Resume handshake from the last seq we saw pre-drop.
         second.sendResume(session.sessionId, lastSeq);
         resumeReply = await second.waitForMessage((raw) => raw.type === 'resumed' || raw.type === 'resume_failed', 8_000);
         noSessionErrorOnResume = second.errors.some((e) => e.code === 'NO_SESSION');
@@ -158,18 +157,18 @@ test.describe('TASK-455 AC-2 — resume-after-drop (C3-01 baseline)', () => {
       baseline.reconnectMessageTypesFromGateway = reconnectMessageTypes;
       baseline.resumeActuallyReplayedFromLastSeq =
         resumeReply?.type === 'resumed' && typeof resumeReply.fromSeq === 'number' && (resumeReply.fromSeq as number) > lastSeq;
-      // C3-01 signatures, recorded for TASK-457 to diff against.
+      // C3-01 signatures, recorded here as the baseline to diff against once fixed.
       baseline.c3_01_silent_freeze = postResumeTranscripts.length === 0;
       baseline.c3_01_no_replay = replayedPreDrop === 0;
       baseline.c3_01_duplicate_flood = postResumeTranscripts.some((t) => typeof t.seq === 'number' && (t.seq as number) <= lastSeq) && lastSeq > 0;
       // DISCOVERED DEFECT (surfaced by this gate): the gateway never answers the
-      // D-17 resume handshake and never re-emits a control reply. The gateway
+      // resume handshake and never re-emits a control reply. The gateway
       // reads WS frames with `Buffer.isBuffer(rawData)` to split audio vs JSON,
       // but ws@8 delivers TEXT frames as Buffer too — so `{type:'resume'|'stop'|
       // 'close'}` text control frames are misclassified as binary audio and the
       // JSON path never runs. Hence the resume handshake is a no-op and the
       // "recovery" seen on reconnect is purely the subscription re-reading the
-      // result stream from offset 0 (the duplicate flood). Reported to TASK-457.
+      // result stream from offset 0 (the duplicate flood).
       baseline.finding_control_frames_ignored =
         !reconnectMessageTypes.includes('resumed') && !reconnectMessageTypes.includes('resume_failed') && !noSessionErrorOnResume;
 
@@ -190,10 +189,10 @@ test.describe('TASK-455 AC-2 — resume-after-drop (C3-01 baseline)', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // TARGET CONTRACT for TASK-457 (Redis consumer-groups migration). Marked
+  // TARGET CONTRACT (Redis consumer-groups migration). Marked
   // `test.fixme` — it encodes the behavior the migration must deliver and MUST
-  // NOT pass on today's plain-XREAD transport. When TASK-457 lands, drop the
-  // `.fixme` and this becomes the regression gate. Do not green-wash by
+  // NOT pass on today's plain-XREAD transport. When the migration lands, drop
+  // the `.fixme` and this becomes the regression gate. Do not green-wash by
   // deleting it.
   // ---------------------------------------------------------------------------
   test('TARGET (TASK-457): resumes from lastSeq with no duplicate flood and no silent freeze', async ({ request }) => {
@@ -224,7 +223,7 @@ test.describe('TASK-455 AC-2 — resume-after-drop (C3-01 baseline)', () => {
       sessionId: session.sessionId,
       ticket: refreshed.ticket!,
     });
-    // TASK-457 I1 — gate the resume on the explicit {type:'ready'} ack so the
+    // Gate the resume on the explicit {type:'ready'} ack so the
     // resume can never race the new socket's async registration into a
     // NO_SESSION. Deterministic — not a timing guess.
     await second.waitForMessage((raw) => raw.type === 'ready', 10_000);

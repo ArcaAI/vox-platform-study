@@ -1,5 +1,5 @@
 /**
- * DepartmentService.updatePromptConfig — TASK-294 DEF-C3
+ * DepartmentService.updatePromptConfig
  *
  * Tenant isolation guard tests. The method MUST refuse to update
  * a department whose `tenantId` does not match the calling tenant.
@@ -21,7 +21,7 @@ const mockEventEmitter = {
 const mockDepartmentRepository = {
     findById: vi.fn(),
     update: vi.fn(),
-    // TASK-302 Stream D Phase E.2 — `updatePromptConfig` now writes via
+    // `updatePromptConfig` now writes via
     // Compare-And-Set (`updateWithVersion`). Legacy `.update` is kept on
     // the mock for the DEF-C3 tenant-isolation assertions that confirm
     // NO write fires on a foreign tenant.
@@ -44,7 +44,7 @@ const createMockDepartment = (overrides: Record<string, unknown> = {}) => ({
     revisitPromptId: null as string | null,
     hasChanges: true,
     changes: { preSummaryPromptId: 'pre-1' },
-    // TASK-302 Stream D Phase E.2 — `_version` is required for the CAS
+    // `_version` is required for the CAS
     // write path. Default = first-write (1); override per-test as needed.
     version: 1,
     toObject: vi.fn().mockReturnValue({}),
@@ -104,7 +104,7 @@ describe('DepartmentService.updatePromptConfig (TASK-294 DEF-C3)', () => {
         ).rejects.toThrow(NotFoundException);
 
         // Critical: must NOT delegate to repository.update OR updateWithVersion on
-        // a foreign-tenant resource (DEF-C3 tenant-isolation + TASK-302 CAS).
+        // a foreign-tenant resource (tenant-isolation + CAS).
         expect(mockDepartmentRepository.update).not.toHaveBeenCalled();
         expect(mockDepartmentRepository.updateWithVersion).not.toHaveBeenCalled();
     });
@@ -126,7 +126,7 @@ describe('DepartmentService.updatePromptConfig (TASK-294 DEF-C3)', () => {
         expect(mockDepartmentRepository.update).not.toHaveBeenCalled();
     });
 
-    // TASK-387 (#7 / D3) — per-department default DNA writing-style prompt slot.
+    // Per-department default DNA writing-style prompt slot.
     it('applies dnaWritingStylePromptId to the entity before the CAS write', async () => {
         const dept = createMockDepartment({ id: 'dept-1', tenantId: 'tenant-1', version: 1 });
         mockDepartmentRepository.findById.mockResolvedValue(dept);

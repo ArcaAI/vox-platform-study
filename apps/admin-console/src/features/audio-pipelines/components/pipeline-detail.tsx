@@ -213,7 +213,7 @@ export function PipelineDetailDrawer({
                     pipeline ? (
                         <>
                             <PipelineStatusBadge status={pipeline.resourceStatus} />
-                            {/* TASK-531 — a locked SYSTEM template copy. */}
+                            {/* A locked SYSTEM template copy. */}
                             {pipeline.templateLocked ? <TemplateBadge /> : null}
                             {pipeline.isDefault ? (
                                 <Badge variant="secondary" className="gap-1">

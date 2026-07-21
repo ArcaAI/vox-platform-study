@@ -44,12 +44,12 @@ __all__ = [
     "LLMClaimExtractor",
     "LLMClaimVerifier",
     "build_faithfulness_evaluator",
-    # Concept-F1 (TASK-482 E3 — omission catcher)
+    # Concept-F1 (omission catcher)
     "canonical_key",
     "compute_concept_f1",
     "normalize_reference_key",
     "score_concept_f1",
-    # Harm-weighted error rate (TASK-482 E3 — clinical significance)
+    # Harm-weighted error rate (clinical significance)
     "MAJOR_CATEGORIES",
     "MAJOR_WEIGHT",
     "MINOR_CATEGORIES",

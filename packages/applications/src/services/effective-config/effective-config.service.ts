@@ -1,11 +1,11 @@
-// TASK-525 §4.1 — the read side of the config plane.
+// The read side of the config plane.
 //
 // Resolves the per-service SERVICE-LEVEL subset that the Python pull clients
-// consume. It is a thin composition over two existing resolvers — the TASK-524
+// consume. It is a thin composition over two existing resolvers — the
 // settings-registry effective facade (`global-kv` override lane) and the
 // `AiRuntimeProfile` service — and deliberately owns no data access of its own.
 //
-// House constraint (TASK-525 §1): effective-config carries service-level knobs
+// House constraint: effective-config carries service-level knobs
 // ONLY, never per-request model choice. SMR remains a stateless gateway; the
 // gateway injects `{provider, model}` per request, exactly as before.
 
@@ -78,8 +78,8 @@ export class EffectiveConfigService implements IEffectiveConfigService {
     switch (service) {
       case 'smr':
         // Service-level knobs only. temperature/topP/maxTokens still travel
-        // per-request via the gateway's profile injection (TASK-524).
-        // TASK-529 (D-10): `retention.ttlSeconds` is the ONLY retention field
+        // per-request via the gateway's profile injection.
+        // `retention.ttlSeconds` is the ONLY retention field
         // meaningful here — SMR holds no weights, so it forwards this to the
         // engine (Ollama `keep_alive` / LM Studio `ttl`) instead of caching.
         return {
@@ -103,7 +103,7 @@ export class EffectiveConfigService implements IEffectiveConfigService {
           concurrency: await this.resolveConcurrency(['stt.workers.concurrency', 'stt.streaming.maxConcurrent']),
         };
 
-      // TASK-529 — the subsets TASK-525 reserved are now filled, in the same
+      // These subsets were reserved and are now filled, in the same
       // shape, so clients already polling them see fields appear rather than
       // change meaning.
       case 'guardrail':
@@ -141,7 +141,7 @@ export class EffectiveConfigService implements IEffectiveConfigService {
   }
 
   /**
-   * TASK-529 — resolve one service's retention subset.
+   * Resolve one service's retention subset.
    *
    * `smr` gets ttlSeconds ONLY: it owns no cache, so `maxModels`/`maxMemoryMb`/
    * `vramBudgetMb` are meaningless there and stay null rather than being

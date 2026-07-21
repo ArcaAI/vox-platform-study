@@ -47,13 +47,13 @@ const mockApiKeyRepository = {
     db: mockPrismaDelegate,
 };
 
-// TASK-305 D.5.2 — UserRoleAssignment repository is required for the
+// UserRoleAssignment repository is required for the
 // `assertUserBelongsToTenant` guard run during `create`.
 const mockUserRoleAssignmentRepository = {
     findFirst: vi.fn(),
 };
 
-// TASK-305 Phase F — membership guard now also reads the UserDepartment join
+// Membership guard now also reads the UserDepartment join
 // table and the User table (service-account exemption).
 const mockUserDepartmentRepository = {
     findFirst: vi.fn(),
@@ -142,7 +142,7 @@ describe('ApiKeyService', () => {
         // tenant-admin — the api-key admin surface's original persona — so the
         // pre-existing by-id happy-paths (fetchById/update/delete/revoke/rotate)
         // keep their tenant-scoped intent. `userAbility.can('manage','ApiKey')`
-        // returns true, so the TASK-390-follow-up owner-scope gate is bypassed
+        // returns true, so the owner-scope gate is bypassed
         // for these tenant-admin cases. Owner-only callers are exercised in the
         // dedicated "Owner-scope enforcement" block below.
         mockClsService.get.mockImplementation((key: string) => {
@@ -162,7 +162,7 @@ describe('ApiKeyService', () => {
             }
         });
 
-        // TASK-305 D.5.2 — default to a permissive in-tenant role-assignment so
+        // Default to a permissive in-tenant role-assignment so
         // legacy create-tests (which don't care about the new guard) keep
         // passing.
         mockUserRoleAssignmentRepository.findFirst.mockResolvedValue({
@@ -171,7 +171,7 @@ describe('ApiKeyService', () => {
             tenantId: 'tenant-1',
             resourceStatus: ResourceStatusType.ENABLED,
         });
-        // TASK-305 Phase F — default to a present in-tenant department so the
+        // Default to a present in-tenant department so the
         // role+department membership guard passes for the happy path.
         mockUserDepartmentRepository.findFirst.mockResolvedValue({
             id: 'ud-1',
@@ -631,11 +631,11 @@ describe('ApiKeyService', () => {
 
     describe('fetchAllByTenantId', () => {
         it('should filter by tenantId', async () => {
-            // TASK-306 P1.5 — `fetchAllByTenantId` now refuses cross-tenant
+            // `fetchAllByTenantId` now refuses cross-tenant
             // reads driven by the DTO. Align the existing "happy-path" probe
             // with the CLS default (`tenant-1`) so the new guard does not
             // short-circuit. Cross-tenant + GLOBAL_ADMIN coverage lives in the
-            // dedicated `TASK-306 P1.5` block below.
+            // dedicated tenant-scoped block below.
             const keys = [createMockApiKeyEntity({ tenantId: 'tenant-1' })];
             mockApiKeyRepository.findAll.mockResolvedValue(keys);
             mockApiKeyRepository.count.mockResolvedValue(1);
@@ -654,7 +654,7 @@ describe('ApiKeyService', () => {
     });
 
     /**
-     * TASK-306 P1.5 (audit AC-7 / NEW-4) — `ApiKeyService.fetchAllByTenantId`
+     * `ApiKeyService.fetchAllByTenantId`
      * previously trusted the caller-supplied DTO `tenantId` without
      * comparing it to CLS. A Tenant-A admin could enumerate Tenant-B API
      * keys by passing a foreign `tenantId`. The new guard short-circuits
@@ -737,7 +737,7 @@ describe('ApiKeyService', () => {
 
             expect(result.data).toHaveLength(1);
             expect(mockApiKeyRepository.findAll).toHaveBeenCalledWith(
-                // TASK-305 D.5.2 — `where` now also carries the caller's CLS tenantId.
+                // `where` now also carries the caller's CLS tenantId.
                 expect.objectContaining({ where: { userId: 'user-abc', tenantId: 'tenant-1' } }),
             );
         });
@@ -753,7 +753,7 @@ describe('ApiKeyService', () => {
             } as any);
 
             expect(mockApiKeyRepository.count).toHaveBeenCalledWith(
-                // TASK-305 D.5.2 — count `where` also carries the caller's CLS tenantId.
+                // Count `where` also carries the caller's CLS tenantId.
                 expect.objectContaining({ where: { userId: 'user-abc', tenantId: 'tenant-1' } }),
             );
         });
@@ -1687,9 +1687,9 @@ describe('ApiKeyService', () => {
     });
 
     /**
-     * TASK-305 D.5.2 — Multi-tenant isolation for ApiKeyService.
+     * Multi-tenant isolation for ApiKeyService.
      *
-     * Audit C-8 / M-1 — ApiKey carries `userId` (FK to User, no tenantId on
+     * ApiKey carries `userId` (FK to User, no tenantId on
      * User) and `tenantId` directly. Without service-layer guards:
      *  - A Tenant-A admin could pass `request.tenantId = 'tenant-B'` and
      *    create a key that authenticates against another tenant's data.
@@ -1913,7 +1913,7 @@ describe('ApiKeyService', () => {
     });
 
     /**
-     * TASK-390 follow-up (owner-scope hardening).
+     * (owner-scope hardening).
      *
      * The api-key admin surface's by-id operations (fetch/update/delete/revoke/
      * rotate) share `assertKeyAccess`, which layers an OWNER-scope check on top
@@ -2109,7 +2109,7 @@ describe('ApiKeyService', () => {
         });
 
         /**
-         * BUG-005 Issue 1 — the LIST endpoints (`fetchAll`/`fetchAllByTenantId`)
+         * The LIST endpoints (`fetchAll`/`fetchAllByTenantId`)
          * previously filtered by tenantId only, so an owner-only caller (e.g. a
          * real end-user, or an operator impersonating one) saw every key in the
          * tenant instead of just their own. Mirrors the by-id `assertKeyAccess`

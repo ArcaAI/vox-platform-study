@@ -53,7 +53,7 @@ class TransformerTextClassifier(TextClassifier):
     async def initialize(self) -> None:
         """Load transformer text classification model"""
         if not self.config.is_configured:
-            # No clinical doc-type model has been chosen (TASK-330 §3.4). Refuse to load the
+            # No clinical doc-type model has been chosen. Refuse to load the
             # placeholder sentinel as a real model: leave the service uninitialized so the
             # endpoint returns 503 instead of emitting wrong (e.g. emotion) labels for
             # clinical text. Warn loudly, but only once to avoid log spam on repeated calls.

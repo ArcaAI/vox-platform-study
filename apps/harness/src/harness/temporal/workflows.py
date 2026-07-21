@@ -2,7 +2,7 @@
 
 Workflow code MUST be deterministic: no direct I/O, no wall-clock/random access,
 no non-deterministic imports at module top-level. All side effects are delegated
-to Activities. This mirrors the TASK-330 design constraint where the harness
+to Activities. This mirrors the design constraint where the harness
 loop body is a deterministic workflow and guides/generate/sensors are Activities.
 """
 
@@ -98,7 +98,7 @@ _ACTIVITY_TIMEOUT = timedelta(seconds=150)
 # local judge call is ~10-20s). Give this one activity a generous start-to-close so
 # the governed (burst-safe) pass completes instead of timing out into reduced assurance.
 _INFERENTIAL_TIMEOUT = timedelta(seconds=900)
-# TASK-354 Defect A: the activity now heartbeats (~every 15s) for the whole pass, so a
+# The activity heartbeats (~every 15s) for the whole pass, so a
 # dead worker / hung attempt is detected within this window instead of waiting out the
 # full 900s start_to_close. start_to_close is KEPT at 900s (a healthy pass is ~344s).
 # NOTE (replay safety): adding/changing an activity OPTION does not alter the recorded
@@ -114,7 +114,7 @@ _INFERENTIAL_RETRY = RetryPolicy(maximum_attempts=2)
 # Retrieval degrades internally (never raises for backend outages); its retries
 # cover only infra blips before the workflow falls back to an empty context.
 _RETRIEVAL_RETRY = RetryPolicy(maximum_attempts=2)
-# Progress feed (TASK-345): fire-and-forget — one attempt, tiny budget. The
+# Progress feed: fire-and-forget — one attempt, tiny budget. The
 # activity already swallows its own errors; the workflow-side try/except is the
 # second belt for timeouts/cancellation.
 _PROGRESS_TIMEOUT = timedelta(seconds=10)
@@ -166,7 +166,7 @@ def _terminology_args(entities: list[NEREntity]) -> dict[str, list[str]]:
 
 
 def _tokens_from_stats(stats: dict[str, Any] | None) -> int:
-    """Total tokens reported by one generate call (TASK-533 B4).
+    """Total tokens reported by one generate call.
 
     PURE and deterministic — it only reads a value already recorded in the
     activity result, so folding it inside the workflow is replay-safe. An old
@@ -191,7 +191,7 @@ def _tokens_from_stats(stats: dict[str, Any] | None) -> int:
 
 
 def _budget_exhausted(per_run_budget: int, tokens_used: int) -> bool:
-    """True when a per-run token budget is set AND spent (TASK-533 B4).
+    """True when a per-run token budget is set AND spent.
 
     ``per_run_budget <= 0`` means UNBOUNDED — the shipped default, so this returns
     False and the regen loop behaves exactly as it did before B4.
@@ -242,7 +242,7 @@ class HarnessDocWorkflow:
         # deterministic body ⇒ adds NO workflow command (replay-safe, no ``patched()``
         # marker); the (non-deterministic) emission lives entirely in the activities.
         self._seq: int = 0
-        # TASK-355 Phase D (Slice 4b) — clinician-edit signal state for the
+        # Clinician-edit signal state for the post-delivery assurance path of the
         # optimistic assurance loop. ``_edited`` is a per-pass latch (an edit
         # arrived; consumed at the loop top to re-bind + re-run). ``_ever_edited``
         # is sticky: once the clinician touches the delivered draft, the
@@ -252,7 +252,7 @@ class HarnessDocWorkflow:
         self._edited: bool = False
         self._ever_edited: bool = False
         self._edited_content: str | None = None
-        # TASK-483: OPTIONAL claim-check ref for an offloaded edited note (apps/api-facing
+        # OPTIONAL claim-check ref for an offloaded edited note (apps/api-facing
         # seam; None until a future caller sends the edit by ref). Threaded, with
         # ``_edited_content``, into the assurance pass's note_text/note_text_ref.
         self._edited_content_ref: ClaimCheckRef | None = None
@@ -283,12 +283,12 @@ class HarnessDocWorkflow:
 
     @workflow.signal
     async def edit(self, payload: EditSignal) -> None:
-        """Clinician edited the optimistically delivered draft (TASK-355 Slice 4b).
+        """Clinician edited the optimistically delivered draft.
 
         Sets the per-pass latch + the sticky ``_ever_edited`` flag and captures the
         edited content + version. The optimistic assurance loop re-binds to the
-        edited version and re-runs the assurance pass (Q3); the sticky flag also
-        disables the silent regen-if-untouched path (Q1) from this point on. Only
+        edited version and re-runs the assurance pass; the sticky flag also
+        disables the silent regen-if-untouched path from this point on. Only
         meaningful while the assurance loop is running (DRAFT_PENDING_SENSORS); a
         signal after assurance settles is recorded but has no further effect here.
         """
@@ -304,16 +304,16 @@ class HarnessDocWorkflow:
         return self._phase
 
     async def _report_progress(self, inp: HarnessDocWorkflowInput, stage: str) -> None:
-        """Emit one stage event to the live UI feed (TASK-345). Best-effort only.
+        """Emit one stage event to the live UI feed. Best-effort only.
 
         The activity swallows its own errors; this wrapper additionally absorbs
         timeouts/cancellation so a dead progress pipeline can NEVER fail the loop.
         """
-        # Replay-compat gate (TASK-348 / CRIT-1): executions whose history was
-        # recorded before TASK-345 carry no report_progress events. patched()
+        # Replay-compat gate: executions whose history was recorded before the
+        # progress-feed feature shipped carry no report_progress events. patched()
         # keeps them deterministic on replay (returns False -> emit nothing for
         # the rest of that run) while new executions record the marker and emit.
-        # Collapse to workflow.deprecate_patch() once no pre-TASK-345 runs can
+        # Collapse to workflow.deprecate_patch() once no pre-feature runs can
         # still be in flight. Verified by test_replay_compat.py.
         if not workflow.patched("task-345-harness-progress"):
             return
@@ -336,7 +336,7 @@ class HarnessDocWorkflow:
                     total=_PROGRESS_TOTAL,
                 ),
                 start_to_close_timeout=_PROGRESS_TIMEOUT,
-                # MAJ-9 (TASK-348): bound queue wait + execution. start_to_close
+                # Bound queue wait + execution. start_to_close
                 # alone leaves a saturated task queue free to stall each stage
                 # transition for the workflow-task default; schedule-to-close
                 # caps the whole emission (pickup + run) at the same 10s budget.
@@ -351,7 +351,7 @@ class HarnessDocWorkflow:
         try:
             return await self._run(inp)
         except Exception:
-            # MAJ-1 (TASK-348): without a terminal event the feed freezes on the
+            # Without a terminal event the feed freezes on the
             # last `active` stage (and the Redis snapshot lies for its full TTL)
             # whenever the loop fails. Emit a best-effort `failed` terminal so
             # the API closes the SSE stream, then ALWAYS re-raise — an SMR
@@ -359,18 +359,19 @@ class HarnessDocWorkflow:
             # `except Exception` deliberately excludes cancellation
             # (asyncio.CancelledError is a BaseException): a cancelled run is
             # not a failed run. The emission goes through _report_progress
-            # (patch-gated for pre-TASK-345 histories) AND its own
-            # workflow.patched gate so TASK-345-era in-flight executions that
-            # fail after this deploys stay deterministic on replay.
+            # (patch-gated for histories recorded before the progress-feed
+            # feature shipped) AND its own workflow.patched gate so in-flight
+            # executions from that era that fail after this deploys stay
+            # deterministic on replay.
             if workflow.patched("task-348-failure-terminal"):
                 await self._report_progress(inp, HARNESS_PROGRESS_FAILED_STAGE)
             raise
 
     async def _run(self, inp: HarnessDocWorkflowInput) -> HarnessDocWorkflowResult:
-        # 0) Live policy injection (Phase 6). Read ONCE at the start in an activity
+        # 0) Live policy injection. Read ONCE at the start in an activity
         # (I/O stays out of the deterministic body) and thread the result through.
-        # A failed fetch degrades to the code defaults — never crash the loop. C1-06
-        # (TASK-458): an UNREACHABLE policy endpoint can silently RELAX a stricter tenant
+        # A failed fetch degrades to the code defaults — never crash the loop. An
+        # UNREACHABLE policy endpoint can silently RELAX a stricter tenant
         # policy, so a fetch FAILURE now flags reduced assurance (folded into
         # ``reduced_assurance`` at its init below). A successful "no custom policy" read
         # is NOT a degrade — only the ``except`` path is. Pure local state (no workflow
@@ -397,11 +398,11 @@ class HarnessDocWorkflow:
         if policy is not None:
             gate = HarnessGateConfig(
                 max_regen=policy.max_regen,
-                # TASK-533 B4 — per-run token budget, governed by
+                # Per-run token budget, governed by
                 # `agentic.context.tokenBudget.perRun` and served on the effective
                 # policy. Per-field fallthrough like the knobs below: None ⇒ keep the
                 # input-snapshotted default (0 = unbounded), so an unset budget leaves
-                # the loop byte-identical to pre-B4.
+                # the loop byte-identical to before this budget feature.
                 token_budget_per_run=(
                     policy.token_budget_per_run
                     if policy.token_budget_per_run is not None
@@ -409,9 +410,9 @@ class HarnessDocWorkflow:
                 ),
                 gate_sla_seconds=policy.gate_sla_seconds,
                 gate_escalation_seconds=policy.gate_escalation_seconds,
-                # TASK-355 Phase D (R-7): the optimistic kill-switch is snapshotted at
-                # workflow start (document:start -> input). (Phase 3A) makes it a
-                # policy-overridable knob: the effective policy value wins WHEN NON-NULL,
+                # The optimistic kill-switch is snapshotted at
+                # workflow start (document:start -> input), and the effective-policy read
+                # here makes it a policy-overridable knob: the effective policy value wins WHEN NON-NULL,
                 # else the input-snapshotted default governs (per-field fallthrough, same
                 # rationale as ``smr_provider``). Both are read from deterministic
                 # workflow state (never env) ⇒ replay-safe; no new command / patch marker.
@@ -420,7 +421,7 @@ class HarnessDocWorkflow:
                     if policy.optimistic_delivery_enabled is not None
                     else inp.gate.optimistic_delivery_enabled
                 ),
-                # C1-02 (TASK-458): the gate/edit safety bounds are loop-safety knobs.
+                # The gate/edit safety bounds are loop-safety knobs.
                 # ``gate_max_escalations`` stays input-only; lets the policy
                 # override ``max_edit_reruns`` when non-null (else the input default).
                 gate_max_escalations=inp.gate.gate_max_escalations,
@@ -433,7 +434,7 @@ class HarnessDocWorkflow:
             sensor_thresholds = policy.to_sensor_thresholds()
             groundedness_threshold = policy.groundedness_threshold
             safety_enabled = policy.safety_enabled
-            # TASK-357: snapshot the PHI egress policy alongside the other guard
+            # Snapshot the PHI egress policy alongside the other guard
             # toggles so the activity-side guard is deterministic across replay.
             phi_enabled = policy.phi_enabled
             phi_fail_closed = policy.phi_fail_closed
@@ -466,7 +467,7 @@ class HarnessDocWorkflow:
             sensor_thresholds = None
             groundedness_threshold = DEFAULT_GROUNDEDNESS_THRESHOLD
             safety_enabled = True
-            # TASK-357: no policy ⇒ the fail-closed code defaults govern the guard.
+            # No policy ⇒ the fail-closed code defaults govern the guard.
             phi_enabled = True
             phi_fail_closed = True
             smr_provider = inp.smr_provider
@@ -487,16 +488,17 @@ class HarnessDocWorkflow:
             mcp_tool_allowlist = None
 
         # 1) Transcript NER. NLP down -> degrade (force human review), don't crash.
-        # TASK-480 Half-B — NER-priors reuse: seed the transcript pass with
+        # NER-priors reuse: seed the transcript pass with
         # ``reuse_priors`` + the ids so the (non-deterministic) activity MAY reuse
-        # already-persisted CODED NamedEntity rows (TASK-476) instead of re-extracting
+        # already-persisted CODED NamedEntity rows instead of re-extracting
         # cold — killing the redundant second NER pass. This is a DATA-ONLY activity
         # input (the reuse/flag/code logic + apps/api read all live in the activity), so
         # it adds no new workflow command and needs no ``workflow.patched()``: an old
         # replay history schedules ``extract_entities`` exactly as before, and its
         # recorded result deserializes ``reused=False`` (cold-path semantics). The
         # activity falls back to the cold extraction when the flag is off / priors are
-        # absent / none carry a code, so this is inert until TASK-476 lands.
+        # absent / none carry a code, so this is inert until coded entities are actually
+        # persisted elsewhere.
         self._phase = "EXTRACT"
         degraded = False
         priors_reused = False
@@ -506,7 +508,7 @@ class HarnessDocWorkflow:
                 extract_entities,
                 ExtractEntitiesInput(
                     text=inp.transcript_text,
-                    # TASK-483: thread the (future) transcript ref; the activity resolves
+                    # thread the (future) transcript ref; the activity resolves
                     # inline-or-ref. None today ⇒ inline path, byte-identical.
                     text_ref=inp.transcript_ref,
                     language=inp.conversation_language,
@@ -526,9 +528,9 @@ class HarnessDocWorkflow:
             degraded = True
 
         # Persist the freshly-extracted transcript entities. When they were REUSED from
-        # already-persisted coded priors (TASK-480), the rows already exist — skip the
+        # already-persisted coded priors, the rows already exist — skip the
         # redundant re-persist. Data-driven skip (``priors_reused`` reconstructs from the
-        # recorded activity result: False for every pre-TASK-480 history) ⇒ replay-safe,
+        # recorded activity result: False for every history predating priors-reuse) ⇒ replay-safe,
         # no ``workflow.patched()``; mirrors the existing ``if transcript_entities:``
         # data-driven guard right beside it.
         if transcript_entities and not priors_reused:
@@ -586,7 +588,7 @@ class HarnessDocWorkflow:
                     # tool call is best-effort, so degrade rather than crash the loop.
                     mcp_degraded = True
 
-        # 1b) Institutional RAG (Phase 3, flag-gated). JIT hybrid retrieval is
+        # 1b) Institutional RAG (flag-gated). JIT hybrid retrieval is
         # entity-triggered and stable across regens, so it runs ONCE here (before the
         # loop) and the prompt is augmented with the cited chunks each iteration. A
         # degraded retrieval (backend down) yields an empty context and flags reduced
@@ -594,7 +596,7 @@ class HarnessDocWorkflow:
         self._phase = "RETRIEVE"
         # Progress stage 2 covers institutional retrieval + prompt assembly.
         await self._report_progress(inp, "assembling_context")
-        # C1-06: seed reduced assurance from the policy-fetch degrade (a relaxed stricter
+        # Seed reduced assurance from the policy-fetch degrade (a relaxed stricter
         # policy is an assurance degrade); retrieval/inferential degrades OR it in below.
         # a degraded MCP terminology validation also reduces assurance.
         reduced_assurance = policy_degraded or mcp_degraded
@@ -617,7 +619,7 @@ class HarnessDocWorkflow:
             reduced_assurance = True
         retrieved_chunk_ids = [c.chunk_id for c in retrieved.chunks]
         knowledge_chunks = {c.chunk_id: c.text for c in retrieved.chunks}
-        # TASK-483: per-chunk claim-check refs for any offloaded chunk texts; the
+        # per-chunk claim-check refs for any offloaded chunk texts; the
         # inferential activity merges these with ``knowledge_chunks`` (inline "" for the
         # offloaded ones). Empty ⇒ the pure-inline path (retrieval off / below threshold).
         knowledge_chunks_ref = {
@@ -631,7 +633,7 @@ class HarnessDocWorkflow:
         # auto-regenerated). A degraded/failed inferential backend degrades to reduced
         # assurance: the gate proceeds on the computational verdict (never auto-PASS).
         self._phase = "GENERATE"
-        # TASK-355 Phase D (Slice 4a) — optimistic two-phase delivery is gated by BOTH
+        # Optimistic two-phase delivery is gated by BOTH
         # the snapshotted feature flag (behaviour key) AND a durable patch marker
         # (replay key). The flag is the FIRST operand, so when it is OFF (default)
         # ``workflow.patched()`` is NEVER called: no marker is recorded and the run's
@@ -639,17 +641,18 @@ class HarnessDocWorkflow:
         # by test_replay_compat). Flag value comes from the snapshotted gate config, so
         # the branch is deterministic across replay. When ON, the inferential pass moves
         # AFTER an early draft delivery and runs as assurance-only (a delivered draft is
-        # never silently regenerated in 4a — the regen-if-untouched dynamics are 4b).
+        # never silently regenerated in the early-delivery path — the regen-if-untouched
+        # dynamics live in the post-delivery assurance path below).
         use_optimistic = gate.optimistic_delivery_enabled and workflow.patched(
             "task-355-optimistic-delivery"
         )
         regens_used = 0
-        # TASK-533 B4 — running token spend for this run, folded from RECORDED
+        # Running token spend for this run, folded from RECORDED
         # ACTIVITY OUTPUTS (`generated.stats`). Deriving it this way is what keeps
         # the budget stop replay-safe: it adds no command, reads no clock/env, and
         # an old history simply yields no stats -> zero spend -> byte-identical
-        # behaviour. Deriving it from a new activity or workflow.now() would make
-        # this patched era #9 and require a fresh replay fixture.
+        # behaviour. Deriving it from a new activity or workflow.now() would require
+        # a new patch marker and a fresh replay fixture.
         tokens_used = 0
         budget_stopped = False
         verdict = None
@@ -662,11 +665,11 @@ class HarnessDocWorkflow:
         regen_feedback: RegenFeedback | None = None
         guardrail_decisions: dict[str, Any] = {}
         rag_triad_score: float | None = None
-        # TASK-359 WS-1 — workflow-threaded, data-only per-claim verdict cache (L2). Carried
+        # Workflow-threaded, data-only per-claim verdict cache (L2). Carried
         # from one inferential pass's OUTPUT into the next pass's INPUT so a regen re-judges only
-        # changed claims (unchanged claims reuse the byte-identical cached verdict, AC-2). DATA
+        # changed claims (unchanged claims reuse the byte-identical cached verdict). DATA
         # flow only — adds no new command, needs no ``workflow.patched()``; reconstructed
-        # deterministically from recorded activity outputs on replay (old histories ⇒ {}, T8).
+        # deterministically from recorded activity outputs on replay (old histories ⇒ {}).
         verdict_cache: dict[str, bool] = {}
         while True:
             # Progress stage 3 — re-emitted on every regen iteration (the fold on
@@ -686,7 +689,7 @@ class HarnessDocWorkflow:
                 start_to_close_timeout=_ACTIVITY_TIMEOUT,
                 retry_policy=_API_RETRY,
             )
-            # TASK-483: the retrieved Knowledge Context (StrictCitations) block + the
+            # the retrieved Knowledge Context (StrictCitations) block + the
             # (possibly offloaded) prompt refs are threaded to ``generate``, which resolves
             # the prompt inline-or-ref and folds in the block. The workflow no longer
             # concatenates the blob, so history holds only the small refs.
@@ -722,7 +725,7 @@ class HarnessDocWorkflow:
                     extract_entities,
                     ExtractEntitiesInput(
                         text=generated.content,
-                        # TASK-483: thread the offloaded-note ref (None ⇒ inline note).
+                        # thread the offloaded-note ref (None ⇒ inline note).
                         text_ref=generated.content_ref,
                         language=inp.conversation_language,
                         trajectory=self._traj(inp),
@@ -740,7 +743,7 @@ class HarnessDocWorkflow:
                 run_sensors,
                 RunSensorsInput(
                     note_text=generated.content,
-                    # TASK-483: thread the offloaded note + (future) transcript refs.
+                    # thread the offloaded note + (future) transcript refs.
                     note_text_ref=generated.content_ref,
                     transcript_text=inp.transcript_text,
                     transcript_text_ref=inp.transcript_ref,
@@ -775,11 +778,12 @@ class HarnessDocWorkflow:
                 regens_used += 1
                 continue
 
-            # TASK-355 Phase D (Slice 4a) — optimistic delivery split. The computational
+            # Optimistic delivery split. The computational
             # verdict has settled, so the draft is ready to DELIVER. Break out and persist
             # it early (below); the costly inferential pass then runs as ASSURANCE after
-            # delivery (it does not feed the regen loop — assurance-only in 4a). The legacy
-            # path (flag off) falls through and keeps the inferential pass INSIDE the loop.
+            # delivery (it does not feed the regen loop — assurance-only in this early-delivery
+            # path). The legacy path (flag off) falls through and keeps the inferential pass
+            # INSIDE the loop.
             if use_optimistic:
                 break
 
@@ -792,7 +796,7 @@ class HarnessDocWorkflow:
                     run_inferential_sensors,
                     RunInferentialSensorsInput(
                         note_text=generated.content,
-                        # TASK-483: thread the offloaded note + transcript + chunk refs.
+                        # thread the offloaded note + transcript + chunk refs.
                         note_text_ref=generated.content_ref,
                         transcript_text=inp.transcript_text,
                         transcript_text_ref=inp.transcript_ref,
@@ -809,7 +813,7 @@ class HarnessDocWorkflow:
                         atomic_fact_enabled=atomic_fact_enabled,
                         phi_enabled=phi_enabled,
                         phi_fail_closed=phi_fail_closed,
-                        # TASK-359 WS-1 — carry the prior passes' verdicts so unchanged
+                        # Carry the prior passes' verdicts so unchanged
                         # claims reuse the cache (data-only; no new command / patch marker).
                         prior_verdicts=verdict_cache,
                         trajectory=self._traj(inp),
@@ -825,7 +829,7 @@ class HarnessDocWorkflow:
             if inferential is not None:
                 guardrail_decisions = inferential.guardrail_decisions
                 rag_triad_score = inferential.rag_triad_score
-                # TASK-359 WS-1 — thread this pass's populated verdict cache into the next.
+                # Thread this pass's populated verdict cache into the next.
                 verdict_cache = inferential.verdict_cache
                 if inferential.degraded:
                     reduced_assurance = True
@@ -854,10 +858,10 @@ class HarnessDocWorkflow:
 
         # 3) Persist the draft + record the gate verdict. Two shapes, by flag:
         if use_optimistic:
-            # TASK-355 Phase D — OPTIMISTIC two-phase delivery. Two nested helpers keep
+            # OPTIMISTIC two-phase delivery. Two nested helpers keep
             # the loop body readable AND keep the replay-critical computational/legacy
-            # loop above DELIBERATELY UNTOUCHED (Slice-4b re-delivery + regen mirror it
-            # here rather than re-entering it). Both close over the pre-loop locals.
+            # loop above DELIBERATELY UNTOUCHED (the post-delivery re-delivery + regen
+            # mirror it here rather than re-entering it). Both close over the pre-loop locals.
             async def _deliver_early(
                 gen_: SmrGenerationResult,
                 sens_: SensorRunOutput,
@@ -866,8 +870,8 @@ class HarnessDocWorkflow:
             ) -> DraftResponse:
                 """Early persist (phase=EARLY): readable draft, verdict + RAG-triad withheld.
 
-                Used for the first delivery AND each Slice-4b regen re-delivery. NOTE
-                (apps/api Slice 5): a re-delivery must UPSERT the existing
+                Used for the first delivery AND each post-delivery regen re-delivery. NOTE
+                (apps/api): a re-delivery must UPSERT the existing
                 DRAFT_PENDING_SENSORS draft (update content + computational scores),
                 not create a second draft.
                 """
@@ -879,7 +883,7 @@ class HarnessDocWorkflow:
                         user_id=inp.user_id,
                         job_id=inp.job_id,
                         content=gen_.content,
-                        # TASK-483: thread the offloaded-note ref (activity resolves before POST).
+                        # thread the offloaded-note ref (activity resolves before POST).
                         content_ref=gen_.content_ref,
                         model_name=gen_.model or None,
                         sensor_scores=sens_.scores,
@@ -906,7 +910,7 @@ class HarnessDocWorkflow:
             ]:
                 """One regen pass (assemble → generate → extract → run_sensors).
 
-                Mirrors the computational loop body so the Slice-4b regen-if-untouched
+                Mirrors the computational loop body so the post-delivery regen-if-untouched
                 path can re-generate WITHOUT re-entering (and risking the replay history
                 of) the legacy loop. Returns ``(assembled, generated, sensors, degraded)``.
                 """
@@ -924,7 +928,7 @@ class HarnessDocWorkflow:
                     start_to_close_timeout=_ACTIVITY_TIMEOUT,
                     retry_policy=_API_RETRY,
                 )
-                # TASK-483: thread the (offloaded) prompt refs + RAG block to generate
+                # thread the (offloaded) prompt refs + RAG block to generate
                 # (which resolves + folds the block); mirrors the legacy loop.
                 gen_ = await workflow.execute_activity(
                     generate,
@@ -941,7 +945,7 @@ class HarnessDocWorkflow:
                         phi_enabled=phi_enabled,
                         phi_fail_closed=phi_fail_closed,
                         # critique from the pre-regen verdict (set by the
-                        # Q1 branch before this helper runs; None ⇒ byte-identical).
+                        # regen-if-untouched branch before this helper runs; None ⇒ byte-identical).
                         regen_feedback=regen_feedback,
                         # PHI-safe segment refs from assemble (empty ⇒
                         # no StrictCitations block, byte-identical prompt).
@@ -998,32 +1002,32 @@ class HarnessDocWorkflow:
             # The draft is readable NOW — fold the feed to completed + close the SSE.
             await self._report_progress(inp, HARNESS_PROGRESS_TERMINAL_STAGE)
 
-            # (b) ASSURANCE loop (Slice 4b, patch-gated). The costly inferential pass
+            # (b) ASSURANCE loop (patch-gated). The costly inferential pass
             #     runs AFTER delivery; a degraded/failed backend degrades to reduced
             #     assurance (never auto-PASS). TWO signal-driven dynamics, gated behind
-            #     a SECOND patch marker so a 4a-era optimistic history (optimistic marker
-            #     only) still replays as the single assurance pass:
-            #       Q3 edit  — a clinician `edit` during the pass re-binds assurance to
+            #     a SECOND patch marker so an early-delivery-only history (optimistic
+            #     marker only) still replays as the single assurance pass:
+            #       edit re-bind — a clinician `edit` during the pass re-binds assurance to
             #                  the edited version and re-runs it (assurance only; the
             #                  clinician owns the content, so it is NOT re-generated).
-            #       Q1 regen — an UNTOUCHED draft with a REGEN-fixable verdict is
+            #       regen-if-untouched — an UNTOUCHED draft with a REGEN-fixable verdict is
             #                  silently regenerated + re-delivered ONCE (budget
             #                  permitting); once edited, regens_remaining=0 escalates the
             #                  REGEN to a surfaced FLAG instead of swapping the note.
             signals_enabled = workflow.patched("task-355-assurance-signals")
             assurance_content = generated.content
-            # TASK-483: the offloaded-note ref companion to ``assurance_content`` (threaded
+            # the offloaded-note ref companion to ``assurance_content`` (threaded
             # to the assurance pass's note_text_ref). Re-bound alongside the content below.
             assurance_content_ref = generated.content_ref
             assurance_version_id: str | None = None
-            # C1-02 (TASK-458): count edit-driven re-runs so a burst of clinician edits
+            # Count edit-driven re-runs so a burst of clinician edits
             # cannot drive an unbounded number of costly inferential passes (patch-gated).
             edit_reruns = 0
             while True:
                 # Consume a pending edit (arrived before/between passes): re-bind the
                 # assurance target to the edited version, then clear the per-pass latch.
                 if signals_enabled and self._edited:
-                    # TASK-483: re-bind to the edited note (inline or offloaded ref); an
+                    # re-bind to the edited note (inline or offloaded ref); an
                     # empty edit keeps the current content+ref (mirrors the original `or`).
                     if self._edited_content or self._edited_content_ref is not None:
                         assurance_content = self._edited_content or ""
@@ -1037,7 +1041,7 @@ class HarnessDocWorkflow:
                         run_inferential_sensors,
                         RunInferentialSensorsInput(
                             note_text=assurance_content,
-                            # TASK-483: thread the offloaded note + transcript + chunk refs.
+                            # thread the offloaded note + transcript + chunk refs.
                             note_text_ref=assurance_content_ref,
                             transcript_text=inp.transcript_text,
                             transcript_text_ref=inp.transcript_ref,
@@ -1054,16 +1058,16 @@ class HarnessDocWorkflow:
                             atomic_fact_enabled=atomic_fact_enabled,
                             phi_enabled=phi_enabled,
                             phi_fail_closed=phi_fail_closed,
-                            # TASK-355 Phase D Slice 5d (Q5) — the optimistic ASSURANCE
+                            # The optimistic ASSURANCE
                             # pass streams each claim verdict live to apps/api as it
                             # resolves (data-only activity-input fields; the activity
-                            # publishes best-effort, never on replay). The legacy pass
-                            # (line ~468) leaves these unset and stays silent.
+                            # publishes best-effort, never on replay). The legacy
+                            # (non-optimistic) pass leaves these unset and stays silent.
                             live_assurance=True,
                             consultation_id=inp.consultation_id,
                             tenant_id=inp.tenant_id,
                             job_id=inp.job_id,
-                            # TASK-359 WS-1 — carry prior verdicts across assurance regen
+                            # Carry prior verdicts across assurance regen
                             # passes (data-only; no new command / patch marker).
                             prior_verdicts=verdict_cache,
                             trajectory=self._traj(inp),
@@ -1075,10 +1079,10 @@ class HarnessDocWorkflow:
                 except ActivityError:
                     reduced_assurance = True
 
-                # Q3: an edit landed DURING this pass — the verdict is stale. Re-run
-                # assurance on the edited version, but CAP the re-runs (C1-02) so N rapid
-                # edits can't drive N costly passes. Patch-gated: pre-458 histories (no
-                # marker) keep the uncapped command sequence on replay. Beyond the cap,
+                # An edit landed DURING this pass — the verdict is stale. Re-run
+                # assurance on the edited version, but CAP the re-runs so N rapid
+                # edits can't drive N costly passes. Patch-gated: histories predating the
+                # cap (no marker) keep the uncapped command sequence on replay. Beyond the cap,
                 # bind to the latest edit for the record but STOP re-running (the verdict
                 # binds to the last assured content — bounded staleness under a burst).
                 if signals_enabled and self._edited:
@@ -1094,7 +1098,7 @@ class HarnessDocWorkflow:
                 if inferential is not None:
                     guardrail_decisions = inferential.guardrail_decisions
                     rag_triad_score = inferential.rag_triad_score
-                    # TASK-359 WS-1 — thread this pass's populated verdict cache into the next.
+                    # Thread this pass's populated verdict cache into the next.
                     verdict_cache = inferential.verdict_cache
                     if inferential.degraded:
                         reduced_assurance = True
@@ -1115,7 +1119,7 @@ class HarnessDocWorkflow:
                     expected=list(COMPUTATIONAL_SENSOR_NAMES) + inferential_expected,
                 )
 
-                # Q1 regen-if-untouched: regenerate ONCE + re-deliver, then re-assure.
+                # Regen-if-untouched: regenerate ONCE + re-deliver, then re-assure.
                 # Disabled after any edit (the `not self._ever_edited` guard) — the
                 # verdict above will already be a FLAG in that case.
                 if (
@@ -1123,21 +1127,21 @@ class HarnessDocWorkflow:
                     and verdict.decision == GateDecision.REGEN
                     and regens_used < gate.max_regen
                     and not self._ever_edited
-                    # TASK-533 B4 — the per-run token budget binds here too. This
-                    # is the THIRD regen site (post-delivery Q1 rerun); the two
+                    # The per-run token budget binds here too. This
+                    # is the THIRD regen site (this post-delivery rerun); the two
                     # pre-delivery branches already carried the conjunct, so a
                     # budget-exhausted run could still buy one more generate here.
                     and not budget_stopped
                 ):
-                    # critique from the settled verdict feeds the Q1 regen.
+                    # critique from the settled verdict feeds this regen.
                     regen_feedback = build_regen_feedback(
                         list(sensors.results) + inferential_results,
                         enabled=regen_feedback_enabled,
                     )
                     regens_used += 1
                     assembled, generated, sensors, regen_degraded = await _regen_compute()
-                    # TASK-533 B4 — count what this regen actually spent. Without
-                    # this the Q1 rerun is invisible to the budget, so a run could
+                    # Count what this regen actually spent. Without
+                    # this the rerun is invisible to the budget, so a run could
                     # report less spend than it incurred.
                     tokens_used += _tokens_from_stats(generated.stats)
                     budget_stopped = _budget_exhausted(gate.token_budget_per_run, tokens_used)
@@ -1147,25 +1151,25 @@ class HarnessDocWorkflow:
                         generated, sensors, assembled, reduced_assurance
                     )
                     assurance_content = generated.content
-                    # TASK-483: keep the ref companion in lockstep with the re-generated note.
+                    # keep the ref companion in lockstep with the re-generated note.
                     assurance_content_ref = generated.content_ref
                     continue
                 break
             decision = str(verdict.decision)
 
-            # (c) RETRACT-or-FINALIZE (TASK-481 E2 — the optimistic-delivery retraction net).
+            # (c) RETRACT-or-FINALIZE — the optimistic-delivery retraction net.
             #     The optimistic path delivered a READABLE draft BEFORE assurance (the
-            #     clinician can already be reading it — and, per the ACCEPTED TASK-453
-            #     pre-assurance window, may already have signed). When the post-delivery
+            #     clinician can already be reading it — and, per the accepted
+            #     pre-assurance-window design, may already have signed). When the post-delivery
             #     assurance settles to a FLAG, the delivered draft is RETRACTED (apps/api
             #     marks it RETRACTED + writes the WORM audit carrying the FLAG verdict + the
             #     offending claim refs + surfaces a clinician-facing retraction event)
             #     INSTEAD of silently backfilling the FLAG verdict via finalize — the
-            #     explicit safety net that makes the accepted window safe (E2 does NOT change
-            #     the TASK-453 sign-off governance). Patch-gated: a pre-E2 optimistic history
-            #     has no marker, so ``workflow.patched`` returns False on replay and the
-            #     legacy finalize-only command sequence is preserved (replay-safe). A
-            #     non-FLAG verdict finalizes exactly as before.
+            #     explicit safety net that makes the accepted window safe (this retraction
+            #     net does NOT change the sign-off governance). Patch-gated: a history
+            #     predating this retraction net has no marker, so ``workflow.patched``
+            #     returns False on replay and the legacy finalize-only command sequence is
+            #     preserved (replay-safe). A non-FLAG verdict finalizes exactly as before.
             if workflow.patched("task-481-optimistic-retraction") and (
                 verdict.decision == GateDecision.FLAG
             ):
@@ -1194,7 +1198,8 @@ class HarnessDocWorkflow:
                 # A retracted draft is WITHDRAWN — it does NOT wait for clinician sign-off.
                 # Complete terminally (retracted=True); the retraction event has already
                 # informed the clinician. The gate-wait + record path below is intentionally
-                # skipped (patch-gated, so a pre-E2 replay keeps the legacy gate flow).
+                # skipped (patch-gated, so a replay predating this retraction net keeps the
+                # legacy gate flow).
                 self._phase = "RETRACTED"
                 return HarnessDocWorkflowResult(
                     consultation_id=inp.consultation_id,
@@ -1211,7 +1216,7 @@ class HarnessDocWorkflow:
             #     DRAFT_PENDING_SENSORS -> PENDING_REVIEW, and record the deferred
             #     SENSOR_RUN (+ REDUCED_ASSURANCE) WORM. Idempotent on apps/api.
             #     ``context_item_version_id`` binds the verdict to a clinician-edited
-            #     version when an edit re-bound assurance (Slice 4b); None otherwise.
+            #     version when an edit re-bound assurance; None otherwise.
             self._phase = "FINALIZE"
             await workflow.execute_activity(
                 finalize_assurance,
@@ -1257,7 +1262,7 @@ class HarnessDocWorkflow:
                     user_id=inp.user_id,
                     job_id=inp.job_id,
                     content=generated.content,
-                    # TASK-483: thread the offloaded-note ref (activity resolves before POST).
+                    # thread the offloaded-note ref (activity resolves before POST).
                     content_ref=generated.content_ref,
                     model_name=generated.model or None,
                     sensor_scores=sensors.scores,
@@ -1287,10 +1292,10 @@ class HarnessDocWorkflow:
         self._phase = "GATE"
         escalations = 0
         deadline = gate.gate_sla_seconds
-        # C1-02 (TASK-458): bound the escalation loop with a TERMINAL abandon so an
+        # Bound the escalation loop with a TERMINAL abandon so an
         # un-signed gate cannot escalate forever (was: re-fire ``escalate_gate`` every
-        # ``gate_escalation_seconds`` with no max). Patch-gated — a pre-458 history has no
-        # marker, so ``workflow.patched`` returns False on replay and the legacy
+        # ``gate_escalation_seconds`` with no max). Patch-gated — a history predating this
+        # bound has no marker, so ``workflow.patched`` returns False on replay and the legacy
         # infinite-wait command sequence is preserved. The ``gate_max_escalations`` value
         # comes from the deterministic input, so the bound is replay-stable.
         gate_terminal = workflow.patched("task-458-gate-terminal-abandon")
@@ -1302,7 +1307,7 @@ class HarnessDocWorkflow:
                 )
             except TimeoutError:
                 # The final escalation before the bound carries a terminal reason so
-                # apps/api can mark the gate abandoned (via the C1-05 escalation record).
+                # apps/api can mark the gate abandoned (via the escalation record).
                 terminal = gate_terminal and escalations + 1 >= gate.gate_max_escalations
                 await workflow.execute_activity(
                     escalate_gate,
@@ -1318,10 +1323,10 @@ class HarnessDocWorkflow:
                 escalations += 1
                 deadline = gate.gate_escalation_seconds
                 if gate_terminal and escalations >= gate.gate_max_escalations:
-                    break  # C1-02: terminal bound hit → abandon (handled just below)
+                    break  # terminal bound hit → abandon (handled just below)
 
         approval = self._approval
-        # C1-02: the loop can now exit WITHOUT approval — only via the terminal-bound
+        # The loop can now exit WITHOUT approval — only via the terminal-bound
         # ``break`` above (``self._approval`` is None). A late approval racing the final
         # escalation still wins (``approval`` is non-None ⇒ we fall through and record it).
         # Abandon: the draft stays PENDING_REVIEW for manual handling and the escalations

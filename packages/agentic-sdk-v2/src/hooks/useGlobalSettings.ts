@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useGlobalSettings Hook (TASK-032 WS-A)
+ * @arcaai/vox - useGlobalSettings Hook
  *
  * Global settings CRUD hook. RBAC-protected.
  */
@@ -15,7 +15,7 @@ import type { PaginationParams } from '../types/common';
 import { AgenticError } from '../types/common';
 
 /**
- * Per-setting `ETag` cache for TASK-302 Stream D Phase D optimistic locking.
+ * Per-setting `ETag` cache for optimistic locking.
  *
  * Map from `settingId` -> raw `ETag` header value (e.g. `"7"`, including
  * the RFC 7232 double quotes). The cache is module-level (not React state)
@@ -46,7 +46,7 @@ export interface UseGlobalSettingsReturn {
   update: (id: string, input: UpdateGlobalSettingInput) => Promise<GlobalSetting>;
   remove: (id: string) => Promise<void>;
   /**
-   * TASK-396 — reveal ONE secret setting's plaintext. Global-admin only + step-up
+   * Reveal ONE secret setting's plaintext. Global-admin only + step-up
    * re-auth: pass the caller's current password. The result is transient (never
    * persisted by the SDK). Throws `AgenticError` on 401 (wrong/absent password)
    * or 403 (not a global-admin).
@@ -91,7 +91,7 @@ export function useGlobalSettings(): UseGlobalSettingsReturn {
     [execute],
   );
 
-  // TASK-302 Stream D Phase D — `get` now also captures the `ETag`
+  // `get` now also captures the `ETag`
   // response header so a follow-up `update(id, ...)` can replay it as
   // `If-Match`. Without this, every `update` would either 428 (header
   // missing on a `@RequiresIfMatch()` route) or race with concurrent
@@ -118,7 +118,7 @@ export function useGlobalSettings(): UseGlobalSettingsReturn {
     [execute],
   );
 
-  // TASK-302 Stream D Phase D — `update` replays the cached ETag as
+  // `update` replays the cached ETag as
   // `If-Match`. On `412 Precondition Failed`, the generic AgenticError
   // is transformed into a structured `ConfigConflictError` so callers
   // can `instanceof`-check and surface the conflict modal (D.5) instead
@@ -175,7 +175,7 @@ export function useGlobalSettings(): UseGlobalSettingsReturn {
     [execute],
   );
 
-  // TASK-396 — reveal one secret's plaintext. The password is posted (over TLS)
+  // Reveal one secret's plaintext. The password is posted (over TLS)
   // for server-side step-up verification; nothing is cached locally and the
   // returned plaintext is intentionally NOT written into `settings` state (it
   // is transient and must never be persisted).

@@ -1,1 +1,1 @@
-"""Unit tests for the Phase-2 egress guards (TASK-330) — fail-closed PHI redaction."""
+"""Unit tests for the Phase-2 egress guards — fail-closed PHI redaction."""

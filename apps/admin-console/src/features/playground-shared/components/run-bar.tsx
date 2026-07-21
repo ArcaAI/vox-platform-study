@@ -17,7 +17,7 @@ const CONNECTION: Record<Exclude<ConnectionState, 'idle'>, { label: string; vari
 };
 
 /**
- * Playground run bar (TASK-442 §3): the single Run/Stop affordance plus the
+ * Playground run bar: the single Run/Stop affordance plus the
  * connection + progress chips, standardizing the streaming-state displays that
  * each realtime page hand-rolled. Presentational — the page owns the SSE/WS
  * state and passes it down.

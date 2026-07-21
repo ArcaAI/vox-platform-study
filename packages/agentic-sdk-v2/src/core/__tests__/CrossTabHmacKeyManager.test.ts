@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - CrossTabHmacKeyManager Tests (TASK-280)
+ * @arcaai/vox - CrossTabHmacKeyManager Tests
  *
  * Validates the SharedWorker-backed HMAC key manager that replaces the
  * per-page module singleton used by `SimpleCrossTabSync`. The key invariant
@@ -40,7 +40,7 @@ type Res =
 class MockSharedWorkerImpl {
   private secret: Uint8Array | null = null;
   private keyPromise: Promise<CryptoKey> | null = null;
-  // Mirrors the real worker's per-tenant subkey cache (TASK-317 AC-11).
+  // Mirrors the real worker's per-tenant subkey cache.
   private tenantKeys = new Map<string, Promise<CryptoKey>>();
   shouldStall = false;
 
@@ -205,7 +205,7 @@ describe('CrossTabHmacKeyManager (TASK-280)', () => {
     });
 
     it('two managers sharing the worker URL agree on the secret (cross-tab)', async () => {
-      // This is the CORE cross-tab guarantee of TASK-280. The prior
+      // This is the CORE cross-tab guarantee. The prior
       // per-process singleton failed this scenario because each tab had
       // its own SESSION_HMAC_SECRET.
       const tabA = new CrossTabHmacKeyManager({ workerUrl: WORKER_URL });
@@ -231,13 +231,13 @@ describe('CrossTabHmacKeyManager (TASK-280)', () => {
     });
 
     // =========================================================================
-    // TASK-317 W3.4 — AC-11: per-tenant HMAC subkey (SharedWorker path).
+    // Per-tenant HMAC subkey (SharedWorker path).
     //
-    // TASK-280 made the secret per-Worker (shared across tabs). AC-11 layers a
-    // per-tenant HKDF subkey on top so two tenants sharing the SAME worker (and
-    // thus the same master secret) cannot forge each other's envelopes. The
-    // worker derives HKDF(masterSecret, tenantId); the master secret never
-    // leaves the worker.
+    // The secret is per-Worker (shared across tabs). A per-tenant HKDF subkey
+    // layers on top so two tenants sharing the SAME worker (and thus the same
+    // master secret) cannot forge each other's envelopes. The worker derives
+    // HKDF(masterSecret, tenantId); the master secret never leaves the
+    // worker.
     // =========================================================================
     it('TASK-317 W3.4 — AC-11 cross-tenant verify FAILS over the SharedWorker (forged message rejected)', async () => {
       const tabA = new CrossTabHmacKeyManager({ workerUrl: WORKER_URL });
@@ -356,7 +356,7 @@ describe('CrossTabHmacKeyManager (TASK-280)', () => {
     });
 
     // =========================================================================
-    // TASK-317 W3.4 — AC-11: per-tenant HMAC subkey (fallback path).
+    // Per-tenant HMAC subkey (fallback path).
     //
     // In fallback mode two managers on the same page share FALLBACK_SECRET, but
     // each derives a DISTINCT HKDF subkey from its tenantId. A message signed
@@ -398,7 +398,7 @@ describe('CrossTabHmacKeyManager (TASK-280)', () => {
     });
 
     // =========================================================================
-    // TASK-317 W3.1 (M-1) — empty/whitespace tenantId behaves like no tenant.
+    // Empty/whitespace tenantId behaves like no tenant.
     //
     // The SharedWorker `keyFor('')` is falsy → master key, but the fallback
     // derived HKDF(secret, '') for ANY non-undefined tenantId. So a blank /

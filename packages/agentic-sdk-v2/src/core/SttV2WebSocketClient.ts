@@ -39,7 +39,7 @@ interface DebugTranscriptEntry {
 }
 
 function debugLogTranscript(logger: ISDKLogger | undefined, source: string, entry: DebugTranscriptEntry): void {
-  // TASK-266 W0-13: route through SDKLogger.debug so the entry passes through
+  // Route through SDKLogger.debug so the entry passes through
   // the redactPHI pipeline (and any user-configured transports) instead of
   // emitting raw PHI to the browser console. The structured `entry` lives in
   // `attributes.entry` so consumers can parse it without regex-splitting.
@@ -57,7 +57,7 @@ export interface WsConnectOptions {
   /** Connection timeout in ms (default: 10000). Rejects if server doesn't respond in time. */
   timeoutMs?: number;
   /**
-   * TASK-317 E-4 (AC-10) — explicit tenant claim for this connection. When
+   * Explicit tenant claim for this connection. When
    * `requireTenantClaim` is set and this is absent, the claim is resolved
    * from the URL (`tenantId` / `tenant` query params) instead.
    */
@@ -67,9 +67,9 @@ export interface WsConnectOptions {
    * (before opening any socket) unless a tenant claim is resolvable from
    * `tenantClaim` or the URL.
    *
-   * TASK-317 E-4 (AC-10) introduced this as an opt-in (default `false`).
-   * TASK-320 B5 flips the EFFECTIVE default to `true` (fail-closed by
-   * default) — connections without a resolvable tenant claim now reject.
+   * This started as an opt-in (default `false`); the EFFECTIVE default is
+   * now `true` (fail-closed by default) — connections without a resolvable
+   * tenant claim now reject.
    * Callers that genuinely need to skip the check must opt out explicitly
    * with `requireTenantClaim: false`. The SDK's own streaming flow always
    * supplies a tenant claim via `StreamingSessionManager.getWebSocketUrl()`
@@ -92,7 +92,7 @@ export interface WsReconnectOptions {
   /** Maximum delay in ms between reconnection attempts (default: 30000) */
   maxDelayMs?: number;
   /**
-   * Callback invoked before each reconnect attempt (TASK-298 D-18). Must
+   * Callback invoked before each reconnect attempt. Must
    * return a new single-use stream ticket. The previous ticket is consumed
    * by the gateway on the first WS open, so reconnects MUST mint a fresh
    * ticket. When the callback returns null / throws, the attempt is aborted.
@@ -101,7 +101,7 @@ export interface WsReconnectOptions {
 }
 
 /**
- * Bounded queue + backpressure configuration (TASK-298 D-15 / M-WS-6).
+ * Bounded queue + backpressure configuration.
  *
  * Without these limits, `audioQueue.length` and `ws.bufferedAmount` would
  * grow unboundedly under network pressure. We drop oldest frames once the
@@ -136,9 +136,9 @@ export interface WsBackpressureOptions {
  * ```
  */
 export class SttV2WebSocketClient {
-  /** Default bounded queue size (TASK-298 D-15). */
+  /** Default bounded queue size. */
   static readonly DEFAULT_MAX_QUEUE_SIZE = 200;
-  /** Default bufferedAmount watermark — 1 MiB (TASK-298 D-15). */
+  /** Default bufferedAmount watermark — 1 MiB. */
   static readonly DEFAULT_BUFFERED_AMOUNT_HIGH_WATERMARK = 1 * 1024 * 1024;
 
   private ws: WebSocket | null = null;
@@ -152,18 +152,18 @@ export class SttV2WebSocketClient {
   private onDisconnectCb?: () => void;
   private onReconnectCb?: (attempt: number) => void;
   private onReconnectFailedCb?: () => void;
-  /** Emitted when a reconnect attempt genuinely re-opens the socket (TASK-461 C6-02). */
+  /** Emitted when a reconnect attempt genuinely re-opens the socket. */
   private onReconnectedCb?: () => void;
-  /** Emitted whenever a frame is dropped due to backpressure (TASK-298 D-15). */
+  /** Emitted whenever a frame is dropped due to backpressure. */
   private onBackpressureDropCb?: (reason: 'queue_full' | 'buffered_amount_high') => void;
 
   /** Reconnection configuration */
   private reconnectOptions: Required<Omit<WsReconnectOptions, 'refreshTicket'>> & {
     refreshTicket: (() => Promise<string>) | null;
   };
-  /** Backpressure configuration (TASK-298 D-15). */
+  /** Backpressure configuration. */
   private backpressureOptions: Required<WsBackpressureOptions>;
-  /** Number of frames dropped since last connect (D-15). */
+  /** Number of frames dropped since last connect. */
   private droppedFrameCount = 0;
   /** Number of reconnection attempts since last successful connect */
   private reconnectAttempts = 0;
@@ -178,7 +178,7 @@ export class SttV2WebSocketClient {
   /** Whether we are currently in a reconnect cycle */
   private isReconnecting = false;
   /**
-   * Highest transcript `seq` the client has received (TASK-298 D-17). Sent
+   * Highest transcript `seq` the client has received. Sent
    * as `lastSeq` in the resume handshake on every reconnect.
    */
   private lastReceivedSeq = 0;
@@ -216,7 +216,7 @@ export class SttV2WebSocketClient {
       return Promise.reject(new Error('WebSocket already connected. Call disconnect() first.'));
     }
 
-    // TASK-317 E-4 (AC-10) + TASK-320 B5 — fail-closed tenant-claim guard.
+    // Fail-closed tenant-claim guard.
     // The guard is now ON BY DEFAULT (`requireTenantClaim` defaults to `true`);
     // callers opt out explicitly with `requireTenantClaim: false`. Reject
     // BEFORE creating a socket when enforcement is active and no claim resolves.
@@ -293,7 +293,7 @@ export class SttV2WebSocketClient {
             this.sendResumeHandshake(ws, this.currentSessionId, this.lastReceivedSeq);
           }
           if (wasReconnecting) {
-            // TASK-461 C6-02 — the transport genuinely re-opened after a drop.
+            // The transport genuinely re-opened after a drop.
             // Signal reconnect SUCCESS so consumers leave their 'reconnecting'
             // UX and read as live again. Distinct from `onReconnect`, which
             // fires at attempt-start during backoff (socket not yet back).
@@ -346,9 +346,9 @@ export class SttV2WebSocketClient {
    * Accepts an `ArrayBuffer` or any `ArrayBufferView` (e.g. `Int16Array`) —
    * `WebSocket.send` handles views natively, so callers can pass their
    * typed-array view directly without slice-copying the underlying buffer
-   * (TASK-351 P0-5, zero-copy hot path).
+   * (zero-copy hot path).
    *
-   * TASK-298 D-15: drops the frame and emits a backpressure event when
+   * Drops the frame and emits a backpressure event when
    * `ws.bufferedAmount` exceeds the configured high-watermark. Returns
    * `false` when the frame was dropped, `true` otherwise.
    */
@@ -365,7 +365,7 @@ export class SttV2WebSocketClient {
   /**
    * Send JSON-encoded audio frame.
    *
-   * TASK-298 D-15: same backpressure policy as `sendAudioFrame`.
+   * Same backpressure policy as `sendAudioFrame`.
    */
   sendAudioFrameJson(seq: number, data: string, microphoneId?: string): boolean {
     this.requireConnection();
@@ -381,17 +381,17 @@ export class SttV2WebSocketClient {
     return true;
   }
 
-  /** Count of frames dropped due to backpressure since last connect (D-15). */
+  /** Count of frames dropped due to backpressure since last connect. */
   getDroppedFrameCount(): number {
     return this.droppedFrameCount;
   }
 
-  /** Highest transcript `seq` received from the server (D-17). */
+  /** Highest transcript `seq` received from the server. */
   getLastReceivedSeq(): number {
     return this.lastReceivedSeq;
   }
 
-  /** Register a callback invoked when a frame is dropped due to backpressure (D-15). */
+  /** Register a callback invoked when a frame is dropped due to backpressure. */
   onBackpressureDrop(cb: (reason: 'queue_full' | 'buffered_amount_high') => void): void {
     this.onBackpressureDropCb = cb;
   }
@@ -474,7 +474,7 @@ export class SttV2WebSocketClient {
 
   /**
    * Called when a reconnection attempt has genuinely re-opened the socket
-   * (TASK-461 C6-02). Fires on the reconnect open only — never on the initial
+   * Fires on the reconnect open only — never on the initial
    * connect — so consumers can transition a 'reconnecting' surface back to
    * live. Contrast `onReconnect`, which fires at attempt-start during backoff.
    */
@@ -495,7 +495,7 @@ export class SttV2WebSocketClient {
    * Acknowledge that the connection is stable and end the current reconnect
    * episode, resetting the reconnect counter so future disconnects get a fresh
    * set of attempts. Invoked automatically on the first server message received
-   * after a reconnect (`handleMessage`, TASK-2605) — the signal that the
+   * after a reconnect (`handleMessage`) — the signal that the
    * reconnected session is genuinely alive rather than a brief flap — and also
    * safe to call manually. Idempotent.
    */
@@ -608,7 +608,7 @@ export class SttV2WebSocketClient {
   }
 
   /**
-   * TASK-317 E-4 (AC-10) — resolve the tenant claim for a connection. Prefers
+   * Resolve the tenant claim for a connection. Prefers
    * an explicit `options.tenantClaim`, then falls back to the URL `tenantId`
    * or `tenant` query param. Returns null when no non-empty claim is found, so
    * the caller can fail-closed. Empty/whitespace values never count as a claim.
@@ -636,7 +636,7 @@ export class SttV2WebSocketClient {
   }
 
   /**
-   * TASK-461 C6-04 — tolerant `isFinal` coercion. Accepts a boolean, the
+   * Tolerant `isFinal` coercion. Accepts a boolean, the
    * numbers 1/0, or the strings '1'/'0'; returns null when unparseable so the
    * caller can fall through to the other casing (and ultimately default false).
    */
@@ -648,7 +648,7 @@ export class SttV2WebSocketClient {
   }
 
   private static normalizeTranscript(msg: WsTranscriptWirePayload): WsTranscriptResult | null {
-    // TASK-461 C6-04 — `text` is the only field a caption cannot survive
+    // `text` is the only field a caption cannot survive
     // without, so a payload with no string `text` is genuinely unusable and is
     // dropped. Everything else DEGRADES (sensible defaults) rather than
     // discarding the whole transcript: an omitted `start_time` or a numeric
@@ -672,13 +672,13 @@ export class SttV2WebSocketClient {
       isFinal,
     };
 
-    // TASK-298 D-17: capture server-assigned monotonic sequence number so
+    // Capture server-assigned monotonic sequence number so
     // the client can resume after a reconnect.
     if (typeof msg.seq === 'number' && Number.isFinite(msg.seq)) {
       normalized.seq = msg.seq;
     }
 
-    // TASK-351 P1-1: committed-prefix length on partials (dual-cased like
+    // Committed-prefix length on partials (dual-cased like
     // the other fields; additive — absent on older servers).
     const rawStableChars =
       typeof msg.stableChars === 'number' ? msg.stableChars : typeof msg.stable_chars === 'number' ? msg.stable_chars : undefined;
@@ -686,14 +686,14 @@ export class SttV2WebSocketClient {
       normalized.stableChars = Math.floor(rawStableChars);
     }
 
-    // TASK-351 P1-1 follow-up: utterance ordinal (dual-cased, additive).
+    // Utterance ordinal (dual-cased, additive).
     const rawUtteranceIndex =
       typeof msg.utteranceIndex === 'number' ? msg.utteranceIndex : typeof msg.utterance_index === 'number' ? msg.utterance_index : undefined;
     if (typeof rawUtteranceIndex === 'number' && Number.isFinite(rawUtteranceIndex) && rawUtteranceIndex >= 0) {
       normalized.utteranceIndex = Math.floor(rawUtteranceIndex);
     }
 
-    // TASK-351 P1-1 follow-up: result kind — the gateway relays it as
+    // Result kind — the gateway relays it as
     // `resultType`; raw wire payloads carry it as `type` (segment|gloss).
     // The WS envelope's own `type: 'transcript'` fails the guard, so only
     // genuine segment/gloss markers are accepted.
@@ -814,13 +814,13 @@ export class SttV2WebSocketClient {
     try {
       const msg = JSON.parse(event.data) as Record<string, unknown>;
 
-      // TASK-2605 — the first server message after a reconnect proves the
+      // The first server message after a reconnect proves the
       // reconnected session is genuinely alive (not a socket that opened and
       // immediately flapped shut). Acknowledge stability here so THIS disconnect
       // episode's attempt budget resets to 0 and the next episode starts with a
       // full budget instead of depleting it cumulatively across the session. A
       // flap that closes before any message arrives never reaches this line, so
-      // repeated flapping still exhausts maxAttempts and gives up (BUG-04).
+      // repeated flapping still exhausts maxAttempts and gives up.
       if (this.isReconnecting) {
         this.acknowledgeConnection();
       }
@@ -851,7 +851,7 @@ export class SttV2WebSocketClient {
               };
               debugLogTranscript(this.logger, 'SttV2WebSocket', entry);
             }
-            // TASK-298 D-17: track the highest seen seq.
+            // Track the highest seen seq.
             if (typeof transcript.seq === 'number' && transcript.seq > this.lastReceivedSeq) {
               this.lastReceivedSeq = transcript.seq;
             }
@@ -925,11 +925,11 @@ export class SttV2WebSocketClient {
   }
 
   // =========================================================================
-  // TASK-298 D-15 / D-17 / D-18 helpers
+  // Backpressure / resume helpers
   // =========================================================================
 
   /**
-   * D-15: Decide whether to drop the next outbound frame because the WS
+   * Decide whether to drop the next outbound frame because the WS
    * buffer is over the high-watermark. Reading `bufferedAmount` on closed
    * sockets throws on some platforms, so we guard against that.
    */
@@ -954,7 +954,7 @@ export class SttV2WebSocketClient {
     this.onBackpressureDropCb?.(reason);
   }
 
-  /** Extract `sessionId` query param from a WS URL (D-17). */
+  /** Extract `sessionId` query param from a WS URL. */
   private static parseSessionId(url: string): string | null {
     try {
       const parsed = new URL(url);
@@ -967,7 +967,7 @@ export class SttV2WebSocketClient {
 
   /**
    * Replace (or insert) the `ticket=...` query param in a WS URL with a
-   * freshly-issued value. Used on reconnect (D-18). The previous ticket is
+   * freshly-issued value. Used on reconnect. The previous ticket is
    * one-shot consumed on the gateway, so reusing the URL verbatim would
    * cause a 4401 close.
    */
@@ -985,7 +985,7 @@ export class SttV2WebSocketClient {
     }
   }
 
-  /** Send the JSON resume handshake immediately after a reconnect (D-17). */
+  /** Send the JSON resume handshake immediately after a reconnect. */
   private sendResumeHandshake(ws: WebSocket, sessionId: string, lastSeq: number): void {
     const handshake: WsResumeRequest = { type: 'resume', sessionId, lastSeq };
     try {

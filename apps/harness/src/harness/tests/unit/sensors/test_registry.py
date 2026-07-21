@@ -1,4 +1,4 @@
-"""Registry + wired-pipeline tests (RED-first).
+"""Registry + wired-pipeline tests.
 
 The registry instantiates the five computational sensors (in canonical order)
 for the loop to consume; the pipeline tests run the *real* sensors over crafted

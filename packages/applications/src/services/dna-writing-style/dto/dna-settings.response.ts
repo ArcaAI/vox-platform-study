@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * TASK-356 Phase 6 (S3) — the per-doctor DNA writing-style on/off settings.
+ * The per-doctor DNA writing-style on/off settings.
  *
  * `effective = tenantEnabled && (doctorToggle ?? true)` — resolved via the
  * Phase-5 pipeline-policy cascade. The UI binds the switch to `doctorToggle`

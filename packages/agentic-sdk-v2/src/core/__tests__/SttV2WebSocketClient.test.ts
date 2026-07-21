@@ -207,15 +207,15 @@ describe('SttV2WebSocketClient', () => {
   });
 
   // =========================================================================
-  // TASK-317 W3.5 (AC-10) + TASK-320 B5 — WS must not open without a tenant claim.
+  // WS must not open without a tenant claim.
   //
   // The stt-v2 upgrade carried no client-side assertion that the connection is
   // bound to a tenant, so a misconfigured caller could open a socket with no
-  // tenant context. AC-10 added a fail-closed guard that rejects connect()
+  // tenant context. A fail-closed guard rejects connect()
   // BEFORE creating the socket unless a claim is resolvable from the options
   // (`tenantClaim`) or the URL (`tenantId` / `tenant`).
   //
-  // TASK-320 B5 flips the EFFECTIVE DEFAULT to fail-closed: `requireTenantClaim`
+  // The EFFECTIVE DEFAULT is fail-closed: `requireTenantClaim`
   // now defaults to `true`, so a bare connect() with no resolvable claim
   // rejects. Callers opt out explicitly with `requireTenantClaim: false`. The
   // SDK's own streaming flow always carries `?tenantId=` (see
@@ -225,7 +225,7 @@ describe('SttV2WebSocketClient', () => {
   // file-wide tenant-id injection.
   // =========================================================================
   describe('TASK-317 W3.5 / TASK-320 B5 — tenant-claim guard', () => {
-    // --- default-on (TASK-320 B5) ---------------------------------------
+    // --- default-on ---------------------------------------
     it('rejects a bare connect() BY DEFAULT when no claim is resolvable (no socket created)', async () => {
       const connectPromise = client.connect('wss://no-claim.example/ws');
       // Capture the rejection up-front so a slow reject can't leak as an
@@ -267,7 +267,7 @@ describe('SttV2WebSocketClient', () => {
       expect(client.isConnected()).toBe(true);
     });
 
-    // --- explicit opt-in (unchanged from TASK-317 AC-10) ----------------
+    // --- explicit opt-in ----------------
     it('rejects connect() when requireTenantClaim is explicitly true but no claim is resolvable', async () => {
       const connectPromise = client.connect('wss://no-claim.example/ws', { requireTenantClaim: true });
       const settled = connectPromise.then(() => 'resolved' as const).catch((e: unknown) => e);
@@ -760,7 +760,7 @@ describe('SttV2WebSocketClient', () => {
       vi.useRealTimers();
     });
 
-    // TASK-461 C6-02 — `onReconnect` fires at attempt-START (during backoff,
+    // `onReconnect` fires at attempt-START (during backoff,
     // before the socket is back). Consumers that must reflect "live again" need
     // a distinct SUCCESS signal fired only when the transport actually
     // re-opens. `onReconnected` fires on the reconnect open, never on the first
@@ -849,12 +849,12 @@ describe('SttV2WebSocketClient', () => {
       vi.useRealTimers();
     });
 
-    // TASK-2605 — a genuine reconnect (one that goes on to deliver a message)
+    // A genuine reconnect (one that goes on to deliver a message)
     // must reset the attempt budget so EACH disconnect episode gets the full
     // maxAttempts, instead of the counter depleting cumulatively across the
     // session. The reset is triggered by the first server message after a
     // reconnect (the "session is alive" signal); a flap that opens then closes
-    // WITHOUT a message never resets — that is what keeps BUG-04 exhausting.
+    // WITHOUT a message never resets — that is what keeps the reconnect loop exhausting.
     it('should give each disconnect episode a fresh retry budget after a reconnect delivers a message (TASK-2605)', async () => {
       vi.useFakeTimers();
       const mathRandomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
@@ -1122,7 +1122,7 @@ describe('SttV2WebSocketClient', () => {
   });
 
   // =========================================================================
-  // BUG-04: Reconnect loop must not cycle infinitely
+  // Reconnect loop must not cycle infinitely
   // =========================================================================
 
   describe('BUG-04: reconnect counter must not reset on brief connections', () => {
@@ -1406,7 +1406,7 @@ describe('SttV2WebSocketClient', () => {
       client.disconnect();
     });
 
-    // TASK-489 — the applications bridge now derives a canonical camelCase
+    // The applications bridge derives a canonical camelCase
     // `speakerLabel` and the gateway relays it type-erased, so the wire the SDK
     // actually receives carries `speakerId` + `speakerLabel` (camelCase). Lock
     // that the client carries BOTH straight through to the admin/vox consumers.
@@ -1439,7 +1439,7 @@ describe('SttV2WebSocketClient', () => {
       client.disconnect();
     });
 
-    // TASK-351 P1-1 — stableChars (committed-prefix length on partials) is
+    // stableChars (committed-prefix length on partials) is
     // additive and dual-cased like the other normalized fields.
     it('should normalize stableChars from camelCase payloads (TASK-351 P1-1)', async () => {
       const mockLogger = createMockLogger();
@@ -1521,7 +1521,7 @@ describe('SttV2WebSocketClient', () => {
       client.disconnect();
     });
 
-    // TASK-351 P1-1 follow-up — utteranceIndex + resultType are additive and
+    // utteranceIndex + resultType are additive and
     // dual-cased; gloss results ride the normal transcript relay with the
     // gateway's camelCase field names.
     it('should normalize utteranceIndex and resultType from gateway (camelCase) payloads (TASK-351 follow-up)', async () => {
@@ -1623,11 +1623,11 @@ describe('SttV2WebSocketClient', () => {
       expect('resultType' in envelope!).toBe(false);
     });
 
-    // TASK-461 C6-04 — the parser used to hard-drop the ENTIRE transcript the
-    // moment ONE of text/startTime/endTime/isFinal was absent or mistyped
-    // (e.g. a numeric is_final, or a server that omits timing on a partial).
-    // Now it degrades gracefully: only a genuinely unusable payload (no text)
-    // is dropped; missing OPTIONAL metadata defaults instead of discarding the
+    // Guards against dropping the ENTIRE transcript the moment ONE of
+    // text/startTime/endTime/isFinal is absent or mistyped (e.g. a numeric
+    // is_final, or a server that omits timing on a partial). Instead it
+    // degrades gracefully: only a genuinely unusable payload (no text) is
+    // dropped; missing OPTIONAL metadata defaults instead of discarding the
     // caption.
     it('tolerates missing/mistyped optional fields instead of dropping the caption (C6-04)', () => {
       const normalize = (
@@ -1740,7 +1740,7 @@ describe('SttV2WebSocketClient', () => {
   });
 
   // =========================================================================
-  // TASK-241 + TASK-266 W0-13: Debug Mode
+  // Debug Mode
   //
   // Originally these tests asserted that debug-mode transcripts hit
   // `console.log`. W0-13 routes that channel through `SDKLogger.debug(...)`
@@ -1889,7 +1889,7 @@ describe('SttV2WebSocketClient', () => {
   });
 
   // =========================================================================
-  // TASK-266 W0-13: source file MUST NOT contain `console.log`.
+  // Source file MUST NOT contain `console.log`.
   //
   // This locks the contract that no future edit can accidentally re-introduce
   // an ad-hoc console.log call into SttV2WebSocketClient.ts. The check reads
@@ -1897,7 +1897,7 @@ describe('SttV2WebSocketClient', () => {
   // mention `console.log` don't false-positive.
   // =========================================================================
   // =========================================================================
-  // TASK-298 D-15 — Bounded queue + bufferedAmount watermark backpressure
+  // Bounded queue + bufferedAmount watermark backpressure
   // =========================================================================
   describe('TASK-298 D-15 backpressure', () => {
     it('drops binary frames when bufferedAmount exceeds the high-watermark', async () => {
@@ -1967,7 +1967,7 @@ describe('SttV2WebSocketClient', () => {
   });
 
   // =========================================================================
-  // TASK-298 D-17 — Resumability handshake
+  // Resumability handshake
   // =========================================================================
   describe('TASK-298 D-17 resume handshake', () => {
     it('records the highest transcript seq and exposes it via getLastReceivedSeq', async () => {
@@ -2081,7 +2081,7 @@ describe('SttV2WebSocketClient', () => {
   });
 
   // =========================================================================
-  // TASK-298 D-18 — Fresh ticket on reconnect
+  // Fresh ticket on reconnect
   // =========================================================================
   describe('TASK-298 D-18 fresh ticket on reconnect', () => {
     it('calls refreshTicket() before reopening and rewrites the ticket query param', async () => {

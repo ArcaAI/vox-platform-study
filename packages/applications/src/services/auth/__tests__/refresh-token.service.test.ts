@@ -1,13 +1,13 @@
 /**
- * TASK-307 W1.1 — RefreshTokenService unit tests
+ * RefreshTokenService unit tests
  *
- * Closes audit findings:
- *   - C-1 (refresh token forgery) — opaque, server-persisted, single-use,
+ * Covers:
+ *   - refresh token forgery — opaque, server-persisted, single-use,
  *     family-revoke on reuse-detection (RFC 6749 §10.4).
- *   - C-12 (refresh ignores tenant scope) — `issue(...)` records the
+ *   - refresh ignoring tenant scope — `issue(...)` records the
  *     active session's tenantId; `consume(...)` returns it so the
  *     refreshed access token can bind to the original tenant.
- *   - D-10 (refresh leaks userId) — opaque base64url payload, no
+ *   - refresh leaking userId — opaque base64url payload, no
  *     userId / timestamp in the wire format.
  *
  * Pattern mirrors the existing JwtRevocationService tests
@@ -32,7 +32,7 @@ interface MockCache {
   hset: ReturnType<typeof vi.fn>;
   incr: ReturnType<typeof vi.fn>;
   expire: ReturnType<typeof vi.fn>;
-  // TASK-310 W7.A.4 (AC-2) — atomic Lua eval support. The mock
+  // Atomic Lua eval support. The mock
   // implementation in `createMockCache` interprets the
   // `REFRESH_TOKEN_CONSUME_LUA` script JS-side; this single helper
   // mirrors the Redis-side guarantee that the GET / DEL / DEL / SETEX
@@ -46,7 +46,7 @@ interface MockCache {
  * `delMany` / `scan` collaborate on a single in-memory Map so the
  * round-trip tests can mimic the real Redis behaviour.
  *
- * TASK-307 W7.A.1 — added `scan` alongside `keys` so the
+ * `scan` sits alongside `keys` so the
  * `revokeFamily` cursor walk has a working in-memory implementation
  * after the migration off blocking `KEYS`. Both `keys` and `scan`
  * return the same matches against the in-memory map; the test surface
@@ -85,7 +85,7 @@ function createMockCache(): { mock: MockCache; store: Map<string, string> } {
     isConnected: vi.fn().mockReturnValue(true),
   };
 
-  // TASK-310 W7.A.4 (AC-2) — mock the Lua eval the service ships.
+  // Mock the Lua eval the service ships.
   // Mirrors the script body in JS against the same in-memory store so
   // the consume call is atomic from the test's point of view (the
   // GET / DEL / DEL / SETEX sequence runs without any micro-task
@@ -319,9 +319,9 @@ describe('TASK-307 W1.1 — RefreshTokenService', () => {
     });
 
     /**
-     * TASK-310 W7.A.4 (AC-2) — race-replay test.
+     * Race-replay test.
      *
-     * Pre-W7 `consume()` was a non-atomic sequence:
+     * The naive `consume()` was a non-atomic sequence:
      *   get(activeKey) → del(activeKey) → del(memberKey) → setex(consumedKey)
      *
      * Two concurrent calls each saw the active row from their own `get`

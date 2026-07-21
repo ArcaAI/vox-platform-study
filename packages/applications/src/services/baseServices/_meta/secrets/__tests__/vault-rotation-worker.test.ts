@@ -1,4 +1,4 @@
-// TASK-302 Phase 6 Tasks 6.3 + 6.4 + 6.8 (Stream B) — VaultRotationWorker.
+// VaultRotationWorker.
 //
 // Asserts:
 //   - handleAuditLine parses Vault audit JSON for kv-v2 update/create

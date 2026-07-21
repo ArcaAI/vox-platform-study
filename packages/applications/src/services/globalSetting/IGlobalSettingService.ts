@@ -5,7 +5,7 @@ import { CreateGlobalSettingRequest, RotateGlobalSettingRequest, UpdateGlobalSet
 
 export interface IGlobalSettingService extends IBaseService {
   create(request: CreateGlobalSettingRequest): Promise<GlobalSettingEntity>;
-  /** TASK-443 — `secretsOnly` resolves the derived secret predicate server-side (no `isSecret` column). */
+  /** `secretsOnly` resolves the derived secret predicate server-side (no `isSecret` column). */
   fetchAll(props: PaginatedQuery & { secretsOnly?: boolean }): Promise<FetchResponse<GlobalSettingEntity>>;
   fetchAllByTenantId(props: PaginatedQuery & { tenantId: string; secretsOnly?: boolean }): Promise<FetchResponse<GlobalSettingEntity>>;
   fetchAllCreatedByUser(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<GlobalSettingEntity>>;
@@ -13,7 +13,7 @@ export interface IGlobalSettingService extends IBaseService {
   update(id: EntityId, request: UpdateGlobalSettingRequest): Promise<GlobalSettingEntity>;
   deleteById(id: EntityId): Promise<GlobalSettingEntity>;
   /**
-   * TASK-396 — reveal ONE setting's decrypted plaintext.
+   * Reveal ONE setting's decrypted plaintext.
    *
    * Super-admin only (enforced at the HTTP layer via CASL `manage all`, and
    * re-checked here for defense in depth) + step-up re-auth: `password` is the
@@ -24,7 +24,7 @@ export interface IGlobalSettingService extends IBaseService {
    */
   revealSecret(id: EntityId, password: string): Promise<{ entity: GlobalSettingEntity; plaintext: string }>;
   /**
-   * TASK-445 — rotate ONE secret setting: atomically replace the stored secret
+   * Rotate ONE secret setting: atomically replace the stored secret
    * value under optimistic concurrency (`updateWithVersion`), invalidating the
    * old value in the same versioned write. Super-admin only (re-checked here,
    * primary gate is the HTTP layer's CASL `manage:all`) + step-up re-auth like

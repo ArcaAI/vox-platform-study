@@ -1,4 +1,4 @@
-"""Unit tests for multimodal LLM streaming callable -- TASK-309.
+"""Unit tests for multimodal LLM streaming callable.
 
 Tests _make_asr_callable() branching for multimodal LLM models (Gemma 4).
 """

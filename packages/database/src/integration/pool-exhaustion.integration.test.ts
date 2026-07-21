@@ -1,7 +1,7 @@
 /**
  * Pool Exhaustion Integration Test
  *
- * TASK-302 Stream C Phase 0 Task 0.3. Real-database verification that the
+ * Real-database verification that the
  * PrismaPg adapter rejects connection acquisition once the pool is saturated.
  *
  * Constraints under test:

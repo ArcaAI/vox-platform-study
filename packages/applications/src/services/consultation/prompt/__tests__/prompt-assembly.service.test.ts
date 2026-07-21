@@ -89,7 +89,7 @@ describe('PromptAssemblyService', () => {
         mockDnaWritingStyleRepository.findById.mockResolvedValue(createMockDnaStyle());
     });
 
-    // TASK-355 Phase C (R-6) — warm-start is gated behind HARNESS_WARM_START_ENABLED
+    // Warm-start is gated behind HARNESS_WARM_START_ENABLED
     // (default OFF). Construct with a ConfigService mock; pass `true` to enable.
     async function getService(warmStartEnabled = false) {
         const { PromptAssemblyService } = await import('../prompt-assembly.service');
@@ -338,7 +338,7 @@ describe('PromptAssemblyService', () => {
         });
     });
 
-    // ── NER → prompt injection (TASK-330 Phase 1) ──
+    // ── NER → prompt injection ──
     // Closes the gap where NER output is computed but never reaches the LLM.
 
     describe('NER injection (TASK-330 Phase 1)', () => {
@@ -420,9 +420,9 @@ describe('PromptAssemblyService', () => {
             expect(result.userPrompt).not.toContain('RECOGNIZED CLINICAL ENTITIES');
         });
 
-        // TASK-462 C5-03 — the ontology code columns (umls/snomed/rxnorm/icd/loinc)
+        // The ontology code columns (umls/snomed/rxnorm/icd/loinc)
         // are READ here but WRITTEN nowhere until the SOTA Theme C clinical NER
-        // linker lands (TASK-476), so today the code set is ALWAYS empty. The
+        // linker lands, so today the code set is ALWAYS empty. The
         // groundedness guard makes that absence EXPLICIT instead of silently
         // emitting un-coded entity lines that read as if coding was attempted.
         it('flags the absence of ontology codes when NER entities carry none (C5-03 groundedness guard)', async () => {
@@ -442,14 +442,14 @@ describe('PromptAssemblyService', () => {
             });
 
             // Entities still reach the LLM (text + type), but the absence of codes is EXPLICIT
-            // — in CLINICALLY NEUTRAL wording (TASK-462 M-3), never internal jargon/ticket ids.
+            // — in CLINICALLY NEUTRAL wording, never internal jargon/ticket ids.
             expect(result.userPrompt).toContain('RECOGNIZED CLINICAL ENTITIES');
             expect(result.userPrompt).toContain('headache');
             expect(result.userPrompt).toContain('no standardized codes assigned');
             // No misleading empty coded output: no bare bracket, no dangling code tokens.
             expect(result.userPrompt).not.toContain('[]');
             expect(result.userPrompt).not.toContain('umls:');
-            // M-3 — internal implementation references must NOT leak into a clinical prompt.
+            // Internal implementation references must NOT leak into a clinical prompt.
             expect(result.userPrompt).not.toContain('TASK-476');
             expect(result.userPrompt).not.toContain('SOTA');
         });
@@ -474,10 +474,10 @@ describe('PromptAssemblyService', () => {
             expect(result.userPrompt).not.toContain('no standardized codes assigned');
         });
 
-        // TASK-476 C1 (AC-4) — the concrete "C5-03 closed" proof: with the NLP
+        // Proof: with the NLP
         // linker populating codes (the shape it emits for a coded medication),
         // serializeNerEntities emits a REAL `[umls:…; rxnorm:…]` block and the
-        // TASK-462 groundedness note is ABSENT (the guard's hasAnyOntologyCode
+        // groundedness note is ABSENT (the guard's hasAnyOntologyCode
         // goes true in production). The guard code stays for genuinely un-codable
         // spans — proven by the un-coded test above.
         it('emits the real coded block and disengages the guard on linker-coded entities (C5-03 closed)', async () => {
@@ -500,12 +500,12 @@ describe('PromptAssemblyService', () => {
             expect(result.userPrompt).toContain('rxnorm:6809');
             // Both codes render inside ONE bracketed block, separated by "; ".
             expect(result.userPrompt).toContain('[umls:C0025598; rxnorm:6809]');
-            // The interim TASK-462 note is gone — the guard disengaged.
+            // The interim groundedness note is gone — the guard disengaged.
             expect(result.userPrompt).not.toContain('no standardized codes assigned');
         });
     });
 
-    // ── Clinician notes + attachments injection (TASK-342 GAP #2) ──
+    // ── Clinician notes + attachments injection ──
     describe('clinician notes + attachments injection (TASK-342 GAP #2)', () => {
         it('appends clinician notes and attachments blocks when the template has no placeholders', async () => {
             mockPromptTemplateRepository.findById.mockResolvedValue(
@@ -574,7 +574,7 @@ describe('PromptAssemblyService', () => {
         });
     });
 
-    // ── Doctor highlights injection (TASK-344 Workstream B) ──
+    // ── Doctor highlights injection ──
     describe('doctor highlights injection (TASK-344 Workstream B)', () => {
         it('appends a doctor highlights block when the template has no placeholder', async () => {
             mockPromptTemplateRepository.findById.mockResolvedValue(
@@ -628,7 +628,7 @@ describe('PromptAssemblyService', () => {
         });
     });
 
-    // ── Pre-summary warm-start injection (TASK-355 Phase C — R-6) ──
+    // ── Pre-summary warm-start injection ──
     // The harness warm-starts `generate` from the live SOAP snapshot. Mirrors
     // the NER / notes / highlights fallback: the seed templates DECLARE
     // {pre_summary_text} in their variables map but never INLINE the placeholder
@@ -656,8 +656,8 @@ describe('PromptAssemblyService', () => {
             expect(result.userPrompt).toContain('source of truth');
         });
 
-        // TASK-480 Half-A — mature the single-append fallback into the explicit
-        // two-stage scratchpad→final lineage the S3-F5 verdict names: the live draft is
+        // Mature the single-append fallback into the explicit
+        // two-stage scratchpad→final lineage: the live draft is
         // STAGE 1 (scratchpad), the harness note is STAGE 2 (final), and the transcript
         // stays authoritative on conflict. RED before the block names the two stages.
         it('frames the prior draft as a two-stage scratchpad→final lineage, transcript authoritative on conflict', async () => {

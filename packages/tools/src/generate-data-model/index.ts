@@ -627,7 +627,7 @@ function extractPreservation(filePath: string): PreservedCustomizations {
  * instead of touching the filesystem. Content is Prettier-formatted before either.
  *
  * Prettier formatting is shared with the entity/factory generators via
- * `formatWithPrettier` (TASK-370) so the template's 4-space / blank-line layout is
+ * `formatWithPrettier` so the template's 4-space / blank-line layout is
  * reconciled with the committed 2-space style identically across all three tools.
  */
 async function emit(options: ProcessingOptions, absolutePath: string, content: string, overwrite: boolean): Promise<void> {

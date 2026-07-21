@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { HarnessAuditAction, JsonValue } from '@arcaai/domains';
 
 /**
- * One WORM audit row (TASK-330 Phase 6 — read projection of `HarnessAuditEvent`).
+ * One WORM audit row — read projection of `HarnessAuditEvent`.
  * Append-only + hash-chained; `prevHash`/`hash` expose the tamper-evident chain
  * so the console can show the verification badge.
  */
@@ -91,7 +91,7 @@ export class HarnessAuditListResponse {
 }
 
 /**
- * Clinician edit-burden telemetry for one consultation (TASK-482 E3 · S3-F7).
+ * Clinician edit-burden telemetry for one consultation.
  *
  * Derived, read-only scalars over the WORM audit + delivered/signed note versions
  * the gate already persists — the "how much did the human have to fix this"

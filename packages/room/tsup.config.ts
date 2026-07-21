@@ -3,14 +3,13 @@ import { defineConfig } from 'tsup';
 /**
  * @arcaai/room build configuration.
  *
- * TASK-300 C-XCUT-2: the main entry exports React hooks (`useRoom`,
- * `useAudioTrack`, etc.) so the bundle must carry the `"use client"`
- * directive for Next.js App Router compatibility.
+ * The main entry exports React hooks (`useRoom`, `useAudioTrack`, etc.) so
+ * the bundle carries the `"use client"` directive for Next.js App Router
+ * compatibility.
  *
- * TASK-300 C-XCUT-3: emit ESM as `.mjs` (and CJS as `.cjs`) so the
- * `package.json#exports` map is unambiguous regardless of the host's
- * `type` field. Matches the convention used by `@arcaai/stt` and
- * `@arcaai/vox`.
+ * ESM is emitted as `.mjs` (CJS as `.cjs`) so the `package.json#exports` map
+ * is unambiguous regardless of the host's `type` field, matching the
+ * convention used by `@arcaai/stt` and `@arcaai/vox`.
  */
 export default defineConfig([
   {
@@ -34,7 +33,7 @@ export default defineConfig([
       };
     },
   },
-  // TASK-300 C-XCUT-2: standalone react-server stub (ESM-only).
+  // Standalone react-server stub (ESM-only).
   {
     entry: { 'react-server-stub': 'src/react-server-stub.ts' },
     format: ['esm'],

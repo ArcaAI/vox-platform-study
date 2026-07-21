@@ -1,5 +1,5 @@
 /**
- * Permission-matrix derivation (TASK-438, build spec §4).
+ * Permission-matrix derivation (build spec §4).
  *
  * A role's effective permissions are a DERIVED, read-only view computed from
  * its attached policies. Each policy carries CASL rules

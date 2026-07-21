@@ -44,7 +44,7 @@ vi.mock('@arcaai/domains', () => ({
         }
     },
     GlobalSettingRepository: vi.fn(),
-    // TASK-402 — the service filters soft-DELETED rows via this enum; the
+    // The service filters soft-DELETED rows via this enum; the
     // module-level mock must supply it (rows without resourceStatus pass).
     ResourceStatusType: {
         ENABLED: 'ENABLED',

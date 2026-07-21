@@ -1,5 +1,5 @@
 /**
- * AiServiceProxyClient unit tests (TASK-419 item 3).
+ * AiServiceProxyClient unit tests.
  *
  * The outbound half of the /admin/ai-services read plane: URL resolution from
  * IConfigService (code defaults when absent), the two-call guardrail config

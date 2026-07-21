@@ -1,5 +1,5 @@
 /**
- * TASK-356 Phase 4 (SDK-T2) — effective transcription-mode population.
+ * Effective transcription-mode population.
  *
  * The effective transcription mode is resolved per-user SERVER-SIDE in
  * UserPreferencesService (locked ⇒ tenant default; unlocked ⇒ workflowMode) and

@@ -6,8 +6,6 @@
  * `packages/applications/.../observability/observability.module.ts`) serves
  * that register at `GET /metrics`, so any counter created here is
  * automatically scraped.
- *
- * @see TASK-302 Stream D Phase E.6 — `optimistic_lock_conflict_total`
  */
 import { Counter, register } from 'prom-client';
 

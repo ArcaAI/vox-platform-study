@@ -1,4 +1,4 @@
-"""YAML parser tests for NeMo (Parakeet) engine handling (TASK-258 Phase E)."""
+"""YAML parser tests for NeMo (Parakeet) engine handling."""
 
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ class TestEngineHelpers:
         assert is_valid_language_for_engine("zz", AiModelFormat.NEMO) is False
 
     def test_is_valid_language_for_engine_rejects_non_parakeet_for_nemo(self):
-        # TASK-351 P2-1 — NEMO no longer falls back to the Whisper language
+        # NEMO no longer falls back to the Whisper language
         # set: codes outside Parakeet-v3 (e.g. Malayalam, Catalan) are
         # invalid for the Parakeet engine.
         for code in ("ml", "ca", "ml-IN"):
@@ -99,7 +99,7 @@ class TestYamlParserNemo:
 
 
 class TestNemoUnsupportedLanguageGuard:
-    """TASK-351 P2-1 — NEMO + a language outside the Parakeet-v3 set is a
+    """NEMO + a language outside the Parakeet-v3 set is a
     hard validation error (e.g. Malayalam is Whisper-only)."""
 
     def _yaml(self, language: str) -> str:

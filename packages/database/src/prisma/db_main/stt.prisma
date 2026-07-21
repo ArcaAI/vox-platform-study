@@ -27,10 +27,10 @@ model AsrPipeline {
   // Contains model references by slug: models.asr, models.vad, models.denoise
   configYaml String @db.Text
 
-  // Per-tenant default backend pipeline assignment (TASK-328 A6)
+  // Per-tenant default backend pipeline assignment
   isDefault Boolean @default(false)
 
-  // Template lineage (TASK-531 / AD-6). The SYSTEM-tenant catalog rows ARE the
+  // Template lineage. The SYSTEM-tenant catalog rows ARE the
   // templates: they carry `sourceTemplateSlug = null` and `templateLocked = false`.
   // A tenant copy cloned from a template records the template's slug here
   // (provenance survives clone chains) and is `templateLocked = true`, which the
@@ -61,13 +61,13 @@ model AsrPipeline {
   @@unique([tenantId, slug], name: "AsrPipeline_tenant_slug_unique")
   @@index([tenantId], name: "AsrPipeline_tenantId_idx")
   @@index([resourceStatus], name: "AsrPipeline_status_idx")
-  // TASK-531 — resync/backfill scan predicate (per-tenant locked-copy sweep).
+  // Resync/backfill scan predicate (per-tenant locked-copy sweep).
   @@index([tenantId, templateLocked], name: "AsrPipeline_tenant_locked_idx")
   @@schema("core")
 }
 
 // =============================================================================
-// ASR PIPELINE VERSION (TASK-328 A6)
+// ASR PIPELINE VERSION
 // Immutable history of an AsrPipeline's configYaml for rollback/diff.
 // =============================================================================
 
@@ -132,7 +132,7 @@ model AiModel {
 
   // Model source and location
   //
-  // TASK-527 — `sourceUri` scheme grammar honoured by every service's
+  // `sourceUri` scheme grammar honoured by every service's
   // `resolve_model_dir` (stt-v2, guardrail, nlp, harness):
   //   hf:<org>/<repo> | <org>/<repo>  HuggingFace Hub snapshot (bare id also
   //                                   accepted); honours HF_HUB_OFFLINE
@@ -140,7 +140,7 @@ model AiModel {
   //   s3://bucket/prefix              downloaded once into the service cache,
   //                                   single-flight + SHA256-verified
   // Anything else is a hard `ModelSourceError` — never a silent fallback.
-  // OD-4: `s3://` only this program; `azure-blob://` is deferred.
+  // Only `s3://` is supported; `azure-blob://` is deferred.
   source         AiModelSource // HUGGINGFACE, GITHUB, MLFLOW, LOCAL, S3
   sourceUri      String // e.g., "openai/whisper-large-v3", "s3://models/minicheck", "file:///opt/models/x"
   sourceRevision String? // Git revision, MLFlow version, etc.
@@ -148,7 +148,7 @@ model AiModel {
   // Model format for loader selection
   format AiModelFormat // SAFETENSOR, ONNX, NEMO, PYTORCH
 
-  // Serving provider + architecture (TASK-506) — nullable; set for admin-
+  // Serving provider + architecture — nullable; set for admin-
   // selectable task models (LLM/guardrail/NLP/TTS) and backfilled for engines.
   provider     String? // ollama | lm-studio | azure | bedrock | built-in | sarvam
   architecture String? // e.g. gemma4, gemma3, qwen3.5, granite, whisper
@@ -158,8 +158,8 @@ model AiModel {
   computeType  String? // float32, float16, int8
 
   // Download/cache status
-  // TASK-527 — `downloadStatus`/`downloadedAt` are manual registry bookkeeping
-  // this program (no write-back automation yet).
+  // `downloadStatus`/`downloadedAt` are manual registry bookkeeping
+  // (no write-back automation yet).
   downloadStatus AiModelDownloadStatus @default(NOT_DOWNLOADED)
   // Operator/admin override — HIGHEST precedence in every service's
   // `resolve_model_dir`, ahead of `sourceUri` scheme dispatch. Use it for
@@ -235,12 +235,12 @@ model TranscriptionJob {
   startedAt   DateTime?
   completedAt DateTime?
 
-  // Results (on completion). TASK-369 Phase 6 — plaintext resultText /
-  // resultMetadata columns DROPPED; persisted as Vault-Transit ciphertext only.
+  // Results (on completion). The plaintext resultText / resultMetadata
+  // columns have been DROPPED; persisted as Vault-Transit ciphertext only.
 
   // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the
   // transcription result (resultText / resultMetadata) plus the shared Transit
-  // key version. Phase 6: these ciphertext columns are now the system of record.
+  // key version. These ciphertext columns are now the system of record.
   encryptedResultText     Bytes?
   encryptedResultMetadata Bytes?
   keyVersion              Int?

@@ -452,7 +452,7 @@ export class TranscriptionJobController {
   @Post('stream/session/:sessionId/refresh-ticket')
   @HttpCode(200)
   @TenantOwnedResource({ modelName: 'StreamSession', paramName: 'sessionId', lookup: 'session' })
-  @ApiOperation({ summary: 'Refresh the stream ticket for a live streaming session (TASK-298 D-18)' })
+  @ApiOperation({ summary: 'Refresh the stream ticket for a live streaming session' })
   @ApiParam({ name: 'sessionId', description: 'Streaming session ID' })
   async refreshStreamTicket(@Param('sessionId') sessionId: string): Promise<{ ticket: string; ticketExpiresAt: number }> {
     if (!sessionId?.trim()) {

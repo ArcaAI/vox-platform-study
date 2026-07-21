@@ -5,7 +5,7 @@ import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
 
 /**
- * Type-aware value editor for a setting (TASK-439, supersedes the old modal
+ * Type-aware value editor for a setting (supersedes the old modal
  * `ValueEditor`). `Boolean` → Switch; `Json`/`Array` → the shared `CodeEditor`
  * (line numbers, syntax highlight, Format, live validation, Copy); `Binary` →
  * a read-only notice; every other scalar → a single Input (numeric inputmode for

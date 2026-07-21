@@ -12,8 +12,8 @@ import { ErrorState } from '@/shared/state/error-state';
 import { useDnaSettings, useUpdateDnaSettings } from '../api';
 
 /**
- * Frame 53 — the per-doctor DNA on/off switch over GET/PUT /settings
- * (TASK-356 Phase 6). The switch binds to `doctorToggle` (null = implicit
+ * Frame 53 — the per-doctor DNA on/off switch over GET/PUT /settings.
+ * The switch binds to `doctorToggle` (null = implicit
  * opt-in) and locks when the tenant cascade disabled DNA (`tenantEnabled`
  * false — a doctor cannot opt in past the tenant) or while the 403 gate is
  * up. OCC is optional on this route: the PUT carries `expectedVersion` from

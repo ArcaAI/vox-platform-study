@@ -1,5 +1,5 @@
 /**
- * ConfigResolver unit tests (TASK-356 Phase 5, Pillar B).
+ * ConfigResolver unit tests.
  *
  * The generalized realtime-config cascade resolver. Verifies:
  *  1. Code-default fallthrough when no policy rows exist (trace = code-default).
@@ -196,7 +196,7 @@ describe('ConfigResolver.resolvePreferredPromptTemplateId', () => {
 });
 
 /**
- * TASK-356 Phase 6 (S3) — effective DNA-style flag = tenant AND doctor.
+ * Effective DNA-style flag = tenant AND doctor.
  *
  * DNA style applies only when the tenant permits it (resolved over the
  * department→tenant→system cascade, DOCTOR scope EXCLUDED) AND the doctor has

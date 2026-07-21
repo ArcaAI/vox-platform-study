@@ -1,5 +1,5 @@
 /**
- * TASK-269 — CRIT-3 (real-WASM smoke)
+ * Real-WASM smoke test.
  *
  * Drives the actual `@jitsi/rnnoise-wasm` binary loaded from `node_modules`
  * via Node `fs` through one full frame round-trip. Lives in its own file so

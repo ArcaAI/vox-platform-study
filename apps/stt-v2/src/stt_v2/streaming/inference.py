@@ -35,9 +35,9 @@ _MAX_SEGMENT_TEXT_CHARS = 1200
 
 _HALLUCINATION_RMS_THRESHOLD = 0.01
 _HALLUCINATION_SHORT_WORD_COUNT = 3
-# TASK-351 P2-3 — ceiling for the post-final English-gloss translate pass.
+# Ceiling for the post-final English-gloss translate pass.
 _GLOSS_TIMEOUT_S = 15.0
-# TASK-351 P2-2 — default budget a final may wait for Cadence-Fast
+# Default budget a final may wait for Cadence-Fast
 # punctuation before the raw text is published (settings-overridable).
 _PUNCTUATION_TIMEOUT_S = 0.4
 
@@ -53,7 +53,7 @@ _BASE_FILLER_FORMS: tuple[str, ...] = (
     r"oh\s*,?\s*man",
 )
 
-# TASK-351 P2-1 — common Malayalam filler/disfluency forms. Whisper often
+# Common Malayalam filler/disfluency forms. Whisper often
 # emits these for breath/near-silence in Malayalam audio; on their own they
 # carry no content. Multi-character real words never match because the
 # pattern must consume the whole string from filler alternates alone.
@@ -79,7 +79,7 @@ def build_filler_pattern(extra_forms: Sequence[str] | None = None) -> re.Pattern
 
     Matches strings consisting solely of filler/disfluency tokens,
     punctuation, and whitespace. ``extra_forms`` appends additional regex
-    alternates (TASK-351 P2-1 — configurable via the
+    alternates (configurable via the
     ``streaming_extra_filler_patterns`` setting).
     """
     forms: list[str] = [*_BASE_FILLER_FORMS, *_MALAYALAM_FILLER_FORMS]
@@ -140,7 +140,7 @@ class StreamingInferenceWorker:
         hallucination_short_word_count: int | None = None,
         gloss_callable: Any = None,
         gloss_timeout_s: float | None = None,
-        embedding_service: Any = None,  # TASK-505 — per-pipeline embedding model
+        embedding_service: Any = None,  # per-pipeline embedding model
     ) -> None:
         self._publisher = result_publisher
         self._asr_pipeline = asr_pipeline
@@ -153,7 +153,7 @@ class StreamingInferenceWorker:
             if postprocessing_config
             else None
         )
-        # TASK-351 P2-2 — direct Cadence-Fast punctuation (finals-only,
+        # Direct Cadence-Fast punctuation (finals-only,
         # time-boxed, raw-text fallback).
         self._uses_cadence_fast: bool = self._resolve_uses_cadence_fast()
         self._punctuation_timeout_s: float = self._resolve_punctuation_timeout()
@@ -183,7 +183,7 @@ class StreamingInferenceWorker:
             else _HALLUCINATION_SHORT_WORD_COUNT
         )
         self._filler_pattern = self._resolve_filler_pattern()
-        # TASK-351 P2-3 — opt-in English gloss (task=translate after finals).
+        # Opt-in English gloss (task=translate after finals).
         self._gloss_callable = gloss_callable
         self._gloss_timeout_s: float = (
             float(gloss_timeout_s)
@@ -195,7 +195,7 @@ class StreamingInferenceWorker:
         self._punctuation_model: Any = None
         self._embedding_service: Any = embedding_service
         self._previous_text: str = ""
-        # TASK-505 P1 — force-emit boundary dedup state: the preprocessor's
+        # Force-emit boundary dedup state: the preprocessor's
         # force-emit split carries overlap audio into the continuation (120 ms
         # smart split / 500 ms hard split), so consecutive FINALS overlap in
         # time and the ASR transcribes the carried words twice.
@@ -203,7 +203,7 @@ class StreamingInferenceWorker:
         self._last_final_tail: str = ""
         self._initial_prompt: str | None = initial_prompt
         self._speaker_identifier = speaker_identifier
-        # TASK-475 (Theme B2) — self-hosted Streaming Sortformer diarizer. When
+        # Self-hosted Streaming Sortformer diarizer. When
         # present (backend == "sortformer" sessions), it REPLACES the embedding
         # SpeakerIdentifier path: frame-level turns are attached to
         # ``result.speaker_id`` on both finals and partials. None keeps the
@@ -211,7 +211,7 @@ class StreamingInferenceWorker:
         self._sortformer_diarizer = sortformer_diarizer
         # One per-session diarizer instance is shared by the final consume loop
         # and the partial task; the underlying NeMo model is not reentrant, so
-        # serialize every forward through a single-slot lock (I1).
+        # serialize every forward through a single-slot lock.
         self._sortformer_lock = asyncio.Lock()
         if isinstance(prev_text_context_words, int) and not isinstance(
             prev_text_context_words, bool
@@ -221,7 +221,7 @@ class StreamingInferenceWorker:
             self._prev_text_context_words = InferenceConfig().prev_text_context_words
 
     def _resolve_uses_cadence_fast(self) -> bool:
-        """TASK-351 P2-2 — does the effective punctuation model resolve to
+        """Does the effective punctuation model resolve to
         the direct-load ``cadence-fast`` option (exact name match)?
 
         Per-pipeline ``punctuation.model`` wins; when it is unset the global
@@ -246,7 +246,7 @@ class StreamingInferenceWorker:
 
     @staticmethod
     def _resolve_punctuation_timeout() -> float:
-        """Resolve the Cadence-Fast punctuation budget (TASK-351 P2-2).
+        """Resolve the Cadence-Fast punctuation budget.
 
         ``streaming_punctuation_timeout_s`` bounds how long a final may wait
         for punctuation before the raw text is published. Invalid or
@@ -270,7 +270,7 @@ class StreamingInferenceWorker:
     def _resolve_filler_pattern() -> re.Pattern[str]:
         """Resolve the hallucination filler pattern, including configured extras.
 
-        TASK-351 P2-1 — ``streaming_extra_filler_patterns`` (pipe-separated
+        ``streaming_extra_filler_patterns`` (pipe-separated
         regex alternates) extends the built-in English + Malayalam forms.
         Invalid patterns or unavailable settings fall back to the default.
         """
@@ -368,7 +368,7 @@ class StreamingInferenceWorker:
             )
             text = ""
 
-        # Step 2a2: force-emit boundary dedup (TASK-505 P1) — strip words the
+        # Step 2a2: force-emit boundary dedup — strip words the
         # previous final already published when this final's audio overlaps it
         # (the carry region). Runs BEFORE the prev-text context update so the
         # Whisper conditioning context does not carry the duplicates either.
@@ -376,7 +376,7 @@ class StreamingInferenceWorker:
         if utterance.is_final and text.strip():
             text, dedup_dropped_words = self._dedup_forced_boundary(text, utterance)
 
-        # TASK-505 P1 review — record the boundary state HERE, from the
+        # Record the boundary state HERE, from the
         # pre-postprocessing text: the next final's dedup input is also
         # pre-postprocessing, so a tail captured after punctuation/disfluency
         # editing would break the suffix/prefix match exactly in pipelines
@@ -395,9 +395,9 @@ class StreamingInferenceWorker:
                 self._previous_text = ""
 
         # Step 2b: Punctuation restoration (postprocessor). Runs before the
-        # final is published AND before the P2-3 gloss task snapshots
+        # final is published AND before the gloss task snapshots
         # result.text, so the gloss republish carries the punctuated final.
-        # The cadence-fast path is finals-only and time-boxed (TASK-351 P2-2).
+        # The cadence-fast path is finals-only and time-boxed.
         if self._punctuation_config and self._punctuation_config.enabled:
             logger.debug(
                 "Restoring punctuation on transcript",
@@ -426,10 +426,10 @@ class StreamingInferenceWorker:
             utterance.start_time,
         )
 
-        # TASK-505 P1 — keep word timestamps consistent with the boundary
+        # Keep word timestamps consistent with the boundary
         # dedup. Match-based (not positional): the sanitizer can delete
         # artifact tokens whose raw timestamp entries survive, so a blind
-        # leading-N trim removed the wrong entries (P1 review finding).
+        # leading-N trim removed the wrong entries.
         if dedup_dropped_words:
             word_timestamps = self._trim_dedup_word_timestamps(
                 word_timestamps, dedup_dropped_words
@@ -458,10 +458,10 @@ class StreamingInferenceWorker:
         # Step 3: Speaker Diarization
         if utterance.is_final:
             if self._sortformer_diarizer is not None:
-                # TASK-475 — self-hosted Streaming Sortformer path. Attach the
+                # Self-hosted Streaming Sortformer path. Attach the
                 # longest-turn label to the existing wire field; fail-safe (no
                 # crash, no label) when the diarizer degrades. Only diarize when
-                # the final carries text — parity with the embedding path (M4).
+                # the final carries text — parity with the embedding path.
                 if result.text.strip():
                     logger.debug(
                         "Diarizing final with Streaming Sortformer",
@@ -514,7 +514,7 @@ class StreamingInferenceWorker:
                     error=str(exc),
                 )
 
-        # Step 5: TASK-351 P2-3 — opt-in English gloss. Fire-and-forget
+        # Step 5: opt-in English gloss. Fire-and-forget
         # AFTER the final is published so final latency is unaffected;
         # failures/timeouts are swallowed inside _publish_gloss.
         if (
@@ -538,7 +538,7 @@ class StreamingInferenceWorker:
         utterance: AudioUtterance,
         final_result: SegmentResult,
     ) -> None:
-        """TASK-351 P2-3 — translate pass + follow-up ``type: gloss`` result.
+        """Translate pass + follow-up ``type: gloss`` result.
 
         Runs after the final has already been published. Every failure or
         timeout is swallowed with a log — the gloss must never block or
@@ -602,7 +602,7 @@ class StreamingInferenceWorker:
         # The ASR pipeline can be sync or async. If it's a coroutine,
         # we await it; otherwise we call it directly.
         prompt = compose_prompt(self._initial_prompt, self._previous_text or None)
-        # TASK-386 — time the per-utterance ASR inference
+        # Time the per-utterance ASR inference
         # (stt_v2_streaming_inference_latency_seconds).
         _asr_start = time.monotonic()
         try:
@@ -701,7 +701,7 @@ class StreamingInferenceWorker:
         overlap (120 ms smart split / 500 ms hard split ≈ 1-3 words), while
         ``overlap_s`` over-measures on smart splits (the previous final's
         ``end_time`` includes post-split audio), so a duration-scaled window
-        could eat genuinely repeated phrases (P1 review finding). Returns
+        could eat genuinely repeated phrases. Returns
         ``(deduped_text, dropped_words)``.
         """
         overlap_s = self._last_final_end - utterance.start_time
@@ -813,7 +813,7 @@ class StreamingInferenceWorker:
             return None
 
         try:
-            # TASK-505 P2-P5 review — honor the per-pipeline embedding service
+            # Honor the per-pipeline embedding service
             # when the session assembly injected one; the settings singleton is
             # only the fallback (the per-pipeline model previously reached only
             # the segmentation-refinement path, not this primary extraction).
@@ -875,7 +875,7 @@ class StreamingInferenceWorker:
     async def _diarize_utterance_sortformer(
         self, utterance: AudioUtterance
     ) -> str | None:
-        """TASK-475 — Streaming Sortformer turn label for one utterance window.
+        """Streaming Sortformer turn label for one utterance window.
 
         Runs the (self-hosted, injectable) diarizer over the utterance audio and
         returns the ``"S<i>"`` label of the turn with the greatest temporal
@@ -892,7 +892,7 @@ class StreamingInferenceWorker:
             samples = utterance.samples
             sample_rate = int(utterance.sample_rate)
             # Serialize the shared, non-reentrant diarizer across the partial and
-            # final threads (I1) — only the forward needs the lock; ``to_turns``
+            # final threads — only the forward needs the lock; ``to_turns``
             # runs on a fresh result and touches no shared state.
             async with self._sortformer_lock:
                 diarization = await asyncio.to_thread(
@@ -981,7 +981,7 @@ class StreamingInferenceWorker:
         """Postprocessor: Punctuation restoration.
 
         Legacy registry models (Cadence wrapper) punctuate partials and
-        finals, unchanged. The direct ``cadence-fast`` model (TASK-351 P2-2)
+        finals, unchanged. The direct ``cadence-fast`` model
         is finals-only and time-boxed: partials pass through untouched, and
         on timeout or error the raw text is returned so the final's publish
         latency budget holds.
@@ -1015,7 +1015,7 @@ class StreamingInferenceWorker:
             return text
 
     async def _apply_cadence_fast_punctuation(self, text: str, is_final: bool) -> str:
-        """TASK-351 P2-2 — finals-only, time-boxed Cadence-Fast punctuation.
+        """Finals-only, time-boxed Cadence-Fast punctuation.
 
         Partials are never punctuated. The model call runs in the executor
         (off the hot path) wrapped in ``asyncio.wait_for``; on timeout or
@@ -1114,11 +1114,11 @@ class StreamingInferenceWorker:
 
         # NOTE: Do NOT update self._previous_text for partials
 
-        # TASK-475 AC-2 — the Streaming Sortformer path diarizes partials too
+        # The Streaming Sortformer path diarizes partials too
         # (frame-level turns are available immediately). The embedding path
         # leaves partials unlabeled (speaker_id=None), unchanged. Skip the
         # forward when the partial has no text — it is dropped by the publish
-        # gate anyway, so paying a full diarizer forward would be wasted (I2/M4).
+        # gate anyway, so paying a full diarizer forward would be wasted.
         speaker_id: str | None = None
         if self._sortformer_diarizer is not None and text:
             speaker_id = await self._diarize_utterance_sortformer(utterance)

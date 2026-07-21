@@ -1,4 +1,4 @@
-"""JIT hybrid retriever — the retrieve half of TASK-330 Phase 3 (plan §D).
+"""JIT hybrid retriever — the retrieve half of the institutional-RAG pipeline.
 
 Pipeline: a query built from the extracted entities is dense-embedded (LM Studio)
 **and** sparse-embedded (in-process fastembed BM25); the two are fused server-side
@@ -45,7 +45,7 @@ class RetrievedChunk(BaseModel):
 
     chunk_id: str
     text: str
-    # TASK-483 claim-check: OPTIONAL out-of-band ref to the (large) chunk ``text``,
+    # Claim-check: OPTIONAL out-of-band ref to the (large) chunk ``text``,
     # alongside the inline field, so a consumer (the inferential citation-verify pass)
     # can resolve it. Additive-optional default None ⇒ replay-safe.
     text_ref: ClaimCheckRef | None = None

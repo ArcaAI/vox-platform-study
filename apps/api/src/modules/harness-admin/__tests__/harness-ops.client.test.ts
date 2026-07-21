@@ -1,5 +1,5 @@
 /**
- * HarnessOpsClient unit tests (TASK-330 Phase 6 — Phase B).
+ * HarnessOpsClient unit tests.
  *
  * Verifies the outbound contract the Python harness agent must match: base-URL
  * resolution, the `/api/v1/internal/harness/workflows*` paths, the

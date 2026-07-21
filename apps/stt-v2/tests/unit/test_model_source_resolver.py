@@ -1,7 +1,7 @@
-"""TASK-527 — conformance suite for the stt-v2 model source resolver.
+"""Conformance suite for the stt-v2 model source resolver.
 
 This is the CANONICAL copy of the resolver conformance quartet. The same named
-cases are mirrored in guardrail / nlp / harness (plan AD-3 mirrored-implementation
+cases are mirrored in guardrail / nlp / harness (a mirrored-implementation
 discipline) so a behavioural drift in any one service shows up as a named test
 failure rather than a production surprise.
 

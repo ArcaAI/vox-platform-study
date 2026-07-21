@@ -3,7 +3,7 @@ import { IsBoolean, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-va
 import { TenantPlan } from '@arcaai/domains';
 
 /**
- * TASK-392 (Q1) — a per-plan default-matrix row as returned to super-admins.
+ * A per-plan default-matrix row as returned to super-admins.
  * `null` in a limit field = unlimited. `version` is the OCC token; echo it as
  * `expectedVersion` on the next update.
  */
@@ -64,7 +64,7 @@ export class PlanEntitlementResponse {
 }
 
 /**
- * TASK-392 (Q1) — super-admin edit of a per-plan default row. Every field is
+ * Super-admin edit of a per-plan default row. Every field is
  * optional; only supplied fields change. `expectedVersion` carries the OCC
  * token and is REQUIRED (the update fails with 412 on drift).
  */

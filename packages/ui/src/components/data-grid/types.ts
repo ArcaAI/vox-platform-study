@@ -37,7 +37,7 @@ export interface GridPersistenceConfig {
 }
 
 /**
- * TASK-443 — grouped-row display config. Group headers are injected between
+ * Grouped-row display config. Group headers are injected between
  * CONTIGUOUS runs of the accessor value in page order (the grid never
  * re-sorts); on server-driven grids, sort by the group field first so groups
  * are contiguous per page.
@@ -76,7 +76,7 @@ export interface VirtualizedDataGridProps<TData> extends BaseSurfaceProps, Async
   pageMode?: 'offset' | 'cursor';
   /**
    * Cursor-mode page info supplied by the consumer (INERT today — no server
-   * cursor contract, D7 / TASK-373). Drives the cursor pager's next/disabled.
+   * cursor contract, D7). Drives the cursor pager's next/disabled.
    */
   cursor?: { hasMore?: boolean; nextCursor?: string | null };
 
@@ -88,7 +88,7 @@ export interface VirtualizedDataGridProps<TData> extends BaseSurfaceProps, Async
   features?: GridFeatureFlags;
 
   /**
-   * TASK-443 — render namespace-style group-header rows (label + count)
+   * Render namespace-style group-header rows (label + count)
    * between contiguous groups of the current page. Purely presentational:
    * omitting it changes nothing.
    */

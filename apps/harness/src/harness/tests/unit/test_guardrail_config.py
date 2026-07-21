@@ -1,4 +1,4 @@
-"""Phase-2 guardrail configuration tests (TASK-330 Phase 2; TASK-337 Phase B).
+"""Phase-2 guardrail configuration tests.
 
 Phase 2 needs
 

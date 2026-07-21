@@ -1,5 +1,5 @@
 /**
- * EvalService encryption wiring (TASK-369 Phase 3C).
+ * EvalService encryption wiring.
  *
  * Verifies the encrypt-on-write contract for the three eval models that carry
  * free-text clinical content (GoldenCase transcript/referenceNote, EvalRun

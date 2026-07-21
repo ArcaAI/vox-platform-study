@@ -1,4 +1,4 @@
-"""Claim-check memory-store deployment guard (TASK-533 D-28).
+"""Claim-check memory-store deployment guard.
 
 ``ClaimCheckConfig`` ships ``enabled=True`` + ``store="memory"``. That pairing is
 correct for the hermetic suite and SINGLE-worker local dev, and the class docstring

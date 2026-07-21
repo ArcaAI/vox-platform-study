@@ -11,7 +11,6 @@ import { CanCreate, CanDelete, CanManage, CanRead } from '../../decorators';
 @ApiBearerAuth()
 @ApiTags('tenant-storage-keys')
 @Controller('admin/tenants/storage/keys')
-// Phase 0 Item 3 (TASK-302 Stream A): explicit permission required.
 @CanManage('Tenant')
 export class StorageAccessKeyController {
   constructor(

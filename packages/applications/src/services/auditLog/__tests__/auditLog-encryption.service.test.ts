@@ -1,5 +1,5 @@
 /**
- * AuditLogEncryptionService — TASK-369 Phase 3D envelope encryption.
+ * AuditLogEncryptionService — envelope encryption.
  *
  * Proves the applications-layer DEK lifecycle + envelope wiring against the REAL
  * domain sibling (AuditLogRepository.prototype.encrypt/decryptEnvelope...):

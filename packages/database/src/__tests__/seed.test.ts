@@ -252,10 +252,9 @@ describe('Policy Seed Data', () => {
 
     describe('Default Policies', () => {
         it('should define 21 policies', () => {
-            // TASK-331 doc-09 — +1 for the `prompt-template-read` policy.
-            // TASK-330 Phase 6 — +2 for the clinical documentation harness
-            // policies (`harness-platform-manage`, `harness-tenant-manage`).
-            // TASK-419 item 4 — +1 for the `prisma-studio-manage` policy.
+            // Includes the `prompt-template-read` policy, the clinical
+            // documentation harness policies (`harness-platform-manage`,
+            // `harness-tenant-manage`), and the `prisma-studio-manage` policy.
             expect(DEFAULT_POLICIES.length).toBe(21);
         });
 
@@ -265,7 +264,7 @@ describe('Policy Seed Data', () => {
             expect(systemFullAccess?.scope).toBe(PolicyScope.GLOBAL);
         });
 
-        // TASK-409 — the anti-lockout guard identifies the protected set by the
+        // The anti-lockout guard identifies the protected set by the
         // `isProtected` column (rename-proof), with the name match as fallback.
         // The seed MUST mark exactly the two system-critical GLOBAL policies.
         it('should mark exactly system-full-access and rbac-system-manage as isProtected (TASK-409)', () => {
@@ -279,7 +278,7 @@ describe('Policy Seed Data', () => {
             expect(tenantFullAccess?.scope).toBe(PolicyScope.TENANT);
         });
 
-        // TASK-356 Phase 1 — tenant admins self-serve their own tenant's clone
+        // Tenant admins self-serve their own tenant's clone
         // of the SYSTEM AI model catalog (tenant-scoped `manage AiModel`).
         it('should grant tenant-scoped manage AiModel in tenant-full-access', () => {
             const tenantFullAccess = DEFAULT_POLICIES.find((p) => p.name === 'tenant-full-access');
@@ -296,7 +295,7 @@ describe('Policy Seed Data', () => {
             expect(promptPolicy?.scope).toBe(PolicyScope.TENANT);
         });
 
-        // TASK-331 doc-09 — end-user (clinician) read-only template ability.
+        // End-user (clinician) read-only template ability.
         it('should include prompt-template-read policy (read+list PromptTemplate, tenant-scoped)', () => {
             const readPolicy = DEFAULT_POLICIES.find((p) => p.name === 'prompt-template-read');
             expect(readPolicy).toBeDefined();
@@ -324,7 +323,7 @@ describe('Policy Seed Data', () => {
             expect(auditPolicy?.scope).toBe(PolicyScope.TENANT);
         });
 
-        // TASK-330 Phase 6 — clinical documentation harness RBAC policies.
+        // Clinical documentation harness RBAC policies.
         it('should include harness-platform-manage policy (GLOBAL)', () => {
             const policy = DEFAULT_POLICIES.find((p) => p.name === 'harness-platform-manage');
             expect(policy).toBeDefined();
@@ -337,7 +336,7 @@ describe('Policy Seed Data', () => {
             expect(policy?.scope).toBe(PolicyScope.TENANT);
         });
 
-        // TASK-419 item 4 — Prisma Studio in production behind a DEDICATED
+        // Prisma Studio in production sits behind a DEDICATED
         // permission. The subject is `PrismaStudio` (not covered by any
         // tenant-scoped grant); GLOBAL scope, unconditional — the studio is a
         // privileged, untenanted raw-DB surface.
@@ -348,7 +347,7 @@ describe('Policy Seed Data', () => {
             expect(policy?.rules).toEqual([{ action: 'manage', subject: 'PrismaStudio' }]);
         });
 
-        // TASK-419 item 1 — golden-dataset curation (`POST /admin/harness/
+        // Golden-dataset curation (`POST /admin/harness/
         // golden-sets*`) is guarded by `manage:HarnessEval`. Datasets are
         // tenant-owned rows, so the harness policies carry `manage` (not just
         // `read`) on HarnessEval: unconditional at platform scope, pinned to
@@ -369,13 +368,13 @@ describe('Policy Seed Data', () => {
             },
         );
 
-        // TASK-532 (M-12) — the MCP registry and the agent-trajectory read plane
-        // stopped borrowing the `HarnessPolicy` subject. The seed grants below
+        // The MCP registry and the agent-trajectory read plane no longer
+        // borrow the `HarnessPolicy` subject. The seed grants below
         // are ADDITIVE grandfathering: every role that could reach those two
         // surfaces through `manage:HarnessPolicy` keeps exactly today's access
         // via an explicit grant on the new subject. (Custom, tenant-authored
-        // policies are deliberately NOT auto-migrated — see the ticket README
-        // §7; operators add the grant themselves.)
+        // policies are deliberately NOT auto-migrated; operators add the grant
+        // themselves.)
         it.each([
             ['harness-platform-manage', 'McpServer', 'manage'],
             ['harness-platform-manage', 'AgentTrajectory', 'read'],
@@ -397,7 +396,7 @@ describe('Policy Seed Data', () => {
             }
         });
 
-        // TASK-356 Phase 5 — realtime-pipeline cascade admin RBAC (a SEPARATE
+        // Realtime-pipeline cascade admin RBAC (a SEPARATE
         // PipelinePolicy subject from HarnessPolicy). Platform = unconditional;
         // tenant = pinned to the caller's tenant. `manage` implies `read`.
         it('should grant platform-wide manage PipelinePolicy in harness-platform-manage', () => {
@@ -486,7 +485,7 @@ describe('Role Seed Data', () => {
             });
         });
 
-        // TASK-417 — SUPER_ADMIN is consolidated into GLOBAL_ADMIN and must
+        // SUPER_ADMIN is consolidated into GLOBAL_ADMIN and must
         // never be seeded again (the data migration soft-retired the row).
         it('should NOT seed a SUPER_ADMIN role anywhere (TASK-417)', () => {
             expect(DEFAULT_ROLES.find((r) => r.name === 'SUPER_ADMIN')).toBeUndefined();
@@ -547,7 +546,7 @@ describe('Role Seed Data', () => {
     });
 
     describe('Role-Policy Assignments', () => {
-        // TASK-417 — GLOBAL_ADMIN carries every policy SUPER_ADMIN had.
+        // GLOBAL_ADMIN carries every policy SUPER_ADMIN had.
         it('should assign the full elevated policy set to GLOBAL_ADMIN', () => {
             const globalAdmin = DEFAULT_ROLES.find((r) => r.name === 'GLOBAL_ADMIN');
             expect(globalAdmin?.policies).toContain('system-full-access');
@@ -565,7 +564,7 @@ describe('Role Seed Data', () => {
             expect(doctor?.policies).toContain('consultation-own-manage');
         });
 
-        // TASK-331 doc-09 — DOCTOR gets read-only template access (for the
+        // DOCTOR gets read-only template access (for the
         // Pre-Summary / Summary selector) but NOT the admin `manage` plane.
         // DEPARTMENT_HEAD inherits DOCTOR's policies via parentRoleId.
         it('should assign prompt-template-read to DOCTOR (and NOT prompt-template-manage)', () => {
@@ -579,7 +578,7 @@ describe('Role Seed Data', () => {
             expect(nurse?.policies).toContain('consultation-read-assigned');
         });
 
-        // TASK-419 item 4 — the GLOBAL_ADMIN policy set carries the dedicated
+        // The GLOBAL_ADMIN policy set carries the dedicated
         // Prisma Studio grant (manage:all would also pass the guard, but the
         // explicit policy makes the studio delegable without full access).
         it('should assign prisma-studio-manage to GLOBAL_ADMIN (TASK-419)', () => {
@@ -681,7 +680,7 @@ describe('Department Seed Data', () => {
 });
 
 // =============================================================================
-// CUSTOMER-TENANT DEPARTMENT CATALOG (TASK-331 r2605 #6)
+// CUSTOMER-TENANT DEPARTMENT CATALOG
 // =============================================================================
 
 describe('Customer-Tenant Department Seed Data (TASK-331 r2605 #6)', () => {
@@ -1021,7 +1020,7 @@ describe('STT Seed Data', () => {
 
             it('should use system tenant ID for all platform-wide AI models', () => {
                 // System AI models are platform-wide seeds owned by the
-                // reserved system tenant (`00000000-…`), per TASK-305 Phase A.
+                // reserved system tenant (`00000000-…`).
                 DEFAULT_AI_MODELS.forEach((model) => {
                     expect(model.tenantId).toBe(SYSTEM_TENANT_ID);
                 });
@@ -1107,7 +1106,7 @@ describe('STT Seed Data', () => {
                 expect(nemotron?.format).toBe(AiModelFormat.PARAKEET_CPP);
             });
 
-            // TASK-506 — the legacy ASR rows are RETIRED (soft-DELETED by
+            // The legacy ASR rows are RETIRED (soft-DELETED by
             // retireLegacyAiModels), no longer part of the seeded catalog.
             it.each(['whisper-large-v3', 'whisper-medium', 'faster-whisper-large-v3', 'parakeet-ctc-1.1b'])(
                 'should NOT seed retired ASR model %s (TASK-506)',
@@ -1256,13 +1255,13 @@ describe('STT Seed Data', () => {
                 });
             });
 
-            // TASK-471 A1 — the realtime/streaming pipelines activate the
+            // The realtime/streaming pipelines activate the
             // LocalAgreement-2 commit policy so partials carry `stable_chars`
             // and the already-built (but previously dormant) tentative-tail
             // render lights up. Asserted across every tenant variant that shares
             // the realtime/turbo configYaml (system + ArcaAI customer + Global).
             it('should activate LocalAgreement-2 commit policy on the realtime + turbo streaming pipelines (TASK-471)', () => {
-                // TASK-505 P5 — best-practice-realtime retired; the matrix
+                // best-practice-realtime retired; the matrix
                 // streaming pipelines carry LA-2.
                 const streamingSlugs = [
                     'turbo-whisper-large-v3',
@@ -1297,7 +1296,7 @@ describe('STT Seed Data', () => {
                 expect(production?.tags).toContain('high-quality');
             });
 
-            // TASK-507 — production-whisper-large-v3-turbo-gguf is the new
+            // production-whisper-large-v3-turbo-gguf is the new
             // platform default (matrix #2); it carries the 'production'/
             // 'recommended' tags production-whisper-large-v3 used to carry.
             it('should include the new default GGUF pipeline', () => {
@@ -1310,9 +1309,9 @@ describe('STT Seed Data', () => {
                 expect(ggufDefault?.tags).toContain('recommended');
             });
 
-            // TASK-485 — the DEFAULT (isDefault) pipeline must also carry the
+            // The DEFAULT (isDefault) pipeline must also carry the
             // LocalAgreement-2 streaming block (parity with best-practice-realtime /
-            // turbo, TASK-471), so the tentative-tail render is active on the default
+            // turbo), so the tentative-tail render is active on the default
             // clinician streaming path, not only when an explicit realtime pipeline is
             // selected. Streaming-only; batch use is unaffected.
             it('should activate LocalAgreement-2 on the default (production) streaming pipeline (TASK-485)', () => {
@@ -1345,7 +1344,7 @@ describe('STT Seed Data', () => {
             });
 
             // =================================================================
-            // TASK-531 — template lineage (GAP-T1). The 9 SYSTEM rows ARE the
+            // Template lineage. The 9 SYSTEM rows ARE the
             // templates; every tenant row seeded from them is a locked copy.
             // =================================================================
 
@@ -1424,9 +1423,9 @@ describe('STT Seed Data', () => {
         });
 
         describe('Setting Categories', () => {
-            // TASK-525 — the `model_cache` and `workers` GlobalSetting rows were
+            // The `model_cache` and `workers` GlobalSetting rows were
             // removed: they had no reader (stt-v2's `GlobalSettingRead` mapping,
-            // deleted as D-11) and are superseded by the registered settings keys
+            // deleted) and are superseded by the registered settings keys
             // `stt.modelCache.*` / `stt.workers.concurrency`, served over the
             // internal effective-config route. These assertions now lock the
             // REMOVAL, so re-adding a dormant second config lane fails the suite.
@@ -1509,7 +1508,7 @@ describe('STT Seed Data', () => {
 });
 
 // =============================================================================
-// FULL-PARITY PIPELINE POLICY (TASK-505/356 correction, owner directive 2026-07-17)
+// FULL-PARITY PIPELINE POLICY
 //   Every customer-facing tenant (Global + ArcaAI) mirrors the FULL SYSTEM ASR
 //   pipeline catalog — the same slug set as DEFAULT_ASR_PIPELINES — so a tenant
 //   is never seeded a curated subset. Exactly one default per tenant preserved.
@@ -1549,7 +1548,7 @@ describe('Full-parity ASR pipeline catalog per customer tenant (TASK-505/356 pol
 });
 
 // =============================================================================
-// PER-TENANT ASR PIPELINES + isDefault (TASK-331 doc-03 F3 / Q2)
+// PER-TENANT ASR PIPELINES + isDefault
 // =============================================================================
 
 describe('Per-Tenant ASR Pipelines (TASK-331 doc-03 F3)', () => {
@@ -1626,8 +1625,8 @@ describe('ASR Pipeline isDefault invariant (TASK-331 doc-03 Q2)', () => {
     });
 
     it('should make the whisper.cpp GGUF pipeline (TASK-507) the system isDefault one', () => {
-        // TASK-507 — the SYSTEM default is production-whisper-large-v3-turbo-gguf
-        // (id …0014); production-whisper-large-v3 (id …0001, the former TASK-361
+        // The SYSTEM default is production-whisper-large-v3-turbo-gguf
+        // (id …0014); production-whisper-large-v3 (id …0001, the former
         // default) is registered but no longer the seeded default.
         const systemDefault = DEFAULT_ASR_PIPELINES.find(
             (p) => p.id === '81000000-0000-0000-0001-000000000014'
@@ -1670,14 +1669,14 @@ describe('ASR Pipeline isDefault invariant (TASK-331 doc-03 Q2)', () => {
 });
 
 // =============================================================================
-// TASK-506 — DEFAULT MODEL WIRING (supersedes the TASK-356 Phase 2 blocks)
+// DEFAULT MODEL WIRING
 //   (a) SMR  → gemma-4-e2b-it-qat via HarnessPolicy (GlobalSetting keys RETIRED)
 //   (b) Guardrail → granite-guardian-4.1-8b via AiTaskDefault (keys RETIRED)
 //   (c) STT  → unchanged (CT2 registered; whisper-large-v3-turbo default)
 // =============================================================================
 
 // =============================================================================
-// TASK-531 (GAP-T3) — the nightly SYSTEM-template resync sweep is turned ON by
+// The nightly SYSTEM-template resync sweep is turned ON by
 // a platform VALUE, not by flipping the registry default.
 //
 // The descriptor is a kill-switch, and the settings registry refuses at
@@ -1771,11 +1770,11 @@ describe('TASK-356 Phase 2 / TASK-507 — STT default (CT2 registered; whisper.c
         expect(ct2?.taskType).toBe(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION);
         expect(ct2?.modelType).toBe(ModelType.QUANTIZED_MODEL);
         expect(ct2?.format).toBe(AiModelFormat.FASTER_WHISPER);
-        // TASK-507 — precision bumped int8 → float16 (CTranslate2's spelling;
+        // Precision bumped int8 → float16 (CTranslate2's spelling;
         // NOT the ggml-style "f16" abbreviation — see resolve_ct2_compute_type).
         expect(ct2?.computeType).toBe('float16');
-        // TASK-505 (D-4 resolved): the CT2 artifact now points at the real
-        // deepdml conversion (owner decision D3, 2026-07-16) — resolvable at
+        // The CT2 artifact points at the real
+        // deepdml conversion — resolvable at
         // runtime via FasterWhisperLoader.
         expect(ct2?.sourceUri).toBe('deepdml/faster-whisper-large-v3-turbo-ct2');
     });
@@ -1848,8 +1847,8 @@ describe('TASK-361/505 — STT default resolves to a loadable artifact (no place
     ];
 
     it('never marks a pipeline whose config references a placeholder artifact as isDefault', () => {
-        // AC-1/AC-2: the live default STT pipeline must resolve to a real
-        // artifact. TASK-505 removed the last placeholder (deepdml URI), so
+        // The live default STT pipeline must resolve to a real
+        // artifact (the last placeholder deepdml URI was removed), so
         // this is a guard against placeholders ever reappearing as defaults.
         const placeholderDefaults = allPipelines.filter(
             (p) => p.isDefault === true && p.configYaml.includes(PLACEHOLDER)
@@ -1870,7 +1869,7 @@ describe('TASK-361/505 — STT default resolves to a loadable artifact (no place
     it('keeps the CT2 AiModel registered but NOT tagged production/recommended (AC-3)', () => {
         const ct2 = DEFAULT_AI_MODELS.find((m) => m.slug === CT2_MODEL_SLUG);
         expect(ct2).toBeDefined(); // still in the catalog so admins can see it
-        // TASK-505: D-4 resolved — real deepdml artifact, no placeholder left.
+        // Real deepdml artifact, no placeholder left.
         expect(ct2?.sourceUri).not.toContain(PLACEHOLDER);
         expect(ct2?.tags).not.toContain('production');
         expect(ct2?.tags).not.toContain('recommended');
@@ -1887,7 +1886,7 @@ describe('TASK-361/505 — STT default resolves to a loadable artifact (no place
 });
 
 // =============================================================================
-// TENANT FRONTEND CONFIG SEED (TASK-331 doc-03 F3)
+// TENANT FRONTEND CONFIG SEED
 // =============================================================================
 
 describe('Tenant Frontend Config Seed (TASK-331 doc-03 F3)', () => {
@@ -2445,7 +2444,7 @@ describe('LLM Models Seed Data (TASK-506 consolidated matrix)', () => {
 });
 
 // =============================================================================
-// STT LOCAL PROCESSING (BROWSER) MODELS — RETIRED (TASK-506)
+// STT LOCAL PROCESSING (BROWSER) MODELS — RETIRED
 // =============================================================================
 // The 7 browser-local whisper rows were retired: the SDK's model lists are
 // hardcoded (`constants.task210.test.ts` locks the removed /ai-models fetch)
@@ -2460,7 +2459,7 @@ describe('STT Local Processing Models retired (TASK-506)', () => {
 });
 
 // =============================================================================
-// CUSTOMER-TENANT AI MODEL CATALOG BACKFILL (TASK-356 Phase 1, D-5)
+// CUSTOMER-TENANT AI MODEL CATALOG BACKFILL
 // =============================================================================
 
 describe('Customer-tenant AI model catalog backfill', () => {
@@ -2539,7 +2538,7 @@ describe('Customer-tenant AI model catalog backfill', () => {
 });
 
 // =============================================================================
-// TASK-356 Phase 2 — SYSTEM HarnessPolicy SMR default + WORM audit
+// SYSTEM HarnessPolicy SMR default + WORM audit
 // =============================================================================
 
 describe('TASK-356 Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
@@ -2647,7 +2646,7 @@ describe('TASK-356 Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
 });
 
 // =============================================================================
-// TASK-356 Phase 5 — SYSTEM + demo PipelinePolicy cascade defaults + WORM audit
+// SYSTEM + demo PipelinePolicy cascade defaults + WORM audit
 // =============================================================================
 
 describe('TASK-356 Phase 5 — seedPipelinePolicy (cascade defaults + WORM)', () => {
@@ -2849,7 +2848,7 @@ describe('Seed Data Cross-Reference Integrity', () => {
 });
 
 // =============================================================================
-// DUAL CAPTURE — PIPELINE CONFIG + DEMO RECORDING (TASK-331 doc-06 F2)
+// DUAL CAPTURE — PIPELINE CONFIG + DEMO RECORDING
 // =============================================================================
 
 /**
@@ -2884,7 +2883,7 @@ function getYamlBlock(yaml: string, keyPath: string[]): string | null {
 }
 
 describe('Dual Capture Pipeline Config (TASK-331 doc-06 F2)', () => {
-    // TASK-507 — dual_capture lives on the "Full Features" pipeline
+    // dual_capture lives on the "Full Features" pipeline
     // (production-whisper-large-v3, matrix #1), which carries the full
     // pre/post-processing stages; it is no longer the tenant default (the new
     // default, matrix #2, is a no-pre/no-post pipeline with nothing to dual-
@@ -2996,7 +2995,7 @@ describe('Dual-Capture Demo Media (TASK-331 doc-06 F2)', () => {
 });
 
 // =============================================================================
-// SUMMARY-META QUALITY SEED — cacheHit + qualityScore (TASK-331 doc-07 F4)
+// SUMMARY-META QUALITY SEED — cacheHit + qualityScore
 // =============================================================================
 
 describe('SummaryMeta Quality Seed (TASK-331 doc-07 F4)', () => {
@@ -3026,7 +3025,7 @@ describe('SummaryMeta Quality Seed (TASK-331 doc-07 F4)', () => {
 });
 
 // =============================================================================
-// USER VOICE PROFILE SEED (TASK-331 doc-07 F3)
+// USER VOICE PROFILE SEED
 // =============================================================================
 
 describe('UserVoiceProfile Seed (TASK-331 doc-07 F3)', () => {

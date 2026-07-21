@@ -1,7 +1,7 @@
-// TASK-525 §3.2 — the FROZEN per-service effective-config contract.
+// The FROZEN per-service effective-config contract.
 //
-// This shape is reused verbatim by TASK-529 (retention adoption) and TASK-533-B
-// (agentic context). Fields may be ADDED; existing fields must not change
+// This shape is reused verbatim across retention adoption and agentic
+// context consumers. Fields may be ADDED; existing fields must not change
 // meaning, because the Python pull clients treat an omitted/null field as
 // "keep my env/bootstrap value".
 
@@ -13,7 +13,7 @@ export type EffectiveConfigServiceName = (typeof EFFECTIVE_CONFIG_SERVICES)[numb
 /**
  * Which lane supplied a group's values. Mirrored into each service's `/health`
  * diagnostics block so operators can see per-key whether the control plane or
- * the service's own env is live (TASK-525 §3.7, program plan §7 drift risk).
+ * the service's own env is live.
  */
 export type EffectiveConfigSource = 'db' | 'env-fallback';
 
@@ -36,8 +36,8 @@ export interface EffectiveRuntimeProfile {
 }
 
 /**
- * Model-cache retention knobs. TASK-525 served stt-v2 only; TASK-529 fills the
- * remaining in-process services (nlp/guardrail/harness/tts-v2) plus smr, whose
+ * Model-cache retention knobs, covering every in-process service
+ * (nlp/guardrail/harness/tts-v2/stt-v2) plus smr, whose
  * `ttlSeconds` is forwarded to server-managed engines rather than a cache.
  *
  * Every field is nullable BY CONTRACT: null/omitted means "the service keeps its
@@ -67,7 +67,7 @@ export interface EffectiveConfigResponse {
   runtimeProfiles?: EffectiveRuntimeProfile[];
   retention?: EffectiveRetention;
   concurrency?: EffectiveConcurrency;
-  /** Served for harness/live-doc; consumed by TASK-533-B, not by TASK-525. */
+  /** Served for harness/live-doc agentic-context consumers only. */
   agenticContext?: Record<string, unknown>;
 }
 

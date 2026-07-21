@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - LocalVoiceEmbedder (TASK-329 P4)
+ * @arcaai/vox - LocalVoiceEmbedder
  *
  * In-browser speaker-embedding extractor backed by Transformers.js (ONNX). It
  * loads a small, permissively-licensed speaker-verification model and turns a

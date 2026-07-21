@@ -2,7 +2,7 @@ import { ContextItemEntity, ContextItemVersionEntity, AudioRecordingEntity, Summ
 import { ContextItemResponse, ContextItemVersionResponse, AudioRecordingResponse, SummaryMetaResponse, NamedEntityResponse } from './dto';
 
 /**
- * TASK-375 (item 4) — storage-resolved media fields for a context-item
+ * Storage-resolved media fields for a context-item
  * attachment, produced by {@link ContextService} from the MediaEntity + a
  * presigned URL and applied via {@link ContextDtoMapper.applyMediaUrl}. Kept
  * separate from the entity→DTO mapping so the mapper stays synchronous and free
@@ -66,7 +66,7 @@ export class ContextDtoMapper {
   }
 
   /**
-   * TASK-375 (item 4) — enrich an already-mapped {@link ContextItemResponse}
+   * Enrich an already-mapped {@link ContextItemResponse}
    * with a storage-resolved media URL (+ mimeType / image thumbnail). Applied
    * AFTER {@link toResponse} so the base entity→DTO mapping stays synchronous
    * and storage-free. Mutates and returns the same response for convenience.

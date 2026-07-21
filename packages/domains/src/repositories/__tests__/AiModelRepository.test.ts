@@ -1,5 +1,5 @@
 /**
- * AiModelRepository (TASK-506 r2605 Findings A + E) — unit tests.
+ * AiModelRepository — unit tests.
  *
  *  - Finding A: `findBySlug` accepts an optional `tx` client so the
  *    cross-tenant base-client lane in `AiTaskDefaultService` can resolve

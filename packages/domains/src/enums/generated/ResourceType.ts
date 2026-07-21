@@ -48,11 +48,11 @@ export enum ResourceType {
   FederatedIdentity = 'FederatedIdentity',
   AiTaskDefault = 'AiTaskDefault',
   McpServer = 'McpServer',
-  // TASK-524 — config-plane core (kept in lock-step with the database enum in
+  // Config-plane core (kept in lock-step with the database enum in
   // audit.prisma; see resourceType.enum-parity.test.ts).
   AiProviderConnection = 'AiProviderConnection',
   AiRuntimeProfile = 'AiRuntimeProfile',
-  // TASK-533 B6 — gate-edit mining store (parity with audit.prisma; see
+  // Gate-edit mining store (parity with audit.prisma; see
   // resourceType.enum-parity.test.ts).
   GateEditExemplar = 'GateEditExemplar',
 }

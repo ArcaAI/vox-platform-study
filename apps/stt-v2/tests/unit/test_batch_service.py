@@ -1060,9 +1060,9 @@ class TestBatchServiceInferenceMethods:
 
     @pytest.mark.asyncio
     async def test_run_inference_faster_whisper_dispatches(self, service):
-        """TASK-505 P1 — FASTER_WHISPER must have a batch branch.
+        """FASTER_WHISPER must have a batch branch.
 
-        The engine was streaming-only since TASK-351 (the canonical parity
+        The engine was streaming-only (the canonical parity
         trap): a batch job on a FASTER_WHISPER pipeline hard-failed with
         "Unsupported model format".
         """
@@ -1345,9 +1345,9 @@ class TestBatchServicePostprocessingSentenceTimestamps:
 
 
 class TestRunDiarization:
-    """Tests for _run_diarization direct-call behavior (TASK-303).
+    """Tests for _run_diarization direct-call behavior.
 
-    After TASK-303, _run_diarization calls identify() directly
+    _run_diarization calls identify() directly
     per segment instead of delegating to diarize_segments().
     """
 
@@ -2101,7 +2101,7 @@ class TestBatchServiceDiarization:
 
 
 # =============================================================================
-# PER-SEGMENT ASR TESTS (TASK-009)
+# PER-SEGMENT ASR TESTS
 # =============================================================================
 
 
@@ -2277,7 +2277,7 @@ class TestPerSegmentInference:
 
 
 # =============================================================================
-# TIMING METRICS IN TRANSCRIBE TESTS (TASK-009)
+# TIMING METRICS IN TRANSCRIBE TESTS
 # =============================================================================
 
 
@@ -2499,7 +2499,7 @@ class TestTranscribeTimingMetrics:
 
 
 # =============================================================================
-# PER-SEGMENT ASR EDGE CASES (TASK-009)
+# PER-SEGMENT ASR EDGE CASES
 # =============================================================================
 
 
@@ -2745,7 +2745,7 @@ class TestPerSegmentInferenceEdgeCases:
 
 
 # =============================================================================
-# TIMING METRICS EDGE CASES (TASK-009)
+# TIMING METRICS EDGE CASES
 # =============================================================================
 
 
@@ -2908,7 +2908,7 @@ class TestTranscribeTimingEdgeCases:
 
 
 # =============================================================================
-# TASK-011: WHISPER OFFSET NORMALISATION TESTS
+# WHISPER OFFSET NORMALISATION TESTS
 # =============================================================================
 
 
@@ -2994,7 +2994,7 @@ class TestNormalizeWhisperOffsets:
 
 
 # =============================================================================
-# TASK-011: CHUNKED OPTIMUM INFERENCE TESTS
+# CHUNKED OPTIMUM INFERENCE TESTS
 # =============================================================================
 
 
@@ -3795,7 +3795,7 @@ class TestChunkTranscriptionResult:
 
 
 # =============================================================================
-# CODE-SWITCHING INFERENCE BRANCHING TESTS (TASK-018)
+# CODE-SWITCHING INFERENCE BRANCHING TESTS
 # =============================================================================
 
 
@@ -3865,7 +3865,7 @@ class TestCodeSwitchingInference:
 
     @pytest.mark.asyncio
     async def test_optimum_onnx_code_switching_pins_language(self, service):
-        """TASK-351 P2-1 — code_switching with a set language now PINS the
+        """code_switching with a set language now PINS the
         matrix language: it must be passed to generate_kwargs (previously
         omitted for auto-detect)."""
         pipeline_config = create_complete_pipeline_config(language="en")
@@ -3979,7 +3979,7 @@ class TestCodeSwitchingInference:
 
     @pytest.mark.asyncio
     async def test_transformers_code_switching_pins_language(self, service):
-        """TASK-351 P2-1 — code_switching with a set language now PINS the
+        """code_switching with a set language now PINS the
         matrix language: it must be passed to generate() kwargs (previously
         omitted for auto-detect)."""
         pipeline_config = create_complete_pipeline_config(language="fr")

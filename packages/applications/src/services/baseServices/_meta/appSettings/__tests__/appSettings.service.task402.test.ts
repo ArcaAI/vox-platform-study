@@ -1,5 +1,5 @@
 /**
- * TASK-402 (Defect 2, half A) — the AppSettings cache + TASK-302 P0-5 boot
+ * The AppSettings cache + boot
  * invariant must IGNORE soft-DELETED rows at the SERVICE layer.
  *
  * Why service-level: `cacheAppSettings()` reads through
@@ -18,7 +18,7 @@
  *     regardless of ordering);
  *   - a key whose only rows are DELETED is NOT cached at all;
  *   - two ENABLED rows for one platform key STILL refuse to start
- *     (TASK-302 P0-5 preserved).
+ *     (the boot invariant is preserved).
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AppSettingsService } from '../appSettings.service';

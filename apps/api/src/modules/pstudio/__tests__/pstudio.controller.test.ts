@@ -4,7 +4,7 @@ import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { PrismaStudioController } from '../pstudio.controller';
 
 // -----------------------------------------------------------------------------
-// TASK-419 item 4 — the studio surface is production-capable and gated by the
+// The studio surface is production-capable and gated by the
 // DEDICATED `manage:PrismaStudio` subject (seeded to the GLOBAL_ADMIN policy
 // set) instead of `manage:all`. `manage:all` still passes via the CASL
 // wildcard, but the dedicated subject makes studio access delegable.
@@ -24,7 +24,7 @@ describe('PrismaStudioController authorization metadata (TASK-419 item 4)', () =
 });
 
 // -----------------------------------------------------------------------------
-// TASK-326 X1 — every raw Prisma Studio query/sequence must be audited.
+// Every raw Prisma Studio query/sequence must be audited.
 // The BFF runs arbitrary SQL against the unscoped client (no tenant filter,
 // no soft-delete), so the privileged access itself is the auditable event.
 // `query` is the read path (READ), `sequence` is the write path (UPDATE).
@@ -119,13 +119,13 @@ describe('PrismaStudioController (TASK-326 X1 — audit)', () => {
 });
 
 // -----------------------------------------------------------------------------
-// TASK-336 OB-11 + BUG-003 — the served shell must carry NO credential and no
+// The served shell must carry NO credential and no
 // client-side credential plumbing at all: auth rides the session cookie through
 // the BFF proxy that fronts this route (the proxy injects the bearer
 // server-side on GET and POST alike). The body is also no-store so no
 // proxy / CDN caches the studio shell.
 //
-// BUG-003 root cause locked here: the previous shell embedded a Host-derived
+// Root cause locked here: the previous shell embedded a Host-derived
 // absolute gateway endpoint and expected a `#token=` URL-fragment hand-off.
 // Under the admin-console BFF session (httpOnly cookie, token never
 // client-readable) no fragment token exists, so the studio's POSTs hit the

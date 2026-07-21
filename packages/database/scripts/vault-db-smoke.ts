@@ -1,5 +1,3 @@
-// TASK-302 Phase 5 Task 5.8 (Stream B).
-//
 // Vault DB-engine smoke script — issues a dynamic PostgreSQL credential
 // from Vault, opens a PrismaClient against it, runs `SELECT 1`, and
 // reports the dynamic username + lease TTL.

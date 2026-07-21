@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AiModelFactory, CreateAiModelProps } from '../AiModelFactory';
 import { AiModelSource, AiModelFormat, AiModelDownloadStatus, ModelCategory, ModelTaskType, ModelType } from '../../../../enums';
 
-// TASK-305 A.6: tenantId is now required at the factory layer.
+// tenantId is now required at the factory layer.
 const TEST_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
 // Mock the generateId function
@@ -426,7 +426,7 @@ describe('AiModelFactory', () => {
       expect(model.format).toBe(AiModelFormat.NEMO);
     });
 
-    // TASK-506 — machine-actionable registry identity columns.
+    // Machine-actionable registry identity columns.
     it('should carry provider, architecture, and metaData when supplied', () => {
       const model = AiModelFactory.CreateAiModel({
         tenantId: TEST_TENANT_ID,

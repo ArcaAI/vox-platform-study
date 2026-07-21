@@ -27,8 +27,8 @@ export interface UseExpansionResult {
 /**
  * Headless expansion controller (controlled/uncontrolled, single/multiple).
  *
- * Extracted from `components/timeline/use-timeline.ts` (TASK-372) so both the
- * `ItemList` (TASK-378 §4a.2) and `HistoryTimelineList` foundations share one
+ * Extracted from `components/timeline/use-timeline.ts` so both the
+ * `ItemList` and `HistoryTimelineList` foundations share one
  * implementation. The public behavior matches the original timeline controller.
  */
 export function useExpansion(params: UseExpansionParams = {}): UseExpansionResult {

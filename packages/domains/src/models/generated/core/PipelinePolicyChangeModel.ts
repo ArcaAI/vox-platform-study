@@ -8,8 +8,8 @@ import * as Enums from '../../../enums';
 import * as Models from './';
 
 /**
- * Persistence model for the append-only WORM pipeline-policy-change log
- * (TASK-356 Phase 5). Although it extends `BaseTenantDataModel`, the backing
+ * Persistence model for the append-only WORM pipeline-policy-change log.
+ * Although it extends `BaseTenantDataModel`, the backing
  * table has NO `_version` / `_metadata` / `updatedAt` / `createdBy` /
  * `updatedBy` columns — those inherited fields are stripped in
  * `PipelinePolicyChangeEntityMapper` before any write. Only `createdAt`
@@ -23,7 +23,7 @@ export class PipelinePolicyChange extends BaseTenantDataModel {
   public beforeJson: JsonValue | null;
   public afterJson: JsonValue;
   public reason: string | null;
-  // TASK-369 Phase 3D — Vault-Transit ciphertext of beforeJson/afterJson + shared
+  // Vault-Transit ciphertext of beforeJson/afterJson + shared
   // key version. When set, the plaintext JSONB columns hold a redaction sentinel.
   public encryptedBeforeJson: Uint8Array | null;
   public encryptedAfterJson: Uint8Array | null;

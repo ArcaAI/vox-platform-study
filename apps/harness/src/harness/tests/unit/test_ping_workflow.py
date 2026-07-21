@@ -1,7 +1,7 @@
 """End-to-end test for HarnessPingWorkflow using Temporal's time-skipping test
 environment — no external Temporal server required.
 
-RED-first: written before the workflow/activity exist. Proves the durable
+Proves the durable
 workflow substrate (workflow drives a deterministic body; the activity holds
 the I/O) executes end-to-end and returns the expected result.
 """

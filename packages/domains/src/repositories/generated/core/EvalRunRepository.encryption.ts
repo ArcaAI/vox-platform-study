@@ -1,12 +1,12 @@
-// TASK-369 (Data Encryption Initiative) Phase 3C — field encryption for
+// Field encryption for
 // EvalRun (free-text clinical field: notes).
 //
 // Sibling file mirroring ContextItemVersionRepository.encryption.ts (declaration
 // merging + prototype patching so codegen can re-run with --overwrite). The
 // field records its Transit key version in the shared `keyVersion`; the shared
 // Buffer/ciphertext primitives live in common/field-encryption.ts and default
-// to the dedicated `hope-phi` Transit key. TASK-369 Phase 6 dropped the plaintext
-// columns; reads decrypt the ciphertext only (no plaintext fallback).
+// to the dedicated `hope-phi` Transit key. The plaintext
+// columns have been dropped; reads decrypt the ciphertext only (no plaintext fallback).
 
 import { EvalRunRepository } from './EvalRunRepository';
 import { EvalRunEntity } from '../../../entities';
@@ -78,7 +78,7 @@ EvalRunRepository.prototype.decryptFieldsFromEntity = async function (
   secrets: SecretsServiceLike,
 ): Promise<EvalRunPlaintext> {
   const notes = await decryptCiphertextToString(secrets, entity.encryptedNotes);
-  // TASK-369 Phase 6 — plaintext column dropped; decrypt ciphertext only.
+  // Plaintext column dropped; decrypt ciphertext only.
   return { notes };
 };
 

@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - PHI Redactor Tests (TASK-266 W0-2)
+ * @arcaai/vox - PHI Redactor Tests
  * @vitest-environment jsdom
  */
 

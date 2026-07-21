@@ -1,4 +1,4 @@
-"""Unit tests for multimodal LLM (Gemma 4) inference -- TASK-309.
+"""Unit tests for multimodal LLM (Gemma 4) inference.
 
 Tests batch transcription branching and _run_multimodal_lm_inference().
 """

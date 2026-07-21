@@ -24,7 +24,7 @@ import { defineConfig, type Options } from 'tsup';
  * - Bundled plugins:
  *   - @arcaai/vad: Silero VAD wrapper (@ricky0123/vad-web + ONNX Runtime Web stay external)
  *   - @arcaai/room: Audio context management
- * - External plugins (TASK-364 — own runtime assets via import.meta.url):
+ * - External plugins (own runtime assets via import.meta.url):
  *   - @arcaai/stt: Whisper + HuggingFace Transformers (ships its own Whisper worker)
  *   - @arcaai/noise-filter: RNNoise WASM (ships its own rnnoise.wasm)
  *
@@ -47,8 +47,8 @@ import { defineConfig, type Options } from 'tsup';
 
 // Packages that should be bundled INTO the SDK (workspace dependencies).
 //
-// TASK-364 — `@arcaai/stt` + `@arcaai/noise-filter` were REMOVED from this list
-// (they are now in `externalDependencies` below). Both resolve runtime assets
+// `@arcaai/stt` and `@arcaai/noise-filter` are NOT in this list — they are in
+// `externalDependencies` below instead. Both resolve runtime assets
 // via `new URL(<relative>, import.meta.url)` — the Whisper worker and the
 // RNNoise WASM — which esbuild breaks when it inlines those ESM sub-packages:
 // `import.meta` is shimmed to `{}`, so `new URL(rel, undefined)` throws
@@ -77,7 +77,7 @@ const externalDependencies = [
   // Node.js-only packages that shouldn't be in browser bundles
   'onnxruntime-node',
   'sharp',
-  // TASK-303: ONNX Runtime Web + Silero VAD engine MUST stay external.
+  // ONNX Runtime Web + Silero VAD engine MUST stay external.
   //
   // `@ricky0123/vad-web@0.0.30` is a CJS-only package whose internal modules
   // do `require("onnxruntime-web")`. If we let tsup inline that CJS source
@@ -101,7 +101,7 @@ const externalDependencies = [
   '@ricky0123/vad-web',
   'onnxruntime-web',
   'onnxruntime-common',
-  // TASK-364: Asset/worker-owning ESM sub-packages MUST stay external (same
+  // Asset/worker-owning ESM sub-packages MUST stay external (same
   // class of reason as `@ricky0123/vad-web` above). `@arcaai/noise-filter`
   // resolves its RNNoise WASM via `new URL('../assets/rnnoise.wasm',
   // import.meta.url)` and `@arcaai/stt` spawns its Whisper worker via

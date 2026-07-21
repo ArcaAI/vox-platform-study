@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 /**
- * Response for `POST /auth/stream-ticket` (TASK-263 W0-1 / D1).
+ * Response for `POST /auth/stream-ticket`.
  */
 export class IssueStreamTicketResponse {
   @ApiProperty({

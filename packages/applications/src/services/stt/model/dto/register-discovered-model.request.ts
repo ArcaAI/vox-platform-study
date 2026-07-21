@@ -3,7 +3,7 @@ import { IsIn, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, MinLength }
 import { DISCOVERABLE_AI_MODEL_PROVIDERS } from './create-model.request';
 
 /**
- * TASK-528 R2 — body of `POST admin/ai-models/discovery/register`.
+ * Body of `POST admin/ai-models/discovery/register`.
  *
  * Turns ONE entry the live engine listing reported into a governed `AiModel`
  * row. Only the two identifying fields are required; everything else on the

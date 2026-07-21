@@ -1,5 +1,5 @@
 /**
- * Admin-console E2E configuration (TASK-415 Phase 7 harness).
+ * Admin-console E2E configuration.
  *
  * Specs run against an ALREADY-RUNNING stack and skip (not fail) when it is
  * absent — see tests/e2e/helpers/stack.ts:

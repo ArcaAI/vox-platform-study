@@ -10,7 +10,7 @@ import { bindingVoiceIds } from './tts-config-fields';
 const INHERIT = '__inherit__';
 
 /**
- * TASK-506 — per-voice provider bindings editor. Rows = the 4 internal voice
+ * Per-voice provider bindings editor. Rows = the 4 internal voice
  * ids ∪ any id already bound; one select per catalog provider (empty =
  * inherit the SYSTEM/default binding). Drafts flow up into the form's single
  * OCC save (the PUT persists the FULL merged map as `voiceBindings`).

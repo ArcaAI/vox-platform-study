@@ -1,6 +1,6 @@
 /**
  * useDnaJobProgress — ticket-authenticated SSE is the PRIMARY transport
- * (the gateway route declares @StreamScope dna_job since TASK-419); the 2s
+ * (the gateway route declares @StreamScope dna_job); the 2s
  * status poll is the documented error fallback, enabled only after the
  * stream exhausts its retry budget. The stream side is exercised through a
  * stubbed global EventSource (ticket mint asserted with scope

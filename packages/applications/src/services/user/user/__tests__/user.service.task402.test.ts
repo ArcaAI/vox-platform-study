@@ -1,5 +1,5 @@
 /**
- * TASK-402 (Defect 1) — admin-created passwords must be bcrypt-hashed.
+ * Admin-created passwords must be bcrypt-hashed.
  *
  * Root cause under test: `UserService.create` forwarded the admin-supplied
  * plaintext `password` straight through `UserFactory.CreateUser` into
@@ -9,7 +9,7 @@
  * DB held plaintext).
  *
  * Contract pinned here (mirrors the working UserPasswordService paths):
- *   - create(): non-empty password → TASK-400 complexity policy enforced
+ *   - create(): non-empty password → complexity policy enforced
  *     (400 listing the unmet rules, repository untouched on failure), then
  *     hashed via ICryptoService, and `passwordChangedAt` stamped. BOTH the
  *     plain branch and the atomic create-with-membership branch.

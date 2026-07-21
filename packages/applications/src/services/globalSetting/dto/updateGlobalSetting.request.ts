@@ -51,7 +51,7 @@ export class UpdateGlobalSettingRequest extends BaseRequest {
   namespace?: string;
 
   /**
-   * Optimistic-concurrency token — TASK-302 Stream D Phase C (C.1/C.7).
+   * Optimistic-concurrency token.
    *
    * Required. The client must read the row first, then echo back the
    * `version` it observed. The service issues a Compare-And-Set
@@ -59,11 +59,11 @@ export class UpdateGlobalSettingRequest extends BaseRequest {
    * `OptimisticConcurrencyException` -> HTTP 412 Precondition Failed
    * if `_version` has drifted under the client between read and write.
    *
-   * Phase D's `ETagInterceptor` + `@RequiresIfMatch()` expose the canonical
+   * The `ETagInterceptor` + `@RequiresIfMatch()` expose the canonical
    * RFC 7232 `If-Match` mechanism; the body field stays as the
-   * service-to-service fallback per the plan's two-shapes-accepted rule.
+   * service-to-service fallback under a two-shapes-accepted rule.
    *
-   * TASK-390 #24 (ST1) — OPTIONAL at the DTO layer so a header-first
+   * OPTIONAL at the DTO layer so a header-first
    * (`If-Match`) request from the SDK is not rejected at body validation
    * before the `GlobalSettingController` folds the header value in (mirrors
    * `UpdatePromptTemplateRequest` / `UpdateModelRequest`). The

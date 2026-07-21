@@ -1,5 +1,5 @@
 /**
- * TASK-382 — Agent Management by Department (frames 30–33): backend contract E2E.
+ * Agent Management by Department (frames 30–33): backend contract E2E.
  *
  * Verifies the **server side** of the agent-instruction surface against the live
  * API (`pnpm test:e2e`, or a dev stack via `SKIP_DB_PRECHECK=true
@@ -30,7 +30,7 @@
  *   • DNA writing-style default slot — no backing column (`dnaWritingStylePromptId`
  *     does not exist), so there is nothing to assign.
  *   • Test sub-metrics as a UI feature — the backend `PromptTestResultResponse`
- *     *does* expose an optional deterministic `metrics` (TASK-331 doc-02 F8); when a
+ *     *does* expose an optional deterministic `metrics`; when a
  *     real run returns it we assert its shape, but we do not require it (SMR may be
  *     down in the test stack).
  *
@@ -180,7 +180,7 @@ test.describe.serial('TASK-382 — agent management backend contract (arcaai_adm
     // `scope` is derived server-side (CreatePromptTemplateRequest has no `scope`
     // field); a department-bound create currently resolves to TENANT_DEFAULT, so
     // assert a known scope rather than a brittle literal. The DEPARTMENT_DEFAULT
-    // scope-derivation gap is recorded as a TASK-382 finding, not a frame-30 break.
+    // scope-derivation gap is a known finding, not a frame-30 break.
     if (prompt.scope) expect(['DEPARTMENT_DEFAULT', 'TENANT_DEFAULT', 'PERSONAL']).toContain(prompt.scope);
 
     promptId = prompt.id;

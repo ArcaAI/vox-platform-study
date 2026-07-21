@@ -3,8 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { REQUIRES_IF_MATCH_KEY } from './requiresIfMatch.decorator';
 
 /**
- * Companion guard for `@RequiresIfMatch()` — TASK-302 Stream D Phase D
- * (D.2).
+ * Companion guard for `@RequiresIfMatch()`.
  *
  * Runs globally, but only has work to do on routes annotated with
  * `@RequiresIfMatch()`. When annotated, it sets

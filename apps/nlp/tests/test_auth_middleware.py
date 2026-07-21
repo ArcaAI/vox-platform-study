@@ -1,4 +1,4 @@
-"""Tests for the NLP inter-service authentication (TASK-465).
+"""Tests for the NLP inter-service authentication.
 
 Covers three surfaces:
 - HTTP: ``ServiceAuthMiddleware`` — empty token bypass (dev / hermetic CI),

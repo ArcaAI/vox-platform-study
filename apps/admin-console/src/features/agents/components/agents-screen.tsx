@@ -70,7 +70,7 @@ function AgentsScreenBody() {
     // opens the detail slide-over) stays its own param.
     const query = useAdminGridParams();
     const [selectedParam, setSelectedParam] = useQueryState('template', parseAsString.withDefault(''));
-    // TASK-532 (M-03/OD-6): `?tab=governance` is the redirect target from the
+    // `?tab=governance` is the redirect target from the
     // retired `/prompt-studio`, so the tab must be URL-addressable.
     const [tabParam, setTabParam] = useQueryState('tab', parseAsString);
     const session = useSession();
@@ -231,7 +231,7 @@ function AgentsScreenBody() {
     return (
         <>
             {/*
-             * TASK-532 (M-03/OD-6): `/agents` gained the Governance tab that the
+             * `/agents` gained the Governance tab that the
              * retired `/prompt-studio` used to own. Tabs wrap the template so the
              * shared context reaches both the TabsList (a pinned region) and the
              * panels (children) — rule 11 §Screen Template.

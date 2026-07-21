@@ -31,7 +31,7 @@ export interface PipelineTemplateResyncSummary {
 }
 
 /**
- * TASK-531 (GAP-T3) — reconcile ONE tenant's pipeline catalog against the
+ * Reconcile ONE tenant's pipeline catalog against the
  * SYSTEM templates.
  *
  * Clone-on-provision (`TenantService.provisionTenantPipelineCatalog`) runs

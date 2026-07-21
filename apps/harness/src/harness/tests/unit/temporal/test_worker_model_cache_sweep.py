@@ -1,15 +1,13 @@
-"""TASK-530 (D-08) — the worker process sweeps its idle entailer.
+"""The worker process sweeps its idle entailer.
 
 The MiniCheck entailer is loaded by an ACTIVITY, so its weights live in the
 Temporal **worker** process, not in the FastAPI app. Lazy eviction on the next
 `load_minicheck_entailer` covers a worker that keeps verifying; this periodic
-sweep covers the one that ran a document and then went quiet — the exact case
-where the pre-TASK-530 module dict pinned a GGUF forever.
+sweep covers the one that ran a document and then went quiet — the case
+a plain module dict would otherwise pin a GGUF forever.
 
 Hermetic: no Temporal, no weights. Only the sweep body is tested; the interval
 loop around it is trivial glue.
-
-RED: written before the implementation.
 """
 
 from __future__ import annotations

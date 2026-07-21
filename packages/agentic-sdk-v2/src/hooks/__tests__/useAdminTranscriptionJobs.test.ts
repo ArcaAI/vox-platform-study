@@ -1,5 +1,5 @@
 /**
- * useAdminTranscriptionJobs Hook Tests (TASK-323 Phase 0 / TASK-320 A1)
+ * useAdminTranscriptionJobs Hook Tests
  *
  * Tenant-wide transcription-job supervision for TENANT_ADMIN / GLOBAL_ADMIN.
  *

@@ -1,5 +1,5 @@
 /**
- * TASK-392 (Phase 3) — pure enforcement logic.
+ * Pure enforcement logic.
  *
  * These functions are the SENSITIVE core (Q10): the block-new comparison and
  * the newest-first soft-disable selection. They are covered exhaustively here

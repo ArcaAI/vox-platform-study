@@ -1,5 +1,5 @@
 /**
- * TenantConfigDtoMapper Unit Tests (TASK-393)
+ * TenantConfigDtoMapper Unit Tests
  *
  * The mapper turns tenant-scoped `GlobalSetting` entities into the standalone
  * `TenantConfigResponse` DTO, replacing the fragile

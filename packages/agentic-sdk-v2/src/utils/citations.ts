@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - Citations / provenance utilities (TASK-330 Phase 1, Lane J)
+ * @arcaai/vox - Citations / provenance utilities
  *
  * Pure, framework-agnostic helpers that back the linked-evidence clinician
  * review UI. Kept side-effect free so they can be unit-tested in isolation and

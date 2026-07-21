@@ -12,7 +12,7 @@ import { MsGraphDirectoryProvider } from './ms-graph-directory.provider';
 import { GoogleDirectoryProvider } from './google-directory.provider';
 
 /**
- * DirectorySyncServiceModule (TASK-498 P3) — admin-triggered directory
+ * DirectorySyncServiceModule — admin-triggered directory
  * pre-provisioning. Wires the `SyncTenantDirectoryUsers` BullMQ queue, the
  * enqueue-side service, the paged-pull worker, and the two directory
  * providers (each individually kill-switched — `TENANT_IDP_MS_GRAPH_ENABLED`

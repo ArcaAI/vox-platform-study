@@ -3,7 +3,7 @@ import * as Entities from '../../../entities';
 import * as Models from '../../../models';
 import * as Mappers from '../../../mappers';
 
-// TASK-326 X7 / D-2 — `_version` is owned by the database and the only
+// `_version` is owned by the database and the only
 // legitimate writer is `Repository.updateWithVersion`. Strip it from every
 // write path here so the auto-mappers cannot leak it into a Prisma update.
 // Mirrors the E.2 / E.3 treatment on `DepartmentEntityMapper` and
@@ -41,7 +41,7 @@ export class DnaWritingStyleReportEntityMapper extends BaseMapper<Entities.DnaWr
 
 export const DnaWritingStyleReportEntityMapperHandlers = createMapperHandlers<Entities.DnaWritingStyleReportEntity, Models.DnaWritingStyleReport>({
   $toPersistence: {
-    // TASK-369 Phase 3C — return the raw ciphertext Buffer directly so the
+    // Return the raw ciphertext Buffer directly so the
     // generic auto-mapper does not destructure the typed array.
     encryptedReportData: (entity) => entity.encryptedReportData ?? null,
     encryptedStyleText: (entity) => entity.encryptedStyleText ?? null,

@@ -9,7 +9,7 @@ import {
     SEED_TEMPLATE_IDS,
     SYSTEM_USER_ID,
 } from './00-constants';
-// TASK-369 Phase 6 — plaintext `reportData`/`styleText` columns were dropped;
+// The plaintext `reportData`/`styleText` columns were dropped;
 // seed rows must persist Vault-Transit ciphertext into the `encrypted*` columns.
 import { encryptSeedRow } from './phi-encryption';
 
@@ -377,7 +377,7 @@ export const DEFAULT_PROMPT_USAGE_RECORDS = [
 ];
 
 // =============================================================================
-// CUSTOMER-TENANT DNA (TASK-331 doc-02 F7 / doc-08 cold-seed fix)
+// CUSTOMER-TENANT DNA
 //
 // The DNA reports/versions/usage above all belong to the Global customer
 // tenant (SEED_TENANT_ID), so the admin cross-tenant switcher demoed empty DNA
@@ -572,7 +572,7 @@ export const seedDnaWritingStyle = async (client: CorePrismaClient) => {
     console.log(`Seeded ${DEFAULT_PROMPT_USAGE_RECORDS.length} prompt usage records`);
 
     // -------------------------------------------------------------------------
-    // Customer-tenant DNA (TASK-331 doc-02 F7 / doc-08 cold-seed fix).
+    // Customer-tenant DNA.
     //
     // The customer-tenant DOCTOR clinician (ARCAAI_DOCTOR) is seeded by
     // 91-user.ts (which runs first), with the

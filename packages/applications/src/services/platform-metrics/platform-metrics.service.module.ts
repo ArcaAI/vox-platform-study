@@ -6,7 +6,7 @@ import { IPrometheusQueryService, PrometheusQueryService } from './prometheus-qu
 import { ISocketRegistryService, SocketRegistryService } from './socket-registry.service';
 
 /**
- * TASK-386 — platform runtime metrics module (E1/E2/E3 + #17 socket registry).
+ * Platform runtime metrics module, plus the socket registry.
  *
  * `IRedisCacheService` is provided globally by `RedisCacheModule` (@Global), so
  * it is injected without a local import. `CoreDatabaseModule` supplies

@@ -47,12 +47,12 @@ export function useCancelTask() {
     return useMutation({ mutationFn: (taskId: string) => cancelTask(taskId) });
 }
 
-/** TASK-446 — Guardrails tab: content-safety / PII / prompt-injection analysis. */
+/** Guardrails tab: content-safety / PII / prompt-injection analysis. */
 export function useAnalyzeGuardrail() {
     return useMutation({ mutationFn: (body: { text: string; guardrailType?: GuardrailType }) => analyzeGuardrail(body) });
 }
 
-/** TASK-446 — NER tab: medical entity extraction (token classification). */
+/** NER tab: medical entity extraction (token classification). */
 export function useExtractEntities() {
     return useMutation({ mutationFn: (body: { text: string; aggregationStrategy?: string; language?: string }) => extractEntities(body) });
 }

@@ -1,6 +1,6 @@
 """Tests for the harness health/liveness/readiness endpoints.
 
-RED-first: these are written before the implementation. The harness follows
+The harness follows
 the HOPE standardized health contract (status: healthy/degraded/unhealthy;
 endpoints: /health, /health/live, /health/ready).
 """

@@ -33,7 +33,7 @@ export class DnaReportResponse {
   resourceStatus?: ResourceStatusType;
 
   /**
-   * Row `_version` for optimistic concurrency control (TASK-326 X7 / D-2).
+   * Row `_version` for optimistic concurrency control.
    * Clients echo this back via `If-Match: "<version>"` (or `expectedVersion`
    * in the body for service-to-service callers) on the next PATCH. The
    * server's compare-and-set (`dnaReportRepository.updateWithVersion`) fails

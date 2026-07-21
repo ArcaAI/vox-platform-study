@@ -1,4 +1,4 @@
-"""TASK-452 C5-02 — token-classification aggregation contract.
+"""Token-classification aggregation contract.
 
 The Medical-NER model (``blaze999/Medical-NER``) is BIO-prefixed and tokenizes
 into subword ``##`` fragments. Unless the HF pipeline runs with an aggregation

@@ -1,4 +1,4 @@
-// TASK-369 (Data Encryption Initiative) Phase 3D — AuditLog envelope-encryption
+// AuditLog envelope-encryption
 // BENCHMARK: plaintext vs envelope-encrypted write/read throughput.
 //
 // WHY envelope (and what this proves): AuditLog is the highest-volume write path

@@ -1,5 +1,5 @@
 /**
- * SDK Exports Verification — focused domain hooks (TASK-374 §5.3.2 follow-up)
+ * SDK Exports Verification — focused domain hooks
  *
  * The package barrel previously exposed only the aggregate `useArca()` (plus
  * `useArcaSession` / `useArcaSummary` / `useArcaConfig`); the focused

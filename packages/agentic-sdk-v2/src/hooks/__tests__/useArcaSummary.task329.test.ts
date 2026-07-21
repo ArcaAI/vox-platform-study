@@ -1,5 +1,5 @@
 /**
- * useArcaSummary — TASK-329 (P6) diff + tag methods.
+ * useArcaSummary — diff + tag methods.
  *
  * Verifies the new summary-management methods hit the correct consultation-
  * scoped endpoints with the right verbs/payloads.

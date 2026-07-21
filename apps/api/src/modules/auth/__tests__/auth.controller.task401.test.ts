@@ -1,12 +1,12 @@
 /**
- * AuthController — TASK-401 backports on the legacy impersonation routes.
+ * AuthController — backports on the legacy impersonation routes.
  *
  *   - `/auth/impersonate` now rejects NESTED impersonation (an impersonated
  *     session can never start another) and SELF-impersonation, each with a
  *     dedicated audited denial code.
  *   - `/auth/revoke-impersonation` now emits the forced
- *     `USER_IMPERSONATION_ENDED` audit row (TASK-396 forceAuditLog pattern),
- *     symmetric with the START row from the TASK-401 admin endpoint.
+ *     `USER_IMPERSONATION_ENDED` audit row (forceAuditLog pattern),
+ *     symmetric with the START row from the admin endpoint.
  *
  * Harness mirrors auth.controller.task295.test.ts (pure unit, no container).
  */

@@ -104,34 +104,31 @@ class NLPServiceConfig(BaseSettings):
     opentelemetry_endpoint: str | None = Field(default=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", None))
     otlp_endpoint: str | None = Field(default=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", None))
     resource_attributes_raw: str | None = Field(default=None)
-    # TASK-411 master switch: gates traces, metrics, AND log export (default off).
+    # Master switch: gates traces, metrics, AND log export (default off).
     otel_enabled: bool = Field(default=os.getenv("NLP_OTEL_ENABLED", "false").lower() == "true")
     traces_enabled: bool = Field(default=os.getenv("OTEL_TRACES_ENABLED", "true").lower() == "true")
     metrics_enabled: bool = Field(default=os.getenv("OTEL_METRICS_ENABLED", "true").lower() == "true")
 
-    # Inter-service authentication (TASK-465). Reads NLP_SERVICE_TOKEN via the
+    # Inter-service authentication. Reads NLP_SERVICE_TOKEN via the
     # env_prefix below — the exact key the gateway provisions. Empty by default
     # so local dev / hermetic CI bypass auth; a set value enforces the header.
     service_token: SecretStr = SecretStr("")
 
-    # TASK-525 — where the control plane lives (env NLP_GATEWAY_URL). This is
+    # Where the control plane lives (env NLP_GATEWAY_URL). This is
     # BOOTSTRAP TRANSPORT (the address of the config source), NOT config
     # authority: the service-level knobs themselves come from the
     # effective-config route this URL points at.
     gateway_url: str = Field(default="http://localhost:8868/api/v1")
 
-    # TASK-525 — bootstrap fallback; the runtime value comes from the control
-    # plane (`nlp.inference.maxConcurrent`). Before TASK-525 nlp had NO inference
-    # bound at all, so this is the first ceiling the service has ever had (GAP-L4).
+    # Bootstrap fallback; the runtime value comes from the control
+    # plane (`nlp.inference.maxConcurrent`).
     inference_max_concurrent: int = Field(default=4, ge=1)
 
-    # TASK-529 (D-07) — model-cache retention. Before this ticket nlp's three
-    # cache singletons were constructed with NO ttl/max argument, so retention
-    # was pinned to the module defaults with not even an env knob.
+    # Model-cache retention.
     #
     # BOOTSTRAP FALLBACK ONLY — the runtime value comes from the control plane
     # (`nlp.modelCache.{ttlSeconds,maxModels}`). Env: NLP_MODEL_CACHE_TTL_SECONDS
-    # / NLP_MODEL_CACHE_MAX_MODELS. The 600 s default is OD-5 (was 3600).
+    # / NLP_MODEL_CACHE_MAX_MODELS.
     model_cache_ttl_seconds: int = Field(default=600, ge=60, le=3600)
     model_cache_max_models: int = Field(default=3, ge=1)
 
@@ -159,7 +156,7 @@ class NLPServiceConfig(BaseSettings):
 
 # Sentinel default for the document-type text classifier.
 #
-# OPEN DECISION (TASK-330 §3.4): the `/classify/text` endpoint is meant for clinical
+# OPEN DECISION: the `/classify/text` endpoint is meant for clinical
 # *document-type* classification (e.g. clinical note vs discharge summary vs lab report),
 # but no clinical doc-type model or label taxonomy has been chosen yet. The previous
 # default, `michellejieli/emotion_text_classifier`, is an *emotion* model and was only ever
@@ -244,7 +241,7 @@ class TokenClassificationConfig(BaseSettings):
 
 
 class OntologyLinkerConfig(BaseSettings):
-    """Clinical ontology linker configuration (TASK-476 C1).
+    """Clinical ontology linker configuration.
 
     Gates the deterministic ``OntologyLinker`` wired into token classification:
     a master toggle plus a confidence floor below which a recognized span is

@@ -4,7 +4,7 @@ import { Authorize } from '../../decorators';
 import { AiServiceProxyClient, GuardrailConfigResult } from './ai-service-proxy.client';
 
 /**
- * AiServiceAdminController (TASK-419 item 3).
+ * AiServiceAdminController.
  *
  * READ-ONLY status/config plane over the Guardrail and NLP Python services,
  * proxied through the gateway (the console never reaches them directly).

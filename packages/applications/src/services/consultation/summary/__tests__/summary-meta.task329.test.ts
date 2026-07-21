@@ -1,5 +1,5 @@
 /**
- * TASK-329 (P6 — Summarization completeness)
+ * (P6 — Summarization completeness)
  *
  * The summary list + version browser response DTOs must surface the
  * `cacheHit` / `qualityScore` fields that were threaded through the

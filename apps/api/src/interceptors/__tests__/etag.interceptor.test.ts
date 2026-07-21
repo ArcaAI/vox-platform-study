@@ -1,5 +1,5 @@
 /**
- * ETagInterceptor unit tests — TASK-302 Stream D Phase D (D.1).
+ * ETagInterceptor unit tests.
  *
  * The interceptor scans every response body that flows through and, when it
  * spots a top-level `version: <positive integer>`, emits an RFC 7232

@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 /**
- * TASK-496 — set/rotate a tenant's BYO provider API key. Write-only: the key is
+ * Set/rotate a tenant's BYO provider API key. Write-only: the key is
  * Vault-Transit encrypted immediately and never returned by any read. `endpoint`
  * maps per provider (azure → region, sarvam → base URL).
  */

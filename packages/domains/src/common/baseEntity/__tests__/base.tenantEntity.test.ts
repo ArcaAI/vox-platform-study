@@ -1,5 +1,5 @@
 /**
- * BaseTenantEntity unit tests — TASK-305 Phase A.7 / A.9.
+ * BaseTenantEntity unit tests.
  *
  * Verifies the structural and runtime guards that protect every
  * tenant-scoped entity from silently losing its tenant context:
@@ -197,7 +197,7 @@ describe('BaseTenantEntity (TASK-305 A.7)', () => {
 
   describe('IBaseTenantEntity type-shape (compile-time)', () => {
     it('rejects construction without tenantId (TS guard)', () => {
-      // @ts-expect-error — `tenantId` is REQUIRED per TASK-305 A.7.
+      // @ts-expect-error — `tenantId` is REQUIRED.
       // Omitting it must fail to compile, which this line proves.
       const init: IBaseTenantEntity = {
         id: 'entity-2',
@@ -213,8 +213,8 @@ describe('BaseTenantEntity (TASK-305 A.7)', () => {
   });
 
   /**
-   * TASK-306 P1.1 (audit C-7 finale) — `set Tenant(...)` is `protected`,
-   * matching the `tenantId` setter hardening from TASK-305 A.7. External
+   * `set Tenant(...)` is `protected`,
+   * matching the `tenantId` setter hardening. External
    * callers can no longer overwrite the tenant relation of a live entity;
    * only subclasses (entity factories, mappers, lifecycle methods) may.
    */
@@ -229,7 +229,7 @@ describe('BaseTenantEntity (TASK-305 A.7)', () => {
       // to the setter's `TenantEntity` parameter — that pins the ONLY
       // compile-time error to the protected-access guard, not a type
       // mismatch. (`never` is the bottom type, assignable to anything.)
-      // @ts-expect-error — `Tenant` setter is `protected` per TASK-306 P1.1
+      // @ts-expect-error — `Tenant` setter is `protected`
       // (audit C-7 finale). External assignment must not compile, mirroring
       // the `tenantId` setter guard above. This `@ts-expect-error` itself
       // fails the build if the line below ever stops being a type error.

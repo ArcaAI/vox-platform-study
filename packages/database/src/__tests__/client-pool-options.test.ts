@@ -1,7 +1,7 @@
 /**
  * Prisma Client Pool Options Tests
  *
- * TASK-302 Stream C Phase 0 Task 0.2. Verifies that `createPrismaClient()`
+ * Verifies that `createPrismaClient()`
  * constructs the PrismaPg adapter with EXPLICIT pool sizing tuned for HOPE:
  *
  *   max:                      from PRISMA_PG_MAX env (default 5)

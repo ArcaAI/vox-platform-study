@@ -28,7 +28,7 @@ export class CreateUserProfileRequest extends BaseRequest {
   @IsOptional()
   avatarId?: string;
 
-  @ApiProperty({ description: 'Preferred backend prompt template ID (TASK-328 A1–A3)', required: false })
+  @ApiProperty({ description: 'Preferred backend prompt template ID', required: false })
   @IsString()
   @IsOptional()
   preferredPromptTemplateId?: string;

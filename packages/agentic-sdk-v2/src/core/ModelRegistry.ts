@@ -20,7 +20,7 @@ import type { ISDKLogger } from './logger';
 export type ModelLoadProgressCallback = (progress: ModelLoadProgress) => void;
 
 /**
- * TASK-317 W1.6 (AC-5) — valibot schema for the persisted `SelectedModels`
+ * Valibot schema for the persisted `SelectedModels`
  * payload. Guards `loadSelectedFromStorage` against poisoned / typed-wrong
  * `localStorage` JSON: only `{ stt?, vad?, ner? }` of strings is accepted.
  */
@@ -28,7 +28,7 @@ const SELECTED_MODELS_SCHEMA = v.object({
   stt: v.optional(v.string()),
   vad: v.optional(v.string()),
   ner: v.optional(v.string()),
-  // TASK-329 P3 — persisted Whisper task (transcribe|translate) for local STT.
+  // Persisted Whisper task (transcribe|translate) for local STT.
   sttTask: v.optional(v.picklist(['transcribe', 'translate'])),
 });
 
@@ -73,7 +73,7 @@ export class ModelRegistry {
   private logger?: ISDKLogger;
   private tenantConfig: TenantAudioConfig | null = null;
   /**
-   * TASK-317 W1.2/W1.5 (AC-4) — resolves the active `${tenantId}::${userId}`
+   * Resolves the active `${tenantId}::${userId}`
    * namespace for the selected-models localStorage key. AgenticProvider passes
    * a live accessor (`() => namespaceRef`), so the registry follows the real
    * namespace once `/auth/me` resolves it instead of capturing `pre-login` by
@@ -121,10 +121,10 @@ export class ModelRegistry {
   }
 
   /**
-   * TASK-317 W1.2/W1.5 (AC-4) — per-access namespaced localStorage key, computed
+   * Per-access namespaced localStorage key, computed
    * from the live namespace so a re-key takes effect without reconstructing the
-   * registry. M-3 fail-closes a missing namespace to `pre-login`, never the bare
-   * global key (audit D-1 / the configDB v3 legacy row).
+   * registry. A missing namespace fails closed to `pre-login`, never the bare
+   * global key (the configDB v3 legacy row).
    */
   private get selectedModelsStorageKey(): string {
     const ns = this.resolveNamespace();
@@ -132,7 +132,7 @@ export class ModelRegistry {
   }
 
   /**
-   * TASK-317 W1.2 (review min-A) — true once the live namespace resolves to a
+   * True once the live namespace resolves to a
    * real `${tenantId}::${userId}` (not the `pre-login` bootstrap / empty). Used
    * to gate background PERSISTS so a pre-login auto-select cannot write the
    * shared `arcaai-selected-models/pre-login` row (every user on the origin
@@ -144,7 +144,7 @@ export class ModelRegistry {
   }
 
   /**
-   * TASK-317 W1.2 — re-read the persisted selection under the (now-current)
+   * Re-read the persisted selection under the (now-current)
    * namespace. AgenticProvider calls this after `/auth/me` resolves the real
    * `${tenantId}::${userId}` and on a tenant/user switch, because `this.selected`
    * was loaded once at construction when the namespace was still `pre-login`.
@@ -239,14 +239,14 @@ export class ModelRegistry {
   }
 
   /**
-   * TASK-329 P3 — get the persisted local STT task (transcribe|translate).
+   * Get the persisted local STT task (transcribe|translate).
    */
   getSttTask(): SttTask | undefined {
     return this.selected.sttTask;
   }
 
   /**
-   * TASK-329 P3 — persist the local STT task alongside the selected model in
+   * Persist the local STT task alongside the selected model in
    * the same tenant/user-namespaced row. Unlike the tenant-default auto-select
    * in `loadTenantConfig`, this is an explicit user action, so it always
    * persists (mirrors `selectModel`).
@@ -334,7 +334,7 @@ export class ModelRegistry {
       if (parsed.defaultSttModel) {
         const match = this.findModelByIdOrName(parsed.defaultSttModel, 'stt');
         if (match && !this.selected.stt) {
-          // TASK-317 W1.2 (review min-A) — apply the tenant-default in memory,
+          // Apply the tenant-default in memory,
           // but only PERSIST once the namespace is authenticated. AgenticProvider
           // dispatches loadTenantConfig() before `/auth/me` resolves the real
           // `${tenantId}::${userId}`, so persisting here while still `pre-login`
@@ -550,8 +550,8 @@ export class ModelRegistry {
   /**
    * Load selected models from the namespaced local-storage key.
    *
-   * TASK-317 W1.5 (AC-4) — reads `arcaai-selected-models/${ns}`.
-   * TASK-317 W1.6 (AC-5) — validates the parsed JSON with a valibot schema;
+   * Reads `arcaai-selected-models/${ns}`.
+   * Validates the parsed JSON with a valibot schema;
    * any unparseable / non-object / typed-wrong payload returns `null` and logs
    * a `warn` (never throws), so a poisoned key cannot crash construction.
    */
@@ -605,7 +605,7 @@ export class ModelRegistry {
   /**
    * Save selected models to the namespaced local-storage key.
    *
-   * TASK-317 W1.5 (AC-4) — writes `arcaai-selected-models/${ns}`.
+   * Writes `arcaai-selected-models/${ns}`.
    */
   private saveSelectedToStorage(): void {
     if (typeof window === 'undefined') return;

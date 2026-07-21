@@ -1,5 +1,5 @@
 /**
- * TASK-401 — user impersonation (T5 "act-as"): live API contract.
+ * User impersonation (T5 "act-as"): live API contract.
  *
  * Real HTTP round-trips against the live dev stack
  * (`SKIP_DB_PRECHECK=true`, `API_URL=http://localhost:8868/api/v1`). Harness
@@ -16,7 +16,7 @@
  *      lands an audit row whose `metadata.impersonatedBy` records the actor
  *      (provenance threading through BaseService → SysEvent → AuditLog).
  *   C. Lifecycle audit — forced USER_IMPERSONATION_STARTED/ENDED rows
- *      (TASK-396 forceAuditLog posture) with reason/expiry.
+ *      (forceAuditLog posture) with reason/expiry.
  *   D. End + expiry — revoke kills the jti (401 afterwards); a short-TTL mint
  *      expires on its own (401 after exp).
  *   E. Safeguard matrix — non-super-admin callers 403 (doctor + tenant-admin),
@@ -274,7 +274,7 @@ test.describe.serial('TASK-401 E — safeguards', () => {
   test('E3 — elevated-tier target (seeded GLOBAL_ADMIN) is rejected', async ({ request }) => {
     const res = await impersonate(request, GLOBAL_ADMIN_USER_ID);
     expect(res.status(), 'GLOBAL_ADMIN target → 400').toBe(400);
-    // TASK-417 — the guard message now says "global administrator".
+    // The guard message says "global administrator".
     expect(((await res.json()) as { message?: string }).message).toMatch(/global administrator/i);
   });
 
@@ -317,7 +317,7 @@ test.describe.serial('TASK-401 E — safeguards', () => {
     expect(nestedNew.status(), 'nested start via /admin/users/:id/impersonate → 403').toBe(403);
 
     // Legacy endpoint: reachable pre-role-check, so the dedicated nested
-    // guard (TASK-401 backport) must fire with its explicit message.
+    // guard must fire with its explicit message.
     const nestedLegacy = await request.post('/api/v1/auth/impersonate', {
       headers: bearer(session.token),
       data: { targetUserId: SEEDED_USERS.doctor2.id },

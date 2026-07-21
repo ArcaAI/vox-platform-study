@@ -1,5 +1,5 @@
 /**
- * HarnessPolicyService — MCP policy plumbing (TASK-533 D-24).
+ * HarnessPolicyService — MCP policy plumbing.
  *
  * `mcpToolsEnabled` (harness.prisma) and the `McpServer` registry were both built,
  * and the Python side parsed both keys — but the TS policy response never emitted

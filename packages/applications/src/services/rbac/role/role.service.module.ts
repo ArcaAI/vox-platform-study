@@ -7,7 +7,7 @@ import { IRbacRoleService } from './IRoleService';
 import { RbacRoleService } from './role.service';
 
 /**
- * TASK-307 W6.3 — DI module for `RbacRoleService`. Exports the
+ * DI module for `RbacRoleService`. Exports the
  * `IRbacRoleService` token so `RolesController` (and any future caller)
  * can depend on the interface, not the concrete class.
  *
@@ -16,15 +16,15 @@ import { RbacRoleService } from './role.service';
  * gateway today but still occupies the `RoleServiceModule` symbol in the
  * `@arcaai/applications` barrel.
  *
- * TASK-311 (D-3) — `RbacRoleRepository` + `RolePolicyRepository`
+ * `RbacRoleRepository` + `RolePolicyRepository`
  * registered here rather than in `CoreDatabaseModule` (out-of-scope
  * file). `CoreDatabaseModule` is still imported so the
  * `'CORE_DATABASE_SERVICE'` token both repositories inject is in scope.
  *
- * TASK-409 — break-glass needs `ICryptoService` (via CryptoServiceModule) +
+ * Break-glass needs `ICryptoService` (via CryptoServiceModule) +
  * `UserRepository` (via CoreDatabaseModule) + `PolicyRepository` (detach
- * target lookup / protected-policy detach block, registered here per the
- * TASK-311 D-3 pattern).
+ * target lookup / protected-policy detach block, registered here rather than
+ * in the owning module).
  */
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule, AuthorizationModule, CryptoServiceModule],

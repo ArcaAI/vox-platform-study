@@ -44,7 +44,7 @@ export class GateEditExemplarRepository extends Repository<GateEditExemplarEntit
   }
 
   /**
-   * TASK-533 §3.4 — per-department few-shot exemplar retrieval: top-K by
+   * Per-department few-shot exemplar retrieval: top-K by
    * recency for a given quality signal, scoped to the caller's tenant and
    * (optionally) department. Department is optional so a tenant with no
    * department context still gets tenant-level exemplars.
@@ -73,7 +73,7 @@ export class GateEditExemplarRepository extends Repository<GateEditExemplarEntit
   }
 
   /**
-   * TASK-533 §3.4 consumption (a) — eval regression-corpus export.
+   * Consumption (a) — eval regression-corpus export.
    *
    * Differs from {@link findTopForRetrieval} in one deliberate way: the quality
    * signal is OPTIONAL. Retrieval only ever shows the model clean approvals,

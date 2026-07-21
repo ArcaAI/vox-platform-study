@@ -1,10 +1,10 @@
 /**
- * @arcaai/vox - useArcaContext Hook (REFACTOR-01; TASK-297 DEF-H3)
+ * @arcaai/vox - useArcaContext Hook (REFACTOR-01)
  *
  * Focused hook for context item management (case notes, transcriptions, entities).
  * Extracted from the useArca god hook for better performance and maintainability.
  *
- * TASK-297 DEF-H3 — replaces `const store = useAgenticStore();` with discrete
+ * Replaces `const store = useAgenticStore();` with discrete
  * selector subscriptions so only the slices this hook reads can re-render it.
  * Zustand action dispatchers (e.g. `addContextItem`, `setContextLoading`) are
  * selected individually too; they are stable references.
@@ -33,7 +33,7 @@ import type { ISDKLogger } from '../core/logger';
 export type { UseArcaContext } from './useArca';
 
 export function useArcaContext() {
-  // TASK-297 DEF-H3 — slice selectors.
+  // Slice selectors.
   const apiClient = useAgenticStore(selectApiClient);
   const consultation = useAgenticStore(selectConsultation);
   const contextItems = useAgenticStore(selectContextItems);

@@ -10,9 +10,9 @@ export class PipelineDtoMapper {
       description: entity.description,
       configYaml: entity.configYaml,
       resourceStatus: entity.resourceStatus,
-      // TASK-328 A6 — tenant default flag.
+      // Tenant default flag.
       isDefault: entity.isDefault ?? false,
-      // TASK-531 — template lineage (drives the console's Template badge and
+      // Template lineage (drives the console's Template badge and
       // read-only detail state).
       sourceTemplateSlug: entity.sourceTemplateSlug ?? null,
       templateLocked: entity.templateLocked ?? false,
@@ -22,13 +22,13 @@ export class PipelineDtoMapper {
       updatedAt: entity.updatedAt,
       createdBy: entity.createdBy,
       updatedBy: entity.updatedBy,
-      // TASK-302 Stream D Phase E.4 — round-trip the OCC token so the
+      // Round-trip the OCC token so the
       // SDK / UI can echo it as `If-Match` on the next PATCH.
       version: entity.version,
     };
   }
 
-  // TASK-328 A6 — map a snapshot entity to its response shape.
+  // Map a snapshot entity to its response shape.
   static toVersionResponse(entity: AsrPipelineVersionEntity): PipelineVersionResponse {
     return {
       id: entity.id,

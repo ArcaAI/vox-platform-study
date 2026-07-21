@@ -78,7 +78,7 @@ function LoadingSurface() {
  * GET /admin/pstudio/status; the iframe shell renders only when the gateway
  * confirms the studio module is registered.
  *
- * NAMING (TASK-532 M-08): the CONSOLE route and copy are `/db-studio` /
+ * NAMING: the CONSOLE route and copy are `/db-studio` /
  * "Database Studio" — "pstudio" read as a typo'd "prompt studio" next to
  * `/prompt-studio`. The GATEWAY path stays `/admin/pstudio/*` deliberately:
  * renaming it is a backend API change with its own compatibility story, and

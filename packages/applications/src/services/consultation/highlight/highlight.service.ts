@@ -10,7 +10,7 @@ import { HighlightDtoMapper } from './highlight.dto.mapper';
 import { CreateHighlightRequest, HighlightResponse } from './dto';
 
 /**
- * TASK-344 Workstream B — durable manual-doctor highlighting.
+ * Durable manual-doctor highlighting.
  *
  * Highlights are a SEPARATE aggregate from NamedEntity so doctor-authored marks
  * never pollute the AI NER taxonomy / aggregation. Each operation is tenant
@@ -25,10 +25,10 @@ export class HighlightService extends BaseService implements IHighlightService {
     private readonly consultationRepository: ConsultationRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // TASK-369 Phase 3C — Vault-Transit field encryption for the highlight's
+    // Vault-Transit field encryption for the highlight's
     // doctor-authored free text (exact / prefix / suffix / note). Optional +
     // @Inject so legacy/direct-construction tests still work; when absent these
-    // PHI fields are left unpersisted (Phase 6 dropped the plaintext columns).
+    // PHI fields are left unpersisted (there are no plaintext columns).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super(eventEmitter, clsService, ResourceType.Highlight);
@@ -37,7 +37,7 @@ export class HighlightService extends BaseService implements IHighlightService {
   private readonly logger = new Logger(HighlightService.name);
 
   /**
-   * TASK-369 — encrypt the highlight's plaintext free-text fields (exact /
+   * Encrypt the highlight's plaintext free-text fields (exact /
    * prefix / suffix / note) into their `encrypted*` / `keyVersion` columns
    * through the shared env-gated guard: a soft no-op in dev/test, FAIL-CLOSED
    * (throws) in staging/prod (SECRETS_PROVIDER=vault) instead of plaintext-only.
@@ -86,7 +86,7 @@ export class HighlightService extends BaseService implements IHighlightService {
     // non-empty exact) cannot be expressed with per-field class-validator rules.
     highlight.validate();
 
-    // TASK-369 Phase 3C — encrypt free-text fields into the ciphertext columns
+    // Encrypt free-text fields into the ciphertext columns
     // before the first persist (dual-write; plaintext is retained for the soak).
     await this.encryptHighlight(highlight);
 

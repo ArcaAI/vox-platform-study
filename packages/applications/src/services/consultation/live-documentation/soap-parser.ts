@@ -1,5 +1,5 @@
 /**
- * SOAP section parsing for the live running summary (TASK-339 follow-up 1).
+ * SOAP section parsing for the live running summary.
  *
  * The realtime SMR call now asks for a structured S/O/A/P running note. These
  * pure helpers turn that text into the four canonical sections (in order) and
@@ -86,7 +86,7 @@ export function parseSoapSections(raw: string): LiveSummarySectionDto[] {
 }
 
 /**
- * SOAP `response_format` (json_schema) for the live SMR call (TASK-340 P0-C).
+ * SOAP `response_format` (json_schema) for the live SMR call.
  *
  * Forwarded to `/api/v1/generate` so a json-schema-capable provider returns a
  * deterministic `{ subjective, objective, assessment, plan }` object instead of

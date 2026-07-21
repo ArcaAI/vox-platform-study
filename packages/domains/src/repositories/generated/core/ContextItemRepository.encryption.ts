@@ -1,4 +1,4 @@
-// TASK-369 (Data Encryption Initiative) Phase 3B — pilot field encryption on
+// Pilot field encryption on
 // ContextItem.content (highest-volume free-text clinical PHI).
 //
 // Encryption helpers for ContextItemRepository, implemented in a sibling file
@@ -12,7 +12,7 @@
 //   - The shared Buffer/ciphertext/key-version primitives live in
 //     `common/field-encryption.ts` (used by every Phase 3 model) and default
 //     to the dedicated `hope-phi` Transit key.
-//   - TASK-369 Phase 6: the plaintext `content` column has been DROPPED, so
+//   - The plaintext `content` column has been DROPPED, so
 //     decryptContentFromEntity decrypts ciphertext only (the legacy plaintext
 //     fallback is gone). It returns `null` when `encryptedContent` is null
 //     (legitimately nullable for ATTACHMENT / AUDIO_RECORDING rows). Generic

@@ -1,5 +1,5 @@
 /**
- * TASK-369 follow-up — seed-time PHI encryption must mirror the APPLICATION
+ * Seed-time PHI encryption must mirror the APPLICATION
  * write-path's environment gate (`applications` `phi-field-encryption.ts`
  * `isPhiEncryptionRequired`): only `SECRETS_PROVIDER=vault` encrypts PHI.
  *

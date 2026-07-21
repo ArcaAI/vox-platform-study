@@ -36,7 +36,7 @@ export class UpdateUserRequest extends BaseRequest {
   @IsOptional()
   isServiceAccount?: boolean;
 
-  // AC-05 (TASK-336) — secret1/secret2 are NOT client-assignable via the generic
-  // update payload (they were mass-assignable here). Secret material is changed
+  // secret1/secret2 are NOT client-assignable via the generic
+  // update payload. Secret material is changed
   // only through the dedicated rotation flow.
 }

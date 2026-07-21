@@ -1,6 +1,6 @@
-"""TASK-470 (Theme F · S1-EVAL) — Streaming QUALITY scorecard + regression gate.
+"""Streaming QUALITY scorecard + regression gate.
 
-EXTENDS TASK-455's ``test_streaming_loss_harness.py`` (imports its through-the-
+EXTENDS ``test_streaming_loss_harness.py`` (imports its through-the-
 gateway session bootstrap + transport metrics — does NOT fork it) with the
 CLINICAL QUALITY metrics the SOTA ASR/NER track is scored against:
 
@@ -11,8 +11,8 @@ CLINICAL QUALITY metrics the SOTA ASR/NER track is scored against:
   "did we drop the drug / dose / finding" catcher.
 
 and a **committed pass/fail regression gate** (``streaming_thresholds.json`` +
-``assert_no_regression``) — the assertion TASK-455 deliberately deferred (its
-AC-6 was baseline-only).
+``assert_no_regression``) — the assertion the baseline-only loss harness
+deliberately deferred.
 
 TWO KINDS OF TEST live here (mirroring the loss harness's split):
 
@@ -27,7 +27,8 @@ TWO KINDS OF TEST live here (mirroring the loss harness's split):
    produces a REAL scorecard JSON artifact + asserts the thresholds. Self-skips
    cleanly when STT-v2 / login / a clinical WAV is unavailable. Producing the
    captured baseline scorecard on a live stack is the ORCHESTRATOR's step (exactly
-   like TASK-455's live baseline), so this test skips — never fails — off-stack.
+   like the loss harness's live baseline), so this test skips — never fails —
+   off-stack.
 
 Run::
 
@@ -60,7 +61,7 @@ from tests.integration.streaming_quality import (
     regression_report,
 )
 
-# Reuse TASK-455's harness (import — do NOT fork). All module-level & importable.
+# Reuse the loss harness (import — do NOT fork). All module-level & importable.
 from tests.integration.test_streaming_loss_harness import (
     ReplayAudio,
     committed_revision_rate,
@@ -118,7 +119,7 @@ def _load_thresholds() -> dict[str, Any]:
 
 
 def test_committed_revision_rate_excludes_tentative_tail() -> None:
-    """TASK-487 A1: the churn guardrail must measure the LA-2 COMMITTED region
+    """The churn guardrail must measure the LA-2 COMMITTED region
     (``text[:stable_chars]``), not the full caption — revising the deliberately
     provisional tentative tail is by design and must NOT count as caption churn.
     """
@@ -142,11 +143,11 @@ def test_committed_revision_rate_excludes_tentative_tail() -> None:
     assert committed_revision_rate([("the", 3), ("the patient", 11)])["rate"] == 0.0
 
     # A tail-only frame carries NO committed-prefix info: the STT pipeline emits
-    # stableChars=0 on TASK-471 tentative-tail refreshes (the UI carries the settled
+    # stableChars=0 on tentative-tail refreshes (the UI carries the settled
     # prefix forward, never un-settling it). A non-empty committed prefix followed by
     # such an sc=0 frame is NOT a committed rewrite — the metric must skip the frame,
-    # else it false-positives on every tail refresh (regression observed live: the
-    # TASK-470 scorecard on the …402 pipeline reported ~0.10-0.15 committed churn that
+    # else it false-positives on every tail refresh (regression observed live: a
+    # scorecard on one pipeline reported ~0.10-0.15 committed churn that
     # was ENTIRELY sc→0 tail frames, not settled-text flicker).
     assert (
         committed_revision_rate([("the patient has", 11), ("the patient has more", 0)])["rate"]
@@ -293,7 +294,7 @@ def test_quality_metric_functions_are_correct() -> None:
     dropped_term["quality"]["keyterm_recall"] = 0.0
     assert regression_report(dropped_term, thresholds)["passed"] is False
 
-    # (f) committed-region revision above baseline+ε — the TASK-487 A1 guardrail
+    # (f) committed-region revision above baseline+ε — the churn guardrail
     # bites on genuine settled-text churn (a high full-caption tail rate would NOT,
     # since partial_revision_rate is now informational/ungated).
     churned = json.loads(json.dumps(card))
@@ -313,7 +314,7 @@ def test_quality_metric_functions_are_correct() -> None:
 
 
 # ===========================================================================
-# 2. PURE fixture-integrity check (no services) — AC-3, PHI-free guarantee
+# 2. PURE fixture-integrity check (no services) — PHI-free guarantee
 # ===========================================================================
 
 # PHI tripwire for EVERY current AND future SOTA clinical fixture. It matches the
@@ -406,7 +407,7 @@ def test_clinical_fixtures_are_wellformed() -> None:
 
 
 # ===========================================================================
-# 3. LIVE scorecard through the WS gateway (self-skips off-stack) — AC-2/6
+# 3. LIVE scorecard through the WS gateway (self-skips off-stack)
 # ===========================================================================
 
 
@@ -509,6 +510,6 @@ async def test_streaming_quality_scorecard(monkeypatch: pytest.MonkeyPatch) -> N
             "ASR model cached; scorecard written but quality not captured."
         )
 
-    # The pass/fail gate TASK-455 deferred: every scored clip must hold the line.
+    # The pass/fail gate the loss harness deferred: every scored clip must hold the line.
     for card in scorecards:
         assert_no_regression(card, thresholds)

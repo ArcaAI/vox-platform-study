@@ -35,8 +35,8 @@ test.describe('agents & prompt templates (frame 32)', () => {
     });
 
     test('a row opens the console-wide detail slide-over', async ({ page }) => {
-        // Redesign (TASK-441): the former side panels are now a DetailDrawer
-        // with Overview / Versions / Test-run tabs.
+        // The former side panels are now a DetailDrawer with Overview /
+        // Versions / Test-run tabs.
         await page.goto('/agents');
         await waitForSettled(page);
         await page.getByRole('grid', { name: 'Prompt templates' }).locator('[data-slot="data-grid-row"]').first().click();

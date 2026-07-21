@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { QueueAdminController } from '../queue-admin.controller';
 
-// TASK-250 / TASK-336 OB-03 — guarded admin surface over the existing
+// Guarded admin surface over the existing
 // queue-admin application layer (BullMQ queues + jobs). The controller is a
 // thin delegate: every route forwards to IQueueAdminService / IJobAdminService.
 const mockQueueService = {
@@ -79,7 +79,6 @@ describe('QueueAdminController', () => {
       expect(result).toEqual({ removedJobIds: ['1', '2', '3'], count: 3 });
     });
 
-    // TASK-403 — Redis health probe for the Queues & Jobs admin surface.
     it('returns the Redis health snapshot from the service', async () => {
       const health = {
         status: 'healthy',

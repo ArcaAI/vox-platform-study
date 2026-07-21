@@ -1,13 +1,13 @@
 export * from './consultation';
 export * from './context';
-// TASK-344 Workstream B — manual doctor highlighting.
+// Manual doctor highlighting.
 export * from './highlight';
 export * from './summary';
 export * from './jobs';
 export * from './events';
 export * from './timeline';
 export * from './prompt';
-// TASK-330 Phase 1 (Lane G) — apps/api <-> apps/harness gate adapter.
+// apps/api <-> apps/harness gate adapter.
 export * from './harness';
-// Clinical Workflow Playground (WS1) — per-consultation realtime live-summary watcher.
+// Per-consultation realtime live-summary watcher.
 export * from './live-documentation';

@@ -1,5 +1,5 @@
 /**
- * TASK-541 — Token revocation convergence + HIPAA failed-auth audit (E2E)
+ * Token revocation convergence + HIPAA failed-auth audit (E2E)
  *
  * Pins the three invariants the unit tests can only mock, against a running
  * API with real Redis and a real audit table:
@@ -111,7 +111,7 @@ test.describe('TASK-541 B — disabling a user kills tokens already in the wild'
     const username = throwawayUsername();
     const password = 'ProbePassword123!';
 
-    // Login enforces FULL membership (TASK-305 Phase F): an enabled role AND
+    // Login enforces FULL membership: an enabled role AND
     // an enabled department in the target tenant. A bare user row cannot log
     // in, so the probe is created through the atomic create-with-membership
     // branch using the seeded DOCTOR role + GEN department.

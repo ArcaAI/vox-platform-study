@@ -8,7 +8,7 @@ import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
 /**
- * Editable, tenant-scoped realtime-pipeline policy (TASK-356 Phase 5, Pillar B).
+ * Editable, tenant-scoped realtime-pipeline policy.
  *
  * Polymorphic: ONE table covers the whole cascade tier set via the
  * `scope`/`scopeId` discriminator (TENANT default → DEPARTMENT override →

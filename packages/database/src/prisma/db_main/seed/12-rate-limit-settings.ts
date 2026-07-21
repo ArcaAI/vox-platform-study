@@ -3,7 +3,7 @@ import { ValueType } from '../../../generated/core-prisma-client/client.js';
 import { SEED_TENANT_ID, SEED_USER_IDS, SEED_GLOBAL_SETTING_IDS } from './00-constants';
 
 /**
- * TASK-316 — DB-backed, admin-controlled rate-limit configuration seed.
+ * DB-backed, admin-controlled rate-limit configuration seed.
  *
  * Rate limiting is a gateway-wide concern, so a SINGLE authoritative set of
  * rows lives under the platform tenant (`SEED_TENANT_ID`). The

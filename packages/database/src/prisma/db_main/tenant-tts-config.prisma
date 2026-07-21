@@ -1,5 +1,5 @@
 // ============================================================================
-// Per-Tenant TTS Configuration (TASK-496)
+// Per-Tenant TTS Configuration
 //
 // DB-backed, tenant-admin-editable TTS "spec", resolved at request time by the
 // apps/api gateway and injected into the STATELESS apps/tts-v2 service (the

@@ -9,7 +9,7 @@ import { assertEqualTenants, createWorkerSession } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { ConsultationPipelineEvent, ContextAddedPayload } from '../events';
 
-/** NLP `/extract` response shape (TASK-344 A2). */
+/** NLP `/extract` response shape. */
 interface NlpExtractResult {
   text: string;
   pageCount: number;
@@ -17,11 +17,11 @@ interface NlpExtractResult {
 }
 
 /**
- * OcrEnrichmentProcessor (TASK-344 Workstream A2 — server-side OCR orchestration).
+ * OcrEnrichmentProcessor — server-side OCR orchestration.
  *
  * Event-driven heavy-OCR enrichment that needs NO new apps/api route. Reacts to
  * `ConsultationPipelineEvent.ContextAdded`: when the added item is an ATTACHMENT
- * that has a `mediaId` but NO `metaData.extractedText` (i.e. the client-side A1
+ * that has a `mediaId` but NO `metaData.extractedText` (i.e. the client-side
  * text-layer extractor found nothing — a scanned/image lab), it:
  *
  *   1. fetches the file bytes from the tenant bucket via `IBlobStorageService`,

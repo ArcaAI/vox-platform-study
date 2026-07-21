@@ -9,7 +9,7 @@ import { IAppSettingsService } from '../baseServices/_meta/appSettings';
 /**
  * Symmetric crypto + password hashing helper.
  *
- * TASK-369 Phase 5 (finding APP-002) — `encrypt()` now uses AUTHENTICATED
+ * (finding APP-002) — `encrypt()` now uses AUTHENTICATED
  * AES-256-GCM instead of the legacy unauthenticated AES-256-CBC. GCM detects
  * tampering via an auth tag (CBC silently returns garbage / is malleable). The
  * old CBC scheme is retained ONLY on the decrypt path so any ciphertext

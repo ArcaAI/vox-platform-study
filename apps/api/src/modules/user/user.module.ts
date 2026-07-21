@@ -9,7 +9,6 @@ import {
   UserDepartmentServiceModule,
   VoiceProfileServiceModule,
   PipelineServiceModule,
-  // TASK-388 #8 — reset-password service (temp password + emailed link + completion).
   UserPasswordServiceModule,
 } from '@arcaai/applications';
 import { UserController } from './user.controller';
@@ -19,7 +18,7 @@ import { UserSettingsController } from './controllers/user-settings.controller';
 import { UserDepartmentsController } from './controllers/user-departments.controller';
 import { UserDepartmentsMeController } from './controllers/user-departments-me.controller';
 import { PasswordResetController } from './controllers/password-reset.controller';
-// TASK-400 — public self-service forgot-password (mounted under auth/).
+// Public self-service forgot-password (mounted under auth/).
 import { ForgotPasswordController } from './controllers/forgot-password.controller';
 import { UserExportService } from './user-export.service';
 
@@ -30,15 +29,15 @@ import { UserExportService } from './user-export.service';
     UserPreferencesServiceModule,
     UserSettingsServiceModule,
     UserRoleAssignmentServiceModule,
-    // TASK-328 A1–A3 — admin user profile (preferredPromptTemplateId) + department assignments
+    // Admin user profile (preferredPromptTemplateId) + department assignments
     // + read-only enrolled voice profiles for the user-detail dialog.
     UserProfileServiceModule,
     UserDepartmentServiceModule,
     VoiceProfileServiceModule,
-    // TASK-298 D-5 — UserSettingsController uses PipelineService to validate
+    // UserSettingsController uses PipelineService to validate
     // the `arcaai-sdk:selectedPipelineId` value against the caller's tenant.
     PipelineServiceModule,
-    // TASK-388 #8 — admin reset-password + public completion.
+    // Admin reset-password + public completion.
     UserPasswordServiceModule,
   ],
   controllers: [
@@ -51,7 +50,7 @@ import { UserExportService } from './user-export.service';
     PasswordResetController,
     ForgotPasswordController,
   ],
-  // TASK-388 #10 — export serialization (exceljs/pdfkit) consumed by UserController.
+  // Export serialization (exceljs/pdfkit) consumed by UserController.
   providers: [UserExportService],
 })
 export class UserModule {}

@@ -64,7 +64,7 @@ class IndicParlerConfig(BaseSettings):
     device: str = "cpu"
     speaker_ml: str = "Anjali"
     speaker_en: str = "Mary"
-    # Internal-mirror overrides (TASK-495). The HF repo is click-through gated, so
+    # Internal-mirror overrides. The HF repo is click-through gated, so
     # prod loads from an ungated local mirror instead of hf.co. When model_path is
     # set the model + prompt tokenizer load from it (local_files_only); when
     # desc_encoder_path is set the description tokenizer (google/flan-t5-large,
@@ -77,8 +77,8 @@ class IndicParlerConfig(BaseSettings):
 class IndicF5Config(BaseSettings):
     """AI4Bharat IndicF5 (Malayalam, voice-clone) — EXPERIMENTAL, gated OFF.
 
-    ⚠️ Prod/commercial enablement is NO-GO pending the owner's license review
-    (TASK-494): the released weights are a fine-tune of the CC-BY-NC SWivid F5-TTS
+    ⚠️ Prod/commercial enablement is NO-GO pending the owner's license review:
+    the released weights are a fine-tune of the CC-BY-NC SWivid F5-TTS
     base — the MIT tag can't override NonCommercial. Never set
     TTS_INDICF5_ENABLED=true in production without written clearance.
     """
@@ -87,7 +87,7 @@ class IndicF5Config(BaseSettings):
 
     enabled: bool = False
     hf_model: str = "ai4bharat/IndicF5"
-    model_path: str = ""  # local mirror dir (TASK-495); gated hub repo otherwise
+    model_path: str = ""  # local mirror dir; gated hub repo otherwise
     device: str = "cpu"
     ref_audio_path: str = ""  # voice-clone reference wav
     ref_text: str = ""  # transcript of the reference wav
@@ -98,7 +98,7 @@ class SarvamConfig(BaseSettings):
 
     ⚠️ The public API is NOT PHI-safe (no HIPAA/BAA, 30-day retention, not
     India-resident) — point `base_url` at the enterprise VPC/on-prem host before
-    enabling for real patient data (TASK-493 §5).
+    enabling for real patient data.
     """
 
     model_config = SettingsConfigDict(env_prefix="TTS_SARVAM_", populate_by_name=True)
@@ -154,21 +154,20 @@ class Settings(BaseSettings):
     indic_parler: IndicParlerConfig = Field(default_factory=IndicParlerConfig)
     indic_f5: IndicF5Config = Field(default_factory=IndicF5Config)
 
-    # TASK-529 (D-09) — local engines are LAZY by default: they register at boot
+    # Local engines are LAZY by default: they register at boot
     # but load their weights on the first synth request and are TTL-evicted when
-    # idle. Set TTS_WARMUP_ENABLED=true to restore the pre-TASK-529 boot-warm
+    # idle. Set TTS_WARMUP_ENABLED=true to restore boot-warm
     # behaviour (fail-at-boot rather than first-request 503) — see
     # docs/operations/inference/model-retention.md.
     warmup_enabled: bool = False
 
-    # TASK-535 — where the control plane lives (env TTS_GATEWAY_URL). BOOTSTRAP
+    # Where the control plane lives (env TTS_GATEWAY_URL). BOOTSTRAP
     # TRANSPORT (the address of the config source), NOT config authority.
     gateway_url: str = "http://localhost:8868/api/v1"
 
     # Idle TTL for local engine weights. BOOTSTRAP FALLBACK ONLY — the runtime
     # value comes from the control plane (`tts.modelCache.ttlSeconds`), consumed
-    # via `core/effective_config.py` since TASK-535. Until then this promise was
-    # unfulfilled and this value WAS the runtime value.
+    # via `core/effective_config.py`.
     model_cache_ttl_seconds: int = 600
 
     @field_validator("log_level")

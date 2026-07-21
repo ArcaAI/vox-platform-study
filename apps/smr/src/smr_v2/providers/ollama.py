@@ -57,18 +57,18 @@ class OllamaProvider:
         self._http = http_client
         self._default_model = config.default_model
         self._base_url = config.base_url.rstrip("/")
-        # TASK-529 (D-10) — bootstrap retention hint; `apply_retention` replaces
+        # Bootstrap retention hint; `apply_retention` replaces
         # it with the control-plane value on the first effective-config refresh.
         self._retention_ttl_s = clamp_cache_ttl_seconds(DEFAULT_RETENTION_TTL_S)
 
     def _resolve_model(self, request: GenerateRequest) -> str | None:
-        # D-7 (TASK-356): no in-gateway default — the caller-supplied model is
+        # No in-gateway default — the caller-supplied model is
         # authoritative. ``_default_model`` is retained for the providers
         # listing (informational) only.
         return request.model
 
     def apply_retention(self, retention: dict[str, int]) -> None:
-        """TASK-529 (D-10) — adopt the control-plane idle-retention TTL.
+        """Adopt the control-plane idle-retention TTL.
 
         An ABSENT key keeps the current (env/bootstrap) value, so a gateway
         outage leaves behaviour byte-identical. The product clamp [60, 3600] is
@@ -91,7 +91,7 @@ class OllamaProvider:
                 "top_p": resolved["top_p"],
             },
             "think": True,
-            # TASK-529 (D-10) — Ollama owns residency; this per-request hint
+            # Ollama owns residency; this per-request hint
             # overrides the server's OLLAMA_KEEP_ALIVE (default 5 min idle).
             # Sent on generate AND stream: both share this builder.
             "keep_alive": f"{self._retention_ttl_s}s",
@@ -213,7 +213,7 @@ class OllamaProvider:
             return False
 
     async def _running_model_names(self) -> set[str] | None:
-        """TASK-528 — `GET /api/ps` lists the models Ollama currently has resident.
+        """`GET /api/ps` lists the models Ollama currently has resident.
 
         Returns ``None`` when the probe fails, which the caller renders as an
         UNKNOWN load state — never as "not loaded" (a transient `/api/ps` miss

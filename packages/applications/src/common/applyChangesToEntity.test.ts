@@ -300,7 +300,7 @@ describe('applyChangesToEntity', () => {
     });
   });
 
-  // TASK-302 Stream D Phase B (B.7) — `version` is database-owned. The only
+  // (B.7) — `version` is database-owned. The only
   // legitimate writer is `Repository.updateWithVersion`. Defense in depth on
   // top of the missing public setter on `BaseEntity` and the mapper exclusion.
   describe('version is database-owned (TASK-302 Stream D Phase B)', () => {

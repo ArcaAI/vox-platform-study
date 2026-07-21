@@ -1,9 +1,8 @@
 /**
- * AiProviderConnectionService — TENANT BYO lane (TASK-526 §5 tests 1–7).
+ * AiProviderConnectionService — TENANT BYO lane.
  *
- * TASK-524 already locked the write-side privilege boundaries and the
- * "no ciphertext in any read DTO" contract (see
- * `ai-provider-connection.service.test.ts`). THIS file locks the piece 526 adds:
+ * `ai-provider-connection.service.test.ts` already locks the write-side privilege boundaries and the
+ * "no ciphertext in any read DTO" contract. THIS file locks the additional piece:
  * `resolveTenantCloudOverrides` — the gateway-only decrypt path that turns a
  * tenant's enabled cloud credential into the `provider_overrides` map folded
  * into the SMR generate body.

@@ -1,4 +1,4 @@
-"""Inter-service authentication middleware for the NLP service (TASK-465).
+"""Inter-service authentication middleware for the NLP service.
 
 Validates the ``X-Service-Token`` header on incoming requests. When
 ``service_token`` is empty (dev mode / hermetic CI) auth is bypassed entirely,

@@ -13,7 +13,7 @@ import {
 import { ApiEndpoint, CanManage } from '../../decorators';
 
 /**
- * TASK-497 §3.5 — global-admin create-tenant-with-admin. A SEPARATE
+ * Global-admin create-tenant-with-admin. A SEPARATE
  * controller/route (`POST /admin/tenants/provision`) rather than extending
  * `TenantController.create`: keeps the existing `POST /admin/tenants`
  * (tenant-only, no admin block) untouched — zero risk to its callers/tests —

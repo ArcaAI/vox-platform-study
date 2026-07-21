@@ -14,7 +14,7 @@ export interface CreateConsultationProps extends BaseEntityFactoryCreateProps {
   departmentId?: IConsultationEntity['departmentId'];
   parentConsultationId?: IConsultationEntity['parentConsultationId'];
   metadata?: IConsultationEntity['metadata'];
-  // TASK-330 Phase 1 — typed lifecycle state (defaults to OPEN)
+  // Typed lifecycle state (defaults to OPEN)
   status?: IConsultationEntity['status'];
   tenantId: IConsultationEntity['tenantId'];
 

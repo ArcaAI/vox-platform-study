@@ -29,7 +29,7 @@ const logger = new Logger('AuthServiceModule');
     CoreDatabaseModule,
     UserServiceModule,
     RedisCacheModule.register(),
-    // TASK-541 A1 — the revocation authority now lives in its own module so
+    // The revocation authority now lives in its own module so
     // UserServiceModule can consume it without a circular import back here.
     JwtRevocationModule,
   ],
@@ -43,10 +43,10 @@ const logger = new Logger('AuthServiceModule');
             'https://example.com/.well-known/openid_configuration',
           );
           const oidc_client_id = appSettingsService.getValueWithDefault('OIDC_CLIENT_ID', 'default-client-id');
-          // TASK-302 Phase 3 Task 3.8 — OIDC_CLIENT_SECRET (the only secret in
-          // this factory) now reads from SecretsService. The other three
-          // (DISCOVERY_URL, CLIENT_ID, CALLBACK_URL) stay on AppSettings —
-          // they're public OIDC config, not secrets.
+          // OIDC_CLIENT_SECRET (the only secret in this factory) reads from
+          // SecretsService. The other three (DISCOVERY_URL, CLIENT_ID,
+          // CALLBACK_URL) stay on AppSettings — they're public OIDC config,
+          // not secrets.
           const oidc_client_secret = secretsService.getSecretSync('OIDC_CLIENT_SECRET') ?? 'default-client-secret';
           const oidc_callback_url = appSettingsService.getValueWithDefault('OIDC_CALLBACK_URL', 'http://localhost:8001/auth/callback');
 
@@ -117,7 +117,7 @@ const logger = new Logger('AuthServiceModule');
     IAuthService,
     OidcStrategy,
     JwtStrategy,
-    // TASK-541 — the MODULE is re-exported, not the token: Nest rejects
+    // The MODULE is re-exported, not the token: Nest rejects
     // exporting a provider this module no longer declares. Re-exporting the
     // module carries its own exports through, so existing consumers
     // (AuthController) keep resolving IJwtRevocationService unchanged.

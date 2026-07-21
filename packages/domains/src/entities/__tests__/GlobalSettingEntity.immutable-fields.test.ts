@@ -1,5 +1,5 @@
 /**
- * Phase 0 Item 2 (TASK-302 Stream A) — entity-level immutability pin.
+ * Entity-level immutability pin.
  *
  * GlobalSettingEntity.key / tenantId / locked / defaultValue MUST throw
  * when assigned after construction. The mapper and factory build via

@@ -5,11 +5,11 @@ import { ICryptoService } from '../crypto/ICryptoService';
 import { SecretsService } from '../baseServices/_meta/secrets';
 
 /**
- * TASK-369 (Data Encryption Initiative) Phase 3D — AuditLog envelope encryption.
+ * AuditLog envelope encryption.
  *
  * AuditLog is the highest-volume write path in the system, so a Vault Transit
- * round-trip PER ROW (the per-field pattern used by ContextItem & the other
- * Phase 3 models) is far too costly. This service implements ENVELOPE
+ * round-trip PER ROW (the per-field pattern used by ContextItem & other
+ * encrypted models) is far too costly. This service implements ENVELOPE
  * ENCRYPTION instead:
  *
  *   1. A Data Encryption Key (DEK) is generated ONCE per process and wrapped

@@ -1,13 +1,13 @@
 /**
- * TASK-403 — the AppSettings flat cache must be DETERMINISTIC when a platform
+ * The AppSettings flat cache must be DETERMINISTIC when a platform
  * key has tenant-cloned duplicates: the PLATFORM row always wins the Map.
  *
  * Why: tenant provisioning (`provisionTenantConfigs`) clones every `__GLOBAL__`
  * setting — including platform-only namespaces like `rate-limit.*` — into each
  * new tenant. The cache populate loop was last-row-wins across ALL tenants, so
- * any provisioned tenant could shadow the platform row (the TASK-302 P0-5 boot
+ * any provisioned tenant could shadow the platform row (the boot
  * invariant only guards duplicates WITHIN the platform tenant). Symptom that
- * surfaced this (TASK-403 rate-limits E2E): `PUT /admin/rate-limit/enabled`
+ * surfaced this: `PUT /admin/rate-limit/enabled`
  * resolved the row id from the cache winner — a TENANT clone — and the
  * tenant-scoped update then 404'd; `GET /admin/rate-limit` reported the
  * clone's value instead of the platform row's.

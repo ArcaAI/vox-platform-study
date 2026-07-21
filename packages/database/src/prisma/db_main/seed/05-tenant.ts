@@ -50,7 +50,7 @@ export const seedTenant = async (client: CorePrismaClient) => {
 };
 
 // ============================================================================
-// Tenant Frontend Config (TASK-328 A6 Q5 / TASK-331 doc-03 F3)
+// Tenant Frontend Config
 //
 // One row per tenant describing the DEFAULT frontend audio-processing pipeline
 // applied to all of a tenant's users. No seed previously created any rows, so
@@ -70,7 +70,7 @@ export const TENANT_FRONTEND_CONFIGS = [
         vad: true,
         voiceEnrollment: false,
         diarization: false,
-        // TASK-364 follow-up — backend is the default realtime transcription
+        // Backend is the default realtime transcription
         // pipeline for the Global tenant, and it is LOCKED so an impersonated
         // doctor's per-user `workflowMode` cannot fall back to the browser-local
         // pipeline (server-authoritative; see UserPreferencesService

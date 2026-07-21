@@ -645,8 +645,8 @@ describe('TranscriptionJobService', () => {
     });
 
     // ------------------------------------------------------------------------
-    // TASK-307 W3.8 — service-layer tenant filtering for getByConsultation
-    // (AC-12). The TASK-305 Prisma tenantScope extension is the primary
+    // Service-layer tenant filtering for getByConsultation.
+    // The Prisma tenantScope extension is the primary
     // defense; this adds an explicit per-tenant filter at the service layer
     // for defense-in-depth, matching the existing posture of `list`,
     // `getByStatus`, and `getStatusCounts`.
@@ -686,7 +686,7 @@ describe('TranscriptionJobService', () => {
     });
 
     // ------------------------------------------------------------------------
-    // TASK-319 F3 — owner-scoped listings for the end-user surface.
+    // Owner-scoped listings for the end-user surface.
     //
     // The tenant-wide `list` / `getByStatus` / `getStatusCounts` remain for the
     // admin surface (/admin/audio/transcription-jobs). The end-user controller
@@ -750,7 +750,7 @@ describe('TranscriptionJobService', () => {
     });
 
     // ------------------------------------------------------------------------
-    // EU-01 (TASK-336) — creator-scoped cancel/retry for the end-user surface.
+    // EU-01 — creator-scoped cancel/retry for the end-user surface.
     // The plain cancelJob/retryJob remain tenant-scoped (internal/admin). The
     // *ForOwner variants additionally require the caller to be the job's
     // `createdBy`, and 404 (no existence leak) otherwise — mirroring the
@@ -809,7 +809,7 @@ describe('TranscriptionJobService', () => {
     });
 
     // ------------------------------------------------------------------------
-    // EU-02 (TASK-336) — owner-scoped getByConsultation for the end-user
+    // EU-02 — owner-scoped getByConsultation for the end-user
     // surface: only the caller's OWN jobs (createdBy) for the consultation, in
     // addition to the existing tenant filter.
     // ------------------------------------------------------------------------

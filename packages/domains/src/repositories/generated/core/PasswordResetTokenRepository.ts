@@ -13,7 +13,7 @@ export class PasswordResetTokenRepository extends Repository<PasswordResetTokenE
   }
 
   /**
-   * TASK-400 — resolve a presented token by its SHA-256 hash. Returns `null`
+   * Resolve a presented token by its SHA-256 hash. Returns `null`
    * on a miss (the service maps every failure mode to one generic 400 so no
    * state is leaked). State checks (used/revoked/expired) live on the entity.
    */
@@ -26,7 +26,7 @@ export class PasswordResetTokenRepository extends Repository<PasswordResetTokenE
   }
 
   /**
-   * TASK-400 — every not-yet-consumed, not-yet-revoked token for a user
+   * Every not-yet-consumed, not-yet-revoked token for a user
    * (expiry is intentionally NOT filtered here: revoking an already-expired
    * token is harmless and keeps the revocation sweep simple). Used by the
    * issue path to revoke prior active tokens (UPDATE `revokedAt`, never DELETE).

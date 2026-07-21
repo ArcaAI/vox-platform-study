@@ -1,5 +1,5 @@
 /**
- * TASK-356 Phase 6 (S5) — edit-capture delta utility.
+ * Edit-capture delta utility.
  *
  * Computes the draft→edit delta that gets stamped onto the existing
  * `ContextItemVersion.contentDiff` (a compact unified line diff) and

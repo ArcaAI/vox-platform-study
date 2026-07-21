@@ -1,5 +1,5 @@
 /**
- * TASK-398 — Users cluster completion (P1-6 bulk assign-role, P1-7 export enrichment).
+ * Users cluster completion (P1-6 bulk assign-role, P1-7 export enrichment).
  *
  * Real HTTP round-trips against the live API (`pnpm test:e2e`, or a dev stack via
  * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8868/api/v1`). Harness mirrors
@@ -10,7 +10,7 @@
  *   P1-6 · POST /admin/users/bulk-actions `assign-role` assigns a role to every id
  *          (per-item envelope, verified via GET :id/roles). Missing roleId → 400.
  *          A plain doctor → 403. TENANT_ADMIN assigning GLOBAL_ADMIN → per-item
- *          failure carrying the AC-02 tier-guard message (mirrors POST :id/roles).
+ *          failure carrying the tier-guard message (mirrors POST :id/roles).
  *   P1-7 · /admin/users/export now renders human-readable email + department NAMES
  *          in every format: csv text, xlsx (parsed with exceljs), pdf (FlateDecode
  *          streams inflated and text-scanned). Spot-checks the seeded `doctor` row

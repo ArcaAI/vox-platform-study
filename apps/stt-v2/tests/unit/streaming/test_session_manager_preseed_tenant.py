@@ -1,13 +1,13 @@
-"""TASK-490 AC-2 — streaming preseed carries tenant_id end-to-end (B-04).
+"""Streaming preseed carries tenant_id end-to-end.
 
 (The user-id-without-consultation preseed wiring test lives in
 ``test_session_manager_denoiser.py``; its call-shape assertion was updated for
-the tenant_id kwarg by TASK-490.)
+the tenant_id kwarg.)
 
-The TASK-474 review found the streaming voice-profile preseed dropped
-``tenant_id``: ``create_session`` called ``self._preseed_speaker(...)`` without
-the session tenant, so the voice-profile lookups could not be tenant-scoped.
-These tests lock the chain:
+The streaming voice-profile preseed used to drop ``tenant_id``:
+``create_session`` called ``self._preseed_speaker(...)`` without the session
+tenant, so the voice-profile lookups could not be tenant-scoped. These tests
+lock the chain:
 
   create_session -> _preseed_speaker(tenant_id=...) -> preseed_speaker(tenant_id=...)
 
@@ -99,8 +99,8 @@ async def test_create_session_passes_tenant_to_preseed():
         mgr._load_pipeline_config = AsyncMock(return_value=pipeline_config)
         mgr._load_vad_service = AsyncMock(return_value=MagicMock())
         mgr._load_asr_pipeline = AsyncMock(return_value=(MagicMock(), None))
-        # TASK-505 P1 — bind the REAL shared assembly (session wiring moved
-        # out of create/recover into _assemble_session_runtime).
+        # Bind the REAL shared assembly (session wiring moved out of
+        # create/recover into _assemble_session_runtime).
         mgr._assemble_session_runtime = (
             lambda **kw: SessionManager._assemble_session_runtime(mgr, **kw)
         )
@@ -129,5 +129,5 @@ async def test_create_session_passes_tenant_to_preseed():
     mgr._preseed_speaker.assert_awaited_once()
     args = mgr._preseed_speaker.await_args
     assert args.args[0] is mock_tracker_cls.return_value  # the session tracker
-    assert args.kwargs.get("tenant_id") == "tenant-a"  # B-04 regression
+    assert args.kwargs.get("tenant_id") == "tenant-a"  # tenant threaded through
     assert args.kwargs.get("user_id") == "user-1"

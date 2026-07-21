@@ -16,12 +16,12 @@ interface SpeechSynthesizeRequest {
   speed?: number;
   stream_format?: 'audio' | 'sse';
   model?: string;
-  // Injected by the gateway from the tenant's resolved config (TASK-496).
+  // Injected by the gateway from the tenant's resolved config.
   routing_en?: string[];
   routing_ml?: string[];
   allowed_providers?: string[];
   provider_overrides?: Record<string, { api_key: string; region?: string; base_url?: string }>;
-  // TASK-506 — resolved voice bindings ({internalVoiceId: {provider: providerVoiceName}});
+  // Resolved voice bindings ({internalVoiceId: {provider: providerVoiceName}});
   // tts-v2 falls back to its built-in DEFAULT_VOICES when absent.
   voice_bindings?: Record<string, Record<string, string>>;
 }
@@ -48,7 +48,7 @@ export class SpeechProxyController {
     private readonly httpService: HttpService,
     @Inject(IConfigService) private readonly configService: IConfigService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // TASK-496 — resolve the caller tenant's TTS spec + inject it downstream.
+    // Resolve the caller tenant's TTS spec + inject it downstream.
     // Optional so positional test construction (and internal service-token calls
     // without a tenant context) still work; injection is a no-op when absent.
     @Optional() @Inject(ITenantTtsConfigService) private readonly tenantTtsConfig?: ITenantTtsConfigService,
@@ -56,7 +56,7 @@ export class SpeechProxyController {
   ) {}
 
   /**
-   * TASK-496 — resolve the caller tenant's effective TTS spec and fold it into
+   * Resolve the caller tenant's effective TTS spec and fold it into
    * the forwarded body: fill omitted format/speed from the tenant defaults, and
    * always pass the resolved provider chains + whitelist. Fails OPEN — a config
    * lookup error never blocks synthesis; tts-v2 falls back to its own settings.
@@ -77,7 +77,7 @@ export class SpeechProxyController {
         routing_ml: eff.routingMl,
         allowed_providers: eff.allowedProviders,
         ...(Object.keys(overrides).length > 0 ? { provider_overrides: overrides } : {}),
-        // TASK-506 — resolved voice bindings (tenant over SYSTEM merge); only
+        // Resolved voice bindings (tenant over SYSTEM merge); only
         // injected when non-empty so tts-v2 keeps its built-in defaults otherwise.
         ...(eff.voiceBindings && Object.keys(eff.voiceBindings).length > 0 ? { voice_bindings: eff.voiceBindings } : {}),
       };

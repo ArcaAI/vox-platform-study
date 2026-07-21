@@ -1,10 +1,9 @@
-"""TASK-529 §4.5 (D-07) — nlp model-cache retention becomes admin-controlled.
+"""nlp model-cache retention becomes admin-controlled.
 
-Before this ticket the three nlp cache singletons were constructed as
+Without this, the three nlp cache singletons were constructed as
 `ModelCache(factory=…)` with NO ttl/max_size argument at all, so they were
 permanently pinned to the module defaults (3600 s / 3) with not even an env
-knob. That is D-07: a service whose retention could not be changed without a
-code deploy.
+knob — a service whose retention could not be changed without a code deploy.
 
 RED: written before the implementation.
 """
@@ -40,11 +39,11 @@ def test_negative_cached_snapshot_yields_no_retention() -> None:
     assert EffectiveConfigSnapshot(raw={}, ok=False).retention() == {}
 
 
-# ── the D-07 fix: singletons actually receive resolved config ───────────────
+# ── singletons actually receive resolved config ─────────────────────────────
 
 
 def test_settings_expose_model_cache_bootstrap_knobs() -> None:
-    """Bootstrap fallbacks must EXIST — before TASK-529 there was no knob."""
+    """Bootstrap fallbacks must EXIST."""
     from nlp.core.config import settings
 
     assert settings.service.model_cache_ttl_seconds == 600, "OD-5 default"

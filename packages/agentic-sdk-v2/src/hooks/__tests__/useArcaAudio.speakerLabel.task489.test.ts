@@ -1,5 +1,5 @@
 /**
- * useArcaAudio — TASK-489 canonical speaker-label consolidation.
+ * useArcaAudio — canonical speaker-label consolidation.
  *
  * The vox capture path builds `TranscriptSegment.speakerLabel` from the STT
  * result inside `onTranscription`. It previously copied the RAW diarizer

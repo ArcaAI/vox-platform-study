@@ -1,5 +1,5 @@
 // =============================================================================
-// TASK-330 — Clinical Documentation Harness (Phase 0)
+// Clinical Documentation Harness
 //
 // Eval storage + WORM audit. Two groups of models live here:
 //
@@ -25,13 +25,13 @@ enum HarnessAuditAction {
   CONSENT_WITHDRAWN
   BREACH_REPORTED
   REDUCED_ASSURANCE
-  // TASK-355 Phase D (optimistic delivery) — relaxed sign-off governance.
-  SAFETY_OVERRIDE // Q4 — clinician one-click override of a COMPLETED safety FLAG at sign-off (no free-text).
-  SIGNED_BEFORE_ASSURANCE // Q2a — note signed while assurance still running (DRAFT_PENDING_SENSORS); correlation annotation.
-  POST_SIGN_FLAG // Q2b — assurance returned a FLAG/REGEN AFTER an early sign (note immutable); amendment/follow-up.
-  // TASK-466 (C1-05) — harness gate SLA-breach escalation records (from apps/harness escalate_gate).
+  // Optimistic-delivery, relaxed sign-off governance.
+  SAFETY_OVERRIDE // Clinician one-click override of a COMPLETED safety FLAG at sign-off (no free-text).
+  SIGNED_BEFORE_ASSURANCE // Note signed while assurance still running (DRAFT_PENDING_SENSORS); correlation annotation.
+  POST_SIGN_FLAG // Assurance returned a FLAG/REGEN AFTER an early sign (note immutable); amendment/follow-up.
+  // Harness gate SLA-breach escalation records (from apps/harness escalate_gate).
   GATE_ESCALATED // reason=gate_sla_breached — an un-signed gate passed its SLA and was escalated (non-terminal).
-  GATE_ABANDONED // reason=gate_sla_abandoned — the terminal escalation before the gate abandons (C1-02).
+  GATE_ABANDONED // reason=gate_sla_abandoned — the terminal escalation before the gate abandons.
 
   @@schema("core")
 }
@@ -86,13 +86,13 @@ model GoldenCase {
   GoldenSet   GoldenSet @relation(fields: [goldenSetId], references: [id])
 
   // The input transcript and the reference (gold) note for this case.
-  // TASK-369 Phase 6 — plaintext transcript / referenceNote columns DROPPED;
+  // The plaintext transcript / referenceNote columns have been DROPPED;
   // persisted as Vault-Transit ciphertext only.
   label         String?
 
   // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the
   // golden transcript + reference note plus the shared Transit key version.
-  // Phase 6: these ciphertext columns are now the system of record.
+  // These ciphertext columns are now the system of record.
   encryptedTranscript    Bytes?
   encryptedReferenceNote Bytes?
   keyVersion             Int?
@@ -136,12 +136,12 @@ model EvalRun {
   completedAt DateTime?
 
   // Aggregate metrics across the run (e.g. mean faithfulness / coverage).
-  // TASK-369 Phase 6 — plaintext `notes` column DROPPED; persisted as
+  // The plaintext `notes` column has been DROPPED; persisted as
   // Vault-Transit ciphertext only.
   aggregateScores Json?   @db.JsonB
 
   // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the
-  // free-text run notes plus the shared Transit key version. Phase 6: this
+  // free-text run notes plus the shared Transit key version. This
   // ciphertext column is now the system of record.
   encryptedNotes Bytes?
   keyVersion     Int?
@@ -181,12 +181,12 @@ model EvalScore {
   score      Float
   maxScore   Float?
   judgeModel String?
-  // TASK-369 Phase 6 — plaintext rationale / details columns DROPPED; persisted
+  // The plaintext rationale / details columns have been DROPPED; persisted
   // as Vault-Transit ciphertext only.
 
   // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the
   // judge rationale + details JSONB plus the shared Transit key version.
-  // Phase 6: these ciphertext columns are now the system of record.
+  // These ciphertext columns are now the system of record.
   encryptedRationale Bytes?
   encryptedDetails   Bytes?
   keyVersion         Int?
@@ -277,7 +277,7 @@ model HarnessAuditEvent {
 }
 
 // =============================================================================
-// POLICY MANAGEMENT (TASK-330 Phase 6 — Harness Administration Console)
+// POLICY MANAGEMENT (Harness Administration Console)
 //
 // DB-backed, editable runtime knobs that drive the clinical documentation loop
 // live: the durable workflow reads the effective policy via a `fetch_policy`
@@ -408,7 +408,7 @@ model HarnessPolicyChange {
   @@schema("core")
 }
 
-/// TASK-533 B6 (§3.4) — gate-edit mining store.
+/// Gate-edit mining store.
 ///
 /// Derived, append-only learning corpus built from the clinician approve-vs-edit
 /// signal: gate decisions live in the WORM `HarnessAuditEvent`, and the

@@ -5,7 +5,7 @@ import { TenantOwnedResource } from '../../common';
 import { CanAny, CanDelete, CanRead, CanUpdate } from '../../decorators';
 
 /**
- * Admin API for per-tenant / per-bucket storage configuration (TASK-318 / R5).
+ * Admin API for per-tenant / per-bucket storage configuration.
  *
  * Tenant admins choose the backend (S3/MinIO or Azure) and topology
  * (SHARED → defer to the platform default; DEDICATED → tenant-owned credentials)
@@ -14,7 +14,7 @@ import { CanAny, CanDelete, CanRead, CanUpdate } from '../../decorators';
  *
  * Mirrors `TenantBucketController`: class-level
  * `@CanAny(['manage','Tenant'],['update','Tenant'])` gates the surface
- * (TASK-331 doc-04 F1 — tenant admins reach it via tenant-scoped
+ * (tenant admins reach it via tenant-scoped
  * `update:Tenant`; GLOBAL_ADMIN via `manage:all`), method-level
  * `@Can*('Storage')` adds the specific operation (already granted to tenant
  * admins by `tenant-full-access`'s `manage:Storage`), and

@@ -3,7 +3,7 @@ import { IsOptional, IsString, IsIn } from 'class-validator';
 import { BaseRequest } from '../../../../common';
 
 /**
- * TASK-388 #8 — admin-initiated password reset (both flows).
+ * Admin-initiated password reset (both flows).
  *
  * `mode`:
  *  - `temporary` — the server sets a temporary password and returns it so the
@@ -18,7 +18,7 @@ export class ResetPasswordRequest extends BaseRequest {
   @IsIn(['temporary', 'link'])
   mode?: 'temporary' | 'link';
 
-  // TASK-400: complexity is enforced by the configurable service policy (clear
+  // Complexity is enforced by the configurable service policy (clear
   // 400 with the unmet rules) — no static @MinLength that would mask it.
   @ApiPropertyOptional({ description: 'Explicit temporary password (mode=temporary; validated against the complexity policy). Generated when omitted.' })
   @IsOptional()

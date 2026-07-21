@@ -1,5 +1,5 @@
 /**
- * useApiOperation Hook Tests (TASK-039)
+ * useApiOperation Hook Tests
  *
  * @vitest-environment jsdom
  */

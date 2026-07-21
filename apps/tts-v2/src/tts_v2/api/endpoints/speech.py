@@ -36,13 +36,13 @@ class SpeechRequest(BaseModel):
     speed: float = Field(default=1.0, ge=0.25, le=4.0)
     stream_format: Literal["audio", "sse"] | None = None
     # Per-request routing overrides injected by the gateway from a tenant's
-    # resolved config (TASK-496). None → fall back to the static settings chains.
+    # resolved config. None → fall back to the static settings chains.
     routing_en: list[str] | None = None
     routing_ml: list[str] | None = None
     allowed_providers: list[str] | None = None
-    # Decrypted per-tenant BYO provider credentials (TASK-496), gateway-injected.
+    # Decrypted per-tenant BYO provider credentials, gateway-injected.
     provider_overrides: dict[str, dict[str, str]] | None = None
-    # Per-request voice-binding overrides (TASK-506), gateway-resolved from the
+    # Per-request voice-binding overrides, gateway-resolved from the
     # AiModel registry / tenant TTS config: {internalVoiceId: {provider: voiceName}}.
     # A present entry MERGES over that voice's DEFAULT_VOICES binding map
     # (unmentioned providers keep their catalog binding — "empty = inherit").
@@ -65,7 +65,7 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
     except VoiceNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"unknown voice: {body.voice}") from exc
 
-    # TASK-535 — read-triggered retention refresh (TTL-cached, single-flight,
+    # Read-triggered retention refresh (TTL-cached, single-flight,
     # fail-safe): a service that never synthesizes never polls. Applied BEFORE
     # routing so a provider loading its pipeline for this request is already on
     # the current control-plane TTL.

@@ -20,7 +20,7 @@ export const GLOBAL_TENANT_KEY = '__GLOBAL__';
  * gate for sensitive tenant-config operations such as editing locked rows or
  * mutating the master `__GLOBAL__` tenant defaults.
  *
- * TASK-417 — the former `SUPER_ADMIN` role was consolidated into
+ * The former `SUPER_ADMIN` role was consolidated into
  * `GLOBAL_ADMIN`; this is the single elevated role literal.
  */
 export const GLOBAL_ADMIN_ROLE = 'GLOBAL_ADMIN';
@@ -29,7 +29,7 @@ export const GLOBAL_ADMIN_ROLE = 'GLOBAL_ADMIN';
  * Seeded `Role.id` for `TENANT_ADMIN` (`packages/database/.../seed/03-role.ts`
  * `SEED_ROLE_IDS.TENANT_ADMIN`). Declared as a local literal (not a
  * cross-package import) mirroring the `SYSTEM_TENANT_ID` precedent in
- * `tenant.service.ts` — used by `TenantOnboardingService` (TASK-497 §3.3) to
+ * `tenant.service.ts` — used by `TenantOnboardingService` to
  * assign the new tenant's initial admin without a role-name lookup.
  */
 export const TENANT_ADMIN_ROLE_ID = '00000000-0000-0000-0000-000000000002';

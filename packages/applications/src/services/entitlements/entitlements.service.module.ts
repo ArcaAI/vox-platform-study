@@ -11,7 +11,7 @@ import { IEntitlementsLifecycleService } from './IEntitlementsLifecycleService';
 import { EntitlementsLifecycleService } from './entitlements-lifecycle.service';
 
 /**
- * TASK-392 — provides the DB-backed plan-entitlements service.
+ * Provides the DB-backed plan-entitlements service.
  *
  * `CoreDatabaseModule` exposes the tenant/plan/override/api-key repositories;
  * `CommonServiceModule` the cached `IAppSettingsService` (kill-switch read);
@@ -20,9 +20,9 @@ import { EntitlementsLifecycleService } from './entitlements-lifecycle.service';
  * `MeteringServiceModule` the `IMeteringService` for live rolling-monthly meter
  * usage (Q5); and `PlatformMetricsServiceModule` the `ISocketRegistryService`
  * that supplies the live per-tenant open-socket count for the concurrency gate
- * (TASK-392). Importing this module lets the API gateway inject
- * `IEntitlementsService` into the NEW entitlements controller (Phase 4) and the
- * per-service quota checks (Phase 3).
+ * . Importing this module lets the API gateway inject
+ * `IEntitlementsService` into the entitlements controller and the
+ * per-service quota checks.
  */
 @Module({
   imports: [
@@ -39,7 +39,7 @@ import { EntitlementsLifecycleService } from './entitlements-lifecycle.service';
       useClass: EntitlementsService,
     },
     {
-      // TASK-392 (Q4/Q10) — trial-expiry sweep + explicit downgrade soft-disable.
+      // Trial-expiry sweep + explicit downgrade soft-disable.
       provide: IEntitlementsLifecycleService,
       useClass: EntitlementsLifecycleService,
     },

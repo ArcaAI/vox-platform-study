@@ -306,16 +306,16 @@ describe('CoreUnitOfWorkService', () => {
     });
 
     /*
-     * TASK-306 P3.2 / AC-11 — `runInTransaction` is the canonical
+     * `runInTransaction` is the canonical
      * Prisma 7 transactional API. The legacy
      * `startTransaction()/endTransaction()` wrapper cannot carry true
      * transactional isolation through a non-callback signature (Prisma
      * commits when the `$transaction` callback resolves), so we expose a
      * new method that ALWAYS does `$transaction(callback)` and exposes
      * the tx client to nested repository calls through CLS for the
-     * duration of `work`. Closes audit M-6 and matches the proven
+     * duration of `work`. Matches the proven
      * `databaseService.baseClient.$transaction(async (tx) => ...)`
-     * pattern already used by TenantService (TASK-302 D.4).
+     * pattern already used by TenantService.
      */
     describe('TASK-306 P3.2 — runInTransaction canonical $transaction(callback)', () => {
         function makeTransactionalMock() {

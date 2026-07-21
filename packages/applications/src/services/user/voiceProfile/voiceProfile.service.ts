@@ -57,7 +57,7 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
       );
     }
 
-    // TASK-490 — a voice profile is biometric PHI stamped with its enrollment
+    // A voice profile is biometric PHI stamped with its enrollment
     // tenant; reads (incl. the STT-v2 diarization preseed) are tenant-scoped.
     // Tenant attribution is a security boundary: it comes from CLS only.
     const tenantId = this.tenantId;
@@ -79,7 +79,7 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
       throw new InternalServerErrorException('Failed to create voice profile');
     }
 
-    // TASK-296 C-1: auto-activate the freshly enrolled profile if the user has none active yet.
+    // Auto-activate the freshly enrolled profile if the user has none active yet.
     const existingActive = await this.voiceProfileRepository.findActiveByUserId(request.userId);
     if (!existingActive) {
       await this.voiceProfileRepository.activateById(created.id);
@@ -135,7 +135,7 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
   }
 
   /**
-   * TASK-296 C-3: enforce that the current CLS user owns the targeted profile.
+   * Enforce that the current CLS user owns the targeted profile.
    * Defence-in-depth for biometric PHI mutations. Loaded once and returned so
    * callers can reuse the entity (avoids an extra round-trip).
    */

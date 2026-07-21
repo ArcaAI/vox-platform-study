@@ -5,15 +5,14 @@ MiniCheck groundedness scorer — are loaded LAZILY on first use (never in the
 lifespan) and released when they go idle, so a freshly-booted worker holds no
 ML weights.
 
-TASK-529 — the policy itself (single-flight load, idle TTL clamped to
+The policy itself (single-flight load, idle TTL clamped to
 [60s, 3600s], pin/unpin refcounting, LRU bound, periodic sweep, VRAM-aware
-eviction) now lives in the shared contract `hope_runtime_models.ModelCache`,
+eviction) lives in the shared contract `hope_runtime_models.ModelCache`,
 which every HOPE service composes. See `packages/py-runtime-models/README.md`
 for the contract and its conformance clauses.
 
 This module is the guardrail-facing surface of that contract: guardrail's
-defaults, its `cached_models()` spelling, and the shutdown-on-evict hook. The
-previous 200-line copy of the policy is gone.
+defaults, its `cached_models()` spelling, and the shutdown-on-evict hook.
 """
 
 from __future__ import annotations
@@ -29,8 +28,7 @@ T = TypeVar("T")
 # Per-cache bound on cached model instances (LRU-evicted beyond it).
 DEFAULT_MAX_SIZE = 2
 
-# OD-5 program default. NOTE this changed from 3600 to 600 in TASK-529 — a
-# deliberate, owner-approved behaviour change. Runtime value comes from the
+# Program default, deliberate and owner-approved. Runtime value comes from the
 # control plane; this is the bootstrap fallback only.
 DEFAULT_TTL_SECONDS = 600
 

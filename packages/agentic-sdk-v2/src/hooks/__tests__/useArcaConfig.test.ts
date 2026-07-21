@@ -1,5 +1,5 @@
 /**
- * useArcaConfig Hook Tests (M-001 — selectModel re-render fix; TASK-297 DEF-H3/C6).
+ * useArcaConfig Hook Tests — selectModel re-render fix.
  *
  * @vitest-environment jsdom
  */
@@ -17,7 +17,7 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
 });
 
 /**
- * TASK-297 DEF-H3 — `useArcaConfig` now reads via selector subscriptions
+ * `useArcaConfig` now reads via selector subscriptions
  * (`useAgenticStore(selectX)`). The vitest mock must therefore apply each
  * selector to the mock state, mirroring real Zustand behaviour.
  */
@@ -75,7 +75,7 @@ describe('useArcaConfig — selectModel (M-001)', () => {
             }),
             updatePreferences: vi.fn(),
             setPreferences: vi.fn(),
-            // TASK-297 DEF-C6 — mutations require configReady to be true.
+            // Mutations require configReady to be true.
             configReady: true,
             configManager: null,
             resolvedConfig: null,
@@ -319,7 +319,7 @@ describe('useArcaConfig — TASK-244 three-tier config', () => {
 });
 
 // =============================================================================
-// TASK-297 DEF-C6 — mutations throw CONFIG_NOT_READY before profile preload.
+// Mutations throw CONFIG_NOT_READY before profile preload.
 // =============================================================================
 
 describe('useArcaConfig — TASK-297 DEF-C6 readiness gate', () => {

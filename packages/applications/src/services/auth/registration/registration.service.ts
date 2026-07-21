@@ -17,19 +17,19 @@ const VERIFICATION_PURPOSE = 'email_verification';
 const VERIFICATION_EXPIRES_IN_SECONDS = 24 * 60 * 60;
 const GENERIC_TOKEN_ERROR = 'Verification link is invalid or has expired';
 
-/** Reserved SYSTEM tenant/user (D6 bootstrap principal). Local literal — mirrors `TenantService`'s own precedent (avoids a cross-package import). */
+/** Reserved SYSTEM tenant/user bootstrap principal. Local literal — mirrors `TenantService`'s own precedent (avoids a cross-package import). */
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 const SYSTEM_USER_ID = '60000000-0000-0000-0000-000000000000';
 
 /**
- * TASK-497 §3.4 (D1 verified self-signup).
+ * Verified self-signup service.
  *
- * Reuses the TASK-400 `PasswordResetToken` mechanism with a distinct
+ * Reuses the `PasswordResetToken` mechanism with a distinct
  * `purpose` discriminator (`email_verification`) rather than a new table —
  * same hashed-at-rest, single-use, TTL-bound token shape. The pending tenant
  * name captured at `register()` is stashed on the token's `metaData` column
- * (wired onto `PasswordResetTokenEntity` for this ticket — see its class doc)
- * so `verify()`'s body can stay `{ token }` only, matching the design doc.
+ * (see `PasswordResetTokenEntity`'s class doc)
+ * so `verify()`'s body can stay `{ token }` only.
  *
  * Mailer reuse: `IPasswordResetMailer.sendResetLink` is repurposed for the
  * verification email (its payload shape — email/path/token/TTL — fits either

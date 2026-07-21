@@ -52,7 +52,7 @@ interface BuildDepsOpts {
   // Shared cache mock — pass the SAME instance to two services to exercise the
   // cross-instance owner lock (C5-06).
   cacheService?: any;
-  // TASK-356 D-7 — HarnessPolicy resolver override (defaults to a passing stub).
+  // HarnessPolicy resolver override (defaults to a passing stub).
   harnessPolicyService?: any;
 }
 
@@ -89,7 +89,7 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
   };
   const config = opts.config ?? {};
   const configService = { get: vi.fn().mockImplementation((key: string) => config[key]) };
-  // TASK-356 D-7 — live-doc resolves provider+model via the HarnessPolicy cascade
+  // Live-doc resolves provider+model via the HarnessPolicy cascade
   // (not env). Default stub resolves successfully so SMR-path tests still flow.
   const harnessPolicyService = opts.harnessPolicyService ?? {
     resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'live-medgemma' }),
@@ -165,7 +165,7 @@ describe('LiveDocumentationService', () => {
       expect(payload).not.toBeNull();
       expect(payload!.consultationId).toBe(CID);
       expect(payload!.runningSummary).toBe('Pt on amlodipine for HTN.');
-      // TASK-477: NER runs over the transcript; the entity is GROUNDED (re-located) into the note,
+      // NER runs over the transcript; the entity is GROUNDED (re-located) into the note,
       // so start/end index 'amlodipine' within "Pt on amlodipine for HTN." (offset 6), not the raw NER offset.
       expect(payload!.entities).toEqual([{ text: 'amlodipine', type: 'MEDICATION', confidence: 0.92, start: 6, end: 16 }]);
       expect(payload!.sections).toEqual([{ title: 'Running Summary', content: 'Pt on amlodipine for HTN.' }]);
@@ -199,7 +199,7 @@ describe('LiveDocumentationService', () => {
   });
 
   // ------------------------------------------------------------------
-  // C5-01 (TASK-452): the NLP `/classify/tokens` wire contract. The service
+  // C5-01: the NLP `/classify/tokens` wire contract. The service
   // must read the canonical NLP fields (text / entity_type / position.{start,end})
   // — NOT the never-emitted value/type/start/end — and re-key them onto the
   // highlight DTO (entity_type → type). Genuinely-missing fields fall back.
@@ -230,7 +230,7 @@ describe('LiveDocumentationService', () => {
 
       const payload = await service.flush(CID);
 
-      // TASK-477: callNlp maps the canonical wire shape (entity_type→type, confidence carried); the
+      // CallNlp maps the canonical wire shape (entity_type→type, confidence carried); the
       // entity is then grounded into the note, so start/end index 'hypertension' at offset 12.
       expect(payload!.entities).toEqual([{ text: 'hypertension', type: 'CONDITION', confidence: 0.81, start: 12, end: 24 }]);
       // The missing-field fallback entity (text:'') has no surface form to anchor and is dropped by grounding.
@@ -285,7 +285,7 @@ describe('LiveDocumentationService', () => {
 
       const payload = await service.flush(CID);
 
-      // TASK-477: NER is handed the raw transcript delta (the text that feeds SMR), NOT the note.
+      // NER is handed the raw transcript delta (the text that feeds SMR), NOT the note.
       const nlpCall = httpMock.axiosRef.post.mock.calls.find((c) => String(c[0]).includes('/classify/tokens'))!;
       expect(nlpCall[1].text).toBe('Patient has chest pain');
       expect(nlpCall[1].text).not.toBe(payload!.runningSummary);
@@ -534,7 +534,7 @@ describe('LiveDocumentationService', () => {
       await service.flush(CID);
 
       // Provider+model come from the policy cascade (keyed by the session tenant),
-      // not LIVE_DOC_SMR_PROVIDER/MODEL env. TASK-533 D-26: the live flush must ask
+      // not LIVE_DOC_SMR_PROVIDER/MODEL env. The live flush must ask
       // for the LIVE tier ('smr.live'), not the default finalize tier.
       expect(harnessPolicyService.resolveSmrSelection).toHaveBeenCalledWith(TENANT, 'live');
       const smrCall = httpMock.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/generate'))!;
@@ -997,7 +997,7 @@ describe('LiveDocumentationService', () => {
   });
 
   // ------------------------------------------------------------------
-  // B1 (TASK-341): per-session stats published to Redis for the admin
+  // B1: per-session stats published to Redis for the admin
   // live console — `live-doc:stats:{cid}` snapshot + `live-doc:active:{tenant}` set.
   // ------------------------------------------------------------------
   describe('admin live stats publish/clear (B1)', () => {
@@ -1076,7 +1076,7 @@ describe('LiveDocumentationService', () => {
   });
 
   // ------------------------------------------------------------------
-  // B3 (TASK-341): runtime kill-switch — env default + Redis override.
+  // B3: runtime kill-switch — env default + Redis override.
   // ------------------------------------------------------------------
   describe('runtime kill-switch (B3)', () => {
     const CONFIG_KEY = 'live-doc:config:enabled';
@@ -1119,7 +1119,7 @@ describe('LiveDocumentationService', () => {
   });
 
   // ------------------------------------------------------------------
-  // GAP #3d (TASK-342): live drop-out of a soft-deleted context note.
+  // GAP #3d: live drop-out of a soft-deleted context note.
   // contextNotes are re-keyed by contextItemId so a removed note can be
   // dropped precisely from the in-flight running summary.
   // ------------------------------------------------------------------
@@ -1215,7 +1215,7 @@ describe('LiveDocumentationService', () => {
   });
 
   // ------------------------------------------------------------------
-  // TASK-344: OCR enrichment re-emits ContextAdded for the SAME
+  // OCR enrichment re-emits ContextAdded for the SAME
   // contextItemId once it has extracted text. The add path UPSERTS by
   // contextItemId so the attachment yields exactly ONE running-summary
   // note that is updated in place — no harmless-but-confusing duplicate.

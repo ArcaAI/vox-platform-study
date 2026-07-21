@@ -12,7 +12,7 @@ import { NlpPanel } from './nlp-panel';
 const TAB_VALUES = ['guardrail', 'nlp', 'instructions'] as const;
 
 /**
- * AI services (/ai-services, tier 10-19) — TASK-532 B-4 / M-09.
+ * AI services (/ai-services, tier 10-19).
  *
  * The console home for three read-only backends that previously had no screen:
  * the guardrail service's health + config documents, the NLP service's
@@ -25,8 +25,9 @@ const TAB_VALUES = ['guardrail', 'nlp', 'instructions'] as const;
  * see the defensive-rendering note at the top of `guardrail-panel.tsx`.
  *
  * Tenancy: the screen sits in the `(global)` route group, but the Instructions
- * tab reads TENANT-SCOPED data — the documented M-01 sub-pattern. That tab
- * carries its own working-tenant gate; the other two are cross-tenant.
+ * tab reads TENANT-SCOPED data (a global-admin-only screen over per-tenant
+ * data). That tab carries its own working-tenant gate; the other two are
+ * cross-tenant.
  */
 export function AiServicesScreen() {
     const [tabParam, setTabParam] = useQueryState('tab', parseAsString.withDefault('guardrail'));

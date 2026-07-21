@@ -15,7 +15,7 @@ export interface IConsultationEntity extends IBaseTenantEntity {
   departmentId?: string | null;
   parentConsultationId?: string | null;
   metadata?: JsonValue | null;
-  // TASK-330 Phase 1 — typed lifecycle state (defaults to OPEN)
+  // Typed lifecycle state (defaults to OPEN)
   status?: Enums.ConsultationStatus;
   Doctor?: Entities.UserEntity | null;
   Department?: Entities.DepartmentEntity | null;
@@ -169,7 +169,7 @@ export class ConsultationEntity extends BaseTenantEntity {
   }
 
   /**
-   * TASK-330 Phase 1 — true when the consultation has been clinician-attested
+   * True when the consultation has been clinician-attested
    * (the documentation is committed/immutable).
    */
   get isSigned(): boolean {

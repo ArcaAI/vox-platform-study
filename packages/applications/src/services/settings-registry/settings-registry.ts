@@ -1,4 +1,4 @@
-// TASK-504 Phase 3 — the settings registry container.
+// The settings registry container.
 //
 // A framework-agnostic, in-memory catalog of SettingDescriptors keyed by their
 // canonical key. Kept pure (no Nest DI) so it is trivially testable and can be

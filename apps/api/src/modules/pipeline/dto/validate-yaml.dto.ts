@@ -2,12 +2,12 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, ValidateIf } from 'class-validator';
 
 /**
- * TASK-298 D-6 — body-field alignment for `POST /admin/audio/pipelines/validate`.
+ * Body-field alignment for `POST /admin/audio/pipelines/validate`.
  *
- * The SDK (`usePipelines.validateConfig`) historically posts `{ configYaml }`
- * while the legacy backend DTO expected `{ yaml }`. We accept BOTH names and
- * require at least one to be present. The controller calls `resolveYaml(body)`
- * to pick whichever is provided.
+ * The SDK (`usePipelines.validateConfig`) posts `{ configYaml }` while the
+ * legacy backend DTO expected `{ yaml }`. We accept BOTH names and require at
+ * least one to be present. The controller calls `resolveYaml(body)` to pick
+ * whichever is provided.
  */
 export class ValidateYamlRequest {
   @ApiPropertyOptional({ description: 'YAML content to validate (SDK canonical field)' })

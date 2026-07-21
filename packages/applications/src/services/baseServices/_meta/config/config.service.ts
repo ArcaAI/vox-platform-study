@@ -39,7 +39,7 @@ export class ConfigService implements IConfigService, OnModuleInit {
    */
   constructor(
     @Inject('CONFIG_OPTIONS') private options: ConfigModuleOptions,
-    // TASK-302 Phase 3 Tasks 3.10-3.11 — MQTT_PASS and REDIS_PASS are
+    // MQTT_PASS and REDIS_PASS are
     // overlaid from SecretsService in loadVaultSecrets(). Optional so
     // existing unit-test fixtures that construct the service directly
     // continue to work (they fall through to the env-only path).
@@ -161,7 +161,7 @@ export class ConfigService implements IConfigService, OnModuleInit {
       // Load base configuration first
       this.loadBaseConfig();
 
-      // Overlay secret values from the SecretsService (Phase 3 Tasks 3.10/3.11).
+      // Overlay secret values from the SecretsService.
       // Runs in onModuleInit (async), so we can await Vault/env provider.
       await this.loadVaultSecrets();
 

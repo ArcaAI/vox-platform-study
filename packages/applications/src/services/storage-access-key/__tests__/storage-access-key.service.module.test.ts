@@ -8,7 +8,7 @@ describe('StorageAccessKeyServiceModule (F-4b)', () => {
   const exports: any[] = Reflect.getMetadata('exports', StorageAccessKeyServiceModule) ?? [];
 
   it('registers the service exactly once via the interface token (no duplicate provider)', () => {
-    // F-4b: the module previously listed BOTH `{ provide: IStorageAccessKeyService,
+    // The module previously listed BOTH `{ provide: IStorageAccessKeyService,
     // useClass: StorageAccessKeyService }` AND the bare `StorageAccessKeyService`,
     // instantiating the service twice. After dedup there is exactly one provider
     // entry, keyed by the interface token.

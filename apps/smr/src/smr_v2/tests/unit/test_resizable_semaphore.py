@@ -1,4 +1,4 @@
-"""TASK-525 §3.4 — live semaphore resize without dropping in-flight permits.
+"""Live semaphore resize without dropping in-flight permits.
 
 The load-bearing property: an admin lowering `maxConcurrent` must never revoke a
 permit a request is already holding. Naively swapping in a new

@@ -38,7 +38,7 @@ export interface TrialExpiryReport {
 }
 
 /**
- * TASK-392 — trial-expiry (Q4) + explicit downgrade (Q10) lifecycle actions.
+ * Trial-expiry (Q4) + explicit downgrade (Q10) lifecycle actions.
  *
  * Kept OUT of the request-scoped `EntitlementsService`: these run cross-tenant
  * (a scheduled sweep, or a super-admin acting on another tenant) and therefore

@@ -93,7 +93,7 @@ class TestExtractionServiceSpeechValidation:
 
 
 class TestExtractionServiceCrossSampleConsistency:
-    """TASK-296 H-8: enforce cross-sample speaker consistency.
+    """Enforce cross-sample speaker consistency.
 
     When more than 1 sample is provided, the embeddings extracted from each
     sample must be pairwise similar (cosine >= 0.6) — otherwise a different

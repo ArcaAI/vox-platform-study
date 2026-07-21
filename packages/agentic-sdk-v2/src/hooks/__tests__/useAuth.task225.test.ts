@@ -1,5 +1,5 @@
 /**
- * TASK-225 Stream A1: canImpersonate derived permission
+ * canImpersonate derived permission
  *
  * Tests that useAuth exposes `canImpersonate: boolean` derived from user roles.
  * Only GLOBAL_ADMIN and TENANT_ADMIN return true.
@@ -29,7 +29,6 @@ describe('TASK-225 A1: useAuth canImpersonate', () => {
                 getAccessToken: vi.fn(), updateApiKey: vi.fn(), clearApiKey: vi.fn(),
                 getApiKey: vi.fn(), getBaseUrl: vi.fn().mockReturnValue('https://api.test'),
                 postFormData: vi.fn(),
-                // TASK-264 W0-3
                 startImpersonation: vi.fn(),
                 stopImpersonation: vi.fn(),
                 isImpersonating: vi.fn().mockReturnValue(false),
@@ -38,7 +37,7 @@ describe('TASK-225 A1: useAuth canImpersonate', () => {
             authUser,
             authIsAuthenticated: authUser !== null,
             authImpersonatedUser: null,
-            // NOTE: TASK-264 W0-3 — `authOriginalToken` removed from store.
+            // NOTE: `authOriginalToken` removed from store.
             authOriginalUser: null,
             setAuthUser: vi.fn(),
             setIsAuthenticated: vi.fn(),

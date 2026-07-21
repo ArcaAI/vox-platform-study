@@ -1,4 +1,4 @@
-// TASK-302 Phase 6 Task 6.6 (Stream B) — Scheduled rotation policy.
+// Scheduled rotation policy.
 //
 // Pure helpers for the scheduled-rotation processor. Kept separate
 // from the processor itself so the policy can be unit-tested without

@@ -17,7 +17,7 @@ export interface PrometheusRangeSeries {
 }
 
 /**
- * TASK-386 (decision #1) — thin client over the Prometheus HTTP API
+ * (decision #1) — thin client over the Prometheus HTTP API
  * (`/api/v1/query`, `/api/v1/query_range`). The platform-metrics service codes
  * against this INTERFACE so unit tests can mock it; the canonical PromQL lives
  * in the service (lifted verbatim from METRIC-CONTRACT.md).

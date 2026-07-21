@@ -220,7 +220,7 @@ class TranscriptionResult:
     transcript_uri: str | None = None
 
     def build_transcript_segments(self) -> list[dict[str, Any]]:
-        """Build consumer-shaped transcript segments for the gateway (TASK-533 D-22).
+        """Build consumer-shaped transcript segments for the gateway.
 
         Shape matches ``TranscriptSegmentInput`` on the NestJS side: camelCase,
         milliseconds as ints, ``speaker`` (not ``speaker_id``), and — critically —
@@ -231,11 +231,11 @@ class TranscriptionResult:
         * ``sentence_timestamps`` carries the TEXT and its timing, but no speaker;
         * ``segments`` (VAD/diarization) carries the SPEAKER, but no text.
 
-        The pre-D-22 producer sent the second one raw — snake_case, seconds, no text
-        — so ``computeSegmentOffsets`` coerced every field to null and the rows it
-        wrote were useless for grounding. Here each sentence takes the speaker of
-        the VAD segment it overlaps most, and a sentence overlapping nothing gets a
-        null speaker rather than a wrong one.
+        An earlier producer sent the second one raw — snake_case, seconds, no
+        text — so ``computeSegmentOffsets`` coerced every field to null and the
+        rows it wrote were useless for grounding. Here each sentence takes the
+        speaker of the VAD segment it overlaps most, and a sentence overlapping
+        nothing gets a null speaker rather than a wrong one.
 
         No ``charStart``/``charEnd``: unlike the streaming path, this method does not
         own the assembly of ``self.text`` (the ASR engine does), so guessing offsets
@@ -317,7 +317,7 @@ class TranscriptionResult:
                 }
                 for seg in self.segments
             ],
-            # TASK-533 D-22 — the consumer-shaped segments, ADDITIVE alongside the
+            # The consumer-shaped segments, ADDITIVE alongside the
             # legacy VAD `segments` above (blob-storage/metadata consumers still read
             # that one). The gateway call sends this list on the typed top-level
             # `segments` field; it is mirrored here so the archived metadata blob

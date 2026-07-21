@@ -123,7 +123,7 @@ export function ApiKeysScreen() {
         [scopesQuery.data],
     );
 
-    // TASK-430 — cross-tenant view: ApiKey rows carry tenantId, so the tenant
+    // Cross-tenant view: ApiKey rows carry tenantId, so the tenant
     // filter rides the regular CSV grammar (`tenantId[equals]:…`).
     const tenantNames = useTenantNames();
     const tenantCatalog = useTenantCatalog();

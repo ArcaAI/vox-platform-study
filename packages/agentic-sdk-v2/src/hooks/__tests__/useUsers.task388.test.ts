@@ -1,6 +1,6 @@
 /**
- * useUsers Hook — TASK-388 additions (reset-password #8, bulk actions #9,
- * server-side export #10).
+ * useUsers Hook — additions: reset-password #8, bulk actions #9,
+ * server-side export #10.
  *
  * @vitest-environment jsdom
  */

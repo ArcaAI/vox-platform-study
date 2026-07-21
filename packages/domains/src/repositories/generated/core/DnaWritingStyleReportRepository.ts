@@ -48,7 +48,7 @@ export class DnaWritingStyleReportRepository extends Repository<DnaWritingStyleR
   }
 
   /**
-   * TASK-331 doc-02 F6 — repository-level pagination for the admin list.
+   * Repository-level pagination for the admin list.
    *
    * Returns both the page slice and the total matching count in one call so
    * the admin controller no longer materializes the full tenant result set
@@ -79,11 +79,11 @@ export class DnaWritingStyleReportRepository extends Repository<DnaWritingStyleR
   }
 
   // ============================================
-  // Aggregate Query Methods (TASK-328 A5 — DNA dashboard)
+  // Aggregate Query Methods (DNA dashboard)
   // ============================================
 
   /**
-   * TASK-328 A5 — Count distinct doctors that have a current ("latest")
+   * Count distinct doctors that have a current ("latest")
    * writing-style report. Uses Prisma `groupBy(['doctorId'])` and returns the
    * number of groups (mirrors the `groupBy` precedent in
    * `TranscriptionJobRepository.countByStatus`). When `tenantId` is omitted the
@@ -104,7 +104,7 @@ export class DnaWritingStyleReportRepository extends Repository<DnaWritingStyleR
   }
 
   /**
-   * TASK-328 A5 — Average `currentVersionNumber` across all latest reports
+   * Average `currentVersionNumber` across all latest reports
    * (mirrors `SummaryMetaRepository.getAverageProcessingTime`'s `aggregate._avg`).
    * Returns 0 when there are no matching rows. `tenantId` omitted ⇒ all tenants.
    */

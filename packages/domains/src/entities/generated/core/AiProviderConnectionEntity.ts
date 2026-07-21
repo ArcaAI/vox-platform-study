@@ -4,7 +4,7 @@
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 
-// TASK-524 — WHERE a serving provider lives and HOW to authenticate: one row
+// WHERE a serving provider lives and HOW to authenticate: one row
 // per (tenant, provider); the reserved SYSTEM tenant row is the platform
 // default. Generalizes TenantTtsProviderCredential to all LLM providers.
 //

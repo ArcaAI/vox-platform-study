@@ -110,7 +110,7 @@ class ApprovalRequest(BaseModel):
 class EditRequest(BaseModel):
     """Body for ``signal/edit`` (camelCase at the apps/api boundary).
 
-    TASK-355 Phase D Slice 5c — apps/api forwards a clinician edit of an
+    apps/api forwards a clinician edit of an
     optimistically-delivered draft (still ``DRAFT_PENDING_SENSORS``) so the
     workflow re-binds + re-runs assurance on the edited content (Q3) and disables
     the silent regen-if-untouched path (Q1). ``content`` is required — it is the
@@ -160,7 +160,7 @@ async def start_document(
             max_regen=settings.max_regen,
             gate_sla_seconds=settings.gate_sla_seconds,
             gate_escalation_seconds=settings.gate_escalation_seconds,
-            # TASK-355 Phase D (R-7): snapshot HARNESS_OPTIMISTIC_DELIVERY_ENABLED here,
+            # Snapshot HARNESS_OPTIMISTIC_DELIVERY_ENABLED here,
             # in the (non-workflow) start path, so the optimistic kill-switch is captured
             # in the workflow input and stays deterministic across replay.
             optimistic_delivery_enabled=settings.optimistic_delivery_enabled,
@@ -262,7 +262,7 @@ async def signal_edit(
 ) -> dict[str, Any]:
     """Forward a clinician edit to the running workflow's ``edit`` signal.
 
-    TASK-355 Phase D Slice 5c. Targets the same deterministic ``harness-doc-{id}``
+    Targets the same deterministic ``harness-doc-{id}``
     handle as ``signal/approve``; the workflow re-binds assurance to the edited
     content + version and re-runs it (Q3), and permanently disables the silent
     regen-if-untouched path (Q1).

@@ -118,25 +118,25 @@ class GraniteGuardianClient:
         self._no_think = config.no_think
         self._timeout = config.timeout_s
         self._transport = transport
-        # AD-1 stats dict aggregating the per-dimension screen
-        # calls (None until the first screen), read by the Phase 2 ``GUARDRAIL`` emitter.
+        # Stats dict aggregating the per-dimension screen
+        # calls (None until the first screen), read by the ``GUARDRAIL`` emitter.
         self.last_stats: dict[str, Any] | None = None
 
     @property
     def criteria(self) -> list[str]:
-        """The configured harm dimensions, in screen order (TASK-363).
+        """The configured harm dimensions, in screen order.
 
         Exposed read-only so the safety sensor can compute the per-(criterion, text,
         model) cache keys and decide whether an unchanged note is a full cache HIT —
         WITHOUT first issuing the screen. The order matches :meth:`screen`'s result
         keys (``dict(zip(self._criteria, ...))``), so a cache-reconstructed dict keeps
-        the same key order as a fresh screen (parity, AC-3)."""
+        the same key order as a fresh screen."""
         return list(self._criteria)
 
     async def screen(self, text: str) -> dict[str, bool]:
         """Screen ``text`` across every configured harm dimension (unsafe => True).
 
-        TASK-355 R-4: Granite evaluates one risk per inference, so the per-dimension
+        Granite evaluates one risk per inference, so the per-dimension
         calls are independent — fan them out with ``asyncio.gather`` over a shared
         client (the per-endpoint governor bounds true concurrency). ``gather`` returns
         results in input order, so the verdict mapping (and dict key order) is
@@ -159,7 +159,7 @@ class GraniteGuardianClient:
     def _aggregate_stats(
         self, per_call: list[tuple[int, int, int | None, str | None]], *, total_ms: int
     ) -> dict[str, Any]:
-        """Fold the per-dimension native fields into one AD-1 stats dict.
+        """Fold the per-dimension native fields into one stats dict.
 
         Token counts sum across the fan-out; a truncation (``length``) on any dimension
         dominates the aggregate stop reason, else the first reported reason.
@@ -219,7 +219,7 @@ class GraniteGuardianClient:
         try:
             resp = await governed_request(self._base_url, _send)
         except (httpx.HTTPError, TimeoutError) as exc:
-            # TimeoutError = the per-call wall-clock timeout (TASK-354) fired after the
+            # TimeoutError = the per-call wall-clock timeout fired after the
             # governor exhausted its retries; surface it as the same degrade-don't-guess
             # signal as any transport failure so the safety screen self-degrades.
             raise GraniteServiceError(f"granite guardian request failed: {exc}") from exc
@@ -243,7 +243,7 @@ class GraniteGuardianClient:
         return (choices[0].get("message") or {}).get("content") or ""
 
 
-# --- TASK-355 R-8a: Granite Guardian *groundedness* mode as a drop-in judge ----------
+# --- Granite Guardian *groundedness* mode as a drop-in judge -------------------------
 
 
 def _groundedness_block(premise: str, *, no_think: bool) -> str:
@@ -281,7 +281,7 @@ def _split_premise_hypothesis(messages: Messages) -> tuple[str, str]:
 
 
 class GraniteGroundednessJudge:
-    """R-8a: IBM Granite Guardian *groundedness* mode exposed as a ``JudgeClient``.
+    """IBM Granite Guardian *groundedness* mode exposed as a ``JudgeClient``.
 
     Drop-in replacement for the reasoning entailment judge on the groundedness +
     citation-verify sensors: it reframes their ``PREMISE/HYPOTHESIS`` envelope as a single
@@ -292,7 +292,7 @@ class GraniteGroundednessJudge:
     (conservative ungrounded); a transport failure raises :class:`JudgeConnectionError` so
     the sensor degrades, never auto-PASSes.
 
-    Why R-8a: Granite Guardian is ALREADY resident (safety), emits a single verdict token
+    Why use Granite for this: it is ALREADY resident (safety), emits a single verdict token
     (no reasoning trace — the dominant gemma per-call cost), and ranks #3 on LLM-AggreFact
     (not a weaker judge). Trust still requires the offline parity gate
     (``harness.eval.inferential_judge_parity``) before it may gate a clinical pass.
@@ -310,7 +310,7 @@ class GraniteGroundednessJudge:
         self._no_think = config.no_think
         self._timeout = config.timeout_s
         self._transport = transport
-        # AD-1 stats dict from the most recent ``complete`` call.
+        # Stats dict from the most recent ``complete`` call.
         self.last_stats: dict[str, Any] | None = None
 
     async def complete(

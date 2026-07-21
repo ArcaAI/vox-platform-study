@@ -18,7 +18,7 @@ export class StorageAccessKeyDtoMapper {
   }
 
   /**
-   * TASK-318 W3 (F-2) — the persisted `entity.secretAccessKey` is only a HASH,
+   * The persisted `entity.secretAccessKey` is only a HASH,
    * so the one-time plaintext secret must be supplied explicitly by the caller
    * (the service, at creation time). It is never read back from the entity.
    */

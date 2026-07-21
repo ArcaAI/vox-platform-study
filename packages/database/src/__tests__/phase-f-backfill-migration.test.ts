@@ -1,6 +1,5 @@
 /**
- * TASK-305 Phase F (F.6) — structural guard for the user↔department
- * back-fill migration.
+ * Structural guard for the user↔department back-fill migration.
  *
  * The migration is a pure data migration (no DDL) and applying it requires a
  * live Postgres, so — like `backfill-globalsetting-encryption.test.ts` keeps

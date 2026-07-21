@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { TenantResponse } from '../../dto';
 
-/** Response of `ITenantOnboardingService.provisionTenantWithAdmin` (TASK-497 §3.3). */
+/** Response of `ITenantOnboardingService.provisionTenantWithAdmin`. */
 export class TenantProvisionResponse {
   @ApiProperty({ description: 'The newly provisioned tenant', type: () => TenantResponse })
   tenant!: TenantResponse;

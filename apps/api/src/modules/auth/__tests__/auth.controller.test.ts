@@ -36,7 +36,7 @@ const createMockUserRepository = (users: Map<string, any> = new Map()) => ({
 });
 
 /**
- * TASK-307 W6.1 — replaces the previous `createMockDatabaseService` factory.
+ * Replaces the previous `createMockDatabaseService` factory.
  * The 4th constructor arg of `AuthController` is now `IUserRoleAssignmentService`,
  * not the raw `CoreDatabaseService`. This mock derives its three methods'
  * return values from the same `roleAssignments` / `tenantAssignment` fixture
@@ -61,7 +61,7 @@ const createMockUserRoleAssignmentService = (
     };
 };
 
-// TASK-305 Phase F — login now also requires an active department (full
+// Login now also requires an active department (full
 // membership = role + department). Default to a present assignment so legacy
 // login tests keep passing; the negative test passes `null`.
 const createMockUserDepartmentService = (departmentAssignment: any = { id: 'ud-1' }) => ({
@@ -82,7 +82,7 @@ const createMockAppSettingsService = () => ({
     }),
 });
 
-// TASK-307 W2.3 — AuthController now reads JWT_SECRET_KEY exclusively
+// AuthController now reads JWT_SECRET_KEY exclusively
 // from SecretsService. Tests inject this mock as the 12th constructor
 // arg.
 const createMockSecretsService = () => ({
@@ -137,7 +137,7 @@ const createTenant = (overrides: Partial<Record<string, any>> = {}) => ({
     ...overrides,
 });
 
-// TASK-307 W1.2: RefreshTokenService is the canonical refresh-token issuer
+// RefreshTokenService is the canonical refresh-token issuer
 // going forward. The default mock issues a synthetic opaque token + family
 // so every legacy login test keeps working without further wiring.
 const createMockRefreshTokenService = () => ({
@@ -485,7 +485,6 @@ describe('AuthController', () => {
             ).rejects.toThrow(UnauthorizedException);
         });
 
-        // TASK-305 Phase F — full membership = role AND department.
         it('should reject when user has a role but NO active department in the tenant', async () => {
             const hashedPassword = await bcrypt.hash('pass123', 10);
             const user = createUser({ password: hashedPassword });
@@ -529,7 +528,7 @@ describe('AuthController', () => {
             expect(deptService.findActiveDepartmentForUserInTenant).toHaveBeenCalledWith(user.id, 'tenant-001');
         });
 
-        // TASK-430 superseded the Phase-F "exempt from department" carve-out:
+        // Superseded the "exempt from department" carve-out:
         // service accounts are API-only principals and interactive login is
         // refused outright (401), regardless of role/department membership.
         it('should REJECT a service account from interactive login (TASK-430)', async () => {
@@ -813,7 +812,7 @@ describe('AuthController', () => {
             const validRole = createRole('doctor');
             const tenant = createTenant();
 
-            // TASK-307 W6.1 — controller no longer touches Prisma; service
+            // Controller no longer touches Prisma; service
             // returns the already-filtered list so the controller's previous
             // `.filter(Boolean)` is now centralised in the service mock.
             const mockUraService = {

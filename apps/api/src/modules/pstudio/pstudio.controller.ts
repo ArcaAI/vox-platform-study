@@ -6,7 +6,7 @@ import { Response } from 'express';
 import { Authorize, CanManage } from '../../decorators';
 import { getStudioHtml } from './pstudio.html';
 
-// TASK-326 X1 — audit categorisation for raw Prisma Studio access. The
+// Audit categorisation for raw Prisma Studio access. The
 // ResourceType enum has no Studio-specific value; rather than force a DB
 // migration we tag the rows with this `eventType` (the dedicated audit
 // categorisation field) and keep `resourceType: AuditLog`.
@@ -28,7 +28,7 @@ function summarizeStudioRequest(payload: unknown): string {
 
 @ApiTags('admin-pstudio')
 @Controller('admin/pstudio')
-// TASK-419 item 4: pinned to the DEDICATED `manage:PrismaStudio` subject
+// Pinned to the DEDICATED `manage:PrismaStudio` subject
 // (production-capable enablement; `manage:all` still passes via the CASL
 // wildcard). Class-level baseline; method decorators re-state it.
 @CanManage('PrismaStudio')
@@ -42,11 +42,11 @@ export class PrismaStudioController {
     private readonly auditLogService: IAuditLogService,
   ) {}
 
-  // TASK-307 W5.2 (AC-16, audit C-9): GET does not accept a JWT via `?token=`
+  // GET does not accept a JWT via `?token=`
   // query string. Authentication is enforced at the guard layer.
-  // TASK-336 OB-11: the served body carries no secret; it is also no-store so
+  // The served body carries no secret; it is also no-store so
   // no proxy / CDN caches the studio shell.
-  // BUG-003: the shell posts queries back to the path that served it
+  // The shell posts queries back to the path that served it
   // (window.location.pathname), so the authenticating BFF proxy in front of
   // this route carries the credential on GET and POST alike. No Host-derived
   // absolute endpoint is embedded (it bypassed the proxy → empty bearer → 401).
@@ -69,7 +69,7 @@ export class PrismaStudioController {
     const { procedure, query, sequence } = body;
 
     if (procedure === 'sequence' && sequence) {
-      // TASK-326 X1 (audit C-9): Studio runs raw SQL against the unscoped
+      // Studio runs raw SQL against the unscoped
       // client — a privileged, untenanted surface. A `sequence` carries the
       // write path (mutation + refetch), so audit it as an UPDATE. The audit
       // is best-effort (never throws) so it cannot block a legitimate operator.
@@ -83,7 +83,7 @@ export class PrismaStudioController {
     }
 
     if (query) {
-      // TASK-326 X1 — a `query` is the read path; audit it as a READ.
+      // A `query` is the read path; audit it as a READ.
       await this.auditLogService.recordSystemAction({
         action: AuditAction.READ,
         eventType: PRISMA_STUDIO_EVENT,

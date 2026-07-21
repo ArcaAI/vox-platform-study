@@ -1,29 +1,23 @@
-"""TASK-359 — gating-consolidation + claim-level caching acceptance contract.
+"""Gating-consolidation + claim-level caching acceptance contract.
 
-These tests are written FIRST (TDD), before any implementation, and define the
-acceptance contract for TASK-359's four workstreams (README §4.1):
+Covers the gating-consolidation workstreams:
 
-* **WS-1 (HIGH)** content-addressed per-claim verdict cache + regen scoping (Finding #2).
-* **WS-2 (Med, LOCKED)** extend the SAME verdict cache to citation_verify so a
+* Content-addressed per-claim verdict cache + regen scoping.
+* Extends the SAME verdict cache to citation_verify so a
   dually-checked CITED claim is reused across passes — **NO prompt merge** (merging the
   two premises would leak the transcript into the citation premise and loosen the
-  citation verdict, breaking AC-2/AC-5); the two verdicts stay SEPARABLE (Finding #3).
-* **WS-4 (Low)** cross-stack cohering — governance/config only; never remove a
-  fail-closed harness check (Findings #1/#5).
+  citation verdict); the two verdicts stay SEPARABLE.
+* Cross-stack cohering — governance/config only; never remove a
+  fail-closed harness check.
 
-WS-3 (safety-screen scoping, Finding #4) was **split out to TASK-363**; its S1/S2/S3
+Safety-screen scoping is a separate concern; its S1/S2/S3
 tests live in ``tests/unit/sensors/test_safety_scoping.py``.
 
-Each test is labelled **RED** (failing-first; the API/behaviour does NOT exist yet)
-or **GREEN** (a regression / parity / invariant guard on EXISTING behaviour that
-WS-1..WS-4 must preserve byte-for-byte — AC-2/AC-4/AC-5):
-
-* RED  : T2, T3, T4, T5  (the verdict cache + its citation_verify extension — not built)
-* GREEN: T1, T7, T9      (parity anchor + aggregator fail-closed/safety invariants)
-
-RED tests fail with an explicit ``pytest.fail`` that names the missing API, so the
-module always COLLECTS cleanly (no incidental import/collection error). They are
-also written as the full behavioural test, so they flip to GREEN once implemented.
+Each test imports the target API via a helper that raises an explicit ``pytest.fail``
+naming the missing API if it is absent, so the module always COLLECTS cleanly even
+against a partial implementation (no incidental import/collection error). T1, T7, T9
+are regression/parity/invariant guards on aggregator fail-closed and safety behaviour
+that the caching work must preserve byte-for-byte.
 
 NOTE: the replay-safety anchor (T8) lives in
 ``tests/unit/temporal/test_gating_consolidation_replay.py`` (it needs the temporal
@@ -178,18 +172,18 @@ def _has_kwarg(func, name: str) -> bool:
 
 
 # ===========================================================================
-# T1 (GREEN, AC-2) — verdict-parity ANCHOR.
+# T1 — verdict-parity ANCHOR.
 # ===========================================================================
 
 
 class TestT1VerdictParityAnchor:
     """Pin the CURRENT inferential verdicts on a fixture note.
 
-    This is the parity contract WS-1/WS-2/WS-3 must reproduce byte-for-byte: a
-    cached/consolidated/scoped path that shifts ANY value below is rejected (the
-    TASK-355 batching lesson — an efficiency change that moves a verdict is a
-    clinical-safety regression). The cached-path == current-path equality is
-    additionally enforced by T2 (pass-2 verdicts) and T5 (consolidated verdicts).
+    This is the parity contract the caching/consolidation/scoping work must reproduce
+    byte-for-byte: a cached/consolidated/scoped path that shifts ANY value below is
+    rejected (an efficiency change that moves a verdict is a clinical-safety
+    regression). The cached-path == current-path equality is additionally enforced
+    by T2 (pass-2 verdicts) and T5 (consolidated verdicts).
     """
 
     @pytest.mark.asyncio
@@ -244,7 +238,7 @@ class TestT1VerdictParityAnchor:
 
 
 # ===========================================================================
-# T2 (RED, AC-1/AC-3) — regen scoping: unchanged claims reuse the cache.
+# T2 — regen scoping: unchanged claims reuse the cache.
 # ===========================================================================
 
 
@@ -306,7 +300,7 @@ class TestT2RegenScopingReusesCache:
 
 
 # ===========================================================================
-# T3 (RED, AC-3) — the cache key is content-addressed, never the claim id.
+# T3 — the cache key is content-addressed, never the claim id.
 # ===========================================================================
 
 
@@ -344,14 +338,14 @@ class TestT3CacheKeyContentAddressedAndModelInvalidated:
 
 
 # ===========================================================================
-# T4 (RED, AC-3/AC-4) — cache miss is conservative (re-judge, never assume grounded).
+# T4 — cache miss is conservative (re-judge, never assume grounded).
 # ===========================================================================
 
 
 class TestT4CacheMissIsConservative:
     """A cache MISS re-judges (it never assumes grounded); an unparseable verdict
     stays conservative-ungrounded. Together these keep the conservative-failure
-    direction (TASK-355 §7) when caching is added."""
+    direction when caching is added."""
 
     @pytest.mark.asyncio
     async def test_miss_rejudges_and_unparseable_is_ungrounded(self):
@@ -376,7 +370,7 @@ class TestT4CacheMissIsConservative:
 
 
 # ===========================================================================
-# T5 (RED, AC-1/AC-2/AC-5) — WS-2 LOCKED: the verdict cache covers citation_verify too,
+# T5 — WS-2 LOCKED: the verdict cache covers citation_verify too,
 # reusing a dually-checked cited claim ACROSS passes, with NO prompt merge.
 # ===========================================================================
 
@@ -389,11 +383,9 @@ class TestT5CitationVerifyCacheSeparableNoMerge:
     A merge is REJECTED (red-team): groundedness entails vs the transcript(+evidence),
     citation_verify entails vs the cited chunk ONLY; one merged prompt would let the
     transcript leak into the citation premise and could loosen a borderline citation
-    verdict (the TASK-355 batching lesson) — an AC-2/AC-5 violation. So the two verdicts
+    verdict — a violation of the separability invariant. So the two verdicts
     stay SEPARABLE and byte-identical to the unconsolidated baseline; the ONLY saving is
     cross-pass cache reuse (a cited claim is still TWO different questions in one pass).
-
-    RED until ``CitationVerifySensor.arun(..., verdict_cache=...)`` exists.
     """
 
     @pytest.mark.asyncio
@@ -443,12 +435,12 @@ class TestT5CitationVerifyCacheSeparableNoMerge:
         assert (c2.passed, c2.score, c2.claims_flagged) == (c0.passed, c0.score, c0.claims_flagged)
 
 
-# T6 (WS-3 safety-screen contract) was SPLIT OUT to TASK-363 —
-# see ``tests/unit/sensors/test_safety_scoping.py`` (S1/S2 GREEN guards + S3 RED scoping).
+# T6 (safety-screen scoping contract) lives separately —
+# see ``tests/unit/sensors/test_safety_scoping.py``.
 
 
 # ===========================================================================
-# T7 (GREEN, AC-4) — safety FLAG is never auto-regenerated; degraded -> FLAG.
+# T7 — safety FLAG is never auto-regenerated; degraded -> FLAG.
 # ===========================================================================
 
 
@@ -492,7 +484,7 @@ class TestT7SafetyFlagInvariants:
 
 
 # ===========================================================================
-# T9 (GREEN, AC-5) — the harness gate fails CLOSED and cannot be replaced by a
+# T9 — the harness gate fails CLOSED and cannot be replaced by a
 # fail-open SMR/guardrail layer.
 # ===========================================================================
 

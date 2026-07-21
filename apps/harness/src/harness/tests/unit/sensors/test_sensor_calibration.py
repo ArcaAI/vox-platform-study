@@ -1,4 +1,4 @@
-"""TASK-358 — deterministic-sensor calibration over a labeled fixture set (RED-first).
+"""Deterministic-sensor calibration over a labeled fixture set.
 
 The harness gate used to ``FLAG`` essentially every consultation for mechanical
 (not clinical) reasons: a markdown SOAP note never matched the JSON-schema gate

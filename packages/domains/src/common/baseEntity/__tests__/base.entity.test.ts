@@ -155,8 +155,8 @@ describe('BaseEntity', () => {
       });
     });
 
-    // TASK-541 — SUSPENDED is a first-class ResourceStatusType (the operator
-    // "hold" state added by TASK-387), but BaseEntity had no lifecycle method
+    // SUSPENDED is a first-class ResourceStatusType (the operator
+    // "hold" state, but BaseEntity had no lifecycle method
     // for it, so `applyChangesToEntity`'s status switch silently no-opped and
     // a suspend request returned 200 without changing anything.
     describe('suspend (TASK-541)', () => {
@@ -334,7 +334,7 @@ describe('BaseEntity', () => {
   });
 
   /*
-   * TASK-306 P3.4 / AC-13 / audit L-4.
+   * Tenant is part of entity identity, not just metadata.
    *
    * Before this ticket `BaseEntity.equals(other)` compared `id` only —
    * meaning two `BaseTenantEntity` instances with the same row id but

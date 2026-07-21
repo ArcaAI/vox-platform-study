@@ -1,5 +1,5 @@
 /**
- * TASK-265 — SDK endpoint constants drift fixes
+ * SDK endpoint constants drift fixes
  *
  * Locks the contract decisions D2 (voice-profile, Option B), D3 (user-settings
  * reduction), D4 (pipeline validate path), and the typed `USER_ROLES` tuple
@@ -55,7 +55,7 @@ describe('TASK-265 W0-7: VOICE_EMBEDDING_ENDPOINTS targets /voice-profile API', 
   });
 
   it('keys are exactly {enroll, list, delete, activate, deactivate}', () => {
-    // TASK-296 C-1: extended with activate/deactivate for SDK control surface.
+    // Extended with activate/deactivate for SDK control surface.
     expect(Object.keys(VOICE_EMBEDDING_ENDPOINTS).sort()).toEqual([
       'activate',
       'deactivate',

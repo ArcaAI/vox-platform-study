@@ -1,7 +1,7 @@
 /**
  * @arcaai/vad - Public exports surface
  *
- * TASK-271 C-3 / C-4: lock the public export list of the package entry point.
+ * Lock the public export list of the package entry point.
  *
  * The custom `vad-worklet-processor` and its loader were dead code (registered
  * by nobody, consumed by nobody). After cleanup, the public API surface MUST

@@ -2,11 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ISecretsProvider, SecretFetchOptions, SecretsHealth } from '../ISecretsProvider';
 
 /**
- * Phase 2A Task 2.3 (TASK-302 Stream B) — EnvSecretsProvider.
+ * EnvSecretsProvider.
  *
  * The default provider in NODE_ENV=development. Reads from process.env
  * exactly as today, preserving behaviour for local devs who run
- * `pnpm dev` without any Vault setup (Decision D3 + D7).
+ * `pnpm dev` without any Vault setup.
  */
 @Injectable()
 export class EnvSecretsProvider implements ISecretsProvider {

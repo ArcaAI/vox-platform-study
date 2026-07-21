@@ -27,7 +27,7 @@ async def get_diagnosis_suggestions(
             if not service.is_initialized:
                 raise HTTPException(status_code=503, detail="Medical suggester service not available")
 
-            # TASK-525 (GAP-L4) — bound concurrent inference.
+            # Bound concurrent inference.
             async with inference_bound:
                 response = await service.suggest(request)
             logger.info(f"Diagnosis suggestions: {response}")

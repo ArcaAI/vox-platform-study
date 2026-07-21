@@ -1,5 +1,5 @@
 /**
- * ResourceType enum parity guard — TASK-366.
+ * ResourceType enum parity guard.
  *
  * The domain-layer `ResourceType` enum (`@arcaai/domains`) and the database
  * enum that Prisma generates from `audit.prisma` (`@arcaai/database`) MUST be
@@ -8,7 +8,7 @@
  *   - A value in the DOMAIN enum but missing from the DATABASE enum makes the
  *     `AuditLog` INSERT throw at runtime ("Invalid value for argument
  *     `resourceType`. Expected ResourceType.") and rolls the originating
- *     create/update/delete back into a 500/404. This was the TASK-366 bug
+ *     create/update/delete back into a 500/404. This was a real bug
  *     (`UserVoiceProfile`, `Highlight`, `UserDepartment`, `TenantFrontendConfig`,
  *     `AsrPipelineVersion`).
  *
@@ -16,7 +16,7 @@
  *     application layer can never emit or exhaustively handle that resource
  *     type (`AudioRecording`, `SummaryMeta`, `NamedEntity` had drifted this
  *     way; the dead `Session`, `SessionEvent`, `SessionSyncLog` scaffolding was
- *     removed from both enums entirely by TASK-367).
+ *     removed from both enums entirely afterward).
  *
  * To fix a failure: add the missing value(s) to BOTH
  *   - packages/database/src/prisma/db_main/audit.prisma (+ an ADD VALUE migration), and

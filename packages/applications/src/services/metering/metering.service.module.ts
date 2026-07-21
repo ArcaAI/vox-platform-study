@@ -5,7 +5,7 @@ import { IMeteringService } from './IMeteringService';
 import { MeteringService } from './metering.service';
 
 /**
- * TASK-392 (Q5, Phase 2) — registers the self-scheduling {@link MeteringService}.
+ * Registers the self-scheduling {@link MeteringService}.
  *
  * Relies on the app-level globals `ScheduleModule.forRoot()` (SchedulerRegistry)
  * and `EventEmitterModule.forRoot()` (@OnEvent). `CommonServiceModule` provides

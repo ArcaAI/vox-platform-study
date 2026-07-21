@@ -52,7 +52,7 @@ interface OidcPersistedConfig {
 /**
  * Field names deliberately mirror `OidcPersistedConfig` — `provisionUser`/
  * `resolveGroupRoleId` read `provider.config` through the OIDC-shaped cast
- * regardless of protocol (TASK-499 D3: `resolveOrProvisionUser` is reused
+ * regardless of protocol (`resolveOrProvisionUser` is reused
  * verbatim), so this interface exists for documentation/callers of the SAML
  * methods below, not as a second code path through those two methods.
  */
@@ -104,7 +104,7 @@ export interface FederatedSession {
 }
 
 /**
- * TASK-498/499 — federated login round-trip orchestrator for both OIDC and
+ * Federated login round-trip orchestrator for both OIDC and
  * SAML: tenant resolution → authorize-URL/AuthnRequest construction →
  * callback/ACS verification → JIT provisioning → a `FederatedSession` the
  * controller mints a HOPE JWT from. Not a `BaseService`: it runs pre-session
@@ -132,7 +132,7 @@ export class FederatedAuthService {
     private readonly eventEmitter: EventEmitter2,
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
     @Inject(SecretsService) private readonly secretsService: SecretsService,
-    // TASK-499 D4 — assertion-ID replay cache, defense-in-depth beyond
+    // Assertion-ID replay cache, defense-in-depth beyond
     // node-saml's own InResponseTo single-use cache. Optional so non-Redis
     // (dev/test) deploys still boot; the replay check is then skipped rather
     // than blocking login (the InResponseTo cache is the primary defense).
@@ -243,7 +243,7 @@ export class FederatedAuthService {
   }
 
   /**
-   * TASK-499 — SP-initiated SAML: builds a signed AuthnRequest redirect URL
+   * SP-initiated SAML: builds a signed AuthnRequest redirect URL
    * for the tenant's enabled SAML provider. No email HRD (SP-initiated SAML
    * is tenantKey-only, per the ticket's flow diagram) — RelayState is opaque
    * (single-use InResponseTo tracking is `RedisSamlCacheProvider`'s job, not
@@ -365,7 +365,7 @@ export class FederatedAuthService {
 
   /**
    * Idempotent resolve-or-create for a `(providerId, subject)` pair — public
-   * so `DirectorySyncProcessor` (TASK-498 P3) reuses the exact same JIT logic
+   * so `DirectorySyncProcessor` reuses the exact same JIT logic
    * (transaction, group→role mapping, GLOBAL_ADMIN guard) for admin-triggered
    * directory pre-provisioning as `verifyOidcCallback` uses for login-time
    * JIT. `claims` is a synthesized `{sub, email, groups}` shape for a
@@ -398,7 +398,7 @@ export class FederatedAuthService {
     const mappedRoleId = await this.resolveGroupRoleId(claims, config);
     const roleId = mappedRoleId ?? config.defaultRoleId;
 
-    // D6/§3.D-4 — GLOBAL_ADMIN is never assignable via IdP mapping. This runs
+    // GLOBAL_ADMIN is never assignable via IdP mapping. This runs
     // pre-session (no CLS requestUser), so the CLS-gated
     // `UserRoleAssignmentService.assertAssignableRoleTier` guard would NOT
     // fire here — this explicit check is the enforcement point.

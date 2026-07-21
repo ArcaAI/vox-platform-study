@@ -6,7 +6,7 @@ import { UserRoleAssignmentEntity } from '../../../entities';
 import { UserRoleAssignment } from '../../../models';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 
-// TASK-424 — eager-load the Role relation so the DTO layer can surface
+// Eager-load the Role relation so the DTO layer can surface
 // `roleName` (the admin console renders role names, not raw UUIDs). The mapper
 // projects the singular `Role` relation into the entity's `Roles` array; `User`
 // is intentionally NOT included (unneeded here and heavy). Repositories carry no

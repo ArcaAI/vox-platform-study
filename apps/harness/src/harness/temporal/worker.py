@@ -30,7 +30,7 @@ logger = get_logger(__name__)
 
 _SHUTDOWN_SIGNALS = (signal.SIGINT, signal.SIGTERM)
 
-# TASK-530 (D-08) — how often the worker releases idle-expired model weights.
+# How often the worker releases idle-expired model weights.
 # The MiniCheck entailer is loaded by an ACTIVITY, so its GGUF lives in THIS
 # process; the FastAPI app could never sweep it. One minute is well below the
 # 60 s minimum idle TTL, so the sweep never becomes the binding constraint.
@@ -60,13 +60,13 @@ async def _sweep_model_caches_once() -> int:
 async def _refresh_model_cache_retention_once(client: Any) -> None:
     """Pull control-plane retention and apply it to the entailer cache. NEVER raises.
 
-    TASK-535 (R2) — this runs HERE, in the worker, because the MiniCheck GGUF is
-    loaded by an activity and is resident in THIS process (§2.4). `configure`
+    This runs HERE, in the worker, because the MiniCheck GGUF is
+    loaded by an activity and is resident in THIS process. `configure`
     adopts the new limits without dropping a resident entailer, so an admin
     moving the slider never evicts a model mid-document.
 
     No client, or no opinion from the control plane, ⇒ the env values stay in
-    force — exactly the pre-TASK-535 behaviour.
+    force — exactly the behaviour before this control-plane retention feature.
     """
     if client is None:
         return
@@ -122,7 +122,7 @@ async def _sweep_model_caches_forever(
 def _assert_claim_check_store_is_deployable(settings: Settings) -> None:
     """Refuse to start a deployed worker that would offload blobs to the fake store.
 
-    Independent defence behind the ``Settings`` model validator (TASK-533 D-28): a
+    Independent defence behind the ``Settings`` model validator: a
     settings object can be constructed in code or mutated after validation, and the
     worker is the process that actually dereferences claim-check refs — a
     cross-worker retry against the per-process in-memory store raises

@@ -1,5 +1,5 @@
 /**
- * Types for LiveTranscript (TASK-372 §3.6) — the canonical realtime transcript
+ * Types for LiveTranscript — the canonical realtime transcript
  * (D6). `LiveTranscriptSegment` is a superset of the SDK store `TranscriptSegment`
  * AND the wire `WsTranscriptResult` so consumers can feed either source (D9).
  */

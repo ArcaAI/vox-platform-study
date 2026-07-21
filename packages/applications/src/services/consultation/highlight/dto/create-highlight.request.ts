@@ -3,9 +3,9 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { HighlightTargetKind } from '@arcaai/domains';
 
 /**
- * Request to create a durable manual-doctor highlight on a persisted surface
- * (TASK-344 Workstream B). Anchored with W3C Web Annotation dual selectors:
- * a TextQuoteSelector (exact + optional prefix/suffix) AND a TextPositionSelector
+ * Request to create a durable manual-doctor highlight on a persisted surface.
+ * Anchored with W3C Web Annotation dual selectors: a TextQuoteSelector
+ * (exact + optional prefix/suffix) AND a TextPositionSelector
  * (startOffset/endOffset).
  */
 export class CreateHighlightRequest {

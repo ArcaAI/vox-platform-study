@@ -1,4 +1,4 @@
-"""Citation-verify inferential-sensor tests (RED-first, TASK-330 Phase 3, Lane A).
+"""Citation-verify inferential-sensor tests.
 
 Forked from groundedness, but the premise is the **cited chunk text ONLY** (looked
 up from ``ctx.knowledge_chunks`` by each claim's ``knowledgeChunkIds``), not the

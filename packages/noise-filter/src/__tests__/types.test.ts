@@ -60,8 +60,8 @@ describe('DEFAULT_NOISE_FILTER_OPTIONS', () => {
     expect(DEFAULT_NOISE_FILTER_OPTIONS.noiseCancellation).toBe(true);
   });
 
-  // TASK-304 (MED-9): defaults are now frozen so accidental mutation throws in strict mode
-  // and is silently ignored in sloppy mode. Either way, the canonical value never changes.
+  // Defaults are frozen so accidental mutation throws in strict mode and
+  // is silently ignored in sloppy mode. Either way, the canonical value never changes.
   it('is frozen via Object.freeze() (TASK-304 MED-9)', () => {
     expect(Object.isFrozen(DEFAULT_NOISE_FILTER_OPTIONS)).toBe(true);
   });

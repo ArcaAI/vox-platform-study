@@ -1,4 +1,4 @@
-"""Hermetic tests for the MiniCheck-Flan-T5 GGUF atomic-fact entailer (TASK-481).
+"""Hermetic tests for the MiniCheck-Flan-T5 GGUF atomic-fact entailer.
 
 No llama.cpp / weights: the model-dependent first-step logit read is injected as a fake
 ``logit_fn``, so these lock the scoring math, template, async ``entail`` threshold, the

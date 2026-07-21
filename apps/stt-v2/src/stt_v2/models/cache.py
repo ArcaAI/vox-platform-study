@@ -1,6 +1,6 @@
 """Model cache with LRU eviction and TTL support.
 
-TASK-530 (R2, completing GAP-L1) — the retention POLICY (single-flight load,
+The retention POLICY (single-flight load,
 idle TTL clamped to [60s, 3600s], pin/unpin refcounting, LRU bound, memory
 budget, periodic sweep, VRAM-aware eviction, unload-on-every-eviction-path) now
 lives in the shared contract `hope_runtime_models.ModelCache`, which every HOPE
@@ -10,8 +10,8 @@ This module is the stt-v2-facing surface of that contract. It keeps EVERY public
 spelling stt-v2 callers and tests already use — `get()` as a peek, `put()`,
 `get_or_load*()`, the stt-v2 `CacheEntry`/`CacheStats` shapes, `_loaders`,
 `apply_retention` — and nothing else: the ~150-line local copy of the policy is
-gone. TASK-529 deferred this refactor deliberately (567 lines on the ASR hot
-path, late in a large ticket); the parity gate for it is
+gone. This refactor was deliberately deferred earlier (567 lines on the ASR hot
+path); the parity gate for it is
 `tests/unit/test_model_cache.py` + `test_model_cache_ttl.py` passing UNMODIFIED.
 
 Two spellings differ from the shared contract on purpose, because stt-v2's API
@@ -52,7 +52,7 @@ from .whisper_cpp_loader import WhisperCppLoader
 logger = logging.getLogger(__name__)
 
 
-# TASK-525 — control-plane retention refresher, installed at app startup so the
+# Control-plane retention refresher, installed at app startup so the
 # cache never hard-depends on HTTP (see `ModelCache._refresh_retention`).
 _retention_refresher: Callable[[], Awaitable[None]] | None = None
 
@@ -224,11 +224,11 @@ class ModelCache(SharedModelCache[LoadedModel]):
         """
         settings = get_settings()
 
-        # TASK-525 — these three are BOOTSTRAP FALLBACKS; their runtime values
+        # These three are BOOTSTRAP FALLBACKS; their runtime values
         # come from the control plane via `apply_retention` below. Note
         # `max_memory_mb` has no settings field at all — this literal is the only
         # default it has ever had, and the registry descriptor deliberately
-        # mirrors it rather than the divergent seed row (see DR-2).
+        # mirrors it rather than the divergent seed row.
         raw_ttl = ttl_seconds if ttl_seconds is not None else settings.model_cache_ttl_seconds
 
         # Per-slug side tables the shared core does not model: stt-v2 surfaces
@@ -262,13 +262,13 @@ class ModelCache(SharedModelCache[LoadedModel]):
             AiModelFormat.ONNX_OPTIMUM: ONNXLoader(),  # HuggingFace Optimum ONNX uses same loader
             AiModelFormat.NEMO: NeMoLoader(),
             AiModelFormat.CTRANSLATE2: HuggingFaceLoader(),  # Legacy alias — transformers path
-            # TASK-351 P1-2 — faster-whisper on CTranslate2 (lazy import)
+            # faster-whisper on CTranslate2 (lazy import)
             AiModelFormat.FASTER_WHISPER: FasterWhisperLoader(),
             AiModelFormat.AZURE_SPEECH: AzureSpeechLoader(),  # Cloud-based Azure Cognitive Services
-            # TASK-505 P3 — new engines (both lazy at load time).
+            # New engines (both lazy at load time).
             AiModelFormat.AZURE_FOUNDRY: AzureFoundryLoader(),
             AiModelFormat.PARAKEET_CPP: ParakeetCppLoader(),
-            # TASK-507 — whisper.cpp (lazy at load time).
+            # whisper.cpp (lazy at load time).
             AiModelFormat.WHISPER_CPP: WhisperCppLoader(),
         }
 
@@ -364,7 +364,7 @@ class ModelCache(SharedModelCache[LoadedModel]):
     # ── control-plane retention ─────────────────────────────────────────────
 
     def apply_retention(self, retention: dict[str, int]) -> None:
-        """TASK-525 — adopt control-plane retention values.
+        """Adopt control-plane retention values.
 
         An ABSENT key keeps the current (env/bootstrap) value — so a gateway
         outage leaves behaviour byte-identical to today. Resident models are
@@ -410,7 +410,7 @@ class ModelCache(SharedModelCache[LoadedModel]):
     async def get_or_load(self, model_config: AiModelConfig) -> LoadedModel:
         """
         Get model from cache or load it — single-flight per slug
-        (TASK-351 P0-3 / H1, now the shared contract's single-flight).
+        (now the shared contract's single-flight).
 
         The expensive `loader.load()` runs OUTSIDE the cache lock (so cache
         hits for other models are never blocked behind a load), but
@@ -425,7 +425,7 @@ class ModelCache(SharedModelCache[LoadedModel]):
         """
         slug = model_config.slug
 
-        # TASK-525 — read-triggered control-plane refresh. Cached inside the
+        # Read-triggered control-plane refresh. Cached inside the
         # client's TTL window (so this is ~free), never raises, and runs BEFORE
         # the eviction pass below so a freshly-served retention value applies to
         # this load rather than the next one.

@@ -34,7 +34,7 @@ const mockEventEmitter = {
 };
 
 // Mock GlobalSettingRepository
-// TASK-302 Stream D Phase C (C.7) — `update` migrated to `updateWithVersion`
+// (C.7) — `update` migrated to `updateWithVersion`
 // for Compare-And-Set semantics; mock both so legacy tests still wire while
 // the new behaviour can be asserted on the new method.
 const mockGlobalSettingRepository = {
@@ -45,18 +45,18 @@ const mockGlobalSettingRepository = {
     update: vi.fn(),
     updateWithVersion: vi.fn(),
     softDelete: vi.fn(),
-    // TASK-396 — reveal reads the decrypted plaintext via this repo helper.
+    // Reveal reads the decrypted plaintext via this repo helper.
     findByIdWithDecryptedValue: vi.fn(),
-    // TASK-402 — create() first probes for a soft-DELETED row to revive
+    // Create() first probes for a soft-DELETED row to revive
     // (restore-on-create); these tests exercise the plain-create branch, so
     // the probe defaults to "not found" in beforeEach.
     findFirst: vi.fn(),
     restore: vi.fn(),
-    // TASK-447 — Phase 4C envelope encryption of secret values on write.
+    // Envelope encryption of secret values on write.
     encryptValueIntoEntity: vi.fn(),
 };
 
-// TASK-396 — reveal collaborators: UserRepository (password hash for step-up),
+// Reveal collaborators: UserRepository (password hash for step-up),
 // ICryptoService (bcrypt verify), SecretsService (Vault decrypt, passed through).
 const mockUserRepository = {
     findById: vi.fn(),
@@ -70,7 +70,7 @@ const mockCryptoService = {
 const mockSecretsService = {
     encrypt: vi.fn(),
     decrypt: vi.fn(),
-    // TASK-447 — Transit capability gate; default off (env/test), re-pinned in
+    // Transit capability gate; default off (env/test), re-pinned in
     // beforeEach and flipped on in the encryption-at-rest tests.
     supportsTransit: vi.fn(() => false),
 };
@@ -160,12 +160,12 @@ describe('GlobalSettingService', () => {
     beforeEach(() => {
         vi.clearAllMocks();
 
-        // TASK-447 — re-pin the Transit gate to off each test (clearAllMocks
+        // Re-pin the Transit gate to off each test (clearAllMocks
         // keeps implementations, so an encryption test flipping it on must not
         // leak into the next).
         mockSecretsService.supportsTransit.mockReturnValue(false);
 
-        // TASK-402 — default the revive probe to "no DELETED row" so every
+        // Default the revive probe to "no DELETED row" so every
         // pre-existing create test keeps exercising the plain-create branch.
         mockGlobalSettingRepository.findFirst.mockRejectedValue(new DataNotFoundException('globalSetting', '{}'));
 
@@ -185,7 +185,7 @@ describe('GlobalSettingService', () => {
             }
         });
 
-        // Create service instance with mocks (TASK-396 — constructor now also
+        // Create service instance with mocks (constructor also
         // takes UserRepository, ICryptoService, SecretsService for reveal).
         service = new GlobalSettingService(
             mockGlobalSettingRepository as any,
@@ -648,7 +648,7 @@ describe('GlobalSettingService', () => {
     });
 
     // =========================================================================
-    // TASK-447 (Phase 4C) — secret values are envelope-encrypted at rest on
+    // Secret values are envelope-encrypted at rest on
     // every value-write when Vault Transit is available. `encryptedValue` is
     // present ⟺ it decrypts to the current value, so the reveal read path never
     // returns a stale secret. Non-secrets and no-Transit posture are unaffected.
@@ -708,7 +708,7 @@ describe('GlobalSettingService', () => {
     });
 
     // =========================================================================
-    // TASK-332 — `locked` write-guard. A locked row (e.g. the platform
+    // `locked` write-guard. A locked row (e.g. the platform
     // capability `enable-local-raw-capture`) may only be written by a
     // GLOBAL_ADMIN. Mirrors the `updateTenantConfigs` posture already enforced
     // for the tenant-config PATCH path.
@@ -913,7 +913,7 @@ describe('GlobalSettingService', () => {
     });
 
     // =========================================================================
-    // TASK-396 — reveal (super-admin gate + step-up re-auth + audit, no plaintext
+    // Reveal (super-admin gate + step-up re-auth + audit, no plaintext
     // in the audit event). Decrypts via the repo's findByIdWithDecryptedValue.
     // =========================================================================
     describe('revealSecret (TASK-396)', () => {

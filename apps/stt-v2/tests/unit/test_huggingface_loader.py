@@ -1,7 +1,7 @@
 """Unit tests for HuggingFaceLoader.
 
-- TASK-010: MPS memory cleanup on unload
-- TASK-309: Multimodal LLM (Gemma 4) auto-detection in _load_by_task()
+- MPS memory cleanup on unload
+- Multimodal LLM (Gemma 4) auto-detection in _load_by_task()
 """
 
 from types import SimpleNamespace
@@ -77,7 +77,7 @@ class TestHuggingFaceUnload:
 
 
 # =============================================================================
-# TASK-309: Multimodal LLM tag-based loading tests
+# Multimodal LLM tag-based loading tests
 # =============================================================================
 
 

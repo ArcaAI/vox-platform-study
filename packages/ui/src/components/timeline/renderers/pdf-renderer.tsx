@@ -14,7 +14,7 @@ import type { PdfDocumentProps } from './pdf-document';
 // NodeNext (dts build) requires an explicit extension on relative dynamic imports;
 // esbuild rewrites `.js` → `.tsx` for the JS bundle. The `as unknown as …` keeps the
 // dts (CJS-interop) view of the default export aligned with esbuild's ESM runtime shape.
-// TASK-410 re-verified (tsc 5.9): dropping the extension → TS2835; dropping the cast →
+// re-verified (tsc 5.9): dropping the extension → TS2835; dropping the cast →
 // TS2322 (CJS interop wraps the module namespace as `default`) — still required.
 const LazyPdfDocument = React.lazy(() => import('./pdf-document.js') as unknown as Promise<{ default: React.ComponentType<PdfDocumentProps> }>);
 

@@ -84,8 +84,8 @@ export function isRetriableError(error: unknown): boolean {
 /**
  * Classify an HTTP response status into an `AgenticErrorCode`.
  *
- * Added in TASK-264 W0-11 to centralise the mapping previously inlined in
- * three places inside `AgenticClient` (`request`, `postFormData`, `uploadFormData`).
+ * Centralises the mapping shared by `AgenticClient`'s `request`,
+ * `postFormData`, and `uploadFormData` call sites.
  *
  * Mapping:
  * - 401             → `AUTHENTICATION_ERROR`
@@ -105,7 +105,7 @@ export function classifyHttpError(status: number): AgenticErrorCode {
 }
 
 /**
- * TASK-299 D-18 — Map an SMR (`apps/smr`) error payload to an
+ * Map an SMR (`apps/smr`) error payload to an
  * `AgenticErrorCode`. The backend SMR proxy returns errors shaped as
  * `{ detail?, message?, error_code? }`; this helper picks the
  * `error_code` first (when present) and falls back to HTTP-status

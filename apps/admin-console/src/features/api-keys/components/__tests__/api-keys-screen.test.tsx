@@ -174,7 +174,7 @@ describe('ApiKeysScreen', () => {
         expect(await screen.findByText('svc_reporting')).toBeDefined();
     });
 
-    // TASK-430 — cross-tenant admin surface: Tenant column + tenant filter.
+    // Cross-tenant admin surface: Tenant column + tenant filter.
     it('renders the Tenant column with the catalog name and dashes for platform keys', async () => {
         stubFetch(
             (call) => {

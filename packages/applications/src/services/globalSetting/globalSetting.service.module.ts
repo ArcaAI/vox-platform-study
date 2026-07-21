@@ -5,7 +5,7 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../baseServices';
 import { CryptoServiceModule } from '../crypto/crypto.service.module';
 
-// TASK-396 — reveal needs ICryptoService (bcrypt step-up verify) in addition to
+// Reveal needs ICryptoService (bcrypt step-up verify) in addition to
 // SecretsService (Vault decrypt, via CommonServiceModule) + UserRepository /
 // GlobalSettingRepository (via CoreDatabaseModule).
 

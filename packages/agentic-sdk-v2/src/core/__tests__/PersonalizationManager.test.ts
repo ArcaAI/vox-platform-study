@@ -14,7 +14,7 @@ import { createMockLogger, mockFetch, createMockResponse, createMockErrorRespons
 // Shared storage object that persists across mock reassignments
 const storageData: Record<string, string> = {};
 
-// TASK-304 Wave 2D — in-memory stand-in for the `arcaai-config` IDB
+// In-memory stand-in for the `arcaai-config` IDB
 // `personalization` store. Tests below seed/read it to verify the
 // cache-layer behaviour without spinning up a real IndexedDB.
 const idbStore = new Map<string, unknown>();
@@ -90,7 +90,7 @@ describe('PersonalizationManager', () => {
         });
 
         it('should hydrate cached preferences from the IDB personalization store', async () => {
-            // TASK-304 Wave 2D — cache lives in IDB, not localStorage.
+            // Cache lives in IDB, not localStorage.
             idbStore.set('arcaai-personalization/pre-login', { theme: 'dark' });
 
             const manager = new PersonalizationManager(

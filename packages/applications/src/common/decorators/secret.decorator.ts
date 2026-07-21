@@ -1,5 +1,5 @@
 /**
- * Phase 0 Item 4 (TASK-302 Stream A) — re-export shim.
+ * Re-export shim.
  *
  * Source of truth lives in `@arcaai/domains/common/secret.decorator`
  * to keep the dependency arrow one-directional (applications -> domains,

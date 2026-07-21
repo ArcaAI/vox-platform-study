@@ -43,7 +43,7 @@ import {
 } from './dto';
 
 /**
- * TASK-392 (Phase 1) — DB-backed plan-entitlements service.
+ * DB-backed plan-entitlements service.
  *
  * Resolution reads the seeded `PlanEntitlement` matrix and the per-tenant
  * `TenantEntitlement` override off the core repositories and merges them via
@@ -54,10 +54,10 @@ import {
  * The enforcement kill-switch (`entitlements.enabled`) mirrors the
  * `rate-limit.enabled` pattern exactly: reads are O(1) off the
  * `AppSettingsService` cache; writes go through `IGlobalSettingService` and
- * force a cache refresh. Ships OFF (Q9) so Phase-1 display is inert.
+ * force a cache refresh. Ships OFF (Q9) so display-only mode is inert.
  */
 /**
- * TASK-392 (Q7) — TTL for the per-tenant rate-limit policy cache. The throttler
+ * TTL for the per-tenant rate-limit policy cache. The throttler
  * consults this on EVERY default-tier request, so we cache the resolved plan
  * tier + override for a short window instead of re-reading three DB rows per
  * request. A tier change propagates within this window (rate-limit tiers are
@@ -69,7 +69,7 @@ const RATE_LIMIT_POLICY_TTL_MS = 30_000;
 export class EntitlementsService extends BaseService implements IEntitlementsService {
   private readonly logger = new Logger(EntitlementsService.name);
 
-  /** TASK-392 (Q7) — per-tenant rate-limit policy cache (short TTL, hot path). */
+  /** Per-tenant rate-limit policy cache (short TTL, hot path). */
   private readonly rateLimitPolicyCache = new Map<string, { value: TenantRateLimitPolicy | null; expiresAt: number }>();
 
   constructor(
@@ -87,7 +87,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     private readonly globalSettings: IGlobalSettingService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // TASK-392 (concurrency) — live per-tenant open-socket count for the
+    // (concurrency) — live per-tenant open-socket count for the
     // simultaneous-session gate + display. Optional/best-effort: the gate
     // fails OPEN (0) if the registry (Redis) is unavailable so an infra blip
     // never wrongly rejects a session.
@@ -136,11 +136,11 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
 
     const usage = await this.tenantService.getUsageStats(tenantId);
     const apiKeyCount = await this.apiKeyRepository.count({ where: { tenantId } });
-    // TASK-392 (Q5, Phase 2) — live rolling-monthly meter usage (current UTC
+    // Live rolling-monthly meter usage (current UTC
     // month window). Authoritative + near-realtime; independent of the
     // reconcile job, so the meters are populated even with the job off.
     const meterUsage = await this.metering.getCurrentUsage(tenantId);
-    // TASK-392 (concurrency) — live simultaneous active STT sessions for this
+    // (concurrency) — live simultaneous active STT sessions for this
     // tenant across all instances (best-effort; 0 if the registry is absent).
     const activeConcurrent = await this.getActiveConcurrency(tenantId);
 
@@ -196,7 +196,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     if (!wouldExceedLimit(limit, currentCount, increment)) return;
 
     // Q10 — block the NEW action only; existing resources are grandfathered.
-    // Emit an audit event (subscribers persist it in Phase 4), then throw the
+    // Emit an audit event (subscribers persist it), then throw the
     // typed error the API maps to 409/429.
     this.eventEmitter.emit(ENTITLEMENTS_QUOTA_BLOCKED_EVENT, {
       tenantId,
@@ -233,17 +233,17 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     await this.assertQuantityQuota(tenantId, capability, used, increment);
   }
 
-  // --- Concurrency gate (TASK-392, hard-block → 429) --------------------
+  // --- Concurrency gate (hard-block → 429) --------------------
 
   async assertConcurrencyQuota(tenantId: EntityId, increment = 1): Promise<void> {
-    // Q9 — inert until the kill-switch is flipped; keeps the hot session-start
+    // Inert until the kill-switch is flipped; keeps the hot session-start
     // path free of any Redis registry read while enforcement is OFF.
     if (!this.isEnforcementEnabled()) return;
 
     const resolved = await this.resolveForTenant(tenantId);
     const limit = resolved.limits.maxConcurrentSessions;
 
-    // Unlimited/ungated (null limit, incl. null-plan legacy + system tenant, Q3).
+    // Unlimited/ungated (null limit, incl. null-plan legacy + system tenant).
     if (limit === null) return;
 
     const active = await this.getActiveConcurrency(tenantId);

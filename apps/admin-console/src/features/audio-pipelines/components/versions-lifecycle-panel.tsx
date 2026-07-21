@@ -162,7 +162,7 @@ export function PipelineLifecycleTab({
     onReload: () => void;
     /** Clears the grid selection / closes the drawer after a successful delete. */
     onDeleted: () => void;
-    /** TASK-531 — opens the clone dialog; replaces Delete on a locked copy. */
+    /** Opens the clone dialog; replaces Delete on a locked copy. */
     onClone?: () => void;
 }) {
     const setDefault = useSetDefaultPipeline();
@@ -242,7 +242,7 @@ export function PipelineLifecycleTab({
                             Assign tenant
                         </Button>
                     ) : null}
-                    {/* TASK-531 — set-default and enable/disable stay available on a
+                    {/* Set-default and enable/disable stay available on a
                         locked template copy (OD-1); only Delete is withheld, since the
                         gateway answers it with 403. Clone is offered in its place. */}
                     {pipeline.templateLocked ? (

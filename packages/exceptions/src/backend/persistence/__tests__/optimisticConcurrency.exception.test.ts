@@ -24,11 +24,10 @@ describe('OptimisticConcurrencyException', () => {
     expect(json.metadata).toEqual({ expectedVersion: 1, currentVersion: 2 });
   });
 
-  // TASK-302 Stream D Phase E.6 — `model` and `entityId` are exposed as
-  // separate public fields so observability layers (Prometheus labels,
-  // structured logs) can read them without parsing the message string.
-  // Critically, `metadata` is unchanged so the SDK / UI conflict-handler
-  // contract (Phase D.4 / D.5) keeps working.
+  // `model` and `entityId` are exposed as separate public fields so
+  // observability layers (Prometheus labels, structured logs) can read
+  // them without parsing the message string. Critically, `metadata` is
+  // unchanged so the SDK / UI conflict-handler contract keeps working.
   it('exposes `model` and `entityId` as public fields without folding them into metadata', () => {
     const exc = new OptimisticConcurrencyException('PromptTemplate', 'tpl-42', {
       expectedVersion: 3,

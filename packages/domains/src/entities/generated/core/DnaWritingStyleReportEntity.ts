@@ -11,7 +11,7 @@ export interface IDnaWritingStyleReportEntity extends IBaseTenantEntity {
   departmentId?: string | null;
   reportData?: Record<string, unknown> | null;
   styleText?: string | null;
-  // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the
+  // Vault-Transit (hope-phi) ciphertext of the
   // writing-style fields + shared key version. Phase 6 dropped the plaintext
   // columns; plaintext survives only as transient fields repopulated by
   // decrypt-on-read.
@@ -71,7 +71,7 @@ export class DnaWritingStyleReportEntity extends BaseTenantEntity {
     this.setProperty('departmentId', value);
   }
 
-  // TASK-369 Phase 3C — clinical PHI fields. @Secret() marks them for audit-log
+  // Clinical PHI fields. @Secret() marks them for audit-log
   // redaction (defense-in-depth) alongside the encrypted counterpart.
   @Secret()
   get reportData(): IDnaWritingStyleReportEntity['reportData'] {
@@ -91,7 +91,7 @@ export class DnaWritingStyleReportEntity extends BaseTenantEntity {
     this.setProperty('styleText', value);
   }
 
-  // TASK-369 Phase 3C — Vault-Transit ciphertext columns. @Secret() guards the
+  // Vault-Transit ciphertext columns. @Secret() guards the
   // ciphertext from audit-log surfaces.
   @Secret()
   get encryptedReportData(): IDnaWritingStyleReportEntity['encryptedReportData'] {

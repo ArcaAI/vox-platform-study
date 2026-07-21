@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 /**
  * Dedicated Vitest config for the live-Postgres WORM regression guard
- * (`src/__tests__/harness-audit-worm.postgres.test.ts`, TASK-330 Phase 0.2).
+ * (`src/__tests__/harness-audit-worm.postgres.test.ts`).
  *
  * The standard `@arcaai/database` config (`vitest.config.ts`) and the root
  * `pnpm test:unit` both EXCLUDE `*.postgres.test.ts` because those suites need

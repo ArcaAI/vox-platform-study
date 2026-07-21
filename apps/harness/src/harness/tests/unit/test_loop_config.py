@@ -1,6 +1,6 @@
 """Tests for the harness loop / gate-adapter configuration additions (Lane I).
 
-RED-first: written before the ``Settings`` additions exist. The durable loop
+The durable loop
 needs the SMR/NLP/api base URLs, the (configurable) apps/api internal-harness
 path prefix, the bounded-regen budget, and the gate SLA / escalation durations.
 """
@@ -76,7 +76,7 @@ class TestLoopConfigEnvOverride:
 
 
 class TestOptimisticDeliveryFlag:
-    """TASK-355 Phase D (R-7) — the ``HARNESS_OPTIMISTIC_DELIVERY_ENABLED`` kill-switch.
+    """The ``HARNESS_OPTIMISTIC_DELIVERY_ENABLED`` kill-switch.
 
     The FIRST key of the two-key optimistic gate (the second is the durable
     ``task-355-optimistic-delivery`` patch marker). It is read here, in NON-workflow

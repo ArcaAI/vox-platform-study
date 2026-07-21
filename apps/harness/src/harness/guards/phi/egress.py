@@ -1,4 +1,4 @@
-"""PHI egress chokepoint (TASK-357): enforce the fail-closed guard before cloud LLM calls.
+"""PHI egress chokepoint: enforce the fail-closed guard before cloud LLM calls.
 
 The cloud-bound activities call exactly one of these helpers immediately before any
 cloud LLM egress, so the fail-closed :class:`~harness.guards.phi.redactor.PhiRedactor`
