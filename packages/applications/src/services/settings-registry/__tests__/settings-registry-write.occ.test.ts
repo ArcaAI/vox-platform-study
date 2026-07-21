@@ -22,7 +22,7 @@
  *   - a lost create race is recovered by re-reading and updating.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { OptimisticConcurrencyException } from '@arcaai/exceptions';
+import { DataNotFoundException, OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { SettingsRegistryWriteService } from '../settings-registry-write.service';
 
 const KEY = 'agentic.context.liveDelta.maxChars';
@@ -124,5 +124,33 @@ describe('SettingsRegistryWriteService — OCC (TASK-533 B2)', () => {
   it('keeps the descriptor guards ahead of any OCC work (unknown key still 400)', async () => {
     await expect(buildService().write('not.a.registered.key', 1, { expectedVersion: 1 })).rejects.toThrow();
     expect(globalSettingRepository.findFirst).not.toHaveBeenCalled();
+  });
+
+  // ── TASK-534 e2e G5 — the REAL repository contract ────────────────────────
+  // `Repository.findFirst` never returns null: on no match it THROWS
+  // `DataNotFoundException` (packages/domains/src/common/repository.ts). The
+  // earlier tests mocked the null-return that the real seam does not have,
+  // which is exactly how the fresh-DB "every GET registry/:key is 404" bug
+  // shipped. These pin the throw-path.
+
+  it('G5: getBackingRowVersion returns 0 (not a 404) when findFirst throws DataNotFoundException', async () => {
+    globalSettingRepository.findFirst.mockRejectedValue(new DataNotFoundException('globalSetting', KEY));
+
+    await expect(buildService().getBackingRowVersion(KEY)).resolves.toBe(0);
+  });
+
+  it('G5: a FIRST write still takes the create branch when findFirst throws DataNotFoundException', async () => {
+    globalSettingRepository.findFirst.mockRejectedValue(new DataNotFoundException('globalSetting', KEY));
+
+    const result = await buildService().write(KEY, 500);
+
+    expect(globalSettings.create).toHaveBeenCalled();
+    expect(result.version).toBe(1);
+  });
+
+  it('G5: a NON-not-found repository error still propagates', async () => {
+    globalSettingRepository.findFirst.mockRejectedValue(new Error('connection refused'));
+
+    await expect(buildService().getBackingRowVersion(KEY)).rejects.toThrow('connection refused');
   });
 });

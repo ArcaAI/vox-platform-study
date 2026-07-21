@@ -98,16 +98,33 @@ test.describe('agentic policy governance (OCC + GLOBAL_ADMIN privilege walls)', 
   });
 
   test('A: PATCH harness policy with the current If-Match succeeds and bumps version', async ({ request }) => {
+    // REFRESHED (TASK-534 G1): on a fresh seed the FIRST edit CREATES the
+    // tenant row — the caller's validator is the inherited SYSTEM default's
+    // version and the created row starts at version 1, so "bumps version"
+    // cannot hold on that edit. (Pre-fix this test only passed because the
+    // stale-If-Match test's silent create — the G1 bug — materialized the row
+    // first.) Edit once to guarantee the row exists, then assert the OCC
+    // version bump on a SECOND edit against the materialized row.
     const before = await readPolicy(request, globalAdminToken);
-    const nextMaxRegen = before.maxRegen === 2 ? 3 : 2;
-    const resp = await request.patch(HARNESS_POLICY, {
+    const firstMaxRegen = before.maxRegen === 2 ? 3 : 2;
+    const first = await request.patch(HARNESS_POLICY, {
       headers: { ...bearer(globalAdminToken), 'If-Match': `"${before.version}"` },
-      data: { maxRegen: nextMaxRegen, reason: `e2e ${Date.now()}` },
+      data: { maxRegen: firstMaxRegen, reason: `e2e ${Date.now()}` },
     });
-    expect(resp.status()).toBe(200);
-    const after = (await resp.json()) as HarnessPolicy;
-    expect(after.maxRegen).toBe(nextMaxRegen);
-    expect(after.version).toBeGreaterThan(before.version);
+    expect(first.status()).toBe(200);
+    expect(((await first.json()) as HarnessPolicy).maxRegen).toBe(firstMaxRegen);
+
+    const mid = await readPolicy(request, globalAdminToken);
+    expect(mid.source).toBe('tenant');
+    const secondMaxRegen = mid.maxRegen === 2 ? 3 : 2;
+    const second = await request.patch(HARNESS_POLICY, {
+      headers: { ...bearer(globalAdminToken), 'If-Match': `"${mid.version}"` },
+      data: { maxRegen: secondMaxRegen, reason: `e2e ${Date.now()}` },
+    });
+    expect(second.status()).toBe(200);
+    const after = (await second.json()) as HarnessPolicy;
+    expect(after.maxRegen).toBe(secondMaxRegen);
+    expect(after.version).toBeGreaterThan(mid.version);
   });
 
   // ─────────────── B. GLOBAL_ADMIN-only global policy ───────────────

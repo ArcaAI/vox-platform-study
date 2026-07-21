@@ -26,6 +26,12 @@
 import { test, expect, APIRequestContext } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
+// TASK-534 e2e G7 — these tests share mutable state (the registry row count,
+// `createdIds` ordering between the register and cross-tenant tests). Under the
+// root config's `fullyParallel: true` they interleaved across workers and
+// failed on each other's writes; run this file's tests strictly in order.
+test.describe.configure({ mode: 'serial' });
+
 const BASE = '/api/v1/admin/ai-models';
 const DISCOVERY = `${BASE}/discovery`;
 

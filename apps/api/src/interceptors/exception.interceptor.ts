@@ -1,6 +1,12 @@
 import { ApiErrorResponse, IClsContext } from '@arcaai/applications';
 import { PrismaClientKnownRequestError, PrismaClientValidationError } from '@arcaai/database';
-import { BaseException, DataNotFoundException, OptimisticConcurrencyException, QuotaExceededException } from '@arcaai/exceptions';
+import {
+  ArgumentInvalidException,
+  BaseException,
+  DataNotFoundException,
+  OptimisticConcurrencyException,
+  QuotaExceededException,
+} from '@arcaai/exceptions';
 import { BadRequestException, CallHandler, ExecutionContext, HttpException, HttpStatus, Injectable, Logger, NestInterceptor } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { Observable, throwError } from 'rxjs';
@@ -212,6 +218,25 @@ export class ExceptionInterceptor implements NestInterceptor {
             status,
           });
           return throwError(() => new HttpException(err.toJSON(), status));
+        }
+
+        // TASK-534 e2e G4 — services signal invalid input with
+        // `ArgumentInvalidException` (the rule-04 house pattern: unwritable
+        // tiers, type mismatches, no-op updates, bad slugs, …). It extends
+        // BaseException, so without this branch it fell through to the generic
+        // 500 below — turning every service-level validation refusal into an
+        // "Internal server error". RFC-correct mapping is `400 Bad Request`;
+        // body is `err.toJSON()` (`code: 'GENERIC.ARGUMENT_INVALID'`), matching
+        // the OCC/quota branches' shape. MUST run before the generic
+        // BaseException branch for the same ordering reason they do.
+        if (err instanceof ArgumentInvalidException) {
+          this.logger.debug({
+            message: 'Invalid argument',
+            ...baseContext,
+            correlationId: err.correlationId,
+            errorMessage: err.message,
+          });
+          return throwError(() => new HttpException(err.toJSON(), HttpStatus.BAD_REQUEST));
         }
 
         if (err instanceof BaseException) {

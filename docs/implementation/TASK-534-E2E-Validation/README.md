@@ -249,7 +249,13 @@ Exact var names are proposals frozen at spec-authoring time; they are test-only 
 
 ## 9. Implementation Summary
 
-_Pending_
+**First full execution + defect clearance, 2026-07-21** (TASK-539 cycle-1 queue item 1; workflow evidence in SOTA-Track `findings-register.md` F-022/023/024):
+
+- **Run 1 (first-ever execution)** against the freshly reset test stack (API on 8868, no port collision; S3-enum + task_524 schema present via push+seed): **649 passed / 22 failed / 23 skipped** (1.1 m).
+- **Triage** (all 22 root-caused with live repros): **15 product defects in 7 groups / 7 test bugs in 2 groups** — G1 harness-policy first-edit ignored `If-Match`; G2 `If-Match: "0"` create lane impossible (decorator vs TASK-506/526 contract — also broke the shipped console's first-edit path); G3 provider PUT encrypted before OCC → 500; G4 `ArgumentInvalidException` → 500 platform-wide; G5 `findFirst`-throws killed the settings-registry read lane; G6 discovery routes shadowed by `:id` (surface dead); G9 role clone demanded `manage:Role`; G7 non-hermetic specs under `fullyParallel`; G8 specs frozen at pre-TASK-532 governance.
+- **Fixes applied** (TDD where a unit seam exists; ~9 new/updated unit tests): controller-order fix (`ai-model.module.ts`), null-safe `findBackingRow`, `ArgumentInvalidException`→400 interceptor branch, OCC-before-encryption + Transit-failure→503, create-branch OCC enforcement in harness-policy, clone gate → `@CanCreate('Role')` (owner-reversible, comment at route), 404-on-null in `fetchById/fetchBySlug` (audio-pipeline + ai-model admin), serial-mode/fixture hermeticity for 528/531 specs, 506 spec refreshed to the 9-key registry + all-prefixes-global-admin governance.
+- **Owner decision (G2/F-023):** accept `If-Match: "0"` as create-intent — decorator relaxed with RED→GREEN evidence (28 decorator tests), stale-`"0"`-vs-existing-row → 412 covered, both former known-reds restored and green.
+- **End state on the 7 affected suites: 107 passed / 0 failed / 1 pre-existing conditional skip.** Units: applications 6,677 · api 2,396+ green; `pnpm build:api` green; full-suite confirmation run recorded in Change History.
 
 ---
 
@@ -259,3 +265,4 @@ _Pending_
 |---|---|
 | 2026-07-20 | Ticket README authored (execution-ready): code-verified spec inventory (65 `*.spec.ts` + 1 uncollected `-spec.ts`), helper-barrel known type errors re-verified, test-infra commands + isolated ports confirmed, spec matrix + ownership manifest + run protocol + gate sweep + env-gating handoff defined. Status Pending — blocked on TASK-523…533 (per-surface partial execution allowed as phases land). |
 | 2026-07-20 | Program plan §2.5 **Completion & Cleanup Doctrine** adopted as BINDING for this ticket (owner directive): incorrect implementations in the owned surface are removed completely with the fix; partial implementations are finished end-to-end (or explicitly retired); redundant implementations are converged and deleted. Reviewer enforces the §2.5 classification table, plan-conformance (deviations = recorded decision rows), full-closure traceability of the claimed GAP/D/M IDs, and the performance gates. |
+| 2026-07-21 | **First full execution + defect clearance** (see §9): run 1 = 649/22/23; 22 failures triaged (15 product defects / 7 test bugs), all fixed incl. owner-decided G2 (`If-Match: "0"` = create-intent). Confirmation full-suite run: **669 passed / 23 skipped / 1 throttle-flake** (task-388 — 19/19 green re-run in isolation; flake caused by back-to-back full runs hitting the login throttle, not by any fix). API e2e gate is GREEN at working-tree state on top of `3d016cb0`. Remaining ticket scope: env-gated lanes (Vault-live, browser/console e2e) per §4. |

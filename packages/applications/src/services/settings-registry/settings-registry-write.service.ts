@@ -1,7 +1,7 @@
 import { ForbiddenException, HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { ArgumentInvalidException } from '@arcaai/exceptions';
+import { ArgumentInvalidException, DataNotFoundException } from '@arcaai/exceptions';
 import { GlobalSettingRepository, ResourceType, SysEventType, ValueType } from '@arcaai/domains';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { BaseService } from '../../common';
@@ -150,10 +150,20 @@ export class SettingsRegistryWriteService extends BaseService {
 
   /** The backing KV row for `key`, read FRESH (never the AppSettings snapshot). */
   private async findBackingRow(key: string): Promise<{ id: string; version: number } | null> {
-    const row = await this.globalSettingRepository.findFirst({
-      where: { key, namespace: REGISTRY_SETTING_NAMESPACE },
-    } as never);
-    return row ? { id: row.id, version: row.version } : null;
+    // `Repository.findFirst` THROWS `DataNotFoundException` on no match (it
+    // never returns null) — on a fresh DB with no registry rows that exception
+    // used to escape as a blanket 404 on every `GET registry/:key` (TASK-534
+    // e2e G5). "No backing row yet" is a normal state here (code-default /
+    // first write), so it maps to null, not an error.
+    try {
+      const row = await this.globalSettingRepository.findFirst({
+        where: { key, namespace: REGISTRY_SETTING_NAMESPACE },
+      } as never);
+      return row ? { id: row.id, version: row.version } : null;
+    } catch (err) {
+      if (err instanceof DataNotFoundException) return null;
+      throw err;
+    }
   }
 
   /**

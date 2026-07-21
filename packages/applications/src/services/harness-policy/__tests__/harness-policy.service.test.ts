@@ -510,6 +510,35 @@ describe('HarnessPolicyService', () => {
       expect(result.source).toBe('tenant');
     });
 
+    // ── TASK-534 e2e G1 — the FIRST-EDIT create path honors the precondition ──
+    // Pre-fix, a stale `If-Match` on a tenant with no policy row silently
+    // CREATED the row and returned 200 (observed on the fresh e2e DB); the
+    // caller's validator must be compared against the inherited default's
+    // version (or 0 when only code defaults exist), per RFC 7232.
+
+    it('G1: a stale expectedVersion on first edit → OptimisticConcurrencyException, NO row created', async () => {
+      policyRepository.findForExactTenant.mockResolvedValue(null);
+      policyRepository.findSystemDefault.mockResolvedValue(systemDefaultEntity()); // version 1
+
+      await expect(service.updatePolicy({ coverageThreshold: 0.5 }, 999)).rejects.toBeInstanceOf(OptimisticConcurrencyException);
+      expect(policyRepository.create).not.toHaveBeenCalled();
+      expect(policyChangeRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('G1: on first edit with NO system default, only version 0 (or no validator) is accepted', async () => {
+      policyRepository.findForExactTenant.mockResolvedValue(null);
+      policyRepository.findSystemDefault.mockResolvedValue(null);
+      policyRepository.create.mockImplementation(async (entity) => entity);
+
+      await expect(service.updatePolicy({ coverageThreshold: 0.5 }, 7)).rejects.toBeInstanceOf(OptimisticConcurrencyException);
+      expect(policyRepository.create).not.toHaveBeenCalled();
+
+      // No validator at all (off-route/service caller) still creates.
+      const result = await service.updatePolicy({ coverageThreshold: 0.5 });
+      expect(policyRepository.create).toHaveBeenCalledTimes(1);
+      expect(result.source).toBe('tenant');
+    });
+
     it('propagates OptimisticConcurrencyException and writes NO change row on version drift', async () => {
       const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, coverageThreshold: 0.8 });
       policyRepository.findForExactTenant.mockResolvedValue(own);

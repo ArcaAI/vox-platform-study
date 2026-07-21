@@ -1,5 +1,5 @@
 import { AiModelService, CreateModelRequest, HttpMethod, ModelResponse, PaginatedModelResponse, UpdateModelRequest } from '@arcaai/applications';
-import { Body, Controller, Param, Query } from '@nestjs/common';
+import { Body, Controller, NotFoundException, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiEndpoint, Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 
@@ -62,8 +62,14 @@ export class AiModelAdminController {
   })
   @ApiParam({ name: 'id', description: 'Model ID', type: String })
   @ApiResponse({ status: 404, description: 'Model not found' })
-  async fetchById(@Param('id') id: string): Promise<ModelResponse | null> {
-    return this.aiModelService.getById(id);
+  async fetchById(@Param('id') id: string): Promise<ModelResponse> {
+    const model = await this.aiModelService.getById(id);
+    if (!model) {
+      // TASK-534 e2e G7 — a null service result used to serialize as HTTP 200
+      // with an EMPTY body; an absent row is a 404.
+      throw new NotFoundException(`Model '${id}' not found`);
+    }
+    return model;
   }
 
   @ApiEndpoint({
@@ -73,8 +79,13 @@ export class AiModelAdminController {
   })
   @ApiParam({ name: 'slug', description: 'Model slug', type: String })
   @ApiResponse({ status: 404, description: 'Model not found' })
-  async fetchBySlug(@Param('slug') slug: string): Promise<ModelResponse | null> {
-    return this.aiModelService.getBySlug(slug);
+  async fetchBySlug(@Param('slug') slug: string): Promise<ModelResponse> {
+    const model = await this.aiModelService.getBySlug(slug);
+    if (!model) {
+      // TASK-534 e2e G7 — see fetchById: null must be a 404, not a 200-empty.
+      throw new NotFoundException(`Model with slug '${slug}' not found`);
+    }
+    return model;
   }
 
   @ApiEndpoint({

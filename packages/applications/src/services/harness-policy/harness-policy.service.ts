@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { ClsService } from 'nestjs-cls';
 import {
   CoreDatabaseService,
@@ -379,7 +380,7 @@ export class HarnessPolicyService {
   }
 
   /**
- * resolve the SYSTEM-only `harness.judge` AiTaskDefault into a
+   * resolve the SYSTEM-only `harness.judge` AiTaskDefault into a
    * harness-consumable `{ judgeProvider, judgeModel }`. `judgeModel` is the
    * model's `sourceUri` (the id the judge client sends); `judgeProvider` is the
    * model's provider normalised to a `JudgeProvider` value. Best-effort: a
@@ -414,7 +415,7 @@ export class HarnessPolicyService {
    * default can never be silently bypassed (SMR itself also fail-closes with a
    * 422).
    *
- * model-routing precedence (TRACKER D-11): the
+   * model-routing precedence (TRACKER D-11): the
    * `AiTaskDefault` key for the task (`smr.live` / `smr.finalize`) is consulted
    * FIRST. When it resolves to an ENABLED model, its `{ provider, sourceUri }`
    * wins (sourceUri is the provider-native identifier actually sent to SMR).
@@ -475,9 +476,7 @@ export class HarnessPolicyService {
   private assertNoGlobalAdminOnlyPolicyWrites(dto: UpdateHarnessPolicyRequest): void {
     const present = GLOBAL_ADMIN_ONLY_POLICY_KEYS.filter((key) => (dto as Record<string, unknown>)[key] !== undefined);
     if (present.length === 0) return;
-    throw new ForbiddenException(
-      `HarnessPolicy fields [${present.join(', ')}] are managed by global administrators only.`,
-    );
+    throw new ForbiddenException(`HarnessPolicy fields [${present.join(', ')}] are managed by global administrators only.`);
   }
 
   /** Edit the SYSTEM-tenant GLOBAL-DEFAULT policy row (platform-only). */
@@ -543,9 +542,25 @@ export class HarnessPolicyService {
     // SYSTEM global default for a tenant row; the code defaults for the global
     // row itself), then apply the patch over it.
     const inherited = source === 'tenant' ? await this.policyRepository.findSystemDefault() : null;
-    const base: HarnessPolicyKnobs = inherited
-      ? entityToKnobs(inherited)
-      : (HARNESS_POLICY_DEFAULTS as unknown as HarnessPolicyKnobs);
+
+    // TASK-534 e2e G1 — the create path must honor the precondition too. The
+    // caller read the effective policy and echoed its version as `If-Match`;
+    // what they read is the SYSTEM default's version on BOTH lanes (tenant
+    // reads inherit it; the global lane reads the SYSTEM row itself), or the
+    // code default's version 0 when no row exists at all. A mismatched
+    // validator means they edited against a state that has since changed —
+    // RFC 7232 says 412, not a silent create. Mirrors
+    // `AiProviderConnectionService.upsertRow`'s absent-row check.
+    const reference = source === 'tenant' ? inherited : await this.policyRepository.findSystemDefault();
+    const referenceVersion = reference?.version ?? 0;
+    if (expectedVersion !== undefined && expectedVersion !== referenceVersion) {
+      throw new OptimisticConcurrencyException('harnessPolicy', `${tenantId}:${source}`, {
+        expectedVersion,
+        currentVersion: referenceVersion,
+      });
+    }
+
+    const base: HarnessPolicyKnobs = inherited ? entityToKnobs(inherited) : (HARNESS_POLICY_DEFAULTS as unknown as HarnessPolicyKnobs);
     const merged = mergeKnobs(base, dto);
     const entity = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId, ...merged, createdBy: changedBy });
     entity.validate();

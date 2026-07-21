@@ -12,22 +12,28 @@ import { BadRequestException, createParamDecorator, ExecutionContext, HttpExcept
 const STRONG_VALIDATOR_RE = /^"(0|[1-9][0-9]*)"$/;
 
 /**
- * Parses the inbound `If-Match` header into a positive integer — TASK-302
- * Stream D Phase D (D.2).
+ * Parses the inbound `If-Match` header into a non-negative integer — TASK-302
+ * Stream D Phase D (D.2); `"0"` accepted since TASK-534 (owner decision, G2).
  *
  * Behavior table:
  *
  * | header                 | route w/ @RequiresIfMatch | result               |
  * |------------------------|---------------------------|----------------------|
  * | `If-Match: "7"`        | either                    | `7`                  |
+ * | `If-Match: "0"`        | either                    | `0` (create-intent)  |
  * | (missing)              | NOT annotated             | `undefined`          |
  * | (missing)              | annotated                 | throws **428**       |
  * | `If-Match: 7`          | either                    | throws 400 (no quotes) |
  * | `If-Match: W/"7"`      | either                    | throws 400 (weak)    |
  * | `If-Match: *`          | either                    | throws 400 (wildcard) |
- * | `If-Match: "0"`        | either                    | throws 400 (zero)    |
  * | `If-Match: "-1"`       | either                    | throws 400 (negative)|
  * | `If-Match: "abc"`      | either                    | throws 400 (NaN)     |
+ *
+ * `"0"` is the config-plane first-edit/create precondition (the TASK-506/526
+ * `FIRST_EDIT_ETAG` convention): a GET on a not-yet-materialized row returns a
+ * `version: 0` placeholder, and the client echoes it. The parser only carries
+ * the number — each service's CAS decides create-vs-412 (a `"0"` against a row
+ * at version >= 1 is stale and must 412).
  *
  * The `undefined` fall-through is intentional: it lets the service-to-service
  * `expectedVersion: number` body field continue to work for non-browser
@@ -71,10 +77,10 @@ export function extractExpectedVersion(_data: unknown, ctx: ExecutionContext): n
     throw new BadRequestException(`Invalid If-Match header: ${raw}. Expected a strong validator of the form "<positive integer>" (RFC 7232 §3.1).`);
   }
   const parsed = Number.parseInt(match[1], 10);
-  if (!Number.isInteger(parsed) || parsed < 1) {
+  if (!Number.isInteger(parsed) || parsed < 0) {
     // The regex catches negative / non-numeric; this guard is defense in
-    // depth for the zero case + future regex relaxations.
-    throw new BadRequestException(`Invalid If-Match header: ${raw}. Version must be a positive integer (>= 1).`);
+    // depth for future regex relaxations.
+    throw new BadRequestException(`Invalid If-Match header: ${raw}. Version must be a non-negative integer.`);
   }
   return parsed;
 }
