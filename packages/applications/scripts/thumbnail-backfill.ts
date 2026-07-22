@@ -16,7 +16,7 @@
  *
  * Usage (from repo root; loads .env.dev → dev MinIO + Postgres):
  *   NODE_ENV=development node_modules/.bin/tsx \
- *     packages/applications/scripts/task-376-thumbnail-backfill.ts
+ *     packages/applications/scripts/thumbnail-backfill.ts
  */
 import 'reflect-metadata';
 // Importing @arcaai/database auto-loads `.env.dev` (DATABASE_URL + MINIO_*).
@@ -26,7 +26,7 @@ import {
   deriveThumbnailKey,
   isThumbnailableImageMimeType,
 } from '../src/services/baseServices/storage/image-thumbnail.service';
-import { getObjectBytes, makeS3Client, objectExists, parseStorageUri, putObject } from './task-376-storage';
+import { getObjectBytes, makeS3Client, objectExists, parseStorageUri, putObject } from './media-storage';
 
 async function main(): Promise<void> {
   const prisma = getExtendedPrismaClient();
@@ -39,7 +39,7 @@ async function main(): Promise<void> {
     orderBy: { createdAt: 'asc' },
   });
 
-  console.log(`[task-376 backfill] scanning ${images.length} image Media row(s)…`);
+  console.log(`[thumbnail-backfill] scanning ${images.length} image Media row(s)…`);
 
   let generated = 0;
   let alreadyHad = 0;
@@ -88,7 +88,7 @@ async function main(): Promise<void> {
   await prisma.$disconnect();
   s3.destroy();
 
-  console.log('\n===== TASK-376 BACKFILL RESULT =====');
+  console.log('\n===== THUMBNAIL BACKFILL RESULT =====');
   console.log(
     JSON.stringify({ scanned: images.length, generated, alreadyHad, skipped, failed }, null, 2),
   );
@@ -96,6 +96,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error('[task-376] backfill FAILED:', err);
+  console.error('[thumbnail-backfill] backfill FAILED:', err);
   process.exitCode = 1;
 });

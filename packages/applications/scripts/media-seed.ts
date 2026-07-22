@@ -28,14 +28,14 @@
  * The PRIMARY image's `.thumb.webp` is generated inline here (mirroring the
  * upload path, satisfying "the image gets a real thumbnail"). The MIXED item's
  * image is uploaded WITHOUT a derivative ON PURPOSE, so the companion backfill
- * (`task-376-thumbnail-backfill.ts`) has a real image to generate one for —
+ * (`thumbnail-backfill.ts`) has a real image to generate one for —
  * demonstrating the backfill end-to-end. After both scripts run, every image
  * has a real downscaled thumbnail.
  *
  * Usage:
  *   # Standalone, dev stack (loads .env.dev → dev MinIO + Postgres):
  *   NODE_ENV=development node_modules/.bin/tsx \
- *     packages/applications/scripts/task-376-media-seed.ts
+ *     packages/applications/scripts/media-seed.ts
  *
  *   # Test DB (loads .env.test); also runs automatically as part of:
  *   pnpm test:db:seed:media        # or, transitively, pnpm test:db:reset
@@ -45,7 +45,7 @@ import type { S3Client } from '@aws-sdk/client-s3';
 // Importing @arcaai/database auto-loads `.env.dev` (DATABASE_URL + MINIO_*).
 import { getExtendedPrismaClient } from '@arcaai/database';
 import { ImageThumbnailService, deriveThumbnailKey } from '../src/services/baseServices/storage/image-thumbnail.service';
-import { ensureBucket, makeS3Client, putObject } from './task-376-storage';
+import { ensureBucket, makeS3Client, putObject } from './media-storage';
 
 // --- Stable FKs (proven Global-tenant rows; see seed/00-constants.ts) --------
 const TENANT_ID = '50000000-0000-0000-0000-000000000000'; // SEED_TENANT_ID (Global customer tenant)
@@ -221,7 +221,7 @@ function buildSampleWav(seconds = 1, sampleRate = 16000, freq = 440): Buffer {
 async function main(): Promise<void> {
   const prisma = getExtendedPrismaClient();
 
-  console.log('[task-376] seeding media for consultation', CONSULTATION_ID);
+  console.log('[media-seed] seeding media for consultation', CONSULTATION_ID);
 
   // ── Object storage (BEST-EFFORT / CI-safe) ────────────────────────────────
   // Upload the sample blobs + the primary image's thumbnail ONLY when MinIO is
@@ -296,7 +296,7 @@ async function main(): Promise<void> {
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     console.warn(
-      '[task-376] ⚠️  object storage unavailable — seeding DB rows ONLY (no MinIO objects / thumbnail). ' +
+      '[media-seed] ⚠️  object storage unavailable — seeding DB rows ONLY (no MinIO objects / thumbnail). ' +
         'Presigned urls still resolve offline; the media E2E thumbnailUrl falls back to the full-size url. ' +
         `Reason: ${reason}`,
     );
@@ -457,7 +457,7 @@ async function main(): Promise<void> {
     s3.destroy();
   }
 
-  console.log('\n===== TASK-376 SEED RESULT =====');
+  console.log('\n===== MEDIA SEED RESULT =====');
   console.log(
     JSON.stringify(
       {
@@ -480,6 +480,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error('[task-376] seed FAILED:', err);
+  console.error('[media-seed] seed FAILED:', err);
   process.exitCode = 1;
 });

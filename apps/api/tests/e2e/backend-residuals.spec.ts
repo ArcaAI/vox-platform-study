@@ -38,7 +38,7 @@ interface Paginated<T> {
   page: number;
 }
 
-// Media-seed fixture ids (see packages/applications/scripts/task-376-media-seed.ts).
+// Media-seed fixture ids (see packages/applications/scripts/media-seed.ts).
 const MEDIA_CONSULTATION_ID = process.env.E2E_CONSULTATION_ID ?? '90000000-0000-0000-0000-000000000376';
 const RECORDING_MEDIA_ID = '96000000-0000-0000-0000-000000000381';
 

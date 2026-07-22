@@ -24,6 +24,7 @@ from harness.sensors.base import NEREntity, SensorContext, SensorResult
 from harness.sensors.config import SensorThresholds
 from harness.sensors.registry import computational_sensors
 from harness.services.provenance import build_citations_map, clean_entities_for_sensors
+from harness.temporal.prompt_cache import extract_cited_segment_ids
 
 logger = get_logger(__name__)
 
@@ -97,6 +98,7 @@ def run_computational_sensors(
     response_format: dict[str, Any] | None = None,
     transcript_context_item_id: str | None = None,
     retrieved_chunk_ids: Sequence[str] = (),
+    allowed_segment_ids: Sequence[str] = (),
     thresholds: SensorThresholds | None = None,
 ) -> SensorRunOutput:
     """Run all computational sensors over one generated draft."""
@@ -143,6 +145,17 @@ def run_computational_sensors(
         retrieved_chunk_ids=retrieved_chunk_ids,
     )
 
+    # `[[seg:<id>]]` StrictCitations transcript-segment markers — disjoint from the
+    # NER-claims lane above. Extracted + validated against `allowed_segment_ids`
+    # (the consultation's own persisted segments) the same way the RAG `[[kb:]]`
+    # markers are validated against `retrieved_chunk_ids` — a hallucinated id never
+    # survives. Feeds `citation_presence`'s marker-evidenced credit path.
+    cited_segment_ids = (
+        extract_cited_segment_ids(note_text, set(allowed_segment_ids))
+        if allowed_segment_ids
+        else []
+    )
+
     context = SensorContext(
         note_text=note_text,
         soap_sections=soap_sections,
@@ -151,6 +164,7 @@ def run_computational_sensors(
         transcript_entities=list(transcript_entities),
         soap_schema=response_format or {},
         citations_map=citations_map,
+        cited_segment_ids=cited_segment_ids,
     )
 
     results = [sensor.run(context) for sensor in computational_sensors(thresholds)]

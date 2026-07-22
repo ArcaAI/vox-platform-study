@@ -752,6 +752,9 @@ class HarnessDocWorkflow:
                     response_format=assembled.response_format,
                     transcript_context_item_id=inp.context_item_id,
                     retrieved_chunk_ids=retrieved_chunk_ids,
+                    # PHI-safe segment ids from assemble (empty ⇒ no
+                    # marker-credit path — byte-identical to the pre-existing degrade).
+                    allowed_segment_ids=[s.id for s in assembled.segment_citations],
                     thresholds=sensor_thresholds,
                     trajectory=self._traj(inp),
                 ),
@@ -984,6 +987,9 @@ class HarnessDocWorkflow:
                         response_format=asm_.response_format,
                         transcript_context_item_id=inp.context_item_id,
                         retrieved_chunk_ids=retrieved_chunk_ids,
+                        # PHI-safe segment ids from assemble (empty ⇒ no
+                        # marker-credit path — byte-identical to the pre-existing degrade).
+                        allowed_segment_ids=[s.id for s in asm_.segment_citations],
                         thresholds=sensor_thresholds,
                         trajectory=self._traj(inp),
                     ),

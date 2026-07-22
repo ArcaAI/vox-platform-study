@@ -2,6 +2,8 @@ import { DynamicModule, Global, Module } from '@nestjs/common';
 import { AppSettingsService } from './appSettings.service';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { IAppSettingsService } from './IAppSettingsService';
+import { RedisCacheModule } from '../../redis';
+import { RedisSubscriberService } from '../../../stt/realtime/redisSubscriber.service';
 
 @Global()
 @Module({})
@@ -14,10 +16,16 @@ export class AppSettingsModule {
   // deleted the first's job — so the instance most consumers injected never
   // refreshed its settings cache after boot. Returning the same object makes
   // Nest dedupe the module and guarantees a single cached instance + cron.
+  //
+  // RedisCacheModule (publish) + a dedicated RedisSubscriberService instance
+  // (subscribe) back the F-007 cross-instance invalidation channel. Both fail
+  // open at the service layer when Redis is absent/unreachable, so this
+  // module still boots without Redis (cron-only convergence).
   private static readonly dynamicModule: DynamicModule = {
     module: AppSettingsModule,
-    imports: [CoreDatabaseModule],
+    imports: [CoreDatabaseModule, RedisCacheModule.register()],
     providers: [
+      RedisSubscriberService,
       {
         provide: IAppSettingsService,
         useClass: AppSettingsService,

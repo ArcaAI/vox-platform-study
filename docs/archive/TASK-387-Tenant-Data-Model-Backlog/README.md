@@ -141,7 +141,7 @@ Backend + SDK were complete; the Admin Console now wires every now-backed field 
 Verification: `apps/admin` `tsc --noEmit` clean · `vite build` clean · **234 unit tests pass** (33 files) · E2E specs `task-379` (plan selector, plan/tags meta, system-tenant lifecycle hidden) + `task-382` (DNA slot no longer TARGET) updated and **compile-checked** (`playwright --list` → 108 tests). The live full-stack FE E2E run was deliberately deferred (parallel backend worker owns the live stack).
 
 ### Constraints honored
-No `git push`, no commits (working tree only). No `DELETE`/`DROP`/`TRUNCATE` or destructive SQL: migrations are additive; the TEST DB was updated with a **non-destructive** `prisma db push` (not `--force-reset`). Built on top of the uncommitted TASK-386 changes; no TASK-386 / `docs/qa/*` / `task-376-storage.ts` / `secrets-coverage.test.ts` edits.
+No `git push`, no commits (working tree only). No `DELETE`/`DROP`/`TRUNCATE` or destructive SQL: migrations are additive; the TEST DB was updated with a **non-destructive** `prisma db push` (not `--force-reset`). Built on top of the uncommitted TASK-386 changes; no TASK-386 / `docs/qa/*` / `media-storage.ts` / `secrets-coverage.test.ts` edits.
 
 ## 6. Change History
 

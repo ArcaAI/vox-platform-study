@@ -1,7 +1,7 @@
 /**
  * Live full-loop provenance READ-ONLY verification (one-off).
  *
- * Companion to `task-330-phase3-consultation-seed.ts`. After the Temporal loop
+ * Companion to `harness-consultation-seed.ts`. After the Temporal loop
  * persists the RAW_SUMMARY draft, this reads back the persisted provenance the
  * apps/api `GET /consultations/:id/summary/:ctx/provenance` endpoint serializes
  * (SummaryMeta.citationsMap + .guardrailDecisions) and prints the proof:
@@ -14,7 +14,7 @@
  *
  * Usage:
  *   NODE_ENV=development SEED_TAG=0331 pnpm --filter @arcaai/database exec \
- *     tsx scripts/task-330-phase3-provenance-read.ts
+ *     tsx scripts/harness-provenance-read.ts
  */
 // eslint-disable-next-line no-restricted-imports -- scripts/** allow-list: live-test driver
 import { getPlatformAdminPrismaClient_Unscoped } from '../src/client';
@@ -61,7 +61,7 @@ async function main() {
   );
   const targetClaims = cited.filter((c) => c.knowledgeChunkIds.includes(TARGET_CHUNK));
 
-  console.log('===== TASK-330 Phase 3 — provenance proof =====');
+  console.log('===== Harness provenance proof =====');
   console.log(`consultationId   : ${CONSULTATION_ID}`);
   console.log(`consult.status   : ${consult?.status}`);
   console.log(`summaryCtxItemId : ${draft?.id}`);

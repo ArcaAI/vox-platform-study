@@ -103,7 +103,7 @@ writes (the updated seed is authored + type-checked, not executed here).
 | JSON filter values | `case 'json'` pass-through; the flat `field[op]:value` grammar cannot express Prisma `path` operators. `Repository.formatFindAllProps` passes `filters` verbatim into the Prisma `where`, so a `{ path, [op] }` object flows through untouched. |
 | Registry coverage | `MODEL_FILTER_FIELD_TYPES` = `{ User, AuditLog }` only. Generated model types for Tenant/Media/Role/Tag/Webhook/Notification all exist (`@arcaai/database` type aliases). **`Permission` has NO Prisma model** — `PermissionRepository` points at a nonexistent `prisma.permission` delegate (legacy RBAC superseded by `Policy`/`RolePolicy`), so there is no generated type to drive the registry → skipped with this documented reason. |
 | Six adopting services | `tenant` (fetchAll / fetchAllByTenantCodeName / fetchAllCreatedByUser — NOT `fetchTenantConfigs`, which lists GlobalSetting rows owned by the settings module), `media` (fetchAll / fetchAllByTenantId / fetchAllCreatedByUser), `role` (fetchAll / fetchAllCreatedByUser), `tag` (fetchAll / fetchAllByTenantId / fetchAllCreatedByUser), `webhook` (fetchAll / fetchAllByTenantId / fetchAllCreatedByUser), `notification` (fetchAll / fetchAllByTenantId / fetchAllCreatedByUser) — all call `withFormatted{Paginated,Count}Props(props)` with no model name today. |
-| TASK-376 seed | `packages/applications/scripts/task-376-media-seed.ts` — additive/idempotent, storage best-effort. Free stable ids: media `96…381`, context item `91…380`, audio recording `93…376` (existing seeds use `93…0001-0004`). |
+| TASK-376 seed | `packages/applications/scripts/media-seed.ts` — additive/idempotent, storage best-effort. Free stable ids: media `96…381`, context item `91…380`, audio recording `93…376` (existing seeds use `93…0001-0004`). |
 | Media spec owner | `task-375-admin-features.spec.ts` hardcodes `SEEDED_USERS.doctor` + `DEFAULT_TENANT_KEY`. |
 
 Uncommitted-tree note: `modelFilterTypes.ts` already carries a sibling's
@@ -248,7 +248,7 @@ method — unit-tested; unchanged surface otherwise.)
 
 ### P2-7a — recording-shaped audio fixture
 
-`scripts/task-376-media-seed.ts` (additive/idempotent/storage-best-effort, as
+`scripts/media-seed.ts` (additive/idempotent/storage-best-effort, as
 before) now also upserts the production shape `ContextService.addAudioRecording`
 writes: an `AUDIO_RECORDING` container context item
 (`91000000-0000-0000-0000-000000000380`, SYSTEM-sourced, no mediaId) + an
@@ -300,7 +300,7 @@ it together with the edited `task-375-admin-features.spec.ts`.
 | `packages/applications/src/services/webhook/__tests__/webhook.service.test.ts` | +1 test (incl. subscriptionMetadata JSON-path) |
 | `packages/applications/src/services/notification/notification.service.ts` | `NOTIFICATION_FILTER_MODEL` on 3 pairs |
 | `packages/applications/src/services/notification/__tests__/notification.service.test.ts` | +1 test |
-| `packages/applications/scripts/task-376-media-seed.ts` | recording fixture: WAV build/upload + Media + AUDIO_RECORDING container + AudioRecording upserts, result JSON |
+| `packages/applications/scripts/media-seed.ts` | recording fixture: WAV build/upload + Media + AUDIO_RECORDING container + AudioRecording upserts, result JSON |
 | `apps/api/tests/e2e/task-375-admin-features.spec.ts` | media-owner login env-parameterized (`E2E_MEDIA_OWNER_*`, defaults unchanged) |
 | `apps/api/tests/e2e/task-406-backend-residuals.spec.ts` | **NEW** — 7 deferred E2E tests (see §4) |
 | `docs/implementation/TASK-406-Backend-Residuals-375-376/README.md` | this ticket document |
@@ -334,7 +334,7 @@ Pure-file checks (scripts are build-excluded; type-checked directly, same
 method as TASK-376 §7):
 
 ```
-tsc --noEmit task-376-media-seed.ts task-376-storage.ts
+tsc --noEmit media-seed.ts media-storage.ts
   (--target es2022 --module commonjs --moduleResolution node
    --esModuleInterop --skipLibCheck)                        → exit 0
 tsc --noEmit task-406-backend-residuals.spec.ts task-375-admin-features.spec.ts

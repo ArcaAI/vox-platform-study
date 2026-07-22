@@ -4,7 +4,11 @@ Provenance gate over ``SummaryMeta.citationsMap``: each claim
 (``{id, text, section, status, evidence:[...]}``) must reference at least one
 transcript evidence span. Claims with no evidence are flagged (unverifiable). Per
 the degradation policy, a generated note with no citations map at all is degraded
-(cannot verify -> never auto-PASS); missing provenance is never silently asserted.
+(cannot verify -> never auto-PASS); missing provenance is never silently asserted —
+UNLESS the model instead cited transcript segments inline via the disjoint
+``[[seg:<id>]]`` StrictCitations lane (``ctx.cited_segment_ids``, already
+extracted + validated upstream): that is still verifiable provenance, so it earns
+credit instead of a degrade.
 """
 
 from __future__ import annotations
@@ -40,6 +44,22 @@ class CitationPresenceSensor:
         if not claims:
             note_exists = bool(ctx.note_text.strip() or ctx.soap_sections)
             if note_exists:
+                if ctx.cited_segment_ids:
+                    # The claims lane is empty/degraded, but the model cited real
+                    # persisted transcript segments inline — still verifiable
+                    # provenance, so credit it rather than degrading.
+                    return SensorResult(
+                        name=NAME,
+                        score=1.0,
+                        passed=True,
+                        details={
+                            "total": 0,
+                            "evidenced": 0,
+                            "unevidenced": [],
+                            "segmentEvidenced": True,
+                            "citedSegmentIds": list(ctx.cited_segment_ids),
+                        },
+                    )
                 return SensorResult(
                     name=NAME,
                     score=0.0,

@@ -220,6 +220,38 @@ class TestSensorRunner:
             assert schema.passed is True, note
             assert schema.score == 1.0, note
 
+    def test_segment_marker_credit_threads_allowed_ids_into_citation_presence(self):
+        # No NER-claims lane at all (no entities), but the note cites a real
+        # persisted transcript segment inline -> citation_presence must be
+        # extracted+validated from `allowed_segment_ids` and credit it (not degrade).
+        note = "Plan: continue lisinopril 10 mg daily [[seg:seg-a]]."
+        out = run_computational_sensors(
+            note_text=note,
+            transcript_text="",
+            note_entities=[],
+            transcript_entities=[],
+            response_format=None,
+            allowed_segment_ids=["seg-a", "seg-b"],
+        )
+        citation_presence = next(r for r in out.results if r.name == "citation_presence")
+        assert citation_presence.degraded is False
+        assert citation_presence.passed is True
+        assert citation_presence.details["citedSegmentIds"] == ["seg-a"]
+
+    def test_segment_marker_not_in_allowed_ids_is_dropped_and_still_degrades(self):
+        note = "Plan: continue lisinopril 10 mg daily [[seg:hallucinated]]."
+        out = run_computational_sensors(
+            note_text=note,
+            transcript_text="",
+            note_entities=[],
+            transcript_entities=[],
+            response_format=None,
+            allowed_segment_ids=["seg-a"],
+        )
+        citation_presence = next(r for r in out.results if r.name == "citation_presence")
+        assert citation_presence.degraded is True
+        assert citation_presence.passed is False
+
     def test_fabricated_note_entity_aggregates_to_flag(self):
         note, transcript, _note_entities, transcript_entities = _grounded_inputs()
         # A medication that never appears in the transcript = fabrication.

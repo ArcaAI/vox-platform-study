@@ -56,20 +56,20 @@ All three live under `packages/applications/scripts/` (ESLint-ignored, build-exc
 
 | File | Purpose |
 |---|---|
-| `task-376-storage.ts` | Shared MinIO/S3 helpers (S3 client from `MINIO_*`, `ensureBucket`, `objectExists`, `putObject`, `getObjectBytes`, `parseStorageUri`). |
-| `task-376-media-seed.ts` | The additive/idempotent seed (Task 1). Upserts the consultation + media + context items by fixed ids (outside every existing seed range) and PUTs the objects by key. Re-running changes nothing. |
-| `task-376-thumbnail-backfill.ts` | The idempotent, best-effort backfill (Task 2). Reuses `ImageThumbnailService.generateWebpThumbnail`. |
+| `media-storage.ts` | Shared MinIO/S3 helpers (S3 client from `MINIO_*`, `ensureBucket`, `objectExists`, `putObject`, `getObjectBytes`, `parseStorageUri`). |
+| `media-seed.ts` | The additive/idempotent seed (Task 1). Upserts the consultation + media + context items by fixed ids (outside every existing seed range) and PUTs the objects by key. Re-running changes nothing. |
+| `thumbnail-backfill.ts` | The idempotent, best-effort backfill (Task 2). Reuses `ImageThumbnailService.generateWebpThumbnail`. |
 
 ### How to run (from repo root)
 
 ```bash
 # 1) Seed (additive / idempotent)
 NODE_ENV=development node_modules/.bin/tsx \
-  packages/applications/scripts/task-376-media-seed.ts
+  packages/applications/scripts/media-seed.ts
 
 # 2) Thumbnail backfill (idempotent / best-effort / non-destructive)
 NODE_ENV=development node_modules/.bin/tsx \
-  packages/applications/scripts/task-376-thumbnail-backfill.ts
+  packages/applications/scripts/thumbnail-backfill.ts
 ```
 
 The seed prints `E2E_CONSULTATION_ID=90000000-0000-0000-0000-000000000376` at the end for the verification step.
@@ -172,12 +172,12 @@ Consultation media is now verifiable end-to-end: a stable, additive seed provide
 
 | File | Change |
 |---|---|
-| `packages/applications/scripts/task-376-storage.ts` | **New** — shared MinIO/S3 helpers. *(§9)* `makeS3Client` takes an optional `{ maxAttempts }` so the seed's reachability probe can fail fast. |
-| `packages/applications/scripts/task-376-media-seed.ts` | **New** — additive/idempotent media seed (Task 1). *(§9)* Object storage is now best-effort/guarded (fast-fail probe + 5s timeout); DB rows always upsert with nominal sizes when MinIO is absent; result reports `storageAvailable`/`objectsUploaded`. |
-| `packages/applications/scripts/task-376-thumbnail-backfill.ts` | **New** — idempotent thumbnail backfill reusing `ImageThumbnailService` (Task 2). |
+| `packages/applications/scripts/media-storage.ts` | **New** — shared MinIO/S3 helpers. *(§9)* `makeS3Client` takes an optional `{ maxAttempts }` so the seed's reachability probe can fail fast. |
+| `packages/applications/scripts/media-seed.ts` | **New** — additive/idempotent media seed (Task 1). *(§9)* Object storage is now best-effort/guarded (fast-fail probe + 5s timeout); DB rows always upsert with nominal sizes when MinIO is absent; result reports `storageAvailable`/`objectsUploaded`. |
+| `packages/applications/scripts/thumbnail-backfill.ts` | **New** — idempotent thumbnail backfill reusing `ImageThumbnailService` (Task 2). |
 | `apps/api/tests/e2e/task-375-admin-features.spec.ts` | **Edit (media test only)** — plural `consultations` path + tenant-bound owner login; updated doc comments + skip message. *(§9)* `E2E_CONSULTATION_ID` now defaults to the seeded id via `??` (empty-string opt-out). The D8/Users checks are untouched. |
 | `package.json` (root) | **Edit (§9)** — `test:db:seed` chains the new `test:db:seed:media` script after the `@arcaai/database` seed; `test:db:reset` inherits it transitively. |
-| `.gitlab/ci/prepare.yml` | **Edit (§9)** — `prepare-test-db` runs the media seed (`pnpm exec tsx …/task-376-media-seed.ts`) after the core seed. |
+| `.gitlab/ci/prepare.yml` | **Edit (§9)** — `prepare-test-db` runs the media seed (`pnpm exec tsx …/media-seed.ts`) after the core seed. |
 | `docs/implementation/TASK-376-Media-Seed-And-Backfill/README.md` | **New** — this document. |
 
 ---
@@ -202,7 +202,7 @@ Orchestrated at the **pnpm-script level**, *after* the core `@arcaai/database` s
 
 ```jsonc
 "test:db:seed":       "dotenv -e .env.test -- pnpm --filter @arcaai/database seed && pnpm test:db:seed:media",
-"test:db:seed:media": "dotenv -e .env.test -- tsx packages/applications/scripts/task-376-media-seed.ts",
+"test:db:seed:media": "dotenv -e .env.test -- tsx packages/applications/scripts/media-seed.ts",
 "test:db:reset":      "pnpm test:db:push && pnpm test:db:seed",
 ```
 
@@ -212,7 +212,7 @@ The Playwright global-setup runs `test:db:reset` (→ `test:db:seed` → `test:d
 
 ```yaml
 - echo "── Seeding TASK-376 media fixture (DB rows; MinIO objects best-effort)..."
-- pnpm exec tsx packages/applications/scripts/task-376-media-seed.ts
+- pnpm exec tsx packages/applications/scripts/media-seed.ts
 ```
 
 ### 9.2 MinIO-absent guard (CI-safe)
@@ -269,7 +269,7 @@ E2E_CONSULTATION_ID=90000000-0000-0000-0000-000000000376
 ```
 pnpm build --filter=@arcaai/applications     → Tasks: 7 successful, 7 total   (exit 0)
 pnpm --filter @arcaai/applications lint      → 0 errors (86 pre-existing prettier warnings, none in TASK-376 files)
-tsc --noEmit  task-376-media-seed.ts task-376-storage.ts  → exit 0   (scripts are build-excluded; type-checked directly)
+tsc --noEmit  media-seed.ts media-storage.ts  → exit 0   (scripts are build-excluded; type-checked directly)
 ReadLints (2 scripts + the edited spec)      → No linter errors found
 ```
 
@@ -282,4 +282,4 @@ ReadLints (2 scripts + the edited spec)      → No linter errors found
 | Date | Description | Files |
 |---|---|---|
 | 2026-06-27 | Initial implementation: media seed + thumbnail backfill scripts; fixed the media E2E (plural route + tenant-bound owner); verified seed/backfill/Playwright against the live stack; DEFECT-M1 resolved. | see §7 |
-| 2026-06-27 | Folded the media seed into the test-DB seed (local `test:db:seed`/`test:db:reset` + CI `prepare-test-db`); made MinIO object-upload best-effort/guarded (`maxAttempts:1` + 5s probe timeout → DB rows seeded with nominal sizes, exit 0 when storage absent); defaulted the spec's `E2E_CONSULTATION_ID` to the seeded id (`??`, empty-string opt-out). Verified idempotency + guard + build/lint/typecheck. | `package.json`, `.gitlab/ci/prepare.yml`, `task-376-media-seed.ts`, `task-376-storage.ts`, `apps/api/tests/e2e/task-375-admin-features.spec.ts` |
+| 2026-06-27 | Folded the media seed into the test-DB seed (local `test:db:seed`/`test:db:reset` + CI `prepare-test-db`); made MinIO object-upload best-effort/guarded (`maxAttempts:1` + 5s probe timeout → DB rows seeded with nominal sizes, exit 0 when storage absent); defaulted the spec's `E2E_CONSULTATION_ID` to the seeded id (`??`, empty-string opt-out). Verified idempotency + guard + build/lint/typecheck. | `package.json`, `.gitlab/ci/prepare.yml`, `media-seed.ts`, `media-storage.ts`, `apps/api/tests/e2e/task-375-admin-features.spec.ts` |

@@ -94,7 +94,7 @@
         "test:ci": "pnpm test:unit && pnpm test:integration && pnpm test:e2e",
         "test:db:push": "dotenv -e .env.test -- pnpm --filter @arcaai/database db:push:force",
         "test:db:seed": "dotenv -e .env.test -- pnpm --filter @arcaai/database seed && pnpm test:db:seed:media",
-        "test:db:seed:media": "dotenv -e .env.test -- tsx packages/applications/scripts/task-376-media-seed.ts",
+        "test:db:seed:media": "dotenv -e .env.test -- tsx packages/applications/scripts/media-seed.ts",
         "test:db:reset": "pnpm test:db:push && pnpm test:db:seed",
         "------------ PYTHON SERVICES (Dev Servers, TASK-346) ------------": "",
         "dev:stt-v2": "./scripts/dev-service.sh stt",
