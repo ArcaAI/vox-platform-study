@@ -17,7 +17,7 @@ import type { UserSession } from '@arcaai/applications';
 
 import type { RequestWithAuth } from '../request-with-auth';
 
-describe('RequestWithAuth interface (TASK-310 E-6 / AC-6)', () => {
+describe('RequestWithAuth interface', () => {
   it('extends express Request without losing any base fields', () => {
     expectTypeOf<RequestWithAuth>().toExtend<Request>();
   });

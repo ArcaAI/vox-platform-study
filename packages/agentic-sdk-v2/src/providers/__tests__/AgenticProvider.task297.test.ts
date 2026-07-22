@@ -110,7 +110,7 @@ async function renderProvider(configOverride: Record<string, unknown> = {}) {
   return captured.api;
 }
 
-describe('TASK-297 AgenticProvider', () => {
+describe('AgenticProvider', () => {
   it('DEF-C6: configReady stays false until /auth/me resolves; tenant config fetched once (DEF-H5)', async () => {
     const meCalls: number[] = [];
     let resolveMe!: (v: { id: string }) => void;

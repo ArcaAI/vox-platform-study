@@ -120,7 +120,7 @@ function buildHarness(opts: {
   return { interceptor, reflector, cls, repos, services, ctx, next };
 }
 
-describe('TASK-307 W3.2 — TenantOwnedResourceInterceptor', () => {
+describe('TenantOwnedResourceInterceptor', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -481,7 +481,7 @@ describe('TASK-307 W3.2 — TenantOwnedResourceInterceptor', () => {
   // (no-existence-leak) shape stays identical so a same-tenant probe of a
   // peer's job is indistinguishable from a probe of a non-existent job.
   // ─────────────────────────────────────────────────────────────────────
-  describe('ConsultationJob — scope:"creator" (TASK-308 AC-1 / AC-3)', () => {
+  describe('ConsultationJob — scope:"creator"', () => {
     it('passes through when same-tenant AND same-user (job owner)', async () => {
       const harness = buildHarness({
         reflectorReturns: {
@@ -612,7 +612,7 @@ describe('TASK-307 W3.2 — TenantOwnedResourceInterceptor', () => {
    * and 404s on missing binding or tenant mismatch. The handler must
    * never run for a cross-tenant probe (DEF-C3 no-existence-leak).
    */
-  describe('TASK-310 W7.A.9 — StreamSession (lookup: "session")', () => {
+  describe('StreamSession (lookup: "session")', () => {
     it('passes through when the bound tenant matches CLS tenantId', async () => {
       const harness = buildHarness({
         reflectorReturns: { modelName: 'StreamSession', paramName: 'sessionId', lookup: 'session' },

@@ -13,7 +13,7 @@ const TEXT = 'Patient reports chest pain. No shortness of breath.';
 /** Re-joining every run must reproduce the source exactly — no text lost or duplicated. */
 const roundTrip = (segments: { text: string }[]) => segments.map((s) => s.text).join('');
 
-describe('buildTranscriptHighlights (TASK-533 B5)', () => {
+describe('buildTranscriptHighlights', () => {
     it('splits a single span into before / highlighted / after', () => {
         const segments = buildTranscriptHighlights(TEXT, [{ startOffset: 16, endOffset: 26 }]);
 
@@ -92,7 +92,7 @@ describe('buildTranscriptHighlights (TASK-533 B5)', () => {
     });
 });
 
-describe('hasSegmentProvenance (TASK-533 B5)', () => {
+describe('hasSegmentProvenance', () => {
     it('is true only when EVERY span resolved to a segment', () => {
         expect(hasSegmentProvenance([{ startOffset: 0, endOffset: 5, segmentId: 'seg-1' }])).toBe(true);
         expect(

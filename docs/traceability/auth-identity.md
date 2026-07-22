@@ -20,7 +20,7 @@ Route paths are relative to the global prefix `/api/v1`. Test shorthand is defin
 | Prisma models | `User`, `PasswordResetToken` (refresh-token family + revocation state in Redis) |
 | Key API endpoints | `@Controller('auth')`: `POST /auth/login`, `/auth/logout`, `/auth/refresh`, `/auth/impersonate`, `/auth/revoke-impersonation`, `/auth/stream-ticket`, `GET /auth/me`; `POST /auth/register`, `/auth/register/verify`; `@Controller('admin/users')` → `POST /admin/users/:id/impersonate` |
 | Console | `apps/admin-console` feature `auth` (`login-form`, `register-form`, `verify-email-screen`); BFF session under `src/app/api/auth/*` |
-| Tests | e2e: `auth.spec.ts`, `auth-advanced.spec.ts`, `auth-refresh.spec.ts`, `auth-guard-behavior.spec.ts`, `task-401-impersonation.spec.ts`; unit(api): `auth/__tests__/*` (login, stream-ticket, task295, task307, task401, task541); unit(app): auth service suite; unit(console): `auth/__tests__/{login-form,register-form,verify-email-screen}.test.tsx` |
+| Tests | e2e: `auth.spec.ts`, `auth-advanced.spec.ts`, `auth-refresh.spec.ts`, `auth-guard-behavior.spec.ts`, `user-impersonation.spec.ts`; unit(api): `auth/__tests__/*` (login, stream-ticket, task295, task307, task401, task541); unit(app): auth service suite; unit(console): `auth/__tests__/{login-form,register-form,verify-email-screen}.test.tsx` |
 
 ### A2 — API keys (service-to-service auth) — legacy row 2
 
@@ -31,7 +31,7 @@ Route paths are relative to the global prefix `/api/v1`. Test shorthand is defin
 | Prisma models | `ApiKey` (`db_main/apikey.prisma`) |
 | Key API endpoints | `@Controller('admin/api-keys')` — CRUD |
 | Console | `apps/admin-console` feature `api-keys`; route `/api-keys` (tier 20–29, shared) |
-| Tests | e2e: `api-key-auth.spec.ts`, `task-390b-api-key-owner-scope.spec.ts`; unit(app); unit(console): `api-keys/**/__tests__/*` |
+| Tests | e2e: `api-key-auth.spec.ts`, `api-key-owner-scope.spec.ts`; unit(app); unit(console): `api-keys/**/__tests__/*` |
 
 ### A3 — RBAC / policy authorization — legacy row 3
 
@@ -52,7 +52,7 @@ Route paths are relative to the global prefix `/api/v1`. Test shorthand is defin
 | Key modules | `apps/api/src/modules/user` (forgot-password / password-reset controllers) |
 | Prisma models | `PasswordResetToken` (`db_main/password-reset-token.prisma`) |
 | Key API endpoints | `POST /auth/forgot-password` (public request; `forgot-password.controller.ts`), `POST /users/password-reset/complete` (`password-reset.controller.ts`) |
-| Tests | e2e: `task-400-password-security.spec.ts`, `task-402-password-hash-settings.spec.ts` |
+| Tests | e2e: `password-security-hardening.spec.ts`, `password-hash-settings.spec.ts` |
 
 ### A5 — Auth token revocation & HIPAA auth-event audit (TASK-541) — NEW
 
@@ -67,7 +67,7 @@ returned `false`; no persisted failed-auth trail). Status: **Review** on `fix/26
 | Key API endpoints | enforced on every authenticated request via `UnifiedAuthGuard`; triggered by `POST /auth/logout` (access jti + refresh family), `POST /auth/revoke-impersonation`, and user deactivate/suspend/soft-delete. Failed-auth rows emitted from the `POST /auth/login` and `POST /auth/refresh` rejection paths |
 | Owner decisions | fail **OPEN** for ordinary tokens / fail **CLOSED** for impersonation on a Redis outage (A3); per-user not-before TTL 24 h, deny-on-tie `iat <= notBefore` (A4-TTL) |
 | Notable fixes | `GatewayJwtStrategy`/`GatewayAuthGuard`/`gateway-decorators` RETIRED (A2 — dead path, `UnifiedAuthGuard` is the single enforcement point); username-enumeration oracle (`findFirst` throws vs returns null) closed; a throwing audit emitter no longer escalates a 401 into a 500; `BaseEntity.suspend()` + exhaustive status switch (SUSPENDED was a silent no-op) |
-| Tests | unit(app): `auth/__tests__/jwt-revocation.service.test.ts`, `auth/__tests__/jwt.strategy.test.ts`, `user/user/__tests__/user.service.task541.test.ts`, `auditLog/__tests__/auditLog.service.task541.test.ts`; plus `packages/applications/src/common/__tests__/applyChangesToEntity.test.ts` (not under `services/`); unit(dom): `common/baseEntity/__tests__/base.entity.test.ts`; unit(api): `auth/__tests__/auth.controller.task541.test.ts`; e2e: `task-541-auth-revocation-audit.spec.ts` (logout→replay 401; deactivate→live token 401; failed login writes a queryable `success:false` row that never contains the attempted password) |
+| Tests | unit(app): `auth/__tests__/jwt-revocation.service.test.ts`, `auth/__tests__/jwt.strategy.test.ts`, `user/user/__tests__/user.service.task541.test.ts`, `auditLog/__tests__/auditLog.service.task541.test.ts`; plus `packages/applications/src/common/__tests__/applyChangesToEntity.test.ts` (not under `services/`); unit(dom): `common/baseEntity/__tests__/base.entity.test.ts`; unit(api): `auth/__tests__/auth.controller.task541.test.ts`; e2e: `auth-revocation-audit.spec.ts` (logout→replay 401; deactivate→live token 401; failed login writes a queryable `success:false` row that never contains the attempted password) |
 
 ## Federated identity (tenant SSO)
 
@@ -105,4 +105,4 @@ TASK-499.
 - **A5 (TASK-541) is uncommitted** on `fix/2605-review` (status Review, staged) — treat as landed-but-unmerged.
 - Users, profiles & departments (legacy row 7) remain in the legacy matrix under the tenancy/provisioning domain, not here.
 
-Last verified: 2026-07-21
+Last verified: 2026-07-22

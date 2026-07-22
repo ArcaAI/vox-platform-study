@@ -164,7 +164,7 @@ describe('usePolicies', () => {
         });
 
         // Break-glass credentials travel as the DELETE body.
-        it('should pass break-glass credentials as the DELETE data option (TASK-409)', async () => {
+        it('should pass break-glass credentials as the DELETE data option', async () => {
             mockDelete.mockResolvedValue(undefined);
             const { result } = renderHook(() => usePolicies());
             const creds = { password: 'pw', confirmationName: 'policy-a' };

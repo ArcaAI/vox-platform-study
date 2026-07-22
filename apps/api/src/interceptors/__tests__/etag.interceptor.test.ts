@@ -26,7 +26,7 @@ const makeContext = (response: { setHeader: ReturnType<typeof vi.fn> }): Executi
         }),
     }) as unknown as ExecutionContext;
 
-describe('ETagInterceptor (TASK-302 Stream D Phase D)', () => {
+describe('ETagInterceptor', () => {
     it('sets ETag from body.version', async () => {
         const res = { setHeader: vi.fn() };
         const next: CallHandler = { handle: () => of({ id: 'x', version: 7 }) };

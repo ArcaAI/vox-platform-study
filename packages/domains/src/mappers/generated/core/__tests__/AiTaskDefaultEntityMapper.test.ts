@@ -30,7 +30,7 @@ const sampleRow = (overrides: Partial<AiTaskDefault> = {}): AiTaskDefault =>
     metaData: null,
   } as AiTaskDefault);
 
-describe('AiTaskDefaultEntityMapper (TASK-506)', () => {
+describe('AiTaskDefaultEntityMapper', () => {
   const mapper = new AiTaskDefaultEntityMapper();
 
   it('toDomainEntity carries the core fields + `version` from the database row', () => {

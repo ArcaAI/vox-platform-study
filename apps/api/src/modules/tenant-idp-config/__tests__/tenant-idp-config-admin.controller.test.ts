@@ -87,7 +87,7 @@ describe('TenantIdpConfigAdminController — test-connection', () => {
   });
 });
 
-describe('TenantIdpConfigAdminController — directory credentials (TASK-498 P4)', () => {
+describe('TenantIdpConfigAdminController — directory credentials', () => {
   it('delegates to the service, scoped to the caller tenant', async () => {
     const { controller, service } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
     service.setDirectoryCredentials.mockResolvedValue({ id: 'provider-1' });
@@ -102,7 +102,7 @@ describe('TenantIdpConfigAdminController — directory credentials (TASK-498 P4)
   });
 });
 
-describe('TenantIdpConfigAdminController — sync (TASK-498 P3)', () => {
+describe('TenantIdpConfigAdminController — sync', () => {
   it('delegates to DirectorySyncService, scoped to the caller tenant', async () => {
     const { controller, directorySyncService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
     directorySyncService.enqueueSync.mockResolvedValue({ jobId: 'job-1' });

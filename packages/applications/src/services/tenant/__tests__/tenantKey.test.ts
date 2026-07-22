@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { slugifyTenantName, generateUniqueTenantKey } from '../tenantKey';
 
-describe('slugifyTenantName (TASK-497 D3)', () => {
+describe('slugifyTenantName', () => {
     it('lowercases and hyphenates a normal name', () => {
         expect(slugifyTenantName('Acme Health Clinic')).toBe('acme-health-clinic');
     });
@@ -33,7 +33,7 @@ describe('slugifyTenantName (TASK-497 D3)', () => {
     });
 });
 
-describe('generateUniqueTenantKey (TASK-497 D3)', () => {
+describe('generateUniqueTenantKey', () => {
     it('returns the base slug when it does not collide', async () => {
         const exists = vi.fn().mockResolvedValue(false);
 

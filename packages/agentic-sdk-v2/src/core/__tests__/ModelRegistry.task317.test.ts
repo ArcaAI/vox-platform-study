@@ -18,7 +18,7 @@ import { createMockLogger } from '../../__tests__/setup';
 const NS_A = 'tenantA::userA';
 const NS_B = 'tenantB::userB';
 
-describe('TASK-317 W1.5 — ModelRegistry SELECTED_MODELS namespacing (AC-4)', () => {
+describe('ModelRegistry SELECTED_MODELS namespacing', () => {
   let mockApiClient: AgenticClient;
   let mockLogger: ReturnType<typeof createMockLogger>;
 
@@ -55,7 +55,7 @@ describe('TASK-317 W1.5 — ModelRegistry SELECTED_MODELS namespacing (AC-4)', (
   });
 });
 
-describe('TASK-317 W1.6 — ModelRegistry loadSelectedFromStorage validation (AC-5)', () => {
+describe('ModelRegistry loadSelectedFromStorage validation', () => {
   let mockApiClient: AgenticClient;
   let mockLogger: ReturnType<typeof createMockLogger>;
 

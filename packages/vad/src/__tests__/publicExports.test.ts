@@ -23,7 +23,7 @@ const REMOVED_WORKLET_EXPORTS = [
   'cleanupVADWorkletResources',
 ] as const;
 
-describe('public export surface (TASK-271 C-3 / C-4)', () => {
+describe('public export surface', () => {
   const exportedNames = Object.keys(vadPublicApi).sort();
 
   it('does not expose the removed worklet loader API', () => {

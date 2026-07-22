@@ -41,7 +41,7 @@ const effective = (taskKey: string, sourceUri: string, localPath?: string | null
   },
 });
 
-describe('TASK-527 — model_path injection (NER)', () => {
+describe('model_path injection (NER)', () => {
   it('injects model_path when the registry row carries a localPath', async () => {
     const aiTaskDefaults = {
       getEffective: vi.fn().mockResolvedValue(effective('nlp.ner', 'blaze999/Medical-NER', '/opt/hope/models/ner')),
@@ -90,7 +90,7 @@ describe('TASK-527 — model_path injection (NER)', () => {
   });
 });
 
-describe('TASK-527 — model_path injection (diagnosis)', () => {
+describe('model_path injection (diagnosis)', () => {
   it('injects model_path when the diagnosis row carries a localPath', async () => {
     const aiTaskDefaults = {
       getEffective: vi.fn().mockResolvedValue(effective('nlp.diagnosis', 'some/diagnosis-model', '/opt/hope/models/dx')),
@@ -123,7 +123,7 @@ describe('TASK-527 — model_path injection (diagnosis)', () => {
   });
 });
 
-describe('TASK-527 — override lane stays fail-closed', () => {
+describe('override lane stays fail-closed', () => {
   it('a validated override forwards the matched row localPath, not a caller value', async () => {
     const aiModels = {
       getByTaskTypeSharedRead: vi.fn().mockResolvedValue([

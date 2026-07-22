@@ -151,7 +151,7 @@ function makeService(opts: { withRedis?: boolean } = {}) {
   };
 }
 
-describe('FederatedAuthService.buildAuthorizeUrl (TASK-498 D5 — HRD with explicit tenant fallback)', () => {
+describe('FederatedAuthService.buildAuthorizeUrl (HRD with explicit tenant fallback)', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('resolves via HRD when the email domain is mapped to a provider', async () => {
@@ -278,7 +278,7 @@ describe('FederatedAuthService.verifyOidcCallback — existing FederatedIdentity
   });
 });
 
-describe('FederatedAuthService.verifyOidcCallback — JIT provisioning (D3/D6)', () => {
+describe('FederatedAuthService.verifyOidcCallback — JIT provisioning', () => {
   beforeEach(() => vi.clearAllMocks());
 
   function signState(providerId: string) {
@@ -344,7 +344,7 @@ describe('FederatedAuthService.verifyOidcCallback — JIT provisioning (D3/D6)',
     expect(roleCallArg.roleId).toBe('role-doctor');
   });
 
-  it('never assigns GLOBAL_ADMIN via IdP mapping (D6, hard guard)', async () => {
+  it('never assigns GLOBAL_ADMIN via IdP mapping (hard guard)', async () => {
     const ctx = makeService();
     const provider = makeProvider({
       config: {
@@ -386,7 +386,7 @@ describe('FederatedAuthService.verifyOidcCallback — JIT provisioning (D3/D6)',
 
 const ACS_URL = 'https://api.hope.dev/api/v1/auth/sso/saml/acme/acs';
 
-describe('FederatedAuthService.buildSamlAuthnRequest (TASK-499 — SP-initiated, tenantKey only)', () => {
+describe('FederatedAuthService.buildSamlAuthnRequest (SP-initiated, tenantKey only)', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('resolves the tenant by key and returns the AuthnRequest redirect URL', async () => {
@@ -417,7 +417,7 @@ describe('FederatedAuthService.buildSamlAuthnRequest (TASK-499 — SP-initiated,
   });
 });
 
-describe('FederatedAuthService.getSamlServiceProviderMetadata (TASK-499 — servable regardless of DRAFT/ENABLED)', () => {
+describe('FederatedAuthService.getSamlServiceProviderMetadata (servable regardless of DRAFT/ENABLED)', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('returns SP metadata XML for a DRAFT (not-yet-tested) provider', async () => {
@@ -442,7 +442,7 @@ describe('FederatedAuthService.getSamlServiceProviderMetadata (TASK-499 — serv
   });
 });
 
-describe('FederatedAuthService.verifySamlResponse (TASK-499 D4)', () => {
+describe('FederatedAuthService.verifySamlResponse', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('throws UnauthorizedException when no enabled SAML provider is configured for the tenant', async () => {
@@ -555,7 +555,7 @@ describe('FederatedAuthService.verifySamlResponse (TASK-499 D4)', () => {
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
-  it('D4 replay defense: rejects a second use of the same assertion ID when Redis is available', async () => {
+  it('replay defense: rejects a second use of the same assertion ID when Redis is available', async () => {
     const ctx = makeService({ withRedis: true });
     const provider = makeSamlProvider();
     ctx.tenantRepository.findFirst.mockResolvedValue({ id: TENANT, key: 'acme' });

@@ -126,7 +126,7 @@ describe('resolveApiKeyPepper', () => {
     });
 });
 
-describe('seedApiKey uses the resolved Vault pepper for keyHash (TASK-352)', () => {
+describe('seedApiKey uses the resolved Vault pepper for keyHash', () => {
     it('writes HMAC-SHA256(rawKey, vaultPepper) hashes when SECRETS_PROVIDER=vault', async () => {
         vi.stubEnv('SECRETS_PROVIDER', 'vault');
         stubVaultFetch();

@@ -531,7 +531,7 @@ describe('AuthController', () => {
         // Superseded the "exempt from department" carve-out:
         // service accounts are API-only principals and interactive login is
         // refused outright (401), regardless of role/department membership.
-        it('should REJECT a service account from interactive login (TASK-430)', async () => {
+        it('should REJECT a service account from interactive login', async () => {
             const hashedPassword = await bcrypt.hash('pass123', 10);
             const user = createUser({ password: hashedPassword, isServiceAccount: true });
             const users = new Map([[user.id, user]]);
@@ -577,7 +577,7 @@ describe('AuthController', () => {
             expect(result.user.tenantKey).toBe('');
         });
 
-        it('should NOT grant the retired SUPER_ADMIN role tenantKey-less login (TASK-417)', async () => {
+        it('should NOT grant the retired SUPER_ADMIN role tenantKey-less login', async () => {
             const hashedPassword = await bcrypt.hash('pass123', 10);
             const user = createUser({ password: hashedPassword, tenantId: null });
             const users = new Map([[user.id, user]]);

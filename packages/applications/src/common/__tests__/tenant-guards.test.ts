@@ -271,7 +271,7 @@ describe('tenant-guards', () => {
 
     // SUPER_ADMIN was consolidated into GLOBAL_ADMIN; the retired
     // role string grants NOTHING anymore.
-    it('returns false for the retired "SUPER_ADMIN" literal (TASK-417)', () => {
+    it('returns false for the retired "SUPER_ADMIN" literal', () => {
       expect(isSuperAdmin({ roles: ['SUPER_ADMIN'] })).toBe(false);
       expect(isSuperAdmin({ roles: ['DOCTOR', 'SUPER_ADMIN'] })).toBe(false);
     });
@@ -283,7 +283,7 @@ describe('tenant-guards', () => {
       expect(isSuperAdmin({ roles: ['DOCTOR', 'GLOBAL_ADMIN'] })).toBe(true);
     });
 
-    it('collapses the elevated set to exactly [GLOBAL_ADMIN] (TASK-417)', () => {
+    it('collapses the elevated set to exactly [GLOBAL_ADMIN]', () => {
       expect(ELEVATED_ROLES).toEqual(['GLOBAL_ADMIN']);
     });
 

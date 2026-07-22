@@ -505,7 +505,7 @@ describe('TenantBucketService', () => {
     // Seeded bucket rows may predate the physical bucket (the seed
     // creates DB rows only). Data-plane ops must provision the provider bucket
     // on demand instead of failing with NoSuchBucket.
-    describe('on-demand provider bucket provisioning (TASK-426)', () => {
+    describe('on-demand provider bucket provisioning', () => {
         it('listObjects creates the missing physical bucket and then lists (empty)', async () => {
             const bucket = createMockBucketEntity({ id: 'bucket-1', name: 'hope-attachments-global' });
             mockTenantBucketRepository.findById.mockResolvedValue(bucket);
@@ -870,7 +870,7 @@ describe('TenantBucketService', () => {
             expect(mockTenantBucketRepository.update).not.toHaveBeenCalled();
         });
 
-        it('leaves quotaBytes null for an unlimited-tier plan (D4)', async () => {
+        it('leaves quotaBytes null for an unlimited-tier plan', async () => {
             mockTenantBucketRepository.findSystemBuckets.mockResolvedValue([
                 recordingsBucket(),
             ]);

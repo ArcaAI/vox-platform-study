@@ -393,7 +393,7 @@ describe('LokiTransport', () => {
   // If any gate fails: NO initialize work (no flush timer), NO log buffering,
   // NO POST. Fail-closed so a misconfigured deploy cannot leak PHI to Loki.
   // =========================================================================
-  describe('TASK-278: gated activation', () => {
+  describe('gated activation', () => {
     const originalNodeEnv = process.env.NODE_ENV;
 
     afterEach(() => {

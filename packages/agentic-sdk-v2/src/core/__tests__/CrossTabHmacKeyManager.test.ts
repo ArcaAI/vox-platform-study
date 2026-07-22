@@ -173,7 +173,7 @@ function bytes(len = 16, seed = 7): Uint8Array {
 // Tests
 // =============================================================================
 
-describe('CrossTabHmacKeyManager (TASK-280)', () => {
+describe('CrossTabHmacKeyManager', () => {
   beforeEach(() => {
     MockSharedWorker.reset();
     __resetSessionHmacSecretForTests();
@@ -239,7 +239,7 @@ describe('CrossTabHmacKeyManager (TASK-280)', () => {
     // HKDF(masterSecret, tenantId); the master secret never leaves the
     // worker.
     // =========================================================================
-    it('TASK-317 W3.4 — AC-11 cross-tenant verify FAILS over the SharedWorker (forged message rejected)', async () => {
+    it('cross-tenant verify FAILS over the SharedWorker (forged message rejected)', async () => {
       const tabA = new CrossTabHmacKeyManager({ workerUrl: WORKER_URL });
       const tabB = new CrossTabHmacKeyManager({ workerUrl: WORKER_URL });
       tabA.setTenantId('tenant-A');
@@ -257,7 +257,7 @@ describe('CrossTabHmacKeyManager (TASK-280)', () => {
       tabB.close();
     });
 
-    it('TASK-317 W3.4 — AC-11 two tabs on the SAME tenant still agree (SharedWorker cross-tab)', async () => {
+    it('two tabs on the SAME tenant still agree (SharedWorker cross-tab)', async () => {
       const tabA = new CrossTabHmacKeyManager({ workerUrl: WORKER_URL });
       const tabB = new CrossTabHmacKeyManager({ workerUrl: WORKER_URL });
       tabA.setTenantId('tenant-A');
@@ -364,7 +364,7 @@ describe('CrossTabHmacKeyManager (TASK-280)', () => {
     // subkey (fail-closed cross-tenant rejection), while same-tenant verify
     // still succeeds. The subkey rotates whenever setTenantId changes.
     // =========================================================================
-    it('TASK-317 W3.4 — AC-11 cross-tenant subkey: A-signed message is REJECTED under tenant-B', async () => {
+    it('cross-tenant subkey: A-signed message is REJECTED under tenant-B', async () => {
       const a = new CrossTabHmacKeyManager();
       const b = new CrossTabHmacKeyManager();
       a.setTenantId('tenant-A');
@@ -382,7 +382,7 @@ describe('CrossTabHmacKeyManager (TASK-280)', () => {
       b.close();
     });
 
-    it('TASK-317 W3.4 — AC-11 setTenantId rotates the subkey (old-tenant signature stops verifying)', async () => {
+    it('setTenantId rotates the subkey (old-tenant signature stops verifying)', async () => {
       const mgr = new CrossTabHmacKeyManager();
       mgr.setTenantId('tenant-A');
       const payload = bytes(28, 6);
@@ -407,7 +407,7 @@ describe('CrossTabHmacKeyManager (TASK-280)', () => {
     // empty/whitespace → undefined so BOTH modes fall back to the master/global
     // secret identically (cosmetic fail-closed symmetry).
     // =========================================================================
-    it('TASK-317 W3.1 (M-1) — whitespace/empty tenantId behaves like no tenant (master-secret parity with worker keyFor)', async () => {
+    it('whitespace/empty tenantId behaves like no tenant (master-secret parity with worker keyFor)', async () => {
       const noTenant = new CrossTabHmacKeyManager();
       const blankTenant = new CrossTabHmacKeyManager();
       // Whitespace-only must normalise to undefined → master/global key,

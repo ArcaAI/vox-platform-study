@@ -46,7 +46,7 @@ const scheduler = { addCronJob: vi.fn(), getCronJob: vi.fn(), deleteCronJob: vi.
 
 const buildService = () => new AppSettingsService(repo as never, events as never, cls as never, scheduler as never);
 
-describe('AppSettingsService — TASK-403 platform row wins over tenant clones', () => {
+describe('AppSettingsService — platform row wins over tenant clones', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.NODE_ENV = 'production';

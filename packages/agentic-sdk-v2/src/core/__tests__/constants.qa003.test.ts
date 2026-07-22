@@ -14,11 +14,11 @@ describe('QA-003: RBAC Constants Enhancements', () => {
       expect(AUDIT_LOG_ENDPOINTS.LIST).toBe('/admin/audit-logs');
     });
 
-    it('should have EXPORT endpoint (TASK-328 A8)', () => {
+    it('should have EXPORT endpoint', () => {
       expect(AUDIT_LOG_ENDPOINTS.EXPORT).toBe('/admin/audit-logs/export');
     });
 
-    it('should have CURSOR endpoint (TASK-373)', () => {
+    it('should have CURSOR endpoint', () => {
       expect(AUDIT_LOG_ENDPOINTS.CURSOR).toBe('/admin/audit-logs/cursor');
     });
 

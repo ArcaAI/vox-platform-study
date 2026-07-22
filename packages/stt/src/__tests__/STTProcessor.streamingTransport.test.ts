@@ -48,7 +48,7 @@ function makeSession(): StreamingSessionLike {
   };
 }
 
-describe('STTProcessor — streaming-transport wiring (TASK-298 D-4)', () => {
+describe('STTProcessor — streaming-transport wiring', () => {
   describe('initializeRemoteProvider', () => {
     let processor: STTProcessor;
 
@@ -141,7 +141,7 @@ describe('STTProcessor — streaming-transport wiring (TASK-298 D-4)', () => {
   // path nothing polls the getter. STTProcessor must (a) re-emit the provider's
   // PUSH channel via `onBackpressureDrop`, and (b) surface the count in getStats()
   // so a consumer (the vox pipeline/store) can render a degraded-connection signal.
-  describe('backpressure drop propagation (TASK-464)', () => {
+  describe('backpressure drop propagation', () => {
     let processor: STTProcessor;
     let wsClient: ReturnType<typeof makeWsClient>;
     let session: StreamingSessionLike;

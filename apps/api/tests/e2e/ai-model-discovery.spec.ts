@@ -68,7 +68,7 @@ async function discover(request: APIRequestContext, token: string, provider?: st
   return request.get(`${DISCOVERY}${qs}`, { headers: auth(token) });
 }
 
-test.describe('TASK-528 — AI model discovery', () => {
+test.describe('AI model discovery', () => {
   let globalAdminToken: string;
   let tenantAdminToken: string;
   const createdIds: string[] = [];

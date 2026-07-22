@@ -214,7 +214,7 @@ describe('SmrProxyController', () => {
   // prompt / PHI / internal stack detail, so an upstream 4xx/5xx leaked that into
   // the caller's telemetry. The proxy must return a GENERIC sanitized message to
   // the client (status code preserved) and log the upstream detail SERVER-SIDE only.
-  describe('TASK-462 C4-05 — upstream error body sanitization (no PHI/prompt echo)', () => {
+  describe('upstream error body sanitization (no PHI/prompt echo)', () => {
     const PHI_STRING = 'prompt fragment: Patient Jane Doe DOB 1980-01-01 SSN 123-45-6789';
 
     it('does NOT echo a STRING upstream error body to the client (generic message, status preserved)', async () => {
@@ -290,7 +290,7 @@ describe('SmrProxyController', () => {
   // model through untouched (SDK fidelity); only when the model is absent does it
   // fall back to the HarnessPolicy cascade. When neither is available it forwards
   // to SMR, which is the fail-closed 422 authority (no in-proxy default).
-  describe('SMR model selection (TASK-356 D-7)', () => {
+  describe('SMR model selection', () => {
     const buildWithResolver = (resolver: { resolveSmrSelection: ReturnType<typeof vi.fn> }) =>
       new SmrProxyController(
         mockHttpService as any,
@@ -375,7 +375,7 @@ describe('SmrProxyController', () => {
   // be running/billed — the retry re-invoked it (duplicate billing, divergent
   // drafts). `/generate` may only retry CONNECT-PHASE failures (the request
   // provably never left the gateway); idempotent GETs keep the broad retry.
-  describe('TASK-460 C4-04 — /generate retry hygiene (single delivery)', () => {
+  describe('/generate retry hygiene (single delivery)', () => {
     const codeError = (code: string) => Object.assign(new Error(code), { code });
 
     beforeEach(() => {
@@ -738,7 +738,7 @@ describe('SmrProxyController', () => {
     ...over,
   });
 
-  describe('GET /text/providers (registry-backed — TASK-506)', () => {
+  describe('GET /text/providers (registry-backed)', () => {
     it('groups ENABLED TEXT_GENERATION + SUMMARIZATION rows by provider in the legacy shape, default from HarnessPolicy', async () => {
       const aiModels = createMockAiModelService();
       aiModels.getByTaskTypeSharedRead.mockImplementation(async (taskType: string) =>
@@ -855,7 +855,7 @@ describe('SmrProxyController', () => {
 
   // The GLOBAL-tenant targeting must stay
   // EXPLICIT via `?tenantKey=__GLOBAL__` after the registry repoint.
-  describe('TASK-307 W5.9 — explicit ?tenantKey=__GLOBAL__ posture on getProviders (TASK-506 registry-backed)', () => {
+  describe('explicit ?tenantKey=__GLOBAL__ posture on getProviders (registry-backed)', () => {
     it('GLOBAL_ADMIN with ?tenantKey=__GLOBAL__ resolves the GLOBAL tenant id', async () => {
       mockClsService.get.mockImplementation((key: string) => {
         if (key === 'tenantId') return undefined;
@@ -933,7 +933,7 @@ describe('SmrProxyController', () => {
   // The guardrail listing reads ENABLED GUARDRAIL registry rows and
   // marks the effective `guardrail.validate` default (AiTaskDefault cascade).
   // NO upstream probe: an empty registry simply means "not configured".
-  describe('GET /text/guardrail-providers (registry-backed — TASK-506)', () => {
+  describe('GET /text/guardrail-providers (registry-backed)', () => {
     it('groups ENABLED GUARDRAIL rows by provider and marks the effective guardrail.validate default', async () => {
       const aiModels = createMockAiModelService();
       aiModels.getByTaskTypeSharedRead.mockResolvedValue([
@@ -1226,7 +1226,7 @@ describe('SmrProxyController', () => {
       expect(result._debug.context_item_ids).toEqual(['ctx-1', 'ctx-2']);
     });
 
-    it('should fetch + extract text from an ATTACHMENT item via blob storage (TASK-318 W3-D)', async () => {
+    it('should fetch + extract text from an ATTACHMENT item via blob storage', async () => {
       mockContextItemRepo.findById.mockResolvedValue({
         id: 'ctx-att',
         content: null,
@@ -1515,7 +1515,7 @@ describe('SmrProxyController', () => {
       expect(systemPrompt).toContain('new patient visit');
     });
 
-    describe('TASK-299 D-12 — DNA writing-style ownership', () => {
+    describe('DNA writing-style ownership', () => {
       it('throws ForbiddenException when dna_writing_style_id belongs to a different doctor', async () => {
         mockDnaStyleRepo.findById.mockResolvedValue({
           id: 'dna-other',
@@ -1597,7 +1597,7 @@ describe('SmrProxyController', () => {
     // content into the system prompt. Mirror the DNA guard: tenant must match
     // (NotFound on mismatch, no existence leak), and a USER_PERSONAL template
     // must be owned by the caller (Forbidden otherwise).
-    describe('TASK-331 doc-09 — prompt-template tenant/owner scope', () => {
+    describe('doc-09 — prompt-template tenant/owner scope', () => {
       it('rejects a prompt template that belongs to a different tenant (NotFound, no leak)', async () => {
         mockPromptTemplateRepo.findById.mockResolvedValue({
           id: 'tmpl-foreign',
@@ -1688,7 +1688,7 @@ describe('SmrProxyController', () => {
     // exfiltrate their content through the generated summary; the proxy must
     // reject cross-tenant context items (surfaced as NotFound to avoid leaking
     // their existence) before any prompt is assembled or sent to SMR.
-    describe('TASK-329 X3 — cross-tenant context item ownership', () => {
+    describe('cross-tenant context item ownership', () => {
       it('rejects a context item that belongs to a different tenant (NotFound, no leak)', async () => {
         mockContextItemRepo.findById.mockResolvedValue({
           id: 'ctx-foreign',

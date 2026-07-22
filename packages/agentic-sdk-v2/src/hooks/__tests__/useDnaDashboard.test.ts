@@ -35,7 +35,7 @@ const fakeDashboard = {
     },
 };
 
-describe('useDnaDashboard (TASK-328 A5)', () => {
+describe('useDnaDashboard', () => {
     let mockLogger: ReturnType<typeof createMockLogger>;
     let mockStore: any;
     const mockGet = vi.fn();

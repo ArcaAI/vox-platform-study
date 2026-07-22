@@ -762,7 +762,7 @@ describe('PolicyEngine', () => {
   // `{ tenantId: undefined }` with "Argument `tenantId` is missing", which
   // crashed every tenant-less admin request (super_admin → /admin/*).
   // ───────────────────────────────────────────────────────────────────────
-  describe('loadUserPolicies — tenant scoping (TASK-305 schema alignment)', () => {
+  describe('loadUserPolicies — tenant scoping (schema alignment)', () => {
     const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
     it('queries only the system tenant when context has no tenantId (no undefined leaks to Prisma)', async () => {

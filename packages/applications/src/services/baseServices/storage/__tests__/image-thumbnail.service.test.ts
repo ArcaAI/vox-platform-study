@@ -20,7 +20,7 @@ import {
   isThumbnailableImageMimeType,
 } from '../image-thumbnail.service';
 
-describe('deriveThumbnailKey (TASK-375 thumbnails)', () => {
+describe('deriveThumbnailKey (thumbnails)', () => {
   it('appends the deterministic .thumb.webp suffix to the original key', () => {
     expect(deriveThumbnailKey('path/img.png')).toBe(`path/img.png${THUMBNAIL_KEY_SUFFIX}`);
     expect(deriveThumbnailKey('img.png')).toBe('img.png.thumb.webp');
@@ -31,7 +31,7 @@ describe('deriveThumbnailKey (TASK-375 thumbnails)', () => {
   });
 });
 
-describe('isThumbnailableImageMimeType (TASK-375 thumbnails)', () => {
+describe('isThumbnailableImageMimeType (thumbnails)', () => {
   it('accepts raster image mime types', () => {
     for (const m of ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/tiff']) {
       expect(isThumbnailableImageMimeType(m)).toBe(true);
@@ -45,7 +45,7 @@ describe('isThumbnailableImageMimeType (TASK-375 thumbnails)', () => {
   });
 });
 
-describe('ImageThumbnailService.generateWebpThumbnail (TASK-375 thumbnails)', () => {
+describe('ImageThumbnailService.generateWebpThumbnail (thumbnails)', () => {
   const service = new ImageThumbnailService();
 
   it('downscales a large image to a WebP bounded by the max dimension, preserving aspect ratio', async () => {

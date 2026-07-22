@@ -231,7 +231,7 @@ describe('ConfigSchema', () => {
     // =========================================================================
     // audio.captureRawAudio (local raw-stream dual-capture flag)
     // =========================================================================
-    describe('TASK-332: audio.captureRawAudio', () => {
+    describe('audio.captureRawAudio', () => {
         it('should default captureRawAudio to false', () => {
             expect(SYSTEM_DEFAULTS.audio.captureRawAudio).toBe(false);
             const parsed = v.parse(AudioConfigSchema, {});
@@ -258,7 +258,7 @@ describe('ConfigSchema', () => {
     // =========================================================================
     // stt.transcriptionPipelineId (resolved remote pipeline id)
     // =========================================================================
-    describe('TASK-333: stt.transcriptionPipelineId', () => {
+    describe('stt.transcriptionPipelineId', () => {
         it('should be undefined by default (no system default)', () => {
             expect(SYSTEM_DEFAULTS.stt.transcriptionPipelineId).toBeUndefined();
             expect(v.parse(SttConfigSchema, {}).transcriptionPipelineId).toBeUndefined();
@@ -287,7 +287,7 @@ describe('ConfigSchema', () => {
     // =========================================================================
     // stt.transcriptionMode (server-resolved effective mode)
     // =========================================================================
-    describe('TASK-356: stt.transcriptionMode', () => {
+    describe('stt.transcriptionMode', () => {
         it('should be undefined by default (no system default)', () => {
             expect(SYSTEM_DEFAULTS.stt.transcriptionMode).toBeUndefined();
             expect(v.parse(SttConfigSchema, {}).transcriptionMode).toBeUndefined();
@@ -314,7 +314,7 @@ describe('ConfigSchema', () => {
     // stt.provider default flips local → backend so an absent
     // server transcriptionMode no longer drags consumers into the local path.
     // =========================================================================
-    describe('TASK-364: stt.provider default', () => {
+    describe('stt.provider default', () => {
         it('defaults stt.provider to backend (was local) when unset', () => {
             expect(SYSTEM_DEFAULTS.stt.provider).toBe('backend');
             expect(v.parse(SttConfigSchema, {}).provider).toBe('backend');

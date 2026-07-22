@@ -220,7 +220,7 @@ function buildController(opts: {
     );
 }
 
-describe('TASK-307 W2.3 — auth.controller uses SecretsService only', () => {
+describe('auth.controller uses SecretsService only', () => {
     beforeEach(() => vi.clearAllMocks());
 
     describe('login', () => {

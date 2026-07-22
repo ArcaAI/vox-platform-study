@@ -162,6 +162,14 @@ export class ChainSummaryService extends BaseService {
     // Step 6: Store as ContextItem(RAW_SUMMARY) on the requesting consultation
     const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, smrResponse.summary, request.dnaStyleId, userId ?? 'system');
 
+    // Encrypt the generated summary text into `encryptedContent`
+    // before persistence — the plaintext `content` column was dropped by the
+    // PHI field-encryption migration, so an unencrypted create silently loses
+    // the clinical text at rest (mirrors context.service.ts `encryptContent`).
+    await this.encryptBestEffort('ContextItem content', () =>
+      this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!),
+    );
+
     const savedContext = await this.contextItemRepository.create(contextItem);
 
     // Create summary metadata with source context tracking

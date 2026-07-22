@@ -22,7 +22,7 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
     const safeSession = toSafeSession(session);
 
     return (
-        <Providers>
+        <Providers session={safeSession}>
             <SidebarProvider>
                 <SidebarTierSync />
                 <AppSidebar />

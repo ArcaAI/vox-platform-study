@@ -214,7 +214,7 @@ describe('TenantBucketController', () => {
     // ------------------------------------------------------------------------
     // Every bucket-by-id handler must carry @TenantOwnedResource.
     // ------------------------------------------------------------------------
-    describe('TASK-307 W3.5 — @TenantOwnedResource metadata', () => {
+    describe('@TenantOwnedResource metadata', () => {
         const meta = (m: keyof TenantBucketController): TenantOwnedResourceOptions | undefined =>
             Reflect.getMetadata(
                 TENANT_OWNED_RESOURCE_KEY,

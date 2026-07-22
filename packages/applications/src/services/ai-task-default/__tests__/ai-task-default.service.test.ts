@@ -65,7 +65,7 @@ function makeService(opts: { roles?: string[]; clsTenantId?: string | null } = {
   return { svc, repo, modelRepo, emitter, db };
 }
 
-describe('AiTaskDefaultService — getEffective (TASK-506)', () => {
+describe('AiTaskDefaultService — getEffective', () => {
   let ctx: ReturnType<typeof makeService>;
   beforeEach(() => {
     ctx = makeService();
@@ -329,7 +329,7 @@ describe('AiTaskDefaultService — upsertRow OCC + sys-events', () => {
  * target differs from the CLS tenant (or CLS is empty) AND the caller is a
  * global admin. Tenant admins stay on the scoped path byte-for-byte.
  */
-describe('AiTaskDefaultService — cross-tenant base-client lane (r2605 Finding A)', () => {
+describe('AiTaskDefaultService — cross-tenant base-client lane', () => {
   it('getRow targeting SYSTEM under an elevated working tenant W routes the read through the base client', async () => {
     const ctx = makeService({ roles: ['GLOBAL_ADMIN'], clsTenantId: TENANT });
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);

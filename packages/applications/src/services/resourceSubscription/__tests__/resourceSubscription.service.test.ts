@@ -990,7 +990,7 @@ describe('ResourceSubscriptionService', () => {
             expect(mockClsService.get).toHaveBeenCalledWith('user');
         });
 
-        it('rejects reads when CLS has neither user nor tenant context (TASK-306 P2.4 posture)', async () => {
+        it('rejects reads when CLS has neither user nor tenant context (posture)', async () => {
             // Without this guard the read returned the row regardless of
             // caller context — a tenant-blind read that leaked subscriptions
             // across tenants. The `assertEqualTenants` guard now fails closed:
@@ -1029,7 +1029,7 @@ describe('ResourceSubscriptionService', () => {
      * for cross-tenant probes. The local `setRequestUserRoles` helper
      * re-installs the CLS mock with the requested role list.
      */
-    describe('TASK-306 P2.4 — ResourceSubscription tenant-guard sweep', () => {
+    describe('ResourceSubscription tenant-guard sweep', () => {
         const setRequestUserRoles = (roles: string[] | undefined) => {
             mockClsService.get.mockImplementation((key: string) => {
                 switch (key) {

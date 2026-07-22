@@ -17,7 +17,7 @@ import {
 } from '../../../common/tenant-owned-resource.decorator';
 import { STREAM_SCOPE_METADATA, type StreamScopeConfig } from '../../auth/decorators/stream-scope.decorator';
 
-describe('ConsultationController harness-assurance stream (TASK-355 Phase D Slice 5d)', () => {
+describe('ConsultationController harness-assurance stream (Slice 5d)', () => {
   it('returns the observable produced by HarnessAssuranceService.subscribeToAssurance', () => {
     const stream = of({ data: '{"claims":[]}' });
     const harnessAssuranceService = { subscribeToAssurance: vi.fn().mockReturnValueOnce(stream) };

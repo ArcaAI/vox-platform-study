@@ -155,7 +155,7 @@ async def get_user_display_name(user_id: str) -> str | None:
                     'FROM core."UserProfile" '
                     'WHERE "userId" = :user_id '
                     "AND \"resourceStatus\" = 'ENABLED' "
-                    'LIMIT 1'
+                    "LIMIT 1"
                 ),
                 {"user_id": user_id},
             )
@@ -197,7 +197,7 @@ async def get_user_identity(
                 'SELECT c."doctorId", up."firstName", up."lastName" '
                 'FROM core."Consultation" c '
                 'LEFT JOIN core."UserProfile" up ON up."userId" = c."doctorId" '
-                'WHERE c.id = :consultation_id '
+                "WHERE c.id = :consultation_id "
                 "AND c.\"resourceStatus\" = 'ENABLED' "
                 'AND c."tenantId" = :tenant_id '
                 "LIMIT 1"

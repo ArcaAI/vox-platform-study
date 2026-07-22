@@ -52,7 +52,7 @@ function makeHost(): {
     return { host, response, request };
 }
 
-describe('TASK-307 W5.6 — PrismaClientExceptionFilter sanitisation (AC-20, audit D-6)', () => {
+describe('PrismaClientExceptionFilter sanitisation (audit)', () => {
     let filter: PrismaClientExceptionFilter;
 
     beforeEach(() => {

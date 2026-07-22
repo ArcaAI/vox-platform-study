@@ -534,7 +534,7 @@ describe('SSEClient', () => {
   // Named event listener leak on reconnect
   // =========================================================================
 
-  describe('BUG-08: named listeners should use stored callback on reconnect', () => {
+  describe('named listeners should use stored callback on reconnect', () => {
     it('should call the latest callback after reconnect, not duplicates', async () => {
       vi.useFakeTimers();
       try {
@@ -601,7 +601,7 @@ describe('SSEClient', () => {
   // Legacy authToken option is REMOVED
   // =========================================================================
 
-  describe('TASK-264 W0-1: legacy authToken option is no longer honored', () => {
+  describe('legacy authToken option is no longer honored', () => {
     it('does NOT append `?token=` even when caller passes a legacy authToken', async () => {
       client.connect('https://api.example.com/stream', {
         ...(({ authToken: 'jwt-token-123' } as unknown) as any),

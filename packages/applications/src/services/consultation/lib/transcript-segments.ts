@@ -167,10 +167,7 @@ function normalizeSegmentShape(raw: TranscriptSegmentInputShape | LegacyTranscri
  * the offset (or the offset is not a finite number). Segments with null
  * offsets are skipped.
  */
-export function resolveSegmentIdForOffset(
-  segments: readonly SegmentOffsetRef[],
-  offset: number | null | undefined,
-): string | null {
+export function resolveSegmentIdForOffset(segments: readonly SegmentOffsetRef[], offset: number | null | undefined): string | null {
   if (offset === null || offset === undefined || !Number.isFinite(offset)) {
     return null;
   }
@@ -208,14 +205,69 @@ export function attachSegmentEvidence(
     const enrichedEvidence = evidence.map((span) => {
       if (!span || typeof span !== 'object') return span;
       const startOffset = (span as { startOffset?: unknown }).startOffset;
-      const segmentId = resolveSegmentIdForOffset(
-        segments,
-        typeof startOffset === 'number' ? startOffset : null,
-      );
+      const segmentId = resolveSegmentIdForOffset(segments, typeof startOffset === 'number' ? startOffset : null);
       return segmentId ? { ...(span as object), segmentId } : span;
     });
     return { ...(claim as object), evidence: enrichedEvidence };
   });
 
   return { ...citationsMap, claims: enrichedClaims };
+}
+
+/** Matches a `[[seg:<id>]]` StrictCitations marker. Mirrors the harness-side
+ * `SEGMENT_CITATION_MARKER_RE` (`apps/harness/src/harness/temporal/prompt_cache.py`)
+ * so both sides parse the exact same wire format. */
+const SEGMENT_CITATION_MARKER_RE = /\[\[seg:([^\]]+)\]\]/g;
+
+/** Result of {@link extractAndStripSegmentCitationMarkers}. */
+export interface SegmentCitationExtraction {
+  /** `content` with every `[[seg:<id>]]` marker removed (whitespace collapsed). */
+  content: string;
+  /** Deduped, first-seen-order ids that were both cited AND in `allowedIds`. */
+  citedSegmentIds: string[];
+}
+
+/**
+ * Parse `[[seg:<id>]]` StrictCitations markers out of model-generated content,
+ * mirroring `extract_cited_segment_ids` (`prompt_cache.py`) on the TS side of
+ * the write path.
+ *
+ * Every marker is stripped from the returned `content` regardless of validity —
+ * the delivered note must never show raw citation syntax to a clinician, an
+ * unresolvable/hallucinated id is a hidden defect, not a reason to leave the
+ * marker text in a clinical note. `citedSegmentIds` only keeps ids present in
+ * `allowedIds` (the consultation's own persisted transcript segments), so a
+ * hallucinated id can never be recorded as evidence — same posture as the
+ * harness-side extractor.
+ */
+export function extractAndStripSegmentCitationMarkers(
+  content: string | null | undefined,
+  allowedIds: ReadonlySet<string>,
+): SegmentCitationExtraction {
+  const text = content ?? '';
+  if (!text) {
+    return { content: text, citedSegmentIds: [] };
+  }
+
+  const seen = new Set<string>();
+  const citedSegmentIds: string[] = [];
+  for (const match of text.matchAll(SEGMENT_CITATION_MARKER_RE)) {
+    const id = match[1].trim();
+    if (allowedIds.has(id) && !seen.has(id)) {
+      seen.add(id);
+      citedSegmentIds.push(id);
+    }
+  }
+
+  const stripped = text
+    .replace(SEGMENT_CITATION_MARKER_RE, '')
+    // Markers are typically appended right after a sentence (`...daily [[seg:x]].`);
+    // removing them can leave a stray space before trailing punctuation or a double
+    // space where one stood between two words — tidy both without altering
+    // deliberate whitespace/newlines elsewhere in the note.
+    .replace(/ +([.,;:!?])/g, '$1')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+
+  return { content: stripped, citedSegmentIds };
 }

@@ -20,7 +20,7 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
     return { ...actual, useAgenticStore: vi.fn() };
 });
 
-describe('TASK-225 A2: useUsers search', () => {
+describe('useUsers search', () => {
     let mockStore: any;
     const mockGet = vi.fn();
 

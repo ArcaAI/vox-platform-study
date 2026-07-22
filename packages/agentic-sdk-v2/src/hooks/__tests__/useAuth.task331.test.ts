@@ -24,7 +24,7 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
   return { ...actual, useAgenticStore: vi.fn() };
 });
 
-describe('useAuth — TASK-331 doc-05 impersonate(targetTenantId) + departmentId', () => {
+describe('useAuth — doc-05 impersonate(targetTenantId) + departmentId', () => {
   let mockStore: any;
   const mockPost = vi.fn();
 

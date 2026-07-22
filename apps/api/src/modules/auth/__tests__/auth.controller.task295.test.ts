@@ -187,7 +187,7 @@ function buildController(opts: {
     };
 }
 
-describe('AuthController — TASK-295 impersonation security', () => {
+describe('AuthController — impersonation security', () => {
     beforeEach(() => vi.clearAllMocks());
 
     // ─── C-1: cross-tenant block ─────────────────────────────────────────────
@@ -248,7 +248,7 @@ describe('AuthController — TASK-295 impersonation security', () => {
             expect(authService.trackAuthentication).toHaveBeenCalled();
         });
 
-        it('rejects the retired SUPER_ADMIN role as a caller — no longer elevated (TASK-417)', async () => {
+        it('rejects the retired SUPER_ADMIN role as a caller — no longer elevated', async () => {
             const { controller } = buildController({
                 user: { id: 'admin-A', tenantId: 'tenant-A' },
                 fixture: {

@@ -258,7 +258,7 @@ describe('Exports', () => {
     expect(typeof clientModule.getPlatformAdminPrismaClient_Unscoped).toBe('function');
   });
 
-  it('should NOT export the legacy getPrismaClient name (renamed in TASK-305 B.2)', async () => {
+  it('should NOT export the legacy getPrismaClient name (renamed)', async () => {
     const clientModule = await import('../client');
     expect((clientModule as unknown as Record<string, unknown>).getPrismaClient).toBeUndefined();
   });

@@ -16,7 +16,7 @@ import {
   MAX_CURSOR_LIMIT,
 } from '../cursorPagination';
 
-describe('TASK-373 — cursorPagination engine', () => {
+describe('cursorPagination engine', () => {
   describe('encodeCursor / decodeCursor', () => {
     it('round-trips a { k, id } payload', () => {
       const token = encodeCursor({ k: '2026-06-27T10:00:00.000Z', id: 'uuid-1' });

@@ -118,6 +118,6 @@ def test_model_task_type_mirror_matches_prisma() -> None:
     assert set(models.ModelTaskTypeEnum.enums) == PRISMA_MODEL_TASK_TYPE
 
 
-def test_ai_model_read_maps_task506_columns() -> None:
+def test_ai_model_read_maps_runtime_provider_columns() -> None:
     cols = {c.name for c in models.AiModelRead.__table__.columns}
     assert {"provider", "architecture"} <= cols

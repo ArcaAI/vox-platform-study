@@ -65,7 +65,7 @@ afterAll(async () => {
 });
 
 describe('PgBouncer txn-mode — soft-delete extension (Task 1.9)', () => {
-  it('R-SD-1: extended findMany hides DELETED rows through the pooler', async () => {
+  it('extended findMany hides DELETED rows through the pooler', async () => {
     const rows = await ext.globalSetting.findMany({
       where: { key: { startsWith: fixtureKey } },
       orderBy: { key: 'asc' },
@@ -76,14 +76,14 @@ describe('PgBouncer txn-mode — soft-delete extension (Task 1.9)', () => {
     ]);
   });
 
-  it('R-SD-2: extended findFirst hides DELETED rows through the pooler', async () => {
+  it('extended findFirst hides DELETED rows through the pooler', async () => {
     const dead = await ext.globalSetting.findFirst({
       where: { key: `${fixtureKey}-dead` },
     });
     expect(dead).toBeNull();
   });
 
-  it('R-SD-3: base (non-extended) findMany sees the DELETED row (control)', async () => {
+  it('base (non-extended) findMany sees the DELETED row (control)', async () => {
     const rows = await base.globalSetting.findMany({
       where: { key: { startsWith: fixtureKey } },
       orderBy: { key: 'asc' },
@@ -95,7 +95,7 @@ describe('PgBouncer txn-mode — soft-delete extension (Task 1.9)', () => {
     ]);
   });
 
-  it('R-SD-4: extended findMany honours explicit resourceStatus override', async () => {
+  it('extended findMany honours explicit resourceStatus override', async () => {
     const onlyDead = await ext.globalSetting.findMany({
       where: { key: { startsWith: fixtureKey }, resourceStatus: 'DELETED' },
     });

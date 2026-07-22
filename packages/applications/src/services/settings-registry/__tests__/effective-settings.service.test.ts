@@ -70,7 +70,7 @@ describe('EffectiveSettingsService', () => {
   // The global-kv override lane. Before this,
   // `agentic.context.*` short-circuited to the descriptor default and a value
   // written to the KV store was invisible here, so the read surface lied.
-  describe('global-kv override lane (TASK-524)', () => {
+  describe('global-kv override lane', () => {
     it('reports a DB override with sourceScope global-kv', async () => {
       const appSettings = { getValueWithDefault: vi.fn(() => 9000) };
       const svc = serviceWith(resolved(), undefined, appSettings);
@@ -123,7 +123,7 @@ describe('EffectiveSettingsService', () => {
 
   // Models.* keys delegate to AiTaskDefaultService.getEffective
   // (never re-implementing data access).
-  describe('models.* branch (TASK-506)', () => {
+  describe('models.* branch', () => {
     it('delegates models.<taskKey> to AiTaskDefaultService and threads the winning tier through', async () => {
       const getEffective = vi.fn(async () => ({
         tenantId: 'tnt-1',

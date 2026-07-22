@@ -55,7 +55,7 @@ function ttsModelRow(over: { slug?: string; name?: string; provider?: string | n
 const existingRow = () =>
   TenantTtsConfigFactory.CreateTenantTtsConfig({ tenantId: TENANT, defaultSpeed: 1.0, defaultVoiceEn: 'en-female-1' });
 
-describe('TenantTtsConfigService (TASK-496)', () => {
+describe('TenantTtsConfigService', () => {
   let ctx: ReturnType<typeof makeService>;
   beforeEach(() => {
     ctx = makeService();
@@ -114,7 +114,7 @@ describe('TenantTtsConfigService (TASK-496)', () => {
   });
 });
 
-describe('TenantTtsConfigService — platform catalog from the AiModel registry (TASK-506)', () => {
+describe('TenantTtsConfigService — platform catalog from the AiModel registry', () => {
   it('maps SYSTEM ENABLED TEXT_TO_SPEECH rows into providers with metaData.voices', async () => {
     const ctx = makeService();
     ctx.modelRepo.findByTaskType.mockResolvedValue([
@@ -162,7 +162,7 @@ describe('TenantTtsConfigService — platform catalog from the AiModel registry 
   });
 });
 
-describe('TenantTtsConfigService — provider-universe validation on upsert (TASK-506)', () => {
+describe('TenantTtsConfigService — provider-universe validation on upsert', () => {
   it('rejects routing/allowedProviders entries outside the catalog-derived universe', async () => {
     const ctx = makeService();
     ctx.modelRepo.findByTaskType.mockResolvedValue([ttsModelRow()]); // universe = ['azure']
@@ -205,7 +205,7 @@ describe('TenantTtsConfigService — provider-universe validation on upsert (TAS
   });
 });
 
-describe('TenantTtsConfigService — voice bindings (TASK-506)', () => {
+describe('TenantTtsConfigService — voice bindings', () => {
   it('persists voiceBindings under configJson on create', async () => {
     const ctx = makeService();
     ctx.modelRepo.findByTaskType.mockResolvedValue([ttsModelRow()]);
@@ -373,7 +373,7 @@ describe('TenantTtsConfigService — BYO credentials (Phase 6)', () => {
  * behaviour byte-for-byte. The catalog read is TTL-cached because getEffective
  * sits on the speech-proxy/WS hot path.
  */
-describe('TenantTtsConfigService — registry-driven provider universe in getEffective (r2605 Finding F)', () => {
+describe('TenantTtsConfigService — registry-driven provider universe in getEffective', () => {
   it('a provider with no ENABLED registry row is stripped from effective routing + allowedProviders', async () => {
     const ctx = makeService();
     ctx.repo.findByTenantId.mockResolvedValue(null); // no SYSTEM row, no tenant row

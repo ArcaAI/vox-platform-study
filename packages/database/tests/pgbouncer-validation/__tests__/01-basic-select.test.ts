@@ -25,12 +25,12 @@ afterAll(async () => {
 });
 
 describe('PgBouncer txn-mode — basic SELECT (Task 1.7)', () => {
-  it('R-SELECT-1: raw SELECT through pooler', async () => {
+  it('raw SELECT through pooler', async () => {
     const rows = await prisma.$queryRawUnsafe<{ ok: number }[]>('SELECT 1 AS ok');
     expect(rows).toEqual([{ ok: 1 }]);
   });
 
-  it('R-SELECT-2: Prisma findMany against a real model survives the pooler', async () => {
+  it('Prisma findMany against a real model survives the pooler', async () => {
     // GlobalSetting is one of the smallest tables in core schema; using it
     // (rather than something larger) keeps the test fast and avoids
     // depending on seed data.
@@ -38,7 +38,7 @@ describe('PgBouncer txn-mode — basic SELECT (Task 1.7)', () => {
     expect(Array.isArray(rows)).toBe(true);
   });
 
-  it('R-SELECT-3: 20 consecutive queries reuse pooled server connections (no leak)', async () => {
+  it('20 consecutive queries reuse pooled server connections (no leak)', async () => {
     // 20 short queries should round-trip the same handful of server
     // connections — the pool of size 10 must absorb them without erroring.
     const results = await Promise.all(

@@ -385,7 +385,7 @@ Three sub-scopes with different start conditions. The loop **core** is verified 
 4. **Python determinism**: pytest-randomly reseeds numpy per-test *after* fixtures — seed inside test bodies or use local `default_rng` (repo memory); fake clocks for TTL tests; NVML/HTTP always stubbed in CI.
 5. **Temporal**: replay-compat fixtures re-captured only when a `workflow.patched` era is added; otherwise additive activity inputs (command-neutral). Harness CI stays hermetic.
 6. **Console**: vitest + axe 0-violations per screen + both themes + skeleton/empty/error states are DoD, not extras.
-7. **Seed-count tests**: any seed change updates the count-assert tests in the same MR (`task-506-ai-model-consolidation.test.ts` precedent).
+7. **Seed-count tests**: any seed change updates the count-assert tests in the same MR (`ai-model-consolidation-seed.test.ts` precedent).
 
 ## 6. Code-comment / documentation update ledger
 

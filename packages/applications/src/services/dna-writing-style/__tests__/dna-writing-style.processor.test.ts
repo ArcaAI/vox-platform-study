@@ -1003,7 +1003,7 @@ describe('DnaWritingStyleProcessor', () => {
 
     // ─── APPROVED-only learning corpus ──────────────────
 
-    describe('TASK-299 D-11 — APPROVED-only learning corpus', () => {
+    describe('APPROVED-only learning corpus', () => {
         it('excludes non-approved summaries from the corpus and only feeds approved ones to SMR', async () => {
             mockContextItemVersionRepo.getVersionsByChangeReason.mockImplementation(
                 async (contextItemId: string, changeReason: string) => {
@@ -1162,7 +1162,7 @@ describe('DnaWritingStyleProcessor', () => {
     });
 
     // ─── draft↔approved pairs + DNA gating ──────────
-    describe('TASK-356 Phase 6 — draft↔approved learning pairs', () => {
+    describe('Phase 6 — draft↔approved learning pairs', () => {
         const createMockConfigResolver = () => ({
             resolveEffectiveDnaStyleEnabled: vi.fn().mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: null }),
         });

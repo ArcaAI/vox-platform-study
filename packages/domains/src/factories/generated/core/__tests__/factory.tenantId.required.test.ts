@@ -27,7 +27,7 @@ import { AuditAction, ResourceType } from '../../../../enums';
 
 const VALID_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
-describe('Factory tenantId is structurally required (TASK-305 A.6 / A.9)', () => {
+describe('Factory tenantId is structurally required', () => {
   describe('ConsultationFactory.CreateConsultation', () => {
     it('happily creates a consultation when tenantId is provided', () => {
       const consultation = ConsultationFactory.CreateConsultation({

@@ -10,7 +10,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-describe('TASK-329 P4 — local voice-embedding exports (core barrel)', () => {
+describe('local voice-embedding exports (core barrel)', () => {
   it('exports the LOCAL provider hook', async () => {
     const core = await import('../core.js');
     expect(typeof core.useLocalVoiceEmbedding).toBe('function');

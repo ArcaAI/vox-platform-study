@@ -41,7 +41,7 @@ function secretProbe(overrides: { encryptedValue?: Uint8Array | null; namespace?
     return { encryptedValue: null, namespace: 'general', key: 'plain.key', ...overrides } as any;
 }
 
-describe('GlobalSetting list faceting (TASK-443)', () => {
+describe('GlobalSetting list faceting', () => {
     let service: GlobalSettingService;
 
     beforeEach(() => {

@@ -88,8 +88,6 @@ images:
     newTag: dev
   - name: hope-v2/admin-console
     newTag: dev
-  - name: hope-v2/nlp
-    newTag: dev
   - name: hope-v2/smr
     newTag: dev
   - name: hope-v2/stt-v2-ml-runtime

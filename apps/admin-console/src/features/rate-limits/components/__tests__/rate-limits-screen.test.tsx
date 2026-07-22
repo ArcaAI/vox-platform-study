@@ -94,7 +94,7 @@ describe('RateLimitsScreen', () => {
         expect(within(routeTable).getByText('POST /auth/login')).toBeDefined();
     });
 
-    it('renders the source badges on a single line so the fixed-height row keeps its border (TASK-429)', async () => {
+    it('renders the source badges on a single line so the fixed-height row keeps its border', async () => {
         stubFetch(() => Response.json(POLICY));
         renderWithProviders(<RateLimitsScreen />);
 

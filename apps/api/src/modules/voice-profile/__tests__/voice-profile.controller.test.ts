@@ -173,7 +173,7 @@ describe('VoiceProfileController', () => {
   // @TenantOwnedResource so the global interceptor 404s probes of a profile
   // owned by another user.
   // ------------------------------------------------------------------------
-  describe('TASK-307 W3.7 — @TenantOwnedResource metadata', () => {
+  describe('@TenantOwnedResource metadata', () => {
     const meta = (m: keyof VoiceProfileController): TenantOwnedResourceOptions | undefined =>
       Reflect.getMetadata(
         TENANT_OWNED_RESOURCE_KEY,

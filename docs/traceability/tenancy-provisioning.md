@@ -27,7 +27,7 @@ transcription concern and is migrated in [`transcription.md`](./transcription.md
 | Prisma models | `Tenant` (`db_main/tenant.prisma`); `Tag` (`db_main/tag.prisma`, via `:id/tags`) |
 | Key API endpoints | `@Controller('admin/tenants')` (class `@CanAny(['manage','Tenant'],['update','Tenant'])`): `POST ''`, `GET ''`, `GET user/:userId`, `GET :id`, `GET code-name/:code-name`, `PATCH :id`, `DELETE :id`, `GET :id/usage`, `POST :id/{suspend,archive,restore}` (each `@CanManage('Tenant')`), `GET/PUT :id/tags`, `GET configs/:identifier`, `PATCH configs/:identifier`. `@Controller('admin/tenants')` `TenantProvisionController`: `POST provision` (`@CanManage('Tenant')`). Self-service `@Controller('tenant')` (`@Authorize()`): `GET me`, `GET me/config`, `PATCH me/config` (`@Authorize(['update','Tenant'])`) |
 | Console | `apps/admin-console` feature `tenants` (`tenants-list-screen`, `tenant-detail-screen`, `create-tenant-dialog`, `tenant-lifecycle-dialogs`, `tenant-usage-tab`, `tenant-tags-tab`); routes `/tenants`, `/tenants/[id]` (tier 10–19, global) |
-| Tests | unit(app): `tenant/__tests__/*` (`tenant.service`, `tenant.service.lifecycle`, `tenant.service.mass-assignment`, `tenant.service.audit-scrub*`, `tenant.service.locked-runtime`, `tenantKey`, `createTenant.request`); unit(api): `tenant/__tests__/tenant-provision.controller.test.ts`; unit(console): `tenants/components/__tests__/{tenants-list-screen,tenant-detail-screen,create-tenant-dialog}.test.tsx`, `tenants/api/__tests__/*`; e2e: `tenants.spec.ts`, `task-379-tenant-detail.spec.ts`, `task-380-tenant-dashboard.spec.ts`, `task-387-tenant-data-model.spec.ts`, `tenant-access-control.spec.ts` |
+| Tests | unit(app): `tenant/__tests__/*` (`tenant.service`, `tenant.service.lifecycle`, `tenant.service.mass-assignment`, `tenant.service.audit-scrub*`, `tenant.service.locked-runtime`, `tenantKey`, `createTenant.request`); unit(api): `tenant/__tests__/tenant-provision.controller.test.ts`; unit(console): `tenants/components/__tests__/{tenants-list-screen,tenant-detail-screen,create-tenant-dialog}.test.tsx`, `tenants/api/__tests__/*`; e2e: `tenants.spec.ts`, `tenant-detail-contract.spec.ts`, `tenant-dashboard-sources.spec.ts`, `tenant-data-model-contract.spec.ts`, `tenant-access-control.spec.ts` |
 
 ### TP2 — Tenant frontend / pipeline config (SDK defaults) — legacy row 5
 
@@ -38,7 +38,7 @@ transcription concern and is migrated in [`transcription.md`](./transcription.md
 | Prisma models | `TenantFrontendConfig` (`db_main/tenant.prisma`) |
 | Key API endpoints | `@Controller('admin/tenant-frontend-config')` (`@CanAny(['manage','Tenant'],['update','Tenant'])`): `GET ''`, `PUT ''`. Effective config resolved into `GET /tenant/me/config` (TP1) |
 | Console | surfaced inside the tenants detail screen (`tenants/components/tenant-frontend-config-tab.tsx`); no standalone route |
-| Tests | unit(app): `tenant-frontend-config/__tests__/*` (`tenant-frontend-config.service`, `tenant-frontend-config.dto.mapper`, `capture-mode.translation`, `upsert-tenant-frontend-config.request`); e2e: `task-375-admin-features.spec.ts` (partial) |
+| Tests | unit(app): `tenant-frontend-config/__tests__/*` (`tenant-frontend-config.service`, `tenant-frontend-config.dto.mapper`, `capture-mode.translation`, `upsert-tenant-frontend-config.request`); e2e: `admin-features-contract.spec.ts` (partial) |
 
 ### TP3 — Entitlements & usage metering — legacy row 6
 
@@ -49,7 +49,7 @@ transcription concern and is migrated in [`transcription.md`](./transcription.md
 | Prisma models | `PlanEntitlement`, `TenantEntitlement`, `TenantUsageMeter` (`db_main/entitlement.prisma`) |
 | Key API endpoints | `@Controller('admin/entitlements')` (class `@Authorize(['manage','all'])` — GLOBAL_ADMIN): `GET/PUT enabled`, `GET plans`, `GET plans/:plan`, `PATCH plans/:plan`, `GET tenants/:tenantId`, `GET/PUT/DELETE tenants/:tenantId/override`, `POST tenants/:tenantId/downgrade`, `POST trial-expiry/run`. `@Controller('entitlements')`: `GET me` (`@Authorize(['read','Tenant'])`) |
 | Console | `apps/admin-console` feature `entitlements` (`entitlements-screen`, `plan-edit-dialog`, `tenant-override-panel`); route `/entitlements` (tier 10–19, global) |
-| Tests | unit(app): `entitlements/__tests__/*` (`entitlements.service`, `entitlements-lifecycle.service`, `enforcement`, `resolve-entitlements`, `model-access`, `rate-limit-plan`), `metering/__tests__/{metering.service,metering-window}.test.ts`; unit(console): `entitlements/components/__tests__/entitlements-screen.test.tsx`; e2e: `task-390-super-admin-backend.spec.ts` (partial) |
+| Tests | unit(app): `entitlements/__tests__/*` (`entitlements.service`, `entitlements-lifecycle.service`, `enforcement`, `resolve-entitlements`, `model-access`, `rate-limit-plan`), `metering/__tests__/{metering.service,metering-window}.test.ts`; unit(console): `entitlements/components/__tests__/entitlements-screen.test.tsx`; e2e: `super-admin-backend-backlog.spec.ts` (partial) |
 
 ### TP4 — Users & profiles — legacy row 7 (user half)
 
@@ -60,7 +60,7 @@ transcription concern and is migrated in [`transcription.md`](./transcription.md
 | Prisma models | `User`, `UserSettings`, `UserProfile`, `UserMedia`, `UserDepartment` (`db_main/user.prisma`) |
 | Key API endpoints | `@Controller('admin/users')`: `POST ''`, `GET ''`, `GET export`, `GET :id`, `GET tenant/:tenantId`, `PATCH :id`, `PATCH :id/status`, `DELETE :id`, `DELETE bulk`, `POST bulk-actions`, `GET :id/api-keys`, `GET :id/settings`, `PATCH :id/settings/:namespace/:key`, `POST :id/reset-password`, `GET/POST :id/roles`, `DELETE :id/roles/:assignmentId`, `GET/PATCH :id/profile`, `GET :id/voice-profiles`, `PATCH :id/departments`. Self-service `@Controller('user/me/settings')`, `@Controller('user/me/preferences')`, `@Controller('user/me/departments')` |
 | Console | `apps/admin-console` feature `users` (`users-list-screen`, `user-detail-screen` + `user-{roles,departments,settings,profile,security}-tab`, `create-user-dialog`, `user-action-dialogs`); routes `/users`, `/users/[id]` (tier 20–29, shared) |
-| Tests | unit(app): `user/__tests__/*` (user service suite); unit(api): `user/__tests__/{user.controller,user-export.service}.test.ts`, `user/controllers/__tests__/{user-roles,user-departments-me,user-settings}.controller.test.ts`; unit(console): `users/components/__tests__/{users-list-screen,user-detail-screen}.test.tsx`; e2e: `task-381-users-management.spec.ts`, `task-388-users-backend-backlog.spec.ts`, `task-398-users-bulk-role-export.spec.ts` |
+| Tests | unit(app): `user/__tests__/*` (user service suite); unit(api): `user/__tests__/{user.controller,user-export.service}.test.ts`, `user/controllers/__tests__/{user-roles,user-departments-me,user-settings}.controller.test.ts`; unit(console): `users/components/__tests__/{users-list-screen,user-detail-screen}.test.tsx`; e2e: `users-management-contract.spec.ts`, `users-backend-backlog.spec.ts`, `users-bulk-role-export.spec.ts` |
 
 ### TP5 — Departments — legacy row 7 (department half)
 
@@ -87,7 +87,7 @@ persists overrides into `GlobalSetting`. It shares the `/admin/settings` base wi
 | Prisma models | `GlobalSetting` (`db_main/globalSetting.prisma`) — override values persist here; the descriptor catalog is code (`settings-registry`), not a table |
 | Key API endpoints | `@Controller('admin/settings')` `SettingsCatalogController`: `GET catalog`, `GET effective` (both `@CanRead('GlobalSetting')`). `@Controller('admin/settings')` `SettingsRegistryWriteController`: `GET registry/:key` (`@CanRead('GlobalSetting')`), `PUT registry/:key` (`@CanManage('GlobalSetting')`; If-Match precondition handled manually in the handler — deliberately NOT `@RequiresIfMatch()`). `@Controller('internal/effective-config')`: `GET ''` (internal service token — Python-service consumer of resolved settings) |
 | Console | `apps/admin-console` feature `settings` (`settings-screen`, `setting-drawer`, `value-editor-pane`, `setting-history-tab`); route `/settings` (tier 20–29, shared) |
-| Tests | unit(app): `settings-registry/__tests__/*` (`settings-registry`, `effective-settings.service`, `scope-cascade`, `settings-registry-write.service`, `settings-registry-write.occ`, `model-retention.descriptors`), `effective-config/__tests__/effective-config.service.test.ts`, `config-resolver/__tests__/config-resolver.service.test.ts`; unit(api): `settings-catalog/__tests__/settings-catalog.controller.test.ts`, `internal/__tests__/effective-config.controller.test.ts`; unit(console): `settings/components/__tests__/{settings-screen,setting-drawer,value-editor-pane}.test.tsx`; e2e: `task-443-settings-list-faceting.spec.ts` (list faceting; no dedicated end-to-end registry-write spec) |
+| Tests | unit(app): `settings-registry/__tests__/*` (`settings-registry`, `effective-settings.service`, `scope-cascade`, `settings-registry-write.service`, `settings-registry-write.occ`, `model-retention.descriptors`), `effective-config/__tests__/effective-config.service.test.ts`, `config-resolver/__tests__/config-resolver.service.test.ts`; unit(api): `settings-catalog/__tests__/settings-catalog.controller.test.ts`, `internal/__tests__/effective-config.controller.test.ts`; unit(console): `settings/components/__tests__/{settings-screen,setting-drawer,value-editor-pane}.test.tsx`; e2e: `settings-list-faceting.spec.ts` (list faceting; no dedicated end-to-end registry-write spec) |
 
 ## Honest notes / gaps
 
@@ -97,4 +97,4 @@ persists overrides into `GlobalSetting`. It shares the `/admin/settings` base wi
 - **Department prompt-config crosses into summarization.** `PATCH admin/departments/:id/prompt-config` is on the department controller (TP5) but binds prompt templates; the template governance side is in [`summarization.md`](./summarization.md).
 - **No dedicated department e2e.** TP5 relies on unit(app) + unit(console); department behavior is exercised only incidentally by the tenant/users e2e suites.
 
-Last verified: 2026-07-21
+Last verified: 2026-07-22

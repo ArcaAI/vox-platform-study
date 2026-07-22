@@ -58,7 +58,7 @@ describe('SocketRegistryService (#17)', () => {
   });
 
   // (concurrency) — per-tenant open-socket aggregation.
-  describe('per-tenant concurrency (TASK-392)', () => {
+  describe('per-tenant concurrency', () => {
     it('publishes THIS instance per-tenant map under a TTL-bounded key', async () => {
       await service.publishLocalTenantCounts({ 't1': 2, 't2': 3 });
       expect(cache.setex).toHaveBeenCalledTimes(1);

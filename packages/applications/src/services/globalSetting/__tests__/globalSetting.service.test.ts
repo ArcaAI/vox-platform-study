@@ -533,7 +533,7 @@ describe('GlobalSettingService', () => {
     });
 
     describe('update', () => {
-        it('should update global setting successfully via updateWithVersion (TASK-302 Stream D Phase C C.7)', async () => {
+        it('should update global setting successfully via updateWithVersion (Stream D Phase C)', async () => {
             const existingSetting = createMockGlobalSettingEntity({
                 id: 'setting-123',
                 hasChanges: true,
@@ -573,7 +573,7 @@ describe('GlobalSettingService', () => {
             expect(mockGlobalSettingRepository.updateWithVersion).not.toHaveBeenCalled();
         });
 
-        it('should broadcast ResourceUpdated event with previousVersion + newVersion (TASK-302 Stream D Phase C C.7/C.8)', async () => {
+        it('should broadcast ResourceUpdated event with previousVersion + newVersion (Stream D Phase C)', async () => {
             const existingSetting = createMockGlobalSettingEntity({
                 id: 'setting-123',
                 hasChanges: true,
@@ -606,7 +606,7 @@ describe('GlobalSettingService', () => {
             );
         });
 
-        it('propagates OptimisticConcurrencyException when expectedVersion drifted (TASK-302 Stream D Phase C C.7)', async () => {
+        it('propagates OptimisticConcurrencyException when expectedVersion drifted (Stream D Phase C)', async () => {
             const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
             const existingSetting = createMockGlobalSettingEntity({
                 id: 'setting-123',
@@ -653,7 +653,7 @@ describe('GlobalSettingService', () => {
     // present ⟺ it decrypts to the current value, so the reveal read path never
     // returns a stale secret. Non-secrets and no-Transit posture are unaffected.
     // =========================================================================
-    describe('TASK-447 secret encryption-at-rest', () => {
+    describe('secret encryption-at-rest', () => {
         it('create encrypts a new SECRET value at rest when Transit is available', async () => {
             mockSecretsService.supportsTransit.mockReturnValue(true);
             mockGlobalSettingRepository.create.mockResolvedValue(createMockGlobalSettingEntity({ id: 'sec-1', namespace: 'secrets' }));
@@ -713,7 +713,7 @@ describe('GlobalSettingService', () => {
     // GLOBAL_ADMIN. Mirrors the `updateTenantConfigs` posture already enforced
     // for the tenant-config PATCH path.
     // =========================================================================
-    describe('TASK-332 locked write-guard', () => {
+    describe('locked write-guard', () => {
         const asSuperAdmin = () =>
             mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'super-1', roles: ['GLOBAL_ADMIN'] } : key === 'tenantId' ? 'tenant-1' : null));
 
@@ -916,7 +916,7 @@ describe('GlobalSettingService', () => {
     // Reveal (super-admin gate + step-up re-auth + audit, no plaintext
     // in the audit event). Decrypts via the repo's findByIdWithDecryptedValue.
     // =========================================================================
-    describe('revealSecret (TASK-396)', () => {
+    describe('revealSecret', () => {
         const PLAINTEXT = 'super-secret-value';
 
         const asSuperAdmin = () =>

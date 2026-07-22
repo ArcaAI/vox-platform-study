@@ -18,7 +18,7 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
     return { ...actual, useAgenticStore: vi.fn() };
 });
 
-describe('useUsers — TASK-400 requestPasswordReset', () => {
+describe('useUsers — requestPasswordReset', () => {
     let mockStore: any;
     const mockPost = vi.fn();
 

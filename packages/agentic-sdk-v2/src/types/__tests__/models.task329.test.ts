@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_STT_MODELS, DEFAULT_AVAILABLE_STT_MODELS } from '../models';
 
-describe('TASK-329 P3 — DEFAULT_AVAILABLE_STT_MODELS', () => {
+describe('DEFAULT_AVAILABLE_STT_MODELS', () => {
   it('is derived from DEFAULT_STT_MODELS (identical ids, same order)', () => {
     expect(DEFAULT_AVAILABLE_STT_MODELS.map((m) => m.id)).toEqual(DEFAULT_STT_MODELS.map((m) => m.id));
   });

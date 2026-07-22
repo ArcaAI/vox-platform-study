@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import { ADMIN_USER_DEPARTMENTS_ENDPOINTS, ADMIN_USER_PROFILE_ENDPOINTS } from '../constants';
 
-describe('TASK-328 A1: ADMIN_USER_DEPARTMENTS_ENDPOINTS', () => {
+describe('ADMIN_USER_DEPARTMENTS_ENDPOINTS', () => {
   it('LIST(userId) returns /admin/users/:id/departments', () => {
     expect(ADMIN_USER_DEPARTMENTS_ENDPOINTS.LIST('u-1')).toBe('/admin/users/u-1/departments');
   });
@@ -46,7 +46,7 @@ describe('TASK-328 A1: ADMIN_USER_DEPARTMENTS_ENDPOINTS', () => {
   });
 });
 
-describe('TASK-328 A1–A3: ADMIN_USER_PROFILE_ENDPOINTS', () => {
+describe('ADMIN_USER_PROFILE_ENDPOINTS', () => {
   it('GET(userId) / UPDATE(userId) return /admin/users/:id/profile', () => {
     expect(ADMIN_USER_PROFILE_ENDPOINTS.GET('u-1')).toBe('/admin/users/u-1/profile');
     expect(ADMIN_USER_PROFILE_ENDPOINTS.UPDATE('u-1')).toBe('/admin/users/u-1/profile');
@@ -62,7 +62,7 @@ describe('TASK-328 A1–A3: ADMIN_USER_PROFILE_ENDPOINTS', () => {
   });
 });
 
-describe('TASK-328 A1–A3: package barrel re-export from @arcaai/vox/core', () => {
+describe('package barrel re-export from @arcaai/vox/core', () => {
   it('exposes ADMIN_USER_DEPARTMENTS_ENDPOINTS + ADMIN_USER_PROFILE_ENDPOINTS from core.ts', async () => {
     const core = await import('../../core.js');
     expect(core.ADMIN_USER_DEPARTMENTS_ENDPOINTS).toBeDefined();

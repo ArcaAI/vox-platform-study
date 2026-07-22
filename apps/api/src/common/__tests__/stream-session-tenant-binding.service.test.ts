@@ -23,7 +23,7 @@ import {
  * looks up the mapping and 404s on tenant mismatch, matching the DEF-C3
  * "no existence leak" posture every other resource model uses.
  */
-describe('StreamSessionTenantBindingService (TASK-310 W7.A.9 / AC-3)', () => {
+describe('StreamSessionTenantBindingService', () => {
   const createMockCache = () => {
     const store = new Map<string, string>();
     return {
@@ -84,7 +84,7 @@ describe('StreamSessionTenantBindingService (TASK-310 W7.A.9 / AC-3)', () => {
   // Session meta (negotiated sampleRate) carried from `createStreamSession`
   // to the WS gateway under a sibling TTL-bounded key.
   // ===========================================================================
-  describe('session meta (TASK-351 P0-2 / C5)', () => {
+  describe('session meta', () => {
     it('bindSessionMeta() writes a TTL-bounded JSON meta record', async () => {
       await service.bindSessionMeta('sess-meta', { sampleRate: 48000 }, 600);
 

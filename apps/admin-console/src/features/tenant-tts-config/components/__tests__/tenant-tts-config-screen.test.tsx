@@ -248,7 +248,7 @@ describe('TenantTtsConfigScreen', () => {
     expect(put?.body).toEqual({ apiKey: 'new-secret-key', endpoint: 'eastus', enabled: true });
   });
 
-  it('renders the internal-id voice selects and the catalog-driven bindings editor (TASK-506)', async () => {
+  it('renders the internal-id voice selects and the catalog-driven bindings editor', async () => {
     stubFetch({ configRow: row({ defaultVoiceEn: 'en-female-1' }) });
     renderWithProviders(<TenantTtsConfigScreen />);
 

@@ -153,7 +153,7 @@ describe('QueueAdminService', () => {
   // Redis health probe for the Queues & Jobs admin surface (design
   // frame `15` health strip). Reads via the first registered queue's shared
   // ioredis connection: PING → latency, INFO → server stats. Never throws.
-  describe('getRedisHealth (TASK-403)', () => {
+  describe('getRedisHealth', () => {
     const REDIS_INFO = [
       'redis_version:7.2.5',
       'uptime_in_seconds:86400',

@@ -159,7 +159,7 @@ describe('BaseEntity', () => {
     // "hold" state, but BaseEntity had no lifecycle method
     // for it, so `applyChangesToEntity`'s status switch silently no-opped and
     // a suspend request returned 200 without changing anything.
-    describe('suspend (TASK-541)', () => {
+    describe('suspend', () => {
       it('should set status to SUSPENDED', () => {
         const entity = createTestEntity({ resourceStatus: ResourceStatusType.ENABLED });
 
@@ -349,7 +349,7 @@ describe('BaseEntity', () => {
    * id-only contract so non-tenant entities (and mixed comparisons) keep
    * working.
    */
-  describe('TASK-306 P3.4 — equals is tenant-aware for BaseTenantEntity', () => {
+  describe('equals is tenant-aware for BaseTenantEntity', () => {
     // Concrete BaseTenantEntity subclass — inherits the base
     // `validate()` tenant-context guard without modification. Lives
     // INSIDE the test scope to avoid circular imports through any
@@ -697,7 +697,7 @@ describe('BaseEntity', () => {
     });
   });
 
-  describe('version (TASK-302 Stream D Phase B)', () => {
+  describe('version (Stream D Phase B)', () => {
     it('defaults to 1 when not provided in init', () => {
       const entity = createTestEntity();
       expect(entity.version).toBe(1);

@@ -120,7 +120,7 @@ describe('Tenant-ability regression — seeded GLOBAL_ADMIN policy linkage', () 
   });
 
   describe('seed-data sanity', () => {
-    it('GLOBAL_ADMIN role exists in seed (SUPER_ADMIN is retired — TASK-417)', () => {
+    it('GLOBAL_ADMIN role exists in seed (SUPER_ADMIN is retired)', () => {
       const globalAdmin = DEFAULT_ROLES.find((r) => r.name === 'GLOBAL_ADMIN');
       expect(globalAdmin).toBeDefined();
       expect(globalAdmin?.id).toBe(SEED_ROLE_IDS.GLOBAL_ADMIN);

@@ -29,7 +29,7 @@ class FakeMediaStream {
 
 const fakeTrack = (id: string) => ({ id, kind: 'audio', stop: vi.fn() }) as unknown as MediaStreamTrack;
 
-describe('DualStreamRecorder (TASK-329 P2)', () => {
+describe('DualStreamRecorder', () => {
   beforeEach(() => {
     FakeMediaRecorder.isTypeSupported.mockReturnValue(true);
     (globalThis as any).MediaRecorder = FakeMediaRecorder;

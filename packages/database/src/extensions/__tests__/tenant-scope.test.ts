@@ -136,7 +136,7 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     expect(query).toHaveBeenCalledWith({ where: { keyHash: 'deadbeef' } });
   });
 
-  it('includes the user↔tenant membership join tables (TASK-305 Phase F)', () => {
+  it('includes the user↔tenant membership join tables (Phase F)', () => {
     expect(TENANT_SCOPED_MODELS.has('UserRoleAssignment')).toBe(true);
     expect(TENANT_SCOPED_MODELS.has('UserDepartment')).toBe(true);
     expect(isTenantScopedModel('userDepartment')).toBe(true);

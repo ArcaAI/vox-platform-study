@@ -80,7 +80,7 @@ function makeJoinedRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe('TASK-444 — UserRoleAssignmentService.fetchAllByRoleId', () => {
+describe('UserRoleAssignmentService.fetchAllByRoleId', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDatabaseService.client.userRoleAssignment.findMany.mockResolvedValue([]);

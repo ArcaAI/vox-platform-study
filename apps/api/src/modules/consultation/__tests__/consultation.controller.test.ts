@@ -329,7 +329,7 @@ describe('ConsultationController', () => {
                 );
             });
 
-            it('TASK-307 W5.4 — should default to sharing CLOSED when globalSettingRepo throws (fail-closed)', async () => {
+            it('should default to sharing CLOSED when globalSettingRepo throws (fail-closed)', async () => {
                 const { controller, consultationService, globalSettingRepo } = buildController({
                     userId: DOCTOR_B,
                 });
@@ -388,7 +388,7 @@ describe('ConsultationController', () => {
                 expect(result).toEqual({ id: 'ctx-1' });
             });
 
-            it('deleteContext soft-deletes via the context service when caller is the owner (TASK-342 GAP #3)', async () => {
+            it('deleteContext soft-deletes via the context service when caller is the owner', async () => {
                 const { controller, consultationService, contextService } = buildController();
                 consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
                 contextService.deleteContext.mockResolvedValue(undefined);
@@ -399,7 +399,7 @@ describe('ConsultationController', () => {
                 expect(result).toEqual({ ok: true });
             });
 
-            it('addRecording threads raw/processed media ids to the context service (TASK-329 X8)', async () => {
+            it('addRecording threads raw/processed media ids to the context service', async () => {
                 const { controller, consultationService, contextService } = buildController();
                 consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
                 contextService.addAudioRecording.mockResolvedValue({ id: 'ctx-audio-1' });
@@ -588,7 +588,7 @@ describe('ConsultationController', () => {
         // The flag must be default-CLOSED. A missing-setting path returning
         // `true` (default-OPEN) would silently enable shared-patient reads
         // for tenants that had never made a sharing decision.
-        it('TASK-307 W5.4 — defaults FALSE when globalSettingRepo returns empty array (default-CLOSED)', async () => {
+        it('defaults FALSE when globalSettingRepo returns empty array (default-CLOSED)', async () => {
             const { controller, consultationService, globalSettingRepo } = buildController({
                 userId: DOCTOR_B,
             });
@@ -604,7 +604,7 @@ describe('ConsultationController', () => {
             expect(consultationService.doctorHasPatientRelationship).not.toHaveBeenCalled();
         });
 
-        it('TASK-307 W5.4 — defaults FALSE when the GlobalSetting repository throws (fail-closed)', async () => {
+        it('defaults FALSE when the GlobalSetting repository throws (fail-closed)', async () => {
             const { controller, consultationService, globalSettingRepo } = buildController({
                 userId: DOCTOR_B,
             });
@@ -618,7 +618,7 @@ describe('ConsultationController', () => {
             expect(consultationService.doctorHasPatientRelationship).not.toHaveBeenCalled();
         });
 
-        it('TASK-307 W5.4 — returns FALSE for non-"true" truthy strings (strict equality)', async () => {
+        it('returns FALSE for non-"true" truthy strings (strict equality)', async () => {
             const cases = ['TRUE', '1', 'yes', 'on', ' true', ''];
             for (const value of cases) {
                 const { controller, consultationService, globalSettingRepo } = buildController({
@@ -812,7 +812,7 @@ describe('ConsultationController', () => {
     // Safety-flag override plumbing
     // ═══════════════════════════════════════════════════════════════════════
 
-    describe('approveSummary — overrideSafetyFlag plumbing (TASK-355 Q4)', () => {
+    describe('approveSummary — overrideSafetyFlag plumbing', () => {
         const approval = { contextItemId: 'ctx-1', approvalStatus: 'SIGNED', approvedBy: DOCTOR_A, approvedAt: '2026-06-14T00:00:00.000Z' };
 
         it('forwards overrideSafetyFlag from the request body to the summary service', async () => {
@@ -840,7 +840,7 @@ describe('ConsultationController', () => {
     // Lifecycle endpoints (close / reopen / update) wiring
     // ═══════════════════════════════════════════════════════════════════════
 
-    describe('TASK-322 lifecycle endpoints', () => {
+    describe('lifecycle endpoints', () => {
         it('close delegates to service and returns the updated consultation (owner)', async () => {
             const { controller, consultationService } = buildController();
             consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
@@ -988,7 +988,7 @@ describe('ConsultationController', () => {
     // Summary provenance read route (citationsMap + sensor scores)
     // ═══════════════════════════════════════════════════════════════════════
 
-    describe('getSummaryProvenance (TASK-330 provenance read)', () => {
+    describe('getSummaryProvenance (provenance read)', () => {
         it('delegates to summaryService with the contextItemId for an authorized reader', async () => {
             const { controller, consultationService, summaryService } = buildController();
             consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));

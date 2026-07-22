@@ -15,7 +15,7 @@ const verify = vi.fn();
 const controller = () =>
     new RegisterController({ getConfigValue } as never, { register, verify } as never);
 
-describe('RegisterController (TASK-497)', () => {
+describe('RegisterController', () => {
     beforeEach(() => vi.clearAllMocks());
 
     describe('when REGISTRATION_SELF_SIGNUP_ENABLED is OFF (default)', () => {

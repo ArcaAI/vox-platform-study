@@ -76,7 +76,7 @@ const mcpServerEntity = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-describe('HarnessPolicyService — MCP policy plumbing (TASK-533 D-24)', () => {
+describe('HarnessPolicyService — MCP policy plumbing', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     policyRepository.findForExactTenant.mockResolvedValue(null);

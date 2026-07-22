@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator
 
 
 class RetryConfig(BaseModel):
@@ -16,6 +16,22 @@ class ResponseFormat(BaseModel):
     type: Literal["text", "json", "json_schema"] = "text"
     json_schema: dict[str, Any] | None = None
     strict: bool = True
+
+
+class ProviderOverride(BaseModel):
+    """Per-request BYO cloud credential the gateway injects for the resolved
+    cloud provider (`apps/api` ``SmrProxyController.applyTenantProviderOverrides``).
+
+    ``api_key`` is a ``SecretStr`` so it never surfaces via ``repr()``/``str()``/
+    ``model_dump()``/logging — a provider client must call
+    ``.get_secret_value()`` at the single point it hands the key to the SDK.
+    """
+
+    api_key: SecretStr
+    base_url: str | None = None
+    region: str | None = None
+    api_version: str | None = None
+    deployment_name: str | None = None
 
 
 class GenerateRequest(BaseModel):
@@ -30,6 +46,11 @@ class GenerateRequest(BaseModel):
     response_format: ResponseFormat | None = None
     context: dict[str, Any] | None = None
     retry_config: RetryConfig = Field(default_factory=RetryConfig)
+    # Gateway-injected tenant BYO credential, keyed by the SAME provider name
+    # as ``provider`` (e.g. ``{"azure": {...}}``). Absent for every caller
+    # until a tenant configures an enabled cloud (azure/bedrock) connection —
+    # override-wins-over-env/config semantics live in the provider clients.
+    provider_overrides: dict[str, ProviderOverride] | None = None
 
     @field_validator("prompt")
     @classmethod

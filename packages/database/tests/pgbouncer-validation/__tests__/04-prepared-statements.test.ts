@@ -38,7 +38,7 @@ afterAll(async () => {
 const N = 100;
 
 describe('PgBouncer txn-mode — prepared statements (Task 1.10)', () => {
-  it('R-PS-1: 100 concurrent typed findFirst calls', async () => {
+  it('100 concurrent typed findFirst calls', async () => {
     const results = await Promise.allSettled(
       Array.from({ length: N }, (_, i) =>
         prisma.globalSetting.findFirst({
@@ -61,7 +61,7 @@ describe('PgBouncer txn-mode — prepared statements (Task 1.10)', () => {
     });
   });
 
-  it('R-PS-2: 100 concurrent $queryRaw template calls (named statements)', async () => {
+  it('100 concurrent $queryRaw template calls (named statements)', async () => {
     const results = await Promise.allSettled(
       Array.from({ length: N }, (_, i) => {
         // Use a parameterised Prisma.sql template; the adapter will register
@@ -81,7 +81,7 @@ describe('PgBouncer txn-mode — prepared statements (Task 1.10)', () => {
     expect(failures).toHaveLength(0);
   });
 
-  it('R-PS-3: PgBouncer reports zero prepared-statement errors after the burst', async () => {
+  it('PgBouncer reports zero prepared-statement errors after the burst', async () => {
     // PgBouncer aggregates query types per database in SHOW STATS_TOTALS.
     // We grep the LOG/ERRORS surface via SHOW STATE, but the cleanest signal
     // is checking SHOW STATS doesn't show any aborted xacts (n_aborted)

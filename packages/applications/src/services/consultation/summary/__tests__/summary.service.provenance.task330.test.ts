@@ -36,7 +36,7 @@ function buildService() {
   return { service, summaryMetaRepository };
 }
 
-describe('SummaryService.getSummaryProvenance (TASK-330 — provenance over HTTP)', () => {
+describe('SummaryService.getSummaryProvenance (provenance over HTTP)', () => {
   it('maps SummaryMeta provenance (citationsMap + sensor scores + modelName) to a response DTO', async () => {
     const { service, summaryMetaRepository } = buildService();
     const generatedAt = new Date('2026-06-06T00:00:00.000Z');
@@ -69,7 +69,7 @@ describe('SummaryService.getSummaryProvenance (TASK-330 — provenance over HTTP
     });
   });
 
-  it('passes per-claim knowledgeChunkIds through provenance unchanged (TASK-330 Phase 3 institutional RAG)', async () => {
+  it('passes per-claim knowledgeChunkIds through provenance unchanged (Phase 3 institutional RAG)', async () => {
     // `knowledgeChunkIds: string[]` is added to each citationsMap claim
     // (the harness RAG path links a claim to the KnowledgeChunk rows that
     // grounded it). citationsMap is a Json passthrough end-to-end, so this is

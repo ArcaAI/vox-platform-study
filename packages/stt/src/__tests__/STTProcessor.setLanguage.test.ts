@@ -13,7 +13,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { STTProcessor } from '../core/STTProcessor.js';
 import { LocalSTTProvider } from '../providers/LocalSTTProvider.js';
 
-describe('STTProcessor.setLanguage (TASK-304)', () => {
+describe('STTProcessor.setLanguage', () => {
   let processor: STTProcessor;
 
   beforeEach(() => {

@@ -38,7 +38,6 @@ deployment/
     │   ├── stt-v2.yaml                # Deployment + Service (8861, GPU)
     │   ├── stt-v2-worker.yaml         # Deployment, no Service
     │   ├── tts-v2.yaml                # Deployment + Service (8865)
-    │   ├── nlp.yaml                   # Deployment + Service (8864) — present but NOT registered in kustomization.yaml
     │   ├── ui.yaml                    # Deployment + Service + Ingress (3000) — ui-playground (deprecated)
     │   └── db-migrate.yaml            # Job, ArgoCD PreSync hook (runs Prisma migrations)
     ├── components/
@@ -126,7 +125,7 @@ Either way the database itself must exist and accept connections before bootstra
 
 Resource requests/limits are set per manifest in `k3s/base/` and patched per overlay where needed.
 
-> `k3s/base/nlp.yaml` (hope-nlp, 8864) exists but is **not** listed in `k3s/base/kustomization.yaml`, so the base does not deploy it — register it there before relying on it in-cluster. `vllm.yaml`, `llama-cpp.yaml`, and `tts-v2.yaml` are all registered. Third-party images (`hope-vllm`, `hope-llama-cpp`, `hope-reranker`, `hope-ollama`) are pinned and NOT rewritten by the registry component.
+> The NLP service has no k3s manifest (the orphaned, never-registered `nlp.yaml` was removed 2026-07-22 by owner decision) — the base does not deploy hope-nlp; the gateway's `NLP_URL` config remains for out-of-cluster or future deployment. `vllm.yaml`, `llama-cpp.yaml`, and `tts-v2.yaml` are all registered. Third-party images (`hope-vllm`, `hope-llama-cpp`, `hope-reranker`, `hope-ollama`) are pinned and NOT rewritten by the registry component.
 
 ### Admin console (hope-admin-console) notes
 

@@ -40,7 +40,7 @@ vi.mock('../configDB', () => ({
 const NS_A = 'tenantA::userA';
 const NS_B = 'tenantB::userB';
 
-describe('TASK-317 W1.1 — PersonalizationManager IDB namespacing (AC-1)', () => {
+describe('PersonalizationManager IDB namespacing', () => {
   let mockApiClient: AgenticClient;
   let mockLogger: ReturnType<typeof createMockLogger>;
 

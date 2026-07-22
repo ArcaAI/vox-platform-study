@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest';
 import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { MyTenantController } from '../my-tenant.controller';
 
-describe('MyTenantController.updateMyConfig — BUG-005 authorization metadata', () => {
+describe('MyTenantController.updateMyConfig — authorization metadata', () => {
     const getMethodMetadata = (method: string) =>
         Reflect.getMetadata(
             REQUIRED_PERMISSIONS_KEY,

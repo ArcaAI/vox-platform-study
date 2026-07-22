@@ -285,7 +285,7 @@ class Q7Controller {
   }
 }
 
-describe('TieredThrottlerGuard (TASK-392 Q7 — per-tenant plan rate-limits)', () => {
+describe('TieredThrottlerGuard (per-tenant plan rate-limits)', () => {
   let app: INestApplication;
   const prevEnabled = process.env.RATE_LIMIT_ENABLED;
 

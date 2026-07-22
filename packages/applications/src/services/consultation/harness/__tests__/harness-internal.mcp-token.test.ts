@@ -56,7 +56,7 @@ function buildService(opts: { withSecrets?: boolean; withRegistry?: boolean } = 
   );
 }
 
-describe('HarnessInternalService.resolveMcpToken (TASK-533 D-24)', () => {
+describe('HarnessInternalService.resolveMcpToken', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mcpServerRepository.findAll.mockResolvedValue([enabledServer()]);

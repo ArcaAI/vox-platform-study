@@ -57,7 +57,7 @@ const mockReport = {
     updatedAt: '2026-01-01T00:00:00.000Z',
 };
 
-describe('useDnaStyle — TASK-388 #13 admin cross-user methods', () => {
+describe('useDnaStyle — admin cross-user methods', () => {
     let mockStore: any;
     const mockGet = vi.fn();
     const mockPost = vi.fn();

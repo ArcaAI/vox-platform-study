@@ -102,7 +102,7 @@ afterEach(() => {
     vi.unstubAllGlobals();
 });
 
-describe('AgenticContextTab — registry write lane (TASK-533 B2)', () => {
+describe('AgenticContextTab — registry write lane', () => {
     it('shows only Agentic Context keys, with their stored value', async () => {
         stubFetch();
         renderWithProviders(<AgenticContextTab />);

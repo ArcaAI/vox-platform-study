@@ -651,7 +651,7 @@ describe('TranscriptionJobService', () => {
     // for defense-in-depth, matching the existing posture of `list`,
     // `getByStatus`, and `getStatusCounts`.
     // ------------------------------------------------------------------------
-    describe('TASK-307 W3.8 — getByConsultation enforces tenant filter', () => {
+    describe('getByConsultation enforces tenant filter', () => {
         it('passes the CLS tenantId alongside consultationId to a tenant-scoped findAll', async () => {
             mockJobRepository.findAll.mockResolvedValue([]);
 
@@ -676,7 +676,7 @@ describe('TranscriptionJobService', () => {
             await expect(service.getByConsultation('consultation-1')).rejects.toThrow(BadRequestException);
         });
 
-        it('does NOT call the unfiltered findByConsultation (defense-in-depth — drops the W3.8 cross-tenant exposure)', async () => {
+        it('does NOT call the unfiltered findByConsultation (defense-in-depth — drops the cross-tenant exposure)', async () => {
             mockJobRepository.findAll.mockResolvedValue([]);
 
             await service.getByConsultation('consultation-1');
@@ -693,7 +693,7 @@ describe('TranscriptionJobService', () => {
     // calls these *ForOwner variants so a caller only ever sees the jobs THEY
     // created (`createdBy`), instead of every job in the tenant.
     // ------------------------------------------------------------------------
-    describe('TASK-319 F3 — owner-scoped listings (end-user)', () => {
+    describe('owner-scoped listings (end-user)', () => {
         it('listForOwner filters by createdBy AND tenantId', async () => {
             mockJobRepository.findAll.mockResolvedValue([createBehavioralJobEntity({ id: 'j1', createdBy: 'owner-1' })]);
             mockJobRepository.count.mockResolvedValue(1);
@@ -756,7 +756,7 @@ describe('TranscriptionJobService', () => {
     // `createdBy`, and 404 (no existence leak) otherwise — mirroring the
     // @TenantOwnedResource creator posture used for ConsultationJob.
     // ------------------------------------------------------------------------
-    describe('EU-01 — creator-scoped cancel/retry (end-user)', () => {
+    describe('creator-scoped cancel/retry (end-user)', () => {
         it('cancelJobForOwner cancels the job when the caller is its creator', async () => {
             const job = createBehavioralJobEntity({ id: 'job-123', status: TranscriptionJobStatus.QUEUED, createdBy: 'owner-1' });
             mockJobRepository.findById.mockResolvedValue(job);
@@ -813,7 +813,7 @@ describe('TranscriptionJobService', () => {
     // surface: only the caller's OWN jobs (createdBy) for the consultation, in
     // addition to the existing tenant filter.
     // ------------------------------------------------------------------------
-    describe('EU-02 — owner-scoped getByConsultation (end-user)', () => {
+    describe('owner-scoped getByConsultation (end-user)', () => {
         it('getByConsultationForOwner filters by createdBy AND tenantId AND consultationId', async () => {
             mockJobRepository.findAll.mockResolvedValue([]);
 

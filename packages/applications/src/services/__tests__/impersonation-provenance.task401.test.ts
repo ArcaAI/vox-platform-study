@@ -39,7 +39,7 @@ function buildCls(user: Record<string, unknown> | null) {
     };
 }
 
-describe('BaseService.broadcastSysEvent — impersonation provenance (TASK-401)', () => {
+describe('BaseService.broadcastSysEvent — impersonation provenance', () => {
     beforeEach(() => vi.clearAllMocks());
 
     it('threads metaData.impersonatedBy when the CLS user is impersonated', () => {
@@ -87,7 +87,7 @@ describe('BaseService.broadcastSysEvent — impersonation provenance (TASK-401)'
 
 // ─── SysEventService → AuditLogJob.metadata ─────────────────────────────────
 
-describe('SysEventService — AuditLogJob carries event.metaData (TASK-401)', () => {
+describe('SysEventService — AuditLogJob carries event.metaData', () => {
     beforeEach(() => vi.clearAllMocks());
 
     it('maps metaData into the queued audit-log job for UPDATE events', async () => {
@@ -125,7 +125,7 @@ describe('SysEventService — AuditLogJob carries event.metaData (TASK-401)', ()
 
 // ─── AuditLogProcessor → persisted row metadata ─────────────────────────────
 
-describe('AuditLogProcessor — persists job.metadata on the row (TASK-401)', () => {
+describe('AuditLogProcessor — persists job.metadata on the row', () => {
     beforeEach(() => vi.clearAllMocks());
 
     it('passes metadata through the factory to the created entity', async () => {

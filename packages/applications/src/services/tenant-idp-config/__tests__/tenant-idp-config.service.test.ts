@@ -75,7 +75,7 @@ const existingSamlRow = (overrides: Record<string, unknown> = {}) =>
     ...overrides,
   });
 
-describe('TenantIdpConfigService.create (TASK-498)', () => {
+describe('TenantIdpConfigService.create', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('rejects when Vault is unavailable', async () => {
@@ -153,7 +153,7 @@ describe('TenantIdpConfigService.getById / list — tenant scoping (404-over-403
   });
 });
 
-describe('TenantIdpConfigService.update (TASK-498)', () => {
+describe('TenantIdpConfigService.update', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('compare-and-set updates via updateWithVersion + broadcasts ResourceUpdated', async () => {
@@ -218,7 +218,7 @@ describe('TenantIdpConfigService.update (TASK-498)', () => {
   });
 });
 
-describe('TenantIdpConfigService.setDirectoryCredentials (TASK-498 P3/P4)', () => {
+describe('TenantIdpConfigService.setDirectoryCredentials', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('rejects when Vault is unavailable', async () => {
@@ -264,7 +264,7 @@ describe('TenantIdpConfigService.setDirectoryCredentials (TASK-498 P3/P4)', () =
   });
 });
 
-describe('TenantIdpConfigService.remove (TASK-498)', () => {
+describe('TenantIdpConfigService.remove', () => {
   it('soft-deletes, broadcasts ResourceDeleted, and invalidates the resolver cache', async () => {
     const { svc, repo, emitter, resolver } = makeService();
     const row = existingRow();
@@ -284,7 +284,7 @@ describe('TenantIdpConfigService.remove (TASK-498)', () => {
   });
 });
 
-describe('TenantIdpConfigService.testConnection (TASK-498 D7 — no self-lockout)', () => {
+describe('TenantIdpConfigService.testConnection (no self-lockout)', () => {
   it('flips DRAFT to ENABLED on a successful discovery probe', async () => {
     const { svc, repo, resolver } = makeService();
     const row = existingRow({ providerStatus: IdpStatus.DRAFT });
@@ -331,7 +331,7 @@ describe('TenantIdpConfigService.testConnection (TASK-498 D7 — no self-lockout
   });
 });
 
-describe('TenantIdpConfigService.create — SAML branch (TASK-499 D5)', () => {
+describe('TenantIdpConfigService.create — SAML branch', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('rejects a SAML create with no samlConfig', async () => {
@@ -370,7 +370,7 @@ describe('TenantIdpConfigService.create — SAML branch (TASK-499 D5)', () => {
   });
 });
 
-describe('TenantIdpConfigService.update — SAML branch (TASK-499)', () => {
+describe('TenantIdpConfigService.update — SAML branch', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('replaces samlConfig while preserving the server-generated SP cert', async () => {
@@ -387,7 +387,7 @@ describe('TenantIdpConfigService.update — SAML branch (TASK-499)', () => {
   });
 });
 
-describe('TenantIdpConfigService.testConnection — SAML branch (TASK-499)', () => {
+describe('TenantIdpConfigService.testConnection — SAML branch', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('flips DRAFT to ENABLED when the config-consistency smoke test succeeds', async () => {

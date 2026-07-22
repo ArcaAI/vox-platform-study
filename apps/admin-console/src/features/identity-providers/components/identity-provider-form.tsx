@@ -22,6 +22,16 @@ import { useCreateIdentityProvider, useDepartments, useRoles, useUpdateIdentityP
 import type { OidcProviderConfig, TenantIdpConfig } from '../api/types';
 import { TestConnectionSection } from './test-connection-section';
 
+/**
+ * F-036: `federated-auth.service.ts` hard-blocks `GLOBAL_ADMIN` at JIT
+ * provisioning (`role.name === 'GLOBAL_ADMIN'` -> 403) and `SERVICE_ACCOUNT`
+ * users can never sign in interactively — offering either as a default role
+ * lets a config save cleanly and fail every subsequent IdP login instead.
+ * Keep the backend as the enforcement point; this only removes dead/unsafe
+ * choices from the picker.
+ */
+const DEFAULT_ROLE_EXCLUDED_NAMES = new Set(['GLOBAL_ADMIN', 'SERVICE_ACCOUNT']);
+
 function RequiredMark() {
     return (
         <span aria-hidden className="text-destructive">
@@ -47,7 +57,7 @@ function DefaultRoleDepartmentFields({
 }) {
     const rolesQuery = useRoles();
     const departmentsQuery = useDepartments();
-    const roles = rolesQuery.data ?? [];
+    const roles = (rolesQuery.data ?? []).filter((role) => !DEFAULT_ROLE_EXCLUDED_NAMES.has(role.name));
     const departments = departmentsQuery.data ?? [];
 
     return (

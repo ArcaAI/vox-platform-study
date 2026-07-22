@@ -253,7 +253,7 @@ describe('UserController', () => {
     // paging from the admin grid is stable, mirroring AuditLogController.
     // The query params are otherwise forwarded untouched on every scoping branch.
     // -------------------------------------------------------------------------
-    describe('TASK-375 — sort/filter/search forwarding + default sort', () => {
+    describe('sort/filter/search forwarding + default sort', () => {
         it('fetchAll: applies the default createdAt:desc sort when none is supplied (global-admin)', async () => {
             mockUserService.fetchAll.mockResolvedValue(fakeFetchResponse);
 
@@ -328,7 +328,7 @@ describe('UserController', () => {
     // not be able to enumerate users platform-wide. Non-global-admins are
     // routed to the by-tenant service path; GLOBAL_ADMIN keeps cross-tenant.
     // -------------------------------------------------------------------------
-    describe('TASK-326 X2 — GET /admin/users tenant scoping', () => {
+    describe('GET /admin/users tenant scoping', () => {
         const buildController = (cls: ReturnType<typeof createMockCls>) =>
             new UserController(
                 mockUserService as any,
@@ -438,7 +438,7 @@ describe('UserController', () => {
     // users by UUID. Mirrors `fetchAll`'s tenant-scope guard: a non-global-admin
     // may only read their OWN tenant; GLOBAL_ADMIN keeps the cross-tenant read.
     // -------------------------------------------------------------------------
-    describe('TASK-331 #2 — GET /admin/users/tenant/:tenantId caller-tenant guard', () => {
+    describe('GET /admin/users/tenant/:tenantId caller-tenant guard', () => {
         const buildController = (cls: ReturnType<typeof createMockCls>) =>
             new UserController(
                 mockUserService as any,
@@ -767,7 +767,7 @@ describe('UserController', () => {
     // `manage:UserRoleAssignment` (checked imperatively via the request
     // ability, since the class-level gate is only `manage:User`).
     // ------------------------------------------------------------------------
-    describe('POST /admin/users/bulk-actions action="assign-role" (TASK-398 P1-6)', () => {
+    describe('POST /admin/users/bulk-actions action="assign-role"', () => {
         it('assigns the role to every id via userRoleAssignmentService.create, per-item envelope', async () => {
             mockUserRoleAssignmentService.create.mockResolvedValue(fakeUserRoleAssignmentEntity);
 

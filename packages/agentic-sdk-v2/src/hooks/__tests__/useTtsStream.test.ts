@@ -79,7 +79,7 @@ async function openReady(result: { current: ReturnType<typeof useTtsStream> }): 
   return ws;
 }
 
-describe('useTtsStream (TASK-492)', () => {
+describe('useTtsStream', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     FakeWebSocket.instances = [];

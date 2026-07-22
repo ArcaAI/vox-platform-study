@@ -290,6 +290,38 @@ describe('convertEntityValue', () => {
     });
   });
 
+  describe('Binary values (Bytes columns)', () => {
+    // Ciphertext columns (`encrypted*` Bytes) travel through the entity →
+    // toObject → toPersistence chain as Buffer/Uint8Array. Treating them as
+    // generic objects destructures them into `{ "0": 118, "1": 97, ... }`,
+    // which Prisma rejects ("Expected Bytes or Null, provided Object") —
+    // binary blobs are leaf values, same rule removeNullValues applies.
+    it('should pass a Buffer through untouched (not destructure it into numbered keys)', () => {
+      const buf = Buffer.from('vault:v1:ciphertext', 'utf8');
+      const result = convertEntityValue(buf);
+
+      expect(Buffer.isBuffer(result)).toBe(true);
+      expect(result).toBe(buf);
+    });
+
+    it('should pass a Uint8Array through untouched', () => {
+      const bytes = new Uint8Array([1, 2, 3]);
+      const result = convertEntityValue(bytes);
+
+      expect(ArrayBuffer.isView(result)).toBe(true);
+      expect(result).toBe(bytes);
+    });
+
+    it('should keep Buffers intact inside plain objects', () => {
+      const buf = Buffer.from('vault:v1:ciphertext', 'utf8');
+      const result = convertEntityValue({ encryptedApiKey: buf, keyVersion: 1 });
+
+      expect(Buffer.isBuffer(result.encryptedApiKey)).toBe(true);
+      expect(result.encryptedApiKey).toBe(buf);
+      expect(result.keyVersion).toBe(1);
+    });
+  });
+
   describe('Edge cases', () => {
     it('should handle object with null prototype', () => {
       const obj = Object.create(null);

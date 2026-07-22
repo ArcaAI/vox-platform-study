@@ -668,7 +668,7 @@ describe('usePrompts', () => {
     /*  getUsageStats                                 */
     /* ------------------------------------------------------------------ */
 
-    describe('getUsageStats (TASK-218)', () => {
+    describe('getUsageStats', () => {
         it('should GET from PROMPT_TEMPLATE_ENDPOINTS.USAGE(id)', async () => {
             const stats = { totalUsages: 42, lastUsedAt: '2026-02-24T10:00:00Z' };
             mockGet.mockResolvedValue(stats);

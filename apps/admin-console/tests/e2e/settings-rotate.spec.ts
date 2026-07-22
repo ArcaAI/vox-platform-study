@@ -60,7 +60,7 @@ async function openSecretDrawer(page: Page, key: string): Promise<void> {
     await expect(page.getByRole('dialog').getByRole('tab', { name: 'Value' })).toBeVisible();
 }
 
-test.describe('secret rotation (TASK-445)', () => {
+test.describe('secret rotation', () => {
     test('rotates a secret through the endpoint: step-up dialog, success toast, version bump, no plaintext', async ({ page }) => {
         const { id, key } = await createFixtureSecret(page);
 

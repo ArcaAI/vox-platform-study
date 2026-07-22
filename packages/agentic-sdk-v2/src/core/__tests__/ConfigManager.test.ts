@@ -348,7 +348,7 @@ describe('ConfigManager', () => {
     // Read-only mode for impersonation
     // =========================================================================
 
-    describe('TASK-245: read-only mode', () => {
+    describe('read-only mode', () => {
         it('should not persist when read-only is enabled', () => {
             const persist = vi.fn().mockResolvedValue(undefined);
             const mgr = new ConfigManager({ onPersistUserPreferences: persist });
@@ -396,7 +396,7 @@ describe('ConfigManager', () => {
         });
     });
 
-    describe('TASK-245: loadExternalPreferences', () => {
+    describe('loadExternalPreferences', () => {
         it('should load external user preferences without triggering persistence', () => {
             const persist = vi.fn().mockResolvedValue(undefined);
             const mgr = new ConfigManager({ onPersistUserPreferences: persist });
@@ -421,7 +421,7 @@ describe('ConfigManager', () => {
         });
     });
 
-    describe('TASK-245: snapshot and restore', () => {
+    describe('snapshot and restore', () => {
         it('snapshotUserPreferences should return a deep copy', () => {
             manager.setUserPreferences({ stt: { language: 'hi' } });
             const snapshot = manager.snapshotUserPreferences();
@@ -476,7 +476,7 @@ describe('ConfigManager', () => {
     // audio.captureRawAudio is admin-owned (server-computed effective
     // flag). It must survive from the tenant tier and be unoverridable by users.
     // =========================================================================
-    describe('TASK-332: audio.captureRawAudio cascade', () => {
+    describe('audio.captureRawAudio cascade', () => {
         it('should default to false with no overrides', () => {
             expect(manager.getResolved().audio.captureRawAudio).toBe(false);
         });

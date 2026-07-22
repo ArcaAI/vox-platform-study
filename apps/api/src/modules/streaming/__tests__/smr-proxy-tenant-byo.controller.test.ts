@@ -62,7 +62,7 @@ const forwardedBody = (http: ReturnType<typeof build>['http']) => http.axiosRef.
 
 beforeEach(() => vi.clearAllMocks());
 
-describe('SMR proxy — tenant BYO credential injection (TASK-526)', () => {
+describe('SMR proxy — tenant BYO credential injection', () => {
   it('folds the tenant azure credential into the forwarded body', async () => {
     const { ctrl, http } = build({
       overrides: {

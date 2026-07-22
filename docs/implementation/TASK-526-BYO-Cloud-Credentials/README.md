@@ -176,7 +176,7 @@ Exclusive file-ownership manifest — no file below is owned by another in-fligh
 | 3 | NEW | `packages/applications/src/services/ai-provider-connection/__tests__/ai-provider-connection.tenant-lane.test.ts` (RED first — §5) |
 | 4 | UPDATE ⚠ | `apps/api/src/modules/ai-provider-connection/ai-provider-connection.controller.ts` (524's controller; §4 originally guessed an `ai-provider/ai-provider-admin.controller.ts` folder — see §9.1) — the four tenant routes of §3.6 |
 | 5 | UPDATE | `apps/api/src/modules/streaming/smr-proxy.controller.ts` — `applyTenantProviderOverrides` + calls after `:393`/`:582` selection; `provider_overrides` on the forwarded interface |
-| 6 | NEW/UPDATE | controller/e2e coverage: `apps/api/tests/e2e/task-526-ai-provider-byo-cross-tenant.spec.ts` (authored) + UPDATE the existing smr-proxy controller test file; no standalone `ai-provider-admin` controller unit test — the four tenant routes already existed on 524's controller (§9.1 D-1) |
+| 6 | NEW/UPDATE | controller/e2e coverage: `apps/api/tests/e2e/ai-provider-connections-cross-tenant.spec.ts` (authored) + UPDATE the existing smr-proxy controller test file; no standalone `ai-provider-admin` controller unit test — the four tenant routes already existed on 524's controller (§9.1 D-1) |
 | 7 | UPDATE | `apps/admin-console/src/features/ai-task-defaults/api/types.ts` — `AI_TASK_KEYS` 3→9 keys (mirror `constants.ts`); delete dead `NLP_TASK_KEYS` + its test refs if TASK-523 §0.9 hasn't already (coordination check at start) |
 | 8 | NEW | `…/ai-task-defaults/api/providers-client.ts`, `providers-hooks.ts`, `providers-types.ts`, `providers-keys.ts` — the §3.6 routes via the BFF |
 | 9 | NEW | `…/ai-task-defaults/components/tenant-ai-configuration-screen.tsx` (replaces the EmptyState screen — old file deleted), `effective-models-table.tsx` (EffectiveLine reuse), `byo-credential-card.tsx` (CredentialCard pattern + OCC via `OccConflictAlert`) |
@@ -185,7 +185,7 @@ Exclusive file-ownership manifest — no file below is owned by another in-fligh
 | 12 | UPDATE | `apps/admin-console/src/shared/navigation/nav-config.ts:311-322` — route `/ai-configuration`, label "AI Configuration", stale comment corrected (D-18 nav leg, if 523 hasn't landed it) |
 | 13 | UPDATE | `apps/admin-console/src/shared/navigation/__tests__/nav-config.test.ts` + `…/components/__tests__/ai-task-defaults-screens.test.tsx` (screen renamed) |
 | 14 | NEW | screen tests: `…/components/__tests__/tenant-ai-configuration-screen.test.tsx` (§5) |
-| 15 | NEW (authored, executed in P7) | `apps/api/tests/e2e/task-526-ai-provider-byo-cross-tenant.spec.ts` |
+| 15 | NEW (authored, executed in P7) | `apps/api/tests/e2e/ai-provider-connections-cross-tenant.spec.ts` |
 | 16 | UPDATE | this README (Implementation Summary, evidence, Change History) |
 
 **Comment/doc deltas (binding, plan §2.3)**: nav-config `:311` (D-18 leg, conditional on 523), `(tenant)/ai-model-defaults/page.tsx:6`, the new screen's header comment states the E3 posture truthfully, `secret-field.util.ts` header gains the new consumer name (unless 524 already reworded it — check), `docs/traceability-matrix.md` row for the new tenant routes.
@@ -207,7 +207,7 @@ API — controller + proxy tests:
 8. `PUT …/tenant/:provider` without `If-Match` → 428; version drift → 412; `If-Match: "0"` creates (ai-task-defaults `client.ts:15-20` convention).
 9. Cross-tenant by-id probe → 404 (never 403).
 10. smr-proxy: resolved provider `azure` + enabled tenant credential → forwarded body carries `provider_overrides.azure.{api_key,…}`; provider `ollama` → field absent; resolver throws → request proceeds without overrides + warn (fail-open), while `applySmrModelSelection` failure still rethrows (fail-closed selection preserved).
-11. e2e (authored now, executed P7): `task-526-ai-provider-byo-cross-tenant.spec.ts` — full-HTTP secret-never-echoed + cross-tenant 404 + OCC matrix.
+11. e2e (authored now, executed P7): `ai-provider-connections-cross-tenant.spec.ts` — full-HTTP secret-never-echoed + cross-tenant 404 + OCC matrix.
 
 Console — `tenant-ai-configuration-screen.test.tsx` (+ axe):
 12. States: loading (Skeleton matches table+card layout, rule 10) / effective table populated with all 9 keys + source badges / credentials tab Configured & None cards / error (`ErrorState` + retry).
@@ -299,7 +299,7 @@ Auth check performed before adopting them: `TENANT_ADMIN`'s seeded `tenant-full-
 
 **Phase D — evidence**
 
-- `apps/api/tests/e2e/task-526-ai-provider-byo-cross-tenant.spec.ts` — authored, executed in P7. Deep-key secret scan (no `apikey`/`encryptedapikey`/`ciphertext` at any depth, no `vault:v` in the raw body) on list/read/write, no-reveal-route probe, self-host 403, cross-tenant, 428/412 matrix. Typechecks under `apps/api`.
+- `apps/api/tests/e2e/ai-provider-connections-cross-tenant.spec.ts` — authored, executed in P7. Deep-key secret scan (no `apikey`/`encryptedapikey`/`ciphertext` at any depth, no `vault:v` in the raw body) on list/read/write, no-reveal-route probe, self-host 403, cross-tenant, 428/412 matrix. Typechecks under `apps/api`.
 - `docs/traceability-matrix.md` — new rows 38 (provider connections + BYO injection) and 39 (the console screen).
 
 ### 9.3 Security posture as shipped
@@ -411,3 +411,4 @@ Still open, unchanged by this pass:
 | 2026-07-20 | **Implemented, Phases A–D; status Pending → Review.** TASK-524 re-verified: its landed `admin/ai-providers` routes already satisfied the whole §3.6 endpoint contract, so no `/tenant/*` aliases were created (decision D-1, §2.5 redundancy doctrine); the ticket's guessed file/route names were adapted to the landed ones. Built: `resolveTenantCloudOverrides` (fail-open per credential on decrypt error only, non-secret structured warn), the smr-proxy `provider_overrides` fold-in at the single `applySmrModelSelection` chokepoint (decision D-3), the tenant `/ai-configuration` screen (9-key read-only effective table + Azure/Bedrock BYO cards with OCC), `AI_TASK_KEYS` 3→9 (D-18), the `/ai-model-defaults` → `/ai-configuration` redirect + nav rename, the dead EmptyState screen deleted, an authored e2e secret/OCC/cross-tenant spec, and traceability rows 38–39. `deleteRow` absent-row now 404 not 400 (decision D-2). RED evidence and all four gate outputs pasted in §9.4; §9.5 records the pre-existing `packages/applications` prettier warnings (none in owned files), the un-run e2e, the missing headed-browser pass, and the out-of-scope platform-screen 3-of-9-keys gap. |
 | 2026-07-20 | Program plan §2.5 **Completion & Cleanup Doctrine** adopted as BINDING for this ticket (owner directive): incorrect implementations in the owned surface are removed completely with the fix; partial implementations are finished end-to-end (or explicitly retired); redundant implementations are converged and deleted. Reviewer enforces the §2.5 classification table, plan-conformance (deviations = recorded decision rows), full-closure traceability of the claimed GAP/D/M IDs, and the performance gates. |
 | 2026-07-20 | **Post-reset re-verification (§9.6).** After the owner reset databases + secrets, all four gates re-run from scratch — `pnpm test:unit` 16760 passed, admin-console build/lint/1031 tests, `build:api` 8/8, `pnpm lint` 29/29. No regression across the reset; the pre-existing prettier-warning finding re-confirmed as outside this ticket's files. E2E and the headed browser pass remain deferred per owner directive. |
+| 2026-07-22 | **TASK-536 de-ticketing (R5 reference update).** The former `apps/api/tests/e2e/task-526-ai-provider-byo-cross-tenant.spec.ts` renamed to `ai-provider-connections-cross-tenant.spec.ts`; references above updated. |

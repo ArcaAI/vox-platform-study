@@ -13,7 +13,7 @@ import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { AudioPipelineController } from '../audio-pipeline.controller';
 import { TenantPipelineResyncController } from '../../tenant/tenant-pipeline-resync.controller';
 
-describe('AudioPipelineController — TASK-531 clone route', () => {
+describe('AudioPipelineController — clone route', () => {
   let pipelineService: any;
   let controller: AudioPipelineController;
 
@@ -49,7 +49,7 @@ describe('AudioPipelineController — TASK-531 clone route', () => {
   });
 });
 
-describe('TenantPipelineResyncController — TASK-531 resync route', () => {
+describe('TenantPipelineResyncController — resync route', () => {
   let resyncService: any;
   let controller: TenantPipelineResyncController;
 

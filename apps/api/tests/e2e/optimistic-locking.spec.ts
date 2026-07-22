@@ -42,7 +42,7 @@ interface ConfigRow {
   version: number;
 }
 
-test.describe(`Optimistic locking — PATCH /admin/tenants/configs/${TENANT_KEY} (TASK-302 Stream D Phase C)`, () => {
+test.describe(`Optimistic locking — PATCH /admin/tenants/configs/${TENANT_KEY} (Stream D Phase C)`, () => {
   // We use the super-admin token because the Phase 0 Item 2 guard rejects
   // non-super-admin writes to the `__GLOBAL__` tenant — and `loginSeededUsers`'s
   // tenant_admin happens to be bound to `__GLOBAL__` in the test seed.
@@ -186,7 +186,7 @@ test.describe(`Optimistic locking — PATCH /admin/tenants/configs/${TENANT_KEY}
 // The body-field `expectedVersion` is NOT a substitute here — that's the
 // service-to-service fallback for routes that don't opt into the header
 // contract; once a route opts in, the header is mandatory.
-test.describe(`@RequiresIfMatch contract — PATCH /tenant/me/config (TASK-302 Stream D Phase D)`, () => {
+test.describe(`@RequiresIfMatch contract — PATCH /tenant/me/config (Stream D Phase D)`, () => {
   let superAdminToken: string;
 
   test.beforeAll(async ({ request }) => {

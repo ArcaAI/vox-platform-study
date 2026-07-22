@@ -661,7 +661,7 @@ describe('ApiKeyService', () => {
      * with `NotFoundException` on a non-super-admin mismatch; GLOBAL_ADMIN
      * retains the cross-tenant bypass for admin tooling.
      */
-    describe('TASK-306 P1.5 — fetchAllByTenantId tenant-scoped', () => {
+    describe('fetchAllByTenantId tenant-scoped', () => {
         const setRequestUserRoles = (roles: string[] | undefined) => {
             mockClsService.get.mockImplementation((key: string) => {
                 switch (key) {
@@ -1703,7 +1703,7 @@ describe('ApiKeyService', () => {
      * guards on writes (legitimate cross-tenant support flow), and bypasses
      * read-side scoping.
      */
-    describe('Multi-tenant scoping (TASK-305 D.5.2)', () => {
+    describe('Multi-tenant scoping', () => {
         describe('create', () => {
             it('rejects when DTO tenantId differs from CLS and caller is not GLOBAL_ADMIN', async () => {
                 await expect(
@@ -1926,7 +1926,7 @@ describe('ApiKeyService', () => {
      * (`manage:ApiKey`) retain tenant-scope; GLOBAL_ADMIN retains its broad
      * cross-tenant scope.
      */
-    describe('Owner-scope enforcement (TASK-390 follow-up)', () => {
+    describe('Owner-scope enforcement (follow-up)', () => {
         // Owner-only caller: authenticated + in-tenant, but WITHOUT manage:ApiKey.
         const setOwnerOnlyCaller = (userId: string) => {
             mockClsService.get.mockImplementation((key: string) => {

@@ -31,7 +31,7 @@ import {
     createMockLogger,
 } from '../../__tests__/setup';
 
-describe('AgenticClient — optimistic-locking helpers (TASK-302 Stream D Phase D.4)', () => {
+describe('AgenticClient — optimistic-locking helpers', () => {
     let client: AgenticClient;
     let mockLogger: ReturnType<typeof createMockLogger>;
 

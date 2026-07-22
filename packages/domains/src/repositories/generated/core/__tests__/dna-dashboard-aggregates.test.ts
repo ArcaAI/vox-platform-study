@@ -28,7 +28,7 @@ const makeUow = (delegateByModel: Record<string, any>) => ({
   getDatabaseService: () => delegateByModel,
 });
 
-describe('DnaUsageRecordRepository aggregates (TASK-328 A5)', () => {
+describe('DnaUsageRecordRepository aggregates', () => {
   let delegate: any;
   let repo: any;
 
@@ -104,7 +104,7 @@ describe('DnaUsageRecordRepository aggregates (TASK-328 A5)', () => {
   });
 });
 
-describe('DnaWritingStyleReportRepository aggregates (TASK-328 A5)', () => {
+describe('DnaWritingStyleReportRepository aggregates', () => {
   let delegate: any;
   let repo: any;
 

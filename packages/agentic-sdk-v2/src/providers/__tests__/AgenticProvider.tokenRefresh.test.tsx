@@ -62,7 +62,7 @@ async function renderInitializedProvider(): Promise<AgenticClient> {
     return capturedStore!.getState().apiClient as AgenticClient;
 }
 
-describe('AgenticProvider — TASK-320 B2 auto-wired token refresh', () => {
+describe('AgenticProvider — auto-wired token refresh', () => {
     beforeEach(() => {
         capturedStore = null;
         mockFetch.mockReset();

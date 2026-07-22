@@ -36,7 +36,7 @@ const buildService = (userProfileRepository?: { findAll: ReturnType<typeof vi.fn
 const resolve = (svc: SummaryService, doctorId: string | null) =>
   (svc as any).resolvePreferredPromptTemplateId(doctorId) as Promise<string | null>;
 
-describe('SummaryService.resolvePreferredPromptTemplateId (TASK-329 P2 Tier-0)', () => {
+describe('SummaryService.resolvePreferredPromptTemplateId (Tier-0)', () => {
   let findAll: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {

@@ -166,7 +166,7 @@ function mapRequestMethod(code: number): string {
   }
 }
 
-describe('TASK-307 W4a.2 / AC-13 part 1 — every AppModule route is labeled (@Public OR REQUIRED_PERMISSIONS_KEY)', () => {
+describe('W4a.2 / AC-13 part 1 — every AppModule route is labeled (@Public OR REQUIRED_PERMISSIONS_KEY)', () => {
   const reflector = new Reflector();
   const metadataScanner = new MetadataScanner();
 
@@ -276,7 +276,7 @@ class _AuthorizedFixtureController {
   }
 }
 
-describe('TASK-307 W4b / AC-13 part 2 — global APP_GUARD runtime walk (synthetic module)', () => {
+describe('W4b / AC-13 part 2 — global APP_GUARD runtime walk (synthetic module)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {

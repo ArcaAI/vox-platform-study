@@ -12,7 +12,7 @@ const HASH = 'a'.repeat(64);
 const NOW = new Date('2026-07-02T10:00:00Z');
 const IN_1H = new Date('2026-07-02T11:00:00Z');
 
-describe('PasswordResetTokenFactory (TASK-400)', () => {
+describe('PasswordResetTokenFactory', () => {
     it('creates an active token with defaults (purpose, no usedAt/revokedAt)', () => {
         const token = PasswordResetTokenFactory.CreatePasswordResetToken({
             userId: 'user-1',
@@ -47,7 +47,7 @@ describe('PasswordResetTokenFactory (TASK-400)', () => {
     // tenant name (captured at POST /auth/register) here until POST
     // /auth/register/verify consumes the token, since the token's own
     // columns carry only token-management metadata.
-    it('carries an arbitrary metaData payload (TASK-497)', () => {
+    it('carries an arbitrary metaData payload', () => {
         const token = PasswordResetTokenFactory.CreatePasswordResetToken({
             userId: 'user-1',
             tokenHash: HASH,

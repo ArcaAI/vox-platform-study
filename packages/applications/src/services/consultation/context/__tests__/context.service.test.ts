@@ -563,7 +563,7 @@ describe('ContextService', () => {
             expect(result.id).toBe('new-attachment-id');
         });
 
-        it('threads extracted lab/exam text (not the filename label) into the live ContextAdded preview (TASK-342 GAP #5)', async () => {
+        it('threads extracted lab/exam text (not the filename label) into the live ContextAdded preview', async () => {
             mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const newContextItem = createMockContextItemEntity({
                 id: 'new-attachment-id',
@@ -1006,7 +1006,7 @@ describe('ContextService', () => {
             );
         });
 
-        it('emits ConsultationPipelineEvent.ContextRemoved for live drop-out (TASK-342 GAP #3d)', async () => {
+        it('emits ConsultationPipelineEvent.ContextRemoved for live drop-out', async () => {
             const existing = createMockContextItemEntity({
                 id: 'context-item-id-1',
                 consultationId: 'consultation-1',
@@ -1030,7 +1030,7 @@ describe('ContextService', () => {
             );
         });
 
-        it('does NOT emit ContextRemoved for non-live context types (e.g. TRANSCRIPT) (TASK-342 GAP #3d)', async () => {
+        it('does NOT emit ContextRemoved for non-live context types (e.g. TRANSCRIPT)', async () => {
             const existing = createMockContextItemEntity({
                 id: 'context-item-id-1',
                 consultationId: 'consultation-1',
@@ -1738,7 +1738,7 @@ describe('ContextService', () => {
     // when the MediaRepository + IBlobStorageService are not wired (legacy
     // direct construction) the items simply degrade to no `url`.
     // -------------------------------------------------------------------------
-    describe('getContextItems — storage-resolved media URLs (TASK-375)', () => {
+    describe('getContextItems — storage-resolved media URLs', () => {
         const mockMediaRepository = { findAll: vi.fn() };
         const mockBlobStorage = { presignGet: vi.fn(), listObjects: vi.fn() };
 
@@ -2569,7 +2569,7 @@ describe('ContextService', () => {
     // must run the same storage-resolved media enrichment as getContextItems,
     // and only on the returned page slice (never the whole result set).
     // -------------------------------------------------------------------------
-    describe('getContextItemsPaginated — storage-resolved media URLs (TASK-406)', () => {
+    describe('getContextItemsPaginated — storage-resolved media URLs', () => {
         const mockMediaRepository = { findAll: vi.fn() };
         const mockBlobStorage = { presignGet: vi.fn(), listObjects: vi.fn() };
 
@@ -3608,7 +3608,7 @@ describe('ContextService', () => {
     // repository call runs. Failures route through `assertParentInScope`,
     // which throws `NotFoundException` (no existence leak).
     // ============================================================
-    describe('TASK-305 D.3 — cross-aggregate tenant checks', () => {
+    describe('cross-aggregate tenant checks', () => {
         describe('addContext', () => {
             it('throws NotFoundException when parent consultation belongs to another tenant', async () => {
                 mockConsultationRepository.findById.mockResolvedValue({
@@ -3777,7 +3777,7 @@ describe('ContextService', () => {
     // downstream repo call either is skipped entirely or receives the
     // filtered (own-tenant only) id array.
     // ============================================================
-    describe('TASK-306 P2.5 — ContextItem array-input defense-in-depth', () => {
+    describe('ContextItem array-input defense-in-depth', () => {
         const inTenantRoot = {
             id: 'consultation-1',
             tenantId: 'tenant-1',
@@ -4036,7 +4036,7 @@ describe('ContextService', () => {
          * `resolveLinkedConsultationIds === []` cross-tenant case
          * (W5.4 contract).
          */
-        describe('TASK-306 W5.7.8 — getAggregateNamedEntities scope=single broadcast gate', () => {
+        describe('getAggregateNamedEntities scope=single broadcast gate', () => {
             it('does NOT broadcast ResourceViewed when scope=single and consultationId is foreign-tenant', async () => {
                 mockConsultationRepository.findWithRelations.mockReset();
                 mockContextItemRepository.findSummaries.mockReset();

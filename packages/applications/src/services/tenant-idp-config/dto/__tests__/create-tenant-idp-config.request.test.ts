@@ -29,7 +29,7 @@ const validSamlConfig = {
   defaultDepartmentId: 'dept-1',
 };
 
-describe('CreateTenantIdpConfigRequest — OIDC branch (TASK-498, unchanged)', () => {
+describe('CreateTenantIdpConfigRequest — OIDC branch (unchanged)', () => {
   it('accepts a valid OIDC payload', async () => {
     const dto = plainToInstance(CreateTenantIdpConfigRequest, {
       protocol: IdpProtocol.OIDC,
@@ -73,7 +73,7 @@ describe('CreateTenantIdpConfigRequest — OIDC branch (TASK-498, unchanged)', (
   });
 });
 
-describe('CreateTenantIdpConfigRequest — SAML branch (TASK-499)', () => {
+describe('CreateTenantIdpConfigRequest — SAML branch', () => {
   it('accepts a valid SAML payload with no clientSecret and no config', async () => {
     const dto = plainToInstance(CreateTenantIdpConfigRequest, {
       protocol: IdpProtocol.SAML,
@@ -117,7 +117,7 @@ describe('CreateTenantIdpConfigRequest — SAML branch (TASK-499)', () => {
   });
 });
 
-describe('CreateTenantIdpConfigRequest — protocol (TASK-499 widened)', () => {
+describe('CreateTenantIdpConfigRequest — protocol (widened)', () => {
   it('accepts SAML as a protocol value', async () => {
     const dto = plainToInstance(CreateTenantIdpConfigRequest, {
       protocol: IdpProtocol.SAML,

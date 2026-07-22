@@ -82,6 +82,9 @@ const createMockContextItemRepository = () => ({
     // (cold path) so pre-existing assemble/persistDraft tests stay green.
     findPreSummaries: vi.fn().mockResolvedValue([]),
     create: vi.fn().mockResolvedValue({ id: 'ctx-draft-1', content: 'S: ...', tenantId: 'tenant-1' }),
+    // Encrypt-on-write helper (declaration-merged sibling): plaintext `content`
+    // has no column, so a create that skips this drops the note at rest.
+    encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
 });
 
 // The AI-draft v1 snapshot sink (best-effort).
@@ -493,7 +496,7 @@ describe('HarnessInternalService', () => {
             );
         });
 
-        it('folds case notes, work notes, and attachments into the assembled prompt (TASK-342 GAP #2)', async () => {
+        it('folds case notes, work notes, and attachments into the assembled prompt', async () => {
             contextItemRepository.findCaseNotes.mockResolvedValue([
                 { id: 'cn-1', content: 'Patient anxious about results' },
             ]);
@@ -523,7 +526,7 @@ describe('HarnessInternalService', () => {
             );
         });
 
-        it('prefers an attachment\'s extracted text over the filename label (TASK-342 GAP #5)', async () => {
+        it('prefers an attachment\'s extracted text over the filename label', async () => {
             contextItemRepository.findAttachments.mockResolvedValue([
                 {
                     id: 'at-1',
@@ -549,7 +552,7 @@ describe('HarnessInternalService', () => {
             );
         });
 
-        it('folds the doctor\'s manual highlights into the assembled prompt (TASK-344 Workstream B)', async () => {
+        it('folds the doctor\'s manual highlights into the assembled prompt (Workstream B)', async () => {
             highlightRepository.findByConsultation.mockResolvedValue([
                 { id: 'hl-1', exact: 'chest pain' },
                 { id: 'hl-2', exact: 'radiating to the left arm' },
@@ -583,7 +586,7 @@ describe('HarnessInternalService', () => {
         // `HarnessPolicy.warmStartEnabled` was write-plumbed to the admin console and
         // read by nothing; the real switch was the env var, cached at construction.
         // Policy is now the authority, resolved per call, env only the null-fallback.
-        describe('effective warmStartEnabled (TASK-533 D-23)', () => {
+        describe('effective warmStartEnabled', () => {
             const withPolicy = (warmStartEnabled: boolean | null, env = false) => {
                 const getEffectivePolicy = vi.fn().mockResolvedValue({ warmStartEnabled });
                 const svc = buildService(env, undefined, true, undefined, undefined, { getEffectivePolicy });
@@ -617,7 +620,7 @@ describe('HarnessInternalService', () => {
                 expect(assembledPreSummary()).toBe(SNAPSHOT.content);
             });
 
-            it('policy=null falls back to env (pre-D-23 behaviour preserved)', async () => {
+            it('policy=null falls back to env (previous behaviour preserved)', async () => {
                 const { service: svc } = withPolicy(null, true);
                 await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
                 expect(assembledPreSummary()).toBe(SNAPSHOT.content);
@@ -874,6 +877,22 @@ describe('HarnessInternalService', () => {
             gateDecision: 'PASS',
         });
 
+        it('encrypts the draft note content into the ContextItem before persisting', async () => {
+            // The plaintext `content` column was dropped in the PHI field-encryption
+            // migration — a persistDraft that skips `encryptContentIntoEntity`
+            // silently loses the generated clinical note at rest.
+            await service.persistDraft('consultation-1', draftBody());
+
+            expect(contextItemRepository.encryptContentIntoEntity).toHaveBeenCalledTimes(1);
+            const [entityArg, secretsArg] = contextItemRepository.encryptContentIntoEntity.mock.calls[0];
+            expect(entityArg.content).toBe('S: chest pain O: BP 120/80 A: stable P: review');
+            expect(secretsArg).toBe(secretsService);
+            const encOrder = contextItemRepository.encryptContentIntoEntity.mock.invocationCallOrder[0];
+            const createOrder = contextItemRepository.create.mock.invocationCallOrder[0];
+            expect(encOrder).toBeLessThan(createOrder);
+            expect(contextItemRepository.create.mock.calls[0][0]).toBe(entityArg);
+        });
+
         it('creates RAW_SUMMARY, persists SummaryMeta with scores+citations, sets PENDING_REVIEW, and returns contextItemId', async () => {
             const result = await service.persistDraft('consultation-1', draftBody());
 
@@ -907,6 +926,89 @@ describe('HarnessInternalService', () => {
             );
 
             expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
+        });
+
+        // ── [[seg:]] StrictCitations marker lane (write-only fix) ──
+        // The model complies and cites `[[seg:<id>]]` in the generated note, but
+        // nothing used to strip the raw marker before it reached the clinician-visible
+        // ContextItem content, and the cited ids were dropped on the floor instead of
+        // feeding `SummaryMeta.citationsMap`.
+        describe('[[seg:]] StrictCitations markers', () => {
+            it('strips [[seg:<id>]] markers from the persisted note content before encryption', async () => {
+                const transcriptSegmentRepository = createMockTranscriptSegmentRepository();
+                transcriptSegmentRepository.findByContextItem.mockResolvedValue([
+                    { id: 'seg-a', idx: 0, speaker: 'CLINICIAN', t0Ms: 0, t1Ms: 1200, charStart: 0, charEnd: 20 },
+                ]);
+                service = buildService(false, undefined, true, undefined, transcriptSegmentRepository);
+
+                await service.persistDraft('consultation-1', {
+                    ...draftBody(),
+                    content: 'Plan: metformin 500mg [[seg:seg-a]] twice daily.',
+                });
+
+                const [entityArg] = contextItemRepository.encryptContentIntoEntity.mock.calls[0];
+                expect(entityArg.content).toBe('Plan: metformin 500mg twice daily.');
+                expect(entityArg.content).not.toMatch(/\[\[seg:/);
+            });
+
+            it('merges cited (allowed) segment ids into SummaryMeta.citationsMap.segmentCitedIds', async () => {
+                const transcriptSegmentRepository = createMockTranscriptSegmentRepository();
+                transcriptSegmentRepository.findByContextItem.mockResolvedValue([
+                    { id: 'seg-a', idx: 0, speaker: 'CLINICIAN', t0Ms: 0, t1Ms: 1200, charStart: 0, charEnd: 20 },
+                ]);
+                service = buildService(false, undefined, true, undefined, transcriptSegmentRepository);
+
+                await service.persistDraft('consultation-1', {
+                    ...draftBody(),
+                    content: 'Plan: metformin 500mg [[seg:seg-a]] twice daily.',
+                });
+
+                const smArg = summaryMetaRepository.create.mock.calls[0][0];
+                expect(smArg.citationsMap).toEqual(
+                    expect.objectContaining({
+                        claims: [{ id: 'c1', status: 'verified' }],
+                        segmentCitedIds: ['seg-a'],
+                    }),
+                );
+            });
+
+            it('drops a hallucinated segment id (not a real persisted segment) from citationsMap but still strips it from the note', async () => {
+                const transcriptSegmentRepository = createMockTranscriptSegmentRepository();
+                transcriptSegmentRepository.findByContextItem.mockResolvedValue([
+                    { id: 'seg-a', idx: 0, speaker: 'CLINICIAN', t0Ms: 0, t1Ms: 1200, charStart: 0, charEnd: 20 },
+                ]);
+                service = buildService(false, undefined, true, undefined, transcriptSegmentRepository);
+
+                await service.persistDraft('consultation-1', {
+                    ...draftBody(),
+                    content: 'Plan: [[seg:not-a-real-segment]] metformin.',
+                });
+
+                const [entityArg] = contextItemRepository.encryptContentIntoEntity.mock.calls[0];
+                expect(entityArg.content).toBe('Plan: metformin.');
+                const smArg = summaryMetaRepository.create.mock.calls[0][0];
+                expect(smArg.citationsMap).toEqual({ claims: [{ id: 'c1', status: 'verified' }] });
+            });
+
+            it('leaves content and citationsMap untouched when no markers are present', async () => {
+                await service.persistDraft('consultation-1', draftBody());
+
+                const [entityArg] = contextItemRepository.encryptContentIntoEntity.mock.calls[0];
+                expect(entityArg.content).toBe('S: chest pain O: BP 120/80 A: stable P: review');
+                const smArg = summaryMetaRepository.create.mock.calls[0][0];
+                expect(smArg.citationsMap).toEqual({ claims: [{ id: 'c1', status: 'verified' }] });
+            });
+
+            it('still strips markers from content even when the transcript-segment repository is unwired (best-effort citationsMap merge only)', async () => {
+                // Default buildService() — no transcriptSegmentRepository wired.
+                await service.persistDraft('consultation-1', {
+                    ...draftBody(),
+                    content: 'Plan: [[seg:seg-a]] metformin.',
+                });
+
+                const [entityArg] = contextItemRepository.encryptContentIntoEntity.mock.calls[0];
+                expect(entityArg.content).toBe('Plan: metformin.');
+            });
         });
 
         // ── AI-draft v1 snapshot ──
@@ -1236,7 +1338,7 @@ describe('HarnessInternalService', () => {
         // recorded as a POST_SIGN_FLAG WORM annotation for amendment/follow-up.
         // -----------------------------------------------------------------
 
-        it('Q2b — records POST_SIGN_FLAG and does NOT regress status when a safety FLAG lands after an early sign', async () => {
+        it('records POST_SIGN_FLAG and does NOT regress status when a safety FLAG lands after an early sign', async () => {
             consultationRepository.findById.mockResolvedValue({
                 id: 'consultation-1',
                 tenantId: 'tenant-1',
@@ -1258,7 +1360,7 @@ describe('HarnessInternalService', () => {
             expect(summaryMetaRepository.update).toHaveBeenCalledTimes(1);
         });
 
-        it('Q2b — records POST_SIGN_FLAG for a REGEN verdict after an early sign', async () => {
+        it('records POST_SIGN_FLAG for a REGEN verdict after an early sign', async () => {
             consultationRepository.findById.mockResolvedValue({
                 id: 'consultation-1',
                 tenantId: 'tenant-1',
@@ -1272,7 +1374,7 @@ describe('HarnessInternalService', () => {
             expect(actions).toContain(HarnessAuditAction.POST_SIGN_FLAG);
         });
 
-        it('Q2b — does NOT record POST_SIGN_FLAG when the post-sign verdict is PASS', async () => {
+        it('does NOT record POST_SIGN_FLAG when the post-sign verdict is PASS', async () => {
             consultationRepository.findById.mockResolvedValue({
                 id: 'consultation-1',
                 tenantId: 'tenant-1',
@@ -1345,7 +1447,7 @@ describe('HarnessInternalService', () => {
             expect(payload.reducedAssurance).toBe(true);
         });
 
-        it('publishes postSignAlert: true when an adverse verdict lands AFTER an early sign (Q2b)', async () => {
+        it('publishes postSignAlert: true when an adverse verdict lands AFTER an early sign', async () => {
             consultationRepository.findById.mockResolvedValue({
                 id: 'consultation-1',
                 tenantId: 'tenant-1',
@@ -1443,7 +1545,7 @@ describe('HarnessInternalService', () => {
     // cross-tenant consultation.
     // =========================================================================
 
-    describe('recordEscalation (C1-05)', () => {
+    describe('recordEscalation', () => {
         // The harness escalate_gate SLA timeout carries no clinician — {tenantId, reason, jobId?}.
         const escBody = (reason = 'gate_sla_breached', tenantId = 'tenant-1') => ({
             tenantId,
@@ -1506,7 +1608,7 @@ describe('HarnessInternalService', () => {
     // a Redis throw falls through to normal processing (best-effort, mirrors the consultation-job dedup).
     // =========================================================================
 
-    describe('Idempotency-Key dedup (C1-03)', () => {
+    describe('Idempotency-Key dedup', () => {
         let redisCache: ReturnType<typeof createMockRedisCache>;
 
         beforeEach(() => {
@@ -1641,7 +1743,7 @@ describe('HarnessInternalService', () => {
     // (never the encrypted entity), so there is no ciphertext to strip.
     // =========================================================================
 
-    describe('TASK-369 field encryption', () => {
+    describe('field encryption', () => {
         const draftBody = () => ({
             tenantId: 'tenant-1',
             userId: 'doctor-1',

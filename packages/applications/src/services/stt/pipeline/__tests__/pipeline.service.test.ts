@@ -296,7 +296,7 @@ describe('PipelineService', () => {
     });
 
     describe('update', () => {
-        it('should update an existing pipeline via updateWithVersion and verify state changes (TASK-302 Stream D Phase E.4)', async () => {
+        it('should update an existing pipeline via updateWithVersion and verify state changes (Stream D Phase)', async () => {
             const existingPipeline = createBehavioralPipelineEntity({ id: 'pipeline-1', name: 'Old Name', version: 4 });
             mockPipelineRepository.findById.mockResolvedValue(existingPipeline);
             mockPipelineRepository.updateWithVersion.mockImplementation(
@@ -379,7 +379,7 @@ describe('PipelineService', () => {
             ).rejects.toThrow(BadRequestException);
         });
 
-        it('propagates OptimisticConcurrencyException from the repository CAS write (TASK-302 Stream D Phase E.4)', async () => {
+        it('propagates OptimisticConcurrencyException from the repository CAS write (Stream D Phase)', async () => {
             // The OptimisticConcurrencyException class lives in
             // `@arcaai/exceptions`; we import lazily to avoid pulling the
             // package into the module-level imports of this test file.
@@ -412,7 +412,7 @@ describe('PipelineService', () => {
     // so cross-tenant transfer is unsupported; a same-tenant
     // assignment is persisted by promoting the pipeline to the tenant default.
     // =====================================================================
-    describe('assignToTenant — IC-04 (TASK-336)', () => {
+    describe('assignToTenant', () => {
         it('persists a same-tenant assignment by promoting the pipeline to the tenant default', async () => {
             const pipeline = createBehavioralPipelineEntity({ id: 'pipeline-1', tenantId: 'tenant-1', slug: 'p1' });
             // setDefault reads the row, flips the default inside a tx, then re-reads.
@@ -464,7 +464,7 @@ describe('PipelineService', () => {
         });
 
         // Tenant scoping.
-        it('should return null when pipeline tenantId does not match caller tenant (D-9)', async () => {
+        it('should return null when pipeline tenantId does not match caller tenant', async () => {
             const otherTenantPipeline = createBehavioralPipelineEntity({
                 id: 'pipeline-other',
                 tenantId: 'tenant-other',
@@ -482,7 +482,7 @@ describe('PipelineService', () => {
             );
         });
 
-        it('should throw BadRequestException when tenant ID is missing (D-9)', async () => {
+        it('should throw BadRequestException when tenant ID is missing on getById', async () => {
             mockClsService.get.mockImplementation((key: string) => {
                 if (key === 'tenantId') return null;
                 return null;
@@ -600,7 +600,7 @@ describe('PipelineService', () => {
     });
 
     describe('delete', () => {
-        it('should soft delete a pipeline via repository.softDelete (TASK-326 OCC consistency)', async () => {
+        it('should soft delete a pipeline via repository.softDelete (OCC consistency)', async () => {
             const pipeline = createBehavioralPipelineEntity({ id: 'pipeline-to-delete' });
             mockPipelineRepository.findById.mockResolvedValue(pipeline);
             mockPipelineRepository.softDelete.mockResolvedValue(pipeline);
@@ -660,7 +660,7 @@ describe('PipelineService', () => {
             expect(result.errors).toBeUndefined();
         });
 
-        it('surfaces stt-v2 validation errors when the service is reachable (TASK-505 P2)', async () => {
+        it('surfaces stt-v2 validation errors when the service is reachable', async () => {
             vi.stubGlobal(
                 'fetch',
                 vi.fn().mockResolvedValue({

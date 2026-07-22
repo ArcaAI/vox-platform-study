@@ -534,7 +534,7 @@ describe('PipelineOrchestrator', () => {
   // autoExecute actually runs target with source's result.
   // =========================================================================
 
-  describe('autoExecute (TASK-273 H-4)', () => {
+  describe('autoExecute', () => {
     it('should execute target pipeline with source result when autoExecute is true', async () => {
       const targetCompleted = vi.fn();
 
@@ -623,7 +623,7 @@ describe('PipelineOrchestrator', () => {
   // Listener leak on register/unregister and destroy.
   // =========================================================================
 
-  describe('listener leak (TASK-273 L-7)', () => {
+  describe('listener leak', () => {
     it('should not leak listeners on a pipeline after register/unregister cycle', async () => {
       const pipeline = new SequentialPipeline<number, number>('leaky');
 

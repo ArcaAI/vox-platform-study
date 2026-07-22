@@ -25,7 +25,7 @@ function makeProvider(opts: { enabled?: boolean } = { enabled: true }) {
   return { provider, post, get };
 }
 
-describe('GoogleDirectoryProvider (TASK-498 P3)', () => {
+describe('GoogleDirectoryProvider', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('rejects fetchUsers when TENANT_IDP_GOOGLE_DIRECTORY_ENABLED is off', async () => {

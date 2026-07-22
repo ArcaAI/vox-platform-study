@@ -46,7 +46,7 @@ const activeTokenRecord = (overrides: Record<string, unknown> = {}) => ({
     ...overrides,
 });
 
-describe('RegistrationService (TASK-497 §3.4)', () => {
+describe('RegistrationService (§3.4)', () => {
     let service: RegistrationService;
 
     beforeEach(() => {

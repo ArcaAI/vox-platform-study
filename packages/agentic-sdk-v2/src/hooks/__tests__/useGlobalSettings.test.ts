@@ -336,7 +336,7 @@ describe('useGlobalSettings', () => {
     /*  revealSecret (global-admin, step-up re-auth)              */
     /* ------------------------------------------------------------------ */
 
-    describe('revealSecret (TASK-396)', () => {
+    describe('revealSecret', () => {
         it('should POST the password to GLOBAL_SETTINGS_ENDPOINTS.REVEAL(id) and return the plaintext payload', async () => {
             const payload = { id: 'gs-secret-1', key: 'secrets.api-token', value: 'super-secret-plaintext', revealedAt: '2026-07-02T00:00:00.000Z' };
             mockPost.mockResolvedValue(payload);

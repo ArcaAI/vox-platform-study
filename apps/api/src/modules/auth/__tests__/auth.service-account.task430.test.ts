@@ -124,7 +124,7 @@ function buildAdminController(target: Record<string, unknown>) {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('TASK-430 — service accounts are API-only', () => {
+describe('service accounts are API-only', () => {
     beforeEach(() => vi.clearAllMocks());
 
     describe('POST /auth/login', () => {

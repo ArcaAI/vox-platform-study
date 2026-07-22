@@ -74,7 +74,7 @@ function makeService(baseClient: ReturnType<typeof makeBaseClient>, opts: { enfo
   return { service, eventEmitter, cls, entitlements };
 }
 
-describe('EntitlementsLifecycleService.expireTrials (TASK-392 Q4)', () => {
+describe('EntitlementsLifecycleService.expireTrials', () => {
   it('downgrades ONLY expired TRIAL tenants to STARTER, plan-only', async () => {
     const baseClient = makeBaseClient({
       tenant: {
@@ -131,7 +131,7 @@ describe('EntitlementsLifecycleService.expireTrials (TASK-392 Q4)', () => {
   });
 });
 
-describe('EntitlementsLifecycleService.triggerDowngrade (TASK-392 Q10)', () => {
+describe('EntitlementsLifecycleService.triggerDowngrade', () => {
   it('rejects the reserved system tenant', async () => {
     const baseClient = makeBaseClient();
     const { service } = makeService(baseClient);
@@ -140,7 +140,7 @@ describe('EntitlementsLifecycleService.triggerDowngrade (TASK-392 Q10)', () => {
     expect(baseClient.tenant.update).not.toHaveBeenCalled();
   });
 
-  it('relabels the plan but does NOT soft-disable when the kill-switch is OFF (Q9)', async () => {
+  it('relabels the plan but does NOT soft-disable when the kill-switch is OFF', async () => {
     const baseClient = makeBaseClient({
       tenant: {
         findUnique: vi.fn().mockResolvedValue({ id: 't-1', plan: TenantPlan.ENTERPRISE, key: 'acme' }),

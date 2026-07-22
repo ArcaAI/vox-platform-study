@@ -41,7 +41,7 @@ const createMockService = () => ({
   rotateSecret: vi.fn(),
 });
 
-describe('GlobalSettingController — POST /admin/settings/:id/rotate (TASK-445)', () => {
+describe('GlobalSettingController — POST /admin/settings/:id/rotate', () => {
   let controller: GlobalSettingController;
   let mockService: ReturnType<typeof createMockService>;
 

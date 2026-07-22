@@ -152,7 +152,7 @@ describe('useSTT hook integration', () => {
   // must rebuild the processor so the new task is baked into the (pooled) local
   // provider; otherwise a translate request silently reuses a transcribe-warm
   // provider. The task therefore belongs in the config fingerprint.
-  describe('Processor recreation on task change (TASK-329 P3)', () => {
+  describe('Processor recreation on task change', () => {
     it('recreates processor when features.task changes', async () => {
       const { rerender } = renderHook(
         ({ task }: { task: 'transcribe' | 'translate' }) =>
@@ -230,7 +230,7 @@ describe('useSTT hook integration', () => {
   // Lock-in tests for the STTProcessor API surface
   // ===========================================================================
 
-  describe('Post-A8 STTProcessor API alignment (TASK-276)', () => {
+  describe('Post-A8 STTProcessor API alignment', () => {
     it("subscribes to ProcessorEvent.Data and ProcessorEvent.Error on the processor", async () => {
       renderHook(() =>
         useSTT({

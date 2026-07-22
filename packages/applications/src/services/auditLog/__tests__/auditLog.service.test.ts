@@ -326,7 +326,7 @@ describe('AuditLogService', () => {
             expect(mockEventEmitter.emit).not.toHaveBeenCalled();
         });
 
-        it('should NOT serialise the entity for a self-audit broadcast (OB-04)', async () => {
+        it('should NOT serialise the entity for a self-audit broadcast', async () => {
             const auditLog = createMockAuditLogEntity({ id: 'audit-123' });
             mockAuditLogRepository.findById.mockResolvedValue(auditLog);
 
@@ -341,7 +341,7 @@ describe('AuditLogService', () => {
     // OF the audit log itself must never be audited. No read path may emit a
     // ResourceViewed system event (the SysEvent → audit/webhook/activity pipeline).
     // -------------------------------------------------------------------------
-    describe('OB-04 — audit-log reads are never self-audited', () => {
+    describe('audit-log reads are never self-audited', () => {
         beforeEach(() => {
             mockAuditLogRepository.findAll.mockResolvedValue([createMockAuditLogEntity({ id: 'audit-1' })]);
             mockAuditLogRepository.count.mockResolvedValue(1);
@@ -381,7 +381,7 @@ describe('AuditLogService', () => {
 
     // OB-10 — the soft-delete capability was removed for audit-log
     // immutability. Audit rows are append-only from the admin surface.
-    describe('deleteById removed (OB-10)', () => {
+    describe('deleteById removed', () => {
         it('does not expose a deleteById method on the service', () => {
             expect((service as unknown as Record<string, unknown>).deleteById).toBeUndefined();
         });
@@ -398,7 +398,7 @@ describe('AuditLogService', () => {
      * `Forbidden` — that would leak existence) when the loaded entity's tenant
      * does not match the caller. Only `GLOBAL_ADMIN` may bypass.
      */
-    describe('Multi-tenant scoping (TASK-305 D.8)', () => {
+    describe('Multi-tenant scoping', () => {
         describe('fetchAll', () => {
             it('should inject caller tenantId into repository where clause', async () => {
                 mockAuditLogRepository.findAll.mockResolvedValue([]);
@@ -713,7 +713,7 @@ describe('AuditLogService', () => {
                 await expect(service.handleUserAuthenticatedEvent(event)).resolves.toBeUndefined();
             });
 
-            describe('impersonation branch (TASK-295 C-3)', () => {
+            describe('impersonation branch', () => {
                 it('should persist impersonatedUserId, endpoint, httpMethod when event carries impersonatedUserId', async () => {
                     const event = {
                         userId: 'admin-001',
@@ -777,7 +777,7 @@ describe('AuditLogService', () => {
             // START/STOP reuse the existing IMPERSONATED_ACTION + IMPERSONATION
             // eventType and are distinguished by a `phase` discriminator persisted
             // inside the row's `data` JSON.
-            describe('impersonation lifecycle bracket (TASK-331 M-3)', () => {
+            describe('impersonation lifecycle bracket', () => {
                 it('persists data.phase="START" while keeping action IMPERSONATED_ACTION when the event carries phase START', async () => {
                     const event = {
                         userId: 'admin-001',
@@ -883,7 +883,7 @@ describe('AuditLogService', () => {
              * factory (CLS tenant, or SYSTEM_TENANT_ID for tenant-less/system
              * logins), so the scope filter adds nothing here.
              */
-            describe('tenant-scope bypass invariant (TASK-314 §7)', () => {
+            describe('tenant-scope bypass invariant (§7)', () => {
                 it('persists the LOGIN audit via the unscoped baseClient when CLS has no tenant context', async () => {
                     // Clean-boot login: no user, no tenantId in CLS.
                     mockClsService.get.mockImplementation((key: string) => {
@@ -1265,7 +1265,7 @@ describe('AuditLogService', () => {
     // the audit trail. Mirrors the auth direct-write: UNSCOPED baseClient +
     // system-tenant fallback + best-effort (never throws).
     // -------------------------------------------------------------------------
-    describe('recordSystemAction (TASK-326 X1)', () => {
+    describe('recordSystemAction', () => {
         it('writes a privileged-action audit row via the UNSCOPED baseClient', async () => {
             await service.recordSystemAction({
                 action: AuditAction.READ,

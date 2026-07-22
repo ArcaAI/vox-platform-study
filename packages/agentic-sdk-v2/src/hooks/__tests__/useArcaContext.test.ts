@@ -101,7 +101,7 @@ describe('useArcaContext', () => {
     expect(result.current.caseNotes).toEqual([]);
   });
 
-  it('TASK-297 DEF-H3: invokes selectors with state instead of returning whole store', () => {
+  it('invokes selectors with state instead of returning whole store', () => {
     renderHook(() => useArcaContext());
     // Each render runs ~10 selector calls; the call count is non-zero.
     expect((useAgenticStore as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(5);

@@ -174,7 +174,7 @@ describe('MyTenantController', () => {
         // `enable-local-raw-capture` row carrying the server-computed effective
         // boolean (platform capability AND tenant toggle). The SDK maps it into
         // audio.captureRawAudio; the user cannot override it.
-        it('TASK-332 — appends the effective enable-local-raw-capture row (value true)', async () => {
+        it('appends the effective enable-local-raw-capture row (value true)', async () => {
             tenantService = createMockTenantService();
             clsService = createMockClsService('tenant-uuid-332');
             const frontendConfig = createMockFrontendConfigService(true);
@@ -212,7 +212,7 @@ describe('MyTenantController', () => {
             expect(row?.tenantId).toBe('tenant-uuid-332');
         });
 
-        it('TASK-332 — appended row carries value false when capability is off', async () => {
+        it('appended row carries value false when capability is off', async () => {
             tenantService = createMockTenantService();
             clsService = createMockClsService('tenant-uuid-332');
             const frontendConfig = createMockFrontendConfigService(false);
@@ -233,7 +233,7 @@ describe('MyTenantController', () => {
         // controller surface is unchanged: it faithfully surfaces whatever the
         // service resolves. The effective TRANSCRIPTION MODE is NOT surfaced here
         // (no double-source) — it rides the UserPreferences response (A8/A9).
-        it('TASK-356 — raw-capture row tracks the captureMode-derived value and does NOT add a transcription-mode row', async () => {
+        it('raw-capture row tracks the captureMode-derived value and does NOT add a transcription-mode row', async () => {
             tenantService = createMockTenantService();
             clsService = createMockClsService('tenant-uuid-356');
             // Simulate captureMode=RAW_ONLY → resolveEffectiveLocalRawCapture true.
@@ -335,7 +335,7 @@ describe('MyTenantController', () => {
         // 428 fires in the param decorator if it would have been undefined).
         // These unit tests cover the controller-internal logic of folding
         // the header value into each row's `expectedVersion`.
-        it('TASK-302 Stream D Phase D — folds If-Match header value into each row\'s expectedVersion', async () => {
+        it('folds If-Match header value into each row\'s expectedVersion', async () => {
             tenantService = createMockTenantService();
             clsService = createMockClsService('tenant-uuid-789');
 
@@ -364,7 +364,7 @@ describe('MyTenantController', () => {
             );
         });
 
-        it('TASK-302 Stream D Phase D — preserves body-field expectedVersion when header is absent (service-to-service fallback)', async () => {
+        it('preserves body-field expectedVersion when header is absent (service-to-service fallback)', async () => {
             // This path only fires off-route (i.e., a non-@RequiresIfMatch
             // route would let `expectedFromHeader = undefined` reach the
             // handler). Once `@RequiresIfMatch()` is on, the 428 fires

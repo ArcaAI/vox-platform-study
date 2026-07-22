@@ -100,7 +100,7 @@ function deniedEvents(eventEmitter: { emit: ReturnType<typeof vi.fn> }) {
     return eventEmitter.emit.mock.calls.filter(([name]) => name === ImpersonationEvents.Denied).map(([, payload]) => payload);
 }
 
-describe('AdminImpersonationController — TASK-401 guard matrix', () => {
+describe('AdminImpersonationController — guard matrix', () => {
     beforeEach(() => vi.clearAllMocks());
 
     it('allows a GLOBAL_ADMIN and mints a target-identity token with the actor preserved', async () => {
@@ -168,7 +168,7 @@ describe('AdminImpersonationController — TASK-401 guard matrix', () => {
         await expect(controller.impersonate('target-B', {}, REQ)).rejects.toThrow(ForbiddenException);
     });
 
-    it('rejects the retired SUPER_ADMIN role literal — no longer elevated (TASK-417)', async () => {
+    it('rejects the retired SUPER_ADMIN role literal — no longer elevated', async () => {
         const { controller, eventEmitter } = buildController({
             user: { id: 'admin-A', tenantId: 'tenant-A' },
             fixture: { actorRoles: [RETIRED_SUPER_ADMIN] },
@@ -244,7 +244,7 @@ describe('AdminImpersonationController — TASK-401 guard matrix', () => {
     });
 });
 
-describe('AdminImpersonationController — TASK-401 audit emissions', () => {
+describe('AdminImpersonationController — audit emissions', () => {
     beforeEach(() => vi.clearAllMocks());
 
     it('emits the START bracket, the Started signal, and the forced audit row with reason/expiry/tenant', async () => {

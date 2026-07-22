@@ -43,7 +43,7 @@ function countDiscardAllInPostgresLog(): number {
 }
 
 describe('PgBouncer txn-mode — DISCARD ALL between transactions (Task 1.11)', () => {
-  it('R-DA-1: non-LOCAL GUC set in txn A is gone in txn B (functional)', async () => {
+  it('non-LOCAL GUC set in txn A is gone in txn B (functional)', async () => {
     const tag = 'da1-' + Date.now();
     await prisma.$transaction(async (tx) => {
       await tx.$queryRawUnsafe(`SELECT set_config('app.da_marker', '${tag}', false)`);
@@ -58,7 +58,7 @@ describe('PgBouncer txn-mode — DISCARD ALL between transactions (Task 1.11)', 
     }
   });
 
-  it('R-DA-2: DISCARD ALL log-line count grows by ≥ N over N user transactions', async () => {
+  it('DISCARD ALL log-line count grows by ≥ N over N user transactions', async () => {
     const N = 40;
     const before = countDiscardAllInPostgresLog();
     console.log(`[Task 1.11] DISCARD ALL count BEFORE burst = ${before}`);

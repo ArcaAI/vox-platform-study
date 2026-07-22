@@ -44,7 +44,7 @@ const sampleRow = (overrides: Partial<NamedEntity> = {}): NamedEntity =>
     ...overrides,
   } as NamedEntity);
 
-describe('NamedEntityEntityMapper — versionless append-only persistence (TASK-330)', () => {
+describe('NamedEntityEntityMapper — versionless append-only persistence', () => {
   const mapper = new NamedEntityEntityMapper();
 
   it('toDomainEntity carries scalar fields from the database row', () => {

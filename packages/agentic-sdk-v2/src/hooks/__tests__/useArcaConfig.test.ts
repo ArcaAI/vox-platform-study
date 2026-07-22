@@ -188,7 +188,7 @@ describe('useArcaConfig — selectModel (M-001)', () => {
     });
 });
 
-describe('useArcaConfig — TASK-244 three-tier config', () => {
+describe('useArcaConfig — three-tier config', () => {
     let mockStore: any;
     let mockConfigManager: any;
 
@@ -322,7 +322,7 @@ describe('useArcaConfig — TASK-244 three-tier config', () => {
 // Mutations throw CONFIG_NOT_READY before profile preload.
 // =============================================================================
 
-describe('useArcaConfig — TASK-297 DEF-C6 readiness gate', () => {
+describe('useArcaConfig — readiness gate', () => {
     let mockStore: any;
 
     beforeEach(() => {

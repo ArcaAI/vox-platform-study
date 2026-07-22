@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { wouldExceedLimit, selectResourcesToDisable, isTrialExpired } from '../enforcement';
 
-describe('wouldExceedLimit (Q10 block-new)', () => {
+describe('wouldExceedLimit (block-new)', () => {
   it('never blocks an unlimited (null) limit', () => {
     expect(wouldExceedLimit(null, 1_000_000)).toBe(false);
   });
@@ -28,7 +28,7 @@ describe('wouldExceedLimit (Q10 block-new)', () => {
   });
 });
 
-describe('selectResourcesToDisable (Q10 newest-first soft-disable)', () => {
+describe('selectResourcesToDisable (newest-first soft-disable)', () => {
   const r = (id: string, iso: string): { id: string; createdAt: Date } => ({ id, createdAt: new Date(iso) });
 
   it('returns nothing when within the limit', () => {
@@ -67,7 +67,7 @@ describe('selectResourcesToDisable (Q10 newest-first soft-disable)', () => {
   });
 });
 
-describe('isTrialExpired (Q4)', () => {
+describe('isTrialExpired', () => {
   const now = new Date('2026-03-10T00:00:00.000Z');
 
   it('is false for a null clock', () => {

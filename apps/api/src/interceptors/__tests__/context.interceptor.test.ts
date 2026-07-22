@@ -136,7 +136,7 @@ describe('ContextInterceptor', () => {
         });
     });
 
-    describe('x-tenant-id header handling (SEC-J / TASK-295 C-2)', () => {
+    describe('x-tenant-id header handling', () => {
         beforeEach(async () => {
             vi.clearAllMocks();
             vi.resetModules();
@@ -179,7 +179,7 @@ describe('ContextInterceptor', () => {
             expect(tenantSetCalls).toHaveLength(0);
         });
 
-        it('logs a warn AND rejects (post-TASK-307 W5.3: 400) when x-tenant-id diverges from the JWT-derived tenantId', async () => {
+        it('logs a warn AND rejects (400) when x-tenant-id diverges from the JWT-derived tenantId', async () => {
             // CLS user already populated by JwtStrategy with a different tenant.
             mockClsService.get = vi.fn((key: string) => {
                 if (key === 'user') return { tenantId: 'tenant-A' };
@@ -233,7 +233,7 @@ describe('ContextInterceptor', () => {
         });
     });
 
-    describe('TASK-307 W5.3 — x-tenant-id divergence -> 400 BadRequest (AC-17, audit D-1)', () => {
+    describe('x-tenant-id divergence -> 400 BadRequest (audit)', () => {
         beforeEach(async () => {
             vi.clearAllMocks();
             vi.resetModules();
@@ -308,7 +308,7 @@ describe('ContextInterceptor', () => {
         });
     });
 
-    describe('TASK-331 r2605 #1 — global-admin x-tenant-id → CLS elevation', () => {
+    describe('global-admin x-tenant-id → CLS elevation', () => {
         const VALID_TENANT = '0190b6e2-7e7a-7c3a-8b1a-2c3d4e5f6a7b';
 
         function buildCls(user: unknown) {
@@ -394,7 +394,7 @@ describe('ContextInterceptor', () => {
             expect(cls.set).not.toHaveBeenCalledWith('tenantId', expect.anything());
         });
 
-        it('keeps the TASK-307 W5.3 reject path: a tenant-bound caller with a divergent header is still 400', async () => {
+        it('keeps the reject path: a tenant-bound caller with a divergent header is still 400', async () => {
             const { BadRequestException } = await import('@nestjs/common');
             const cls = buildCls({ id: 'u-1', tenantId: 'tenant-A', roles: ['DEPARTMENT_ADMIN'] });
             interceptor = await buildInterceptor(cls);
@@ -530,7 +530,7 @@ describe('ContextInterceptor', () => {
      * standard header a load balancer / CDN would already set, falling back
      * to uuidv7().
      */
-    describe('TASK-310 E-10 — requestId precedence (AC-9)', () => {
+    describe('requestId precedence', () => {
         beforeEach(async () => {
             vi.clearAllMocks();
             vi.resetModules();

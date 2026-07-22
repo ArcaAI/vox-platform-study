@@ -56,7 +56,7 @@ afterEach(() => {
     vi.unstubAllGlobals();
 });
 
-describe('POST /api/auth/impersonate — effective identity (BUG-005 Phase 0)', () => {
+describe('POST /api/auth/impersonate — effective identity', () => {
     it('persists the target user email, roles, tenantId and departmentId into session.impersonation', async () => {
         await seedSession(operatorSession);
         installFetchMock(() =>

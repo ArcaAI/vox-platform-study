@@ -44,7 +44,7 @@ function makeEntity(initial: string = ResourceStatusType.ENABLED) {
   };
 }
 
-describe('applyChangesToEntity — resourceStatus routing (TASK-541)', () => {
+describe('applyChangesToEntity — resourceStatus routing', () => {
   it('routes SUSPENDED to suspend() instead of silently ignoring it', async () => {
     const entity = makeEntity();
 
@@ -114,7 +114,7 @@ describe('applyChangesToEntity — pre-existing behavior is unchanged', () => {
     expect(entity.name).toBe('original');
   });
 
-  it('never writes the database-owned version field (TASK-302 B.7)', async () => {
+  it('never writes the database-owned version field', async () => {
     const entity = makeEntity();
 
     await applyChangesToEntity(entity as never, { version: 999 } as never);

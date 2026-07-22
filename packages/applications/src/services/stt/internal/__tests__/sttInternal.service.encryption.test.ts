@@ -53,7 +53,7 @@ function buildService(withSecrets: boolean) {
   return { service, jobRepository, secretsService };
 }
 
-describe('SttInternalService.completeJob — TASK-369 field encryption', () => {
+describe('SttInternalService.completeJob — field encryption', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('encrypts the completed job BEFORE persisting, with no ciphertext in the DTO', async () => {

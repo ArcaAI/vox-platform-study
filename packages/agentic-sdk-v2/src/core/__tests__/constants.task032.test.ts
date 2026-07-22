@@ -17,7 +17,7 @@ import {
     CONSULTATION_JOB_ENDPOINTS,
 } from '../constants';
 
-describe('TASK-032 Endpoint Constants', () => {
+describe('Endpoint Constants', () => {
 
     describe('USER_ENDPOINTS', () => {
         it('should have LIST as /admin/users', () => {

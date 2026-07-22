@@ -18,7 +18,7 @@ import {
     createMockLogger,
 } from '../../__tests__/setup';
 
-describe('AgenticClient — TASK-227 401 auto-refresh', () => {
+describe('AgenticClient — 401 auto-refresh', () => {
     let mockLogger: ReturnType<typeof createMockLogger>;
 
     beforeEach(() => {

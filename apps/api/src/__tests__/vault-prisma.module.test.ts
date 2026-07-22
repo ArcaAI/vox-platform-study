@@ -164,7 +164,7 @@ describe('buildVaultPrismaFactory env-toggle gating', () => {
 // wiring: renew before expiry while under max_ttl, fall back to swap() on
 // renew failure or once max_ttl is close, and register/deregister with
 // SecretsService so health() reflects renewer state.
-describe('buildVaultPrismaFactory — Vault DB-lease renewal (BUG-006)', () => {
+describe('buildVaultPrismaFactory — Vault DB-lease renewal', () => {
   function fakeWrapper(overrides: Record<string, unknown> = {}) {
     return {
       client: { $queryRaw: vi.fn() },

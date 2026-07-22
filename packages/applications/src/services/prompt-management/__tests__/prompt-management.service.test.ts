@@ -639,7 +639,7 @@ describe('PromptManagementService', () => {
             );
         });
 
-        it('should broadcast ResourceUpdated event with previousVersion + newVersion (TASK-302 Stream D Phase E.3)', async () => {
+        it('should broadcast ResourceUpdated event with previousVersion + newVersion (Stream D Phase)', async () => {
             const existing = createMockTemplateEntity({ version: 9 });
             mockTemplateRepo.findById.mockResolvedValue(existing);
             mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ version: 10 }));
@@ -667,7 +667,7 @@ describe('PromptManagementService', () => {
             );
         });
 
-        it('propagates OptimisticConcurrencyException from the repository CAS write (TASK-302 Stream D Phase E.3)', async () => {
+        it('propagates OptimisticConcurrencyException from the repository CAS write (Stream D Phase)', async () => {
             // When the row drifted between read and write, the repository's
             // `updateWithVersion` predicate matches 0 rows and throws. The
             // service must surface that exception unwrapped so the
@@ -703,7 +703,7 @@ describe('PromptManagementService', () => {
         // back the version row so no orphan persists, and the next version
         // number must be max(existing)+1 — never a recomputed duplicate that
         // would trip the (promptTemplateId, versionNumber) unique constraint.
-        it('rolls back the version-history insert inside the transaction when the OCC update is rejected (CC-01)', async () => {
+        it('rolls back the version-history insert inside the transaction when the OCC update is rejected', async () => {
             const existing = createMockTemplateEntity({ currentVersionNumber: 1, version: 9 });
             mockTemplateRepo.findById.mockResolvedValue(existing);
             mockVersionRepo.findMaxVersionNumber.mockResolvedValue(1);
@@ -739,7 +739,7 @@ describe('PromptManagementService', () => {
             );
         });
 
-        it('computes the next version as max(existing versionNumber)+1, not currentVersionNumber+1 (CC-01)', async () => {
+        it('computes the next version as max(existing versionNumber)+1, not currentVersionNumber+1', async () => {
             // History already holds a HIGHER version than the row counter (e.g.
             // a prior orphaned/partial write). currentVersionNumber+1 (=2) would
             // recompute an existing versionNumber and brick further edits; the
@@ -1358,7 +1358,7 @@ describe('PromptManagementService', () => {
 
     // ─── Authorization & tenant scope ───────────────────
 
-    describe('Authorization & tenant scope (DEF-C2)', () => {
+    describe('Authorization & tenant scope', () => {
         describe('updatePromptTemplate', () => {
             it('throws NotFoundException when template tenant does not match caller tenant', async () => {
                 const foreign = createMockTemplateEntity({ id: 'tpl-X', tenantId: 'tenant-OTHER' });
@@ -1519,7 +1519,7 @@ describe('PromptManagementService', () => {
         });
     });
 
-    describe('createPromptTemplate scope defaults (DEF-C2)', () => {
+    describe('createPromptTemplate scope defaults', () => {
         it('defaults newly created template to scope=TENANT_DEFAULT', async () => {
             mockTemplateRepo.findByName.mockResolvedValue(null);
             const saved = createMockTemplateEntity({ scope: 'TENANT_DEFAULT' });
@@ -1542,7 +1542,7 @@ describe('PromptManagementService', () => {
         });
     });
 
-    describe('createPersonal (DEF-C2 W5B-7)', () => {
+    describe('createPersonal', () => {
         it('stamps scope=USER_PERSONAL and ownerUserId=requestUserId', async () => {
             const saved = createMockTemplateEntity({ scope: 'USER_PERSONAL', ownerUserId: 'user-id-1' });
             mockTemplateRepo.create.mockResolvedValue(saved);
@@ -1573,7 +1573,7 @@ describe('PromptManagementService', () => {
         });
     });
 
-    describe('listDefaultsForDepartment (DEF-C2 W5B-7)', () => {
+    describe('listDefaultsForDepartment', () => {
         it('returns templates with scope=TENANT_DEFAULT or DEPARTMENT_DEFAULT scoped to the department', async () => {
             const qb = createMockQueryBuilder();
             mockTemplateRepo.$.mockReturnValue(qb);
@@ -1593,7 +1593,7 @@ describe('PromptManagementService', () => {
         });
     });
 
-    describe('listMyPersonalForDepartment (DEF-C2 W5B-7)', () => {
+    describe('listMyPersonalForDepartment', () => {
         it('delegates to findMyPersonalForDepartment with caller tenant + user', async () => {
             mockTemplateRepo.findMyPersonalForDepartment.mockResolvedValue([]);
 
@@ -1616,7 +1616,7 @@ describe('PromptManagementService', () => {
     });
 
     // ─── end-user readable templates (no admin ability) ─────
-    describe('listAvailableForCaller (TASK-331 doc-09)', () => {
+    describe('listAvailableForCaller', () => {
         it('scopes to tenant + ENABLED and ORs (TENANT_DEFAULT, DEPARTMENT_DEFAULT, own USER_PERSONAL)', async () => {
             const qb = createMockQueryBuilder();
             mockTemplateRepo.$.mockReturnValue(qb);
@@ -1638,7 +1638,7 @@ describe('PromptManagementService', () => {
         // the clinician resolution: tenant + department DEFAULT templates must be
         // non-DRAFT (PUBLISHED, or legacy/unset as a safe fallback), while the
         // caller's OWN personal overlays are returned regardless of status.
-        it('CC-03: gates tenant + department defaults to non-DRAFT but never the caller own personal templates', async () => {
+        it('gates tenant + department defaults to non-DRAFT but never the caller own personal templates', async () => {
             const qb = createMockQueryBuilder();
             mockTemplateRepo.$.mockReturnValue(qb);
             qb.ToList.mockResolvedValue([]);
@@ -1695,7 +1695,7 @@ describe('PromptManagementService', () => {
 
     // ─── assign templates to department ───────────
 
-    describe('assignToDepartment (DEF-C4 W5B-8)', () => {
+    describe('assignToDepartment', () => {
         it('delegates to DepartmentService.updatePromptConfig with the right fields', async () => {
             mockDepartmentService.updatePromptConfig.mockResolvedValue({ id: 'dept-1' });
 
@@ -1727,7 +1727,7 @@ describe('PromptManagementService', () => {
 
     // ─── prompt quality/score test run ──────────────────────
 
-    describe('testPromptTemplate (TASK-328 A4)', () => {
+    describe('testPromptTemplate', () => {
         const buildSmrService = (
             responseData: Record<string, unknown>,
             harnessPolicyService: { resolveSmrSelection: ReturnType<typeof vi.fn> } = {
@@ -1818,7 +1818,7 @@ describe('PromptManagementService', () => {
             return { svc, secretsService };
         };
 
-        it('encrypts lastTestOutput BEFORE the CAS write, and the result DTO carries no ciphertext (TASK-369)', async () => {
+        it('encrypts lastTestOutput BEFORE the CAS write, and the result DTO carries no ciphertext', async () => {
             const output = wordsOfLength(60);
             const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, content: 'Summarize {{topic}}' });
             mockTemplateRepo.findById.mockResolvedValue(existing);
@@ -1839,7 +1839,7 @@ describe('PromptManagementService', () => {
             expect(result).not.toHaveProperty('keyVersion');
         });
 
-        it('still persists the test result when encryption fails (dual-write soak, TASK-369)', async () => {
+        it('still persists the test result when encryption fails (dual-write soak)', async () => {
             const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
             mockTemplateRepo.findById.mockResolvedValue(existing);
             mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2 }));
@@ -1852,7 +1852,7 @@ describe('PromptManagementService', () => {
             expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalledTimes(1);
         });
 
-        it('does NOT encrypt when no SecretsService is wired (TASK-369)', async () => {
+        it('does NOT encrypt when no SecretsService is wired', async () => {
             const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
             mockTemplateRepo.findById.mockResolvedValue(existing);
             mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2 }));
@@ -1916,7 +1916,7 @@ describe('PromptManagementService', () => {
         });
 
         // ── deterministic composite rubric ──────────
-        describe('deterministic output rubric (TASK-331 doc-02 F8)', () => {
+        describe('deterministic output rubric', () => {
             const runWith = async (entityOverrides: Record<string, unknown>, output: string) => {
                 const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, ...entityOverrides });
                 mockTemplateRepo.findById.mockResolvedValue(existing);
@@ -1984,7 +1984,7 @@ describe('PromptManagementService', () => {
 
     // ─── repository-level pagination ────────────────────────
 
-    describe('listPromptTemplatesPaginated (TASK-328 A4)', () => {
+    describe('listPromptTemplatesPaginated', () => {
         it('delegates to repository.findPaginated and returns {data,count,page,limit}', async () => {
             mockTemplateRepo.findPaginated.mockResolvedValue({
                 data: [createMockTemplateEntity({ id: 't1' }), createMockTemplateEntity({ id: 't2' })],
@@ -2045,7 +2045,7 @@ describe('PromptManagementService', () => {
 
     // ─── usage analytics (groupBy dept / doctor / time) ─────
 
-    describe('getUsageAnalytics (TASK-328 A4)', () => {
+    describe('getUsageAnalytics', () => {
         it('returns aggregates grouped by department, doctor, and day', async () => {
             mockUsageRepo.groupByDepartment.mockResolvedValue([
                 { departmentId: 'dept-1', count: 4 },
@@ -2095,7 +2095,7 @@ describe('PromptManagementService', () => {
 
     // ─── tenant-scoped raw usage-record listing (Agent Jobs) ─────
 
-    describe('listUsageRecords (TASK-407)', () => {
+    describe('listUsageRecords', () => {
         const mkRecord = (overrides: Record<string, unknown> = {}) => ({
             id: 'run-1',
             tenantId: 'tenant-1',
@@ -2290,7 +2290,7 @@ describe('PromptManagementService', () => {
     });
 
     // ─── admin per-user prompt scope (USER_PERSONAL/ownerUserId) ──
-    describe('TASK-388 #12 — admin USER_PERSONAL create + owner filters', () => {
+    describe('admin USER_PERSONAL create + owner filters', () => {
         it('createPromptTemplate stamps scope=USER_PERSONAL + the provided ownerUserId (admin-for-user)', async () => {
             mockTemplateRepo.findByName.mockResolvedValue(null);
             mockTemplateRepo.create.mockResolvedValue(

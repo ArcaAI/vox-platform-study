@@ -17,7 +17,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-describe('TASK-279 — ADMIN_USER_ROLES_ENDPOINTS exported from package barrel', () => {
+describe('ADMIN_USER_ROLES_ENDPOINTS exported from package barrel', () => {
     it('should export ADMIN_USER_ROLES_ENDPOINTS from core.ts', async () => {
         const core = await import('../core.js');
         expect(core.ADMIN_USER_ROLES_ENDPOINTS).toBeDefined();

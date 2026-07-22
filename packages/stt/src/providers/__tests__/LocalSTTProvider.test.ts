@@ -10,7 +10,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-describe('LocalSTTProvider — TASK-296 C-2 voice profile wiring', () => {
+describe('LocalSTTProvider — voice profile wiring', () => {
   let diarizerCtorArgs: Array<Record<string, unknown>>;
 
   beforeEach(() => {
@@ -118,7 +118,7 @@ describe('LocalSTTProvider — TASK-296 C-2 voice profile wiring', () => {
  * (and the playground re-renders) can pin the doctor's slot without a
  * full provider rebuild — provided no profiles have been allocated yet.
  */
-describe('LocalSTTProvider — TASK-304 Wave 3 setReservedSpeakerId forwarding', () => {
+describe('LocalSTTProvider — Wave 3 setReservedSpeakerId forwarding', () => {
   let diarizerSetCalls: Array<string | undefined>;
   let constructedDiarizers: number;
 

@@ -47,7 +47,7 @@ const fakeSettingEntity = {
   toObject: () => ({ id: 'setting-1' }),
 };
 
-describe('UserSettingsController — selectedPipelineId validator (TASK-298 D-5)', () => {
+describe('UserSettingsController — selectedPipelineId validator', () => {
   let controller: UserSettingsController;
   let userSettingsService: ReturnType<typeof createMockUserSettingsService>;
   let pipelineService: ReturnType<typeof createMockPipelineService>;
@@ -128,7 +128,7 @@ describe('UserSettingsController — selectedPipelineId validator (TASK-298 D-5)
   // `ui.data-grid` namespace via the existing PATCH endpoint. The namespace is
   // explicitly recognised and its value is guarded (valid JSON + size),
   // without breaking the open-namespace behaviour for other clients.
-  describe('updateSetting — ui.data-grid namespace (TASK-372 D8)', () => {
+  describe('updateSetting — ui.data-grid namespace', () => {
     it('persists a valid JSON layout value (PATCH round-trip)', async () => {
       const layout = JSON.stringify({ columnOrder: ['a', 'b'], density: 'compact' });
 

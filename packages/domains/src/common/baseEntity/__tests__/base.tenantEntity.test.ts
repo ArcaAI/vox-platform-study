@@ -63,7 +63,7 @@ function makeInit(overrides: Partial<IBaseTenantEntity> = {}): IBaseTenantEntity
   };
 }
 
-describe('BaseTenantEntity (TASK-305 A.7)', () => {
+describe('BaseTenantEntity', () => {
   describe('constructor', () => {
     it('accepts a valid tenantId and exposes it via the getter', () => {
       const entity = new TestTenantEntity(makeInit());
@@ -218,7 +218,7 @@ describe('BaseTenantEntity (TASK-305 A.7)', () => {
    * callers can no longer overwrite the tenant relation of a live entity;
    * only subclasses (entity factories, mappers, lifecycle methods) may.
    */
-  describe('TASK-306 P1.1 — Tenant relation setter is protected', () => {
+  describe('Tenant relation setter is protected', () => {
     it('TS prevents external assignment (compile-time guard)', () => {
       const entity = new TestTenantEntity(makeInit());
       const fakeTenant: FakeTenantEntity = {

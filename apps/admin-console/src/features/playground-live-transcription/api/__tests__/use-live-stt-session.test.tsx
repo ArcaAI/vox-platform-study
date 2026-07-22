@@ -315,7 +315,7 @@ describe('useLiveSttSession', () => {
         hook.unmount();
     });
 
-    it('renders the speaker per segment, falling back to speakerId when no friendly label (TASK-489 AC-2)', async () => {
+    it('renders the speaker per segment, falling back to speakerId when no friendly label', async () => {
         const { hook } = await startedHook();
         const ws = FakeSttWsClient.instances[0];
 

@@ -52,7 +52,7 @@ describe('rbacKeys', () => {
         expect(rbacKeys.roles()[0]).toBe('rbac');
     });
 
-    it('scopes member keys per role and per params (TASK-444)', () => {
+    it('scopes member keys per role and per params', () => {
         expect(rbacKeys.roleMembers('r-1', { page: 1 })).toEqual(rbacKeys.roleMembers('r-1', { page: 1 }));
         expect(rbacKeys.roleMembers('r-1')).not.toEqual(rbacKeys.roleMembers('r-2'));
         expect(rbacKeys.roleMembers('r-1')).not.toEqual(rbacKeys.role('r-1'));
@@ -96,14 +96,14 @@ describe('rbac client — roles', () => {
         expect(calls[5].body).toEqual({ password: 'pw', confirmationName: 'AUDITOR' });
     });
 
-    it('TASK-501 — clones a role via POST .../clone', async () => {
+    it('clones a role via POST .../clone', async () => {
         const calls = installFetchMock();
         await cloneRole('r-1', { name: 'AUDITOR (copy)' });
         expect(calls[0]).toEqual({ url: '/api/hope/admin/rbac/roles/r-1/clone', method: 'POST', body: { name: 'AUDITOR (copy)' } });
     });
 });
 
-describe('rbac client — role members (TASK-444)', () => {
+describe('rbac client — role members', () => {
     it('lists members with the RBAC envelope and raw page/pageSize params', async () => {
         const calls = installFetchMock(() =>
             Response.json({

@@ -200,7 +200,7 @@ function decodeJwt(token: string): any {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('AuthController — TASK-307 W1.2 / W1.5 / W1.6 — login token issuance', () => {
+describe('AuthController — login token issuance', () => {
     beforeEach(() => vi.clearAllMocks());
 
     async function loginAcmeUser(overrides: any = {}) {
@@ -349,7 +349,7 @@ describe('AuthController — TASK-307 W1.2 / W1.5 / W1.6 — login token issuanc
 // from the consumed record — NOT re-read from User.tenantId, which can
 // drift if the user has since been moved between tenants.
 // ---------------------------------------------------------------------------
-describe('AuthController — TASK-307 W1.3 — refresh endpoint defense', () => {
+describe('AuthController — refresh endpoint defense', () => {
     beforeEach(() => vi.clearAllMocks());
 
     function buildRefreshController(overrides: any = {}) {
@@ -549,7 +549,7 @@ describe('AuthController — TASK-307 W1.3 — refresh endpoint defense', () => 
 // Logout revokes both the access-token jti AND the refresh-token family —
 // terminating the full session, not just the in-flight request.
 // ---------------------------------------------------------------------------
-describe('AuthController — TASK-307 W1.4 — logout session-revocation', () => {
+describe('AuthController — logout session-revocation', () => {
     beforeEach(() => vi.clearAllMocks());
 
     function buildLogoutController(sessionOverrides: any = {}) {
@@ -607,7 +607,7 @@ describe('AuthController — TASK-307 W1.4 — logout session-revocation', () =>
         expect(refreshTokenService.revokeFamily).not.toHaveBeenCalled();
     });
 
-    it('W1.4 — logout still tracks the authentication event (anti-regression for TASK-224)', async () => {
+    it('logout still tracks the authentication event', async () => {
         const { controller, authService } = buildLogoutController();
         await controller.logout(createMockRequest() as any);
 
@@ -657,7 +657,7 @@ describe('AuthController — TASK-307 W1.4 — logout session-revocation', () =>
 // Anti-regression: every existing AuthController invariant that this
 // refactor MUST preserve. The login still validates credentials,
 // still throws BadRequest on missing tenantKey for non-admins, etc.
-describe('AuthController — TASK-307 W1 anti-regression for existing login behaviours', () => {
+describe('AuthController — anti-regression for existing login behaviours', () => {
     beforeEach(() => vi.clearAllMocks());
 
     it('still rejects missing tenantKey for non-admin users (BadRequestException)', async () => {

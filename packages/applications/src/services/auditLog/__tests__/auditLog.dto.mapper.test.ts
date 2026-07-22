@@ -701,7 +701,7 @@ describe('AuditLogDtoMapper', () => {
         });
     });
 
-    describe('responsibleUser enrichment (TASK-328 A8)', () => {
+    describe('responsibleUser enrichment', () => {
         it('attaches the resolved responsible user when a map is provided', () => {
             const entity = createMockAuditLogEntity({ responsibleUserId: 'user-123' });
             const responsibleUsers = {
@@ -750,7 +750,7 @@ describe('AuditLogDtoMapper', () => {
         });
     });
 
-    describe('ToCsv (TASK-328 A8 export)', () => {
+    describe('ToCsv (export)', () => {
         it('emits a header row followed by one row per entity', () => {
             const rows = [
                 createMockAuditLogEntity({ id: 'a1', responsibleUserId: 'u1', action: AuditAction.CREATE }),
@@ -796,7 +796,7 @@ describe('AuditLogDtoMapper', () => {
         // OB-07 — a cross-tenant (global/super-admin) export must carry
         // tenant attribution; a tenant-scoped export must not (every row is the
         // caller's own tenant, so the column would be noise).
-        describe('OB-07 — tenant column on global export', () => {
+        describe('tenant column on global export', () => {
             it('appends a tenantId column when includeTenant is set', () => {
                 const rows = [createMockAuditLogEntity({ id: 'a1', tenantId: 't-9', responsibleUserId: null })];
 
@@ -831,7 +831,7 @@ describe('AuditLogDtoMapper', () => {
     // Structured column/row extraction feeding the shared
     // csv/xlsx/pdf table exporter. Same column order + cell mapping as ToCsv, but
     // returned as data (not a serialised string) so the API can render xlsx/pdf.
-    describe('ToExportRows (TASK-390 #25 xlsx/pdf export)', () => {
+    describe('ToExportRows (xlsx/pdf export)', () => {
         it('returns the CSV column order as {key,header} columns (header === key)', () => {
             const { columns } = AuditLogDtoMapper.ToExportRows([], {});
             expect(columns.map((c) => c.key)).toEqual([

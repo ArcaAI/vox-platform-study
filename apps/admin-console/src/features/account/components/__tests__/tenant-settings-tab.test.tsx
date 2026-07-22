@@ -55,7 +55,7 @@ afterEach(() => {
     vi.unstubAllGlobals();
 });
 
-describe('TenantSettingsTab — readOnly (BUG-005 Issue 2)', () => {
+describe('TenantSettingsTab — readOnly', () => {
     it('disables a normally-editable row when readOnly', async () => {
         stubConfigFetch();
         renderWithProviders(<TenantSettingsTab readOnly />);

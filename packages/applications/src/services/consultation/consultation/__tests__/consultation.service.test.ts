@@ -1034,7 +1034,7 @@ describe('ConsultationService', () => {
     // whole window, and split into new (parentConsultationId IS NULL) vs
     // revisit. Bucket key/label mirror the FE chart (UTC boundaries).
     // ============================================================
-    describe('TASK-386 — aggregateConsultationsForTenant (#20 / E4)', () => {
+    describe('aggregateConsultationsForTenant', () => {
         it('zero-fills daily buckets and splits new vs revisit by parentConsultationId', async () => {
             mockConsultationRepository.findCreatedInRange.mockResolvedValue([
                 { createdAt: new Date('2026-01-01T08:00:00Z'), parentConsultationId: null },
@@ -1093,7 +1093,7 @@ describe('ConsultationService', () => {
     // CLS tenant must now read cross-tenant (no tenantId filter → the Prisma
     // tenantScope extension passes through). Non-super callers are unchanged.
     // ============================================================
-    describe('TASK-386 — listConsultationsForTenant cross-tenant super-admin (TD3 / DEF-1)', () => {
+    describe('listConsultationsForTenant cross-tenant super-admin', () => {
         it('OMITS the tenantId filter for a GLOBAL_ADMIN with no working tenant', async () => {
             mockClsService.get.mockImplementation((key: string) => {
                 if (key === 'tenantId') return null;
@@ -1135,7 +1135,7 @@ describe('ConsultationService', () => {
     // (never `ForbiddenException`) so the response never reveals the
     // existence of a cross-tenant resource.
     // ============================================================
-    describe('TASK-305 D.2 — cross-aggregate tenant checks', () => {
+    describe('cross-aggregate tenant checks', () => {
         describe('getOrCreate', () => {
             it('throws NotFoundException when doctorId has no role-assignment in caller tenant', async () => {
                 mockConsultationRepository.findByUniqueKey.mockResolvedValue(null);
@@ -1283,7 +1283,7 @@ describe('ConsultationService', () => {
                 expect(mockConsultationRepository.create).not.toHaveBeenCalled();
             });
 
-            it('throws NotFoundException when parentConsultationId belongs to another tenant (audit C-4)', async () => {
+            it('throws NotFoundException when parentConsultationId belongs to another tenant (audit)', async () => {
                 mockConsultationRepository.findById.mockResolvedValue(
                     createMockConsultationEntity({
                         id: 'parent-other',
@@ -1331,7 +1331,7 @@ describe('ConsultationService', () => {
     // (simulating an extension bypass) so the cross-tenant negatives
     // are red today and green after the service-layer guard lands.
     // ============================================================
-    describe('TASK-306 P2.1 — Consultation read-paths defense-in-depth', () => {
+    describe('Consultation read-paths defense-in-depth', () => {
         describe('getById', () => {
             // Regression-pin — intentional duplicate
             // of the happy-path test elsewhere. Kept under this describe
@@ -1403,7 +1403,7 @@ describe('ConsultationService', () => {
                 expect(mockEventEmitter.emit).not.toHaveBeenCalled();
             });
 
-            it('throws BadRequestException without calling repo when CLS tenantId is missing (306-F5 hoist)', async () => {
+            it('throws BadRequestException without calling repo when CLS tenantId is missing (getById, hoisted check)', async () => {
                 // The hoisted CLS check short-
                 // circuits BEFORE the repo round-trip, matching the
                 // `getConsultationChain` convention. Saves a useless DB
@@ -1470,7 +1470,7 @@ describe('ConsultationService', () => {
                 expect(mockEventEmitter.emit).not.toHaveBeenCalled();
             });
 
-            it('throws BadRequestException without calling repo when CLS tenantId is missing (306-F5 hoist)', async () => {
+            it('throws BadRequestException without calling repo when CLS tenantId is missing (getByIdWithRelations, hoisted check)', async () => {
                 // Sibling of the getById hoist
                 // test: the missing-CLS check now short-circuits BEFORE the
                 // relations round-trip (which is more expensive than a
@@ -1591,7 +1591,7 @@ describe('ConsultationService', () => {
     // already in the target state). PATCH updates safely-mutable fields
     // only (appointmentDate / departmentId / metadata-merge / status).
     // ============================================================
-    describe('TASK-322 — lifecycle (close / reopen / update)', () => {
+    describe('lifecycle (close / reopen / update)', () => {
         describe('closeConsultation', () => {
             it('transitions OPEN → CLOSED, persists, emits ResourceUpdated, returns status CLOSED', async () => {
                 const entity = createMockConsultationEntity({ id: 'c-1', metadata: null });

@@ -41,7 +41,7 @@ const buildCtx = (handler: () => void, klass: typeof Controller, req: MockReq): 
         switchToHttp: () => ({ getRequest: () => req }),
     }) as unknown as ExecutionContext;
 
-describe('@RequiresIfMatch (TASK-302 Stream D Phase D)', () => {
+describe('@RequiresIfMatch', () => {
     it('marks the handler with REQUIRES_IF_MATCH_KEY metadata = true', () => {
         const reflector = new Reflector();
         const flag = reflector.get(REQUIRES_IF_MATCH_KEY, Controller.prototype.update);
@@ -56,7 +56,7 @@ describe('@RequiresIfMatch (TASK-302 Stream D Phase D)', () => {
     });
 });
 
-describe('RequiresIfMatchGuard (TASK-302 Stream D Phase D)', () => {
+describe('RequiresIfMatchGuard', () => {
     it('sets req._requiresIfMatch = true on @RequiresIfMatch()-annotated handlers', () => {
         const reflector = new Reflector();
         const guard = new RequiresIfMatchGuard(reflector);

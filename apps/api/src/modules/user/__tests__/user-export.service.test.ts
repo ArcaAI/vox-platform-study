@@ -6,7 +6,7 @@ const rows: UserExportRow[] = [
     { id: 'u-2', username: 'jane', email: '', type: 'Service account', status: 'DISABLED', departments: '' },
 ];
 
-describe('UserExportService (TASK-388 #10)', () => {
+describe('UserExportService', () => {
     const svc = new UserExportService();
 
     it('csv: header + one line per row, quoting values that contain commas', async () => {

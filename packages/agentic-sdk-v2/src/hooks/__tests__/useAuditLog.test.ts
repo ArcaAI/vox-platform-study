@@ -46,7 +46,7 @@ describe('useAuditLog', () => {
             expect(result.current.error).toBeNull();
         });
 
-        it('should return an initial count of 0 (TASK-331 doc-03 F11)', () => {
+        it('should return an initial count of 0 (doc-03)', () => {
             const { result } = renderHook(() => useAuditLog());
             expect(result.current.count).toBe(0);
         });
@@ -80,7 +80,7 @@ describe('useAuditLog', () => {
             expect(mockGet).toHaveBeenCalledWith(`${AUDIT_LOG_ENDPOINTS.LIST}?page=2&limit=20`);
         });
 
-        it('should push from/to/action/resourceType/userId filters into the query (TASK-328 A8)', async () => {
+        it('should push from/to/action/resourceType/userId filters into the query', async () => {
             mockGet.mockResolvedValue([]);
             const { result } = renderHook(() => useAuditLog());
 
@@ -117,7 +117,7 @@ describe('useAuditLog', () => {
             expect(result.current.entries).toEqual(entries);
         });
 
-        it('should surface the paginated envelope count while keeping the array return shape (TASK-331 doc-03 F11)', async () => {
+        it('should surface the paginated envelope count while keeping the array return shape (doc-03)', async () => {
             const entries = [
                 { id: 'al-1', resourceType: 'Role', action: 'CREATE' },
                 { id: 'al-2', resourceType: 'Policy', action: 'UPDATE' },
@@ -171,7 +171,7 @@ describe('useAuditLog', () => {
         });
     });
 
-    describe('exportCsv (TASK-328 A8)', () => {
+    describe('exportCsv', () => {
         it('should call getCsv on the EXPORT endpoint and return the CSV text', async () => {
             const csv = 'id,createdAt,action\nal-1,2026-02-01T10:00:00.000Z,CREATE';
             mockGetCsv.mockResolvedValue(csv);
@@ -197,7 +197,7 @@ describe('useAuditLog', () => {
         });
     });
 
-    describe('exportFile (TASK-390 #25)', () => {
+    describe('exportFile', () => {
         it('getBlob on the EXPORT endpoint with format=xlsx (+ filters) and returns the Blob', async () => {
             const blob = new Blob(['x'], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
             mockGetBlob.mockResolvedValue(blob);

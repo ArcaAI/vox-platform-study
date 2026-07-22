@@ -22,7 +22,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AgenticClient } from '../AgenticClient';
 import { createMockLogger } from '../../__tests__/setup';
 
-describe('TASK-264 W0-3: AgenticClient impersonation', () => {
+describe('AgenticClient impersonation', () => {
   let client: AgenticClient;
   let mockLogger: ReturnType<typeof createMockLogger>;
 

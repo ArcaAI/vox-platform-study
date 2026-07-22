@@ -17,7 +17,7 @@ import { DEFAULT_LOCAL_CONFIG } from '../config';
 // C1: VoiceEmbeddingLocalConfig type
 // =============================================================================
 
-describe('TASK-225 C1: VoiceEmbeddingLocalConfig', () => {
+describe('VoiceEmbeddingLocalConfig', () => {
   it('should be a valid type with a modelId field', () => {
     const config: VoiceEmbeddingLocalConfig = { modelId: 'pyannote-embedding' };
     expect(config.modelId).toBe('pyannote-embedding');
@@ -38,7 +38,7 @@ describe('TASK-225 C1: VoiceEmbeddingLocalConfig', () => {
 // C1: AudioSilenceLocalConfig type
 // =============================================================================
 
-describe('TASK-225 C1: AudioSilenceLocalConfig', () => {
+describe('AudioSilenceLocalConfig', () => {
   it('should be a valid type with a modelId field', () => {
     const config: AudioSilenceLocalConfig = { modelId: 'silero-vad-silence' };
     expect(config.modelId).toBe('silero-vad-silence');
@@ -59,7 +59,7 @@ describe('TASK-225 C1: AudioSilenceLocalConfig', () => {
 // C1: LocalWorkflowConfig must include the new fields
 // =============================================================================
 
-describe('TASK-225 C1: LocalWorkflowConfig extension', () => {
+describe('LocalWorkflowConfig extension', () => {
   it('should accept voiceEmbedding in LocalWorkflowConfig', () => {
     const config: LocalWorkflowConfig = {
       noiseCancellation: { modelId: 'rnnoise', level: 'medium' },
@@ -95,7 +95,7 @@ describe('TASK-225 C1: LocalWorkflowConfig extension', () => {
 // C1: DEFAULT_LOCAL_CONFIG must include the new fields (disabled by default)
 // =============================================================================
 
-describe('TASK-225 C1: DEFAULT_LOCAL_CONFIG includes new fields', () => {
+describe('DEFAULT_LOCAL_CONFIG includes new fields', () => {
   it('should have a voiceEmbedding key', () => {
     expect(DEFAULT_LOCAL_CONFIG).toHaveProperty('voiceEmbedding');
   });

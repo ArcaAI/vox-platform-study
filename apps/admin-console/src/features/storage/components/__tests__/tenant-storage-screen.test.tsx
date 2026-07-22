@@ -404,7 +404,7 @@ describe('TenantStorageScreen', () => {
         });
     });
 
-    it('renders the access-key name and description on a single line so the fixed-height row keeps its border (TASK-429)', async () => {
+    it('renders the access-key name and description on a single line so the fixed-height row keeps its border', async () => {
         stubStorage();
         renderWithProviders(<TenantStorageScreen />, { searchParams: '?tab=keys' });
 

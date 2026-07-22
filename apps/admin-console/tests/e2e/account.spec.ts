@@ -155,7 +155,7 @@ function tabsOrEmpty(page: Page) {
     return page.getByRole('tab', { name: 'Organization' }).or(page.getByText('No working tenant selected'));
 }
 
-test.describe('tenant profile — tabs + settings sub-nav (TASK-440)', () => {
+test.describe('tenant profile — tabs + settings sub-nav', () => {
     test('renders the three profile tabs (or the no-tenant empty state)', async ({ page }) => {
         await page.goto('/tenant-profile');
         await expect(page.getByRole('heading', { level: 1, name: 'Tenant profile' })).toBeVisible();

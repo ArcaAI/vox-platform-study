@@ -382,7 +382,7 @@ describe('NotificationService', () => {
             expect(result.data[1].title).toBe('Notification 2');
         });
 
-        it('coerces Notification-typed filter values via the model registry (TASK-406 P2-6c)', async () => {
+        it('coerces Notification-typed filter values via the model registry', async () => {
             mockNotificationRepository.findAll.mockResolvedValue([]);
             mockNotificationRepository.count.mockResolvedValue(0);
 
@@ -505,7 +505,7 @@ describe('NotificationService', () => {
      * `tenantId` does not match the CLS-supplied caller `tenantId`, except for
      * GLOBAL_ADMIN callers, who retain the cross-tenant bypass (admin tooling).
      */
-    describe('TASK-306 P1.5 — fetchAllByTenantId tenant-scoped', () => {
+    describe('fetchAllByTenantId tenant-scoped', () => {
         const setRequestUserRoles = (roles: string[] | undefined) => {
             mockClsService.get.mockImplementation((key: string) => {
                 switch (key) {
@@ -887,7 +887,7 @@ describe('NotificationService', () => {
      * (never `Forbidden`) on mismatch. GLOBAL_ADMIN bypasses the read-side
      * scope but NOT the write-side `targetUserId` membership check.
      */
-    describe('Multi-tenant scoping (TASK-305 D.5.1)', () => {
+    describe('Multi-tenant scoping', () => {
         describe('create', () => {
             it('rejects when caller has no CLS tenantId and is not GLOBAL_ADMIN', async () => {
                 mockClsService.get.mockImplementation((key: string) => {

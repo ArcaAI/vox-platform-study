@@ -9,7 +9,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PromptTemplateRepository } from '../PromptTemplateRepository';
 
-describe('PromptTemplateRepository — findPaginated (TASK-328 A4)', () => {
+describe('PromptTemplateRepository — findPaginated', () => {
   let findMany: ReturnType<typeof vi.fn>;
   let count: ReturnType<typeof vi.fn>;
   let repo: PromptTemplateRepository;

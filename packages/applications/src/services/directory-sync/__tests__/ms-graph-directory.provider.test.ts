@@ -13,7 +13,7 @@ function makeProvider(opts: { enabled?: boolean } = { enabled: true }) {
   return { provider, post, get };
 }
 
-describe('MsGraphDirectoryProvider (TASK-498 P3)', () => {
+describe('MsGraphDirectoryProvider', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('rejects fetchUsers when TENANT_IDP_MS_GRAPH_ENABLED is off', async () => {

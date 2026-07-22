@@ -132,7 +132,7 @@ describe('ConfigService', () => {
             expect(service.config.LOG_FILE_MAX_FILES).toBe(500);
         });
 
-        it('defaults REGISTRATION_SELF_SIGNUP_ENABLED to false when unset (TASK-497 D1)', () => {
+        it('defaults REGISTRATION_SELF_SIGNUP_ENABLED to false when unset', () => {
             delete process.env.REGISTRATION_SELF_SIGNUP_ENABLED;
 
             const service = createService();
@@ -140,7 +140,7 @@ describe('ConfigService', () => {
             expect(service.config.REGISTRATION_SELF_SIGNUP_ENABLED).toBe(false);
         });
 
-        it('reads REGISTRATION_SELF_SIGNUP_ENABLED=true as a boolean (TASK-497 D1)', () => {
+        it('reads REGISTRATION_SELF_SIGNUP_ENABLED=true as a boolean', () => {
             process.env.REGISTRATION_SELF_SIGNUP_ENABLED = 'true';
 
             const service = createService();

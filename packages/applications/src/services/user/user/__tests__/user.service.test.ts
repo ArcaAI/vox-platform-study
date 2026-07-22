@@ -202,7 +202,7 @@ describe('UserService', () => {
             expect(result.isServiceAccount).toBe(false);
         });
 
-        it('persists the optional email onto the user profile (TASK-381 V1)', async () => {
+        it('persists the optional email onto the user profile (V1)', async () => {
             const newUser = createMockUserEntity({ id: 'new-user-id', username: 'maya' });
             mockUserRepository.create.mockResolvedValue(newUser);
 
@@ -216,7 +216,7 @@ describe('UserService', () => {
             expect(mockUserProfileService.upsertByUserId).toHaveBeenCalledWith('new-user-id', { email: 'maya@acmehealth.org' });
         });
 
-        it('does not touch the profile when no email is supplied (TASK-381 V1)', async () => {
+        it('does not touch the profile when no email is supplied (V1)', async () => {
             const newUser = createMockUserEntity({ id: 'new-user-id' });
             mockUserRepository.create.mockResolvedValue(newUser);
 
@@ -507,7 +507,7 @@ describe('UserService', () => {
     // formatFindAllProps). These assert the already-wired contract the admin
     // grid depends on.
     // -------------------------------------------------------------------------
-    describe('TASK-375 — filter/sort forwarding + tenant composition', () => {
+    describe('filter/sort forwarding + tenant composition', () => {
         it('fetchAll: forwards deserialized filters + sort into findAll (and filters into count)', async () => {
             mockUserRepository.findAll.mockResolvedValue([]);
             mockUserRepository.count.mockResolvedValue(0);
@@ -531,7 +531,7 @@ describe('UserService', () => {
             );
         });
 
-        it('fetchAllByTenantId: composes filters + sort WITH the tenant where (boolean column coerced — DEFECT-F1)', async () => {
+        it('fetchAllByTenantId: composes filters + sort WITH the tenant where (boolean column coerced)', async () => {
             mockUserRepository.findAll.mockResolvedValue([]);
             mockUserRepository.count.mockResolvedValue(0);
 

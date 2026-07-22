@@ -8,6 +8,7 @@ import { IRedisCacheService } from '../../baseServices/redis';
 import { IAgentTrajectoryService } from '../../agent-trajectory/IAgentTrajectoryService';
 import type { CreateAgentTrajectoryStepInput } from '../../agent-trajectory/dto';
 import { SecretsService } from '../../baseServices/_meta/secrets';
+import { encryptPhiFields } from '../../../common';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
 import { StreamingAudioBridgeService } from '../../stt/streaming/streamingAudioBridge.service';
 import { mapSmrGenerateResponse } from '../summary/smr-v2-generate';
@@ -1308,6 +1309,24 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * row thereafter) so the in-progress draft survives a restart/late join without
    * writing a row per tick. `force` (final-on-stop) bypasses the interval throttle.
    */
+  /**
+   * Encrypt the live SOAP snapshot's plaintext `content` into
+   * `encryptedContent` / `contentKeyVersion` before persistence — mirrors
+   * `context.service.ts#encryptContent` / `chain-summary.service.ts`. The
+   * plaintext `content` column was dropped by the PHI field-encryption
+   * migration, so a create/update that skips this silently loses the
+   * clinical LIVE_SOAP_SNAPSHOT text at rest.
+   */
+  private async encryptSnapshotContent(entity: ContextItemEntity): Promise<void> {
+    if (!this.contextItemRepository) return;
+    await encryptPhiFields(
+      this.secretsService,
+      'ContextItem content',
+      () => this.contextItemRepository!.encryptContentIntoEntity(entity, this.secretsService!),
+      this.logger,
+    );
+  }
+
   private async persistDurableSnapshot(session: LiveSession, payload: LiveSummaryEventDto, opts: { force: boolean }): Promise<void> {
     if (!this.contextItemRepository) return;
     if (!opts.force && (this.durableSnapshotMs <= 0 || Date.now() - session.lastDurableAt < this.durableSnapshotMs)) return;
@@ -1331,6 +1350,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         if (existing) {
           existing.content = content;
           existing.metaData = metaData;
+          await this.encryptSnapshotContent(existing);
           await this.contextItemRepository.update(existing.id, existing);
           session.snapshotEntity = existing;
           session.snapshotId = existing.id;
@@ -1348,6 +1368,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
             session.userId ?? 'system',
           );
           entity.metaData = metaData;
+          await this.encryptSnapshotContent(entity);
           await this.contextItemRepository.create(entity);
           session.snapshotEntity = entity;
           session.snapshotId = entity.id;
@@ -1356,6 +1377,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       } else {
         session.snapshotEntity.content = content;
         session.snapshotEntity.metaData = metaData;
+        await this.encryptSnapshotContent(session.snapshotEntity);
         await this.contextItemRepository.update(session.snapshotEntity.id, session.snapshotEntity);
       }
     } catch (error) {
@@ -1597,7 +1619,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     for (const entity of entities) {
       const needle = entity.text ?? '';
       if (!needle.trim()) continue;
-      const key = `${needle.toLowerCase()} ${entity.type}`;
+      const key = `${needle.toLowerCase()}\0${entity.type}`;
       if (seen.has(key)) continue;
       const at = haystack.indexOf(needle.toLowerCase());
       if (at < 0) continue; // no transcript-supported mention survives in the rendered note → drop

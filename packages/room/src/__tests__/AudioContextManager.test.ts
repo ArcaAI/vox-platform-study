@@ -541,7 +541,7 @@ describe('AudioContextManager.resume timeout (W1-7)', () => {
 // acquire() sample-rate enforcement
 // ============================================================================
 
-describe('AudioContextManager.acquire sample-rate enforcement (TASK-300 L-1)', () => {
+describe('AudioContextManager.acquire sample-rate enforcement', () => {
   beforeEach(() => {
     AudioContextManager.resetInstance();
   });
@@ -619,7 +619,7 @@ describe('AudioContextManager.acquire sample-rate enforcement (TASK-300 L-1)', (
 // Cross-tenant acquire() dev-warning
 // ============================================================================
 
-describe('TASK-317 W5.2 — AudioContextManager cross-tenant acquire warning (AC-15)', () => {
+describe('AudioContextManager cross-tenant acquire warning', () => {
   let mockContext: AudioContext;
 
   beforeEach(() => {

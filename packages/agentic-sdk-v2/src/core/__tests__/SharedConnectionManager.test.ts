@@ -156,7 +156,7 @@ describe('SharedConnectionManager', () => {
     });
   });
 
-  describe('workerUrl type — accepts both string and URL (cosmetic follow-up to TASK-280)', () => {
+  describe('workerUrl type — accepts both string and URL (cosmetic follow-up to)', () => {
     let originalSharedWorker: typeof globalThis.SharedWorker | undefined;
     let capturedUrls: Array<string | URL>;
 
@@ -233,7 +233,7 @@ describe('SharedConnectionManager', () => {
       manager.dispose();
     });
 
-    it('TASK-297 C-SSE-1: appends a stream ticket (not a JWT) to the SSE URL', () => {
+    it('appends a stream ticket (not a JWT) to the SSE URL', () => {
       const manager = new SharedConnectionManager(undefined, mockLogger);
 
       manager.subscribeSSE('job-1', {
@@ -247,7 +247,7 @@ describe('SharedConnectionManager', () => {
       manager.dispose();
     });
 
-    it('TASK-297 C-SSE-1: appends ticket with & when URL already has query params', () => {
+    it('appends ticket with & when URL already has query params', () => {
       const manager = new SharedConnectionManager(undefined, mockLogger);
 
       manager.subscribeSSE('job-1', {
@@ -261,7 +261,7 @@ describe('SharedConnectionManager', () => {
       manager.dispose();
     });
 
-    it('TASK-297 C-SSE-1: never embeds a JWT-shaped value in the SSE URL', () => {
+    it('never embeds a JWT-shaped value in the SSE URL', () => {
       const manager = new SharedConnectionManager(undefined, mockLogger);
 
       // Even if a caller foolishly passes a JWT-looking string as the
@@ -516,7 +516,7 @@ describe('SharedConnectionManager', () => {
   // the assertion observes the actual upstream sockets the worker opens.
   // Mirrors the cross-tenant no-leak style of SimpleCrossTabSync.test.ts:491.
   // ===========================================================================
-  describe('TASK-317 W3.1/3.2 — AC-8 WebSocket dedup keyed on (id, userId)', () => {
+  describe('/3.2 — WebSocket dedup keyed on (id, userId)', () => {
     beforeEach(() => {
       __resetConnectionsForTests();
     });

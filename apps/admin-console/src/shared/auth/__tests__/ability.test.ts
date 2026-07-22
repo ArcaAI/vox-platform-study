@@ -46,7 +46,7 @@ describe('canAny', () => {
 });
 
 describe('isElevated', () => {
-    it('recognizes GLOBAL_ADMIN as the single elevated role (TASK-417 consolidation)', () => {
+    it('recognizes GLOBAL_ADMIN as the single elevated role (consolidation)', () => {
         expect(isElevated(['GLOBAL_ADMIN'])).toBe(true);
         // Retired SUPER_ADMIN literal no longer elevates.
         expect(isElevated(['SUPER_ADMIN'])).toBe(false);

@@ -87,7 +87,7 @@ function buildService(revocation: unknown = mockJwtRevocationService) {
   );
 }
 
-describe('UserService — TASK-541 A4 token revocation on status change', () => {
+describe('UserService — token revocation on status change', () => {
   let service: UserService;
 
   beforeEach(() => {

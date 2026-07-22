@@ -170,7 +170,7 @@ describe('UsersListScreen', () => {
         expect(screen.getByText(/2 users/i)).toBeDefined();
     });
 
-    it('renders the role chips on a single line so the fixed-height row keeps its border (TASK-429)', async () => {
+    it('renders the role chips on a single line so the fixed-height row keeps its border', async () => {
         stubListFetch();
         renderWithProviders(<UsersListScreen />);
 

@@ -19,7 +19,7 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
     return { ...actual, useAgenticStore: vi.fn() };
 });
 
-describe('useUsers — TASK-401 impersonate / endImpersonation', () => {
+describe('useUsers — impersonate / endImpersonation', () => {
     let mockStore: any;
     const mockPost = vi.fn();
 

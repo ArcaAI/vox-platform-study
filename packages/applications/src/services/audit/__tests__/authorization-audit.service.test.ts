@@ -1097,7 +1097,7 @@ describe('AuthorizationAuditService', () => {
      * letting any caller query across all tenants. Methods MUST now inject
      * `tenantId` from CLS into the `where` clause; only GLOBAL_ADMIN may bypass.
      */
-    describe('Multi-tenant scoping (TASK-305 D.8)', () => {
+    describe('Multi-tenant scoping', () => {
         describe('getAuthorizationHistory', () => {
             it('should inject caller tenantId from CLS into the where clause', async () => {
                 mockPrismaClient.auditLog.findMany.mockResolvedValue([]);
@@ -1247,7 +1247,7 @@ describe('AuthorizationAuditService', () => {
      * warning — audit rows with NULL tenantId would violate the schema
      * NOT NULL constraint.
      */
-    describe('TASK-306 P1.2 — logToDatabase uses CLS tenantId', () => {
+    describe('logToDatabase uses CLS tenantId', () => {
         const baseEntry: Omit<AuthorizationAuditEntry, 'timestamp'> = {
             userId: 'user-attacker',
             action: 'read',

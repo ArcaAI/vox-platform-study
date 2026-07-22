@@ -78,7 +78,7 @@ function deniedEvents(eventEmitter: { emit: ReturnType<typeof vi.fn> }) {
     return eventEmitter.emit.mock.calls.filter(([name]) => name === ImpersonationEvents.Denied).map(([, payload]) => payload);
 }
 
-describe('AuthController — TASK-401 legacy /auth/impersonate backports', () => {
+describe('AuthController — legacy /auth/impersonate backports', () => {
     beforeEach(() => vi.clearAllMocks());
 
     it('rejects a NESTED impersonation attempt with 403 + NESTED_IMPERSONATION before any lookup', async () => {
@@ -105,7 +105,7 @@ describe('AuthController — TASK-401 legacy /auth/impersonate backports', () =>
     });
 });
 
-describe('AuthController — TASK-401 revoke-impersonation END audit row', () => {
+describe('AuthController — revoke-impersonation END audit row', () => {
     beforeEach(() => vi.clearAllMocks());
 
     it('emits the forced USER_IMPERSONATION_ENDED row attributed to the impersonation tenant', async () => {

@@ -39,7 +39,7 @@ function createMockStore() {
     };
 }
 
-describe('useVoiceEmbedding (TASK-265 voice-profile rewrite)', () => {
+describe('useVoiceEmbedding (voice-profile rewrite)', () => {
     let mockStore: ReturnType<typeof createMockStore>;
 
     beforeEach(() => {
@@ -252,7 +252,7 @@ describe('useVoiceEmbedding (TASK-265 voice-profile rewrite)', () => {
     // ------------------------------------------------------------------
     // Enroll opts.label
     // ------------------------------------------------------------------
-    describe('TASK-296 H-3 — enroll opts.label', () => {
+    describe('enroll opts.label', () => {
         function audioFile(name = 'sample.wav'): File {
             return new File([new Uint8Array(8)], name, { type: 'audio/wav' });
         }
@@ -285,7 +285,7 @@ describe('useVoiceEmbedding (TASK-265 voice-profile rewrite)', () => {
     // ------------------------------------------------------------------
     // Client-side MIME precheck
     // ------------------------------------------------------------------
-    describe('TASK-296 H-7 — MIME precheck', () => {
+    describe('MIME precheck', () => {
         it('throws AgenticError VALIDATION_ERROR when Blob has no type', async () => {
             const blob = new Blob([new Uint8Array(8)]);
             const { result } = renderHook(() => useVoiceEmbedding());
@@ -317,7 +317,7 @@ describe('useVoiceEmbedding (TASK-265 voice-profile rewrite)', () => {
     // ------------------------------------------------------------------
     // Activate
     // ------------------------------------------------------------------
-    describe('TASK-296 C-1 — activate', () => {
+    describe('activate', () => {
         it('PATCHes the activate endpoint and marks the profile active locally', async () => {
             mockStore.apiClient.get.mockResolvedValue([
                 { id: 'p-1', isActive: false },
@@ -345,7 +345,7 @@ describe('useVoiceEmbedding (TASK-265 voice-profile rewrite)', () => {
     // ------------------------------------------------------------------
     // Deactivate
     // ------------------------------------------------------------------
-    describe('TASK-296 C-1 — deactivate', () => {
+    describe('deactivate', () => {
         it('PATCHes the deactivate endpoint and marks the profile inactive locally', async () => {
             mockStore.apiClient.get.mockResolvedValue([
                 { id: 'p-1', isActive: true },
@@ -369,7 +369,7 @@ describe('useVoiceEmbedding (TASK-265 voice-profile rewrite)', () => {
     // ------------------------------------------------------------------
     // SecureStorage cache
     // ------------------------------------------------------------------
-    describe('TASK-296 H-1 — SecureStorage cache', () => {
+    describe('SecureStorage cache', () => {
         beforeEach(() => {
             localStorage.clear();
         });

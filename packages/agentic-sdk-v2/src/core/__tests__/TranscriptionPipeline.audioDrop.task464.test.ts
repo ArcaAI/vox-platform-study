@@ -59,7 +59,7 @@ vi.mock('@arcaai/stt', () => ({
   createSTT: vi.fn(() => sttMocks.processor),
 }));
 
-describe('TranscriptionPipeline: audio-drop wiring (TASK-464)', () => {
+describe('TranscriptionPipeline: audio-drop wiring', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

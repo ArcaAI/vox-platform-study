@@ -368,7 +368,7 @@ describe('UserRoleAssignmentService', () => {
         // Tenant pinning on create.
         // The caller's CLS tenantId is the only trusted source; request.tenantId
         // must never be allowed to silently widen tenant scope for non-super-admins.
-        describe('tenantId pinning (TASK-305 D.7)', () => {
+        describe('tenantId pinning', () => {
             it('should pin tenantId to CLS context when request omits tenantId (non-super-admin caller)', async () => {
                 // CLS tenantId is 'tenant-1' from default beforeEach setup.
                 const newAssignment = createMockUserRoleAssignmentEntity({
@@ -425,7 +425,7 @@ describe('UserRoleAssignmentService', () => {
                 expect(mockUserRoleAssignmentRepository.create).toHaveBeenCalled();
             });
 
-            it('should throw ForbiddenException when request.tenantId differs from CLS tenantId for a non-super-admin caller (audit C-6 attack vector)', async () => {
+            it('should throw ForbiddenException when request.tenantId differs from CLS tenantId for a non-super-admin caller (audit attack vector)', async () => {
                 // CLS tenantId is 'tenant-1' (Tenant A); attacker tries to create an
                 // assignment in 'tenant-2' (Tenant B). Default user mock has no roles
                 // -> not a super-admin -> must be rejected.
@@ -977,7 +977,7 @@ describe('UserRoleAssignmentService', () => {
     // (b) assign a role to a user that lives outside the caller's tenant.
     // GLOBAL_ADMIN and system/bootstrap (no CLS user) paths stay exempt.
     // -------------------------------------------------------------------------
-    describe('AC-02 — privilege-escalation guard on create', () => {
+    describe('privilege-escalation guard on create', () => {
         const buildAs = (user: { id: string; roles?: string[] } | null, tenantId: string | null) => {
             mockClsService.get.mockImplementation((key: string) => {
                 switch (key) {

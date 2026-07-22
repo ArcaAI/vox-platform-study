@@ -246,7 +246,7 @@ describe('MonitoringController', () => {
 //   uses a local mirror to dodge the @arcaai/applications circular dep; the
 //   metadata check needs the actual decorated class).
 // ─────────────────────────────────────────────────────────────────────────
-describe('TASK-336 OB-12 / TASK-386 #21 — monitoring admin-gating', () => {
+describe('monitoring admin-gating', () => {
     const REQUIRED_PERMISSIONS_KEY = 'required_permissions';
     const PERMISSION_MODE_KEY = 'permission_mode';
 

@@ -81,7 +81,7 @@ function makeService(opts: { rows?: unknown[]; withVault?: boolean; decrypt?: ()
 
 beforeEach(() => vi.clearAllMocks());
 
-describe('resolveTenantCloudOverrides — TASK-526 BYO injection resolver', () => {
+describe('resolveTenantCloudOverrides — BYO injection resolver', () => {
   it('maps an enabled azure row to the snake_case wire shape', async () => {
     const { svc } = makeService({
       rows: [

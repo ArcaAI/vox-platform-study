@@ -21,7 +21,7 @@ const recordings = [
   { id: 'ar-2', mediaId: 'm-2', rawMediaId: 'm-raw', processedMediaId: 'm-proc', sequenceNumber: 2, createdAt: '2026-01-02T00:00:00.000Z' },
 ];
 
-describe('useAudioRecordings (TASK-329 P2)', () => {
+describe('useAudioRecordings', () => {
   let mockLogger: ReturnType<typeof createMockLogger>;
   let mockStore: any;
   const mockGet = vi.fn();

@@ -233,6 +233,9 @@ const mockContextItemRepository = {
     create: vi.fn(),
     findAudioRecordings: vi.fn(),
     findTranscripts: vi.fn(),
+    // Encrypt-on-write helper (declaration-merged sibling): plaintext `content`
+    // has no column, so a create that skips this drops the transcript at rest.
+    encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
 };
 
 const mockMediaRepository = {
@@ -386,7 +389,7 @@ describe('SttInternalService', () => {
             expect(second.charStart).toBe(28);
         });
 
-        it('falls back to metadata.segments (D8: stop dropping metadata)', async () => {
+        it('falls back to metadata.segments (stop dropping metadata)', async () => {
             const job = createBehavioralJobEntity({ id: 'job-md', consultationId: 'c-md', tenantId: 'tenant-md' });
             const contextItem = createMockContextItemEntity({ id: 'ctx-md', tenantId: 'tenant-md' });
             mockJobRepository.findById.mockResolvedValue(job);
@@ -882,7 +885,7 @@ describe('SttInternalService', () => {
     // TranscriptionCreated Pipeline Event Emission
     // =========================================================================
 
-    describe('TranscriptionCreated pipeline event (GAP-1)', () => {
+    describe('TranscriptionCreated pipeline event', () => {
         it('should emit TranscriptionCreated event after creating transcript', async () => {
             const job = createBehavioralJobEntity({ id: 'job-123', consultationId: 'consultation-1', tenantId: 'tenant-abc' });
             const contextItem = createMockContextItemEntity({ id: 'ctx-item-001' });
@@ -1085,6 +1088,89 @@ describe('SttInternalService', () => {
     // The transcript is keyed directly to the consultation (+ tenant) so the
     // harness auto-draft pipeline triggers after a live consultation.
     // =========================================================================
+    describe('transcript content encryption-at-rest', () => {
+        // The plaintext `content` column was dropped in the PHI field-encryption
+        // migration; the mapper persists only `encryptedContent`. A transcript
+        // create that skips `encryptContentIntoEntity` therefore silently drops
+        // the clinical text at rest in EVERY environment. These tests pin the
+        // cipher call on both transcript writers (mirrors context.service.ts).
+        const secretsStub = { encrypt: vi.fn(), decrypt: vi.fn() };
+
+        const buildServiceWithSecrets = () =>
+            new SttInternalService(
+                mockJobRepository as any,
+                mockContextItemRepository as any,
+                mockMediaRepository as any,
+                mockAudioRecordingRepository as any,
+                mockEventEmitter as any,
+                mockClsService as any,
+                secretsStub as any,
+                mockTranscriptSegmentRepository as any,
+            );
+
+        it('encrypts the batch-path transcript content before persisting', async () => {
+            const svc = buildServiceWithSecrets();
+            const job = createBehavioralJobEntity({ id: 'job-enc-1', consultationId: 'consultation-enc-1' });
+            const contextItem = createMockContextItemEntity({ id: 'ctx-enc-1' });
+            mockJobRepository.findById.mockResolvedValue(job);
+            mockContextItemRepository.create.mockResolvedValue(contextItem);
+            mockJobRepository.update.mockImplementation(async (_id: any, entity: any) => entity);
+
+            await svc.createTranscript({ jobId: 'job-enc-1', transcriptText: 'Encrypted at rest.' });
+
+            expect(mockContextItemRepository.encryptContentIntoEntity).toHaveBeenCalledTimes(1);
+            const [entityArg, secretsArg] = mockContextItemRepository.encryptContentIntoEntity.mock.calls[0];
+            expect(entityArg.content).toBe('Encrypted at rest.');
+            expect(secretsArg).toBe(secretsStub);
+            // Cipher must run BEFORE the row is written.
+            const encOrder = mockContextItemRepository.encryptContentIntoEntity.mock.invocationCallOrder[0];
+            const createOrder = mockContextItemRepository.create.mock.invocationCallOrder[0];
+            expect(encOrder).toBeLessThan(createOrder);
+            // And the exact entity that was encrypted is the one persisted.
+            expect(mockContextItemRepository.create.mock.calls[0][0]).toBe(entityArg);
+        });
+
+        it('encrypts the streaming-path transcript content before persisting', async () => {
+            const svc = buildServiceWithSecrets();
+            const contextItem = createMockContextItemEntity({ id: 'ctx-enc-2' });
+            mockContextItemRepository.findTranscripts.mockResolvedValue([]);
+            mockContextItemRepository.create.mockResolvedValue(contextItem);
+
+            await svc.createTranscript({
+                consultationId: 'consultation-enc-2',
+                tenantId: 'tenant-enc-2',
+                transcriptText: 'Streamed and encrypted.',
+                transcriptionSource: 'streaming',
+            });
+
+            expect(mockContextItemRepository.encryptContentIntoEntity).toHaveBeenCalledTimes(1);
+            const [entityArg, secretsArg] = mockContextItemRepository.encryptContentIntoEntity.mock.calls[0];
+            expect(entityArg.content).toBe('Streamed and encrypted.');
+            expect(secretsArg).toBe(secretsStub);
+            const encOrder = mockContextItemRepository.encryptContentIntoEntity.mock.invocationCallOrder[0];
+            const createOrder = mockContextItemRepository.create.mock.invocationCallOrder[0];
+            expect(encOrder).toBeLessThan(createOrder);
+            expect(mockContextItemRepository.create.mock.calls[0][0]).toBe(entityArg);
+        });
+
+        it('still persists (without ciphertext) when no SecretsService is wired, preserving dev soft-degrade', async () => {
+            // `service` from the outer beforeEach is built WITHOUT secrets.
+            const contextItem = createMockContextItemEntity({ id: 'ctx-enc-3' });
+            mockContextItemRepository.findTranscripts.mockResolvedValue([]);
+            mockContextItemRepository.create.mockResolvedValue(contextItem);
+
+            const result = await service.createTranscript({
+                consultationId: 'consultation-enc-3',
+                tenantId: 'tenant-enc-3',
+                transcriptText: 'No cipher wired.',
+                transcriptionSource: 'streaming',
+            });
+
+            expect(result.contextItemId).toBe('ctx-enc-3');
+            expect(mockContextItemRepository.encryptContentIntoEntity).not.toHaveBeenCalled();
+        });
+    });
+
     describe('createTranscript (no-job streaming path)', () => {
         it('persists a TRANSCRIPT keyed to the consultation without touching the job repo', async () => {
             const contextItem = createMockContextItemEntity({ id: 'stream-ctx-1' });

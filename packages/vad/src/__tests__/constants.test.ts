@@ -32,7 +32,7 @@ const installedOrtRange = pkg.devDependencies?.['onnxruntime-web'] ?? '';
 
 const stripRange = (range: string): string => range.replace(/^[\^~]/, '');
 
-describe('VAD constants (TASK-271 C-1 / C-2)', () => {
+describe('VAD constants', () => {
   it('VAD_WEB_VERSION matches @ricky0123/vad-web in package.json', () => {
     expect(installedVadWebRange).not.toBe('');
     expect(VAD_WEB_VERSION).toBe(stripRange(installedVadWebRange));

@@ -25,7 +25,7 @@ type _DirectUrlIsOptionalString = Assert<
   Equals<IAppConfig['DIRECT_URL'], string | undefined>
 >;
 
-describe('IAppConfig — TASK-302 Stream C Phase 0 fields', () => {
+describe('IAppConfig — Stream C Phase 0 fields', () => {
   it('declares PRISMA_PG_MAX as an optional number', () => {
     const sample: IAppConfig = {
       NODE_ENV: 'test',

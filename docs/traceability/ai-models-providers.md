@@ -52,7 +52,7 @@ The SYSTEM row is the platform default; a tenant row overrides it per task.
 | Prisma models | `AiTaskDefault` (`db_main/ai-task-default.prisma`) |
 | Key API endpoints | `@Controller('admin/ai-task-defaults')`: `GET /admin/ai-task-defaults/options` (assignable models), `GET /admin/ai-task-defaults` (resolved effective per-task map), `GET /admin/ai-task-defaults/row`, `PUT /admin/ai-task-defaults/row` (create/CAS under `If-Match`). GLOBAL-ADMIN-only for certain task prefixes (`GLOBAL_ADMIN_ONLY_TASK_PREFIXES`, enforced imperatively — see rule 05 `AUTH-NOTE`) |
 | Console | `apps/admin-console` feature `ai-task-defaults`; route `/ai-task-defaults` (tier 10–19, global). The tenant-facing view (`tenant-ai-configuration-screen`) surfaces the effective map — legacy row 39, route `/ai-configuration` (tier 30–49; `/ai-model-defaults` redirects) |
-| Tests | unit(app): `ai-task-default/__tests__/ai-task-default.service.test.ts`; unit(api): `ai-task-default/__tests__/ai-task-default-admin.controller.test.ts`; unit(console): `ai-task-defaults/components/__tests__/{ai-task-defaults-screens,tenant-ai-configuration-screen}.test.tsx`, `ai-task-defaults/api/__tests__/ai-task-defaults-api.test.ts`; e2e: `task-506-ai-task-defaults-cross-tenant.spec.ts` |
+| Tests | unit(app): `ai-task-default/__tests__/ai-task-default.service.test.ts`; unit(api): `ai-task-default/__tests__/ai-task-default-admin.controller.test.ts`; unit(console): `ai-task-defaults/components/__tests__/{ai-task-defaults-screens,tenant-ai-configuration-screen}.test.tsx`, `ai-task-defaults/api/__tests__/ai-task-defaults-api.test.ts`; e2e: `ai-task-defaults-cross-tenant.spec.ts` |
 
 ### M4 — AI runtime profiles — NEW
 
@@ -78,7 +78,7 @@ the model/runtime for each call.
 | Key modules | `apps/api/src/modules/ai-inference` (`ai-inference.controller.ts`, `ai-inference.client.ts`, `dto/`) |
 | Prisma models | — (proxy; reads `AiTaskDefault` / `AiRuntimeProfile` to route) |
 | Key API endpoints | `@Controller('ai')`: `POST /ai/guardrail/analyze`, `POST /ai/nlp/entities`, `POST /ai/nlp/diagnosis` |
-| Tests | unit(api): `ai-inference/__tests__/{ai-inference.controller,ai-inference.client,ai-inference.dto,ai-inference-model-path.controller,ai-inference-runtime-profile.controller}.test.ts`; e2e: `task-446-ai-inference.spec.ts` |
+| Tests | unit(api): `ai-inference/__tests__/{ai-inference.controller,ai-inference.client,ai-inference.dto,ai-inference-model-path.controller,ai-inference-runtime-profile.controller}.test.ts`; e2e: `ai-inference-proxy.spec.ts` |
 
 ### M6 — Tenant BYO cloud-provider connections (TASK-526) — legacy row 38
 
@@ -89,7 +89,7 @@ the model/runtime for each call.
 | Prisma models | `AiProviderConnection` (`db_main/ai-provider-connection.prisma`) |
 | Key API endpoints | `@Controller('admin/ai-providers')`: `GET /admin/ai-providers`, `GET /admin/ai-providers/:provider`, `PUT /admin/ai-providers/:provider` (`@RequiresIfMatch()` OCC; `apiKey` write-only, no reveal route), `DELETE /admin/ai-providers/:provider`. Injected onto SMR `POST /api/v1/generate` as `provider_overrides` |
 | Console | `apps/admin-console` feature `ai-task-defaults` `byo-credential-card` (surfaced on `/ai-configuration`, tier 30–49) — legacy row 39 |
-| Tests | unit(app): `ai-provider-connection/__tests__/{ai-provider-connection.service,ai-provider-connection.tenant-lane}.test.ts`; unit(api): `streaming/__tests__/smr-proxy-tenant-byo.controller.test.ts`; e2e: `task-526-ai-provider-byo-cross-tenant.spec.ts` |
+| Tests | unit(app): `ai-provider-connection/__tests__/{ai-provider-connection.service,ai-provider-connection.tenant-lane}.test.ts`; unit(api): `streaming/__tests__/smr-proxy-tenant-byo.controller.test.ts`; e2e: `ai-provider-connections-cross-tenant.spec.ts` |
 
 ### M7 — Agent-trajectory observability & AI operations (TASK-530/535) — NEW
 
@@ -112,4 +112,4 @@ per-step trajectory, with retention.
 - **M3 GLOBAL-ADMIN-only enforcement is imperative, not declarative.** Certain task-default prefixes (and MCP writes, and the guardrail task) are gated in the service via `isSuperAdmin`/`GLOBAL_ADMIN_ONLY_*`, so the `@Authorize` decorator alone understates the gate — read the service, per rule 05.
 - Model discovery probes are upstream-host dependent; the discovery e2e (`ai-model-discovery.spec.ts`) covers registration, not live probing of every provider host.
 
-Last verified: 2026-07-21
+Last verified: 2026-07-22

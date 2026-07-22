@@ -3,7 +3,7 @@ import 'reflect-metadata';
 import { IStorageAccessKeyService } from '../IStorageAccessKeyService';
 import { StorageAccessKeyServiceModule } from '../storage-access-key.service.module';
 
-describe('StorageAccessKeyServiceModule (F-4b)', () => {
+describe('StorageAccessKeyServiceModule', () => {
   const providers: any[] = Reflect.getMetadata('providers', StorageAccessKeyServiceModule) ?? [];
   const exports: any[] = Reflect.getMetadata('exports', StorageAccessKeyServiceModule) ?? [];
 

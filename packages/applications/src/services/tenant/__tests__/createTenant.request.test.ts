@@ -3,7 +3,7 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { CreateTenantRequest } from '../dto/createTenant.request';
 
-describe('CreateTenantRequest validation (TASK-497 D3)', () => {
+describe('CreateTenantRequest validation', () => {
     it('is valid when key is omitted (auto-generated downstream)', async () => {
         const dto = plainToInstance(CreateTenantRequest, { name: 'Acme Health' });
 

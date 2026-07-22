@@ -71,7 +71,7 @@ const createReflector = ({ sse, owned }: { sse: boolean; owned: boolean }) => ({
 
 const createInterceptor = () => ({ assertAccess: vi.fn().mockResolvedValue(undefined) });
 
-describe('TenantOwnedResourceSseGuard — pre-stream check (TASK-309)', () => {
+describe('TenantOwnedResourceSseGuard — pre-stream check', () => {
   it('passes through non-http contexts without asserting', async () => {
     const interceptor = createInterceptor();
     const guard = new TenantOwnedResourceSseGuard(createReflector({ sse: true, owned: true }) as never, interceptor as never);
@@ -98,7 +98,7 @@ describe('TenantOwnedResourceSseGuard — pre-stream check (TASK-309)', () => {
   });
 });
 
-describe('TenantOwnedResourceSseGuard — mid-stream ownership re-check (TASK-460 C4-03)', () => {
+describe('TenantOwnedResourceSseGuard — mid-stream ownership re-check', () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });

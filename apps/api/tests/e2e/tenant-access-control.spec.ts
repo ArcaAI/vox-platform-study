@@ -17,7 +17,7 @@
 import { test, expect } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
-test.describe('Tenant Access Control (TASK-258)', () => {
+test.describe('Tenant Access Control', () => {
   let superAdminToken: string;
   let doctorToken: string;
   let superAdminTokenWithoutTenant: string;

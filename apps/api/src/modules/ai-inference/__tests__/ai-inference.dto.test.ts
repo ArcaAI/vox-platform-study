@@ -91,7 +91,7 @@ describe('ExtractEntitiesRequest validation', () => {
   });
 });
 
-describe('SuggestDiagnosisRequest validation (TASK-506)', () => {
+describe('SuggestDiagnosisRequest validation', () => {
   it('accepts text alone', async () => {
     await expect(runPipe(SuggestDiagnosisRequest, { text: 'fever and cough' })).resolves.toMatchObject({ text: 'fever and cough' });
   });

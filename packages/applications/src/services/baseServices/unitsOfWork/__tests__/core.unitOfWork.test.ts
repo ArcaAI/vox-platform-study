@@ -317,7 +317,7 @@ describe('CoreUnitOfWorkService', () => {
      * `databaseService.baseClient.$transaction(async (tx) => ...)`
      * pattern already used by TenantService.
      */
-    describe('TASK-306 P3.2 — runInTransaction canonical $transaction(callback)', () => {
+    describe('runInTransaction canonical $transaction(callback)', () => {
         function makeTransactionalMock() {
             const committed: { key: string; value: string }[] = [];
 

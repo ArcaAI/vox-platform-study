@@ -121,7 +121,7 @@ describe('JwtStrategy', () => {
             expect(mockClsService.set).toHaveBeenCalledWith('tenantId', 'tenant-001');
         });
 
-        it('should propagate impersonatedBy from JWT payload into UserSession (H-2)', async () => {
+        it('should propagate impersonatedBy from JWT payload into UserSession', async () => {
             const impersonatedPayload = {
                 ...fullPayload,
                 impersonatedBy: 'admin-007',
@@ -138,7 +138,7 @@ describe('JwtStrategy', () => {
             expect(result.impersonatedBy).toBeUndefined();
         });
 
-        it('TASK-307 W1.4 — should propagate refreshFamily from JWT payload into UserSession (logout uses it to revoke the whole chain)', async () => {
+        it('should propagate refreshFamily from JWT payload into UserSession (logout uses it to revoke the whole chain)', async () => {
             const payloadWithFamily = {
                 ...fullPayload,
                 refreshFamily: 'family-abc-123',
@@ -149,13 +149,13 @@ describe('JwtStrategy', () => {
             expect(result.refreshFamily).toBe('family-abc-123');
         });
 
-        it('TASK-307 W1.4 — should leave refreshFamily undefined when payload omits it (legacy tokens issued before W1.2)', async () => {
+        it('should leave refreshFamily undefined when payload omits it (legacy tokens issued before)', async () => {
             const result = await strategy.validate(fullPayload);
 
             expect(result.refreshFamily).toBeUndefined();
         });
 
-        it('should throw UnauthorizedException when the jti has been revoked (C-4)', async () => {
+        it('should throw UnauthorizedException when the jti has been revoked', async () => {
             mockJwtRevocationService.checkRevoked.mockResolvedValueOnce({ revoked: true, degraded: false });
             const payloadWithJti = { ...fullPayload, jti: 'impersonate-admin-007-doctor-001-1234567890' };
 
@@ -224,7 +224,7 @@ describe('JwtStrategy', () => {
         });
     });
 
-    describe('TASK-307 W2.1 — JwtStrategy refuses placeholder secret', () => {
+    describe('JwtStrategy refuses placeholder secret', () => {
         const PLACEHOLDER = 'default-jwt-secret-key-change-in-production';
 
         it('throws when SecretsService resolves JWT_SECRET_KEY to the literal placeholder', () => {
@@ -272,7 +272,7 @@ describe('JwtStrategy', () => {
 
     // ─── degraded-store posture ─────────────────────────────
 
-    describe('TASK-541 A3 — revocation store unavailable', () => {
+    describe('revocation store unavailable', () => {
         const jtiPayload = { ...fullPayload, jti: 'auth-user-001-9999' };
 
         it('fails OPEN for an ordinary token so a Redis outage cannot black out the API', async () => {
@@ -300,7 +300,7 @@ describe('JwtStrategy', () => {
 
     // ─── per-user not-before revocation ─────────────────────
 
-    describe('TASK-541 A4 — user-level revocation (deactivation kills live tokens)', () => {
+    describe('user-level revocation (deactivation kills live tokens)', () => {
         it('refuses a token issued BEFORE the user not-before stamp', async () => {
             mockJwtRevocationService.getUserNotBefore.mockResolvedValueOnce({ notBefore: 1_700_000_500, degraded: false });
             const staleToken = { ...fullPayload, jti: 'j-1', iat: 1_700_000_000 };

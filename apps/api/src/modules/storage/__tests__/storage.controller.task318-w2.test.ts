@@ -86,7 +86,7 @@ const createMockFile = (overrides: Partial<Express.Multer.File> = {}): Express.M
 // Keys that must be rejected as path-traversal attempts.
 const TRAVERSAL_KEYS = ['../', '/etc/passwd', '..\\'] as const;
 
-describe('TASK-318 W2 — StorageController tenant scoping & traversal hardening', () => {
+describe('StorageController tenant scoping & traversal hardening', () => {
   let controller: StorageController;
 
   beforeEach(() => {

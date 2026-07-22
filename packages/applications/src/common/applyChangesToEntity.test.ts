@@ -303,7 +303,7 @@ describe('applyChangesToEntity', () => {
   // (B.7) — `version` is database-owned. The only
   // legitimate writer is `Repository.updateWithVersion`. Defense in depth on
   // top of the missing public setter on `BaseEntity` and the mapper exclusion.
-  describe('version is database-owned (TASK-302 Stream D Phase B)', () => {
+  describe('version is database-owned (Stream D Phase B)', () => {
     it('ignores `version` in the changes payload', async () => {
       await applyChangesToEntity(entity, { version: 99, name: 'Updated' } as any);
 

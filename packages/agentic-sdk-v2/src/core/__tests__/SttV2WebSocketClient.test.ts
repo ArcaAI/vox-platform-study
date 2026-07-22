@@ -224,7 +224,7 @@ describe('SttV2WebSocketClient', () => {
   // a distinct `wss://no-claim.example/ws` host so they are unaffected by that
   // file-wide tenant-id injection.
   // =========================================================================
-  describe('TASK-317 W3.5 / TASK-320 B5 — tenant-claim guard', () => {
+  describe('tenant-claim guard', () => {
     // --- default-on ---------------------------------------
     it('rejects a bare connect() BY DEFAULT when no claim is resolvable (no socket created)', async () => {
       const connectPromise = client.connect('wss://no-claim.example/ws');
@@ -317,7 +317,7 @@ describe('SttV2WebSocketClient', () => {
       expect(lastMockWs!.sent[0]).toBe(pcmBuffer);
     });
 
-    it('sends an Int16Array view as-is — zero copy (TASK-351 P0-5)', async () => {
+    it('sends an Int16Array view as-is — zero copy', async () => {
       const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
       lastMockWs!.simulateOpen();
       await p;
@@ -855,7 +855,7 @@ describe('SttV2WebSocketClient', () => {
     // session. The reset is triggered by the first server message after a
     // reconnect (the "session is alive" signal); a flap that opens then closes
     // WITHOUT a message never resets — that is what keeps the reconnect loop exhausting.
-    it('should give each disconnect episode a fresh retry budget after a reconnect delivers a message (TASK-2605)', async () => {
+    it('should give each disconnect episode a fresh retry budget after a reconnect delivers a message', async () => {
       vi.useFakeTimers();
       const mathRandomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
 
@@ -1125,7 +1125,7 @@ describe('SttV2WebSocketClient', () => {
   // Reconnect loop must not cycle infinitely
   // =========================================================================
 
-  describe('BUG-04: reconnect counter must not reset on brief connections', () => {
+  describe('reconnect counter must not reset on brief connections', () => {
     it('should exhaust maxAttempts even if connections open briefly then close', async () => {
       vi.useFakeTimers();
       try {
@@ -1410,7 +1410,7 @@ describe('SttV2WebSocketClient', () => {
     // `speakerLabel` and the gateway relays it type-erased, so the wire the SDK
     // actually receives carries `speakerId` + `speakerLabel` (camelCase). Lock
     // that the client carries BOTH straight through to the admin/vox consumers.
-    it('should carry the canonical camelCase speakerId + speakerLabel from the wire (TASK-489)', async () => {
+    it('should carry the canonical camelCase speakerId + speakerLabel from the wire', async () => {
       const mockLogger = createMockLogger();
       const client = new SttV2WebSocketClient(mockLogger);
 
@@ -1441,7 +1441,7 @@ describe('SttV2WebSocketClient', () => {
 
     // stableChars (committed-prefix length on partials) is
     // additive and dual-cased like the other normalized fields.
-    it('should normalize stableChars from camelCase payloads (TASK-351 P1-1)', async () => {
+    it('should normalize stableChars from camelCase payloads', async () => {
       const mockLogger = createMockLogger();
       const client = new SttV2WebSocketClient(mockLogger);
 
@@ -1468,7 +1468,7 @@ describe('SttV2WebSocketClient', () => {
       client.disconnect();
     });
 
-    it('should normalize stable_chars from snake_case payloads (TASK-351 P1-1)', async () => {
+    it('should normalize stable_chars from snake_case payloads', async () => {
       const mockLogger = createMockLogger();
       const client = new SttV2WebSocketClient(mockLogger);
 
@@ -1524,7 +1524,7 @@ describe('SttV2WebSocketClient', () => {
     // utteranceIndex + resultType are additive and
     // dual-cased; gloss results ride the normal transcript relay with the
     // gateway's camelCase field names.
-    it('should normalize utteranceIndex and resultType from gateway (camelCase) payloads (TASK-351 follow-up)', async () => {
+    it('should normalize utteranceIndex and resultType from gateway (camelCase) payloads', async () => {
       const mockLogger = createMockLogger();
       const client = new SttV2WebSocketClient(mockLogger);
 
@@ -1558,7 +1558,7 @@ describe('SttV2WebSocketClient', () => {
       client.disconnect();
     });
 
-    it('should normalize utterance_index from snake_case payloads (TASK-351 follow-up)', async () => {
+    it('should normalize utterance_index from snake_case payloads', async () => {
       const mockLogger = createMockLogger();
       const client = new SttV2WebSocketClient(mockLogger);
 
@@ -1588,7 +1588,7 @@ describe('SttV2WebSocketClient', () => {
     // The wire-level result kind field is `type` (segment|gloss). It cannot
     // ride the WS envelope (whose `type` is 'transcript'), so the wire-shape
     // acceptance is pinned against normalizeTranscript directly.
-    it('should accept the wire `type` field as resultType in normalizeTranscript (TASK-351 follow-up)', () => {
+    it('should accept the wire `type` field as resultType in normalizeTranscript', () => {
       const normalize = (
         SttV2WebSocketClient as unknown as {
           normalizeTranscript(msg: Record<string, unknown>): WsTranscriptResult | null;
@@ -1899,7 +1899,7 @@ describe('SttV2WebSocketClient', () => {
   // =========================================================================
   // Bounded queue + bufferedAmount watermark backpressure
   // =========================================================================
-  describe('TASK-298 D-15 backpressure', () => {
+  describe('backpressure', () => {
     it('drops binary frames when bufferedAmount exceeds the high-watermark', async () => {
       const client = new SttV2WebSocketClient(mockLogger, undefined, false, {
         bufferedAmountHighWatermark: 100,
@@ -1969,7 +1969,7 @@ describe('SttV2WebSocketClient', () => {
   // =========================================================================
   // Resumability handshake
   // =========================================================================
-  describe('TASK-298 D-17 resume handshake', () => {
+  describe('resume handshake', () => {
     it('records the highest transcript seq and exposes it via getLastReceivedSeq', async () => {
       const client = new SttV2WebSocketClient(mockLogger);
 
@@ -2083,7 +2083,7 @@ describe('SttV2WebSocketClient', () => {
   // =========================================================================
   // Fresh ticket on reconnect
   // =========================================================================
-  describe('TASK-298 D-18 fresh ticket on reconnect', () => {
+  describe('fresh ticket on reconnect', () => {
     it('calls refreshTicket() before reopening and rewrites the ticket query param', async () => {
       vi.useFakeTimers();
       const mathRandomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
@@ -2153,7 +2153,7 @@ describe('SttV2WebSocketClient', () => {
     });
   });
 
-  describe('TASK-266 W0-13: source must not contain console.log', () => {
+  describe('source must not contain console.log', () => {
     it('SttV2WebSocketClient.ts source file contains zero console.log call sites', async () => {
       const { readFileSync } = await import('node:fs');
       const { resolve } = await import('node:path');

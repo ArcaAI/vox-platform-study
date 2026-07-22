@@ -99,15 +99,15 @@ describe('Seed Constants (00-constants)', () => {
         expect(SEED_USER_IDS.SYSTEM).toBe(SYSTEM_USER_ID);
     });
 
-    it('should define 21 department IDs (18 Global-tenant + 1 ArcaAI GEN + 2 ArcaAI specialty, TASK-305 Phase F / TASK-331 r2605 #6 / TASK-365)', () => {
+    it('should define 21 department IDs (18 Global-tenant + 1 ArcaAI GEN + 2 ArcaAI specialty, Phase F)', () => {
         expect(Object.keys(SEED_DEPARTMENT_IDS).length).toBe(21);
     });
 
-    it('should define a per-customer-tenant GEN department ID for the ArcaAI tenant (TASK-305 Phase F)', () => {
+    it('should define a per-customer-tenant GEN department ID for the ArcaAI tenant (Phase F)', () => {
         expect(SEED_DEPARTMENT_IDS.GEN_ARCAAI).toBeDefined();
     });
 
-    it('should define CARD + ER specialty department IDs for the ArcaAI tenant (TASK-331 r2605 #6)', () => {
+    it('should define CARD + ER specialty department IDs for the ArcaAI tenant', () => {
         expect(SEED_DEPARTMENT_IDS.CARD_ARCAAI).toBeDefined();
         expect(SEED_DEPARTMENT_IDS.ER_ARCAAI).toBeDefined();
     });
@@ -267,7 +267,7 @@ describe('Policy Seed Data', () => {
         // The anti-lockout guard identifies the protected set by the
         // `isProtected` column (rename-proof), with the name match as fallback.
         // The seed MUST mark exactly the two system-critical GLOBAL policies.
-        it('should mark exactly system-full-access and rbac-system-manage as isProtected (TASK-409)', () => {
+        it('should mark exactly system-full-access and rbac-system-manage as isProtected', () => {
             const protectedNames = DEFAULT_POLICIES.filter((p) => (p as { isProtected?: boolean }).isProtected === true).map((p) => p.name);
             expect(protectedNames.sort()).toEqual(['rbac-system-manage', 'system-full-access']);
         });
@@ -340,7 +340,7 @@ describe('Policy Seed Data', () => {
         // permission. The subject is `PrismaStudio` (not covered by any
         // tenant-scoped grant); GLOBAL scope, unconditional — the studio is a
         // privileged, untenanted raw-DB surface.
-        it('should include prisma-studio-manage policy (GLOBAL, manage:PrismaStudio) (TASK-419)', () => {
+        it('should include prisma-studio-manage policy (GLOBAL, manage:PrismaStudio)', () => {
             const policy = DEFAULT_POLICIES.find((p) => p.name === 'prisma-studio-manage');
             expect(policy).toBeDefined();
             expect(policy?.scope).toBe(PolicyScope.GLOBAL);
@@ -487,11 +487,11 @@ describe('Role Seed Data', () => {
 
         // SUPER_ADMIN is consolidated into GLOBAL_ADMIN and must
         // never be seeded again (the data migration soft-retired the row).
-        it('should NOT seed a SUPER_ADMIN role anywhere (TASK-417)', () => {
+        it('should NOT seed a SUPER_ADMIN role anywhere', () => {
             expect(DEFAULT_ROLES.find((r) => r.name === 'SUPER_ADMIN')).toBeUndefined();
         });
 
-        it('should include GLOBAL_ADMIN as the canonical elevated system role (TASK-417)', () => {
+        it('should include GLOBAL_ADMIN as the canonical elevated system role', () => {
             const globalAdmin = DEFAULT_ROLES.find((r) => r.name === 'GLOBAL_ADMIN');
             expect(globalAdmin).toBeDefined();
             expect(globalAdmin?.isSystemRole).toBe(true);
@@ -581,7 +581,7 @@ describe('Role Seed Data', () => {
         // The GLOBAL_ADMIN policy set carries the dedicated
         // Prisma Studio grant (manage:all would also pass the guard, but the
         // explicit policy makes the studio delegable without full access).
-        it('should assign prisma-studio-manage to GLOBAL_ADMIN (TASK-419)', () => {
+        it('should assign prisma-studio-manage to GLOBAL_ADMIN', () => {
             const globalAdmin = DEFAULT_ROLES.find((r) => r.name === 'GLOBAL_ADMIN');
             expect(globalAdmin?.policies).toContain('prisma-studio-manage');
         });
@@ -683,7 +683,7 @@ describe('Department Seed Data', () => {
 // CUSTOMER-TENANT DEPARTMENT CATALOG
 // =============================================================================
 
-describe('Customer-Tenant Department Seed Data (TASK-331 r2605 #6)', () => {
+describe('Customer-Tenant Department Seed Data', () => {
     const customerTenantIds = [
         SEED_CUSTOMER_TENANT_IDS.ARCAAI,
     ];
@@ -1072,7 +1072,7 @@ describe('STT Seed Data', () => {
             });
         });
 
-        describe('ASR Models (TASK-506 consolidated keepers)', () => {
+        describe('ASR Models (consolidated keepers)', () => {
             it('should include Whisper Large V3 Turbo model', () => {
                 const whisperTurbo = DEFAULT_AI_MODELS.find((m) => m.slug === 'whisper-large-v3-turbo');
                 expect(whisperTurbo).toBeDefined();
@@ -1116,7 +1116,7 @@ describe('STT Seed Data', () => {
             );
         });
 
-        describe('Guardrail Models (TASK-356 Phase 1)', () => {
+        describe('Guardrail Models (Phase 1)', () => {
             it('exposes the GUARDRAIL task type + GGUF/MLX formats in the seed enum mirrors', () => {
                 expect(ModelTaskType.GUARDRAIL).toBe('GUARDRAIL');
                 expect(AiModelFormat.GGUF).toBe('GGUF');
@@ -1159,7 +1159,7 @@ describe('STT Seed Data', () => {
         });
 
         describe('Noise Reduction Models', () => {
-            it('should include the RNNoise model (only remaining denoiser, TASK-506)', () => {
+            it('should include the RNNoise model (only remaining denoiser)', () => {
                 const rnnoise = DEFAULT_AI_MODELS.find((m) => m.slug === 'rnnoise');
                 expect(rnnoise).toBeDefined();
                 expect(rnnoise?.taskType).toBe(ModelTaskType.AUDIO_TO_AUDIO);
@@ -1260,7 +1260,7 @@ describe('STT Seed Data', () => {
             // and the already-built (but previously dormant) tentative-tail
             // render lights up. Asserted across every tenant variant that shares
             // the realtime/turbo configYaml (system + ArcaAI customer + Global).
-            it('should activate LocalAgreement-2 commit policy on the realtime + turbo streaming pipelines (TASK-471)', () => {
+            it('should activate LocalAgreement-2 commit policy on the realtime + turbo streaming pipelines', () => {
                 // best-practice-realtime retired; the matrix
                 // streaming pipelines carry LA-2.
                 const streamingSlugs = [
@@ -1314,7 +1314,7 @@ describe('STT Seed Data', () => {
             // turbo), so the tentative-tail render is active on the default
             // clinician streaming path, not only when an explicit realtime pipeline is
             // selected. Streaming-only; batch use is unaffected.
-            it('should activate LocalAgreement-2 on the default (production) streaming pipeline (TASK-485)', () => {
+            it('should activate LocalAgreement-2 on the default (production) streaming pipeline', () => {
                 const production = DEFAULT_ASR_PIPELINES.find((p) => p.slug === 'production-whisper-large-v3');
                 expect(production).toBeDefined();
                 expect(production?.configYaml).toContain('streaming:');
@@ -1348,20 +1348,20 @@ describe('STT Seed Data', () => {
             // templates; every tenant row seeded from them is a locked copy.
             // =================================================================
 
-            it('DB-3a: ASR_TEMPLATE_SLUGS set-equals the SYSTEM catalog slugs', () => {
+            it('ASR_TEMPLATE_SLUGS set-equals the SYSTEM catalog slugs', () => {
                 expect([...ASR_TEMPLATE_SLUGS].sort()).toEqual(
                     DEFAULT_ASR_PIPELINES.map((p) => p.slug).sort(),
                 );
             });
 
-            it('DB-2: SYSTEM template rows are never locked and carry no lineage', () => {
+            it('SYSTEM template rows are never locked and carry no lineage', () => {
                 DEFAULT_ASR_PIPELINES.forEach((pipeline) => {
                     expect(pipeline.templateLocked ?? false).toBe(false);
                     expect(pipeline.sourceTemplateSlug ?? null).toBeNull();
                 });
             });
 
-            it('DB-1: every seeded tenant pipeline is a locked copy with template lineage', () => {
+            it('every seeded tenant pipeline is a locked copy with template lineage', () => {
                 const tenantRows = [
                     ...CUSTOMER_TENANT_ASR_PIPELINES,
                     ...GLOBAL_TENANT_ASR_PIPELINES,
@@ -1377,7 +1377,7 @@ describe('STT Seed Data', () => {
                 });
             });
 
-            it('should include the TASK-505 matrix pipelines', () => {
+            it('should include the matrix pipelines', () => {
                 const slugs = DEFAULT_ASR_PIPELINES.map((p) => p.slug);
                 [
                     'whisper-turbo-no-postprocessing',
@@ -1514,7 +1514,7 @@ describe('STT Seed Data', () => {
 //   is never seeded a curated subset. Exactly one default per tenant preserved.
 // =============================================================================
 
-describe('Full-parity ASR pipeline catalog per customer tenant (TASK-505/356 policy)', () => {
+describe('Full-parity ASR pipeline catalog per customer tenant (policy)', () => {
     const systemSlugs = [...new Set(DEFAULT_ASR_PIPELINES.map((p) => p.slug))].sort();
 
     it('gives the Global customer tenant the SAME slug set as SYSTEM', () => {
@@ -1551,7 +1551,7 @@ describe('Full-parity ASR pipeline catalog per customer tenant (TASK-505/356 pol
 // PER-TENANT ASR PIPELINES + isDefault
 // =============================================================================
 
-describe('Per-Tenant ASR Pipelines (TASK-331 doc-03 F3)', () => {
+describe('Per-Tenant ASR Pipelines', () => {
     const customerTenantIds = [
         SEED_CUSTOMER_TENANT_IDS.ARCAAI,
     ];
@@ -1604,7 +1604,7 @@ describe('Per-Tenant ASR Pipelines (TASK-331 doc-03 F3)', () => {
     });
 });
 
-describe('ASR Pipeline isDefault invariant (TASK-331 doc-03 Q2)', () => {
+describe('ASR Pipeline isDefault invariant', () => {
     const allPipelines = [...DEFAULT_ASR_PIPELINES, ...CUSTOMER_TENANT_ASR_PIPELINES];
     const customerTenantIds = [
         SEED_CUSTOMER_TENANT_IDS.ARCAAI,
@@ -1624,7 +1624,7 @@ describe('ASR Pipeline isDefault invariant (TASK-331 doc-03 Q2)', () => {
         });
     });
 
-    it('should make the whisper.cpp GGUF pipeline (TASK-507) the system isDefault one', () => {
+    it('should make the whisper.cpp GGUF pipeline the system isDefault one', () => {
         // The SYSTEM default is production-whisper-large-v3-turbo-gguf
         // (id …0014); production-whisper-large-v3 (id …0001, the former
         // default) is registered but no longer the seeded default.
@@ -1687,7 +1687,7 @@ describe('ASR Pipeline isDefault invariant (TASK-331 doc-03 Q2)', () => {
 // reverts to fail-safe, and `locked` restricts the flip to GLOBAL_ADMIN.
 // =============================================================================
 
-describe('TASK-531 — nightly pipeline template resync is enabled by a platform setting', () => {
+describe('nightly pipeline template resync is enabled by a platform setting', () => {
     const enabled = () => PLATFORM_SETTINGS.find((s) => s.key === 'pipeline.templateResync.enabled');
     const cron = () => PLATFORM_SETTINGS.find((s) => s.key === 'pipeline.templateResync.cron');
 
@@ -1716,7 +1716,7 @@ describe('TASK-531 — nightly pipeline template resync is enabled by a platform
     });
 });
 
-describe('TASK-506 — SMR default moved off GlobalSetting (HarnessPolicy is authoritative)', () => {
+describe('SMR default moved off GlobalSetting (HarnessPolicy is authoritative)', () => {
     it('no longer seeds the default-smr-provider / default-smr-model GlobalSetting keys', () => {
         expect(ALL_SETTINGS.filter((s) => s.key === 'default-smr-model')).toEqual([]);
         expect(ALL_SETTINGS.filter((s) => s.key === 'default-smr-provider')).toEqual([]);
@@ -1738,7 +1738,7 @@ describe('TASK-506 — SMR default moved off GlobalSetting (HarnessPolicy is aut
     });
 });
 
-describe('TASK-506 — Guardrail default moved off GlobalSetting (AiTaskDefault is authoritative)', () => {
+describe('Guardrail default moved off GlobalSetting (AiTaskDefault is authoritative)', () => {
     it('no longer seeds the guardrail namespace GlobalSetting keys', () => {
         expect(ALL_SETTINGS.filter((s) => s.namespace === 'guardrail')).toEqual([]);
     });
@@ -1753,7 +1753,7 @@ describe('TASK-506 — Guardrail default moved off GlobalSetting (AiTaskDefault 
     });
 });
 
-describe('TASK-356 Phase 2 / TASK-507 — STT default (CT2 registered; whisper.cpp GGUF effective default)', () => {
+describe('Phase 2 — STT default (CT2 registered; whisper.cpp GGUF effective default)', () => {
     const CT2_MODEL_SLUG = 'faster-whisper-large-v3-turbo-int8';
     const CT2_PIPELINE_SLUG = 'production-faster-whisper-turbo-int8';
     const DEFAULT_PIPELINE_SLUG = 'production-whisper-large-v3-turbo-gguf';
@@ -1825,7 +1825,7 @@ describe('TASK-356 Phase 2 / TASK-507 — STT default (CT2 registered; whisper.c
         expect(DEFAULT_ASR_PIPELINES.map((p) => p.slug)).toContain(DEFAULT_PIPELINE_SLUG);
     });
 
-    it('is the bare matrix #7 pipeline referencing the CT2 model by slug (TASK-505)', () => {
+    it('is the bare matrix #7 pipeline referencing the CT2 model by slug', () => {
         const ct2 = DEFAULT_ASR_PIPELINES.find((p) => p.slug === CT2_PIPELINE_SLUG);
         expect(ct2).toBeDefined();
         // D6 — registry-authoritative: the CT2 artifact is referenced by its
@@ -1836,7 +1836,7 @@ describe('TASK-356 Phase 2 / TASK-507 — STT default (CT2 registered; whisper.c
     });
 });
 
-describe('TASK-361/505 — STT default resolves to a loadable artifact (no placeholder default)', () => {
+describe('STT default resolves to a loadable artifact (no placeholder default)', () => {
     const PLACEHOLDER = 'MODEL_REPO_PLACEHOLDER';
     const CT2_MODEL_SLUG = 'faster-whisper-large-v3-turbo-int8';
     const CT2_PIPELINE_SLUG = 'production-faster-whisper-turbo-int8';
@@ -1866,7 +1866,7 @@ describe('TASK-361/505 — STT default resolves to a loadable artifact (no place
         expect(bySlug(streaming?.value)?.configYaml).not.toContain(PLACEHOLDER);
     });
 
-    it('keeps the CT2 AiModel registered but NOT tagged production/recommended (AC-3)', () => {
+    it('keeps the CT2 AiModel registered but NOT tagged production/recommended', () => {
         const ct2 = DEFAULT_AI_MODELS.find((m) => m.slug === CT2_MODEL_SLUG);
         expect(ct2).toBeDefined(); // still in the catalog so admins can see it
         // Real deepdml artifact, no placeholder left.
@@ -1875,7 +1875,7 @@ describe('TASK-361/505 — STT default resolves to a loadable artifact (no place
         expect(ct2?.tags).not.toContain('recommended');
     });
 
-    it('does not tag the CT2 pipeline as production/recommended (AC-3)', () => {
+    it('does not tag the CT2 pipeline as production/recommended', () => {
         const ct2Pipelines = allPipelines.filter((p) => p.slug === CT2_PIPELINE_SLUG);
         expect(ct2Pipelines.length).toBeGreaterThan(0);
         ct2Pipelines.forEach((p) => {
@@ -1889,7 +1889,7 @@ describe('TASK-361/505 — STT default resolves to a loadable artifact (no place
 // TENANT FRONTEND CONFIG SEED
 // =============================================================================
 
-describe('Tenant Frontend Config Seed (TASK-331 doc-03 F3)', () => {
+describe('Tenant Frontend Config Seed', () => {
     const expectedTenantIds = [
         SEED_TENANT_ID,
         SEED_CUSTOMER_TENANT_IDS.ARCAAI,
@@ -2287,7 +2287,7 @@ describe('Usage Record Seed Data', () => {
 // SMR V2 LLM MODELS SEED DATA TESTS
 // =============================================================================
 
-describe('LLM Models Seed Data (TASK-506 consolidated matrix)', () => {
+describe('LLM Models Seed Data (consolidated matrix)', () => {
     const llmModels = DEFAULT_AI_MODELS.filter(
         (m) => m.taskType === ModelTaskType.SUMMARIZATION || m.taskType === ModelTaskType.TEXT_GENERATION
     );
@@ -2355,7 +2355,7 @@ describe('LLM Models Seed Data (TASK-506 consolidated matrix)', () => {
             });
         });
 
-        it('should have IDs in the fresh 80000000-0000-0000-0007 block (TASK-506)', () => {
+        it('should have IDs in the fresh 80000000-0000-0000-0007 block', () => {
             llmModels.forEach((model) => {
                 expect(model.id).toMatch(/^80000000-0000-0000-0007-/);
             });
@@ -2430,7 +2430,7 @@ describe('LLM Models Seed Data (TASK-506 consolidated matrix)', () => {
         });
     });
 
-    describe('Retired LLM catalog (TASK-506)', () => {
+    describe('Retired LLM catalog', () => {
         it('should no longer seed any of the legacy SMR provider rows', () => {
             const legacy = DEFAULT_AI_MODELS.filter((m) => m.tags.includes('smr'));
             expect(legacy).toEqual([]);
@@ -2451,7 +2451,7 @@ describe('LLM Models Seed Data (TASK-506 consolidated matrix)', () => {
 // and `TenantFrontendConfig.asrModel` is free-text, so no runtime path reads
 // these catalog rows. `retireLegacyAiModels` soft-deletes existing copies.
 
-describe('STT Local Processing Models retired (TASK-506)', () => {
+describe('STT Local Processing Models retired', () => {
     it('should seed NO local-processing rows in the consolidated catalog', () => {
         const localModels = DEFAULT_AI_MODELS.filter((m) => m.tags.includes('local-processing'));
         expect(localModels).toEqual([]);
@@ -2514,7 +2514,7 @@ describe('Customer-tenant AI model catalog backfill', () => {
         expect(client.aiModel.update).not.toHaveBeenCalled();
     });
 
-    it('column-syncs pre-506 clones — fills provider/architecture (+metaData) ONLY while provider is NULL (TASK-506)', async () => {
+    it('column-syncs pre-506 clones — fills provider/architecture (+metaData) ONLY while provider is NULL', async () => {
         // Pre-506 clones exist (create-only backfill) but predate the new
         // columns; the guardrail/NLP/TTS resolvers prefer the same-tenant
         // model row, so a NULL-provider clone would shadow the SYSTEM value.
@@ -2541,7 +2541,7 @@ describe('Customer-tenant AI model catalog backfill', () => {
 // SYSTEM HarnessPolicy SMR default + WORM audit
 // =============================================================================
 
-describe('TASK-356 Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
+describe('Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
     const makeMockClient = (existing: Record<string, unknown> | null) => {
         const created: Array<{ data: Record<string, unknown> }> = [];
         const updated: Array<{ where: Record<string, unknown>; data: Record<string, unknown> }> = [];
@@ -2649,7 +2649,7 @@ describe('TASK-356 Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
 // SYSTEM + demo PipelinePolicy cascade defaults + WORM audit
 // =============================================================================
 
-describe('TASK-356 Phase 5 — seedPipelinePolicy (cascade defaults + WORM)', () => {
+describe('Phase 5 — seedPipelinePolicy (cascade defaults + WORM)', () => {
     // The seed ensures two TENANT-scope rows idempotently (find-then-create, never
     // upsert — the (tenantId, scope, scopeId) unique index treats null scopeId as
     // DISTINCT, so a blind create would duplicate). Each create also appends a WORM
@@ -2882,7 +2882,7 @@ function getYamlBlock(yaml: string, keyPath: string[]): string | null {
     return scope.join('\n');
 }
 
-describe('Dual Capture Pipeline Config (TASK-331 doc-06 F2)', () => {
+describe('Dual Capture Pipeline Config', () => {
     // dual_capture lives on the "Full Features" pipeline
     // (production-whisper-large-v3, matrix #1), which carries the full
     // pre/post-processing stages; it is no longer the tenant default (the new
@@ -2912,7 +2912,7 @@ describe('Dual Capture Pipeline Config (TASK-331 doc-06 F2)', () => {
     });
 });
 
-describe('Dual-Capture Demo AudioRecording (TASK-331 doc-06 F2)', () => {
+describe('Dual-Capture Demo AudioRecording', () => {
     it('should seed at least one AudioRecording carrying both rawMediaId and processedMediaId', () => {
         const dualCapture = DEFAULT_AUDIO_RECORDINGS.filter(
             (r) => r.rawMediaId != null && r.processedMediaId != null
@@ -2955,7 +2955,7 @@ describe('Dual-Capture Demo AudioRecording (TASK-331 doc-06 F2)', () => {
     });
 });
 
-describe('Dual-Capture Demo Media (TASK-331 doc-06 F2)', () => {
+describe('Dual-Capture Demo Media', () => {
     it('should seed exactly three Media rows (primary + raw + processed)', () => {
         expect(DEFAULT_MEDIA.length).toBe(3);
     });
@@ -2998,7 +2998,7 @@ describe('Dual-Capture Demo Media (TASK-331 doc-06 F2)', () => {
 // SUMMARY-META QUALITY SEED — cacheHit + qualityScore
 // =============================================================================
 
-describe('SummaryMeta Quality Seed (TASK-331 doc-07 F4)', () => {
+describe('SummaryMeta Quality Seed', () => {
     it('should seed at least the two demo SummaryMeta rows', () => {
         expect(DEFAULT_SUMMARY_METAS.length).toBeGreaterThanOrEqual(2);
     });
@@ -3028,7 +3028,7 @@ describe('SummaryMeta Quality Seed (TASK-331 doc-07 F4)', () => {
 // USER VOICE PROFILE SEED
 // =============================================================================
 
-describe('UserVoiceProfile Seed (TASK-331 doc-07 F3)', () => {
+describe('UserVoiceProfile Seed', () => {
     it('should seed voice profiles for both seed doctors (DOCTOR + DOCTOR2)', () => {
         const userIds = new Set(SEED_VOICE_PROFILES.map((p) => p.userId));
         expect(userIds.has(SEED_USER_IDS.DOCTOR)).toBe(true);

@@ -67,7 +67,7 @@ function getFindUniqueHandler(): FindUniqueHandler {
   return captured.query.$allModels.findUnique;
 }
 
-describe('softDeleteFilter extension — findUnique handler (TASK-305 B.12)', () => {
+describe('softDeleteFilter extension — findUnique handler', () => {
   it('auto-injects `resourceStatus: { not: "DELETED" }` on a soft-deletable model', async () => {
     const findUnique = getFindUniqueHandler();
     const args = { where: { id: 'dept-123' } };

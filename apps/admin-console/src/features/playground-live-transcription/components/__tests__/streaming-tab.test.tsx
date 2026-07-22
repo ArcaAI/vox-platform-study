@@ -27,7 +27,7 @@ function finalRow(id: number, text: string, speakerLabel?: string): LiveTranscri
     return { id, text, isFinal: true, receivedAt: Date.UTC(2026, 6, 11, 12, id), latencyMs: 100, seq: id, speakerLabel };
 }
 
-describe('TranscriptPane speaker rendering (TASK-489 AC-2)', () => {
+describe('TranscriptPane speaker rendering', () => {
     it('renders the per-segment speaker label as a prefix before the text', () => {
         render(<TranscriptPane live={makeLive([finalRow(1, 'patient reports headache', 'Speaker 1')])} />);
 

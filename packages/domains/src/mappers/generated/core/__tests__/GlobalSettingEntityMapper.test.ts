@@ -41,7 +41,7 @@ const sampleRow = (overrides: Partial<GlobalSetting> = {}): GlobalSetting =>
     ...overrides,
   } as GlobalSetting);
 
-describe('GlobalSettingEntityMapper — version round-trip (TASK-302 Stream D Phase B)', () => {
+describe('GlobalSettingEntityMapper — version round-trip (Stream D Phase B)', () => {
   const mapper = new GlobalSettingEntityMapper();
 
   it('toDomainEntity carries `version` from the database row', () => {

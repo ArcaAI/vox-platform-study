@@ -80,7 +80,7 @@ function buildController(opts: { summaryMetaRepository: { findByContextItem: Ret
   return { controller, summaryMetaRepository };
 }
 
-describe('TASK-330 — summary provenance over HTTP (controller→service→mapper integration)', () => {
+describe('summary provenance over HTTP (controller→service→mapper integration)', () => {
   it('surfaces citationsMap + sensor scores + modelName for the owning clinician', async () => {
     const summaryMetaRepository = {
       findByContextItem: vi.fn().mockResolvedValue({

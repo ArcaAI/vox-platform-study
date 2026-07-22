@@ -400,11 +400,11 @@ describe('constants', () => {
       expect(STORAGE_KEYS.SELECTED_MODELS).toBe('arcaai-selected-models');
     });
 
-    it('TASK-297 DEF-L1: SESSION_STATE key has been removed (was dead code)', () => {
+    it('SESSION_STATE key has been removed (was dead code)', () => {
       expect('SESSION_STATE' in STORAGE_KEYS).toBe(false);
     });
 
-    it('TASK-317 W1.7 (AC-6): PREFERENCES key has been removed (dead code, no live writer)', () => {
+    it('PREFERENCES key has been removed (dead code, no live writer)', () => {
       expect('PREFERENCES' in STORAGE_KEYS).toBe(false);
     });
   });

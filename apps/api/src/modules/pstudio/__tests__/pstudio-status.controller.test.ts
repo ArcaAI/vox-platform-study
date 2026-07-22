@@ -11,7 +11,7 @@ import { PrismaStudioStatusController } from '../pstudio-status.controller';
 // The gate is production-capable: `ENABLE_PRISMA_STUDIO`
 // is the ONLY env signal (fail-closed when unset), and access requires the
 // dedicated `manage:PrismaStudio` permission instead of `manage:all`.
-describe('PrismaStudioStatusController (TASK-403 / TASK-419)', () => {
+describe('PrismaStudioStatusController', () => {
   const controller = new PrismaStudioStatusController();
   const originalNodeEnv = process.env.NODE_ENV;
   const originalFlag = process.env.ENABLE_PRISMA_STUDIO;
@@ -32,7 +32,7 @@ describe('PrismaStudioStatusController (TASK-403 / TASK-419)', () => {
     expect(controller.getStatus()).toEqual({ enabled: true });
   });
 
-  it('reports enabled outside development when the flag is set (production-capable, TASK-419)', () => {
+  it('reports enabled outside development when the flag is set (production-capable)', () => {
     process.env.NODE_ENV = 'production';
     process.env.ENABLE_PRISMA_STUDIO = 'true';
 
@@ -53,7 +53,7 @@ describe('PrismaStudioStatusController (TASK-403 / TASK-419)', () => {
     expect(controller.getStatus()).toEqual({ enabled: false });
   });
 
-  it('is class-gated by @Authorize(["manage","PrismaStudio"]) (dedicated subject, TASK-419)', () => {
+  it('is class-gated by @Authorize(["manage","PrismaStudio"]) (dedicated subject)', () => {
     const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, PrismaStudioStatusController) as
       | Array<{ action: string; subject: string }>
       | undefined;

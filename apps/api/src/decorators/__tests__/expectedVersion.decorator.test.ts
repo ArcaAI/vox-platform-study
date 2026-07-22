@@ -38,7 +38,7 @@ const ctx = (headers: Record<string, string | undefined>, requiresIfMatch = fals
         }),
     }) as unknown as ExecutionContext;
 
-describe('extractExpectedVersion (TASK-302 Stream D Phase D)', () => {
+describe('extractExpectedVersion', () => {
     it('parses If-Match: "7" to 7', () => {
         expect(extractExpectedVersion(undefined, ctx({ 'if-match': '"7"' }))).toBe(7);
     });
@@ -90,7 +90,7 @@ describe('extractExpectedVersion (TASK-302 Stream D Phase D)', () => {
         expect(() => extractExpectedVersion(undefined, ctx({ 'if-match': '"-1"' }))).toThrow(BadRequestException);
     });
 
-    it('parses If-Match: "0" to 0 (create-intent — owner decision, TASK-534 G2)', () => {
+    it('parses If-Match: "0" to 0 (create-intent owner decision)', () => {
         // "0" is the documented first-edit/create precondition across the
         // config plane (the `FIRST_EDIT_ETAG` convention): the caller
         // read a version-0 placeholder (no row yet) and echoes it. The service

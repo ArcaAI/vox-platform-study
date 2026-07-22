@@ -52,7 +52,7 @@ function buildService() {
   );
 }
 
-describe('UserService — TASK-398 getExportEnrichment', () => {
+describe('UserService — getExportEnrichment', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockClsService.get.mockReturnValue(null);

@@ -19,7 +19,7 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
   };
 });
 
-describe('useArcaConfig — TASK-329 task-aware selection', () => {
+describe('useArcaConfig — task-aware selection', () => {
   let mockStore: any;
   let mockModelRegistry: any;
   const incrementModelRegistryVersion = vi.fn();

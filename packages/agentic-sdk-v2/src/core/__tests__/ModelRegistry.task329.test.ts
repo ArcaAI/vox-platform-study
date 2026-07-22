@@ -14,7 +14,7 @@ import { ModelRegistry } from '../ModelRegistry';
 
 const apiClient = {} as never;
 
-describe('TASK-329 P3 — ModelRegistry STT task persistence (namespaced)', () => {
+describe('ModelRegistry STT task persistence (namespaced)', () => {
   beforeEach(() => {
     localStorage.clear();
   });

@@ -301,11 +301,11 @@ describe('WS-4 endpoint constants', () => {
       ]));
     });
 
-    it('should generate TEST endpoint (TASK-328 A4)', () => {
+    it('should generate TEST endpoint', () => {
       expect(PROMPT_TEMPLATE_ENDPOINTS.TEST('pt-1')).toBe('/admin/prompt-templates/pt-1/test');
     });
 
-    it('should have USAGE_ANALYTICS endpoint (TASK-328 A4)', () => {
+    it('should have USAGE_ANALYTICS endpoint', () => {
       expect(PROMPT_TEMPLATE_ENDPOINTS.USAGE_ANALYTICS).toBe('/admin/prompt-templates/analytics/usage');
     });
 
@@ -343,7 +343,7 @@ describe('WS-4 endpoint constants', () => {
       ]));
     });
 
-    it('should use /admin/tenants/:id/usage for USAGE (TASK-386 E5)', () => {
+    it('should use /admin/tenants/:id/usage for USAGE', () => {
       expect(TENANT_ENDPOINTS.USAGE('tenant-1')).toBe('/admin/tenants/tenant-1/usage');
     });
 

@@ -8,7 +8,7 @@ function makeRepo(): TenantIdentityProviderDomainRepository {
   return new TenantIdentityProviderDomainRepository(unitOfWork);
 }
 
-describe('TenantIdentityProviderDomainRepository.findByDomain (TASK-498 — HRD)', () => {
+describe('TenantIdentityProviderDomainRepository.findByDomain (HRD)', () => {
   it('pushes domain into a single findFirst query', async () => {
     const repo = makeRepo();
     const findFirstSpy = vi.spyOn(repo, 'findFirst').mockResolvedValue(null as never);

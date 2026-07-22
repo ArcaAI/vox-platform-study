@@ -92,7 +92,7 @@ describe('DNA seed reuses canonical users (cold-seed duplicate-username bug)', (
 // F1 / F8 — customer tenants have clinicians AND consultations
 // =============================================================================
 
-describe('Customer-tenant clinical data completeness (TASK-331 doc-08 F1/F8)', () => {
+describe('Customer-tenant clinical data completeness', () => {
     describe.each(CUSTOMER_TENANTS)('$label customer tenant', ({ tenantId }) => {
         it('seeds at least one clinician (DOCTOR or NURSE)', () => {
             const clinicians = SEED_USERS.filter(
@@ -125,7 +125,7 @@ describe('Customer-tenant clinical data completeness (TASK-331 doc-08 F1/F8)', (
 // F6 / F8 — coherent, single-tenant audit trail
 // =============================================================================
 
-describe('Audit-log tenant coherence (TASK-331 doc-08 F6/F8)', () => {
+describe('Audit-log tenant coherence', () => {
     const ALL_AUDIT_ROWS = [...DEFAULT_AUDIT_LOGS, ...CUSTOMER_TENANT_AUDIT_LOGS];
 
     // A referenced user satisfies coherence when it is a platform/system user

@@ -61,7 +61,7 @@ function makeController() {
   return { controller, roleService, userRoleAssignmentService };
 }
 
-describe('TASK-444 — RolesController.listMembers', () => {
+describe('RolesController.listMembers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -94,7 +94,7 @@ describe('TASK-444 — RolesController.listMembers', () => {
   });
 });
 
-describe('TASK-444 — memberCount on role responses', () => {
+describe('memberCount on role responses', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

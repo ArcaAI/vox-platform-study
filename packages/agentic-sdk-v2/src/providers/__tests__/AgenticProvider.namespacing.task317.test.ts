@@ -149,7 +149,7 @@ function meHandler(me: { id?: string; tenantId?: string; departmentId?: string }
   };
 }
 
-describe('TASK-317 W1.2 — provider namespace wiring (AC-1/AC-4) re-keys managers to the authenticated ${tenantId}::${userId}', () => {
+describe('provider namespace wiring re-keys managers to the authenticated ${tenantId}::${userId}', () => {
   it('AC-1: personalization IDB row is written under the authenticated namespace, never pre-login', async () => {
     handler = meHandler({ id: USER, tenantId: TENANT });
 
@@ -231,7 +231,7 @@ describe('TASK-317 W1.2 — provider namespace wiring (AC-1/AC-4) re-keys manage
 // `ModelRegistry.reloadSelected()` already REPLACES; the asymmetry was the bug.
 // =============================================================================
 
-describe('TASK-317 W1.2 — personalization re-hydrate is authoritative (review I-1) — no cross-namespace bleed on switch / impersonation round-trip', () => {
+describe('personalization re-hydrate is authoritative (review) — no cross-namespace bleed on switch / impersonation round-trip', () => {
   const NS_B = 'tenant-2::user-99';
 
   it('switch user A→B: A-only fields (dnaStyleId/custom) are GONE from in-memory prefs and a save under B does not carry them', async () => {

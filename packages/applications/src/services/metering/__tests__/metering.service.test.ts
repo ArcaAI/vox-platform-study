@@ -38,7 +38,7 @@ function makeService(baseClient: ReturnType<typeof makeBaseClient>) {
   return new MeteringService(appSettings, schedulerRegistry, databaseService);
 }
 
-describe('MeteringService.getCurrentUsage (TASK-392 Q5)', () => {
+describe('MeteringService.getCurrentUsage', () => {
   let baseClient: ReturnType<typeof makeBaseClient>;
   let service: MeteringService;
 
@@ -82,7 +82,7 @@ describe('MeteringService.getCurrentUsage (TASK-392 Q5)', () => {
   });
 });
 
-describe('MeteringService.reconcileTenant (TASK-392 Q5)', () => {
+describe('MeteringService.reconcileTenant', () => {
   it('upserts the three meter rows for the window and returns the usage', async () => {
     const baseClient = makeBaseClient();
     const service = makeService(baseClient);
@@ -109,7 +109,7 @@ describe('MeteringService.reconcileTenant (TASK-392 Q5)', () => {
   });
 });
 
-describe('MeteringService.reconcileAllActiveTenants (TASK-392 Q5)', () => {
+describe('MeteringService.reconcileAllActiveTenants', () => {
   it('reconciles every tenant and counts the successes', async () => {
     const baseClient = makeBaseClient();
     const service = makeService(baseClient);

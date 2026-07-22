@@ -27,7 +27,7 @@ recording / named-entity / live-documentation surfaces are recorded here.
 | Prisma models | `Consultation` (`db_main/consultation.prisma`) |
 | Key API endpoints | `@Controller('consultations')` (`@Authorize()` class-level): `POST /consultations/open` (get-or-create), `GET /consultations/:id`, `PATCH /consultations/:id`, `POST /consultations/:id/close`, `POST /consultations/:id/reopen`, `GET /consultations/:id/chain`, `GET /consultations/patient/:patientId/history`, `GET /consultations/patient/:patientId/date/:date`. `@Controller('admin/consultations')`: `GET ''` (fetch-all, cross-tenant admin read), `GET /admin/consultations/aggregate`, `GET /admin/consultations/:id` |
 | Console | `apps/admin-console` feature `consultations` (`consultations-screen`), route `/consultations` (tier 30–49, tenant-scoped); read-only detail `consultation-review` (`consultation-review-screen`), route `/consultation-review` |
-| Tests | unit(app): `consultation/consultation/__tests__/{consultation.service,consultation.dto.mapper,consultation.list-with-relations}.test.ts`; unit(api): `consultation/__tests__/{consultation.controller,admin-consultation.controller}.test.ts`; unit(console): `consultations/components/__tests__/consultations-screen.test.tsx`, `consultation-review/components/__tests__/consultation-review-screen.test.tsx`; e2e: `task-326-admin-fetchall-cross-tenant.spec.ts` |
+| Tests | unit(app): `consultation/consultation/__tests__/{consultation.service,consultation.dto.mapper,consultation.list-with-relations}.test.ts`; unit(api): `consultation/__tests__/{consultation.controller,admin-consultation.controller}.test.ts`; unit(console): `consultations/components/__tests__/consultations-screen.test.tsx`, `consultation-review/components/__tests__/consultation-review-screen.test.tsx`; e2e: `admin-fetchall-cross-tenant.spec.ts` |
 
 ### C2 — Clinical context items & versions (transcriptions, case notes) — legacy row 9
 
@@ -106,7 +106,7 @@ documentation generation. The jobs themselves are enqueued by the summarization 
 | Key modules | `apps/api/src/modules/consultation` (`consultation-job.controller.ts`); `packages/applications/src/services/consultation/jobs` (`consultation-job.service.ts`, `processors/`) |
 | Prisma models | — (job state in Redis/BullMQ; results land as `ContextItem` / `SummaryMeta`) |
 | Key API endpoints | `@Controller('consultations/jobs')`: `GET /consultations/jobs/:jobId`, `PATCH /consultations/jobs/:jobId/cancel`, SSE `GET /consultations/jobs/:jobId/stream` |
-| Tests | unit(app): `consultation/jobs/__tests__/*`; unit(api): `consultation/__tests__/consultation-job.controller.test.ts`; e2e: `consultation-jobs.e2e-spec.ts`, `consultation-job-cross-user.spec.ts`, `task-307-consultation-job-cross-tenant.spec.ts` |
+| Tests | unit(app): `consultation/jobs/__tests__/*`; unit(api): `consultation/__tests__/consultation-job.controller.test.ts`; e2e: `consultation-jobs.e2e-spec.ts`, `consultation-job-cross-user.spec.ts`, `consultation-job-cross-tenant.spec.ts` |
 
 ## Honest notes / gaps
 
@@ -115,4 +115,4 @@ documentation generation. The jobs themselves are enqueued by the summarization 
 - **Summary / harness / trajectory routes on `ConsultationController` are documented elsewhere** — `:id/summary*` in [`summarization.md`](./summarization.md); `:id/harness-progress/stream`, `:id/harness-assurance/stream`, `:id/trajectory/stream`, and `:id/summary/:contextItemId/approve` in [`harness.md`](./harness.md). This file does not restate them.
 - `TranscriptSegment` (`db_main/consultation.prisma`) is populated by the transcription pipeline, not the consultation service; it is recorded in [`transcription.md`](./transcription.md).
 
-Last verified: 2026-07-21
+Last verified: 2026-07-22

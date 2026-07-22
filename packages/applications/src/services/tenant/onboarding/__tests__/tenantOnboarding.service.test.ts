@@ -66,7 +66,7 @@ const createMockUserEntity = (overrides: Partial<{ id: string; resourceStatus: R
     resourceStatus: overrides.resourceStatus ?? ResourceStatusType.ENABLED,
 });
 
-describe('TenantOnboardingService (TASK-497 §3.3)', () => {
+describe('TenantOnboardingService (§3.3)', () => {
     let service: TenantOnboardingService;
     let cls: ReturnType<typeof createMockClsService>;
 
@@ -185,7 +185,7 @@ describe('TenantOnboardingService (TASK-497 §3.3)', () => {
         });
     });
 
-    describe('guardrail — never adminless (TASK-497 §1c.3)', () => {
+    describe('guardrail — never adminless (§1c.3)', () => {
         it('rolls back (soft-deletes) the tenant when TENANT_ADMIN assignment fails', async () => {
             mockUserService.fetchById.mockResolvedValue(createMockUserEntity());
             mockUserRoleAssignmentService.create.mockRejectedValue(new Error('seat quota exceeded'));

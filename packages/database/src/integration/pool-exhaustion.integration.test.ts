@@ -32,7 +32,7 @@ const POOL_MAX = 2;
 const CONN_TIMEOUT_MS = 5_000;
 const HOLD_SECONDS = 10;
 
-describe('PrismaPg adapter — pool exhaustion (TASK-302 Stream C Phase 0)', () => {
+describe('PrismaPg adapter — pool exhaustion (Stream C Phase 0)', () => {
   const created: CorePrismaClient[] = [];
 
   afterEach(async () => {

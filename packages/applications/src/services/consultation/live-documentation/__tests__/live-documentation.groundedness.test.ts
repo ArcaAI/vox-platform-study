@@ -127,7 +127,7 @@ const ENABLED_CONFIG = {
 const groundCalls = (httpMock: ReturnType<typeof buildHttpMock>) =>
   httpMock.axiosRef.post.mock.calls.filter((c: unknown[]) => String(c[0]).includes('/guardrail/ground'));
 
-describe('LiveDocumentationService — output groundedness gate (TASK-479)', () => {
+describe('LiveDocumentationService — output groundedness gate', () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });

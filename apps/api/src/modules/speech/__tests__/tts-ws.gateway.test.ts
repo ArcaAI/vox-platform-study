@@ -143,7 +143,7 @@ describe('TtsWsGateway', () => {
 
   // The first `init` frame is additionally enriched with the
   // tenant's resolved `voice_bindings` (mirrors the batch speech proxy).
-  describe('init-frame voice_bindings enrichment (TASK-506)', () => {
+  describe('init-frame voice_bindings enrichment', () => {
     const BINDINGS = { 'en-female-1': { azure: 'en-IN-NeerjaNeural' } };
 
     const makeTenantTtsConfig = (voiceBindings: Record<string, Record<string, string>>) => ({

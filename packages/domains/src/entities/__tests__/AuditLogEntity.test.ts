@@ -69,7 +69,7 @@ describe('AuditLogEntity.validate()', () => {
       expect(() => entity.validate()).not.toThrow('Method not implemented.');
     });
 
-    it('should reject tenantId = null (TASK-305 Phase A — global-scope audits now use SYSTEM_TENANT_ID)', () => {
+    it('should reject tenantId = null (Phase A — global-scope audits now use SYSTEM_TENANT_ID)', () => {
       // Previously this case was a positive assertion ("global-scope
       // audits may omit tenantId"). The new contract requires every
       // audit log row to carry a concrete tenant (the platform-level

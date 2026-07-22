@@ -13,7 +13,7 @@ import {
     validatePasswordComplexity,
 } from '../password-policy';
 
-describe('validatePasswordComplexity (TASK-400)', () => {
+describe('validatePasswordComplexity', () => {
     const policy = DEFAULT_PASSWORD_POLICY;
 
     it('accepts a compliant password', () => {

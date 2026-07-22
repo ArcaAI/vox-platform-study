@@ -12,7 +12,7 @@ import { deriveSpeakerLabel } from '../speaker-label';
  * clinician/patient name (name preseed is PHI-gated and off here). The
  * mapping therefore only ever produces anonymous / neutral labels.
  */
-describe('deriveSpeakerLabel (TASK-489 canonical mapping)', () => {
+describe('deriveSpeakerLabel (canonical mapping)', () => {
   it('returns undefined for a missing / empty / whitespace id (no speaker → no label)', () => {
     expect(deriveSpeakerLabel(undefined)).toBeUndefined();
     expect(deriveSpeakerLabel(null)).toBeUndefined();

@@ -139,7 +139,7 @@ describe('SttWsGateway', () => {
         // (MISSING_PARAM / AUTH_FAILED with descriptive reasons) to the
         // single generic 4401 + "Authentication failed". The per-cause
         // truth table now lives in the describe block below.
-        it('should reject connection without sessionId (TASK-298 D-1, retuned by W5.8)', async () => {
+        it('should reject connection without sessionId', async () => {
             const client = createMockSocket();
             await gateway.handleConnection(client as any, { url: '/ws/stt-v2/stream' } as any);
 
@@ -150,7 +150,7 @@ describe('SttWsGateway', () => {
             expect(mockStreamTicketService.consumeTicket).not.toHaveBeenCalled();
         });
 
-        it('should reject connection without ticket (TASK-298 D-1, retuned by W5.8)', async () => {
+        it('should reject connection without ticket', async () => {
             const client = createMockSocket();
             await gateway.handleConnection(client as any, { url: '/ws/stt-v2/stream?sessionId=foo' } as any);
 
@@ -161,7 +161,7 @@ describe('SttWsGateway', () => {
             expect(mockStreamTicketService.consumeTicket).not.toHaveBeenCalled();
         });
 
-        it('should reject connection with invalid ticket using close code 4401 (TASK-298 D-1)', async () => {
+        it('should reject connection with invalid ticket using close code 4401', async () => {
             const client = createMockSocket();
             mockStreamTicketService.consumeTicket.mockResolvedValueOnce(null);
 
@@ -177,7 +177,7 @@ describe('SttWsGateway', () => {
             expect(mockBridgeService.subscribeToResults).not.toHaveBeenCalled();
         });
 
-        it('should reject connection when ticket scope does not match sessionId (TASK-298 D-1, retuned by W5.8)', async () => {
+        it('should reject connection when ticket scope does not match sessionId', async () => {
             const client = createMockSocket();
             mockStreamTicketService.consumeTicket.mockResolvedValueOnce({
                 userId: 'u-1',
@@ -199,7 +199,7 @@ describe('SttWsGateway', () => {
             expect(mockBridgeService.subscribeToResults).not.toHaveBeenCalled();
         });
 
-        it('subscribes to bridge results only after ticket consumption succeeds (TASK-298 D-1)', async () => {
+        it('subscribes to bridge results only after ticket consumption succeeds', async () => {
             const client = createMockSocket();
             setValidTicketFor('sess-sub');
             await gateway.handleConnection(client as any, buildReq('sess-sub') as any);
@@ -219,7 +219,7 @@ describe('SttWsGateway', () => {
         // `4001 missing param` from `4401 invalid ticket` lets a probing
         // client enumerate valid session ids. The real reason still
         // lives in the server-side warn log.
-        describe('TASK-307 W5.8 — generic 4401 close code on EVERY handshake failure (AC-22, audit D-8)', () => {
+        describe('generic 4401 close code on EVERY handshake failure (audit)', () => {
             const GENERIC_CODE = 4401;
             const GENERIC_REASON_RE = /^Authentication failed$/;
 
@@ -379,7 +379,7 @@ describe('SttWsGateway', () => {
         // gateway-side sessionId → tenantId binding). The handshake now mirrors
         // the DELETE route's `assertStreamSessionOwnership`: missing binding OR
         // binding ≠ ticket tenant both close with the same generic 4401.
-        describe('TASK-450 C4-01 — session tenant binding enforced at the WS handshake', () => {
+        describe('session tenant binding enforced at the WS handshake', () => {
             it('consults the tenant binding for the sessionId and accepts when it matches the ticket tenant', async () => {
                 const client = createMockSocket();
                 setValidTicketFor('sess-450'); // ticket tenant: tenant-abc
@@ -457,7 +457,7 @@ describe('SttWsGateway', () => {
     // the session (buffer + seq + subscription) is kept alive for a grace
     // window so the SAME session can reconnect and continue. Only when the
     // window expires with no reconnect is the upstream finalized.
-    describe('handleDisconnect (TASK-457 C3-01 — grace window)', () => {
+    describe('handleDisconnect (grace window)', () => {
         it('drops the socket from the active count but does NOT finalize during the grace window', async () => {
             const client = createMockSocket();
             setValidTicketFor('sess-456');
@@ -493,7 +493,7 @@ describe('SttWsGateway', () => {
         // A failed fire-and-forget removeSession
         // used to leave the Python session leaked. The failure now parks the
         // session id on a retry queue — now at grace-window expiry.
-        it('enqueues a removal retry when the upstream removeSession fails at grace expiry (TASK-351 P1-3 / M6)', async () => {
+        it('enqueues a removal retry when the upstream removeSession fails at grace expiry', async () => {
             vi.useFakeTimers();
             try {
                 mockSessionService.removeSession.mockRejectedValueOnce(new Error('stt-v2 down'));
@@ -656,7 +656,7 @@ describe('SttWsGateway', () => {
     // Session-negotiated sampleRate + non-blocking audio
     // ingestion.
     // =========================================================================
-    describe('TASK-351 P0-2 — negotiated sampleRate + non-blocking ingestion', () => {
+    describe('negotiated sampleRate + non-blocking ingestion', () => {
         it('forwards the session-negotiated sampleRate on binary frames (C5)', async () => {
             mockSessionBinding.lookupSessionMeta.mockResolvedValueOnce({ sampleRate: 48000 });
             const client = createMockSocket();
@@ -784,7 +784,7 @@ describe('SttWsGateway', () => {
         });
     });
 
-    describe('result forwarding + sequencing (TASK-298 D-17)', () => {
+    describe('result forwarding + sequencing', () => {
         it('subscribes to bridge results and forwards transcripts to client, tagged with server seq', async () => {
             const resultSubject = new Subject();
             mockBridgeService.subscribeToResults.mockReturnValue(resultSubject.asObservable());
@@ -821,7 +821,7 @@ describe('SttWsGateway', () => {
         // stableChars (committed-prefix length) is an
         // additive bridge field; the gateway must forward it untouched on
         // the WS transcript message and omit it when absent.
-        it('forwards stableChars on the relayed transcript when present (TASK-351 P1-1)', async () => {
+        it('forwards stableChars on the relayed transcript when present', async () => {
             const resultSubject = new Subject();
             mockBridgeService.subscribeToResults.mockReturnValue(resultSubject.asObservable());
 
@@ -847,7 +847,7 @@ describe('SttWsGateway', () => {
         // Gloss results (post-final English
         // translations) ride the same relay; their additive fields must
         // survive the `{ ...msg, seq }` spread untouched.
-        it('forwards gloss results with resultType/englishText/utteranceIndex intact (TASK-351 follow-up)', async () => {
+        it('forwards gloss results with resultType/englishText/utteranceIndex intact', async () => {
             const resultSubject = new Subject();
             mockBridgeService.subscribeToResults.mockReturnValue(resultSubject.asObservable());
 
@@ -1012,7 +1012,7 @@ describe('SttWsGateway', () => {
     // misclassified as binary audio and the JSON path never ran. It now routes
     // on the isBinary flag: binary → audio, text (Buffer, isBinary=false) → JSON.
     // =========================================================================
-    describe('TASK-457 — WS control channel over Buffer text frames (isBinary)', () => {
+    describe('WS control channel over Buffer text frames (isBinary)', () => {
         it('routes a stop control frame delivered as a Buffer (isBinary=false) to the JSON path — NOT audio', async () => {
             const client = createMockSocket();
             setValidTicketFor('sess-ctrl-stop');
@@ -1070,7 +1070,7 @@ describe('SttWsGateway', () => {
     // the resume-after-drop e2e gate): resume from lastSeq+1, no
     // duplicate flood, no silent freeze.
     // =========================================================================
-    describe('TASK-457 C3-01 — reconnect-after-drop resume', () => {
+    describe('reconnect-after-drop resume', () => {
         it('rebinds on reconnect and resumes from lastSeq+1 with no duplicate flood and no freeze', async () => {
             const resultSubject = new Subject();
             mockBridgeService.subscribeToResults.mockReturnValue(resultSubject.asObservable());
@@ -1136,7 +1136,7 @@ describe('SttWsGateway', () => {
     // The gateway now emits {type:'ready'} after registration so the client
     // gates its first send on it (deterministic, no timing guess).
     // =========================================================================
-    describe('TASK-457 I1 — readiness ack', () => {
+    describe('readiness ack', () => {
         it('sends a {type:"ready"} ack after a fresh connection is registered', async () => {
             const client = createMockSocket();
             setValidTicketFor('sess-ready');
@@ -1170,7 +1170,7 @@ describe('SttWsGateway', () => {
     // in-grace sessions so a SIGTERM / rolling deploy does not orphan STT-v2
     // sessions (and their capacity slots) until the STT-v2 reaper.
     // =========================================================================
-    describe('TASK-457 I3 — onModuleDestroy finalizes sessions', () => {
+    describe('onModuleDestroy finalizes sessions', () => {
         it('removes the upstream session for a LIVE connection on shutdown', async () => {
             const client = createMockSocket();
             setValidTicketFor('sess-shutdown');
@@ -1208,7 +1208,7 @@ describe('SttWsGateway', () => {
     // droppedAudioFrames pattern). Tests pin the spec values (512 KiB / 200),
     // not the exported constants, so a silent constant change fails loudly.
     // =========================================================================
-    describe('TASK-351 P1-4 — WS egress backpressure (H6)', () => {
+    describe('WS egress backpressure', () => {
         const THRESHOLD_BYTES = 512 * 1024;
         const FINAL_QUEUE_LIMIT = 200;
         /** Generous wait for the drain-poll flush (poll cadence is sub-100ms). */
@@ -1329,7 +1329,7 @@ describe('SttWsGateway', () => {
         // Gloss results arrive with isFinal: true,
         // so the egress policy must queue them like any final (never drop),
         // and their additive fields must survive the queue+flush round trip.
-        it('treats gloss results as finals under backpressure — queued, never dropped (TASK-351 follow-up)', async () => {
+        it('treats gloss results as finals under backpressure — queued, never dropped', async () => {
             const { client, resultSubject } = await connectWithSubject('sess-bp-gloss');
 
             client.bufferedAmount = THRESHOLD_BYTES + 1;

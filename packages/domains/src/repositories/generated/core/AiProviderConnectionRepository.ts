@@ -70,6 +70,35 @@ export class AiProviderConnectionRepository extends Repository<
     }
   }
 
+  /**
+   * Same (tenant, provider) identity as `findByTenantAndProvider`, but looks
+   * specifically for a soft-DELETED row. The unique
+   * `AiProviderConnection_tenant_provider_unique` index means a soft-deleted
+   * tombstone occupies the identity a plain INSERT would otherwise use;
+   * `AiProviderConnectionService.upsertRow`'s create-intent path
+   * (`If-Match: "0"`) calls this to restore-with-overwrite instead of
+   * colliding with the tombstone (F-028).
+   */
+  async findDeletedByTenantAndProvider(
+    tenantId: string,
+    provider: string,
+    tx?: Prisma.TransactionClient | any,
+  ): Promise<AiProviderConnectionEntity | null> {
+    const where = { tenantId, provider, resourceStatus: ResourceStatusType.DELETED };
+
+    if (tx) {
+      const model = await (tx as Record<string, any>).aiProviderConnection.findFirst({ where });
+      return model ? AiProviderConnectionEntityMapper.getInstance().toDomainEntity(model) : null;
+    }
+
+    try {
+      return await this.findFirst({ filters: where });
+    } catch (err) {
+      if (err instanceof DataNotFoundException) return null;
+      throw err;
+    }
+  }
+
   /** Every ENABLED connection row for one tenant (admin list + BYO resolution). */
   async findByTenantId(
     tenantId: string,

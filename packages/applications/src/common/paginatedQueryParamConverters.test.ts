@@ -72,7 +72,7 @@ describe('paginatedQueryParamConverters', () => {
     });
 });
 
-describe('deserializeFilterString — type-aware boolean coercion (DEFECT-F1)', () => {
+describe('deserializeFilterString — type-aware boolean coercion', () => {
     it('coerces a declared boolean field from its string CSV value to a real boolean', () => {
         // Before the fix `isServiceAccount[equals]:true` reached Prisma as
         // `{ equals: 'true' }` (a string) and 400d on the Bool column.
@@ -127,7 +127,7 @@ describe('deserializeFilterString — type-aware boolean coercion (DEFECT-F1)', 
     });
 });
 
-describe('deserializeFilterString — model-aware coercion (TASK-375 §8 generic)', () => {
+describe('deserializeFilterString — model-aware coercion (§8 generic)', () => {
     // Coercion is now driven by the TARGET model's scalar field types (derived
     // from the generated Prisma types), so a resource passes its model NAME
     // instead of per-column opt-in lists. boolean/number/date columns coerce
@@ -243,7 +243,7 @@ describe('deserializeFilterString — model-aware coercion (TASK-375 §8 generic
     });
 });
 
-describe('deserializeFilterString — enum / JSON column coercion (TASK-375 §8 follow-up)', () => {
+describe('deserializeFilterString — enum / JSON column coercion (§8 follow-up)', () => {
     // Enum and JSON columns are FIRST-CLASS recognized by the model field-type
     // registry (drift-guarded by the `satisfies ModelFilterFieldTypes<T>` mapped
     // type) rather than being silently bucketed with "unknown / String".
@@ -254,7 +254,7 @@ describe('deserializeFilterString — enum / JSON column coercion (TASK-375 §8 
     // stay safe pass-throughs at the whole-column level (path filtering is the
     // separate dotted-key grammar below).
 
-    it('registry classifies AuditLog enum columns as member-carrying enum specs (TASK-406)', () => {
+    it('registry classifies AuditLog enum columns as member-carrying enum specs', () => {
         expect(AUDIT_LOG_FILTER_FIELD_TYPES.resourceType.type).toBe('enum');
         expect(AUDIT_LOG_FILTER_FIELD_TYPES.resourceType.members).toContain('User');
         expect(AUDIT_LOG_FILTER_FIELD_TYPES.action.type).toBe('enum');
@@ -289,7 +289,7 @@ describe('deserializeFilterString — enum / JSON column coercion (TASK-375 §8 
         });
     });
 
-    it('rejects an unrecognized enum member with a 400 instead of deferring to Prisma (TASK-406)', () => {
+    it('rejects an unrecognized enum member with a 400 instead of deferring to Prisma', () => {
         // A bogus member previously passed through for Prisma to reject
         // server-side (a 500-class error). The registry now carries the member allow-list, so an
         // invalid member is a clean client error naming the allowed members.
@@ -317,7 +317,7 @@ describe('deserializeFilterString — enum / JSON column coercion (TASK-375 §8 
     });
 });
 
-describe('deserializeFilterString — enum MEMBER validation (TASK-406 P2-6b)', () => {
+describe('deserializeFilterString — enum MEMBER validation', () => {
     it('validates members inside AND / OR groups too (recursion reuses the resolved map)', () => {
         expect(() => deserializeFilterString('AND[action[equals]:CREATE,action[equals]:BOGUS]', 'AuditLog')).toThrow(BadRequestException);
         expect(() => deserializeFilterString('OR[resourceStatus[equals]:NOPE]', 'User')).toThrow(BadRequestException);
@@ -350,7 +350,7 @@ describe('deserializeFilterString — enum MEMBER validation (TASK-406 P2-6b)', 
     });
 });
 
-describe('deserializeFilterString — JSON-path filtering (TASK-406 P2-6b)', () => {
+describe('deserializeFilterString — JSON-path filtering', () => {
     it('deserializes a dotted key on a declared JSON column into a Prisma path filter', () => {
         expect(deserializeFilterString('metaData.subType[equals]:recording', 'User')).toEqual({
             metaData: { path: ['subType'], equals: 'recording' },
@@ -434,14 +434,14 @@ describe('deserializeFilterString — JSON-path filtering (TASK-406 P2-6b)', () 
         });
     });
 
-    it('whole-column JSON filters (no dot) keep the TASK-375 pass-through', () => {
+    it('whole-column JSON filters (no dot) keep the pass-through', () => {
         expect(deserializeFilterString('metaData[equals]:x', 'User')).toEqual({
             metaData: { equals: 'x' },
         });
     });
 });
 
-describe('model registry expansion — Tenant/Media/Role/Tag/Webhook/Notification (TASK-406 P2-6c)', () => {
+describe('model registry expansion — Tenant/Media/Role/Tag/Webhook/Notification', () => {
     it('registers all six additional models', () => {
         for (const model of ['Tenant', 'Media', 'Role', 'Tag', 'Webhook', 'Notification']) {
             expect(MODEL_FILTER_FIELD_TYPES[model], `registry entry for ${model}`).toBeDefined();
@@ -496,7 +496,7 @@ describe('model registry expansion — Tenant/Media/Role/Tag/Webhook/Notificatio
     });
 });
 
-describe('deserializeFilterString — list operators in / notIn (TASK-423)', () => {
+describe('deserializeFilterString — list operators in / notIn', () => {
     // `field[in]:v1|v2|v3` / `field[notIn]:v1|v2` deserialize to Prisma's
     // `{ in: [...] }` / `{ notIn: [...] }`. Items are '|'-separated and EACH
     // item runs through the same per-column coercion as a scalar token
@@ -581,7 +581,7 @@ describe('deserializeFilterString — list operators in / notIn (TASK-423)', () 
     });
 });
 
-describe('deserializeFilterString — case-insensitive string operators (TASK-423)', () => {
+describe('deserializeFilterString — case-insensitive string operators', () => {
     it('deserializes icontains / istartsWith / iendsWith / iequals to the base op + mode insensitive', () => {
         expect(deserializeFilterString('username[icontains]:doc')).toEqual({
             username: { contains: 'doc', mode: 'insensitive' },
@@ -670,7 +670,7 @@ describe('deserializeFilterString — case-insensitive string operators (TASK-42
     });
 });
 
-describe('deserializeFilterString — range merge + wrapper integration (TASK-423)', () => {
+describe('deserializeFilterString — range merge + wrapper integration', () => {
     it('merges gte+lte tokens for one regular (non-JSON) column into a single range object', () => {
         expect(deserializeFilterString('createdAt[gte]:2026-01-01;createdAt[lte]:2026-12-31', 'User')).toEqual({
             createdAt: { gte: new Date('2026-01-01'), lte: new Date('2026-12-31') },

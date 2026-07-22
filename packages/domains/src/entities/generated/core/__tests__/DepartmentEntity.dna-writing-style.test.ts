@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest';
 import { DepartmentEntity } from '../DepartmentEntity';
 import { DepartmentFactory } from '../../../../factories/generated/core/DepartmentFactory';
 
-describe('DepartmentEntity — dnaWritingStylePromptId (TASK-387 #7)', () => {
+describe('DepartmentEntity — dnaWritingStylePromptId', () => {
   it('accepts dnaWritingStylePromptId in the constructor', () => {
     const entity = new DepartmentEntity({
       id: 'dept-001',
@@ -78,7 +78,7 @@ describe('DepartmentEntity — dnaWritingStylePromptId (TASK-387 #7)', () => {
   });
 });
 
-describe('DepartmentFactory — dnaWritingStylePromptId (TASK-387 #7)', () => {
+describe('DepartmentFactory — dnaWritingStylePromptId', () => {
   it('creates a department carrying the DNA writing-style prompt id', () => {
     const entity = DepartmentFactory.CreateDepartment({
       tenantId: 'tenant-001',

@@ -84,7 +84,7 @@ async function expectStatus(promise: Promise<unknown>, status: number) {
   await expect(promise).rejects.toSatisfy((err: unknown) => err instanceof HttpException && err.getStatus() === status);
 }
 
-describe('TASK-409 — RbacRoleService break-glass on role DELETE', () => {
+describe('RbacRoleService break-glass on role DELETE', () => {
   let mocks: ReturnType<typeof makeMocks>;
   let service: RbacRoleService;
 
@@ -136,7 +136,7 @@ describe('TASK-409 — RbacRoleService break-glass on role DELETE', () => {
   });
 });
 
-describe('TASK-409 — RbacRoleService break-glass on detach (removePolicy)', () => {
+describe('RbacRoleService break-glass on detach (removePolicy)', () => {
   let mocks: ReturnType<typeof makeMocks>;
   let service: RbacRoleService;
 
@@ -186,7 +186,7 @@ describe('TASK-409 — RbacRoleService break-glass on detach (removePolicy)', ()
     expect(audits[0]?.data.operation).toBe('role-policy-detach');
   });
 
-  it('TASK-501 — system role, non-elevated caller → 403 BEFORE any break-glass prompt', async () => {
+  it('system role, non-elevated caller → 403 BEFORE any break-glass prompt', async () => {
     mocks.roleRepo.findByIdGuardSelect.mockResolvedValue(SYSTEM_ROLE);
     await expect(service.removePolicy('role-sys', 'policy-1', GOOD_CREDS('team-policy'))).rejects.toThrow(ForbiddenException);
     expect(mocks.crypto.verify).not.toHaveBeenCalled();

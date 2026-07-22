@@ -30,7 +30,7 @@ const row = {
   metaData: null,
 };
 
-describe('AiTaskDefaultRepository — findByTenantAndTaskKey (TASK-506)', () => {
+describe('AiTaskDefaultRepository — findByTenantAndTaskKey', () => {
   let findFirst: ReturnType<typeof vi.fn>;
   let repo: AiTaskDefaultRepository;
 

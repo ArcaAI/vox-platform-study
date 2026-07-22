@@ -44,7 +44,7 @@ vi.mock('../../store', () => ({
     useAgenticStore: vi.fn(() => currentStore),
 }));
 
-describe('TASK-299 D-4 — useArcaSummary maps legacy SDK options to backend DTO field names', () => {
+describe('useArcaSummary maps legacy SDK options to backend DTO field names', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockPost.mockReset();
@@ -265,7 +265,7 @@ describe('TASK-299 D-4 — useArcaSummary maps legacy SDK options to backend DTO
     });
 });
 
-describe('TASK-299 D-17 — useArcaSummary.generateComprehensiveSummary signature', () => {
+describe('useArcaSummary.generateComprehensiveSummary signature', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockPost.mockReset();
@@ -300,7 +300,7 @@ describe('TASK-299 D-17 — useArcaSummary.generateComprehensiveSummary signatur
         expect(typeof body.idempotencyKey).toBe('string');
     });
 
-    it('TASK-299 D-9 — repeated calls mint distinct idempotency keys per user-action', async () => {
+    it('repeated calls mint distinct idempotency keys per user-action', async () => {
         mockPost.mockResolvedValue({ id: 'cs', content: '', consultationIds: [], createdAt: '' });
         const { result } = renderHook(() => useArcaSummary());
 
@@ -314,7 +314,7 @@ describe('TASK-299 D-17 — useArcaSummary.generateComprehensiveSummary signatur
         expect(k1).not.toBe(k2);
     });
 
-    it('TASK-299 D-9 — caller-supplied idempotencyKey is honored verbatim', async () => {
+    it('caller-supplied idempotencyKey is honored verbatim', async () => {
         mockPost.mockResolvedValue({ id: 'cs', content: '', consultationIds: [], createdAt: '' });
         const { result } = renderHook(() => useArcaSummary());
 

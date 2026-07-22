@@ -57,7 +57,7 @@ afterEach(() => {
     vi.unstubAllGlobals();
 });
 
-describe('ConsultationReviewScreen (TASK-533 B5)', () => {
+describe('ConsultationReviewScreen', () => {
     it('lists the claims with their grounding state', async () => {
         stubFetch(review());
         renderWithProviders(<ConsultationReviewScreen consultationId={CONSULTATION} />);

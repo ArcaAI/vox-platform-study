@@ -60,7 +60,7 @@ describe('AiTaskDefaultRepository.findByTenantAndTaskKey', () => {
     await expect(repo.findByTenantAndTaskKey('tenant-abc', 'nlp.ner')).resolves.toBeNull();
   });
 
-  it('SURFACES a tenant-scope violation instead of swallowing it into null (r2605 Finding A)', async () => {
+  it('SURFACES a tenant-scope violation instead of swallowing it into null', async () => {
     const { repo, delegate } = makeRepo();
     const violation = new Error(
       'TenantScope: tenantId mismatch on AiTaskDefault.findFirst — caller passed "00000000-0000-0000-0000-000000000000" but context is "tenant-w"',

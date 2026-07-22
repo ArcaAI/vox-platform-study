@@ -43,7 +43,7 @@ interface RnnoiseStub {
   destroy: ReturnType<typeof vi.fn>;
 }
 
-describe('NoiseFilterProcessor — Wave 2 (TASK-304 Wave 2)', () => {
+describe('NoiseFilterProcessor — Wave 2', () => {
   let processor: NoiseFilterProcessor;
 
   beforeEach(() => {

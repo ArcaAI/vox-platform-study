@@ -72,7 +72,7 @@ vi.mock('@arcaai/domains', async () => {
   };
 });
 
-describe('GlobalSettingService — TASK-402 revive-on-create for soft-deleted keys', () => {
+describe('GlobalSettingService — revive-on-create for soft-deleted keys', () => {
   let service: GlobalSettingService;
 
   beforeEach(() => {

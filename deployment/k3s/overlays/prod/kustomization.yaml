@@ -91,8 +91,6 @@ images:
     newTag: "0.0.0"
   - name: hope-v2/admin-console
     newTag: "0.0.0"
-  - name: hope-v2/nlp
-    newTag: "0.0.0"
   - name: hope-v2/smr
     newTag: "0.0.0"
   - name: hope-v2/stt-v2-ml-runtime

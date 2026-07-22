@@ -501,7 +501,7 @@ describe('SMR Service Contract', () => {
  * fallback mapper (`smr-proxy.controller.ts#getProviders`) spreads the payload
  * untouched, so a pre-TASK-528 SMR (no probe fields) must still validate.
  */
-describe('SMR Providers Listing Contract (TASK-528)', () => {
+describe('SMR Providers Listing Contract', () => {
   const ModelInfoSchema = z.object({
     name: z.string(),
     supports_streaming: z.boolean().optional(),

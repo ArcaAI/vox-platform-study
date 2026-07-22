@@ -8,7 +8,9 @@ import { GUARDS_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { Reflector } from '@nestjs/core';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { SKIP_AUTH_KEY } from '@arcaai/applications';
-import type { IEffectiveConfigService } from '@arcaai/applications';
+import type { IActiveUserContext, IEffectiveConfigService } from '@arcaai/applications';
+import { SYSTEM_TENANT_ID } from '@arcaai/domains';
+import type { ClsService } from 'nestjs-cls';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EffectiveConfigController } from '../effective-config.controller';
 import { InternalServiceTokenGuard } from '../internal-service-token.guard';
@@ -19,9 +21,30 @@ const SNAPSHOT = {
   runtimeProfiles: [{ provider: 'ollama', modelSlug: '', maxConcurrent: 6, timeoutS: 120, source: 'db' as const }],
 };
 
+/**
+ * Minimal CLS fake mirroring the harness-internal controller tests: `run`
+ * executes the callback synchronously in a fresh store, `set`/`get` operate on
+ * that store, and the recorded values let the tests assert what tenant context
+ * the service call executed under.
+ */
+function fakeCls() {
+  const store = new Map<string, unknown>();
+  return {
+    store,
+    run: vi.fn((fn: () => unknown) => fn()),
+    set: vi.fn((key: string, value: unknown) => void store.set(key, value)),
+    get: vi.fn((key: string) => store.get(key)),
+  };
+}
+
 function controllerWith(resolve = vi.fn(async () => SNAPSHOT)) {
   const service = { resolveForService: resolve } as unknown as IEffectiveConfigService;
-  return { controller: new EffectiveConfigController(service), resolve };
+  const cls = fakeCls();
+  return {
+    controller: new EffectiveConfigController(service, cls as unknown as ClsService<IActiveUserContext>),
+    resolve,
+    cls,
+  };
 }
 
 describe('EffectiveConfigController', () => {
@@ -31,6 +54,27 @@ describe('EffectiveConfigController', () => {
     const { controller, resolve } = controllerWith();
     await expect(controller.getEffectiveConfig('smr')).resolves.toEqual(SNAPSHOT);
     expect(resolve).toHaveBeenCalledWith('smr');
+  });
+
+  // Service-to-service requests arrive with an EMPTY CLS store (no user, no
+  // tenant), and the read subtree touches tenant-scoped models (AiRuntimeProfile
+  // via listProfiles). Without an explicit tenant context the tenant-scope
+  // Prisma extension throws ("tenant context required") and the route 500s for
+  // every caller. The controller must therefore re-establish CLS around the
+  // read, pinned to the SYSTEM tenant — the platform scope every effective-config
+  // subset resolves against (harness-internal controller precedent).
+  it('resolves inside a CLS context pinned to the SYSTEM tenant', async () => {
+    const resolve = vi.fn(async function (this: unknown, service: string) {
+      return { ...SNAPSHOT, service };
+    });
+    const { controller, cls } = controllerWith(resolve);
+
+    await controller.getEffectiveConfig('smr');
+
+    expect(cls.run).toHaveBeenCalledTimes(1);
+    expect(cls.set).toHaveBeenCalledWith('tenantId', SYSTEM_TENANT_ID);
+    // The tenant must be in place BEFORE the service read executes.
+    expect(cls.set.mock.invocationCallOrder[0]).toBeLessThan(resolve.mock.invocationCallOrder[0]);
   });
 
   it('propagates ArgumentInvalidException for an unknown service (→ 400)', async () => {

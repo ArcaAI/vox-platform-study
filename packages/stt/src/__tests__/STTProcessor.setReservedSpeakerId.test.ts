@@ -24,7 +24,7 @@ function asInternals(processor: STTProcessor): ProcessorInternals {
   return processor as unknown as ProcessorInternals;
 }
 
-describe('STTProcessor.setReservedSpeakerId — TASK-304 Wave 3', () => {
+describe('STTProcessor.setReservedSpeakerId — Wave 3', () => {
   it('forwards the call to the live LocalSTTProvider when the provider is local', () => {
     const processor = new STTProcessor({
       sessionId: 'test',

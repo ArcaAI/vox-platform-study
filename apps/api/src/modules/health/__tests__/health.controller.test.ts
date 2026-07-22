@@ -339,7 +339,7 @@ describe('ApiHealthController', () => {
     //   - Class-level throttle: { limit: 30, ttl: 60000 }
     //   - /live, /ready, /startup, / remain public (no @Authorize)
     // ─────────────────────────────────────────────────────────────────
-    describe('TASK-307 W5.1 — /health surface hardening (AC-15)', () => {
+    describe('/health surface hardening', () => {
         it('declares an @Authorize() decorator on checkServices() (AC-15: C-8 fix)', () => {
             const required = Reflect.getMetadata(
                 REQUIRED_PERMISSIONS_KEY,
@@ -421,7 +421,7 @@ describe('ApiHealthController', () => {
     //   still gets 403. Mode is OR. The k8s probes (/live, /ready, /startup, /)
     //   stay public.
     // ─────────────────────────────────────────────────────────────────
-    describe('TASK-336 OB-12 / TASK-386 #21 — admin-gate /health/services', () => {
+    describe('admin-gate /health/services', () => {
         const PERMISSION_MODE_KEY = 'permission_mode';
 
         it('accepts EITHER `manage all` OR `read TenantTelemetry` on checkServices()', () => {

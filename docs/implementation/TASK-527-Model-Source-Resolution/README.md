@@ -46,7 +46,7 @@ Owner expectation **E5** (findings §"Owner requirements assessed", verbatim): *
 ### 2.3 The MiniCheck registry row (R4 target)
 
 - SYSTEM `AiModel` row `minicheck-flan-t5-large` exists: `packages/database/src/prisma/db_main/seed/ai-models/nlp.ts:85-104` (`source: HUGGINGFACE`, `sourceUri: 'nvhf/MiniCheck-Flan-T5-Large-Q6_K-GGUF'`, `format: GGUF`, no seeded `localPath`/`checksum`).
-- `AiTaskDefault` `guardrail.groundedness` → that slug (`seed/16-ai-task-default.ts:99`; count-locked by `seed/__tests__/task-506-ai-model-consolidation.test.ts:117,557`). Harness's atomic-fact use has **no task key** (not one of the 9) — harness must resolve **by slug**.
+- `AiTaskDefault` `guardrail.groundedness` → that slug (`seed/16-ai-task-default.ts:99`; count-locked by `seed/__tests__/ai-model-consolidation-seed.test.ts:117,557`). Harness's atomic-fact use has **no task key** (not one of the 9) — harness must resolve **by slug**.
 - Guardrail's resolver already accepts the `guardrail.groundedness` task key (`tenant_config.py:52-55,188-189`) with a 60 s TTL cache (`config.py:262` `config_cache_ttl_s`) and negative-cache env fallback — the proven delivery mechanism; it just doesn't carry a path.
 
 ### 2.4 S3 client inventory (decides `uv lock`)
@@ -71,7 +71,7 @@ Owner expectation **E5** (findings §"Owner requirements assessed", verbatim): *
 ### 2.6 What this ticket does NOT depend on (verified)
 
 - **No Phase-1 tables**: the resolver reads only the existing `AiModel` columns (§2.1) — no `AiProviderConnection`/`AiRuntimeProfile` reads, so TASK-524 is not a dependency (unlike TASK-525/529 which are gated on it).
-- **No seed changes**: the `minicheck-flan-t5-large` row and its `guardrail.groundedness` task default already exist (§2.3); this ticket writes no seed data, so the count-locked `task-506-ai-model-consolidation.test.ts` assertions stay untouched.
+- **No seed changes**: the `minicheck-flan-t5-large` row and its `guardrail.groundedness` task default already exist (§2.3); this ticket writes no seed data, so the count-locked `ai-model-consolidation-seed.test.ts` assertions stay untouched.
 - **No new domain trio**: no new Prisma model — only an enum value — so the hand-authoring constraint for new artifacts does not bite (only `gen:model` scaffolds; `gen:entity`/`gen:factory` are barrel reconcilers that never create files, `gen:mapper` is destructive and must never be run, `gen:repository` is broken — see `.claude/rules/03-domain-layer.md`). `pnpm db:generate` regenerates the client enum and the existing `AiModel` trio is unchanged.
 - **No console work**: the `/ai-models` screen (nav-hidden today) is TASK-528's; the Swagger text in §4.2 is the only admin-facing surface this ticket touches.
 - **No allow-list changes**: `TENANT_SCOPED_MODELS` / `SYSTEM_SHARED_READ_MODELS` / `MODELS_WITHOUT_SOFT_DELETE` are keyed by model, not enum value — untouched.

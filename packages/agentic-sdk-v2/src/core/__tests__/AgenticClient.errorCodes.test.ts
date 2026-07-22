@@ -12,7 +12,7 @@ import { AgenticClient } from '../AgenticClient';
 import { AgenticError } from '../../types';
 import { mockFetch, createMockErrorResponse, createMockLogger } from '../../__tests__/setup';
 
-describe('TASK-264 W0-11: AgenticClient error code mapping', () => {
+describe('AgenticClient error code mapping', () => {
   let client: AgenticClient;
   let mockLogger: ReturnType<typeof createMockLogger>;
 

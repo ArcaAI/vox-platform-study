@@ -271,7 +271,7 @@ describe('resampler utilities', () => {
     });
   });
 
-  describe('resampleToVADRate (TASK-271 L-2)', () => {
+  describe('resampleToVADRate', () => {
     it('returns input untouched when already at 16 kHz', () => {
       const samples = new Float32Array([0.1, 0.2, 0.3]);
       const result = resampleToVADRate(samples, VAD_SAMPLE_RATE);

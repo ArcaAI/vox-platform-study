@@ -329,7 +329,7 @@ describe('ConsultationEventHandler', () => {
     // handleTranscriptionCreated — Prompt Resolution
     // =========================================================================
 
-    describe('handleTranscriptionCreated — prompt resolution (GAP-3)', () => {
+    describe('handleTranscriptionCreated — prompt resolution', () => {
         it('should call PromptResolutionService.resolve with departmentId from consultation', async () => {
             mockConsultationRepository.findById.mockResolvedValue({
                 id: 'consultation-001',
@@ -831,7 +831,7 @@ describe('ConsultationEventHandler', () => {
     // would surface as an unhandled rejection.
     // =========================================================================
 
-    describe('CLS rebind + fail-closed (TASK-305 D.9 follow-up)', () => {
+    describe('CLS rebind + fail-closed (follow-up)', () => {
         it('handleTranscriptionCreated wraps work in cls.run with tenantId + user set', async () => {
             const setOrder: Array<[string, unknown]> = [];
             mockClsService.set.mockImplementation((key: string, value: unknown) => {
@@ -964,7 +964,7 @@ describe('ConsultationEventHandler', () => {
     // is preserved unchanged.
     // =========================================================================
 
-    describe('harness flag routing (TASK-330 Lane G)', () => {
+    describe('harness flag routing (Lane G)', () => {
         const withHarnessConfig = (harnessEnabled: boolean) =>
             mockConsultationRepository.findById.mockResolvedValue({
                 id: 'consultation-001',
@@ -1078,7 +1078,7 @@ describe('ConsultationEventHandler', () => {
     // intentionally exercises the resolver-absent legacy fallback).
     // =========================================================================
 
-    describe('realtime cascade (TASK-356 Phase 5)', () => {
+    describe('realtime cascade (Phase 5)', () => {
         let cascadeHandler: ConsultationEventHandler;
         let mockConfigResolver: ReturnType<typeof createMockConfigResolver>;
 

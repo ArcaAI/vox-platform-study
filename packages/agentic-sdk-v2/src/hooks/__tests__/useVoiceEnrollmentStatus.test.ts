@@ -31,7 +31,7 @@ function createMockStore() {
   };
 }
 
-describe('useVoiceEnrollmentStatus (TASK-296 C-4)', () => {
+describe('useVoiceEnrollmentStatus', () => {
   let mockStore: ReturnType<typeof createMockStore>;
 
   beforeEach(() => {
@@ -89,7 +89,7 @@ describe('useVoiceEnrollmentStatus (TASK-296 C-4)', () => {
     expect(result.current.hasActive).toBe(false);
   });
 
-  describe('createVoiceEnrollmentChecker (TASK-300 hand-off)', () => {
+  describe('createVoiceEnrollmentChecker (hand-off)', () => {
     it('returns a VoiceEnrollmentChecker bound to an apiClient', async () => {
       const apiClient = {
         get: vi.fn().mockResolvedValue([{ id: 'p-1', isActive: true }]),

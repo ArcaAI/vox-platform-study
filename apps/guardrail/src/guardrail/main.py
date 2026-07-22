@@ -236,6 +236,10 @@ def create_app() -> FastAPI:
     from guardrail.api.endpoints.medical import router as medical_router
 
     app.include_router(health_router, prefix="/api", tags=["health"])
+    # Every other python service exposes health at /api/v1/health; alias it here
+    # too (same router/handler) so callers using the v1 path don't 404 while
+    # /api/health keeps working for existing callers.
+    app.include_router(health_router, prefix="/api/v1", tags=["health"])
     app.include_router(medical_router, prefix="/api", tags=["medical"])  # Primary endpoint
     app.include_router(guardrails_router, prefix="/api", tags=["guardrails"])
     # Live output-side groundedness gate — behind X-Service-Token.

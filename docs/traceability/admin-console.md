@@ -23,7 +23,7 @@ is defined in [`index.md`](./index.md#test-location-shorthand). `—` means veri
 | Prisma models | `UserSettings` (persisted grid layout under namespace `ui.data-grid/<gridId>`) |
 | Key API endpoints | `GET/PATCH /user/me/settings` (layout persistence); list reads go through the existing `/admin/*` offset + cursor endpoints of each domain |
 | Console | shared infrastructure consumed by every data-grid screen (tenants, users, audit-logs, queues, transcription-jobs, ...) — no route of its own |
-| Tests | unit(ui): `packages/ui/src/components/data-grid/__tests__/*`; unit(console): `apps/admin-console/src/shared/data/__tests__/*`; e2e: `task-423-filter-grammar.spec.ts` |
+| Tests | unit(ui): `packages/ui/src/components/data-grid/__tests__/*`; unit(console): `apps/admin-console/src/shared/data/__tests__/*`; e2e: `data-grid-filter-grammar.spec.ts` |
 
 ### AC2 — Account & tenant profile (self-service chrome)
 
@@ -106,4 +106,4 @@ capability rows (or marked console-only). "Owned here" = a capability row in AC1
 - **`storage` vs `storage-browser`.** Both point at [`storage.md`](./storage.md) but are distinct features: `storage` is bucket/config/key administration (tier 10–19), `storage-browser` is the object data plane (tier 30–49).
 - **No route of their own.** `playground-shared` (playground chrome) and the AC1 data-grid infrastructure have no console route; they are shared modules consumed by other features.
 
-Last verified: 2026-07-21
+Last verified: 2026-07-22

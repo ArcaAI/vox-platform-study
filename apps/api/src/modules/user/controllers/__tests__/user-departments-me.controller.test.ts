@@ -24,7 +24,7 @@ const createMockClsService = (user?: { id: string }) => ({
   }),
 });
 
-describe('UserDepartmentsMeController (BUG-005 Issue 4)', () => {
+describe('UserDepartmentsMeController', () => {
   let controller: UserDepartmentsMeController;
   let userDepartmentService: ReturnType<typeof createMockUserDepartmentService>;
   let clsService: ReturnType<typeof createMockClsService>;

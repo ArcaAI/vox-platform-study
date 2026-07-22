@@ -45,7 +45,7 @@ function fakeBodyStream(chunks: Uint8Array[]) {
   };
 }
 
-describe('useTtsPlayback (TASK-491)', () => {
+describe('useTtsPlayback', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockStore.apiClient = { synthesizeSpeech: vi.fn() };

@@ -46,7 +46,7 @@ function buildService(): DepartmentService {
   );
 }
 
-describe('DepartmentService.getDepartmentUsers (TASK-387 #6)', () => {
+describe('DepartmentService.getDepartmentUsers', () => {
   let service: DepartmentService;
 
   beforeEach(() => {

@@ -55,7 +55,7 @@ const sampleRow = (overrides: Partial<SummaryMeta> = {}): SummaryMeta =>
     ...overrides,
   } as SummaryMeta);
 
-describe('SummaryMetaEntityMapper — versionless persistence (TASK-330)', () => {
+describe('SummaryMetaEntityMapper — versionless persistence', () => {
   const mapper = new SummaryMetaEntityMapper();
 
   it('toDomainEntity carries scalar fields from the database row', () => {

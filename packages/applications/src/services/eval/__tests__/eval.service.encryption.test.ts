@@ -34,7 +34,7 @@ function buildService(withSecrets: boolean): EvalService {
   );
 }
 
-describe('EvalService — TASK-369 field encryption', () => {
+describe('EvalService — field encryption', () => {
   beforeEach(() => vi.clearAllMocks());
 
   describe('createGoldenCase', () => {

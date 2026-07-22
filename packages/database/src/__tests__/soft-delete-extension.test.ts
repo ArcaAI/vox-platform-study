@@ -308,7 +308,7 @@ describe('Extension handler contract', () => {
 // (PromptVersion, DnaWritingStyleVersion, ContextItemVersion).
 // ---------------------------------------------------------------------------
 
-describe('TASK-364 — AsrPipelineVersion is soft-delete exempt (no resourceStatus column)', () => {
+describe('AsrPipelineVersion is soft-delete exempt (no resourceStatus column)', () => {
   it('modelHasSoftDelete returns false for both casings', () => {
     expect(modelHasSoftDelete('AsrPipelineVersion')).toBe(false);
     expect(modelHasSoftDelete('asrPipelineVersion')).toBe(false);

@@ -44,7 +44,7 @@ describe('TenantIdentityProviderFactory.CreateTenantIdentityProvider', () => {
     expect(entity.config).toEqual({ issuer: 'https://acme.okta.com', clientId: 'abc123' });
   });
 
-  it('should default providerStatus to DRAFT (D7 — never auto-ENABLED)', () => {
+  it('should default providerStatus to DRAFT (never auto-ENABLED)', () => {
     const entity = TenantIdentityProviderFactory.CreateTenantIdentityProvider(validProps());
     expect(entity.providerStatus).toBe(IdpStatus.DRAFT);
   });
@@ -105,7 +105,7 @@ describe('TenantIdentityProviderEntity.validate()', () => {
     expect(() => entity.validate()).toThrow('config is required');
   });
 
-  it('should accept both OIDC and SAML protocol values (protocol-neutral data model, D1)', () => {
+  it('should accept both OIDC and SAML protocol values (protocol-neutral data model)', () => {
     for (const protocol of Object.values(IdpProtocol)) {
       const entity = TenantIdentityProviderFactory.CreateTenantIdentityProvider(validProps({ protocol }));
       expect(() => entity.validate()).not.toThrow();

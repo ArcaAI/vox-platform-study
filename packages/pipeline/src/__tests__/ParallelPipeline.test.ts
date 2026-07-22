@@ -346,7 +346,7 @@ describe('ParallelPipeline', () => {
     // Cancel must short-circuit in-flight stages.
     // -----------------------------------------------------------------------
 
-    it('should short-circuit in-flight stages on cancel even when stage ignores ctx.abortSignal (TASK-273 H-1)', async () => {
+    it('should short-circuit in-flight stages on cancel even when stage ignores ctx.abortSignal', async () => {
       class IgnoresAbortStage extends PipelineStage<string, string> {
         protected async onExecute(input: string): Promise<string> {
           await new Promise((r) => setTimeout(r, 5000));
@@ -375,7 +375,7 @@ describe('ParallelPipeline', () => {
   // Per-stage serialization on shared results / errors maps.
   // =========================================================================
 
-  describe('triggerStage concurrency (TASK-273 H-2)', () => {
+  describe('triggerStage concurrency', () => {
     it('should serialize concurrent triggerStage calls on the same stage', async () => {
       let inFlight = 0;
       let maxInFlight = 0;

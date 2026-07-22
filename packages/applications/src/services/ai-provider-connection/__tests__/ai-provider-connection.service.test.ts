@@ -47,6 +47,7 @@ function makeRow(
 function makeService(opts: { roles?: string[]; clsTenantId?: string | null; withVault?: boolean } = {}) {
   const repo = {
     findByTenantAndProvider: vi.fn().mockResolvedValue(null),
+    findDeletedByTenantAndProvider: vi.fn().mockResolvedValue(null),
     findByTenantId: vi.fn().mockResolvedValue([]),
     create: vi.fn(async (e: any) => e),
     updateWithVersion: vi.fn(async (_id: string, e: any) => e),
@@ -181,7 +182,7 @@ describe('AiProviderConnectionService — secret containment (§5 test 3)', () =
 
   // ── Precondition verdicts come BEFORE any Vault call ────
 
-  it('G3: a stale expectedVersion on an ABSENT row 412s without ever calling Transit (even with an apiKey in the body)', async () => {
+  it('a stale expectedVersion on an ABSENT row 412s without ever calling Transit (even with an apiKey in the body)', async () => {
     const { svc, secrets } = makeService();
     await expect(svc.upsertRow('azure', { apiKey: 'probe-key', expectedVersion: 9999 }, TENANT)).rejects.toBeInstanceOf(
       OptimisticConcurrencyException,
@@ -189,7 +190,7 @@ describe('AiProviderConnectionService — secret containment (§5 test 3)', () =
     expect(secrets!.encrypt).not.toHaveBeenCalled();
   });
 
-  it('G2: expectedVersion 0 (create-intent) against an EXISTING row at version >= 1 is STALE → 412', async () => {
+  it('expectedVersion 0 (create-intent) against an EXISTING row at version >= 1 is STALE → 412', async () => {
     // With `If-Match: "0"` accepted by the gateway parser (G2
     // decision), the service CAS is the line of defense: 0 only means
     // "create" when no row exists; against a materialized row it is drift.
@@ -200,7 +201,7 @@ describe('AiProviderConnectionService — secret containment (§5 test 3)', () =
     );
   });
 
-  it('G3: a stale expectedVersion on an EXISTING row 412s without calling Transit', async () => {
+  it('a stale expectedVersion on an EXISTING row 412s without calling Transit', async () => {
     const { svc, repo, secrets } = makeService();
     repo.findByTenantAndProvider.mockResolvedValue(makeRow());
     await expect(svc.upsertRow('azure', { apiKey: 'probe-key', expectedVersion: 9999 }, TENANT)).rejects.toBeInstanceOf(
@@ -209,12 +210,65 @@ describe('AiProviderConnectionService — secret containment (§5 test 3)', () =
     expect(secrets!.encrypt).not.toHaveBeenCalled();
   });
 
-  it('G3: a Transit failure surfaces as 503 ServiceUnavailable, not a raw 500', async () => {
+  it('a Transit failure surfaces as 503 ServiceUnavailable, not a raw 500', async () => {
     const { svc, secrets } = makeService();
     (secrets!.encrypt as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Transit is not supported by this provider'));
     await expect(svc.upsertRow('azure', { apiKey: 'probe-key', expectedVersion: 0 }, TENANT)).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     );
+  });
+
+  // ── F-028: restore-with-overwrite over a soft-deleted tombstone ──────────
+
+  it('create-intent (If-Match "0") over a soft-DELETED row RESTORES and overwrites it instead of 409ing', async () => {
+    const { svc, repo, emitter } = makeService();
+    const deletedRow = makeRow({ baseUrl: 'https://stale.example', enabled: false });
+    deletedRow.delete(); // resourceStatus -> DELETED (mirrors repository.softDelete's terminal state)
+    repo.findDeletedByTenantAndProvider.mockResolvedValue(deletedRow);
+
+    const res = await svc.upsertRow(
+      'azure',
+      { baseUrl: 'https://revived.example', enabled: true, expectedVersion: 0 },
+      TENANT,
+    );
+
+    // Restored via CAS against the tombstone's OWN version, never a plain insert.
+    expect(repo.create).not.toHaveBeenCalled();
+    expect(repo.updateWithVersion).toHaveBeenCalledTimes(1);
+    const [restoredId, restoredEntity, expectedVersionArg] = repo.updateWithVersion.mock.calls[0];
+    expect(restoredId).toBe(deletedRow.id);
+    expect(expectedVersionArg).toBe(deletedRow.version);
+    expect(restoredEntity.resourceStatus).toBe('ENABLED');
+
+    expect(res.baseUrl).toBe('https://revived.example');
+    expect(res.enabled).toBe(true);
+    expect(emitter.emit).toHaveBeenCalledWith(
+      SysEventType.ResourceCreated,
+      expect.objectContaining({ data: expect.objectContaining({ action: 'connection-restored' }) }),
+    );
+  });
+
+  it('restore-with-overwrite clears stale key material when the revive omits apiKey', async () => {
+    const { svc, repo } = makeService();
+    const deletedRow = makeRow({ encryptedApiKey: Buffer.from('vault:v3:old-cipher', 'utf8'), keyVersion: 3 });
+    deletedRow.delete();
+    repo.findDeletedByTenantAndProvider.mockResolvedValue(deletedRow);
+
+    const res = await svc.upsertRow('azure', { enabled: true, expectedVersion: 0 }, TENANT);
+    // Must actually go through the restore lane (not merely coincide with a
+    // plain create that also happens to omit the key).
+    expect(repo.create).not.toHaveBeenCalled();
+    expect(repo.updateWithVersion).toHaveBeenCalledTimes(1);
+    expect(res.hasKey).toBe(false);
+  });
+
+  it('a live (non-deleted) row still 412s on create-intent — the restore lane never masks the normal OCC contract', async () => {
+    const { svc, repo } = makeService();
+    repo.findByTenantAndProvider.mockResolvedValue(makeRow()); // a LIVE row exists
+    await expect(svc.upsertRow('azure', { enabled: false, expectedVersion: 0 }, TENANT)).rejects.toBeInstanceOf(
+      OptimisticConcurrencyException,
+    );
+    expect(repo.findDeletedByTenantAndProvider).not.toHaveBeenCalled();
   });
 });
 

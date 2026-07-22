@@ -12,7 +12,7 @@ import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants';
 import { NotFoundException, RequestMethod } from '@nestjs/common';
 import { AudioPipelinePublicController } from '../audio-pipeline-public.controller';
 
-describe('AudioPipelinePublicController — TASK-298 D-8', () => {
+describe('AudioPipelinePublicController', () => {
   let pipelineService: any;
   let controller: AudioPipelinePublicController;
 

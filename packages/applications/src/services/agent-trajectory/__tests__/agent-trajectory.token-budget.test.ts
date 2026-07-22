@@ -36,7 +36,7 @@ function buildService() {
 /** An LLM_CALL step whose stats carry the SMR usage block. */
 const llmStep = (stats: Record<string, unknown>) => ({ stepType: AgentStepType.LLM_CALL, stats });
 
-describe('AgentTrajectoryService — token accounting (TASK-533 B4)', () => {
+describe('AgentTrajectoryService — token accounting', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('sums prompt/completion tokens that were already being persisted and discarded', async () => {
@@ -122,7 +122,7 @@ describe('AgentTrajectoryService — token accounting (TASK-533 B4)', () => {
   });
 });
 
-describe('AgentTrajectoryService — per-run token spend (TASK-533 B4)', () => {
+describe('AgentTrajectoryService — per-run token spend', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('sums a single run identified by (sessionId, runId)', async () => {
@@ -170,10 +170,10 @@ describe('AgentTrajectoryService — per-run token spend (TASK-533 B4)', () => {
   });
 });
 
-describe('budget exhaustion predicate (TASK-533 B4)', () => {
+describe('budget exhaustion predicate', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('perRun=0 means unbounded — the pre-B4 behaviour, byte-for-byte', async () => {
+  it('perRun=0 means unbounded — the original behaviour, byte-for-byte', async () => {
     stepRepository.findAll.mockResolvedValue([llmStep({ prompt_tokens: 10_000_000 })]);
 
     const result = await buildService().checkRunBudget(TENANT, 'session-1', 'run-1', 0);

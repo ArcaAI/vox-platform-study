@@ -15,7 +15,7 @@ import {
 const DESCRIPTORS = HOPE_SETTINGS_REGISTRY.list();
 const registryByKey = new Map(DESCRIPTORS.map((d) => [d.key, d]));
 
-describe('TASK-529 model-cache retention descriptors', () => {
+describe('model-cache retention descriptors', () => {
   it('registers ttlSeconds/maxModels/vramBudgetMb for every in-process service', () => {
     for (const service of MODEL_CACHE_SERVICES) {
       for (const knob of ['ttlSeconds', 'maxModels', 'vramBudgetMb'] as const) {
@@ -24,7 +24,7 @@ describe('TASK-529 model-cache retention descriptors', () => {
     }
   });
 
-  it('defaults the idle TTL to the OD-5 value of 600s for every service', () => {
+  it('defaults the idle TTL to the value of 600s for every service', () => {
     for (const service of MODEL_CACHE_SERVICES) {
       const key = `${service}.modelCache.ttlSeconds` as ServiceRuntimeKey;
       expect(SERVICE_RUNTIME_DEFAULTS[key]).toBe(600);

@@ -101,7 +101,7 @@ const buildService = (withMailer = true) =>
 
 const sha256 = (raw: string) => createHash('sha256').update(raw).digest('hex');
 
-describe('UserPasswordService (TASK-400)', () => {
+describe('UserPasswordService', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockTokenRepository = makeTokenRepository();

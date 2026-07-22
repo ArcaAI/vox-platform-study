@@ -20,7 +20,7 @@ import {
     type TenantOwnedResourceOptions,
 } from '../../../common/tenant-owned-resource.decorator';
 
-describe('TASK-307 W3.6 — @TenantOwnedResource metadata on StorageController', () => {
+describe('@TenantOwnedResource metadata on StorageController', () => {
     const meta = (m: keyof StorageController): TenantOwnedResourceOptions | undefined =>
         Reflect.getMetadata(
             TENANT_OWNED_RESOURCE_KEY,

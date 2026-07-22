@@ -31,7 +31,7 @@ function createInit(overrides: Partial<ITenantEntity> = {}): ITenantEntity {
   } as ITenantEntity;
 }
 
-describe('TenantEntity — plan field (TASK-387 #3)', () => {
+describe('TenantEntity — plan field', () => {
   it('accepts a plan in the constructor', () => {
     const entity = new TenantEntity(createInit({ plan: TenantPlan.ENTERPRISE }));
     expect(entity.plan).toBe(TenantPlan.ENTERPRISE);
@@ -60,7 +60,7 @@ describe('TenantEntity — plan field (TASK-387 #3)', () => {
   });
 });
 
-describe('TenantEntity — lifecycle transitions (TASK-387 #1)', () => {
+describe('TenantEntity — lifecycle transitions', () => {
   it('suspend() moves the tenant to SUSPENDED and records the actor', () => {
     const entity = new TenantEntity(createInit());
     entity.clearChanges();

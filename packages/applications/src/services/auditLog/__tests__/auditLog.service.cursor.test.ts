@@ -26,7 +26,7 @@ const mockDatabaseService = {
 const makeEntity = (id: string, createdAt: Date, responsibleUserId: string | null = 'user-123', tenantId = 'tenant-1') =>
   ({ id, createdAt, responsibleUserId, tenantId }) as never;
 
-describe('AuditLogService — cursor pagination (TASK-373)', () => {
+describe('AuditLogService — cursor pagination', () => {
   let service: AuditLogService;
 
   beforeEach(() => {
@@ -215,7 +215,7 @@ describe('AuditLogService — cursor pagination (TASK-373)', () => {
     expect(responsibleUsers['user-123'].email).toBe('jane@x.com');
   });
 
-  it('does not emit any system event (OB-04 — audit reads are never self-audited)', async () => {
+  it('does not emit any system event (audit reads are never self-audited)', async () => {
     mockAuditLogRepository.findAll.mockResolvedValue([]);
 
     await service.fetchPageByCursor({ limit: 10 });

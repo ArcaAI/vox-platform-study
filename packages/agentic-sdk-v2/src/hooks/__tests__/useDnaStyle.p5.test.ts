@@ -38,7 +38,7 @@ const mockVersions = [
     { id: 'v-1', dnaReportId: 'dna-1', versionNumber: 1, reportData: { tone: 'casual' }, styleText: 'v1', createdAt: '2026-01-01T00:00:00.000Z' },
 ];
 
-describe('useDnaStyle — TASK-329 P5', () => {
+describe('useDnaStyle', () => {
     let mockStore: any;
     const mockGet = vi.fn();
     const mockPost = vi.fn();

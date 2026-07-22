@@ -110,7 +110,7 @@ describe('TenantController', () => {
     // and the param decorator fires 428 in HTTP land if the header is
     // missing. These unit tests cover the controller-internal logic of
     // folding the header value into the body-field `expectedVersion`.
-    describe('update() — If-Match header handling (TASK-302 Stream D Phase E.1)', () => {
+    describe('update — If-Match header handling', () => {
         function makeUpdatedTenant(id: string, name: string, version: number) {
             return {
                 id,
@@ -190,7 +190,7 @@ describe('TenantController', () => {
     // on their own tenant. The class-level @CanManage('Tenant') was
     // insufficient because that policy is `tenantId: ${user.tenantId}`
     // and these methods take an arbitrary `:id` path parameter.
-    describe('TASK-307 W5.5 — inline tenant guards on per-row endpoints (AC-19, audit D-5)', () => {
+    describe('inline tenant guards on per-row endpoints (audit)', () => {
         function buildWithCls(user: { id?: string; tenantId?: string | null; roles?: string[] } | null) {
             const svc = createMockTenantService();
             svc.fetchById.mockResolvedValue({ id: 't-A', name: 'A', toObject: () => ({ id: 't-A' }) });
@@ -353,7 +353,7 @@ describe('TenantController', () => {
     // (fetchById / fetchByCodeName / fetchTenantConfigs are already tenant-scoped
     // at the service layer, so they are intentionally not
     // re-guarded here; a controller 403 would weaken their no-existence-leak 404.)
-    describe('TASK-319 F5 — fetchAll tenant scoping', () => {
+    describe('fetchAll tenant scoping', () => {
         function build(user: { id?: string; tenantId?: string | null; roles?: string[] } | null) {
             const svc = createMockTenantService();
             const cls = createMockCls(user);

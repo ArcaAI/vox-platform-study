@@ -276,7 +276,7 @@ describe('useRoles', () => {
         });
     });
 
-    describe('deprecation warnings (TASK-279)', () => {
+    describe('deprecation warnings', () => {
         it('warns exactly once per hook instance for assignRole alias', async () => {
             const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
             mockPost.mockResolvedValue({ id: 'a-1', userId: 'u-1', roleId: 'r-1' });
@@ -428,7 +428,7 @@ describe('useRoles', () => {
         });
 
         // Break-glass credentials travel as the DELETE body.
-        it('should pass break-glass credentials as the DELETE data option (TASK-409)', async () => {
+        it('should pass break-glass credentials as the DELETE data option for deleteRole', async () => {
             mockDelete.mockResolvedValue(undefined);
             const { result } = renderHook(() => useRoles());
             const creds = { password: 'pw', confirmationName: 'Admin' };
@@ -503,7 +503,7 @@ describe('useRoles', () => {
         });
 
         // Break-glass credentials travel as the DELETE body.
-        it('should pass break-glass credentials as the DELETE data option (TASK-409)', async () => {
+        it('should pass break-glass credentials as the DELETE data option for removePolicy', async () => {
             mockDelete.mockResolvedValue(undefined);
             const { result } = renderHook(() => useRoles());
             const creds = { password: 'pw', confirmationName: 'team-policy' };
@@ -630,7 +630,7 @@ describe('useRoles', () => {
     // Typed USER_ROLES tuple re-export
     // -----------------------------------------------------------------------
 
-    describe('USER_ROLES re-export (TASK-265 W0-10)', () => {
+    describe('USER_ROLES re-export', () => {
         it('re-exports the role_-prefixed tuple from useRoles module', () => {
             expect(USER_ROLES).toEqual(['role_admin', 'role_doctor', 'role_patient']);
         });

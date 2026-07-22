@@ -135,7 +135,7 @@ describe('STT Capture Worklet Loader', () => {
   });
 });
 
-describe('STT Capture Worklet frame coalescing (TASK-351 P0-1 / C4)', () => {
+describe('STT Capture Worklet frame coalescing', () => {
   it('exports an 80ms default frame size', () => {
     expect(DEFAULT_STT_CAPTURE_FRAME_MS).toBe(80);
   });

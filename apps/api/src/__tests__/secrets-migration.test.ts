@@ -55,7 +55,7 @@ describe('Phase 3 — secrets migration grep', () => {
 // material. All secrets resolve from Vault (warmup keys + dynamic DB creds);
 // AppRole credentials arrive via file mounts. Pin the secret-free shape so a
 // future edit can't silently reintroduce a plaintext secret.
-describe('TASK-312 B.9 — apps/api/.env.production is Vault-backed and secret-free', () => {
+describe('apps/api/.env.production is Vault-backed and secret-free', () => {
   const env = readSource('apps/api/.env.production');
 
   it('has no inline SESSION_SECRET_KEY value (resolved from Vault)', () => {

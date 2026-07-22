@@ -50,7 +50,7 @@ const scheduler = { addCronJob: vi.fn(), getCronJob: vi.fn(), deleteCronJob: vi.
 
 const buildService = () => new AppSettingsService(repo as never, events as never, cls as never, scheduler as never);
 
-describe('AppSettingsService — TASK-402 soft-DELETED rows are invisible to invariant + cache', () => {
+describe('AppSettingsService — soft-DELETED rows are invisible to invariant + cache', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.APP_SETTINGS_BOOT_INVARIANT;

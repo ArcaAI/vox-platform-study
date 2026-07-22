@@ -15,8 +15,8 @@ import { getStudioHtml } from '../pstudio.html';
 //          renders "No tables found". The shell overrides defaultSchema = core.
 // -----------------------------------------------------------------------------
 
-describe('getStudioHtml (BUG-003 + TASK-336 OB-11/BR-02)', () => {
-  it('posts queries back to the path that served the shell (BUG-003)', () => {
+describe('getStudioHtml', () => {
+  it('posts queries back to the path that served the shell', () => {
     expect(getStudioHtml()).toMatch(/createStudioBFFClient\(\{\s*url:\s*window\.location\.pathname/);
   });
 

@@ -23,7 +23,7 @@ afterEach(() => {
 });
 
 describe('tenant hooks', () => {
-    it('useTenants keeps the previous rows visible while a params change refetches (TASK-428)', async () => {
+    it('useTenants keeps the previous rows visible while a params change refetches', async () => {
         // First page resolves; the second request is held pending so the
         // transition state is observable.
         vi.stubGlobal(

@@ -43,7 +43,7 @@ const VALID_EVENT = {
   total: 5,
 };
 
-describe('HarnessProgressRequest payload bounds (MAJ-6 / TG-3)', () => {
+describe('HarnessProgressRequest payload bounds', () => {
   it('accepts a well-formed catalog stage event', async () => {
     expect((await validateDto(VALID_EVENT)).isValid).toBe(true);
   });
@@ -106,7 +106,7 @@ async function validateEscalation(data: Record<string, unknown>): Promise<{ isVa
   };
 }
 
-describe('HarnessEscalationRequest (C1-05)', () => {
+describe('HarnessEscalationRequest', () => {
   it('accepts a well-formed escalation with all fields ({tenantId, reason, jobId})', async () => {
     expect((await validateEscalation({ tenantId: 'tenant-1', reason: 'gate_sla_breached', jobId: 'harness-doc-1' })).isValid).toBe(true);
   });
@@ -146,7 +146,7 @@ async function validateEntityItem(data: Record<string, unknown>): Promise<{ isVa
   };
 }
 
-describe('HarnessEntityItem ontology codes (TASK-476 C1)', () => {
+describe('HarnessEntityItem ontology codes', () => {
   it('accepts a coded entity with all five ontology codes', async () => {
     const result = await validateEntityItem({
       text: 'metformin',

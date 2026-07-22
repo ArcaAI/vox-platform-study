@@ -44,7 +44,7 @@ function makeRepo() {
   return { repo, prisma };
 }
 
-describe('TASK-311 — RbacRoleRepository', () => {
+describe('RbacRoleRepository', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -97,7 +97,7 @@ describe('TASK-311 — RbacRoleRepository', () => {
       expect(result).toBe(row);
     });
 
-    it('forwards a caller-supplied include override verbatim (TASK-444 member counts)', async () => {
+    it('forwards a caller-supplied include override verbatim (member counts)', async () => {
       const { repo, prisma } = makeRepo();
       const include = {
         ...ROLE_POLICIES_INCLUDE,
@@ -222,7 +222,7 @@ describe('TASK-311 — RbacRoleRepository', () => {
   });
 });
 
-describe('TASK-311 — RbacRoleFactory', () => {
+describe('RbacRoleFactory', () => {
   describe('buildCreateInput', () => {
     it('produces a role create input with isSystemRole=false and ENABLED status', () => {
       const input = RbacRoleFactory.buildCreateInput({
@@ -259,7 +259,7 @@ describe('TASK-311 — RbacRoleFactory', () => {
       expect(input.resourceStatus).toBe(ResourceStatusType.ENABLED);
     });
 
-    it('TASK-501 — honours an explicit isSystemRole:true (global-admin SYSTEM-role create)', () => {
+    it('honours an explicit isSystemRole:true (global-admin SYSTEM-role create)', () => {
       const input = RbacRoleFactory.buildCreateInput({
         name: 'CLINICIAN',
         isSystemRole: true,
@@ -269,7 +269,7 @@ describe('TASK-311 — RbacRoleFactory', () => {
       expect(input.isSystemRole).toBe(true);
     });
 
-    it('TASK-501 — defaults isSystemRole to false when omitted', () => {
+    it('defaults isSystemRole to false when omitted', () => {
       const input = RbacRoleFactory.buildCreateInput({ name: 'orphan', createdBy: 'user-1' });
 
       expect(input.isSystemRole).toBe(false);
@@ -322,8 +322,8 @@ describe('TASK-311 — RbacRoleFactory', () => {
   });
 });
 
-describe('TASK-311 — RbacRoleEntityMapper', () => {
-  it('ROLE_POLICIES_INCLUDE matches the pre-TASK-311 shape verbatim', () => {
+describe('RbacRoleEntityMapper', () => {
+  it('ROLE_POLICIES_INCLUDE matches the original shape verbatim', () => {
     expect(ROLE_POLICIES_INCLUDE).toEqual({
       RolePolicies: {
         where: { resourceStatus: ResourceStatusType.ENABLED },

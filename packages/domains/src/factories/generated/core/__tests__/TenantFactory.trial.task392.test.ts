@@ -12,7 +12,7 @@ import { TenantPlan } from '../../../../enums';
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
-describe('TenantFactory — trial clock (TASK-392 Q4)', () => {
+describe('TenantFactory — trial clock', () => {
   it('stamps trialEndsAt = createdAt + 7 days for a TRIAL tenant', () => {
     const createdAt = new Date('2026-01-01T00:00:00.000Z');
     const tenant = TenantFactory.CreateTenant({ name: 'Trial Co', key: 'TRIALCO', plan: TenantPlan.TRIAL, createdAt });

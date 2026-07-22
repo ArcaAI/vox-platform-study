@@ -218,6 +218,41 @@ test-apps:
       when: never
     - !reference [.rules-ui-playground, rules]
 
+# ── Admin Console (Next.js) unit tests ──────────────────────────────────────
+#
+# F-039 — the 1,100+ file Vitest unit suite (jsdom/happy-dom projects, fully
+# hermetic: no DB/Redis/API dependency — verified locally) previously ran in
+# NO CI job; `admin-console` appeared only in build.yml (Docker image build).
+# This job runs `vitest run` directly with `pnpm --filter`, NOT via
+# `pnpm turbo test` — turbo's `test` task `dependsOn: ["build"]`, which for
+# this Next.js app would force a full `next build` (needs
+# NEXT_PUBLIC_API_HOST and other build-time env not provisioned in the test
+# stage) purely to reach the test task; that build is already covered
+# separately by the `build-admin-console` Docker job. Scope is UNIT TESTS
+# ONLY: the ~37-file Playwright e2e suite needs a composed stack (API + BFF +
+# seeded DB) and is intentionally NOT run here — it remains local-discipline
+# until a nightly/scheduled job is built for it.
+
+test-admin-console:
+  stage: test
+  extends: .test-node-base
+  needs:
+    - job: install-node
+      optional: true
+    - job: lint-ts
+      optional: true
+      artifacts: false
+  variables:
+    <<: *test-env-vars
+  script:
+    - pnpm --filter @arcaai/admin-console test
+  rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_TS == "true"
+      when: never
+    - !reference [.rules-admin-console, rules]
+
 # ── UI component tests (Playwright Component Testing) ───────────────────────
 #
 # TASK-324 — @arcaai/ui ships 84 Playwright-CT specs (1729 cases) that mount

@@ -12,7 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import { PIPELINE_ENDPOINTS, TENANT_FRONTEND_CONFIG_ENDPOINTS } from '../constants';
 
-describe('TASK-328 A6 — PIPELINE_ENDPOINTS additions', () => {
+describe('PIPELINE_ENDPOINTS additions', () => {
   it('SET_DEFAULT targets /admin/audio/pipelines/:id/set-default', () => {
     expect(PIPELINE_ENDPOINTS.SET_DEFAULT('p-1')).toBe('/admin/audio/pipelines/p-1/set-default');
   });
@@ -40,7 +40,7 @@ describe('TASK-328 A6 — PIPELINE_ENDPOINTS additions', () => {
   });
 });
 
-describe('TASK-328 A6 — TENANT_FRONTEND_CONFIG_ENDPOINTS', () => {
+describe('TENANT_FRONTEND_CONFIG_ENDPOINTS', () => {
   it('GET and UPSERT share the /admin/tenant-frontend-config path', () => {
     expect(TENANT_FRONTEND_CONFIG_ENDPOINTS.GET).toBe('/admin/tenant-frontend-config');
     expect(TENANT_FRONTEND_CONFIG_ENDPOINTS.UPSERT).toBe('/admin/tenant-frontend-config');

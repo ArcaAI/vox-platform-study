@@ -4,7 +4,7 @@
   "description": "API server for daydream",
   "main": "dist/main.js",
   "scripts": {
-    "build": "rimraf dist && nest build && tsc-alias",
+    "build": "rimraf dist tsconfig.build.tsbuildinfo && nest build && tsc-alias",
     "format": "prettier --write \"src/**/*.ts\"",
     "start": "node --import ./dist/instrumentation.js dist/main.js",
     "dev": "rimraf dist *.tsbuildinfo && nest start --debug --watch",

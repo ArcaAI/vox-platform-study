@@ -8,14 +8,17 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
 import boto3
+import botocore.session
 import structlog
+from botocore.config import Config as BotocoreConfig
 from botocore.exceptions import BotoCoreError, ClientError, EndpointConnectionError
+from botocore.tokens import FrozenAuthToken
 
 from smr_v2.core.config import BedrockConfig
 from smr_v2.core.defaults import resolve_request_defaults
 from smr_v2.core.telemetry import get_tracer
 from smr_v2.models.provider import ModelInfo, ProviderInfo
-from smr_v2.models.requests import GenerateRequest
+from smr_v2.models.requests import GenerateRequest, ProviderOverride
 from smr_v2.models.stats import GenerationStats, stats_from_bedrock
 from smr_v2.models.stream import StreamChunk
 
@@ -27,6 +30,25 @@ logger = structlog.get_logger(__name__)
 
 def _get_tracer() -> Tracer:
     return get_tracer(__name__)
+
+
+class _StaticBearerTokenProvider:
+    """A botocore token provider that always resolves to one fixed token.
+
+    A tenant's BYO Bedrock credential is a single ``api_key`` string — the
+    AWS "Bedrock API key" bearer-token auth, not a SigV4 access/secret key
+    pair — so overriding it means handing botocore a token *provider*, not a
+    static credential. Scoped to a dedicated ``botocore.session.Session``
+    built fresh per request (never the process-wide default session or an
+    env var), so two tenants' overrides on concurrent requests can never
+    race each other.
+    """
+
+    def __init__(self, token: str) -> None:
+        self._token = token
+
+    def load_token(self, **_kwargs: Any) -> FrozenAuthToken:
+        return FrozenAuthToken(token=self._token)
 
 
 class BedrockProvider:
@@ -49,6 +71,37 @@ class BedrockProvider:
         # authoritative. ``_default_model`` is retained for the providers
         # listing (informational) only.
         return request.model
+
+    def _resolve_override(self, request: GenerateRequest) -> ProviderOverride | None:
+        """Tenant BYO credential injected by the gateway for THIS provider,
+        keyed by ``request.provider`` (see `ProviderOverride`). ``None`` for
+        every caller until a tenant configures an enabled bedrock connection —
+        current (env/config) behavior is unchanged in that case."""
+        if not request.provider_overrides:
+            return None
+        return request.provider_overrides.get(request.provider)
+
+    def _client_for(self, request: GenerateRequest) -> Any:
+        """Override-wins client resolution. A tenant credential builds a
+        request-scoped bearer-token client (the shared/env-configured
+        ``self._client`` is never mutated) so concurrent requests for
+        different tenants can never interfere; absent an override, the
+        shared client is reused unchanged."""
+        override = self._resolve_override(request)
+        if override is None:
+            return self._client
+        # A dedicated session per request: botocore has no public API to bind a
+        # bearer token to one client instance, so this registers a scoped
+        # token-provider component directly (see _StaticBearerTokenProvider).
+        session = botocore.session.Session()
+        session._components.register_component(
+            "token_provider", _StaticBearerTokenProvider(override.api_key.get_secret_value())
+        )
+        return boto3.Session(botocore_session=session).client(
+            "bedrock-runtime",
+            region_name=override.region or self._config.region,
+            config=BotocoreConfig(signature_version="bearer"),
+        )
 
     def _build_converse_params(self, request: GenerateRequest) -> dict[str, Any]:
         resolved = resolve_request_defaults(request)
@@ -99,8 +152,9 @@ class BedrockProvider:
             },
         ) as span:
             params = self._build_converse_params(request)
+            client = self._client_for(request)
             start = time.monotonic()
-            response = await asyncio.to_thread(self._client.converse, **params)
+            response = await asyncio.to_thread(client.converse, **params)
             total_ms = int((time.monotonic() - start) * 1000)
 
             stop_reason = response.get("stopReason", "")
@@ -148,6 +202,7 @@ class BedrockProvider:
         ) as span:
             params = self._build_converse_params(request)
             resolved_model = self._resolve_model(request)
+            client = self._client_for(request)
 
             loop = asyncio.get_running_loop()
             queue: asyncio.Queue[Any] = asyncio.Queue()
@@ -156,7 +211,7 @@ class BedrockProvider:
             def _iterate_stream() -> None:
                 """Run in thread — iterates boto3 sync stream, pushes to queue."""
                 try:
-                    response = self._client.converse_stream(**params)
+                    response = client.converse_stream(**params)
                     for event in response["stream"]:
                         loop.call_soon_threadsafe(queue.put_nowait, event)
                     loop.call_soon_threadsafe(queue.put_nowait, _SENTINEL)

@@ -123,7 +123,7 @@ function createMockCache(): { mock: MockCache; store: Map<string, string> } {
   return { mock, store };
 }
 
-describe('TASK-307 W1.1 — RefreshTokenService', () => {
+describe('RefreshTokenService', () => {
   let cache: ReturnType<typeof createMockCache>;
   let service: RefreshTokenService;
   const originalEnvTtl = process.env.REFRESH_TOKEN_TTL_SECONDS;
@@ -142,7 +142,7 @@ describe('TASK-307 W1.1 — RefreshTokenService', () => {
   });
 
   describe('issue', () => {
-    it('returns an opaque base64url token (no userId / timestamp leak) — D-10', async () => {
+    it('returns an opaque base64url token (no userId / timestamp leak)', async () => {
       const { rawToken } = await service.issue({
         userId: 'user-001',
         tenantId: 'tenant-A',
@@ -182,7 +182,7 @@ describe('TASK-307 W1.1 — RefreshTokenService', () => {
       expect(memberKeys.length).toBe(1);
     });
 
-    it('persists only the sha256 hash of the raw token (server-side verification — C-1)', async () => {
+    it('persists only the sha256 hash of the raw token (server-side verification)', async () => {
       const { rawToken } = await service.issue({
         userId: 'u1',
         tenantId: 't1',
@@ -241,7 +241,7 @@ describe('TASK-307 W1.1 — RefreshTokenService', () => {
   });
 
   describe('consume', () => {
-    it('round-trip: issue → consume returns the recorded user/tenant/jti/family (C-1)', async () => {
+    it('round-trip: issue → consume returns the recorded user/tenant/jti/family', async () => {
       const issued = await service.issue({
         userId: 'doctor-001',
         tenantId: 'tenant-A',
@@ -258,7 +258,7 @@ describe('TASK-307 W1.1 — RefreshTokenService', () => {
       });
     });
 
-    it('carries forward the original session tenantId on consume — AC-3 / C-12', async () => {
+    it('carries forward the original session tenantId on consume', async () => {
       // Multi-tenant user is logged into tenant B (not their User.tenantId).
       const issued = await service.issue({
         userId: 'doctor-multi',
@@ -273,7 +273,7 @@ describe('TASK-307 W1.1 — RefreshTokenService', () => {
       expect(consumed.tenantId).toBe('tenant-B');
     });
 
-    it('is single-use: second consume of the same token throws UnauthorizedException (C-1)', async () => {
+    it('is single-use: second consume of the same token throws UnauthorizedException', async () => {
       const { rawToken } = await service.issue({
         userId: 'u1',
         tenantId: 't1',
@@ -335,7 +335,7 @@ describe('TASK-307 W1.1 — RefreshTokenService', () => {
      * resolves; the other rejects with 401. Promise.all WOULD reject
      * fast on the loser, but `allSettled` lets us inspect both outcomes.
      */
-    it('atomic Promise.all([consume(t), consume(t)]) → exactly one resolves, the other 401s (AC-2)', async () => {
+    it('atomic Promise.all([consume(t), consume(t)]) → exactly one resolves, the other 401s', async () => {
       const { rawToken } = await service.issue({
         userId: 'race-user',
         tenantId: 'race-tenant',
@@ -353,7 +353,7 @@ describe('TASK-307 W1.1 — RefreshTokenService', () => {
       expect(err.status).toBe(401);
     });
 
-    it('the Lua eval is called once per consume with the expected key/argv layout (AC-2)', async () => {
+    it('the Lua eval is called once per consume with the expected key/argv layout', async () => {
       const { rawToken } = await service.issue({
         userId: 'u1',
         tenantId: 't1',
@@ -380,7 +380,7 @@ describe('TASK-307 W1.1 — RefreshTokenService', () => {
   });
 
   describe('revokeFamily', () => {
-    it('deletes every member of the named family (covers logout — AC-2)', async () => {
+    it('deletes every member of the named family (covers logout)', async () => {
       const t1 = await service.issue({ userId: 'u1', tenantId: 't1', jti: 'j1' });
       const t2 = await service.issue({
         userId: 'u1',

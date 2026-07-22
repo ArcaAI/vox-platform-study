@@ -474,7 +474,7 @@ describe('AiModelService', () => {
         // absent from `UpdateModelRequest`, so the global validation pipe
         // (`forbidNonWhitelisted`) REJECTED any admin PATCH carrying it — the
         // registry row could never be pointed at a staged weight directory.
-        it('update() carries localPath + checksum onto the entity and response (D-12)', async () => {
+        it('update() carries localPath + checksum onto the entity and response', async () => {
             const existingModel = createBehavioralModelEntity({ id: 'model-1', version: 3 });
             mockModelRepository.findById.mockResolvedValue(existingModel);
             mockModelRepository.updateWithVersion.mockImplementation(async (_id: any, entity: any) => entity);
@@ -493,7 +493,7 @@ describe('AiModelService', () => {
 
         // Clearing the override must be expressible — an empty string resets the
         // row to "no operator override" so scheme dispatch resumes.
-        it('update() allows clearing localPath back to empty (D-12)', async () => {
+        it('update() allows clearing localPath back to empty', async () => {
             const existingModel = createBehavioralModelEntity({ id: 'model-1', version: 3 });
             (existingModel as any).localPath = '/opt/hope/models/old';
             mockModelRepository.findById.mockResolvedValue(existingModel);
@@ -632,7 +632,7 @@ describe('AiModelService', () => {
     // empty picker). The shared-read variant queries without a tenant pin so
     // the extension widens to [caller, SYSTEM], then de-duplicates by slug
     // preferring the caller-tenant row.
-    describe('getByTaskTypeSharedRead (r2605 Finding E)', () => {
+    describe('getByTaskTypeSharedRead', () => {
         const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
         it('uses the shared-read query and de-duplicates by slug preferring the caller-tenant row', async () => {

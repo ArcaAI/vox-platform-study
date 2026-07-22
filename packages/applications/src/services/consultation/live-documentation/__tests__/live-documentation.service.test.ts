@@ -54,6 +54,9 @@ interface BuildDepsOpts {
   cacheService?: any;
   // HarnessPolicy resolver override (defaults to a passing stub).
   harnessPolicyService?: any;
+  // Vault-Transit encryption service — undefined by default (matches every
+  // other buildDeps fixture's soft-no-op posture in dev/test).
+  secretsService?: any;
 }
 
 function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
@@ -95,6 +98,8 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
     resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'live-medgemma' }),
   };
 
+  const secretsService = opts.secretsService;
+
   const service = new LiveDocumentationService(
     httpMock as any,
     configService as any,
@@ -103,9 +108,10 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
     audioBridge as any,
     contextItemRepository as any,
     harnessPolicyService as any,
+    secretsService as any,
   );
 
-  return { service, cacheService, redisSubscriber, audioBridge, contextItemRepository, httpMock, harnessPolicyService };
+  return { service, cacheService, redisSubscriber, audioBridge, contextItemRepository, httpMock, harnessPolicyService, secretsService };
 }
 
 describe('LiveDocumentationService', () => {
@@ -204,7 +210,7 @@ describe('LiveDocumentationService', () => {
   // — NOT the never-emitted value/type/start/end — and re-key them onto the
   // highlight DTO (entity_type → type). Genuinely-missing fields fall back.
   // ------------------------------------------------------------------
-  describe('NLP contract mapping (C5-01)', () => {
+  describe('NLP contract mapping', () => {
     it('maps the canonical NLP wire shape onto the highlight DTO, grounds it into the note, and drops the un-anchorable fallback', async () => {
       const httpMock = {
         axiosRef: {
@@ -277,7 +283,7 @@ describe('LiveDocumentationService', () => {
       expect(payload!.runningSummary).toContain('Start amlodipine 5mg, follow up in one week.');
     });
 
-    it('runs NER over the transcript delta and grounds entity offsets into the rendered note (TASK-477)', async () => {
+    it('runs NER over the transcript delta and grounds entity offsets into the rendered note', async () => {
       const httpMock = soapHttpMock();
       const { service } = buildDeps(httpMock);
       service.start({ consultationId: CID, tenantId: TENANT });
@@ -426,7 +432,7 @@ describe('LiveDocumentationService', () => {
   // ------------------------------------------------------------------
   // P0-A: overlapping generations, abort, throttle
   // ------------------------------------------------------------------
-  describe('overlapping flushes (P0-A)', () => {
+  describe('overlapping flushes', () => {
     it('drops a stale in-flight generation when a newer flush supersedes it (no out-of-order publish)', async () => {
       const deferred = makeDeferred();
       let smrCalls = 0;
@@ -501,7 +507,7 @@ describe('LiveDocumentationService', () => {
   // ------------------------------------------------------------------
   // P0-B: incremental prompt + bounded SMR params
   // ------------------------------------------------------------------
-  describe('bounded transcript cost (P0-B)', () => {
+  describe('bounded transcript cost', () => {
     it('sends an incremental prompt (prior note + new delta only) on subsequent flushes', async () => {
       const { service, httpMock } = buildDeps(buildHttpMock(), { config: { LIVE_DOC_MIN_INTERVAL_MS: '0' } });
       service.start({ consultationId: CID, tenantId: TENANT });
@@ -518,7 +524,7 @@ describe('LiveDocumentationService', () => {
       expect(secondPrompt).not.toContain('Patient reports cough'); // old transcript NOT re-sent verbatim
     });
 
-    it('sets bounded live SMR params (max_tokens, lower timeout) and resolves provider/model via policy (TASK-356 D-7)', async () => {
+    it('sets bounded live SMR params (max_tokens, lower timeout) and resolves provider/model via policy', async () => {
       const harnessPolicyService = {
         resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'openai', model: 'fast-model' }),
       };
@@ -556,7 +562,7 @@ describe('LiveDocumentationService', () => {
   // dropped from the prompt AND never re-sent. The fix keeps the HEAD and
   // carries the overflow forward (cursor advances only over what was sent).
   // ------------------------------------------------------------------
-  describe('long-transcript truncation carry-forward (C5-04)', () => {
+  describe('long-transcript truncation carry-forward', () => {
     const HEAD_MARKER = 'CHIEFCOMPLAINT allergy penicillin anaphylaxis';
 
     /** An httpMock that records every SMR `/generate` prompt. */
@@ -626,7 +632,7 @@ describe('LiveDocumentationService', () => {
   // ------------------------------------------------------------------
   // P0-C: deterministic json_schema SOAP parse in the flush path
   // ------------------------------------------------------------------
-  describe('deterministic SOAP parse (P0-C)', () => {
+  describe('deterministic SOAP parse', () => {
     it('parses a SOAP JSON SMR response into the four ordered sections (no regex dependency)', async () => {
       const httpMock = {
         axiosRef: {
@@ -655,7 +661,7 @@ describe('LiveDocumentationService', () => {
   // ------------------------------------------------------------------
   // P1-A: resilient subset — cross-instance stop + control teardown
   // ------------------------------------------------------------------
-  describe('cross-instance resilience (P1-A)', () => {
+  describe('cross-instance resilience', () => {
     it('publishes a terminal closed event, attempts a FENCED lock release, and signals teardown even with no local session', async () => {
       const { service, cacheService } = buildDeps();
       const result = await service.stop('other-cid');
@@ -702,7 +708,7 @@ describe('LiveDocumentationService', () => {
   // second instance can neither run a duplicate watcher (duplicate SMR spend)
   // nor write a second PRE_SUMMARY row.
   // ------------------------------------------------------------------
-  describe('single-owner lock: mutual exclusion + fencing + dedup (C5-06)', () => {
+  describe('single-owner lock: mutual exclusion + fencing + dedup', () => {
     /** An in-memory cache whose `eval` implements the atomic CAS lock scripts. Share one across instances. */
     function makeSharedCacheMock() {
       const store = new Map<string, string>();
@@ -808,7 +814,7 @@ describe('LiveDocumentationService', () => {
       expect(generateCalls()).toBe(1);
     });
 
-    it('dedups by subType so a newer NON-live PRE_SUMMARY cannot spawn a duplicate LIVE_SOAP_SNAPSHOT (I-1)', async () => {
+    it('dedups by subType so a newer NON-live PRE_SUMMARY cannot spawn a duplicate LIVE_SOAP_SNAPSHOT', async () => {
       const sharedRepo = makeSharedRepo();
       const config = { LIVE_DOC_MIN_INTERVAL_MS: '0' };
       // SEPARATE caches → both instances run (lock defeated / a restart re-opens the
@@ -859,7 +865,7 @@ describe('LiveDocumentationService', () => {
       await service.stop(CID);
     });
 
-    it('stands down the watcher when a renewal finds the owner lock was lost (M-2)', async () => {
+    it('stands down the watcher when a renewal finds the owner lock was lost', async () => {
       vi.useFakeTimers();
       const sharedCache = makeSharedCacheMock();
       const { service } = buildDeps(buildHttpMock(), { cacheService: sharedCache, config: { LIVE_DOC_MIN_INTERVAL_MS: '0' } });
@@ -885,7 +891,7 @@ describe('LiveDocumentationService', () => {
   // otherwise the final durable snapshot keeps only the head 12k and drops the
   // most-recent transcript (assessment / plan / closing).
   // ------------------------------------------------------------------
-  describe('stop() drains the full backlog (I-2)', () => {
+  describe('stop() drains the full backlog', () => {
     it('keeps the most-recent transcript in the final snapshot when the backlog exceeds MAX_DELTA_CHARS', async () => {
       const prompts: string[] = [];
       const httpMock = {
@@ -924,7 +930,7 @@ describe('LiveDocumentationService', () => {
   // ------------------------------------------------------------------
   // P1-C: throttled durable snapshot (single upserted ContextItem)
   // ------------------------------------------------------------------
-  describe('durable snapshot (P1-C)', () => {
+  describe('durable snapshot', () => {
     it('persists a single upserted PRE_SUMMARY snapshot (create once, then updates the same row), throttled', async () => {
       vi.useFakeTimers();
       const created: Array<{ type: string; metaData?: Record<string, unknown> }> = [];
@@ -968,12 +974,60 @@ describe('LiveDocumentationService', () => {
       await service.stop(CID, { persistSnapshot: true });
       expect(repo.create).toHaveBeenCalledTimes(1);
     });
+
+    // F-031 lane 10: the plaintext `content` column was dropped by the PHI
+    // field-encryption migration — persistDurableSnapshot must encrypt the
+    // running summary into `encryptedContent` before EVERY create/update, or
+    // the in-progress LIVE_SOAP_SNAPSHOT is silently unpersisted at rest.
+    it('encrypts the running summary into the ContextItem before every create/update', async () => {
+      vi.useFakeTimers();
+      const secretsService = { getSecretOptional: vi.fn() };
+      const repo = {
+        create: vi.fn().mockImplementation((entity: unknown) => Promise.resolve(entity)),
+        update: vi.fn().mockImplementation((_id: string, entity: unknown) => Promise.resolve(entity)),
+        findTranscripts: vi.fn().mockResolvedValue([]),
+        findLatestPreSummary: vi.fn().mockResolvedValue(null),
+        findPreSummaries: vi.fn().mockResolvedValue([]),
+        encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
+      };
+      const { service } = buildDeps(buildHttpMock(), {
+        config: { LIVE_DOC_MIN_INTERVAL_MS: '0', LIVE_DOC_DURABLE_SNAPSHOT_MS: '1000' },
+        contextItemRepository: repo,
+        secretsService,
+      });
+      service.start({ consultationId: CID, tenantId: TENANT });
+
+      // Cross the window → first durable write = create; must be preceded by encryption.
+      vi.advanceTimersByTime(1200);
+      service.ingestSegment(CID, { text: 'a', isFinal: true, segmentId: 's1' });
+      await service.flush(CID);
+      expect(repo.encryptContentIntoEntity).toHaveBeenCalledTimes(1);
+      const [createEntityArg, createSecretsArg] = repo.encryptContentIntoEntity.mock.calls[0];
+      expect(createEntityArg.content).toBeTruthy();
+      expect(createSecretsArg).toBe(secretsService);
+      const encOrder1 = repo.encryptContentIntoEntity.mock.invocationCallOrder[0];
+      const createOrder = repo.create.mock.invocationCallOrder[0];
+      expect(encOrder1).toBeLessThan(createOrder);
+
+      // Cross again → upsert the same row (update); must also be preceded by encryption.
+      vi.advanceTimersByTime(1200);
+      service.ingestSegment(CID, { text: 'b', isFinal: true, segmentId: 's2' });
+      await service.flush(CID);
+      expect(repo.encryptContentIntoEntity).toHaveBeenCalledTimes(2);
+      const encOrder2 = repo.encryptContentIntoEntity.mock.invocationCallOrder[1];
+      const updateOrder = repo.update.mock.invocationCallOrder[0];
+      expect(encOrder2).toBeLessThan(updateOrder);
+
+      // Final-on-stop also encrypts before its update.
+      await service.stop(CID, { persistSnapshot: true });
+      expect(repo.encryptContentIntoEntity).toHaveBeenCalledTimes(3);
+    });
   });
 
   // ------------------------------------------------------------------
   // P2: kill-switch + metrics
   // ------------------------------------------------------------------
-  describe('safety rails + observability (P2)', () => {
+  describe('safety rails + observability', () => {
     it('does not start a watcher session when LIVE_DOC_ENABLED is false (kill-switch)', () => {
       const { service } = buildDeps(buildHttpMock(), { config: { LIVE_DOC_ENABLED: 'false' } });
       service.start({ consultationId: CID, tenantId: TENANT });
@@ -1000,7 +1054,7 @@ describe('LiveDocumentationService', () => {
   // B1: per-session stats published to Redis for the admin
   // live console — `live-doc:stats:{cid}` snapshot + `live-doc:active:{tenant}` set.
   // ------------------------------------------------------------------
-  describe('admin live stats publish/clear (B1)', () => {
+  describe('admin live stats publish/clear', () => {
     const STATS_KEY = `live-doc:stats:${CID}`;
     const ACTIVE_SET = `live-doc:active:${TENANT}`;
 
@@ -1078,7 +1132,7 @@ describe('LiveDocumentationService', () => {
   // ------------------------------------------------------------------
   // B3: runtime kill-switch — env default + Redis override.
   // ------------------------------------------------------------------
-  describe('runtime kill-switch (B3)', () => {
+  describe('runtime kill-switch', () => {
     const CONFIG_KEY = 'live-doc:config:enabled';
 
     it('getEngineConfig reports the env default when no Redis override is set', async () => {
@@ -1123,7 +1177,7 @@ describe('LiveDocumentationService', () => {
   // contextNotes are re-keyed by contextItemId so a removed note can be
   // dropped precisely from the in-flight running summary.
   // ------------------------------------------------------------------
-  describe('context drop-out (GAP #3d)', () => {
+  describe('context drop-out', () => {
     /** Pull the prompt sent to SMR `/generate` on the most recent flush. */
     const lastSmrPrompt = (httpMock: ReturnType<typeof buildHttpMock>): string => {
       const calls = httpMock.axiosRef.post.mock.calls.filter((c: unknown[]) => String(c[0]).includes('/generate'));
@@ -1220,7 +1274,7 @@ describe('LiveDocumentationService', () => {
   // contextItemId so the attachment yields exactly ONE running-summary
   // note that is updated in place — no harmless-but-confusing duplicate.
   // ------------------------------------------------------------------
-  describe('context note upsert on OCR re-emit (TASK-344)', () => {
+  describe('context note upsert on OCR re-emit', () => {
     type TrackedNote = { contextItemId: string; text: string };
     /** Peek at the in-flight session's keyed context notes (internal state). */
     const trackedNotes = (service: LiveDocumentationService, consultationId: string): TrackedNote[] =>

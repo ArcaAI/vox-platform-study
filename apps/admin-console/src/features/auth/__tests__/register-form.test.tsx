@@ -17,7 +17,7 @@ function fillAndSubmit(email: string, password: string, tenantName: string, disp
     fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 }
 
-describe('RegisterForm (TASK-497)', () => {
+describe('RegisterForm', () => {
     it('renders email, password, tenant name and optional display name fields', () => {
         render(<RegisterForm />);
         expect(screen.getByLabelText(/^email/i)).toBeDefined();

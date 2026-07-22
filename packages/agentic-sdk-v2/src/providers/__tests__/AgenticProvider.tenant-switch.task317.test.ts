@@ -237,7 +237,7 @@ const currentTranscriptA = 'Tenant A raw transcript text — PHI';
 
 const dnaStyleA = { id: 'dna-A', name: 'Tenant A writing style', styleData: {} } as unknown as DNAStyle;
 
-describe('TASK-317 W2.1 — tenant-switch session reset (C-5): same-tab tenant switch clears PHI + model/tenant config before the new tenant config resolves (AC-7)', () => {
+describe('tenant-switch session reset: same-tab tenant switch clears PHI + model/tenant config before the new tenant config resolves', () => {
   it('switch A->B resets the FULL tenant PHI/session set (consultation / relatedConsultations / contextItems / sharedContext / entities / currentTranscript / transcriptSegments / summaries / dnaStyle / tenantConfig) synchronously, before the async re-hydrate resolves', async () => {
     handler = meHandler({ id: USER_A, tenantId: TENANT_A });
 

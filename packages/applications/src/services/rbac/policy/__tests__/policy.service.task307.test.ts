@@ -96,7 +96,7 @@ function buildService(mocks: ReturnType<typeof makeMocks>) {
 /** The delete path now requires break-glass confirmation. */
 const BREAK_GLASS = (name: string) => ({ password: 'pw', confirmationName: name });
 
-describe('TASK-307 W6.2 — PolicyService (closes C-10 / H-9 / AC-24)', () => {
+describe('PolicyService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

@@ -19,7 +19,7 @@ import {
     SMR_ENDPOINTS,
 } from '../constants';
 
-describe('TASK-323 Phase 0 Endpoint Constants', () => {
+describe('Endpoint Constants', () => {
     describe('ADMIN_CONSULTATION_ENDPOINTS (admin-consultation.controller.ts @Controller("admin/consultations"))', () => {
         it('LIST is /admin/consultations', () => {
             expect(ADMIN_CONSULTATION_ENDPOINTS.LIST).toBe('/admin/consultations');
@@ -69,7 +69,7 @@ describe('TASK-323 Phase 0 Endpoint Constants', () => {
         it('DELETE(id) is /admin/tenants/storage/buckets/:id', () => {
             expect(TENANT_BUCKET_ENDPOINTS.DELETE('b-1')).toBe('/admin/tenants/storage/buckets/b-1');
         });
-        it('DELETE_OBJECT(id) is /admin/tenants/storage/buckets/:id/objects (TASK-328 A7)', () => {
+        it('DELETE_OBJECT(id) is /admin/tenants/storage/buckets/:id/objects', () => {
             expect(TENANT_BUCKET_ENDPOINTS.DELETE_OBJECT('b-1')).toBe('/admin/tenants/storage/buckets/b-1/objects');
         });
         it('PROVISION(tenantId) is /admin/tenants/storage/buckets/provision/:tenantId', () => {

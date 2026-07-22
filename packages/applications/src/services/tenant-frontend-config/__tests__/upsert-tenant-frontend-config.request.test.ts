@@ -20,7 +20,7 @@ async function validateDto(data: Record<string, unknown>): Promise<boolean> {
   return errors.length === 0;
 }
 
-describe('UpsertTenantFrontendConfigRequest — TASK-356 audio fields', () => {
+describe('UpsertTenantFrontendConfigRequest — audio fields', () => {
   it('accepts an empty payload (all new fields optional)', async () => {
     expect(await validateDto({})).toBe(true);
   });

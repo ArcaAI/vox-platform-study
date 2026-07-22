@@ -22,7 +22,7 @@ import {
 // W0-7 / GAP-02 — voice-profile (D2)
 // ---------------------------------------------------------------------------
 
-describe('TASK-265 W0-7: VOICE_EMBEDDING_ENDPOINTS targets /voice-profile API', () => {
+describe('VOICE_EMBEDDING_ENDPOINTS targets /voice-profile API', () => {
   it('exposes static `enroll` path for multipart upload', () => {
     expect(VOICE_EMBEDDING_ENDPOINTS.enroll).toBe('/voice-profile/enroll');
   });
@@ -70,7 +70,7 @@ describe('TASK-265 W0-7: VOICE_EMBEDDING_ENDPOINTS targets /voice-profile API', 
 // W0-8 / GAP-03 — user-settings reduction (D3)
 // ---------------------------------------------------------------------------
 
-describe('TASK-265 W0-8: USER_SETTINGS_ENDPOINTS reduced to list + updateByKey', () => {
+describe('USER_SETTINGS_ENDPOINTS reduced to list + updateByKey', () => {
   it('exposes static `list` path', () => {
     expect(USER_SETTINGS_ENDPOINTS.list).toBe('/user/me/settings');
   });
@@ -98,7 +98,7 @@ describe('TASK-265 W0-8: USER_SETTINGS_ENDPOINTS reduced to list + updateByKey',
 // GAP-10 / W0-9 — pipeline validate path (D4)
 // ---------------------------------------------------------------------------
 
-describe('TASK-265 W0-9: PIPELINE_ENDPOINTS.VALIDATE has no -yaml suffix', () => {
+describe('PIPELINE_ENDPOINTS.VALIDATE has no -yaml suffix', () => {
   it('points at /admin/audio/pipelines/validate exactly', () => {
     expect(PIPELINE_ENDPOINTS.VALIDATE).toBe('/admin/audio/pipelines/validate');
   });
@@ -113,7 +113,7 @@ describe('TASK-265 W0-9: PIPELINE_ENDPOINTS.VALIDATE has no -yaml suffix', () =>
 // W0-10 / GAP-04 — typed USER_ROLES tuple
 // ---------------------------------------------------------------------------
 
-describe('TASK-265 W0-10: USER_ROLES typed const-as-readonly tuple', () => {
+describe('USER_ROLES typed const-as-readonly tuple', () => {
   it('is a tuple of exactly three values in stable order', () => {
     expect(USER_ROLES).toEqual(['role_admin', 'role_doctor', 'role_patient']);
     expect(USER_ROLES).toHaveLength(3);

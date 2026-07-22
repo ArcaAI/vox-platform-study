@@ -53,7 +53,7 @@ vi.mock('@ricky0123/vad-web', () => ({
   },
 }));
 
-describe('VADProcessor — Wave 2 (TASK-304 Wave 2)', () => {
+describe('VADProcessor — Wave 2', () => {
   let processor: VADProcessor;
 
   beforeEach(() => {

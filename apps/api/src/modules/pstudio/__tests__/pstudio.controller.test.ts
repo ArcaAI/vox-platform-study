@@ -9,7 +9,7 @@ import { PrismaStudioController } from '../pstudio.controller';
 // set) instead of `manage:all`. `manage:all` still passes via the CASL
 // wildcard, but the dedicated subject makes studio access delegable.
 // -----------------------------------------------------------------------------
-describe('PrismaStudioController authorization metadata (TASK-419 item 4)', () => {
+describe('PrismaStudioController authorization metadata', () => {
     it('is class-gated by manage:PrismaStudio', () => {
         const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, PrismaStudioController);
         expect(meta).toEqual([{ action: 'manage', subject: 'PrismaStudio' }]);
@@ -45,7 +45,7 @@ const createMockAuditLogService = () => ({
     handleUserAuthenticatedEvent: vi.fn(),
 });
 
-describe('PrismaStudioController (TASK-326 X1 — audit)', () => {
+describe('PrismaStudioController (audit)', () => {
     let studio: ReturnType<typeof createMockStudioService>;
     let audit: ReturnType<typeof createMockAuditLogService>;
     let controller: PrismaStudioController;
@@ -132,7 +132,7 @@ describe('PrismaStudioController (TASK-326 X1 — audit)', () => {
 // gateway directly with an empty bearer → UnifiedAuthGuard 401. The shell must
 // instead post back to the SAME path that served it (window.location.pathname).
 // -----------------------------------------------------------------------------
-describe('PrismaStudioController.serveStudio (TASK-336 OB-11 + BUG-003)', () => {
+describe('PrismaStudioController.serveStudio', () => {
     let controller: PrismaStudioController;
 
     beforeEach(() => {

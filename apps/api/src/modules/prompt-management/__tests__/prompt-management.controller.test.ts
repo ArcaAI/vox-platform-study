@@ -227,7 +227,7 @@ describe('PromptManagementController', () => {
             expect(result.name).toBe('SOAP Summary');
         });
 
-        it('folds the If-Match header into the body-field expectedVersion (header wins) (TASK-302 Stream D Phase E.3)', async () => {
+        it('folds the If-Match header into the body-field expectedVersion (header wins)', async () => {
             // Mirrors the tenant/department/global-setting controllers: when
             // the client sets `If-Match: "7"`, the parser hands us `7` and
             // it must take precedence over any body-supplied value.
@@ -444,7 +444,7 @@ describe('PromptManagementController', () => {
     });
 
     describe('POST /prompt-templates/:id/versions/:versionNumber/activate (activateVersion)', () => {
-        it('should get the version content and update the template, passing expectedVersion from the current template (TASK-302 Stream D Phase E.3)', async () => {
+        it('should get the version content and update the template, passing expectedVersion from the current template', async () => {
             // `activateVersion` is a server-driven rollback (no user-supplied
             // If-Match). The controller re-reads the current template to
             // capture its `_version` and forwards it as `expectedVersion` so
@@ -471,7 +471,7 @@ describe('PromptManagementController', () => {
             await expect(controller.activateVersion('tpl-1', 99)).rejects.toThrow();
         });
 
-        it('should throw NotFoundException when the template itself is gone between getVersion and CAS read (TASK-302 Stream D Phase E.3)', async () => {
+        it('should throw NotFoundException when the template itself is gone between getVersion and CAS read', async () => {
             // Defensive — if the template was hard-deleted between the
             // version lookup and our re-read for `_version`, surface as 404
             // rather than risk passing `undefined` into the CAS write.
@@ -572,7 +572,7 @@ describe('PromptManagementController', () => {
             ]);
         });
 
-        it('should require ["update","PromptTemplate"] on testTemplate (POST /prompt-templates/:id/test) — TASK-328 A4', () => {
+        it('should require ["update","PromptTemplate"] on testTemplate (POST /prompt-templates/:id/test)', () => {
             expect(getMethodMetadata('testTemplate')).toEqual([
                 { action: 'update', subject: 'PromptTemplate' },
             ]);
@@ -585,7 +585,7 @@ describe('PromptManagementController', () => {
         });
     });
 
-    describe('TASK-319 F4 — mounted under the audited /admin prefix', () => {
+    describe('mounted under the audited /admin prefix', () => {
         it('is served at admin/prompt-templates (not the unprefixed path)', () => {
             const path = Reflect.getMetadata(PATH_METADATA, PromptManagementController);
             expect(path).toBe('admin/prompt-templates');

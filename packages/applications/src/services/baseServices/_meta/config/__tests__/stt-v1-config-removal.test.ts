@@ -20,7 +20,7 @@ function countPatternInLines(content: string, pattern: RegExp, exclude?: RegExp)
     ).length;
 }
 
-describe('STT v1 Config Removal (TASK-210 Phase 1)', () => {
+describe('STT v1 Config Removal (Phase 1)', () => {
     describe('IAppConfig interface', () => {
         const interfacePath = path.resolve(
             __dirname,

@@ -13,7 +13,7 @@ import { SummaryMeta } from '../../../../models/generated/core/SummaryMetaModel'
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
-describe('SummaryMetaFactory — cacheHit/qualityScore (TASK-329)', () => {
+describe('SummaryMetaFactory — cacheHit/qualityScore', () => {
   it('threads cacheHit/qualityScore onto the created entity', () => {
     const entity = SummaryMetaFactory.CreateSummaryMeta({
       tenantId: TENANT_ID,
@@ -37,7 +37,7 @@ describe('SummaryMetaFactory — cacheHit/qualityScore (TASK-329)', () => {
   });
 });
 
-describe('SummaryMetaEntityMapper — cacheHit/qualityScore round-trip (TASK-329)', () => {
+describe('SummaryMetaEntityMapper — cacheHit/qualityScore round-trip', () => {
   const mapper = new SummaryMetaEntityMapper();
 
   it('toPersistence carries cacheHit/qualityScore to the data model', () => {

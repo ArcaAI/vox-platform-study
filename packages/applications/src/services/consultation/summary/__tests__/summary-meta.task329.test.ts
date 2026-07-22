@@ -12,7 +12,7 @@ import { SummaryDtoMapper } from '../summary.dto.mapper';
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
-describe('ContextDtoMapper.toSummaryMetaResponse — cacheHit/qualityScore (TASK-329)', () => {
+describe('ContextDtoMapper.toSummaryMetaResponse — cacheHit/qualityScore', () => {
   it('surfaces cacheHit and qualityScore from the entity', () => {
     const meta = SummaryMetaFactory.CreateSummaryMeta({
       tenantId: TENANT_ID,
@@ -28,7 +28,7 @@ describe('ContextDtoMapper.toSummaryMetaResponse — cacheHit/qualityScore (TASK
   });
 });
 
-describe('SummaryDtoMapper.toResponse — cacheHit/qualityScore (TASK-329)', () => {
+describe('SummaryDtoMapper.toResponse — cacheHit/qualityScore', () => {
   it('includes cacheHit and qualityScore in structuredData when SummaryMeta is present', () => {
     const meta = SummaryMetaFactory.CreateSummaryMeta({
       tenantId: TENANT_ID,
