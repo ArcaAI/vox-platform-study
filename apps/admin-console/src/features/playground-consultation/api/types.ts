@@ -142,6 +142,22 @@ export interface LiveSummaryEntity {
     text: string;
     type: string;
     confidence?: number;
+    /** ICD-10-CM code from the NLP OntologyLinker (curated vocabulary); absent otherwise. */
+    icd10?: string;
+}
+
+/**
+ * Per-flush generation stats (`LiveSummaryStatsDto` subset). Real values from
+ * the SMR engine — absent on a legacy idempotency-cache hit; never fabricated.
+ */
+export interface LiveSummaryStats {
+    total_ms?: number | null;
+    ttft_ms?: number | null;
+    tokens_per_second?: number | null;
+    prompt_tokens?: number | null;
+    predicted_tokens?: number | null;
+    provider?: string | null;
+    model?: string | null;
 }
 
 /** LiveSummaryEventDto — scope `consultation_live_summary:<id>`. */
@@ -150,6 +166,8 @@ export interface LiveSummarySnapshot {
     runningSummary: string;
     sections: LiveSummarySection[];
     entities: LiveSummaryEntity[];
+    /** Per-flush metadata envelope (`metadata.stats` = generation stats). */
+    metadata?: { stats?: LiveSummaryStats | null } | null;
     updatedAt: string;
     /** Terminal event (recording stopped). */
     closed?: boolean;

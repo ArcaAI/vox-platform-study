@@ -1576,17 +1576,21 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       { text },
       { timeout: 30000, signal },
     );
-    // Canonical NLP wire shape (apps/nlp schemas/common.py Entity): text / entity_type / position.{start,end}.
+    // Canonical NLP wire shape (apps/nlp schemas/common.py Entity): text / entity_type /
+    // position.{start,end} / icd_code (deterministic OntologyLinker; present only for the
+    // curated vocabulary, absent otherwise — carried through so the UI can chip ICD-10 codes).
     const raw = (response.data?.entities ?? []) as Array<{
       entity_type?: string;
       text?: string;
       confidence?: number;
+      icd_code?: string | null;
       position?: { start?: number; end?: number };
     }>;
     return raw.map((e) => ({
       text: e.text ?? '',
       type: e.entity_type ?? 'UNKNOWN',
       confidence: e.confidence,
+      icd10: e.icd_code ?? undefined,
       start: e.position?.start,
       end: e.position?.end,
     }));

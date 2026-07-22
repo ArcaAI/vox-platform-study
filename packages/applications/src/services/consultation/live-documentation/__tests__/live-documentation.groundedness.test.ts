@@ -48,17 +48,20 @@ interface HttpMockOptions {
   ground?: (body: unknown) => Promise<{ data: unknown }>;
   /** Summary the SMR `/generate` mock returns. */
   summary?: string;
+  /** Entities the NLP `/classify/tokens` mock returns (default: a single MEDICATION). */
+  classifyEntities?: unknown[];
 }
 
 function buildHttpMock(opts: HttpMockOptions = {}) {
   const ground = opts.ground ?? (() => Promise.resolve({ data: GROUND_WIRE_MIXED }));
   const summary = opts.summary ?? TWO_SEGMENT_SUMMARY;
+  const classifyEntities = opts.classifyEntities ?? [{ entity_type: 'MEDICATION', text: 'amlodipine', confidence: 0.92, position: { start: 6, end: 16 } }];
   return {
     axiosRef: {
       post: vi.fn().mockImplementation((url: string, body: unknown) => {
         if (url.includes('/guardrail/ground')) return ground(body);
         if (url.includes('/classify/tokens')) {
-          return Promise.resolve({ data: { entities: [{ entity_type: 'MEDICATION', text: 'amlodipine', confidence: 0.92, position: { start: 6, end: 16 } }] } });
+          return Promise.resolve({ data: { entities: classifyEntities } });
         }
         if (url.includes('/generate')) return Promise.resolve({ data: { summary } });
         return Promise.resolve({ data: {} });
@@ -212,6 +215,21 @@ describe('LiveDocumentationService — output groundedness gate', () => {
     expect(payload!.runningSummary).toBe(TWO_SEGMENT_SUMMARY);
     expect(payload!.sections).toEqual([{ title: 'Running Summary', content: TWO_SEGMENT_SUMMARY }]);
     expect(payload!.entities).toEqual([{ text: 'amlodipine', type: 'MEDICATION', confidence: 0.92, start: 6, end: 16 }]);
+  });
+
+  it('carries the NLP ontology ICD-10 code through to the published entity (TASK-543)', async () => {
+    const httpMock = buildHttpMock({
+      summary: 'Assessment: essential hypertension, stable on therapy.',
+      classifyEntities: [{ entity_type: 'DISEASE_DISORDER', text: 'hypertension', confidence: 0.9, icd_code: 'I10', position: { start: 0, end: 12 } }],
+    });
+    const { service } = buildDeps(httpMock, { config: ENABLED_CONFIG });
+    service.start({ consultationId: CID, tenantId: TENANT });
+    service.ingestSegment(CID, { text: 'Patient with hypertension', isFinal: true, segmentId: 's1' });
+
+    const payload = await service.flush(CID);
+
+    expect(payload!.entities).toHaveLength(1);
+    expect(payload!.entities[0]).toMatchObject({ text: 'hypertension', type: 'DISEASE_DISORDER', icd10: 'I10' });
   });
 
   // ------------------------------------------------------------------

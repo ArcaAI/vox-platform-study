@@ -75,6 +75,11 @@ export function useArcaAudio() {
   // the dual-capture recorder (+ its delivery callback) for F2.
   const mixerRef = useRef<AudioMixer | null>(null);
   const secondaryStreamRef = useRef<MediaStream | null>(null);
+  // Self-contained input-level meter (TASK-543): the transcription pipeline
+  // never surfaced an amplitude to the store, so meters/waveforms sat at 0.
+  // An AnalyserNode on the capture graph (analysis-only — never routed to the
+  // destination, so it adds no playback) samples RMS into `store.setAudioLevel`.
+  const levelMeterRef = useRef<{ analyser: AnalyserNode; source: MediaStreamAudioSourceNode; timer: ReturnType<typeof setInterval> } | null>(null);
   const dualRecorderRef = useRef<DualStreamRecorder | null>(null);
   const onDualCaptureRef = useRef<((result: DualCaptureResult) => void) | undefined>(undefined);
 
@@ -128,6 +133,38 @@ export function useArcaAudio() {
 
         store.setActiveStream(stream);
         store.setActiveAudioContext(audioContext);
+
+        // Live input-level meter — best-effort + guarded so a runtime without
+        // Web Audio analysis (or a test double) simply leaves the level at 0.
+        try {
+          if (typeof audioContext.createMediaStreamSource === 'function' && typeof audioContext.createAnalyser === 'function') {
+            const analyser = audioContext.createAnalyser();
+            analyser.fftSize = 512;
+            analyser.smoothingTimeConstant = 0.8;
+            const source = audioContext.createMediaStreamSource(stream);
+            source.connect(analyser); // analysis only — deliberately NOT connected to destination
+            if (typeof analyser.getFloatTimeDomainData === 'function') {
+              const buffer = new Float32Array(analyser.fftSize);
+              const timer = setInterval(() => {
+                try {
+                  analyser.getFloatTimeDomainData(buffer);
+                  let sumSquares = 0;
+                  for (let i = 0; i < buffer.length; i += 1) sumSquares += buffer[i] * buffer[i];
+                  const rms = Math.sqrt(sumSquares / buffer.length);
+                  // Map speech-range RMS (~0..0.4) to a 0..100 meter with a gentle gain + ceiling.
+                  store.setAudioLevel(Math.min(100, Math.round(rms * 250)));
+                } catch {
+                  // A transient analyser read error must never break capture.
+                }
+              }, 100);
+              levelMeterRef.current = { analyser, source, timer };
+            } else {
+              source.disconnect();
+            }
+          }
+        } catch (levelError) {
+          logger?.debug('Live level meter unavailable', { operation: 'startAudio', component: 'useArcaAudio', error: levelError as Error });
+        }
 
         // When a second mic is selected, mix both inputs
         // into one processed graph via @arcaai/room's AudioMixer, then feed the
@@ -385,6 +422,18 @@ export function useArcaAudio() {
 
     await pluginManager.destroy();
     pluginManager.clearRuntimeOptions?.();
+
+    // Tear down the input-level meter (before the stream/context are stopped).
+    if (levelMeterRef.current) {
+      clearInterval(levelMeterRef.current.timer);
+      try {
+        levelMeterRef.current.source.disconnect();
+        levelMeterRef.current.analyser.disconnect();
+      } catch {
+        // disconnect after context close can throw on some platforms — ignore.
+      }
+      levelMeterRef.current = null;
+    }
 
     // Tear down the 2-mic mixer (stops both source streams).
     if (mixerRef.current) {

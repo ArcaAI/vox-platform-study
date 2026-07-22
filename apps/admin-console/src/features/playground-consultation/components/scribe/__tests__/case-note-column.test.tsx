@@ -1,0 +1,146 @@
+/**
+ * TASK-543 — case-note column: the personalized draft, the folded-in
+ * harness assurance envelope, and the safety-gated sign-off. Pure component.
+ */
+
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { AssuranceStrip, CaseNoteColumn } from '../case-note-column';
+import type { HarnessAssuranceSnapshot, HarnessProgressSnapshot, SummaryResult } from '../../../api';
+
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+const DRAFT: SummaryResult = {
+    id: 'ctx-9',
+    consultationId: 'c-1',
+    type: 'summary',
+    content: 'S: Follow-up for hypertension. Improving.',
+    structuredData: { llmProvider: 'lmstudio', modelName: 'hope-scribe-v2', processingTimeMs: 812 },
+};
+
+function progress(stagesDone: number, closed = false): HarnessProgressSnapshot {
+    const labels = ['Extracting', 'Assembling', 'Drafting', 'Safety', 'Finalizing'];
+    return {
+        stages: labels.map((label, index) => ({
+            stage: label.toLowerCase(),
+            label,
+            ordinal: index,
+            status: index < stagesDone ? 'completed' : index === stagesDone && !closed ? 'active' : 'pending',
+            attempt: 1,
+            at: 'now',
+        })),
+        updatedAt: 'now',
+        closed,
+    };
+}
+
+function baseProps(overrides: Partial<React.ComponentProps<typeof CaseNoteColumn>> = {}): React.ComponentProps<typeof CaseNoteColumn> {
+    return {
+        hasConsultation: true,
+        isRecording: false,
+        live: null,
+        liveStatus: 'idle',
+        draft: DRAFT,
+        draftLoading: false,
+        progress: null,
+        assurance: null,
+        onGenerate: vi.fn(),
+        generatePending: false,
+        onApprove: vi.fn(),
+        approvePending: false,
+        approved: false,
+        ...overrides,
+    };
+}
+
+afterEach(cleanup);
+
+describe('AssuranceStrip', () => {
+    it('renders nothing when the harness never ran (plain path)', () => {
+        const { container } = render(<AssuranceStrip progress={null} assurance={null} />);
+        expect(container.firstChild).toBeNull();
+    });
+
+    it('shows the active drafting stage while in flight', () => {
+        render(<AssuranceStrip progress={progress(2)} assurance={null} />);
+        expect(screen.getByText(/drafting…/i)).toBeTruthy();
+        expect(screen.getByText(/2\/5 stages/i)).toBeTruthy();
+    });
+
+    it('shows the gate outcome once assurance lands', () => {
+        render(
+            <AssuranceStrip
+                progress={progress(5, true)}
+                assurance={{ claims: [{ claimId: 'k1', sensor: 'groundedness', verdict: 'pass' }], gateDecision: 'pass', safetyFlag: false, updatedAt: 'now', closed: true }}
+            />,
+        );
+        expect(screen.getByText(/gate: pass/i)).toBeTruthy();
+    });
+
+    it('surfaces a safety flag', () => {
+        const assurance: HarnessAssuranceSnapshot = { claims: [], safetyFlag: true, updatedAt: 'now', closed: true };
+        render(<AssuranceStrip progress={null} assurance={assurance} />);
+        expect(screen.getByText(/safety flag/i)).toBeTruthy();
+    });
+});
+
+describe('CaseNoteColumn', () => {
+    it('renders the personalized draft and provenance', () => {
+        render(<CaseNoteColumn {...baseProps()} />);
+        expect(screen.getByText(/follow-up for hypertension/i)).toBeTruthy();
+        expect(screen.getByText(/hope-scribe-v2/)).toBeTruthy();
+    });
+
+    it('signs the note via onApprove', () => {
+        const onApprove = vi.fn();
+        render(<CaseNoteColumn {...baseProps({ onApprove })} />);
+        fireEvent.click(screen.getByRole('button', { name: /sign & save/i }));
+        expect(onApprove).toHaveBeenCalledWith({ overrideSafetyFlag: false });
+    });
+
+    it('blocks sign-off behind the safety override, then allows it', () => {
+        const onApprove = vi.fn();
+        const assurance: HarnessAssuranceSnapshot = { claims: [], safetyFlag: true, updatedAt: 'now', closed: true };
+        render(<CaseNoteColumn {...baseProps({ onApprove, assurance })} />);
+
+        const sign = screen.getByRole('button', { name: /sign & save/i }) as HTMLButtonElement;
+        expect(sign.disabled).toBe(true);
+
+        fireEvent.click(screen.getByLabelText(/override safety flag/i));
+        expect(sign.disabled).toBe(false);
+        fireEvent.click(sign);
+        expect(onApprove).toHaveBeenCalledWith({ overrideSafetyFlag: true });
+    });
+
+    it('hides the manual generate action when the harness owns drafting', () => {
+        render(<CaseNoteColumn {...baseProps({ onGenerate: null })} />);
+        expect(screen.queryByRole('button', { name: /generate note/i })).toBeNull();
+    });
+
+    it('shows the live running SOAP sections while recording with no persisted draft', () => {
+        render(
+            <CaseNoteColumn
+                {...baseProps({
+                    draft: null,
+                    isRecording: true,
+                    live: {
+                        consultationId: 'c-1',
+                        runningSummary: '',
+                        sections: [{ title: 'Subjective', content: 'Reports headache.' }],
+                        entities: [
+                            { text: 'headache', type: 'SIGN_SYMPTOM' },
+                            { text: 'hypertension', type: 'DISEASE_DISORDER', icd10: 'I10' },
+                        ],
+                        updatedAt: 'now',
+                    },
+                })}
+            />,
+        );
+        expect(screen.getByText('Subjective')).toBeTruthy();
+        expect(screen.getByText(/reports headache/i)).toBeTruthy();
+        expect(screen.getByText('headache')).toBeTruthy();
+        // ICD-10 code chip renders when the entity carries one (Phase C).
+        expect(screen.getByText('I10')).toBeTruthy();
+    });
+});

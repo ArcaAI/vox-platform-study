@@ -65,7 +65,12 @@ export const CONSULTATION_ENDPOINTS = {
   CLOSE: (id: string) => `/consultations/${encodeURIComponent(id)}/close`,
   /** Reopen consultation */
   REOPEN: (id: string) => `/consultations/${encodeURIComponent(id)}/reopen`,
+  /** Live running-SOAP SSE stream (full-state snapshots) while recording. */
+  LIVE_SUMMARY_STREAM: (id: string) => `/consultations/${encodeURIComponent(id)}/live-summary/stream`,
 } as const;
+
+/** SSE ticket scope for the live running-SOAP stream (must match the gateway's per-resource scope). */
+export const liveSummaryScopeFor = (consultationId: string): string => `consultation_live_summary:${consultationId}`;
 
 /**
  * Audio recording endpoints (dual-capture X8).
