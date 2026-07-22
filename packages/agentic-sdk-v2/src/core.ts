@@ -40,6 +40,7 @@ export {
   useArca,
   // Surface the focused domain hooks (siblings of
   // useArcaSession/useArcaSummary) so consumers can use them without the useArca() aggregate.
+  useArcaLiveSummary,
   useArcaAudio,
   useArcaConfig,
   useArcaContext,
@@ -255,6 +256,8 @@ export type {
 } from './types';
 
 export { CONSULTATION_STATUS_ORDER, isNewVisit, isRevisit, normalizeConsultationStatus } from './types';
+
+export type { LiveSummarySnapshot, LiveSummarySection, LiveSummaryEntity, LiveSummaryStats } from './types';
 
 // =============================================================================
 // Types - Context

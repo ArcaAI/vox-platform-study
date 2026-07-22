@@ -1073,6 +1073,28 @@ export class AgenticClient {
     return this.wsUrl;
   }
 
+  /**
+   * Base URL for Server-Sent Events (SSE) streams.
+   *
+   * SSE, like WebSocket upgrades, should hit the gateway DIRECTLY rather than
+   * proxy a long-lived stream through a REST BFF (serverless/edge proxies can
+   * buffer or time out streaming responses). So when an explicit gateway base
+   * (`wsUrl`) is configured — the BFF-split deployment — streams open there,
+   * normalized to http(s) and carrying the gateway's `/api/v1` prefix (which
+   * the REST `baseUrl` already includes). With no `wsUrl` (REST base already
+   * points at the gateway) this returns `baseUrl` unchanged, so single-origin
+   * consumers are unaffected.
+   *
+   * The stream TICKET is still minted through the REST client (`baseUrl`), so
+   * auth/tenant injection at a BFF continues to apply; only the EventSource
+   * open target moves to the gateway.
+   */
+  getStreamBaseUrl(): string {
+    if (!this.wsUrl) return this.baseUrl;
+    const httpOrigin = this.wsUrl.replace(/^ws(s?):\/\//i, 'http$1://').replace(/\/$/, '');
+    return `${httpOrigin}/api/v1`;
+  }
+
   getAccessToken(): string | undefined {
     return this.accessToken;
   }

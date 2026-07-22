@@ -1,0 +1,149 @@
+'use client';
+
+/**
+ * Column 2 of the Consultation Scribe workspace (TASK-543): the live
+ * session. A recording bar (REC pill + elapsed timer + level-driven waveform +
+ * start/stop) over the canonical `LiveTranscript` composite fed straight from
+ * the SDK (`audio.transcriptSegments` + `audio.currentTranscript`).
+ *
+ * The waveform renders a rolling buffer of the SDK's `audio.level` — one
+ * amplitude source of truth (no second `getUserMedia`). `audio.level` is now
+ * live: the SDK samples an AnalyserNode on the capture graph (TASK-543), so the
+ * bars track the mic input while recording.
+ */
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { IconMicrophone, IconPlayerPlay, IconPlayerStop } from '@tabler/icons-react';
+import { LiveTranscript, type LiveTranscriptSegment } from '@arcaai/ui';
+import { Waveform } from '@arcaai/ui/components/elevenlabs/waveform';
+import { Button } from '@arcaai/ui/components/shadcn/button';
+import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
+import { cn } from '@arcaai/ui';
+import { EmptyState } from '@/shared/state/empty-state';
+
+const WAVE_BARS = 80;
+const WAVE_FLOOR = 0.08;
+/** Shared flat idle waveform — rendered when capture is off (never mutated in place). */
+const IDLE_WAVE: number[] = Array.from({ length: WAVE_BARS }, () => WAVE_FLOOR);
+
+function formatElapsed(totalSeconds: number): string {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+/** SDK store segment → LiveTranscript segment (id from index — the store list is append-only). */
+export interface SdkTranscriptSegment {
+    text: string;
+    startTime?: number;
+    endTime?: number;
+    isFinal?: boolean;
+    speakerLabel?: string;
+    confidence?: number;
+    language?: string;
+    words?: Array<{ word: string; start: number; end: number; confidence?: number | null }>;
+}
+
+export function toLiveTranscriptSegments(segments: readonly SdkTranscriptSegment[]): LiveTranscriptSegment[] {
+    return segments.map((segment, index) => ({
+        id: `seg-${index}`,
+        text: segment.text,
+        startTime: segment.startTime,
+        endTime: segment.endTime,
+        isFinal: segment.isFinal ?? true,
+        speakerLabel: segment.speakerLabel,
+        confidence: segment.confidence,
+        language: segment.language,
+        wordTimestamps: segment.words,
+    }));
+}
+
+export interface LiveSessionColumnProps {
+    hasConsultation: boolean;
+    isRecording: boolean;
+    /** Mic capture actually running (SDK `audio.isCapturing`). */
+    isCapturing: boolean;
+    captureBusy: boolean;
+    canRecord: boolean;
+    /** SDK `audio.level` (0–100). */
+    level: number;
+    segments: readonly SdkTranscriptSegment[];
+    /** SDK `audio.currentTranscript` — the in-flight partial. */
+    interim: string;
+    onStart: () => void;
+    onStop: () => void;
+}
+
+export function LiveSessionColumn({ hasConsultation, isRecording, isCapturing, captureBusy, canRecord, level, segments, interim, onStart, onStop }: LiveSessionColumnProps) {
+    // Rolling amplitude buffer + elapsed seconds. State is written ONLY inside
+    // the interval callbacks (never synchronously in the effect body, and no
+    // ref/clock reads during render); idle values are derived purely.
+    const [wave, setWave] = useState<number[]>(IDLE_WAVE);
+    const [elapsedSeconds, setElapsedSeconds] = useState(0);
+    const levelRef = useRef(level);
+    useEffect(() => {
+        levelRef.current = level;
+    }, [level]);
+
+    useEffect(() => {
+        if (!isCapturing) return;
+        const startedAt = Date.now();
+        const waveTimer = setInterval(() => {
+            setWave((previous) => {
+                const next = previous.slice(1);
+                next.push(Math.max(WAVE_FLOOR, Math.min(1, levelRef.current / 100)));
+                return next;
+            });
+        }, 80);
+        const elapsedTimer = setInterval(() => setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000)), 250);
+        return () => {
+            clearInterval(waveTimer);
+            clearInterval(elapsedTimer);
+        };
+    }, [isCapturing]);
+
+    const displayElapsed = isCapturing ? elapsedSeconds : 0;
+    const displayWave = isCapturing ? wave : IDLE_WAVE;
+    const transcriptSegments = useMemo(() => toLiveTranscriptSegments(segments), [segments]);
+
+    return (
+        <section aria-label="Live session" className="bg-background flex h-full min-h-0 flex-col">
+            <div className="bg-card m-3 mb-1 flex shrink-0 items-center gap-3.5 rounded-xl border p-3 shadow-sm">
+                <div
+                    className={cn(
+                        'flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5',
+                        isRecording ? 'border-destructive/35 bg-destructive/10' : 'border-border bg-muted/50',
+                    )}
+                >
+                    <span aria-hidden className={cn('size-2 rounded-full', isRecording ? 'bg-destructive animate-pulse' : 'bg-muted-foreground')} />
+                    <span className={cn('text-sm font-bold', isRecording ? 'text-destructive' : 'text-muted-foreground')}>{isRecording ? 'Recording' : 'Idle'}</span>
+                    <span className="font-mono text-sm font-semibold" aria-label="Elapsed time">
+                        {formatElapsed(displayElapsed)}
+                    </span>
+                </div>
+                <div aria-hidden className="text-primary min-w-0 flex-1">
+                    <Waveform data={displayWave} active={isCapturing} height={40} />
+                </div>
+                {isRecording ? (
+                    <Button variant="outline" onClick={onStop} disabled={captureBusy} className="border-destructive text-destructive shrink-0">
+                        {captureBusy ? <Spinner aria-hidden /> : <IconPlayerStop aria-hidden />}
+                        Stop
+                    </Button>
+                ) : (
+                    <Button onClick={onStart} disabled={!canRecord || captureBusy} className="shrink-0">
+                        {captureBusy ? <Spinner aria-hidden /> : <IconPlayerPlay aria-hidden />}
+                        Start
+                    </Button>
+                )}
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+                {!hasConsultation ? (
+                    <EmptyState icon={IconMicrophone} title="No consultation selected" description="Pick a consultation on the left — or open a new one — to start a live session." />
+                ) : (
+                    <LiveTranscript segments={transcriptSegments} interim={interim || undefined} isListening={isCapturing} showSpeakers showTimestamps autoScroll height="100%" aria-label="Live consultation transcript" />
+                )}
+            </div>
+        </section>
+    );
+}

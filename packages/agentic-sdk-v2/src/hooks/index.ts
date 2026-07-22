@@ -12,6 +12,7 @@ export { useArca, type UseArcaReturn, type UseArcaSession, type UseArcaAudio, ty
 export { useArcaAudio } from './useArcaAudio';
 export { useArcaContext } from './useArcaContext';
 export { useArcaSummary } from './useArcaSummary';
+export { useArcaLiveSummary, type UseArcaLiveSummaryReturn, type LiveSummaryStreamStatus } from './useArcaLiveSummary';
 export { useArcaPipelines } from './useArcaPipelines';
 export type { UseArcaPipelineControl } from './useArcaPipelines';
 

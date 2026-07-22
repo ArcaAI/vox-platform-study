@@ -23,6 +23,12 @@ export class LiveSummaryEntityDto {
   @ApiPropertyOptional({ description: 'Model confidence (0.0 - 1.0)' })
   confidence?: number;
 
+  @ApiPropertyOptional({
+    description:
+      'ICD-10-CM code linked to this entity by the NLP OntologyLinker (curated deterministic vocabulary), when one matched. Absent for entities outside the linker vocabulary — never fabricated.',
+  })
+  icd10?: string;
+
   @ApiPropertyOptional({ description: 'Character offset start within `runningSummary`' })
   start?: number;
 

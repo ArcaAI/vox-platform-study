@@ -1,119 +1,55 @@
 'use client';
 
 /**
- * Frame 50 — Consultation Demo (matrix row 34). An `@arcaai/vox`
- * SDK showcase: open a consultation, capture mic audio through the
- * noise-filter/VAD/streaming-STT pipeline, watch the live transcript and the
- * SSE live summary, then generate the clinical note (sync or async job) and
- * hand off to the Documentation Review phase (frame 50.1).
+ * Frame 50 — Consultation Scribe workspace (matrix row 34; TASK-543
+ * redesign of the former two-tab demo). A single live 3-column clinical-scribe
+ * view built on `@arcaai/vox`: a real consultation list (col 1), the live
+ * session — level-driven waveform + `LiveTranscript` (col 2), and the
+ * personalized case note with the harness assurance envelope folded in and
+ * sign-off (col 3). Columns are user-resizable and persist per user through the
+ * SDK settings plane ({@link useColumnLayout}); the footer surfaces the ASR +
+ * note model selectors and real per-session metrics.
  *
- * Transport split: SDK/REST calls go through the BFF proxy
- * (`/api/hope`, auth injected server-side — no token in the browser); the
- * STT WebSocket and all SSE streams connect DIRECTLY to the gateway
+ * Transport split (unchanged): SDK/REST calls go through the BFF proxy
+ * (`/api/hope`, auth injected server-side — no token in the browser); the STT
+ * WebSocket and every SSE stream connect DIRECTLY to the gateway
  * (`publicEnv.apiHost`) — WS via the SDK `wsUrl` config, SSE via single-use
  * tickets minted through `/api/auth/stream-ticket`.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
-import {
-    IconBolt,
-    IconClipboardCheck,
-    IconExclamationCircle,
-    IconFileText,
-    IconMicrophone,
-    IconPlayerPlay,
-    IconPlayerStop,
-    IconPlus,
-    IconX,
-} from '@tabler/icons-react';
-import { AgenticProvider, useArca, useArcaSession, useStoreApi } from '@arcaai/vox';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { AgenticProvider, useArca, useStoreApi } from '@arcaai/vox';
 import { toast } from 'sonner';
-import { AudioMeter } from '@arcaai/ui/components/custom/audio-meter';
-import { Badge } from '@arcaai/ui/components/shadcn/badge';
-import { Button } from '@arcaai/ui/components/shadcn/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arcaai/ui/components/shadcn/card';
-import { Input } from '@arcaai/ui/components/shadcn/input';
-import { Label } from '@arcaai/ui/components/shadcn/label';
-import { NativeSelect, NativeSelectOption } from '@arcaai/ui/components/shadcn/native-select';
-import { Progress } from '@arcaai/ui/components/shadcn/progress';
+import type { ModelOption } from '@arcaai/ui/components/custom/model-selector';
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@arcaai/ui/components/shadcn/resizable';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
-import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
-import { StatusBadge, type StatusColorRole } from '@arcaai/ui/components/shared/status-badge';
 import { publicEnv } from '@/config/public-env';
 import { useSession } from '@/shared/auth';
-import { CanvasHeader, PlaygroundCanvas } from '@/features/playground-shared/components/playground-canvas';
-import { formatDateTime } from '@/shared/format';
-import { EmptyState } from '@/shared/state/empty-state';
-import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
-import type { StreamStatus } from '@/shared/streams';
-import type { ConsultationJobStatus } from '../api';
 import {
-    consultationJobStateLabel,
+    playgroundConsultationKeys,
+    useApproveSummary,
     useAudioPipelines,
-    useCancelConsultationJob,
     useGenerateSummary,
-    useGenerateSummaryAsync,
+    useHarnessAssuranceStream,
+    useHarnessProgressStream,
+    useLatestSummary,
     useLiveSummaryStream,
     useStartRecording,
     useStopRecording,
-    useSummaryJobProgress,
-    type PlaygroundConsultation,
-    type UseSummaryJobProgressResult,
 } from '../api';
-import { DocumentationReviewPanel } from './documentation-review-panel';
+import { useColumnLayout } from '../hooks/use-column-layout';
+import { useLiveMetrics } from '../hooks/use-live-metrics';
+import { CaseNoteColumn } from './scribe/case-note-column';
+import { ConsultationsColumn, type ConsultationListRow } from './scribe/consultations-column';
+import { LiveSessionColumn, type SdkTranscriptSegment } from './scribe/live-session-column';
+import { ScribeFooter } from './scribe/scribe-footer';
 
 // ─── helpers ───
 
 function errorMessage(error: unknown, fallback: string): string {
     return error instanceof Error && error.message ? error.message : fallback;
-}
-
-const CONSULTATION_STATUS_META: Record<string, { label: string; role: StatusColorRole }> = {
-    OPEN: { label: 'Open', role: 'success' },
-    RECORDING: { label: 'Recording', role: 'destructive' },
-    PENDING_REVIEW: { label: 'Pending review', role: 'warning' },
-    COMPLETED: { label: 'Completed', role: 'success' },
-    CLOSED: { label: 'Closed', role: 'neutral' },
-};
-
-function consultationStatusMeta(status: string): { label: string; role: StatusColorRole } {
-    return CONSULTATION_STATUS_META[status.toUpperCase()] ?? { label: status, role: 'neutral' };
-}
-
-const LIVE_STREAM_META: Record<StreamStatus, { label: string; role: StatusColorRole }> = {
-    idle: { label: 'Idle', role: 'neutral' },
-    connecting: { label: 'Connecting', role: 'info' },
-    open: { label: 'Live', role: 'success' },
-    error: { label: 'Offline', role: 'destructive' },
-    closed: { label: 'Ended', role: 'neutral' },
-};
-
-function jobStateRole(status: string | null | undefined): StatusColorRole {
-    switch (status?.toUpperCase()) {
-        case 'COMPLETED':
-            return 'success';
-        case 'FAILED':
-            return 'destructive';
-        case 'CANCELLED':
-            return 'neutral';
-        case 'RUNNING':
-        case 'PROCESSING':
-            return 'info';
-        default:
-            return 'neutral';
-    }
-}
-
-function formatElapsed(totalSeconds: number): string {
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-}
-
-function formatClock(seconds: number): string {
-    return formatElapsed(Math.max(0, Math.floor(seconds)));
 }
 
 /**
@@ -125,11 +61,8 @@ function formatClock(seconds: number): string {
  * LiveDocumentationService then falls back to context-item ingestion.
  */
 function readStreamingSessionId(state: unknown): string | null {
-    const pipeline = (
-        state as { pluginManager?: { getTranscriptionPipeline?: () => unknown } | null }
-    ).pluginManager?.getTranscriptionPipeline?.();
-    const transport = (pipeline as { getConfig?: () => { stt?: { streamingTransport?: unknown } } } | null)?.getConfig?.()?.stt
-        ?.streamingTransport;
+    const pipeline = (state as { pluginManager?: { getTranscriptionPipeline?: () => unknown } | null }).pluginManager?.getTranscriptionPipeline?.();
+    const transport = (pipeline as { getConfig?: () => { stt?: { streamingTransport?: unknown } } } | null)?.getConfig?.()?.stt?.streamingTransport;
     const sessionId = (transport as { sessionManager?: { getSessionId?: () => string | null } } | undefined)?.sessionManager?.getSessionId?.();
     return sessionId ?? null;
 }
@@ -145,32 +78,32 @@ async function resolveStreamingSessionId(storeApi: { getState: () => unknown }, 
 
 // ─── screen shell ───
 
-/** Route skeleton — mirrored by the route's loading.tsx; the centered canvas flow. */
+/** Route skeleton — mirrored by the route's loading.tsx; the full-height workspace. */
 export function ConsultationDemoSkeleton() {
     return (
-        <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6 px-4 py-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="flex flex-col gap-2">
-                    <Skeleton className="h-7 w-64" />
-                    <Skeleton className="h-4 w-96 max-w-full" />
-                </div>
-                <Skeleton className="h-9 w-40" />
+        <div className="flex h-full min-h-0 flex-col gap-3">
+            <div className="bg-card grid min-h-0 flex-1 grid-cols-[1fr_2px_1.6fr_2px_1.6fr] overflow-hidden rounded-xl border">
+                {[0, 1, 2].map((column) => (
+                    <div key={column} className={column === 0 ? 'flex flex-col gap-3 p-4' : 'flex flex-col gap-3 border-l p-4'} style={{ gridColumn: column * 2 + 1 }}>
+                        <Skeleton className="h-8 w-40" />
+                        <Skeleton className="h-9 w-full" />
+                        <Skeleton className="h-24 w-full" />
+                        <Skeleton className="h-24 w-full" />
+                    </div>
+                ))}
             </div>
-            <Skeleton className="h-9 w-72 max-w-full" />
-            <Skeleton className="h-64 w-full" />
-            <Skeleton className="h-48 w-full" />
-            <Skeleton className="h-56 w-full" />
+            <Skeleton className="h-20 w-full rounded-lg" />
         </div>
     );
 }
 
-/** Frame 50 + 50.1 — tenant-gated `@arcaai/vox` consultation demo. */
+/** Frame 50 — tenant-gated `@arcaai/vox` consultation scribe workspace. */
 export function ConsultationDemoScreen() {
     return (
         <WorkingTenantGate
-            title="Consultation Demo"
-            meta={<span>@arcaai/vox — capture, live transcription, live summary and documentation review</span>}
-            description="The demo opens consultations and stores drafts in the working tenant. Pick one from the switcher in the top bar."
+            title="Consultation Scribe"
+            meta={<span>@arcaai/vox — live capture, transcription, personalized SOAP and sign-off</span>}
+            description="The workspace opens consultations and stores drafts in the working tenant. Pick one from the switcher in the top bar."
         >
             <SdkBoundary />
         </WorkingTenantGate>
@@ -240,90 +173,97 @@ function SdkBoundary() {
 
     return (
         <AgenticProvider config={config}>
-            <DemoScreen />
+            <ScribeWorkspace />
         </AgenticProvider>
     );
 }
 
-// ─── the demo screen (inside the provider) ───
+// ─── the workspace (inside the provider) ───
 
-function DemoScreen() {
+function ScribeWorkspace() {
     const { session: sdkSession, audio } = useArca();
-    const arcaSession = useArcaSession();
     const storeApi = useStoreApi();
 
-    const [tab, setTab] = useState('demo');
-    const [consultation, setConsultation] = useState<PlaygroundConsultation | null>(null);
-    const [patientId, setPatientId] = useState('');
-    const [patientIdError, setPatientIdError] = useState<string | null>(null);
-    const [pipelineChoice, setPipelineChoice] = useState('');
-    const [liveSummaryArmed, setLiveSummaryArmed] = useState(false);
-    const [jobId, setJobId] = useState<string | null>(null);
-    const [captureBusy, setCaptureBusy] = useState(false);
-    const [sessionBusy, setSessionBusy] = useState(false);
-    const [openPending, setOpenPending] = useState(false);
-    const patientInputRef = useRef<HTMLInputElement | null>(null);
+    const layout = useColumnLayout();
+    const metrics = useLiveMetrics();
 
-    /** Header CTA (frame 50): the open form is inline, so "open" = move focus to it. */
-    function focusPatientInput() {
-        patientInputRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
-        patientInputRef.current?.focus();
-    }
+    const [consultation, setConsultation] = useState<ConsultationListRow | null>(null);
+    const [captureBusy, setCaptureBusy] = useState(false);
+    const [liveSummaryArmed, setLiveSummaryArmed] = useState(false);
+    const [approved, setApproved] = useState(false);
+    const [pipelineChoice, setPipelineChoice] = useState('');
 
     const pipelines = useAudioPipelines();
-    // Derived selection: the tenant default applies until the user picks one.
     const defaultPipelineId = pipelines.data ? ((pipelines.data.find((pipeline) => pipeline.isDefault) ?? pipelines.data[0])?.id ?? '') : '';
     const pipelineId = pipelineChoice || defaultPipelineId;
 
     const recordingStart = useStartRecording();
     const recordingStop = useStopRecording();
     const summarySync = useGenerateSummary();
-    const summaryAsync = useGenerateSummaryAsync();
-    const cancelJob = useCancelConsultationJob();
+    const approve = useApproveSummary();
 
-    const jobProgress = useSummaryJobProgress(jobId, {
-        onTerminal: useCallback((job: ConsultationJobStatus) => {
-            if (job.status.toUpperCase() === 'COMPLETED') {
-                toast.success('Summary job completed — the draft is ready for review');
-                return;
-            }
-            const detail = job.error ?? job.errorMessage;
-            toast.error(`Summary job ${consultationJobStateLabel(job.status).toLowerCase()}${detail ? `: ${detail}` : ''}`);
-        }, []),
+    const consultationId = consultation?.id ?? null;
+    const isRecording = (consultation?.status ?? '').toUpperCase() === 'RECORDING';
+    const isClosed = (consultation?.status ?? '').toUpperCase() === 'CLOSED';
+
+    const live = useLiveSummaryStream(consultationId, liveSummaryArmed);
+    const draft = useLatestSummary(consultationId, !!consultationId);
+    const progress = useHarnessProgressStream(consultationId, !!consultationId);
+    const assurance = useHarnessAssuranceStream(consultationId, !!consultationId);
+
+    // Fold live-summary flushes into the real per-session metrics.
+    useEffect(() => {
+        if (live.snapshot) metrics.ingest(live.snapshot);
+    }, [live.snapshot, metrics]);
+
+    // Real consultation list — TanStack Query over the SDK method (rule 13: no
+    // fetch-in-useEffect). The SDK is untyped at the app boundary (dts: false).
+    const listQuery = useQuery({
+        queryKey: [...playgroundConsultationKeys.root, 'scribe-list'],
+        queryFn: async (): Promise<ConsultationListRow[]> => {
+            const page = await sdkSession.listConsultations({ limit: 50 });
+            const items: Array<{ id: string; patientId: string; status?: unknown; createdAt?: string }> = page?.data ?? [];
+            return items.map((item) => ({ id: item.id, patientId: item.patientId, status: String(item.status ?? 'OPEN'), createdAt: item.createdAt }));
+        },
     });
+    const rows = listQuery.data ?? [];
+    const listError = listQuery.error ? errorMessage(listQuery.error, 'Could not load consultations') : null;
 
-    const liveSummary = useLiveSummaryStream(consultation?.id ?? null, liveSummaryArmed);
+    function selectConsultation(next: ConsultationListRow | null) {
+        setConsultation(next);
+        setApproved(false);
+        metrics.reset();
+        setLiveSummaryArmed(next ? next.status.toUpperCase() === 'RECORDING' : false);
+    }
 
-    // ── flows ──
-
-    async function handleOpenSubmit(event: FormEvent<HTMLFormElement>) {
-        event.preventDefault();
-        const trimmed = patientId.trim();
-        if (!trimmed) {
-            setPatientIdError('Patient ID is required.');
-            return;
-        }
-        setPatientIdError(null);
-        setOpenPending(true);
+    async function handleSelect(row: ConsultationListRow) {
         try {
-            const opened = await sdkSession.open({ patientId: trimmed });
-            setConsultation({
+            const loaded = await sdkSession.load(row.id);
+            selectConsultation({ id: loaded.id, patientId: loaded.patientId, status: String(loaded.status ?? row.status), createdAt: loaded.createdAt ?? row.createdAt });
+        } catch (error) {
+            toast.error(errorMessage(error, 'Could not open the consultation'));
+        }
+    }
+
+    async function handleOpenPatient(patientId: string) {
+        try {
+            const opened = await sdkSession.open({ patientId });
+            const row: ConsultationListRow = {
                 id: opened.id,
                 patientId: opened.patientId,
                 status: String(opened.status ?? 'OPEN'),
                 createdAt: typeof opened.createdAt === 'string' ? opened.createdAt : new Date().toISOString(),
-            });
-            setJobId(null);
-            setLiveSummaryArmed(false);
+            };
+            selectConsultation(row);
+            void listQuery.refetch();
             toast.success('Consultation opened');
         } catch (error) {
             toast.error(errorMessage(error, 'Could not open the consultation'));
-        } finally {
-            setOpenPending(false);
+            throw error;
         }
     }
 
-    async function handleStartRecording() {
+    async function handleStart() {
         if (!consultation) return;
         setCaptureBusy(true);
         try {
@@ -341,7 +281,7 @@ function DemoScreen() {
         }
     }
 
-    async function handleStopRecording() {
+    async function handleStop() {
         if (!consultation) return;
         setCaptureBusy(true);
         try {
@@ -356,518 +296,119 @@ function DemoScreen() {
         }
     }
 
-    async function handleCloseConsultation() {
-        setSessionBusy(true);
-        try {
-            const updated = await arcaSession.close();
-            setConsultation((previous) => (previous ? { ...previous, status: String(updated?.status ?? 'CLOSED') } : previous));
-            toast.success('Consultation closed');
-        } catch (error) {
-            toast.error(errorMessage(error, 'Could not close the consultation'));
-        } finally {
-            setSessionBusy(false);
-        }
-    }
-
-    async function handleReopenConsultation() {
-        setSessionBusy(true);
-        try {
-            const updated = await arcaSession.reopen();
-            setConsultation((previous) => (previous ? { ...previous, status: String(updated?.status ?? 'OPEN') } : previous));
-            toast.success('Consultation reopened');
-        } catch (error) {
-            toast.error(errorMessage(error, 'Could not reopen the consultation'));
-        } finally {
-            setSessionBusy(false);
-        }
-    }
-
-    function handleGenerateSync() {
+    function handleGenerate() {
         if (!consultation) return;
         summarySync.mutate(
             { consultationId: consultation.id },
             {
-                onSuccess: () => toast.success('Summary generated — open Documentation review to inspect it'),
-                onError: (error) => toast.error(errorMessage(error, 'Summary generation failed')),
+                onSuccess: () => toast.success('Note generated'),
+                onError: (error) => toast.error(errorMessage(error, 'Note generation failed')),
             },
         );
     }
 
-    function handleGenerateAsync() {
-        if (!consultation) return;
-        summaryAsync.mutate(
-            { consultationId: consultation.id },
+    function handleApprove({ overrideSafetyFlag }: { overrideSafetyFlag: boolean }) {
+        const draftId = draft.data?.id;
+        if (!consultation || !draftId) return;
+        approve.mutate(
+            { consultationId: consultation.id, contextItemId: draftId, body: overrideSafetyFlag ? { overrideSafetyFlag: true } : undefined },
             {
-                onSuccess: (job) => setJobId(job.jobId),
-                onError: (error) => toast.error(errorMessage(error, 'Could not queue the summary job')),
+                onSuccess: () => {
+                    setApproved(true);
+                    toast.success('Note signed');
+                },
+                onError: (error) => toast.error(errorMessage(error, 'Could not sign the note')),
             },
         );
     }
 
-    function handleCancelJob() {
-        if (!jobId) return;
-        cancelJob.mutate(jobId, {
-            onSuccess: () => toast.success('Job cancel requested'),
-            onError: (error) => toast.error(errorMessage(error, 'Could not cancel the job')),
-        });
-    }
+    // Harness owns drafting once its progress stream reports stages — hide the
+    // manual generate action then (avoids the generate-vs-auto-harness race).
+    const harnessActive = !!progress.snapshot && (progress.snapshot.stages?.length ?? 0) > 0;
 
-    const isClosed = consultation?.status.toUpperCase() === 'CLOSED';
-    const isRecording = consultation?.status.toUpperCase() === 'RECORDING';
-    const canRecord = !!consultation && !isClosed;
-    const canDocument = !!consultation;
-    const statusMeta = consultation ? consultationStatusMeta(consultation.status) : null;
+    const transcriptionModels: ModelOption[] = useMemo(
+        () => (pipelines.data ?? []).map((pipeline) => ({ id: pipeline.id, name: pipeline.name ?? pipeline.id, source: 'backend' as const, description: pipeline.description ?? undefined })),
+        [pipelines.data],
+    );
+
+    // The note model isn't a picker endpoint yet — surface the model that
+    // actually produced the current draft (real provenance) as the selection.
+    const noteModelName = draft.data?.structuredData?.modelName;
+    const noteModels: ModelOption[] = useMemo(() => (noteModelName ? [{ id: noteModelName, name: noteModelName, source: 'backend' as const }] : []), [noteModelName]);
 
     return (
-        <PlaygroundCanvas>
-            <CanvasHeader
-                title="Consultation Demo"
-                description="@arcaai/vox — capture, live transcription, live summary and documentation review"
-                actions={
-                    tab === 'demo' ? (
-                        <Button onClick={focusPatientInput}>
-                            <IconPlus aria-hidden />
-                            Open consultation
-                        </Button>
-                    ) : undefined
-                }
-            />
-            {consultation && statusMeta ? (
-                <div className="bg-card flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-3 py-2 text-sm">
-                    <span className="text-muted-foreground">Consultation:</span>
-                    <code className="font-mono text-xs">{consultation.id}</code>
-                    <span className="text-muted-foreground text-xs">(demo)</span>
-                    <code className="text-muted-foreground font-mono text-xs">{consultation.patientId}</code>
-                    {isRecording ? (
-                        <span className="text-destructive flex items-center gap-1.5 text-xs font-semibold">
-                            <span aria-hidden className="bg-destructive size-2 animate-pulse rounded-full" />
-                            RECORDING
-                        </span>
-                    ) : (
-                        <StatusBadge label={statusMeta.label} colorRole={statusMeta.role} />
-                    )}
-                    <span className="text-muted-foreground text-xs">Opened {formatDateTime(consultation.createdAt)}</span>
-                    <span aria-hidden className="text-muted-foreground ms-auto font-mono text-xs">
-                        POST /consultations/open {'·'} recording/start|stop
-                    </span>
-                </div>
-            ) : null}
-            <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-4">
-                <TabsList variant="line">
-                    <TabsTrigger value="demo">Consultation demo</TabsTrigger>
-                    <TabsTrigger value="review">Documentation review</TabsTrigger>
-                </TabsList>
-                {/* End-user preview: one centered top-to-bottom flow —
-                    setup → capture → live transcript → live summary → document — instead
-                    of the old 3-column console grid. */}
-                <TabsContent value="demo" className="flex flex-col gap-4">
-                    <Card>
-                                <CardHeader>
-                                    <CardTitle>Demo setup</CardTitle>
-                                    <CardDescription>Open (or resume) today&apos;s consultation for a patient, then capture.</CardDescription>
-                                </CardHeader>
-                                <CardContent className="flex flex-col gap-4">
-                                    <form noValidate onSubmit={handleOpenSubmit} className="flex flex-col gap-4">
-                                        <div className="flex flex-col gap-2">
-                                            <Label htmlFor="pc-patient-id">
-                                                Patient ID{' '}
-                                                <span aria-hidden className="text-destructive">
-                                                    *
-                                                </span>
-                                            </Label>
-                                            <Input
-                                                id="pc-patient-id"
-                                                ref={patientInputRef}
-                                                value={patientId}
-                                                onChange={(event) => setPatientId(event.target.value)}
-                                                placeholder="e.g. P-448"
-                                                autoComplete="off"
-                                                aria-required="true"
-                                                aria-invalid={patientIdError ? true : undefined}
-                                                aria-describedby={patientIdError ? 'pc-patient-id-error' : undefined}
-                                            />
-                                            {patientIdError ? (
-                                                <p id="pc-patient-id-error" className="text-destructive text-sm">
-                                                    {patientIdError}
-                                                </p>
-                                            ) : null}
-                                        </div>
-                                        <div className="flex flex-col gap-2">
-                                            <Label htmlFor="pc-pipeline">Transcription pipeline</Label>
-                                            {pipelines.isPending ? (
-                                                <Skeleton className="h-9 w-full" />
-                                            ) : pipelines.isError ? (
-                                                <ErrorState
-                                                    title="Couldn't load pipelines"
-                                                    error={pipelines.error}
-                                                    onRetry={() => void pipelines.refetch()}
-                                                />
-                                            ) : (
-                                                <NativeSelect
-                                                    id="pc-pipeline"
-                                                    value={pipelineId}
-                                                    onChange={(event) => setPipelineChoice(event.target.value)}
-                                                >
-                                                    {pipelines.data.map((pipeline) => (
-                                                        <NativeSelectOption key={pipeline.id} value={pipeline.id}>
-                                                            {pipeline.name}
-                                                            {pipeline.isDefault ? ' (default)' : ''}
-                                                        </NativeSelectOption>
-                                                    ))}
-                                                </NativeSelect>
-                                            )}
-                                        </div>
-                                        <div>
-                                            <Button type="submit" disabled={openPending}>
-                                                {openPending ? <Spinner /> : <IconPlayerPlay aria-hidden />}
-                                                Open consultation
-                                            </Button>
-                                        </div>
-                                    </form>
-                                    {consultation ? (
-                                        <div className="flex flex-wrap items-center gap-2 border-t pt-4 text-sm">
-                                            <span className="text-muted-foreground">
-                                                {isClosed ? 'Consultation closed.' : 'Consultation in progress — status in the strip above.'}
-                                            </span>
-                                            <div className="ms-auto">
-                                                {isClosed ? (
-                                                    <Button variant="outline" size="sm" onClick={handleReopenConsultation} disabled={sessionBusy}>
-                                                        {sessionBusy ? <Spinner /> : null}
-                                                        Reopen consultation
-                                                    </Button>
-                                                ) : (
-                                                    <Button variant="outline" size="sm" onClick={handleCloseConsultation} disabled={sessionBusy}>
-                                                        {sessionBusy ? <Spinner /> : null}
-                                                        Close consultation
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ) : null}
-                                </CardContent>
-                            </Card>
-
-                            <CapturePane
-                                audio={audio}
-                                canRecord={canRecord}
-                                busy={captureBusy}
-                                onStart={handleStartRecording}
-                                onStop={handleStopRecording}
-                            />
-
-                    <TranscriptPane audio={audio} />
-
-                    <LiveSummaryPane armed={liveSummaryArmed} stream={liveSummary} />
-
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle>Document</CardTitle>
-                                        <CardDescription>
-                                            Generate the clinical note from the captured context, then review and sign off.
-                                        </CardDescription>
-                                    </CardHeader>
-                                    <CardContent className="flex flex-col gap-4">
-                                        <div className="flex flex-wrap gap-2">
-                                            <Button variant="outline" disabled={!canDocument || summarySync.isPending} onClick={handleGenerateSync}>
-                                                {summarySync.isPending ? <Spinner /> : <IconFileText aria-hidden />}
-                                                Generate summary
-                                            </Button>
-                                            <Button
-                                                variant="outline"
-                                                disabled={!canDocument || summaryAsync.isPending || (!!jobId && !jobProgress.isTerminal)}
-                                                onClick={handleGenerateAsync}
-                                            >
-                                                {summaryAsync.isPending ? <Spinner /> : <IconBolt aria-hidden />}
-                                                Generate async job
-                                            </Button>
-                                            <Button variant="secondary" disabled={!canDocument} onClick={() => setTab('review')}>
-                                                <IconClipboardCheck aria-hidden />
-                                                Review &amp; sign-off
-                                            </Button>
-                                        </div>
-                                        {jobId ? (
-                                            <JobStrip
-                                                jobId={jobId}
-                                                progress={jobProgress}
-                                                cancelPending={cancelJob.isPending}
-                                                onCancel={handleCancelJob}
-                                            />
-                                        ) : null}
-                                    </CardContent>
-                    </Card>
-                </TabsContent>
-
-                <TabsContent value="review">
-                    {consultation ? (
-                        <DocumentationReviewPanel consultationId={consultation.id} onBackToDemo={() => setTab('demo')} />
-                    ) : (
-                        <EmptyState
-                            icon={IconClipboardCheck}
-                            title="Nothing to review yet"
-                            description="Open a consultation on the demo tab and generate a draft first."
-                            action={
-                                <Button variant="outline" onClick={() => setTab('demo')}>
-                                    Back to consultation demo
-                                </Button>
-                            }
+        <div className="flex h-full min-h-0 flex-col gap-3">
+            {layout.isReady ? (
+                <ResizablePanelGroup
+                    orientation="horizontal"
+                    defaultLayout={{ consultations: layout.sizes[0], live: layout.sizes[1], note: layout.sizes[2] }}
+                    onLayoutChanged={(next, meta) => {
+                        if (!meta.isUserInteraction) return;
+                        const sizes = [next.consultations, next.live, next.note];
+                        if (sizes.every((size) => typeof size === 'number' && Number.isFinite(size))) layout.persist(sizes);
+                    }}
+                    className="bg-card min-h-0 flex-1 overflow-hidden rounded-xl border"
+                >
+                    <ResizablePanel id="consultations" defaultSize={layout.sizes[0]} minSize={16} className="min-w-0">
+                        <ConsultationsColumn
+                            rows={rows}
+                            isLoading={listQuery.isLoading}
+                            error={listError}
+                            selectedId={consultationId}
+                            onSelect={handleSelect}
+                            onOpenPatient={handleOpenPatient}
+                            activeIsRecording={isRecording}
                         />
-                    )}
-                </TabsContent>
-            </Tabs>
-        </PlaygroundCanvas>
-    );
-}
-
-// ─── capture pane ───
-
-interface AudioSurface {
-    isCapturing: boolean;
-    isMuted: boolean;
-    level: number;
-    isSpeaking: boolean;
-    currentTranscript: string;
-    transcriptSegments: Array<{ text: string; startTime: number; endTime: number; isFinal: boolean; speakerLabel?: string }>;
-    plugins: { noiseFilter: { isActive: boolean }; vad: { isActive: boolean } };
-    error: Error | null;
-}
-
-function captureErrorMessage(error: Error): string {
-    if (error.name === 'NotAllowedError') {
-        return 'Microphone access was denied — allow microphone access for this site in your browser settings, then try again.';
-    }
-    return error.message || 'Audio capture failed.';
-}
-
-function CapturePane({
-    audio,
-    canRecord,
-    busy,
-    onStart,
-    onStop,
-}: {
-    audio: AudioSurface;
-    canRecord: boolean;
-    busy: boolean;
-    onStart: () => void;
-    onStop: () => void;
-}) {
-    // Elapsed time is a tick counter driven by the interval below; the
-    // render-time adjustment resets it (and latches "mic was granted")
-    // exactly when a capture starts — no setState inside the effect body.
-    const [everCaptured, setEverCaptured] = useState(false);
-    const [elapsed, setElapsed] = useState(0);
-    const [prevCapturing, setPrevCapturing] = useState(false);
-    if (audio.isCapturing !== prevCapturing) {
-        setPrevCapturing(audio.isCapturing);
-        if (audio.isCapturing) {
-            setElapsed(0);
-            setEverCaptured(true);
-        }
-    }
-
-    useEffect(() => {
-        if (!audio.isCapturing) return;
-        const timer = setInterval(() => setElapsed((seconds) => seconds + 1), 1_000);
-        return () => clearInterval(timer);
-    }, [audio.isCapturing]);
-
-    const micDenied = audio.error?.name === 'NotAllowedError';
-    const micPermissionLabel = micDenied ? 'denied' : audio.isCapturing || everCaptured ? 'granted' : 'prompt on first Start';
-
-    return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Capture</CardTitle>
-                <CardDescription>Microphone &rarr; noise filter &rarr; VAD &rarr; streaming STT</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-                <div className="flex flex-wrap items-center gap-2">
-                    {audio.isCapturing ? (
-                        <Badge variant="destructive" className="gap-1.5 tabular-nums">
-                            <span aria-hidden className="size-2 animate-pulse rounded-full bg-current" />
-                            REC {formatElapsed(elapsed)}
-                        </Badge>
-                    ) : null}
-                    <Badge variant="outline" className={micDenied ? 'border-destructive/40 text-destructive' : undefined}>
-                        Mic permission: {micPermissionLabel}
-                    </Badge>
-                    <Badge variant="outline">VAD {audio.plugins.vad.isActive ? 'on' : 'off'}</Badge>
-                    <Badge variant="outline">Noise filter {audio.plugins.noiseFilter.isActive ? 'on' : 'off'}</Badge>
+                    </ResizablePanel>
+                    <ResizableHandle withHandle />
+                    <ResizablePanel id="live" defaultSize={layout.sizes[1]} minSize={22} className="min-w-0">
+                        <LiveSessionColumn
+                            hasConsultation={!!consultation}
+                            isRecording={isRecording}
+                            isCapturing={audio.isCapturing}
+                            captureBusy={captureBusy}
+                            canRecord={!!consultation && !isClosed}
+                            level={audio.level}
+                            segments={audio.transcriptSegments as SdkTranscriptSegment[]}
+                            interim={audio.currentTranscript}
+                            onStart={handleStart}
+                            onStop={handleStop}
+                        />
+                    </ResizablePanel>
+                    <ResizableHandle withHandle />
+                    <ResizablePanel id="note" defaultSize={layout.sizes[2]} minSize={22} className="min-w-0">
+                        <CaseNoteColumn
+                            hasConsultation={!!consultation}
+                            isRecording={isRecording}
+                            live={live.snapshot}
+                            liveStatus={live.status}
+                            draft={draft.data ?? null}
+                            draftLoading={draft.isLoading}
+                            progress={progress.snapshot}
+                            assurance={assurance.snapshot}
+                            onGenerate={harnessActive ? null : handleGenerate}
+                            generatePending={summarySync.isPending}
+                            onApprove={handleApprove}
+                            approvePending={approve.isPending}
+                            approved={approved}
+                        />
+                    </ResizablePanel>
+                </ResizablePanelGroup>
+            ) : (
+                <div className="min-h-0 flex-1">
+                    <ConsultationDemoSkeleton />
                 </div>
-
-                <AudioMeter level={audio.level} isCapturing={audio.isCapturing} isSpeaking={audio.isSpeaking} isMuted={audio.isMuted} />
-
-                {audio.error ? (
-                    <div
-                        role="alert"
-                        className="border-destructive/40 bg-destructive/10 text-destructive flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
-                    >
-                        <IconExclamationCircle aria-hidden className="mt-0.5 size-4 shrink-0" />
-                        <span>{captureErrorMessage(audio.error)}</span>
-                    </div>
-                ) : null}
-
-                <div className="flex flex-wrap items-center gap-2">
-                    {audio.isCapturing ? (
-                        <Button variant="destructive" onClick={onStop} disabled={busy}>
-                            {busy ? <Spinner /> : <IconPlayerStop aria-hidden />}
-                            Stop recording
-                        </Button>
-                    ) : (
-                        <Button onClick={onStart} disabled={!canRecord || busy}>
-                            {busy ? <Spinner /> : <IconMicrophone aria-hidden />}
-                            Start recording
-                        </Button>
-                    )}
-                    {!everCaptured && !audio.isCapturing ? (
-                        <p className="text-muted-foreground text-xs">Your browser asks for the microphone on the first start.</p>
-                    ) : null}
-                </div>
-            </CardContent>
-        </Card>
-    );
-}
-
-// ─── transcript pane ───
-
-function TranscriptPane({ audio }: { audio: AudioSurface }) {
-    const listRef = useRef<HTMLUListElement | null>(null);
-
-    // Auto-scroll: keep the newest row in view as segments stream in.
-    useEffect(() => {
-        const node = listRef.current;
-        if (node) node.scrollTop = node.scrollHeight;
-    }, [audio.transcriptSegments, audio.currentTranscript]);
-
-    const isEmpty = audio.transcriptSegments.length === 0 && !audio.currentTranscript;
-
-    return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Live transcript</CardTitle>
-                <CardDescription>Final segments settle in place; the partial row updates as you speak.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                {isEmpty ? (
-                    <p className="text-muted-foreground text-sm">No speech captured yet.</p>
-                ) : (
-                    <ul ref={listRef} aria-label="Transcript" className="flex max-h-72 flex-col gap-2 overflow-y-auto pe-1">
-                        {audio.transcriptSegments.map((segment, index) => (
-                            <li key={`${segment.startTime}-${index}`} className="flex flex-col gap-0.5 rounded-md border px-3 py-2">
-                                <div className="text-muted-foreground flex items-center gap-2 text-xs">
-                                    {segment.speakerLabel ? <span className="text-foreground font-medium">{segment.speakerLabel}</span> : null}
-                                    <span className="tabular-nums">{formatClock(segment.startTime)}</span>
-                                </div>
-                                <p className="text-sm">{segment.text}</p>
-                            </li>
-                        ))}
-                        {audio.currentTranscript ? (
-                            <li data-partial="true" className="border-primary/40 bg-primary/5 rounded-md border border-dashed px-3 py-2">
-                                <p className="text-muted-foreground text-sm italic">
-                                    {audio.currentTranscript}
-                                    <span aria-hidden className="text-primary ms-0.5 animate-pulse">
-                                        {'\u258B'}
-                                    </span>
-                                </p>
-                            </li>
-                        ) : null}
-                    </ul>
-                )}
-            </CardContent>
-        </Card>
-    );
-}
-
-// ─── live summary pane ───
-
-function LiveSummaryPane({ armed, stream }: { armed: boolean; stream: ReturnType<typeof useLiveSummaryStream> }) {
-    const snapshot = stream.snapshot;
-    const badge = snapshot?.closed ? LIVE_STREAM_META.closed : LIVE_STREAM_META[armed ? stream.status : 'idle'];
-
-    return (
-        <Card>
-            <CardHeader className="flex flex-row items-start justify-between gap-2">
-                <div className="flex flex-col gap-1.5">
-                    <CardTitle>Live summary</CardTitle>
-                    <CardDescription>Running SOAP snapshot over SSE while recording.</CardDescription>
-                </div>
-                <StatusBadge label={badge.label} colorRole={badge.role} />
-            </CardHeader>
-            <CardContent>
-                {!armed ? (
-                    <p className="text-muted-foreground text-sm">Start recording to stream the running summary.</p>
-                ) : !snapshot ? (
-                    <p className="text-muted-foreground text-sm">Waiting for the first live snapshot&hellip;</p>
-                ) : (
-                    <div className="flex flex-col gap-3">
-                        {snapshot.sections.map((section) => (
-                            <section key={section.title} className="flex flex-col gap-1">
-                                <h3 className="text-sm font-medium">{section.title}</h3>
-                                <p className="text-muted-foreground text-sm whitespace-pre-wrap">{section.content}</p>
-                            </section>
-                        ))}
-                        {snapshot.entities.length > 0 ? (
-                            <div aria-label="Detected entities" className="flex flex-wrap gap-1.5">
-                                {snapshot.entities.map((entity) => (
-                                    <Badge key={`${entity.type}-${entity.text}`} variant="secondary">
-                                        {entity.text}
-                                    </Badge>
-                                ))}
-                            </div>
-                        ) : null}
-                        <p className="text-muted-foreground text-xs">Updated {formatDateTime(snapshot.updatedAt)}</p>
-                    </div>
-                )}
-                {armed && stream.status === 'error' ? (
-                    <div className="mt-3 flex items-center gap-2">
-                        <p className="text-destructive text-xs">{stream.error ?? 'Live summary stream unavailable.'}</p>
-                        <Button variant="outline" size="sm" onClick={stream.reopen}>
-                            Reconnect
-                        </Button>
-                    </div>
-                ) : null}
-            </CardContent>
-        </Card>
-    );
-}
-
-// ─── async job strip ───
-
-function JobStrip({
-    jobId,
-    progress,
-    cancelPending,
-    onCancel,
-}: {
-    jobId: string;
-    progress: UseSummaryJobProgressResult;
-    cancelPending: boolean;
-    onCancel: () => void;
-}) {
-    const job = progress.job;
-    const percent = Math.max(0, Math.min(100, job?.progress ?? 0));
-    const detail = job?.error ?? job?.errorMessage;
-
-    return (
-        <div className="flex flex-col gap-2 rounded-md border p-3">
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="text-muted-foreground">Job</span>
-                <code className="bg-muted rounded px-1.5 py-0.5 font-mono text-xs">{jobId}</code>
-                <StatusBadge label={consultationJobStateLabel(job?.status ?? 'PENDING')} colorRole={jobStateRole(job?.status)} />
-                <span className="tabular-nums">{percent}%</span>
-                {job?.currentStep ? <span className="text-muted-foreground truncate text-xs">{job.currentStep}</span> : null}
-                {!progress.isTerminal ? (
-                    <Button variant="ghost" size="sm" className="ms-auto" onClick={onCancel} disabled={cancelPending}>
-                        {cancelPending ? <Spinner /> : <IconX aria-hidden />}
-                        Cancel job
-                    </Button>
-                ) : null}
-            </div>
-            <Progress value={percent} aria-label="Job progress" />
-            {progress.streamStatus === 'error' && !progress.isTerminal ? (
-                <p className="text-muted-foreground text-xs">Stream unavailable — falling back to a 2s status poll.</p>
-            ) : null}
-            {detail ? <p className="text-destructive text-xs">{detail}</p> : null}
+            )}
+            <ScribeFooter
+                transcriptionModels={transcriptionModels}
+                selectedTranscriptionId={pipelineId}
+                onTranscriptionChange={setPipelineChoice}
+                transcriptionLoading={pipelines.isLoading}
+                noteModels={noteModels}
+                selectedNoteId={noteModelName ?? ''}
+                onNoteChange={() => undefined}
+                metrics={{ tokensPerSecond: metrics.tokensPerSecond, latencyP95Ms: metrics.latencyP95Ms, uplinkBitsPerSecond: null }}
+            />
         </div>
     );
 }
