@@ -127,8 +127,48 @@ Carry these into `findings-register.md` when it is materialized at cycle-1 start
 3. S-3 is the cautionary case: a skip-on-probe pattern (`apiKeyWorks = …; if (!apiKeyWorks) test.skip()`) masked a **total outage of an authentication mechanism** while reporting green. Probes must assert or be `fixme`, never silently skip — `auth-guard-behavior.spec.ts` has been converted accordingly, with a comment forbidding reintroduction.
 4. Any model that must be read *to authenticate* cannot be tenant-scoped. Worth a one-off audit of `TENANT_SCOPED_MODELS` against every pre-auth read path (the throttler and API-key lookups are the two known cases).
 
+### Cycle-1 closing entry (2026-07-22)
+
+**Assessment-queue items 2, 3, 4 — all DONE.** Every scoped deep assessment for cycle 1's first release gate is complete and evidenced (`SOTA-Track/assessment-queue.md` re-scoring log):
+- **Item 2 — Config plane** (`assessment-config-plane-2026-07-22.md`): doctrine vindicated a 2nd time — the first-ever live run found two P0 runtime breaks below the mocked-repository boundary (F-025 Bytes-column CREATE corruption, F-026 `internal/effective-config` 500 for smr/nlp), both TDD-fixed same session; Vault-Transit round-trip, the 6-service effective-config matrix, the OCC contract, and gateway-side BYO injection are now runtime-proven.
+- **Item 3 — Harness agentic loop + stt-v2 producers** (`assessment-harness-agentic-loop-2026-07-22.md`): doctrine vindicated a 3rd time — the first live streamed consultation ever run found F-031 (clinical transcripts/notes silently unpersisted on every non-`context.service` write lane); with that fixed, the D-22 segment→citation chain is live-proven end to end (WS audio → exact-offset segments → StrictCitations prompt → delivered note citing the real persisted segment id, encrypted at rest).
+- **Item 4 — Admin-console governance wave** (`assessment-admin-console-2026-07-22.md`): doctrine vindicated a 4th time, milder key — all 10 target screens held up under a real headed BFF-login drive (Playwright real chromium), but surfaced 5 new findings (F-035..F-039) invisible to 1,081 green unit tests, including a systemic hydration-mismatch class and the discovery that CI runs zero admin-console suites.
+- **Item 5 (Security/tenancy OD-2), item 6 (Retention/VRAM on GPU), item 7 (Clinical eval/golden set) remain queued (owner-gated)** — unchanged since Phase 0, not part of this closing entry.
+
+**F-025..F-039 disposition summary** (full detail + evidence in `findings-register.md`; all fixes landed via TASK-542 unless noted):
+| ID | Disposition |
+|---|---|
+| F-025 | **Fixed.** `convertEntityValue` Bytes-corruption; domains suite 1376 green, Vault round-trip re-proven live. S follow-up open: live re-proof of `TenantTtsProviderCredential` create (same chain, not yet re-run). |
+| F-026 | **Fixed.** `internal/effective-config` CLS fix for smr/nlp; api suite 2398 green, all 6 services 200 live. Open class action (M): audit every service-token/`@Public()` route touching `TENANT_SCOPED_MODELS`. |
+| F-027 | **Fixed, unit-level.** Override-wins client resolution in `azure_openai.py`/`bedrock.py`; 10/10 new smr tests green. Still env-gated: full live lane needs a real cloud credential (none in this environment). |
+| F-028 | **Fixed.** Restore-with-overwrite on create-intent over a soft-deleted `AiProviderConnection`; 37/37 green. |
+| F-029 | **Fixed.** Dev Vault bootstrap script seeds all 5 missing service-token secrets. Takes effect on next Vault dev bootstrap — not re-run against the live dev Vault this session. |
+| F-030 | **Fixed.** Stack traces reduced to `basename:line:col` outside production; 4 new tests green. |
+| F-031 | **Fully closed — all 10 write lanes.** 3 chain sites + 9 enumerated sibling sites + the 10th lane found during TASK-542's own verification pass (`live-documentation.service.ts#persistDurableSnapshot`) all now encrypt-on-write; live re-proof (sentinel PATCH → decrypt-on-read + `vault:v1:` ciphertext at rest). Open hardening item (not a defect): the write-side structural twin of `wrapDelegateWithPhiDecrypt` remains unbuilt. |
+| F-032 | **Largely fixed.** Extract→validate→strip→merge lands on the gateway persist lane — raw `[[seg:]]` markers can no longer reach the clinician-visible note, hallucinated ids can't be recorded. Open (S): the python `extract_cited_segment_ids` half still has zero callers and `citation_presence` still scores only the disjoint NER-claims lane (no credit for citation compliance) — carried to cycle 2. |
+| F-033 | **Open**, not in TASK-542 scope. `GET admin/harness/live/config` reports the last-flush snapshot, not a fresh resolution. Small (S: resolve-on-read) — cycle-2 candidate. |
+| F-034 | **Partially fixed.** The tsbuildinfo build hazard is fixed (`rimraf dist tsconfig.build.tsbuildinfo`). The orphan-`nest --watch`-process class recurred and was killed again this session (2 more, ~25h old) — still an owner discipline item, not a one-time fix; watch for recurrence in cycle 2. |
+| F-035 | **Fixed.** Session hydration seeded into the QueryClient at construction; console suite 1115 green. Headed re-verify of the 5 originally-affected screens rides the next headed sweep (not yet re-run post-fix). |
+| F-036 | **Fixed.** `GLOBAL_ADMIN`/`SERVICE_ACCOUNT` filtered from the IdP default-role picker; backend boundary was already holding. |
+| F-037 | **Fixed.** Drawer scroll region now keyboard-focusable (WCAG 2.1.1); axe scan extended to the drawer-open state. Live-DOM re-scan rides the next headed sweep. |
+| F-038 | **Fixed.** Guardrail health mounted at `/api/v1` alongside the existing `/api/health`; `EXEMPT_PATHS` updated to match; 2 new tests green. |
+| F-039 | **Partially fixed.** `test-admin-console` CI job added (1112 unit tests, hermetic, verified locally green). Still open: the ~37-file Playwright e2e suite needs a composed stack and stays local-discipline-only until a nightly job is built. |
+
+**Net cycle-1 tally:** of the 15 findings F-025..F-039, **11 fully fixed**, **3 fixed-with-a-stated-open-tail** (F-027 env-gated live half, F-029 not-yet-rebootstrapped, F-032 python-scoring half), **1 unstarted** (F-033, out of TASK-542 scope) — plus the pre-existing F-034 orphan-process discipline item that recurred and was cleared again rather than structurally prevented.
+
+**Cycle-2 seeds (updated from the Phase-0 list with cycle-1 discoveries):**
+- TASK-499 SAML real signed-assertion tampered/expired/replayed/XSW matrix (top security candidate, carried from Phase 0, unchanged).
+- F-032 python half — wire `extract_cited_segment_ids` into a real caller and give `citation_presence` credit for `[[seg:]]` compliance.
+- F-033 — resolve `admin/harness/live/config` on read instead of serving the last-flush snapshot.
+- F-039 e2e half — build the composed-stack nightly job for the admin-console Playwright suite.
+- F-025 S follow-up — live re-proof of `TenantTtsProviderCredential` create through the same Bytes-column chain.
+- F-034 orphan-watcher discipline — a structural fix (not just kill-on-discovery) if it recurs a third time.
+- F-014 (`_make_llama_logit_fn` zero coverage), dormant-feature enablement matrix (533-C, hardware-tier-gated), and the TASK-505 review-fix regression sample — unchanged from the Phase-0/queue seed list, still queued.
+- Items 5/6/7 (OD-2 prod blast radius, GPU-hardware retention/VRAM, clinical-eval SME assignment) remain owner-gated and enter cycle 2 if not resolved before the next cadence point.
+
 ## Change History
 
 - 2026-07-21 — Program created; Phase-0 baseline launched.
 - 2026-07-21 — Phase 0 complete (Fable-5-xhigh baseline). Risk queue, owner-decision register, quick wins, and cycle-1 order recorded; "Review = runtime-unproven" doctrine adopted; security-report deletion + OD-7 recurrence flagged to owner.
 - 2026-07-21 — Findings-register seeds S-1, S-2, S-2a, S-3 recorded and **all fixed** under the TASK-534 E2E gate. S-3 was a live platform defect, not test staleness: API-key authentication was broken for every key because `ApiKey` was tenant-scoped despite being read pre-auth. Fix follows the existing `TenantEntitlement` precedent; isolation re-verified live. One open design question carried forward (S-2a: `my-permissions` should return `action: string[]`).
+- 2026-07-22 — **Cycle-1 closing entry recorded.** Assessment-queue items 2 (config plane), 3 (harness agentic loop + stt-v2 producers), 4 (admin-console governance wave) all DONE with dated evidence docs; F-025..F-039 disposition table added (11 fully fixed, 3 fixed-with-open-tail, 1 unstarted); cycle-2 seed list updated with cycle-1 discoveries (F-032 python half, F-033, F-039 e2e half, F-025 BYO-TTS follow-up, F-034 recurrence). Status remains In Progress — this is a standing program, not a one-shot ticket; items 5/6/7 (owner-gated) and the cycle-2 seed list carry the program forward.

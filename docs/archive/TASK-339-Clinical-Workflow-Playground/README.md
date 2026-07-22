@@ -236,7 +236,7 @@ Re-run `pnpm db:seed` to apply the raw-capture config to the demo tenant.
 ### 5e. NOT part of TASK-339 (concurrent TASK-330 Phase 3, present in the working tree)
 - `apps/harness/scripts/task_330_phase3_cite_verify_check.py`
 - `apps/harness/src/harness/services/provenance.py`, `sensor_runner.py` (+ their unit tests)
-- `packages/database/scripts/task-330-phase3-consultation-seed.ts`, `task-330-phase3-provenance-read.ts`
+- `packages/database/scripts/harness-consultation-seed.ts`, `harness-provenance-read.ts`
 - `docs/implementation/TASK-330-Clinical-Documentation-Harness/README.md`
 
 ---

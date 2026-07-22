@@ -57,3 +57,29 @@ class TestCitationPresence:
         result = CitationPresenceSensor().run(SensorContext())
         assert result.passed is True
         assert result.score == pytest.approx(1.0)
+
+    # ── `[[seg:]]` StrictCitations credit (disjoint from the NER-claims lane) ──
+
+    def test_no_claims_but_segment_markers_cited_credits_instead_of_degrading(self):
+        """The claims lane is empty/degraded, but the model cited real transcript
+        segments inline (`[[seg:<id>]]`, already extracted+validated upstream into
+        `cited_segment_ids`). That is still verifiable provenance -> the sensor must
+        NOT degrade; it credits the marker-evidenced statements instead."""
+        ctx = SensorContext(
+            note_text="Plan: metformin 500mg twice daily.",
+            citations_map={},
+            cited_segment_ids=["seg-a", "seg-b"],
+        )
+        result = CitationPresenceSensor().run(ctx)
+        assert result.degraded is False
+        assert result.passed is True
+        assert result.score == pytest.approx(1.0)
+        assert result.details["citedSegmentIds"] == ["seg-a", "seg-b"]
+
+    def test_no_claims_and_no_segment_markers_still_degrades(self):
+        """No NER claims AND no segment-marker credit -> the existing degrade
+        behaviour (never silently auto-pass an unverifiable note) is unchanged."""
+        ctx = SensorContext(note_text="a generated note", citations_map={}, cited_segment_ids=[])
+        result = CitationPresenceSensor().run(ctx)
+        assert result.degraded is True
+        assert result.passed is False

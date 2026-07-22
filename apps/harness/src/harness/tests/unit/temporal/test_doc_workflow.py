@@ -226,6 +226,39 @@ class TestBoundedRegen:
         assert cited[0].t1_ms == 1200
 
     @pytest.mark.asyncio
+    async def test_run_sensors_receives_allowed_segment_ids_from_assemble(self):
+        # The same PHI-safe segment refs `generate` uses for the StrictCitations
+        # prompt block must ALSO reach `run_sensors` (as bare ids) so
+        # `citation_presence` can extract+validate the model's `[[seg:]]` markers
+        # server-side and credit marker-evidenced statements.
+        seg_refs = [
+            SegmentCitationRef(id="seg-a", speaker="CLINICIAN", t0_ms=0, t1_ms=1200, idx=0),
+            SegmentCitationRef(id="seg-b", speaker="PATIENT", t0_ms=1200, t1_ms=3400, idx=1),
+        ]
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"], segment_citations=seg_refs)
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        assert recorder.calls["run_sensors"] >= 1
+        assert recorder.run_sensors_inputs[0].allowed_segment_ids == ["seg-a", "seg-b"]
+
+    @pytest.mark.asyncio
     async def test_regen_feedback_disabled_by_policy_sends_no_critique(self):
         # gate on regenFeedbackEnabled: policy False ⇒ the regen prompt
         # stays byte-identical (no critique) even though a sensor failed.

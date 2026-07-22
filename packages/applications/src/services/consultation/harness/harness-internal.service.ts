@@ -529,9 +529,15 @@ export class HarnessInternalService {
         // lookup and record empty provenance.
         const liveSnapshot = (await this.resolveWarmStartEnabled(tenantId)) ? await this.loadLiveSoapSnapshot(consultationId) : null;
         // enrich the verdict's citation map with per-segment provenance
-        // (LEGACY path only; EARLY withholds citationsMap until finalizeAssurance).
+        // (LEGACY path only; EARLY withholds the verdict citationsMap — NER
+        // claims + segment provenance enrichment — until finalizeAssurance). The
+        // EARLY phase still carries forward any `[[seg:]]`-cited (validated) segment
+        // ids it already has at persist time (`{ segmentCitedIds: [...] }`, nothing
+        // else) so finalizeAssurance can merge them into the real verdict map later —
+        // mirrors the LEGACY merge via the same helper; a no-op (stays null) when
+        // nothing was cited.
         const enrichedCitationsMap = isEarly
-          ? null
+          ? this.mergeSegmentCitedIds(null, citedSegmentIds)
           : this.mergeSegmentCitedIds(await this.enrichCitationsWithSegments(consultationId, tenantId, dto.citationsMap ?? null), citedSegmentIds);
         // EARLY: withhold the inferential scores + verdict + assurance marker (they
         // don't exist yet — finalizeAssurance backfills them). LEGACY: full meta +
@@ -545,7 +551,12 @@ export class HarnessInternalService {
           entityFaithfulnessScore: dto.entityFaithfulnessScore ?? null,
           coverageScore: dto.coverageScore ?? null,
           ragTriadScore: isEarly ? null : (dto.ragTriadScore ?? null),
-          citationsMap: (isEarly ? null : (enrichedCitationsMap ?? null)) as never,
+          // citationsMap is NOT blanket-withheld here — `enrichedCitationsMap`
+          // already computed the correct EARLY value above (null unless the note
+          // carried validated `[[seg:]]` markers, in which case it carries ONLY
+          // `segmentCitedIds`; the verdict/claims lane still withholds separately
+          // via `dto.citationsMap` never being read on the EARLY branch).
+          citationsMap: (enrichedCitationsMap ?? null) as never,
           guardrailDecisions: (isEarly ? null : (dto.guardrailDecisions ?? null)) as never,
           gateDecision: isEarly ? null : (dto.gateDecision ?? null),
           assuranceCompletedAt: isEarly ? null : new Date(),
@@ -692,9 +703,18 @@ export class HarnessInternalService {
           );
         }
         meta.ragTriadScore = dto.ragTriadScore ?? null;
+        // Read back whatever the EARLY persist already carried forward —
+        // ONLY `segmentCitedIds` ever survives on the early meta (persistDraft
+        // withholds everything else) — BEFORE it gets overwritten below.
+        const earlyCitedSegmentIds = HarnessInternalService.readSegmentCitedIds(meta.citationsMap as Record<string, unknown> | null | undefined);
         // enrich the (now-arriving) verdict citation map with segment
-        // provenance before it is persisted + encrypted.
-        const enrichedCitationsMap = await this.enrichCitationsWithSegments(consultationId, tenantId, dto.citationsMap ?? null);
+        // provenance before it is persisted + encrypted, then re-merge the EARLY
+        // phase's `[[seg:]]`-cited ids so they are never dropped on the floor
+        // (mirrors the LEGACY single-shot merge in persistDraft).
+        const enrichedCitationsMap = this.mergeSegmentCitedIds(
+          await this.enrichCitationsWithSegments(consultationId, tenantId, dto.citationsMap ?? null),
+          earlyCitedSegmentIds,
+        );
         meta.citationsMap = (enrichedCitationsMap ?? null) as never;
         meta.guardrailDecisions = (dto.guardrailDecisions ?? null) as never;
         meta.gateDecision = dto.gateDecision ?? null;
@@ -1186,6 +1206,17 @@ export class HarnessInternalService {
   private mergeSegmentCitedIds(citationsMap: Record<string, unknown> | null | undefined, citedSegmentIds: string[]): Record<string, unknown> | null {
     if (citedSegmentIds.length === 0) return (citationsMap ?? null) as Record<string, unknown> | null;
     return { ...(citationsMap ?? {}), segmentCitedIds: citedSegmentIds };
+  }
+
+  /**
+   * Read back a `citationsMap.segmentCitedIds` array (the shape
+   * `mergeSegmentCitedIds` writes), tolerant of null/malformed input. Used by
+   * `finalizeAssurance` to recover the EARLY phase's `[[seg:]]`-cited ids before
+   * they are overwritten by the arriving verdict citationsMap.
+   */
+  private static readSegmentCitedIds(citationsMap: Record<string, unknown> | null | undefined): string[] {
+    const ids = citationsMap?.segmentCitedIds;
+    return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
   }
 
   /**

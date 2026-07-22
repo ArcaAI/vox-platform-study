@@ -1094,6 +1094,7 @@ async def run_sensors(payload: RunSensorsInput) -> SensorRunOutput:
         response_format=payload.response_format,
         transcript_context_item_id=payload.transcript_context_item_id,
         retrieved_chunk_ids=payload.retrieved_chunk_ids,
+        allowed_segment_ids=payload.allowed_segment_ids,
         thresholds=payload.thresholds,
     )
     batch = _TrajectoryBatch(settings, payload.trajectory)

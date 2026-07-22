@@ -1233,6 +1233,34 @@ describe('HarnessInternalService', () => {
             const result = await service.persistDraft('consultation-1', earlyBody());
             expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
         });
+
+        // ── [[seg:]] StrictCitations markers survive the EARLY withhold ──
+        // The verdict citationsMap (dto.citationsMap, NER claims) is correctly
+        // withheld in the early phase, but `[[seg:]]` marker validation happens
+        // against the note content (already available at EARLY persist time) —
+        // those cited ids must not be dropped on the floor; finalizeAssurance needs
+        // them later to merge into the final citationsMap.
+        it('carries segmentCitedIds (only) into the withheld citationsMap when the note cites real segments', async () => {
+            const transcriptSegmentRepository = createMockTranscriptSegmentRepository();
+            transcriptSegmentRepository.findByContextItem.mockResolvedValue([
+                { id: 'seg-a', idx: 0, speaker: 'CLINICIAN', t0Ms: 0, t1Ms: 1200, charStart: 0, charEnd: 20 },
+            ]);
+            service = buildService(false, undefined, true, undefined, transcriptSegmentRepository);
+
+            await service.persistDraft('consultation-1', {
+                ...earlyBody(),
+                content: 'Plan: metformin 500mg [[seg:seg-a]] twice daily.',
+            });
+
+            const smArg = summaryMetaRepository.create.mock.calls[0][0];
+            expect(smArg.citationsMap).toEqual({ segmentCitedIds: ['seg-a'] });
+        });
+
+        it('still withholds citationsMap (null) in the early phase when no markers are present', async () => {
+            await service.persistDraft('consultation-1', earlyBody());
+            const smArg = summaryMetaRepository.create.mock.calls[0][0];
+            expect(smArg.citationsMap).toBeNull();
+        });
     });
 
     // =========================================================================
@@ -1264,6 +1292,41 @@ describe('HarnessInternalService', () => {
                 status: ConsultationStatus.DRAFT_PENDING_SENSORS,
                 updatedBy: null,
             });
+        });
+
+        // ── EARLY-path [[seg:]] segmentCitedIds must survive into the finalized citationsMap ──
+        // persistDraft's EARLY phase withholds the verdict citationsMap but still carries
+        // forward any `[[seg:]]`-cited (and validated) segment ids on the early-persisted
+        // SummaryMeta (`{ segmentCitedIds: [...] }`). finalizeAssurance backfills the real
+        // verdict citationsMap and must MERGE that early segmentCitedIds in rather than
+        // overwrite/drop it — mirroring the LEGACY (single-shot) merge in persistDraft.
+        it('merges the EARLY-persisted segmentCitedIds into the finalized citationsMap', async () => {
+            summaryMetaRepository.findByContextItem.mockResolvedValue({
+                id: 'sm-early-1',
+                contextItemId: 'ctx-draft-1',
+                ragTriadScore: null,
+                citationsMap: { segmentCitedIds: ['seg-a'] },
+                guardrailDecisions: null,
+                gateDecision: null,
+                assuranceCompletedAt: null,
+            });
+
+            await service.finalizeAssurance('consultation-1', finalizeBody());
+
+            const [, updated] = summaryMetaRepository.update.mock.calls[0];
+            expect(updated.citationsMap).toEqual(
+                expect.objectContaining({
+                    claims: [{ id: 'c1', status: 'verified' }],
+                    segmentCitedIds: ['seg-a'],
+                }),
+            );
+        });
+
+        it('leaves citationsMap as the fresh verdict map when no EARLY segmentCitedIds exist', async () => {
+            // Default beforeEach mock: early meta citationsMap is null.
+            await service.finalizeAssurance('consultation-1', finalizeBody());
+            const [, updated] = summaryMetaRepository.update.mock.calls[0];
+            expect(updated.citationsMap).toEqual({ claims: [{ id: 'c1', status: 'verified' }] });
         });
 
         it('backfills the early SummaryMeta with the inferential verdict + assuranceCompletedAt', async () => {

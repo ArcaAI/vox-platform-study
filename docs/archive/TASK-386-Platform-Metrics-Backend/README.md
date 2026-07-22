@@ -403,7 +403,7 @@ Built layer-by-layer (DB → Domain → Applications → API → SDK → Fronten
 
 ### 6.3 Verification evidence
 
-- **Unit — applications (my new suites):** `4 files, 22 passed` (platform-metrics + consultation-aggregate). Full `@arcaai/applications`: `5443 passed`, `1 failed` — the single failure is **pre-existing, unrelated**: `secrets-coverage.test.ts` flags `packages/applications/scripts/task-376-storage.ts:43-44` reading `MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` (committed `94907243`, 2026‑06‑29, before TASK‑386). Not in this changeset; left untouched per surgical-change/ownership rules.
+- **Unit — applications (my new suites):** `4 files, 22 passed` (platform-metrics + consultation-aggregate). Full `@arcaai/applications`: `5443 passed`, `1 failed` — the single failure is **pre-existing, unrelated**: `secrets-coverage.test.ts` flags `packages/applications/scripts/media-storage.ts:43-44` reading `MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` (committed `94907243`, 2026‑06‑29, before TASK‑386). Not in this changeset; left untouched per surgical-change/ownership rules.
 - **Unit — API:** `1827 passed, 4 skipped` (all green). My targeted API suites (`platform-metrics` + widened `monitoring`/`health`): `3 files, 46 passed`.
 - **Build:** `pnpm build:api` → `8 successful, 8 total`. `apps/admin type-check` (`tsc --noEmit`) → clean (exit 0).
 - **Backend E2E:** `task-386-platform-metrics.spec.ts` PM1–PM7 → `10/10 passed`. DB-aggregation endpoints (E3/E4/E5, quota) + TD3 cross-tenant are live-tested against Postgres; E1/E2 Prometheus **values** asserted as shape/type (env-dependent — noted).

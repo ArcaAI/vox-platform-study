@@ -1,7 +1,7 @@
 /**
  * Live full-loop consultation seed (one-off).
  *
- * NOT wired into `pnpm db:seed`. Companion to `task-330-phase3-live-seed.ts`
+ * NOT wired into `pnpm db:seed`. Companion to `harness-knowledge-ingest-seed.ts`
  * (which ingested the institutional corpus). This seeds the *input* the durable
  * harness workflow consumes: a Tenant-A (Global) consultation + a TRANSCRIPT
  * context item whose topic (stage-2 hypertension management) overlaps the
@@ -19,7 +19,7 @@
  *
  * Usage:
  *   NODE_ENV=development SEED_TAG=0331 pnpm --filter @arcaai/database exec \
- *     tsx scripts/task-330-phase3-consultation-seed.ts
+ *     tsx scripts/harness-consultation-seed.ts
  */
 // eslint-disable-next-line no-restricted-imports -- scripts/** allow-list: live-test driver
 import { getPlatformAdminPrismaClient_Unscoped } from '../src/client';
@@ -27,7 +27,7 @@ import { getPlatformAdminPrismaClient_Unscoped } from '../src/client';
 const TENANT_A = '50000000-0000-0000-0000-000000000000'; // Global customer tenant
 const DOCTOR_A = '70000000-0000-0000-0000-000000000010'; // Global doctor (SEED_USER_IDS.DOCTOR)
 const DEPT_GEN = '70000000-0000-0000-0000-000000000001'; // GEN department
-const HYPERTENSION_DOC_ID = 'bbbbbbbb-0000-0000-0000-000000000001'; // from task-330-phase3-live-seed.ts
+const HYPERTENSION_DOC_ID = 'bbbbbbbb-0000-0000-0000-000000000001'; // from harness-knowledge-ingest-seed.ts
 
 // Fresh id per run (last 4 digits). Default 0331 supersedes the parked 0330 run.
 const SEED_TAG = (process.env.SEED_TAG ?? '0331').padStart(4, '0');

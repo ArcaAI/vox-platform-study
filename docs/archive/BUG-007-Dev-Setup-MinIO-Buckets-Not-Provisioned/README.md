@@ -68,7 +68,7 @@ None match the app's `hope-<slug>-<tenantKey>` names. `minio-setup` has no `prof
 4. `:73` — `refresh-vault-creds.sh`
 5. `:76` — `setup-dev-vault-db.sh`
 
-**No step creates the app's MinIO buckets.** `seedTenantBucket` is DB-rows-only by design (`05a-tenant-bucket.ts:13-16`: "Only the DB rows are created here. The underlying provider buckets are created lazily …"). `dev:setup` does **not** run `task-376-media-seed` (that would create physical buckets) — it's wired only into `test:db:seed` (`package.json:96-97`).
+**No step creates the app's MinIO buckets.** `seedTenantBucket` is DB-rows-only by design (`05a-tenant-bucket.ts:13-16`: "Only the DB rows are created here. The underlying provider buckets are created lazily …"). `dev:setup` does **not** run `media-seed` (that would create physical buckets) — it's wired only into `test:db:seed` (`package.json:96-97`).
 
 ### Bucket-creation primitives already exist (just not on this path)
 
@@ -77,7 +77,7 @@ None match the app's `hope-<slug>-<tenantKey>` names. `minio-setup` has no `prof
 | `createBucket` (`CreateBucketCommand`), `bucketExists` (`HeadBucketCommand`) | `packages/applications/.../storage/providers/s3-blob.provider.ts:136,144` | provider-level |
 | `ensureProviderBucket` (exists → create) | `packages/applications/.../tenant-bucket/tenant-bucket.service.ts:566` | **admin** routes only (`getBucketTree`, `listObjects`, `uploadObject`, `deleteObject`) |
 | `provisionSystemBuckets` (bulk physical create) | `tenant-bucket.service.ts:229` | tenant-create + admin `POST …/provision/:tenantId` only |
-| `ensureBucket` (HeadBucket → CreateBucket, idempotent) + `makeS3Client` (reads `MINIO_*`) | `packages/applications/scripts/task-376-storage.ts:65,35` | test media seed only |
+| `ensureBucket` (HeadBucket → CreateBucket, idempotent) + `makeS3Client` (reads `MINIO_*`) | `packages/applications/scripts/media-storage.ts:65,35` | test media seed only |
 
 ### Why the failing route errors instead of auto-creating
 
@@ -92,9 +92,9 @@ None match the app's `hope-<slug>-<tenantKey>` names. `minio-setup` has no `prof
 ### Step 1 — Add a `db:seed:buckets` provisioning script (primary)
 
 - New tsx script under `packages/applications/scripts/` (or `packages/database/scripts/`) that:
-  - builds an S3 client via the existing `makeS3Client` (`task-376-storage.ts:35`, reads `MINIO_*`);
+  - builds an S3 client via the existing `makeS3Client` (`media-storage.ts:35`, reads `MINIO_*`);
   - derives the bucket list from seed truth — reuse `buildBucketName` over `ALL_TENANTS` × `SYSTEM_BUCKET_SLUGS` (`05a-tenant-bucket.ts`), or read the seeded `TenantBucket.name` rows from Postgres;
-  - calls the idempotent `ensureBucket` (`task-376-storage.ts:65`) for each.
+  - calls the idempotent `ensureBucket` (`media-storage.ts:65`) for each.
 - Wire a root `package.json` script `db:seed:buckets` (parallel to `test:db:seed:media` at `package.json:97`).
 - **Test / verify:** running twice is a no-op the second time; all 6 buckets present via `mc ls` / `listBuckets`.
 

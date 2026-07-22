@@ -29,6 +29,19 @@ vi.mock('@nestjs/terminus', () => ({
     DiskHealthIndicator: vi.fn(),
     MemoryHealthIndicator: vi.fn(),
     HealthCheck: () => (target: any, propertyKey: string, descriptor: PropertyDescriptor) => descriptor,
+    // Base class other indicators in the import graph extend at module-eval
+    // time (e.g. SecretsHealthIndicator, reached via the appSettings barrel's
+    // module imports) — the mock must define it or those imports crash.
+    HealthIndicator: class {
+        protected getStatus(key: string, isHealthy: boolean, data?: Record<string, unknown>) {
+            return { [key]: { status: isHealthy ? 'up' : 'down', ...data } };
+        }
+    },
+    HealthCheckError: class extends Error {
+        constructor(message: string, public readonly causes: unknown) {
+            super(message);
+        }
+    },
 }));
 
 describe('HealthCheckService', () => {

@@ -645,6 +645,14 @@ class RunSensorsInput(BaseModel):
     # The chunk ids the retriever surfaced for this generation, used to
     # map the model's StrictCitations markers onto each claim's knowledgeChunkIds.
     retrieved_chunk_ids: list[str] = Field(default_factory=list)
+    # The consultation's own persisted transcript-segment ids (from
+    # ``assemble``'s ``segment_citations``), used to extract + validate the
+    # model's `[[seg:<id>]]` StrictCitations markers server-side so
+    # ``citation_presence`` can credit marker-evidenced statements. ADDITIVE-
+    # OPTIONAL (default ``[]``) ⇒ replay-safe: an old recorded input deserializes
+    # to no allowed ids, so no marker is ever credited on replay (byte-identical
+    # to the pre-existing degrade path).
+    allowed_segment_ids: list[str] = Field(default_factory=list)
     # Policy-driven computational thresholds (None => the sensors' own
     # env-driven ``SensorThresholds`` defaults).
     thresholds: SensorThresholds | None = None

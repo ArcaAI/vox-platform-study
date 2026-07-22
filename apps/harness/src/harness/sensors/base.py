@@ -121,6 +121,13 @@ class SensorContext(BaseModel):
     # citation-verify sensor entails each claim against ONLY its cited chunks'
     # text (looked up here); empty in the flag-off Phase-1/2 path.
     knowledge_chunks: dict[str, str] = Field(default_factory=dict)
+    # `[[seg:<id>]]` StrictCitations transcript-segment ids the model cited in
+    # ``note_text``, already extracted + validated against the consultation's own
+    # persisted segments (mirrors ``prompt_cache.extract_cited_segment_ids`` — a
+    # hallucinated id never survives). Disjoint from ``citations_map`` (the
+    # NER-claims lane); ``citation_presence`` uses this to credit marker-evidenced
+    # provenance when the claims lane is empty/degraded. Empty by default.
+    cited_segment_ids: list[str] = Field(default_factory=list)
 
     def note_blob(self) -> str:
         """Best-available note text: ``note_text`` if present, else joined sections."""

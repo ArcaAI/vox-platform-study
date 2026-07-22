@@ -1,4 +1,5 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import { Injectable, Logger, OnModuleInit, Optional, Inject } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { SchedulerRegistry } from '@nestjs/schedule';
@@ -7,11 +8,21 @@ import { CronJob } from 'cron';
 import { GlobalSettingEntity, GlobalSettingRepository, ResourceStatusType, ResourceType, SysEvent, SysEventType } from '@arcaai/domains';
 import { IActiveUserContext } from '../../../../interfaces';
 import { IAppSettingsService } from './IAppSettingsService';
+import { IRedisCacheService } from '../../redis';
+import { RedisSubscriberService } from '../../../stt/realtime/redisSubscriber.service';
 
 // Canonical platform tenant id.
 // Matches the seed UUID used across the system (see packages/database/seeds).
 // Inlined to avoid pulling tenant/constants.ts into this baseService.
 const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
+
+/**
+ * Dedicated Redis pub/sub channel for cross-instance cache invalidation
+ * (F-007 follow-up). Every instance publishes here after a same-instance
+ * `GlobalSetting` refresh and subscribes here to converge peers without
+ * waiting for the cron.
+ */
+export const APP_SETTINGS_INVALIDATION_CHANNEL = 'app-settings:invalidate';
 
 /**
  * Service for managing application settings stored in the database.
@@ -48,18 +59,27 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
     settingsCount: 0,
   };
 
+  /** Per-instance identifier used to skip a self-published invalidation message on receipt. */
+  private readonly instanceId = randomUUID();
+
   /**
    * Creates an instance of AppSettingsService.
    * @param globalSettingRepository - Repository for global settings
    * @param eventEmitter - Event emitter for broadcasting events
    * @param clsService - Continuation Local Storage service for context management
    * @param schedulerRegistry - Scheduler registry for managing cron jobs
+   * @param redisCacheService - Optional Redis cache service used to PUBLISH cross-instance
+   *   invalidation messages (F-007 follow-up). Absent ⇒ same-instance-only convergence + cron.
+   * @param redisSubscriberService - Optional dedicated Redis subscriber used to SUBSCRIBE to
+   *   those messages. Absent ⇒ same-instance-only convergence + cron.
    */
   constructor(
     private readonly globalSettingRepository: GlobalSettingRepository,
     protected readonly eventEmitter: EventEmitter2,
     protected readonly clsService: ClsService<IActiveUserContext>,
     protected readonly schedulerRegistry: SchedulerRegistry,
+    @Optional() @Inject(IRedisCacheService) private readonly redisCacheService?: IRedisCacheService,
+    @Optional() private readonly redisSubscriberService?: RedisSubscriberService,
   ) {
     this.logger.log({
       message: 'Service created',
@@ -86,6 +106,11 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
 
       // Setup automatic cache refresh
       this.updateCacheAppSettings();
+
+      // Subscribe to cross-instance invalidation messages (F-007 follow-up).
+      // Best-effort: a missing/unavailable Redis subscriber falls back to the
+      // pre-existing behaviour (in-process convergence + cron) without throwing.
+      await this.subscribeToCrossInstanceInvalidation();
 
       this.logger.log({
         message: 'Service initialized',
@@ -366,9 +391,13 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
    * unrelated resource updates never trigger a needless DB re-read.
    *
    * NOTE: `@nestjs/event-emitter` is in-process only — on a multi-instance
-   * deployment this converges the writing instance's OWN cache immediately;
-   * it does not by itself push the update to other instances (those still
-   * converge on the cron, or on their own write-lane refresh).
+   * deployment this converges the writing instance's OWN cache immediately.
+   * To push the update to OTHER instances, this handler also publishes an
+   * invalidation message on `APP_SETTINGS_INVALIDATION_CHANNEL` (F-007
+   * follow-up) — see `publishCrossInstanceInvalidation` /
+   * `subscribeToCrossInstanceInvalidation`. Publishing is best-effort: a
+   * missing/unavailable Redis cache service degrades to cron-only
+   * convergence for peers, never throws.
    */
   @OnEvent(SysEventType.ResourceUpdated)
   async handleGlobalSettingUpdated(event: SysEvent): Promise<void> {
@@ -378,12 +407,96 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
 
     try {
       await this.refreshCache();
+      await this.publishCrossInstanceInvalidation();
     } catch (error) {
       this.logger.error({
         message: 'Failed to refresh cache after GlobalSetting ResourceUpdated event',
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  /**
+   * PUBLISH side of the F-007 cross-instance convergence follow-up.
+   * Fire-and-forget from the caller's perspective (already awaited by
+   * `handleGlobalSettingUpdated`, but never throws): a missing Redis cache
+   * service, or Redis being unreachable, both fail open — the writing
+   * instance already converged locally via `refreshCache()`, and peers still
+   * converge (more slowly) via the cron.
+   */
+  private async publishCrossInstanceInvalidation(): Promise<void> {
+    if (!this.redisCacheService) {
+      return;
+    }
+
+    try {
+      await this.redisCacheService.publish(APP_SETTINGS_INVALIDATION_CHANNEL, JSON.stringify({ instanceId: this.instanceId }));
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to publish cross-instance settings invalidation (fail-open — cron still converges peers)',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * SUBSCRIBE side of the F-007 cross-instance convergence follow-up.
+   * Called once from `onModuleInit`. A missing Redis subscriber (not wired
+   * for this service graph) or a Redis connection failure both fail open:
+   * the service still boots and falls back to cron-only convergence.
+   */
+  private async subscribeToCrossInstanceInvalidation(): Promise<void> {
+    if (!this.redisSubscriberService) {
+      this.logger.debug({
+        message: 'Redis subscriber not available — cross-instance settings convergence stays cron-bound',
+        channel: APP_SETTINGS_INVALIDATION_CHANNEL,
+      });
+      return;
+    }
+
+    try {
+      const messages$ = await this.redisSubscriberService.subscribeToChannel(APP_SETTINGS_INVALIDATION_CHANNEL);
+      messages$.subscribe({
+        next: (message) => this.handleCrossInstanceInvalidationMessage(message),
+        error: (error) => {
+          this.logger.warn({
+            message: 'Cross-instance settings invalidation subscription errored — falling back to cron-only convergence',
+            error: error instanceof Error ? error.message : String(error),
+          });
+        },
+      });
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to subscribe to cross-instance settings invalidation channel — falling back to cron-only convergence',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Handles one message received on `APP_SETTINGS_INVALIDATION_CHANNEL`.
+   * Skips a self-published message (this instance already refreshed via
+   * `handleGlobalSettingUpdated` before publishing it) to avoid a redundant
+   * DB re-read; a malformed payload is treated defensively as a foreign
+   * invalidation and still triggers a refresh.
+   */
+  private handleCrossInstanceInvalidationMessage(rawMessage: string): void {
+    try {
+      const payload = JSON.parse(rawMessage) as { instanceId?: string };
+      if (payload.instanceId === this.instanceId) {
+        return;
+      }
+    } catch {
+      // Malformed payload — refresh anyway rather than silently drop a
+      // potential invalidation signal.
+    }
+
+    this.refreshCache().catch((error) => {
+      this.logger.error({
+        message: 'Failed to refresh cache after cross-instance settings invalidation message',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
   }
 
   /**

@@ -99,7 +99,7 @@ first data-plane call fails with `NoSuchBucket`.
   resolution order: purpose `AUDIO` → slug `recordings` → legacy slug `audio`.
 - E2E/spec/script renames: `task-307-tenant-bucket-cross-tenant.spec.ts`,
   `task-307-storage-cross-tenant.spec.ts`, `task-307-w3-aggregate.spec.ts`,
-  `packages/applications/scripts/task-376-media-seed.ts` (`hope-recordings-global`).
+  `packages/applications/scripts/media-seed.ts` (`hope-recordings-global`).
 
 ### Files changed
 
@@ -113,7 +113,7 @@ first data-plane call fails with `NoSuchBucket`.
 | `apps/api/src/modules/streaming/transcription-job.controller.ts` | recordings-first slug fallback |
 | `apps/api/src/modules/streaming/__tests__/transcription-job.controller.test.ts` | slug mock → recordings |
 | `apps/api/tests/e2e/task-307-{tenant-bucket,storage}-cross-tenant.spec.ts`, `task-307-w3-aggregate.spec.ts` | bucket-name renames |
-| `packages/applications/scripts/task-376-media-seed.ts` | `hope-recordings-global` |
+| `packages/applications/scripts/media-seed.ts` | `hope-recordings-global` |
 
 No schema migration: slugs/names are data, `TenantBucketPurpose.AUDIO` enum retained.
 

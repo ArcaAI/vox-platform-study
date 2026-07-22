@@ -18,7 +18,7 @@
  *
  * Usage:
  *   NODE_ENV=development pnpm --filter @arcaai/database exec \
- *     tsx scripts/task-330-phase3-live-seed.ts
+ *     tsx scripts/harness-knowledge-ingest-seed.ts
  */
 import { createHash } from 'node:crypto';
 import { Queue } from 'bullmq';
