@@ -49,7 +49,7 @@ const createMockUsageEntity = (overrides: Record<string, unknown> = {}) => ({
     createdAt: overrides.createdAt ?? new Date('2026-02-18T10:00:00Z'),
 });
 
-describe('DnaWritingStyleService.getDashboard (TASK-328 A5)', () => {
+describe('DnaWritingStyleService.getDashboard', () => {
     let service: DnaWritingStyleService;
     let mockReportRepo: ReturnType<typeof createMockDnaReportRepository>;
     let mockVersionRepo: ReturnType<typeof createMockDnaVersionRepository>;

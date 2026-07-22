@@ -184,6 +184,14 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
 
         const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, smrResponse.summary, resolvedRequest.dnaStyleId, userId);
 
+        // Encrypt the generated summary text into `encryptedContent`
+        // before persistence — the plaintext `content` column was dropped by the
+        // PHI field-encryption migration, so an unencrypted create silently loses
+        // the clinical text at rest (mirrors context.service.ts `encryptContent`).
+        await this.encryptBestEffort('ContextItem content', () =>
+          this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!),
+        );
+
         const savedContext = await this.contextItemRepository.create(contextItem);
 
         const summaryMeta = SummaryMetaFactory.CreateSummaryMeta({

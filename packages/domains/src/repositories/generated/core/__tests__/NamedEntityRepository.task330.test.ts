@@ -32,7 +32,7 @@ const buildRepo = async (delegate: any) => {
   return new NamedEntityRepository(makeUow({ namedEntity: delegate }) as never);
 };
 
-describe('NamedEntityRepository.findByConsultation (TASK-330 Phase 1)', () => {
+describe('NamedEntityRepository.findByConsultation (Phase 1)', () => {
   it('filters by the parent ContextItem.consultationId and maps results', async () => {
     const findMany = vi.fn().mockResolvedValue([
       { id: 'ne-1', contextItemId: 'ctx-1', transcriptStartOffset: 0 },

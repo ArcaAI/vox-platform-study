@@ -127,7 +127,7 @@ describe('ApiKeysScreen', () => {
         expect(screen.getByText(/3 keys/)).toBeDefined();
     });
 
-    it('renders the scope badges on a single line so the fixed-height row keeps its border (TASK-429)', async () => {
+    it('renders the scope badges on a single line so the fixed-height row keeps its border', async () => {
         stubFetch();
         renderWithProviders(<ApiKeysScreen />);
 

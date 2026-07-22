@@ -45,7 +45,7 @@ function makeRepo() {
   return { repo, delegate };
 }
 
-describe('AiModelRepository.findBySlug — optional tx client (r2605 Finding A)', () => {
+describe('AiModelRepository.findBySlug — optional tx client', () => {
   it('routes the read through a supplied tx client, not the extended delegate', async () => {
     const { repo, delegate } = makeRepo();
     const tx = { aiModel: { findFirst: vi.fn().mockResolvedValue(ROW) } };
@@ -81,7 +81,7 @@ describe('AiModelRepository.findBySlug — optional tx client (r2605 Finding A)'
   });
 });
 
-describe('AiModelRepository.findByTaskTypeSharedRead (r2605 Finding E)', () => {
+describe('AiModelRepository.findByTaskTypeSharedRead', () => {
   it('queries WITHOUT a tenantId filter so the extension can widen reads to [caller, SYSTEM]', async () => {
     const { repo, delegate } = makeRepo();
     delegate.findMany.mockResolvedValue([ROW]);

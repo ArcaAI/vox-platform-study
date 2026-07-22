@@ -80,7 +80,7 @@ function buildService(stored: Record<string, unknown> = {}, env: Record<string, 
   return { service, resolveEffective };
 }
 
-describe('LiveDocumentationService — agentic.context.* live lane (TASK-533 B1)', () => {
+describe('LiveDocumentationService — agentic.context.* live lane', () => {
   afterEach(() => vi.restoreAllMocks());
 
   it('reads the STORED registry value, not the code default', async () => {

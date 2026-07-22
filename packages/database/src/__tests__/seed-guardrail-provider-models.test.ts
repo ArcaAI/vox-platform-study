@@ -19,7 +19,7 @@ interface GuardrailProviderCatalogEntry {
 // part of a cross-worker contract with the Guardrail Python service: provider
 // order `['lm-studio', 'ollama', 'azure-openai']` and the lm-studio entry MUST
 // expose `granite-guardian-4.1-8b`.
-describe('Guardrail Provider-Model Catalog Seed Data (TASK-338)', () => {
+describe('Guardrail Provider-Model Catalog Seed Data', () => {
   describe('GUARDRAIL_PROVIDER_MODELS constant', () => {
     it('should be a non-empty array', () => {
       expect(Array.isArray(GUARDRAIL_PROVIDER_MODELS)).toBe(true);
@@ -119,7 +119,7 @@ describe('Guardrail Provider-Model Catalog Seed Data (TASK-338)', () => {
     for (const prefix of SETTING_PREFIXES) {
       for (const suffix of ['GUARDRAIL_PROVIDER', 'GUARDRAIL_MODEL', 'GUARDRAIL_AZURE_DEPLOYMENT']) {
         const key = `${prefix}_${suffix}`;
-        it(`should NOT define retired id ${key} (TASK-506)`, () => {
+        it(`should NOT define retired id ${key}`, () => {
           expect((SEED_GLOBAL_SETTING_IDS as Record<string, string>)[key]).toBeUndefined();
         });
       }

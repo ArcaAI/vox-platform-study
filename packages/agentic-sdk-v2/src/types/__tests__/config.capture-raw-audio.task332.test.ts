@@ -10,7 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import { TENANT_CONFIG_KEYS, parseTenantConfig } from '../config';
 
-describe('TASK-332 — parseTenantConfig captureRawAudio', () => {
+describe('parseTenantConfig captureRawAudio', () => {
   it('exposes the enable-local-raw-capture key constant', () => {
     expect(TENANT_CONFIG_KEYS.ENABLE_LOCAL_RAW_CAPTURE).toBe('enable-local-raw-capture');
   });

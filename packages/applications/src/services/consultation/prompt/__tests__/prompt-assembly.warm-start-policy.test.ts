@@ -70,7 +70,7 @@ const assembleWithPriorDraft = (service: { assemble: (p: unknown) => Promise<{ u
 /** Warm start is ON iff the prior-draft block reached the user prompt. */
 const warmStarted = (assembled: { userPrompt: string }) => assembled.userPrompt.includes(PRIOR_DRAFT);
 
-describe('PromptAssemblyService — effective warmStartEnabled (TASK-533 D-23)', () => {
+describe('PromptAssemblyService — effective warmStartEnabled', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockPromptResolutionService.resolve.mockResolvedValue({ promptId: 'template-warm', resolvedFrom: 'default' });

@@ -157,7 +157,7 @@ describe('StorageAccessKeyService', () => {
             })).rejects.toThrow(NotFoundException);
         });
 
-        it('should persist only a HASH and return the plaintext secret exactly once (F-2)', async () => {
+        it('should persist only a HASH and return the plaintext secret exactly once', async () => {
             let createdEntity: any;
             mockStorageAccessKeyRepository.create.mockImplementation((entity: any) => {
                 createdEntity = entity;
@@ -235,7 +235,7 @@ describe('StorageAccessKeyService', () => {
             expect(result!.permissions).toEqual(['read']);
         });
 
-        it('should record lastUsedAt and lastUsedIp on successful validation (F-2b)', async () => {
+        it('should record lastUsedAt and lastUsedIp on successful validation', async () => {
             const validKey = createMockKeyEntity({ id: 'key-77', isExpired: false });
             mockStorageAccessKeyRepository.findByAccessKeyId.mockResolvedValue(validKey);
             mockStorageAccessKeyRepository.update.mockResolvedValue(validKey);

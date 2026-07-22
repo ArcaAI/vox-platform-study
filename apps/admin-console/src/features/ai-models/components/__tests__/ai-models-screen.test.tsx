@@ -107,7 +107,7 @@ describe('AiModelsScreen', () => {
         expect(screen.getByRole('grid', { name: 'AI models' })).toBeDefined();
     });
 
-    it('renders the runtime provider badge and architecture (TASK-506)', async () => {
+    it('renders the runtime provider badge and architecture', async () => {
         stubFetch(() => Response.json(envelope([MODEL])));
         renderWithProviders(<AiModelsScreen />);
 
@@ -115,7 +115,7 @@ describe('AiModelsScreen', () => {
         expect(screen.getByText('whisper')).toBeDefined();
     });
 
-    it('registers a model with the TASK-506 runtime provider and architecture fields', async () => {
+    it('registers a model with the runtime provider and architecture fields', async () => {
         const calls = stubFetch((url, method) => {
             if (method === 'POST') return Response.json({ ...MODEL, id: 'm-2' });
             return Response.json(envelope([]));
@@ -143,7 +143,7 @@ describe('AiModelsScreen', () => {
         await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     });
 
-    it('renders the capability badges on a single line so the fixed-height row keeps its border (TASK-429)', async () => {
+    it('renders the capability badges on a single line so the fixed-height row keeps its border', async () => {
         stubFetch(() => Response.json(envelope([MODEL])));
         renderWithProviders(<AiModelsScreen />);
 
@@ -287,7 +287,7 @@ describe('AiModelsScreen', () => {
 // =============================================================================
 // The hub header action opening the discovery drawer
 // =============================================================================
-describe('AiModelsScreen discovery action (TASK-528)', () => {
+describe('AiModelsScreen discovery action', () => {
     it('renders a "Discover from servers" header action', async () => {
         stubFetch(() => Response.json(envelope([MODEL])));
         renderWithProviders(<AiModelsScreen />);

@@ -85,7 +85,7 @@ function expectedInclude(tenantId: string | null) {
   };
 }
 
-describe('TASK-444 — RbacRoleService member counts', () => {
+describe('RbacRoleService member counts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

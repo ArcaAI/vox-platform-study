@@ -21,7 +21,7 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
     return { ...actual, useAgenticStore: vi.fn() };
 });
 
-describe('useUserSettings (TASK-265 reduced surface)', () => {
+describe('useUserSettings (reduced surface)', () => {
     let mockLogger: ReturnType<typeof createMockLogger>;
     let mockStore: any;
     const mockGet = vi.fn();
@@ -170,7 +170,7 @@ describe('useUserSettings (TASK-265 reduced surface)', () => {
     // `PATCH /admin/users/:id/settings/:namespace/:key` (assertUserInScope).
     // These SDK methods target a specific `userId` so a future admin
     // FE can view/edit another user's preferences.
-    describe('admin target-user surface (TASK-388 #11)', () => {
+    describe('admin target-user surface', () => {
         it('listForUser GETs the admin settings route for the target user', async () => {
             const data = [{ id: 'us-9', namespace: 'arcaai-sdk', key: 'theme', value: 'dark', userId: 'u-9' }];
             mockGet.mockResolvedValue(data);

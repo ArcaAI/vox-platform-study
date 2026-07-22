@@ -161,7 +161,7 @@ const createMockRefreshTokenService = () => ({
     revokeFamily: vi.fn().mockResolvedValue(undefined),
 });
 
-describe('AuthController — TASK-224 Security Tests', () => {
+describe('AuthController — Security Tests', () => {
     let controller: AuthController;
     let mockClsService: any;
     let mockUserRepository: any;
@@ -618,7 +618,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
             );
         });
 
-        it('should throw UnauthorizedException when no user is in context (TASK-295 L-3 supersedes TASK-224 no-op behavior)', async () => {
+        it('should throw UnauthorizedException when no user is in context (no-op behavior)', async () => {
             mockClsService = createMockClsService(null);
             mockAuthService = createMockAuthService();
 

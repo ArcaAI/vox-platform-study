@@ -15,7 +15,7 @@ function createMockCls(user: { id?: string; tenantId?: string | null; roles?: st
     };
 }
 
-describe('TenantProvisionController (TASK-497 §3.5)', () => {
+describe('TenantProvisionController', () => {
     let controller: TenantProvisionController;
     let tenantOnboardingService: ReturnType<typeof createMockTenantOnboardingService>;
 

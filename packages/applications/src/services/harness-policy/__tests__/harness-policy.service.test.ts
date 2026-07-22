@@ -516,7 +516,7 @@ describe('HarnessPolicyService', () => {
     // caller's validator must be compared against the inherited default's
     // version (or 0 when only code defaults exist), per RFC 7232.
 
-    it('G1: a stale expectedVersion on first edit → OptimisticConcurrencyException, NO row created', async () => {
+    it('a stale expectedVersion on first edit → OptimisticConcurrencyException, NO row created', async () => {
       policyRepository.findForExactTenant.mockResolvedValue(null);
       policyRepository.findSystemDefault.mockResolvedValue(systemDefaultEntity()); // version 1
 
@@ -525,7 +525,7 @@ describe('HarnessPolicyService', () => {
       expect(policyChangeRepository.create).not.toHaveBeenCalled();
     });
 
-    it('G1: on first edit with NO system default, only version 0 (or no validator) is accepted', async () => {
+    it('on first edit with NO system default, only version 0 (or no validator) is accepted', async () => {
       policyRepository.findForExactTenant.mockResolvedValue(null);
       policyRepository.findSystemDefault.mockResolvedValue(null);
       policyRepository.create.mockImplementation(async (entity) => entity);

@@ -99,6 +99,18 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
           currentVersion: 0,
         });
       }
+
+      // F-028 — restore-with-overwrite. The unique (tenantId, provider) index
+      // counts soft-DELETED rows, so a plain INSERT after a delete collides
+      // with the tombstone (409 unique-constraint) with no HTTP recovery path.
+      // A create-intent (`If-Match: "0"`) over a DELETED row instead REVIVES
+      // it — restore + apply every field as a fresh write, mirroring the
+      // `GlobalSettingService.create` / `UserRoleAssignmentService` precedent.
+      const deleted = await this.connectionRepository.findDeletedByTenantAndProvider(scopedTenantId, provider, tx);
+      if (deleted) {
+        return this.restoreAndOverwrite(deleted, dto, provider, scopedTenantId, tx);
+      }
+
       // Encrypt only when the caller actually supplied a key — and only AFTER
       // the precondition verdict above (encrypting first would turn a
       // stale-If-Match 412 into a 500 whenever Transit was down).
@@ -270,6 +282,47 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
       }
     }
     return out;
+  }
+
+  /**
+   * F-028 — restore a soft-deleted tombstone and overwrite every field from
+   * the create-intent request, exactly as a fresh `create()` would populate
+   * them (an omitted `apiKey` means NO key material on the revived row — the
+   * tombstone's old ciphertext must not resurrect silently). CAS-gated
+   * against the tombstone's OWN current version (never `dto.expectedVersion`,
+   * which the caller only knows as `0`), so a concurrent revive still throws
+   * `OptimisticConcurrencyException` via `updateWithVersion` rather than
+   * silently double-writing.
+   */
+  private async restoreAndOverwrite(
+    deleted: AiProviderConnectionEntity,
+    dto: UpsertAiProviderConnectionRequest,
+    provider: string,
+    scopedTenantId: string,
+    tx?: CoreDatabaseService['baseClient'],
+  ): Promise<AiProviderConnectionResponse> {
+    const currentVersion = deleted.version;
+    const secret = dto.apiKey !== undefined ? await this.encryptKey(dto.apiKey) : undefined;
+
+    deleted.enable(this.requestUserId ?? undefined);
+    await this.updateEntity(deleted, {
+      baseUrl: dto.baseUrl ?? null,
+      region: dto.region ?? null,
+      apiVersion: dto.apiVersion ?? null,
+      deploymentName: dto.deploymentName ?? null,
+      enabled: dto.enabled ?? false,
+      extraJson: dto.extraJson ?? null,
+      encryptedApiKey: secret?.ciphertext ?? null,
+      keyVersion: secret?.keyVersion ?? null,
+    });
+
+    const restored = await this.connectionRepository.updateWithVersion(deleted.id, deleted, currentVersion, tx);
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: restored.id,
+      createdAt: restored.createdAt,
+      data: { provider, tenantId: scopedTenantId, enabled: restored.enabled, action: 'connection-restored' },
+    });
+    return AiProviderConnectionDtoMapper.toResponse(restored);
   }
 
   // ────────────────────────────── internals ──────────────────────────────

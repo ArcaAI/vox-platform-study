@@ -39,7 +39,7 @@ const distDir = resolve(here, '../../dist');
 // must stay free of the inlined asset-URL resolution.
 const ESM_ENTRIES = ['index.mjs', 'plugins.mjs'];
 
-describe('TASK-364: SDK bundle externalizes asset-owning sub-packages', () => {
+describe('SDK bundle externalizes asset-owning sub-packages', () => {
   it('has built ESM bundles to inspect (run `pnpm --filter @arcaai/vox build` first)', () => {
     for (const entry of ESM_ENTRIES) {
       expect(existsSync(resolve(distDir, entry)), `${entry} missing — build the SDK first`).toBe(true);

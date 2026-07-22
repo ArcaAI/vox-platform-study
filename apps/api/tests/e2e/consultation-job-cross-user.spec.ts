@@ -9,7 +9,7 @@
  *     (read routes deliberately stay tenant-only)
  *
  * Cross-TENANT 404 behaviour is already proven by
- * `task-307-consultation-job-cross-tenant.spec.ts` — we
+ * `consultation-job-cross-tenant.spec.ts` — we
  * don't re-prove it here. The "tenant-B user → 404" case
  * is satisfied by that prior spec PLUS the
  * `cross-tenant probe regardless of scope:"creator"` unit test in
@@ -72,7 +72,7 @@ function buildRedisClient(): Redis {
   });
 }
 
-test.describe('TASK-308 AC-4 — ConsultationJob cancel ownership (intra-tenant)', () => {
+test.describe('AC-4 — ConsultationJob cancel ownership (intra-tenant)', () => {
   // Both doctors live in DEFAULT_TENANT_KEY (`__GLOBAL__`); see
   // packages/database/src/prisma/db_main/seed/91-user.ts.
   let creatorToken: string;

@@ -120,7 +120,7 @@ describe('AuthController.issueStreamTicket', () => {
     });
   });
 
-  it('carries impersonatedBy through to the ticket payload (TASK-295 SEC-A5-6)', async () => {
+  it('carries impersonatedBy through to the ticket payload', async () => {
     const issueTicket = vi.fn(async () => ({ ticket: 't', expiresAt: 1, scope: 's' }));
     const { controller } = buildController({
       cls: {
@@ -163,7 +163,7 @@ describe('AuthController.issueStreamTicket', () => {
   // The SSE route is @TenantOwnedResource, but a ticket bypasses that
   // interceptor, so a `consultation_live_summary:<id>` ticket may only be
   // minted for a consultation in the caller's (active) tenant.
-  describe('live-summary scope ownership (TASK-341 B4)', () => {
+  describe('live-summary scope ownership', () => {
     it('mints a live-summary ticket when the consultation belongs to the caller tenant', async () => {
       const issueTicket = vi.fn(async () => ({ ticket: 'tkt', expiresAt: 1, scope: 'consultation_live_summary:c-1' }));
       const findById = vi.fn().mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
@@ -252,7 +252,7 @@ describe('AuthController.issueStreamTicket', () => {
   // consultation-id-keyed scope, not just live-summary: the SSE route's
   // @TenantOwnedResource guard still blocks a cross-tenant stream, but the
   // ticket must not be mintable in the first place (defense-in-depth parity).
-  describe('generalized consultation scope ownership (TASK-348 MIN-1)', () => {
+  describe('generalized consultation scope ownership', () => {
     it('mints a harness-progress ticket when the consultation belongs to the caller tenant', async () => {
       const issueTicket = vi.fn(async () => ({ ticket: 'tkt', expiresAt: 1, scope: 'consultation_harness_progress:c-1' }));
       const findById = vi.fn().mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
@@ -333,7 +333,7 @@ describe('AuthController.issueStreamTicket', () => {
   // (`StreamSessionTenantBindingService.bind`) and 404s on missing OR
   // mismatched bindings — mirroring the DELETE route's
   // `assertStreamSessionOwnership` (404-over-403, no existence leak).
-  describe('stt_session scope ownership (TASK-450 C4-01)', () => {
+  describe('stt_session scope ownership', () => {
     it('mints an stt_session ticket when the session binding matches the caller tenant', async () => {
       const issueTicket = vi.fn(async () => ({ ticket: 'tkt', expiresAt: 1, scope: 'stt_session:sess-1' }));
       const lookup = vi.fn().mockResolvedValue('tenant-1');

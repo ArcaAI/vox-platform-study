@@ -13,7 +13,7 @@ import { describe, it, expect } from 'vitest';
 // directly (the `useAgenticStore` name now refers to the context-backed hook).
 import { agenticStoreSingleton as useAgenticStore } from '../agenticStore';
 
-describe('TASK-264 W0-3: store impersonation token removed', () => {
+describe('store impersonation token removed', () => {
   it('state object should NOT contain `authOriginalToken` field', () => {
     const state = useAgenticStore.getState() as unknown as Record<string, unknown>;
     expect('authOriginalToken' in state).toBe(false);

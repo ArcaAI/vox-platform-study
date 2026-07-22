@@ -244,7 +244,7 @@ afterEach(() => {
 // Tests
 // ===========================================================================
 
-describe('useArca ↔ useArcaAudio unification (TASK-267 W1-1)', () => {
+describe('useArca ↔ useArcaAudio unification', () => {
   it('invokes getUserMedia exactly once when both hooks are mounted and start() is called once', async () => {
     const { result } = renderHook(() => {
       const arca = useArca();

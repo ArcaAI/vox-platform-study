@@ -17,7 +17,7 @@ import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/s
 import { HarnessPolicyService } from '../../../harness-policy/harness-policy.service';
 import { ConfigResolver } from '../../../config-resolver';
 import { IActiveUserContext } from '../../../../interfaces';
-import { assertEqualTenants, createWorkerSession } from '../../../../common';
+import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../../../common';
 
 @Processor(JobQueue.GenerateSummary)
 export class SummaryProcessor extends WorkerHost {
@@ -46,6 +46,15 @@ export class SummaryProcessor extends WorkerHost {
   ) {
     super();
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
+  }
+
+  /**
+   * Encrypt PHI on write through the shared env-gated guard: a soft
+   * no-op in dev/test (SECRETS_PROVIDER!=vault) but FAIL-CLOSED (throws) in
+   * staging/prod (SECRETS_PROVIDER=vault) instead of persisting plaintext-only.
+   */
+  private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
+    await encryptPhiFields(this.secretsService, label, run, this.logger);
   }
 
   async process(job: Job<GenerateSummaryJobPayload>): Promise<SummaryJobResult> {
@@ -173,6 +182,14 @@ export class SummaryProcessor extends WorkerHost {
         await this.jobService.notifyProgress(jobId, 70, 'Saving results');
 
         const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, smrResponse.summary, request.dnaStyleId, userId);
+
+        // Encrypt the generated summary text into `encryptedContent`
+        // before persistence — the plaintext `content` column was dropped by the
+        // PHI field-encryption migration, so an unencrypted create silently loses
+        // the clinical text at rest (mirrors context.service.ts `encryptContent`).
+        await this.encryptBestEffort('ContextItem content', () =>
+          this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!),
+        );
 
         const savedContext = await this.contextItemRepository.create(contextItem);
 

@@ -159,7 +159,7 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
     });
   });
 
-  describe('platform-wide settings (TASK-316 rate-limit, TASK-392 entitlements)', () => {
+  describe('platform-wide settings (rate-limit, entitlements)', () => {
     for (const key of PLATFORM_WIDE_KEYS) {
       it(`should define ${key}`, () => {
         const id = SEED_GLOBAL_SETTING_IDS[key as keyof typeof SEED_GLOBAL_SETTING_IDS];
@@ -169,7 +169,7 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
     }
   });
 
-  describe('system-wide settings (TASK-332 local raw-capture)', () => {
+  describe('system-wide settings (local raw-capture)', () => {
     for (const key of SYSTEM_WIDE_KEYS) {
       it(`should define ${key} on the system tenant`, () => {
         const id = SEED_GLOBAL_SETTING_IDS[key as keyof typeof SEED_GLOBAL_SETTING_IDS];
@@ -228,7 +228,7 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
         // The guardrail namespace is RETIRED (superseded
         // by AiTaskDefault + the AiModel registry); nothing is emitted and
         // `retireSupersededGlobalSettings` sweeps existing rows to DELETED.
-        it('emits NO guardrail namespace settings (retired by TASK-506)', () => {
+        it('emits NO guardrail namespace settings (retired by)', () => {
           const guardrail = settingsForTenant(tenantId).filter(
             (s) => s.namespace === 'guardrail',
           );

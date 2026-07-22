@@ -35,7 +35,7 @@ function makeMockClient() {
     return { client, upsert };
 }
 
-describe('shouldSeedApiKeys (F5 dev/test gate predicate)', () => {
+describe('shouldSeedApiKeys (dev/test gate predicate)', () => {
     it('permits seeding in development and test', () => {
         expect(shouldSeedApiKeys('development')).toBe(true);
         expect(shouldSeedApiKeys('test')).toBe(true);
@@ -47,7 +47,7 @@ describe('shouldSeedApiKeys (F5 dev/test gate predicate)', () => {
     });
 });
 
-describe('maskSecret (F5 no-secret logging)', () => {
+describe('maskSecret (no-secret logging)', () => {
     it('reveals at most the first 4 characters then masks the rest', () => {
         expect(maskSecret('hope_sk_test_abcdef_123456')).toBe('hope****');
     });
@@ -62,7 +62,7 @@ describe('maskSecret (F5 no-secret logging)', () => {
     });
 });
 
-describe('seedApiKey production guard (F5 defence in depth)', () => {
+describe('seedApiKey production guard (defence in depth)', () => {
     afterEach(() => {
         vi.unstubAllEnvs();
         vi.restoreAllMocks();
@@ -82,7 +82,7 @@ describe('seedApiKey production guard (F5 defence in depth)', () => {
     });
 });
 
-describe('seedApiKey development seeding (F5)', () => {
+describe('seedApiKey development seeding', () => {
     afterEach(() => {
         vi.unstubAllEnvs();
         vi.restoreAllMocks();

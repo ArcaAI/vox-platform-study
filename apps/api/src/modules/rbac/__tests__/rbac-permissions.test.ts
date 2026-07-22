@@ -37,7 +37,7 @@ describe('RBAC controller route permissions (AC-03)', () => {
       expect(required(RolesController.prototype.remove)).toEqual([{ action: 'manage', subject: 'Role' }]);
     });
 
-    it('TASK-501/534 G9 — clone requires create:Role (a clone only ever CREATES a CUSTOM role; tenant admins hold the seeded `create Role {isSystemRole:false}` grant)', () => {
+    it('clone requires create:Role (a clone only ever CREATES a CUSTOM role; tenant admins hold the seeded `create Role {isSystemRole:false}` grant)', () => {
       expect(required(RolesController.prototype.clone)).toEqual([{ action: 'create', subject: 'Role' }]);
     });
   });

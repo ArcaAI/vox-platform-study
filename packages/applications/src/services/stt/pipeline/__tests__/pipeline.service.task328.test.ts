@@ -93,7 +93,7 @@ const mockVersionRepository = {
     findByPipeline: vi.fn(),
 };
 
-describe('PipelineService — TASK-328 A6', () => {
+describe('PipelineService', () => {
     let service: PipelineService;
 
     beforeEach(() => {

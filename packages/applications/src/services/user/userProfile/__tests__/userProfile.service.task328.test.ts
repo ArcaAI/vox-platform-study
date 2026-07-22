@@ -23,7 +23,7 @@ const mockRepo = {
   softDelete: vi.fn(),
 };
 
-describe('UserProfileService (TASK-328)', () => {
+describe('UserProfileService', () => {
   let service: UserProfileService;
 
   beforeEach(() => {

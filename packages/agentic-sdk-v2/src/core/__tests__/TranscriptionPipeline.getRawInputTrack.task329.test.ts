@@ -11,7 +11,7 @@
 import { describe, it, expect } from 'vitest';
 import { TranscriptionPipeline } from '../TranscriptionPipeline';
 
-describe('TranscriptionPipeline.getRawInputTrack (TASK-329 P2)', () => {
+describe('TranscriptionPipeline.getRawInputTrack', () => {
   it('returns null before any input is attached', () => {
     const pipeline = new TranscriptionPipeline();
     expect(pipeline.getRawInputTrack()).toBeNull();

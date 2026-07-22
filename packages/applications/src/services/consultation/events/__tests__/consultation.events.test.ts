@@ -46,7 +46,7 @@ describe('ConsultationPipelineEvent', () => {
         );
     });
 
-    it('should have ContextRemoved with correct dot-notation value (TASK-342 GAP #3d)', () => {
+    it('should have ContextRemoved with correct dot-notation value', () => {
         expect(ConsultationPipelineEvent.ContextRemoved).toBe(
             'consultation.context.removed',
         );

@@ -27,7 +27,7 @@ const rows: Row[] = [
   { name: 'Bo "B"', city: '', id: 'r-2' },
 ];
 
-describe('table-export (TASK-390 #25 shared util)', () => {
+describe('table-export (shared util)', () => {
   it('toCsvText: header from labels, one line per row, RFC-4180 escaping, \\n joins', () => {
     const csv = toCsvText(columns, rows);
     const lines = csv.split('\n');

@@ -36,7 +36,7 @@ BYO provider keys are Vault-Transit ciphertext at rest, decrypted only at inject
 | Prisma models | — (proxy; resolves the effective spec via T3's service, injects `X-Service-Token`) |
 | Key API endpoints | `@Controller('speech')` → `POST /speech/synthesize`, `GET /speech/voices`; WS gateway `@WebSocketGateway({ path: '/ws/tts-v2/stream' })` → WS `/ws/tts-v2/stream` |
 | Console | consumed by the playground (`apps/admin-console` playground surfaces) |
-| Tests | unit(api): `speech/__tests__/speech-proxy.controller.test.ts`, `speech/__tests__/tts-ws.gateway.test.ts`; e2e: `task-488-speech.spec.ts` |
+| Tests | unit(api): `speech/__tests__/speech-proxy.controller.test.ts`, `speech/__tests__/tts-ws.gateway.test.ts`; e2e: `speech-proxy-auth.spec.ts` |
 
 ### T3 — Per-tenant TTS config + BYO provider credentials (TASK-496)
 
@@ -56,4 +56,4 @@ BYO provider keys are Vault-Transit ciphertext at rest, decrypted only at inject
 - **The audit's "test / directory-credentials / sync" routes are NOT on `tenant-tts-config`.** The TASK-538 Wave-1 audit description attributed those to this module; the code has no such routes here. Those routes exist on `tenant-idp-config` and are recorded in [`auth-identity.md`](./auth-identity.md) (capability I3).
 - **Infra/creds-gated verification** (Docker/k3s deploy, live Azure key, GPU local weights, human-audio quality, live Azure text-stream) is tracked in the TASK-488 ticket, not here.
 
-Last verified: 2026-07-21
+Last verified: 2026-07-22

@@ -26,7 +26,7 @@ back to the gateway on internal service-token callbacks.
 | Prisma models | `TranscriptionJob`, `AsrPipeline` (`db_main/stt.prisma`), `TranscriptSegment` (`db_main/consultation.prisma`) |
 | Key API endpoints | `POST /audio/transcription-jobs/stream/session` (open session + ticket), `DELETE /audio/transcription-jobs/stream/session/:sessionId`, `POST /audio/transcription-jobs/stream/session/:sessionId/refresh-ticket`; WS gateway `@WebSocketGateway({ path: '/ws/stt-v2/stream' })` → WS `/ws/stt-v2/stream`; STT-v2 internal (`streaming/api/routes.py`, `APIRouter(prefix="/internal/streaming")`) → `POST /internal/streaming/sessions`, `GET /internal/streaming/sessions/active`, `GET/DELETE /internal/streaming/sessions/:session_id`, `POST /internal/streaming/sessions/:session_id/end` |
 | Console | `apps/admin-console` feature `playground-live-transcription` (`live-transcription-screen`, `streaming-tab`); route `/playground/live-transcription` (tier 50–59 playground, nav-gated under `(tenant)`) |
-| Tests | unit(app): `stt/streaming/__tests__/{streamingSession.service,streamingAudioBridge.service,speaker-label}.test.ts`; unit(console): `playground-live-transcription/components/__tests__/{live-transcription-screen,streaming-tab}.test.tsx`, `playground-live-transcription/api/__tests__/{use-live-stt-session.test.tsx,live-transcription-api.test.ts}`; contract: `stt.contract.test.ts` (+ `tests/contracts/stt-transcript-segments/`); e2e: `task-307-transcription-job-cross-tenant.spec.ts`; py(stt): `unit/streaming/*` |
+| Tests | unit(app): `stt/streaming/__tests__/{streamingSession.service,streamingAudioBridge.service,speaker-label}.test.ts`; unit(console): `playground-live-transcription/components/__tests__/{live-transcription-screen,streaming-tab}.test.tsx`, `playground-live-transcription/api/__tests__/{use-live-stt-session.test.tsx,live-transcription-api.test.ts}`; contract: `stt.contract.test.ts` (+ `tests/contracts/stt-transcript-segments/`); e2e: `transcription-job-cross-tenant.spec.ts`; py(stt): `unit/streaming/*` |
 
 ### R2 — Batch transcription jobs — legacy row 11
 
@@ -48,7 +48,7 @@ back to the gateway on internal service-token callbacks.
 | Prisma models | `UserVoiceProfile` (`db_main/user.prisma`) |
 | Key API endpoints | `@Controller('voice-profile')`: `POST /voice-profile/enroll`, `GET /voice-profile`, `PATCH /voice-profile/:id/activate`, `PATCH /voice-profile/:id/deactivate`, `DELETE /voice-profile/:id`; STT-v2 internal (`voice_profile/api/routes.py`, `APIRouter(prefix="/internal/voice-profile")`) → `POST /internal/voice-profile/extract` |
 | Console | `apps/admin-console` feature `playground-voice-profiles` (`voice-profiles-screen`); route `/playground/voice-profiles` (tier 50–59 playground) |
-| Tests | unit(api): `voice-profile/__tests__/voice-profile.controller.test.ts`; unit(console): `playground-voice-profiles/components/__tests__/voice-profiles-screen.test.tsx`, `playground-voice-profiles/api/__tests__/voice-profiles-api.test.ts`; e2e: `task-307-voice-profile-cross-tenant.spec.ts`; py(stt): `unit/test_diarization.py`, `unit/diarization/*` |
+| Tests | unit(api): `voice-profile/__tests__/voice-profile.controller.test.ts`; unit(console): `playground-voice-profiles/components/__tests__/voice-profiles-screen.test.tsx`, `playground-voice-profiles/api/__tests__/voice-profiles-api.test.ts`; e2e: `voice-profile-cross-tenant.spec.ts`; py(stt): `unit/test_diarization.py`, `unit/diarization/*` |
 
 ### R4 — ASR pipeline registry (public read + admin CRUD) — legacy row 26 (ASR part)
 
@@ -75,7 +75,7 @@ copies fast-forwarded; customized/unlocked rows never touched).
 | Prisma models | `AsrPipeline` (`templateLocked`, `sourceTemplateSlug` provenance), `AsrPipelineVersion` (fast-forward writes a new version snapshot) |
 | Key API endpoints | `POST /admin/audio/pipelines/:id/clone` (unlock into an editable copy); `POST /admin/tenants/:id/pipelines/resync` (`@CanManage('Tenant')`, `@HttpCode(200)`, returns `{ added, fastForwarded, skipped }`; SYSTEM tenant cannot resync against itself → 400) |
 | Console | `apps/admin-console` feature `audio-pipelines` template-governance surface (`template-governance`) under route `/audio/pipelines` |
-| Tests | unit(app): `stt/pipeline/__tests__/{pipeline.service.task531,pipeline-template-resync.service,pipeline-template-resync.cron.service}.test.ts`; unit(api): `pipeline/__tests__/audio-pipeline.task531.controller.test.ts`; unit(console): `audio-pipelines/components/__tests__/template-governance.test.tsx`; e2e: `task-531-pipeline-clone-resync-cross-tenant.spec.ts`, `task-531-pipeline-template-governance.spec.ts` |
+| Tests | unit(app): `stt/pipeline/__tests__/{pipeline.service.task531,pipeline-template-resync.service,pipeline-template-resync.cron.service}.test.ts`; unit(api): `pipeline/__tests__/audio-pipeline.task531.controller.test.ts`; unit(console): `audio-pipelines/components/__tests__/template-governance.test.tsx`; e2e: `pipeline-clone-resync-cross-tenant.spec.ts`, `pipeline-template-governance.spec.ts` |
 
 ## Honest notes / gaps
 
@@ -84,4 +84,4 @@ copies fast-forwarded; customized/unlocked rows never touched).
 - **Nightly resync is off by default.** The `PipelineTemplateResyncCronService` sweep is disabled so a human stays in the loop; `POST /admin/tenants/:id/pipelines/resync` is the primary (admin-triggered) path.
 - **No dedicated live-DB streaming e2e for the WS bridge.** R1 has unit + contract + cross-tenant-job coverage; the full browser-WS live-transcription round-trip is env-gated (playground manual pass), not an `apps/api/tests/e2e` spec.
 
-Last verified: 2026-07-21
+Last verified: 2026-07-22

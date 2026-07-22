@@ -58,7 +58,7 @@ const candidate = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-describe('GateEditMiningService — mining (TASK-533 B6)', () => {
+describe('GateEditMiningService — mining', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     repository.findByConsultation.mockResolvedValue(null);
@@ -149,7 +149,7 @@ describe('GateEditMiningService — mining (TASK-533 B6)', () => {
   });
 });
 
-describe('GateEditMiningService — retrieval (TASK-533 B6)', () => {
+describe('GateEditMiningService — retrieval', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     repository.findTopForRetrieval.mockResolvedValue([]);
@@ -210,7 +210,7 @@ describe('GateEditMiningService — retrieval (TASK-533 B6)', () => {
  * describe itself as unreviewed, and must never hand back anything that could
  * be mistaken for an approved corpus row.
  */
-describe('GateEditMiningService — corpus export (TASK-533 B6)', () => {
+describe('GateEditMiningService — corpus export', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

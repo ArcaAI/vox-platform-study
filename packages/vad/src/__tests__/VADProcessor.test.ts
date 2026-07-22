@@ -321,7 +321,7 @@ describe('VADProcessor', () => {
   });
 
   // postSpeechPadMs forwarded via zero-pad in handleSpeechEnd
-  describe('postSpeechPadMs (TASK-304)', () => {
+  describe('postSpeechPadMs', () => {
     function withSpeechEndStub(padMs: number, sampleRate: number) {
       const processor = new VADProcessor({
         postSpeechPadMs: padMs,
@@ -598,7 +598,7 @@ beforeEach(() => {
   micVADCalls.length = 0;
 });
 
-describe('VADProcessor.reset() (TASK-271 H-1)', () => {
+describe('VADProcessor.reset()', () => {
   it('creates a new MicVAD instance, resetting LSTM state', async () => {
     const processor = new VADProcessor();
     await asInternal(processor).init(makeInitOpts());
@@ -640,7 +640,7 @@ describe('VADProcessor.reset() (TASK-271 H-1)', () => {
   });
 });
 
-describe('VADProcessor.setStream() (TASK-271 H-1)', () => {
+describe('VADProcessor.setStream()', () => {
   it('rebuilds MicVAD with the new stream', async () => {
     const processor = new VADProcessor();
     await asInternal(processor).init(makeInitOpts());
@@ -665,7 +665,7 @@ describe('VADProcessor.setStream() (TASK-271 H-1)', () => {
   });
 });
 
-describe('VADProcessor silence-triggered reset (TASK-271 H-1)', () => {
+describe('VADProcessor silence-triggered reset', () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -752,7 +752,7 @@ describe('VADProcessor silence-triggered reset (TASK-271 H-1)', () => {
 // Sliding-window probability stats (memory bounded)
 // ============================================================================
 
-describe('VADProcessor sliding-window stats (TASK-271 H-2 / TASK-300 L-4)', () => {
+describe('VADProcessor sliding-window stats', () => {
   // L-4 upgraded the window from 300 → 1024 frames (~32.8 s @ 31.25 fps).
   // Size assertion lives in the L-4 describe block below.
 
@@ -821,7 +821,7 @@ describe('VADProcessor sliding-window stats (TASK-271 H-2 / TASK-300 L-4)', () =
 // VADProcessor.restart() alias + threshold hot-reload
 // ============================================================================
 
-describe('VADProcessor.restart() (TASK-300 L-3)', () => {
+describe('VADProcessor.restart()', () => {
   it('is exposed as a public API', () => {
     const processor = new VADProcessor();
     expect(typeof (processor as unknown as { restart: () => Promise<void> }).restart).toBe('function');
@@ -848,7 +848,7 @@ describe('VADProcessor.restart() (TASK-300 L-3)', () => {
   });
 });
 
-describe('VADProcessor threshold hot-reload triggers restart (TASK-300 L-3)', () => {
+describe('VADProcessor threshold hot-reload triggers restart', () => {
   it('updateThresholds restarts MicVAD with the new thresholds applied', async () => {
     const processor = new VADProcessor({
       positiveSpeechThreshold: 0.5,
@@ -911,7 +911,7 @@ describe('VADProcessor threshold hot-reload triggers restart (TASK-300 L-3)', ()
 // Sliding window upgraded to 1024 frames (~32.8s @ 31.25 fps)
 // ============================================================================
 
-describe('VADProcessor sliding-window @ 1024 frames (TASK-300 L-4)', () => {
+describe('VADProcessor sliding-window @ 1024 frames', () => {
   it('uses a Float32Array(1024) ring buffer', () => {
     const processor = new VADProcessor();
     const internals = processor as unknown as { probWindow: Float32Array; PROB_WINDOW_SIZE: number };
@@ -945,7 +945,7 @@ describe('VADProcessor sliding-window @ 1024 frames (TASK-300 L-4)', () => {
 // VAD numThreads gating on crossOriginIsolated
 // ============================================================================
 
-describe('VADProcessor numThreads gating (TASK-300 L-10)', () => {
+describe('VADProcessor numThreads gating', () => {
   let originalCrossOriginIsolated: boolean | undefined;
   let originalHardwareConcurrency: number;
   let ortMock: {
@@ -1025,7 +1025,7 @@ describe('VADProcessor numThreads gating (TASK-300 L-10)', () => {
 // VADSpeechEndPayload.duration (ms) at the source
 // ============================================================================
 
-describe('VADSpeechEndPayload.duration (TASK-271 H-4)', () => {
+describe('VADSpeechEndPayload.duration', () => {
   it('emits duration in milliseconds equal to endTime - startTime', async () => {
     const processor = new VADProcessor({ silenceResetMs: 0 });
     await asInternal(processor).init(makeInitOpts());

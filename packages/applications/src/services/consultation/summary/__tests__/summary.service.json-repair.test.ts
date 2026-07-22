@@ -128,7 +128,7 @@ const generateBodies = (http: { axiosRef: { post: ReturnType<typeof vi.fn> } }) 
     .filter((c: unknown[]) => String(c[0]).includes('/generate'))
     .map((c: unknown[]) => c[1] as { prompt: string });
 
-describe('SummaryService — bounded JSON auto-repair on the finalize path (TASK-533 D-25)', () => {
+describe('SummaryService — bounded JSON auto-repair on the finalize path', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('repairs a malformed structured response with EXACTLY ONE corrective retry and persists the repaired note', async () => {

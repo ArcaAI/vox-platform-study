@@ -48,7 +48,7 @@ afterAll(async () => {
 });
 
 describe('PgBouncer txn-mode — SHOW POOLS under load (Task 1.16)', () => {
-  it('R-POOLS-1: during a concurrent burst sv_active > 0 and cl_waiting = 0', async () => {
+  it('during a concurrent burst sv_active > 0 and cl_waiting = 0', async () => {
     // Pre-warm the bouncer's server pool to the burst size before
     // measuring. With min_pool_size=5, a cold rig has only 5 idle backends;
     // 40 concurrent clients would briefly queue (cl_waiting > 0) while
@@ -106,7 +106,7 @@ describe('PgBouncer txn-mode — SHOW POOLS under load (Task 1.16)', () => {
     expect(Number((await showPools())[0]!.pool_mode === 'transaction')).toBe(1);
   });
 
-  it('R-POOLS-2: after the burst settles, sv_idle ≥ min_pool_size (5) and pool_mode=transaction', async () => {
+  it('after the burst settles, sv_idle ≥ min_pool_size (5) and pool_mode=transaction', async () => {
     // Allow the bouncer's idle / reset to fully settle.
     await new Promise((resolve) => setTimeout(resolve, 1500));
 

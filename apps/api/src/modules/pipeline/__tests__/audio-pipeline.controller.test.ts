@@ -17,7 +17,7 @@ import { validate } from 'class-validator';
 import { AudioPipelineController } from '../audio-pipeline.controller';
 import { ValidateYamlRequest } from '../dto';
 
-describe('AudioPipelineController route metadata (TASK-263 W0-9)', () => {
+describe('AudioPipelineController route metadata', () => {
   it('class-level @Controller path stays admin/audio/pipelines', () => {
     const path = Reflect.getMetadata(PATH_METADATA, AudioPipelineController);
     expect(path).toBe('admin/audio/pipelines');
@@ -61,7 +61,7 @@ describe('AudioPipelineController fetchAll — IC-02 admin all-status list', () 
   });
 });
 
-describe('AudioPipelineController validateYaml — TASK-298 D-6 body alignment', () => {
+describe('AudioPipelineController validateYaml — body alignment', () => {
   const buildController = () => {
     const validateYaml = vi.fn().mockResolvedValue({ valid: true });
     const svc = { validateYaml } as any;
@@ -87,7 +87,7 @@ describe('AudioPipelineController validateYaml — TASK-298 D-6 body alignment',
   });
 });
 
-describe('AudioPipelineController authorization metadata — TASK-298 D-10', () => {
+describe('AudioPipelineController authorization metadata', () => {
   it('uses [manage, AsrPipeline] (tenant admins can self-serve), not [manage, all]', () => {
     const meta = Reflect.getMetadata('required_permissions', AudioPipelineController);
     expect(meta).toBeDefined();
@@ -98,7 +98,7 @@ describe('AudioPipelineController authorization metadata — TASK-298 D-10', () 
   });
 });
 
-describe('AudioPipelineController assignTenant — IC-04 (TASK-336)', () => {
+describe('AudioPipelineController assignTenant', () => {
   const buildController = () => {
     const assignToTenant = vi.fn();
     const svc = { assignToTenant } as any;
@@ -136,7 +136,7 @@ describe('AudioPipelineController assignTenant — IC-04 (TASK-336)', () => {
   });
 });
 
-describe('AudioPipelineController update — TASK-302 Stream D Phase E.4', () => {
+describe('AudioPipelineController update', () => {
   const buildController = () => {
     const update = vi.fn();
     const svc = { update } as any;
@@ -182,7 +182,7 @@ describe('AudioPipelineController update — TASK-302 Stream D Phase E.4', () =>
   });
 });
 
-describe('AudioPipelineController — TASK-328 A6 default/toggle/versions', () => {
+describe('AudioPipelineController — default/toggle/versions', () => {
   const buildController = () => {
     const svc = {
       setDefault: vi.fn(),

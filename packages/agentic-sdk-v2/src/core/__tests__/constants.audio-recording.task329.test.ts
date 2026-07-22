@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import { AUDIO_RECORDING_ENDPOINTS } from '../constants';
 
-describe('AUDIO_RECORDING_ENDPOINTS (TASK-329 P2)', () => {
+describe('AUDIO_RECORDING_ENDPOINTS', () => {
   it('generates ADD/LIST paths under the consultation', () => {
     expect(AUDIO_RECORDING_ENDPOINTS.ADD('c-1')).toBe('/consultations/c-1/recordings');
     expect(AUDIO_RECORDING_ENDPOINTS.LIST('c-1')).toBe('/consultations/c-1/recordings');

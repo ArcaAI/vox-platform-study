@@ -69,7 +69,7 @@ function buildJob(data: Record<string, unknown>) {
   return { id: 'job-1', data, timestamp: Date.now(), updateProgress: vi.fn() };
 }
 
-describe('IngestKnowledgeDocumentProcessor — TASK-369 field encryption', () => {
+describe('IngestKnowledgeDocumentProcessor — field encryption', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('encrypts every chunk BEFORE persisting it', async () => {

@@ -131,7 +131,7 @@ function makeApiClient(ticketResponses: Array<{ ticket: string; expiresAt?: stri
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('TASK-264 W0-1: SSEClient ticket-based auth', () => {
+describe('SSEClient ticket-based auth', () => {
   it('POSTs /auth/stream-ticket with the scope passed at construction', async () => {
     const apiClient = makeApiClient([{ ticket: 'TKT-1', scope: 'consultation-jobs' }]);
     const client = new SSEClient('consultation-jobs', apiClient as never, createMockLogger());
@@ -288,11 +288,11 @@ describe('TASK-264 W0-1: SSEClient ticket-based auth', () => {
   // Single source of truth for the ticket path
   // -------------------------------------------------------------------------
 
-  it('exposes AUTH_ENDPOINTS.STREAM_TICKET = "/auth/stream-ticket" (TASK-274)', () => {
+  it('exposes AUTH_ENDPOINTS.STREAM_TICKET = "/auth/stream-ticket"', () => {
     expect(AUTH_ENDPOINTS.STREAM_TICKET).toBe('/auth/stream-ticket');
   });
 
-  it('SSEClient POSTs to AUTH_ENDPOINTS.STREAM_TICKET — not a hardcoded literal (TASK-274)', async () => {
+  it('SSEClient POSTs to AUTH_ENDPOINTS.STREAM_TICKET — not a hardcoded literal', async () => {
     const apiClient = makeApiClient([{ ticket: 'TKT-274' }]);
     const client = new SSEClient('consultation-jobs', apiClient as never, createMockLogger());
 

@@ -145,7 +145,7 @@ describe('ConsultationJobController', () => {
   // Every per-job handler must carry @TenantOwnedResource so the
   // global TenantOwnedResourceInterceptor can 404 cross-tenant probes.
   // ---------------------------------------------------------------------------
-  describe('TASK-307 W3.4 — @TenantOwnedResource metadata', () => {
+  describe('@TenantOwnedResource metadata', () => {
     const meta = (m: keyof ConsultationJobController): TenantOwnedResourceOptions | undefined =>
       Reflect.getMetadata(
         TENANT_OWNED_RESOURCE_KEY,
@@ -158,7 +158,7 @@ describe('ConsultationJobController', () => {
       expect(meta('getJob')).toEqual({ modelName: 'ConsultationJob', paramName: 'jobId' });
     });
 
-    it('cancelJob is annotated with scope:"creator" (TASK-308 AC-2 — mutating route)', () => {
+    it('cancelJob is annotated with scope:"creator" (mutating route)', () => {
       // Cancel is a mutating route; same-tenant cross-user probes must 404
       // instead of cancelling a peer's job.
       expect(meta('cancelJob')).toEqual({

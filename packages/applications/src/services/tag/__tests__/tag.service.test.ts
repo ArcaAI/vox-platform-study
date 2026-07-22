@@ -291,7 +291,7 @@ describe('TagService', () => {
             expect(result.data[1].tagValue).toBe('Tag 2');
         });
 
-        it('coerces Tag-typed filter values via the model registry (TASK-406 P2-6c)', async () => {
+        it('coerces Tag-typed filter values via the model registry', async () => {
             mockTagRepository.findAll.mockResolvedValue([]);
             mockTagRepository.count.mockResolvedValue(0);
 

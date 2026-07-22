@@ -215,10 +215,10 @@ successful logins — that trail has existed since TASK-314/369.**
 | Affected suites (auth + user + auditLog + rateLimiting + api auth) | 989 passed |
 | SUSPENDED suites (baseEntity + applyChangesToEntity) | 116 passed |
 | Lint (changed files) | 0 errors, **0 net-new warnings** |
-| **E2E vs live API + real Redis + real audit table** | **90/90 passed** (`task-541-auth-revocation-audit.spec.ts` 5/5 plus auth / auth-refresh / auth-advanced / auth-guard-behavior / audit-log) |
+| **E2E vs live API + real Redis + real audit table** | **90/90 passed** (`auth-revocation-audit.spec.ts` 5/5 plus auth / auth-refresh / auth-advanced / auth-guard-behavior / audit-log) |
 | Full E2E suite | 490 passed / 30 non-passing, all in unrelated specs and pre-existing |
 
-E2E spec `apps/api/tests/e2e/task-541-auth-revocation-audit.spec.ts` pins the three
+E2E spec `apps/api/tests/e2e/auth-revocation-audit.spec.ts` pins the three
 invariants unit tests can only mock — A: logout → replayed access token 401;
 B: disable user → live token 401; C: failed login writes a queryable `success:false`
 row, never contains the attempted password, and a successful login emits no failure
@@ -251,7 +251,7 @@ deliberately blocks.
 `user.service.task541.test.ts` (new, 10), `auditLog.service.task541.test.ts`
 (new, 8), `auth.controller.task541.test.ts` (new, 12),
 `applyChangesToEntity.test.ts` (new, 14), `base.entity.test.ts` (+5),
-`task-541-auth-revocation-audit.spec.ts` (new e2e, 5).
+`auth-revocation-audit.spec.ts` (new e2e, 5).
 
 ## Phase E — Follow-up closure (2026-07-21)
 
@@ -305,6 +305,7 @@ Wave 1 inventory recorded.
 
 ## Change History
 
+- **2026-07-22** — TASK-536 de-ticketing (R5 reference update): `task-541-auth-revocation-audit.spec.ts` renamed to `auth-revocation-audit.spec.ts`; references above updated.
 - **2026-07-21** — Phase E: closed both open follow-ups. `isTokenRevoked()` /
   `validateUser()` / `UserValidationResponse` REMOVED from `IAuthService` (dead after
   A2, and `validateUser` reported DISABLED/SUSPENDED users as active); TASK-536

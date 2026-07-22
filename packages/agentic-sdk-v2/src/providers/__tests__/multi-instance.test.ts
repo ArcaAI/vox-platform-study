@@ -181,7 +181,7 @@ async function renderTwoProviders(): Promise<{ a: AgenticStoreApi; b: AgenticSto
   return { a: capturedA.api, b: capturedB.api };
 }
 
-describe('TASK-317 W4 — multi-instance store isolation (C-1, E-5): two AgenticProviders in one tree must own independent stores', () => {
+describe('multi-instance store isolation: two AgenticProviders in one tree must own independent stores', () => {
   it('two providers expose two DISTINCT store instances and do not share session state', async () => {
     const { a, b } = await renderTwoProviders();
 

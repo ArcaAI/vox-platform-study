@@ -18,7 +18,7 @@ test.beforeEach(async ({ page }) => {
     await loginAsAdmin(page);
 });
 
-test.describe('playground inside the console shell (TASK-502)', () => {
+test.describe('playground inside the console shell', () => {
     test('renders with the admin sidebar + persona control, same as any other console screen', async ({ page }) => {
         // Voice profiles is user-owned (no working-tenant gate) — the most
         // robust page to assert the shared shell on.
@@ -41,7 +41,7 @@ test.describe('playground inside the console shell (TASK-502)', () => {
         await expect(page.getByRole('link', { name: 'Agent Playground' })).toBeVisible();
     });
 
-    test('impersonating a tenant-bound user renders real content, not the working-tenant gate (BUG-005)', async ({ page }) => {
+    test('impersonating a tenant-bound user renders real content, not the working-tenant gate', async ({ page }) => {
         await impersonateUser(page, 'doctor2');
 
         // No 400s from a stale/missing X-Tenant-Id while impersonating —

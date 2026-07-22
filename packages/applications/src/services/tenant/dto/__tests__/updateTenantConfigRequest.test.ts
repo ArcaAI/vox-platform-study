@@ -11,7 +11,7 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { UpdateTenantConfigRequest } from '../updateTenantConfigRequest';
 
-describe('UpdateTenantConfigRequest — expectedVersion (TASK-302 Stream D Phase C)', () => {
+describe('UpdateTenantConfigRequest — expectedVersion (Stream D Phase C)', () => {
   it('rejects payloads missing expectedVersion', async () => {
     const dto = plainToInstance(UpdateTenantConfigRequest, {
       id: '00000000-0000-7000-8000-000000000001',

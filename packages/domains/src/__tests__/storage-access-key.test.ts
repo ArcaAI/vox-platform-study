@@ -170,7 +170,7 @@ describe('StorageAccessKey Domain Layer', () => {
             expect(StorageAccessKeyFactory.generateRawSecret()).not.toBe(raw);
         });
 
-        it('should persist the provided secret HASH, never a generated plaintext (F-2)', async () => {
+        it('should persist the provided secret HASH, never a generated plaintext', async () => {
             const { StorageAccessKeyFactory } = await import('../factories/generated/core/StorageAccessKeyFactory');
 
             const secretHash = 'a'.repeat(64); // shaped like a sha256 hex digest

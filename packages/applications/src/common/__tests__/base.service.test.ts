@@ -233,7 +233,7 @@ describe('BaseService', () => {
    * `responsibleIp`, `correlationId`) remain overridable to keep the
    * background-process pattern (STT internal, cron jobs) working.
    */
-  describe('TASK-306 P3.1 — broadcastSysEvent CLS wins on tenantId', () => {
+  describe('broadcastSysEvent CLS wins on tenantId', () => {
     it('uses CLS tenantId even when payload supplies a different tenantId', () => {
       mockClsService.get.mockImplementation((key: string) => {
         if (key === 'tenantId') return 'tenant-A';

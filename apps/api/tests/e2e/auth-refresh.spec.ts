@@ -54,11 +54,11 @@ function decodeJwtPayload(token: string): DecodedJwt {
   return JSON.parse(payload) as DecodedJwt;
 }
 
-test.describe('TASK-307 W1 — Refresh-token defense (E2E)', () => {
+test.describe('W1 — Refresh-token defense (E2E)', () => {
   // ---------------------------------------------------------------------------
   // 1. Single-use rotation
   // ---------------------------------------------------------------------------
-  test('TASK-307 W1.7 — rotation issues a fresh pair and invalidates the prior refresh token (single-use)', async ({ request }) => {
+  test('W1.7 — rotation issues a fresh pair and invalidates the prior refresh token (single-use)', async ({ request }) => {
     const login = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
     expect(login, 'admin login failed').toBeTruthy();
 
@@ -94,7 +94,7 @@ test.describe('TASK-307 W1 — Refresh-token defense (E2E)', () => {
   // ---------------------------------------------------------------------------
   // 2. Reuse-detection + family-revoke (RFC 6749 §10.4)
   // ---------------------------------------------------------------------------
-  test('TASK-307 W1.7 — replaying a consumed refresh token revokes the rotated successor too (family-revoke)', async ({ request }) => {
+  test('W1.7 — replaying a consumed refresh token revokes the rotated successor too (family-revoke)', async ({ request }) => {
     const login = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
     expect(login, 'admin login failed').toBeTruthy();
 
@@ -155,7 +155,7 @@ test.describe('TASK-307 W1 — Refresh-token defense (E2E)', () => {
   //   5. Independently rotates `refreshB` — the ARCAAI family must
   //      remain untouched by the `__GLOBAL__` family revocation
   //      (cross-family isolation).
-  test('TASK-309 AC-1 — refresh-token rotation is bound to the issuing tenant even when a foreign-tenant bearer is sent', async ({ request }) => {
+  test('AC-1 — refresh-token rotation is bound to the issuing tenant even when a foreign-tenant bearer is sent', async ({ request }) => {
     // ---- Step 1: dual-tenant bootstrap ----
     const globalLogin = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, DEFAULT_TENANT_KEY);
     expect(globalLogin, 'super_admin login (__GLOBAL__) failed').toBeTruthy();
@@ -227,7 +227,7 @@ test.describe('TASK-307 W1 — Refresh-token defense (E2E)', () => {
   // ---------------------------------------------------------------------------
   // 4. Logout revokes both jti and refresh family
   // ---------------------------------------------------------------------------
-  test('TASK-307 W1.7 — logout revokes the access-token jti (subsequent /auth/me is 401)', async ({ request }) => {
+  test('W1.7 — logout revokes the access-token jti (subsequent /auth/me is 401)', async ({ request }) => {
     const login = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);
     expect(login, 'doctor login failed').toBeTruthy();
 
@@ -250,7 +250,7 @@ test.describe('TASK-307 W1 — Refresh-token defense (E2E)', () => {
     expect(postLogoutMe.status(), '/auth/me with a revoked token must be 401').toBe(401);
   });
 
-  test('TASK-307 W1.7 — logout revokes the refresh-token family (subsequent /auth/refresh is 401)', async ({ request }) => {
+  test('W1.7 — logout revokes the refresh-token family (subsequent /auth/refresh is 401)', async ({ request }) => {
     const login = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);
     expect(login, 'doctor login failed').toBeTruthy();
 

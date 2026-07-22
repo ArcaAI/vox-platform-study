@@ -11,7 +11,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PromptUsageRecordRepository } from '../PromptUsageRecordRepository';
 
-describe('PromptUsageRecordRepository — usage analytics (TASK-328 A4)', () => {
+describe('PromptUsageRecordRepository — usage analytics', () => {
   let groupBy: ReturnType<typeof vi.fn>;
   let findMany: ReturnType<typeof vi.fn>;
   let repo: PromptUsageRecordRepository;

@@ -56,7 +56,7 @@ const makeJobData = (overrides: Partial<AuditLogJob> = {}): AuditLogJob =>
     ...overrides,
   }) as AuditLogJob;
 
-describe('AuditLogProcessor — CLS rebind + fail-closed (TASK-305 D.9 follow-up)', () => {
+describe('AuditLogProcessor — CLS rebind + fail-closed (follow-up)', () => {
   let processor: AuditLogProcessor;
   let mockAuditLogRepository: ReturnType<typeof createMockAuditLogRepository>;
   let mockClsService: ReturnType<typeof createMockClsService>;

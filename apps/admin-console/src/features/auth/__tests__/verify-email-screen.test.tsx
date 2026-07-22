@@ -7,7 +7,7 @@ afterEach(() => {
     vi.unstubAllGlobals();
 });
 
-describe('VerifyEmailScreen (TASK-497)', () => {
+describe('VerifyEmailScreen', () => {
     it('shows a missing-token error and never calls the BFF when the link has no token', () => {
         const fetchMock = vi.fn();
         vi.stubGlobal('fetch', fetchMock);

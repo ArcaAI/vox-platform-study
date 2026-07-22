@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest';
 import { TenantFrontendConfigFactory, TranscriptionMode, CaptureMode } from '@arcaai/domains';
 import { TenantFrontendConfigDtoMapper } from '../tenant-frontend-config.dto.mapper';
 
-describe('TenantFrontendConfigDtoMapper — TASK-356 audio fields', () => {
+describe('TenantFrontendConfigDtoMapper — audio fields', () => {
   it('maps transcriptionMode / transcriptionModeLocked / captureMode onto the response', () => {
     const entity = TenantFrontendConfigFactory.CreateTenantFrontendConfig({
       tenantId: 'tenant-1',

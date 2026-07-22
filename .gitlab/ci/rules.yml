@@ -108,6 +108,34 @@
         - packages/ui/**/*
         - packages/agentic-sdk-v2/**/*
 
+# ── Admin Console ────────────────────────────────────────────────────────────
+
+.rules-admin-console:
+  rules:
+    - !reference [.rules-always, rules]
+    - !reference [.rules-cicd-always, rules]
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - apps/admin-console/**/*
+          - packages/ui/**/*
+          - packages/room/**/*
+          - packages/stt/**/*
+          - packages/agentic-sdk-v2/**/*
+        compare_to: refs/heads/main
+    - if: $PIPELINE_TYPE == "dev"
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
+      changes:
+        - apps/admin-console/**/*
+        - packages/ui/**/*
+        - packages/room/**/*
+        - packages/stt/**/*
+        - packages/agentic-sdk-v2/**/*
+    - if: $PIPELINE_TYPE == "feature"
+      changes:
+        - apps/admin-console/**/*
+        - packages/ui/**/*
+
 # ── STT-v2 (Speech-to-Text) ─────────────────────────────────────────────────
 
 .rules-stt-v2:

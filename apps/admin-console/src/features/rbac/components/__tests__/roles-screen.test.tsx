@@ -199,7 +199,7 @@ describe('RolesScreen (two-pane redesign)', () => {
         expect(screen.queryByRole('button', { name: 'Attach policy' })).toBeNull();
     });
 
-    it('TASK-501 — a global admin session unlocks the Policies tab AND Edit on a SYSTEM role; Delete stays hidden', async () => {
+    it('a global admin session unlocks the Policies tab AND Edit on a SYSTEM role; Delete stays hidden', async () => {
         stubFetch((url, method) => {
             if (url === '/api/auth/session') return Response.json(GLOBAL_ADMIN_SESSION);
             return defaultHandler(url, method);
@@ -217,7 +217,7 @@ describe('RolesScreen (two-pane redesign)', () => {
         expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
     });
 
-    it('TASK-501 — a global admin can rename a SYSTEM role through the Edit dialog', async () => {
+    it('a global admin can rename a SYSTEM role through the Edit dialog', async () => {
         const RENAMED_SYSTEM_ROLE = { ...SYSTEM_ROLE, name: 'GlobalAdmin', description: 'Renamed by a global admin' };
         const calls = stubFetch((url, method) => {
             if (url === '/api/auth/session') return Response.json(GLOBAL_ADMIN_SESSION);
@@ -237,7 +237,7 @@ describe('RolesScreen (two-pane redesign)', () => {
         expect(patch?.body).toEqual({ name: 'GlobalAdmin', description: 'Renamed by a global admin' });
     });
 
-    it('TASK-501 — clones a role and lands on the new role, prefilling "{name} (copy)"', async () => {
+    it('clones a role and lands on the new role, prefilling "{name} (copy)"', async () => {
         const CLONED_ROLE = role({ id: 'r-9', name: 'Billing (copy)', isSystemRole: false, policies: [] });
         const calls = stubFetch((url, method) => {
             if (method === 'POST' && url === '/api/hope/admin/rbac/roles/r-2/clone') return Response.json(CLONED_ROLE);
@@ -337,7 +337,7 @@ describe('RolesScreen (two-pane redesign)', () => {
         expect(post?.body).toEqual({ name: 'Auditor', description: 'Read-only reviewers' });
     });
 
-    it('lists the role members with department and status on the Members tab (TASK-444)', async () => {
+    it('lists the role members with department and status on the Members tab', async () => {
         stubFetch();
         renderWithProviders(<RolesScreen />, { searchParams: '?role=r-2&tab=members' });
 
@@ -353,7 +353,7 @@ describe('RolesScreen (two-pane redesign)', () => {
         expect(screen.getByText(/Members \(2\)/)).toBeDefined();
     });
 
-    it('shows an empty state when the role has no members in scope (TASK-444)', async () => {
+    it('shows an empty state when the role has no members in scope', async () => {
         stubFetch();
         renderWithProviders(<RolesScreen />, { searchParams: '?role=r-1&tab=members' });
 
@@ -362,7 +362,7 @@ describe('RolesScreen (two-pane redesign)', () => {
         expect(screen.queryByRole('list', { name: 'Role members' })).toBeNull();
     });
 
-    it('surfaces a retryable error state when the members listing fails (TASK-444)', async () => {
+    it('surfaces a retryable error state when the members listing fails', async () => {
         stubFetch((url, method) => {
             if (url.startsWith('/api/hope/admin/rbac/roles/r-2/members')) return Response.json({ message: 'boom' }, { status: 500 });
             return defaultHandler(url, method);
@@ -373,7 +373,7 @@ describe('RolesScreen (two-pane redesign)', () => {
         expect(await screen.findByRole('button', { name: /retry/i })).toBeDefined();
     });
 
-    it('renders member-count chips in the role list and the detail header (TASK-444)', async () => {
+    it('renders member-count chips in the role list and the detail header', async () => {
         stubFetch();
         renderWithProviders(<RolesScreen />);
 

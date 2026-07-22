@@ -55,7 +55,7 @@ function makeRolesController() {
   return { controller: new RolesController(service as never), service };
 }
 
-describe('TASK-409 — PoliciesController break-glass wiring', () => {
+describe('PoliciesController break-glass wiring', () => {
   it('DELETE forwards the body credentials to softDelete', async () => {
     const { controller, service } = makePoliciesController();
     const creds = { password: 'pw', confirmationName: 'team-policy' };
@@ -97,7 +97,7 @@ describe('TASK-409 — PoliciesController break-glass wiring', () => {
   });
 });
 
-describe('TASK-409 — RolesController break-glass wiring', () => {
+describe('RolesController break-glass wiring', () => {
   it('DELETE role forwards the body credentials to softDelete', async () => {
     const { controller, service } = makeRolesController();
     const creds = { password: 'pw', confirmationName: 'Care Team' };

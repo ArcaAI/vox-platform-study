@@ -60,7 +60,7 @@ function stripSqlComments(sql: string): string {
     .join('\n');
 }
 
-describe('TASK-305 Phase F (F.6) back-fill migration', () => {
+describe('Phase F back-fill migration', () => {
   it('exists as a timestamped Prisma migration', () => {
     const dir = findMigrationDir();
     expect(dir).toBeDefined();

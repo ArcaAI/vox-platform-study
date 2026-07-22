@@ -127,7 +127,7 @@ const mockEntitlements = {
   assertQuantityQuota: vi.fn(),
 };
 
-describe('PipelineService — TASK-531 template governance', () => {
+describe('PipelineService — template governance', () => {
   let service: PipelineService;
 
   beforeEach(() => {
@@ -200,14 +200,14 @@ describe('PipelineService — TASK-531 template governance', () => {
 
     // The lock covers CONTENT only. A tenant still owns the lifecycle of
     // their copy — enabling/disabling it and choosing it as their default.
-    it('toggle() on a locked copy still succeeds (OD-1)', async () => {
+    it('toggle() on a locked copy still succeeds', async () => {
       mockPipelineRepository.findById.mockResolvedValue(createPipelineEntity({ templateLocked: true }));
 
       await expect(service.toggle('pipeline-1', false, 3)).resolves.toBeDefined();
       expect(mockPipelineRepository.updateWithVersion).toHaveBeenCalled();
     });
 
-    it('setDefault() on a locked copy still succeeds (OD-1)', async () => {
+    it('setDefault() on a locked copy still succeeds', async () => {
       mockPipelineRepository.findById.mockResolvedValue(createPipelineEntity({ templateLocked: true }));
       mockPipelineRepository.setDefaultForTenant.mockResolvedValue(undefined);
 

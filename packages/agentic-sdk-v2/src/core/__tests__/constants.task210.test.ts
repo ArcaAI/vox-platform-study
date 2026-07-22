@@ -40,7 +40,7 @@ import {
 // PERSONALIZATION_ENDPOINTS: /users/me -> /user/me
 // =============================================================================
 
-describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
+describe('SDK v2 route standardization', () => {
 
   describe('PERSONALIZATION_ENDPOINTS (users/me -> user/me)', () => {
     it('should use /user/me/preferences for GET_PREFERENCES', () => {
@@ -429,7 +429,7 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
       expect(STORAGE_ENDPOINTS.HEALTH).toBe('/storage/health');
     });
 
-    it('VOICE_EMBEDDING_ENDPOINTS targets the /voice-profile API (TASK-265 W0-7)', () => {
+    it('VOICE_EMBEDDING_ENDPOINTS targets the /voice-profile API', () => {
       expect(VOICE_EMBEDDING_ENDPOINTS.enroll).toBe('/voice-profile/enroll');
       expect(VOICE_EMBEDDING_ENDPOINTS.list).toBe('/voice-profile');
       expect(VOICE_EMBEDDING_ENDPOINTS.delete('p-1')).toBe('/voice-profile/p-1');
@@ -534,7 +534,7 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
       expect(GLOBAL_SETTINGS_ENDPOINTS.TENANT_CONFIG(dangerous)).toContain(encoded);
     });
 
-    it('USER_SETTINGS_ENDPOINTS should encode special chars (TASK-265 reduced surface)', () => {
+    it('USER_SETTINGS_ENDPOINTS should encode special chars (reduced surface)', () => {
       const path = USER_SETTINGS_ENDPOINTS.updateByKey(dangerous, dangerous);
       expect(path.split(encoded).length - 1).toBe(2);
     });
@@ -717,7 +717,7 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
       expect(Object.keys(GLOBAL_SETTINGS_ENDPOINTS)).toHaveLength(8);
     });
 
-    it('USER_SETTINGS_ENDPOINTS should have exactly 2 keys (TASK-265 W0-8 reduction)', () => {
+    it('USER_SETTINGS_ENDPOINTS should have exactly 2 keys (reduction)', () => {
       expect(Object.keys(USER_SETTINGS_ENDPOINTS)).toHaveLength(2);
       expect(Object.keys(USER_SETTINGS_ENDPOINTS).sort()).toEqual(['list', 'updateByKey']);
     });

@@ -50,7 +50,7 @@ function lastWrittenRow(): Record<string, unknown> {
   return (call?.[0] as { data: Record<string, unknown> }).data;
 }
 
-describe('AuditLogService — TASK-541 B1 failed-authentication audit', () => {
+describe('AuditLogService — failed-authentication audit', () => {
   let service: AuditLogService;
 
   beforeEach(() => {

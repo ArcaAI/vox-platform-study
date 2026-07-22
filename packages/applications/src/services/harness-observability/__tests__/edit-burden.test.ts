@@ -129,7 +129,7 @@ describe('computeEditBurden', () => {
     expect(burden.deferralRate).toBe(0);
   });
 
-  it('exposes only derived scalars — never the note text (AC-6)', () => {
+  it('exposes only derived scalars — never the note text', () => {
     const burden = computeEditBurden({
       deliveredContent: 'PATIENT SECRET diagnosis text',
       signedContent: 'PATIENT SECRET diagnosis text edited',

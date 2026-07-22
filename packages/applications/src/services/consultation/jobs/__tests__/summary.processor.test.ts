@@ -23,6 +23,7 @@ const createMockContextItemRepository = () => ({
     findTranscripts: vi.fn(),
     findLatestPreSummary: vi.fn().mockResolvedValue(null),
     create: vi.fn(),
+    encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
 });
 
 const createMockConsultationRepository = () => ({
@@ -193,7 +194,7 @@ describe('SummaryProcessor', () => {
     });
 
     // ── (§2.5): the BullMQ path threads the preferred prompt id ──
-    describe('preferred-prompt threading (TASK-356 Phase 5)', () => {
+    describe('preferred-prompt threading (Phase 5)', () => {
         let mockConfigResolver: ReturnType<typeof createMockConfigResolver>;
         let processorWithResolver: SummaryProcessor;
 
@@ -1049,7 +1050,7 @@ Assessment: "Alert" & oriented × 3
     // SummaryGenerated Pipeline Event Emission
     // ===========================================================================
 
-    describe('SummaryGenerated pipeline event (GAP-1)', () => {
+    describe('SummaryGenerated pipeline event', () => {
         const setupSuccessfulJob = () => {
             mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
             mockContextItemRepository.findTranscripts.mockResolvedValue([
@@ -1207,7 +1208,7 @@ Assessment: "Alert" & oriented × 3
     // Prompt Resolution Integration
     // ==========================================================================='
 
-    describe('Prompt resolution fallback (GAP-3)', () => {
+    describe('Prompt resolution fallback', () => {
         const setupSuccessfulJob = () => {
             mockConsultationRepository.findById.mockResolvedValue(
                 createMockConsultation({
@@ -1362,7 +1363,7 @@ Assessment: "Alert" & oriented × 3
     // every Prisma op silently bypasses tenant scoping.
     // ===========================================================================
 
-    describe('CLS rebind + tenant assert (TASK-305 D.9)', () => {
+    describe('CLS rebind + tenant assert', () => {
         const setupSuccessfulJob = (consultationOverrides: Record<string, unknown> = {}) => {
             mockConsultationRepository.findById.mockResolvedValue(
                 createMockConsultation(consultationOverrides),
@@ -1446,7 +1447,7 @@ Assessment: "Alert" & oriented × 3
     // to PromptAssemblyService so they actually reach the LLM.
     // ===========================================================================
 
-    describe('NER → prompt injection (TASK-330 Phase 1)', () => {
+    describe('NER → prompt injection (Phase 1)', () => {
         let mockNamedEntityRepository: ReturnType<typeof createMockNamedEntityRepository>;
         let nerProcessor: SummaryProcessor;
 
@@ -1578,6 +1579,79 @@ Assessment: "Alert" & oriented × 3
             await nerProcessor.process(createMockJob(payload));
 
             expect(mockNamedEntityRepository.findByConsultation).not.toHaveBeenCalled();
+        });
+    });
+
+    // ── F-031 remainder: the raw-summary ContextItem must be encrypted
+    // before persist, or its clinical text silently vanishes at rest (the
+    // plaintext `content` column was dropped; only `encryptedContent` persists).
+    describe('transcript content encryption-at-rest (F-031)', () => {
+        const secretsStub = { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('') };
+
+        it('encrypts the generated summary content before persisting', async () => {
+            const processorWithSecrets = new SummaryProcessor(
+                mockJobService as any,
+                mockContextItemRepository as any,
+                mockConsultationRepository as any,
+                mockHttpService as any,
+                mockConfigService as any,
+                mockEventEmitter as any,
+                mockPromptResolutionService as any,
+                mockPromptAssemblyService as any,
+                mockJobMetrics as any,
+                mockClsService as any,
+                secretsStub as any,
+            );
+
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findTranscripts.mockResolvedValue([
+                createMockContextItem({ content: 'Transcript content' }),
+            ]);
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Generated clinical summary', modelName: 'gpt-4' },
+            });
+            mockContextItemRepository.create.mockResolvedValue({
+                id: 'enc-summary-id',
+                content: 'Generated clinical summary',
+            });
+
+            await processorWithSecrets.process(createMockJob({
+                jobId: 'job-enc-1',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {},
+            }));
+
+            expect(mockContextItemRepository.encryptContentIntoEntity).toHaveBeenCalledTimes(1);
+            const [entityArg, secretsArg] = mockContextItemRepository.encryptContentIntoEntity.mock.calls[0];
+            expect(entityArg.content).toBe('Generated clinical summary');
+            expect(secretsArg).toBe(secretsStub);
+            const encOrder = mockContextItemRepository.encryptContentIntoEntity.mock.invocationCallOrder[0];
+            const createOrder = mockContextItemRepository.create.mock.invocationCallOrder[0];
+            expect(encOrder).toBeLessThan(createOrder);
+            expect(mockContextItemRepository.create.mock.calls[0][0]).toBe(entityArg);
+        });
+
+        it('still persists (without ciphertext) when no SecretsService is wired', async () => {
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findTranscripts.mockResolvedValue([
+                createMockContextItem({ content: 'Transcript content' }),
+            ]);
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'No cipher wired', modelName: 'gpt-4' },
+            });
+            mockContextItemRepository.create.mockResolvedValue({ id: 'no-sec-id', content: 'No cipher wired' });
+
+            await processor.process(createMockJob({
+                jobId: 'job-no-sec',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {},
+            }));
+
+            expect(mockContextItemRepository.encryptContentIntoEntity).not.toHaveBeenCalled();
         });
     });
 });

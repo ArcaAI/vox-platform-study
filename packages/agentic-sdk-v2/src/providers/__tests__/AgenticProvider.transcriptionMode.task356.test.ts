@@ -120,7 +120,7 @@ function handlerWithMode(transcriptionMode?: 'LOCAL' | 'BACKEND'): FetchHandler 
   };
 }
 
-describe('TASK-356 SDK-T2 — effective transcription-mode population', () => {
+describe('effective transcription-mode population', () => {
   it('injects the server-resolved transcriptionMode into resolvedConfig.stt.transcriptionMode (LOCAL)', async () => {
     handler = handlerWithMode('LOCAL');
 

@@ -24,7 +24,7 @@ import { DataNotFoundException } from '@arcaai/exceptions';
 
 import { DataNotFoundExceptionFilter } from '../data-not-found.filter';
 
-describe('DataNotFoundExceptionFilter (TASK-306 P3.3 / AC-12 — audit M-8)', () => {
+describe('DataNotFoundExceptionFilter (audit)', () => {
   let filter: DataNotFoundExceptionFilter;
   let statusSpy: ReturnType<typeof vi.fn>;
   let jsonSpy: ReturnType<typeof vi.fn>;

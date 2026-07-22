@@ -705,7 +705,7 @@ describe('AgenticClient', () => {
         });
     });
 
-    describe('BUG-05: options spread must not overwrite SDK headers/signal', () => {
+    describe('options spread must not overwrite SDK headers/signal', () => {
         it('should not allow external options to overwrite auth headers', async () => {
             mockFetch.mockResolvedValueOnce(createMockResponse({ ok: true }));
 

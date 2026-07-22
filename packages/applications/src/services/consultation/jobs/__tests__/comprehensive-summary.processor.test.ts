@@ -59,6 +59,7 @@ const createMockChainSummaryService = () => ({
 
 const createMockContextItemRepository = () => ({
     create: vi.fn().mockImplementation((item) => Promise.resolve(item)),
+    encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
 });
 
 const createMockConsultationRepository = () => ({
@@ -797,7 +798,7 @@ describe('ComprehensiveSummaryProcessor', () => {
     // PromptResolutionService Fallback
     // ===========================================================================
 
-    describe('PromptResolutionService Fallback (WS-2)', () => {
+    describe('PromptResolutionService Fallback', () => {
         const setupForFallbackTest = () => {
             const consultation = createConsultation();
             mocks.consultationRepo.findById.mockResolvedValue(consultation);
@@ -945,7 +946,7 @@ describe('ComprehensiveSummaryProcessor', () => {
     // CLS rebind + tenant assert + fail-closed guard
     // ===========================================================================
 
-    describe('CLS rebind + tenant assert (TASK-305 D.9)', () => {
+    describe('CLS rebind + tenant assert', () => {
         const setupSuccessfulJob = (consultationOverrides: Record<string, unknown> = {}) => {
             const consultation = createConsultation(consultationOverrides);
             mocks.consultationRepo.findById.mockResolvedValue(consultation);
@@ -1018,7 +1019,7 @@ describe('ComprehensiveSummaryProcessor', () => {
     // BOTH prompt resolution and assembly (this async path previously dropped it).
     // ===========================================================================
 
-    describe('preferred-prompt threading (TASK-362)', () => {
+    describe('preferred-prompt threading', () => {
         const setupSuccessfulJob = () => {
             const consultation = createConsultation();
             mocks.consultationRepo.findById.mockResolvedValue(consultation);
@@ -1057,6 +1058,82 @@ describe('ComprehensiveSummaryProcessor', () => {
             await mocks.processor.process(createMockJob(createDefaultPayload({ request: { includeNER: false } })));
 
             expect(mocks.configResolver.resolvePreferredPromptTemplateId).toHaveBeenCalledWith('doctor-A');
+        });
+    });
+
+    // ── F-031 remainder: the comprehensive-summary ContextItem must be
+    // encrypted before persist, or its clinical text silently vanishes at rest
+    // (the plaintext `content` column was dropped; only `encryptedContent` persists).
+    describe('comprehensive summary content encryption-at-rest (F-031)', () => {
+        const secretsStub = { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('') };
+
+        function createProcessorWithSecrets() {
+            const jobService = createMockJobService();
+            const chainSummaryService = createMockChainSummaryService();
+            const contextItemRepo = createMockContextItemRepository();
+            const consultationRepo = createMockConsultationRepository();
+            const summaryMetaRepo = createMockSummaryMetaRepository();
+            const namedEntityRepo = createMockNamedEntityRepository();
+            const httpService = createMockHttpService();
+            const configService = createMockConfigService();
+            const promptResolutionService = createMockPromptResolutionService();
+            const jobMetrics = createMockJobMetrics();
+            const clsService = createMockClsService();
+            const promptAssemblyService = createMockPromptAssemblyService();
+
+            const processor = new ComprehensiveSummaryProcessor(
+                jobService as any,
+                chainSummaryService as any,
+                contextItemRepo as any,
+                consultationRepo as any,
+                summaryMetaRepo as any,
+                namedEntityRepo as any,
+                httpService as any,
+                configService as any,
+                promptResolutionService as any,
+                promptAssemblyService as any,
+                jobMetrics as any,
+                clsService as any,
+                secretsStub as any,
+            );
+
+            return { processor, contextItemRepo, consultationRepo, chainSummaryService, httpService };
+        }
+
+        it('encrypts the generated comprehensive-summary content before persisting', async () => {
+            const withSecrets = createProcessorWithSecrets();
+            withSecrets.consultationRepo.findById.mockResolvedValue(createConsultation());
+            withSecrets.chainSummaryService.resolveLinkedConsultations.mockResolvedValue([createConsultation()]);
+            withSecrets.chainSummaryService.gatherSections.mockResolvedValue([createSection()]);
+            withSecrets.chainSummaryService.gatherNamedEntities.mockResolvedValue({});
+            withSecrets.httpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Comprehensive summary generated.', modelName: 'gpt-4o' },
+            });
+
+            await withSecrets.processor.process(createMockJob(createDefaultPayload()));
+
+            expect(withSecrets.contextItemRepo.encryptContentIntoEntity).toHaveBeenCalledTimes(1);
+            const [entityArg, secretsArg] = withSecrets.contextItemRepo.encryptContentIntoEntity.mock.calls[0];
+            expect(entityArg.content).toBe('Comprehensive summary generated.');
+            expect(secretsArg).toBe(secretsStub);
+            const encOrder = withSecrets.contextItemRepo.encryptContentIntoEntity.mock.invocationCallOrder[0];
+            const createOrder = withSecrets.contextItemRepo.create.mock.invocationCallOrder[0];
+            expect(encOrder).toBeLessThan(createOrder);
+            expect(withSecrets.contextItemRepo.create.mock.calls[0][0]).toBe(entityArg);
+        });
+
+        it('still persists (without ciphertext) when no SecretsService is wired', async () => {
+            mocks.consultationRepo.findById.mockResolvedValue(createConsultation());
+            mocks.chainSummaryService.resolveLinkedConsultations.mockResolvedValue([createConsultation()]);
+            mocks.chainSummaryService.gatherSections.mockResolvedValue([createSection()]);
+            mocks.chainSummaryService.gatherNamedEntities.mockResolvedValue({});
+            mocks.httpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'No cipher wired.', modelName: 'gpt-4o' },
+            });
+
+            await mocks.processor.process(createMockJob(createDefaultPayload()));
+
+            expect(mocks.contextItemRepo.encryptContentIntoEntity).not.toHaveBeenCalled();
         });
     });
 });

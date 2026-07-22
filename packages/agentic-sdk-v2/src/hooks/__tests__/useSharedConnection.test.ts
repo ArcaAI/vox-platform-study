@@ -69,7 +69,7 @@ describe('useSharedConnection — userId/tenant threading (AC-8 / C-4)', () => {
   // useSharedWS threads userId/tenantId (production wiring) so dedup is
   // keyed per-user
   // ===========================================================================
-  describe('TASK-317 W3.1 — useSharedWS threads userId/tenantId (AC-8 / C-4 production wiring) so dedup is keyed per-user', () => {
+  describe('useSharedWS threads userId/tenantId (production wiring) so dedup is keyed per-user', () => {
     it('forwards userId AND tenantId into subscribeWS (worker dedup key becomes (id, userId), not id::anon)', () => {
       const mock = createMockManager();
       const manager = mock as unknown as SharedConnectionManager;

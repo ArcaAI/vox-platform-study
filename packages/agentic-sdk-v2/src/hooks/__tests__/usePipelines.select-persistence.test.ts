@@ -22,7 +22,7 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
   return { ...actual, useAgenticStore: vi.fn() };
 });
 
-describe('usePipelines.select — persistence (TASK-298 D-5)', () => {
+describe('usePipelines.select — persistence', () => {
   let mockLogger: ReturnType<typeof createMockLogger>;
   let mockStore: any;
   const mockGet = vi.fn();

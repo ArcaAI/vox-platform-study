@@ -485,7 +485,7 @@ describe('KnowledgePipeline', () => {
       expect(pipeline.getStageResult('ner')).toBeUndefined();
     });
 
-    it('should emit final stateChange before removing listeners (BUG-07)', async () => {
+    it('should emit final stateChange before removing listeners', async () => {
       const pipeline = new KnowledgePipeline(
         { ner: { enabled: true, location: 'browser', triggerMode: 'auto' } },
         undefined,
@@ -947,7 +947,7 @@ describe('KnowledgePipeline', () => {
   // =========================================================================
 
   describe('REFACTOR-06: entity ID generation', () => {
-    it('should generate stable, deterministic entity IDs for browser NER (TASK-461 C5-05)', async () => {
+    it('should generate stable, deterministic entity IDs for browser NER', async () => {
       const pipeline = new KnowledgePipeline(
         {
           ner: { enabled: true, location: 'browser', triggerMode: 'manual', model: 'test-model' },

@@ -768,7 +768,7 @@ describe('TranscriptionPipeline', () => {
   // AudioContext/MediaStream leak
   // =========================================================================
 
-  describe('BUG-02: stop() should release audio resources', () => {
+  describe('stop should release audio resources', () => {
     it('should stop all MediaStream tracks when stopping', async () => {
       const pipeline = new TranscriptionPipeline(
         { noiseFilter: { enabled: true, location: 'browser' } },
@@ -840,7 +840,7 @@ describe('TranscriptionPipeline', () => {
   // pause()/resume() should be async
   // =========================================================================
 
-  describe('BUG-15: pause/resume should await processor operations', () => {
+  describe('pause/resume should await processor operations', () => {
     it('pause() should return a Promise', async () => {
       const pipeline = new TranscriptionPipeline(
         { noiseFilter: { enabled: true, location: 'browser' } },

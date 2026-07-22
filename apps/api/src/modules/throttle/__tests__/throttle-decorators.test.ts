@@ -16,7 +16,7 @@ describe('Controller @Throttle() decorator overrides', () => {
     // endpoint under a single 10/min counter was tripping refresh under
     // production load. Per-endpoint decorators replace it (see the
     // dedicated block below).
-    it('AuthController carries NO class-wide throttle (TASK-308 AC-5)', async () => {
+    it('AuthController carries NO class-wide throttle', async () => {
         const { AuthController } = await import('../../auth/auth.controller');
         const limit = Reflect.getMetadata(THROTTLER_LIMIT + 'default', AuthController);
         const ttl = Reflect.getMetadata(THROTTLER_TTL + 'default', AuthController);
@@ -68,7 +68,7 @@ describe('Controller @Throttle() decorator overrides', () => {
 // `@Throttle` decorates (the throttler decorator writes through the
 // method descriptor; see `@nestjs/throttler/dist/throttler.decorator.js`).
 // ───────────────────────────────────────────────────────────────────────────
-describe('TASK-308 AC-5 — AuthController per-endpoint throttle', () => {
+describe('AuthController per-endpoint throttle', () => {
     const limitOf = (method: Function) =>
         Reflect.getMetadata(THROTTLER_LIMIT + 'default', method);
     const ttlOf = (method: Function) =>

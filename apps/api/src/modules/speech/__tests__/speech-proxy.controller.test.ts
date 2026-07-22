@@ -140,7 +140,7 @@ describe('SpeechProxyController', () => {
   // The resolved effective config's voiceBindings are injected
   // into the forwarded body as `voice_bindings` (tts-v2 falls back to its
   // built-in DEFAULT_VOICES when absent). Fail-open posture unchanged.
-  describe('POST /speech/synthesize — tenant config voice_bindings injection (TASK-506)', () => {
+  describe('POST /speech/synthesize — tenant config voice_bindings injection', () => {
     const BINDINGS = { 'en-female-1': { azure: 'en-IN-NeerjaNeural' }, 'ml-male-1': { azure: 'ml-IN-MidhunNeural' } };
 
     const makeEffective = (voiceBindings: Record<string, Record<string, string>>) => ({

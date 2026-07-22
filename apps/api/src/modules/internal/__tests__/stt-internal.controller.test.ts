@@ -14,7 +14,7 @@ import { UnauthorizedException } from '@nestjs/common';
 
 import { SttInternalController } from '../stt-internal.controller';
 
-describe('SttInternalController.ensureInternalApiKey (TASK-310 E-6 / AC-6)', () => {
+describe('SttInternalController.ensureInternalApiKey', () => {
   let controller: SttInternalController;
   let sttInternalService: any;
 

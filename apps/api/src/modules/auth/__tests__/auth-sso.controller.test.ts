@@ -25,7 +25,7 @@ function makeController() {
   return { controller, federatedAuthService, appSettingsService, secretsService, refreshTokenService };
 }
 
-describe('AuthSsoController.start (TASK-498)', () => {
+describe('AuthSsoController.start', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('forwards the platform OIDC_CALLBACK_URL as redirectUri to the service', async () => {
@@ -42,7 +42,7 @@ describe('AuthSsoController.start (TASK-498)', () => {
   });
 });
 
-describe('AuthSsoController.callback (TASK-498)', () => {
+describe('AuthSsoController.callback', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('mints a JWT + refresh token identically to local login on a verified callback', async () => {
@@ -81,7 +81,7 @@ describe('AuthSsoController.callback (TASK-498)', () => {
   });
 });
 
-describe('AuthSsoController.samlMetadata (TASK-499)', () => {
+describe('AuthSsoController.samlMetadata', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('forwards the platform SAML_ACS_BASE_URL-derived ACS URL for the tenant', async () => {
@@ -96,7 +96,7 @@ describe('AuthSsoController.samlMetadata (TASK-499)', () => {
   });
 });
 
-describe('AuthSsoController.samlStart (TASK-499)', () => {
+describe('AuthSsoController.samlStart', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('returns the AuthnRequest redirect URL under the same {authorizeUrl} shape as OIDC start', async () => {
@@ -112,7 +112,7 @@ describe('AuthSsoController.samlStart (TASK-499)', () => {
   });
 });
 
-describe('AuthSsoController.samlAcs (TASK-499)', () => {
+describe('AuthSsoController.samlAcs', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('mints a JWT + refresh token identically to local login on a verified ACS POST', async () => {

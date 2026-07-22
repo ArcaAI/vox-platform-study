@@ -10,7 +10,7 @@ import { getCorsOrigins } from '../cors.config';
  * (cookies + wildcard is illegal), so the intent is "localhost only in
  * dev" and this test pins that intent as code.
  */
-describe('getCorsOrigins (TASK-310 E-2 / AC-4)', () => {
+describe('getCorsOrigins', () => {
   describe('development', () => {
     it('returns the exact AC-4 localhost-only RegExp', () => {
       const origin = getCorsOrigins('development');

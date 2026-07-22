@@ -196,6 +196,15 @@ export class SummaryService extends BaseService implements ISummaryService {
     // Create pre-summary context item
     const contextItem = ContextItemFactory.CreatePreSummary(tenantId, consultationId, smrResponse.summary, request.dnaStyleId, userId ?? 'system');
 
+    // Encrypt the generated pre-summary text into
+    // `encryptedContent` before persistence — the plaintext `content` column was
+    // dropped by the PHI field-encryption migration, so an unencrypted create
+    // silently loses the clinical text at rest (mirrors context.service.ts
+    // `encryptContent`).
+    await this.encryptBestEffort('ContextItem content', () =>
+      this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!),
+    );
+
     const savedContext = await this.contextItemRepository.create(contextItem);
 
     // Create summary metadata record
@@ -326,6 +335,14 @@ export class SummaryService extends BaseService implements ISummaryService {
     // `ai_draft_v1` snapshot below IS version 1 and the doctor's first edit
     // becomes v2 (no `@@unique([contextItemId, versionNumber])` collision).
     contextItem.currentVersionNumber = 1;
+
+    // Encrypt the generated summary text into `encryptedContent`
+    // before persistence — the plaintext `content` column was dropped by the
+    // PHI field-encryption migration, so an unencrypted create silently loses
+    // the clinical text at rest (mirrors context.service.ts `encryptContent`).
+    await this.encryptBestEffort('ContextItem content', () =>
+      this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!),
+    );
 
     const savedContext = await this.contextItemRepository.create(contextItem);
 
@@ -486,6 +503,16 @@ export class SummaryService extends BaseService implements ISummaryService {
     if (this.requestUserId) {
       contextItem.updatedBy = this.requestUserId;
     }
+
+    // Encrypt the edited content into `encryptedContent` before
+    // persistence — the plaintext `content` column was dropped by the PHI
+    // field-encryption migration, and a bare property assignment (above) is
+    // invisible to the change-tracked persistence mapper (no such column), so
+    // skipping this call silently drops the clinician's edit at rest (mirrors
+    // context.service.ts `encryptContent`).
+    await this.encryptBestEffort('ContextItem content', () =>
+      this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!),
+    );
 
     const updated = await this.contextItemRepository.update(contextItemId, contextItem);
 
@@ -705,6 +732,17 @@ export class SummaryService extends BaseService implements ISummaryService {
 
     contextItem.currentVersionNumber = versionNumber;
     contextItem.updatedBy = approvedBy;
+
+    // Defense-in-depth: re-encrypt `content` into
+    // `encryptedContent` on this final update too — this lane doesn't itself
+    // reassign `content`, but keeping every ContextItem persist on this write
+    // path running the same cipher call closes off the whole class of "some
+    // future edit here forgets to encrypt" regressions (mirrors the other
+    // ContextItem write lanes in this service).
+    await this.encryptBestEffort('ContextItem content', () =>
+      this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!),
+    );
+
     await this.contextItemRepository.update(contextItemId, contextItem);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {

@@ -34,7 +34,7 @@ afterAll(async () => {
 });
 
 describe('PgBouncer txn-mode — RLS GUC leak (Task 1.8)', () => {
-  it('R-RLS-1: SET LOCAL via set_config(..., true) is visible only inside the same txn', async () => {
+  it('SET LOCAL via set_config(..., true) is visible only inside the same txn', async () => {
     const tag = 'tenant-rls1-' + Date.now();
 
     // Inside the txn — must observe the tag.
@@ -54,7 +54,7 @@ describe('PgBouncer txn-mode — RLS GUC leak (Task 1.8)', () => {
     expect(after[0]?.v ?? '').toBe('');
   });
 
-  it('R-RLS-2: even non-LOCAL set_config is wiped between assignments (DISCARD ALL)', async () => {
+  it('even non-LOCAL set_config is wiped between assignments (DISCARD ALL)', async () => {
     const tag = 'tenant-rls2-' + Date.now();
 
     // Deliberately use is_local=false to simulate buggy app code that uses SET (not SET LOCAL).
@@ -76,7 +76,7 @@ describe('PgBouncer txn-mode — RLS GUC leak (Task 1.8)', () => {
     expect([...observed]).toEqual(['']);
   });
 
-  it('R-RLS-3: 30 sequential $transaction iterations — each starts with empty tenant_id, sets its own', async () => {
+  it('30 sequential $transaction iterations — each starts with empty tenant_id, sets its own', async () => {
     for (let i = 0; i < 30; i++) {
       const tag = `tenant-rls3-${i}`;
       const result = await prisma.$transaction(async (tx) => {

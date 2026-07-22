@@ -57,7 +57,7 @@ describe('DnaWritingStyleDtoMapper', () => {
             expect(result.currentVersionNumber).toBe(1);
         });
 
-        it('should surface the row _version OCC token (TASK-331 doc-02 F1)', () => {
+        it('should surface the row _version OCC token', () => {
             const entity = {
                 id: 'report-occ',
                 doctorId: 'doc-1',

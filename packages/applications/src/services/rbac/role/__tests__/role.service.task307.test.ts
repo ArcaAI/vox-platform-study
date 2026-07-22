@@ -134,7 +134,7 @@ function buildService(mocks: ReturnType<typeof makeMocks>) {
 /** The delete/detach paths now require break-glass confirmation. */
 const BREAK_GLASS = (name: string) => ({ password: 'pw', confirmationName: name });
 
-describe('TASK-307 W6.3 — RbacRoleService (closes C-10 / H-9 / AC-24)', () => {
+describe('RbacRoleService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -221,7 +221,7 @@ describe('TASK-307 W6.3 — RbacRoleService (closes C-10 / H-9 / AC-24)', () => 
       expect(result.RolePolicies).toEqual([]);
     });
 
-    it('TASK-501 — a global admin may create a SYSTEM role', async () => {
+    it('a global admin may create a SYSTEM role', async () => {
       const mocks = makeMocks(ADMIN_USER);
       const row = makeRoleRow({ id: 'role-sys', name: 'CLINICIAN', isSystemRole: true });
       mocks.roleRepo.create.mockResolvedValue(row);
@@ -233,7 +233,7 @@ describe('TASK-307 W6.3 — RbacRoleService (closes C-10 / H-9 / AC-24)', () => 
       expect(result.isSystemRole).toBe(true);
     });
 
-    it('TASK-501 — a tenant admin creating isSystemRole:true is rejected (Forbidden)', async () => {
+    it('a tenant admin creating isSystemRole:true is rejected (Forbidden)', async () => {
       const mocks = makeMocks(TENANT_ADMIN_USER);
       const service = buildService(mocks);
 
@@ -243,7 +243,7 @@ describe('TASK-307 W6.3 — RbacRoleService (closes C-10 / H-9 / AC-24)', () => 
   });
 
   describe('update', () => {
-    it('TASK-501 — a global admin may update a system role', async () => {
+    it('a global admin may update a system role', async () => {
       const mocks = makeMocks(ADMIN_USER);
       mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'GLOBAL_ADMIN' });
       const updated = makeRoleRow({ isSystemRole: true, name: 'GLOBAL_ADMIN', description: 'x' });
@@ -326,7 +326,7 @@ describe('TASK-307 W6.3 — RbacRoleService (closes C-10 / H-9 / AC-24)', () => 
       expect(updateData.updatedBy).toBe(ADMIN_USER.id);
     });
 
-    it('TASK-501 — a global admin may patch a system role; a tenant admin is refused', async () => {
+    it('a global admin may patch a system role; a tenant admin is refused', async () => {
       const adminMocks = makeMocks(ADMIN_USER);
       adminMocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'GLOBAL_ADMIN' });
       adminMocks.roleRepo.update.mockResolvedValue(makeRoleRow({ isSystemRole: true, resourceStatus: 'DISABLED' }));
@@ -437,7 +437,7 @@ describe('TASK-307 W6.3 — RbacRoleService (closes C-10 / H-9 / AC-24)', () => 
       expect(reEnableData.priority).toBe(7);
     });
 
-    it('TASK-501 — a global admin may assign a policy to a system role', async () => {
+    it('a global admin may assign a policy to a system role', async () => {
       const mocks = makeMocks(ADMIN_USER);
       mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'GLOBAL_ADMIN' });
       mocks.rolePolicyRepo.findFirstByRoleAndPolicy.mockResolvedValue(null);
@@ -448,7 +448,7 @@ describe('TASK-307 W6.3 — RbacRoleService (closes C-10 / H-9 / AC-24)', () => 
       expect(mocks.rolePolicyRepo.create).toHaveBeenCalled();
     });
 
-    it('TASK-501 — a tenant admin is refused when assigning a policy to a system role', async () => {
+    it('a tenant admin is refused when assigning a policy to a system role', async () => {
       const mocks = makeMocks(TENANT_ADMIN_USER);
       mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'GLOBAL_ADMIN' });
       const service = buildService(mocks);
@@ -483,7 +483,7 @@ describe('TASK-307 W6.3 — RbacRoleService (closes C-10 / H-9 / AC-24)', () => 
       );
     });
 
-    it('TASK-501 — a global admin may remove a policy from a system role', async () => {
+    it('a global admin may remove a policy from a system role', async () => {
       const mocks = makeMocks(ADMIN_USER);
       mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'GLOBAL_ADMIN' });
       const service = buildService(mocks);
@@ -493,7 +493,7 @@ describe('TASK-307 W6.3 — RbacRoleService (closes C-10 / H-9 / AC-24)', () => 
       expect(mocks.rolePolicyRepo.softDeleteByRoleAndPolicy).toHaveBeenCalled();
     });
 
-    it('TASK-501 — a tenant admin is refused when removing a policy from a system role', async () => {
+    it('a tenant admin is refused when removing a policy from a system role', async () => {
       const mocks = makeMocks(TENANT_ADMIN_USER);
       mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'GLOBAL_ADMIN' });
       const service = buildService(mocks);
@@ -505,7 +505,7 @@ describe('TASK-307 W6.3 — RbacRoleService (closes C-10 / H-9 / AC-24)', () => 
   });
 
   describe('clone', () => {
-    it('TASK-501 — any admin may clone a role, copying its policy set into a new CUSTOM role', async () => {
+    it('any admin may clone a role, copying its policy set into a new CUSTOM role', async () => {
       const mocks = makeMocks(TENANT_ADMIN_USER);
       const source = makeRoleRow({
         id: 'role-src',
@@ -558,7 +558,7 @@ describe('TASK-307 W6.3 — RbacRoleService (closes C-10 / H-9 / AC-24)', () => 
       );
     });
 
-    it('TASK-501 — 404s when the source role does not exist', async () => {
+    it('404s when the source role does not exist', async () => {
       const mocks = makeMocks();
       mocks.roleRepo.findByIdWithPolicies.mockResolvedValue(null);
       const service = buildService(mocks);

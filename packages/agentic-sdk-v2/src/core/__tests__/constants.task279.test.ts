@@ -28,7 +28,7 @@ import { ADMIN_USER_ROLES_ENDPOINTS, ROLE_ENDPOINTS } from '../constants';
 // User-self surface preserved on ROLE_ENDPOINTS
 // ---------------------------------------------------------------------------
 
-describe('TASK-279 R-05: ROLE_ENDPOINTS user-self surface', () => {
+describe('ROLE_ENDPOINTS user-self surface', () => {
   it('USER_ROLES(userId) targets the canonical user-self path /users/:id/roles', () => {
     expect(ROLE_ENDPOINTS.USER_ROLES('u-1')).toBe('/users/u-1/roles');
   });
@@ -59,7 +59,7 @@ describe('TASK-279 R-05: ROLE_ENDPOINTS user-self surface', () => {
 // Admin surface — new ADMIN_USER_ROLES_ENDPOINTS block
 // ---------------------------------------------------------------------------
 
-describe('TASK-279 R-05: ADMIN_USER_ROLES_ENDPOINTS admin RBAC surface', () => {
+describe('ADMIN_USER_ROLES_ENDPOINTS admin RBAC surface', () => {
   it('LIST(userId) returns /admin/users/:id/roles', () => {
     expect(ADMIN_USER_ROLES_ENDPOINTS.LIST('u-1')).toBe('/admin/users/u-1/roles');
   });

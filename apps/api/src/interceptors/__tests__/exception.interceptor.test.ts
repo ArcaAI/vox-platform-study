@@ -18,7 +18,7 @@ import { ArgumentInvalidException, DataNotFoundException, OptimisticConcurrencyE
 import { PrismaClientKnownRequestError } from '@arcaai/database';
 import { optimisticLockConflictTotal } from '../../observability/metrics';
 
-describe('ExceptionInterceptor — OptimisticConcurrencyException -> 412 (TASK-302 Stream D Phase C C.5)', () => {
+describe('ExceptionInterceptor — OptimisticConcurrencyException -> 412', () => {
   let interceptor: ExceptionInterceptor;
 
   beforeEach(() => {
@@ -136,7 +136,7 @@ describe('ExceptionInterceptor — OptimisticConcurrencyException -> 412 (TASK-3
    * above and MUST stay ordered before the generic `BaseException`
    * branch.
    */
-  describe('TASK-306 P3.3 — DataNotFoundException pass-through (audit M-8)', () => {
+  describe('DataNotFoundException pass-through (audit)', () => {
     it('rethrows the ORIGINAL DataNotFoundException (not an HttpException)', async () => {
       const dnf = new DataNotFoundException('User', 'user-sensitive-id');
 
@@ -209,7 +209,7 @@ describe('ExceptionInterceptor — OptimisticConcurrencyException -> 412 (TASK-3
 // quota block would surface as a 500. These pin the capability→status contract
 // the SDK + admin console rely on, and preserve the `code` + `metadata` body.
 // ───────────────────────────────────────────────────────────────────────────
-describe('ExceptionInterceptor — QuotaExceededException → precise client status (TASK-392 Q10)', () => {
+describe('ExceptionInterceptor — QuotaExceededException → precise client status', () => {
   let interceptor: ExceptionInterceptor;
 
   beforeEach(() => {
@@ -282,7 +282,7 @@ describe('ExceptionInterceptor — QuotaExceededException → precise client sta
 // alert at > 0.5% of PATCHes. We pin the wiring with unit tests here so the
 // counter cannot silently regress.
 // ───────────────────────────────────────────────────────────────────────────
-describe('ExceptionInterceptor — optimistic_lock_conflict_total counter (TASK-302 Stream D Phase E.6)', () => {
+describe('ExceptionInterceptor — optimistic_lock_conflict_total counter', () => {
   let interceptor: ExceptionInterceptor;
 
   async function counterValue(model: string, route: string): Promise<number> {
@@ -444,7 +444,7 @@ describe('ExceptionInterceptor — optimistic_lock_conflict_total counter (TASK-
 // values. The server-side log MUST keep the full detail; only the public
 // body needs sanitising.
 // ───────────────────────────────────────────────────────────────────────────
-describe('TASK-307 W5.6 — Prisma error sanitisation (AC-20, audit D-6)', () => {
+describe('Prisma error sanitisation (audit)', () => {
   let interceptor: ExceptionInterceptor;
 
   beforeEach(() => {
@@ -597,7 +597,7 @@ describe('TASK-307 W5.6 — Prisma error sanitisation (AC-20, audit D-6)', () =>
 // `{ statusCode, error, correlationId }` with no `err.meta` / raw message
 // leak. Server-side log retains the full Prisma detail for SRE debugging.
 // ───────────────────────────────────────────────────────────────────────────
-describe('TASK-310 W7.A.14 — Prisma error code → HTTP status mapping (AC-1)', () => {
+describe('Prisma error code → HTTP status mapping', () => {
   let interceptor: ExceptionInterceptor;
 
   beforeEach(() => {
@@ -718,7 +718,7 @@ describe('TASK-310 W7.A.14 — Prisma error code → HTTP status mapping (AC-1)'
 // 500 "Internal server error" — observed live on
 // `PUT /admin/settings/registry/:key`.
 // ───────────────────────────────────────────────────────────────────────────
-describe('TASK-534 G4 — ArgumentInvalidException -> 400', () => {
+describe('ArgumentInvalidException -> 400', () => {
   let interceptor: ExceptionInterceptor;
 
   beforeEach(() => {

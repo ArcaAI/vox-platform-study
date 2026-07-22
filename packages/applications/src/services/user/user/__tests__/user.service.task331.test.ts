@@ -50,7 +50,7 @@ function buildService() {
   );
 }
 
-describe('UserService — TASK-331 #3 create-with-membership', () => {
+describe('UserService — create-with-membership', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockClsService.get.mockImplementation((key: string) => {

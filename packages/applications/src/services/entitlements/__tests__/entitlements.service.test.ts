@@ -126,7 +126,7 @@ describe('EntitlementsService', () => {
     values.clear();
   });
 
-  describe('kill-switch (Q9)', () => {
+  describe('kill-switch', () => {
     it('defaults enforcement OFF when the setting is absent', () => {
       expect(makeService().isEnforcementEnabled()).toBe(false);
     });
@@ -161,7 +161,7 @@ describe('EntitlementsService', () => {
   });
 
   describe('resolveForTenant', () => {
-    it('resolves a null-plan tenant to ungated-legacy (Q3)', async () => {
+    it('resolves a null-plan tenant to ungated-legacy', async () => {
       tenantRepository.findById.mockResolvedValue({ plan: null, trialEndsAt: null });
       tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
 
@@ -286,7 +286,7 @@ describe('EntitlementsService', () => {
     });
   });
 
-  describe('tenant override CRUD (Q1/Q7)', () => {
+  describe('tenant override CRUD', () => {
     it('returns null when the tenant inherits the plan (no override row)', async () => {
       tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
       expect(await makeService().getTenantEntitlement('tenant-1')).toBeNull();
@@ -342,7 +342,7 @@ describe('EntitlementsService', () => {
     });
   });
 
-  describe('assertQuantityQuota (Q9 gate + Q10 block-new)', () => {
+  describe('assertQuantityQuota (gate + block-new)', () => {
     // STARTER.maxUsers = 5 in the seeded matrix.
     const asStarter = () => {
       tenantRepository.findById.mockResolvedValue({ plan: 'STARTER', trialEndsAt: null });
@@ -350,13 +350,13 @@ describe('EntitlementsService', () => {
       tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
     };
 
-    it('is a NO-OP when the kill-switch is OFF, even over the limit (Q9)', async () => {
+    it('is a NO-OP when the kill-switch is OFF, even over the limit', async () => {
       asStarter(); // enforcement default OFF
       await expect(makeService().assertQuantityQuota('tenant-1', 'maxUsers', 99)).resolves.toBeUndefined();
       expect(tenantRepository.findById).not.toHaveBeenCalled(); // short-circuits before resolving
     });
 
-    it('is a NO-OP for an unlimited (null-plan / ungated) tenant (Q3)', async () => {
+    it('is a NO-OP for an unlimited (null-plan / ungated) tenant', async () => {
       values.set('entitlements.enabled', true);
       tenantRepository.findById.mockResolvedValue({ plan: null, trialEndsAt: null });
       tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
@@ -399,7 +399,7 @@ describe('EntitlementsService', () => {
     });
   });
 
-  describe('assertMeterQuota (Q5 meters, → 429)', () => {
+  describe('assertMeterQuota (meters, → 429)', () => {
     // STARTER.monthlyConsultations = 500 in the seeded matrix.
     const asStarter = () => {
       tenantRepository.findById.mockResolvedValue({ plan: 'STARTER', trialEndsAt: null });
@@ -407,7 +407,7 @@ describe('EntitlementsService', () => {
       tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
     };
 
-    it('is a NO-OP when the kill-switch is OFF — never reads the live meter (Q9)', async () => {
+    it('is a NO-OP when the kill-switch is OFF — never reads the live meter', async () => {
       asStarter(); // enforcement default OFF
       await expect(makeService().assertMeterQuota('tenant-1', 'monthlyConsultations')).resolves.toBeUndefined();
       expect(metering.getCurrentUsage).not.toHaveBeenCalled();
@@ -434,7 +434,7 @@ describe('EntitlementsService', () => {
     });
   });
 
-  describe('assertConcurrencyQuota (TASK-392 concurrency, hard-block → 429)', () => {
+  describe('assertConcurrencyQuota (concurrency, hard-block → 429)', () => {
     // STARTER.maxConcurrentSessions = 5 in the seeded matrix.
     const asStarter = () => {
       tenantRepository.findById.mockResolvedValue({ plan: 'STARTER', trialEndsAt: null });
@@ -442,14 +442,14 @@ describe('EntitlementsService', () => {
       tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
     };
 
-    it('is a NO-OP when the kill-switch is OFF — never reads the registry (Q9)', async () => {
+    it('is a NO-OP when the kill-switch is OFF — never reads the registry', async () => {
       asStarter(); // enforcement default OFF
       await expect(makeService().assertConcurrencyQuota('tenant-1')).resolves.toBeUndefined();
       expect(socketRegistry.getTenantAggregateCount).not.toHaveBeenCalled();
       expect(tenantRepository.findById).not.toHaveBeenCalled();
     });
 
-    it('is a NO-OP for an unlimited (null-plan / ungated) tenant (Q3)', async () => {
+    it('is a NO-OP for an unlimited (null-plan / ungated) tenant', async () => {
       values.set('entitlements.enabled', true);
       tenantRepository.findById.mockResolvedValue({ plan: null, trialEndsAt: null });
       tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
@@ -500,7 +500,7 @@ describe('EntitlementsService', () => {
     });
   });
 
-  describe('evaluateStorageSoftWarn (Q6, never blocks)', () => {
+  describe('evaluateStorageSoftWarn (never blocks)', () => {
     // STARTER.storageQuotaBytes = 5 GiB in the seeded matrix.
     const asStarter = () => {
       tenantRepository.findById.mockResolvedValue({ plan: 'STARTER', trialEndsAt: null });
@@ -508,7 +508,7 @@ describe('EntitlementsService', () => {
       tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
     };
 
-    it('is a NO-OP (warn:false) when the kill-switch is OFF (Q9)', async () => {
+    it('is a NO-OP (warn:false) when the kill-switch is OFF', async () => {
       asStarter();
       const result = await makeService().evaluateStorageSoftWarn('tenant-1', 10 * GIB);
       expect(result.warn).toBe(false);
@@ -516,7 +516,7 @@ describe('EntitlementsService', () => {
       expect(eventEmitter.emit).not.toHaveBeenCalled();
     });
 
-    it('is a NO-OP for an unlimited (null-plan / ungated) tenant (Q3)', async () => {
+    it('is a NO-OP for an unlimited (null-plan / ungated) tenant', async () => {
       values.set('entitlements.enabled', true);
       tenantRepository.findById.mockResolvedValue({ plan: null, trialEndsAt: null });
       tenantEntitlementRepository.findByTenant.mockResolvedValue(null);

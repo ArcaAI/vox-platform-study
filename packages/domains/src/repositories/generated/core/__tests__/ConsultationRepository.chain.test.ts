@@ -60,7 +60,7 @@ const buildRepo = async (delegate: any) => {
   return new ConsultationRepository(makeUow({ consultation: delegate }) as never);
 };
 
-describe('ConsultationRepository.findConsultationChain — full multi-hop (TASK-329 P2)', () => {
+describe('ConsultationRepository.findConsultationChain — full multi-hop', () => {
   it('walks the entire chain (root + all descendants, multi-hop) ordered by createdAt', async () => {
     const nodes: Record<string, Node> = {
       A: { id: 'A', parentConsultationId: null, resourceStatus: ENABLED, createdAt: new Date('2026-01-01') },

@@ -66,7 +66,7 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     // 3 it() blocks were added under this marker (CLS-derived tenantId
     // on logToDatabase). Bumped 5 → 8.
     minTests: 8,
-    marker: /TASK-305 D\.8|Multi-tenant scoping|TASK-306/,
+    marker: /Multi-tenant scoping|logToDatabase uses CLS tenantId/,
   },
   {
     name: 'apiKey',
@@ -74,7 +74,7 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     // 3 it() blocks were added under this marker (fetchAllByTenantId
     // CLS gate). Bumped 10 → 13.
     minTests: 13,
-    marker: /TASK-305 D\.5|Multi-tenant scoping|TASK-306/,
+    marker: /Multi-tenant scoping|fetchAllByTenantId tenant-scoped/,
   },
   {
     name: 'consultation/consultation',
@@ -83,7 +83,7 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     // defense-in-depth` marker (3 getById + 2 getByIdWithRelations +
     // 4 getConsultationChain). Bumped 5 → 14.
     minTests: 14,
-    marker: /TASK-305 D\.2|cross-aggregate tenant|TASK-306/i,
+    marker: /cross-aggregate tenant|Consultation read-paths defense-in-depth/i,
   },
   {
     name: 'consultation/context',
@@ -98,7 +98,7 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     // file. Floor bumped 9 → 17 (= 8 + 9). Verified by counting it()
     // blocks against the broad marker before commit.
     minTests: 17,
-    marker: /TASK-305 D\.3|cross-aggregate tenant|TASK-306/i,
+    marker: /cross-aggregate tenant|ContextItem array-input defense-in-depth/i,
   },
   {
     name: 'consultation/summary',
@@ -121,7 +121,7 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     name: 'consultation/harness/harness-internal',
     file: 'services/consultation/harness/__tests__/harness-internal.service.test.ts',
     minTests: 2,
-    marker: /recordEscalation \(C1-05\)/,
+    marker: /recordEscalation/,
   },
   {
     name: 'department',
@@ -141,7 +141,7 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     // 3 it() blocks were added under this marker (fetchAllByTenantId
     // CLS gate). Bumped 10 → 13.
     minTests: 13,
-    marker: /TASK-305 D\.5|Multi-tenant scoping|TASK-306/,
+    marker: /Multi-tenant scoping|fetchAllByTenantId tenant-scoped/,
   },
   /*
    * Surfaced by FS-introspection:
@@ -157,7 +157,7 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     name: 'prompt-management',
     file: 'services/prompt-management/__tests__/prompt-management.service.test.ts',
     minTests: 10,
-    marker: /Cross-Tenant Isolation|DEF-C2|TASK-306/,
+    marker: /Cross-Tenant Isolation|Authorization & tenant scope/,
   },
   {
     name: 'user/userRoleAssignment',
@@ -181,7 +181,7 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     // 6 more were added for the same matrix on
     // fetchTenantConfigs by tenantId + by codeName. 6 → 12.
     minTests: 12,
-    marker: /TASK-306/,
+    marker: /fetchById\/fetchByCodeName tenant-scoped|fetchTenantConfigs tenant-scoped/,
   },
   {
     name: 'webhook',
@@ -197,7 +197,7 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     //   - fetchAllByTenantId (5.3.6): 3 (same / cross 404 / GLOBAL_ADMIN)
     // 3 → 17.
     minTests: 17,
-    marker: /TASK-306/,
+    marker: /create resolves effective tenantId|resolveEffectiveTenantId observability|Webhook tenant-guard sweep/,
   },
   /*
    * ResourceSubscriptionService is tenant-blind on every surface, so
@@ -219,7 +219,7 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     // convention; the `/i` flag was a copy-paste from the older
     // `/cross-aggregate tenant/i` shape and serves no purpose here.
     minTests: 13,
-    marker: /TASK-306/,
+    marker: /ResourceSubscription tenant-guard sweep/,
   },
   /*
    * Base-layer additions.
@@ -241,13 +241,13 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     name: 'common/base.service',
     file: 'common/__tests__/base.service.test.ts',
     minTests: 3,
-    marker: /TASK-306/,
+    marker: /broadcastSysEvent CLS wins on tenantId/,
   },
   {
     name: 'baseServices/core.unitOfWork',
     file: 'services/baseServices/unitsOfWork/__tests__/core.unitOfWork.test.ts',
     minTests: 3,
-    marker: /TASK-306/,
+    marker: /runInTransaction canonical \$transaction\(callback\)/,
   },
 ];
 
@@ -422,8 +422,8 @@ function findUncoveredFiles(
   return tenantScopedFiles.filter((file) => !covered.has(file));
 }
 
-describe('Cross-tenant test coverage aggregator (TASK-305 E.2/E.3)', () => {
-  describe('E.2 — service-layer inline cross-tenant tests', () => {
+describe('Cross-tenant test coverage aggregator', () => {
+  describe('service-layer inline cross-tenant tests', () => {
     it.each(SERVICE_COVERAGE)(
       '$name has ≥$minTests cross-tenant tests in $file',
       ({ file, minTests, marker }) => {
@@ -435,7 +435,7 @@ describe('Cross-tenant test coverage aggregator (TASK-305 E.2/E.3)', () => {
     );
   });
 
-  describe('E.3 — processor + event-handler CLS-rebind tests', () => {
+  describe('processor + event-handler CLS-rebind tests', () => {
     it.each(PROCESSOR_COVERAGE)(
       '$name has ≥$minTests CLS-rebind/fail-closed tests in $file',
       ({ file, minTests, marker }) => {
@@ -479,7 +479,7 @@ describe('Cross-tenant test coverage aggregator (TASK-305 E.2/E.3)', () => {
    * fixtures so a refactor of `findUncoveredFiles` cannot silently
    * regress.
    */
-  describe('TASK-306 W5.5.6 — aggregator FS-introspection (NEW-7 / F-4)', () => {
+  describe('aggregator FS-introspection', () => {
     it('every tenant-scoped service test file is registered in SERVICE_COVERAGE', () => {
       const servicesDir = resolve(APPLICATIONS_SRC, 'services');
       const detected = detectTenantScopedTestFiles(servicesDir);

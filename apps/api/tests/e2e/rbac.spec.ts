@@ -353,7 +353,7 @@ test.describe('RBAC Controllers', () => {
     });
 
     // Global admin gains create/update on SYSTEM roles + role cloning.
-    test.describe('TASK-501 — SYSTEM-role authoring + clone', () => {
+    test.describe('SYSTEM-role authoring + clone', () => {
       test('super_admin (GLOBAL_ADMIN) can rename a SYSTEM role; tenant admin cannot', async ({ request }) => {
         if (!rbacEndpointsAvailable || !superAdminToken || !adminToken) {
           test.skip();

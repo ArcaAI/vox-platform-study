@@ -20,7 +20,7 @@ import {
   McpServerRepository,
   SYSTEM_TENANT_ID,
 } from '@arcaai/domains';
-import { attachSegmentEvidence, type SegmentOffsetRef } from '../lib/transcript-segments';
+import { attachSegmentEvidence, extractAndStripSegmentCitationMarkers, type SegmentOffsetRef } from '../lib/transcript-segments';
 import { HarnessAuditService } from '../../harness-audit';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../../baseServices/redis';
@@ -491,11 +491,26 @@ export class HarnessInternalService {
         const consultation = await this.consultationRepository.findById(consultationId);
         assertEqualTenants(consultation, { tenantId });
 
+        // 0. Strip `[[seg:<id>]]` StrictCitations markers out of the generated note
+        // BEFORE it ever becomes the persisted/delivered ContextItem content — the
+        // model complies with the citation instruction, but a raw marker is not
+        // clinician-facing text. `citedSegmentIds` is validated against the
+        // consultation's own persisted transcript segments, so a hallucinated id is
+        // stripped from the note but never recorded as evidence.
+        const { content: strippedContent, citedSegmentIds } = await this.stripSegmentCitationMarkers(consultationId, tenantId, dto.content);
+
         // 1. RAW_SUMMARY context item for the generated note.
-        const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, dto.content, dto.dnaStyleId, userId);
+        const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, strippedContent, dto.dnaStyleId, userId);
         // Pin the AI draft to v1 so the `ai_draft_v1`
         // snapshot below IS version 1 and the doctor's first edit becomes v2.
         contextItem.currentVersionNumber = 1;
+        // Encrypt the generated note into `encryptedContent` before
+        // persistence — the plaintext `content` column was dropped by the PHI
+        // field-encryption migration, so an unencrypted create silently loses
+        // the clinical note at rest (mirrors context.service.ts `encryptContent`).
+        await this.encryptBestEffort('ContextItem content', () =>
+          this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!),
+        );
         const savedContext = await this.contextItemRepository.create(contextItem);
         const contextItemId = savedContext?.id ?? contextItem.id;
 
@@ -517,7 +532,7 @@ export class HarnessInternalService {
         // (LEGACY path only; EARLY withholds citationsMap until finalizeAssurance).
         const enrichedCitationsMap = isEarly
           ? null
-          : await this.enrichCitationsWithSegments(consultationId, tenantId, dto.citationsMap ?? null);
+          : this.mergeSegmentCitedIds(await this.enrichCitationsWithSegments(consultationId, tenantId, dto.citationsMap ?? null), citedSegmentIds);
         // EARLY: withhold the inferential scores + verdict + assurance marker (they
         // don't exist yet — finalizeAssurance backfills them). LEGACY: full meta +
         // `assuranceCompletedAt` stamped now so the sign-off guard treats the
@@ -679,11 +694,7 @@ export class HarnessInternalService {
         meta.ragTriadScore = dto.ragTriadScore ?? null;
         // enrich the (now-arriving) verdict citation map with segment
         // provenance before it is persisted + encrypted.
-        const enrichedCitationsMap = await this.enrichCitationsWithSegments(
-          consultationId,
-          tenantId,
-          dto.citationsMap ?? null,
-        );
+        const enrichedCitationsMap = await this.enrichCitationsWithSegments(consultationId, tenantId, dto.citationsMap ?? null);
         meta.citationsMap = (enrichedCitationsMap ?? null) as never;
         meta.guardrailDecisions = (dto.guardrailDecisions ?? null) as never;
         meta.gateDecision = dto.gateDecision ?? null;
@@ -1063,15 +1074,12 @@ export class HarnessInternalService {
   }
 
   /**
- * load PHI-safe segment citation refs for the assemble → generate
+   * load PHI-safe segment citation refs for the assemble → generate
    * StrictCitations path. Returns `[]` when the segment repo is unwired, the
    * consultation has ≠1 transcript (same ambiguity gate as enrichment), or no
    * segments are persisted — so callers that omit/empty keep the prior prompt.
    */
-  private async loadSegmentCitations(
-    tenantId: string,
-    transcripts: Array<{ id: string }>,
-  ): Promise<HarnessSegmentCitationRef[]> {
+  private async loadSegmentCitations(tenantId: string, transcripts: Array<{ id: string }>): Promise<HarnessSegmentCitationRef[]> {
     if (!this.transcriptSegmentRepository || transcripts.length !== 1) return [];
     try {
       const segments = await this.transcriptSegmentRepository.findByContextItem(tenantId, transcripts[0].id);
@@ -1129,6 +1137,55 @@ export class HarnessInternalService {
       });
       return citationsMap;
     }
+  }
+
+  /**
+   * Strip `[[seg:<id>]]` StrictCitations markers out of a harness-generated note
+   * BEFORE it is persisted, and return the ids actually cited (validated against
+   * the consultation's own persisted transcript segments so a hallucinated id can
+   * never be recorded as evidence — mirrors `extract_cited_segment_ids`,
+   * `apps/harness/src/harness/temporal/prompt_cache.py`).
+   *
+   * The marker syntax is ALWAYS stripped from the returned content, even when the
+   * transcript-segment repository is unwired or the consultation has no (or >1)
+   * transcript — a raw `[[seg:...]]` marker must never reach the clinician-visible
+   * note regardless of whether it can be validated. `citedSegmentIds` degrades to
+   * empty in that case (best-effort, non-destructive to the content strip).
+   */
+  private async stripSegmentCitationMarkers(
+    consultationId: string,
+    tenantId: string,
+    content: string,
+  ): Promise<{ content: string; citedSegmentIds: string[] }> {
+    let allowedIds: ReadonlySet<string> = new Set();
+    if (this.transcriptSegmentRepository) {
+      try {
+        const transcripts = await this.contextItemRepository.findTranscripts(consultationId);
+        if (transcripts.length === 1) {
+          const segments = await this.transcriptSegmentRepository.findByContextItem(tenantId, transcripts[0].id);
+          allowedIds = new Set(segments.map((s) => s.id));
+        }
+      } catch (error) {
+        this.logger.warn({
+          message: 'segment citation marker validation skipped (best-effort) — markers still stripped',
+          consultationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return extractAndStripSegmentCitationMarkers(content, allowedIds);
+  }
+
+  /**
+   * Fold `[[seg:]]`-cited segment ids into `citationsMap.segmentCitedIds`
+   * (additive; leaves every other key untouched) so the consultation-review
+   * click-to-source screen has real evidence to highlight even when the
+   * disjoint NER-claims lane (`citationsMap.claims`) is empty or degraded.
+   * A no-op (returns `citationsMap` as-is) when there is nothing cited.
+   */
+  private mergeSegmentCitedIds(citationsMap: Record<string, unknown> | null | undefined, citedSegmentIds: string[]): Record<string, unknown> | null {
+    if (citedSegmentIds.length === 0) return (citationsMap ?? null) as Record<string, unknown> | null;
+    return { ...(citationsMap ?? {}), segmentCitedIds: citedSegmentIds };
   }
 
   /**

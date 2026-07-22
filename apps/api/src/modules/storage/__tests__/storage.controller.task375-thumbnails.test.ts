@@ -50,7 +50,7 @@ const createMockFile = (overrides: Partial<Express.Multer.File> = {}): Express.M
     ...overrides,
   }) as unknown as Express.Multer.File;
 
-describe('TASK-375 — StorageController image thumbnail generation on upload', () => {
+describe('StorageController image thumbnail generation on upload', () => {
   let controller: StorageController;
 
   beforeEach(() => {

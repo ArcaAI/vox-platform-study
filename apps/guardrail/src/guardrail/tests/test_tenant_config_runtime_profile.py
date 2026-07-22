@@ -82,7 +82,7 @@ class TestProfileApplication:
 
 
 class TestLocalPathScope:
-    def test_local_path_landed_with_task_527(self) -> None:
+    def test_local_path_defaults_to_none(self) -> None:
         """`local_path` must exist and default to None, keeping
         "no DB opinion ⇒ env fallback" intact.
         """

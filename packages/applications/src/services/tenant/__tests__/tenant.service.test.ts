@@ -433,7 +433,7 @@ describe('TenantService', () => {
         });
 
         // Auto-generated tenant key when the request omits it.
-        describe('create — tenant key auto-generation (TASK-497 D3)', () => {
+        describe('create — tenant key auto-generation', () => {
             it('generates a unique key from the name when key is omitted', async () => {
                 const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
                 mockTenantRepository.create.mockResolvedValue(newTenant);
@@ -539,7 +539,7 @@ describe('TenantService', () => {
             expect(clonedTenantIds).toEqual(['new-tenant-id', 'new-tenant-id']);
         });
 
-        it('clone carries provider, architecture and metaData (r2605 Finding C)', async () => {
+        it('clone carries provider, architecture and metaData', async () => {
             const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
             mockTenantRepository.create.mockResolvedValue(newTenant);
             mockAiModelRepository.findAll.mockResolvedValue([
@@ -589,7 +589,7 @@ describe('TenantService', () => {
         // one's current version) into the new tenant, mark the clone of the
         // SYSTEM default as the tenant default, idempotent per slug,
         // failure-isolated.
-        describe('create — provisionTenantPipelineCatalog (TASK-505/356 full parity)', () => {
+        describe('create — provisionTenantPipelineCatalog (full parity)', () => {
             const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
             const makeSystemPipeline = (over: Record<string, unknown> = {}) => ({
                 id: 'sys-pipeline-ct2',
@@ -646,7 +646,7 @@ describe('TenantService', () => {
             // Provisioned clones ARE template copies: they carry the
             // template's slug as provenance and start locked, so a tenant admin
             // clones one to customize rather than editing it in place.
-            it('stamps template lineage on every provisioned clone (TASK-531)', async () => {
+            it('stamps template lineage on every provisioned clone', async () => {
                 const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
                 mockTenantRepository.create.mockResolvedValue(newTenant);
                 mockAsrPipelineRepository.findEnabledPipelines.mockResolvedValue(makeSystemCatalog());
@@ -840,7 +840,7 @@ describe('TenantService', () => {
             expect(result.data[1].name).toBe('Tenant 2');
         });
 
-        it('coerces Tenant-typed filter values via the model registry (TASK-406 P2-6c)', async () => {
+        it('coerces Tenant-typed filter values via the model registry', async () => {
             mockTenantRepository.findAll.mockResolvedValue([]);
             mockTenantRepository.count.mockResolvedValue(0);
 
@@ -855,7 +855,7 @@ describe('TenantService', () => {
             );
         });
 
-        it('rejects an invalid Tenant plan enum member with a 400 (TASK-406 P2-6b)', async () => {
+        it('rejects an invalid Tenant plan enum member with a 400', async () => {
             await expect(
                 service.fetchAll({ limit: 10, page: 1, filters: 'plan[equals]:GOLD' })
             ).rejects.toThrow(/GOLD/);
@@ -1116,7 +1116,7 @@ describe('TenantService', () => {
      * as the "other tenant" target. Tests use the existing `setRequestUserRoles`
      * helper (defined later in the file) to opt into GLOBAL_ADMIN context.
      */
-    describe('TASK-306 P1.3 — fetchById/fetchByCodeName tenant-scoped', () => {
+    describe('fetchById/fetchByCodeName tenant-scoped', () => {
         describe('fetchById', () => {
             it('returns the tenant when the caller owns it (id matches CLS)', async () => {
                 const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
@@ -1192,7 +1192,7 @@ describe('TenantService', () => {
      * (declared further down in this file) is used to opt into GLOBAL_ADMIN
      * context.
      */
-    describe('TASK-306 P2.2 — fetchTenantConfigs tenant-scoped', () => {
+    describe('fetchTenantConfigs tenant-scoped', () => {
         describe('by tenantId', () => {
             it('returns configs when the caller owns the resolved tenant (id matches CLS)', async () => {
                 const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
@@ -1281,7 +1281,7 @@ describe('TenantService', () => {
     });
 
     describe('update', () => {
-        it('should update tenant successfully via updateWithVersion (TASK-302 Stream D Phase E.1)', async () => {
+        it('should update tenant successfully via updateWithVersion (Stream D Phase)', async () => {
             const existingTenant = createMockTenantEntity({
                 id: 'tenant-123',
                 name: 'Old Name',
@@ -1302,7 +1302,7 @@ describe('TenantService', () => {
             expect(mockTenantRepository.update).not.toHaveBeenCalled();
         });
 
-        it('should emit ResourceUpdated event with changes, previousVersion + newVersion (TASK-302 Stream D Phase E.1)', async () => {
+        it('should emit ResourceUpdated event with changes, previousVersion + newVersion (Stream D Phase)', async () => {
             const existingTenant = createMockTenantEntity({
                 id: 'tenant-123',
                 hasChanges: true,
@@ -1329,7 +1329,7 @@ describe('TenantService', () => {
             );
         });
 
-        it('should propagate OptimisticConcurrencyException on version drift (TASK-302 Stream D Phase E.1)', async () => {
+        it('should propagate OptimisticConcurrencyException on version drift (Stream D Phase)', async () => {
             const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
             const existingTenant = createMockTenantEntity({
                 id: 'tenant-123',
@@ -1684,7 +1684,7 @@ describe('TenantService', () => {
         });
     });
 
-    describe('updateTenantConfigs — SMR provider/model validation (TASK-240)', () => {
+    describe('updateTenantConfigs — SMR provider/model validation', () => {
         const CATALOG_JSON = JSON.stringify([
             {
                 provider: 'ollama',
@@ -1795,7 +1795,7 @@ describe('TenantService', () => {
         });
     });
 
-    describe('updateTenantConfigs — Guardrail provider/model validation (TASK-338)', () => {
+    describe('updateTenantConfigs — Guardrail provider/model validation', () => {
         const GUARDRAIL_CATALOG_JSON = JSON.stringify([
             {
                 provider: 'lm-studio',
@@ -1963,7 +1963,7 @@ describe('TenantService', () => {
 
     const VALID_TENANT_UUID = '01931234-7abc-7def-9012-3456789abcde';
 
-    describe('create — provisionTenantConfigs (TASK-258 #1)', () => {
+    describe('create — provisionTenantConfigs', () => {
         it('reads global tenant settings via globalSettingRepository.findAll filtered by global tenant id', async () => {
             const newTenant = createMockTenantEntity({ id: 'new-tenant-id', key: 'NEW_TENANT' });
             const globalTenant = createMockTenantEntity({ id: 'global-id', key: '__GLOBAL__' });
@@ -2080,7 +2080,7 @@ describe('TenantService', () => {
             expect(mockGlobalSettingRepository.create).not.toHaveBeenCalled();
         });
 
-        it('does not block tenant creation when bucket provisioning fails (mirrors existing behaviour, TASK-258 #9)', async () => {
+        it('does not block tenant creation when bucket provisioning fails (mirrors existing behaviour)', async () => {
             const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
             mockTenantRepository.create.mockResolvedValue(newTenant);
             mockTenantBucketService.provisionSystemBuckets.mockRejectedValue(new Error('s3 down'));
@@ -2101,7 +2101,7 @@ describe('TenantService', () => {
      * insert is non-fatal: a failure is logged and swallowed so it never
      * aborts tenant creation (mirrors the bucket/config provisioning blocks).
      */
-    describe('create — provisionDefaultDepartment (TASK-331 r2605 #4)', () => {
+    describe('create — provisionDefaultDepartment', () => {
         it('provisions a GEN department bound to the NEW tenant id (not the CLS tenant)', async () => {
             const newTenant = createMockTenantEntity({ id: 'new-tenant-id', key: 'NEW_TENANT' });
             mockTenantRepository.create.mockResolvedValue(newTenant);
@@ -2153,7 +2153,7 @@ describe('TenantService', () => {
         });
     });
 
-    describe('provisionDefaultDepartment / tenant-created audit attribution (TASK-503)', () => {
+    describe('provisionDefaultDepartment / tenant-created audit attribution', () => {
         it('rebinds CLS tenantId to the new tenant so provisioning broadcasts are not stamped null', async () => {
             // Models the real global-admin-creating-a-tenant case: CLS carries
             // NO active tenant (root cause) until `create()` rebinds it. A
@@ -2194,7 +2194,7 @@ describe('TenantService', () => {
         });
     });
 
-    describe('updateTenantConfigs — locked + __GLOBAL__ guards (TASK-258 #4)', () => {
+    describe('updateTenantConfigs — locked + __GLOBAL__ guards', () => {
         it('throws ForbiddenException when caller without GLOBAL_ADMIN role tries to edit a locked setting', async () => {
             setRequestUserRoles(['DOCTOR']);
             const tenant = createMockTenantEntity({ id: 'tenant-123', key: 'CUSTOMER' });
@@ -2273,7 +2273,7 @@ describe('TenantService', () => {
         });
     });
 
-    describe('fetchTenantConfigs / updateTenantConfigs — identifier disambiguation (TASK-258 #7)', () => {
+    describe('fetchTenantConfigs / updateTenantConfigs — identifier disambiguation', () => {
         it('looks up tenant by id when identifier is a UUID (fetchTenantConfigs)', async () => {
             // The resolved tenant id deliberately differs from
             // CLS to exercise the UUID-vs-key branch; gate via GLOBAL_ADMIN so
@@ -2323,7 +2323,7 @@ describe('TenantService', () => {
         });
     });
 
-    describe('fetchTenantConfigs — locked value masking (TASK-258 #8)', () => {
+    describe('fetchTenantConfigs — locked value masking', () => {
         it('replaces value with empty string for locked rows when caller is non-GLOBAL_ADMIN', async () => {
             // This test deliberately exercises the non-GLOBAL_ADMIN
             // locked-value scrubbing branch, so GLOBAL_ADMIN bypass is off-limits.
@@ -2393,7 +2393,7 @@ describe('TenantService', () => {
     // ──────────────────────────────────────────────────────────────────────
     // Optimistic Concurrency on updateTenantConfigs
     // ──────────────────────────────────────────────────────────────────────
-    describe('updateTenantConfigs — optimistic concurrency (TASK-302 Stream D Phase C)', () => {
+    describe('updateTenantConfigs — optimistic concurrency (Stream D Phase C)', () => {
         it('calls updateWithVersion (not update) when expectedVersion is supplied', async () => {
             setRequestUserRoles(['GLOBAL_ADMIN']);
             const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
@@ -2483,7 +2483,7 @@ describe('TenantService', () => {
     // propagates, and the success-only broadcast does not fire on conflict).
     // The B.4 Postgres regression test is the on-DB guard that real SQL
     // rollback occurs.
-    describe('updateTenantConfigs — atomicity via $transaction (TASK-302 Stream D Phase C C.4)', () => {
+    describe('updateTenantConfigs — atomicity via $transaction (Stream D Phase C)', () => {
         beforeEach(() => {
             // Reset the $transaction mock to the default "invoke callback with tx"
             // implementation; individual tests can override it.
@@ -2612,7 +2612,7 @@ describe('TenantService', () => {
     // can reconstruct history via `metadata->>'newVersion'` (Research §7).
     // The pre-write `previousVersion` must be snapshotted BEFORE the CAS so
     // the audit reflects the state the operator actually read.
-    describe('updateTenantConfigs — audit-log version correlation (TASK-302 Stream D Phase C C.8)', () => {
+    describe('updateTenantConfigs — audit-log version correlation (Stream D Phase C)', () => {
         beforeEach(() => {
             (mockDatabaseService.baseClient.$transaction as any).mockImplementation(
                 async (callback: (tx: typeof mockTxClient) => Promise<unknown>) => callback(mockTxClient),
@@ -2703,7 +2703,7 @@ describe('TenantService', () => {
     // roll-ups. Counts are read straight off the extended client, scoped by the
     // explicit tenantId arg (mirrors the existing distinct-users query).
     // ============================================================
-    describe('TASK-386 — getUsageStats storage + clinical roll-ups (#4/#5)', () => {
+    describe('getUsageStats storage + clinical roll-ups', () => {
         beforeEach(() => {
             mockTenantRepository.findById.mockResolvedValue(createMockTenantEntity({ id: 'tenant-1' }));
             mockDepartmentRepository.count.mockResolvedValue(2);

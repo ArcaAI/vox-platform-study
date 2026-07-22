@@ -60,7 +60,7 @@ describe('UserRoleAssignmentEntity.validate()', () => {
       expect(() => entity.validate()).not.toThrow('Method not implemented.');
     });
 
-    it('should reject null tenantId (TASK-305 Phase A — platform roles use SYSTEM_TENANT_ID)', () => {
+    it('should reject null tenantId (Phase A — platform roles use SYSTEM_TENANT_ID)', () => {
       // Previously this case was a positive assertion ("global
       // role assignments may omit tenantId"). The new contract
       // requires every role assignment row to carry a concrete tenant

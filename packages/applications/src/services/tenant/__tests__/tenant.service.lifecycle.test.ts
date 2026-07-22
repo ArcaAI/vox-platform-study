@@ -49,7 +49,7 @@ function makeTenant(key = 'ACME', name = 'Acme Health'): TenantEntity {
   return tenant;
 }
 
-describe('TenantService — lifecycle (TASK-387 #1)', () => {
+describe('TenantService — lifecycle', () => {
   let service: TenantService;
 
   beforeEach(() => {
@@ -94,7 +94,7 @@ describe('TenantService — lifecycle (TASK-387 #1)', () => {
 
   // ---- DEF-ADM-002 — system tenant protection ------------------------------
 
-  it('suspend() is BLOCKED on the __GLOBAL__ system tenant (DEF-ADM-002)', async () => {
+  it('suspend() is BLOCKED on the __GLOBAL__ system tenant', async () => {
     const globalTenant = makeTenant('__GLOBAL__', 'Global');
     mockTenantRepository.findById.mockResolvedValue(globalTenant);
 
@@ -109,7 +109,7 @@ describe('TenantService — lifecycle (TASK-387 #1)', () => {
     await expect(service.suspend(globalTenant.id)).rejects.toThrow(ForbiddenException);
   });
 
-  it('archive() is BLOCKED on the system tenant (DEF-ADM-002)', async () => {
+  it('archive() is BLOCKED on the system tenant', async () => {
     const globalTenant = makeTenant('__GLOBAL__', 'Global');
     mockTenantRepository.findById.mockResolvedValue(globalTenant);
 
@@ -117,7 +117,7 @@ describe('TenantService — lifecycle (TASK-387 #1)', () => {
     expect(mockTenantRepository.update).not.toHaveBeenCalled();
   });
 
-  it('deleteById() is BLOCKED on the system tenant (DEF-ADM-002)', async () => {
+  it('deleteById() is BLOCKED on the system tenant', async () => {
     const globalTenant = makeTenant('__GLOBAL__', 'Global');
     mockTenantRepository.findById.mockResolvedValue(globalTenant);
 
@@ -136,7 +136,7 @@ describe('TenantService — lifecycle (TASK-387 #1)', () => {
   });
 });
 
-describe('TenantService — tags (TASK-387 #2)', () => {
+describe('TenantService — tags', () => {
   let service: TenantService;
 
   beforeEach(() => {

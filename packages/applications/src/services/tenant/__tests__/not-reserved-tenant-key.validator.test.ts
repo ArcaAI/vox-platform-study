@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { NotReservedTenantKeyConstraint } from '../validators/not-reserved-tenant-key.validator';
 
-describe('NotReservedTenantKeyConstraint (TASK-497 D3)', () => {
+describe('NotReservedTenantKeyConstraint', () => {
     const constraint = new NotReservedTenantKeyConstraint();
 
     it('rejects the reserved __SYSTEM__ key', () => {

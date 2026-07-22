@@ -154,7 +154,7 @@ function renderProvider(): AgenticStoreApi {
 // the doctor JWT) — a distinctive non-default that defaults would never show.
 const doctorPrefs = { transcription: { language: 'fr' } } as DeepPartial<AppConfig>;
 
-describe('TASK-331 doc-05 F-2 — AgenticProvider preference isolation under impersonation', () => {
+describe('doc-05 F-2 — AgenticProvider preference isolation under impersonation', () => {
   it('does NOT clear/reload (wipe) the playground-loaded impersonation prefs while impersonating', async () => {
     handler = meHandler({ id: ADMIN, tenantId: TENANT_A });
     const store = renderProvider();

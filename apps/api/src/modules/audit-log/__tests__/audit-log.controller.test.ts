@@ -50,7 +50,7 @@ function createMockCls(user: { id?: string; tenantId?: string | null; roles?: st
     };
 }
 
-describe('TASK-307 W5.7 — AuditLogController.fetchByUser tenant scoping (AC-21, audit D-7)', () => {
+describe('AuditLogController.fetchByUser tenant scoping (audit)', () => {
     let svc: ReturnType<typeof createMockAuditLogService>;
 
     beforeEach(() => {
@@ -107,7 +107,7 @@ describe('TASK-307 W5.7 — AuditLogController.fetchByUser tenant scoping (AC-21
 // `fetchByUser` controller guard so the rule is observable at the request
 // entry point and a non-global-admin with no tenant cannot reach the service.
 // -----------------------------------------------------------------------------
-describe('TASK-326 X5 — AuditLogController.fetchAll tenant scoping', () => {
+describe('AuditLogController.fetchAll tenant scoping', () => {
     let svc: ReturnType<typeof createMockAuditLogService>;
 
     beforeEach(() => {
@@ -147,7 +147,7 @@ describe('TASK-326 X5 — AuditLogController.fetchAll tenant scoping', () => {
 // the repository); the export route must respect the same tenant guard and
 // return a text/csv body produced by the DTO mapper.
 // -----------------------------------------------------------------------------
-describe('TASK-328 A8 — AuditLogController filters honoured', () => {
+describe('AuditLogController filters honoured', () => {
     let svc: ReturnType<typeof createMockAuditLogService>;
 
     beforeEach(() => {
@@ -181,7 +181,7 @@ describe('TASK-328 A8 — AuditLogController filters honoured', () => {
     });
 });
 
-describe('TASK-328 A8 — AuditLogController.exportCsv', () => {
+describe('AuditLogController.exportCsv', () => {
     let svc: ReturnType<typeof createMockAuditLogService>;
 
     beforeEach(() => {
@@ -310,7 +310,7 @@ describe('TASK-328 A8 — AuditLogController.exportCsv', () => {
 // cursor/limit/filters to the service, and maps the keyset page into the
 // nextCursor/hasMore response envelope. The offset routes are untouched.
 // -----------------------------------------------------------------------------
-describe('TASK-373 — AuditLogController.fetchByCursor (cursor pagination)', () => {
+describe('AuditLogController.fetchByCursor (cursor pagination)', () => {
     let svc: ReturnType<typeof createMockAuditLogService>;
 
     beforeEach(() => {

@@ -13,7 +13,7 @@ import { ForgotPasswordController } from '../forgot-password.controller';
 const requestSelfServiceReset = vi.fn();
 const controller = () => new ForgotPasswordController({ requestSelfServiceReset } as never);
 
-describe('ForgotPasswordController (TASK-400)', () => {
+describe('ForgotPasswordController', () => {
     beforeEach(() => vi.clearAllMocks());
 
     it('delegates to the service and returns the generic accepted body', async () => {

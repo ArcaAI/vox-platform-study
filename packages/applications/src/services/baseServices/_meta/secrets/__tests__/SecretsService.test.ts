@@ -405,7 +405,7 @@ describe('SecretsService.requestDbCredential (Phase 5 Task 5.3)', () => {
 // (one-shot) and VaultLeaseRenewer (periodic caller): without it the
 // renewer has nothing to invoke and dynamic PG creds go stale at lease
 // expiry. Mirrors the requestDbCredential capability-check pattern above.
-describe('SecretsService.renewDbLease (BUG-006)', () => {
+describe('SecretsService.renewDbLease', () => {
   it('throws a guard error when the underlying provider has no renewDbLease()', async () => {
     const provider = new InMemorySecretsProvider({});
     const service = new SecretsService(provider, {});

@@ -87,7 +87,12 @@ export function DetailDrawer({
                     {meta ? <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">{meta}</div> : null}
                     {tabs}
                 </SheetHeader>
-                <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
+                {/* tabIndex + role/aria-label: a scrollable region must be keyboard
+                    reachable on its own (WCAG 2.1.1) — content here can outgrow the
+                    viewport with no other focusable element to carry the scroll. */}
+                <div className="min-h-0 flex-1 overflow-y-auto p-4" tabIndex={0} role="region" aria-label="Drawer content">
+                    {children}
+                </div>
                 {footer ? <SheetFooter className="shrink-0 border-t">{footer}</SheetFooter> : null}
             </SheetContent>
         </Sheet>

@@ -321,7 +321,7 @@ describe('WebhookService', () => {
      * dispatch is more sensitive). Webhook follows the verification
      * contract ("row created with tenant-A") which mandates silent pinning.
      */
-    describe('TASK-306 P1.4 — create resolves effective tenantId', () => {
+    describe('create resolves effective tenantId', () => {
         // Helper mirrors the NotificationService / TenantService test convention:
         // re-installs the CLS mock so the active user carries the given roles
         // without leaking state into sibling tests (each `beforeEach` wipes it).
@@ -409,7 +409,7 @@ describe('WebhookService', () => {
      * silent (those are benign / expected); GLOBAL_ADMIN cross-tenant
      * writes also stay silent (those are explicitly allowed).
      */
-    describe('TASK-306 W5.7.6 — resolveEffectiveTenantId observability', () => {
+    describe('resolveEffectiveTenantId observability', () => {
         const setRequestUserRoles = (roles: string[] | undefined) => {
             mockClsService.get.mockImplementation((key: string) => {
                 switch (key) {
@@ -505,7 +505,7 @@ describe('WebhookService', () => {
      * for cross-tenant probes. The local `setRequestUserRoles` helper
      * re-installs the CLS mock with the requested role list.
      */
-    describe('TASK-306 P2.3 — Webhook tenant-guard sweep', () => {
+    describe('Webhook tenant-guard sweep', () => {
         const setRequestUserRoles = (roles: string[] | undefined) => {
             mockClsService.get.mockImplementation((key: string) => {
                 switch (key) {
@@ -746,7 +746,7 @@ describe('WebhookService', () => {
             expect(result.data[1].name).toBe('Webhook 2');
         });
 
-        it('coerces Webhook-typed filter values via the model registry (TASK-406 P2-6c)', async () => {
+        it('coerces Webhook-typed filter values via the model registry', async () => {
             mockWebhookRepository.findAll.mockResolvedValue([]);
             mockWebhookRepository.count.mockResolvedValue(0);
 
@@ -946,7 +946,7 @@ describe('WebhookService', () => {
     });
 
     describe('update', () => {
-        it('should update webhook successfully via updateWithVersion (TASK-302 Stream D Phase E.5)', async () => {
+        it('should update webhook successfully via updateWithVersion (Stream D Phase)', async () => {
             const existingWebhook = createMockWebhookEntity({
                 id: 'webhook-123',
                 name: 'Old Name',
@@ -965,7 +965,7 @@ describe('WebhookService', () => {
             expect(mockWebhookRepository.update).not.toHaveBeenCalled();
         });
 
-        it('should emit ResourceUpdated event with previousVersion + newVersion (TASK-302 Stream D Phase E.5)', async () => {
+        it('should emit ResourceUpdated event with previousVersion + newVersion (Stream D Phase)', async () => {
             const existingWebhook = createMockWebhookEntity({
                 id: 'webhook-123',
                 hasChanges: true,
@@ -1035,7 +1035,7 @@ describe('WebhookService', () => {
             expect(mockWebhookRepository.updateWithVersion).toHaveBeenCalled();
         });
 
-        it('propagates OptimisticConcurrencyException from the repository CAS write (TASK-302 Stream D Phase E.5)', async () => {
+        it('propagates OptimisticConcurrencyException from the repository CAS write (Stream D Phase)', async () => {
             const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
             const existingWebhook = createMockWebhookEntity({
                 id: 'webhook-123',
@@ -1203,7 +1203,7 @@ describe('WebhookService', () => {
     // of WebhookRunHistory. The run-history rows carry no tenantId; tenancy is
     // enforced through the parent webhook (load-then-assert, 404 cross-tenant).
     // =========================================================================
-    describe('fetchRunHistory (TASK-419 item 2)', () => {
+    describe('fetchRunHistory (item 2)', () => {
         const runRow = {
             id: 'run-1',
             status: 'SUCCESS',

@@ -52,7 +52,7 @@ function build(profileResolver?: { resolveProfile: ReturnType<typeof vi.fn> }) {
 
 beforeEach(() => vi.clearAllMocks());
 
-describe('AiInferenceController — runtime-profile injection (TASK-524)', () => {
+describe('AiInferenceController — runtime-profile injection', () => {
   it('injects resolved parameters alongside model_name', async () => {
     const resolver = {
       resolveProfile: vi.fn(async () => ({ ...emptyProfile, maxConcurrent: 4, timeoutS: 30, isEmpty: false })),

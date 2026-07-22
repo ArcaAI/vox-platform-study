@@ -65,7 +65,7 @@ const buildService = () =>
         mockDatabaseService as any,
     );
 
-describe('TASK-307 W6.1 — UserRoleAssignmentService tenant-scoped reads', () => {
+describe('UserRoleAssignmentService tenant-scoped reads', () => {
     let service: UserRoleAssignmentService;
 
     beforeEach(() => {
@@ -157,7 +157,7 @@ describe('TASK-307 W6.1 — UserRoleAssignmentService tenant-scoped reads', () =
             });
         });
 
-        it('drops null/empty tenantIds (defensive — TASK-295 H-3 contract)', async () => {
+        it('drops null/empty tenantIds (defensive — contract)', async () => {
             mockDatabaseService.baseClient.userRoleAssignment.findMany.mockResolvedValue([
                 { tenantId: null },
                 { tenantId: '' },
@@ -215,7 +215,7 @@ describe('TASK-307 W6.1 — UserRoleAssignmentService tenant-scoped reads', () =
     // tenant-scope `$extends` throw "tenant context required for model
     // UserRoleAssignment" (clean boot) and 401s every login. These three reads
     // MUST use the unscoped `baseClient`; the scoped `client` must stay untouched.
-    describe('tenant-scope bypass invariant (TASK-314)', () => {
+    describe('tenant-scope bypass invariant', () => {
         it('findActiveRolesForUser never touches the scoped client', async () => {
             mockDatabaseService.baseClient.userRoleAssignment.findMany.mockResolvedValue([]);
 

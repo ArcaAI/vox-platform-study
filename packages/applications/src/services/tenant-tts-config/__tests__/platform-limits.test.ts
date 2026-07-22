@@ -3,7 +3,7 @@ import { PLATFORM_TTS_LIMITS, resolveEffectiveTtsConfig } from '../platform-limi
 
 const D = PLATFORM_TTS_LIMITS.codeDefaults;
 
-describe('resolveEffectiveTtsConfig (TASK-496)', () => {
+describe('resolveEffectiveTtsConfig', () => {
   it('falls back to code defaults when neither system nor tenant is set', () => {
     const eff = resolveEffectiveTtsConfig(null, null);
     expect(eff.routingEn).toEqual(D.routingEn);
@@ -81,7 +81,7 @@ describe('resolveEffectiveTtsConfig (TASK-496)', () => {
  * registry row disables the provider platform-wide. Omitted universe = the code
  * constant = today's behaviour byte-for-byte.
  */
-describe('resolveEffectiveTtsConfig — registry universe (r2605 Finding F)', () => {
+describe('resolveEffectiveTtsConfig — registry universe', () => {
   it('omitted universe is byte-for-byte identical to the code-constant behaviour', () => {
     const system = { routingEn: ['azure', 'kokoro'], allowedProviders: ['azure', 'kokoro', 'sarvam'] };
     const tenant = { defaultSpeed: 1.5, sarvamPublicApiAllowed: true };

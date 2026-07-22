@@ -95,6 +95,7 @@ const createMockContextItemRepository = () => ({
     findLatestPreSummary: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
 });
 
 const createMockConsultationRepository = () => ({
@@ -123,6 +124,7 @@ const createMockSummaryMetaRepository = () => ({
     // Default null = no harness assurance meta = guard is a no-op (legacy/manual
     // summaries sign through unchanged).
     findByContextItem: vi.fn().mockResolvedValue(null),
+    encryptFieldsIntoEntity: vi.fn().mockResolvedValue(undefined),
 });
 
 const createMockNamedEntityRepository = () => ({
@@ -133,6 +135,7 @@ const createMockContextItemVersionRepository = () => ({
     create: vi.fn(),
     findById: vi.fn(),
     getVersionsByChangeReason: vi.fn().mockResolvedValue([]),
+    encryptFieldsIntoEntity: vi.fn().mockResolvedValue(undefined),
 });
 
 const createMockHttpService = () => ({
@@ -806,7 +809,7 @@ describe('SummaryService', () => {
     // NLP URL Path + Service URL Standardization
     // ===========================================================================
 
-    describe('GAP-8: Service URL Configuration', () => {
+    describe('Service URL Configuration', () => {
         // ----- ConfigService integration (replaces process.env) -----
 
         it('should read SMR_URL from ConfigService', () => {
@@ -1541,7 +1544,7 @@ describe('SummaryService', () => {
     // leak); legitimate misses produce the same error shape as cross-tenant
     // probes.
     // ============================================================
-    describe('TASK-305 D.4 — cross-aggregate tenant checks', () => {
+    describe('cross-aggregate tenant checks', () => {
         describe('generatePreSummary', () => {
             it('throws NotFoundException when parent consultation belongs to another tenant', async () => {
                 mockConsultationRepository.findById.mockResolvedValue({
@@ -1614,7 +1617,7 @@ describe('SummaryService', () => {
         //   2. append an ATTEST HarnessAuditEvent (Phase-0 WORM trail),
         //   3. flip Consultation.status → SIGNED.
         // ===================================================================
-        describe('approveSummary — attestation gate (TASK-330 Phase 1)', () => {
+        describe('approveSummary — attestation gate (Phase 1)', () => {
             let mockHarnessAuditService: ReturnType<typeof createMockHarnessAuditService>;
             let gatedService: SummaryService;
 
@@ -1741,7 +1744,7 @@ describe('SummaryService', () => {
         // Legacy/non-harness summaries (no meta) and clean assured drafts (no
         // safety FLAG) sign through unchanged, with NO extra annotations.
         // ===================================================================
-        describe('approveSummary — Phase D assurance guard (TASK-355)', () => {
+        describe('approveSummary — Phase D assurance guard', () => {
             let mockHarnessAuditService: ReturnType<typeof createMockHarnessAuditService>;
             let gatedService: SummaryService;
 
@@ -1788,7 +1791,7 @@ describe('SummaryService', () => {
                 mockConsultationRepository.update.mockResolvedValue({ id: 'consultation-1' });
             });
 
-            it('Q2a — ALLOWS sign-off while assurance is pending (no ack) and records a SIGNED_BEFORE_ASSURANCE annotation', async () => {
+            it('ALLOWS sign-off while assurance is pending (no ack) and records a SIGNED_BEFORE_ASSURANCE annotation', async () => {
                 mockSummaryMetaRepository.findByContextItem.mockResolvedValue({
                     id: 'sm-1',
                     assuranceCompletedAt: null,
@@ -1812,7 +1815,7 @@ describe('SummaryService', () => {
                 expect(actions).not.toContain(HarnessAuditAction.SAFETY_OVERRIDE);
             });
 
-            it('Q4 — HARD-REJECTS sign-off past a safety FLAG WITHOUT the override flag (object shape)', async () => {
+            it('HARD-REJECTS sign-off past a safety FLAG WITHOUT the override flag (object shape)', async () => {
                 mockSummaryMetaRepository.findByContextItem.mockResolvedValue({
                     id: 'sm-1',
                     assuranceCompletedAt: new Date(),
@@ -1824,7 +1827,7 @@ describe('SummaryService', () => {
                 expect(mockHarnessAuditService.append).not.toHaveBeenCalled();
             });
 
-            it('Q4 — HARD-REJECTS sign-off past a safety FLAG WITHOUT the override flag (string shape)', async () => {
+            it('HARD-REJECTS sign-off past a safety FLAG WITHOUT the override flag (string shape)', async () => {
                 mockSummaryMetaRepository.findByContextItem.mockResolvedValue({
                     id: 'sm-1',
                     assuranceCompletedAt: new Date(),
@@ -1834,7 +1837,7 @@ describe('SummaryService', () => {
                 await expect(gatedService.approveSummary('ctx-item-123')).rejects.toThrow(ConflictException);
             });
 
-            it('Q4 — ALLOWS sign-off past a completed safety FLAG via one-click override + records a SAFETY_OVERRIDE WORM event', async () => {
+            it('ALLOWS sign-off past a completed safety FLAG via one-click override + records a SAFETY_OVERRIDE WORM event', async () => {
                 mockSummaryMetaRepository.findByContextItem.mockResolvedValue({
                     id: 'sm-1',
                     assuranceCompletedAt: new Date(),
@@ -1858,7 +1861,7 @@ describe('SummaryService', () => {
                 expect(actions).not.toContain(HarnessAuditAction.SIGNED_BEFORE_ASSURANCE);
             });
 
-            it('Q4 — the SAFETY_OVERRIDE WORM append is FAIL-CLOSED (override audit failure rejects the sign)', async () => {
+            it('the SAFETY_OVERRIDE WORM append is FAIL-CLOSED (override audit failure rejects the sign)', async () => {
                 mockSummaryMetaRepository.findByContextItem.mockResolvedValue({
                     id: 'sm-1',
                     assuranceCompletedAt: new Date(),
@@ -1912,7 +1915,7 @@ describe('SummaryService', () => {
         // harness so it can resolve the workflow's approval wait-condition. A
         // signal failure MUST NOT block or roll back the sign-off.
         // ===================================================================
-        describe('approveSummary — harness sign-off signal (TASK-330 Lane G)', () => {
+        describe('approveSummary — harness sign-off signal (Lane G)', () => {
             let mockHarnessAuditService: ReturnType<typeof createMockHarnessAuditService>;
             let mockHarnessGateway: ReturnType<typeof createMockHarnessGatewayService>;
             let signalingService: SummaryService;
@@ -2028,7 +2031,7 @@ describe('SummaryService', () => {
         // a signal failure never rolls back the edit. Edits outside that window
         // (any other consultation status) do NOT signal.
         // ===================================================================
-        describe('updateSummary — harness edit signal (TASK-355 Slice 5c)', () => {
+        describe('updateSummary — harness edit signal (Slice 5c)', () => {
             let mockHarnessGateway: ReturnType<typeof createMockHarnessGatewayService>;
             let editService: SummaryService;
 
@@ -2136,6 +2139,156 @@ describe('SummaryService', () => {
                 expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
                 expect(mockNamedEntityRepository.create).not.toHaveBeenCalled();
             });
+        });
+    });
+
+    // ── F-031 remainder: every ContextItem.content write lane in this
+    // service must encrypt before persist, or clinical text silently vanishes at
+    // rest (the plaintext `content` column was dropped; only `encryptedContent`
+    // persists). Covers all 4 lanes: generatePreSummary (create), generateSummary
+    // (create), updateSummary (MODIFIED_SUMMARY edit — update), approveSummary
+    // (final update).
+    describe('content encryption-at-rest (F-031)', () => {
+        const secretsStub = { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('') };
+
+        const buildServiceWithSecrets = (extra: unknown[] = []) =>
+            new SummaryService(
+                mockContextItemRepository as any,
+                mockConsultationRepository as any,
+                mockSummaryMetaRepository as any,
+                mockNamedEntityRepository as any,
+                mockHttpService as any,
+                mockConfigService as any,
+                mockEventEmitter as any,
+                mockClsService as any,
+                mockContextItemVersionRepository as any,
+                mockPromptAssemblyService as any,
+                secretsStub as any,
+                undefined, // userProfileRepository
+                ...extra,
+            );
+
+        it('encrypts the generated pre-summary content before persisting (generatePreSummary)', async () => {
+            const serviceWithSecrets = buildServiceWithSecrets();
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
+            mockContextItemRepository.findCaseNotes.mockResolvedValue([{ id: 'cn-1', content: 'case note content' }]);
+            mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'Pre-summary text', modelName: 'm' } });
+            mockContextItemRepository.create.mockResolvedValue({
+                id: 'ctx-pre-enc', content: 'Pre-summary text', createdAt: new Date(), updatedAt: new Date(),
+            });
+            mockSummaryMetaRepository.create.mockResolvedValue({ id: 'meta-1' });
+
+            await serviceWithSecrets.generatePreSummary('c-1', {} as any);
+
+            expect(mockContextItemRepository.encryptContentIntoEntity).toHaveBeenCalledTimes(1);
+            const [entityArg, secretsArg] = mockContextItemRepository.encryptContentIntoEntity.mock.calls[0];
+            expect(entityArg.content).toBe('Pre-summary text');
+            expect(secretsArg).toBe(secretsStub);
+            const encOrder = mockContextItemRepository.encryptContentIntoEntity.mock.invocationCallOrder[0];
+            const createOrder = mockContextItemRepository.create.mock.invocationCallOrder[0];
+            expect(encOrder).toBeLessThan(createOrder);
+        });
+
+        it('encrypts the generated summary content before persisting (generateSummary)', async () => {
+            const serviceWithSecrets = buildServiceWithSecrets();
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
+            mockContextItemRepository.findTranscripts.mockResolvedValue([{ content: 'transcript text' }]);
+            mockContextItemRepository.findLatestPreSummary.mockResolvedValue(null);
+            mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'Raw summary text', modelName: 'm' } });
+            mockContextItemRepository.create.mockResolvedValue({
+                id: 'ctx-raw-enc', content: 'Raw summary text', createdAt: new Date(), updatedAt: new Date(),
+            });
+            mockSummaryMetaRepository.create.mockResolvedValue({ id: 'meta-1' });
+
+            await serviceWithSecrets.generateSummary('c-1', { dnaStyleId: 'style-1' } as any);
+
+            expect(mockContextItemRepository.encryptContentIntoEntity).toHaveBeenCalledTimes(1);
+            const [entityArg, secretsArg] = mockContextItemRepository.encryptContentIntoEntity.mock.calls[0];
+            expect(entityArg.content).toBe('Raw summary text');
+            expect(secretsArg).toBe(secretsStub);
+            const encOrder = mockContextItemRepository.encryptContentIntoEntity.mock.invocationCallOrder[0];
+            const createOrder = mockContextItemRepository.create.mock.invocationCallOrder[0];
+            expect(encOrder).toBeLessThan(createOrder);
+        });
+
+        it('encrypts the edited content before persisting (updateSummary — clinician-edit MODIFIED_SUMMARY)', async () => {
+            const serviceWithSecrets = buildServiceWithSecrets();
+            const mockItem = createMockContextItem({
+                id: 'ctx-edit-enc',
+                content: 'Original summary content',
+                currentVersionNumber: 0,
+            });
+            mockContextItemRepository.findById.mockResolvedValue(mockItem);
+            mockContextItemVersionRepository.create.mockResolvedValue({ id: 'version-id-enc' });
+            mockContextItemRepository.update.mockImplementation((_id: string, item: unknown) => Promise.resolve({
+                ...(item as object),
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            }));
+
+            await serviceWithSecrets.updateSummary('ctx-edit-enc', { content: 'Edited clinical content' });
+
+            expect(mockContextItemRepository.encryptContentIntoEntity).toHaveBeenCalledTimes(1);
+            const [entityArg, secretsArg] = mockContextItemRepository.encryptContentIntoEntity.mock.calls[0];
+            expect(entityArg.content).toBe('Edited clinical content');
+            expect(secretsArg).toBe(secretsStub);
+            const encOrder = mockContextItemRepository.encryptContentIntoEntity.mock.invocationCallOrder[0];
+            const updateOrder = mockContextItemRepository.update.mock.invocationCallOrder[0];
+            expect(encOrder).toBeLessThan(updateOrder);
+        });
+
+        it('still persists (without ciphertext) when no SecretsService is wired (updateSummary)', async () => {
+            const mockItem = createMockContextItem({ id: 'ctx-edit-no-sec', content: 'Original', currentVersionNumber: 0 });
+            mockContextItemRepository.findById.mockResolvedValue(mockItem);
+            mockContextItemVersionRepository.create.mockResolvedValue({ id: 'version-id-no-sec' });
+            mockContextItemRepository.update.mockImplementation((_id: string, item: unknown) => Promise.resolve({
+                ...(item as object),
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            }));
+
+            await service.updateSummary('ctx-edit-no-sec', { content: 'No cipher wired' });
+
+            expect(mockContextItemRepository.encryptContentIntoEntity).not.toHaveBeenCalled();
+        });
+
+        it('encrypts the final content before persisting (approveSummary)', async () => {
+            const mockHarnessAuditService = createMockHarnessAuditService();
+            const serviceWithSecrets = buildServiceWithSecrets([mockHarnessAuditService as any]);
+            const finalSummary = {
+                id: 'ctx-approve-enc',
+                tenantId: 'tenant-1',
+                consultationId: 'consultation-1',
+                type: 'RAW_SUMMARY',
+                content: 'S: ... O: ... A: ... P: ...',
+                isFinalSummary: true,
+                isSummary: true,
+                currentVersionNumber: 2,
+                updatedBy: null as string | null,
+                toObject: vi.fn().mockReturnValue({}),
+                changes: {},
+            };
+            mockContextItemRepository.findById.mockResolvedValue(finalSummary);
+            mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([]);
+            mockContextItemVersionRepository.create.mockResolvedValue({ id: 'signed-version-enc' });
+            mockConsultationRepository.findById.mockResolvedValue({
+                id: 'consultation-1',
+                tenantId: 'tenant-1',
+                status: ConsultationStatus.OPEN,
+                updatedBy: null,
+            });
+            mockConsultationRepository.update.mockResolvedValue({ id: 'consultation-1' });
+            mockContextItemRepository.update.mockResolvedValue({ ...finalSummary });
+
+            await serviceWithSecrets.approveSummary('ctx-approve-enc');
+
+            expect(mockContextItemRepository.encryptContentIntoEntity).toHaveBeenCalledTimes(1);
+            const [entityArg, secretsArg] = mockContextItemRepository.encryptContentIntoEntity.mock.calls[0];
+            expect(entityArg.content).toBe('S: ... O: ... A: ... P: ...');
+            expect(secretsArg).toBe(secretsStub);
+            const encOrder = mockContextItemRepository.encryptContentIntoEntity.mock.invocationCallOrder[0];
+            const updateOrder = mockContextItemRepository.update.mock.invocationCallOrder[0];
+            expect(encOrder).toBeLessThan(updateOrder);
         });
     });
 });

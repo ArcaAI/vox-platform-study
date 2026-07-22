@@ -30,7 +30,7 @@ function makeApiClient(): AgenticClient {
   } as unknown as AgenticClient;
 }
 
-describe('PluginManager.buildStreamingTransport (TASK-298 D-4)', () => {
+describe('PluginManager.buildStreamingTransport', () => {
   let manager: PluginManager;
   let apiClient: AgenticClient;
 
@@ -99,7 +99,7 @@ describe('PluginManager.buildStreamingTransport (TASK-298 D-4)', () => {
   });
 });
 
-describe('PluginManager.getTranscriptionPipelineConfig (TASK-298 D-4)', () => {
+describe('PluginManager.getTranscriptionPipelineConfig', () => {
   let manager: PluginManager;
   let apiClient: AgenticClient;
 
@@ -150,7 +150,7 @@ describe('PluginManager.getTranscriptionPipelineConfig (TASK-298 D-4)', () => {
 // The server-resolved EFFECTIVE transcription mode (injected
 // by AgenticProvider into resolvedConfig.stt.transcriptionMode) must reach the
 // pipeline config so TranscriptionPipeline.resolveSTTRuntimeProvider() honors it.
-describe('PluginManager — transcriptionMode passthrough (TASK-356)', () => {
+describe('PluginManager — transcriptionMode passthrough', () => {
   it('forwards stt.transcriptionMode into the pipeline config when set', () => {
     const manager = new PluginManager(
       { stt: { enabled: true, provider: 'backend', transcriptionMode: 'LOCAL' } },

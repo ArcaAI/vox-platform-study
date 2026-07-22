@@ -31,7 +31,7 @@ afterAll(async () => {
 const N = 100;
 
 describe('PgBouncer txn-mode — 100× concurrent RLS GUC isolation (Task 1.13)', () => {
-  it('R-CRLS-1+2: every concurrent $transaction observes its own tag', async () => {
+  it('R-: every concurrent $transaction observes its own tag', async () => {
     const baseTag = `crls-${process.pid}-${Date.now()}-`;
 
     const results = await Promise.allSettled(

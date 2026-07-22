@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { TenantPlan } from '@arcaai/domains';
 import { modelAllowedForTier, modelTierForPlan } from '../model-access';
 
-describe('modelTierForPlan (Q8)', () => {
+describe('modelTierForPlan', () => {
   it('maps each plan to its seeded model tier', () => {
     expect(modelTierForPlan(TenantPlan.STARTER)).toBe('base');
     expect(modelTierForPlan(TenantPlan.PRO)).toBe('full');
@@ -13,13 +13,13 @@ describe('modelTierForPlan (Q8)', () => {
     expect(modelTierForPlan(TenantPlan.ENTERPRISE)).toBe('full_custom');
   });
 
-  it('treats a null/ungated plan as the full catalog (Q3)', () => {
+  it('treats a null/ungated plan as the full catalog', () => {
     expect(modelTierForPlan(null)).toBe('full_custom');
     expect(modelTierForPlan(undefined)).toBe('full_custom');
   });
 });
 
-describe('modelAllowedForTier (Q8)', () => {
+describe('modelAllowedForTier', () => {
   it('clones untagged models into EVERY tier (non-breaking for the current seed)', () => {
     expect(modelAllowedForTier([], 'base')).toBe(true);
     expect(modelAllowedForTier(['audio', 'whisper'], 'base')).toBe(true);

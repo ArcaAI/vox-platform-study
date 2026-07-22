@@ -28,7 +28,7 @@ service-token routes and streams progress/assurance to the browser over SSE.
 | Key modules | `apps/harness/src/harness/temporal` (`workflows.py`, `activities.py`, `worker.py`, `client.py`, `models.py`, `claim_check.py`, `prompt_cache.py`), `apps/harness/src/harness/{sensors,guides,guards,eval,tools}`; gateway `apps/api/src/modules/consultation` (`harness-internal.controller.ts`, `harness-service-token.guard.ts`); `packages/applications/src/services/consultation/harness` (`harness-internal.service.ts`, `harness-gateway.service.ts`, `harness-progress.service.ts`, `harness-assurance.service.ts`) |
 | Prisma models | `HarnessPolicy`, `HarnessPolicyChange`, `HarnessAuditEvent`, `GateEditExemplar` (`db_main/harness.prisma`); `SummaryMeta` (scores/gate), `ContextItemVersion` (attestation) |
 | Key API endpoints | Harness service: `POST /api/v1/internal/consultations/:id/document:start`, `POST /api/v1/internal/workflows/:id/signal/approve`, `POST /api/v1/internal/workflows/:id/signal/edit`. Gateway internal `@Controller('internal/harness')`: `GET /policy`, `GET /mcp-token`, `POST /consultations/:id/entities`, `GET /consultations/:id/entities`, `POST /consultations/:id/{assemble,draft,gate-decision,escalation,assurance,assurance-event,progress}`, `POST /trajectory`. Browser SSE (on `ConsultationController`): `GET /consultations/:id/harness-progress/stream`, `GET /consultations/:id/harness-assurance/stream`, `GET /consultations/:id/trajectory/stream` (TASK-533 agentic loop); approval `POST /consultations/:id/summary/:contextItemId/approve` |
-| Tests | unit(app): `consultation/harness/__tests__/*` (`harness-internal.service`, `harness-gateway.service`, `harness-progress.service`, `harness-assurance.service`, `harness-internal.dto`, `harness-internal.mcp-token`); unit(api): `consultation/__tests__/*` (`harness-internal.controller`, `harness-service-token.guard`, `consultation.controller.harness-progress`, `consultation.controller.harness-assurance`, `consultation.controller.trajectory`); e2e: `task-330-harness-gate.spec.ts`, `task-348-harness-progress-cross-tenant.spec.ts`; py(hrn) incl. `test_replay_compat` |
+| Tests | unit(app): `consultation/harness/__tests__/*` (`harness-internal.service`, `harness-gateway.service`, `harness-progress.service`, `harness-assurance.service`, `harness-internal.dto`, `harness-internal.mcp-token`); unit(api): `consultation/__tests__/*` (`harness-internal.controller`, `harness-service-token.guard`, `consultation.controller.harness-progress`, `consultation.controller.harness-assurance`, `consultation.controller.trajectory`); e2e: `harness-gate.spec.ts`, `harness-progress-stream-cross-tenant.spec.ts`; py(hrn) incl. `test_replay_compat` |
 
 ### H2 — Harness admin & observability — legacy row 20
 
@@ -39,7 +39,7 @@ service-token routes and streams progress/assurance to the browser over SSE.
 | Prisma models | `HarnessPolicy`, `HarnessAuditEvent`, `EvalRun`, `EvalScore` (`db_main/harness.prisma`) |
 | Key API endpoints | `@Controller('admin/harness')`: `GET/PATCH /policy`, `GET/PATCH /policy/global`, `GET /audit`, `GET /gate-queue`, `GET /gate-edit-exemplars`, `GET /workflows`, `GET /workflows/:id`, `POST /workflows/:id/{cancel,terminate,signal}`, `GET /live/sessions`, `GET /live/sessions/:id`, `GET/PATCH /live/config`. Harness service side (mounted `prefix="/api/v1/internal/harness"`): `GET /workflows`, `GET /workflows/:workflow_id`, `POST /workflows/:workflow_id/{cancel,terminate,signal}` |
 | Console | `apps/admin-console` feature `harness-ops` (`harness-workflows-screen`, `harness-observability-screen`); routes `/harness/workflows`, `/harness/observability` (tier 30–49, tenant-scoped). Policy editing surfaces in `harness-policy` (`harness-policy-screen`), route `/harness/policy` |
-| Tests | unit(app): `harness-policy/__tests__/*`, `harness-observability/__tests__/*`, `harness-audit/__tests__/*`; unit(console): `harness-ops/components/__tests__/{harness-workflows-screen,harness-observability-screen}.test.tsx`, `harness-ops/api/__tests__/harness-ops-api.test.ts`, `harness-policy/components/__tests__/harness-policy-screen.test.tsx`, `harness-policy/api/__tests__/harness-policy-api.test.ts`; e2e: `task-403-ops-surfaces.spec.ts` (partial); py(hrn) |
+| Tests | unit(app): `harness-policy/__tests__/*`, `harness-observability/__tests__/*`, `harness-audit/__tests__/*`; unit(console): `harness-ops/components/__tests__/{harness-workflows-screen,harness-observability-screen}.test.tsx`, `harness-ops/api/__tests__/harness-ops-api.test.ts`, `harness-policy/components/__tests__/harness-policy-screen.test.tsx`, `harness-policy/api/__tests__/harness-policy-api.test.ts`; e2e: `super-admin-ops-surfaces.spec.ts` (partial); py(hrn) |
 
 ### H3 — Realtime pipeline-policy cascade — legacy row 21
 
@@ -50,7 +50,7 @@ service-token routes and streams progress/assurance to the browser over SSE.
 | Prisma models | `PipelinePolicy`, `PipelinePolicyChange` (`db_main/pipeline-policy.prisma`) |
 | Key API endpoints | `@Controller('admin/harness/pipeline-policy')`: `GET ''`, `GET /row`, `PUT /row` (create/CAS under `If-Match`). **AUTH-NOTE:** the `globalOnly` descriptor lock is enforced imperatively (rule 05) |
 | Console | `apps/admin-console` feature `pipeline-policy` (`pipeline-policy-screen`); route `/harness/pipeline-policy` (tier 30–49, tenant-scoped) |
-| Tests | unit(app): `pipeline-policy/__tests__/{pipeline-policy.service,pipeline-policy.service.encryption}.test.ts`; unit(console): `pipeline-policy/components/__tests__/pipeline-policy-screen.test.tsx`, `pipeline-policy/api/__tests__/pipeline-policy-api.test.ts`; e2e: `task-406-backend-residuals.spec.ts` (partial) |
+| Tests | unit(app): `pipeline-policy/__tests__/{pipeline-policy.service,pipeline-policy.service.encryption}.test.ts`; unit(console): `pipeline-policy/components/__tests__/pipeline-policy-screen.test.tsx`, `pipeline-policy/api/__tests__/pipeline-policy-api.test.ts`; e2e: `backend-residuals.spec.ts` (partial) |
 
 ### H4 — Institutional knowledge / RAG ingestion — legacy row 22
 
@@ -60,7 +60,7 @@ service-token routes and streams progress/assurance to the browser over SSE.
 | Key modules | `packages/applications/src/services/knowledge` (`knowledge-document.service.ts`, `ingest-knowledge-document.processor.ts`, `knowledge-ingest.client.ts`); `apps/harness/src/harness/api/endpoints/knowledge.py`; harness `retrieve_context` activity |
 | Prisma models | `KnowledgeDocument`, `KnowledgeChunk` (`db_main/knowledge.prisma`) |
 | Key API endpoints | Harness service `POST /api/v1/internal/knowledge/ingest` (internal service token: chunk → dense+sparse embed → upsert). **No public gateway REST surface** — ingestion is BullMQ-driven from the applications layer |
-| Tests | unit(app): `knowledge/__tests__/*` (`knowledge-document.service`, `knowledge-ingest.client`, `ingest-knowledge-document.processor`, `ingest-knowledge-document.processor.encryption`); e2e: `task-330-phase3-rag.spec.ts` |
+| Tests | unit(app): `knowledge/__tests__/*` (`knowledge-document.service`, `knowledge-ingest.client`, `ingest-knowledge-document.processor`, `ingest-knowledge-document.processor.encryption`); e2e: `harness-institutional-rag.spec.ts` |
 
 ### H5 — Evaluation golden sets, runs & edit burden — legacy row 23 + 34c
 
@@ -105,9 +105,9 @@ engine kill-switch (rule 13: `/agentic-policy` owns `harness/policy/global` +
 ## Honest notes / gaps
 
 - **Row 23 was stale.** Eval runs + golden sets now have a controller surface (`harness-admin`); the legacy "no dedicated controller yet" note is corrected in H5. Golden-case reads are PHI-safe-metadata-only.
-- **RAG has no public REST surface (H4).** Ingestion is internal service-token + BullMQ only; there is no browser-facing knowledge API. `task-330-phase3-rag.spec.ts` is the only e2e.
+- **RAG has no public REST surface (H4).** Ingestion is internal service-token + BullMQ only; there is no browser-facing knowledge API. `harness-institutional-rag.spec.ts` is the only e2e.
 - **Agent-trajectory observability is NOT duplicated here.** The `AgentTrajectoryStep` model, `admin/agent-trajectory/*` routes, and AI-operations console screens are migrated in [`ai-models-providers.md`](./ai-models-providers.md) (M7); this file records only the MCP half of legacy row 34d.
 - **Harness e2e is partial.** H2/H3 lean on `task-403`/`task-406` (marked partial in the legacy matrix) plus unit + py(hrn) coverage; there is no full workflow-ops e2e beyond the gate + progress specs. Harness CI (`test-harness`) is hermetic (Temporal/LLM/reranker stubbed) — it is not evidence of live-infra behavior.
 - **The admin router mounts under `/api/v1/internal/harness`, not `/api/v1/admin/harness`.** The gateway `admin/harness/workflows*` routes proxy to the harness service's `internal/harness/workflows*` — the browser-facing path is the gateway one.
 
-Last verified: 2026-07-21
+Last verified: 2026-07-22

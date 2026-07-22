@@ -29,7 +29,7 @@ const createMockService = () => ({
     setPreferredPromptTemplate: vi.fn(),
 });
 
-describe('PromptTemplateController (TASK-331 doc-09 — end-user plane)', () => {
+describe('PromptTemplateController (doc-09 end-user plane)', () => {
     let controller: PromptTemplateController;
     let mockService: ReturnType<typeof createMockService>;
 

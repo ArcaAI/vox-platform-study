@@ -22,7 +22,7 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
     return { ...actual, useAgenticStore: vi.fn() };
 });
 
-describe('TASK-224: Auth Security Enhancement', () => {
+describe('Auth Security Enhancement', () => {
     let mockLogger: ReturnType<typeof createMockLogger>;
     let mockStore: any;
     const mockGet = vi.fn();

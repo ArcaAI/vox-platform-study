@@ -49,7 +49,7 @@ function buildService() {
   );
 }
 
-describe('SettingsRegistryWriteService — OCC (TASK-533 B2)', () => {
+describe('SettingsRegistryWriteService — OCC', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     globalSettingRepository.findFirst.mockResolvedValue(null);
@@ -133,13 +133,13 @@ describe('SettingsRegistryWriteService — OCC (TASK-533 B2)', () => {
   // which is exactly how the fresh-DB "every GET registry/:key is 404" bug
   // shipped. These pin the throw-path.
 
-  it('G5: getBackingRowVersion returns 0 (not a 404) when findFirst throws DataNotFoundException', async () => {
+  it('getBackingRowVersion returns 0 (not a 404) when findFirst throws DataNotFoundException', async () => {
     globalSettingRepository.findFirst.mockRejectedValue(new DataNotFoundException('globalSetting', KEY));
 
     await expect(buildService().getBackingRowVersion(KEY)).resolves.toBe(0);
   });
 
-  it('G5: a FIRST write still takes the create branch when findFirst throws DataNotFoundException', async () => {
+  it('a FIRST write still takes the create branch when findFirst throws DataNotFoundException', async () => {
     globalSettingRepository.findFirst.mockRejectedValue(new DataNotFoundException('globalSetting', KEY));
 
     const result = await buildService().write(KEY, 500);
@@ -148,7 +148,7 @@ describe('SettingsRegistryWriteService — OCC (TASK-533 B2)', () => {
     expect(result.version).toBe(1);
   });
 
-  it('G5: a NON-not-found repository error still propagates', async () => {
+  it('a NON-not-found repository error still propagates', async () => {
     globalSettingRepository.findFirst.mockRejectedValue(new Error('connection refused'));
 
     await expect(buildService().getBackingRowVersion(KEY)).rejects.toThrow('connection refused');

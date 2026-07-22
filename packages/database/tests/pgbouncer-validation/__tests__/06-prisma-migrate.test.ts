@@ -74,7 +74,7 @@ afterAll(async () => {
 });
 
 describe('PgBouncer txn-mode — Prisma Migrate via DIRECT_URL (Task 1.12)', () => {
-  it('R-MIG-1: prisma migrate deploy via DIRECT_URL applies all 4 migrations', async () => {
+  it('prisma migrate deploy via DIRECT_URL applies all 4 migrations', async () => {
     const targetUrl = `postgresql://hope_app:hope_app_local@${directHost}:${directPort}/${testDb}?schema=public`;
 
     // `prisma migrate deploy` is non-interactive and intended for prod-style

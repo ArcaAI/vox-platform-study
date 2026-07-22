@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ConfigManager } from '../ConfigManager';
 
-describe('Impersonation Config Isolation (TASK-245)', () => {
+describe('Impersonation Config Isolation', () => {
     let manager: ConfigManager;
 
     beforeEach(() => {

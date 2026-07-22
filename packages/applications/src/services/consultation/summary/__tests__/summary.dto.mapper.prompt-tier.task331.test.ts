@@ -12,7 +12,7 @@ import { SummaryDtoMapper } from '../summary.dto.mapper';
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
-describe('SummaryDtoMapper.toResponse — promptResolvedFrom/resolvedPromptId (TASK-331 F4)', () => {
+describe('SummaryDtoMapper.toResponse — promptResolvedFrom/resolvedPromptId', () => {
   it('includes promptResolvedFrom and resolvedPromptId in structuredData when SummaryMeta is present', () => {
     const meta = SummaryMetaFactory.CreateSummaryMeta({
       tenantId: TENANT_ID,

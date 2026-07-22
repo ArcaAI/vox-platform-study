@@ -68,7 +68,7 @@ function buildService(m: ReturnType<typeof makeMocks>) {
   );
 }
 
-describe('TASK-390 #22 — PolicyService system-lockout guard', () => {
+describe('PolicyService system-lockout guard', () => {
   let mocks: ReturnType<typeof makeMocks>;
   let service: PolicyService;
 
@@ -91,7 +91,7 @@ describe('TASK-390 #22 — PolicyService system-lockout guard', () => {
       expect(mocks.policyRepo.softDelete).not.toHaveBeenCalled();
     });
 
-    it('allows deleting a non-protected policy (with TASK-409 break-glass confirmation)', async () => {
+    it('allows deleting a non-protected policy (with break-glass confirmation)', async () => {
       mocks.policyRepo.findById.mockResolvedValue(row());
       await service.softDelete('policy-x', { password: 'pw', confirmationName: 'team-policy' });
       expect(mocks.policyRepo.softDelete).toHaveBeenCalledWith('policy-x', ADMIN_USER.id);

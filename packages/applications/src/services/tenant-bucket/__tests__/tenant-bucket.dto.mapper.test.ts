@@ -24,7 +24,7 @@ const baseEntity = {
     updatedAt: new Date('2026-07-01T12:00:00Z'),
 };
 
-describe('TenantBucketDtoMapper (TASK-407)', () => {
+describe('TenantBucketDtoMapper', () => {
     it('maps quotaBytes BigInt to a JSON-safe number', () => {
         const result = TenantBucketDtoMapper.toResponse({ ...baseEntity, quotaBytes: 10_737_418_240n } as never);
         expect(result.quotaBytes).toBe(10_737_418_240);
@@ -35,7 +35,7 @@ describe('TenantBucketDtoMapper (TASK-407)', () => {
         expect(result.quotaBytes).toBeNull();
     });
 
-    it('maps undefined quotaBytes to null (pre-TASK-386 rows)', () => {
+    it('maps undefined quotaBytes to null (legacy rows)', () => {
         const result = TenantBucketDtoMapper.toResponse({ ...baseEntity } as never);
         expect(result.quotaBytes).toBeNull();
     });

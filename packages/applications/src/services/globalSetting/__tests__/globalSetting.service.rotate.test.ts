@@ -89,7 +89,7 @@ const createMockSecretEntity = (overrides: Record<string, unknown> = {}) => {
     return entity;
 };
 
-describe('GlobalSettingService.rotateSecret (TASK-445)', () => {
+describe('GlobalSettingService.rotateSecret', () => {
     let service: GlobalSettingService;
 
     const asSuperAdmin = (tenantId: string | null = null) =>

@@ -253,7 +253,7 @@ describe('SimpleCrossTabSync', () => {
   // verify HMAC and drop on mismatch / missing signature. The signing key is
   // a per-session, in-memory, never-persisted random 32-byte secret.
   // ===========================================================================
-  describe('TASK-266 W0-4: HMAC-signed cross-tab messages', () => {
+  describe('HMAC-signed cross-tab messages', () => {
     beforeEach(() => {
       // Reset module-level secret so each test starts from a fresh "app load".
       __resetSessionHmacSecretForTests();
@@ -430,7 +430,7 @@ describe('SimpleCrossTabSync', () => {
   // or `agentic.<consultationKey>` when tenantId is not reachable. Never the
   // bare `'agentic'` string (would cross-talk between tenants).
   // ===========================================================================
-  describe('TASK-266 W0-5: per-tenant BroadcastChannel naming', () => {
+  describe('per-tenant BroadcastChannel naming', () => {
     function lastChannelName(): string {
       const ch = MockBroadcastChannel.instances[MockBroadcastChannel.instances.length - 1];
       return ch.name;
@@ -443,7 +443,7 @@ describe('SimpleCrossTabSync', () => {
       sync.close();
     });
 
-    it('TASK-297 DEF-M1: falls back to `agentic.<sha256-first8-hex>` when tenantId is missing (no raw PHI in channel name)', async () => {
+    it('falls back to `agentic.<sha256-first8-hex>` when tenantId is missing (no raw PHI in channel name)', async () => {
       const sync = new SimpleCrossTabSync(baseConsultation);
       await sync.whenReady();
       const name = lastChannelName();
@@ -457,7 +457,7 @@ describe('SimpleCrossTabSync', () => {
       sync.close();
     });
 
-    it('TASK-297 DEF-M1: produces a stable hash for the same consultation key', async () => {
+    it('produces a stable hash for the same consultation key', async () => {
       const a = new SimpleCrossTabSync(baseConsultation);
       const b = new SimpleCrossTabSync(baseConsultation);
       await Promise.all([a.whenReady(), b.whenReady()]);
@@ -467,7 +467,7 @@ describe('SimpleCrossTabSync', () => {
       b.close();
     });
 
-    it('TASK-297 DEF-M1: produces distinct hashes for different consultation keys', async () => {
+    it('produces distinct hashes for different consultation keys', async () => {
       const a = new SimpleCrossTabSync(baseConsultation);
       const b = new SimpleCrossTabSync({ ...baseConsultation, patientId: 'patient-OTHER' });
       await Promise.all([a.whenReady(), b.whenReady()]);
@@ -540,7 +540,7 @@ describe('SimpleCrossTabSync', () => {
   // The mock installs a `globalThis.SharedWorker` that proxies all ports
   // to a single in-memory secret store, simulating real cross-tab routing.
   // ===========================================================================
-  describe('TASK-280: SharedWorker-backed HMAC key', () => {
+  describe('SharedWorker-backed HMAC key', () => {
     // Minimal in-memory SharedWorker mock — see CrossTabHmacKeyManager.test.ts
     // for the comprehensive RPC-level coverage. This mirror exists so the
     // SimpleCrossTabSync end-to-end (BroadcastChannel + HMAC manager) flow

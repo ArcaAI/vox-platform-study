@@ -116,7 +116,7 @@ describe('JwtAuthGuard', () => {
     });
 
     // ─── ticket-aware path ────────────────────────────────────────────────
-    describe('canActivate — ?ticket= fallback (TASK-263 W0-1)', () => {
+    describe('canActivate — ?ticket= fallback', () => {
         function whenScopeMetadataIs(config: { namespace: string; param: string } | undefined) {
             (reflector.getAllAndOverride as ReturnType<typeof vi.fn>).mockImplementation((key: unknown) => {
                 if (key === SKIP_AUTH_KEY) return false;
@@ -283,7 +283,7 @@ describe('JwtAuthGuard', () => {
     });
 
     // ─── stream-ticket carries impersonatedBy ──────────────────────────────
-    describe('canActivate — ticket impersonation context (TASK-295 SEC-A5-6)', () => {
+    describe('canActivate — ticket impersonation context', () => {
         function whenScopeMetadataIs(config: { namespace: string; param: string } | undefined) {
             (reflector.getAllAndOverride as ReturnType<typeof vi.fn>).mockImplementation((key: unknown) => {
                 if (key === SKIP_AUTH_KEY) return false;

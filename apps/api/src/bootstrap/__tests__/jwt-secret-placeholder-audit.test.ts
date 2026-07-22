@@ -19,7 +19,7 @@ const fakeSecrets = (value: string | undefined) => ({
   getSecretSync: (_key: string) => value,
 });
 
-describe('TASK-307 W2.2 — bootstrap refuses placeholder secret', () => {
+describe('bootstrap refuses placeholder secret', () => {
   it('throws when SecretsService returns the literal placeholder', () => {
     // The error message disambiguates the literal-placeholder branch from
     // the undefined branch so a crash-loop reading container logs can pin

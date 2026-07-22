@@ -15,7 +15,7 @@ const TENANT_ADMIN_RULES: PermissionRule[] = [
     { action: 'read', subject: 'Role' },
 ];
 
-describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playground tier TASK-420/431)', () => {
+describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playground tier)', () => {
     it('covers the full 43-route map across the four tiers', () => {
         expect(NAV_ENTRIES).toHaveLength(43);
         expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(17);
@@ -53,7 +53,7 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
     // direct URL) while the screen was registry-only. It is now the AI-models
     // hub (registry + live discovery + register), so it is a first-class,
     // navigable global-admin surface.
-    it('exposes /ai-models as an implemented, navigable hub (TASK-528)', () => {
+    it('exposes /ai-models as an implemented, navigable hub', () => {
         const aiModels = NAV_ENTRIES.find((entry) => entry.route === '/ai-models');
         expect(aiModels?.implemented).toBe(true);
     });
@@ -64,7 +64,7 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
         expect(NAV_SECTIONS.map((section) => section.tier)).toEqual(['10-19', '20-29', '30-49', '50-59']);
     });
 
-    it('marks every tier-10-19 entry implemented (TASK-528 unhid /ai-models)', () => {
+    it('marks every tier-10-19 entry implemented (unhid /ai-models)', () => {
         const byTier = (tier: string) => NAV_ENTRIES.filter((entry) => entry.tier === tier);
         expect(byTier('10-19').filter((entry) => !entry.implemented).map((entry) => entry.route)).toEqual([]);
         expect(byTier('20-29').every((entry) => entry.implemented)).toBe(true);
@@ -89,7 +89,7 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
      * count is unchanged at 17: `/prompt-studio` folded into `/agents` and
      * `/ai-services` took its slot; `/pstudio` was renamed, not added.
      */
-    describe('console IA cleanup (TASK-532)', () => {
+    describe('console IA cleanup', () => {
         it('retires /prompt-studio (governance moved into the /agents Governance tab)', () => {
             expect(NAV_ENTRIES.some((entry) => entry.route === '/prompt-studio')).toBe(false);
         });
@@ -154,7 +154,7 @@ describe('visibleNavEntries', () => {
         expect(visible.map((entry) => entry.route)).toEqual(implemented.map((entry) => entry.route));
     });
 
-    it('shows /ai-models to a global admin now that the hub is implemented (TASK-528)', () => {
+    it('shows /ai-models to a global admin now that the hub is implemented', () => {
         expect(visibleNavEntries(GLOBAL_ADMIN_RULES, ['GLOBAL_ADMIN']).map((entry) => entry.route)).toContain('/ai-models');
     });
 

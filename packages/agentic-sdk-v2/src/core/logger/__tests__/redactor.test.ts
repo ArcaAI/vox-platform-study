@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { redactPHI, PHI_KEYS, REDACTED_VALUE, REDACTED_URL_VALUE } from '../redactor';
 
-describe('redactPHI (TASK-266 W0-2)', () => {
+describe('redactPHI', () => {
   describe('primitive inputs', () => {
     it('returns null/undefined unchanged', () => {
       expect(redactPHI(null)).toBeNull();

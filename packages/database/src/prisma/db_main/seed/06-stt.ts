@@ -840,7 +840,7 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
  *
  * A tenant row carrying one of these slugs is a copy of that template. The
  * lineage backfill migration inlines the same set as a SQL literal (migrations
- * cannot import TypeScript); `task-531-pipeline-template-lineage-migration.test.ts`
+ * cannot import TypeScript); `pipeline-template-lineage-migration.test.ts`
  * asserts the two stay set-equal.
  */
 export const ASR_TEMPLATE_SLUGS: readonly string[] = DEFAULT_ASR_PIPELINES.map((p) => p.slug);

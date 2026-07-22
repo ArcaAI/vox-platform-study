@@ -450,7 +450,7 @@ describe('DepartmentService', () => {
         // CC-04 — the create modal collects `defaultSummaryTemplate`,
         // so `create` must forward it into department creation (the factory).
         // Previously it was dropped, so a template typed at create-time was lost.
-        it('CC-04: forwards defaultSummaryTemplate from the DTO into department creation', async () => {
+        it('forwards defaultSummaryTemplate from the DTO into department creation', async () => {
             mockDepartmentRepository.findByCode.mockResolvedValue(null);
             mockDepartmentRepository.create.mockResolvedValue(
                 createMockDepartmentEntity({ id: 'new-department-id', name: 'New Department' }),
@@ -532,7 +532,7 @@ describe('DepartmentService', () => {
     });
 
     describe('update', () => {
-        it('routes through updateWithVersion using request.expectedVersion (TASK-302 Stream D Phase E.2)', async () => {
+        it('routes through updateWithVersion using request.expectedVersion (Stream D Phase)', async () => {
             const department = createMockDepartmentEntityWithChanges({
                 id: 'dept-1',
                 hasChanges: true,
@@ -550,7 +550,7 @@ describe('DepartmentService', () => {
             expect(mockDepartmentRepository.update).not.toHaveBeenCalled();
         });
 
-        it('emits ResourceUpdated SysEvent with previousVersion + newVersion (TASK-302 Stream D Phase E.2)', async () => {
+        it('emits ResourceUpdated SysEvent with previousVersion + newVersion (Stream D Phase)', async () => {
             const department = createMockDepartmentEntityWithChanges({
                 id: 'dept-1',
                 hasChanges: true,
@@ -577,7 +577,7 @@ describe('DepartmentService', () => {
             );
         });
 
-        it('propagates OptimisticConcurrencyException on version drift (TASK-302 Stream D Phase E.2)', async () => {
+        it('propagates OptimisticConcurrencyException on version drift (Stream D Phase)', async () => {
             const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
             const department = createMockDepartmentEntityWithChanges({
                 id: 'dept-1',
@@ -636,7 +636,7 @@ describe('DepartmentService', () => {
             ).rejects.toThrow('No changes to write to.');
         });
 
-        it('should update prompt config via updateWithVersion (TASK-302 Stream D Phase E.2)', async () => {
+        it('should update prompt config via updateWithVersion (Stream D Phase)', async () => {
             const department = createMockDepartmentEntityWithChanges({
                 hasChanges: true,
                 changes: { preSummaryPromptId: 'pre-1', newPatientPromptId: 'np-1' },
@@ -692,7 +692,7 @@ describe('DepartmentService', () => {
      * produce a malformed tree regardless of the caller's role, so the
      * guard is unconditional.
      */
-    describe('TASK-305 D.6 — cross-tenant parent check', () => {
+    describe('cross-tenant parent check', () => {
         describe('create', () => {
             it('rejects parent owned by another tenant with NotFoundException (no existence leak)', async () => {
                 mockDepartmentRepository.findByCode.mockResolvedValue(null);

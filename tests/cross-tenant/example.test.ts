@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createCrossTenantFixture } from './fixtures';
 
-describe('createCrossTenantFixture (TASK-305 Phase E.1)', () => {
+describe('createCrossTenantFixture (Phase E.1)', () => {
   it('returns deterministic tenant A and tenant B with distinct ids', () => {
     const fx = createCrossTenantFixture();
 

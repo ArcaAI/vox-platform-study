@@ -361,7 +361,7 @@ describe('HarnessAdminController — live engine kill-switch (GLOBAL_ADMIN / glo
 
 // Golden-set dataset surface (reads: read:HarnessEval,
 // creates: manage:HarnessEval). Same tenant resolution as the other reads.
-describe('HarnessAdminController — golden sets (TASK-419)', () => {
+describe('HarnessAdminController — golden sets', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('listGoldenSets pins a tenant admin to their own tenant and forwards numeric paging', async () => {
@@ -420,7 +420,7 @@ describe('HarnessAdminController — golden sets (TASK-419)', () => {
   });
 });
 
-describe('HarnessAdminController — golden-set authorization metadata (TASK-419)', () => {
+describe('HarnessAdminController — golden-set authorization metadata', () => {
   it('reads are pinned to read:HarnessEval, creates to manage:HarnessEval', () => {
     const proto = HarnessAdminController.prototype;
     expect(Reflect.getMetadata('required_permissions', proto.listGoldenSets)).toEqual([{ action: 'read', subject: 'HarnessEval' }]);

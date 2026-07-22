@@ -193,7 +193,7 @@ describe('C-3: AudioWorklet capture with ScriptProcessor fallback', () => {
       expect(lastWorkletNode!.disconnect).toHaveBeenCalled();
     });
 
-    it('defaults frameMs to 80 in the worklet processorOptions (TASK-351 P0-1)', async () => {
+    it('defaults frameMs to 80 in the worklet processorOptions', async () => {
       setupAudioWorkletNodeMock();
       const ctx = makeAudioContext({ withAudioWorklet: true });
       const track = {} as unknown as MediaStreamTrack;
@@ -203,7 +203,7 @@ describe('C-3: AudioWorklet capture with ScriptProcessor fallback', () => {
       expect(lastWorkletNodeOptions?.processorOptions).toMatchObject({ frameMs: 80 });
     });
 
-    it('plumbs a custom frameMs to the worklet processorOptions (TASK-351 P0-1)', async () => {
+    it('plumbs a custom frameMs to the worklet processorOptions', async () => {
       setupAudioWorkletNodeMock();
       const ctx = makeAudioContext({ withAudioWorklet: true });
       const track = {} as unknown as MediaStreamTrack;

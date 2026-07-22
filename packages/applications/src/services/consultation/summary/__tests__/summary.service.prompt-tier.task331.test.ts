@@ -91,7 +91,7 @@ const buildService = (promptAssembly: ReturnType<typeof createMockPromptAssembly
   return { service, ctx, consult, meta };
 };
 
-describe('SummaryService — persist promptResolvedFrom/resolvedPromptId (TASK-331 F4)', () => {
+describe('SummaryService — persist promptResolvedFrom/resolvedPromptId', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('generateSummary creates SummaryMeta carrying the assembled tier + prompt id', async () => {

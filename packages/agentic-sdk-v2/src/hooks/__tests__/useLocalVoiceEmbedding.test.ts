@@ -72,7 +72,7 @@ function audioFile(name = 'sample.wav'): File {
   return new File([new Uint8Array([1, 2, 3, 4])], name, { type: 'audio/wav' });
 }
 
-describe('useLocalVoiceEmbedding (TASK-329 P4 — LOCAL provider)', () => {
+describe('useLocalVoiceEmbedding (LOCAL provider)', () => {
   beforeEach(() => {
     localStorage.clear();
     (useAgenticStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue(mockStore());

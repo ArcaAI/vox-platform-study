@@ -13,7 +13,7 @@ import { SKIP_AUTH_KEY } from '@arcaai/applications';
 
 import '../third-party-public-routes';
 
-describe('TASK-307 W4a.3 — third-party-public-routes side-effect module', () => {
+describe('third-party-public-routes side-effect module', () => {
   it('marks PrometheusController.index as @Public() (SKIP_AUTH_KEY=true)', () => {
     const value = Reflect.getMetadata(SKIP_AUTH_KEY, PrometheusController.prototype.index);
     expect(value).toBe(true);

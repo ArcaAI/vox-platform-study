@@ -1119,7 +1119,7 @@ Chinese: 發燒 (fever)
     // NerExtracted Pipeline Event Emission
     // ===========================================================================
 
-    describe('NerExtracted pipeline event (GAP-1)', () => {
+    describe('NerExtracted pipeline event', () => {
         const setupSuccessfulNerJob = (entities: Array<{ type: string; value: string; confidence?: number; start?: number; end?: number }>) => {
             mockContextItemRepository.findById.mockResolvedValue(
                 createMockContextItem({ content: 'Patient has diabetes and hypertension.' }),
@@ -1308,7 +1308,7 @@ Chinese: 發燒 (fever)
     // CLS rebind + tenant assert + fail-closed guard
     // ===========================================================================
 
-    describe('CLS rebind + tenant assert (TASK-305 D.9)', () => {
+    describe('CLS rebind + tenant assert', () => {
         const setupSuccessfulJob = (contextItemOverrides: Record<string, unknown> = {}) => {
             mockContextItemRepository.findById.mockResolvedValue(
                 createMockContextItem({ content: 'medical content', ...contextItemOverrides }),
@@ -1384,7 +1384,7 @@ Chinese: 發燒 (fever)
     // persisted blank/null text/className/offsets.
     // ===========================================================================
 
-    describe('TASK-463 — real NLP contract persistence', () => {
+    describe('real NLP contract persistence', () => {
         it('persists text/className/offsets from the real NLP entity contract', async () => {
             mockContextItemRepository.findById.mockResolvedValue(
                 createMockContextItem({ content: 'Take aspirin now' }),
@@ -1431,7 +1431,7 @@ Chinese: 發燒 (fever)
     // (namedEntityPropsFromNlp) into the factory; RED before the mapper maps them.
     // ===========================================================================
 
-    describe('TASK-476 — ontology code persistence (async path)', () => {
+    describe('ontology code persistence (async path)', () => {
         it('passes the NLP ontology codes into the NamedEntity factory', async () => {
             mockContextItemRepository.findById.mockResolvedValue(
                 createMockContextItem({ content: 'Take metformin daily' }),

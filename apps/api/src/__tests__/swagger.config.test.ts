@@ -14,7 +14,7 @@ import { buildSwaggerConfig } from '../swagger.config';
  * (`name: 'x-api-key'`) under the same security name (`'api-key'`) so the
  * existing controller annotations resolve.
  */
-describe('buildSwaggerConfig (TASK-310 E-8 / AC-8)', () => {
+describe('buildSwaggerConfig', () => {
   it('registers the bearer scheme', () => {
     const document = buildSwaggerConfig().build();
 

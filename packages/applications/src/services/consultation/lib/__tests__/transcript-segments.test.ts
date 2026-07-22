@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   attachSegmentEvidence,
   computeSegmentOffsets,
+  extractAndStripSegmentCitationMarkers,
   resolveSegmentIdForOffset,
 } from '../transcript-segments';
 
@@ -105,6 +106,37 @@ describe('transcript-segments (pure helpers)', () => {
       expect(attachSegmentEvidence(null, [{ id: 's', charStart: 0, charEnd: 1 }])).toBeNull();
       const map = { claims: [{ id: 'c', evidence: [{ startOffset: 0 }] }] };
       expect(attachSegmentEvidence(map, [])).toBe(map);
+    });
+  });
+
+  describe('extractAndStripSegmentCitationMarkers', () => {
+    it('strips [[seg:<id>]] markers from the delivered content', () => {
+      const content = 'Plan: metformin 500mg [[seg:seg-1]] twice daily [[seg:seg-2]].';
+      const { content: stripped } = extractAndStripSegmentCitationMarkers(content, new Set(['seg-1', 'seg-2']));
+      expect(stripped).toBe('Plan: metformin 500mg twice daily.');
+      expect(stripped).not.toMatch(/\[\[seg:/);
+    });
+
+    it('extracts only ids present in the allowed set, deduped and in first-seen order', () => {
+      const content = '[[seg:seg-2]] finding A. [[seg:seg-1]] finding B. [[seg:seg-2]] again.';
+      const { citedSegmentIds } = extractAndStripSegmentCitationMarkers(content, new Set(['seg-1', 'seg-2']));
+      expect(citedSegmentIds).toEqual(['seg-2', 'seg-1']);
+    });
+
+    it('drops hallucinated ids not present in the allowed set from citedSegmentIds but still strips the marker text', () => {
+      const content = 'Note [[seg:not-real]] here.';
+      const { content: stripped, citedSegmentIds } = extractAndStripSegmentCitationMarkers(content, new Set(['seg-1']));
+      expect(citedSegmentIds).toEqual([]);
+      expect(stripped).toBe('Note here.');
+    });
+
+    it('is a no-op on content with no markers', () => {
+      const result = extractAndStripSegmentCitationMarkers('plain note, nothing to see', new Set(['seg-1']));
+      expect(result).toEqual({ content: 'plain note, nothing to see', citedSegmentIds: [] });
+    });
+
+    it('handles empty/null content without throwing', () => {
+      expect(extractAndStripSegmentCitationMarkers('', new Set())).toEqual({ content: '', citedSegmentIds: [] });
     });
   });
 });

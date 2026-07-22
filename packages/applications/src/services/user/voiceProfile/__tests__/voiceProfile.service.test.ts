@@ -174,7 +174,7 @@ describe('VoiceProfileService', () => {
 
     // A voice profile is biometric PHI stamped with its enrollment
     // tenant; reads (incl. the STT-v2 diarization preseed) filter on it.
-    it('should stamp the enrolled profile with the CLS tenant (TASK-490)', async () => {
+    it('should stamp the enrolled profile with the CLS tenant', async () => {
       const { of } = await import('rxjs');
       mockHttpService.post.mockReturnValue(
         of({ data: { embedding: Array(256).fill(0.1), model_id: 'm1' } }),
@@ -191,7 +191,7 @@ describe('VoiceProfileService', () => {
       expect(entityArg.tenantId).toBe('tenant-1');
     });
 
-    it('should reject enrollment without a tenant context (TASK-490)', async () => {
+    it('should reject enrollment without a tenant context', async () => {
       mockClsService.get.mockImplementation((key: string) => {
         if (key === 'user') return { id: 'user-id-1' };
         return null; // no tenantId in CLS

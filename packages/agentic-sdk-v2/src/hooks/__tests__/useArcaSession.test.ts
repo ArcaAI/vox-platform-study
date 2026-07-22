@@ -242,7 +242,7 @@ describe('useArcaSession', () => {
         // context-bleed risk. This asserts the hook forwards the active tenant
         // id (resolved from the api client) into createCrossTabSync options.
         // =====================================================================
-        it('TASK-317 W3.3 — AC-9 passes the active tenantId into createCrossTabSync options', async () => {
+        it('passes the active tenantId into createCrossTabSync options', async () => {
             mockApiClient.updateTenantId('tenant-xyz');
 
             const mockConsultation = createMockConsultation({

@@ -25,7 +25,7 @@ const tenantAdmin: SessionPayload = {
     },
 };
 
-describe('toSafeSession — effective identity (BUG-005 Phase 0)', () => {
+describe('toSafeSession — effective identity', () => {
     it('when not impersonating, effectiveUser mirrors the base operator user', () => {
         const safe = toSafeSession({ ...operator, workingTenantId: '50000000-0000-0000-0000-000000000000' });
 

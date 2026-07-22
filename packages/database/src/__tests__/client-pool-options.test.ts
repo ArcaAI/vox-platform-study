@@ -53,7 +53,7 @@ afterEach(() => {
   process.env = originalEnv;
 });
 
-describe('PrismaPg adapter pool options (TASK-302 Stream C Phase 0)', () => {
+describe('PrismaPg adapter pool options (Stream C Phase 0)', () => {
   it('passes connectionString, max=5 (default), connectionTimeoutMillis=5000, idleTimeoutMillis=300000', async () => {
     delete process.env.PRISMA_PG_MAX;
     process.env.DATABASE_URL = 'postgresql://user:pw@localhost:5432/db';

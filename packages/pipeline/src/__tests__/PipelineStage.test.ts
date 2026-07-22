@@ -329,7 +329,7 @@ describe('PipelineStage', () => {
   // AbortSignal handling
   // ===========================================================================
 
-  describe('AbortSignal propagation (TASK-273)', () => {
+  describe('AbortSignal propagation', () => {
     it('should propagate context.abortSignal into onExecute when no timeout/retry', async () => {
       let observed: AbortSignal | undefined;
 

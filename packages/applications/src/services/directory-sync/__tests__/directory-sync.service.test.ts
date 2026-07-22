@@ -32,7 +32,7 @@ function makeService() {
   return { svc, providerRepository, queue };
 }
 
-describe('DirectorySyncService.enqueueSync (TASK-498 P3)', () => {
+describe('DirectorySyncService.enqueueSync', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('404s (not 403) when the provider belongs to a different tenant', async () => {

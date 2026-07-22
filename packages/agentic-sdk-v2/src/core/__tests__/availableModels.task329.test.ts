@@ -18,7 +18,7 @@ import { DEFAULT_STT_MODELS } from '../../types/models';
 import { SYSTEM_DEFAULTS } from '../ConfigSchema';
 import { ModelRegistry } from '../ModelRegistry';
 
-describe('TASK-329 P3 — availableModels single source of truth', () => {
+describe('availableModels single source of truth', () => {
   it('presented availableModels default equals the registry-selectable STT set', () => {
     const presentedIds = SYSTEM_DEFAULTS.stt.availableModels.map((m) => m.id).sort();
     const registryIds = DEFAULT_STT_MODELS.map((m) => m.id).sort();

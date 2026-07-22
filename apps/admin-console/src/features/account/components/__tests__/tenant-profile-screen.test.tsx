@@ -358,7 +358,7 @@ describe('TenantProfileScreen', () => {
      * screen must show only basic org identity + a read-only Settings tab;
      * "Plan & usage" (limits/meters/entitlements) must not render or fetch.
      */
-    describe('non-elevated / impersonated session (BUG-005 Issue 2)', () => {
+    describe('non-elevated / impersonated session', () => {
         it('hides the Plan & usage tab and never fetches entitlements', async () => {
             const calls = stubFetch(happyHandler({ session: NON_ADMIN_SESSION }));
             renderWithProviders(<TenantProfileScreen />);

@@ -674,7 +674,7 @@ describe('ContextDtoMapper', () => {
             expect(result.createdAt).toBe('2026-01-29T10:00:00.000Z');
         });
 
-        it('maps rawMediaId/processedMediaId when present, and undefined when null (TASK-329 X8)', () => {
+        it('maps rawMediaId/processedMediaId when present, and undefined when null', () => {
             const withDual = ContextDtoMapper.toAudioRecordingResponse(
                 createMockAudioRecordingEntity({ rawMediaId: 'media-raw', processedMediaId: 'media-processed' }) as any,
             );
@@ -790,7 +790,7 @@ describe('ContextDtoMapper', () => {
             expect(result.generatedAt).toBe('2026-01-29T10:00:00.000Z');
         });
 
-        it('should map prompt-resolution tier fields when present (TASK-331 doc-06 F4)', () => {
+        it('should map prompt-resolution tier fields when present', () => {
             const entity = createMockSummaryMetaEntity({
                 promptResolvedFrom: 'department',
                 resolvedPromptId: 'prompt-dept-1',
@@ -802,7 +802,7 @@ describe('ContextDtoMapper', () => {
             expect(result.resolvedPromptId).toBe('prompt-dept-1');
         });
 
-        it('should leave prompt-resolution tier fields undefined when absent (TASK-331 doc-06 F4)', () => {
+        it('should leave prompt-resolution tier fields undefined when absent', () => {
             const entity = createMockSummaryMetaEntity();
 
             const result = ContextDtoMapper.toSummaryMetaResponse(entity as any);
@@ -1017,7 +1017,7 @@ describe('ContextDtoMapper', () => {
     // ApplyMediaUrl enriches an already-mapped response with
     // a storage-resolved (presigned) URL. Image attachments also get a thumbnail
     // (currently the image URL itself); non-images do not.
-    describe('applyMediaUrl (TASK-375)', () => {
+    describe('applyMediaUrl', () => {
         const baseResponse = () => ({ id: 'ci-1', mediaId: 'media-1' } as any);
 
         it('sets url + mimeType + thumbnailUrl and returns the same (mutated) object', () => {

@@ -95,7 +95,7 @@ function buildService(withSecrets: boolean) {
   return { service, mockReportRepo, mockVersionRepo, mockDb, mockSecrets };
 }
 
-describe('DnaWritingStyleService.updateDnaReport — TASK-369 field encryption', () => {
+describe('DnaWritingStyleService.updateDnaReport — field encryption', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('encrypts the version snapshot AND the report BEFORE persisting (content change)', async () => {

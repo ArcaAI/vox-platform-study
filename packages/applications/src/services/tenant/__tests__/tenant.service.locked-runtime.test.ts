@@ -172,7 +172,7 @@ const installCls = (roles: string[] | undefined) => {
     });
 };
 
-describe('TenantService — locked-field runtime plumbing (TASK-258 Agent D)', () => {
+describe('TenantService — locked-field runtime plumbing (Agent D)', () => {
     let service: TenantService;
 
     beforeEach(() => {

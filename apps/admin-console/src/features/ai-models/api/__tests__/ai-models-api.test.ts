@@ -96,7 +96,7 @@ describe('ai-models client', () => {
 // =============================================================================
 // Discovery client + query keys
 // =============================================================================
-describe('discovery client (TASK-528)', () => {
+describe('discovery client', () => {
     it('GETs admin/ai-models/discovery and passes the provider filter', async () => {
         const calls = installFetchMock(() => Response.json({ entries: [], probes: [], probedAt: '2026-07-20T10:00:00.000Z' }));
 

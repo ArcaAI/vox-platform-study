@@ -17,6 +17,15 @@ requires-python = ">=3.11,<3.12"
 # injected by the host service (see `metrics.py` / `vram.py`).
 dependencies = []
 
+# `pynvml` stays an EXTRA, never a base dependency (see the rationale above) —
+# `vram.py` already feature-detects it via a lazy, try/except-guarded import,
+# so it is fully optional at runtime; CPU-only hosts and CI fall through to
+# the estimate budget either way. A host with a GPU installs it explicitly
+# with `hope-runtime-models[nvml]` to get the real free-VRAM probe instead of
+# silently running estimate-only (F-012).
+[project.optional-dependencies]
+nvml = ["pynvml>=11.5.0"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

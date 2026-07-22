@@ -87,4 +87,14 @@ test.describe('AI model registry screen', () => {
         await expect(page.getByRole('grid', { name: 'AI models' })).toBeVisible();
         await expectNoA11yViolations(page);
     });
+
+    // F-037: the base screen scan above never opened the discovery drawer, so
+    // it never caught the drawer's scrollable body region being unreachable
+    // by keyboard (axe SERIOUS `scrollable-region-focusable`).
+    test('discovery drawer has no WCAG 2.2 AA violations (drawer-open state)', async ({ page }) => {
+        await page.goto('/ai-models');
+        await page.getByRole('button', { name: 'Discover from servers' }).click();
+        await expect(page.getByRole('dialog', { name: 'Discover models from servers' })).toBeVisible();
+        await expectNoA11yViolations(page);
+    });
 });

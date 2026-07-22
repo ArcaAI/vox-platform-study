@@ -120,6 +120,18 @@ Low-level exports: `RNNoiseProcessor`, `RNNOISE_FRAME_SIZE` (480 samples = 10 ms
 - The AudioWorklet module builds to `dist/worklets/rnnoise.worklet.js` (kept as `.js` because `audioWorklet.addModule` loads it by URL). It is also reachable via the `@arcaai/noise-filter/worklet` subpath export.
 - Bundlers that understand `new URL(..., import.meta.url)` (Vite, webpack 5) pick both assets up automatically. To self-host manually, pass `wasmPath` in options.
 
+### Worklet source is manually duplicated in THREE places — keep them in sync
+
+An `AudioWorkletProcessor` cannot `import` npm modules at runtime, so the RNNoise WASM glue is hand-ported and the same processor logic exists in three copies that MUST stay algorithmically identical:
+
+1. `src/worklets/rnnoise.worklet.ts` — the TS `AudioWorkletProcessor` (built to `dist/worklets/rnnoise.worklet.js`, loaded by URL).
+2. `src/processors/workletRnnoiseLoader.ts` — the hand-port of the Emscripten runtime subset (`instantiateRnnoiseInWorklet`), pinned to the bundled `rnnoise.wasm` (v0.2.1) import object `{ a: { a: resize_heap, b: memcpy_big } }` and its single-letter export names (`c`–`j`).
+3. `src/worklets/worklet-loader.ts` — `generateWorkletSource()` returns the SAME logic re-embedded as an inline template-literal string for the runtime blob URL.
+
+Invariants all three encode: preallocated WASM I/O pointers, the exact import object above with exports addressed by minified names, and a two-frame ring buffer with one-frame priming latency. The single-letter export names and the import-object shape are a hard dependency on `@jitsi/rnnoise-wasm@0.2.1` — bumping that dependency can silently break all three.
+
+**No drift test guards this.** `src/__tests__/workletLoader.test.ts` only asserts the loader's exports exist and that registration fails gracefully; it does NOT compare the inline blob string in `worklet-loader.ts` against the two source-of-truth files, so an edit to one copy that is not mirrored to the others will pass CI and fail only at runtime in the browser. Unifying the source into a single file is the intended fix (deferred). Until then, edit all three together, or add a test that diffs the normalized inline source against the built worklet.
+
 ## Runtime requirements and fallbacks
 
 - Requires WebAssembly plus AudioWorklet (Chrome 66+, Firefox 76+, Safari 17.4+, Edge 79+).

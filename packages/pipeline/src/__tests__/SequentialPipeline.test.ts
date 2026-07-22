@@ -390,7 +390,7 @@ describe('SequentialPipeline', () => {
     // stages run, cancel returns promptly.
     // -----------------------------------------------------------------------
 
-    it('should propagate cancel into the in-flight stage via ctx.abortSignal (TASK-273 C-1)', async () => {
+    it('should propagate cancel into the in-flight stage via ctx.abortSignal', async () => {
       const aborted = vi.fn();
       const stage2OnExecute = vi.fn();
 

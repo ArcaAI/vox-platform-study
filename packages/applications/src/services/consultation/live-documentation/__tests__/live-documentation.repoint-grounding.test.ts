@@ -125,13 +125,13 @@ function buildDeps(httpMock = buildHttpMock()) {
   return { service, cacheService, contextItemRepository, httpMock };
 }
 
-describe('LiveDocumentationService — TASK-477 live NER re-point + source-grounding', () => {
+describe('LiveDocumentationService — live NER re-point + source-grounding', () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
   // RED on the old code: NER was handed `runningSummary` (the generated note).
-  it('AC-1: runs NER over the raw transcript delta, not the generated note', async () => {
+  it('runs NER over the raw transcript delta, not the generated note', async () => {
     // The note names a medication ('metformin') that the transcript never does.
     const httpMock = buildHttpMock({ note: 'Assessment: cough. Plan: prescribed metformin.' });
     const { service } = buildDeps(httpMock);
@@ -148,7 +148,7 @@ describe('LiveDocumentationService — TASK-477 live NER re-point + source-groun
 
   // RED on the old code: NER ran over the note, so 'metformin' (a note-only
   // hallucination absent from the transcript) was surfaced as a first-class entity.
-  it('AC-2: does not launder a note-only hallucination into a clinical entity', async () => {
+  it('does not launder a note-only hallucination into a clinical entity', async () => {
     const httpMock = buildHttpMock({ note: 'Subjective: cough. Plan: prescribed metformin 500mg.' });
     const { service } = buildDeps(httpMock);
     service.start({ consultationId: CID, tenantId: TENANT });
@@ -165,7 +165,7 @@ describe('LiveDocumentationService — TASK-477 live NER re-point + source-groun
 
   // Grounding guard: after re-pointing to the transcript, offsets must be
   // re-located into the rendered note, or they would index the transcript string.
-  it('AC-3: entity highlight offsets index the rendered note (runningSummary)', async () => {
+  it('entity highlight offsets index the rendered note (runningSummary)', async () => {
     // 'cough' sits at offset 0 in the transcript but much later in the note — a stale
     // transcript offset would slice the wrong characters out of `runningSummary`.
     const httpMock = buildHttpMock({ note: 'Subjective: the patient has a cough today.' });
@@ -183,7 +183,7 @@ describe('LiveDocumentationService — TASK-477 live NER re-point + source-groun
 
   // Ephemeral posture: entities ride the SSE payload only; the sole durable write
   // is the PRE_SUMMARY snapshot whose content is `runningSummary` — never an entity row.
-  it('AC-4: keeps live entities ephemeral — persists only runningSummary, never entity rows', async () => {
+  it('keeps live entities ephemeral — persists only runningSummary, never entity rows', async () => {
     const httpMock = buildHttpMock({ note: 'Subjective: cough. Plan: aspirin daily.' });
     const { service, contextItemRepository } = buildDeps(httpMock);
     service.start({ consultationId: CID, tenantId: TENANT, userId: 'doc-1' });
@@ -205,7 +205,7 @@ describe('LiveDocumentationService — TASK-477 live NER re-point + source-groun
   // Recall guard: NER sees only the delta each flush, so the running set must be
   // merged across flushes; an entity extracted earlier and still present in the cumulative
   // note must not fall out.
-  it('AC-5: preserves the running entity set across flushes (recall)', async () => {
+  it('preserves the running entity set across flushes (recall)', async () => {
     const httpMock = buildHttpMock({ noteFromPrompt: true });
     const { service } = buildDeps(httpMock);
     service.start({ consultationId: CID, tenantId: TENANT });

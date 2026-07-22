@@ -13,7 +13,7 @@ from smr_v2.core.config import AzureOpenAIConfig
 from smr_v2.core.defaults import resolve_request_defaults
 from smr_v2.core.telemetry import get_tracer
 from smr_v2.models.provider import ModelInfo, ProviderInfo
-from smr_v2.models.requests import GenerateRequest
+from smr_v2.models.requests import GenerateRequest, ProviderOverride
 from smr_v2.models.stats import GenerationStats, stats_from_openai_usage
 from smr_v2.models.stream import StreamChunk
 
@@ -39,13 +39,40 @@ class AzureOpenAIProvider:
             api_version=config.api_version,
         )
 
+    def _resolve_override(self, request: GenerateRequest) -> ProviderOverride | None:
+        """Tenant BYO credential injected by the gateway for THIS provider,
+        keyed by ``request.provider`` (see `ProviderOverride`). ``None`` for
+        every caller until a tenant configures an enabled azure connection —
+        current (env/config) behavior is unchanged in that case."""
+        if not request.provider_overrides:
+            return None
+        return request.provider_overrides.get(request.provider)
+
+    def _client_for(self, request: GenerateRequest) -> AsyncAzureOpenAI:
+        """Override-wins client resolution. A tenant credential builds a
+        request-scoped client (the shared/env-configured ``self._client`` is
+        never mutated) so concurrent requests for different tenants can never
+        interfere; absent an override, the shared client is reused unchanged."""
+        override = self._resolve_override(request)
+        if override is None:
+            return self._client
+        return AsyncAzureOpenAI(
+            api_key=override.api_key.get_secret_value(),
+            azure_endpoint=override.base_url or self._config.endpoint,
+            api_version=override.api_version or self._config.api_version,
+        )
+
     def _resolve_model(self, request: GenerateRequest) -> str | None:
         # No in-gateway default — the caller-supplied model is
         # authoritative, UNLESS an explicit Azure deployment is configured
         #: Azure OpenAI routes requests by *deployment name*, not
         # model name, so ``deployment_name`` — when set — takes precedence over
         # the caller-supplied model. Default ("") preserves the pre-existing
-        # behavior of forwarding ``request.model`` unchanged.
+        # behavior of forwarding ``request.model`` unchanged. A tenant BYO
+        # override's own ``deployment_name`` wins over both.
+        override = self._resolve_override(request)
+        if override is not None and override.deployment_name:
+            return override.deployment_name
         return self._config.deployment_name or request.model
 
     def _build_messages(self, request: GenerateRequest) -> list[dict[str, str]]:
@@ -92,7 +119,7 @@ class AzureOpenAIProvider:
 
             start = time.monotonic()
             try:
-                response = await self._client.chat.completions.create(**kwargs)
+                response = await self._client_for(request).chat.completions.create(**kwargs)
             except BadRequestError as e:
                 if "content_filter" in str(e).lower():
                     logger.warning(
@@ -176,7 +203,7 @@ class AzureOpenAIProvider:
             finish_reason: str | None = None
             usage: dict[str, int] | None = None
 
-            stream = await self._client.chat.completions.create(**kwargs)
+            stream = await self._client_for(request).chat.completions.create(**kwargs)
             async for chunk in stream:
                 if not chunk.choices:
                     if getattr(chunk, "usage", None):

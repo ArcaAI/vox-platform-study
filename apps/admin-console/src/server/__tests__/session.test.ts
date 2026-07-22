@@ -109,7 +109,7 @@ describe('cookie helpers', () => {
 });
 
 describe('isElevated', () => {
-    it('is true for GLOBAL_ADMIN (the single elevated role after TASK-417)', () => {
+    it('is true for GLOBAL_ADMIN (the single elevated role)', () => {
         expect(isElevated({ roles: ['GLOBAL_ADMIN'] })).toBe(true);
         expect(isElevated({ roles: ['TENANT_ADMIN', 'GLOBAL_ADMIN'] })).toBe(true);
     });

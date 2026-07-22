@@ -38,7 +38,7 @@ describe('DnaWritingStyleReportRepository', () => {
 
 // Repository-level pagination for the admin list, mirroring
 // `PromptTemplateRepository.findPaginated` (`db.findMany` + `db.count`).
-describe('DnaWritingStyleReportRepository — findPaginated (TASK-331 doc-02 F6)', () => {
+describe('DnaWritingStyleReportRepository — findPaginated', () => {
   let findMany: ReturnType<typeof vi.fn>;
   let count: ReturnType<typeof vi.fn>;
   let repo: any;

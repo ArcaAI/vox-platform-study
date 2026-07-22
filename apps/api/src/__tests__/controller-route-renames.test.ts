@@ -156,14 +156,14 @@ describe('Runtime @Controller metadata (Reflect.getMetadata)', () => {
 // param. The guard is scoped to the dedicated manage:PrismaStudio subject
 // (not manage:all).
 
-describe('Pstudio auth decorators (post-TASK-307 W5.2)', () => {
+describe('Pstudio auth decorators', () => {
     it('serveStudio NO LONGER carries @Public() metadata', async () => {
         const { PrismaStudioController } = await import('../modules/pstudio/pstudio.controller');
         const isPublic = Reflect.getMetadata('skip_auth', PrismaStudioController.prototype.serveStudio);
         expect(isPublic).toBeFalsy();
     });
 
-    it('handleStudioRequest should have @Authorize decorator (manage:PrismaStudio since TASK-419)', () => {
+    it('handleStudioRequest should have @Authorize decorator (manage:PrismaStudio)', () => {
         const source = readController('pstudio/pstudio.controller.ts');
         expect(source).toMatch(/@Authorize\(\['manage',\s*'PrismaStudio'\]\)/);
     });
@@ -175,7 +175,7 @@ describe('Pstudio hardcoded URL regression guards', () => {
     // The controller no longer constructs ANY absolute studio
     // endpoint (the Host-derived URL bypassed the console BFF proxy → empty
     // bearer → 401). The shell posts back to window.location.pathname instead.
-    it('BUG-003 — does not construct a Host-derived studioEndpointUrl at all', () => {
+    it('does not construct a Host-derived studioEndpointUrl at all', () => {
         const source = readController('pstudio/pstudio.controller.ts');
         expect(source).not.toContain('studioEndpointUrl');
         expect(source).not.toMatch(/\$\{protocol\}:\/\/\$\{host\}/);

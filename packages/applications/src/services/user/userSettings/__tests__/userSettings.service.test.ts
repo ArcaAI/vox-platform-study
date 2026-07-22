@@ -522,7 +522,7 @@ describe('UserSettingsService', () => {
     // controller. The SERVICE now validates the round-trip itself, so EVERY
     // entry point enforces the JSON + byte-cap contract. The open registry is
     // preserved: other namespaces are not validated.
-    describe('upsertByUserKeyNamespace — ui.data-grid validation (TASK-375 D8)', () => {
+    describe('upsertByUserKeyNamespace — ui.data-grid validation', () => {
         const NAMESPACE = 'ui.data-grid';
 
         it('rejects a non-JSON ui.data-grid value with BadRequestException (never touches the repo)', async () => {

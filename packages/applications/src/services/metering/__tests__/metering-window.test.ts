@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { currentMonthWindow } from '../metering-window';
 
-describe('currentMonthWindow (TASK-392 Q5)', () => {
+describe('currentMonthWindow', () => {
   it('returns the UTC month bounds for a mid-month instant', () => {
     const { periodStart, periodEnd } = currentMonthWindow(new Date('2026-03-17T09:41:23.456Z'));
     expect(periodStart.toISOString()).toBe('2026-03-01T00:00:00.000Z');

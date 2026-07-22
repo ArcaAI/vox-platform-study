@@ -15,7 +15,7 @@ interface FetchInit {
   body: string;
 }
 
-describe('AgenticClient.synthesizeSpeech (TASK-491)', () => {
+describe('AgenticClient.synthesizeSpeech', () => {
   let client: AgenticClient;
 
   beforeEach(() => {

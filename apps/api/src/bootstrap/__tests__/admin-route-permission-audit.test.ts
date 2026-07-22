@@ -50,7 +50,7 @@ async function buildAppFromControllers(controllers: Array<new (...args: unknown[
   return moduleRef as unknown as Parameters<typeof auditAdminRoutePermissions>[0];
 }
 
-describe('TASK-307 W4a.1 — boot-time route permission audit (widened to ALL routes)', () => {
+describe('boot-time route permission audit (widened to ALL routes)', () => {
   describe('admin route coverage (regression — Phase 0 Item 3)', () => {
     it('passes when every admin route declares required_permissions via class-level @CanManage', async () => {
       @CanManage('User')
@@ -169,7 +169,7 @@ describe('TASK-307 W4a.1 — boot-time route permission audit (widened to ALL ro
   // (auth-only, no permission tuple) is an acceptable label on end-user
   // routes but a security smell on the /admin surface, where every route
   // should name the specific permission it requires.
-  describe('TASK-319 F6 — /admin routes require a non-empty permission', () => {
+  describe('/admin routes require a non-empty permission', () => {
     it('throws when an /admin route carries only an empty @Authorize() (no specific permission)', async () => {
       @Authorize()
       @Controller('admin/reports')

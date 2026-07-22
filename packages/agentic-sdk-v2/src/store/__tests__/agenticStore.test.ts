@@ -801,7 +801,7 @@ describe('agenticStore', () => {
         });
     });
 
-    describe('addSummary deduplication (BUG-12)', () => {
+    describe('addSummary deduplication', () => {
         const baseSummary = {
             id: 'summary-dedup',
             consultationId: 'c1',
@@ -827,7 +827,7 @@ describe('agenticStore', () => {
         });
     });
 
-    describe('addEntities deduplication (BUG-12)', () => {
+    describe('addEntities deduplication', () => {
         it('should not duplicate entities with the same id', () => {
             const entity1 = { id: 'ent-1', type: 'medication', text: 'Aspirin' } as any;
             const entity2 = { id: 'ent-2', type: 'condition', text: 'Headache' } as any;
@@ -851,7 +851,7 @@ describe('agenticStore', () => {
         });
     });
 
-    describe('addContextItem deduplication (BUG-12)', () => {
+    describe('addContextItem deduplication', () => {
         it('should not duplicate context items with the same id', () => {
             const item = {
                 id: 'ctx-1',
@@ -940,7 +940,7 @@ describe('agenticStore', () => {
     // tenant-B's data MUST survive tenant-A's logout.
     // =========================================================================
 
-    describe('TASK-317 W1.4 — clearOnLogout outgoing-namespace scoping (AC-3)', () => {
+    describe('clearOnLogout outgoing-namespace scoping', () => {
         it('removes ONLY the outgoing namespace localStorage key, leaving other tenants intact', () => {
             localStorage.setItem('arcaai-user-preferences/t1::u1', '{"lang":"en"}');
             localStorage.setItem('arcaai-user-preferences/t2::u2', '{"lang":"th"}');
@@ -979,7 +979,7 @@ describe('agenticStore', () => {
         });
 
         // clearOnLogout still drops the in-memory personalization tier.
-        it('TASK-297 DEF-H6: clearOnLogout resets the personalization tier', () => {
+        it('clearOnLogout resets the personalization tier', () => {
             useAgenticStore.setState({
                 preferences: { language: 'th' } as unknown as never,
                 tenantConfig: { defaultSttModel: 'whisper-base' } as unknown as never,
@@ -1060,7 +1060,7 @@ describe('agenticStore', () => {
     // Granular selectors for performance
     // =========================================================================
 
-    describe('activeStream/activeAudioContext (TASK-237)', () => {
+    describe('activeStream/activeAudioContext', () => {
         it('should have null initial values for activeStream and activeAudioContext', () => {
             const state = useAgenticStore.getState();
             expect(state.activeStream).toBeNull();
@@ -1098,7 +1098,7 @@ describe('agenticStore', () => {
         });
     });
 
-    describe('BUG-01: granular selectors', () => {
+    describe('granular selectors', () => {
         it('selectConsultation should return only the consultation field', () => {
             const mockConsultation = { id: 'c-1', status: 'active' };
             useAgenticStore.setState({ consultation: mockConsultation as any });
@@ -1142,7 +1142,7 @@ describe('agenticStore', () => {
     // Three-tier config management
     // =========================================================================
 
-    describe('TASK-244: config management actions and selectors', () => {
+    describe('config management actions and selectors', () => {
         it('should have null configManager initially', () => {
             expect(selectConfigManager(useAgenticStore.getState())).toBeNull();
         });
@@ -1209,7 +1209,7 @@ describe('agenticStore', () => {
     // erases the "audio was lost" signal exactly when loss happened.
     // =========================================================================
 
-    describe('TASK-464: audio-drop state', () => {
+    describe('audio-drop state', () => {
         it('starts with a zero drop count and an un-set loss latch', () => {
             const state = useAgenticStore.getState();
             expect(state.audioDroppedFrameCount).toBe(0);

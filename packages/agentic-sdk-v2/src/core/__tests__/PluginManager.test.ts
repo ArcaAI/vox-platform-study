@@ -993,7 +993,7 @@ describe('PluginManager', () => {
     // consumer callback so the vox hook/store can surface a degraded signal.
     // =========================================================================
 
-    describe('TASK-464: audioDrop forwarding', () => {
+    describe('audioDrop forwarding', () => {
         it('forwards the pipeline audioDrop event to the onAudioDrop callback', async () => {
             const manager = new PluginManager({ noiseFilter: true }, mockLogger);
             const onAudioDrop = vi.fn();

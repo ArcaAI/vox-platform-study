@@ -274,7 +274,7 @@ describe('RoleService', () => {
             expect(result.data[1].name).toBe('Role 2');
         });
 
-        it('coerces Role-typed filter values via the model registry (TASK-406 P2-6c)', async () => {
+        it('coerces Role-typed filter values via the model registry', async () => {
             mockRoleRepository.findAll.mockResolvedValue([]);
             mockRoleRepository.count.mockResolvedValue(0);
 

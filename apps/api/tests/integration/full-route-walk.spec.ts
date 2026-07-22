@@ -125,7 +125,7 @@ function instantiatePath(template: string): string {
   });
 }
 
-describe.skip('TASK-309 AC-5 — full-route walker (deferred until AC-4 unblocks)', () => {
+describe.skip('AC-5 — full-route walker (deferred until AC-4 unblocks)', () => {
   let app: INestApplication;
   let routes: DiscoveredRoute[];
 

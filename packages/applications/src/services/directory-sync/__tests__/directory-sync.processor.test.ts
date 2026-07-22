@@ -55,7 +55,7 @@ function makeProcessor() {
   return { processor, providerRepository, federatedIdentityRepository, msGraphProvider, googleProvider, federatedAuthService, cls, entitlements };
 }
 
-describe('DirectorySyncProcessor.process (TASK-498 P3)', () => {
+describe('DirectorySyncProcessor.process', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('throws when the job payload is missing tenantId', async () => {

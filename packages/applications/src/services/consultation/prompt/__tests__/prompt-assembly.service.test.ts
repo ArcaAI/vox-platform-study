@@ -341,7 +341,7 @@ describe('PromptAssemblyService', () => {
     // ── NER → prompt injection ──
     // Closes the gap where NER output is computed but never reaches the LLM.
 
-    describe('NER injection (TASK-330 Phase 1)', () => {
+    describe('NER injection (Phase 1)', () => {
         it('appends recognized clinical entities (text + codes) when the template has no {ner_entities} placeholder', async () => {
             mockPromptTemplateRepository.findById.mockResolvedValue(
                 createMockPromptTemplate({ content: 'Summarize for {conversation_language}.' }),
@@ -425,7 +425,7 @@ describe('PromptAssemblyService', () => {
         // linker lands, so today the code set is ALWAYS empty. The
         // groundedness guard makes that absence EXPLICIT instead of silently
         // emitting un-coded entity lines that read as if coding was attempted.
-        it('flags the absence of ontology codes when NER entities carry none (C5-03 groundedness guard)', async () => {
+        it('flags the absence of ontology codes when NER entities carry none (groundedness guard)', async () => {
             mockPromptTemplateRepository.findById.mockResolvedValue(
                 createMockPromptTemplate({ content: 'Summarize for {conversation_language}.' }),
             );
@@ -480,7 +480,7 @@ describe('PromptAssemblyService', () => {
         // groundedness note is ABSENT (the guard's hasAnyOntologyCode
         // goes true in production). The guard code stays for genuinely un-codable
         // spans — proven by the un-coded test above.
-        it('emits the real coded block and disengages the guard on linker-coded entities (C5-03 closed)', async () => {
+        it('emits the real coded block and disengages the guard on linker-coded entities (closed)', async () => {
             mockPromptTemplateRepository.findById.mockResolvedValue(
                 createMockPromptTemplate({ content: 'Summarize for {conversation_language}.' }),
             );
@@ -506,7 +506,7 @@ describe('PromptAssemblyService', () => {
     });
 
     // ── Clinician notes + attachments injection ──
-    describe('clinician notes + attachments injection (TASK-342 GAP #2)', () => {
+    describe('clinician notes + attachments injection', () => {
         it('appends clinician notes and attachments blocks when the template has no placeholders', async () => {
             mockPromptTemplateRepository.findById.mockResolvedValue(
                 createMockPromptTemplate({ content: 'Summarize for {conversation_language}.' }),
@@ -575,7 +575,7 @@ describe('PromptAssemblyService', () => {
     });
 
     // ── Doctor highlights injection ──
-    describe('doctor highlights injection (TASK-344 Workstream B)', () => {
+    describe('doctor highlights injection (Workstream B)', () => {
         it('appends a doctor highlights block when the template has no placeholder', async () => {
             mockPromptTemplateRepository.findById.mockResolvedValue(
                 createMockPromptTemplate({ content: 'Summarize for {conversation_language}.' }),
@@ -634,7 +634,7 @@ describe('PromptAssemblyService', () => {
     // {pre_summary_text} in their variables map but never INLINE the placeholder
     // in content, so without an append-fallback the snapshot would silently never
     // reach the LLM (the latent no-op the legacy path also suffered).
-    describe('pre-summary warm-start injection (TASK-355 Phase C R-6)', () => {
+    describe('pre-summary warm-start injection (Phase C)', () => {
         it('appends the prior-draft block + refinement instruction when the template has no {pre_summary_text} placeholder', async () => {
             mockPromptTemplateRepository.findById.mockResolvedValue(
                 createMockPromptTemplate({ content: 'Summarize for {conversation_language}.' }),

@@ -402,7 +402,7 @@ describe('useConsultationJob', () => {
         });
     });
 
-    describe('BUG-14: pollJob timer cancellation on unmount', () => {
+    describe('pollJob timer cancellation on unmount', () => {
         it('should stop polling when component unmounts', async () => {
             let callCount = 0;
             mockGet.mockImplementation(async () => {

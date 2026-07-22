@@ -124,7 +124,7 @@ function defaultHandler(url: string): Promise<Response> {
   return Promise.resolve(jsonResponse({}));
 }
 
-describe('TASK-334 I-1 — remote pipeline-id population', () => {
+describe('remote pipeline-id population', () => {
   it('injects remoteConfig.pipelineId into resolvedConfig.stt.transcriptionPipelineId', async () => {
     handler = defaultHandler;
 

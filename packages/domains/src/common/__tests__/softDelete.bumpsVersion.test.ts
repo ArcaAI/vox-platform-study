@@ -63,7 +63,7 @@ const buildHarness = async () => {
   return { repo: new TestRepository(), db, mapper };
 };
 
-describe('Repository.softDelete bumps _version (TASK-302 Stream D Phase B)', () => {
+describe('Repository.softDelete bumps _version (Stream D Phase B)', () => {
   let harness: Awaited<ReturnType<typeof buildHarness>>;
 
   beforeEach(async () => {

@@ -161,7 +161,7 @@ describe('usePipelines', () => {
     /*  CRUD + validate methods                       */
     /* ------------------------------------------------------------------ */
 
-    describe('createPipeline (TASK-218)', () => {
+    describe('createPipeline', () => {
         it('should POST to PIPELINE_ENDPOINTS.CREATE with input', async () => {
             const mockPost = mockStore.apiClient.post;
             const input = { name: 'medical-pipeline', slug: 'medical', configYaml: 'stages: []' };
@@ -191,7 +191,7 @@ describe('usePipelines', () => {
         });
     });
 
-    describe('updatePipeline (TASK-218)', () => {
+    describe('updatePipeline', () => {
         it('should PATCH to PIPELINE_ENDPOINTS.UPDATE(id) with data', async () => {
             const mockPatch = mockStore.apiClient.patch;
             const updated = { id: 'p-1', name: 'Updated', slug: 'default', configYaml: 'stages: [stt]' };
@@ -226,7 +226,7 @@ describe('usePipelines', () => {
         });
     });
 
-    describe('deletePipeline (TASK-218)', () => {
+    describe('deletePipeline', () => {
         it('should DELETE from PIPELINE_ENDPOINTS.DELETE(id)', async () => {
             const mockDelete = mockStore.apiClient.delete;
             mockDelete.mockResolvedValue(undefined);
@@ -254,7 +254,7 @@ describe('usePipelines', () => {
         });
     });
 
-    describe('validateConfig (TASK-218)', () => {
+    describe('validateConfig', () => {
         it('should POST to PIPELINE_ENDPOINTS.VALIDATE with configYaml', async () => {
             const mockPost = mockStore.apiClient.post;
             const validationResult = { valid: true, errors: [] };
@@ -270,7 +270,7 @@ describe('usePipelines', () => {
 
         // Lock the actual URL string. The previous SDK
         // value ended in `/validate-yaml`, the API was renamed to `/validate`.
-        it('TASK-265: posts to exactly /admin/audio/pipelines/validate (no -yaml)', async () => {
+        it('posts to exactly /admin/audio/pipelines/validate (no -yaml)', async () => {
             const mockPost = mockStore.apiClient.post;
             mockPost.mockResolvedValue({ valid: true });
             const { result } = renderHook(() => usePipelines());
@@ -365,7 +365,7 @@ describe('usePipelines', () => {
     /*  setDefault / toggle / listVersions / getVersion       */
     /* ------------------------------------------------------------------ */
 
-    describe('setDefault (TASK-328 A6)', () => {
+    describe('setDefault', () => {
         it('POSTs to SET_DEFAULT(id) and flips isDefault locally (one default per tenant)', async () => {
             const mockPost = mockStore.apiClient.post;
             const initial = [
@@ -385,7 +385,7 @@ describe('usePipelines', () => {
         });
     });
 
-    describe('toggle (TASK-328 A6)', () => {
+    describe('toggle', () => {
         it('uses patchWithIfMatch with the version as an RFC7232 strong validator', async () => {
             const mockPatchIfMatch = mockStore.apiClient.patchWithIfMatch;
             mockPatchIfMatch.mockResolvedValue({ id: 'p-1', resourceStatus: 'DISABLED', version: 6 });
@@ -411,7 +411,7 @@ describe('usePipelines', () => {
         });
     });
 
-    describe('listVersions / getVersion (TASK-328 A6)', () => {
+    describe('listVersions / getVersion', () => {
         it('GETs the versions list and extracts the array', async () => {
             mockGet.mockResolvedValue([{ versionNumber: 2 }, { versionNumber: 1 }]);
             const { result } = renderHook(() => usePipelines());

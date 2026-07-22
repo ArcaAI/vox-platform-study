@@ -125,7 +125,7 @@ describe('JwtRevocationService', () => {
     });
 
     describe('round-trip: revoke + isRevoked', () => {
-        it('marks a token revoked so the very next isRevoked sees it (C-4 acceptance)', async () => {
+        it('marks a token revoked so the very next isRevoked sees it (acceptance)', async () => {
             const futureExpSeconds = Math.floor(new Date('2026-05-24T15:15:00.000Z').getTime() / 1000);
             const jti = 'impersonate-admin-007-doctor-001-1234';
 
@@ -144,7 +144,7 @@ describe('JwtRevocationService', () => {
 
     // ─── degraded-aware revocation check ────────────────────
 
-    describe('checkRevoked (TASK-541 A3)', () => {
+    describe('checkRevoked', () => {
         it('reports revoked=false, degraded=false when the jti is absent', async () => {
             cache.get.mockResolvedValueOnce(null);
             await expect(service.checkRevoked('jti-1')).resolves.toEqual({ revoked: false, degraded: false });
@@ -175,7 +175,7 @@ describe('JwtRevocationService', () => {
 
     // ─── user-level not-before revocation ───────────────────
 
-    describe('revokeAllForUser (TASK-541 A4)', () => {
+    describe('revokeAllForUser', () => {
         it('stamps the current epoch under auth:user-nbf:<userId> with a bounded TTL', async () => {
             await service.revokeAllForUser('user-123');
             const nowSeconds = Math.floor(new Date('2026-05-24T15:00:00.000Z').getTime() / 1000);
@@ -193,7 +193,7 @@ describe('JwtRevocationService', () => {
         });
     });
 
-    describe('getUserNotBefore (TASK-541 A4)', () => {
+    describe('getUserNotBefore', () => {
         it('returns notBefore=null when the user has never been revoked', async () => {
             cache.get.mockResolvedValueOnce(null);
             await expect(service.getUserNotBefore('user-123')).resolves.toEqual({ notBefore: null, degraded: false });
@@ -221,7 +221,7 @@ describe('JwtRevocationService', () => {
     });
 
     describe('round-trip: revokeAllForUser + getUserNotBefore', () => {
-        it('a token issued before the revoke stamp is identifiably stale (A4 acceptance)', async () => {
+        it('a token issued before the revoke stamp is identifiably stale (acceptance)', async () => {
             const store = new Map<string, string>();
             cache.setex.mockImplementation(async (key: string, _ttl: number, value: string) => {
                 store.set(key, value);

@@ -55,7 +55,7 @@ async function probeStatuses(n: number, invoke: (i: number) => Promise<APIRespon
 // same in-process counter.
 test.describe.configure({ mode: 'serial' });
 
-test.describe('TASK-308 AC-6 — Auth throttle granularity', () => {
+test.describe('AC-6 — Auth throttle granularity', () => {
   // This spec is the ONLY one that requires throttling ENABLED: it asserts
   // `/auth/login` 429s after its 5/min budget. The full E2E suite runs with
   // `RATE_LIMIT_ENABLED=false` (.env.test) because the shared per-IP login

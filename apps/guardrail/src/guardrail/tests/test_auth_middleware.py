@@ -37,7 +37,11 @@ def _app_with_token(token: str) -> FastAPI:
 
 
 async def _status(app: FastAPI, path: str, headers: dict[str, str] | None = None) -> int:
-    transport = ASGITransport(app=app)
+    # raise_app_exceptions=False: some routes (health) hit dependencies that are
+    # only wired by the lifespan, which this helper never enters — let those
+    # surface as a 500 response instead of propagating and failing the test on
+    # something unrelated to auth/routing.
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.get(path, headers=headers)
         return resp.status_code
@@ -101,19 +105,45 @@ async def test_exempt_openapi_reachable_without_token() -> None:
 
 
 def test_exempt_paths_membership() -> None:
-    """EXEMPT_PATHS covers the Guardrail health surface (/api/health*), metrics, docs."""
+    """EXEMPT_PATHS covers the Guardrail health surface (/api/health*, /api/v1/health*), metrics, docs."""
     from guardrail.api.middleware.auth import EXEMPT_PATHS
 
     for path in (
         "/api/health",
         "/api/health/ready",
         "/api/health/live",
+        "/api/v1/health",
+        "/api/v1/health/ready",
+        "/api/v1/health/live",
         "/metrics",
         "/docs",
         "/redoc",
         "/openapi.json",
     ):
         assert path in EXEMPT_PATHS
+
+
+# ── F-038: /api/v1/health alias (every other python service exposes health at
+# the v1 path; gateway callers use it) ──
+
+
+async def test_v1_health_reachable_without_token_when_auth_disabled() -> None:
+    """With auth disabled (empty service_token, dev mode), /api/v1/health is not blocked
+    by the middleware — it either 200s or fails on an unwired dependency (no lifespan
+    in this test), but it must never look like a missing route (404) or a middleware 401."""
+    app = _app_with_token("")
+    status = await _status(app, "/api/v1/health")
+    assert status not in (401, 404)
+
+
+async def test_v1_health_alias_matches_legacy_health_status() -> None:
+    """/api/v1/health and /api/health hit the SAME handler (same router include) —
+    both must resolve identically (never one 404ing while the other doesn't)."""
+    app = _app_with_token("")
+    legacy_status = await _status(app, "/api/health")
+    v1_status = await _status(app, "/api/v1/health")
+    assert legacy_status != 404
+    assert v1_status == legacy_status
 
 
 # ── Alias fix: token read from the canonical GUARDRAIL_SERVICE_TOKEN key ──

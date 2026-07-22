@@ -17,7 +17,7 @@ import {
     createMockLogger,
 } from '../../__tests__/setup';
 
-describe('AgenticClient — 401 refresh mutex (TASK-235)', () => {
+describe('AgenticClient — 401 refresh mutex', () => {
     let client: AgenticClient;
     let mockLogger: ReturnType<typeof createMockLogger>;
 

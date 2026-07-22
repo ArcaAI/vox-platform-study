@@ -45,7 +45,7 @@ function makeRepo() {
   return { repo, prisma };
 }
 
-describe('TASK-311 — PolicyRepository', () => {
+describe('PolicyRepository', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -166,7 +166,7 @@ describe('TASK-311 — PolicyRepository', () => {
   });
 });
 
-describe('TASK-311 — PolicyFactory', () => {
+describe('PolicyFactory', () => {
   describe('buildCreateInput', () => {
     it('produces a Prisma.PolicyCreateInput with createdBy and ENABLED status', () => {
       const input = PolicyFactory.buildCreateInput({
@@ -232,7 +232,7 @@ describe('TASK-311 — PolicyFactory', () => {
   });
 });
 
-describe('TASK-311 — PolicyEntityMapper', () => {
+describe('PolicyEntityMapper', () => {
   it('mapPolicyRowToRecord projects a Prisma row onto the PolicyRecord contract', () => {
     const createdAt = new Date('2026-01-01T00:00:00Z');
     const updatedAt = new Date('2026-01-02T00:00:00Z');
@@ -285,7 +285,7 @@ describe('TASK-311 — PolicyEntityMapper', () => {
 
   // Rows missing the column (legacy fixtures) default to false so
   // the record shape is always total.
-  it('defaults isProtected to false when the row omits it (TASK-409)', () => {
+  it('defaults isProtected to false when the row omits it', () => {
     const record = mapPolicyRowToRecord({
       id: 'policy-3',
       name: 'plain-policy',

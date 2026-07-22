@@ -41,7 +41,7 @@ const createMockConfigService = () => ({
     getOrThrow: vi.fn(),
 });
 
-describe('STT v1 Health Check Removal (TASK-210 Phase 1)', () => {
+describe('STT v1 Health Check Removal (Phase 1)', () => {
     let service: ServiceHealthMonitoringService;
 
     beforeEach(async () => {

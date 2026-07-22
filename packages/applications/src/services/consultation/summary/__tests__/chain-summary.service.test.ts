@@ -68,6 +68,7 @@ const createMockContextItemRepository = () => ({
     findPreSummaries: vi.fn().mockResolvedValue([]),
     findSharedContext: vi.fn().mockResolvedValue([]),
     create: vi.fn().mockImplementation((item) => Promise.resolve(item)),
+    encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
 });
 
 const createMockConsultationRepository = () => ({
@@ -245,7 +246,7 @@ describe('ChainSummaryService', () => {
     //    doctor's preferred prompt template id (UserProfile.preferredPromptTemplateId,
     //    resolved via ConfigResolver off the requesting consultation's doctorId)
     //    into promptAssemblyService.assemble so Tier-0 prompt selection is honored.
-    describe('preferred-prompt threading (TASK-362)', () => {
+    describe('preferred-prompt threading', () => {
         const primeComprehensive = () => {
             const consultation = createConsultation();
             mocks.consultationRepo.findById.mockResolvedValue(consultation);
@@ -1154,7 +1155,7 @@ describe('ChainSummaryService', () => {
     // PHI, OR submit a Tenant A id whose chain has been historically
     // poisoned with a cross-tenant parent / child link.
     // ============================================================
-    describe('TASK-305 D.4 — cross-aggregate tenant checks', () => {
+    describe('cross-aggregate tenant checks', () => {
         it('throws NotFoundException when the requesting consultation belongs to another tenant', async () => {
             mocks.consultationRepo.findById.mockResolvedValue(
                 createConsultation({ id: 'c-other', tenantId: 'tenant-OTHER' }),
@@ -1192,6 +1193,59 @@ describe('ChainSummaryService', () => {
 
             expect(mocks.httpService.axiosRef.post).not.toHaveBeenCalled();
             expect(mocks.contextItemRepo.create).not.toHaveBeenCalled();
+        });
+    });
+
+    // ── F-031 remainder: the comprehensive-summary ContextItem must be
+    // encrypted before persist, or its clinical text silently vanishes at rest
+    // (the plaintext `content` column was dropped; only `encryptedContent` persists).
+    describe('comprehensive summary content encryption-at-rest (F-031)', () => {
+        const secretsStub = { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('') };
+
+        const primeComprehensive = () => {
+            const consultation = createConsultation();
+            mocks.consultationRepo.findById.mockResolvedValue(consultation);
+            mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
+            mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([createContextItem({ content: 'Findings.' })]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+            mocks.httpService.axiosRef.post.mockResolvedValue({ data: { summary: 'Comprehensive result.' } });
+        };
+
+        it('encrypts the generated comprehensive-summary content before persisting', async () => {
+            primeComprehensive();
+            const serviceWithSecrets = new ChainSummaryService(
+                mocks.contextItemRepo as any,
+                mocks.consultationRepo as any,
+                mocks.summaryMetaRepo as any,
+                mocks.namedEntityRepo as any,
+                mocks.httpService as any,
+                mocks.configService as any,
+                mocks.eventEmitter as any,
+                mocks.clsService as any,
+                mocks.promptAssemblyService as any,
+                secretsStub as any,
+            );
+
+            await serviceWithSecrets.generateComprehensiveSummary('consultation-A', { includeNER: false } as any);
+
+            expect(mocks.contextItemRepo.encryptContentIntoEntity).toHaveBeenCalledTimes(1);
+            const [entityArg, secretsArg] = mocks.contextItemRepo.encryptContentIntoEntity.mock.calls[0];
+            expect(entityArg.content).toBe('Comprehensive result.');
+            expect(secretsArg).toBe(secretsStub);
+            const encOrder = mocks.contextItemRepo.encryptContentIntoEntity.mock.invocationCallOrder[0];
+            const createOrder = mocks.contextItemRepo.create.mock.invocationCallOrder[0];
+            expect(encOrder).toBeLessThan(createOrder);
+            expect(mocks.contextItemRepo.create.mock.calls[0][0]).toBe(entityArg);
+        });
+
+        it('still persists (without ciphertext) when no SecretsService is wired', async () => {
+            primeComprehensive();
+
+            await mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false } as any);
+
+            expect(mocks.contextItemRepo.encryptContentIntoEntity).not.toHaveBeenCalled();
         });
     });
 });

@@ -211,7 +211,7 @@ describe('TenantFrontendConfigService', () => {
   // The tenant toggle persists like the other booleans; the SDK-facing
   // enablement is the SERVER-COMPUTED `platformCapability AND tenantToggle`.
   // ===========================================================================
-  describe('TASK-332 captureRawAudio', () => {
+  describe('captureRawAudio', () => {
     it('persists captureRawAudio on create (defaults false when omitted)', async () => {
       mockConfigRepository.findByTenant.mockResolvedValue(null);
       mockConfigRepository.create.mockImplementation(async (entity: any) => entity);
@@ -294,7 +294,7 @@ describe('TenantFrontendConfigService', () => {
   // ===========================================================================
   // Transcription mode + lock + capture mode
   // ===========================================================================
-  describe('TASK-356 audio-console fields', () => {
+  describe('audio-console fields', () => {
     it('persists transcriptionMode / transcriptionModeLocked / captureMode on create', async () => {
       const { TranscriptionMode, CaptureMode } = await import('@arcaai/domains');
       mockConfigRepository.findByTenant.mockResolvedValue(null);

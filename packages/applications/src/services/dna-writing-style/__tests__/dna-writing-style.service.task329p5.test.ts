@@ -58,7 +58,7 @@ const createMockReportEntity = (overrides: Record<string, unknown> = {}) => ({
     toObject: vi.fn().mockReturnValue(overrides),
 });
 
-describe('DnaWritingStyleService — TASK-329 P5', () => {
+describe('DnaWritingStyleService', () => {
     let service: DnaWritingStyleService;
     let mockReportRepo: ReturnType<typeof createMockDnaReportRepository>;
     let mockVersionRepo: ReturnType<typeof createMockDnaVersionRepository>;

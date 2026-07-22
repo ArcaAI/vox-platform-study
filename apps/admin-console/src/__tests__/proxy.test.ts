@@ -7,7 +7,7 @@ function requestFor(pathname: string, cookie?: string): NextRequest {
     return new NextRequest(new Request(`http://console.local${pathname}`, { headers }));
 }
 
-describe('proxy (TASK-497 — public register/verify-email routes)', () => {
+describe('proxy (public register/verify-email routes)', () => {
     it.each(['/register', '/verify-email', '/api/auth/register', '/api/auth/register/verify'])(
         'lets an unauthenticated request through to %s',
         (path) => {

@@ -59,7 +59,7 @@ const makeUser = (id: string, firstName: string | null, lastName: string | null,
   UserProfile: { firstName, lastName, email },
 });
 
-describe('AuditLogService — TASK-328 A8 filtered list + export', () => {
+describe('AuditLogService — filtered list + export', () => {
   let service: AuditLogService;
 
   beforeEach(() => {

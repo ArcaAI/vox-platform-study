@@ -262,7 +262,7 @@ describe('MediaService', () => {
             );
         });
 
-        it('coerces Media-typed filter values via the model registry (TASK-406 P2-6c)', async () => {
+        it('coerces Media-typed filter values via the model registry', async () => {
             mockMediaRepository.findAll.mockResolvedValue([]);
             mockMediaRepository.count.mockResolvedValue(0);
 

@@ -461,7 +461,7 @@ describe('useUsers', () => {
     /*  enable/disable convenience methods            */
     /* ------------------------------------------------------------------ */
 
-    describe('enable (TASK-218)', () => {
+    describe('enable', () => {
         it('should PATCH user with resourceStatus ENABLED', async () => {
             const mockPatch = mockStore.apiClient.patch;
             const updated = { id: 'u-1', username: 'test', resourceStatus: 'ENABLED' };
@@ -495,7 +495,7 @@ describe('useUsers', () => {
         });
     });
 
-    describe('disable (TASK-218)', () => {
+    describe('disable', () => {
         it('should PATCH user with resourceStatus DISABLED', async () => {
             const mockPatch = mockStore.apiClient.patch;
             const updated = { id: 'u-1', username: 'test', resourceStatus: 'DISABLED' };
@@ -513,7 +513,7 @@ describe('useUsers', () => {
         });
     });
 
-    describe('update with resourceStatus (TASK-218)', () => {
+    describe('update with resourceStatus', () => {
         it('should accept resourceStatus in update input', async () => {
             const mockPatch = mockStore.apiClient.patch;
             const updated = { id: 'u-1', username: 'renamed', resourceStatus: 'DISABLED' };

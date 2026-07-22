@@ -31,7 +31,7 @@ vi.mock('@arcaai/stt', () => ({
   createSTT: vi.fn(() => ({ init: vi.fn(), destroy: vi.fn(), on: vi.fn() })),
 }));
 
-describe('PluginManager — Wave 2 (TASK-304 Wave 2)', () => {
+describe('PluginManager — Wave 2 (Wave 2)', () => {
   let manager: PluginManager;
 
   beforeEach(() => {

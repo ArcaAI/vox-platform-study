@@ -70,7 +70,7 @@ describe('SecretsModule', () => {
   // so no secret material is ever inlined in .env.production. The provider
   // constructor throws if role_id / secret_id are unresolved, so a successful
   // VaultSecretsProvider instance proves the files were read.
-  describe('VAULT_*_FILE read-from-file credentials (B.10)', () => {
+  describe('VAULT_*_FILE read-from-file credentials', () => {
     let dir: string;
     beforeEach(() => {
       dir = mkdtempSync(join(tmpdir(), 'hope-vault-creds-'));

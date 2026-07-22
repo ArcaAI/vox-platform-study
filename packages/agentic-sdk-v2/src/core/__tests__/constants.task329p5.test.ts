@@ -11,7 +11,7 @@
 import { describe, it, expect } from 'vitest';
 import { DNA_STYLE_ENDPOINTS } from '../constants';
 
-describe('TASK-329 P5 — DNA_STYLE_ENDPOINTS additions', () => {
+describe('DNA_STYLE_ENDPOINTS additions', () => {
     it('SET_DEFAULT should build the owner-scoped default path', () => {
         expect(typeof DNA_STYLE_ENDPOINTS.SET_DEFAULT).toBe('function');
         expect(DNA_STYLE_ENDPOINTS.SET_DEFAULT('report-1')).toBe('/dna-writing-styles/report-1/default');

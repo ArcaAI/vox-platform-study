@@ -75,7 +75,7 @@ describe('TenantTtsConfigAdminController — If-Match precedence', () => {
   });
 });
 
-describe('TenantTtsConfigAdminController — platform catalog (TASK-506)', () => {
+describe('TenantTtsConfigAdminController — platform catalog', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('GET catalog delegates to getPlatformCatalog (tenant-agnostic — no tenant scoping)', async () => {

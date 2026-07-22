@@ -43,7 +43,7 @@ function makeMockUpgrade(existingStores: string[]) {
   return { db, transaction, created, deletes };
 }
 
-describe('TASK-317 W1.3 — configDB v3 upgrade (AC-2)', () => {
+describe('configDB v3 upgrade', () => {
   it('bumps ARCAAI_CONFIG_DB_VERSION to 3', () => {
     expect(ARCAAI_CONFIG_DB_VERSION).toBe(3);
   });

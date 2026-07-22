@@ -12,7 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import { AgenticError, type AgenticErrorCode } from '../common';
 
-describe('TASK-264 W0-11: AgenticErrorCode', () => {
+describe('AgenticErrorCode', () => {
   it('should accept FORBIDDEN as a valid code', () => {
     const code: AgenticErrorCode = 'FORBIDDEN';
     const err = new AgenticError(code, 'Forbidden');

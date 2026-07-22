@@ -17,7 +17,7 @@ import {
 } from '../../../common/tenant-owned-resource.decorator';
 import { STREAM_SCOPE_METADATA, type StreamScopeConfig } from '../../auth/decorators/stream-scope.decorator';
 
-describe('ConsultationController harness-progress stream (TASK-345)', () => {
+describe('ConsultationController harness-progress stream', () => {
   it('returns the observable produced by HarnessProgressService.subscribeToProgress', () => {
     const stream = of({ data: '{"stages":[]}' });
     const harnessProgressService = { subscribeToProgress: vi.fn().mockReturnValueOnce(stream) };

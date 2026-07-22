@@ -62,7 +62,7 @@ function makeSession(overrides: Partial<StreamingSessionLike> = {}): StreamingSe
   };
 }
 
-describe('StreamingBackendSTTProvider — TASK-298 D-4', () => {
+describe('StreamingBackendSTTProvider', () => {
   let provider: StreamingBackendSTTProvider;
   let wsClient: ReturnType<typeof makeWsClient>;
   let session: StreamingSessionLike;
@@ -159,7 +159,7 @@ describe('StreamingBackendSTTProvider — TASK-298 D-4', () => {
       expect((frame as Int16Array).byteLength % 2).toBe(0);
     });
 
-    it('forwards the Int16 view without slice-copying its buffer (TASK-351 P0-5)', async () => {
+    it('forwards the Int16 view without slice-copying its buffer', async () => {
       // 16 kHz input → no resampling; conversion yields exactly 4 samples.
       const samples = new Float32Array([0.0, 0.5, -0.5, 1.0]);
       await provider.processAudio(samples, 16000);

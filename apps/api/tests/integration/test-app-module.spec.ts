@@ -43,7 +43,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { INestApplication } from '@nestjs/common';
 import { createTestApp } from '../helpers/test-app-module';
 
-describe.skip('TASK-309 AC-4 — TestAppModule sanity', () => {
+describe.skip('AC-4 — TestAppModule sanity', () => {
   let app: INestApplication | undefined;
 
   afterEach(async () => {

@@ -41,7 +41,7 @@ function makeRepo() {
   return { repo, prisma };
 }
 
-describe('TASK-311 — RolePolicyRepository', () => {
+describe('RolePolicyRepository', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -117,7 +117,7 @@ describe('TASK-311 — RolePolicyRepository', () => {
 
   // Break-glass trigger needs "how many ENABLED roles carry this
   // policy" to decide whether a rule-edit is dangerous (>1 role blast radius).
-  describe('countEnabledByPolicy (TASK-409)', () => {
+  describe('countEnabledByPolicy', () => {
     it('counts only ENABLED assignments for the policy', async () => {
       const { repo, prisma } = makeRepo();
       prisma.rolePolicy.count.mockResolvedValue(3);
@@ -132,7 +132,7 @@ describe('TASK-311 — RolePolicyRepository', () => {
   });
 });
 
-describe('TASK-311 — RolePolicyFactory', () => {
+describe('RolePolicyFactory', () => {
   describe('buildCreateInput', () => {
     it('produces a rolePolicy create input with ENABLED status', () => {
       const input = RolePolicyFactory.buildCreateInput({
@@ -168,7 +168,7 @@ describe('TASK-311 — RolePolicyFactory', () => {
   });
 });
 
-describe('TASK-311 — RolePolicyEntityMapper', () => {
+describe('RolePolicyEntityMapper', () => {
   it('mapRolePolicyRowToRecord projects a Prisma row onto the public join record', () => {
     const createdAt = new Date('2026-01-01T00:00:00Z');
     const updatedAt = new Date('2026-01-02T00:00:00Z');

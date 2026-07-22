@@ -204,13 +204,13 @@ describe('Phase 7: TTS v2 port standardization (8865)', () => {
         });
     }
 
-    it('.env.dev must define TTS_PORT and TTS_URL (TASK-488)', () => {
+    it('.env.dev must define TTS_PORT and TTS_URL', () => {
         const content = readEnvFile('.env.dev');
         expect(envVarExists(content, 'TTS_PORT')).toBe(true);
         expect(envVarExists(content, 'TTS_URL')).toBe(true);
     });
 
-    it('.env.example must define TTS_PORT and TTS_URL (TASK-488)', () => {
+    it('.env.example must define TTS_PORT and TTS_URL', () => {
         const content = readEnvFile('.env.example');
         expect(envVarExists(content, 'TTS_PORT')).toBe(true);
         expect(envVarExists(content, 'TTS_URL')).toBe(true);
@@ -388,7 +388,7 @@ describe('Phase 7: ServiceHealthMonitoring default URLs use 886x ports', () => {
         expect(source).not.toMatch(/http:\/\/localhost:5006/);
     });
 
-    it('TTS v2 default URL should use port 8865 (TASK-488)', () => {
+    it('TTS v2 default URL should use port 8865', () => {
         const source = readFile(healthServicePath);
         expect(source).toMatch(/process\.env\.TTS_URL/);
         expect(source).toMatch(/http:\/\/localhost:8865/);
@@ -446,7 +446,7 @@ describe('Phase 7: ConfigService default values use 886x ports', () => {
         expect(source).toMatch(/STT_V2_URL.*\|\|.*http:\/\/localhost:8861/);
     });
 
-    it('TTS_PORT default should be 8865 and TTS_URL default should use port 8865 (TASK-488)', () => {
+    it('TTS_PORT default should be 8865 and TTS_URL default should use port 8865', () => {
         const source = readFile(configServicePath);
         expect(source).toMatch(/TTS_PORT.*\|\|.*['"]8865['"]/);
         expect(source).toMatch(/TTS_URL.*\|\|.*http:\/\/localhost:8865/);

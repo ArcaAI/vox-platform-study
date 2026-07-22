@@ -14,7 +14,11 @@ import { OcrEnrichmentProcessor } from '../ocr-enrichment.processor';
 const CONTEXT_ADDED = 'consultation.context.added';
 
 const createMockBlobStorage = () => ({ getObject: vi.fn() });
-const createMockContextItemRepository = () => ({ findById: vi.fn(), update: vi.fn() });
+const createMockContextItemRepository = () => ({
+  findById: vi.fn(),
+  update: vi.fn(),
+  encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
+});
 const createMockHttpService = () => ({ axiosRef: { post: vi.fn() } });
 const createMockEventEmitter = () => ({ emit: vi.fn() });
 
@@ -77,7 +81,7 @@ describe('OcrEnrichmentProcessor', () => {
   let eventEmitter: ReturnType<typeof createMockEventEmitter>;
   let cls: ReturnType<typeof createMockClsService>;
 
-  const build = (config = createMockConfigService()) => {
+  const build = (config = createMockConfigService(), secretsService?: unknown) => {
     configService = config;
     return new OcrEnrichmentProcessor(
       blobStorage as never,
@@ -86,6 +90,7 @@ describe('OcrEnrichmentProcessor', () => {
       configService as never,
       eventEmitter as never,
       cls as never,
+      secretsService as never,
     );
   };
 
@@ -246,5 +251,46 @@ describe('OcrEnrichmentProcessor', () => {
 
     expect(contextItemRepository.update).not.toHaveBeenCalled();
     expect(eventEmitter.emit).not.toHaveBeenCalled();
+  });
+
+  // ── F-031 remainder: OCR-extracted text must also land on the entity's
+  // canonical `content` (encrypted before persist), not ONLY on the unencrypted
+  // `metaData.extractedText` — otherwise every reader of the standard
+  // ContextItem response (`content`) sees nothing even after a successful OCR,
+  // and the plaintext `content` column was dropped, so an unencrypted write
+  // would silently lose the text at rest in every environment.
+  describe('OCR content encryption-at-rest (F-031)', () => {
+    const secretsStub = { encrypt: vi.fn(), decrypt: vi.fn() };
+
+    it('sets ContextItem.content from the OCR text and encrypts it before persisting', async () => {
+      processor = build(createMockConfigService(), secretsStub);
+      contextItemRepository.findById.mockResolvedValue(createMockAttachment({ content: undefined }));
+      blobStorage.getObject.mockResolvedValue(Buffer.from('%PDF-1.7 scanned bytes'));
+      httpService.axiosRef.post.mockResolvedValue({ data: { text: 'WBC 11.2 (high); Hb 9.8', pageCount: 2, ocrUsed: true } });
+      contextItemRepository.update.mockImplementation((_id: string, entity: unknown) => entity);
+
+      await processor.handleContextAdded(createPayload());
+
+      expect(contextItemRepository.encryptContentIntoEntity).toHaveBeenCalledTimes(1);
+      const [entityArg, secretsArg] = contextItemRepository.encryptContentIntoEntity.mock.calls[0];
+      expect(entityArg.content).toBe('WBC 11.2 (high); Hb 9.8');
+      expect(secretsArg).toBe(secretsStub);
+      const encOrder = contextItemRepository.encryptContentIntoEntity.mock.invocationCallOrder[0];
+      const updateOrder = contextItemRepository.update.mock.invocationCallOrder[0];
+      expect(encOrder).toBeLessThan(updateOrder);
+      expect(contextItemRepository.update.mock.calls[0][1]).toBe(entityArg);
+    });
+
+    it('still persists (without ciphertext) when no SecretsService is wired', async () => {
+      contextItemRepository.findById.mockResolvedValue(createMockAttachment({ content: undefined }));
+      blobStorage.getObject.mockResolvedValue(Buffer.from('bytes'));
+      httpService.axiosRef.post.mockResolvedValue({ data: { text: 'No cipher wired', pageCount: 1, ocrUsed: true } });
+      contextItemRepository.update.mockImplementation((_id: string, entity: unknown) => entity);
+
+      await processor.handleContextAdded(createPayload());
+
+      expect(contextItemRepository.encryptContentIntoEntity).not.toHaveBeenCalled();
+      expect(contextItemRepository.update.mock.calls[0][1]).toMatchObject({ content: 'No cipher wired' });
+    });
   });
 });

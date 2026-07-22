@@ -13,7 +13,7 @@ import { AudioRecording } from '../../../../models/generated/core/AudioRecording
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
-describe('AudioRecordingFactory — rawMediaId/processedMediaId (TASK-329 P2/X8)', () => {
+describe('AudioRecordingFactory — rawMediaId/processedMediaId', () => {
   it('threads rawMediaId/processedMediaId onto the created entity', () => {
     const entity = AudioRecordingFactory.CreateAudioRecording({
       tenantId: TENANT_ID,
@@ -54,7 +54,7 @@ describe('AudioRecordingFactory — rawMediaId/processedMediaId (TASK-329 P2/X8)
   });
 });
 
-describe('AudioRecordingEntityMapper — rawMediaId/processedMediaId round-trip (TASK-329 P2/X8)', () => {
+describe('AudioRecordingEntityMapper — rawMediaId/processedMediaId round-trip', () => {
   const mapper = new AudioRecordingEntityMapper();
 
   it('toPersistence carries rawMediaId/processedMediaId to the data model', () => {

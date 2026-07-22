@@ -120,7 +120,7 @@ function failureEvents(emitter: { emit: ReturnType<typeof vi.fn> }): any[] {
         .map((call) => call[1]);
 }
 
-describe('AuthController — TASK-541 B1 failed-login audit', () => {
+describe('AuthController — failed-login audit', () => {
     beforeEach(() => vi.clearAllMocks());
 
     it('audits an unknown username with reason unknown_or_disabled_user', async () => {
@@ -249,7 +249,7 @@ describe('AuthController — TASK-541 B1 failed-login audit', () => {
     });
 });
 
-describe('AuthController — TASK-541 B1 failed-refresh audit', () => {
+describe('AuthController — failed-refresh audit', () => {
     beforeEach(() => vi.clearAllMocks());
 
     it('audits a rejected refresh token (miss or reuse — the token-theft signal)', async () => {

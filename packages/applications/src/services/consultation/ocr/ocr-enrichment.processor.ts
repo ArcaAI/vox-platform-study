@@ -1,12 +1,13 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { ContextItemRepository, ContextItemType } from '@arcaai/domains';
 import { IBlobStorageService } from '../../baseServices/storage';
-import { assertEqualTenants, createWorkerSession } from '../../../common';
+import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
+import { SecretsService } from '../../baseServices/_meta/secrets';
 import { ConsultationPipelineEvent, ContextAddedPayload } from '../events';
 
 /** NLP `/extract` response shape. */
@@ -56,6 +57,10 @@ export class OcrEnrichmentProcessor {
     private readonly configService: ConfigService,
     private readonly eventEmitter: EventEmitter2,
     private readonly cls: ClsService<IActiveUserContext>,
+    // Optional + trailing so existing positional fixtures keep their
+    // arity; when wired, the OCR-extracted text is encrypted into
+    // `ContextItem.encryptedContent` before persist (F-031).
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     // Default ENABLED — the in-cluster RapidOCR path has no PHI egress (§C). Only
@@ -66,6 +71,15 @@ export class OcrEnrichmentProcessor {
     // STORAGE_BUCKET = 'attachments'); the per-tenant provider is resolved by the
     // blob-storage service from CLS, so only the bucket NAME is needed here.
     this.ocrBucket = this.configService.get<string>('OCR_STORAGE_BUCKET') ?? 'attachments';
+  }
+
+  /**
+   * Encrypt PHI on write through the shared env-gated guard: a soft
+   * no-op in dev/test (SECRETS_PROVIDER!=vault) but FAIL-CLOSED (throws) in
+   * staging/prod (SECRETS_PROVIDER=vault) instead of persisting plaintext-only.
+   */
+  private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
+    await encryptPhiFields(this.secretsService, label, run, this.logger);
   }
 
   @OnEvent(ConsultationPipelineEvent.ContextAdded, { async: true })
@@ -114,6 +128,19 @@ export class OcrEnrichmentProcessor {
 
         // Persist metaData.extractedText (merge, preserving subType/fileName).
         item.metaData = { ...meta, extractedText: text };
+        // Also fold the OCR text onto the entity's canonical `content` (encrypted
+        // below) — readers of the standard ContextItem response (`content`) would
+        // otherwise see nothing even after a successful OCR, since metaData is a
+        // secondary, harness-only surface (see class doc above).
+        item.content = text;
+        // Encrypt `content` into `encryptedContent` before
+        // persistence — the plaintext `content` column was dropped by the PHI
+        // field-encryption migration, so an unencrypted update here would
+        // silently lose the OCR'd clinical text at rest (mirrors
+        // context.service.ts `encryptContent`).
+        await this.encryptBestEffort('ContextItem content', () =>
+          this.contextItemRepository.encryptContentIntoEntity(item, this.secretsService!),
+        );
         await this.contextItemRepository.update(contextItemId, item);
 
         // Re-emit the live preview so LiveDocumentationService folds the OCR text

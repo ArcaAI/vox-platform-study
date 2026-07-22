@@ -32,7 +32,7 @@ vi.mock('../../../../common/unitsOfWork/core', () => ({ CoreUnitOfWorkService: v
 
 const makeUow = (delegateByModel: Record<string, any>) => ({ getDatabaseService: () => delegateByModel });
 
-describe('AudioRecordingRepository.sumDurationForTenant (TASK-414)', () => {
+describe('AudioRecordingRepository.sumDurationForTenant', () => {
   let delegate: any;
   let repo: any;
 
@@ -61,7 +61,7 @@ describe('AudioRecordingRepository.sumDurationForTenant (TASK-414)', () => {
   });
 });
 
-describe('SummaryMetaRepository.countGeneratedSince (TASK-414)', () => {
+describe('SummaryMetaRepository.countGeneratedSince', () => {
   let delegate: any;
   let repo: any;
 
@@ -92,7 +92,7 @@ describe('SummaryMetaRepository.countGeneratedSince (TASK-414)', () => {
   });
 });
 
-describe('MediaRepository.sumSizeForTenant (TASK-414)', () => {
+describe('MediaRepository.sumSizeForTenant', () => {
   let delegate: any;
   let repo: any;
 
@@ -121,7 +121,7 @@ describe('MediaRepository.sumSizeForTenant (TASK-414)', () => {
   });
 });
 
-describe('TenantBucketRepository.sumConfiguredQuotaBytes (TASK-414)', () => {
+describe('TenantBucketRepository.sumConfiguredQuotaBytes', () => {
   let delegate: any;
   let repo: any;
 

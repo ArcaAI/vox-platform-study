@@ -125,7 +125,7 @@ function makeApiClient() {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('TASK-264 W2-1: SSEClient listener leak fix', () => {
+describe('SSEClient listener leak fix', () => {
   it('disconnect() removes every named listener it previously added to the EventSource', async () => {
     const apiClient = makeApiClient();
     const client = new SSEClient('jobs', apiClient as never, createMockLogger());

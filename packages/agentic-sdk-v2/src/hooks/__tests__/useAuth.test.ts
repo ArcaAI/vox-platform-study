@@ -242,7 +242,7 @@ describe('useAuth', () => {
     // Login should store JWT token and configure apiClient
     // =========================================================================
 
-    describe('BUG-10: login should configure apiClient with JWT token', () => {
+    describe('login should configure apiClient with JWT token', () => {
         it('should call apiClient.updateAccessToken with the JWT token after successful login', async () => {
             const mockUpdateAccessToken = vi.fn();
             mockStore.apiClient.updateAccessToken = mockUpdateAccessToken;
@@ -299,7 +299,7 @@ describe('useAuth', () => {
     // the auto-refresh handler can use it; logout clears it.
     // =========================================================================
 
-    describe('TASK-320 B2: in-memory refresh-token capture', () => {
+    describe('in-memory refresh-token capture', () => {
         it('should stash the refresh token via apiClient.setRefreshToken after login', async () => {
             const loginResponse = {
                 user: { id: 'u-1', username: 'doc', email: 'doc@e.com', roles: ['doctor'], permissions: [] },
@@ -341,7 +341,7 @@ describe('useAuth', () => {
     // Token-absent edge cases
     // =========================================================================
 
-    describe('TASK-212: login response without token', () => {
+    describe('login response without token', () => {
         it('should NOT call updateAccessToken when login response has no token field', async () => {
             const mockUpdateAccessToken = vi.fn();
             mockStore.apiClient.updateAccessToken = mockUpdateAccessToken;
@@ -377,7 +377,7 @@ describe('useAuth', () => {
         });
     });
 
-    describe('TASK-212: impersonate response without token', () => {
+    describe('impersonate response without token', () => {
         it('should NOT call updateAccessToken when impersonate response has no token', async () => {
             const mockUpdateAccessToken = vi.fn();
             mockStore.apiClient.getAccessToken = vi.fn().mockReturnValue('admin-jwt');
@@ -396,7 +396,7 @@ describe('useAuth', () => {
         });
     });
 
-    describe('TASK-212 + TASK-264 W0-3: endImpersonation with no stashed admin token', () => {
+    describe('+ : endImpersonation with no stashed admin token', () => {
         it('should NOT call updateAccessToken when stopImpersonation returns undefined', async () => {
             const mockUpdateAccessToken = vi.fn();
             mockStore.apiClient.updateAccessToken = mockUpdateAccessToken;
@@ -427,7 +427,7 @@ describe('useAuth', () => {
     // Impersonation uses accessToken channel
     // =========================================================================
 
-    describe('TASK-212 + TASK-264 W0-3: impersonation uses AgenticClient internal stash', () => {
+    describe('+ : impersonation uses AgenticClient internal stash', () => {
         it('should save current accessToken via apiClient.startImpersonation before impersonating', async () => {
             const mockGetAccessToken = vi.fn().mockReturnValue('original-admin-jwt');
             const mockStart = vi.fn();
@@ -502,7 +502,7 @@ describe('useAuth', () => {
     // Low-level startImpersonation / stopImpersonation helpers
     // =========================================================================
 
-    describe('TASK-264 W0-3: low-level impersonation helpers', () => {
+    describe('low-level impersonation helpers', () => {
         it('exposes startImpersonation that proxies to apiClient', () => {
             const mockStart = vi.fn();
             mockStore.apiClient.startImpersonation = mockStart;

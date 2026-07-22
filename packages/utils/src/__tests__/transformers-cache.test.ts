@@ -75,7 +75,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('TASK-317 W5.1 — tenant-scoped custom Transformers.js cache (AC-14)', () => {
+describe('tenant-scoped custom Transformers.js cache', () => {
   it('caches custom (source:"custom") weights for tenant A and B under distinct names', () => {
     const nameA = getTransformersCacheName({ source: 'custom', tenantId: 'tenant-a' });
     const nameB = getTransformersCacheName({ source: 'custom', tenantId: 'tenant-b' });

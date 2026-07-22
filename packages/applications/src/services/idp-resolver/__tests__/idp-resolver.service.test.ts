@@ -108,7 +108,7 @@ const enabledSamlProvider = (overrides: Record<string, unknown> = {}) =>
     ...overrides,
   });
 
-describe('IdpResolverService.buildClient (TASK-498)', () => {
+describe('IdpResolverService.buildClient', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     discoverMock.mockResolvedValue(makeIssuer());
@@ -127,7 +127,7 @@ describe('IdpResolverService.buildClient (TASK-498)', () => {
   });
 });
 
-describe('IdpResolverService.resolveForTenant (TASK-498, D4 — repository read, NOT AppSettingsService)', () => {
+describe('IdpResolverService.resolveForTenant (repository read, NOT AppSettingsService)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     discoverMock.mockResolvedValue(makeIssuer());
@@ -177,7 +177,7 @@ describe('IdpResolverService.resolveForTenant (TASK-498, D4 — repository read,
   });
 });
 
-describe('IdpResolverService.resolveByProviderId (TASK-498 — callback path, no cache-warmth assumption)', () => {
+describe('IdpResolverService.resolveByProviderId (callback path, no cache-warmth assumption)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     discoverMock.mockResolvedValue(makeIssuer());
@@ -209,7 +209,7 @@ describe('IdpResolverService.resolveByProviderId (TASK-498 — callback path, no
   });
 });
 
-describe('IdpResolverService.buildSamlClient (TASK-499 D4/§6 — hardened, non-negotiable options)', () => {
+describe('IdpResolverService.buildSamlClient (§6 — hardened, non-negotiable options)', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('builds a client with the pinned IdP cert, SP entityId, and hardened security options', async () => {
@@ -283,7 +283,7 @@ describe('IdpResolverService.buildSamlClient (TASK-499 D4/§6 — hardened, non-
   });
 });
 
-describe('IdpResolverService.resolveSamlForTenant (TASK-499)', () => {
+describe('IdpResolverService.resolveSamlForTenant', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('throws when no enabled SAML provider is configured for the tenant', async () => {
@@ -344,7 +344,7 @@ describe('IdpResolverService.resolveSamlForTenant (TASK-499)', () => {
   });
 });
 
-describe('IdpResolverService.resolveSamlByProviderId (TASK-499 — ACS path, no cache-warmth assumption)', () => {
+describe('IdpResolverService.resolveSamlByProviderId (ACS path, no cache-warmth assumption)', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('throws when the provider id does not exist', async () => {

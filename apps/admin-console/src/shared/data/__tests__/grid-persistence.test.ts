@@ -83,7 +83,7 @@ describe('createGridLayoutPersistenceAdapter — load', () => {
     });
 });
 
-describe('createGridLayoutPersistenceAdapter — request dedup & cache (TASK-428)', () => {
+describe('createGridLayoutPersistenceAdapter — request dedup & cache', () => {
     it('shares one GET across concurrent loads (N grids on one page)', async () => {
         const calls = installFetchMock(() => Response.json([{ namespace: UI_DATA_GRID_NAMESPACE, key: 'tenants', value: JSON.stringify(layout) }]));
         const adapter = createGridLayoutPersistenceAdapter();

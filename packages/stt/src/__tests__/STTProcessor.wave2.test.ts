@@ -31,7 +31,7 @@ function asInternals(processor: STTProcessor): ProcessorInternals {
   return processor as unknown as ProcessorInternals;
 }
 
-describe('STTProcessor — Wave 2 (TASK-304)', () => {
+describe('STTProcessor — Wave 2', () => {
   describe('W2-STT-2 setLanguage failure restores previous language', () => {
     let processor: STTProcessor;
 

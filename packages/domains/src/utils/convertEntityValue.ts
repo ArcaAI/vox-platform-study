@@ -31,6 +31,13 @@ export function convertEntityValue(value: any): any {
     return value.toValue();
   } else if (value instanceof BaseEntity) {
     return value.toObject();
+  } else if (Buffer.isBuffer(value) || ArrayBuffer.isView(value)) {
+    // Binary blobs (`encrypted*` Bytes ciphertext columns) are leaf values.
+    // Falling through to the generic-object branch would destructure them into
+    // `{ "0": 118, "1": 97, ... }`, which Prisma rejects on create ("Expected
+    // Bytes or Null, provided Object") — the same rule removeNullValues
+    // applies. ArrayBuffer.isView also covers DataView and every TypedArray.
+    return value;
   } else if (typeof value === 'object' && value !== null) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- accumulator for the recursively-converted plain-object branch; same any-in/any-out contract as the function itself
     const newObj: Record<string, any> = {};

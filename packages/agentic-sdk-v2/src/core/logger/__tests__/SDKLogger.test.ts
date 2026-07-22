@@ -263,7 +263,7 @@ describe('SDKLogger', () => {
             expect(entry.trace?.spanId).toBe('span-456');
         });
 
-        it('should include user context — non-PHI passed through, PHI redacted per TASK-266 W0-2', () => {
+        it('should include user context — non-PHI passed through, PHI redacted per', () => {
             logger.info('Test', {
                 userId: 'user-123',
                 tenantId: 'tenant-456',
@@ -705,7 +705,7 @@ describe('SDKLogger', () => {
     // transport sees it, so PHI nested in `user`, `sdk`, `error`, `meta`, etc.
     // is also scrubbed and `data:`/`blob:`/`file:` URLs become `[REDACTED-URL]`.
     // =========================================================================
-    describe('TASK-266 W0-2: PHI redaction reaches every transport surface', () => {
+    describe('PHI redaction reaches every transport surface', () => {
         let transport: MockTransport;
         let logger: SDKLogger;
 

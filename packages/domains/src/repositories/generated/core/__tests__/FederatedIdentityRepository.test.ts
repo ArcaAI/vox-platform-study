@@ -8,7 +8,7 @@ function makeRepo(): FederatedIdentityRepository {
   return new FederatedIdentityRepository(unitOfWork);
 }
 
-describe('FederatedIdentityRepository.findByProviderAndSubject (TASK-498)', () => {
+describe('FederatedIdentityRepository.findByProviderAndSubject', () => {
   it('pushes providerId + subject into a single findFirst query', async () => {
     const repo = makeRepo();
     const findFirstSpy = vi.spyOn(repo, 'findFirst').mockResolvedValue(null as never);
@@ -32,7 +32,7 @@ describe('FederatedIdentityRepository.findByProviderAndSubject (TASK-498)', () =
   });
 });
 
-describe('FederatedIdentityRepository.findByUserId (TASK-498)', () => {
+describe('FederatedIdentityRepository.findByUserId', () => {
   it('pushes userId into a single findAll query', async () => {
     const repo = makeRepo();
     const findAllSpy = vi.spyOn(repo, 'findAll').mockResolvedValue([] as never);

@@ -259,7 +259,7 @@ describe('PersonalizationManager', () => {
             expect((manager.get as any)('theme')).toBe('light');
         });
 
-        it('should remove extra keys not in defaults (BUG-06)', async () => {
+        it('should remove extra keys not in defaults', async () => {
             const defaults = { language: 'en' };
             const manager = new PersonalizationManager(
                 { storage: 'local', defaults },

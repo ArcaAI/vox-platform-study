@@ -172,6 +172,14 @@ export class SttInternalService extends BaseService implements ISttInternalServi
       createdBy: job.createdBy || undefined,
     });
 
+    // Encrypt the transcript text into `encryptedContent` before
+    // persistence — the plaintext `content` column was dropped by the PHI
+    // field-encryption migration, so an unencrypted create silently loses the
+    // clinical text at rest (mirrors context.service.ts `encryptContent`).
+    await this.encryptBestEffort('ContextItem content', () =>
+      this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!),
+    );
+
     const savedContextItem = await this.contextItemRepository.create(contextItem);
 
     // persist ordered transcript segments (offsets resolved from text).
@@ -236,6 +244,14 @@ export class SttInternalService extends BaseService implements ISttInternalServi
       source: ContextItemSource.TRANSCRIPTION,
       content: dto.transcriptText,
     });
+
+    // Encrypt the transcript text into `encryptedContent` before
+    // persistence — the plaintext `content` column was dropped by the PHI
+    // field-encryption migration, so an unencrypted create silently loses the
+    // clinical text at rest (mirrors context.service.ts `encryptContent`).
+    await this.encryptBestEffort('ContextItem content', () =>
+      this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!),
+    );
 
     const savedContextItem = await this.contextItemRepository.create(contextItem);
 

@@ -230,7 +230,7 @@ describe('DnaWritingStyleService', () => {
             expect(mockQueue.add).toHaveBeenCalledTimes(1);
         });
 
-        it('audits the generation REQUEST via a ResourceCreated SysEvent (TASK-326 X9)', async () => {
+        it('audits the generation REQUEST via a ResourceCreated SysEvent', async () => {
             await service.generateDnaReport('doctor-id-1', {});
 
             expect(mockEventEmitter.emit).toHaveBeenCalledWith(
@@ -395,7 +395,7 @@ describe('DnaWritingStyleService', () => {
         // `_version` OCC token (DISTINCT from `currentVersionNumber` / the
         // DnaVersion history). The admin PATCH route folds the `If-Match`
         // header onto `dto.expectedVersion`, which is the CAS predicate input.
-        it('writes via Compare-And-Set (updateWithVersion) carrying the DTO expectedVersion (TASK-326 X7 / D-2)', async () => {
+        it('writes via Compare-And-Set (updateWithVersion) carrying the DTO expectedVersion', async () => {
             const existing = createMockReportEntity({ currentVersionNumber: 1 });
             mockReportRepo.findById.mockResolvedValue(existing);
             mockReportRepo.updateWithVersion.mockResolvedValue(
@@ -414,7 +414,7 @@ describe('DnaWritingStyleService', () => {
             expect(mockReportRepo.update).not.toHaveBeenCalled();
         });
 
-        it('propagates OptimisticConcurrencyException from the repository CAS write (TASK-326 X7 / D-2)', async () => {
+        it('propagates OptimisticConcurrencyException from the repository CAS write', async () => {
             // On version drift the repository CAS predicate matches 0 rows and
             // throws; the service must surface it unwrapped so the API layer
             // maps it to 412 Precondition Failed. No ResourceUpdated SysEvent
@@ -445,7 +445,7 @@ describe('DnaWritingStyleService', () => {
         // yet the version row had already committed — a live-reproduced orphan.
         // The two writes must now share ONE `$transaction` so a rejected CAS
         // rolls the version row back.
-        it('runs the version-history insert and the CAS write inside a single transaction (CC-01)', async () => {
+        it('runs the version-history insert and the CAS write inside a single transaction', async () => {
             const existing = createMockReportEntity({ currentVersionNumber: 1 });
             mockReportRepo.findById.mockResolvedValue(existing);
             mockReportRepo.updateWithVersion.mockResolvedValue(
@@ -470,7 +470,7 @@ describe('DnaWritingStyleService', () => {
             expect(mockReportRepo.updateWithVersion).toHaveBeenCalledWith('report-id-1', existing, 7, mockTxClient);
         });
 
-        it('rolls back the version-history insert when the OCC CAS is rejected — no orphan, no event (CC-01)', async () => {
+        it('rolls back the version-history insert when the OCC CAS is rejected — no orphan, no event', async () => {
             const existing = createMockReportEntity({ currentVersionNumber: 1 });
             mockReportRepo.findById.mockResolvedValue(existing);
             mockVersionRepo.create.mockResolvedValue(createMockVersionEntity({ versionNumber: 2 }));
@@ -1064,7 +1064,7 @@ describe('DnaWritingStyleService', () => {
 
         // The retired SUPER_ADMIN role string grants NO elevation:
         // such a caller is treated like any non-admin (tenant context required).
-        it('does NOT treat the retired SUPER_ADMIN role as elevated (TASK-417)', async () => {
+        it('does NOT treat the retired SUPER_ADMIN role as elevated', async () => {
             mockClsService.get.mockImplementation((key: string) => {
                 if (key === 'user') return { id: 'super-admin-1', roles: ['SUPER_ADMIN'] };
                 if (key === 'tenantId') return null;
@@ -1293,7 +1293,7 @@ describe('DnaWritingStyleService', () => {
         // CC-02 — a super-admin who has selected an active tenant
         // (X-Tenant-Id → CLS `tenantId`) but omits the `?tenantId` query param
         // must see ONLY that tenant's reports, not every tenant's.
-        it('CC-02: scopes a global admin with an active tenant header and no explicit tenantId to the active tenant', async () => {
+        it('scopes a global admin with an active tenant header and no explicit tenantId to the active tenant', async () => {
             const globalAdmin = buildWith((key: string) => {
                 if (key === 'user') return { id: 'super-1', roles: ['GLOBAL_ADMIN'] };
                 if (key === 'tenantId') return 'tenant-ACTIVE';
@@ -1307,7 +1307,7 @@ describe('DnaWritingStyleService', () => {
             expect(where).toMatchObject({ tenantId: 'tenant-ACTIVE' });
         });
 
-        it('CC-02: an explicit tenantId still overrides the active tenant header for a global admin', async () => {
+        it('an explicit tenantId still overrides the active tenant header for a global admin', async () => {
             const globalAdmin = buildWith((key: string) => {
                 if (key === 'user') return { id: 'super-1', roles: ['GLOBAL_ADMIN'] };
                 if (key === 'tenantId') return 'tenant-ACTIVE';
@@ -1456,7 +1456,7 @@ describe('DnaWritingStyleService', () => {
      * No GLOBAL_ADMIN bypass on the writing-style guards — even support flows
      * cannot read another tenant's PHI-derived artifact.
      */
-    describe('Multi-tenant scoping (TASK-305 D.5.3)', () => {
+    describe('Multi-tenant scoping', () => {
         describe('generateDnaReport', () => {
             it('rejects when doctorId has no role-assignment in the caller tenant', async () => {
                 mockUserRoleAssignmentRepo.findFirst.mockResolvedValue(null);

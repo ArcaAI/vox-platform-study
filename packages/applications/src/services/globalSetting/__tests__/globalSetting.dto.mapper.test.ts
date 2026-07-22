@@ -234,7 +234,7 @@ describe('GlobalSettingDtoMapper', () => {
     // Server-authoritative secret detection + value masking. A row is
     // secret when it has an `encryptedValue` OR its namespace/key matches the
     // convention; its `value` is masked ('') on list/get (plaintext only via reveal).
-    describe('TASK-396 secret masking', () => {
+    describe('secret masking', () => {
         it('flags encryptedValue rows as secret and masks the value', () => {
             const entity = { ...createMockGlobalSettingEntity({ namespace: 'general', key: 'ordinary', value: 'plaintext' }), encryptedValue: Buffer.from('vault:v1:abc') };
 

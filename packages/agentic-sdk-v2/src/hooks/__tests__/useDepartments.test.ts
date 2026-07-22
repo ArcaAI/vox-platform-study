@@ -378,7 +378,7 @@ describe('useDepartments', () => {
     /*  create, remove, getByCode, updatePromptConfig */
     /* ------------------------------------------------------------------ */
 
-    describe('create (TASK-218)', () => {
+    describe('create', () => {
         it('should POST to DEPARTMENT_ENDPOINTS.CREATE with input', async () => {
             const mockPost = mockStore.apiClient.post;
             const input = { name: 'Cardiology', code: 'CARD' };
@@ -408,7 +408,7 @@ describe('useDepartments', () => {
         });
     });
 
-    describe('remove (TASK-218)', () => {
+    describe('remove', () => {
         it('should DELETE from DEPARTMENT_ENDPOINTS.DELETE(id)', async () => {
             const mockDelete = mockStore.apiClient.delete;
             mockDelete.mockResolvedValue(undefined);
@@ -436,7 +436,7 @@ describe('useDepartments', () => {
         });
     });
 
-    describe('getByCode (TASK-218)', () => {
+    describe('getByCode', () => {
         it('should GET from DEPARTMENT_ENDPOINTS.BY_CODE(code)', async () => {
             const dept = { id: 'd-1', name: 'Radiology', code: 'RAD' };
             mockGet.mockResolvedValue(dept);
@@ -450,7 +450,7 @@ describe('useDepartments', () => {
         });
     });
 
-    describe('updatePromptConfig (TASK-218)', () => {
+    describe('updatePromptConfig', () => {
         it('should PATCH to DEPARTMENT_ENDPOINTS.PROMPT_CONFIG(id) with data', async () => {
             const mockPatch = mockStore.apiClient.patch;
             const updated = { id: 'd-1', name: 'Radiology', preSummaryPromptId: 'p-123' };

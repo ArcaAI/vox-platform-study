@@ -1,7 +1,9 @@
-import { EffectiveConfigResponse, IEffectiveConfigService } from '@arcaai/applications';
+import { EffectiveConfigResponse, IActiveUserContext, IEffectiveConfigService } from '@arcaai/applications';
+import { SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { Controller, Get, Inject, Query, UseGuards } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
+import { ClsService } from 'nestjs-cls';
 import { Public } from '../../decorators';
 import { InternalServiceTokenGuard } from './internal-service-token.guard';
 
@@ -26,7 +28,10 @@ import { InternalServiceTokenGuard } from './internal-service-token.guard';
 @UseGuards(InternalServiceTokenGuard)
 @Controller('internal/effective-config')
 export class EffectiveConfigController {
-  constructor(@Inject(IEffectiveConfigService) private readonly effectiveConfig: IEffectiveConfigService) {}
+  constructor(
+    @Inject(IEffectiveConfigService) private readonly effectiveConfig: IEffectiveConfigService,
+    private readonly cls: ClsService<IActiveUserContext>,
+  ) {}
 
   /**
    * Resolve the calling service's config subset. Unknown service → 400 (the read
@@ -34,12 +39,24 @@ export class EffectiveConfigController {
    *
    * Values are service-level knobs ONLY — never per-request model selection, so
    * SMR's stateless-gateway contract is untouched.
+   *
+   * Service-to-service requests carry NO user and NO tenant, so the CLS store is
+   * empty — and parts of the read subtree touch tenant-scoped models
+   * (AiRuntimeProfile via the runtime-profile list), whose Prisma tenant-scope
+   * extension fails closed without a tenant context. Re-establish CLS here,
+   * pinned to the SYSTEM tenant: every effective-config subset resolves
+   * platform-level state (SYSTEM-scoped settings and SYSTEM-owned profile rows),
+   * never a customer tenant's. Same pattern as HarnessInternalController's
+   * out-of-band CLS re-establishment.
    */
   @Get()
   async getEffectiveConfig(@Query('service') service: string): Promise<EffectiveConfigResponse> {
     if (!service) {
       throw new ArgumentInvalidException('Query parameter `service` is required.');
     }
-    return this.effectiveConfig.resolveForService(service);
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', SYSTEM_TENANT_ID);
+      return this.effectiveConfig.resolveForService(service);
+    });
   }
 }

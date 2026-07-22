@@ -37,7 +37,7 @@ function makeAssembledPrompt(overrides: Partial<AssembledPrompt> = {}): Assemble
     };
 }
 
-describe('buildSmrGeneratePayload — SOAP json_schema forwarding (TASK-330)', () => {
+describe('buildSmrGeneratePayload — SOAP json_schema forwarding', () => {
     it('forwards response_format (json_schema) for non-Ollama providers', () => {
         const payload = buildSmrGeneratePayload(makeAssembledPrompt(), { provider: 'openai' });
 

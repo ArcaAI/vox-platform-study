@@ -59,7 +59,7 @@ blocks the generation rather than shipping an unmoderated PHI prompt).
 | Prisma models | `PromptTemplate`, `PromptVersion` (`db_main/prompt-template.prisma`); `PromptUsageRecord` (`db_main/dna-writing-style.prisma`) |
 | Key API endpoints | `@Controller('prompt-templates')` (self-service): `GET /prompt-templates/available`, `PUT /prompt-templates/preferred`, `POST ''`, `PATCH :id`, `DELETE :id`. `@Controller('admin/prompt-templates')`: `POST ''`, `GET ''`, `GET /analytics/usage`, `GET /usage-records`, `GET /:id`, `PATCH :id` (OCC), `DELETE /:id`, `GET :id/versions`, `GET :id/versions/:versionNumber`, `GET :id/versions/:from/diff/:to`, `GET :id/usage`, `POST :id/test`, `POST :id/versions/:versionNumber/activate`, `POST assign-department`. **AUTH-NOTE(TASK-532):** self-service writes on personal (`USER_PERSONAL`) templates are declared `@Authorize(['read','PromptTemplate'])` with ownership enforced in the service (rule 05) |
 | Console | `apps/admin-console` feature `agents` (`agents-screen`, `versions-panel`); route `/agents` (tier 30–49, tenant-scoped; `/prompt-studio` redirects to `/agents?tab=governance` for one release) |
-| Tests | unit(app): `prompt-management/__tests__/{prompt-management.service,prompt-management.dto.mapper,update-prompt-template.request}.test.ts`; unit(console): `agents/components/__tests__/agents-screen.test.tsx`, `agents/api/__tests__/agents-api.test.ts`; e2e: `task-382-agent-management.spec.ts`, `task-389-agents-backend.spec.ts` |
+| Tests | unit(app): `prompt-management/__tests__/{prompt-management.service,prompt-management.dto.mapper,update-prompt-template.request}.test.ts`; unit(console): `agents/components/__tests__/agents-screen.test.tsx`, `agents/api/__tests__/agents-api.test.ts`; e2e: `agent-management-contract.spec.ts`, `agents-backend-backlog.spec.ts` |
 
 ### G5 — Prompt governance (approval, versions, diff) — legacy row 34b
 
@@ -92,4 +92,4 @@ Per-doctor stylistic fingerprint applied to generated documentation.
 - **The summary approval step is documented in [`harness.md`](./harness.md), not here.** `POST /consultations/:id/summary/:contextItemId/approve` is the harness gate's attestation write, not a summarization primitive.
 - **`smr.contract.test.ts` / `stt.contract.test.ts` are present** under `tests/contracts/` — note the legacy matrix's claim that the TTS contract was removed in TASK-414 does not extend to the SMR/STT contracts, which remain.
 
-Last verified: 2026-07-21
+Last verified: 2026-07-22

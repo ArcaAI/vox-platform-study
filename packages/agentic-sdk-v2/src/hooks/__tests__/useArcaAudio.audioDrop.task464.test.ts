@@ -124,7 +124,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('useArcaAudio — TASK-464 audio-drop surfacing', () => {
+describe('useArcaAudio — audio-drop surfacing', () => {
   it('exposes droppedFrameCount and audioLostThisSession from the store', () => {
     setupStore({ audioDroppedFrameCount: 4, audioLostThisSession: true });
 

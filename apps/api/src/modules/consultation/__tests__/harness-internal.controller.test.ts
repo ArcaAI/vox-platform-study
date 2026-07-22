@@ -170,7 +170,7 @@ describe('HarnessInternalController', () => {
             expect(result).toEqual({ ok: false });
         });
 
-        it('responds 200 (not 201): nothing is created — the ack can carry { ok: false } (TASK-348 / MIN-4)', () => {
+        it('responds 200 (not 201): nothing is created — the ack can carry { ok: false }', () => {
             const statusCode = Reflect.getMetadata(
                 HTTP_CODE_METADATA,
                 HarnessInternalController.prototype.reportProgress,

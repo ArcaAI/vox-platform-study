@@ -76,7 +76,7 @@ afterEach(() => {
     cleanup();
 });
 
-describe('CreateTenantDialog (TASK-497)', () => {
+describe('CreateTenantDialog', () => {
     it('lets step 1 proceed with name alone (key is now optional) and previews a generated key', () => {
         renderWithProviders(<CreateTenantDialog open onOpenChange={() => {}} />);
         const dialog = screen.getByRole('dialog');

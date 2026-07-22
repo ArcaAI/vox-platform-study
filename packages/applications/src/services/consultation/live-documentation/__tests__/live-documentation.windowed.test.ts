@@ -86,7 +86,7 @@ async function flushWith(stored: Record<string, unknown>, segments: string[]) {
 
 afterEach(() => vi.restoreAllMocks());
 
-describe('LiveDocumentationService — windowed transcript (TASK-533 B3)', () => {
+describe('LiveDocumentationService — windowed transcript', () => {
   it('EQUIVALENCE: a backlog inside the window yields a byte-identical prompt in both modes', async () => {
     const segments = ['Patient reports chest pain.', 'No shortness of breath.'];
 
@@ -108,7 +108,7 @@ describe('LiveDocumentationService — windowed transcript (TASK-533 B3)', () =>
     expect(generatePrompt(windowed.http)).toContain('b'.repeat(20));
   });
 
-  it('whole mode keeps the OLDEST content on overflow (C5-04, unchanged)', async () => {
+  it('whole mode keeps the OLDEST content on overflow (unchanged)', async () => {
     const { http } = await flushWith({ 'transcript.mode': 'whole', 'liveDelta.maxChars': 30 }, [
       'a'.repeat(25),
       'b'.repeat(25),

@@ -22,7 +22,7 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
     return { ...actual, useAgenticStore: vi.fn() };
 });
 
-describe('useUsers — TASK-398 bulk assign-role', () => {
+describe('useUsers — bulk assign-role', () => {
     let mockLogger: ReturnType<typeof createMockLogger>;
     let mockStore: any;
     const mockGet = vi.fn();

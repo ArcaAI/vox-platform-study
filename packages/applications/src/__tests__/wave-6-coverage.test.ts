@@ -83,7 +83,7 @@ export const WAVE_6_TEST_COVERAGE: readonly WaveSixEntry[] = [
     // (findActiveAssignmentForUserInTenant / findActiveTenantIdsForUser /
     // findActiveRolesForUser). Floor 6 catches a single deletion.
     minTests: 6,
-    marker: /TASK-307 W6\.1/,
+    marker: /UserRoleAssignmentService tenant-scoped reads/,
   },
   {
     subtask: 'W6.2',
@@ -93,7 +93,7 @@ export const WAVE_6_TEST_COVERAGE: readonly WaveSixEntry[] = [
     // findAll / findOne / create / update / patch / softDelete.
     // Floor 10 catches up to 2 deletions.
     minTests: 10,
-    marker: /TASK-307 W6\.2/,
+    marker: /describe\('PolicyService'/,
   },
   {
     subtask: 'W6.3',
@@ -103,7 +103,7 @@ export const WAVE_6_TEST_COVERAGE: readonly WaveSixEntry[] = [
     // create / update / patch / softDelete / assignPolicy /
     // removePolicy. Floor 12 catches up to 2 deletions.
     minTests: 12,
-    marker: /TASK-307 W6\.3/,
+    marker: /describe\('RbacRoleService'/,
   },
 ];
 
@@ -145,7 +145,7 @@ function readSource(relativePath: string): string {
   return readFileSync(full, 'utf8');
 }
 
-describe('TASK-307 Wave 6 — Direct-Prisma-removal coverage aggregator', () => {
+describe('Wave 6 — Direct-Prisma-removal coverage aggregator', () => {
   it('every WAVE_6_TEST_COVERAGE entry points to a file that exists on disk', () => {
     const missing = WAVE_6_TEST_COVERAGE.filter(
       (entry) => !existsSync(resolve(APPLICATIONS_SRC, entry.file)),

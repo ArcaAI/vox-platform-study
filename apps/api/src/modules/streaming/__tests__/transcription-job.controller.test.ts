@@ -264,7 +264,7 @@ describe('TranscriptionJobController', () => {
         // authenticate this route: the JwtAuthGuard rejects any ticket presented
         // on a route without @StreamScope, so the console's `transcription_job:<id>`
         // scoped tickets 401'd before this declaration existed.
-        it('declares @StreamScope({ namespace: "transcription_job", param: "id" }) for ticket auth (TASK-419)', () => {
+        it('declares @StreamScope({ namespace: "transcription_job", param: "id" }) for ticket auth', () => {
             const meta = Reflect.getMetadata(STREAM_SCOPE_METADATA, TranscriptionJobController.prototype.streamJob);
             expect(meta).toEqual({ namespace: 'transcription_job', param: 'id' });
         });
@@ -333,7 +333,7 @@ describe('TranscriptionJobController', () => {
             });
         });
 
-        it('persists the negotiated sampleRate as session meta for the gateway (TASK-351 C5)', async () => {
+        it('persists the negotiated sampleRate as session meta for the gateway', async () => {
             mockSessionService.createSession.mockResolvedValue({
                 sessionId: 'sess-meta',
                 status: 'active',
@@ -349,7 +349,7 @@ describe('TranscriptionJobController', () => {
             );
         });
 
-        it('defaults the session-meta sampleRate to 16000 when the client omits it (TASK-351 C5)', async () => {
+        it('defaults the session-meta sampleRate to 16000 when the client omits it', async () => {
             mockSessionService.createSession.mockResolvedValue({
                 sessionId: 'sess-meta-default',
                 status: 'active',
@@ -448,7 +448,7 @@ describe('TranscriptionJobController', () => {
 
         // The concurrency gate runs on the caller's
         // tenant before any STT-V2 session is created.
-        it('asserts the tenant concurrency quota before creating the session (TASK-392)', async () => {
+        it('asserts the tenant concurrency quota before creating the session', async () => {
             mockSessionService.createSession.mockResolvedValue({
                 sessionId: 'sess-conc',
                 status: 'active',
@@ -466,7 +466,7 @@ describe('TranscriptionJobController', () => {
 
         // A hard-block from the gate rejects the request
         // and never creates a session downstream.
-        it('propagates a concurrency hard-block and does not create the session (TASK-392)', async () => {
+        it('propagates a concurrency hard-block and does not create the session', async () => {
             const { QuotaExceededException } = await import('@arcaai/exceptions');
             mockEntitlements.assertConcurrencyQuota.mockRejectedValueOnce(
                 new QuotaExceededException('at capacity', {
@@ -610,7 +610,7 @@ describe('TranscriptionJobController', () => {
     // Every transcription-job-by-id handler must carry
     // @TenantOwnedResource so the global interceptor 404s cross-tenant probes.
     // ------------------------------------------------------------------------
-    describe('TASK-307 W3.8 — @TenantOwnedResource metadata', () => {
+    describe('@TenantOwnedResource metadata', () => {
         const meta = (m: keyof TranscriptionJobController): TenantOwnedResourceOptions | undefined =>
             Reflect.getMetadata(
                 TENANT_OWNED_RESOURCE_KEY,
@@ -653,7 +653,7 @@ describe('TranscriptionJobController', () => {
 
         // closeStreamSession IS now annotated with
         // the new `StreamSession` resolver branch.
-        it('closeStreamSession IS annotated with {modelName: StreamSession, paramName: sessionId, lookup: "session"} (TASK-310 W7.A.9)', () => {
+        it('closeStreamSession IS annotated with {modelName: StreamSession, paramName: sessionId, lookup: "session"}', () => {
             expect(meta('closeStreamSession')).toEqual({
                 modelName: 'StreamSession',
                 paramName: 'sessionId',
@@ -668,7 +668,7 @@ describe('TranscriptionJobController', () => {
         // any authenticated tenant could mint a 200 ticket for a foreign
         // sessionId, leaving the WS handshake gate as a single point of
         // failure instead of one of two independent gates.
-        it('refreshStreamTicket IS annotated with {modelName: StreamSession, paramName: sessionId, lookup: "session"} (TASK-450 I-1)', () => {
+        it('refreshStreamTicket IS annotated with {modelName: StreamSession, paramName: sessionId, lookup: "session"}', () => {
             expect(meta('refreshStreamTicket')).toEqual({
                 modelName: 'StreamSession',
                 paramName: 'sessionId',
@@ -684,7 +684,7 @@ describe('TranscriptionJobController', () => {
     // closeStreamSession clears the binding after the downstream remove
     // succeeds.
     // ------------------------------------------------------------------------
-    describe('TASK-310 W7.A.9 — StreamSessionTenantBindingService integration', () => {
+    describe('StreamSessionTenantBindingService integration', () => {
         it('createStreamSession binds the returned sessionId to the caller tenant', async () => {
             mockSessionService.createSession.mockResolvedValueOnce({
                 sessionId: 'sess-xyz',
@@ -743,7 +743,7 @@ describe('TranscriptionJobController', () => {
 
         // Pin the widened pipelineId contract itself: a plain
         // slug pipelineId must keep passing CreateJobRequest validation.
-        it('CreateJobRequest accepts a valid slug pipelineId (TASK-298 D-19)', async () => {
+        it('CreateJobRequest accepts a valid slug pipelineId', async () => {
             const dto = plainToInstance(CreateJobRequest, {
                 jobType: 'BATCH',
                 pipelineId: 'general-consult',

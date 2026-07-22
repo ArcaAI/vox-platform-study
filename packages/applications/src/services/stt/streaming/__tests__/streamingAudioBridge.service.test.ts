@@ -492,7 +492,7 @@ describe('StreamingAudioBridgeService', () => {
             });
         });
 
-        it('should map speaker metadata AND derive a canonical speakerLabel when present (TASK-489 AC-1)', async () => {
+        it('should map speaker metadata AND derive a canonical speakerLabel when present', async () => {
             mockXreadgroup
                 .mockResolvedValueOnce([
                     ['stt:result:s-1', [
@@ -526,7 +526,7 @@ describe('StreamingAudioBridgeService', () => {
             });
         });
 
-        it('should derive a neutral speakerLabel for the stt-v2 "unknown" sentinel (TASK-489 AC-3)', async () => {
+        it('should derive a neutral speakerLabel for the stt-v2 "unknown" sentinel', async () => {
             mockXreadgroup
                 .mockResolvedValueOnce([
                     ['stt:result:s-1', [
@@ -581,7 +581,7 @@ describe('StreamingAudioBridgeService', () => {
         // Additive stable_chars relay (committed-prefix length
         // emitted by stt-v2 on partial results). Absent field must leave the
         // message exactly as today.
-        it('maps stable_chars to stableChars when present (TASK-351 P1-1)', async () => {
+        it('maps stable_chars to stableChars when present', async () => {
             mockXreadgroup
                 .mockResolvedValueOnce([
                     ['stt:result:s-1', [
@@ -844,7 +844,7 @@ describe('StreamingAudioBridgeService', () => {
         // group (MKSTREAM) and reads via XREADGROUP; it NEVER re-reads the whole
         // stream from '0-0' (the old duplicate-flood bug). BLOCK stays 500ms
         // so an unsubscribe/abort is honored within ≤500ms.
-        it('creates a consumer group and reads via XREADGROUP — never XREAD from 0-0 (TASK-457 C3-01)', async () => {
+        it('creates a consumer group and reads via XREADGROUP — never XREAD from 0-0', async () => {
             mockXreadgroup.mockResolvedValue(null);
 
             const obs = service.subscribeToResults('s-1');
@@ -878,7 +878,7 @@ describe('StreamingAudioBridgeService', () => {
             sub.unsubscribe();
         });
 
-        it('advances via the group cursor: reads live (">") after the PEL and XACKs processed results (TASK-457)', async () => {
+        it('advances via the group cursor: reads live (">") after the PEL and XACKs processed results', async () => {
             mockXreadgroup
                 .mockResolvedValueOnce([
                     // PEL drain (id '0') delivers one buffered result …
@@ -914,7 +914,7 @@ describe('StreamingAudioBridgeService', () => {
             );
         });
 
-        it('reclaims a dead reader\'s idle pending results via XAUTOCLAIM (TASK-457 dead-consumer hand-off)', async () => {
+        it('reclaims a dead reader\'s idle pending results via XAUTOCLAIM (dead-consumer hand-off)', async () => {
             // A prior reader crashed holding one unacked result; XAUTOCLAIM
             // hands it to this reader, which emits + acks it.
             mockXautoclaim.mockResolvedValueOnce([
@@ -962,7 +962,7 @@ describe('StreamingAudioBridgeService', () => {
     // Each subscriber now gets its own reader connection, quit on teardown.
     // ===================================================================
 
-    describe('TASK-351 P1-3 (H5) — per-subscriber reader connections', () => {
+    describe('per-subscriber reader connections', () => {
         beforeEach(async () => {
             await service.connect();
         });
@@ -1011,7 +1011,7 @@ describe('StreamingAudioBridgeService', () => {
             sub.unsubscribe();
         });
 
-        it('TASK-457 C1 — disconnects the reader IMMEDIATELY on unsubscribe (dead reader stops consuming the shared group at once)', async () => {
+        it('disconnects the reader IMMEDIATELY on unsubscribe (dead reader stops consuming the shared group at once)', async () => {
             // A read that never resolves — only a forced disconnect interrupts it.
             mockXreadgroup.mockImplementation(() => new Promise<null>(() => {}));
 

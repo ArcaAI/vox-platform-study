@@ -34,7 +34,7 @@ async function validateDto<T extends object>(
 }
 
 describe('UpdatePromptTemplateRequest', () => {
-    describe('expectedVersion (CC-06 OCC contract)', () => {
+    describe('expectedVersion (OCC contract)', () => {
         it('accepts a header-first body that omits expectedVersion', async () => {
             const result = await validateDto(UpdatePromptTemplateRequest, {
                 content: 'Updated content',

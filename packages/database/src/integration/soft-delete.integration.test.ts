@@ -176,7 +176,7 @@ describe('Soft-Delete Integration Tests', () => {
       });
     });
 
-    describe('findUnique behavior (soft-delete aware as of TASK-305 B.12)', () => {
+    describe('findUnique behavior (soft-delete aware as of)', () => {
       it('should NOT return DELETED records (findUnique now applies soft-delete filter)', async () => {
         const deleted = await createTestDepartment('DEPT-DELETED', 'Deleted Department', 'DELETED');
 

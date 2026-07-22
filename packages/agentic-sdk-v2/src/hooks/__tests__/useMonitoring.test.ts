@@ -101,7 +101,7 @@ describe('useMonitoring', () => {
         });
     });
 
-    describe('SessionCounts type contract (TASK-386 — backend SessionsResponse)', () => {
+    describe('SessionCounts type contract (backend SessionsResponse)', () => {
         it('derives activeSessions (stt) + processingJobs (smr+nlp+guardrail+harness) from the services map', async () => {
             const uptimeData = [{ service: 'stt', status: 'up', uptimeSeconds: 3600 }];
             const sessionsData = {

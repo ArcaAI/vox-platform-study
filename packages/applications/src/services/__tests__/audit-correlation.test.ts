@@ -88,7 +88,7 @@ vi.mock('@arcaai/domains', async () => {
     };
 });
 
-describe('Audit-log version correlation (TASK-302 Stream D Phase C.8) — cross-service contract', () => {
+describe('Audit-log version correlation (Stream D Phase) — cross-service contract', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });

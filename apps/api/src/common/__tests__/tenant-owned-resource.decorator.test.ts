@@ -14,7 +14,7 @@ import {
   type TenantOwnedResourceOptions,
 } from '../tenant-owned-resource.decorator';
 
-describe('TASK-307 W3.1 — @TenantOwnedResource decorator', () => {
+describe('@TenantOwnedResource decorator', () => {
   it('exports a stable Reflector metadata key string', () => {
     expect(TENANT_OWNED_RESOURCE_KEY).toBe('tenant_owned_resource');
   });

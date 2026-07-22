@@ -22,7 +22,7 @@ describe('isTerminalStatus', () => {
         expect(isTerminalStatus('')).toBe(false);
     });
 
-    describe('TASK-299 D-8 — case-insensitive matching', () => {
+    describe('case-insensitive matching', () => {
         it('matches upper-case terminal statuses emitted by the backend', () => {
             expect(isTerminalStatus('COMPLETED')).toBe(true);
             expect(isTerminalStatus('FAILED')).toBe(true);

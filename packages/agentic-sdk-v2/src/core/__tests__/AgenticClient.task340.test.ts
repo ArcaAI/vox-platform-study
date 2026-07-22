@@ -24,7 +24,7 @@ function authHeaderOf(callIndex = 0): string | undefined {
   return init?.headers?.['Authorization'];
 }
 
-describe('TASK-340 — isAdminPlanePath', () => {
+describe('isAdminPlanePath', () => {
   it('matches admin-plane paths', () => {
     expect(isAdminPlanePath('/admin/tenants')).toBe(true);
     expect(isAdminPlanePath('/admin/audit-logs')).toBe(true);
@@ -46,7 +46,7 @@ describe('TASK-340 — isAdminPlanePath', () => {
   });
 });
 
-describe('TASK-340 — AgenticClient admin-plane token routing', () => {
+describe('AgenticClient admin-plane token routing', () => {
   let client: AgenticClient;
   let mockLogger: ReturnType<typeof createMockLogger>;
 

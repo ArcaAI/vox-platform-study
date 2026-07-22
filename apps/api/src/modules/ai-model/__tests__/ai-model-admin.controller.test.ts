@@ -13,7 +13,7 @@ import { AiModelAdminController } from '../ai-model-admin.controller';
 // =============================================================================
 // Authorization — global-admin only (manage:all)
 // =============================================================================
-describe('AiModelAdminController authorization metadata (TASK-419 item 5)', () => {
+describe('AiModelAdminController authorization metadata', () => {
   it('is decorated @Authorize(["manage","all"]) at class level (global-admin only)', () => {
     const meta = Reflect.getMetadata('required_permissions', AiModelAdminController);
     expect(meta).toBeDefined();
@@ -52,7 +52,7 @@ describe('AiModelAdminController route metadata', () => {
 // =============================================================================
 // Delegation — thin controller, exact-tenant admin list
 // =============================================================================
-describe('AiModelAdminController delegation (TASK-356 Phase 1)', () => {
+describe('AiModelAdminController delegation', () => {
   it('fetchAll delegates to getAllForAdmin (ENABLED+DISABLED, exact-tenant), not getAll', async () => {
     const getAllForAdmin = vi.fn().mockResolvedValue([
       { id: 'm1', resourceStatus: 'ENABLED' },
@@ -93,7 +93,7 @@ describe('AiModelAdminController delegation (TASK-356 Phase 1)', () => {
 // =============================================================================
 // OCC — the If-Match header folds over the body `expectedVersion`
 // =============================================================================
-describe('AiModelAdminController update — OCC If-Match fold (TASK-356 Phase 1)', () => {
+describe('AiModelAdminController update — OCC If-Match fold', () => {
   const build = () => {
     const update = vi.fn().mockResolvedValue({ id: 'm1', name: 'Updated', version: 8 });
     return { controller: new AiModelAdminController({ update } as never), update };

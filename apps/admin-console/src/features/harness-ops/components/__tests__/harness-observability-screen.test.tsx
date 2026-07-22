@@ -175,7 +175,7 @@ describe('HarnessObservabilityScreen', () => {
         expect(screen.getByText('Breached SLA')).toBeDefined();
     });
 
-    it('mounts the TASK-532 B-5 golden-sets panel and edit-burden card', async () => {
+    it('mounts the golden-sets panel and edit-burden card', async () => {
         stubRoutes();
         renderWithProviders(<HarnessObservabilityScreen />);
 

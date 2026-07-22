@@ -63,7 +63,7 @@ const bodyOf = (http: ReturnType<typeof build>['http']) => http.axiosRef.post.mo
 
 beforeEach(() => vi.clearAllMocks());
 
-describe('SMR proxy — runtime-profile injection (TASK-524)', () => {
+describe('SMR proxy — runtime-profile injection', () => {
   it('injects resolved parameters when the caller supplied none', async () => {
     const resolver = {
       resolveProfile: vi.fn(async () => ({

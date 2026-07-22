@@ -381,7 +381,7 @@ describe('audioResampler utilities', () => {
   // the capture path must attenuate folded aliases by ≥ 40 dB relative to the
   // linear baseline while keeping the passband within 1 dB.
   // -------------------------------------------------------------------------
-  describe('anti-aliased Whisper resampling (TASK-351 P2-4)', () => {
+  describe('anti-aliased Whisper resampling', () => {
     function makeTone(freqHz: number, sampleRate: number, numSamples: number): Float32Array {
       const tone = new Float32Array(numSamples);
       const w = (2 * Math.PI * freqHz) / sampleRate;
@@ -471,7 +471,7 @@ describe('audioResampler utilities', () => {
     });
   });
 
-  describe('resampleSinc (TASK-351 P2-4)', () => {
+  describe('resampleSinc', () => {
     it('should return the same array if sample rates match', () => {
       const samples = new Float32Array([0.1, 0.2, 0.3, 0.4, 0.5]);
       const result = resampleSinc(samples, 48000, 48000);

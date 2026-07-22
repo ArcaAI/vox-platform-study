@@ -232,7 +232,7 @@ describe('AiTaskDefaultsPlatformScreen', () => {
 // =============================================================================
 // The platform screen links out to the AI-models hub
 // =============================================================================
-describe('AiTaskDefaultsPlatformScreen — Manage models link (TASK-528)', () => {
+describe('AiTaskDefaultsPlatformScreen — Manage models link', () => {
   it('links "Manage models" to /ai-models', async () => {
     stubFetch();
     renderWithProviders(<AiTaskDefaultsPlatformScreen />);

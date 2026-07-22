@@ -28,7 +28,7 @@ function authHeaderOf(callIndex = 0): string | undefined {
   return init?.headers?.['Authorization'];
 }
 
-describe('TASK-353 — isAdminPlanePath covers non-/admin admin-only routes', () => {
+describe('isAdminPlanePath covers non-/admin admin-only routes', () => {
   it('matches /monitoring/* (entire controller is manage:all)', () => {
     expect(isAdminPlanePath('/monitoring/uptime')).toBe(true);
     expect(isAdminPlanePath('/monitoring/sessions')).toBe(true);
@@ -54,7 +54,7 @@ describe('TASK-353 — isAdminPlanePath covers non-/admin admin-only routes', ()
   });
 });
 
-describe('TASK-353 — AgenticClient token routing for non-/admin admin-only routes', () => {
+describe('AgenticClient token routing for non-/admin admin-only routes', () => {
   let client: AgenticClient;
   let mockLogger: ReturnType<typeof createMockLogger>;
 

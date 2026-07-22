@@ -169,7 +169,7 @@ function findPatch(dotPath: string): PatchCall | undefined {
   return patchCalls.find((c) => c.url.includes(`${SDK_NS}${dotPath}`));
 }
 
-describe('TASK-331 doc-07 F5a — AgenticProvider server preference sync', () => {
+describe('doc-07 F5a — AgenticProvider server preference sync', () => {
   it('PATCHes each user-pref leaf to /user/me/settings/arcaai-sdk/{dotPath} with value + dataType when NOT impersonating', async () => {
     handler = meHandler({ id: ADMIN, tenantId: TENANT_A });
     const store = renderProvider();

@@ -11,7 +11,7 @@ function makeRepo(): StorageAccessKeyRepository {
   return new StorageAccessKeyRepository(unitOfWork);
 }
 
-describe('StorageAccessKeyRepository.findActiveByTenant (F-15)', () => {
+describe('StorageAccessKeyRepository.findActiveByTenant', () => {
   it('pushes the expiry predicate into a single findAll query', async () => {
     const repo = makeRepo();
     const findAllSpy = vi.spyOn(repo, 'findAll').mockResolvedValue([] as never);

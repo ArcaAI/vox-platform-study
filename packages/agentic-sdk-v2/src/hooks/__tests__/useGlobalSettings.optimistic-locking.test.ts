@@ -28,7 +28,7 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
     return { ...actual, useAgenticStore: vi.fn() };
 });
 
-describe('useGlobalSettings — optimistic locking (TASK-302 Stream D Phase D.4)', () => {
+describe('useGlobalSettings — optimistic locking', () => {
     let mockLogger: ReturnType<typeof createMockLogger>;
     let mockStore: any;
     const mockGet = vi.fn();

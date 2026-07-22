@@ -22,7 +22,7 @@ const fakeChain = [
   { id: 'C', parentConsultationId: 'B' },
 ];
 
-describe('useConsultationChain (TASK-329 P2)', () => {
+describe('useConsultationChain', () => {
   let mockLogger: ReturnType<typeof createMockLogger>;
   let mockStore: any;
   const mockGet = vi.fn();

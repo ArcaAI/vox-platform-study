@@ -76,7 +76,7 @@ describe('parseSoapSections', () => {
   });
 });
 
-describe('parseSoapJson (TASK-340 P0-C — deterministic json_schema parse)', () => {
+describe('parseSoapJson (deterministic json_schema parse)', () => {
   it('parses a SOAP JSON object into the four ordered sections', () => {
     const raw = JSON.stringify({
       subjective: 'Chest pain since morning.',

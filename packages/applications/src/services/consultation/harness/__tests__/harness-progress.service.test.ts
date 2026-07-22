@@ -168,7 +168,7 @@ describe('HarnessProgressService — reportProgress folding', () => {
     expect(event.jobId).toBe('harness-doc-1');
   });
 
-  it('re-activates a re-emission of the CURRENT active stage (regen): attempt increments (MIN-2)', async () => {
+  it('re-activates a re-emission of the CURRENT active stage (regen): attempt increments', async () => {
     const prior = snapshotOf([
       { stage: 'extracting_information', label: 'Extracting key information', ordinal: 1, status: 'completed', attempt: 1, at: 't1' },
       { stage: 'assembling_context', label: 'Assembling context', ordinal: 2, status: 'completed', attempt: 1, at: 't2' },
@@ -187,7 +187,7 @@ describe('HarnessProgressService — reportProgress folding', () => {
     expect(byStage.running_safety_sensors).toMatchObject({ status: 'active', attempt: 2 });
   });
 
-  it('ignores a stale re-delivery of an EARLIER stage: no state regression, no publish (MAJ-5/MIN-2)', async () => {
+  it('ignores a stale re-delivery of an EARLIER stage: no state regression, no publish', async () => {
     const prior = snapshotOf([
       { stage: 'extracting_information', label: 'Extracting key information', ordinal: 1, status: 'completed', attempt: 1, at: 't1' },
       { stage: 'assembling_context', label: 'Assembling context', ordinal: 2, status: 'completed', attempt: 1, at: 't2' },
@@ -220,7 +220,7 @@ describe('HarnessProgressService — reportProgress folding', () => {
     expect(cacheService.publish).not.toHaveBeenCalled();
   });
 
-  it('discards the prior snapshot when the event carries a different jobId: fresh run renders fresh (MAJ-2)', async () => {
+  it('discards the prior snapshot when the event carries a different jobId: fresh run renders fresh', async () => {
     const prior = snapshotOf([
       { stage: 'extracting_information', label: 'Extracting key information', ordinal: 1, status: 'completed', attempt: 3, at: 't1' },
       { stage: 'assembling_context', label: 'Assembling context', ordinal: 2, status: 'completed', attempt: 1, at: 't2' },
@@ -245,7 +245,7 @@ describe('HarnessProgressService — reportProgress folding', () => {
     expect(event.closed).toBe(false);
   });
 
-  it('a new jobId also reopens a feed previously closed by a terminal event (MAJ-2)', async () => {
+  it('a new jobId also reopens a feed previously closed by a terminal event', async () => {
     const prior = snapshotOf(
       [{ stage: 'finalizing_draft', label: 'Finalizing the draft', ordinal: 5, status: 'completed', attempt: 1, at: 't5' }],
       { closed: true },
@@ -260,7 +260,7 @@ describe('HarnessProgressService — reportProgress folding', () => {
     expect(event.stages[0]).toMatchObject({ stage: 'extracting_information', status: 'active', attempt: 1 });
   });
 
-  it('terminal `failed` event marks the active stage failed, freezes the rest, and closes the feed (MAJ-1)', async () => {
+  it('terminal `failed` event marks the active stage failed, freezes the rest, and closes the feed', async () => {
     const prior = snapshotOf([
       { stage: 'extracting_information', label: 'Extracting key information', ordinal: 1, status: 'completed', attempt: 1, at: 't1' },
       { stage: 'assembling_context', label: 'Assembling context', ordinal: 2, status: 'completed', attempt: 1, at: 't2' },
@@ -301,7 +301,7 @@ describe('HarnessProgressService — reportProgress folding', () => {
     expect(event.stages).toHaveLength(0);
   });
 
-  it('caps stages growth: an unseen stage beyond the cap is ignored (MAJ-6)', async () => {
+  it('caps stages growth: an unseen stage beyond the cap is ignored', async () => {
     const bloated = snapshotOf(
       Array.from({ length: 50 }, (_, i) => ({
         stage: `stage_${i}`,
@@ -320,7 +320,7 @@ describe('HarnessProgressService — reportProgress folding', () => {
     expect(cacheService.publish).not.toHaveBeenCalled();
   });
 
-  it('folds tenantId into the published event (MIN-5: accepted AND used)', async () => {
+  it('folds tenantId into the published event (accepted AND used)', async () => {
     const { service, cacheService } = buildDeps();
 
     await service.reportProgress(CID, { tenantId: TENANT, jobId: 'harness-doc-1', stage: 'extracting_information', label: 'Extracting key information', ordinal: 1, total: 5 });
@@ -419,7 +419,7 @@ describe('HarnessProgressService — SSE relay', () => {
     expect(refcounted.hasChannel(CHANNEL)).toBe(false);
   });
 
-  it('keeps a second concurrent viewer streaming after the first disconnects (MAJ-3)', async () => {
+  it('keeps a second concurrent viewer streaming after the first disconnects', async () => {
     const refcounted = buildRefcountedSubscriber();
     const { service } = buildDeps({ redisSubscriber: refcounted });
 
@@ -451,7 +451,7 @@ describe('HarnessProgressService — SSE relay', () => {
     expect(refcounted.hasChannel(CHANNEL)).toBe(false);
   });
 
-  it('subscribes to the channel BEFORE reading the snapshot so gap events are not lost (MIN-3)', async () => {
+  it('subscribes to the channel BEFORE reading the snapshot so gap events are not lost', async () => {
     const refcounted = buildRefcountedSubscriber();
     const { service, cacheService } = buildDeps({ redisSubscriber: refcounted });
     let resolveSnapshot!: (value: string | null) => void;
@@ -487,7 +487,7 @@ describe('HarnessProgressService — SSE relay', () => {
     expect(received).toEqual([snapshot, gapEvent]);
   });
 
-  it('de-dupes a gap event the snapshot already contains (same updatedAt) (MIN-3)', async () => {
+  it('de-dupes a gap event the snapshot already contains (same updatedAt)', async () => {
     const refcounted = buildRefcountedSubscriber();
     const { service, cacheService } = buildDeps({ redisSubscriber: refcounted });
     let resolveSnapshot!: (value: string | null) => void;

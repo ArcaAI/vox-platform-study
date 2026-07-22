@@ -22,7 +22,7 @@ Route paths are relative to the global prefix `/api/v1`. Test shorthand is defin
 | Key modules | `apps/api/src/modules/audit-log` (`audit-log.controller.ts`); `packages/applications/src/services/{sysEvent,auditLog,audit-retention}` |
 | Prisma models | `AuditLog` (`db_main/audit.prisma`) |
 | Key API endpoints | `@Controller('admin/audit-logs')` (class `@CanRead('AuditLog')`): `GET ''` (fetchAll), `GET export` (CSV), `GET cursor` (keyset), `GET :id`, `GET resource/:resourceType/:resourceId`, `GET user/:userId` |
-| Tests | unit(app): `auditLog/__tests__/*` (`auditLog.service`, `auditLog.service.cursor`, `auditLog.processor`, `auditLog-encryption.service`, `auditLog.service.task541`, `auditLog.service.task328`), `sysEvent/__tests__/{sysEvent.service,event-throttle.service}.test.ts`, `audit-retention/__tests__/audit-retention.service.test.ts`; unit(console): `audit-logs/components/__tests__/audit-logs-screen.test.tsx`; e2e: `audit-log.spec.ts`, `task-541-auth-revocation-audit.spec.ts` |
+| Tests | unit(app): `auditLog/__tests__/*` (`auditLog.service`, `auditLog.service.cursor`, `auditLog.processor`, `auditLog-encryption.service`, `auditLog.service.task541`, `auditLog.service.task328`), `sysEvent/__tests__/{sysEvent.service,event-throttle.service}.test.ts`, `audit-retention/__tests__/audit-retention.service.test.ts`; unit(console): `audit-logs/components/__tests__/audit-logs-screen.test.tsx`; e2e: `audit-log.spec.ts`, `auth-revocation-audit.spec.ts` |
 | Console | `apps/admin-console` feature `audit-logs` (`audit-logs-screen`, `audit-log-detail-sheet`, `audit-result-indicator`); route `/audit-logs` (tier 10–19, global) |
 
 ### PO2 — Global settings & secrets store — legacy row 30
@@ -37,7 +37,7 @@ The raw key/value + secrets store. The TASK-504 **typed control plane** over it
 | Key modules | `apps/api/src/modules/global-setting` (`global-setting.controller.ts`); `packages/applications/src/services/globalSetting`, `packages/applications/src/services/security` (`SecretsService`, crypto) |
 | Prisma models | `GlobalSetting` (`db_main/globalSetting.prisma`) |
 | Key API endpoints | `@Controller('admin/settings')` (class `@CanManage('GlobalSetting')`): `POST ''` (`@CanCreate`), `GET ''` (`@CanRead`), `GET tenant/:tenantId` (`@CanRead`), `GET :id` (`@CanRead`), `PATCH :id` (`@CanUpdate`, `@RequiresIfMatch()` → 428/412), `DELETE :id` (`@CanDelete`), `POST :id/reveal`, `POST :id/rotate` (`@RequiresIfMatch()`). **AUTH-NOTE:** `reveal`/`rotate` are GLOBAL_ADMIN-only — the method-level `@Authorize(['manage','all'])` overrides the class `@CanManage('GlobalSetting')` (rule 05) |
-| Tests | unit(app): `globalSetting/__tests__/*` (`globalSetting.service`, `globalSetting.service.list`, `globalSetting.service.rotate`, `globalSetting.service.task402`, `globalSetting.dto.mapper`); e2e: `task-390-super-admin-backend.spec.ts`, `task-402-password-hash-settings.spec.ts`, `task-443-settings-list-faceting.spec.ts` |
+| Tests | unit(app): `globalSetting/__tests__/*` (`globalSetting.service`, `globalSetting.service.list`, `globalSetting.service.rotate`, `globalSetting.service.task402`, `globalSetting.dto.mapper`); e2e: `super-admin-backend-backlog.spec.ts`, `password-hash-settings.spec.ts`, `settings-list-faceting.spec.ts` |
 
 ### PO3 — Rate limiting & throttling — legacy row 31
 
@@ -59,7 +59,7 @@ The raw key/value + secrets store. The TASK-504 **typed control plane** over it
 | Prisma models | — (Prometheus / Redis-backed telemetry) |
 | Key API endpoints | `@Controller('monitoring')` (`@CanAny(['manage','all'],['read','TenantTelemetry'])`): `GET uptime`, `GET uptime/:service`, `GET heartbeats/:service`, `GET sessions`. `@Controller('admin/platform')` (`@CanManage('PlatformMetrics')`): `GET metrics`, `GET sockets`, `GET consumption`. `@Controller('health')`: `GET live`/`ready`/`startup`/`''` (`@Public()`), `GET services`, `GET services/:serviceKey` (`@CanAny(['manage','all'],['read','TenantTelemetry'])`). Prometheus `GET /metrics` (unprefixed — the only global-prefix exclusion) |
 | Console | `apps/admin-console` features `monitoring` (`monitoring-screen`, `dev-service-down-hint`; route `/monitoring`) and `platform` (`platform-dashboard`; route `(global)/dashboard`), both tier 10–19 global |
-| Tests | unit(app): `platform-metrics/__tests__/*` (`platform-metrics.service`, `consumption-rollup`, `socket-registry.service`, `tenant-telemetry.scope`); unit(console): `monitoring/components/__tests__/{monitoring-screen,dev-service-down-hint}.test.tsx`; e2e: `health.spec.ts`, `monitoring.spec.ts`, `task-386-platform-metrics.spec.ts`, `task-383-platform-dashboard.spec.ts` |
+| Tests | unit(app): `platform-metrics/__tests__/*` (`platform-metrics.service`, `consumption-rollup`, `socket-registry.service`, `tenant-telemetry.scope`); unit(console): `monitoring/components/__tests__/{monitoring-screen,dev-service-down-hint}.test.tsx`; e2e: `health.spec.ts`, `monitoring.spec.ts`, `platform-runtime-metrics.spec.ts`, `platform-dashboard-monitoring.spec.ts` |
 
 ### PO5 — Queue & scheduler administration — legacy row 33
 
@@ -70,7 +70,7 @@ The raw key/value + secrets store. The TASK-504 **typed control plane** over it
 | Prisma models | — (BullMQ state in Redis) |
 | Key API endpoints | `@Controller('admin/queues')` (class `@Authorize(['manage','all'])`): `GET ''`, `GET health/redis`, `GET :queueName`, `POST :queueName/{pause,resume,clean}`, `GET :queueName/jobs`, `POST :queueName/jobs/bulk`, `GET :queueName/jobs/:jobId`, `POST :queueName/jobs/:jobId/{retry,promote}`, `DELETE :queueName/jobs/:jobId`. `@Controller('admin/schedulers')` (`@Authorize(['manage','all'])`): `GET ''`, `POST :name/{pause,resume}`, `PATCH :name/{cron,toggle}` |
 | Console | `apps/admin-console` feature `queues` (`queues-screen`, `queue-detail-screen`, `schedulers-screen`, `job-detail-sheet`, dialogs); routes `/queues`, `/queues/[name]`, `/schedulers` (tier 10–19, global) |
-| Tests | unit(app): `queue-admin/__tests__/*` (`queue-admin.service`, `job-admin.service`, `job-data-redactor.service`, `queue-events.service`, `scheduler-admin.service`); unit(console): `queues/components/__tests__/{queues-screen,queue-detail-screen,schedulers-screen}.test.tsx`; e2e: `task-403-ops-surfaces.spec.ts` (partial) |
+| Tests | unit(app): `queue-admin/__tests__/*` (`queue-admin.service`, `job-admin.service`, `job-data-redactor.service`, `queue-events.service`, `scheduler-admin.service`); unit(console): `queues/components/__tests__/{queues-screen,queue-detail-screen,schedulers-screen}.test.tsx`; e2e: `super-admin-ops-surfaces.spec.ts` (partial) |
 
 ### PO6 — Embedded DB browser (dev only) — legacy row 34
 
@@ -81,7 +81,7 @@ The raw key/value + secrets store. The TASK-504 **typed control plane** over it
 | Prisma models | — |
 | Key API endpoints | `@Controller('admin/pstudio')` (`@CanManage('PrismaStudio')`): `GET ''`, `POST ''` (`@Authorize(['manage','PrismaStudio'])`). `@Controller('admin/pstudio/status')` (`@Authorize(['manage','PrismaStudio'])`): `GET ''`. The gateway paths are deliberately unchanged; only the console route was renamed |
 | Console | `apps/admin-console` feature `db-studio` (`db-studio-screen`); route `/db-studio` (tier 10–19, global). TASK-532 M-08 — renamed from `/pstudio`, which now `redirect()`s for one release |
-| Tests | unit(api): `pstudio/__tests__/{pstudio.controller,pstudio-status.controller,pstudio.html}.test.ts`; unit(console): `db-studio/components/__tests__/db-studio-screen.test.tsx`, `app/(console)/(global)/__tests__/retired-route-redirects.test.tsx`; e2e: `task-403-ops-surfaces.spec.ts` (partial) |
+| Tests | unit(api): `pstudio/__tests__/{pstudio.controller,pstudio-status.controller,pstudio.html}.test.ts`; unit(console): `db-studio/components/__tests__/db-studio-screen.test.tsx`, `app/(console)/(global)/__tests__/retired-route-redirects.test.tsx`; e2e: `super-admin-ops-surfaces.spec.ts` (partial) |
 
 ### PO7 — AI service status & config (guardrail / NLP / agentic instructions) — legacy row 34a
 
@@ -137,6 +137,6 @@ Legacy row 34d is split across two already-migrated domain files; it is **not** 
 - **No e2e for the fan-out plane.** PO8/PO9/PO10 have unit(app) coverage only — there is no `apps/api/tests/e2e` spec exercising the notification/webhook/subscription CRUD against a live stack.
 - **`/admin/settings` is shared.** PO2 (`global-setting`, raw store) and TP6 (`settings-catalog`, typed control plane, in [`tenancy-provisioning.md`](./tenancy-provisioning.md)) mount on the same base — see the disambiguation there.
 - **The `(global)/dashboard` route is its own feature.** PO4's `admin/platform/*` metrics feed both the `monitoring` feature and the `platform` feature (`features/platform/components/platform-dashboard.tsx`), which backs the `(global)/dashboard` route; both are inventoried in [`admin-console.md`](./admin-console.md).
-- **Ops e2e is partial.** PO5/PO6 lean on `task-403-ops-surfaces.spec.ts` (marked partial in the legacy matrix) plus unit coverage.
+- **Ops e2e is partial.** PO5/PO6 lean on `super-admin-ops-surfaces.spec.ts` (marked partial in the legacy matrix) plus unit coverage.
 
-Last verified: 2026-07-21
+Last verified: 2026-07-22

@@ -1647,7 +1647,7 @@ describe('ConsultationJobService', () => {
     // Idempotency-Key (Redis-backed dedupe)
     // ===========================================================================
 
-    describe('TASK-299 D-9/D-10 — Idempotency-Key dedupe', () => {
+    describe('Idempotency-Key dedupe', () => {
         const validParams = {
             consultationId: 'consultation-idem',
             tenantId: 'tenant-1',
@@ -1763,7 +1763,7 @@ describe('ConsultationJobService', () => {
     // Tenant + user carry-through to ConsultationJobStatus
     // ===========================================================================
 
-    describe('TASK-307 W3 — ConsultationJobStatus carries tenantId + userId', () => {
+    describe('ConsultationJobStatus carries tenantId + userId', () => {
         const stored = (): Record<string, unknown> => {
             const calls = mockCacheService.setex.mock.calls.filter((args) =>
                 String(args[0]).startsWith('consultation_job:'),

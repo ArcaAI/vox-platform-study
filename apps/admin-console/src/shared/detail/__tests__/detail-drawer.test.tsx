@@ -107,4 +107,28 @@ describe('DetailDrawer', () => {
         const results = await axe(sheetContent(), { rules: { 'color-contrast': { enabled: false } } });
         expect(results).toHaveNoViolations();
     });
+
+    /**
+     * F-037: the live-DOM sweep found the discovery drawer's body region
+     * (`overflow-y-auto`, 12 discovered models below the fold) flagged by axe
+     * as SERIOUS `scrollable-region-focusable` — a scrollable region that
+     * isn't in the keyboard tab order, so keyboard users can't scroll it.
+     * jsdom/happy-dom apply no stylesheet, so `overflow-y-auto` never becomes
+     * a computed style axe can key off in this environment (the live
+     * Playwright scan is what caught it) — assert the structural fix
+     * directly: the scroll container is itself a tab stop with an
+     * accessible name, regardless of CSS resolution.
+     */
+    it('keeps the body scroll region keyboard-reachable (tabIndex + accessible name)', () => {
+        render(
+            <DetailDrawer open onOpenChange={() => {}} title="Detail">
+                <p>Body</p>
+            </DetailDrawer>,
+        );
+
+        const region = screen.getByText('Body').parentElement!;
+        expect(region.getAttribute('tabindex')).toBe('0');
+        expect(region.getAttribute('role')).toBe('region');
+        expect(region.hasAttribute('aria-label') || region.hasAttribute('aria-labelledby')).toBe(true);
+    });
 });

@@ -1,10 +1,10 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
 
-import { GlobalSettingEntity, GlobalSettingRepository, ResourceStatusType } from '@arcaai/domains';
+import { GlobalSettingEntity, GlobalSettingRepository, ResourceStatusType, ResourceType, SysEvent, SysEventType } from '@arcaai/domains';
 import { IActiveUserContext } from '../../../../interfaces';
 import { IAppSettingsService } from './IAppSettingsService';
 
@@ -352,6 +352,38 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
       message: 'Forcing immediate cache refresh',
     });
     await this.cacheAppSettings();
+  }
+
+  /**
+   * Sys-event subscriber: invalidate the cache the moment a `GlobalSetting`
+   * row changes, instead of waiting up to 60s for the next cron tick
+   * (`DEFAULT_CACHE_REFRESH_INTERVAL` fires at second :45 of every minute —
+   * worst case ~60s, not "every 45 seconds"). `broadcastSysEvent` already fires
+   * `SysEventType.ResourceUpdated` on every GlobalSetting write (both the
+   * settings-registry write lane and the legacy `GlobalSettingService` CRUD);
+   * this closes the gap for any writer that does not already call
+   * `refreshCache()` itself. Filtered to `ResourceType.GlobalSetting` so
+   * unrelated resource updates never trigger a needless DB re-read.
+   *
+   * NOTE: `@nestjs/event-emitter` is in-process only — on a multi-instance
+   * deployment this converges the writing instance's OWN cache immediately;
+   * it does not by itself push the update to other instances (those still
+   * converge on the cron, or on their own write-lane refresh).
+   */
+  @OnEvent(SysEventType.ResourceUpdated)
+  async handleGlobalSettingUpdated(event: SysEvent): Promise<void> {
+    if (event.resourceType !== ResourceType.GlobalSetting) {
+      return;
+    }
+
+    try {
+      await this.refreshCache();
+    } catch (error) {
+      this.logger.error({
+        message: 'Failed to refresh cache after GlobalSetting ResourceUpdated event',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**

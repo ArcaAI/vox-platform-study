@@ -137,7 +137,7 @@ describe('DepartmentController', () => {
     // tenant context is rejected at the request entry point and never reaches
     // the service. GLOBAL_ADMIN bypasses the controller guard.
     // -------------------------------------------------------------------------
-    describe('TASK-326 X5 — GET /admin/departments tenant scoping', () => {
+    describe('GET /admin/departments tenant scoping', () => {
         const buildController = (cls: ReturnType<typeof createMockCls>) =>
             new DepartmentController(mockService as any, cls as any);
 
@@ -189,7 +189,7 @@ describe('DepartmentController', () => {
     // and the param decorator fires 428 in HTTP land if the header is
     // missing. These unit tests cover the controller-internal logic of
     // folding the header value into the body-field `expectedVersion`.
-    describe('PATCH /admin/departments/:id (update) — If-Match handling (TASK-302 Stream D Phase E.2)', () => {
+    describe('PATCH /admin/departments/:id (update) — If-Match handling', () => {
         it('folds the If-Match header into the body-field expectedVersion (header wins)', async () => {
             mockService.update.mockResolvedValue(createMockDepartmentEntity({ version: 8 }));
 
@@ -215,7 +215,7 @@ describe('DepartmentController', () => {
         });
     });
 
-    describe('PATCH /admin/departments/:id/prompt-config (updatePromptConfig) — If-Match handling (TASK-302 Stream D Phase E.2)', () => {
+    describe('PATCH /admin/departments/:id/prompt-config (updatePromptConfig) — If-Match handling', () => {
         it('folds the If-Match header into the body-field expectedVersion (header wins)', async () => {
             mockService.updatePromptConfig.mockResolvedValue(createMockDepartmentEntity({ version: 8 }));
 

@@ -137,7 +137,7 @@ afterEach(() => {
     cleanup();
 });
 
-describe('TASK-531 — template copies in the grid', () => {
+describe('template copies in the grid', () => {
     it('badges locked template copies and leaves the tenant’s own pipelines unbadged', async () => {
         stubPipelines();
         renderWithProviders(<AudioPipelinesScreen />);
@@ -151,7 +151,7 @@ describe('TASK-531 — template copies in the grid', () => {
     });
 });
 
-describe('TASK-531 — locked detail is read-only', () => {
+describe('locked detail is read-only', () => {
     it('states the reason, makes the YAML read-only and hides Save', async () => {
         stubPipelines();
         renderWithProviders(<AudioPipelinesScreen />);
@@ -200,7 +200,7 @@ describe('TASK-531 — locked detail is read-only', () => {
     });
 });
 
-describe('TASK-531 — clone flow', () => {
+describe('clone flow', () => {
     it('prefills a copy identity and POSTs it to the clone route', async () => {
         const calls = stubPipelines((call) => {
             if (call.method === 'POST' && pathOf(call) === '/api/hope/admin/audio/pipelines/p-tpl/clone') {
@@ -234,7 +234,7 @@ describe('TASK-531 — clone flow', () => {
     });
 });
 
-describe('TASK-531 — deep links and accessibility', () => {
+describe('deep links and accessibility', () => {
     // A locked row is the caller's OWN row: it exists, so a deep link must land
     // on the read-only detail, not an error state.
     it('deep-linking to a locked pipeline renders the read-only detail, not a 404', async () => {

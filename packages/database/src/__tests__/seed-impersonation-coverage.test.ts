@@ -58,7 +58,7 @@ const usersInTenantWithRole = (tenantId: string, role: string) =>
         (u) => u.tenantId === tenantId && u.roleNames.includes(role),
     );
 
-describe('Impersonation seed coverage (TASK-331 doc-05 F1)', () => {
+describe('Impersonation seed coverage', () => {
     describe.each(CUSTOMER_TENANTS)(
         '$label customer tenant',
         ({ tenantId }) => {

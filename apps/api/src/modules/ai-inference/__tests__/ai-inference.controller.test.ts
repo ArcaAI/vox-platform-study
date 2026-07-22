@@ -175,7 +175,7 @@ describe('AiInferenceController — NER entities', () => {
   });
 });
 
-describe('AiInferenceController — diagnosis suggestions (TASK-506)', () => {
+describe('AiInferenceController — diagnosis suggestions', () => {
   it('maps minConfidence → min_confidence, forwards language, injects model_name from nlp.diagnosis', async () => {
     const aiTaskDefaults = { getEffective: vi.fn().mockResolvedValue(effectiveWithModel('nlp.diagnosis', 'shanover/symps_disease_bert_v3_c41')) };
     const { controller, client } = makeController(aiTaskDefaults);

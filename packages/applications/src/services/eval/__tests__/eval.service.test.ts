@@ -162,7 +162,7 @@ describe('EvalService', () => {
     createdBy: 'user-1',
   };
 
-  describe('listGoldenSets (TASK-419 item 1)', () => {
+  describe('listGoldenSets (item 1)', () => {
     it('pages the tenant golden sets newest-first and returns {items,total}', async () => {
       mockGoldenSetRepository.count.mockResolvedValue(7);
       mockGoldenSetRepository.findAll.mockResolvedValue([goldenSetRow]);
@@ -192,7 +192,7 @@ describe('EvalService', () => {
     });
   });
 
-  describe('getGoldenSet (TASK-419 item 1)', () => {
+  describe('getGoldenSet (item 1)', () => {
     it('returns the mapped set when found for the tenant', async () => {
       mockGoldenSetRepository.findAll.mockResolvedValue([goldenSetRow]);
 
@@ -210,7 +210,7 @@ describe('EvalService', () => {
     });
   });
 
-  describe('listGoldenCases (TASK-419 item 1)', () => {
+  describe('listGoldenCases (item 1)', () => {
     it('lists PHI-SAFE case metadata (never transcript/referenceNote) for an existing set', async () => {
       mockGoldenSetRepository.findAll.mockResolvedValue([goldenSetRow]);
       mockGoldenCaseRepository.count.mockResolvedValue(1);
@@ -241,7 +241,7 @@ describe('EvalService', () => {
     });
   });
 
-  describe('addGoldenSet (TASK-419 item 1)', () => {
+  describe('addGoldenSet (item 1)', () => {
     it('creates the set and returns the response projection (not the entity)', async () => {
       const result = await service.addGoldenSet({ tenantId: 'tenant-1', name: 'GI golden set', description: 'gold pairs' });
 
@@ -252,7 +252,7 @@ describe('EvalService', () => {
     });
   });
 
-  describe('addGoldenCase (TASK-419 item 1)', () => {
+  describe('addGoldenCase (item 1)', () => {
     it('verifies the parent set exists, creates the case, and returns PHI-safe metadata only', async () => {
       mockGoldenSetRepository.findAll.mockResolvedValue([goldenSetRow]);
 

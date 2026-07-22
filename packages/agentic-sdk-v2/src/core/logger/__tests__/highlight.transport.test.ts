@@ -342,7 +342,7 @@ describe('HighlightTransport', () => {
   //   3. config.projectId is a non-empty string (DSN present)
   // If any gate fails: NO init, NO log, NO queueing — fail-closed.
   // =========================================================================
-  describe('TASK-266 W0-2: gated activation', () => {
+  describe('gated activation', () => {
     const originalNodeEnv = process.env.NODE_ENV;
 
     afterEach(() => {

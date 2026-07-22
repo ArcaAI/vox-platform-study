@@ -266,7 +266,7 @@ describe('StreamingSessionManager', () => {
     // set, its ORIGIN wins over baseUrl for the WS URL.
     // -------------------------------------------------------------------
 
-    it('TASK-431: uses the ApiConfig.wsUrl origin when it differs from baseUrl (BFF REST + direct gateway WS)', async () => {
+    it('uses the ApiConfig.wsUrl origin when it differs from baseUrl (BFF REST + direct gateway WS)', async () => {
       const bffClient = new AgenticClient(
         { baseUrl: 'http://localhost:5176/api/hope', wsUrl: 'http://localhost:8868' },
         mockLogger,
@@ -282,7 +282,7 @@ describe('StreamingSessionManager', () => {
       expect(wsUrl).not.toContain('5176');
     });
 
-    it('TASK-431: normalizes an https wsUrl to wss and keeps an explicit wss wsUrl as-is', async () => {
+    it('normalizes an https wsUrl to wss and keeps an explicit wss wsUrl as-is', async () => {
       const httpsClient = new AgenticClient(
         { baseUrl: 'http://localhost:5176/api/hope', wsUrl: 'https://gateway.example.com' },
         mockLogger,
@@ -344,7 +344,7 @@ describe('StreamingSessionManager', () => {
     // with `connect(url)` and no options), so the active tenant id MUST ride
     // in the URL for that flow to keep working.
     // -------------------------------------------------------------------
-    describe('TASK-320 B5 — tenant claim in the URL', () => {
+    describe('tenant claim in the URL', () => {
       it('appends the active tenantId so the default-on WS guard can resolve a claim', async () => {
         apiClient.updateTenantId('tenant-xyz');
         mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
@@ -557,7 +557,7 @@ describe('StreamingSessionManager', () => {
   // Server-side session cleanup
   // =========================================================================
 
-  describe('BUG-13: closeSession should notify the backend', () => {
+  describe('closeSession should notify the backend', () => {
     it('should DELETE the session on the server when closing an active session', async () => {
       const sessionResponse: StreamingSessionResponse = {
         sessionId: 'session-cleanup',

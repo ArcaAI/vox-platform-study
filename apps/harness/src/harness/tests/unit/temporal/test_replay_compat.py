@@ -34,7 +34,7 @@ def _history(name: str) -> WorkflowHistory:
 
 class TestReplayCompatibility:
     @pytest.mark.asyncio
-    async def test_pre_task345_history_replays_on_current_definition(self):
+    async def test_pre_progress_feed_history_replays_on_current_definition(self):
         """In-flight executions started BEFORE the progress feed must survive deploy.
 
         The fixture history was recorded by the definition that predates the progress
@@ -50,7 +50,7 @@ class TestReplayCompatibility:
         await replayer.replay_workflow(_history("doc_workflow_pre_task345_history"))
 
     @pytest.mark.asyncio
-    async def test_task345_history_replays_on_current_definition(self):
+    async def test_progress_feed_history_replays_on_current_definition(self):
         """Forward guard: current-era executions must survive FUTURE deploys.
 
         The fixture history was recorded by the definition with the progress feed
@@ -66,7 +66,7 @@ class TestReplayCompatibility:
         await replayer.replay_workflow(_history("doc_workflow_task345_history"))
 
     @pytest.mark.asyncio
-    async def test_post_task348_history_replays_on_current_definition(self):
+    async def test_post_failure_terminal_history_replays_on_current_definition(self):
         """Forward guard for the CURRENT (failure-terminal) era — incl. the
         heartbeat_timeout addition.
 
@@ -91,7 +91,7 @@ class TestReplayCompatibility:
         await replayer.replay_workflow(_history("doc_workflow_post_task348_history"))
 
     @pytest.mark.asyncio
-    async def test_post_task355_optimistic_history_replays_on_current_definition(self):
+    async def test_post_optimistic_delivery_history_replays_on_current_definition(self):
         """Forward guard for the OPTIMISTIC-delivery era.
 
         The fixture is a happy-path history recorded with the optimistic flag ON, so
@@ -114,7 +114,7 @@ class TestReplayCompatibility:
         await replayer.replay_workflow(_history("doc_workflow_post_task355_history"))
 
     @pytest.mark.asyncio
-    async def test_post_task355_regen_history_replays_on_current_definition(self):
+    async def test_post_assurance_signals_regen_history_replays_on_current_definition(self):
         """Forward guard for the Slice-4b (assurance-signals) era.
 
         The fixture is a regen-if-untouched history recorded with the optimistic flag
@@ -142,7 +142,7 @@ class TestReplayCompatibility:
         await replayer.replay_workflow(_history("doc_workflow_post_task355_regen_history"))
 
     @pytest.mark.asyncio
-    async def test_post_task458_gate_abandon_history_replays_on_current_definition(self):
+    async def test_post_gate_terminal_abandon_history_replays_on_current_definition(self):
         """Forward guard for the gate TERMINAL-ABANDON era.
 
         The fixture is a never-signed gate that escalates to its terminal bound and
@@ -164,7 +164,7 @@ class TestReplayCompatibility:
         await replayer.replay_workflow(_history("doc_workflow_post_task458_gate_abandon_history"))
 
     @pytest.mark.asyncio
-    async def test_post_task458_edit_cap_history_replays_on_current_definition(self):
+    async def test_post_edit_rerun_cap_history_replays_on_current_definition(self):
         """Forward guard for the edit-rerun-CAP era.
 
         The fixture is an optimistic run with clinician edits on TWO assurance passes and
@@ -185,7 +185,7 @@ class TestReplayCompatibility:
         await replayer.replay_workflow(_history("doc_workflow_post_task458_edit_cap_history"))
 
     @pytest.mark.asyncio
-    async def test_post_task481_retraction_history_replays_on_current_definition(self):
+    async def test_post_optimistic_retraction_history_replays_on_current_definition(self):
         """Forward guard for the optimistic-delivery RETRACTION era.
 
         The fixture is an optimistic run whose post-delivery assurance FLAGs (UNSAFE), so the
@@ -209,7 +209,7 @@ class TestReplayCompatibility:
         await replayer.replay_workflow(_history("doc_workflow_post_task481_retraction_history"))
 
     @pytest.mark.asyncio
-    async def test_post_task483_claim_check_history_replays_on_current_definition(self):
+    async def test_post_claim_check_history_replays_on_current_definition(self):
         """Forward + backward guard for the claim-check (out-of-band payload) era.
 
         The fixture is a happy-path history recorded with the ``generate`` + ``assemble_prompt``

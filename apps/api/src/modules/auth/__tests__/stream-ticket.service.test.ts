@@ -152,7 +152,7 @@ describe('StreamTicketService', () => {
   });
 
   // ─── impersonatedBy ───────────────────────────────────────────────────────
-  describe('impersonatedBy propagation (TASK-295 SEC-A5-6)', () => {
+  describe('impersonatedBy propagation', () => {
     it('persists impersonatedBy on the stored ticket when supplied at issue time', async () => {
       const issued = await service.issueTicket({
         userId: 'doctor-001',

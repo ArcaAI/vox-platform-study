@@ -174,7 +174,7 @@ describe('LocalSpeakerDiarizer', () => {
   });
 
   // Reserved-speaker slot for the enrolled doctor.
-  describe('reservedSpeakerId (TASK-296 C-2)', () => {
+  describe('reservedSpeakerId', () => {
     it('pins the FIRST allocated speaker slot to reservedSpeakerId when provided', () => {
       const diarizer = new LocalSpeakerDiarizer({
         enabled: true,

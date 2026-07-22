@@ -4,7 +4,7 @@ import { resolveEntitlements, UNGATED_ENTITLEMENTS } from '../resolve-entitlemen
 import { GIB, PLAN_ENTITLEMENT_DEFAULTS } from '../entitlements.constants';
 
 describe('resolveEntitlements', () => {
-  describe('Q3 — null plan → ungated-legacy', () => {
+  describe('null plan → ungated-legacy', () => {
     it('resolves a null plan to the ungated snapshot (unlimited, all features on)', () => {
       const r = resolveEntitlements(null);
       expect(r.gated).toBe(false);
@@ -40,7 +40,7 @@ describe('resolveEntitlements', () => {
       expect(r.limits.maxAsrPipelines).toBe(d.maxAsrPipelines);
     });
 
-    it('TRIAL mirrors PRO exactly (Q4)', () => {
+    it('TRIAL mirrors PRO exactly', () => {
       const trial = resolveEntitlements(TenantPlan.TRIAL);
       const pro = resolveEntitlements(TenantPlan.PRO);
       expect(trial.limits).toEqual(pro.limits);

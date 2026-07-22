@@ -81,7 +81,7 @@ function buildService() {
   );
 }
 
-describe('UserService — TASK-402 password hashing on the CRUD paths', () => {
+describe('UserService — password hashing on the CRUD paths', () => {
   let service: UserService;
 
   beforeEach(() => {

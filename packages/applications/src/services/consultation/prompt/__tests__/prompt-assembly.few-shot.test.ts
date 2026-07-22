@@ -64,7 +64,7 @@ const assemble = (service: { assemble: (p: unknown) => Promise<{ userPrompt: str
     conversationLanguage: 'en',
   });
 
-describe('PromptAssemblyService — few-shot exemplars (TASK-533 B6)', () => {
+describe('PromptAssemblyService — few-shot exemplars', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockPromptResolutionService.resolve.mockResolvedValue({ promptId: 'template-fewshot', resolvedFrom: 'default' });

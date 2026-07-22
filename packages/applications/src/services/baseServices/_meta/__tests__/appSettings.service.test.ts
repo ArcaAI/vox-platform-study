@@ -52,6 +52,20 @@ vi.mock('@arcaai/domains', () => ({
         ARCHIVED: 'ARCHIVED',
         DELETED: 'DELETED',
     },
+    // The `@OnEvent(SysEventType.ResourceUpdated)` sys-event cache-invalidation
+    // subscriber evaluates these at class-definition (import) time, so the
+    // module-level mock must supply them even though this legacy suite never
+    // exercises the subscriber directly.
+    SysEventType: {
+        ResourceCreated: 'SysEvent.ResourceCreated',
+        ResourceUpdated: 'SysEvent.ResourceUpdated',
+        ResourceDeleted: 'SysEvent.ResourceDeleted',
+        ResourceViewed: 'SysEvent.ResourceViewed',
+        ResourceArchived: 'SysEvent.ResourceArchived',
+    },
+    ResourceType: {
+        GlobalSetting: 'GlobalSetting',
+    },
 }));
 
 // Mock cron - external scheduling boundary

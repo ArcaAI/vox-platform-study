@@ -44,7 +44,7 @@ const sampleRow = (overrides: Partial<PromptTemplate> = {}): PromptTemplate =>
     ...overrides,
   } as PromptTemplate);
 
-describe('PromptTemplateEntityMapper — test-field round-trip (TASK-328 A4)', () => {
+describe('PromptTemplateEntityMapper — test-field round-trip', () => {
   const mapper = new PromptTemplateEntityMapper();
 
   it('toDomainEntity carries the non-PHI test fields from the database row', () => {

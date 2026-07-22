@@ -170,5 +170,6 @@ packages/ui/.ds-bundle-entry.tsx
 .design-sync/node_modules
 .design-sync/*.log
 .design-sync/CLOSEOUT-TODO.md
+.design-sync/upload-chunks/
 .ds-sync/
 ds-bundle/

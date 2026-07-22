@@ -388,7 +388,7 @@ describe('UserPreferencesService', () => {
     // backward-compatible: when a tenant has no isDefault pipeline we fall back
     // to the existing GlobalSetting behaviour, and the per-user admin override
     // still wins over everything.
-    describe('tenant isDefault pipeline reconciliation (Q2)', () => {
+    describe('tenant isDefault pipeline reconciliation', () => {
         it('should prefer the tenant isDefault pipeline over the GlobalSetting default', async () => {
             mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([
                 createMockEntity({ key: 'workflowMode', value: 'remote' }),
@@ -480,7 +480,7 @@ describe('UserPreferencesService', () => {
     // resolved SERVER-SIDE in getPreferences(), mirroring the remoteConfig
     // cascade. Precedence: locked ⇒ tenant default wins (user ignored); unlocked
     // ⇒ doctor workflowMode overrides; otherwise fall back to the tenant default.
-    describe('effective transcription mode (TASK-356)', () => {
+    describe('effective transcription mode', () => {
         const withWorkflowMode = (mode: 'local' | 'remote') =>
             mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([
                 createMockEntity({ key: 'workflowMode', value: mode }),

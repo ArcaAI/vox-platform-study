@@ -110,7 +110,7 @@ const build = (m: ReturnType<typeof makeMocks>, configResolver?: unknown) =>
     configResolver as any, // configResolver
   );
 
-describe('SummaryService — DNA edit-capture (TASK-356 Phase 6)', () => {
+describe('SummaryService — DNA edit-capture (Phase 6)', () => {
   let m: ReturnType<typeof makeMocks>;
   let service: SummaryService;
 

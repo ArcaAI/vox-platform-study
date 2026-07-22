@@ -171,7 +171,7 @@ describe('EntitlementsScreen', () => {
         await waitFor(() => expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('true'));
     });
 
-    it('caps the feature badges at two with a +N overflow on a single line (TASK-429)', async () => {
+    it('caps the feature badges at two with a +N overflow on a single line', async () => {
         stubEntitlements();
         renderWithProviders(<EntitlementsScreen />);
 

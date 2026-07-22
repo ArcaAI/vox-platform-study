@@ -28,7 +28,7 @@ vi.mock('../../../../common/unitsOfWork/core', () => ({ CoreUnitOfWorkService: v
 
 const makeUow = (delegateByModel: Record<string, any>) => ({ getDatabaseService: () => delegateByModel });
 
-describe('ConsultationRepository.findCreatedInRange (TASK-414)', () => {
+describe('ConsultationRepository.findCreatedInRange', () => {
   let delegate: any;
   let repo: any;
 
@@ -69,7 +69,7 @@ describe('ConsultationRepository.findCreatedInRange (TASK-414)', () => {
     });
   });
 
-  it('propagates delegate errors (no swallow — mirrors the pre-TASK-414 service behaviour)', async () => {
+  it('propagates delegate errors (no swallow — mirrors the original service behaviour)', async () => {
     delegate.findMany.mockRejectedValue(new Error('boom'));
 
     await expect(repo.findCreatedInRange(rangeStart, rangeEnd, 'tenant-1')).rejects.toThrow('boom');

@@ -13,7 +13,7 @@ import { SummaryMeta } from '../../../../models/generated/core/SummaryMetaModel'
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
-describe('SummaryMetaFactory — promptResolvedFrom/resolvedPromptId (TASK-331 F4)', () => {
+describe('SummaryMetaFactory — promptResolvedFrom/resolvedPromptId', () => {
   it('threads promptResolvedFrom/resolvedPromptId onto the created entity', () => {
     const entity = SummaryMetaFactory.CreateSummaryMeta({
       tenantId: TENANT_ID,
@@ -37,7 +37,7 @@ describe('SummaryMetaFactory — promptResolvedFrom/resolvedPromptId (TASK-331 F
   });
 });
 
-describe('SummaryMetaEntityMapper — promptResolvedFrom/resolvedPromptId round-trip (TASK-331 F4)', () => {
+describe('SummaryMetaEntityMapper — promptResolvedFrom/resolvedPromptId round-trip', () => {
   const mapper = new SummaryMetaEntityMapper();
 
   it('toPersistence carries promptResolvedFrom/resolvedPromptId to the data model', () => {

@@ -11,7 +11,7 @@ import {
   validateUiDataGridValue,
 } from '../userSettings.namespaces';
 
-describe('TASK-372 D8 — user-settings namespace registry', () => {
+describe('user-settings namespace registry', () => {
   it('registers ui.data-grid alongside the existing SDK and admin namespaces', () => {
     expect(USER_SETTINGS_NAMESPACES.UI_DATA_GRID).toBe('ui.data-grid');
     expect(USER_SETTINGS_NAMESPACES.SDK).toBe('arcaai-sdk');
@@ -34,7 +34,7 @@ describe('TASK-372 D8 — user-settings namespace registry', () => {
 // (item 1 backend) — the `ui.data-grid` round-trip guard is now a
 // single shared validator so BOTH the self-service controller and the service
 // layer (used by the admin path) enforce the same JSON + byte-cap contract.
-describe('TASK-375 D8 — validateUiDataGridValue', () => {
+describe('validateUiDataGridValue', () => {
   it('accepts a valid small JSON layout value', () => {
     const layout = JSON.stringify({ columnOrder: ['a', 'b'], density: 'compact' });
     expect(() => validateUiDataGridValue(layout)).not.toThrow();

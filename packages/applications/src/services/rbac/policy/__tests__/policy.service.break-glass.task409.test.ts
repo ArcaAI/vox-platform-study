@@ -117,7 +117,7 @@ async function expectStatus(promise: Promise<unknown>, status: number) {
   await expect(promise).rejects.toSatisfy((err: unknown) => err instanceof HttpException && err.getStatus() === status);
 }
 
-describe('TASK-409 — PolicyService protected-set hardening (isProtected OR name)', () => {
+describe('PolicyService protected-set hardening (isProtected OR name)', () => {
   let mocks: ReturnType<typeof makeMocks>;
   let service: PolicyService;
 
@@ -161,7 +161,7 @@ describe('TASK-409 — PolicyService protected-set hardening (isProtected OR nam
   });
 });
 
-describe('TASK-409 — PolicyService break-glass on DELETE', () => {
+describe('PolicyService break-glass on DELETE', () => {
   let mocks: ReturnType<typeof makeMocks>;
   let service: PolicyService;
 
@@ -215,7 +215,7 @@ describe('TASK-409 — PolicyService break-glass on DELETE', () => {
   });
 });
 
-describe('TASK-409 — PolicyService break-glass on multi-role rule edits', () => {
+describe('PolicyService break-glass on multi-role rule edits', () => {
   let mocks: ReturnType<typeof makeMocks>;
   let service: PolicyService;
 
@@ -263,7 +263,7 @@ describe('TASK-409 — PolicyService break-glass on multi-role rule edits', () =
   });
 });
 
-describe('TASK-409 — isProtected is read-only through the service', () => {
+describe('isProtected is read-only through the service', () => {
   let mocks: ReturnType<typeof makeMocks>;
   let service: PolicyService;
 

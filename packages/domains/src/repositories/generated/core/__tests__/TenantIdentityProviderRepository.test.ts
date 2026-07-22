@@ -11,7 +11,7 @@ function makeRepo(): TenantIdentityProviderRepository {
   return new TenantIdentityProviderRepository(unitOfWork);
 }
 
-describe('TenantIdentityProviderRepository.findByTenantId (TASK-498)', () => {
+describe('TenantIdentityProviderRepository.findByTenantId', () => {
   it('pushes tenantId + resourceStatus into a single findAll query', async () => {
     const repo = makeRepo();
     const findAllSpy = vi.spyOn(repo, 'findAll').mockResolvedValue([] as never);
@@ -24,7 +24,7 @@ describe('TenantIdentityProviderRepository.findByTenantId (TASK-498)', () => {
   });
 });
 
-describe('TenantIdentityProviderRepository.findEnabledByTenantAndProtocol (TASK-498)', () => {
+describe('TenantIdentityProviderRepository.findEnabledByTenantAndProtocol', () => {
   it('pushes tenantId + protocol + ENABLED providerStatus into a single findFirst query', async () => {
     const repo = makeRepo();
     const findFirstSpy = vi.spyOn(repo, 'findFirst').mockResolvedValue(null as never);

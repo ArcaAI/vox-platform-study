@@ -121,7 +121,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('useArcaAudio — TASK-489 canonical speaker-label', () => {
+describe('useArcaAudio — canonical speaker-label', () => {
   it('maps the "unknown" diarizer sentinel to "Unknown speaker" (not the raw id)', async () => {
     const onTranscription = await captureOnTranscription();
 

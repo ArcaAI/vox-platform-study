@@ -179,7 +179,7 @@ describe('DnaWritingStyleAdminController', () => {
         // decorator parses `If-Match` into a number (or 428s when missing).
         // The controller folds that value onto the DTO's `expectedVersion`
         // (header wins) while preserving the admin `bypassOwnershipCheck`.
-        it('folds the If-Match header into expectedVersion (header wins) and preserves bypassOwnershipCheck (TASK-326 X7 / D-2)', async () => {
+        it('folds the If-Match header into expectedVersion (header wins) and preserves bypassOwnershipCheck', async () => {
             mockDnaService.updateDnaReport.mockResolvedValue(fakeReportEntity);
 
             await controller.update('report-1', { styleText: 'Updated', expectedVersion: 99 } as any, 7);
@@ -191,7 +191,7 @@ describe('DnaWritingStyleAdminController', () => {
             );
         });
 
-        it('forwards the body unchanged when no If-Match header resolved (expectedFromHeader undefined) (TASK-326 X7 / D-2)', async () => {
+        it('forwards the body unchanged when no If-Match header resolved (expectedFromHeader undefined)', async () => {
             const body = { styleText: 'Updated', changeReason: 'Edit', expectedVersion: 5 };
             mockDnaService.updateDnaReport.mockResolvedValue(fakeReportEntity);
 
@@ -356,7 +356,7 @@ describe('DnaWritingStyleAdminController', () => {
         });
     });
 
-    describe('GET /admin/dna-writing-styles/dashboard (TASK-328 A5)', () => {
+    describe('GET /admin/dna-writing-styles/dashboard', () => {
         it('passes the tenantId query param through to the service and returns the DTO', async () => {
             mockDnaService.getDashboard.mockResolvedValue(fakeDashboard);
 
@@ -459,7 +459,7 @@ describe('DnaWritingStyleAdminController', () => {
     // @StreamScope, so the console's `dna_job:<jobId>` tickets 401'd before this
     // declaration existed (the console shipped a labeled polling fallback).
     describe('GET /admin/dna-writing-styles/jobs/:jobId/stream (SSE)', () => {
-        it('declares @StreamScope({ namespace: "dna_job", param: "jobId" }) for ticket auth (TASK-419)', () => {
+        it('declares @StreamScope({ namespace: "dna_job", param: "jobId" }) for ticket auth', () => {
             const meta = Reflect.getMetadata(STREAM_SCOPE_METADATA, DnaWritingStyleAdminController.prototype.streamJobStatus);
             expect(meta).toEqual({ namespace: 'dna_job', param: 'jobId' });
         });

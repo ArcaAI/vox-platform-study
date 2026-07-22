@@ -41,7 +41,7 @@ vi.mock('../../store', () => {
 
 const CTX = 'ctx-9';
 
-describe('useArcaSummary — TASK-329 diff + tags', () => {
+describe('useArcaSummary — diff + tags', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

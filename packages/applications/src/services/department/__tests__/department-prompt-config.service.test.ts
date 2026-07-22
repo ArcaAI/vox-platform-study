@@ -51,7 +51,7 @@ const createMockDepartment = (overrides: Record<string, unknown> = {}) => ({
     ...overrides,
 });
 
-describe('DepartmentService.updatePromptConfig (TASK-294 DEF-C3)', () => {
+describe('DepartmentService.updatePromptConfig', () => {
     let service: DepartmentService;
 
     beforeEach(() => {
@@ -95,7 +95,7 @@ describe('DepartmentService.updatePromptConfig (TASK-294 DEF-C3)', () => {
         ).rejects.toThrow(NotFoundException);
     });
 
-    it('throws NotFoundException when department.tenantId !== caller tenantId (DEF-C3 — no existence leak)', async () => {
+    it('throws NotFoundException when department.tenantId !== caller tenantId (no existence leak)', async () => {
         const foreignDept = createMockDepartment({ id: 'dept-2', tenantId: 'tenant-OTHER' });
         mockDepartmentRepository.findById.mockResolvedValue(foreignDept);
 

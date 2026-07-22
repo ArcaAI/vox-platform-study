@@ -342,7 +342,7 @@ describe('useDnaStyle', () => {
         });
     });
 
-    describe('BUG-14: pollJobStatus timer cancellation on unmount', () => {
+    describe('pollJobStatus timer cancellation on unmount', () => {
         it('should stop polling when component unmounts', async () => {
             vi.useFakeTimers();
             let callCount = 0;
