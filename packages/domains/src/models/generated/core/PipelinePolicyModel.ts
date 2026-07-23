@@ -21,6 +21,7 @@ export class PipelinePolicy extends BaseTenantDataModel {
   public autoNerEnabled: boolean | null;
   public harnessEnabled: boolean | null;
   public dnaStyleEnabled: boolean | null;
+  public dnaRedactionEnabled: boolean | null;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
@@ -33,6 +34,7 @@ export class PipelinePolicy extends BaseTenantDataModel {
     this.autoNerEnabled = data.autoNerEnabled;
     this.harnessEnabled = data.harnessEnabled;
     this.dnaStyleEnabled = data.dnaStyleEnabled;
+    this.dnaRedactionEnabled = data.dnaRedactionEnabled;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;

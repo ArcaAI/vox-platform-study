@@ -7,6 +7,7 @@ import {
     getLiveSession,
     getWorkflow,
     listEvalRuns,
+    listGateEditExemplars,
     listLiveSessions,
     listWorkflows,
     signalWorkflow,
@@ -49,6 +50,7 @@ describe('harnessOpsKeys', () => {
         expect(harnessOpsKeys.workflow('wf-1')).not.toEqual(harnessOpsKeys.workflow('wf-2'));
         expect(harnessOpsKeys.liveSession('cons-1')).not.toEqual(harnessOpsKeys.liveSessions());
         expect(harnessOpsKeys.gateQueue()[0]).toBe('harness-ops');
+        expect(harnessOpsKeys.gateEditExemplars({ departmentId: 'd-1' })).not.toEqual(harnessOpsKeys.gateEditExemplars());
     });
 });
 
@@ -121,6 +123,18 @@ describe('harness-ops client — workflows', () => {
         const calls = installFetchMock();
         await getWorkflow('wf/with space');
         expect(calls[0].url).toBe('GET /api/hope/admin/harness/workflows/wf%2Fwith%20space'.replace('GET ', ''));
+    });
+});
+
+describe('harness-ops client — gate-edit exemplars', () => {
+    it('exports corpus candidates with department/quality-signal/limit filters', async () => {
+        const calls = installFetchMock();
+        await listGateEditExemplars();
+        await listGateEditExemplars({ departmentId: 'd-1', qualitySignal: 'HEAVILY_EDITED', limit: 20 });
+        expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
+            'GET /api/hope/admin/harness/gate-edit-exemplars',
+            'GET /api/hope/admin/harness/gate-edit-exemplars?departmentId=d-1&qualitySignal=HEAVILY_EDITED&limit=20',
+        ]);
     });
 });
 

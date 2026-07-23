@@ -295,6 +295,15 @@ model SummaryMeta {
   encryptedGuardrailDecisions Bytes?
   keyVersion                  Int?
 
+  // DNA redaction/rewrite audit (TASK-551). `redactionApplied` is a plaintext,
+  // queryable marker: the redaction transform ran and changed the note. The
+  // manifest DETAIL (rule ids, actions, spans, counts — NEVER removed PHI
+  // plaintext) is Vault-Transit (hope-phi) ciphertext, mirroring citationsMap;
+  // it shares the `keyVersion` above. Both nullable/additive: absent ⇒ no
+  // redaction ran (or a pre-TASK-551 history).
+  redactionApplied           Boolean?
+  encryptedRedactionManifest Bytes?
+
   // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

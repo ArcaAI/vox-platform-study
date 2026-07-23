@@ -19,6 +19,7 @@ import { DnaWritingStyleVersionRepository } from '../generated/core/DnaWritingSt
 import { KnowledgeChunkRepository } from '../generated/core/KnowledgeChunkRepository';
 import { NotificationRepository } from '../generated/core/NotificationRepository';
 import { PromptTemplateRepository } from '../generated/core/PromptTemplateRepository';
+import { SummaryMetaRepository } from '../generated/core/SummaryMetaRepository';
 
 import { TranscriptionJobEntity } from '../../entities/generated/core/TranscriptionJobEntity';
 import { GoldenCaseEntity } from '../../entities/generated/core/GoldenCaseEntity';
@@ -29,6 +30,8 @@ import { DnaWritingStyleVersionEntity } from '../../entities/generated/core/DnaW
 import { KnowledgeChunkEntity } from '../../entities/generated/core/KnowledgeChunkEntity';
 import { NotificationEntity } from '../../entities/generated/core/NotificationEntity';
 import { PromptTemplateEntity } from '../../entities/generated/core/PromptTemplateEntity';
+import { SummaryMetaEntity } from '../../entities/generated/core/SummaryMetaEntity';
+import { SummaryMetaEntityMapper } from '../../mappers/generated/core/SummaryMetaEntityMapper';
 
 import { TranscriptionJobEntityMapper } from '../../mappers/generated/core/TranscriptionJobEntityMapper';
 import { GoldenCaseEntityMapper } from '../../mappers/generated/core/GoldenCaseEntityMapper';
@@ -49,6 +52,7 @@ import '../generated/core/DnaWritingStyleVersionRepository.encryption';
 import '../generated/core/KnowledgeChunkRepository.encryption';
 import '../generated/core/NotificationRepository.encryption';
 import '../generated/core/PromptTemplateRepository.encryption';
+import '../generated/core/SummaryMetaRepository.encryption';
 
 const baseInit = {
   id: '01000000-0000-0000-0000-000000000001',
@@ -192,24 +196,38 @@ describe('DnaWritingStyleReportRepository encryption (Phase 3C)', () => {
       ...baseInit,
       reportData: { tone: 'concise' },
       styleText: 'prefers short sentences',
+      // TASK-551 — structured redaction rules encrypted alongside the style text.
+      redactionRules: { rules: [{ id: 'r1', type: 'remove', match: 'literal', pattern: 'employer' }] },
     } as any);
 
     await repo.encryptFieldsIntoEntity(entity, secrets);
+    // F-031 guard: the cipher MUST be invoked for the redaction rules (a writer
+    // that skipped it would silently drop the doctor's rules to a plaintext-less row).
+    expect(secrets.encrypt).toHaveBeenCalledTimes(3);
     expect(entity.encryptedReportData).toBeInstanceOf(Buffer);
     expect(entity.encryptedStyleText).toBeInstanceOf(Buffer);
+    expect(entity.encryptedRedactionRules).toBeInstanceOf(Buffer);
     expect(entity.keyVersion).toBe(7);
 
     const out = await repo.decryptFieldsFromEntity(entity, secrets);
     expect(out.reportData).toEqual({ tone: 'concise' });
     expect(out.styleText).toBe('prefers short sentences');
+    expect(out.redactionRules).toEqual({
+      rules: [{ id: 'r1', type: 'remove', match: 'literal', pattern: 'employer' }],
+    });
   });
 
   it('mapper preserves the ciphertext Buffer (Bytes-safe)', () => {
     const mapper = new DnaWritingStyleReportEntityMapper();
     const ct = Buffer.from('vault:v7:e30=', 'utf8');
-    const entity = new DnaWritingStyleReportEntity({ ...baseInit, encryptedReportData: ct } as any);
+    const entity = new DnaWritingStyleReportEntity({
+      ...baseInit,
+      encryptedReportData: ct,
+      encryptedRedactionRules: ct,
+    } as any);
     const back = mapper.toDomainEntity(mapper.toPersistence(entity));
     expect(Buffer.from(back.encryptedReportData as Uint8Array).equals(ct)).toBe(true);
+    expect(Buffer.from(back.encryptedRedactionRules as Uint8Array).equals(ct)).toBe(true);
   });
 });
 
@@ -221,16 +239,22 @@ describe('DnaWritingStyleVersionRepository encryption (Phase 3C)', () => {
       ...baseInit,
       reportData: { tone: 'formal' },
       styleText: 'uses passive voice',
+      redactionRules: { rules: [{ id: 'r1', type: 'rewrite', match: 'literal', pattern: 'Mr X', replacement: 'the patient' }] },
     } as any);
 
     await repo.encryptFieldsIntoEntity(entity, secrets);
+    expect(secrets.encrypt).toHaveBeenCalledTimes(3);
     expect(entity.encryptedReportData).toBeInstanceOf(Buffer);
     expect(entity.encryptedStyleText).toBeInstanceOf(Buffer);
+    expect(entity.encryptedRedactionRules).toBeInstanceOf(Buffer);
     expect(entity.keyVersion).toBe(7);
 
     const out = await repo.decryptFieldsFromEntity(entity, secrets);
     expect(out.reportData).toEqual({ tone: 'formal' });
     expect(out.styleText).toBe('uses passive voice');
+    expect(out.redactionRules).toEqual({
+      rules: [{ id: 'r1', type: 'rewrite', match: 'literal', pattern: 'Mr X', replacement: 'the patient' }],
+    });
   });
 });
 
@@ -302,5 +326,76 @@ describe('PromptTemplateRepository encryption (Phase 3C)', () => {
     const entity = new PromptTemplateEntity({ ...baseInit, encryptedLastTestOutput: ct } as any);
     const back = mapper.toDomainEntity(mapper.toPersistence(entity));
     expect(Buffer.from(back.encryptedLastTestOutput as Uint8Array).equals(ct)).toBe(true);
+  });
+});
+
+describe('SummaryMetaRepository encryption (Phase 3C) — TASK-551 redaction manifest', () => {
+  const summaryInit = {
+    ...baseInit,
+    contextItemId: '02000000-0000-0000-0000-000000000001',
+  };
+
+  it('encrypts citationsMap + guardrailDecisions + redactionManifest and round-trips', async () => {
+    const secrets = fakeSecrets();
+    const repo = repoOf(SummaryMetaRepository.prototype);
+    const entity = new SummaryMetaEntity({
+      ...summaryInit,
+      citationsMap: { claim1: ['seg-1'] },
+      guardrailDecisions: { safety: 'PASS' },
+      // TASK-551 audit manifest — spans + counts only, never removed PHI plaintext.
+      redactionManifest: {
+        applied: true,
+        total_hits: 2,
+        hits_by_rule: { 'r-employer': 2 },
+      },
+    } as any);
+
+    await repo.encryptFieldsIntoEntity(entity, secrets);
+    // F-031 guard: the cipher MUST be invoked for the redaction manifest (a writer
+    // that skipped it would silently drop the audit trail to a plaintext-less row).
+    expect(secrets.encrypt).toHaveBeenCalledTimes(3);
+    expect(entity.encryptedCitationsMap).toBeInstanceOf(Buffer);
+    expect(entity.encryptedGuardrailDecisions).toBeInstanceOf(Buffer);
+    expect(entity.encryptedRedactionManifest).toBeInstanceOf(Buffer);
+    expect(entity.keyVersion).toBe(7);
+
+    const out = await repo.decryptFieldsFromEntity(entity, secrets);
+    expect(out.redactionManifest).toEqual({
+      applied: true,
+      total_hits: 2,
+      hits_by_rule: { 'r-employer': 2 },
+    });
+  });
+
+  it('leaves encryptedRedactionManifest untouched when the transient plaintext is absent (finalize backfill no-clobber)', async () => {
+    const secrets = fakeSecrets();
+    const repo = repoOf(SummaryMetaRepository.prototype);
+    // Mirrors the finalize path: a reloaded entity carries the previously-persisted
+    // ciphertext but NOT the transient plaintext manifest; a re-encrypt on backfill
+    // must not overwrite/clear it.
+    const priorCiphertext = Buffer.from('vault:v7:existing', 'utf8');
+    const entity = new SummaryMetaEntity({
+      ...summaryInit,
+      citationsMap: { claim1: ['seg-1'] },
+      encryptedRedactionManifest: priorCiphertext,
+    } as any);
+
+    await repo.encryptFieldsIntoEntity(entity, secrets);
+    // Only citationsMap was re-encrypted; the manifest cipher was NOT invoked again.
+    expect(secrets.encrypt).toHaveBeenCalledTimes(1);
+    expect(Buffer.from(entity.encryptedRedactionManifest as Uint8Array).equals(priorCiphertext)).toBe(true);
+  });
+
+  it('mapper preserves the redaction-manifest ciphertext Buffer (Bytes-safe)', () => {
+    const mapper = new SummaryMetaEntityMapper();
+    const ct = Buffer.from('vault:v7:bWFuaWZlc3Q=', 'utf8');
+    const entity = new SummaryMetaEntity({
+      ...summaryInit,
+      encryptedRedactionManifest: ct,
+      redactionApplied: true,
+    } as any);
+    const back = mapper.toDomainEntity(mapper.toPersistence(entity));
+    expect(Buffer.from(back.encryptedRedactionManifest as Uint8Array).equals(ct)).toBe(true);
+    expect(back.redactionApplied).toBe(true);
   });
 });

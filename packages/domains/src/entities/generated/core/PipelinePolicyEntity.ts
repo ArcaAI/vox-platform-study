@@ -30,6 +30,7 @@ export interface IPipelinePolicyEntity extends IBaseTenantEntity {
   autoNerEnabled?: boolean | null;
   harnessEnabled?: boolean | null;
   dnaStyleEnabled?: boolean | null;
+  dnaRedactionEnabled?: boolean | null;
 }
 
 export class PipelinePolicyEntity extends BaseTenantEntity {
@@ -39,6 +40,7 @@ export class PipelinePolicyEntity extends BaseTenantEntity {
   private _autoNerEnabled?: IPipelinePolicyEntity['autoNerEnabled'];
   private _harnessEnabled?: IPipelinePolicyEntity['harnessEnabled'];
   private _dnaStyleEnabled?: IPipelinePolicyEntity['dnaStyleEnabled'];
+  private _dnaRedactionEnabled?: IPipelinePolicyEntity['dnaRedactionEnabled'];
 
   constructor(init: IPipelinePolicyEntity) {
     super(init);
@@ -48,6 +50,7 @@ export class PipelinePolicyEntity extends BaseTenantEntity {
     this._autoNerEnabled = init.autoNerEnabled;
     this._harnessEnabled = init.harnessEnabled;
     this._dnaStyleEnabled = init.dnaStyleEnabled;
+    this._dnaRedactionEnabled = init.dnaRedactionEnabled;
   }
 
   get scope(): IPipelinePolicyEntity['scope'] {
@@ -96,6 +99,14 @@ export class PipelinePolicyEntity extends BaseTenantEntity {
 
   set dnaStyleEnabled(value: IPipelinePolicyEntity['dnaStyleEnabled']) {
     this.setProperty('dnaStyleEnabled', value);
+  }
+
+  get dnaRedactionEnabled(): IPipelinePolicyEntity['dnaRedactionEnabled'] {
+    return this._dnaRedactionEnabled;
+  }
+
+  set dnaRedactionEnabled(value: IPipelinePolicyEntity['dnaRedactionEnabled']) {
+    this.setProperty('dnaRedactionEnabled', value);
   }
 
   /**

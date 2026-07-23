@@ -14,6 +14,7 @@ import type { HarnessAuditAction } from '../api';
 import { ChainIntegrityCard } from './chain-integrity-card';
 import { EditBurdenCard } from './edit-burden-card';
 import { EvalRunsPanel } from './eval-runs-panel';
+import { GateEditExemplarsPanel } from './gate-edit-exemplars-panel';
 import { GateQueueCard } from './gate-queue-card';
 import { GoldenSetsPanel } from './golden-sets-panel';
 
@@ -132,6 +133,9 @@ function ObservabilityBody() {
             edit-burden telemetry; both are PHI-safe metadata/derived scalars. */}
         <GoldenSetsPanel />
         <EditBurdenCard />
+        {/* GAP-A1 candidate stream — clinician approve-vs-edit signal, with the
+            "promote to golden case" affordance (TASK-549). */}
+        <GateEditExemplarsPanel />
       </div>
     </ScreenTemplate>
   );

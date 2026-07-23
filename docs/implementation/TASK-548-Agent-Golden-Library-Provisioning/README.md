@@ -1,6 +1,6 @@
 # TASK-548 — Agent Golden Library: Day-1 Departments + Agents per Tenant, Clone-on-Provision, Resync
 
-- **Status:** Review (Parts 1–4 ALL COMPLETE + gate-verified + runtime-verified against dev+test Postgres; HTTP e2e deferred — see §Implementation Summary)
+- **Status:** Review (Parts 1–4 ALL COMPLETE + gate-verified + runtime-verified against dev+test Postgres + **HTTP e2e 3/3 green** — see §Implementation Summary)
 - **Type:** feature (database seed + applications; small api)
 - **Parent:** [TASK-544 §5.3](../TASK-544-Agent-Platform-Concept/README.md) — U1; **OD-4: day-1 set ships as departments + agents** (creates org structure)
 - **Depends on:** TASK-546 (`DepartmentAgent` model incl. `sourceAgentTemplateSlug`/`templateLocked` columns)
@@ -249,16 +249,40 @@ gen-default  | isDefault=t | templateLocked=t | sourceAgentTemplateSlug=gen-defa
 # test DB (5433): 18 golden agents · 21 locked clones (18 Global + 3 ArcaAI) · 13 golden templates
 ```
 
-### e2e deferred (documented, not blocking)
+### HTTP e2e — RUN + GREEN against the live gateway
 
-An HTTP e2e for `POST admin/department-agents/resync` + a task-307-style cross-tenant spec was NOT run.
-Port 8868 is free and the test infra is up, but (a) the runtime data model + provisioning + resync anchors
-are already proven against two live Postgres DBs with psql (above), and (b) the endpoint's auth path is
-partly blocked by the **known TASK-546 gap** — the `manage:DepartmentAgent` CASL grant is not yet seeded
-into the running DB (the resync controller itself uses `manage:Tenant`, which global admins hold). The
-endpoint authorization metadata is unit-verified
-(`department-agent-resync.controller.test.ts`). Booting the full API (Vault/secrets warmup) for this
-marginal incremental proof was judged not worth the cost this session.
+`apps/api/tests/e2e/department-agent-resync.spec.ts` (mirrors the pipeline resync sibling),
+**3/3 passing** against the running dev API on 8868:
+
+```
+✓ agent resync — authorization › resyncing the SYSTEM tenant against itself is rejected (400)
+✓ agent resync — sweep + idempotency › a global admin sweeps every tenant and the sweep is idempotent
+✓ agent provisioning — a new tenant gets the golden library › creating a tenant provisions golden agents; resyncing it is then a no-op
+  3 passed
+```
+
+Live-probe evidence gathered while authoring the spec (curl against 8868, global-admin token):
+- **Part 2 end-to-end**: `POST /admin/tenants` (201) → the new tenant's `provisionTenantAgentCatalog` ran —
+  psql on the created tenant showed **18 agents / 18 locked / 18 defaults / 18 departments / 18 APPROVED
+  template snapshots**, every clone carrying `sourceAgentTemplateSlug` + `{"sourceTemplateVersionNumber":1}`.
+- **Part 3 sweep**: first sweep `{added:15, fastForwarded:0, skipped:21}` (converged the tenants that had
+  partial catalogs; the 21 seeded clones skipped as pristine/current), second sweep
+  `{added:0, fastForwarded:0, skipped:36}` — **idempotent**.
+- **Part 3 single-tenant** (v7-UUID tenant): `{added:0, fastForwarded:0, skipped:18}`.
+- **Auth**: tenant admin → `403 Missing permissions: manage:Tenant`; SYSTEM-self → `400 Cannot resync the
+  SYSTEM tenant against itself`. (The main `DepartmentAgent` list/CRUD `@CanManage('DepartmentAgent')`
+  resolves fine for a global admin — the earlier-suspected TASK-546 CASL gap does not block this surface.)
+
+### Second bug caught by the live e2e — `@IsUUID()` too strict for reserved tenant ids
+
+The single-tenant path's DTO used `@IsUUID()`, which **rejects the reserved platform tenant ids**
+(`00000000-…`, `50000000-…`) — they are deliberately NOT RFC-4122-versioned UUIDs (version nibble `0`), so
+resyncing the seed tenants (Global, ArcaAI) 400'd with "tenantId must be a UUID". Real tenants use uuid-v7
+and passed, which is why unit mocks never saw it. Fixed: `ResyncDepartmentAgentsRequest.tenantId` is now
+`@IsString()` (the pipeline resync sibling's `:id` path param is likewise an unvalidated string; the
+service rejects the SYSTEM tenant explicitly). The running API is a static build and can't hot-reload the
+fix, so the seed-tenant single-id path is proven in code + unit tests; the e2e uses a uuid-v7 throwaway
+tenant, which exercises the same path.
 
 ## Change History
 
@@ -287,5 +311,17 @@ marginal incremental proof was judged not worth the cost this session.
   seeding **both** dev (5432) and test (5433) Postgres — 18 golden agents, 21 locked clones, 13 golden
   templates, correct lineage metadata, idempotent re-run. **Caught + fixed a real `(tenantId,name)`
   unique-constraint collision** (six departments share the catch-all template) that unit mocks could not
-  surface — per-agent snapshots now named after the agent. Status → Review; STAGED not committed. HTTP e2e
-  deferred (rationale above).
+  surface — per-agent snapshots now named after the agent. Status → Review; STAGED not committed.
+- 2026-07-23 — **HTTP e2e run GREEN (3/3)** against the live gateway (`department-agent-resync.spec.ts`):
+  SYSTEM-self rejection, sweep idempotency, and tenant-create→provision→resync-no-op. Live curl probes
+  additionally proved Part 2 provisioning (created tenant psql-verified: 18 locked golden clones with
+  lineage) and Part 3 sweep convergence (`{added:15,skipped:21}` → idempotent `{added:0,skipped:36}`).
+  **Caught a second bug**: the resync DTO's `@IsUUID()` rejected the reserved platform tenant ids
+  (`00000000-…`/`50000000-…` are non-RFC-versioned) — relaxed to `@IsString()` to match the pipeline
+  sibling's unvalidated `:id`. Unit suites re-green after the DTO change.
+
+### 2026-07-23 — Runtime proof (RUNTIME-PROOFS agent) — PASS (deferred e2e now GREEN)
+Test DB (5433) re-seeded after owner reset: 18 SYSTEM golden `DepartmentAgent` rows, `manage:DepartmentAgent` grant present in `tenant-full-access` + `system-full-access(manage:all)`. e2e run against a 2nd API instance (warm dist, .env.test, :8878 — 8868 held by another session, NOT killed):
+- `department-agent-resync.spec.ts` **3/3 PASS** (SYSTEM self-resync→400; global-admin sweep idempotent; new-tenant provisioning skips ≥18 golden agents).
+- Cross-tenant family (pipeline-clone-resync + ai-task-defaults + ai-provider-connections) **25/25 PASS**.
+- **CASL grant gap RESOLVED by reseed — NO code fix needed.** Runtime grant proof (:8878): tenant_admin(manage:DepartmentAgent)→200, doctor(no grant)→403, super_admin→400 (post-authz, missing tenant ctx). Grant seeded AND applied.

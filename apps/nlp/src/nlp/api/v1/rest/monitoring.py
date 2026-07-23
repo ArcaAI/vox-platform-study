@@ -15,12 +15,7 @@ from fastapi.responses import JSONResponse
 
 from nlp.core.config import settings
 from nlp.core.logging import get_logger
-from nlp.dependencies import (
-    get_medical_suggester,
-    get_text_classifier,
-    get_text_corrector,
-    get_token_classifier,
-)
+from nlp.dependencies import get_text_corrector, model_cache_snapshot
 
 logger = get_logger(__name__)
 
@@ -30,36 +25,40 @@ _SERVICE_NAME = settings.service.name
 _SERVICE_VERSION = settings.service.version
 _startup_time = time.monotonic()
 
-_MODELS = {
-    "text_classifier": get_text_classifier,
-    "token_classifier": get_token_classifier,
-    "text_corrector": get_text_corrector,
-    "medical_suggester": get_medical_suggester,
-}
-
 
 @router.get("/health")
 async def health_check(request: Request) -> dict[str, Any]:
-    """Detailed health check with per-model component status."""
+    """Detailed health check with per-model component status.
+
+    ML models load lazily through per-request caches, so a component that holds
+    no weights is reported as `lazy` (never `unhealthy`) and never degrades the
+    overall status — mirroring the guardrail service's GLiNER contract. Crucially
+    the cache-backed components read their state from the SAME ModelCache that
+    serves inference, not from the `get_*` singletons that REST inference never
+    touches (BUG-010).
+    """
     checks: dict[str, dict[str, Any]] = {}
-    overall = "healthy"
 
-    for name, get_svc in _MODELS.items():
-        start = time.monotonic()
-        try:
-            svc = get_svc()
-            loaded = getattr(svc, "is_initialized", False)
-            status = "healthy" if loaded else "unhealthy"
-        except Exception:
-            status = "unhealthy"
-        duration_ms = round((time.monotonic() - start) * 1000, 2)
-        checks[name] = {"status": status, "duration_ms": duration_ms}
+    # Cache-backed components: resident model ids come from the live cache.
+    for name, loaded_models in model_cache_snapshot().items():
+        checks[name] = {
+            "status": "lazy",
+            "loaded": bool(loaded_models),
+            "loaded_models": loaded_models,
+        }
 
-        if status == "unhealthy":
-            overall = "unhealthy" if overall == "unhealthy" else "degraded"
+    # The text corrector is a genuine process singleton (SymSpell dictionaries),
+    # loaded lazily on first `/correct`. Report its load state without degrading.
+    corrector = get_text_corrector()
+    checks["text_corrector"] = {
+        "status": "lazy",
+        "loaded": bool(getattr(corrector, "is_initialized", False)),
+    }
 
+    # A booted process with lazy components is healthy. This endpoint has no hard
+    # dependencies whose failure would degrade it.
     payload: dict[str, Any] = {
-        "status": overall,
+        "status": "healthy",
         "service": _SERVICE_NAME,
         "version": _SERVICE_VERSION,
         "uptime_seconds": round(time.monotonic() - _startup_time, 1),
@@ -85,17 +84,19 @@ async def liveness() -> dict[str, str]:
 
 
 @router.get("/health/ready")
-async def readiness() -> Any:
-    """Kubernetes readiness probe — returns 200 only if at least one model is loaded."""
-    for _name, get_svc in _MODELS.items():
-        try:
-            svc = get_svc()
-            if getattr(svc, "is_initialized", False):
-                return {"status": "healthy"}
-        except Exception:
-            continue
+async def readiness(request: Request) -> Any:
+    """Kubernetes readiness probe.
+
+    Readiness does NOT gate on lazy model loading — models load on first request,
+    so requiring a warmed model would leave a fully-functional worker permanently
+    unready and pulled from the gateway/k8s pool (BUG-010). The process is ready
+    once startup has completed (the control-plane client is constructed in the
+    lifespan); it lazy-loads weights on demand thereafter.
+    """
+    if getattr(request.app.state, "effective_config_client", None) is not None:
+        return {"status": "healthy"}
 
     return JSONResponse(
         status_code=503,
-        content={"status": "unhealthy", "message": "No models loaded"},
+        content={"status": "unhealthy", "message": "Service is starting"},
     )

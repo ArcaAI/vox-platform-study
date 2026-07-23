@@ -406,6 +406,22 @@ describe('HarnessAdminController — golden sets', () => {
     expect(evalService.addGoldenSet).not.toHaveBeenCalled();
   });
 
+  // TASK-549 tail: GoldenSet.departmentId on the create lane — the body field
+  // threads straight through to the service, which owns the department/tenant
+  // validation (404-over-403; covered at the service-unit level).
+  it('createGoldenSet threads an optional departmentId through to the service', async () => {
+    const { controller, evalService } = makeController({ user: { roles: ['TENANT_ADMIN'], tenantId: 't1', id: 'user-9' } as never, tenantId: 't1' });
+    await controller.createGoldenSet({ name: 'GI set', departmentId: 'dept-1' } as never, {});
+    expect(evalService.addGoldenSet).toHaveBeenCalledWith({
+      tenantId: 't1',
+      name: 'GI set',
+      description: undefined,
+      pinnedVersion: undefined,
+      departmentId: 'dept-1',
+      createdBy: 'user-9',
+    });
+  });
+
   it('createGoldenCase forwards the parent set id + PHI payload under the resolved tenant', async () => {
     const { controller, evalService } = makeController({ user: { roles: ['TENANT_ADMIN'], tenantId: 't1', id: 'user-9' } as never, tenantId: 't1' });
     await controller.createGoldenCase('set-1', { transcript: 't', referenceNote: 'r', label: 'a' } as never, {});

@@ -16,6 +16,7 @@ export class DnaWritingStyleVersion extends BaseTenantDataModel {
   // Vault-Transit ciphertext columns + shared key version.
   public encryptedReportData: Uint8Array | null;
   public encryptedStyleText: Uint8Array | null;
+  public encryptedRedactionRules: Uint8Array | null;
   public keyVersion: number | null;
   public changeReason: string | null;
   public changedBy: string | null;
@@ -28,6 +29,7 @@ export class DnaWritingStyleVersion extends BaseTenantDataModel {
     this.versionNumber = data.versionNumber;
     this.encryptedReportData = data.encryptedReportData;
     this.encryptedStyleText = data.encryptedStyleText;
+    this.encryptedRedactionRules = data.encryptedRedactionRules;
     this.keyVersion = data.keyVersion;
     this.changeReason = data.changeReason;
     this.changedBy = data.changedBy;

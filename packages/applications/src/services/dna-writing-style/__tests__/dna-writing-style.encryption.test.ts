@@ -117,6 +117,41 @@ describe('DnaWritingStyleService.updateDnaReport — field encryption', () => {
     );
   });
 
+  it('TASK-551: a redaction-rules edit validates, sets the entity, encrypts, and snapshots the version', async () => {
+    const { service, mockReportRepo, mockVersionRepo } = buildService(true);
+    const report = reportEntity();
+    mockReportRepo.findById.mockResolvedValue(report);
+    mockReportRepo.updateWithVersion.mockResolvedValue(report);
+
+    await service.updateDnaReport('report-1', {
+      redactionRules: { rules: [{ id: 'r1', type: 'remove', match: 'literal', pattern: 'employer' }] },
+    } as never);
+
+    // Rule set is a content change ⇒ both the report row and the version snapshot
+    // are re-encrypted (the F-031 cipher-called guard at the service layer).
+    expect(mockReportRepo.encryptFieldsIntoEntity).toHaveBeenCalledTimes(1);
+    expect(mockVersionRepo.encryptFieldsIntoEntity).toHaveBeenCalledTimes(1);
+    // The normalized rule set is set on the entity before encryption.
+    expect((report as { redactionRules?: unknown }).redactionRules).toEqual({
+      rules: [{ id: 'r1', type: 'remove', match: 'literal', pattern: 'employer' }],
+    });
+    // A new version row was created carrying the snapshot.
+    expect(mockVersionRepo.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('TASK-551: a malformed rule set is rejected before any write', async () => {
+    const { service, mockReportRepo, mockVersionRepo } = buildService(true);
+    const report = reportEntity();
+    mockReportRepo.findById.mockResolvedValue(report);
+
+    await expect(
+      service.updateDnaReport('report-1', { redactionRules: { rules: [{ id: 'r1', type: 'delete', match: 'literal', pattern: 'x' }] } } as never),
+    ).rejects.toThrow();
+
+    expect(mockReportRepo.updateWithVersion).not.toHaveBeenCalled();
+    expect(mockVersionRepo.create).not.toHaveBeenCalled();
+  });
+
   it('does NOT encrypt on a status-only edit (no content change)', async () => {
     const { service, mockReportRepo, mockVersionRepo } = buildService(true);
     const report = reportEntity();

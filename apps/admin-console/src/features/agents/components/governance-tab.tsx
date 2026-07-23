@@ -20,7 +20,8 @@
  */
 
 import { useId, useState, type FormEvent } from 'react';
-import { IconCircleCheck, IconFileText, IconSearch } from '@tabler/icons-react';
+import Link from 'next/link';
+import { IconCircleCheck, IconFileText, IconFlask, IconPlayerPlay, IconSearch } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
@@ -35,7 +36,7 @@ import { formatDateTime } from '@/shared/format';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
-import { useApproveTemplate, useTemplate, useTemplates } from '../api';
+import { useAgentEvalRuns, useApproveTemplate, useDepartmentAgents, useEvalGoldenSets, useRunGoldenSetEval, useTemplate, useTemplates } from '../api';
 import type { PromptTemplate, PromptTemplateStatus } from '../api';
 import { VersionsPanel } from './versions-panel';
 
@@ -111,6 +112,164 @@ function GovernanceList({ selectedId, onSelect }: { selectedId: string | null; o
                     ))}
                 </ul>
             )}
+        </Card>
+    );
+}
+
+function evalRunStatusVariant(status: string | null): 'default' | 'secondary' | 'destructive' | 'outline' {
+    if (status === 'COMPLETED') return 'default';
+    if (status === 'FAILED') return 'destructive';
+    return 'outline';
+}
+
+/** How the run was triggered (EvalRun.triggerType) — MANUAL (run-now) | PROMOTION (approve/pin gate) | CI. */
+function triggerTypeVariant(triggerType: string | null): 'default' | 'secondary' | 'outline' {
+    if (triggerType === 'PROMOTION') return 'default';
+    if (triggerType === 'CI') return 'secondary';
+    return 'outline';
+}
+
+/** Compact `metric: value` badges from the free-form `aggregateScores` JSON. */
+function AggregateScoreBadges({ aggregates }: { aggregates: unknown }) {
+    if (!aggregates || typeof aggregates !== 'object' || Array.isArray(aggregates)) return null;
+    const entries = Object.entries(aggregates as Record<string, unknown>).filter(
+        (entry): entry is [string, number] => typeof entry[1] === 'number',
+    );
+    if (entries.length === 0) return null;
+    return (
+        <span className="flex flex-wrap gap-1">
+            {entries.map(([key, value]) => (
+                <Badge key={key} variant="outline" className="font-mono text-[10px]">
+                    {key}: {Math.round(value * 100) / 100}
+                </Badge>
+            ))}
+        </span>
+    );
+}
+
+/**
+ * Eval gate panel (TASK-549) — a golden-set picker scoped to the department
+ * agents bound to this template, the last runs + scores for the picked set,
+ * and a manual run-now. This is independent of the promotion gate that runs
+ * automatically on Approve (and on a DepartmentAgent pin re-point) — running
+ * it here just lets an admin check the gate before approving. Golden-set CRUD
+ * and the full eval-runs grid stay on `/harness/observability` (one
+ * authoritative editor per resource, rule 13) — this panel only reads +
+ * triggers runs.
+ */
+function EvalPanel({ template }: { template: PromptTemplate }) {
+    const agentsQuery = useDepartmentAgents({ limit: 200 });
+    const goldenSetsQuery = useEvalGoldenSets({ limit: 200 });
+    const [picked, setPicked] = useState('');
+
+    const boundAgents = (agentsQuery.data?.data ?? []).filter((agent) => agent.promptTemplateId === template.id);
+    const attachedAgentsBySet = new Map<string, string[]>();
+    for (const agent of boundAgents) {
+        if (!agent.goldenSetId) continue;
+        attachedAgentsBySet.set(agent.goldenSetId, [...(attachedAgentsBySet.get(agent.goldenSetId) ?? []), agent.name]);
+    }
+    const defaultGoldenSetId = boundAgents.find((agent) => !!agent.goldenSetId)?.goldenSetId ?? '';
+    const goldenSetId = picked || defaultGoldenSetId;
+    const goldenSets = goldenSetsQuery.data?.items ?? [];
+    const attachedAgentNames = goldenSetId ? (attachedAgentsBySet.get(goldenSetId) ?? []) : [];
+
+    const runsQuery = useAgentEvalRuns(goldenSetId || null, 5);
+    const runEval = useRunGoldenSetEval();
+
+    function handleRun() {
+        if (!goldenSetId) return;
+        runEval.mutate(goldenSetId, {
+            onSuccess: (result) => {
+                if (result.passed) toast.success(`Eval passed — run ${result.runId.slice(0, 8)}`);
+                else toast.error(`Eval gate failed: ${result.failures[0] ?? 'regression detected'}`);
+            },
+            onError: (error) => toast.error(error instanceof GatewayError ? error.message : 'Could not run the eval.'),
+        });
+    }
+
+    return (
+        <Card className="gap-3 p-4">
+            <div className="flex flex-col gap-1">
+                <h3 className="text-sm font-semibold">Eval gate</h3>
+                <p className="text-muted-foreground text-xs">
+                    Golden-set evaluation for this template&apos;s bound agents. Approving (or re-pointing a pin) runs this
+                    automatically when a golden set is attached &mdash; run it manually here to check first.
+                </p>
+            </div>
+
+            {boundAgents.length === 0 ? (
+                <p className="text-muted-foreground text-sm">
+                    No agents are bound to this template yet &mdash; attach one from the Agents tab, then attach a golden set
+                    to it to enable the eval gate.
+                </p>
+            ) : goldenSetsQuery.isPending ? (
+                <Skeleton className="h-8 w-full" />
+            ) : goldenSets.length === 0 ? (
+                <EmptyState
+                    icon={IconFlask}
+                    title="No golden sets yet"
+                    description="Create one on the Harness Observability board, then attach it to a bound agent's Settings tab."
+                />
+            ) : (
+                <>
+                    <div className="flex flex-wrap items-end gap-2">
+                        <NativeSelect
+                            aria-label="Golden set"
+                            value={goldenSetId}
+                            onChange={(event) => setPicked(event.target.value)}
+                            className="h-8 flex-1 text-sm"
+                        >
+                            <NativeSelectOption value="">Select a golden set…</NativeSelectOption>
+                            {goldenSets.map((set) => (
+                                <NativeSelectOption key={set.id} value={set.id}>
+                                    {set.name}
+                                    {attachedAgentsBySet.has(set.id) ? ' (attached)' : ''}
+                                </NativeSelectOption>
+                            ))}
+                        </NativeSelect>
+                        <Button type="button" size="sm" onClick={handleRun} disabled={!goldenSetId || runEval.isPending}>
+                            {runEval.isPending ? <Spinner aria-hidden /> : <IconPlayerPlay aria-hidden />}
+                            Run now
+                        </Button>
+                    </div>
+                    {goldenSetId ? (
+                        <p className="text-muted-foreground text-xs">
+                            {attachedAgentNames.length > 0
+                                ? `Attached to: ${attachedAgentNames.join(', ')}`
+                                : 'Not attached to a bound agent — running here does not gate promotion.'}
+                        </p>
+                    ) : null}
+
+                    {!goldenSetId ? null : runsQuery.isPending ? (
+                        <div className="flex flex-col gap-2">
+                            {Array.from({ length: 2 }, (_, index) => (
+                                <Skeleton key={index} className="h-10 w-full" />
+                            ))}
+                        </div>
+                    ) : runsQuery.error ? (
+                        <ErrorState error={runsQuery.error} onRetry={() => void runsQuery.refetch()} />
+                    ) : (runsQuery.data?.items.length ?? 0) === 0 ? (
+                        <p className="text-muted-foreground text-sm">No eval runs yet for this golden set.</p>
+                    ) : (
+                        <ul className="flex flex-col gap-2" aria-label="Recent eval runs">
+                            {runsQuery.data?.items.map((run) => (
+                                <li key={run.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border px-2.5 py-2">
+                                    <span className="flex items-center gap-2">
+                                        <Badge variant={evalRunStatusVariant(run.status)}>{run.status ?? 'UNKNOWN'}</Badge>
+                                        {run.triggerType ? <Badge variant={triggerTypeVariant(run.triggerType)}>{run.triggerType}</Badge> : null}
+                                        <span className="text-muted-foreground text-xs">{formatDateTime(run.startedAt ?? run.createdAt)}</span>
+                                    </span>
+                                    <AggregateScoreBadges aggregates={run.aggregateScores} />
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </>
+            )}
+
+            <Link href="/harness/observability" className="text-primary text-xs underline-offset-4 hover:underline">
+                Manage golden sets on the Harness Observability board &rarr;
+            </Link>
         </Card>
     );
 }
@@ -204,6 +363,7 @@ function TemplateGovernanceDetail({ id }: { id: string }) {
                 </p>
             </Card>
             <VersionsPanel template={template} />
+            <EvalPanel template={template} />
             <ApprovePanel template={template} etag={query.data.etag} />
         </div>
     );

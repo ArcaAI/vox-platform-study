@@ -10,11 +10,15 @@ export interface IDnaWritingStyleVersionEntity extends IBaseTenantEntity {
   versionNumber?: number | null;
   reportData?: Record<string, unknown> | null;
   styleText?: string | null;
+  // TASK-551 — snapshot of the report's structured redaction/rewrite rules
+  // (transient plaintext; persisted only as `encryptedRedactionRules`).
+  redactionRules?: Record<string, unknown> | null;
   // Vault-Transit (hope-phi) ciphertext of the snapshot
   // fields + shared key version. Phase 6 dropped the plaintext columns;
   // plaintext survives only as transient fields repopulated by decrypt-on-read.
   encryptedReportData?: Buffer | null;
   encryptedStyleText?: Buffer | null;
+  encryptedRedactionRules?: Buffer | null;
   keyVersion?: number | null;
   changeReason?: string | null;
   changedBy?: string | null;
@@ -26,8 +30,10 @@ export class DnaWritingStyleVersionEntity extends BaseTenantEntity {
   private _versionNumber?: IDnaWritingStyleVersionEntity['versionNumber'];
   private _reportData?: IDnaWritingStyleVersionEntity['reportData'];
   private _styleText?: IDnaWritingStyleVersionEntity['styleText'];
+  private _redactionRules?: IDnaWritingStyleVersionEntity['redactionRules'];
   private _encryptedReportData?: IDnaWritingStyleVersionEntity['encryptedReportData'];
   private _encryptedStyleText?: IDnaWritingStyleVersionEntity['encryptedStyleText'];
+  private _encryptedRedactionRules?: IDnaWritingStyleVersionEntity['encryptedRedactionRules'];
   private _keyVersion?: IDnaWritingStyleVersionEntity['keyVersion'];
   private _changeReason?: IDnaWritingStyleVersionEntity['changeReason'];
   private _changedBy?: IDnaWritingStyleVersionEntity['changedBy'];
@@ -39,8 +45,10 @@ export class DnaWritingStyleVersionEntity extends BaseTenantEntity {
     this._versionNumber = init.versionNumber;
     this._reportData = init.reportData;
     this._styleText = init.styleText;
+    this._redactionRules = init.redactionRules;
     this._encryptedReportData = init.encryptedReportData;
     this._encryptedStyleText = init.encryptedStyleText;
+    this._encryptedRedactionRules = init.encryptedRedactionRules;
     this._keyVersion = init.keyVersion;
     this._changeReason = init.changeReason;
     this._changedBy = init.changedBy;
@@ -83,6 +91,15 @@ export class DnaWritingStyleVersionEntity extends BaseTenantEntity {
     this.setProperty('styleText', value);
   }
 
+  @Secret()
+  get redactionRules(): IDnaWritingStyleVersionEntity['redactionRules'] {
+    return this._redactionRules;
+  }
+
+  set redactionRules(value: IDnaWritingStyleVersionEntity['redactionRules']) {
+    this.setProperty('redactionRules', value);
+  }
+
   // Vault-Transit ciphertext columns. @Secret() guards the
   // ciphertext from audit-log surfaces.
   @Secret()
@@ -101,6 +118,15 @@ export class DnaWritingStyleVersionEntity extends BaseTenantEntity {
 
   set encryptedStyleText(value: IDnaWritingStyleVersionEntity['encryptedStyleText']) {
     this.setProperty('encryptedStyleText', value);
+  }
+
+  @Secret()
+  get encryptedRedactionRules(): IDnaWritingStyleVersionEntity['encryptedRedactionRules'] {
+    return this._encryptedRedactionRules;
+  }
+
+  set encryptedRedactionRules(value: IDnaWritingStyleVersionEntity['encryptedRedactionRules']) {
+    this.setProperty('encryptedRedactionRules', value);
   }
 
   get keyVersion(): IDnaWritingStyleVersionEntity['keyVersion'] {

@@ -31,6 +31,7 @@ with workflow.unsafe.imports_passed_through():
     from harness.temporal.activities import (
         PingInput,
         PingResult,
+        apply_redaction,
         assemble_prompt,
         call_mcp_tool,
         escalate_gate,
@@ -57,6 +58,7 @@ with workflow.unsafe.imports_passed_through():
         HARNESS_PROGRESS_STAGES,
         HARNESS_PROGRESS_TERMINAL_LABEL,
         HARNESS_PROGRESS_TERMINAL_STAGE,
+        ApplyRedactionInput,
         ApprovalSignal,
         AssembleInput,
         CallMcpToolInput,
@@ -868,6 +870,104 @@ class HarnessDocWorkflow:
                 continue
             break
 
+        # 2b) DNA redaction/rewrite (TASK-551) — a SEPARATE, auditable transform that
+        #     runs AFTER the computational loop settles and BEFORE persist/delivery, so
+        #     the persisted/delivered note is the REDACTED one and the (re-run) cheap
+        #     sensors validate the FINAL text. Conditional-patch: an EMPTY ``redaction_rules``
+        #     list (the default, and every legacy start payload) short-circuits BEFORE
+        #     ``workflow.patched()`` — no marker, no command — so old histories replay
+        #     byte-identically (the ``task-516-mcp-tools`` short-circuit precedent). When
+        #     armed, the note is transformed, the cheap computational sensors re-run on the
+        #     transformed text, and a fail-closed transform forces a FLAG (a note the doctor
+        #     expected redacted must never slip through silently).
+        redaction_failed_closed = False
+        # DNA redaction AUDIT marker (TASK-551) threaded to persist so apps/api records
+        # it on SummaryMeta. None on every pre-audit-era history (the marker is computed
+        # only inside the audit patch gate), so ``_prune`` drops it ⇒ byte-identical
+        # persist body ⇒ replay-safe when the audit era is off.
+        redaction_marker_applied: bool | None = None
+        redaction_marker_manifest: dict[str, Any] | None = None
+        if inp.redaction_rules and workflow.patched("task-551-redaction"):
+            self._phase = "REDACT"
+            redaction = await workflow.execute_activity(
+                apply_redaction,
+                ApplyRedactionInput(
+                    note_text=generated.content,
+                    note_text_ref=generated.content_ref,
+                    rules=list(inp.redaction_rules),
+                    response_format=assembled.response_format,
+                    provider=smr_provider,
+                    model=smr_model,
+                    phi_enabled=phi_enabled,
+                    phi_fail_closed=phi_fail_closed,
+                    trajectory=self._traj(inp),
+                ),
+                start_to_close_timeout=_ACTIVITY_TIMEOUT,
+                retry_policy=_API_RETRY,
+            )
+            redaction_failed_closed = redaction.failed_closed
+            # NEW audit era: persist the manifest marker (rule ids / action + span
+            # counts — NEVER removed PHI plaintext) on SummaryMeta. Gated behind its
+            # OWN patch marker so the recorded ``task-551-redaction`` histories (which
+            # do NOT carry this marker) still replay byte-identically — the two proof
+            # workflows that already ran the redaction era predate this audit trail.
+            if workflow.patched("task-551-redaction-audit"):
+                _m = redaction.manifest
+                redaction_marker_applied = _m.applied
+                redaction_marker_manifest = {
+                    "applied": _m.applied,
+                    "totalHits": _m.total_hits,
+                    "hitsByRule": dict(_m.hits_by_rule),
+                    "ruleIds": sorted(_m.hits_by_rule.keys()),
+                    "failedClosed": redaction.failed_closed,
+                }
+            if redaction.changed:
+                # Thread the redacted note downstream (both persist sites read
+                # ``generated``); model_copy keeps model/stats/finish_reason intact.
+                generated = generated.model_copy(
+                    update={"content": redaction.text, "content_ref": redaction.text_ref}
+                )
+                # Re-run the cheap computational sensors on the TRANSFORMED text so the
+                # persisted verdict matches what is delivered. Re-extract note entities
+                # first (entity_faithfulness reads them). Branching on the RECORDED
+                # ``redaction.changed`` result is replay-safe (the ``if transcript_entities``
+                # precedent).
+                red_note_entities: list[NEREntity] = []
+                try:
+                    red_extracted = await workflow.execute_activity(
+                        extract_entities,
+                        ExtractEntitiesInput(
+                            text=generated.content,
+                            text_ref=generated.content_ref,
+                            language=inp.conversation_language,
+                            trajectory=self._traj(inp),
+                        ),
+                        start_to_close_timeout=_ACTIVITY_TIMEOUT,
+                        retry_policy=_NLP_RETRY,
+                    )
+                    red_note_entities = red_extracted.entities
+                except ActivityError:
+                    degraded = True
+                sensors = await workflow.execute_activity(
+                    run_sensors,
+                    RunSensorsInput(
+                        note_text=generated.content,
+                        note_text_ref=generated.content_ref,
+                        transcript_text=inp.transcript_text,
+                        transcript_text_ref=inp.transcript_ref,
+                        note_entities=red_note_entities,
+                        transcript_entities=transcript_entities,
+                        response_format=assembled.response_format,
+                        transcript_context_item_id=inp.context_item_id,
+                        retrieved_chunk_ids=retrieved_chunk_ids,
+                        allowed_segment_ids=[s.id for s in assembled.segment_citations],
+                        thresholds=sensor_thresholds,
+                        trajectory=self._traj(inp),
+                    ),
+                    start_to_close_timeout=_ACTIVITY_TIMEOUT,
+                    retry_policy=_API_RETRY,
+                )
+
         # 3) Persist the draft + record the gate verdict. Two shapes, by flag:
         if use_optimistic:
             # OPTIMISTIC two-phase delivery. Two nested helpers keep
@@ -911,6 +1011,10 @@ class HarnessDocWorkflow:
                         gate_decision=None,
                         is_auto_generated=True,
                         phase=HARNESS_DRAFT_PHASE_EARLY,
+                        # DNA redaction audit marker (TASK-551, audit era). None when
+                        # the era is off ⇒ pruned ⇒ byte-identical early-persist body.
+                        redaction_applied=redaction_marker_applied,
+                        redaction_manifest=redaction_marker_manifest,
                         trajectory=self._traj(inp),
                     ),
                     start_to_close_timeout=_ACTIVITY_TIMEOUT,
@@ -1171,6 +1275,10 @@ class HarnessDocWorkflow:
                     continue
                 break
             decision = str(verdict.decision)
+            # A fail-closed redaction (TASK-551) forces a FLAG regardless of the
+            # assurance verdict — the delivered draft is then RETRACTED below.
+            if redaction_failed_closed:
+                decision = str(GateDecision.FLAG)
 
             # (c) RETRACT-or-FINALIZE — the optimistic-delivery retraction net.
             #     The optimistic path delivered a READABLE draft BEFORE assurance (the
@@ -1186,7 +1294,7 @@ class HarnessDocWorkflow:
             #     returns False on replay and the legacy finalize-only command sequence is
             #     preserved (replay-safe). A non-FLAG verdict finalizes exactly as before.
             if workflow.patched("task-481-optimistic-retraction") and (
-                verdict.decision == GateDecision.FLAG
+                verdict.decision == GateDecision.FLAG or redaction_failed_closed
             ):
                 self._phase = "RETRACT"
                 await workflow.execute_activity(
@@ -1262,6 +1370,10 @@ class HarnessDocWorkflow:
             # the first aggregate, and it never reaches this branch.
             assert verdict is not None
             decision = str(verdict.decision)
+            # A fail-closed redaction (TASK-551) forces a FLAG — the note the doctor
+            # expected redacted must not persist to PENDING_REVIEW as a clean draft.
+            if redaction_failed_closed:
+                decision = str(GateDecision.FLAG)
 
             # 3) Persist the draft -> PENDING_REVIEW (clinician confirm-before-commit).
             # guardrail_decisions + ragTriadScore land on SummaryMeta; reduced_assurance
@@ -1292,6 +1404,10 @@ class HarnessDocWorkflow:
                     dna_style_id=inp.dna_style_id,
                     gate_decision=decision,
                     is_auto_generated=True,
+                    # DNA redaction audit marker (TASK-551, audit era). None when the
+                    # era is off ⇒ pruned ⇒ byte-identical legacy persist body.
+                    redaction_applied=redaction_marker_applied,
+                    redaction_manifest=redaction_marker_manifest,
                     trajectory=self._traj(inp),
                 ),
                 start_to_close_timeout=_ACTIVITY_TIMEOUT,

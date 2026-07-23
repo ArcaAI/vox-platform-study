@@ -254,3 +254,53 @@ class TestReplayCompatibility:
             data_converter=pydantic_data_converter,
         )
         await replayer.replay_workflow(_history("doc_workflow_post_mcp_history"))
+
+    @pytest.mark.asyncio
+    async def test_post_redaction_history_replays_on_current_definition(self):
+        """Forward guard for the (TASK-551) DNA redaction/rewrite era.
+
+        The fixture is a happy-path history recorded with the redaction path ARMED — the
+        start payload carries a ``redaction_rules`` entry and the ``apply_redaction`` stub
+        returns a CHANGED note, so the workflow took the patch-gated branch: it carries the
+        ``task-551-redaction`` patch marker AND the new command sequence (``apply_redaction``
+        -> ``extract_entities`` -> ``run_sensors`` re-run) inserted after the computational
+        loop settles and before persist.
+
+        Replaying it through the current definition proves an in-flight redaction-armed
+        execution survives a redeploy, and forward-guards the command-sequence change: any
+        FUTURE ungated change to the redaction path fails this replay with a non-determinism
+        error unless gated behind its own ``workflow.patched()``. The empty-rules fixtures
+        above (which NEVER call ``workflow.patched("task-551-redaction")`` — the ``and``
+        short-circuit) also stay green, proving the feature is command-neutral when unarmed.
+        Recapture alongside every new patch gate (see ``_capture_replay_fixture.py --redaction``).
+        """
+        replayer = Replayer(
+            workflows=[HarnessDocWorkflow],
+            data_converter=pydantic_data_converter,
+        )
+        await replayer.replay_workflow(_history("doc_workflow_post_task551_redaction_history"))
+
+    @pytest.mark.asyncio
+    async def test_post_redaction_audit_history_replays_on_current_definition(self):
+        """Forward guard for the (TASK-551) DNA redaction AUDIT era.
+
+        The fixture is a redaction-armed history recorded against the CURRENT definition,
+        so it carries BOTH the ``task-551-redaction`` marker AND the new
+        ``task-551-redaction-audit`` marker (the manifest marker + compact manifest are
+        threaded into ``persist_draft`` behind that second gate). Replaying it proves an
+        in-flight audit-armed execution survives a redeploy.
+
+        Crucially, the FROZEN ``doc_workflow_post_task551_redaction_history`` fixture above
+        — recorded BEFORE the audit era existed, so it lacks the audit marker — must ALSO
+        stay green: on replay ``workflow.patched("task-551-redaction-audit")`` returns
+        False, so the marker is never computed and the persist body stays byte-identical.
+        Together they forward-guard the audit-trail change as gated + replay-safe.
+        Recapture alongside every new patch gate (``_capture_replay_fixture.py --redaction-audit``).
+        """
+        replayer = Replayer(
+            workflows=[HarnessDocWorkflow],
+            data_converter=pydantic_data_converter,
+        )
+        await replayer.replay_workflow(
+            _history("doc_workflow_post_task551_redaction_audit_history")
+        )

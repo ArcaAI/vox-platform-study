@@ -18,6 +18,10 @@ const mockGoldenSetRepository = { create: vi.fn(echo), findById: vi.fn(), findAl
 const mockGoldenCaseRepository = { create: vi.fn(echo), findById: vi.fn(), findAll: vi.fn(), getByGoldenSet: vi.fn(), count: vi.fn() };
 const mockEvalRunRepository = { create: vi.fn(echo), findById: vi.fn(), findAll: vi.fn(), getByGoldenSet: vi.fn() };
 const mockEvalScoreRepository = { create: vi.fn(echo), findById: vi.fn(), findAll: vi.fn(), getByEvalRun: vi.fn() };
+// TASK-549 tail: department-scoped golden sets — appended (never inserted)
+// after the optional secretsService slot so the existing 4-arg construction
+// above keeps working untouched.
+const mockDepartmentRepository = { findById: vi.fn() };
 
 describe('EvalService', () => {
   let service: EvalService;
@@ -278,6 +282,65 @@ describe('EvalService', () => {
         service.addGoldenCase({ tenantId: 'tenant-1', goldenSetId: 'missing', transcript: 't', referenceNote: 'r' }),
       ).rejects.toThrow(DataNotFoundException);
       expect(mockGoldenCaseRepository.create).not.toHaveBeenCalled();
+    });
+  });
+
+  // ===========================================================================
+  // GoldenSet.departmentId on the create lane (TASK-549 tail). The department
+  // must belong to the SAME tenant as the set — 404-over-403: a cross-tenant
+  // or nonexistent department id is indistinguishable from "not found", never
+  // a 403 (mirrors DepartmentAgentService.assertDepartmentInTenant).
+  // ===========================================================================
+  describe('createGoldenSet — department scoping (TASK-549 tail)', () => {
+    function makeServiceWithDepartments(): EvalService {
+      return new EvalService(
+        mockGoldenSetRepository as any,
+        mockGoldenCaseRepository as any,
+        mockEvalRunRepository as any,
+        mockEvalScoreRepository as any,
+        undefined, // secretsService — not needed for this scenario
+        mockDepartmentRepository as any,
+      );
+    }
+
+    it('creates a golden set scoped to a department that belongs to the tenant', async () => {
+      mockDepartmentRepository.findById.mockResolvedValue({ id: 'dept-1', tenantId: 'tenant-1' });
+      const service2 = makeServiceWithDepartments();
+
+      const result = await service2.createGoldenSet({ tenantId: 'tenant-1', name: 'Cardio set', departmentId: 'dept-1' });
+
+      expect(mockDepartmentRepository.findById).toHaveBeenCalledWith('dept-1');
+      expect(result.departmentId).toBe('dept-1');
+      expect(mockGoldenSetRepository.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws DataNotFoundException (no create) when the department does not exist', async () => {
+      mockDepartmentRepository.findById.mockResolvedValue(null);
+      const service2 = makeServiceWithDepartments();
+
+      await expect(
+        service2.createGoldenSet({ tenantId: 'tenant-1', name: 'Cardio set', departmentId: 'missing-dept' }),
+      ).rejects.toThrow(DataNotFoundException);
+      expect(mockGoldenSetRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('throws DataNotFoundException (never 403) when the department belongs to a different tenant', async () => {
+      mockDepartmentRepository.findById.mockResolvedValue({ id: 'dept-1', tenantId: 'other-tenant' });
+      const service2 = makeServiceWithDepartments();
+
+      await expect(
+        service2.createGoldenSet({ tenantId: 'tenant-1', name: 'Cardio set', departmentId: 'dept-1' }),
+      ).rejects.toThrow(DataNotFoundException);
+      expect(mockGoldenSetRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('skips department validation entirely when departmentId is omitted (tenant-wide set)', async () => {
+      const service2 = makeServiceWithDepartments();
+
+      const result = await service2.createGoldenSet({ tenantId: 'tenant-1', name: 'Tenant-wide set' });
+
+      expect(mockDepartmentRepository.findById).not.toHaveBeenCalled();
+      expect(result.departmentId).toBeNull();
     });
   });
 });

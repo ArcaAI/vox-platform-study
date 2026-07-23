@@ -8,6 +8,7 @@ import {
     generateMyStyle,
     getDnaJobStatus,
     getDnaSettings,
+    getMyRedactionRules,
     getMyStyle,
     listMyReports,
     listMyVersions,
@@ -25,6 +26,11 @@ export function useMyStyle() {
 
 export function useMyReports() {
     return useQuery({ queryKey: playgroundDnaKeys.reports(), queryFn: listMyReports });
+}
+
+/** The caller's decrypted DNA redaction rule set (always `{ rules: [] }`+). */
+export function useMyRedactionRules() {
+    return useQuery({ queryKey: playgroundDnaKeys.redactionRules(), queryFn: getMyRedactionRules });
 }
 
 export function useMyVersions(reportId: string | null) {

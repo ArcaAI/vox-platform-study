@@ -10,6 +10,7 @@ export interface CreateDnaWritingStyleReportProps extends BaseEntityFactoryCreat
   departmentId?: string | null;
   reportData?: Record<string, unknown> | null;
   styleText?: string | null;
+  redactionRules?: Record<string, unknown> | null;
   isLatest?: boolean | null;
   currentVersionNumber?: number | null;
   tenantId: string;
@@ -34,6 +35,7 @@ export class DnaWritingStyleReportFactory {
       departmentId: props.departmentId ?? null,
       reportData: props.reportData ?? null,
       styleText: props.styleText ?? null,
+      redactionRules: props.redactionRules ?? null,
       isLatest: props.isLatest ?? true,
       currentVersionNumber: props.currentVersionNumber ?? 1,
     });

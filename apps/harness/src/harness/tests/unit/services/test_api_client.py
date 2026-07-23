@@ -251,6 +251,31 @@ class TestPersistDraft:
         body = json.loads(seen["request"].content)
         assert "guardrailDecisions" not in body
         assert "reducedAssurance" not in body
+        # TASK-551 audit marker fields are pruned when not provided ⇒ byte-identical
+        # to the pre-audit-era persist body (replay-safe when the era is off).
+        assert "redactionApplied" not in body
+        assert "redactionManifest" not in body
+
+    @pytest.mark.asyncio
+    async def test_persist_draft_posts_redaction_audit_marker(self):
+        seen: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["request"] = request
+            return httpx.Response(200, json={"contextItemId": "ctx-draft-3"})
+
+        client = _client(handler)
+        await client.persist_draft(
+            "c-1",
+            tenant_id="t-1",
+            content="{}",
+            redaction_applied=True,
+            redaction_manifest={"applied": True, "totalHits": 2, "hitsByRule": {"r1": 2}},
+        )
+
+        body = json.loads(seen["request"].content)
+        assert body["redactionApplied"] is True
+        assert body["redactionManifest"] == {"applied": True, "totalHits": 2, "hitsByRule": {"r1": 2}}
 
 
 class TestRecordGateDecision:

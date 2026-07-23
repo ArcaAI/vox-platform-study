@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
-import type { EvalRunDetail, EvalRunList, GateQueue, GoldenSetList, HarnessAuditList } from '../../api/types';
+import type { EvalRunDetail, EvalRunList, GateEditCorpusExport, GateQueue, GoldenSetList, HarnessAuditList } from '../../api/types';
 import { HarnessObservabilityScreen } from '../harness-observability-screen';
 import { installFetchStub, sessionPayload, type RecordedCall } from './fetch-stub';
 
@@ -67,7 +67,9 @@ const EVAL_RUNS: EvalRunList = {
             modelVersion: '3',
             promptTemplateId: null,
             promptVersion: null,
+            promptVersionNumber: null,
             judgeModel: 'judge-1',
+            triggerType: 'MANUAL',
             status: 'COMPLETED',
             startedAt: '2026-07-04T10:00:00.000Z',
             completedAt: '2026-07-04T11:00:00.000Z',
@@ -139,12 +141,16 @@ const GOLDEN_SETS: GoldenSetList = {
     total: 1,
 };
 
+/** The board also mounts the gate-edit-exemplars panel (GAP-A1, TASK-549). */
+const GATE_EDIT_EXPORT: GateEditCorpusExport = { tenantId: 'tnt-1', reviewStatus: 'PENDING_SME_REVIEW', count: 0, candidates: [] };
+
 function stubRoutes(overrides: { audit?: Response | HarnessAuditList; workingTenantId?: string | null } = {}) {
     return installFetchStub(({ url }: RecordedCall) => {
         if (url === '/api/auth/session') return sessionPayload({ workingTenantId: overrides.workingTenantId });
         if (url === '/api/hope/rbac/check/my-permissions') {
             return { userId: 'u-1', tenantId: 'tnt-1', permissions: [{ action: 'manage', subject: 'HarnessEval' }] };
         }
+        if (url.startsWith('/api/hope/admin/harness/gate-edit-exemplars')) return GATE_EDIT_EXPORT;
         if (url.startsWith('/api/hope/admin/harness/golden-sets')) return GOLDEN_SETS;
         // Best-effort per-user grid-layout persistence: the eval-runs grid
         // loads its layout on mount; no saved layout in tests.
@@ -182,6 +188,13 @@ describe('HarnessObservabilityScreen', () => {
         expect(await screen.findByRole('list', { name: 'Golden sets' })).toBeDefined();
         expect(screen.getByRole('heading', { level: 2, name: 'Edit burden' })).toBeDefined();
         expect(screen.getByLabelText('Consultation ID')).toBeDefined();
+    });
+
+    it('mounts the gate-edit-exemplars panel (GAP-A1)', async () => {
+        stubRoutes();
+        renderWithProviders(<HarnessObservabilityScreen />);
+
+        expect(await screen.findByText('No gate-edit exemplars yet')).toBeDefined();
     });
 
     it('renders the broken-chain variant as a destructive banner', async () => {

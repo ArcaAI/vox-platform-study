@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { IconFlask } from '@tabler/icons-react';
 import { VirtualizedDataGrid, type ColumnDef, type DataQueryState } from '@arcaai/ui';
+import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Card, CardContent, CardHeader } from '@arcaai/ui/components/shadcn/card';
 import { gridPersistence } from '@/shared/data/grid-persistence';
 import { formatDateTime, formatNumber } from '@/shared/format';
@@ -55,6 +56,13 @@ function numberCell(value: number | null) {
     return value === null ? <span className="text-muted-foreground">{EM_DASH}</span> : <span className="tabular-nums">{formatNumber(value)}</span>;
 }
 
+/** How the run was triggered (EvalRun.triggerType) — MANUAL (run-now) | PROMOTION (approve/pin gate) | CI. */
+function triggerTypeVariant(triggerType: string | null): 'default' | 'secondary' | 'outline' {
+    if (triggerType === 'PROMOTION') return 'default';
+    if (triggerType === 'CI') return 'secondary';
+    return 'outline';
+}
+
 /** Right-aligned numeric column header (the grid header cell is left-aligned by default). */
 function NumericHeader({ label }: { label: string }) {
     return <span className="w-full text-right">{label}</span>;
@@ -89,6 +97,17 @@ export function EvalRunsPanel() {
                         {formatDateTime(row.original.startedAt ?? row.original.createdAt)}
                     </span>
                 ),
+            },
+            {
+                id: 'triggerType',
+                header: 'Trigger',
+                meta: { label: 'Trigger' },
+                cell: ({ row }) =>
+                    row.original.triggerType ? (
+                        <Badge variant={triggerTypeVariant(row.original.triggerType)}>{row.original.triggerType}</Badge>
+                    ) : (
+                        <span className="text-muted-foreground">{EM_DASH}</span>
+                    ),
             },
             { id: 'cases', header: () => <NumericHeader label="Cases" />, meta: { label: 'Cases' }, cell: ({ row }) => <div className="w-full text-right">{numberCell(evalCases(row.original))}</div> },
             { id: 'pass', header: () => <NumericHeader label="Pass" />, meta: { label: 'Pass' }, cell: ({ row }) => <div className="w-full text-right">{numberCell(evalPass(row.original))}</div> },

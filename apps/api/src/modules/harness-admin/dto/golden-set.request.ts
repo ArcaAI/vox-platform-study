@@ -24,6 +24,13 @@ export class CreateGoldenSetRequest {
   @IsString()
   @MaxLength(100)
   pinnedVersion?: string;
+
+  @ApiPropertyOptional({
+    description: 'Scope the set to a single department (omit for tenant-wide). Must belong to the caller tenant — a mismatch 404s.',
+  })
+  @IsOptional()
+  @IsString()
+  departmentId?: string;
 }
 
 /**

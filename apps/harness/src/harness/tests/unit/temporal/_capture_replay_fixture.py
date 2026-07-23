@@ -81,6 +81,7 @@ from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
+from harness.redaction.engine import RedactionRule
 from harness.temporal.models import (
     ApprovalSignal,
     EditSignal,
@@ -148,6 +149,28 @@ async def capture(out_path: Path, *, scenario: str = "happy") -> None:
                 ],
             ),
         )
+    elif scenario in ("redaction", "redaction-audit"):
+        # DNA redaction/rewrite ARMED — the start payload carries a
+        # redaction rule and the ``apply_redaction`` stub returns a CHANGED note, so the
+        # workflow records the ``task-551-redaction`` patch marker AND the new command
+        # sequence (apply_redaction -> extract_entities -> run_sensors re-run) after the
+        # computational loop settles and before persist. This is the forward-guard fixture
+        # for the redaction command-sequence change.
+        #
+        # ``redaction-audit`` captures the SAME armed path against the CURRENT (audit-era)
+        # definition, so the recorded history ALSO carries the ``task-551-redaction-audit``
+        # marker + the manifest marker threaded into ``persist_draft``. It is the
+        # forward-guard fixture for the audit-marker change; the frozen (pre-audit)
+        # ``redaction`` fixture stays green because it lacks that marker (the audit gate
+        # short-circuits on replay), proving the audit trail is gated + replay-safe.
+        config = StubConfig(
+            verdicts=["PASS"],
+            inferential_verdicts=["SAFE"],
+            redaction_text=(
+                '{"subjective": "s-redacted", "objective": "o", '
+                '"assessment": "a", "plan": "p"}'
+            ),
+        )
     elif scenario == "claim-check":
         # Happy path with the generate + assemble stubs returning OFFLOADED
         # results (content/prompt emptied + a ClaimCheckRef), so the recorded history
@@ -200,6 +223,10 @@ async def capture(out_path: Path, *, scenario: str = "happy") -> None:
             }
             if gate is not None:
                 input_kwargs["gate"] = gate
+            if scenario in ("redaction", "redaction-audit"):
+                input_kwargs["redaction_rules"] = [
+                    RedactionRule(id="r1", type="remove", match="literal", pattern="employer")
+                ]
             handle = await env.client.start_workflow(
                 HarnessDocWorkflow.run,
                 HarnessDocWorkflowInput(**input_kwargs),
@@ -248,13 +275,16 @@ if __name__ == "__main__":
         "--retract",
         "--claim-check",
         "--mcp",
+        "--redaction",
+        "--redaction-audit",
     )
     if args and args[0] in _scenarios:
         scenario, args = args[0].lstrip("-"), args[1:]
     if len(args) != 1:
         raise SystemExit(
             "usage: python -m ..._capture_replay_fixture "
-            "[--failure|--optimistic|--regen|--gate-abandon|--edit-cap|--retract|--claim-check|--mcp]"
+            "[--failure|--optimistic|--regen|--gate-abandon|--edit-cap|--retract"
+            "|--claim-check|--mcp|--redaction|--redaction-audit]"
             " <output.json>"
         )
     asyncio.run(capture(Path(args[0]), scenario=scenario))

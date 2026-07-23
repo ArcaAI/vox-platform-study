@@ -22,6 +22,14 @@ export interface HarnessStartContext {
    * re-loads the transcript on the apps/api side as the prompt's source of truth.
    */
   transcriptText?: string;
+  /**
+   * TASK-551 — DNA redaction/rewrite rules resolved + decrypted by the caller
+   * (tenant + doctor double-gate via `ConfigResolver.resolveEffectiveDnaRedactionEnabled`
+   * + the doctor's decrypted DNA `redactionRules`). Omitted/empty ⇒ the workflow's
+   * apply_redaction insertion is a no-op. Each entry is the RedactionRule shape
+   * ({ id, type, match, pattern, replacement?, note? }).
+   */
+  redactionRules?: Record<string, unknown>[];
 }
 
 /**
@@ -139,6 +147,9 @@ export class HarnessGatewayService {
       correlationId: ctx.correlationId,
       contextItemId: ctx.contextItemId,
       transcriptText: ctx.transcriptText,
+      // TASK-551 — omit entirely when empty so the request stays byte-identical
+      // to the pre-redaction body (the harness defaults redactionRules to []).
+      ...(ctx.redactionRules && ctx.redactionRules.length > 0 ? { redactionRules: ctx.redactionRules } : {}),
     };
 
     const response = await this.httpService.axiosRef.post(url, body, {

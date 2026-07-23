@@ -25,7 +25,7 @@ from harness.core.config import PhiConfig, Settings
 from harness.redaction.engine import RedactionRule
 from harness.services.smr_client import SmrGenerationResult, SmrServiceError
 from harness.temporal import activities
-from harness.temporal.models import ApplyRedactionInput
+from harness.temporal.models import ApplyRedactionInput, TrajectoryContext
 
 
 class _FakeSmr:
@@ -151,3 +151,70 @@ class TestManifestNoPhi:
         out = await env.run(activities.apply_redaction, _input(rules=[rule]))
         blob = json.dumps(out.manifest.model_dump())
         assert secret not in blob
+
+
+class _CapturingTraj:
+    """Captures ``report_trajectory`` batches for step assertions."""
+
+    def __init__(self) -> None:
+        self.steps: list[Any] = []
+
+    async def report_trajectory(self, steps, *, idempotency_key: str | None = None):
+        self.steps.extend(steps)
+        from harness.services.api_client import TrajectoryReportResponse
+
+        return TrajectoryReportResponse(accepted=len(steps))
+
+
+def _traj_ctx() -> TrajectoryContext:
+    return TrajectoryContext(
+        tenant_id="tenant-1",
+        consultation_id="consult-1",
+        seq=5,
+        correlation_id="corr-1",
+    )
+
+
+class TestTrajectory:
+    @pytest.mark.asyncio
+    async def test_emits_guardrail_step_with_manifest_stats(self, env, monkeypatch):
+        """A redaction transform emits ONE GUARDRAIL trajectory step carrying the
+        manifest stats (counts + rule ids + failed_closed) — never removed PHI text."""
+        cap = _CapturingTraj()
+        monkeypatch.setattr(activities, "get_settings", _settings)
+        monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
+        secret = "Acme Corp"
+        rule = RedactionRule(id="emp", type="remove", match="literal", pattern=secret)
+        out = await env.run(
+            activities.apply_redaction, _input(rules=[rule], trajectory=_traj_ctx())
+        )
+        assert out.changed is True
+        assert [(s.step_type, s.name) for s in cap.steps] == [("GUARDRAIL", "apply_redaction")]
+        step = cap.steps[0]
+        assert step.stats["applied"] is True
+        assert step.stats["total_hits"] == 1
+        assert step.stats["hits_by_rule"] == {"emp": 1}
+        assert step.stats["failed_closed"] is False
+        # the step must NOT leak removed PHI plaintext
+        assert secret not in json.dumps(step.stats)
+
+    @pytest.mark.asyncio
+    async def test_no_rules_emits_no_guardrail_step(self, env, monkeypatch):
+        cap = _CapturingTraj()
+        monkeypatch.setattr(activities, "get_settings", _settings)
+        monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
+        await env.run(activities.apply_redaction, _input(rules=[], trajectory=_traj_ctx()))
+        assert cap.steps == []
+
+    @pytest.mark.asyncio
+    async def test_fail_closed_still_emits_guardrail_step(self, env, monkeypatch):
+        cap = _CapturingTraj()
+        monkeypatch.setattr(activities, "get_settings", _settings)
+        monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
+        rule = RedactionRule(id="bad", type="remove", match="regex", pattern="(")
+        out = await env.run(
+            activities.apply_redaction, _input(rules=[rule], trajectory=_traj_ctx())
+        )
+        assert out.failed_closed is True
+        assert [(s.step_type, s.name) for s in cap.steps] == [("GUARDRAIL", "apply_redaction")]
+        assert cap.steps[0].stats["failed_closed"] is True

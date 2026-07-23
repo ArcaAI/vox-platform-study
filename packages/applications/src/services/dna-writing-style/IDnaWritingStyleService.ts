@@ -7,6 +7,7 @@ import {
   DnaSettingsResponse,
   UpdateDnaSettingsRequest,
 } from './dto';
+import { RedactionRuleSet } from './redaction-rules';
 
 export interface DnaJobResponse {
   jobId: string;
@@ -34,6 +35,7 @@ export interface PaginatedDnaReports {
 export abstract class IDnaWritingStyleService {
   abstract generateDnaReport(doctorId: string, dto: GenerateDnaReportRequest): Promise<DnaJobResponse>;
   abstract getDnaReport(doctorId: string): Promise<DnaReportResponse | null>;
+  abstract getRedactionRules(doctorId: string): Promise<RedactionRuleSet>;
   /**
    * Read the caller doctor's DNA on/off settings
    * (effective = tenant AND doctor, plus the tenant gate + DOCTOR-row OCC

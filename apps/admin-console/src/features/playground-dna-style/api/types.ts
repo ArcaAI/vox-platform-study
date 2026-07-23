@@ -48,10 +48,35 @@ export interface GenerateDnaStyleRequest {
     sourceIds?: string[];
 }
 
+/** DNA redaction/rewrite rule (mirrors the harness `RedactionRule` shape). */
+export type RedactionRuleType = 'remove' | 'rewrite';
+export type RedactionMatchKind = 'literal' | 'regex' | 'category';
+
+export interface RedactionRule {
+    id: string;
+    type: RedactionRuleType;
+    match: RedactionMatchKind;
+    pattern: string;
+    /** For `rewrite` rules: the literal replacement (omit for a semantic SMR rewrite). */
+    replacement?: string;
+    note?: string;
+}
+
+/** The persisted container shape (`{ rules: [...] }`) — GET my-style/redaction-rules. */
+export interface RedactionRuleSet {
+    rules: RedactionRule[];
+}
+
 /** UpdateDnaReportRequest (self PATCH — If-Match required, 428/412). */
 export interface UpdateMyReportRequest {
     reportData?: Record<string, unknown>;
     styleText?: string;
+    /**
+     * TASK-551 — the doctor's DNA redaction/rewrite rule set. Sent as
+     * `{ rules: [...] }`; the gateway validates the shape on write and stores it
+     * encrypted-at-rest. Pass `{ rules: [] }` to clear.
+     */
+    redactionRules?: RedactionRuleSet;
     changeReason?: string;
     /** Derived from the read ETag by the client; header overrides it server-side. */
     expectedVersion?: number;

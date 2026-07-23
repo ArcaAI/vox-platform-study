@@ -17,6 +17,7 @@ export interface CreatePipelinePolicyProps extends BaseEntityFactoryCreateProps 
   autoNerEnabled?: IPipelinePolicyEntity['autoNerEnabled'];
   harnessEnabled?: IPipelinePolicyEntity['harnessEnabled'];
   dnaStyleEnabled?: IPipelinePolicyEntity['dnaStyleEnabled'];
+  dnaRedactionEnabled?: IPipelinePolicyEntity['dnaRedactionEnabled'];
 
   createdAt?: IPipelinePolicyEntity['createdAt'];
   updatedAt?: IPipelinePolicyEntity['updatedAt'];
@@ -53,6 +54,7 @@ export class PipelinePolicyFactory {
       autoNerEnabled: props.autoNerEnabled ?? null,
       harnessEnabled: props.harnessEnabled ?? null,
       dnaStyleEnabled: props.dnaStyleEnabled ?? null,
+      dnaRedactionEnabled: props.dnaRedactionEnabled ?? null,
 
       tenantId: props.tenantId,
       Tenant: props.Tenant ?? null,

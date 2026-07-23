@@ -28,6 +28,7 @@ const fakeVersionEntity = {
 const createMockDnaService = () => ({
     generateDnaReport: vi.fn(),
     getDnaReport: vi.fn(),
+    getRedactionRules: vi.fn(),
     updateDnaReport: vi.fn(),
     setDefaultReport: vi.fn(),
     getVersions: vi.fn(),
@@ -156,6 +157,26 @@ describe('DnaWritingStyleController', () => {
             mockDnaService.getDnaReport.mockResolvedValue(null);
 
             await expect(controller.getMyStyle()).rejects.toThrow();
+        });
+    });
+
+    describe('GET /dna-writing-styles/my-style/redaction-rules', () => {
+        it('returns the caller doctor decrypted redaction rule set', async () => {
+            const ruleSet = { rules: [{ id: 'r1', type: 'remove', match: 'literal', pattern: "patient's employer" }] };
+            mockDnaService.getRedactionRules.mockResolvedValue(ruleSet);
+
+            const result = await controller.getMyRedactionRules();
+
+            expect(mockDnaService.getRedactionRules).toHaveBeenCalledWith('doctor-1');
+            expect(result).toEqual(ruleSet);
+        });
+
+        it('returns the well-formed empty set (never 404) when no rules are configured', async () => {
+            mockDnaService.getRedactionRules.mockResolvedValue({ rules: [] });
+
+            const result = await controller.getMyRedactionRules();
+
+            expect(result).toEqual({ rules: [] });
         });
     });
 

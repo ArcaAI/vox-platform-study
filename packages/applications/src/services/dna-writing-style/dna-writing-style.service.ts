@@ -30,6 +30,7 @@ import {
   UpdateDnaSettingsRequest,
 } from './dto';
 import { DnaWritingStyleDtoMapper } from './dna-writing-style.dto.mapper';
+import { RedactionRuleSet, validateRedactionRuleSet } from './redaction-rules';
 // The per-doctor DNA toggle is stored on the Phase-5
 // DOCTOR-scope `PipelinePolicy.dnaStyleEnabled` column; this service is the
 // doctor self-service surface that writes/reads it via PipelinePolicyService.
@@ -177,6 +178,37 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   }
 
   /**
+   * TASK-551 — read the doctor's decrypted DNA redaction/rewrite rule set from
+   * their latest report. Same tenant PHI guard as {@link getDnaReport}. Returns
+   * an empty rule set when the doctor has no report or no rules configured (never
+   * null — the caller always gets a well-formed `{ rules: [] }`).
+   */
+  async getRedactionRules(doctorId: string): Promise<RedactionRuleSet> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+    await assertUserBelongsToTenant(
+      this.userRoleAssignmentRepository,
+      this.userDepartmentRepository,
+      this.userRepository,
+      doctorId,
+      tenantId,
+    );
+
+    const report = await this.dnaReportRepository.findLatestForDoctor(doctorId);
+    if (!report) return { rules: [] };
+
+    // Decrypt the ciphertext column (no-op when the secrets backend is unwired in
+    // dev/test). A report predating TASK-551 has no rules ⇒ empty set.
+    if (this.secretsService) {
+      const { redactionRules } = await this.dnaReportRepository.decryptFieldsFromEntity(report, this.secretsService);
+      if (redactionRules) return validateRedactionRuleSet(redactionRules);
+    }
+    return { rules: [] };
+  }
+
+  /**
    * Resolve a single doctor's `User.username` for display. `User`
    * is a global (non-tenant-scoped) model, so this read is safe for tenant
    * admins. `userRepository.findById` THROWS `DataNotFoundException` when the
@@ -290,7 +322,11 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       throw new ForbiddenException("Cannot update another doctor's DNA report");
     }
 
-    const hasContentChanges = dto.reportData !== undefined || dto.styleText !== undefined;
+    // TASK-551 — validate the redaction rule set's JSON shape up front (a 400
+    // here beats a fail-closed FLAG mid-consultation). Normalized copy persists.
+    const redactionRules = dto.redactionRules !== undefined ? validateRedactionRuleSet(dto.redactionRules) : undefined;
+
+    const hasContentChanges = dto.reportData !== undefined || dto.styleText !== undefined || redactionRules !== undefined;
 
     // Build the version snapshot (capturing the NEW content) and apply the
     // in-memory entity mutations FIRST; the two DB writes (insert + CAS) then
@@ -311,12 +347,15 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
         versionNumber: nextVersionNumber,
         reportData: dto.reportData ?? report.reportData,
         styleText: dto.styleText ?? report.styleText,
+        // Snapshot the (new or carried-forward) rule set alongside the content.
+        redactionRules: (redactionRules ?? report.redactionRules ?? undefined) as Record<string, unknown> | undefined,
         changeReason: dto.changeReason ?? null,
         changedBy: userId ?? null,
       });
 
       if (dto.reportData !== undefined) report.reportData = dto.reportData;
       if (dto.styleText !== undefined) report.styleText = dto.styleText;
+      if (redactionRules !== undefined) report.redactionRules = redactionRules as unknown as Record<string, unknown>;
       report.currentVersionNumber = nextVersionNumber;
 
       // Re-encrypt the new content into both the version

@@ -24,7 +24,12 @@ model DnaWritingStyleReport {
   // key version. These ciphertext columns are now the system of record.
   encryptedReportData Bytes?
   encryptedStyleText  Bytes?
-  keyVersion          Int?
+  // TASK-551 — Vault-Transit (hope-phi) ciphertext of the doctor's structured
+  // DNA redaction/rewrite rules (JSON: { rules: [{ id, type, match, pattern,
+  // replacement?, note? }] }). Personal + PHI-adjacent, so encrypted-on-write via the
+  // same PHI-field helper as the style text; NEVER a plaintext column.
+  encryptedRedactionRules Bytes?
+  keyVersion              Int?
 
   // Version tracking
   isLatest             Boolean @default(true)
@@ -71,7 +76,10 @@ model DnaWritingStyleVersion {
   // These ciphertext columns are now the system of record.
   encryptedReportData Bytes?
   encryptedStyleText  Bytes?
-  keyVersion          Int?
+  // TASK-551 — snapshot of the report's encrypted redaction/rewrite rules
+  // (see DnaWritingStyleReport.encryptedRedactionRules).
+  encryptedRedactionRules Bytes?
+  keyVersion              Int?
 
   // Change tracking
   changeReason String?

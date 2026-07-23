@@ -928,6 +928,38 @@ describe('HarnessInternalService', () => {
             expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
         });
 
+        // ── DNA redaction/rewrite audit trail (TASK-551) ──
+        it('threads the redaction marker + manifest onto SummaryMeta and encrypts it', async () => {
+            const manifest = { applied: true, total_hits: 2, hits_by_rule: { 'r-employer': 2 } };
+            await service.persistDraft('consultation-1', {
+                ...draftBody(),
+                redactionApplied: true,
+                redactionManifest: manifest,
+            });
+
+            expect(summaryMetaRepository.create).toHaveBeenCalledTimes(1);
+            const smArg = summaryMetaRepository.create.mock.calls[0][0];
+            expect(smArg).toEqual(
+                expect.objectContaining({
+                    redactionApplied: true,
+                    redactionManifest: manifest,
+                }),
+            );
+            // The manifest must be encrypted-on-write (F-031 guard: a writer that skips
+            // the cipher silently drops the audit trail to a plaintext-less row).
+            expect(summaryMetaRepository.encryptFieldsIntoEntity).toHaveBeenCalledTimes(1);
+            const encOrder = summaryMetaRepository.encryptFieldsIntoEntity.mock.invocationCallOrder[0];
+            const createOrder = summaryMetaRepository.create.mock.invocationCallOrder[0];
+            expect(encOrder).toBeLessThan(createOrder);
+        });
+
+        it('defaults the redaction fields to null when the harness omits them (no redaction ran)', async () => {
+            await service.persistDraft('consultation-1', draftBody());
+            const smArg = summaryMetaRepository.create.mock.calls[0][0];
+            expect(smArg.redactionApplied).toBeNull();
+            expect(smArg.redactionManifest).toBeNull();
+        });
+
         // ── [[seg:]] StrictCitations marker lane (write-only fix) ──
         // The model complies and cites `[[seg:<id>]]` in the generated note, but
         // nothing used to strip the raw marker before it reached the clinician-visible

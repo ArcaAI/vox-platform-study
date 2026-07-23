@@ -43,6 +43,8 @@ export class SummaryMeta extends BaseTenantDataModel {
   public encryptedCitationsMap: Uint8Array | null;
   public encryptedGuardrailDecisions: Uint8Array | null;
   public keyVersion: number | null;
+  public redactionApplied: boolean | null;
+  public encryptedRedactionManifest: Uint8Array | null;
   @VirtualDbProperty()
   public ContextItem: Models.ContextItem | undefined;
 
@@ -76,6 +78,8 @@ export class SummaryMeta extends BaseTenantDataModel {
     this.encryptedCitationsMap = data.encryptedCitationsMap;
     this.encryptedGuardrailDecisions = data.encryptedGuardrailDecisions;
     this.keyVersion = data.keyVersion;
+    this.redactionApplied = data.redactionApplied;
+    this.encryptedRedactionManifest = data.encryptedRedactionManifest;
     this.ContextItem = data.ContextItem;
   }
 }

@@ -38,6 +38,11 @@ export interface CreateSummaryMetaProps extends BaseEntityFactoryCreateProps {
   // Two-phase (optimistic) assurance state
   gateDecision?: ISummaryMetaEntity['gateDecision'];
   assuranceCompletedAt?: ISummaryMetaEntity['assuranceCompletedAt'];
+  // DNA redaction/rewrite audit (TASK-551). `redactionManifest` is the transient
+  // plaintext audit blob (encrypt-on-write via the repository sidecar into
+  // `encryptedRedactionManifest`); `redactionApplied` is the plaintext marker.
+  redactionApplied?: ISummaryMetaEntity['redactionApplied'];
+  redactionManifest?: ISummaryMetaEntity['redactionManifest'];
   tenantId: ISummaryMetaEntity['tenantId'];
 
   createdAt?: ISummaryMetaEntity['createdAt'];
@@ -86,6 +91,8 @@ export class SummaryMetaFactory {
       modelName: props.modelName ?? null,
       gateDecision: props.gateDecision ?? null,
       assuranceCompletedAt: props.assuranceCompletedAt ?? null,
+      redactionApplied: props.redactionApplied ?? null,
+      redactionManifest: props.redactionManifest ?? null,
       tenantId: props.tenantId,
     });
   }

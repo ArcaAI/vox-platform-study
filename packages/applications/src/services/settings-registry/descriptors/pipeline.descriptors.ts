@@ -40,11 +40,15 @@ const META: Record<PipelineToggleKey, { label: string; description: string; glob
   },
   harnessEnabled: {
     label: 'Documentation harness',
-    description:
-      'Route consultations through the clinical documentation harness (rollout knob — capped at department; global administrators only).',
+    description: 'Route consultations through the clinical documentation harness (rollout knob — capped at department; global administrators only).',
     globalOnly: true,
   },
   dnaStyleEnabled: { label: 'DNA writing style', description: "Apply and learn the doctor's DNA writing style." },
+  dnaRedactionEnabled: {
+    label: 'DNA redaction',
+    description:
+      "Apply the doctor's DNA redaction/rewrite rules to generated notes as a separate, auditable post-generation transform (tenant-level gate; the doctor's DNA opt-in still applies).",
+  },
 };
 
 export const PIPELINE_SETTINGS: SettingDescriptor[] = (Object.keys(PIPELINE_SETTING_DESCRIPTORS) as PipelineToggleKey[]).map((key) => ({

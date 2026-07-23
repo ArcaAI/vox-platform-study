@@ -267,3 +267,85 @@ describe('ConfigResolver.resolveEffectiveDnaStyleEnabled', () => {
     expect(r.effective).toBe(false);
   });
 });
+
+describe('ConfigResolver.resolveEffectiveDnaRedactionEnabled (TASK-551 double-gate)', () => {
+  let resolver: ConfigResolver;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resolver = makeResolver();
+    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([]);
+    pipelinePolicyRepository.findSystemDefault.mockResolvedValue(null);
+  });
+
+  it('code-defaults to OFF when nothing resolves (fail-closed)', async () => {
+    const r = await resolver.resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR });
+    expect(r.tenantEnabled).toBe(false);
+    expect(r.effective).toBe(false);
+  });
+
+  it('tenant ON + doctor DNA opt-in unset ⇒ effective ON', async () => {
+    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([tenantRow({ dnaRedactionEnabled: true })]);
+
+    const r = await resolver.resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR });
+
+    expect(r.tenantEnabled).toBe(true);
+    expect(r.doctorToggle).toBeNull();
+    expect(r.effective).toBe(true);
+  });
+
+  it('tenant OFF ⇒ effective OFF even when the doctor has DNA on', async () => {
+    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([
+      tenantRow({ dnaRedactionEnabled: false }),
+      doctorRow({ dnaStyleEnabled: true }),
+    ]);
+
+    const r = await resolver.resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR });
+
+    expect(r.tenantEnabled).toBe(false);
+    expect(r.effective).toBe(false);
+  });
+
+  it('doctor DNA opt-OUT under an enabled tenant ⇒ effective OFF', async () => {
+    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([
+      tenantRow({ dnaRedactionEnabled: true }),
+      doctorRow({ dnaStyleEnabled: false }),
+    ]);
+
+    const r = await resolver.resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR });
+
+    expect(r.tenantEnabled).toBe(true);
+    expect(r.doctorToggle).toBe(false);
+    expect(r.effective).toBe(false);
+  });
+
+  it('maxScope TENANT: a DEPARTMENT row cannot enable redaction', async () => {
+    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([deptRow({ dnaRedactionEnabled: true })]);
+
+    const r = await resolver.resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, departmentId: DEPT, doctorId: DOCTOR });
+
+    expect(r.tenantEnabled).toBe(false);
+    expect(r.effective).toBe(false);
+  });
+
+  it('DepartmentAgent.dnaStylePolicy=DISABLED forces effective OFF even when tenant+doctor allow it', async () => {
+    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([tenantRow({ dnaRedactionEnabled: true })]);
+
+    const r = await resolver.resolveEffectiveDnaRedactionEnabled({
+      tenantId: TENANT,
+      doctorId: DOCTOR,
+      departmentAgentDnaDisabled: true,
+    });
+
+    expect(r.tenantEnabled).toBe(true);
+    expect(r.effective).toBe(false);
+  });
+
+  it('degrades to effective=false (fail-closed) if the policy lookup throws', async () => {
+    pipelinePolicyRepository.findCascadeRows.mockRejectedValue(new Error('db down'));
+
+    const r = await resolver.resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR });
+
+    expect(r.effective).toBe(false);
+  });
+});

@@ -90,6 +90,12 @@ class HarnessDocWorkflowInput(BaseModel):
     transcript_ref: ClaimCheckRef | None = None
     conversation_language: str = "en"
     dna_style_id: str | None = None
+    # TASK-551 — DNA redaction/rewrite rules resolved gateway-side (tenant + doctor
+    # double-gate; decrypted from the doctor's DNA report). ADDITIVE-OPTIONAL: an
+    # empty list (the default, and every legacy start payload) makes the workflow's
+    # ``apply_redaction`` insertion short-circuit BEFORE ``workflow.patched`` — no
+    # marker, no command — so old histories replay byte-identically.
+    redaction_rules: list[RedactionRule] = Field(default_factory=list)
     template: str | None = None
     # SMR generation defaults (None => SMR service default).
     smr_provider: str | None = None
@@ -801,6 +807,15 @@ class PersistDraftInput(BaseModel):
     # ⇒ early persist: readable draft now, verdict withheld, assurance deferred to
     # ``finalize_assurance``.
     phase: str | None = None
+    # DNA redaction/rewrite AUDIT marker (TASK-551, gated behind the
+    # ``task-551-redaction-audit`` workflow era). ``redaction_applied`` is the
+    # plaintext queryable marker (the transform ran AND changed the note);
+    # ``redaction_manifest`` is the compact audit summary (rule ids, actions, span
+    # counts — NEVER removed PHI plaintext) persisted encrypted on SummaryMeta.
+    # Both None on every pre-audit-era history ⇒ ``_prune`` drops them ⇒ the persist
+    # body is byte-identical, so the audit change is replay-safe when the era is off.
+    redaction_applied: bool | None = None
+    redaction_manifest: dict[str, Any] | None = None
     # ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
     trajectory: TrajectoryContext | None = None
 

@@ -93,6 +93,11 @@ class StartDocumentRequest(BaseModel):
     template: str | None = Field(default=None)
     smr_provider: str | None = Field(default=None, alias="smrProvider")
     smr_model: str | None = Field(default=None, alias="smrModel")
+    # TASK-551 — DNA redaction/rewrite rules resolved + decrypted gateway-side
+    # (tenant + doctor double-gate). Default [] ⇒ the workflow's apply_redaction
+    # insertion is a no-op (byte-identical to the pre-TASK-551 start). Each entry is
+    # the RedactionRule shape ({ id, type, match, pattern, replacement?, note? }).
+    redaction_rules: list[dict[str, Any]] = Field(default_factory=list, alias="redactionRules")
 
 
 class ApprovalRequest(BaseModel):
@@ -136,6 +141,7 @@ async def start_document(
     """Start the document workflow (idempotent on the deterministic workflow id)."""
     # Imported lazily so the module has no import-time dependency on the workflow
     # sandbox (keeps the HTTP surface importable without a Temporal runtime).
+    from harness.redaction.engine import RedactionRule
     from harness.temporal.models import HarnessDocWorkflowInput, HarnessGateConfig
     from harness.temporal.workflows import HarnessDocWorkflow
 
@@ -156,6 +162,9 @@ async def start_document(
         template=body.template,
         smr_provider=body.smr_provider,
         smr_model=body.smr_model,
+        # Parse each rule dict into a RedactionRule (validates the JSON shape at the
+        # boundary; a malformed rule 422s here rather than failing closed mid-workflow).
+        redaction_rules=[RedactionRule.model_validate(r) for r in body.redaction_rules],
         gate=HarnessGateConfig(
             max_regen=settings.max_regen,
             gate_sla_seconds=settings.gate_sla_seconds,
