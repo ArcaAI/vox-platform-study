@@ -19,6 +19,7 @@ from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
+from harness.redaction.engine import RedactionRule
 from harness.temporal.models import (
     HARNESS_DRAFT_PHASE_EARLY,
     ApprovalSignal,
@@ -1677,3 +1678,266 @@ class TestNerPriorsReuse:
 
         assert result.decision == "PASS"
         assert recorder.calls["persist_entities"] == 1
+
+
+_REDACTED_NOTE = '{"subjective": "s-redacted", "objective": "o", "assessment": "a", "plan": "p"}'
+
+
+def _rules() -> list[RedactionRule]:
+    """One literal-remove rule so the start payload arms the redaction insertion."""
+    return [RedactionRule(id="r1", type="remove", match="literal", pattern="employer")]
+
+
+class TestRedaction:
+    """TASK-551 — the separate, auditable ``apply_redaction`` transform inserted
+    after the computational loop settles and BEFORE persist/delivery."""
+
+    @pytest.mark.asyncio
+    async def test_no_rules_never_calls_apply_redaction(self):
+        """No redaction rules ⇒ the activity is never invoked and the note is
+        persisted verbatim (the ``and workflow.patched`` short-circuit — byte-identical
+        to the pre-TASK-551 path)."""
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"], redaction_text=_REDACTED_NOTE)
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(),  # no redaction_rules
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        assert recorder.calls["apply_redaction"] == 0
+        assert recorder.persist_draft_inputs[0].content == _OK_NOTE
+        # Only the in-loop computational pass ran (no re-run without redaction).
+        assert recorder.calls["run_sensors"] == 1
+
+    @pytest.mark.asyncio
+    async def test_rules_transform_note_before_persist_and_rerun_sensors(self):
+        """Rules present + a changing transform ⇒ ``apply_redaction`` runs once, the
+        REDACTED text is persisted, and the cheap computational sensors re-run on the
+        transformed text (so the persisted verdict matches what is delivered)."""
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"], redaction_text=_REDACTED_NOTE)
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(redaction_rules=_rules()),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        assert recorder.calls["apply_redaction"] == 1
+        # The activity screened the generated note against the doctor's rules.
+        assert recorder.apply_redaction_inputs[0].note_text == _OK_NOTE
+        assert [r.id for r in recorder.apply_redaction_inputs[0].rules] == ["r1"]
+        # The PERSISTED note is the redacted one — not the raw generation.
+        assert recorder.persist_draft_inputs[0].content == _REDACTED_NOTE
+        # Cheap computational sensors re-ran on the transformed text (loop + re-run).
+        assert recorder.calls["run_sensors"] == 2
+        assert recorder.run_sensors_inputs[-1].note_text == _REDACTED_NOTE
+
+    @pytest.mark.asyncio
+    async def test_failed_closed_forces_flag(self):
+        """A redaction that FAILS CLOSED forces a FLAG — a note the doctor expected
+        redacted must never slip through silently."""
+        recorder = StubRecorder()
+        config = StubConfig(
+            verdicts=["PASS"], policy=HarnessPolicy(), redaction_failed_closed=True
+        )
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(redaction_rules=_rules()),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert recorder.calls["apply_redaction"] == 1
+        assert result.decision == "FLAG"
+        assert recorder.persist_draft_inputs[0].gate_decision == "FLAG"
+
+    @pytest.mark.asyncio
+    async def test_optimistic_delivers_redacted_text(self):
+        """On the optimistic path the EARLY-delivered draft carries the redacted text
+        (redaction runs BEFORE ``_deliver_early``)."""
+        recorder = StubRecorder()
+        config = StubConfig(
+            verdicts=["PASS"], inferential_verdicts=["SAFE"], redaction_text=_REDACTED_NOTE
+        )
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(redaction_rules=_rules(), gate=_opt_gate()),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        assert recorder.calls["apply_redaction"] == 1
+        # apply_redaction ran BEFORE the early persist.
+        assert recorder.call_order.index("apply_redaction") < recorder.call_order.index(
+            "persist_draft"
+        )
+        assert recorder.persist_draft_inputs[0].content == _REDACTED_NOTE
+
+    @pytest.mark.asyncio
+    async def test_optimistic_failed_closed_retracts_delivered_draft(self):
+        """On the optimistic path a fail-closed redaction RETRACTS the delivered draft
+        (the fail-closed FLAG rides the existing retraction net) even when assurance is
+        otherwise SAFE."""
+        recorder = StubRecorder()
+        config = StubConfig(
+            verdicts=["PASS"],
+            inferential_verdicts=["SAFE"],
+            redaction_failed_closed=True,
+        )
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(redaction_rules=_rules(), gate=_opt_gate()),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                result = await handle.result()
+
+        assert result.decision == "FLAG"
+        assert result.retracted is True
+        assert recorder.calls["retract_draft"] == 1
+
+    @pytest.mark.asyncio
+    async def test_audit_marker_threaded_to_legacy_persist(self):
+        """TASK-551 audit era — a changing redaction threads the ``redaction_applied``
+        marker + a compact manifest (rule ids / counts, NEVER PHI) into the legacy
+        ``persist_draft`` so apps/api records it on SummaryMeta."""
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"], redaction_text=_REDACTED_NOTE)
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(redaction_rules=_rules()),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        persisted = recorder.persist_draft_inputs[0]
+        assert persisted.redaction_applied is True
+        assert persisted.redaction_manifest is not None
+        assert persisted.redaction_manifest["applied"] is True
+        assert persisted.redaction_manifest["totalHits"] == 1
+        assert persisted.redaction_manifest["hitsByRule"] == {"r1": 1}
+        assert persisted.redaction_manifest["ruleIds"] == ["r1"]
+
+    @pytest.mark.asyncio
+    async def test_audit_marker_threaded_to_optimistic_early_persist(self):
+        """TASK-551 audit era — on the optimistic path the marker + manifest ride the
+        EARLY ``persist_draft`` (the redaction runs before ``_deliver_early``)."""
+        recorder = StubRecorder()
+        config = StubConfig(
+            verdicts=["PASS"], inferential_verdicts=["SAFE"], redaction_text=_REDACTED_NOTE
+        )
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(redaction_rules=_rules(), gate=_opt_gate()),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        early = recorder.persist_draft_inputs[0]
+        assert early.redaction_applied is True
+        assert early.redaction_manifest is not None
+        assert early.redaction_manifest["applied"] is True
+        assert early.redaction_manifest["hitsByRule"] == {"r1": 1}
+
+    @pytest.mark.asyncio
+    async def test_no_rules_no_audit_marker_on_persist(self):
+        """No redaction rules ⇒ no audit marker on persist (byte-identical to the
+        pre-audit-era persist body — the ``_prune`` drop keeps replay safe)."""
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"], redaction_text=_REDACTED_NOTE)
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(),  # no redaction_rules
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                await handle.result()
+
+        persisted = recorder.persist_draft_inputs[0]
+        assert persisted.redaction_applied is None
+        assert persisted.redaction_manifest is None

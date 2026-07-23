@@ -80,7 +80,11 @@ export interface EvalRun {
     modelVersion: string | null;
     promptTemplateId: string | null;
     promptVersion: string | null;
+    /** The numeric PromptVersion.versionNumber this run gated (null for non-template runs). */
+    promptVersionNumber: number | null;
     judgeModel: string | null;
+    /** How the run was triggered: MANUAL (admin run-now) | PROMOTION (approve/pin gate) | CI. Null on legacy rows. */
+    triggerType: string | null;
     status: string | null;
     startedAt: string | null;
     completedAt: string | null;
@@ -197,6 +201,51 @@ export interface CreateGoldenCaseBody {
  * composed over WORM audit rows + summary versions. The note text itself never
  * leaves the service. 404 = absent OR cross-tenant consultation.
  */
+/** The mined clinician approve-vs-edit label (GateEditExemplar.qualitySignal). */
+export type GateEditQualitySignal = 'APPROVED_CLEAN' | 'HEAVILY_EDITED';
+
+/**
+ * One gate-edit corpus candidate (GateEditCorpusCandidate) - a PROPOSAL mined
+ * from the clinician approve-vs-edit signal, PHI-REDACTED AT WRITE (the
+ * `redactedBefore`/`redactedAfter` snippets are never raw clinical text).
+ * Admission to a golden set is a separate, admin-gated decision (spec S3.4) -
+ * which is why these fields are safe to render as-is, unlike the
+ * PHI-encrypted `GoldenCase` payload above.
+ */
+export interface GateEditCorpusCandidate {
+    id: string;
+    tenantId: string;
+    consultationId: string;
+    departmentId: string | null;
+    visitType: string | null;
+    gateDecision: string;
+    qualitySignal: string;
+    editDistance: number | null;
+    editDistanceRatio: number | null;
+    timeToSignSeconds: number | null;
+    redactedBefore: string | null;
+    redactedAfter: string | null;
+    modelName: string | null;
+    promptTemplateId: string | null;
+    createdAt: string | null;
+}
+
+/** GET gate-edit-exemplars envelope (GateEditCorpusExport) - always UNREVIEWED proposals. */
+export interface GateEditCorpusExport {
+    tenantId: string;
+    reviewStatus: 'PENDING_SME_REVIEW';
+    count: number;
+    candidates: GateEditCorpusCandidate[];
+}
+
+/** GET gate-edit-exemplars query - `manage:HarnessPolicy` gated (unusually, for a read). */
+export interface GateEditExemplarsParams {
+    departmentId?: string;
+    qualitySignal?: GateEditQualitySignal | string;
+    limit?: number;
+    [key: string]: string | number | boolean | undefined | null;
+}
+
 export interface EditBurden {
     consultationId: string;
     /** Word-level distance between delivered and signed note; null when a version is missing. */

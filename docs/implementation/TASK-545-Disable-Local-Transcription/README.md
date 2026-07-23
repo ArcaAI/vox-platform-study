@@ -248,3 +248,6 @@ verification (no e2e was attempted — nothing here requires a running API).
   unrelated NLP/playground-consultation edits) — none of those files were touched here; this
   ticket's files were staged (`git add`) incrementally as each layer went green to protect against
   the tree's documented history of concurrent-session data loss.
+
+### 2026-07-23 — Runtime proof (RUNTIME-PROOFS agent) — PASS
+Live dev API (:8868). `GET /api/v1/admin/tenant-frontend-config?tenantId=ARCAAI` returns `transcriptionMode=BACKEND, transcriptionModeLocked=true` while the **stored** `TenantFrontendConfig` row for ARCAAI is `BACKEND / transcriptionModeLocked=false` (psql-verified) — the `getByTenant` clamp overrides the stored `false`→served `true`. Server-side clamp confirmed on the real endpoint.

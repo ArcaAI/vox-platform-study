@@ -20,11 +20,19 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { randomUUID } from 'node:crypto';
-import { ConsultationRepository, ContextItemRepository } from '@arcaai/domains';
+import {
+  ConsultationRepository,
+  ContextItemRepository,
+  DnaWritingStyleReportRepository,
+  DepartmentAgentRepository,
+  DepartmentAgentDnaPolicy,
+} from '@arcaai/domains';
 import { IConsultationJobService } from '../jobs/consultation-job.service';
 import { PromptResolutionService } from '../prompt/prompt-resolution.service';
 import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { ConfigResolver } from '../../config-resolver';
+import { SecretsService } from '../../baseServices/_meta/secrets';
+import { validateRedactionRuleSet } from '../../dna-writing-style/redaction-rules';
 import { createWorkerSession } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import {
@@ -62,6 +70,15 @@ export class ConsultationEventHandler {
     // Optional + trailing so existing positional fixtures keep compiling; when
     // absent the resolver falls back to DEFAULT_PIPELINE_CONFIG (legacy behaviour).
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
+    // TASK-551 — the last-mile DNA-redaction resolution deps (harness path only).
+    // The rules live encrypted-at-rest on the doctor's latest DNA report; the
+    // repository reads + the SecretsService decrypts. The DepartmentAgent repo
+    // supplies the department default-agent DNA-policy gate. All optional +
+    // trailing so legacy positional fixtures/DI keep compiling — when any is
+    // absent the harness starts with NO redaction rules (safe no-op).
+    @Optional() @Inject(DnaWritingStyleReportRepository) private readonly dnaReportRepository?: DnaWritingStyleReportRepository,
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    @Optional() @Inject(DepartmentAgentRepository) private readonly departmentAgentRepository?: DepartmentAgentRepository,
   ) {
     this.logger.log('ConsultationEventHandler initialized — auto-pipeline enabled');
   }
@@ -145,6 +162,13 @@ export class ConsultationEventHandler {
             });
           }
 
+          // TASK-551 — resolve + decrypt the doctor's DNA redaction rules when
+          // the tenant + doctor double-gate (and the department default-agent DNA
+          // policy) permit it. Fail-SAFE: any failure yields NO rules, which
+          // makes the workflow's apply_redaction insertion a byte-identical no-op
+          // — the harness start is NEVER blocked by redaction resolution.
+          const redactionRules = await this.resolveRedactionRulesForHarness(consultationId, tenantId);
+
           await this.harnessGatewayService?.start(consultationId, {
             tenantId,
             userId: payload.userId,
@@ -152,6 +176,8 @@ export class ConsultationEventHandler {
             correlationId: correlationId ?? payload.jobId,
             contextItemId,
             transcriptText,
+            // Empty ⇒ the gateway omits the field entirely (byte-identical body).
+            redactionRules,
           });
 
           this.logger.log({
@@ -469,6 +495,83 @@ export class ConsultationEventHandler {
         error: error instanceof Error ? error.message : String(error),
       });
       return { ...DEFAULT_PIPELINE_CONFIG };
+    }
+  }
+
+  // =========================================================================
+  // TASK-551 — DNA redaction rule resolution (harness path)
+  // =========================================================================
+
+  /**
+   * Resolve the doctor's DNA redaction/rewrite rules for a harness start.
+   *
+   * Double-gated exactly like the DNA-style feature — tenant permission AND the
+   * doctor's DNA opt-in — plus the department default-agent DNA policy
+   * (`dnaStylePolicy=DISABLED` forces OFF). When effective, the rules are read
+   * from the doctor's latest DNA report and decrypted via the SecretsService,
+   * then validated to the persisted `{ rules: [...] }` shape.
+   *
+   * FAIL-SAFE (deliberate, per the ticket): any gate/lookup/decrypt/validation
+   * failure — or missing DI (legacy fixtures) — yields an EMPTY rule set. Empty
+   * rules make the workflow's `apply_redaction` insertion a no-op, so the harness
+   * start is never blocked; the note still flows through the normal assurance
+   * lane. (The fail-CLOSED-to-FLAG behaviour lives inside the workflow and only
+   * engages when rules are actually present.) Returns the rules as the loose
+   * `Record<string, unknown>[]` the transport carries.
+   */
+  private async resolveRedactionRulesForHarness(consultationId: string, tenantId: string): Promise<Record<string, unknown>[]> {
+    // No resolver wired ⇒ preserve the exact legacy (no-redaction) behaviour.
+    if (!this.configResolver) return [];
+
+    try {
+      const consultation = await this.consultationRepository.findById(consultationId);
+      const doctorId = consultation?.doctorId ?? null;
+      const departmentId = consultation?.departmentId ?? null;
+
+      // Department default-agent gate: DISABLED forces redaction OFF for the
+      // whole department. Best-effort — a lookup miss leaves the tenant/doctor
+      // gates authoritative.
+      let departmentAgentDnaDisabled = false;
+      if (departmentId && this.departmentAgentRepository) {
+        try {
+          const defaultAgent = await this.departmentAgentRepository.findDefaultForDepartment(tenantId, departmentId);
+          departmentAgentDnaDisabled = defaultAgent?.dnaStylePolicy === DepartmentAgentDnaPolicy.DISABLED;
+        } catch (agentError) {
+          this.logger.warn({
+            message: 'Default department-agent lookup failed for DNA redaction gate (best-effort)',
+            consultationId,
+            departmentId,
+            error: agentError instanceof Error ? agentError.message : String(agentError),
+          });
+        }
+      }
+
+      const { effective } = await this.configResolver.resolveEffectiveDnaRedactionEnabled({
+        tenantId,
+        departmentId,
+        doctorId,
+        departmentAgentDnaDisabled,
+      });
+      if (!effective || !doctorId) return [];
+
+      // Rules are encrypted-at-rest on the doctor's latest DNA report.
+      if (!this.dnaReportRepository || !this.secretsService) return [];
+      const report = await this.dnaReportRepository.findLatestForDoctor(doctorId);
+      if (!report) return [];
+
+      const { redactionRules } = await this.dnaReportRepository.decryptFieldsFromEntity(report, this.secretsService);
+      if (!redactionRules) return [];
+
+      // Validate the persisted shape (throws on malformed ⇒ caught below).
+      const ruleSet = validateRedactionRuleSet(redactionRules);
+      return ruleSet.rules as unknown as Record<string, unknown>[];
+    } catch (error) {
+      this.logger.warn({
+        message: 'DNA redaction rule resolution failed — starting harness without rules (fail-safe)',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
     }
   }
 

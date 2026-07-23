@@ -15,6 +15,7 @@ import type {
     DnaSettings,
     DnaVersion,
     GenerateDnaStyleRequest,
+    RedactionRuleSet,
     UpdateDnaSettingsRequest,
     UpdateMyReportRequest,
 } from './types';
@@ -32,6 +33,15 @@ export function getMyStyle(): Promise<WithEtag<DnaReport>> {
 /** Owner-scoped report history backing the report list + set-default picker. */
 export function listMyReports(): Promise<DnaReport[]> {
     return getJson(`${BASE}/mine`);
+}
+
+/**
+ * The caller's decrypted DNA redaction rule set. Always well-formed
+ * (`{ rules: [] }` when none) — a 200, never a 404. Rules are WRITTEN through
+ * `updateMyReport` (the report PATCH `redactionRules` field), not here.
+ */
+export function getMyRedactionRules(): Promise<RedactionRuleSet> {
+    return getJson(`${BASE}/my-style/redaction-rules`);
 }
 
 /** OCC PATCH: If-Match header + body expectedVersion derived from the ETag. */

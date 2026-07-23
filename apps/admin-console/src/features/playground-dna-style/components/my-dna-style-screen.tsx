@@ -10,7 +10,8 @@ import { GatewayError } from '@/shared/api';
 import { useSession } from '@/shared/auth';
 import { CanvasHeader, PlaygroundCanvas } from '@/features/playground-shared/components/playground-canvas';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
-import { useDnaJobProgress, useDnaSettings, useGenerateMyStyle, useMyReports, useMyStyle } from '../api';
+import { useDnaJobProgress, useDnaSettings, useGenerateMyStyle, useMyRedactionRules, useMyReports, useMyStyle } from '../api';
+import { DnaRedactionCard } from './dna-redaction-card';
 import { DnaSettingsCard } from './dna-settings-card';
 import { GeneratePane } from './generate-pane';
 import { ImpersonationGatePanel } from './impersonation-gate-panel';
@@ -44,6 +45,7 @@ function MyDnaStyleBody() {
     const myStyle = useMyStyle();
     const mine = useMyReports();
     const settings = useDnaSettings();
+    const redaction = useMyRedactionRules();
 
     const [samplesText, setSamplesText] = useState('');
     const [activeJobId, setActiveJobId] = useState<string | null>(null);
@@ -102,6 +104,7 @@ function MyDnaStyleBody() {
             <ImpersonationGatePanel session={safe} gated={gated} />
             <DnaSettingsCard settings={settings} gated={gated} onGate={() => setGateHit(true)} />
             <MyStyleCard myStyle={myStyle} settings={settings} gated={gated} onGenerate={handleGenerate} generatePending={generate.isPending} />
+            <DnaRedactionCard myStyle={myStyle} redaction={redaction} settings={settings} gated={gated} />
             <GeneratePane
                 samplesText={samplesText}
                 onSamplesTextChange={setSamplesText}

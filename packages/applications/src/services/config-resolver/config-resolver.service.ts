@@ -17,7 +17,7 @@ import { CascadeTier, walkCascade } from '../settings-registry/scope-cascade';
  */
 
 /** The realtime cascade knobs ConfigResolver resolves. */
-export type PipelineToggleKey = 'autoSummaryEnabled' | 'autoNerEnabled' | 'harnessEnabled' | 'dnaStyleEnabled';
+export type PipelineToggleKey = 'autoSummaryEnabled' | 'autoNerEnabled' | 'harnessEnabled' | 'dnaStyleEnabled' | 'dnaRedactionEnabled';
 
 /** Which cascade tier supplied a resolved value (audit trace, README §4.1). */
 export type ConfigResolutionSource = 'doctor' | 'department' | 'tenant' | 'system-default' | 'code-default';
@@ -26,6 +26,14 @@ export interface ConfigResolutionContext {
   tenantId: string;
   departmentId?: string | null;
   doctorId?: string | null;
+  /**
+   * TASK-551 — the consultation's default DepartmentAgent gate. When its
+   * `dnaStylePolicy` is `DISABLED`, DNA redaction is forced OFF for that agent
+   * regardless of the tenant/doctor gates. Resolved by the caller (which already
+   * knows the department's default agent) and passed in as a plain flag so the
+   * resolver stays free of a DepartmentAgent dependency.
+   */
+  departmentAgentDnaDisabled?: boolean;
 }
 
 export interface ResolvedPipelineToggles {
@@ -33,6 +41,7 @@ export interface ResolvedPipelineToggles {
   autoNerEnabled: boolean;
   harnessEnabled: boolean;
   dnaStyleEnabled: boolean;
+  dnaRedactionEnabled: boolean;
   /** Which cascade tier supplied each toggle (for audit/debug). */
   trace: Record<PipelineToggleKey, ConfigResolutionSource>;
 }
@@ -70,6 +79,9 @@ export const PIPELINE_SETTING_DESCRIPTORS: Record<PipelineToggleKey, SettingDesc
   autoNerEnabled: { codeDefault: true, maxScope: PipelinePolicyScope.DOCTOR },
   harnessEnabled: { codeDefault: false, maxScope: PipelinePolicyScope.DEPARTMENT },
   dnaStyleEnabled: { codeDefault: false, maxScope: PipelinePolicyScope.DOCTOR },
+  // TASK-551 — the TENANT-level enablement gate for DNA redaction; the doctor
+  // opt-in is the doctor's DNA toggle (see resolveEffectiveDnaRedactionEnabled).
+  dnaRedactionEnabled: { codeDefault: false, maxScope: PipelinePolicyScope.TENANT },
 };
 
 const TOGGLE_KEYS = Object.keys(PIPELINE_SETTING_DESCRIPTORS) as PipelineToggleKey[];
@@ -188,6 +200,67 @@ export class ConfigResolver {
   }
 
   /**
+   * TASK-551 — resolve the effective DNA REDACTION decision for a
+   * consultation context. Mirrors {@link resolveEffectiveDnaStyleEnabled} as a
+   * DOUBLE gate, plus the DepartmentAgent gate:
+   *
+   *  - `tenantEnabled` is the `dnaRedactionEnabled` cascade resolution (maxScope
+   *    TENANT ⇒ tenant → SYSTEM default → code default=false; department/doctor
+   *    tiers EXCLUDED) — "does the tenant permit redaction at all?".
+   *  - `doctorToggle` is the doctor's DNA opt-in (their DOCTOR-scope
+   *    `dnaStyleEnabled` row): redaction is a facet of the DNA feature, so a
+   *    doctor who has turned DNA OFF gets no redaction. Unset ⇒ implicit opt-in.
+   *  - `DepartmentAgent.dnaStylePolicy=DISABLED` (passed as
+   *    `ctx.departmentAgentDnaDisabled`) forces the result OFF regardless.
+   *
+   * Fail-CLOSED: any lookup failure ⇒ redaction OFF (a note the doctor expected
+   * redacted must never slip through on a degraded config read).
+   */
+  async resolveEffectiveDnaRedactionEnabled(ctx: ConfigResolutionContext): Promise<ResolvedDnaStyle> {
+    let cascadeRows: PipelinePolicyEntity[] = [];
+    let systemRow: PipelinePolicyEntity | null = null;
+
+    try {
+      [cascadeRows, systemRow] = await Promise.all([
+        this.pipelinePolicyRepository.findCascadeRows({
+          tenantId: ctx.tenantId,
+          departmentId: ctx.departmentId ?? null,
+          doctorId: ctx.doctorId ?? null,
+        }),
+        this.pipelinePolicyRepository.findSystemDefault(),
+      ]);
+    } catch (error) {
+      this.logger.warn({
+        message: 'DNA-redaction policy lookup failed — failing closed (redaction off)',
+        tenantId: ctx.tenantId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { effective: false, tenantEnabled: false, doctorToggle: null };
+    }
+
+    const tenantRow = cascadeRows.find((r) => r.scope === PipelinePolicyScope.TENANT) ?? null;
+    const doctorRow =
+      ctx.doctorId != null ? (cascadeRows.find((r) => r.scope === PipelinePolicyScope.DOCTOR && r.scopeId === ctx.doctorId) ?? null) : null;
+
+    // maxScope TENANT ⇒ resolveOne only walks tenant + system-default; department
+    // + doctor tiers are excluded by the descriptor, so pass them as null.
+    const tenantEnabled = this.resolveOne('dnaRedactionEnabled', {
+      doctorRow: null,
+      departmentRow: null,
+      tenantRow,
+      systemRow,
+    }).value;
+
+    // Doctor opt-in reuses the doctor's DNA toggle (redaction is part of DNA).
+    // The DepartmentAgent DISABLED gate is authoritative and forces the result
+    // OFF, but does not change what the tenant/doctor gates independently say.
+    const doctorToggle = doctorRow ? ((doctorRow.dnaStyleEnabled as boolean | null | undefined) ?? null) : null;
+    const effective = tenantEnabled && (doctorToggle ?? true) && !ctx.departmentAgentDnaDisabled;
+
+    return { effective, tenantEnabled, doctorToggle };
+  }
+
+  /**
    * Load the consulting doctor's
    * `UserProfile.preferredPromptTemplateId` (Tier-0 prompt selection). Returns
    * null (and never throws) when absent so resolution falls through to the
@@ -242,11 +315,13 @@ export class ConfigResolver {
       autoNerEnabled: PIPELINE_SETTING_DESCRIPTORS.autoNerEnabled.codeDefault,
       harnessEnabled: PIPELINE_SETTING_DESCRIPTORS.harnessEnabled.codeDefault,
       dnaStyleEnabled: PIPELINE_SETTING_DESCRIPTORS.dnaStyleEnabled.codeDefault,
+      dnaRedactionEnabled: PIPELINE_SETTING_DESCRIPTORS.dnaRedactionEnabled.codeDefault,
       trace: {
         autoSummaryEnabled: 'code-default',
         autoNerEnabled: 'code-default',
         harnessEnabled: 'code-default',
         dnaStyleEnabled: 'code-default',
+        dnaRedactionEnabled: 'code-default',
       },
     };
   }

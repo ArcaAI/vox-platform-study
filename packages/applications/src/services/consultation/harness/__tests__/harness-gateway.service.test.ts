@@ -95,6 +95,25 @@ describe('HarnessGatewayService', () => {
                 }),
             );
         });
+
+        it('forwards redactionRules (TASK-551) when present', async () => {
+            const service = build('http://harness:8866', 'tok');
+            const rules = [{ id: 'r1', type: 'remove', match: 'literal', pattern: 'employer' }];
+
+            await service.start('c-7', { tenantId: 'tenant-7', redactionRules: rules });
+
+            const [, body] = mockHttpService.axiosRef.post.mock.calls[0];
+            expect(body.redactionRules).toEqual(rules);
+        });
+
+        it('omits redactionRules from the body when empty (byte-identical to pre-TASK-551)', async () => {
+            const service = build('http://harness:8866', 'tok');
+
+            await service.start('c-8', { tenantId: 'tenant-8', redactionRules: [] });
+
+            const [, body] = mockHttpService.axiosRef.post.mock.calls[0];
+            expect(body).not.toHaveProperty('redactionRules');
+        });
     });
 
     describe('signalApproval', () => {

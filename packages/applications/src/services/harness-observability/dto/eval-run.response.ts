@@ -24,8 +24,20 @@ export class EvalRunResponse {
   @ApiPropertyOptional({ description: 'Prompt version (null when unset).', nullable: true })
   promptVersion: string | null;
 
+  @ApiPropertyOptional({
+    description: 'The numeric PromptVersion.versionNumber this run gated (null for non-template runs).',
+    nullable: true,
+  })
+  promptVersionNumber: number | null;
+
   @ApiPropertyOptional({ description: 'Judge model id (null when unset).', nullable: true })
   judgeModel: string | null;
+
+  @ApiPropertyOptional({
+    description: 'How the run was triggered: MANUAL (admin run-now) | PROMOTION (approve/pin gate) | CI. Null on legacy rows.',
+    nullable: true,
+  })
+  triggerType: string | null;
 
   @ApiPropertyOptional({ description: 'Run status (e.g. RUNNING/COMPLETED/FAILED; null when unset).', nullable: true })
   status: string | null;

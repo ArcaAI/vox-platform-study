@@ -11,6 +11,7 @@
 
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { toast } from 'sonner';
+import { axe } from 'vitest-axe';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 import type { DnaReport, DnaSettings, DnaVersion } from '../../api/types';
@@ -77,6 +78,8 @@ const MINE: DnaReport[] = [
 ];
 
 const SETTINGS: DnaSettings = { doctorToggle: true, tenantEnabled: true, effective: true, version: 2 };
+
+const REDACTION_RULES = { rules: [{ id: 'rr-1', type: 'remove', match: 'literal', pattern: "patient's employer" }] };
 
 const VERSIONS: DnaVersion[] = [
     { id: 'ver-3', dnaReportId: 'rep-1', versionNumber: 3, changeReason: 'manual edit', changedBy: 'u-9', createdAt: '2026-07-01T10:00:00.000Z' },
@@ -153,6 +156,7 @@ function defaultHandler(call: RecordedCall): Response | undefined {
         return Response.json(report(), { headers: { etag: '"3"' } });
     }
     if (path === '/api/hope/dna-writing-styles/mine') return Response.json(MINE);
+    if (path === '/api/hope/dna-writing-styles/my-style/redaction-rules') return Response.json(REDACTION_RULES);
     if (path === '/api/hope/dna-writing-styles/settings') return Response.json(SETTINGS);
     if (path === '/api/hope/dna-writing-styles/rep-1/versions') return Response.json(VERSIONS);
     if (path === '/api/hope/dna-writing-styles/rep-0/versions') return Response.json(OLD_VERSIONS);
@@ -270,7 +274,7 @@ describe('MyDnaStyleScreen', () => {
         expect(await screen.findByText('Formal, concise clinical prose.')).toBeDefined();
         const generate = screen.getByRole('button', { name: 'Generate my style' }) as HTMLButtonElement;
         expect(generate.disabled).toBe(true);
-        await waitFor(() => expect((screen.getByRole('switch') as HTMLButtonElement).disabled).toBe(true));
+        await waitFor(() => expect((screen.getByRole('switch', { name: 'Use my DNA style' }) as HTMLButtonElement).disabled).toBe(true));
     });
 
     it('drops into the gate state reactively when generate answers 403 (no error toast)', async () => {
@@ -400,6 +404,72 @@ describe('MyDnaStyleScreen', () => {
         // Terminal result closes the single-use stream and refreshes the reads.
         expect(source.closed).toBe(true);
         await waitFor(() => expect(myStyleReads()).toBeGreaterThan(readsBefore));
+    });
+
+    // ─── TASK-551 — redaction rules editor ───────────────────────────────
+
+    it('renders the doctor’s existing redaction rule from GET /my-style/redaction-rules', async () => {
+        stubDna();
+        renderWithProviders(<MyDnaStyleScreen />);
+
+        expect(await screen.findByRole('heading', { name: 'Redaction rules' })).toBeDefined();
+        // Rule seeded ⇒ the enable switch is on and the pattern is shown.
+        const toggle = (await screen.findByRole('switch', { name: 'Enable redaction rules' })) as HTMLButtonElement;
+        await waitFor(() => expect(toggle.getAttribute('data-state')).toBe('checked'));
+        expect((screen.getByLabelText('Pattern') as HTMLInputElement).value).toBe("patient's employer");
+    });
+
+    it('adds a rule and saves it via the report PATCH redactionRules field (If-Match OCC)', async () => {
+        const calls = stubDna((call) => {
+            if (call.method === 'GET' && pathnameOf(call) === '/api/hope/dna-writing-styles/my-style/redaction-rules') {
+                // Start from an empty set so the editor exposes the "Add rule" CTA.
+                return Response.json({ rules: [] });
+            }
+            if (call.method === 'PATCH' && pathnameOf(call) === '/api/hope/dna-writing-styles/rep-1') {
+                return Response.json(report({ version: 4 }), { headers: { etag: '"4"' } });
+            }
+            return undefined;
+        });
+        renderWithProviders(<MyDnaStyleScreen />);
+
+        // Empty set ⇒ toggle off; turn redaction on, then add + fill a rule.
+        const toggle = (await screen.findByRole('switch', { name: 'Enable redaction rules' })) as HTMLButtonElement;
+        await waitFor(() => expect(toggle.getAttribute('data-state')).toBe('unchecked'));
+        fireEvent.click(toggle);
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Add rule' }));
+        fireEvent.change(screen.getByLabelText('Pattern'), { target: { value: 'employer' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save rules' }));
+
+        await waitFor(() => {
+            const patch = calls.find((call) => call.method === 'PATCH' && pathnameOf(call) === '/api/hope/dna-writing-styles/rep-1');
+            expect(patch?.headers.get('if-match')).toBe('"3"');
+            const body = patch?.body as { redactionRules?: { rules?: Array<Record<string, unknown>> }; expectedVersion?: number };
+            expect(body.expectedVersion).toBe(3);
+            expect(body.redactionRules?.rules?.[0]).toMatchObject({ type: 'remove', match: 'literal', pattern: 'employer' });
+        });
+        await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Redaction rules saved'));
+    });
+
+    it('has no axe violations (light theme) with the redaction editor mounted', async () => {
+        stubDna();
+        const { container } = renderWithProviders(<MyDnaStyleScreen />);
+        await screen.findByRole('heading', { name: 'Redaction rules' });
+        await screen.findByLabelText('Pattern');
+        expect(await axe(container)).toHaveNoViolations();
+    });
+
+    it('has no axe violations (dark theme) with the redaction editor mounted', async () => {
+        document.documentElement.classList.add('dark');
+        try {
+            stubDna();
+            const { container } = renderWithProviders(<MyDnaStyleScreen />);
+            await screen.findByRole('heading', { name: 'Redaction rules' });
+            await screen.findByLabelText('Pattern');
+            expect(await axe(container)).toHaveNoViolations();
+        } finally {
+            document.documentElement.classList.remove('dark');
+        }
     });
 
     it('binds the DNA switch to doctorToggle and PUTs the settings with the OCC version', async () => {

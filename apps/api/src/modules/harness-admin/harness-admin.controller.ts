@@ -260,6 +260,7 @@ export class HarnessAdminController {
   @ApiOperation({ summary: 'Create a golden set for the caller tenant' })
   @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant.' })
   @ApiResponse({ status: 201, type: GoldenSetResponse })
+  @ApiResponse({ status: 404, description: 'departmentId does not exist or belongs to a different tenant.' })
   async createGoldenSet(@Body() body: CreateGoldenSetRequest, @Query() query: { tenantId?: string }): Promise<GoldenSetResponse> {
     const tenantId = this.resolveReadTenantId(query.tenantId);
     return this.evalService.addGoldenSet({
@@ -267,6 +268,7 @@ export class HarnessAdminController {
       name: body.name,
       description: body.description,
       pinnedVersion: body.pinnedVersion,
+      departmentId: body.departmentId,
       createdBy: this.cls.get('user')?.id ?? null,
     });
   }

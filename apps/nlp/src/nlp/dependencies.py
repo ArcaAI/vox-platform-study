@@ -190,6 +190,31 @@ def _live_caches() -> list[ModelCache[Any]]:
     return [cache for name in _CACHE_GLOBALS if (cache := globals().get(name)) is not None]
 
 
+# Health-check component name -> its backing cache global. These three
+# components are served per-request from a ModelCache (see `pinned_*`), NOT from
+# the `get_*` singletons, so their health must be read from the cache — the
+# singletons are never initialized by REST inference (BUG-010).
+_COMPONENT_CACHE_GLOBALS = {
+    "text_classifier": "_text_classifier_cache_instance",
+    "token_classifier": "_token_classifier_cache_instance",
+    "medical_suggester": "_medical_suggester_cache_instance",
+}
+
+
+def model_cache_snapshot() -> dict[str, list[str]]:
+    """Resident model ids per cache-backed component, for the health endpoint.
+
+    Reads the cache singletons WITHOUT forcing construction: a component whose
+    cache has never been touched (a cold, freshly-booted worker) reports an
+    empty list, which is the correct lazy state — not a fault.
+    """
+    snapshot: dict[str, list[str]] = {}
+    for component, global_name in _COMPONENT_CACHE_GLOBALS.items():
+        cache = globals().get(global_name)
+        snapshot[component] = cache.cached_models() if cache is not None else []
+    return snapshot
+
+
 def apply_model_cache_retention(retention: dict[str, int]) -> None:
     """Adopt control-plane retention across all three caches.
 

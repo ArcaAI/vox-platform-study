@@ -45,9 +45,11 @@ export const DnaWritingStyleReportEntityMapperHandlers = createMapperHandlers<En
     // generic auto-mapper does not destructure the typed array.
     encryptedReportData: (entity) => entity.encryptedReportData ?? null,
     encryptedStyleText: (entity) => entity.encryptedStyleText ?? null,
+    encryptedRedactionRules: (entity) => entity.encryptedRedactionRules ?? null,
   },
   $toDomain: {
     encryptedReportData: (model) => model.encryptedReportData ?? null,
     encryptedStyleText: (model) => model.encryptedStyleText ?? null,
+    encryptedRedactionRules: (model) => model.encryptedRedactionRules ?? null,
   },
 });

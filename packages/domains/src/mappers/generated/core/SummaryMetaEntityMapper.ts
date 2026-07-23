@@ -48,9 +48,11 @@ export const SummaryMetaEntityMapperHandlers = createMapperHandlers<Entities.Sum
     // Bytes-safe: return the raw ciphertext Buffer directly.
     encryptedCitationsMap: (entity) => entity.encryptedCitationsMap ?? null,
     encryptedGuardrailDecisions: (entity) => entity.encryptedGuardrailDecisions ?? null,
+    encryptedRedactionManifest: (entity) => entity.encryptedRedactionManifest ?? null,
   },
   $toDomain: {
     encryptedCitationsMap: (model) => model.encryptedCitationsMap ?? null,
     encryptedGuardrailDecisions: (model) => model.encryptedGuardrailDecisions ?? null,
+    encryptedRedactionManifest: (model) => model.encryptedRedactionManifest ?? null,
   },
 });

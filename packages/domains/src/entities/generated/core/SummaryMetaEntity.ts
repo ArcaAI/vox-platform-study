@@ -44,6 +44,13 @@ export interface ISummaryMetaEntity extends IBaseTenantEntity {
   // Two-phase (optimistic) assurance state
   gateDecision?: string | null;
   assuranceCompletedAt?: Date | null;
+  // DNA redaction/rewrite audit (TASK-551). `redactionApplied` is a plaintext,
+  // queryable marker; `redactionManifest` is the transient plaintext audit blob
+  // (rule ids / actions / spans / counts — NEVER removed PHI plaintext),
+  // encrypt-on-write into `encryptedRedactionManifest` (the persisted ciphertext).
+  redactionApplied?: boolean | null;
+  redactionManifest?: JsonValue | null;
+  encryptedRedactionManifest?: Buffer | null;
   ContextItem?: Entities.ContextItemEntity | null;
 }
 
@@ -78,6 +85,9 @@ export class SummaryMetaEntity extends BaseTenantEntity {
   private _modelName?: ISummaryMetaEntity['modelName'];
   private _gateDecision?: ISummaryMetaEntity['gateDecision'];
   private _assuranceCompletedAt?: ISummaryMetaEntity['assuranceCompletedAt'];
+  private _redactionApplied?: ISummaryMetaEntity['redactionApplied'];
+  private _redactionManifest?: ISummaryMetaEntity['redactionManifest'];
+  private _encryptedRedactionManifest?: ISummaryMetaEntity['encryptedRedactionManifest'];
   private _ContextItem?: ISummaryMetaEntity['ContextItem'];
 
   constructor(init: ISummaryMetaEntity) {
@@ -112,6 +122,9 @@ export class SummaryMetaEntity extends BaseTenantEntity {
     this._modelName = init.modelName;
     this._gateDecision = init.gateDecision;
     this._assuranceCompletedAt = init.assuranceCompletedAt;
+    this._redactionApplied = init.redactionApplied;
+    this._redactionManifest = init.redactionManifest;
+    this._encryptedRedactionManifest = init.encryptedRedactionManifest;
     this._ContextItem = init.ContextItem;
   }
 
@@ -363,6 +376,34 @@ export class SummaryMetaEntity extends BaseTenantEntity {
 
   set assuranceCompletedAt(value: ISummaryMetaEntity['assuranceCompletedAt']) {
     this.setProperty('assuranceCompletedAt', value);
+  }
+
+  get redactionApplied(): ISummaryMetaEntity['redactionApplied'] {
+    return this._redactionApplied;
+  }
+
+  set redactionApplied(value: ISummaryMetaEntity['redactionApplied']) {
+    this.setProperty('redactionApplied', value);
+  }
+
+  // The redaction audit manifest can echo rule ids / span coordinates.
+  // @Secret() marks the transient plaintext + ciphertext for audit-log redaction.
+  @Secret()
+  get redactionManifest(): ISummaryMetaEntity['redactionManifest'] {
+    return this._redactionManifest;
+  }
+
+  set redactionManifest(value: ISummaryMetaEntity['redactionManifest']) {
+    this.setProperty('redactionManifest', value);
+  }
+
+  @Secret()
+  get encryptedRedactionManifest(): ISummaryMetaEntity['encryptedRedactionManifest'] {
+    return this._encryptedRedactionManifest;
+  }
+
+  set encryptedRedactionManifest(value: ISummaryMetaEntity['encryptedRedactionManifest']) {
+    this.setProperty('encryptedRedactionManifest', value);
   }
 
   get ContextItem(): ISummaryMetaEntity['ContextItem'] {

@@ -18,6 +18,7 @@ import {
 export interface SummaryMetaPlaintext {
   citationsMap: unknown | null;
   guardrailDecisions: unknown | null;
+  redactionManifest: unknown | null;
 }
 
 declare module './SummaryMetaRepository' {
@@ -69,6 +70,15 @@ SummaryMetaRepository.prototype.encryptFieldsIntoEntity = async function (
     keyVersion = guardrailDecisions.keyVersion;
   }
 
+  // TASK-551 redaction manifest — same Vault-Transit path; no-op when the
+  // transient plaintext is null (so a finalize backfill that never loads it
+  // leaves the previously-persisted ciphertext untouched).
+  const redactionManifest = await encryptJsonToCiphertext(secrets, entity.redactionManifest);
+  if (redactionManifest) {
+    entity.encryptedRedactionManifest = redactionManifest.ciphertext;
+    keyVersion = redactionManifest.keyVersion;
+  }
+
   if (keyVersion !== null) entity.keyVersion = keyVersion;
 };
 
@@ -79,8 +89,9 @@ SummaryMetaRepository.prototype.decryptFieldsFromEntity = async function (
 ): Promise<SummaryMetaPlaintext> {
   const citationsMap = await decryptCiphertextToJson(secrets, entity.encryptedCitationsMap);
   const guardrailDecisions = await decryptCiphertextToJson(secrets, entity.encryptedGuardrailDecisions);
+  const redactionManifest = await decryptCiphertextToJson(secrets, entity.encryptedRedactionManifest);
   // Plaintext columns dropped; decrypt ciphertext only.
-  return { citationsMap, guardrailDecisions };
+  return { citationsMap, guardrailDecisions, redactionManifest };
 };
 
 SummaryMetaRepository.prototype.findByIdWithDecryptedFields = async function (

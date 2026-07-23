@@ -22,6 +22,8 @@ import {
 export interface DnaWritingStyleReportPlaintext {
   reportData: unknown | null;
   styleText: string | null;
+  // TASK-551 — decrypted structured redaction/rewrite rules.
+  redactionRules: unknown | null;
 }
 
 declare module './DnaWritingStyleReportRepository' {
@@ -78,6 +80,12 @@ DnaWritingStyleReportRepository.prototype.encryptFieldsIntoEntity = async functi
     keyVersion = styleText.keyVersion;
   }
 
+  const redactionRules = await encryptJsonToCiphertext(secrets, entity.redactionRules);
+  if (redactionRules) {
+    entity.encryptedRedactionRules = redactionRules.ciphertext;
+    keyVersion = redactionRules.keyVersion;
+  }
+
   if (keyVersion !== null) entity.keyVersion = keyVersion;
 };
 
@@ -88,8 +96,9 @@ DnaWritingStyleReportRepository.prototype.decryptFieldsFromEntity = async functi
 ): Promise<DnaWritingStyleReportPlaintext> {
   const reportData = await decryptCiphertextToJson(secrets, entity.encryptedReportData);
   const styleText = await decryptCiphertextToString(secrets, entity.encryptedStyleText);
+  const redactionRules = await decryptCiphertextToJson(secrets, entity.encryptedRedactionRules);
   // Plaintext columns dropped; decrypt ciphertext only.
-  return { reportData, styleText };
+  return { reportData, styleText, redactionRules };
 };
 
 DnaWritingStyleReportRepository.prototype.findByIdWithDecryptedFields = async function (

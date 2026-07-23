@@ -8,6 +8,7 @@ import {
   UpdateDnaSettingsRequest,
   HttpMethod,
   type DnaJobResponse,
+  type RedactionRuleSet,
 } from '@arcaai/applications';
 import { DnaJobResponseDto, DnaJobStatusResponseDto } from './dna-writing-style.dto';
 import { JobQueue } from '@arcaai/domains';
@@ -109,6 +110,21 @@ export class DnaWritingStyleController {
       throw new NotFoundException('No DNA writing style found for current user');
     }
     return report;
+  }
+
+  // TASK-551 — the caller's decrypted DNA redaction/rewrite rule set. Read-only
+  // companion to the redaction editor (rules are WRITTEN via the report PATCH's
+  // `redactionRules` field). The set is always well-formed (`{ rules: [] }` when
+  // the doctor has no report or no rules), so the editor never 404s here.
+  @Get('my-style/redaction-rules')
+  @ApiOperation({
+    summary: "Get the caller doctor's DNA redaction/rewrite rule set",
+    description:
+      'Returns the decrypted `{ rules: [...] }` authored by the caller (owner derived from CLS). An empty set means no rules are configured. Rules are WRITTEN through the report PATCH `redactionRules` field, not here.',
+  })
+  @ApiResponse({ status: 200, description: 'Redaction rule set ({ rules: [...] })' })
+  async getMyRedactionRules(): Promise<RedactionRuleSet> {
+    return this.dnaService.getRedactionRules(this.getDoctorId());
   }
 
   // ─── Per-doctor DNA on/off settings ──────────────────────────────────

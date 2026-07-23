@@ -83,6 +83,41 @@ class TestStartDocument:
         assert wf_input.gate.max_regen == settings.max_regen
 
     @pytest.mark.asyncio
+    async def test_start_threads_redaction_rules_into_workflow_input(self, harness):
+        """TASK-551 — camelCase redactionRules parse into RedactionRule payloads on
+        HarnessDocWorkflowInput; an omitted field defaults to an empty (no-op) list."""
+        http, client, _handle, _settings = harness
+        resp = await http.post(
+            "/api/v1/internal/consultations/c-1/document:start",
+            headers=_HEADERS,
+            json={
+                "tenantId": "t-1",
+                "transcriptText": "x",
+                "redactionRules": [
+                    {"id": "r1", "type": "remove", "match": "literal", "pattern": "employer"}
+                ],
+            },
+        )
+        assert resp.status_code == 200
+        args, _ = client.start_workflow.call_args
+        wf_input = args[1]
+        assert len(wf_input.redaction_rules) == 1
+        assert wf_input.redaction_rules[0].id == "r1"
+        assert wf_input.redaction_rules[0].pattern == "employer"
+
+    @pytest.mark.asyncio
+    async def test_start_defaults_redaction_rules_to_empty(self, harness):
+        http, client, _handle, _settings = harness
+        resp = await http.post(
+            "/api/v1/internal/consultations/c-1/document:start",
+            headers=_HEADERS,
+            json={"tenantId": "t-1", "transcriptText": "x"},
+        )
+        assert resp.status_code == 200
+        args, _ = client.start_workflow.call_args
+        assert args[1].redaction_rules == []
+
+    @pytest.mark.asyncio
     async def test_start_rejects_missing_or_bad_token(self, harness):
         http, client, _handle, _settings = harness
         body = {"tenantId": "t-1"}

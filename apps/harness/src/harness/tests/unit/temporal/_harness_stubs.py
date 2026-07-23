@@ -17,6 +17,7 @@ from temporalio.exceptions import ApplicationError
 
 from harness.guides.retrieval.prompt import build_strict_citations_block
 from harness.guides.retrieval.retriever import RetrievedChunk
+from harness.redaction.engine import RedactionManifest
 from harness.sensors.base import NEREntity, SensorResult
 from harness.sensors.inferential import GROUNDEDNESS_NAME, SAFETY_NAME
 from harness.sensors.inferential.base import degraded_result
@@ -33,6 +34,8 @@ from harness.services.sensor_runner import SensorRunOutput
 from harness.services.smr_client import SmrGenerationResult
 from harness.temporal.claim_check import ClaimCheckRef
 from harness.temporal.models import (
+    ApplyRedactionInput,
+    ApplyRedactionResult,
     AssembleInput,
     CallMcpToolInput,
     EditSignal,
@@ -124,6 +127,13 @@ class StubConfig:
     # Empty (default) ⇒ GenerateInput.segment_citations stays empty (byte-identical
     # prompt). Non-empty ⇒ workflow must thread them into both GenerateInput sites.
     segment_citations: list[SegmentCitationRef] = field(default_factory=list)
+    # TASK-551 redaction. The ``apply_redaction`` stub returns
+    # ``redaction_text`` (changed=True) when set, else echoes the input note
+    # (changed=False). ``redaction_failed_closed`` makes it report a fail-closed
+    # transform (the workflow forces a FLAG). Only exercised when the start payload
+    # carries ``redaction_rules`` (otherwise the workflow never calls the activity).
+    redaction_text: str | None = None
+    redaction_failed_closed: bool = False
 
 
 @dataclass
@@ -153,6 +163,8 @@ class StubRecorder:
     retrieve_inputs: list[RetrieveContextInput] = field(default_factory=list)
     generate_inputs: list[GenerateInput] = field(default_factory=list)
     run_sensors_inputs: list[RunSensorsInput] = field(default_factory=list)
+    # TASK-551 — the ApplyRedactionInput of each redaction pass.
+    apply_redaction_inputs: list[ApplyRedactionInput] = field(default_factory=list)
     progress_inputs: list[ReportProgressInput] = field(default_factory=list)
     # The schedule_to_close_timeout each report_progress
     # emission was scheduled with (None = unbounded queue wait).
@@ -436,6 +448,31 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
         kind = config.inferential_verdicts[min(i, len(config.inferential_verdicts) - 1)]
         return _inferential_for(kind)
 
+    @activity.defn(name="apply_redaction")
+    async def apply_redaction(payload: ApplyRedactionInput) -> ApplyRedactionResult:
+        # TASK-551 — DNA redaction/rewrite. Returns the configured redacted
+        # text (changed) or echoes the note (no change); ``redaction_failed_closed``
+        # reports a fail-closed transform the workflow must turn into a forced FLAG.
+        recorder.calls["apply_redaction"] += 1
+        recorder.call_order.append("apply_redaction")
+        recorder.apply_redaction_inputs.append(payload)
+        if config.redaction_failed_closed:
+            return ApplyRedactionResult(
+                text=payload.note_text, changed=False, failed_closed=True
+            )
+        if config.redaction_text is not None:
+            # A CHANGED transform carries a non-empty audit manifest (rule ids +
+            # span counts, never PHI) so the audit-era marker threaded to persist is
+            # meaningful in tests / the captured fixture.
+            return ApplyRedactionResult(
+                text=config.redaction_text,
+                changed=True,
+                manifest=RedactionManifest(
+                    applied=True, total_hits=1, hits_by_rule={"r1": 1}
+                ),
+            )
+        return ApplyRedactionResult(text=payload.note_text, changed=False)
+
     @activity.defn(name="persist_draft")
     async def persist_draft(payload: PersistDraftInput) -> DraftResponse:
         recorder.calls["persist_draft"] += 1
@@ -500,6 +537,7 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
         generate,
         run_sensors,
         run_inferential_sensors,
+        apply_redaction,
         persist_draft,
         finalize_assurance,
         retract_draft,

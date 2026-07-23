@@ -110,3 +110,32 @@ Implemented the per-department-agent harness-override overlay end-to-end (applic
 
 - 2026-07-23 — Ticket authored from TASK-544 §7 breakdown (U4a, OD-2-bounded).
 - 2026-07-23 — Implemented (TDD Red→Green) the per-agent harness-override overlay: applications `getEffectivePolicy` opts + `applyAgentOverrides` (read-time OD-2 key-drop + provenance), api internal-route `consultationId` threading (CLS set-before-read locked), harness `fetch_policy`/`get_policy`/`FetchPolicyInput`/`workflows.py` activity-side `consultation_id` + trajectory provenance. All gates green incl. replay 17/17. Status Pending → Review. `fable-thinking` skill unavailable (fallback recorded). Live-stack runtime proof deferred (8868 busy).
+
+### 2026-07-23 — Runtime proof (RUNTIME-PROOFS agent) — 3a PASS / 3b BLOCKED
+Live dev API (:8868), ARCAAI consultation `90000000-…0001` → dept `70000000-…0001` → default agent `gen-default` (`78000000-…0001`).
+- **Served overlay (the exact endpoint the worker `fetch_policy` calls) — PASS:** `GET /internal/harness/policy?tenantId=ARCAAI` (X-Service-Token from Vault) → `coverageThreshold=0.8`, no `overridesSource`. With the agent `harnessOverrides={coverageThreshold:0.95}` set: `GET …&consultationId=…0001` → `coverageThreshold=0.95`, `overridesSource={agentId:78000000-…0001, agentSlug:"gen-default", keys:["coverageThreshold"]}`. Overlay resolves consultation→dept→default-agent→overrides + provenance. (Agent is a locked template copy; the override value was set via psql for the read-path proof and reverted to NULL.)
+- **fetch_policy trajectory step — BLOCKED (environmental, not a defect):** started `HarnessDocWorkflow` directly (harness `document:start`); the workflow task failed `"Failed decoding arguments"` before scheduling any activity. Root cause: the **shared** harness Temporal worker (pid started 10:50) predates the staged `temporal/models.py`(11:07)+`workflows.py`(11:10) edits → it runs a stale workflow-input schema; the current FastAPI serializer payload won't decode. The concurrently-owned worker cannot be restarted (project HARD RULE 4). My stuck workflow was terminated. TASK-550 logic itself is proven by the served-overlay half.
+
+### 2026-07-23 — Runtime proof 3b (RUNTIME-FINISH agent) — **PASS** (the previously-blocked item, now unblocked)
+The blocking orphan worker (started 10:50, stale schema) belonged to an ENDED session. Per RUNTIME-FINISH contract it was killed and the harness FastAPI :8866 + Temporal worker were restarted from CURRENT staged code (worker log `harness.worker.started`, `task_queue=harness-task-queue`). Gateway :8868 was also rebuilt fresh (`pnpm build:api` → 8/8) and restarted as a single non-watch instance (PID 80030). Correct auth wired: the worker was given the Vault-resolved `HARNESS_SERVICE_TOKEN` (read via AppRole login) so its outbound `fetch_policy` call authenticates to the gateway's fail-closed `HarnessServiceTokenGuard`.
+
+Live run — consultation `90000000-0000-0000-0000-000000000001` → dept `70000000-0000-0000-0000-000000000001` → default agent `gen-default` (`78000000-0000-0000-0000-000000000001`), tenant `50000000-0000-0000-0000-000000000000`.
+
+- **Served overlay re-verified on the fresh gateway (part a):** base `GET /api/v1/internal/harness/policy?tenantId=50000000-…0000` → `coverageThreshold=0.8`, `overridesSource=None`. With the agent pinned `harnessOverrides={"coverageThreshold":0.95}` (psql): `GET …&consultationId=90000000-…0001` → `coverageThreshold=0.95`, `overridesSource={"agentId":"78000000-…0001","agentSlug":"gen-default","keys":["coverageThreshold"]}`.
+- **fetch_policy AgentTrajectoryStep (part b) — the previously-blocked evidence, now captured.** `document:start` returned `{"workflowId":"harness-doc-90000000-…0001","status":"started"}` (the stale-schema `Failed decoding arguments` error is GONE — the worker now runs current code). The workflow ran fully (`fetch_policy` → `assemble_prompt` → `generate` OK → `run_sensors` → `run_inferential_sensors` → `persist_draft` OK). The persisted `fetch_policy` step:
+
+  ```
+  stepType=PHASE  name=fetch_policy  status=OK
+  stats = {
+    "version": 1,
+    "overrides_source": {
+      "keys": ["coverageThreshold"],
+      "agentId": "78000000-0000-0000-0000-000000000001",
+      "agentSlug": "gen-default"
+    }
+  }
+  ```
+
+  This proves the LIVE worker's `fetch_policy` consumed the department-default agent's pinned override and stamped the provenance onto the trajectory step. **Pin reverted to NULL** after capture; overlay endpoint re-confirmed back to `coverageThreshold=0.8`, `overridesSource=None`.
+- **Dev-config observation (follow-up, not fixed):** `scripts/dev-service.sh` does NOT export `HARNESS_SERVICE_TOKEN`, but the gateway's `HarnessServiceTokenGuard` is fail-closed against the Vault-resolved token. So in the DEFAULT dev setup the worker's outbound `fetch_policy` would 401 → the workflow degrades to code defaults + `reduced_assurance` (silently, no overlay). This run only succeeded because the token was exported to the restarted worker. Recommend `dev-service.sh` resolve `HARNESS_SERVICE_TOKEN` from Vault for the harness/worker (or the gateway grow a dev bypass) so the live policy lane works out-of-the-box.
+- `fable-thinking` skill STILL unavailable in this environment (`Unknown skill`) — recorded per contract, proceeded.

@@ -194,6 +194,34 @@ describe('HarnessObservabilityService', () => {
       expect(result.items[0].startedAt).toBe('2026-01-01T00:00:00.000Z');
     });
 
+    // TASK-549 tail: `triggerType`/`promptVersionNumber` are persisted on
+    // `EvalRun` (promotion-gate attribution) but were never surfaced through
+    // this read projection — the console badge (MANUAL/PROMOTION/CI) has
+    // nothing to render without them.
+    it('surfaces triggerType and promptVersionNumber on the list + detail projections', async () => {
+      const promotionRun = { ...run, id: 'run-2', triggerType: 'PROMOTION', promptTemplateId: 'pt-1', promptVersionNumber: 3 };
+      evalRunRepository.count.mockResolvedValue(1);
+      evalRunRepository.findAll.mockResolvedValue([promotionRun]);
+      evalScoreRepository.getByEvalRun.mockResolvedValue([]);
+
+      const list = await service.listEvalRuns(TENANT, { page: 1, limit: 20 });
+      expect(list.items[0].triggerType).toBe('PROMOTION');
+      expect(list.items[0].promptVersionNumber).toBe(3);
+
+      const detail = await service.getEvalRun(TENANT, 'run-2');
+      expect(detail.triggerType).toBe('PROMOTION');
+      expect(detail.promptVersionNumber).toBe(3);
+    });
+
+    it('reports triggerType/promptVersionNumber as null when unset (legacy rows)', async () => {
+      evalRunRepository.count.mockResolvedValue(1);
+      evalRunRepository.findAll.mockResolvedValue([run]);
+
+      const result = await service.listEvalRuns(TENANT, { page: 1, limit: 20 });
+      expect(result.items[0].triggerType).toBeNull();
+      expect(result.items[0].promptVersionNumber).toBeNull();
+    });
+
     it('returns a run with its per-case scores', async () => {
       evalRunRepository.findAll.mockResolvedValue([run]);
       evalScoreRepository.getByEvalRun.mockResolvedValue([

@@ -1192,3 +1192,161 @@ describe('ConsultationEventHandler', () => {
         });
     });
 });
+
+// =============================================================================
+// TASK-551 — DNA redaction rule last-mile wiring (harness path)
+//
+// On the harness branch the handler resolves the effective DNA-redaction
+// decision (tenant + doctor double-gate + the department default-agent DNA
+// policy) and, when effective, fetches + decrypts the doctor's redaction rules
+// and threads them into HarnessGatewayService.start's ctx. Fail-SAFE: any
+// resolution/decrypt failure yields NO rules (empty) and NEVER blocks the start.
+// =============================================================================
+
+describe('ConsultationEventHandler — DNA redaction wiring (TASK-551)', () => {
+    const REDACTION_RULE = { id: 'r1', type: 'remove', match: 'literal', pattern: "patient's employer" };
+
+    let handler: ConsultationEventHandler;
+    let mockJobService: ReturnType<typeof createMockJobService>;
+    let mockConsultationRepository: ReturnType<typeof createMockConsultationRepository>;
+    let mockPromptResolutionService: ReturnType<typeof createMockPromptResolutionService>;
+    let mockEventEmitter: ReturnType<typeof createMockEventEmitter>;
+    let mockClsService: ReturnType<typeof createMockClsService>;
+    let mockHarnessGateway: ReturnType<typeof createMockHarnessGatewayService>;
+    let mockContextItemRepository: ReturnType<typeof createMockContextItemRepository>;
+    let mockConfigResolver: {
+        resolvePipelineToggles: ReturnType<typeof vi.fn>;
+        resolvePreferredPromptTemplateId: ReturnType<typeof vi.fn>;
+        resolveEffectiveDnaRedactionEnabled: ReturnType<typeof vi.fn>;
+    };
+    let mockDnaReportRepository: {
+        findLatestForDoctor: ReturnType<typeof vi.fn>;
+        decryptFieldsFromEntity: ReturnType<typeof vi.fn>;
+    };
+    let mockSecretsService: Record<string, unknown>;
+    let mockDepartmentAgentRepository: { findDefaultForDepartment: ReturnType<typeof vi.fn> };
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+
+        mockJobService = createMockJobService();
+        mockConsultationRepository = createMockConsultationRepository();
+        mockPromptResolutionService = createMockPromptResolutionService();
+        mockEventEmitter = createMockEventEmitter();
+        mockClsService = createMockClsService();
+        mockHarnessGateway = createMockHarnessGatewayService();
+        mockContextItemRepository = createMockContextItemRepository();
+
+        mockConfigResolver = {
+            resolvePipelineToggles: vi.fn().mockResolvedValue({
+                autoSummaryEnabled: true,
+                autoNerEnabled: true,
+                harnessEnabled: false,
+                dnaStyleEnabled: false,
+                dnaRedactionEnabled: false,
+                trace: {},
+            }),
+            resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null),
+            resolveEffectiveDnaRedactionEnabled: vi.fn().mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: true }),
+        };
+        mockDnaReportRepository = {
+            findLatestForDoctor: vi.fn().mockResolvedValue({ id: 'dna-report-001', doctorId: 'dr-smith-001' }),
+            decryptFieldsFromEntity: vi.fn().mockResolvedValue({
+                reportData: null,
+                styleText: null,
+                redactionRules: { rules: [REDACTION_RULE] },
+            }),
+        };
+        mockSecretsService = { getSecretOptional: vi.fn() };
+        mockDepartmentAgentRepository = {
+            findDefaultForDepartment: vi.fn().mockResolvedValue({ dnaStylePolicy: 'INHERIT' }),
+        };
+
+        // Harness routed via per-consultation metadata; doctor + department present
+        // so the redaction double-gate has a subject to resolve.
+        mockConsultationRepository.findById.mockResolvedValue({
+            id: 'consultation-001',
+            tenantId: 'tenant-abc',
+            departmentId: 'dept-card-001',
+            doctorId: 'dr-smith-001',
+            parentConsultationId: null,
+            metadata: { pipelineConfig: { autoSummaryEnabled: true, harnessEnabled: true } },
+        });
+
+        handler = new ConsultationEventHandler(
+            mockJobService as any,
+            mockConsultationRepository as any,
+            mockPromptResolutionService as any,
+            mockEventEmitter as any,
+            mockClsService as any,
+            mockHarnessGateway as any,
+            mockContextItemRepository as any,
+            mockConfigResolver as any,
+            mockDnaReportRepository as any,
+            mockSecretsService as any,
+            mockDepartmentAgentRepository as any,
+        );
+    });
+
+    it('threads the doctor decrypted redaction rules into the harness start ctx when the gate is effective', async () => {
+        await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+        expect(mockConfigResolver.resolveEffectiveDnaRedactionEnabled).toHaveBeenCalledWith({
+            tenantId: 'tenant-abc',
+            departmentId: 'dept-card-001',
+            doctorId: 'dr-smith-001',
+            departmentAgentDnaDisabled: false,
+        });
+        expect(mockDnaReportRepository.findLatestForDoctor).toHaveBeenCalledWith('dr-smith-001');
+        expect(mockHarnessGateway.start).toHaveBeenCalledTimes(1);
+        const ctx = mockHarnessGateway.start.mock.calls[0][1];
+        expect(ctx.redactionRules).toEqual([REDACTION_RULE]);
+    });
+
+    it('does NOT fetch or thread rules when the gate resolves ineffective', async () => {
+        mockConfigResolver.resolveEffectiveDnaRedactionEnabled.mockResolvedValue({ effective: false, tenantEnabled: false, doctorToggle: null });
+
+        await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+        expect(mockDnaReportRepository.findLatestForDoctor).not.toHaveBeenCalled();
+        expect(mockHarnessGateway.start).toHaveBeenCalledTimes(1);
+        const ctx = mockHarnessGateway.start.mock.calls[0][1];
+        expect(ctx.redactionRules ?? []).toEqual([]);
+    });
+
+    it('passes departmentAgentDnaDisabled=true when the department default agent has dnaStylePolicy DISABLED', async () => {
+        mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue({ dnaStylePolicy: 'DISABLED' });
+        mockConfigResolver.resolveEffectiveDnaRedactionEnabled.mockResolvedValue({ effective: false, tenantEnabled: true, doctorToggle: true });
+
+        await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+        expect(mockConfigResolver.resolveEffectiveDnaRedactionEnabled).toHaveBeenCalledWith(
+            expect.objectContaining({ departmentAgentDnaDisabled: true }),
+        );
+    });
+
+    it('fails safe (no rules, harness still starts) when decryption throws', async () => {
+        mockDnaReportRepository.decryptFieldsFromEntity.mockRejectedValue(new Error('vault transit unavailable'));
+
+        await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+        expect(mockHarnessGateway.start).toHaveBeenCalledTimes(1);
+        const ctx = mockHarnessGateway.start.mock.calls[0][1];
+        expect(ctx.redactionRules ?? []).toEqual([]);
+        // The failure degrades to no-redaction, it does NOT emit a pipeline failure.
+        expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
+            ConsultationPipelineEvent.PipelineStepFailed,
+            expect.anything(),
+        );
+    });
+
+    it('threads no rules (and does not throw) when the doctor has no DNA report', async () => {
+        mockDnaReportRepository.findLatestForDoctor.mockResolvedValue(null);
+
+        await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+        expect(mockHarnessGateway.start).toHaveBeenCalledTimes(1);
+        const ctx = mockHarnessGateway.start.mock.calls[0][1];
+        expect(ctx.redactionRules ?? []).toEqual([]);
+    });
+});

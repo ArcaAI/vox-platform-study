@@ -368,6 +368,8 @@ export interface AgentEvalRun {
     id: string;
     goldenSetId: string;
     status: string | null;
+    /** How the run was triggered: MANUAL (run-now) | PROMOTION (approve/pin gate) | CI. Null on legacy rows. */
+    triggerType: string | null;
     startedAt: string | null;
     completedAt: string | null;
     aggregateScores: unknown;

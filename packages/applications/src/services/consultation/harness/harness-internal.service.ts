@@ -560,6 +560,12 @@ export class HarnessInternalService {
           guardrailDecisions: (isEarly ? null : (dto.guardrailDecisions ?? null)) as never,
           gateDecision: isEarly ? null : (dto.gateDecision ?? null),
           assuranceCompletedAt: isEarly ? null : new Date(),
+          // DNA redaction/rewrite audit (TASK-551). Stable data (unlike the verdict):
+          // it lands on the SAME persist that carries the redacted note, so it is
+          // recorded at BOTH the early and the legacy persist (never withheld/backfilled).
+          // The manifest is encrypted-on-write below (encryptFieldsIntoEntity).
+          redactionApplied: dto.redactionApplied ?? null,
+          redactionManifest: (dto.redactionManifest ?? null) as never,
           preSummaryIds: liveSnapshot ? [liveSnapshot.id] : [],
           generatedAt: new Date(),
         });

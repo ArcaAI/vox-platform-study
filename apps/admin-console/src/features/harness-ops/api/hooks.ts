@@ -13,6 +13,7 @@ import {
     getLiveSession,
     getWorkflow,
     listEvalRuns,
+    listGateEditExemplars,
     listGoldenCases,
     listGoldenSets,
     listLiveSessions,
@@ -27,6 +28,7 @@ import type {
     CreateGoldenCaseBody,
     CreateGoldenSetBody,
     EvalRunListParams,
+    GateEditExemplarsParams,
     GoldenCaseListParams,
     GoldenSetListParams,
     SignalWorkflowBody,
@@ -84,6 +86,15 @@ export function useCreateGoldenSet() {
 export function useCreateGoldenCase(goldenSetId: string | null) {
     const invalidate = useInvalidateHarnessOps();
     return useMutation({ mutationFn: (body: CreateGoldenCaseBody) => createGoldenCase(goldenSetId ?? '', body), onSuccess: invalidate });
+}
+
+/** Gate-edit corpus candidates for the "promote to golden case" affordance. */
+export function useGateEditExemplars(params?: GateEditExemplarsParams) {
+    return useQuery({
+        queryKey: harnessOpsKeys.gateEditExemplars(params),
+        queryFn: () => listGateEditExemplars(params),
+        placeholderData: keepPreviousData,
+    });
 }
 
 /**

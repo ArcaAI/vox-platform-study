@@ -1588,11 +1588,34 @@ async def apply_redaction(payload: ApplyRedactionInput) -> ApplyRedactionResult:
     ``manifest`` carries spans + counts only — never removed PHI plaintext.
     """
     settings = get_settings()
+    started = _now()
     text = await _resolve_ref(settings, payload.note_text, payload.note_text_ref)
 
     if not payload.rules:
         # No rules ⇒ pure no-op (the default, and every legacy/patched-off path).
+        # No GUARDRAIL step: redaction was never armed, so there is nothing to audit.
         return ApplyRedactionResult(text=text, changed=False, manifest=RedactionManifest())
+
+    batch = _TrajectoryBatch(settings, payload.trajectory)
+
+    async def _emit(result: ApplyRedactionResult) -> ApplyRedactionResult:
+        # ONE GUARDRAIL trajectory step per armed transform (TASK-551 audit clause).
+        # Carries manifest STATS ONLY — counts + rule ids + fail-closed marker, never
+        # removed PHI plaintext. Fire-and-forget flush (never fails the clinical loop).
+        batch.record(
+            step_type=STEP_GUARDRAIL,
+            name="apply_redaction",
+            status=STATUS_OK,
+            started=started,
+            stats={
+                "applied": result.manifest.applied,
+                "total_hits": result.manifest.total_hits,
+                "hits_by_rule": result.manifest.hits_by_rule,
+                "failed_closed": result.failed_closed,
+            },
+        )
+        await batch.flush()
+        return result
 
     deterministic = [r for r in payload.rules if not _needs_semantic_rewrite(r)]
     semantic = [r for r in payload.rules if _needs_semantic_rewrite(r)]
@@ -1605,8 +1628,10 @@ async def apply_redaction(payload: ApplyRedactionInput) -> ApplyRedactionResult:
             "harness.redaction.failed_closed",
             extra={"stage": "deterministic", "reason": str(exc)},
         )
-        return ApplyRedactionResult(
-            text=text, changed=False, failed_closed=True, manifest=RedactionManifest()
+        return await _emit(
+            ApplyRedactionResult(
+                text=text, changed=False, failed_closed=True, manifest=RedactionManifest()
+            )
         )
 
     working = outcome.text
@@ -1637,11 +1662,13 @@ async def apply_redaction(payload: ApplyRedactionInput) -> ApplyRedactionResult:
                 "harness.redaction.failed_closed",
                 extra={"stage": "smr_rewrite", "reason": str(exc)},
             )
-            return ApplyRedactionResult(
-                text=working,
-                changed=manifest.applied,
-                failed_closed=True,
-                manifest=manifest,
+            return await _emit(
+                ApplyRedactionResult(
+                    text=working,
+                    changed=manifest.applied,
+                    failed_closed=True,
+                    manifest=manifest,
+                )
             )
         rewritten = result.content
         # If a JSON schema was requested, the rewrite MUST still parse — otherwise
@@ -1654,11 +1681,13 @@ async def apply_redaction(payload: ApplyRedactionInput) -> ApplyRedactionResult:
                     "harness.redaction.failed_closed",
                     extra={"stage": "smr_rewrite_schema", "reason": str(exc)},
                 )
-                return ApplyRedactionResult(
-                    text=working,
-                    changed=manifest.applied,
-                    failed_closed=True,
-                    manifest=manifest,
+                return await _emit(
+                    ApplyRedactionResult(
+                        text=working,
+                        changed=manifest.applied,
+                        failed_closed=True,
+                        manifest=manifest,
+                    )
                 )
         working = rewritten
         manifest = RedactionManifest(
@@ -1669,12 +1698,14 @@ async def apply_redaction(payload: ApplyRedactionInput) -> ApplyRedactionResult:
         )
 
     text_out, text_ref = await _offload_text(settings, working)
-    return ApplyRedactionResult(
-        text=text_out,
-        text_ref=text_ref,
-        changed=working != text,
-        failed_closed=False,
-        manifest=manifest,
+    return await _emit(
+        ApplyRedactionResult(
+            text=text_out,
+            text_ref=text_ref,
+            changed=working != text,
+            failed_closed=False,
+            manifest=manifest,
+        )
     )
 
 
@@ -1712,6 +1743,10 @@ async def persist_draft(payload: PersistDraftInput) -> DraftResponse:
         gate_decision=payload.gate_decision,
         is_auto_generated=payload.is_auto_generated,
         phase=payload.phase,
+        # DNA redaction/rewrite audit marker (TASK-551, audit era). None on every
+        # pre-audit-era persist ⇒ pruned client-side ⇒ byte-identical POST body.
+        redaction_applied=payload.redaction_applied,
+        redaction_manifest=payload.redaction_manifest,
         idempotency_key=_idempotency_key(),
     )
     # count the gate verdict EXACTLY ONCE per completed session.

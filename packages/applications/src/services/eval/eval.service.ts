@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
+  DepartmentRepository,
   EvalRunEntity,
   EvalRunFactory,
   EvalRunRepository,
@@ -96,6 +97,11 @@ export class EvalService {
     // Vault/SecretsService is not provisioned; in that soft (non-vault) mode the
     // write is a no-op for these fields (there are no plaintext columns).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // APPENDED (TASK-549 tail), never inserted — existing 4-arg direct
+    // constructions in unit tests keep working untouched. Always present via
+    // CoreDatabaseModule in production DI; only undefined in hand-built test
+    // doubles that never pass a `departmentId` (so it's never dereferenced).
+    @Optional() @Inject(DepartmentRepository) private readonly departmentRepository?: DepartmentRepository,
   ) {}
 
   private readonly logger = new Logger(EvalService.name);
@@ -110,6 +116,10 @@ export class EvalService {
   }
 
   async createGoldenSet(input: CreateGoldenSetInput): Promise<GoldenSetEntity> {
+    if (input.departmentId) {
+      await this.assertDepartmentInTenant(input.departmentId, input.tenantId);
+    }
+
     const entity = GoldenSetFactory.CreateGoldenSet({
       tenantId: input.tenantId,
       name: input.name,
@@ -124,6 +134,19 @@ export class EvalService {
       throw new InternalServerErrorException('Failed to create GoldenSetEntity');
     }
     return created;
+  }
+
+  /**
+   * The department must exist in the SAME tenant as the golden set (else 404 —
+   * 404-over-403, mirrors `DepartmentAgentService.assertDepartmentInTenant`).
+   * Only called when a `departmentId` is actually supplied — a tenant-wide set
+   * (the common case) never touches the department repository.
+   */
+  private async assertDepartmentInTenant(departmentId: string, tenantId: string): Promise<void> {
+    const department = await this.departmentRepository?.findById(departmentId);
+    if (!department || department.tenantId !== tenantId) {
+      throw new DataNotFoundException('Department', departmentId);
+    }
   }
 
   async createGoldenCase(input: CreateGoldenCaseInput): Promise<GoldenCaseEntity> {

@@ -153,6 +153,34 @@ apply_smr_env() {
     )
 }
 
+# Resolve the shared HARNESS_SERVICE_TOKEN the harness API + worker present as the
+# outbound `X-Service-Token` to apps/api (and validate their own inbound calls
+# with). The gateway's HarnessServiceTokenGuard is FAIL-CLOSED: it compares this
+# against the `HARNESS_SERVICE_TOKEN` it resolves from Vault, so an UNSET token here
+# makes the worker send an empty header and every outbound call (fetch_policy,
+# persist_draft, ...) 401s → the loop silently degrades to reduced assurance. This
+# does NOT weaken the gateway guard — it just makes the harness present the token
+# the dev Vault bootstrap already seeded. Precedence (ambient wins, then the
+# canonical dev sources): shell env → .env.dev → the value seeded by
+# infrastructure/docker/configs/vault/dev-init.sh (== .env.example). Never printed.
+resolve_harness_service_token() {
+    if [ -n "${HARNESS_SERVICE_TOKEN:-}" ]; then
+        return 0
+    fi
+    if [ -f ".env.dev" ]; then
+        local from_env
+        from_env="$(sed -n 's/^[[:space:]]*HARNESS_SERVICE_TOKEN[[:space:]]*=//p' .env.dev | tail -n1)"
+        from_env="$(printf '%s' "$from_env" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/")"
+        if [ -n "$from_env" ]; then
+            HARNESS_SERVICE_TOKEN="$from_env"
+            return 0
+        fi
+    fi
+    # The value seeded into dev Vault by dev-init.sh (kept in lock-step with
+    # .env.example). The gateway resolves the SAME value from Vault in dev.
+    HARNESS_SERVICE_TOKEN="dev-harness-service-token-change-me"
+}
+
 apply_harness_env() {
     : "${HARNESS_SMR_BASE_URL:=http://localhost:8862}"
     : "${HARNESS_NLP_BASE_URL:=http://localhost:8864}"
@@ -160,8 +188,10 @@ apply_harness_env() {
     : "${HARNESS_SMR_PROVIDER:=lm-studio}"
     : "${HARNESS_SMR_MODEL:=${LM_STUDIO_MODEL}}"
     : "${HARNESS_RETRIEVAL_ENABLED:=false}"
+    resolve_harness_service_token
     export HARNESS_SMR_BASE_URL HARNESS_NLP_BASE_URL HARNESS_API_BASE_URL \
-        HARNESS_SMR_PROVIDER HARNESS_SMR_MODEL HARNESS_RETRIEVAL_ENABLED
+        HARNESS_SMR_PROVIDER HARNESS_SMR_MODEL HARNESS_RETRIEVAL_ENABLED \
+        HARNESS_SERVICE_TOKEN
     ENV_REPORT+=(
         "HARNESS_SMR_BASE_URL=$HARNESS_SMR_BASE_URL"
         "HARNESS_NLP_BASE_URL=$HARNESS_NLP_BASE_URL"
@@ -169,6 +199,8 @@ apply_harness_env() {
         "HARNESS_SMR_PROVIDER=$HARNESS_SMR_PROVIDER"
         "HARNESS_SMR_MODEL=$HARNESS_SMR_MODEL"
         "HARNESS_RETRIEVAL_ENABLED=$HARNESS_RETRIEVAL_ENABLED"
+        # HARNESS_SERVICE_TOKEN deliberately omitted from the report (secret).
+        "HARNESS_SERVICE_TOKEN=<set, not shown>"
     )
 }
 

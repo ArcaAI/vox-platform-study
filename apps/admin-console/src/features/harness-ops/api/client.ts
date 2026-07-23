@@ -9,6 +9,8 @@ import type {
     EvalRunDetail,
     EvalRunList,
     EvalRunListParams,
+    GateEditCorpusExport,
+    GateEditExemplarsParams,
     GateQueue,
     GoldenCaseList,
     GoldenCaseListParams,
@@ -75,6 +77,16 @@ export function createGoldenSet(body: CreateGoldenSetBody): Promise<GoldenSet> {
 /** Requires `manage:HarnessEval`. PHI in, metadata out — the payload is never echoed. */
 export function createGoldenCase(goldenSetId: string, body: CreateGoldenCaseBody): Promise<GoldenCaseMeta> {
     return postJson(`${goldenSetPath(goldenSetId)}/cases`, body);
+}
+
+/**
+ * Export gate-edit corpus candidates for the "promote to golden case"
+ * affordance (TASK-549 / GAP-A1). Requires `manage:HarnessPolicy` (the
+ * gateway gates this GET on `manage`, unusually for a read — the payload is
+ * unreviewed clinical-derived proposals, not a plain catalog listing).
+ */
+export function listGateEditExemplars(params?: GateEditExemplarsParams): Promise<GateEditCorpusExport> {
+    return getJson(`${HARNESS}/gate-edit-exemplars`, params);
 }
 
 /** Derived edit-burden scalars for ONE consultation. 404 = absent or cross-tenant. */

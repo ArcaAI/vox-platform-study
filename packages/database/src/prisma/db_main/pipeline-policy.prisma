@@ -49,6 +49,8 @@ model PipelinePolicy {
   autoNerEnabled     Boolean?
   harnessEnabled     Boolean?
   dnaStyleEnabled    Boolean?
+  //  - dnaRedactionEnabled                  : TASK-551 tenant gate for DNA redaction (max scope TENANT)
+  dnaRedactionEnabled Boolean?
 
   // Resource status + Audit (standard fields)
   resourceStatus          ResourceStatusType @default(ENABLED)
