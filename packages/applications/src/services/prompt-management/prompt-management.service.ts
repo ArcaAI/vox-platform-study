@@ -1,4 +1,4 @@
-import { Injectable, Inject, Logger, Optional, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, Inject, Logger, Optional, BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
@@ -8,6 +8,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 // engine the SDK used client-side, so the combined line diff is byte-identical.
 import { diffLines, createPatch } from 'diff';
 import { encryptPhiFields } from '../../common';
+import { EvalPromotionGateService } from '../eval/eval-promotion-gate.service';
 import {
   PromptTemplateRepository,
   PromptVersionRepository,
@@ -170,6 +171,10 @@ export class PromptManagementService extends BaseService implements IPromptManag
     // Optional (append-only DI); enforces the plan
     // `maxPromptTemplates` quota on the create paths (kill-switch-gated, no-op OFF).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
+    // Optional (append-only DI); the OD-3 eval promotion gate.
+    // When present, approving a template whose bound agent references a golden
+    // set runs the eval and blocks (409) on a gate failure in block-mode.
+    @Optional() @Inject(EvalPromotionGateService) private readonly promotionGate?: EvalPromotionGateService,
   ) {
     super(eventEmitter, clsService, ResourceType.PromptTemplate);
     this.smrServiceUrl = this.configService?.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -446,6 +451,28 @@ export class PromptManagementService extends BaseService implements IPromptManag
     // Idempotent — already approved: no version-pin, no audit noise.
     if (template.status === 'APPROVED') {
       return PromptManagementDtoMapper.toTemplateResponse(template);
+    }
+
+    // OD-3 eval promotion gate: if a department agent bound to this template
+    // references a golden set, run the eval BEFORE promoting. In block-mode a
+    // failing eval rejects the approval (409 + score payload); the template stays
+    // in its current status. The EvalRun is persisted (triggerType=PROMOTION)
+    // either way. No golden set ⇒ approve proceeds with a recorded warning.
+    if (this.promotionGate) {
+      const verdict = await this.promotionGate.evaluatePromotion({
+        tenantId: template.tenantId,
+        promptTemplateId: id,
+        trigger: 'approve',
+      });
+      if (verdict.blocked) {
+        throw new ConflictException({
+          message: 'Eval gate failed — template promotion blocked.',
+          reason: 'EVAL_GATE_FAILED',
+          failures: verdict.failures,
+          runIds: verdict.runIds,
+          aggregates: verdict.aggregates,
+        });
+      }
     }
 
     template.status = 'APPROVED';

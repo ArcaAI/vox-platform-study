@@ -30,6 +30,11 @@ export interface IDepartmentAgentEntity extends IBaseTaggedEntity {
   // `isDefault` — DB defaults cover creates.
   sourceAgentTemplateSlug?: string | null;
   templateLocked?: boolean;
+  // `IBaseEntity.metaData` is declared but not wired on the abstract base —
+  // wired locally (the AiModelEntity precedent) so template-copy lineage extras
+  // (TASK-548: `sourceTemplateVersionNumber`, the pristine-detection anchor for
+  // the resync sweep) survive the entity ⇄ model round-trip.
+  metaData?: Record<string, unknown> | null;
 }
 
 export class DepartmentAgentEntity extends BaseTaggedEntity {
@@ -45,6 +50,7 @@ export class DepartmentAgentEntity extends BaseTaggedEntity {
   private _isDefault: boolean;
   private _sourceAgentTemplateSlug?: IDepartmentAgentEntity['sourceAgentTemplateSlug'];
   private _templateLocked: boolean;
+  private _metaData?: IDepartmentAgentEntity['metaData'];
 
   constructor(init: IDepartmentAgentEntity) {
     super(init);
@@ -60,6 +66,7 @@ export class DepartmentAgentEntity extends BaseTaggedEntity {
     this._isDefault = init.isDefault ?? false;
     this._sourceAgentTemplateSlug = init.sourceAgentTemplateSlug ?? null;
     this._templateLocked = init.templateLocked ?? false;
+    this._metaData = init.metaData ?? null;
   }
 
   get departmentId(): IDepartmentAgentEntity['departmentId'] {
@@ -156,6 +163,14 @@ export class DepartmentAgentEntity extends BaseTaggedEntity {
 
   set templateLocked(value: boolean) {
     this.setProperty('templateLocked', value);
+  }
+
+  get metaData(): IDepartmentAgentEntity['metaData'] {
+    return this._metaData;
+  }
+
+  set metaData(value: IDepartmentAgentEntity['metaData']) {
+    this.setProperty('metaData', value);
   }
 
   public override validate(): void {

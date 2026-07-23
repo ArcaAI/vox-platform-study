@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { SysEventType, ResourceStatusType, PromptTemplateFactory } from '@arcaai/domains';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { PromptManagementService } from '../prompt-management.service';
@@ -2474,6 +2474,82 @@ describe('PromptManagementService', () => {
             mockTemplateRepo.findById.mockResolvedValue(null);
 
             await expect(service.approveTemplate('nope', { expectedVersion: 1 } as never)).rejects.toThrow(NotFoundException);
+        });
+    });
+
+    // ─── approveTemplate eval promotion gate (OD-3, TASK-549) ───
+    describe('approveTemplate eval promotion gate', () => {
+        const mockGate = { evaluatePromotion: vi.fn() };
+
+        const buildGatedService = () =>
+            new PromptManagementService(
+                mockTemplateRepo as never,
+                mockVersionRepo as never,
+                mockUsageRepo as never,
+                mockDepartmentService as never,
+                mockEventEmitter as never,
+                mockClsService as never,
+                mockDatabaseService as never,
+                undefined as never, // httpService
+                undefined as never, // configService
+                undefined as never, // secretsService
+                undefined as never, // harnessPolicyService
+                undefined as never, // userProfileService
+                undefined as never, // entitlements
+                mockGate as never, // promotionGate (appended)
+            );
+
+        beforeEach(() => {
+            mockGate.evaluatePromotion.mockReset();
+            // Global admin approving a tenant-owned DRAFT template.
+            mockClsService.get.mockImplementation((key: string) =>
+                key === 'user' ? { ...defaultClsContext.user, roles: ['GLOBAL_ADMIN'] } : key === 'tenantId' ? 'tenant-1' : null,
+            );
+        });
+
+        it('blocks approval with 409 and does NOT flip status when the gate fails in block-mode', async () => {
+            const tpl = createMockTemplateEntity({ id: 'tpl-g', tenantId: 'tenant-1', scope: 'DEPARTMENT_DEFAULT', status: 'DRAFT', version: 2 });
+            mockTemplateRepo.findById.mockResolvedValue(tpl);
+            mockGate.evaluatePromotion.mockResolvedValue({
+                mode: 'block',
+                evaluated: true,
+                passed: false,
+                blocked: true,
+                failures: ['pdsqi_accurate=2.0000 < 4.0'],
+                runIds: ['run-1'],
+                aggregates: { pdsqi_accurate: 2.0 },
+            });
+
+            const svc = buildGatedService();
+            await expect(svc.approveTemplate('tpl-g', { expectedVersion: 2 } as never)).rejects.toThrow(ConflictException);
+            expect(mockGate.evaluatePromotion).toHaveBeenCalledWith(
+                expect.objectContaining({ tenantId: 'tenant-1', promptTemplateId: 'tpl-g', trigger: 'approve' }),
+            );
+            // Status not promoted; no version-pin CAS.
+            expect(tpl.status).not.toBe('APPROVED');
+            expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
+        });
+
+        it('proceeds to APPROVED when the gate passes (or warns)', async () => {
+            const tpl = createMockTemplateEntity({ id: 'tpl-g', tenantId: 'tenant-1', scope: 'DEPARTMENT_DEFAULT', status: 'DRAFT', version: 3 });
+            mockTemplateRepo.findById.mockResolvedValue(tpl);
+            mockVersionRepo.findMaxVersionNumber.mockResolvedValue(0);
+            mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
+            mockTemplateRepo.updateWithVersion.mockResolvedValue(tpl);
+            mockGate.evaluatePromotion.mockResolvedValue({
+                mode: 'warn',
+                evaluated: true,
+                passed: false,
+                blocked: false, // warn-mode never blocks
+                failures: ['x'],
+                runIds: ['run-1'],
+                aggregates: {},
+            });
+
+            const svc = buildGatedService();
+            const result = await svc.approveTemplate('tpl-g', { expectedVersion: 3 } as never);
+            expect(result).toBeDefined();
+            expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalled();
         });
     });
 });

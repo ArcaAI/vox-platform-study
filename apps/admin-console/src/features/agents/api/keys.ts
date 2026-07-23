@@ -1,4 +1,10 @@
-import type { ListDepartmentAgentsParams, ListTemplatesParams, ListUsageRecordsParams } from './types';
+import type {
+    ListAgentEvalRunsParams,
+    ListDepartmentAgentsParams,
+    ListEvalGoldenSetsParams,
+    ListTemplatesParams,
+    ListUsageRecordsParams,
+} from './types';
 
 /** Query-key factory — every key roots at ['agents'] for coarse invalidation. */
 export const agentKeys = {
@@ -23,4 +29,15 @@ export const departmentAgentKeys = {
     root: ['department-agents'] as const,
     list: (params?: ListDepartmentAgentsParams) => [...departmentAgentKeys.root, 'list', params ?? {}] as const,
     detail: (id: string) => [...departmentAgentKeys.root, 'detail', id] as const,
+};
+
+/**
+ * Eval-gated promotion (TASK-549) query-key factory — rooted separately at
+ * ['agent-eval'] so `useRunGoldenSetEval`'s invalidation never touches the
+ * unrelated PromptTemplate/DepartmentAgent caches above.
+ */
+export const agentEvalKeys = {
+    root: ['agent-eval'] as const,
+    goldenSets: (params?: ListEvalGoldenSetsParams) => [...agentEvalKeys.root, 'golden-sets', params ?? {}] as const,
+    evalRuns: (params?: ListAgentEvalRunsParams) => [...agentEvalKeys.root, 'eval-runs', params ?? {}] as const,
 };

@@ -315,6 +315,11 @@ export interface CreateDepartmentAgentRequest {
  * `expectedVersion` is added by the client from the ETag. `departmentId` is
  * identity (not editable); pinning has its own `POST :id/pin` endpoint, so
  * `pinnedVersionNumber` is deliberately absent here.
+ *
+ * `goldenSetId` widens to `| null` (the server DTO's declared type is bare
+ * `string`, but `@IsOptional()` accepts `null` at runtime and the service only
+ * skips the assignment on `undefined` — so `null` is how the Settings-tab
+ * "detach" affordance clears an attached golden set; TASK-549).
  */
 export interface UpdateDepartmentAgentRequest {
     name?: string;
@@ -323,7 +328,69 @@ export interface UpdateDepartmentAgentRequest {
     promptTemplateId?: string;
     dnaStylePolicy?: DepartmentAgentDnaPolicy;
     harnessOverrides?: Record<string, unknown>;
-    goldenSetId?: string;
+    goldenSetId?: string | null;
     tags?: string[];
     resourceStatus?: 'ENABLED' | 'DISABLED';
+}
+
+// ---------------------------------------------------------------------------
+// Eval-gated promotion (TASK-549) — the `/agents?tab=governance` Eval panel.
+// These are READ-mostly projections of the harness admin surface
+// (`admin/harness/golden-sets` + `admin/harness/eval-runs`), duplicated here
+// rather than imported from the `harness-ops` feature (which owns golden-set
+// CRUD + the full eval-runs grid on `/harness/observability`) because
+// features never import each other (rule 13). This panel only needs a
+// golden-set picker + a scoped "last runs" read + the run-now write.
+// ---------------------------------------------------------------------------
+
+/** GET admin/harness/golden-sets row — a slim GoldenSetResponse projection. */
+export interface EvalGoldenSet {
+    id: string;
+    name: string;
+    description?: string | null;
+    pinnedVersion?: string | null;
+}
+
+export interface EvalGoldenSetList {
+    items: EvalGoldenSet[];
+    total: number;
+}
+
+/** NOTE: `page` is ONE-based on this endpoint (matches the harness-ops copy). */
+export interface ListEvalGoldenSetsParams {
+    page?: number;
+    limit?: number;
+    [key: string]: string | number | boolean | undefined | null;
+}
+
+/** GET admin/harness/eval-runs row — a slim EvalRunResponse projection. */
+export interface AgentEvalRun {
+    id: string;
+    goldenSetId: string;
+    status: string | null;
+    startedAt: string | null;
+    completedAt: string | null;
+    aggregateScores: unknown;
+    createdAt: string;
+}
+
+export interface AgentEvalRunList {
+    items: AgentEvalRun[];
+    total: number;
+}
+
+/** NOTE: `page` is ONE-based on this endpoint (matches the harness-ops copy). */
+export interface ListAgentEvalRunsParams {
+    goldenSetId?: string;
+    page?: number;
+    limit?: number;
+    [key: string]: string | number | boolean | undefined | null;
+}
+
+/** POST golden-sets/:id/run result (EvalRunTriggerResponse) — synchronous run-now verdict. */
+export interface EvalRunTrigger {
+    runId: string;
+    passed: boolean;
+    failures: string[];
+    aggregates: Record<string, number>;
 }

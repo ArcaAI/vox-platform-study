@@ -17,6 +17,9 @@ export class GoldenSetResponse {
   @ApiPropertyOptional({ description: 'Pinned dataset version tag (null when unpinned).', nullable: true })
   pinnedVersion: string | null;
 
+  @ApiPropertyOptional({ description: 'Scoped department id (null = tenant-wide).', nullable: true })
+  departmentId: string | null;
+
   @ApiProperty({ description: 'Created timestamp (ISO-8601).' })
   createdAt: string;
 
@@ -71,4 +74,19 @@ export class GoldenCaseListResponse {
 
   @ApiProperty({ description: 'Total cases in the set (across all pages).', example: 25 })
   total: number;
+}
+
+/** Result of a synchronous eval run (manual run-now or promotion gate). */
+export class EvalRunTriggerResponse {
+  @ApiProperty({ description: 'The persisted EvalRun id.' })
+  runId: string;
+
+  @ApiProperty({ description: 'Whether the release gate passed.' })
+  passed: boolean;
+
+  @ApiProperty({ description: 'Gate failure reasons (empty when passed).', type: [String] })
+  failures: string[];
+
+  @ApiProperty({ description: 'Aggregate metric scores across the run.', type: 'object', additionalProperties: { type: 'number' } })
+  aggregates: Record<string, number>;
 }

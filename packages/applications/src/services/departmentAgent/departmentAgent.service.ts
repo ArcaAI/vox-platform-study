@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, ForbiddenException, Inject, NotFoundException, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -27,6 +27,7 @@ import {
 } from './dto';
 import { DepartmentAgentDtoMapper } from './departmentAgent.dto.mapper';
 import { disallowedHarnessOverrideKeys } from './constants';
+import { EvalPromotionGateService } from '../eval/eval-promotion-gate.service';
 import { BaseService, PaginatedQuery, withFormattedPaginatedProps, withFormattedCountProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 
@@ -46,6 +47,10 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
     private readonly departmentRepository: DepartmentRepository,
     private readonly promptTemplateRepository: PromptTemplateRepository,
     private readonly promptVersionRepository: PromptVersionRepository,
+    // Optional (append-only DI); the OD-3 eval promotion gate. When present,
+    // re-pointing this agent's pin to a new version runs the eval (if the agent
+    // references a golden set) and blocks (409) on a gate failure in block-mode.
+    @Optional() @Inject(EvalPromotionGateService) private readonly promotionGate?: EvalPromotionGateService,
   ) {
     super(eventEmitter, clsService, ResourceType.DepartmentAgent);
   }
@@ -258,6 +263,29 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
     if (!agent.hasChanges) {
       // Re-pinning to the same version is a no-op — return the current row.
       return DepartmentAgentDtoMapper.toResponse(agent);
+    }
+
+    // OD-3 eval promotion gate: re-pointing the pin to a NEW version (not an
+    // unpin) with a golden set attached runs the eval BEFORE the pin lands. In
+    // block-mode a failing eval rejects the re-point (409 + score payload); the
+    // pin is not applied. The EvalRun is persisted (triggerType=PROMOTION) either way.
+    if (this.promotionGate && versionNumber !== null && agent.goldenSetId) {
+      const verdict = await this.promotionGate.evaluatePromotion({
+        tenantId: agent.tenantId,
+        promptTemplateId: agent.promptTemplateId,
+        promptVersionNumber: versionNumber,
+        agentId: id,
+        trigger: 'pin',
+      });
+      if (verdict.blocked) {
+        throw new ConflictException({
+          message: 'Eval gate failed — agent pin re-point blocked.',
+          reason: 'EVAL_GATE_FAILED',
+          failures: verdict.failures,
+          runIds: verdict.runIds,
+          aggregates: verdict.aggregates,
+        });
+      }
     }
 
     const previousVersion = agent.version;

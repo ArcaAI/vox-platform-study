@@ -30,6 +30,25 @@ describe('DepartmentAgentFactory', () => {
   });
 });
 
+describe('DepartmentAgentEntity metaData (TASK-548 clone lineage)', () => {
+  it('round-trips metaData through the factory (clone lineage carrier)', () => {
+    const agent = DepartmentAgentFactory.CreateDepartmentAgent({
+      ...baseProps,
+      metaData: { sourceTemplateVersionNumber: 3 },
+    });
+    expect(agent.metaData).toEqual({ sourceTemplateVersionNumber: 3 });
+  });
+
+  it('defaults metaData to null and tracks changes through setProperty', () => {
+    const agent = DepartmentAgentFactory.CreateDepartmentAgent(baseProps);
+    expect(agent.metaData ?? null).toBeNull();
+    agent.metaData = { sourceTemplateVersionNumber: 2 };
+    expect(agent.hasChanges).toBe(true);
+    expect(agent.changes).toHaveProperty('metaData');
+    expect(agent.metaData).toEqual({ sourceTemplateVersionNumber: 2 });
+  });
+});
+
 describe('DepartmentAgentEntity.validate', () => {
   it('passes for a well-formed agent', () => {
     const agent = DepartmentAgentFactory.CreateDepartmentAgent(baseProps);

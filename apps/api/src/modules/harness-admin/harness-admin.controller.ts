@@ -2,6 +2,8 @@ import {
   EditBurdenResponse,
   EvalRunDetailResponse,
   EvalRunListResponse,
+  EvalRunService,
+  EvalRunTriggerResponse,
   EvalService,
   GateEditMiningService,
   GateEditCorpusExport,
@@ -69,6 +71,8 @@ export class HarnessAdminController {
     // positionally in its unit tests, so a mid-list insertion silently shifts
     // `cls` and fails ~35 unrelated specs with "this.cls.get is not a function".
     private readonly gateEditMiningService: GateEditMiningService,
+    // APPENDED (TASK-549): backs `POST golden-sets/:id/run`.
+    private readonly evalRunService: EvalRunService,
   ) {}
 
   // ───────────────────────── Policy ─────────────────────────
@@ -291,6 +295,28 @@ export class HarnessAdminController {
       label: body.label,
       createdBy: this.cls.get('user')?.id ?? null,
     });
+  }
+
+  @Post('golden-sets/:id/run')
+  @Authorize(['manage', 'HarnessEval'])
+  @ApiOperation({
+    summary: 'Run an eval over a golden set now (synchronous)',
+    description:
+      'Decrypts the set’s cases, runs the harness eval + release gate, persists the EvalRun (triggerType=MANUAL) + per-case scores, and returns the verdict. Tenant admins run their own sets; a SYSTEM set is global-admin-only (a cross-tenant id 404s).',
+  })
+  @ApiParam({ name: 'id', description: 'Golden set id' })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant.' })
+  @ApiResponse({ status: 201, type: EvalRunTriggerResponse })
+  @ApiResponse({ status: 404, description: 'Golden set not found for the tenant.' })
+  async runGoldenSet(@Param('id') id: string, @Query() query: { tenantId?: string }): Promise<EvalRunTriggerResponse> {
+    const tenantId = this.resolveReadTenantId(query.tenantId);
+    const outcome = await this.evalRunService.runGoldenSet({ goldenSetId: id, tenantId, triggerType: 'MANUAL' });
+    return {
+      runId: outcome.run.id,
+      passed: outcome.passed,
+      failures: outcome.failures,
+      aggregates: outcome.aggregates,
+    };
   }
 
   @Get('gate-queue')

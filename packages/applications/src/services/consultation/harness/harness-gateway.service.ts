@@ -53,6 +53,53 @@ export interface HarnessEditSignal {
   editedBy?: string;
 }
 
+/** One golden case sent to the harness eval endpoint (snake_case — the harness
+ * `GoldenCase` pydantic model has `extra="forbid"`, so keys must match exactly). */
+export interface HarnessEvalCaseInput {
+  case_id: string;
+  source_documents: string[];
+  generated_note: string;
+  reference_note?: string | null;
+}
+
+/** Body for `POST /api/v1/internal/eval/run`. */
+export interface HarnessEvalRunInput {
+  goldenSet: {
+    version: string;
+    name?: string;
+    description?: string;
+    cases: HarnessEvalCaseInput[];
+  };
+  promptTemplateId?: string | null;
+  promptVersion?: string | null;
+  promptVersionNumber?: number | null;
+  /** PDSQI-only by default (faithfulness needs a claim extractor/verifier). */
+  noFaithfulness?: boolean;
+}
+
+/** One flattened (case, metric) score row returned by the harness endpoint. */
+export interface HarnessEvalCaseScore {
+  caseId: string;
+  metric: string;
+  score: number;
+  maxScore?: number | null;
+  judgeModel?: string | null;
+}
+
+/** Response of `POST /api/v1/internal/eval/run` — the gate verdict + scores. */
+export interface HarnessEvalRunResult {
+  golden_set_version: string;
+  judge_model: string;
+  aggregates: Record<string, number>;
+  thresholds: Record<string, number>;
+  passed: boolean;
+  failures: string[];
+  caseScores: HarnessEvalCaseScore[];
+  promptTemplateId?: string | null;
+  promptVersion?: string | null;
+  promptVersionNumber?: number | null;
+}
+
 /**
  * HarnessGatewayService.
  *
@@ -132,6 +179,25 @@ export class HarnessGatewayService {
 
     this.logger.log({ message: 'Harness edit signal sent', consultationId });
     return response.data;
+  }
+
+  /**
+   * Run a synchronous eval over an inlined golden set and return the gate
+   * verdict + scores. Wraps `POST /api/v1/internal/eval/run` with the same
+   * `X-Service-Token` plumbing as the workflow endpoints. The harness enforces a
+   * case-count cap (413) and returns 200 with `passed=false` for a failing gate.
+   */
+  async runEval(input: HarnessEvalRunInput): Promise<HarnessEvalRunResult> {
+    const url = `${this.harnessUrl}/api/v1/internal/eval/run`;
+    const response = await this.httpService.axiosRef.post(url, input, {
+      headers: await this.buildHeaders(),
+    });
+    this.logger.log({
+      message: 'Harness eval run complete',
+      goldenSetVersion: (response.data as HarnessEvalRunResult)?.golden_set_version,
+      passed: (response.data as HarnessEvalRunResult)?.passed,
+    });
+    return response.data as HarnessEvalRunResult;
   }
 
   private async buildHeaders(): Promise<Record<string, string>> {

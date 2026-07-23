@@ -24,6 +24,10 @@ export interface CreateDepartmentAgentProps extends BaseEntityFactoryCreateProps
   // bag on purpose — the default is flipped only via `setDefaultForDepartment`.
   sourceAgentTemplateSlug?: IDepartmentAgentEntity['sourceAgentTemplateSlug'];
   templateLocked?: IDepartmentAgentEntity['templateLocked'];
+  // Template-copy lineage extras (TASK-548): provisioning/resync stamp
+  // `{ sourceTemplateVersionNumber }` here so the resync sweep can prove a
+  // locked clone pristine against the exact source version it was cloned from.
+  metaData?: IDepartmentAgentEntity['metaData'];
 
   createdAt?: IDepartmentAgentEntity['createdAt'];
   updatedAt?: IDepartmentAgentEntity['updatedAt'];
@@ -57,6 +61,7 @@ export class DepartmentAgentFactory {
       tags: props.tags ?? [],
       sourceAgentTemplateSlug: props.sourceAgentTemplateSlug ?? null,
       templateLocked: props.templateLocked ?? false,
+      metaData: props.metaData ?? null,
     });
   }
 

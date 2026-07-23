@@ -149,6 +149,9 @@ describe('Phase 0 Item 2 — TenantService.updateTenantConfigs must NOT apply un
       { findAll: async () => [] } as any,
       // Pipeline-version clone repo (unused by this suite).
       { create: async () => ({}) } as any,
+      // DepartmentAgentRepository + PromptVersionRepository (unused by this suite).
+      { create: async () => ({}) } as any,
+      { create: async () => ({}) } as any,
     );
   });
 

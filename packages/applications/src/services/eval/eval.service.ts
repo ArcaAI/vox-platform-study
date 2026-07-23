@@ -32,6 +32,7 @@ export interface CreateGoldenSetInput {
   name: string;
   description?: string | null;
   pinnedVersion?: string | null;
+  departmentId?: string | null;
   createdBy?: string | null;
 }
 
@@ -51,7 +52,9 @@ export interface RecordEvalRunInput {
   modelVersion?: string | null;
   promptTemplateId?: string | null;
   promptVersion?: string | null;
+  promptVersionNumber?: number | null;
   judgeModel?: string | null;
+  triggerType?: string | null;
   status?: string | null;
   startedAt?: Date | null;
   completedAt?: Date | null;
@@ -112,6 +115,7 @@ export class EvalService {
       name: input.name,
       description: input.description ?? null,
       pinnedVersion: input.pinnedVersion ?? null,
+      departmentId: input.departmentId ?? null,
       createdBy: input.createdBy ?? null,
     });
 
@@ -151,7 +155,9 @@ export class EvalService {
       modelVersion: input.modelVersion ?? null,
       promptTemplateId: input.promptTemplateId ?? null,
       promptVersion: input.promptVersion ?? null,
+      promptVersionNumber: input.promptVersionNumber ?? null,
       judgeModel: input.judgeModel ?? null,
+      triggerType: input.triggerType ?? null,
       status: input.status ?? null,
       startedAt: input.startedAt ?? null,
       completedAt: input.completedAt ?? null,
@@ -302,6 +308,7 @@ function goldenSetToResponse(e: GoldenSetEntity): GoldenSetResponse {
     name: e.name,
     description: e.description ?? null,
     pinnedVersion: e.pinnedVersion ?? null,
+    departmentId: e.departmentId ?? null,
     createdAt: toDate(e.createdAt).toISOString(),
     updatedAt: toDate(e.updatedAt).toISOString(),
     createdBy: e.createdBy ?? null,

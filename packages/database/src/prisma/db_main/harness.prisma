@@ -55,6 +55,10 @@ model GoldenSet {
   // Pinned dataset version label (e.g. "v1") an EvalRun executes against, so
   // a run is reproducible against a frozen snapshot of the golden cases.
   pinnedVersion String?
+  // Optional department scoping (OD-5): a golden set may be scoped to a single
+  // department's agents. NULL ⇒ tenant-wide. No FK (mirrors the tenantId posture);
+  // indexed for the per-department picker on the console eval panel.
+  departmentId  String?
 
   // Resource status + Audit (standard fields)
   resourceStatus          ResourceStatusType @default(ENABLED)
@@ -71,6 +75,7 @@ model GoldenSet {
 
   @@index([tenantId], name: "GoldenSet_tenantId_idx")
   @@index([tenantId, name], name: "GoldenSet_tenant_name_idx")
+  @@index([tenantId, departmentId], name: "GoldenSet_tenant_department_idx")
   @@schema("core")
 }
 
@@ -124,11 +129,20 @@ model EvalRun {
   GoldenSet   GoldenSet @relation(fields: [goldenSetId], references: [id])
 
   // What was evaluated (model + prompt provenance, judge model)
-  modelName        String
-  modelVersion     String?
-  promptTemplateId String?
-  promptVersion    String?
-  judgeModel       String?
+  modelName           String
+  modelVersion        String?
+  promptTemplateId    String?
+  promptVersion       String?
+  // The numeric PromptVersion.versionNumber this run gated (null for non-template
+  // runs). Complements the free-form `promptVersion` label with the pin-addressable
+  // version number the promotion gate keys on.
+  promptVersionNumber Int?
+  judgeModel          String?
+
+  // How the run was triggered: MANUAL (admin run-now), PROMOTION (approve /
+  // agent pin re-point gate), or CI. Free-form String (mirrors `status`) so no
+  // enum migration is needed. Null on legacy rows.
+  triggerType String?
 
   // Lifecycle (free-form for Phase 0: QUEUED | RUNNING | COMPLETED | FAILED)
   status      String?

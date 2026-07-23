@@ -193,6 +193,9 @@ describe('TenantService — locked-field runtime plumbing (Agent D)', () => {
             { findAll: async () => [] } as never,
             // Pipeline-version clone repo (unused; clone is a no-op here).
             { create: async () => ({}) } as never,
+            // DepartmentAgentRepository + PromptVersionRepository (unused; no-op here).
+            { create: async () => ({}) } as never,
+            { create: async () => ({}) } as never,
         );
     });
 

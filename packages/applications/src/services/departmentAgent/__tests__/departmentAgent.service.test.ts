@@ -7,7 +7,7 @@
  * → 400, templateLocked edit → 403, and default-flip atomicity.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { DepartmentAgentService } from '../departmentAgent.service';
 
@@ -240,6 +240,65 @@ describe('DepartmentAgentService', () => {
 
       expect(mockPromptVersionRepository.findByVersionNumber).not.toHaveBeenCalled();
       expect(agent.pinnedVersionNumber).toBeNull();
+    });
+
+    // ─── eval promotion gate on pin re-point (OD-3, TASK-549) ───
+    describe('eval promotion gate', () => {
+      const mockGate = { evaluatePromotion: vi.fn() };
+
+      const gatedService = () =>
+        new DepartmentAgentService(
+          mockAgentRepository as never,
+          mockEventEmitter as never,
+          mockClsService as never,
+          mockDepartmentRepository as never,
+          mockPromptTemplateRepository as never,
+          mockPromptVersionRepository as never,
+          mockGate as never, // promotionGate (appended)
+        );
+
+      beforeEach(() => {
+        mockGate.evaluatePromotion.mockReset();
+        mockPromptVersionRepository.findByVersionNumber.mockResolvedValue({ versionNumber: 3, content: 'x' });
+      });
+
+      it('blocks the re-point with 409 (no CAS) when the gate fails in block-mode', async () => {
+        const agent = mockAgent({ goldenSetId: 'set-1' });
+        mockAgentRepository.findById.mockResolvedValue(agent);
+        mockGate.evaluatePromotion.mockResolvedValue({
+          mode: 'block', evaluated: true, passed: false, blocked: true,
+          failures: ['pdsqi_accurate=2.0000 < 4.0'], runIds: ['run-1'], aggregates: { pdsqi_accurate: 2.0 },
+        });
+
+        await expect(gatedService().pin('agent-1', 3)).rejects.toThrow(ConflictException);
+        expect(mockGate.evaluatePromotion).toHaveBeenCalledWith(
+          expect.objectContaining({ agentId: 'agent-1', promptTemplateId: 'tpl-1', promptVersionNumber: 3, trigger: 'pin' }),
+        );
+        expect(mockAgentRepository.updateWithVersion).not.toHaveBeenCalled();
+      });
+
+      it('applies the pin when the gate passes', async () => {
+        const agent = mockAgent({ goldenSetId: 'set-1' });
+        mockAgentRepository.findById.mockResolvedValue(agent);
+        mockAgentRepository.updateWithVersion.mockResolvedValue({ ...agent, version: 2, pinnedVersionNumber: 3 });
+        mockGate.evaluatePromotion.mockResolvedValue({
+          mode: 'block', evaluated: true, passed: true, blocked: false, failures: [], runIds: ['run-1'], aggregates: {},
+        });
+
+        const res = await gatedService().pin('agent-1', 3);
+        expect(res.pinnedVersionNumber).toBe(3);
+        expect(mockAgentRepository.updateWithVersion).toHaveBeenCalled();
+      });
+
+      it('does NOT gate an agent with no golden set', async () => {
+        const agent = mockAgent({ goldenSetId: null });
+        mockAgentRepository.findById.mockResolvedValue(agent);
+        mockAgentRepository.updateWithVersion.mockResolvedValue({ ...agent, version: 2, pinnedVersionNumber: 3 });
+
+        await gatedService().pin('agent-1', 3);
+        expect(mockGate.evaluatePromotion).not.toHaveBeenCalled();
+        expect(mockAgentRepository.updateWithVersion).toHaveBeenCalled();
+      });
     });
   });
 

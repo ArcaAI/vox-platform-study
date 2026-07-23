@@ -194,6 +194,12 @@ class EvalConfig(BaseSettings):
     golden_set_version: str = "synthetic-v0.1.0"
     golden_set_path: str = ""
 
+    # Hard cap on cases the SYNCHRONOUS internal ``/eval/run`` endpoint will score
+    # in one request (apps/api promotion gate + admin run-now). Larger sets belong
+    # on the future Temporal lane; the endpoint rejects an over-cap request (413)
+    # rather than blocking a promotion for minutes.
+    max_cases_per_run: int = 50
+
     # Release-gate thresholds.
     icc_threshold: float = 0.8
     faithfulness_threshold: float = 0.85

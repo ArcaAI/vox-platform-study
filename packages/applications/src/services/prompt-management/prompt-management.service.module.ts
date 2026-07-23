@@ -9,6 +9,7 @@ import { DepartmentServiceModule } from '../department/department.service.module
 import { HarnessPolicyServiceModule } from '../harness-policy/harness-policy.service.module';
 import { UserProfileServiceModule } from '../user/userProfile/userProfile.service.module';
 import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
+import { EvalServiceModule } from '../eval/eval.service.module';
 
 @Module({
   // HttpModule + ConfigModule wire the SMR/text-generation client
@@ -16,7 +17,7 @@ import { EntitlementsServiceModule } from '../entitlements/entitlements.service.
   // HarnessPolicyServiceModule supplies the SMR-selection resolver.
   // UserProfileServiceModule supplies the preferred-template write.
   // EntitlementsServiceModule supplies the maxPromptTemplates quota check.
-  imports: [CommonServiceModule, CoreDatabaseModule, DepartmentServiceModule, ConfigModule, HttpModule, HarnessPolicyServiceModule, UserProfileServiceModule, EntitlementsServiceModule],
+  imports: [CommonServiceModule, CoreDatabaseModule, DepartmentServiceModule, ConfigModule, HttpModule, HarnessPolicyServiceModule, UserProfileServiceModule, EntitlementsServiceModule, EvalServiceModule],
   providers: [
     {
       provide: IPromptManagementService,

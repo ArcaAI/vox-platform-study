@@ -11,6 +11,7 @@ export interface CreateGoldenSetProps extends BaseEntityFactoryCreateProps {
   name: IGoldenSetEntity['name'];
   description?: IGoldenSetEntity['description'];
   pinnedVersion?: IGoldenSetEntity['pinnedVersion'];
+  departmentId?: IGoldenSetEntity['departmentId'];
   tenantId: IGoldenSetEntity['tenantId'];
   Tenant?: IGoldenSetEntity['Tenant'];
 
@@ -36,6 +37,7 @@ export class GoldenSetFactory {
       name: props.name,
       description: props.description ?? null,
       pinnedVersion: props.pinnedVersion ?? null,
+      departmentId: props.departmentId ?? null,
       tenantId: props.tenantId,
       Tenant: props.Tenant ?? null,
     });

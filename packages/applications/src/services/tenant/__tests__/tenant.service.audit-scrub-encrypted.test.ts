@@ -81,6 +81,9 @@ describe('TenantService — audit-scrub for Vault-encrypted rows (Phase 4 Task 4
       { findAll: async () => [] } as never,
       // Pipeline-version clone repo (unused by this suite).
       { create: async () => ({}) } as never,
+      // DepartmentAgentRepository + PromptVersionRepository (unused by this suite).
+      { create: async () => ({}) } as never,
+      { create: async () => ({}) } as never,
     );
   });
 

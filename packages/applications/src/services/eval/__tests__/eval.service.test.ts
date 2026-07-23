@@ -184,6 +184,7 @@ describe('EvalService', () => {
           name: 'GI golden set',
           description: 'gold pairs',
           pinnedVersion: null,
+          departmentId: null,
           createdAt: '2026-07-01T00:00:00.000Z',
           updatedAt: '2026-07-02T00:00:00.000Z',
           createdBy: 'user-1',

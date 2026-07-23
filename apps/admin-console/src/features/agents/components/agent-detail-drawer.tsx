@@ -40,6 +40,7 @@ import {
     useCreateDepartmentAgent,
     useDepartmentAgent,
     useDepartments,
+    useEvalGoldenSets,
     usePinDepartmentAgent,
     useTemplate,
     useTemplates,
@@ -57,6 +58,9 @@ const DNA_POLICY_OPTIONS: { value: DepartmentAgentDnaPolicy; label: string }[] =
     { value: 'INHERIT', label: 'Inherit' },
     { value: 'DISABLED', label: 'Disabled' },
 ];
+
+/** Radix `Select` rejects an empty-string item value, so "no golden set" needs a sentinel (TASK-549). */
+const NO_GOLDEN_SET = '__none__';
 
 function useAgentCatalogTab() {
     return useQueryState('catab', parseAsStringLiteral(AGENT_CATALOG_TABS).withDefault('settings'));
@@ -243,13 +247,17 @@ function SettingsForm({
 }) {
     const updateAgent = useUpdateDepartmentAgent();
     const templatesQuery = useTemplates({ departmentId: agent.departmentId, limit: 200 });
+    const goldenSetsQuery = useEvalGoldenSets({ limit: 200 });
     const [name, setName] = useState(agent.name);
     const [promptTemplateId, setPromptTemplateId] = useState(agent.promptTemplateId);
     const [dnaStylePolicy, setDnaStylePolicy] = useState<DepartmentAgentDnaPolicy>(agent.dnaStylePolicy);
+    const [goldenSetId, setGoldenSetId] = useState<string>(agent.goldenSetId ?? NO_GOLDEN_SET);
     const occError =
         updateAgent.error instanceof GatewayError && (updateAgent.error.isVersionConflict || updateAgent.error.isMissingPrecondition)
             ? updateAgent.error
             : null;
+    const goldenSetOptions = goldenSetsQuery.data?.items ?? [];
+    const attachedGoldenSetName = agent.goldenSetId ? (goldenSetOptions.find((set) => set.id === agent.goldenSetId)?.name ?? agent.goldenSetId) : null;
 
     if (agent.templateLocked) {
         return (
@@ -262,6 +270,10 @@ function SettingsForm({
                 <div className="flex flex-col gap-2">
                     <Label htmlFor="agent-dna-locked">DNA writing-style gate</Label>
                     <Input id="agent-dna-locked" value={agent.dnaStylePolicy} disabled />
+                </div>
+                <div className="flex flex-col gap-2">
+                    <Label htmlFor="agent-golden-set-locked">Golden set</Label>
+                    <Input id="agent-golden-set-locked" value={attachedGoldenSetName ?? 'None — eval gate off'} disabled />
                 </div>
             </div>
         );
@@ -276,7 +288,16 @@ function SettingsForm({
         event.preventDefault();
         if (!etag) return;
         updateAgent.mutate(
-            { id: agent.id, patch: { name: name.trim(), promptTemplateId, dnaStylePolicy }, etag },
+            {
+                id: agent.id,
+                patch: {
+                    name: name.trim(),
+                    promptTemplateId,
+                    dnaStylePolicy,
+                    goldenSetId: goldenSetId === NO_GOLDEN_SET ? null : goldenSetId,
+                },
+                etag,
+            },
             {
                 onSuccess: () => {
                     toast.success('Agent updated');
@@ -339,6 +360,28 @@ function SettingsForm({
                         ))}
                     </SelectContent>
                 </Select>
+            </div>
+            <div className="flex flex-col gap-2">
+                <Label htmlFor="agent-golden-set">Golden set</Label>
+                <Select value={goldenSetId} onValueChange={setGoldenSetId}>
+                    <SelectTrigger id="agent-golden-set" className="w-full">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value={NO_GOLDEN_SET}>None — eval gate off</SelectItem>
+                        {goldenSetId !== NO_GOLDEN_SET && !goldenSetOptions.some((set) => set.id === goldenSetId) ? (
+                            <SelectItem value={goldenSetId}>{goldenSetId}</SelectItem>
+                        ) : null}
+                        {goldenSetOptions.map((set) => (
+                            <SelectItem key={set.id} value={set.id}>
+                                {set.name}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+                <p className="text-muted-foreground text-xs">
+                    Gates promotion: approving this agent&apos;s template (or re-pointing its pin) runs an eval against this set first.
+                </p>
             </div>
             <FormActions>
                 <Button type="submit" disabled={!name.trim() || !etag || updateAgent.isPending}>

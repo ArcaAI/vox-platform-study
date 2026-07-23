@@ -12,6 +12,7 @@ import { seedTenantBucket } from './05a-tenant-bucket';
 import { provisionTenantBuckets } from './05b-tenant-bucket-provision';
 import { seedStt } from './06-stt';
 import { seedPromptTemplate } from './07-prompt-template';
+import { seedAgentGoldenLibrary } from './07a-agent-golden-library';
 import { seedDnaWritingStyle } from './08-dna-writing-style';
 import { seedConsultation } from './09-consultation';
 import { seedAuditLog } from './10-audit-log';
@@ -121,6 +122,13 @@ export const seed = async () => {
 
         // Phase 3: Depends on Phase 2 (PromptTemplate.departmentId → Department)
         await seedPromptTemplate(client);
+        console.log('');
+        // Agent Golden Library (TASK-548): SYSTEM golden departments +
+        // APPROVED prompt templates + one default agent per department, plus the
+        // two fixture tenants expressed as locked clones. FKs:
+        // DepartmentAgent → Department (golden, above) + PromptTemplate (golden,
+        // created here). Idempotent upsert-by-id.
+        await seedAgentGoldenLibrary(client);
         console.log('');
 
         // Phase 4: Depends on Phase 3

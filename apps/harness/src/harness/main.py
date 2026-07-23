@@ -92,6 +92,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         )
 
     from harness.api.endpoints.admin import router as admin_router
+    from harness.api.endpoints.eval import router as eval_router
     from harness.api.endpoints.health import router as health_router
     from harness.api.endpoints.internal import router as internal_router
     from harness.api.endpoints.knowledge import router as knowledge_router
@@ -99,6 +100,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(internal_router, prefix="/api/v1/internal")
     app.include_router(knowledge_router, prefix="/api/v1/internal")
+    app.include_router(eval_router, prefix="/api/v1/internal")
     app.include_router(admin_router, prefix="/api/v1/internal/harness")
 
     if settings.metrics_enabled:

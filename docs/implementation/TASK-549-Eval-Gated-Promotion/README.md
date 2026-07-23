@@ -1,6 +1,6 @@
 # TASK-549 — Tenant-Scoped Approval, Department Golden Sets & Eval-Gated Promotion
 
-- **Status:** In Progress (approval-scope half landed; eval-execution/gate + console halves deferred — see Implementation Summary)
+- **Status:** In Progress (approval-scope half + FULL backend eval-execution/gate half landed; console half deferred — see Implementation Summary)
 - **Type:** feature (applications + api + harness + admin-console)
 - **Parent:** [TASK-544 §5.4](../TASK-544-Agent-Platform-Concept/README.md) — U4 "gold standards"; **OD-3**: tenant-admin approval for tenant-created templates + mandatory eval-gate; **OD-5**: no clinical SME for now — global AND tenant admins manage golden sets
 - **Depends on:** TASK-546 (schema: `DepartmentAgent.goldenSetId`, pin re-point hook). Approval-scope + eval-persistence halves can start in parallel with 546.
@@ -137,7 +137,80 @@ The **eval-execution + promotion-gate + console** halves (Plan §1,§3,§4,§5; 
 
 See Follow-ups for the exact remaining build order.
 
+### Scope of this session (backend remainder — Plan §1, §3, §4)
+
+`fable-thinking` skill was **still unavailable** in this environment (`Unknown skill: fable-thinking`) — recorded per the Execution Contract fallback; proceeded.
+
+Delivered the entire BACKEND remainder — schema, harness endpoint, gateway runner + manual route, and the promotion gate wired into BOTH approval and pin re-point — all TDD'd and gate-verified. The console half (Plan §5) remains for the frontend session.
+
+#### 1. Schema + domain layer (Plan §1) — DONE
+
+- `packages/database/src/prisma/db_main/harness.prisma`: `GoldenSet.departmentId String?` + `@@index([tenantId, departmentId])`; `EvalRun.promptVersionNumber Int?` + `EvalRun.triggerType String?` (free-form, mirrors `status`; MANUAL|PROMOTION|CI — no enum migration). `EvalRun.promptTemplateId` already existed.
+- Two additive migrations (dev/test Postgres is db-push-managed with drift → `prisma migrate dev` wants a reset, which is forbidden; applied additively via psql to **both** 5432 dev and 5433 test, idempotent `IF NOT EXISTS`):
+  - `20260723010000_task_549_eval_gated_promotion` — the 3 columns + index.
+  - `20260723010500_task_549_resource_type_eval_run` — `ALTER TYPE "core"."ResourceType" ADD VALUE 'EvalRun'` (required so the runner's ResourceCreated sys-event persists to AuditLog — the TASK-366 failure mode; added to BOTH `audit.prisma` and `packages/domains/src/enums/generated/ResourceType.ts`, parity test green).
+- Hand-authored domain-layer extensions per rule 03 (model regenerated via `gen:model`; entity/factory hand-edited; mapper auto-maps the new scalars). All three drift checks clean (below). EvalService inputs + `GoldenSetResponse` DTO carry the new fields.
+
+#### 2. Harness FastAPI `POST /api/v1/internal/eval/run` (Plan §3) — DONE
+
+- `apps/harness/src/harness/api/endpoints/eval.py` (mounted in `main.py` at `/api/v1/internal`): `X-Service-Token`-guarded, synchronous, wraps `GoldenSetRunner` + `apply_gate` (via `run_and_gate`) over an inlined golden set. Enforces a case-count cap (`EvalConfig.max_cases_per_run`, default 50 → **413** over-cap). Returns the `EvalRunResult` (scores + gate verdict) + prompt provenance echo + a flattened `caseScores` array (PDSQI mean / faithfulness derived Python-side).
+- **Scoping decision (documented):** the endpoint JUDGES the notes supplied on each case; it does NOT run SMR generation (needs the LLM lane, not hermetic — "the MACHINERY, not the clinical content"). The gateway maps `transcript → source_documents`, `referenceNote → generated_note`; `promptTemplateId`/`promptVersion(Number)` ride as provenance.
+- Hermetic tests (`tests/unit/api/test_eval_endpoint.py`, 5 cases) inject a deterministic stub judge on `app.state.eval_judge` — no LLM/DB/Temporal/network.
+
+#### 3. Gateway `EvalRunService` + manual route (Plan §3) — DONE
+
+- `packages/applications/src/services/eval/eval-run.service.ts`: loads the golden set (404-over-403), decrypts each case (established `decryptFieldsFromEntity` PHI path), calls `HarnessGatewayService.runEval` (new method reusing the `X-Service-Token` plumbing), persists `EvalRun` + per-case `EvalScore` via the existing `EvalService.recordEvalRunWithScores`, and broadcasts `ResourceCreated`. Non-throwing on a harness/gate failure (records a FAILED run so the attempt stays attributable; returns `passed=false`).
+- Manual trigger route `POST admin/harness/golden-sets/:id/run` (`@Authorize(['manage','HarnessEval'])`, `triggerType=MANUAL`) on `HarnessAdminController` → `EvalRunTriggerResponse`. Tenant admins run their own sets; a SYSTEM set is global-admin-only (a cross-tenant id 404s via the existing tenant-scope resolver).
+
+#### 4. Promotion gate + settings descriptor (Plan §4) — DONE
+
+- Settings descriptor `agentic.eval.promotionGate` (`agentic-eval.descriptors.ts`, registered in the catalog): enum `block` (default, OD-3 mandatory) | `warn` | `off`, `global-kv`, global-admin-only. Resolved through `EffectiveSettingsService` (fail-safe → `block` on a resolver outage).
+- `EvalPromotionGateService`: reads the mode, finds the template's bound agent(s) carrying a `goldenSetId`, runs the eval (`triggerType=PROMOTION`) per agent, and reports `blocked` only in block-mode on failure. No golden set ⇒ proceeds with a recorded `warning`; `off` ⇒ skips entirely.
+- Wired (append-only `@Optional()` DI, no test-arity breakage) into **both**:
+  - `PromptManagementService.approveTemplate` — gate runs after the OD-3 auth check + idempotent-already-APPROVED short-circuit, BEFORE flipping to APPROVED. `blocked` → `ConflictException` (409 + `{failures, runIds, aggregates}`); template status untouched.
+  - `DepartmentAgentService.pin` — gate runs on a re-point to a new version with a golden set attached, after the no-op check, BEFORE `updateWithVersion`. `blocked` → 409; pin not applied.
+
+#### Gate evidence (actual output, this session)
+
+```
+# Schema / domain drift + parity
+gen:model:check        → check: no drift — 122 generated file(s) match
+gen:entity:check       → no drift — 72 file(s) match; Schema coverage OK (74 models)
+gen:factory:check      → no drift — 72 file(s) match; Schema coverage OK
+resourceType.enum-parity.test.ts → 2 passed (domain ⇔ database)
+
+# Domains
+pnpm --filter @arcaai/database build → tsc clean
+pnpm --filter @arcaai/domains build  → tsc clean
+pnpm --filter @arcaai/domains test   → Test Files 118 passed | 2 skipped; Tests 1390 passed
+
+# Applications (TDD RED→GREEN for eval-run + eval-promotion-gate + caller gate tests)
+pnpm --filter @arcaai/applications build → tsc clean
+pnpm --filter @arcaai/applications test  → Test Files 339 passed | 1 skipped; Tests 6829 passed | 4 skipped
+  - eval-run.service.test.ts            → 4 passed
+  - eval-promotion-gate.service.test.ts → 7 passed
+  - prompt-management approve gate      → 145 passed (incl. 2 new: 409-blocks / warn-proceeds)
+  - departmentAgent pin gate            → 30 passed (incl. 3 new: 409-blocks / passes / no-goldenset-skips)
+eslint (new files) → 0 errors, 0 warnings (my regions prettier-clean; pre-existing harness-gateway signal* prettier warnings untouched)
+
+# API
+pnpm build:api          → Tasks: 8 successful, 8 total
+pnpm test:unit (workspace) → Test Files 987 passed | 2 skipped; Tests 17206 passed | 4 skipped | 9 todo
+eslint harness-admin.controller.ts → 0 errors
+
+# Harness (hermetic + lint + typecheck)
+py:harness:test (full tests/)  → 990 passed (hermetic — no DB/Temporal/network)
+  - test_eval_endpoint.py      → 5 passed
+ruff check apps/harness/src/   → All checks passed!
+mypy apps/harness/src/         → Success: no issues found in 94 source files
+```
+
+#### Deferred to the frontend session (Plan §5, unchanged)
+
+Console eval panel + golden-set CRUD screens + the `GateEditExemplar` "promote to golden case" affordance (TDD #5). And the live-stack runtime proof + e2e (TDD #6 — Verification Criteria: create golden set → attach to agent → approve → blocking 409 + psql `EvalRun`/`EvalScore` rows) is for the **runtime-proofs agent** on the live dev stack (:8868). Note: the DI graph (EvalServiceModule wired into prompt-management/departmentAgent/harness-admin modules) is acyclic by construction but was NOT boot-verified here (no full app boot / e2e run this session).
+
 ## Change History
 
 - 2026-07-23 — Ticket authored from TASK-544 §7 breakdown (OD-3, OD-5, U4 gold standards).
 - 2026-07-23 — **Approval-scope half (OD-3) implemented + gate-verified** (TDD, 7 new cases). `PromptManagementService.approveTemplate` split into a SYSTEM=global-admin-only / tenant-owned=`manage:PromptTemplate` gate (`assertCanApprove`); controller AUTH-NOTE + Swagger updated. applications build + 163 prompt-management tests + api build + 66 api controller tests + lint all green. `fable-thinking` skill unavailable (recorded per Execution Contract fallback). Eval-execution/promotion-gate/console halves deferred with rationale (harness live-LLM endpoint not yet built; hermeticity + :8868-busy constraints). Work staged, not committed.
+- 2026-07-23 — **Backend remainder (Plan §1/§3/§4) implemented + gate-verified** (TDD). Schema: `GoldenSet.departmentId` + index, `EvalRun.triggerType`/`promptVersionNumber`, `ResourceType.EvalRun` (both enums + parity) — two additive psql migrations applied to dev(5432)+test(5433) (reset forbidden; DB is db-push-managed with drift). Hand-authored domain layer; gen model/entity/factory drift + coverage checks clean. Harness `POST /api/v1/internal/eval/run` (X-Service-Token, synchronous, 413 case-cap, hermetic stub-judge tests, 5 cases). Gateway `EvalRunService` (decrypt cases → `HarnessGatewayService.runEval` → persist EvalRun+EvalScore → ResourceCreated sys-event) + manual route `POST admin/harness/golden-sets/:id/run`. Promotion gate: `EvalPromotionGateService` + `agentic.eval.promotionGate` descriptor (block default | warn | off, global-admin-only), wired append-only into `approveTemplate` AND `DepartmentAgentService.pin` (blocked → 409 + score payload). Gates: applications build + 6829 tests; api build (8/8) + 17206 workspace unit tests; database + domains build + 1390 domains tests + parity; py:harness:test 990 hermetic + ruff + mypy clean; eslint clean (my regions). `fable-thinking` still unavailable (recorded). Console half (§5) + live-stack runtime proof/e2e deferred (runtime-proofs agent). Work staged, not committed.
