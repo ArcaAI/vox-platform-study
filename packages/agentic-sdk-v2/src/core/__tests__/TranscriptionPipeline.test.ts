@@ -62,6 +62,19 @@ vi.mock('@arcaai/stt', () => ({
   createSTT: vi.fn(() => mockSTT),
 }));
 
+// TASK-545: local (in-browser) transcription is disabled platform-wide by
+// default (`LOCAL_TRANSCRIPTION_ENABLED = false` in `../constants`) — see
+// `TranscriptionPipeline.localTranscriptionDisabled.task545.test.ts` for the
+// shipped (flag OFF) behavior, exercised against the REAL constant. This file
+// pins the underlying `resolveSTTRuntimeProvider()` resolution cascade
+// (transcriptionMode > provider > location > transport-based fallback),
+// including its local paths, so it forces the flag back on — that cascade
+// remains fully implemented and is exactly what the re-enable point restores.
+vi.mock('../constants', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../constants')>();
+  return { ...actual, LOCAL_TRANSCRIPTION_ENABLED: true };
+});
+
 describe('TranscriptionPipeline', () => {
   let mockLogger: ReturnType<typeof createMockLogger>;
   const mockTrack = {} as MediaStreamTrack;

@@ -377,6 +377,16 @@ enum IdpProtocol {
   @@schema("core")
 }
 
+// DNA writing-style gate for a DepartmentAgent (TASK-546).
+// INHERIT = inherit the department/doctor DNA-style resolution as today;
+// DISABLED = the agent explicitly opts out of the DNA-style gate.
+enum DepartmentAgentDnaPolicy {
+  INHERIT
+  DISABLED
+
+  @@schema("core")
+}
+
 // Lifecycle of a TenantIdentityProvider row. DRAFT until a successful
 // "Test connection" flips it to ENABLED (prevents self-lockout from a bad
 // config); DISABLED is an explicit tenant-admin pause (distinct from soft delete).

@@ -37,6 +37,32 @@ export class LiveSummaryEntityDto {
 }
 
 /**
+ * Structured vital signs deterministically extracted by the NLP service
+ * (`Vitals`). Every field is optional + null-safe — an un-parsed or
+ * out-of-range value stays absent; never fabricated. BP is split into
+ * systolic/diastolic integers.
+ */
+export class LiveSummaryVitalsDto {
+  @ApiPropertyOptional({ description: 'Systolic blood pressure (mmHg)' })
+  systolic?: number;
+
+  @ApiPropertyOptional({ description: 'Diastolic blood pressure (mmHg)' })
+  diastolic?: number;
+
+  @ApiPropertyOptional({ description: 'Heart rate (bpm)' })
+  heartRate?: number;
+
+  @ApiPropertyOptional({ description: 'Oxygen saturation (%)' })
+  spo2?: number;
+
+  @ApiPropertyOptional({ description: 'Temperature (°C)' })
+  temperatureC?: number;
+
+  @ApiPropertyOptional({ description: 'Weight (kg)' })
+  weightKg?: number;
+}
+
+/**
  * A logical section of the running summary. When the SMR output parses as a
  * structured SOAP note the service emits the four canonical sections in order
  * (`Subjective`, `Objective`, `Assessment`, `Plan`) — some may have empty
@@ -156,6 +182,12 @@ export class LiveSummaryStatsDto {
 
   @ApiPropertyOptional({ description: 'Model id used for the generation' })
   model?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      "The AiTaskDefault routing key this flush's SMR call resolved through (TASK-552 Lane B) — 'smr.live' for the live running-note tier. Lets the console/stat cards show WHICH tier (and therefore which admin-managed model) actually served this flush, distinct from the one-shot/finalize tier.",
+  })
+  task_key?: string | null;
 }
 
 /**
@@ -206,6 +238,13 @@ export class LiveSummaryEventDto {
     type: LiveSummaryMetadataDto,
   })
   metadata?: LiveSummaryMetadataDto;
+
+  @ApiPropertyOptional({
+    description:
+      'Structured vital signs deterministically extracted by the NLP service. Accumulated field-wise across flushes (latest non-null wins) and absent until at least one vital is seen — never fabricated.',
+    type: LiveSummaryVitalsDto,
+  })
+  vitals?: LiveSummaryVitalsDto;
 
   @ApiProperty({ description: 'ISO-8601 timestamp of when this snapshot was produced' })
   updatedAt: string;

@@ -55,4 +55,5 @@ export enum ResourceType {
   // Gate-edit mining store (parity with audit.prisma; see
   // resourceType.enum-parity.test.ts).
   GateEditExemplar = 'GateEditExemplar',
+  DepartmentAgent = 'DepartmentAgent',
 }

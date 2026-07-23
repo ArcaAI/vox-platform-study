@@ -255,3 +255,75 @@ export interface Department {
     updatedAt: string;
     version: number;
 }
+
+/**
+ * `DepartmentAgent` (TASK-546) — the first-class "Agent" row: one department
+ * bound to an Agent Template at a pinned-or-tracked version, plus a DNA gate.
+ * Mirrors `DepartmentAgentResponse` in `@arcaai/applications`
+ * (`packages/applications/src/services/departmentAgent/dto/department-agent.response.ts`).
+ */
+export type DepartmentAgentDnaPolicy = 'INHERIT' | 'DISABLED';
+
+export interface DepartmentAgent {
+    id: string;
+    departmentId: string;
+    name: string;
+    slug: string;
+    description?: string;
+    /** Bound Agent Template id (a `PromptTemplate` row). */
+    promptTemplateId: string;
+    /** Pinned `PromptVersion` number; null/undefined ⇒ tracks latest APPROVED. */
+    pinnedVersionNumber?: number | null;
+    dnaStylePolicy: DepartmentAgentDnaPolicy;
+    harnessOverrides?: Record<string, unknown>;
+    goldenSetId?: string;
+    isDefault: boolean;
+    sourceAgentTemplateSlug?: string | null;
+    /** Cloned from the SYSTEM template library — content is read-only until cloned. */
+    templateLocked: boolean;
+    tags?: string[];
+    resourceStatus?: ResourceStatus;
+    createdAt: string;
+    updatedAt: string;
+    version: number;
+}
+
+/** GET /admin/department-agents query — platform-standard ZERO-based page. */
+export interface ListDepartmentAgentsParams {
+    departmentId?: string;
+    page?: number;
+    limit?: number;
+    [key: string]: string | number | boolean | undefined | null;
+}
+
+/** POST /admin/department-agents body (CreateDepartmentAgentRequest). */
+export interface CreateDepartmentAgentRequest {
+    departmentId: string;
+    name: string;
+    slug: string;
+    description?: string;
+    promptTemplateId: string;
+    pinnedVersionNumber?: number | null;
+    dnaStylePolicy?: DepartmentAgentDnaPolicy;
+    harnessOverrides?: Record<string, unknown>;
+    goldenSetId?: string;
+    tags?: string[];
+}
+
+/**
+ * PATCH :id body (UpdateDepartmentAgentRequest) — If-Match route;
+ * `expectedVersion` is added by the client from the ETag. `departmentId` is
+ * identity (not editable); pinning has its own `POST :id/pin` endpoint, so
+ * `pinnedVersionNumber` is deliberately absent here.
+ */
+export interface UpdateDepartmentAgentRequest {
+    name?: string;
+    slug?: string;
+    description?: string;
+    promptTemplateId?: string;
+    dnaStylePolicy?: DepartmentAgentDnaPolicy;
+    harnessOverrides?: Record<string, unknown>;
+    goldenSetId?: string;
+    tags?: string[];
+    resourceStatus?: 'ENABLED' | 'DISABLED';
+}

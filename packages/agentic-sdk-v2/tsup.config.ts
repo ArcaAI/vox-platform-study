@@ -125,7 +125,12 @@ const pluginPackages = [
 
 // Shared build options
 const sharedOptions: Partial<Options> = {
-  dts: false, // Blocked: workspace packages (@arcaai/vad, @arcaai/stt, @arcaai/noise-filter) don't expose hook types to TS compiler during DTS generation. Fix requires updating external-modules.d.ts or fixing workspace package type exports.
+  // tsup's rollup DTS bundler chokes on the workspace packages' hook types, so
+  // declarations are emitted by a chained `tsc --emitDeclarationOnly` step (see
+  // the `build`/`build:dts` scripts) — `tsc --noEmit` passes cleanly, so this
+  // ships correct, unbundled .d.ts for the `exports.types` entry points. Do NOT
+  // set this true without also removing the tsc step.
+  dts: false,
   splitting: false,
   sourcemap: true,
   treeshake: true,

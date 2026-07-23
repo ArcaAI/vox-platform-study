@@ -13,6 +13,8 @@ import { ConsultationPipelineEvent, NerExtractedPayload } from '../../events';
 import { IActiveUserContext } from '../../../../interfaces';
 import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../../../common';
 import { namedEntityPropsFromNlp, type NlpNamedEntity } from '../../shared/namedEntityFromNlp';
+import { resolveNerModelInjection } from '../../shared/resolveNerModelSelection';
+import { IAiTaskDefaultService } from '../../../ai-task-default/IAiTaskDefaultService';
 
 @Processor(JobQueue.ExtractNamedEntities)
 export class NerProcessor extends WorkerHost {
@@ -31,6 +33,11 @@ export class NerProcessor extends WorkerHost {
     // Optional + trailing so existing positional test fixtures keep compiling;
     // production DI (ConsultationServiceModule) always supplies it.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // Resolves the effective `nlp.ner` AiTaskDefault model for injection into
+    // the NLP call (TASK-552 Lane A). Optional + trailing so existing
+    // positional test fixtures keep compiling; absent ⇒ posts without
+    // `model_name`, i.e. today's behavior (fail-open).
+    @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
   ) {
     super();
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
@@ -166,10 +173,16 @@ export class NerProcessor extends WorkerHost {
     entities: NlpNamedEntity[];
   }> {
     try {
+      // TASK-552 Lane A: inject the effective `nlp.ner` AiTaskDefault model
+      // (mirrors AiInferenceController's playground mapping) so a global
+      // admin's re-point governs this durable clinical NER path too, not just
+      // the playground. Fail-open: {} on any resolution hiccup.
+      const modelSelection = await resolveNerModelInjection(this.aiTaskDefaultService, this.cls, this.logger);
       const response = await this.httpService.axiosRef.post(
         `${this.nlpServiceUrl}/api/v1/classify/tokens`,
         {
           text: content,
+          ...modelSelection,
         },
         {
           timeout: 60000, // 1 minute timeout

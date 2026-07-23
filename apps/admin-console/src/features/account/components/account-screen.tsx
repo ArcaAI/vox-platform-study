@@ -285,10 +285,16 @@ export function AccountScreen() {
                                                 <SelectValue placeholder="Not set" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="local">Local (on-device pipeline)</SelectItem>
+                                                {/* TASK-545: local (in-browser) transcription is disabled
+                                                platform-wide — disabled, not removed, so an existing
+                                                doctor's stored "local" selection still renders. */}
+                                                <SelectItem value="local" disabled>
+                                                    Local (on-device pipeline)
+                                                </SelectItem>
                                                 <SelectItem value="remote">Remote (server pipeline)</SelectItem>
                                             </SelectContent>
                                         </Select>
+                                        <p className="text-muted-foreground text-xs">Local transcription is disabled platform-wide — backend transcription only.</p>
                                     </div>
                                     <div className="flex flex-col gap-2">
                                         <Label htmlFor={`${uid}-language`}>Language</Label>

@@ -75,6 +75,32 @@ function effectiveOf(taskKey: string, source: 'tenant' | 'system' | null = 'syst
   };
 }
 
+function harnessPolicySummary() {
+  return {
+    id: 'hp-1',
+    tenantId: 'tnt-1',
+    source: 'tenant' as const,
+    entityFaithfulnessThreshold: 0.8,
+    coverageThreshold: 0.75,
+    citationPresenceThreshold: 0.6,
+    numericDoseThreshold: 0.9,
+    groundednessThreshold: 0.7,
+    safetyEnabled: true,
+    phiEnabled: true,
+    phiFailClosed: true,
+    safetyProvider: 'azure',
+    safetyModel: 'content-safety',
+    smrProvider: null,
+    smrModel: null,
+    maxRegen: 2,
+    gateSlaSeconds: 300,
+    gateEscalationSeconds: 600,
+    toolAllowlist: null,
+    updatedAt: '2026-07-01T00:00:00.000Z',
+    version: 4,
+  };
+}
+
 function connectionOf(provider: string, overrides: Partial<ProviderConnection> = {}): ProviderConnection {
   return {
     tenantId: 'tnt-1',
@@ -127,6 +153,9 @@ function stubFetch({ session = TENANT_SESSION, connections = {}, effectiveFails,
         if (effectiveFails) return new Response('boom', { status: 500 });
         return Response.json(AI_TASK_KEYS.map((key) => effectiveOf(key)));
       }
+      if (call.method === 'GET' && url.pathname === '/api/hope/admin/harness/policy') {
+        return Response.json(harnessPolicySummary());
+      }
       if (call.method === 'GET' && url.pathname.startsWith('/api/hope/admin/ai-providers/')) {
         const provider = url.pathname.split('/').pop() as string;
         const row = connections[provider] ?? connectionOf(provider);
@@ -163,6 +192,15 @@ describe('TenantAiConfigurationScreen — effective models tab', () => {
     await screen.findByText(AI_TASK_KEYS[0]);
     expect(screen.queryByRole('combobox')).toBeNull();
     expect(screen.queryByRole('button', { name: /save/i })).toBeNull();
+  });
+
+  it('also renders the read-only effective HarnessPolicy summary (TASK-547 OD-2) with a deep link to its owning editor', async () => {
+    stubFetch();
+    renderWithProviders(<TenantAiConfigurationScreen />);
+
+    expect(await screen.findByText('Entity faithfulness threshold')).toBeDefined();
+    const link = screen.getByRole('link', { name: /edit tenant-controlled values/i });
+    expect(link.getAttribute('href')).toBe('/harness/policy');
   });
 
   it('shows skeletons (not a spinner) while the effective read is in flight', () => {

@@ -115,9 +115,15 @@ class _FakeApi:
         self._data = data if data is not None else dict(_POLICY_JSON)
         self._error = error
         self.calls: list[str] = []
+        # TASK-550 — records the consultation_id the activity forwarded (None when
+        # the workflow input carried no consultation).
+        self.consultation_ids: list[str | None] = []
 
-    async def get_policy(self, tenant_id: str) -> dict[str, Any]:
+    async def get_policy(
+        self, tenant_id: str, consultation_id: str | None = None
+    ) -> dict[str, Any]:
         self.calls.append(tenant_id)
+        self.consultation_ids.append(consultation_id)
         if self._error is not None:
             raise self._error
         return self._data
@@ -136,6 +142,34 @@ class TestFetchPolicyActivity:
         assert result.coverage_threshold == 0.6
         assert result.max_regen == 4
         assert result.smr_provider == "azure"
+
+    @pytest.mark.asyncio
+    async def test_fetch_policy_forwards_consultation_id(self, env, monkeypatch):
+        # TASK-550 — the activity threads the workflow's consultation_id onto the
+        # policy GET so the department default agent's tenant-tier harnessOverrides
+        # overlay onto the effective policy. Response shape is unchanged.
+        fake = _FakeApi()
+        monkeypatch.setattr(activities, "_api_client", lambda s: fake)
+
+        result = await env.run(
+            activities.fetch_policy,
+            FetchPolicyInput(tenant_id="t-1", consultation_id="c-9"),
+        )
+
+        assert fake.calls == ["t-1"]
+        assert fake.consultation_ids == ["c-9"]
+        assert isinstance(result, HarnessPolicy)
+
+    @pytest.mark.asyncio
+    async def test_fetch_policy_omits_consultation_id_when_absent(self, env, monkeypatch):
+        # No consultation on the workflow input ⇒ the activity forwards None
+        # (byte-identical pre-TASK-550 fetch).
+        fake = _FakeApi()
+        monkeypatch.setattr(activities, "_api_client", lambda s: fake)
+
+        await env.run(activities.fetch_policy, FetchPolicyInput(tenant_id="t-1"))
+
+        assert fake.consultation_ids == [None]
 
     @pytest.mark.asyncio
     async def test_fetch_policy_propagates_api_error_for_workflow_fallback(self, env, monkeypatch):

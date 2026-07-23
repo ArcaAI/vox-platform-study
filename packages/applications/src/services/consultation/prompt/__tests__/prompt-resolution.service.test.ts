@@ -31,6 +31,18 @@ const mockPromptTemplateRepository = {
     findById: vi.fn(),
 };
 
+// TASK-546 tier-1a. Default: no department default agent → the agent tier is
+// skipped and resolution is byte-identical to the pre-change behaviour (this is
+// the regression lock; tests that exercise the agent tier override these).
+const mockDepartmentAgentRepository = {
+    findDefaultForDepartment: vi.fn(),
+};
+
+const mockPromptVersionRepository = {
+    findByVersionNumber: vi.fn(),
+    findLatestVersion: vi.fn(),
+};
+
 /**
  * Helper: create a mock DepartmentEntity with prompt config fields.
  */
@@ -73,10 +85,14 @@ describe('PromptResolutionService', () => {
         // the pre-existing preferred/department resolution behaviour is preserved.
         // Tests that exercise the gate override this with a DRAFT/PUBLISHED status.
         mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, status: 'APPROVED' }));
+        // Default: no default agent for any department (regression lock).
+        mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(null);
 
         service = new PromptResolutionService(
             mockDepartmentRepository as never,
             mockPromptTemplateRepository as never,
+            mockDepartmentAgentRepository as never,
+            mockPromptVersionRepository as never,
         );
     });
 
@@ -464,6 +480,81 @@ describe('PromptResolutionService', () => {
             expect(result.promptId).toBe('dept-prompt');
             expect(result.resolvedFrom).toBe('department');
             expect(result.resolutionTrace.preferredPromptId).toBeNull();
+        });
+    });
+
+    // =========================================================================
+    // Tier-1a: department default DepartmentAgent (TASK-546)
+    // =========================================================================
+    describe('resolve — department default agent (tier-1a)', () => {
+        const agent = (overrides: Record<string, unknown> = {}) => ({
+            id: 'agent-1',
+            promptTemplateId: 'agent-tpl',
+            pinnedVersionNumber: null,
+            ...overrides,
+        });
+
+        it('regression: with NO agent rows the output is byte-identical to the legacy chain', async () => {
+            mockDepartmentRepository.findById.mockResolvedValue(
+                createMockDepartment({ newPatientPromptId: 'dept-prompt' }),
+            );
+            mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(null);
+
+            const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+
+            expect(result.promptId).toBe('dept-prompt');
+            expect(result.resolvedFrom).toBe('department');
+            expect(result).not.toHaveProperty('content');
+            expect(result.resolvedAgentId).toBeUndefined();
+        });
+
+        it('serves the PINNED PromptVersion.content when the agent pins a version', async () => {
+            mockDepartmentRepository.findById.mockResolvedValue(
+                createMockDepartment({ newPatientPromptId: 'dept-prompt' }),
+            );
+            mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(agent({ pinnedVersionNumber: 3 }));
+            mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, status: 'APPROVED' }));
+            mockPromptVersionRepository.findByVersionNumber.mockResolvedValue({ versionNumber: 3, content: 'PINNED v3 body' });
+
+            const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+
+            expect(result.resolvedFrom).toBe('agent');
+            expect(result.promptId).toBe('agent-tpl');
+            expect(result.content).toBe('PINNED v3 body');
+            expect(result.resolvedVersionNumber).toBe(3);
+            expect(result.resolvedAgentId).toBe('agent-1');
+            expect(mockPromptVersionRepository.findByVersionNumber).toHaveBeenCalledWith('agent-tpl', 3);
+        });
+
+        it('serves the LATEST version content when the agent is unpinned (pin null)', async () => {
+            mockDepartmentRepository.findById.mockResolvedValue(createMockDepartment());
+            mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(agent({ pinnedVersionNumber: null }));
+            mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, status: 'APPROVED' }));
+            mockPromptVersionRepository.findLatestVersion.mockResolvedValue({ versionNumber: 7, content: 'LATEST approved body' });
+
+            const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+
+            expect(result.resolvedFrom).toBe('agent');
+            expect(result.content).toBe('LATEST approved body');
+            expect(result.resolvedVersionNumber).toBe(7);
+            expect(mockPromptVersionRepository.findLatestVersion).toHaveBeenCalledWith('agent-tpl');
+        });
+
+        it('falls through to the legacy chain when the agent template is NOT APPROVED', async () => {
+            mockDepartmentRepository.findById.mockResolvedValue(
+                createMockDepartment({ newPatientPromptId: 'dept-prompt' }),
+            );
+            mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(agent({ pinnedVersionNumber: 2 }));
+            // Agent's bound template is DRAFT; legacy dept-prompt stays APPROVED.
+            mockPromptTemplateRepository.findById.mockImplementation(async (id: string) =>
+                id === 'agent-tpl' ? { id, status: 'DRAFT' } : { id, status: 'APPROVED' },
+            );
+
+            const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+
+            expect(result.resolvedFrom).toBe('department');
+            expect(result.promptId).toBe('dept-prompt');
+            expect(result).not.toHaveProperty('content');
         });
     });
 });

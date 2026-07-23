@@ -19,7 +19,7 @@
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AgenticProvider, useArca, useStoreApi } from '@arcaai/vox';
+import { AgenticProvider, useArca, useArcaLiveSummary, useStoreApi } from '@arcaai/vox';
 import { toast } from 'sonner';
 import type { ModelOption } from '@arcaai/ui/components/custom/model-selector';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@arcaai/ui/components/shadcn/resizable';
@@ -35,15 +35,17 @@ import {
     useHarnessAssuranceStream,
     useHarnessProgressStream,
     useLatestSummary,
-    useLiveSummaryStream,
     useStartRecording,
     useStopRecording,
+    useSummaryProvenance,
+    useTranscriptions,
+    type CitedSegment,
 } from '../api';
 import { useColumnLayout } from '../hooks/use-column-layout';
 import { useLiveMetrics } from '../hooks/use-live-metrics';
 import { CaseNoteColumn } from './scribe/case-note-column';
 import { ConsultationsColumn, type ConsultationListRow } from './scribe/consultations-column';
-import { LiveSessionColumn, type SdkTranscriptSegment } from './scribe/live-session-column';
+import { LiveSessionColumn, type SdkTranscriptSegment, type TranscriptReviewHighlight } from './scribe/live-session-column';
 import { ScribeFooter } from './scribe/scribe-footer';
 
 // ─── helpers ───
@@ -111,17 +113,16 @@ export function ConsultationDemoScreen() {
 }
 
 /**
- * Structural view of the SDK's `AgenticConfig` — `@arcaai/vox` ships with
- * `dts: false` (see packages/agentic-sdk-v2/tsup.config.ts), so the config
- * this screen feeds `AgenticProvider` is typed locally against the subset
- * it actually sets. Validated at runtime by the SDK's own schema.
+ * Structural subset of the SDK's `AgenticConfig` this screen actually sets.
+ * Kept as a local narrowing (the object is assignable to `AgenticConfig`); the
+ * SDK validates the full config at runtime.
  */
 interface VoxProviderConfig {
     api: { baseUrl: string; wsUrl?: string; tenantId?: string };
     audio?: {
         noiseFilter?: { enabled: boolean };
         vad?: { enabled: boolean };
-        stt?: { enabled: boolean; provider: string };
+        stt?: { enabled: boolean; provider: 'local' | 'backend' | 'auto' };
     };
     autoWireTokenRefresh?: boolean;
 }
@@ -189,9 +190,12 @@ function ScribeWorkspace() {
 
     const [consultation, setConsultation] = useState<ConsultationListRow | null>(null);
     const [captureBusy, setCaptureBusy] = useState(false);
-    const [liveSummaryArmed, setLiveSummaryArmed] = useState(false);
     const [approved, setApproved] = useState(false);
     const [pipelineChoice, setPipelineChoice] = useState('');
+    // TASK-552 Lane C — the citation currently highlighted in the live-session
+    // column's transcript-review pane (click-to-source from the case-note
+    // column's evidence panel).
+    const [selectedCitationId, setSelectedCitationId] = useState<string | null>(null);
 
     const pipelines = useAudioPipelines();
     const defaultPipelineId = pipelines.data ? ((pipelines.data.find((pipeline) => pipeline.isDefault) ?? pipelines.data[0])?.id ?? '') : '';
@@ -206,10 +210,32 @@ function ScribeWorkspace() {
     const isRecording = (consultation?.status ?? '').toUpperCase() === 'RECORDING';
     const isClosed = (consultation?.status ?? '').toUpperCase() === 'CLOSED';
 
-    const live = useLiveSummaryStream(consultationId, liveSummaryArmed);
+    // SDK-native live running-SOAP preview (opens SSE direct to the gateway via
+    // the SDK client). Driven imperatively from the record/select handlers.
+    const live = useArcaLiveSummary();
     const draft = useLatestSummary(consultationId, !!consultationId);
     const progress = useHarnessProgressStream(consultationId, !!consultationId);
     const assurance = useHarnessAssuranceStream(consultationId, !!consultationId);
+
+    // TASK-552 Lane C — the evidence panel + its transcript-review highlight
+    // only apply once a persisted draft exists (the reviewable artifact); both
+    // reads are best-effort and never block the rest of the workspace.
+    const draftId = draft.data?.id ?? null;
+    const provenance = useSummaryProvenance(consultationId, draftId, !!draftId);
+    const transcripts = useTranscriptions(consultationId, !!draftId);
+    const transcriptText = transcripts.data?.length === 1 ? (transcripts.data[0].content ?? null) : null;
+    const citedSegments: CitedSegment[] = provenance.data?.citedSegments ?? [];
+    const selectedCitation = citedSegments.find((segment) => segment.id === selectedCitationId) ?? null;
+    const highlightCharStart = selectedCitation?.charStart ?? null;
+    const highlightCharEnd = selectedCitation?.charEnd ?? null;
+    // Memoized so the reference is stable across unrelated re-renders (e.g. an
+    // SSE tick) — LiveSessionColumn's auto-scroll effect keys off this object's
+    // identity, and re-scrolling on every render (not just a genuine citation
+    // change) would be janky.
+    const reviewHighlight = useMemo<TranscriptReviewHighlight | null>(
+        () => (highlightCharStart != null && highlightCharEnd != null ? { charStart: highlightCharStart, charEnd: highlightCharEnd } : null),
+        [highlightCharStart, highlightCharEnd],
+    );
 
     // Fold live-summary flushes into the real per-session metrics.
     useEffect(() => {
@@ -232,8 +258,12 @@ function ScribeWorkspace() {
     function selectConsultation(next: ConsultationListRow | null) {
         setConsultation(next);
         setApproved(false);
+        setSelectedCitationId(null);
         metrics.reset();
-        setLiveSummaryArmed(next ? next.status.toUpperCase() === 'RECORDING' : false);
+        // Live SOAP only streams while recording; a terminal consultation shows
+        // its persisted draft instead.
+        if (next && next.status.toUpperCase() === 'RECORDING') live.start(next.id);
+        else live.stop();
     }
 
     async function handleSelect(row: ConsultationListRow) {
@@ -271,7 +301,7 @@ function ScribeWorkspace() {
             const sessionId = (await resolveStreamingSessionId(storeApi)) ?? undefined;
             const state = await recordingStart.mutateAsync({ consultationId: consultation.id, sessionId });
             setConsultation((previous) => (previous ? { ...previous, status: state.status } : previous));
-            setLiveSummaryArmed(true);
+            live.start(consultation.id);
             toast.success('Recording started');
         } catch (error) {
             toast.error(errorMessage(error, 'Could not start recording'));
@@ -288,6 +318,7 @@ function ScribeWorkspace() {
             await audio.stop();
             const state = await recordingStop.mutateAsync({ consultationId: consultation.id });
             setConsultation((previous) => (previous ? { ...previous, status: state.status } : previous));
+            live.stop();
             toast.success('Recording stopped — final snapshot persisted');
         } catch (error) {
             toast.error(errorMessage(error, 'Could not stop recording'));
@@ -373,6 +404,8 @@ function ScribeWorkspace() {
                             interim={audio.currentTranscript}
                             onStart={handleStart}
                             onStop={handleStop}
+                            reviewTranscriptText={transcriptText}
+                            reviewHighlight={reviewHighlight}
                         />
                     </ResizablePanel>
                     <ResizableHandle withHandle />
@@ -381,7 +414,6 @@ function ScribeWorkspace() {
                             hasConsultation={!!consultation}
                             isRecording={isRecording}
                             live={live.snapshot}
-                            liveStatus={live.status}
                             draft={draft.data ?? null}
                             draftLoading={draft.isLoading}
                             progress={progress.snapshot}
@@ -391,6 +423,10 @@ function ScribeWorkspace() {
                             onApprove={handleApprove}
                             approvePending={approve.isPending}
                             approved={approved}
+                            citedSegments={citedSegments}
+                            transcriptText={transcriptText}
+                            selectedCitationId={selectedCitationId}
+                            onSelectCitation={(segment) => setSelectedCitationId(segment.id)}
                         />
                     </ResizablePanel>
                 </ResizablePanelGroup>
@@ -407,7 +443,7 @@ function ScribeWorkspace() {
                 noteModels={noteModels}
                 selectedNoteId={noteModelName ?? ''}
                 onNoteChange={() => undefined}
-                metrics={{ tokensPerSecond: metrics.tokensPerSecond, latencyP95Ms: metrics.latencyP95Ms, uplinkBitsPerSecond: null }}
+                metrics={{ tokensPerSecond: metrics.tokensPerSecond, latencyP95Ms: metrics.latencyP95Ms, uplinkBitsPerSecond: audio.uplinkBitrate || null }}
             />
         </div>
     );

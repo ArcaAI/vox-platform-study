@@ -1,0 +1,74 @@
+// ============================================================================
+// Department Agent — first-class agent entity (TASK-546)
+//
+// The DepartmentAgent is the first-class "agent" the catalog/console/marketing
+// can name (admin vocabulary: Agent Template → Agent → Version → Default). One
+// row binds a tenant department to:
+//   - a PromptTemplate at a PINNED or TRACKED version (movable-pointer pattern:
+//     `pinnedVersionNumber` null ⇒ track latest APPROVED; consumers resolve the
+//     pointer, never the raw latest),
+//   - a DNA-style gate (`dnaStylePolicy`),
+//   - (later, TASK-550) harness overrides (`harnessOverrides`, tenant-tier
+//     HarnessPolicy keys only — validated in the application service),
+//   - (later, TASK-549) a golden set (`goldenSetId`).
+//
+// Template lineage columns (`sourceAgentTemplateSlug`, `templateLocked`) mirror
+// the shipped AsrPipeline pattern (TASK-531); their CONSUMPTION lands in
+// TASK-548 but the columns are provisioned now so no later migration is needed.
+// `templateLocked` is deliberately absent from every request DTO, so the
+// gateway's whitelist pipe rejects attempts to flip it over the API.
+// ============================================================================
+
+model DepartmentAgent {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // core (business) fields
+  departmentId String
+  Department   Department @relation(fields: [departmentId], references: [id])
+  name         String
+  slug         String
+  description  String?
+
+  // binding
+  promptTemplateId    String
+  PromptTemplate      PromptTemplate @relation(fields: [promptTemplateId], references: [id])
+  pinnedVersionNumber Int? // null ⇒ track latest APPROVED version
+  dnaStylePolicy      DepartmentAgentDnaPolicy @default(INHERIT) // INHERIT | DISABLED
+  harnessOverrides    Json?  @db.JsonB // tenant-tier HarnessPolicy keys ONLY (validated in service)
+  goldenSetId         String? // consumed by TASK-549
+
+  // one default agent per department
+  isDefault Boolean @default(false)
+
+  // template lineage (consumed by TASK-548; columns land now)
+  sourceAgentTemplateSlug String?
+  templateLocked          Boolean @default(false)
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // tags
+  tags String[] @default([])
+
+  // Constraints
+  @@unique([tenantId, departmentId, slug], name: "DepartmentAgent_tenant_dept_slug_key")
+  // Indexes
+  @@index([tenantId], name: "DepartmentAgent_tenantId_idx")
+  @@index([departmentId], name: "DepartmentAgent_departmentId_idx")
+  @@index([promptTemplateId], name: "DepartmentAgent_promptTemplateId_idx")
+  @@schema("core")
+}

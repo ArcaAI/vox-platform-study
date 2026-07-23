@@ -12,8 +12,11 @@ import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, request, ver
 import type { Paginated, WithEtag } from '@/shared/api';
 import type {
     AssignDepartmentRequest,
+    CreateDepartmentAgentRequest,
     CreateTemplateRequest,
     Department,
+    DepartmentAgent,
+    ListDepartmentAgentsParams,
     ListTemplatesParams,
     ListUsageRecordsParams,
     PromptTemplate,
@@ -24,6 +27,7 @@ import type {
     PromptVersion,
     PromptVersionDiff,
     TestTemplateRequest,
+    UpdateDepartmentAgentRequest,
     UpdateTemplateRequest,
 } from './types';
 
@@ -132,4 +136,51 @@ export function assignDepartment(body: AssignDepartmentRequest): Promise<Departm
 /** Department directory for the assign dialog + filter (plain array). */
 export function listDepartments(): Promise<Department[]> {
     return getJson('admin/departments');
+}
+
+/**
+ * `DepartmentAgent` CRUD (TASK-546, `admin/department-agents`) — the Agent
+ * Catalog's first-class rows. ZERO-based `page`, the platform standard (this
+ * endpoint does NOT share the ONE-based deviation of `admin/prompt-templates`
+ * above).
+ */
+const DEPARTMENT_AGENTS_BASE = 'admin/department-agents';
+
+const departmentAgentPath = (id: string) => `${DEPARTMENT_AGENTS_BASE}/${encodeURIComponent(id)}`;
+
+export function listDepartmentAgents(params?: ListDepartmentAgentsParams): Promise<Paginated<DepartmentAgent>> {
+    return getJson(DEPARTMENT_AGENTS_BASE, params);
+}
+
+/** Detail read keeping the ETag for the later PATCH. */
+export function getDepartmentAgent(id: string): Promise<WithEtag<DepartmentAgent>> {
+    return getWithEtag(departmentAgentPath(id));
+}
+
+export function createDepartmentAgent(body: CreateDepartmentAgentRequest): Promise<DepartmentAgent> {
+    return postJson(DEPARTMENT_AGENTS_BASE, body);
+}
+
+/** OCC PATCH: If-Match header + body expectedVersion derived from the ETag. */
+export function updateDepartmentAgent(id: string, patch: UpdateDepartmentAgentRequest, etag: string): Promise<WithEtag<DepartmentAgent>> {
+    return patchWithEtag(departmentAgentPath(id), { ...patch, expectedVersion: versionFromEtag(etag) }, etag);
+}
+
+/** Soft delete (the platform never hard-deletes). 403s on a locked template copy. */
+export function deleteDepartmentAgent(id: string): Promise<DepartmentAgent> {
+    return deleteJson(departmentAgentPath(id));
+}
+
+/** Atomic default flip within the row's department — NOT If-Match gated. */
+export function setDefaultDepartmentAgent(id: string): Promise<DepartmentAgent> {
+    return postJson(`${departmentAgentPath(id)}/set-default`);
+}
+
+/**
+ * Pin (or, with `null`, track latest APPROVED). Content-affecting but NOT
+ * If-Match gated — the server validates the target version server-side
+ * (400 if it isn't an existing APPROVED snapshot; 403 on a locked template).
+ */
+export function pinDepartmentAgent(id: string, versionNumber: number | null): Promise<DepartmentAgent> {
+    return postJson(`${departmentAgentPath(id)}/pin`, { versionNumber });
 }

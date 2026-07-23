@@ -73,6 +73,11 @@ export type AgenticErrorCode =
   | 'MODEL_LOAD_ERROR'
   | 'STORAGE_ERROR'
   | 'CONFIG_NOT_READY'
+  // TASK-545: `TranscriptionPipeline.resolveSTTRuntimeProvider()` throws this
+  // instead of silently falling back to on-device transcription when local
+  // transcription is disabled (`LOCAL_TRANSCRIPTION_ENABLED = false` in
+  // `core/constants.ts`) and no backend transport is configured.
+  | 'LOCAL_TRANSCRIPTION_DISABLED'
   | 'UNKNOWN_ERROR';
 
 // =============================================================================

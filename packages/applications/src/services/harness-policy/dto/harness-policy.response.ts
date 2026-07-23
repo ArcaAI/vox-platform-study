@@ -11,6 +11,22 @@ import type { McpServerResponse } from '../../mcp-server/dto';
 export type HarnessPolicySource = 'tenant' | 'system-default' | 'code-default';
 
 /**
+ * Provenance of a per-department-agent harness override overlay (TASK-550).
+ * Present on the effective policy ONLY when a consultation's default
+ * `DepartmentAgent` supplied at least one tenant-tier override that was applied
+ * on top of the resolved tenant/SYSTEM policy. Additive + observability-only —
+ * the harness ignores unknown response fields (`HarnessPolicy` is `extra=ignore`).
+ */
+export interface HarnessOverridesSource {
+  /** The DepartmentAgent whose `harnessOverrides` governed this run. */
+  agentId: string;
+  /** Its slug (human-readable trace back to the agent). */
+  agentSlug: string;
+  /** The tenant-tier override keys actually applied (global-only keys are dropped, never listed). */
+  keys: string[];
+}
+
+/**
  * The effective harness policy. Returned by
  * `GET /admin/harness/policy`, `GET /admin/harness/policy/global`, the PATCH
  * routes, and the worker-facing `GET /internal/harness/policy`. The 16 knob
@@ -135,6 +151,16 @@ export class HarnessPolicyResponse {
    */
   @ApiPropertyOptional({ description: 'Per-run token budget (0 or null = unbounded).', nullable: true })
   tokenBudgetPerRun: number | null;
+
+  /**
+   * Per-department-agent override provenance (TASK-550). Present only when a
+   * consultation's default `DepartmentAgent` supplied tenant-tier overrides that
+   * were layered on top of the resolved policy. Additive/observability-only —
+   * the worker's `fetch_policy` reads it into the trajectory step; the harness
+   * `HarnessPolicy` model ignores it (`extra=ignore`).
+   */
+  @ApiPropertyOptional({ description: 'Per-agent override provenance (present only when an agent overlay was applied).' })
+  overridesSource?: HarnessOverridesSource;
 
   @ApiPropertyOptional({ description: 'Last update timestamp (ISO-8601; null for code-default).', nullable: true })
   updatedAt: string | null;

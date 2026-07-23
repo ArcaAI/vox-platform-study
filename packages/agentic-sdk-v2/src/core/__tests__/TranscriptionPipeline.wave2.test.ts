@@ -59,6 +59,18 @@ vi.mock('@arcaai/stt', () => ({
   createSTT: vi.fn(() => mockSTT),
 }));
 
+// TASK-545: local (in-browser) transcription is disabled platform-wide by
+// default (`LOCAL_TRANSCRIPTION_ENABLED = false` in `../constants`). This
+// file specifically exercises the local-provider option-mapping path
+// (voiceProfile/task forwarding "for local provider"), which remains fully
+// implemented behind the flag — force it back on so that path stays covered.
+// See `TranscriptionPipeline.localTranscriptionDisabled.task545.test.ts` for
+// the shipped (flag OFF) default.
+vi.mock('../constants', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../constants')>();
+  return { ...actual, LOCAL_TRANSCRIPTION_ENABLED: true };
+});
+
 describe('TranscriptionPipeline · Wave 2 STT options forwarding', () => {
   const mockTrack = {} as MediaStreamTrack;
   const mockAudioContext = {} as AudioContext;

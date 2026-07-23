@@ -39,9 +39,10 @@ model Department {
   updatedAt               DateTime           @updatedAt
 
   // Relations
-  Consultations   Consultation[]
-  PromptTemplates PromptTemplate[]
-  UserDepartments UserDepartment[]
+  Consultations    Consultation[]
+  PromptTemplates  PromptTemplate[]
+  UserDepartments  UserDepartment[]
+  DepartmentAgents DepartmentAgent[]
 
   // Constraints
   @@unique([tenantId, code])

@@ -2,7 +2,9 @@ import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, Op
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { ClsService } from 'nestjs-cls';
 import {
+  ConsultationRepository,
   CoreDatabaseService,
+  DepartmentAgentRepository,
   HARNESS_POLICY_DEFAULTS,
   HarnessPolicyChangeFactory,
   HarnessPolicyChangeRepository,
@@ -14,13 +16,14 @@ import {
   SYSTEM_TENANT_ID,
 } from '@arcaai/domains';
 import { IActiveUserContext } from '../../interfaces';
+import { TENANT_TIER_HARNESS_OVERRIDE_KEYS } from '../departmentAgent/constants';
 import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { McpServerDtoMapper } from '../mcp-server/mcp-server.dto.mapper';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
 import { AGENTIC_CONTEXT_KEY_PREFIX } from '../settings-registry/descriptors/agentic-context.descriptors';
 import type { McpServerResponse } from '../mcp-server/dto';
-import { HarnessPolicyResponse, HarnessPolicySource, UpdateHarnessPolicyRequest } from './dto';
+import { HarnessOverridesSource, HarnessPolicyResponse, HarnessPolicySource, UpdateHarnessPolicyRequest } from './dto';
 
 /**
  * the two SMR routing tasks the loop discriminates on:
@@ -146,6 +149,15 @@ const GLOBAL_ADMIN_ONLY_POLICY_KEYS = [
 
 const KNOB_KEYS = Object.keys(HARNESS_POLICY_DEFAULTS) as (keyof HarnessPolicyKnobs)[];
 
+/**
+ * Read-time allow-list for per-agent `harnessOverrides` (TASK-550). Reuses the
+ * EXACT set TASK-546 validates on write (`TENANT_TIER_HARNESS_OVERRIDE_KEYS`) so
+ * the read and write sides can never diverge. Any override key NOT in here is a
+ * global-admin-only knob (OD-2) and is dropped defense-in-depth before it can
+ * reach the harness — mirroring the SYSTEM overlay of `GLOBAL_ADMIN_ONLY_POLICY_KEYS`.
+ */
+const TENANT_TIER_OVERRIDE_KEY_SET: ReadonlySet<string> = new Set(TENANT_TIER_HARNESS_OVERRIDE_KEYS);
+
 /** Read the knob values off a hydrated entity (getters are not enumerable). */
 function entityToKnobs(e: HarnessPolicyEntity): HarnessPolicyKnobs {
   return {
@@ -241,6 +253,12 @@ export class HarnessPolicyService {
     // Settings-registry read facade for the per-run token budget.
     // Optional + trailing; absent ⇒ null budget ⇒ the harness stays unbounded.
     @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
+    // TASK-550 — per-department-agent harness overrides. Both optional + trailing
+    // so existing fixtures keep their construction arity; absent ⇒ the overlay is
+    // a no-op (the effective policy resolves exactly as before). Consultation →
+    // departmentId → department default DepartmentAgent → tenant-tier overrides.
+    @Optional() @Inject(ConsultationRepository) private readonly consultationRepository?: ConsultationRepository,
+    @Optional() @Inject(DepartmentAgentRepository) private readonly departmentAgentRepository?: DepartmentAgentRepository,
   ) {}
 
   /**
@@ -325,10 +343,19 @@ export class HarnessPolicyService {
    * The effective policy for a tenant (own row → system default → code default).
    * `tenantId` defaults to the CLS tenant; the worker-facing internal endpoint
    * passes it explicitly.
+   *
+   * TASK-550 — when `opts.consultationId` is supplied, the consultation's
+   * department default `DepartmentAgent.harnessOverrides` is layered on top of
+   * the resolved policy (tenant-tier keys ONLY; global-only keys dropped +
+   * warned defense-in-depth). Resolution order becomes: code default → SYSTEM →
+   * tenant → department-agent overrides (most specific wins). The overlay is
+   * best-effort and never sinks the policy read; with no consultationId the
+   * result is byte-identical to the pre-TASK-550 behaviour.
    */
-  async getEffectivePolicy(tenantId?: string): Promise<HarnessPolicyResponse> {
+  async getEffectivePolicy(tenantId?: string, opts?: { consultationId?: string }): Promise<HarnessPolicyResponse> {
     const tid = tenantId ?? this.callerTenantId;
     if (!tid) throw new BadRequestException('Tenant ID is required');
+    const consultationId = opts?.consultationId;
 
     // the judge provider/model come from the SYSTEM-only
     // `harness.judge` AiTaskDefault, independent of which policy row wins. Resolve
@@ -358,7 +385,7 @@ export class HarnessPolicyService {
       resp.judgeModel = judge.judgeModel;
       resp.mcpServers = mcpServers;
       resp.tokenBudgetPerRun = tokenBudgetPerRun;
-      return resp;
+      return this.applyAgentOverrides(resp, tid, consultationId);
     }
 
     const sys = await this.policyRepository.findSystemDefault();
@@ -368,7 +395,7 @@ export class HarnessPolicyService {
       resp.judgeModel = judge.judgeModel;
       resp.mcpServers = mcpServers;
       resp.tokenBudgetPerRun = tokenBudgetPerRun;
-      return resp;
+      return this.applyAgentOverrides(resp, tid, consultationId);
     }
 
     const resp = codeDefaultResponse(tid);
@@ -376,7 +403,73 @@ export class HarnessPolicyService {
     resp.judgeModel = judge.judgeModel;
     resp.mcpServers = mcpServers;
     resp.tokenBudgetPerRun = tokenBudgetPerRun;
-    return resp;
+    return this.applyAgentOverrides(resp, tid, consultationId);
+  }
+
+  /**
+   * TASK-550 — layer the consultation's department default `DepartmentAgent`
+   * tenant-tier overrides on top of the resolved policy. Called on EVERY
+   * `getEffectivePolicy` return path (most specific wins); a no-op when there is
+   * no consultationId, no wired repositories, no consultation/department/default
+   * agent, or the agent carries no overrides.
+   *
+   * Read-time defense-in-depth (OD-2): only keys in the tenant-tier allow-list
+   * flow; any global-admin-only key that somehow got stored in the JSONB is
+   * DROPPED + warned, never served — matching the SYSTEM overlay that neutralises
+   * `GLOBAL_ADMIN_ONLY_POLICY_KEYS`.
+   *
+   * Cross-tenant safety: the consultation read is tenant-scoped, and an explicit
+   * `tenantId` guard refuses any consultation the caller does not own (no leak),
+   * so a foreign consultationId yields the base policy unchanged.
+   *
+   * Best-effort by contract: any error degrades to the base policy (never sinks
+   * the read that the worker's `fetch_policy` depends on) — mirrors
+   * `resolveMcpServers`/`resolveJudgeSelection`.
+   */
+  private async applyAgentOverrides(resp: HarnessPolicyResponse, tenantId: string, consultationId?: string): Promise<HarnessPolicyResponse> {
+    if (!consultationId || !this.consultationRepository || !this.departmentAgentRepository) return resp;
+    try {
+      const consultation = await this.consultationRepository.findById(consultationId);
+      // A missing or foreign consultation ⇒ no overlay (404-over-403 posture: the
+      // tenant-scoped read already hides foreign rows; the explicit check is D-i-D).
+      if (!consultation || consultation.tenantId !== tenantId) return resp;
+      const departmentId = consultation.departmentId;
+      if (!departmentId) return resp;
+
+      const agent = await this.departmentAgentRepository.findDefaultForDepartment(tenantId, departmentId);
+      const overrides = agent?.harnessOverrides as Record<string, unknown> | null | undefined;
+      if (!agent || !overrides) return resp;
+
+      const appliedKeys: string[] = [];
+      const dropped: string[] = [];
+      for (const [key, value] of Object.entries(overrides)) {
+        if (value === undefined) continue;
+        if (!TENANT_TIER_OVERRIDE_KEY_SET.has(key)) {
+          dropped.push(key);
+          continue;
+        }
+        (resp as unknown as Record<string, unknown>)[key] = value;
+        appliedKeys.push(key);
+      }
+
+      if (dropped.length > 0) {
+        this.logger.warn({
+          message: `DepartmentAgent ${agent.id} harnessOverrides carried global-admin-only key(s) [${dropped.join(', ')}] — dropped at read time (OD-2)`,
+          agentId: agent.id,
+        });
+      }
+      if (appliedKeys.length > 0) {
+        const provenance: HarnessOverridesSource = { agentId: agent.id, agentSlug: agent.slug, keys: appliedKeys };
+        resp.overridesSource = provenance;
+      }
+      return resp;
+    } catch (error) {
+      this.logger.warn({
+        message: `per-agent harnessOverrides overlay failed for consultation ${consultationId} — serving the base effective policy`,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return resp;
+    }
   }
 
   /**

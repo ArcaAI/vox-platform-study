@@ -135,6 +135,8 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
    * surfacing the count makes the otherwise-silent loss observable to callers.
    */
   private droppedFrameCount = 0;
+  /** Total PCM bytes successfully sent over the wire since the last start — the basis for an uplink-bitrate readout. */
+  private bytesSent = 0;
   /**
    * PUSH channel for backpressure drops. `getDroppedFrameCount()` is
    * a passive getter that nothing polls on the SDK path, so the loss dead-ends.
@@ -175,6 +177,7 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     this.config = streamingConfig;
     this.pipelineId = streamingConfig.pipelineId;
     this.droppedFrameCount = 0;
+    this.bytesSent = 0;
 
     await this.session.createSession({
       pipelineId: streamingConfig.pipelineId,
@@ -229,6 +232,10 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
       // Push the drop so it reaches the store/hook/UI instead of dead-ending
       // in the unpolled `droppedFrameCount` getter.
       this.onDropCallback?.(this.droppedFrameCount);
+    } else {
+      // Account only bytes that actually went out (int16 = 2 bytes/sample) so a
+      // poller can derive the uplink bitrate.
+      this.bytesSent += int16.byteLength;
     }
   }
 
@@ -274,6 +281,15 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
    */
   getDroppedFrameCount(): number {
     return this.droppedFrameCount;
+  }
+
+  /**
+   * Total PCM bytes successfully sent over the wire since the last session
+   * start. Polled (cumulative, monotonic) — a caller derives an uplink bitrate
+   * from the delta between samples; resets to 0 on each `init`.
+   */
+  getBytesSent(): number {
+    return this.bytesSent;
   }
 
   /**

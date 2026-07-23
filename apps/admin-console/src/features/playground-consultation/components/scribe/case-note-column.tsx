@@ -26,12 +26,26 @@ import { cn } from '@arcaai/ui';
 import { EmptyState } from '@/shared/state/empty-state';
 import {
     claimVerdictBucket,
+    type CitedSegment,
     type HarnessAssuranceSnapshot,
     type HarnessProgressSnapshot,
     type LiveSummaryEntity,
     type LiveSummarySnapshot,
+    type LiveSummaryVitals,
     type SummaryResult,
 } from '../../api';
+import { CitationEvidencePanel } from './citation-evidence-panel';
+
+/** Ordered vitals for the Objective grid — only present values render. */
+function vitalCells(vitals: LiveSummaryVitals): Array<{ label: string; value: string }> {
+    const cells: Array<{ label: string; value: string }> = [];
+    if (vitals.systolic != null && vitals.diastolic != null) cells.push({ label: 'BP', value: `${vitals.systolic}/${vitals.diastolic}` });
+    if (vitals.heartRate != null) cells.push({ label: 'HR', value: String(vitals.heartRate) });
+    if (vitals.spo2 != null) cells.push({ label: 'SpO₂', value: `${vitals.spo2}%` });
+    if (vitals.temperatureC != null) cells.push({ label: 'Temp', value: `${vitals.temperatureC}°` });
+    if (vitals.weightKg != null) cells.push({ label: 'Weight', value: `${vitals.weightKg} kg` });
+    return cells;
+}
 
 /** SOAP-ish accent for a live section, keyed by title (design frame styling). */
 function sectionAccent(title: string): string {
@@ -152,7 +166,6 @@ export interface CaseNoteColumnProps {
     hasConsultation: boolean;
     isRecording: boolean;
     live: LiveSummarySnapshot | null;
-    liveStatus: 'idle' | 'connecting' | 'open' | 'error' | 'closed';
     draft: SummaryResult | null;
     draftLoading: boolean;
     progress: HarnessProgressSnapshot | null;
@@ -163,10 +176,34 @@ export interface CaseNoteColumnProps {
     onApprove: (options: { overrideSafetyFlag: boolean }) => void;
     approvePending: boolean;
     approved: boolean;
+    /** Cited transcript segments for the delivered draft (TASK-552 Lane C evidence panel). Absent/empty renders no panel. */
+    citedSegments?: CitedSegment[];
+    /** Persisted transcript text — the evidence panel slices it locally for the snippet. */
+    transcriptText?: string | null;
+    /** The citation currently highlighted in the live-session column. */
+    selectedCitationId?: string | null;
+    onSelectCitation?: (segment: CitedSegment) => void;
 }
 
 export function CaseNoteColumn(props: CaseNoteColumnProps) {
-    const { hasConsultation, isRecording, live, draft, draftLoading, progress, assurance, onGenerate, generatePending, onApprove, approvePending, approved } = props;
+    const {
+        hasConsultation,
+        isRecording,
+        live,
+        draft,
+        draftLoading,
+        progress,
+        assurance,
+        onGenerate,
+        generatePending,
+        onApprove,
+        approvePending,
+        approved,
+        citedSegments = [],
+        transcriptText = null,
+        selectedCitationId = null,
+        onSelectCitation,
+    } = props;
     const [overrideSafety, setOverrideSafety] = useState(false);
 
     // The live snapshot is the mid-recording scratch preview; the persisted
@@ -174,6 +211,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
     const showLive = !draft && (isRecording || !!live);
     const liveSections = live?.sections ?? [];
     const liveEntities: LiveSummaryEntity[] = live?.entities ?? [];
+    const vitals = live?.vitals ? vitalCells(live.vitals) : [];
 
     const provenance = useMemo(() => {
         const meta = draft?.structuredData;
@@ -258,6 +296,23 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
                     />
                 )}
 
+                {vitals.length > 0 ? (
+                    <div className="border-t pt-3" aria-label="Extracted vitals">
+                        <div className="text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs font-semibold">
+                            Vitals
+                            <span className="bg-ai/10 text-ai rounded px-1 text-[10px] font-bold">AI</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                            {vitals.map((cell) => (
+                                <div key={cell.label} className="bg-background rounded-lg border px-2.5 py-1.5">
+                                    <div className="text-muted-foreground text-[10px] font-semibold">{cell.label}</div>
+                                    <div className="font-mono text-sm font-bold tabular-nums">{cell.value}</div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ) : null}
+
                 {showLive && liveEntities.length > 0 ? (
                     <div className="flex flex-wrap items-center gap-1.5 border-t pt-3" aria-label="Detected entities">
                         {liveEntities.map((entity, index) => (
@@ -271,6 +326,15 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
                             </Badge>
                         ))}
                     </div>
+                ) : null}
+
+                {draft ? (
+                    <CitationEvidencePanel
+                        citedSegments={citedSegments}
+                        transcriptText={transcriptText}
+                        selectedSegmentId={selectedCitationId}
+                        onSelectCitation={onSelectCitation}
+                    />
                 ) : null}
             </div>
 

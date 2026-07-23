@@ -183,6 +183,10 @@ enum ResourceType {
   // Gate-edit mining store; the mining job broadcasts
   // ResourceCreated per persisted exemplar.
   GateEditExemplar
+  // First-class department agent entity (TASK-546): binds a department to a
+  // prompt template at a pinned/tracked version. Emitted as audit
+  // `resourceType` by DepartmentAgentService.broadcastSysEvent.
+  DepartmentAgent
 
   @@schema("core")
 }

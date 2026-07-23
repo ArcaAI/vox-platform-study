@@ -26,7 +26,18 @@ import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { useDeleteTemplate, useDepartments, useTemplates, useUsageStats } from '../api/hooks';
 import type { ListTemplatesParams, PromptTemplate, PromptTemplateCategory, PromptTemplateStatus } from '../api/types';
 import { AgentDetailDrawer } from './agent-detail';
+import { AgentsTab } from './agents-tab';
 import { GovernanceTab } from './governance-tab';
+
+/**
+ * The three `/agents` tabs (Family 6 admin vocabulary — TASK-547 naming
+ * rollout): `agents` (the DepartmentAgent catalog, default landing) is
+ * NET-NEW; `templates` is the RENAME of what this screen used to call
+ * "Agents" (a `PromptTemplate` grid — the URL value changes, but no query
+ * param anywhere pointed at the old bare default, so this is safe);
+ * `governance` is unchanged and stays the `/prompt-studio` redirect target.
+ */
+type AgentsScreenTab = 'agents' | 'templates' | 'governance';
 
 const STATUS_OPTIONS: FilterOption[] = [
     { value: 'DRAFT', label: 'Draft' },
@@ -75,7 +86,8 @@ function AgentsScreenBody() {
     const [tabParam, setTabParam] = useQueryState('tab', parseAsString);
     const session = useSession();
     const isElevated = session.data?.isElevated ?? false;
-    const tab = isElevated && tabParam === 'governance' ? 'governance' : 'agents';
+    const tab: AgentsScreenTab =
+        isElevated && tabParam === 'governance' ? 'governance' : tabParam === 'templates' ? 'templates' : 'agents';
     const [creating, setCreating] = useState(false);
     const [deleting, setDeleting] = useState<PromptTemplate | null>(null);
 
@@ -202,8 +214,8 @@ function AgentsScreenBody() {
     ) : (
         <EmptyState
             icon={IconRobot}
-            title="No prompt templates yet"
-            description="Templates drive the tenant's summarization agents. Create the first one to start versioning prompts."
+            title="No agent templates yet"
+            description="Agent Templates are the blueprints Agents are created from. Create the first one to start versioning prompts."
             action={
                 <Button onClick={() => setCreating(true)}>
                     <IconPlus aria-hidden />
@@ -242,38 +254,60 @@ function AgentsScreenBody() {
                 onValueChange={(next) => void setTabParam(next === 'agents' ? null : next)}
             >
             <ScreenTemplate
-                contentMode={tab === 'governance' ? 'scroll' : 'fill'}
+                contentMode={tab === 'templates' ? 'fill' : 'scroll'}
                 tabs={
                     <TabsList variant="line">
                         <TabsTrigger value="agents">Agents</TabsTrigger>
+                        <TabsTrigger value="templates">Agent Templates</TabsTrigger>
                         {/* Elevated-only in the console; the 403 is server-side regardless. */}
                         {isElevated ? <TabsTrigger value="governance">Governance</TabsTrigger> : null}
                     </TabsList>
                 }
                 header={
                     <PageHeader
-                        title="Agents & Prompt Templates"
-                        meta={templatesQuery.data ? <span>{formatNumber(count)} templates</span> : <Skeleton className="h-4 w-24" />}
+                        title="Agent Catalog"
+                        meta={
+                            tab === 'templates' ? (
+                                templatesQuery.data ? (
+                                    <span>{formatNumber(count)} templates</span>
+                                ) : (
+                                    <Skeleton className="h-4 w-24" />
+                                )
+                            ) : (
+                                <span>agents, templates &amp; governance for this tenant</span>
+                            )
+                        }
                         actions={
-                            <Button onClick={() => setCreating(true)}>
-                                <IconPlus aria-hidden />
-                                New template
-                            </Button>
+                            tab === 'templates' ? (
+                                <Button onClick={() => setCreating(true)}>
+                                    <IconPlus aria-hidden />
+                                    New template
+                                </Button>
+                            ) : undefined
                         }
                     />
                 }
                 footer={
                     <StatusFooter
-                        start={<span>{templatesQuery.isFetching && !templatesQuery.isLoading ? 'Refreshing' : 'Up to date'}</span>}
+                        start={
+                            tab === 'templates' ? (
+                                <span>{templatesQuery.isFetching && !templatesQuery.isLoading ? 'Refreshing' : 'Up to date'}</span>
+                            ) : (
+                                <span>Up to date</span>
+                            )
+                        }
                         end={
                             <span aria-hidden className="font-mono">
-                                GET /admin/prompt-templates
+                                {tab === 'templates' ? 'GET /admin/prompt-templates' : 'GET /admin/department-agents'}
                             </span>
                         }
                     />
                 }
             >
                 <TabsContent value="agents" className="flex min-h-0 flex-1 flex-col">
+                    <AgentsTab />
+                </TabsContent>
+                <TabsContent value="templates" className="flex min-h-0 flex-1 flex-col">
                 <VirtualizedDataGrid<PromptTemplate>
                     aria-label="Prompt templates"
                     columns={columns}
@@ -348,21 +382,23 @@ function AgentsScreenBody() {
 }
 
 /**
- * Frame 32 — Agents & Prompt Templates (tier 30–49, capabilities-matrix row
- * 25). Tenant-scoped: elevated sessions must pick a working tenant before any
- * query mounts; tenant admins are pinned and pass straight through. Redesign
- * (build spec §7): fill-height grid + console-wide detail slide-over.
+ * Frame 32 — Agent Catalog (tier 30–49, capabilities-matrix row 25).
+ * Tenant-scoped: elevated sessions must pick a working tenant before any
+ * query mounts; tenant admins are pinned and pass straight through. Three
+ * tabs: Agents (the `DepartmentAgent` catalog, TASK-547 — default), Agent
+ * Templates (the redesign build-spec §7 grid + console-wide detail
+ * slide-over this screen has carried since then), Governance (elevated-only).
  */
 export function AgentsScreen() {
     return (
         <WorkingTenantGate
-            title="Agents & Prompt Templates"
+            title="Agent Catalog"
             meta={
                 <span aria-hidden className="text-muted-foreground font-mono text-xs">
-                    GET /admin/prompt-templates
+                    GET /admin/department-agents
                 </span>
             }
-            description="Prompt templates are administered per tenant. Pick a working tenant from the switcher in the top bar to load its agents."
+            description="Agents are administered per tenant. Pick a working tenant from the switcher in the top bar to load its catalog."
         >
             <AgentsScreenBody />
         </WorkingTenantGate>

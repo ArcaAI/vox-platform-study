@@ -160,6 +160,16 @@ export interface LiveSummaryStats {
     model?: string | null;
 }
 
+/** Structured vitals deterministically extracted by the NLP service; fields absent when unmatched. */
+export interface LiveSummaryVitals {
+    systolic?: number;
+    diastolic?: number;
+    heartRate?: number;
+    spo2?: number;
+    temperatureC?: number;
+    weightKg?: number;
+}
+
 /** LiveSummaryEventDto — scope `consultation_live_summary:<id>`. */
 export interface LiveSummarySnapshot {
     consultationId: string;
@@ -168,6 +178,8 @@ export interface LiveSummarySnapshot {
     entities: LiveSummaryEntity[];
     /** Per-flush metadata envelope (`metadata.stats` = generation stats). */
     metadata?: { stats?: LiveSummaryStats | null } | null;
+    /** Structured vitals (accumulated across flushes); absent until one is seen. */
+    vitals?: LiveSummaryVitals;
     updatedAt: string;
     /** Terminal event (recording stopped). */
     closed?: boolean;
@@ -245,6 +257,48 @@ export interface SummaryApproval {
     approvalStatus: string;
     approvedBy?: string;
     approvedAt?: string;
+}
+
+/**
+ * ContextItemResponse subset — a persisted TRANSCRIPT context item
+ * (`GET :id/context/transcriptions`). `content` is the decrypted transcript
+ * text the console slices by `charStart`/`charEnd` to render an evidence
+ * snippet and to scroll/highlight the cited span.
+ */
+export interface TranscriptContextItem {
+    id: string;
+    type: string;
+    content: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+/**
+ * One transcript segment cited as evidence for a summary (TASK-552 Lane C —
+ * `CitedSegmentResponse`). Carries offsets/timing only; the console slices the
+ * already-fetched transcript text by `[charStart, charEnd)` for the snippet.
+ */
+export interface CitedSegment {
+    id: string;
+    idx: number;
+    t0Ms?: number | null;
+    t1Ms?: number | null;
+    speaker?: string | null;
+    charStart?: number | null;
+    charEnd?: number | null;
+}
+
+/** SummaryProvenanceResponse — `GET :id/summary/:contextItemId/provenance`. */
+export interface SummaryProvenance {
+    contextItemId: string;
+    modelName?: string | null;
+    entityFaithfulnessScore?: number | null;
+    coverageScore?: number | null;
+    ragTriadScore?: number | null;
+    sensorScores?: Record<string, unknown> | null;
+    citationsMap?: unknown;
+    generatedAt?: string | null;
+    citedSegments: CitedSegment[];
 }
 
 export interface NamedEntityItem {

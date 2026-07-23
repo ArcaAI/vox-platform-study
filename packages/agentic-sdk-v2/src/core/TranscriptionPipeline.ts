@@ -11,6 +11,8 @@ import { ProcessorEvent, debugLogConfig, debugLogTranscript, type DebugTranscrip
 import type { TranscriptionPipelineConfig, TranscriptionPipelineInput, PipelineStateInfo, TranscriptionPipelineEvents } from '../types/pipeline';
 import type { TranscriptionResult, VADEvent } from '../types/audio';
 import { DEFAULT_TRANSCRIPTION_PIPELINE_CONFIG } from '../types/pipeline';
+import { AgenticError } from '../types';
+import { LOCAL_TRANSCRIPTION_ENABLED } from './constants';
 import type { ISDKLogger } from './logger';
 
 /**
@@ -546,6 +548,17 @@ export class TranscriptionPipeline {
   }
 
   /**
+   * Cumulative outbound audio bytes sent by the streaming STT stage since the
+   * session started (0 for local STT — no wire). Polled by `useArcaAudio` to
+   * derive a live uplink bitrate from the delta. Guarded so a processor/mock
+   * without the getter is a no-op.
+   */
+  getUplinkBytesSent(): number {
+    const sttProcessor = this.stages.get('stt')?.processor as unknown as { getUplinkBytesSent?: () => number } | undefined;
+    return sttProcessor?.getUplinkBytesSent?.() ?? 0;
+  }
+
+  /**
    * Get the current configuration.
    */
   getConfig(): TranscriptionPipelineConfig {
@@ -580,6 +593,15 @@ export class TranscriptionPipeline {
   // =========================================================================
 
   private resolveSTTRuntimeProvider(): STTRuntimeProvider {
+    // TASK-545: local (in-browser) transcription is disabled
+    // platform-wide by default. When the flag is off, the resolution below
+    // (transcriptionMode / provider / location cascade) never runs — a
+    // backend transport resolves to 'remote'; with none, we fail loud instead
+    // of silently transcribing on-device.
+    if (!LOCAL_TRANSCRIPTION_ENABLED) {
+      return this.resolveSTTRuntimeProviderLocalDisabled();
+    }
+
     // The server-resolved EFFECTIVE transcription mode is
     // authoritative (admin-owned, with the tenant lock + workflowMode cascade
     // already applied upstream). It wins over provider/location/sttSocket.
@@ -614,6 +636,48 @@ export class TranscriptionPipeline {
     // A bare config with neither transport stays local (offline-capable default;
     // local must then be opted into via provider/location/transcriptionMode).
     return this.config.stt.sttSocket || this.config.stt.streamingTransport ? 'remote' : 'local';
+  }
+
+  /**
+   * TASK-545 resolution path used while `LOCAL_TRANSCRIPTION_ENABLED` is
+   * `false`. Never returns `'local'`: a configured backend transport
+   * (`sttSocket`/`streamingTransport`) resolves to `'remote'` regardless of
+   * what `transcriptionMode`/`provider`/`location` say; with no transport it
+   * throws instead of silently transcribing on-device. Any signal that
+   * explicitly asked for local (server `transcriptionMode: LOCAL`, `provider:
+   * 'local'`, or `location: 'browser'`) is logged as a warning first so the
+   * mismatch is visible, then treated the same as no preference at all.
+   */
+  private resolveSTTRuntimeProviderLocalDisabled(): STTRuntimeProvider {
+    const transcriptionMode = this.config.stt.transcriptionMode;
+    const configuredProvider = this.config.stt.provider ?? 'auto';
+    const location = this.config.stt.location;
+
+    // Explicit backend/remote requests still resolve directly — they were
+    // never asking for local, so there is nothing to warn about here (a
+    // missing transport is reported by the STT stage factory's own
+    // sttSocket/streamingTransport check).
+    if (transcriptionMode === 'BACKEND' || configuredProvider === 'backend' || location === 'backend') {
+      return 'remote';
+    }
+
+    const requestedLocal = transcriptionMode === 'LOCAL' || configuredProvider === 'local' || location === 'browser';
+    if (requestedLocal) {
+      this.logger?.warn('Local transcription was requested but is disabled platform-wide; resolving to backend-only', {
+        operation: 'resolveSTTRuntimeProvider',
+        component: 'TranscriptionPipeline',
+        attributes: { transcriptionMode, configuredProvider, location },
+      });
+    }
+
+    if (this.config.stt.sttSocket || this.config.stt.streamingTransport) {
+      return 'remote';
+    }
+
+    throw new AgenticError(
+      'LOCAL_TRANSCRIPTION_DISABLED',
+      'Local (in-browser) transcription is disabled platform-wide. Configure a backend ASR pipeline (stt.sttSocket or stt.streamingTransport) to use speech-to-text.',
+    );
   }
 
   private getSTTLanguage(): string {

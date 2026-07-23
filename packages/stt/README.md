@@ -44,6 +44,8 @@ packages/stt/
 | `'remote'` (default) | `sttSocket` WebSocket URL managed by this package | Server-side ASR with a simple socket contract |
 | `'remote'` + `setStreamingTransport(...)` | Host-supplied `STTStreamingTransport` | Session-based streaming backends; this is how `@arcaai/vox` drives the STT-V2 service |
 
+> **`@arcaai/vox` disables the `'local'` provider platform-wide (TASK-545).** This package's local Whisper provider is untouched — gated OFF, not deleted — via a kill switch in the CONSUMER: `LOCAL_TRANSCRIPTION_ENABLED` (`packages/agentic-sdk-v2/src/core/constants.ts`) makes `TranscriptionPipeline.resolveSTTRuntimeProvider()` never resolve to `'local'` while it reads `false`. Calling `createSTT({ features: { provider: 'local', ... } })` directly from this package (outside `@arcaai/vox`) is unaffected and still runs on-device inference.
+
 ## Public API overview
 
 ### React hook

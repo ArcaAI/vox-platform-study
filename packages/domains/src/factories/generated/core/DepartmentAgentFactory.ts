@@ -1,0 +1,72 @@
+/* eslint-disable unused-imports/no-unused-imports */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { BaseEntityFactoryCreateProps } from '../../../common';
+import { DepartmentAgentEntity, IDepartmentAgentEntity } from '../../../entities';
+import { DepartmentAgentDnaPolicy } from '../../../enums';
+import { generateId } from '../../../utils';
+
+export interface CreateDepartmentAgentProps extends BaseEntityFactoryCreateProps {
+  tenantId: IDepartmentAgentEntity['tenantId'];
+  departmentId: IDepartmentAgentEntity['departmentId'];
+  name: IDepartmentAgentEntity['name'];
+  slug: IDepartmentAgentEntity['slug'];
+  description?: IDepartmentAgentEntity['description'];
+  promptTemplateId: IDepartmentAgentEntity['promptTemplateId'];
+  pinnedVersionNumber?: IDepartmentAgentEntity['pinnedVersionNumber'];
+  dnaStylePolicy?: IDepartmentAgentEntity['dnaStylePolicy'];
+  harnessOverrides?: IDepartmentAgentEntity['harnessOverrides'];
+  goldenSetId?: IDepartmentAgentEntity['goldenSetId'];
+  tags?: IDepartmentAgentEntity['tags'];
+  // Template lineage — set only by the paths that produce template copies
+  // (TASK-548). Omitted everywhere else, so a hand-created agent is unlocked
+  // with no provenance (the DB defaults). `isDefault` stays out of this props
+  // bag on purpose — the default is flipped only via `setDefaultForDepartment`.
+  sourceAgentTemplateSlug?: IDepartmentAgentEntity['sourceAgentTemplateSlug'];
+  templateLocked?: IDepartmentAgentEntity['templateLocked'];
+
+  createdAt?: IDepartmentAgentEntity['createdAt'];
+  updatedAt?: IDepartmentAgentEntity['updatedAt'];
+  createdBy?: IDepartmentAgentEntity['createdBy'];
+  updatedBy?: IDepartmentAgentEntity['updatedBy'];
+}
+
+export class DepartmentAgentFactory {
+  static CreateDepartmentAgent(props: CreateDepartmentAgentProps): DepartmentAgentEntity {
+    const id = generateId();
+    const now = new Date();
+
+    return new DepartmentAgentEntity({
+      id,
+
+      createdAt: props.createdAt || now,
+      updatedAt: props.updatedAt || now,
+      createdBy: props.createdBy ?? null,
+      updatedBy: props.updatedBy || null,
+
+      tenantId: props.tenantId,
+      departmentId: props.departmentId,
+      name: props.name,
+      slug: props.slug,
+      description: props.description ?? null,
+      promptTemplateId: props.promptTemplateId,
+      pinnedVersionNumber: props.pinnedVersionNumber ?? null,
+      dnaStylePolicy: props.dnaStylePolicy ?? DepartmentAgentDnaPolicy.INHERIT,
+      harnessOverrides: props.harnessOverrides ?? null,
+      goldenSetId: props.goldenSetId ?? null,
+      tags: props.tags ?? [],
+      sourceAgentTemplateSlug: props.sourceAgentTemplateSlug ?? null,
+      templateLocked: props.templateLocked ?? false,
+    });
+  }
+
+  /**
+   * Generate a URL-friendly slug from a name (mirrors AsrPipelineFactory).
+   */
+  static GenerateSlug(name: string): string {
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+  }
+}

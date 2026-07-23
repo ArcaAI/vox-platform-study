@@ -115,6 +115,10 @@ export const DEFAULT_POLICIES = [
             // departments and audio (ASR) pipelines, both tenant-scoped.
             { action: 'manage', subject: 'Department', conditions: { tenantId: '${context.tenantId}' } },
             { action: 'manage', subject: 'AsrPipeline', conditions: { tenantId: '${context.tenantId}' } },
+            // First-class department agents (TASK-546). M-12: a DEDICATED
+            // subject (not HarnessPolicy reuse); tenant admins self-serve their
+            // own tenant's agents, tenant-scoped.
+            { action: 'manage', subject: 'DepartmentAgent', conditions: { tenantId: '${context.tenantId}' } },
             // AI model catalog — tenant admins self-serve
             // their own tenant's clone of the SYSTEM model catalog. Tenant-scoped
             // (SUPER_ADMIN already covered by the `manage:all` system grant).

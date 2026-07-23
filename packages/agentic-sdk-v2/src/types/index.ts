@@ -376,4 +376,4 @@ export type {
   SetRateLimitTierInput,
 } from './ops-admin';
 
-export type { LiveSummarySnapshot, LiveSummarySection, LiveSummaryEntity, LiveSummaryStats } from './liveSummary';
+export type { LiveSummarySnapshot, LiveSummarySection, LiveSummaryEntity, LiveSummaryStats, LiveSummaryVitals } from './liveSummary';

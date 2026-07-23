@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import itertools
+import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -40,6 +41,12 @@ from harness.guides.retrieval.prompt import build_strict_citations_block
 from harness.guides.retrieval.qdrant_store import KnowledgeQdrantStore
 from harness.guides.retrieval.retriever import HybridRetriever, build_query
 from harness.guides.retrieval.sparse import SparseBm25Embedder
+from harness.redaction.engine import (
+    RedactionEngineError,
+    RedactionManifest,
+    RedactionRule,
+    apply_deterministic_redaction,
+)
 from harness.sensors.base import NEREntity, SensorContext, SensorResult
 from harness.sensors.config import SensorThresholds
 from harness.sensors.inferential import (
@@ -81,6 +88,8 @@ from harness.temporal.claim_check import (
     maybe_offload,
 )
 from harness.temporal.models import (
+    ApplyRedactionInput,
+    ApplyRedactionResult,
     AssembleInput,
     CallMcpToolInput,
     EntitiesResult,
@@ -553,15 +562,30 @@ async def fetch_policy(payload: FetchPolicyInput) -> HarnessPolicy:
     """
     settings = get_settings()
     started = _now()
-    data = await _api_client(settings).get_policy(payload.tenant_id)
+    # TASK-550 — thread the consultation id (when present) so the gateway overlays
+    # the department default agent's tenant-tier harnessOverrides. Omitting the
+    # kwarg when absent keeps the request byte-identical for non-agent runs.
+    client = _api_client(settings)
+    if payload.consultation_id:
+        data = await client.get_policy(payload.tenant_id, consultation_id=payload.consultation_id)
+    else:
+        data = await client.get_policy(payload.tenant_id)
     policy = HarnessPolicy.from_api(data)
+    # Observability — surface the per-agent override provenance on the fetch_policy
+    # trajectory step so a flagged draft can be traced to the agent whose thresholds
+    # governed it. `HarnessPolicy` (extra="ignore") drops the field, so read it off
+    # the raw response dict. Absent ⇒ no overlay was applied.
+    stats: dict[str, Any] = {"version": policy.version}
+    overrides_source = data.get("overridesSource")
+    if overrides_source:
+        stats["overrides_source"] = overrides_source
     batch = _TrajectoryBatch(settings, payload.trajectory)
     batch.record(
         step_type=STEP_PHASE,
         name="fetch_policy",
         status=STATUS_OK,
         started=started,
-        stats={"version": policy.version},
+        stats=stats,
     )
     await batch.flush()
     return policy
@@ -1519,6 +1543,141 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
             await heartbeat
 
 
+def _needs_semantic_rewrite(rule: RedactionRule) -> bool:
+    """A ``rewrite`` rule with NO literal ``replacement`` ⇒ the SMR semantic pass."""
+    return rule.type == "rewrite" and rule.replacement is None
+
+
+def _build_rewrite_prompt(text: str, rules: list[RedactionRule]) -> str:
+    """A constrained rewrite instruction for the SMR semantic pass.
+
+    The model is told to REMOVE/soften the described spans and change nothing else —
+    it must never add clinical content and must return the SAME JSON shape it was given.
+    """
+    directives = "\n".join(
+        f"- {r.note or f'redact matches of category/pattern {r.pattern!r}'}" for r in rules
+    )
+    return (
+        "You are a redaction transform. Apply ONLY the following removal/rewrite "
+        "instructions to the clinical note below. Do NOT add any new content, do NOT "
+        "change facts, doses, or citation markers like [[seg:...]]. Return the note in "
+        "the SAME structure/format you received.\n\n"
+        f"Instructions:\n{directives}\n\nNote:\n{text}"
+    )
+
+
+@activity.defn
+async def apply_redaction(payload: ApplyRedactionInput) -> ApplyRedactionResult:
+    """DNA redaction/rewrite — a SEPARATE, auditable post-generation transform (TASK-551).
+
+    Runs AFTER the computational-sensor loop settles and BEFORE persist/delivery so the
+    persisted/delivered note is the redacted one and the sensors validate the FINAL text.
+
+    Two passes:
+
+    1. **Deterministic** — literal/regex/category ``remove`` rules and ``rewrite`` rules
+       that carry a literal ``replacement``. Pure, replay-neutral. A malformed rule that
+       reaches the engine fails CLOSED (see below).
+    2. **Optional SMR semantic rewrite** — ``rewrite`` rules with no literal replacement.
+       One constrained SMR call, PHI-egress guarded + idempotency-keyed exactly like
+       ``generate``; the output must preserve the note's JSON schema.
+
+    **Fail CLOSED**: if the deterministic engine raises OR a required SMR rewrite cannot be
+    completed/parsed, the result carries ``failed_closed=True`` (the workflow forces a FLAG).
+    A note the doctor expected redacted must never slip through silently. The audit
+    ``manifest`` carries spans + counts only — never removed PHI plaintext.
+    """
+    settings = get_settings()
+    text = await _resolve_ref(settings, payload.note_text, payload.note_text_ref)
+
+    if not payload.rules:
+        # No rules ⇒ pure no-op (the default, and every legacy/patched-off path).
+        return ApplyRedactionResult(text=text, changed=False, manifest=RedactionManifest())
+
+    deterministic = [r for r in payload.rules if not _needs_semantic_rewrite(r)]
+    semantic = [r for r in payload.rules if _needs_semantic_rewrite(r)]
+
+    # 1) Deterministic pass — fail closed on a malformed rule (never a silent leak).
+    try:
+        outcome = apply_deterministic_redaction(text, deterministic)
+    except RedactionEngineError as exc:
+        activity.logger.warning(
+            "harness.redaction.failed_closed",
+            extra={"stage": "deterministic", "reason": str(exc)},
+        )
+        return ApplyRedactionResult(
+            text=text, changed=False, failed_closed=True, manifest=RedactionManifest()
+        )
+
+    working = outcome.text
+    manifest = outcome.manifest
+
+    # 2) Optional SMR semantic-rewrite pass — fail closed on ANY failure.
+    if semantic:
+        redactor = _phi_redactor()
+        prompt = _build_rewrite_prompt(working, semantic)
+        try:
+            safe_prompt = ensure_egress_safe(
+                prompt,
+                provider=payload.provider,
+                settings=settings,
+                phi_enabled=payload.phi_enabled,
+                phi_fail_closed=payload.phi_fail_closed,
+                redactor=redactor,
+            )
+            result = await _smr_client(settings).generate(
+                prompt=safe_prompt,
+                provider=payload.provider,
+                model=payload.model,
+                response_format=payload.response_format,
+                idempotency_key=_idempotency_key("redaction"),
+            )
+        except (PhiEgressBlocked, SmrServiceError) as exc:
+            activity.logger.warning(
+                "harness.redaction.failed_closed",
+                extra={"stage": "smr_rewrite", "reason": str(exc)},
+            )
+            return ApplyRedactionResult(
+                text=working,
+                changed=manifest.applied,
+                failed_closed=True,
+                manifest=manifest,
+            )
+        rewritten = result.content
+        # If a JSON schema was requested, the rewrite MUST still parse — otherwise
+        # fail closed rather than deliver a structurally broken note.
+        if payload.response_format is not None:
+            try:
+                json.loads(rewritten)
+            except (json.JSONDecodeError, TypeError) as exc:
+                activity.logger.warning(
+                    "harness.redaction.failed_closed",
+                    extra={"stage": "smr_rewrite_schema", "reason": str(exc)},
+                )
+                return ApplyRedactionResult(
+                    text=working,
+                    changed=manifest.applied,
+                    failed_closed=True,
+                    manifest=manifest,
+                )
+        working = rewritten
+        manifest = RedactionManifest(
+            applied=True,
+            total_hits=manifest.total_hits + len(semantic),
+            hits_by_rule={**manifest.hits_by_rule, **{r.id: 1 for r in semantic}},
+            hits=manifest.hits,
+        )
+
+    text_out, text_ref = await _offload_text(settings, working)
+    return ApplyRedactionResult(
+        text=text_out,
+        text_ref=text_ref,
+        changed=working != text,
+        failed_closed=False,
+        manifest=manifest,
+    )
+
+
 @activity.defn
 async def persist_draft(payload: PersistDraftInput) -> DraftResponse:
     """Persist the generated draft (ContextItem + SummaryMeta + PENDING_REVIEW).
@@ -1777,6 +1936,7 @@ DOCUMENT_ACTIVITIES: list[Callable[..., Any]] = [
     generate,
     run_sensors,
     run_inferential_sensors,
+    apply_redaction,
     persist_draft,
     finalize_assurance,
     retract_draft,

@@ -140,6 +140,78 @@ describe('HarnessInternalController', () => {
         expect(mockService.recordEscalation).toHaveBeenCalledWith('consultation-1', dto, undefined);
     });
 
+    // TASK-550 — the worker `fetch_policy` GET, now accepting an optional
+    // consultationId so the department default agent's tenant-tier
+    // harnessOverrides overlay onto the effective policy.
+    describe('GET internal/harness/policy (fetch_policy)', () => {
+        const mockPolicyService = { getEffectivePolicy: vi.fn() };
+        // CLS fake mirroring effective-config.controller.test.ts: run executes the
+        // callback synchronously in a store; set/get operate on it, so the tests can
+        // assert the tenant context the service read executed under (set-before-read).
+        function fakeCls() {
+            const store = new Map<string, unknown>();
+            return {
+                store,
+                run: vi.fn((fn: () => unknown) => fn()),
+                set: vi.fn((key: string, value: unknown) => void store.set(key, value)),
+                get: vi.fn((key: string) => store.get(key)),
+            };
+        }
+
+        const buildController = (cls: ReturnType<typeof fakeCls>) =>
+            new HarnessInternalController(
+                mockService as any,
+                mockPolicyService as any,
+                cls as any,
+                undefined as any,
+                undefined as any,
+            );
+
+        it('threads consultationId through to getEffectivePolicy(tenantId, { consultationId })', async () => {
+            const policy = { source: 'tenant', tenantId: 't-1', coverageThreshold: 0.95 };
+            mockPolicyService.getEffectivePolicy.mockResolvedValue(policy);
+            const cls = fakeCls();
+
+            const result = await buildController(cls).getEffectivePolicy('t-1', 'consult-1');
+
+            expect(mockPolicyService.getEffectivePolicy).toHaveBeenCalledWith('t-1', { consultationId: 'consult-1' });
+            expect(result).toEqual(policy);
+        });
+
+        it('preserves the no-consultationId behaviour (undefined consultationId ⇒ same second arg, still passed)', async () => {
+            const policy = { source: 'system-default', tenantId: 't-1' };
+            mockPolicyService.getEffectivePolicy.mockResolvedValue(policy);
+            const cls = fakeCls();
+
+            await buildController(cls).getEffectivePolicy('t-1', undefined);
+
+            expect(mockPolicyService.getEffectivePolicy).toHaveBeenCalledWith('t-1', { consultationId: undefined });
+        });
+
+        it('re-establishes CLS pinned to the tenant BEFORE the service read (set-before-read ordering)', async () => {
+            const cls = fakeCls();
+            // Capture the tenant context observed at read time — proves set() ran first.
+            mockPolicyService.getEffectivePolicy.mockImplementation(async () => {
+                expect(cls.store.get('tenantId')).toBe('t-1');
+                return { source: 'tenant', tenantId: 't-1' };
+            });
+
+            await buildController(cls).getEffectivePolicy('t-1', 'consult-1');
+
+            expect(cls.run).toHaveBeenCalled();
+            expect(cls.set).toHaveBeenCalledWith('tenantId', 't-1');
+            const setOrder = cls.set.mock.invocationCallOrder[0];
+            const readOrder = mockPolicyService.getEffectivePolicy.mock.invocationCallOrder[0];
+            expect(setOrder).toBeLessThan(readOrder);
+        });
+
+        it('rejects a missing tenantId without touching the service', async () => {
+            const cls = fakeCls();
+            await expect(buildController(cls).getEffectivePolicy(undefined, 'consult-1')).rejects.toThrow();
+            expect(mockPolicyService.getEffectivePolicy).not.toHaveBeenCalled();
+        });
+    });
+
     describe('POST consultations/:id/progress', () => {
         const mockProgressService = { reportProgress: vi.fn() };
 

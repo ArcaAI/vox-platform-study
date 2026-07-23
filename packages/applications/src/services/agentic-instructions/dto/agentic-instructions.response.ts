@@ -18,8 +18,8 @@ export class ResolvedPromptTierResponse {
   @ApiProperty({ description: 'Prompt registry id resolved for the (department, promptType).' })
   promptId!: string;
 
-  @ApiProperty({ description: 'Which fallback tier provided the values.', enum: ['preferred', 'department', 'default'] })
-  resolvedFrom!: 'preferred' | 'department' | 'default';
+  @ApiProperty({ description: 'Which fallback tier provided the values.', enum: ['preferred', 'agent', 'department', 'default'] })
+  resolvedFrom!: 'preferred' | 'agent' | 'department' | 'default';
 
   @ApiPropertyOptional({ description: 'Department the tier was resolved against (null = tenant baseline).', nullable: true })
   departmentId!: string | null;

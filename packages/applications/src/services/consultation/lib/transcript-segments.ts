@@ -214,6 +214,49 @@ export function attachSegmentEvidence(
   return { ...citationsMap, claims: enrichedClaims };
 }
 
+/**
+ * Collect every segment id referenced by a `citationsMap`, from BOTH shapes it
+ * can carry (TASK-552 Lane C): the flat `segmentCitedIds` array (the
+ * StrictCitations / EARLY-draft lane — `mergeSegmentCitedIds` above) and the
+ * nested `claims[].evidence[].segmentId` (the NER-claims lane, annotated by
+ * `attachSegmentEvidence`). Deduped, order-stable (`segmentCitedIds` first,
+ * then claim evidence in encounter order) so a console evidence panel can
+ * resolve ALL cited segments regardless of which lane produced them. Tolerant
+ * of a null/shapeless map (returns `[]`).
+ */
+export function collectCitedSegmentIds(citationsMap: Record<string, unknown> | null | undefined): string[] {
+  if (!citationsMap || typeof citationsMap !== 'object') return [];
+  const seen = new Set<string>();
+  const ids: string[] = [];
+
+  const flat = (citationsMap as { segmentCitedIds?: unknown }).segmentCitedIds;
+  if (Array.isArray(flat)) {
+    for (const id of flat) {
+      if (typeof id === 'string' && !seen.has(id)) {
+        seen.add(id);
+        ids.push(id);
+      }
+    }
+  }
+
+  const claims = (citationsMap as { claims?: unknown }).claims;
+  if (Array.isArray(claims)) {
+    for (const claim of claims) {
+      const evidence = (claim as { evidence?: unknown } | null)?.evidence;
+      if (!Array.isArray(evidence)) continue;
+      for (const span of evidence) {
+        const segmentId = (span as { segmentId?: unknown } | null)?.segmentId;
+        if (typeof segmentId === 'string' && !seen.has(segmentId)) {
+          seen.add(segmentId);
+          ids.push(segmentId);
+        }
+      }
+    }
+  }
+
+  return ids;
+}
+
 /** Matches a `[[seg:<id>]]` StrictCitations marker. Mirrors the harness-side
  * `SEGMENT_CITATION_MARKER_RE` (`apps/harness/src/harness/temporal/prompt_cache.py`)
  * so both sides parse the exact same wire format. */

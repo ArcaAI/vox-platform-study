@@ -17,6 +17,7 @@ import { AuditLogRepository } from '../../../repositories/generated/core/AuditLo
 import { ConsultationRepository } from '../../../repositories/generated/core/ConsultationRepository';
 import { ContextItemRepository } from '../../../repositories/generated/core/ContextItemRepository';
 import { ContextItemVersionRepository } from '../../../repositories/generated/core/ContextItemVersionRepository';
+import { DepartmentAgentRepository } from '../../../repositories/generated/core/DepartmentAgentRepository';
 import { DepartmentRepository } from '../../../repositories/generated/core/DepartmentRepository';
 import { DnaUsageRecordRepository } from '../../../repositories/generated/core/DnaUsageRecordRepository';
 import { DnaWritingStyleReportRepository } from '../../../repositories/generated/core/DnaWritingStyleReportRepository';
@@ -148,6 +149,8 @@ const repositories = [
   // API & Organization domain
   ApiKeyRepository,
   DepartmentRepository,
+  // First-class department agent entity (TASK-546)
+  DepartmentAgentRepository,
   // Prompt & DNA domain
   PromptTemplateRepository,
   PromptVersionRepository,

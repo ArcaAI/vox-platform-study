@@ -19,6 +19,7 @@ export * from './webhook';
 export * from './apiKey';
 export * from './consultation';
 export * from './department';
+export * from './departmentAgent';
 // Clinical documentation harness (eval storage + WORM audit).
 export * from './eval';
 // Institutional RAG (knowledge corpus ingestion).

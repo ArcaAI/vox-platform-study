@@ -32,6 +32,8 @@ export class Department extends BaseTenantDataModel {
   public PromptTemplates: Models.PromptTemplate[] | undefined;
   @VirtualDbProperty()
   public UserDepartments: Models.UserDepartment[] | undefined;
+  @VirtualDbProperty()
+  public DepartmentAgents: Models.DepartmentAgent[] | undefined;
 
   constructor(data: Department & BaseTenantDataModel) {
     super(data);
@@ -53,5 +55,6 @@ export class Department extends BaseTenantDataModel {
     this.Consultations = data.Consultations;
     this.PromptTemplates = data.PromptTemplates;
     this.UserDepartments = data.UserDepartments;
+    this.DepartmentAgents = data.DepartmentAgents;
   }
 }

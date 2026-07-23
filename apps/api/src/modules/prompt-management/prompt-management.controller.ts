@@ -310,18 +310,21 @@ export class PromptManagementController {
   // AUTH-NOTE: this route carries NO handler-level permission
   // decorator ON PURPOSE. It inherits the class-level
   // `@Authorize(['manage','PromptTemplate'])` (so the deny-by-default boot audit
-  // is satisfied), and the additional GLOBAL_ADMIN restriction is IMPERATIVE in
-  // the service rather than declarative here — the permission system has no
-  // "global admins only" subject to express it with. Reading only the decorator
-  // therefore understates the gate. See `.claude/rules/05-nestjs-api.md`
-  // §"Imperative privilege checks" for the two sanctioned patterns.
+  // is satisfied), and the real approval gate is IMPERATIVE in the service — the
+  // permission system has no "global admins only" subject to express the SYSTEM
+  // branch. Reading only the decorator therefore understates the gate. See
+  // `.claude/rules/05-nestjs-api.md` §"Imperative privilege checks".
+  //
+  // OD-3 split gate (in `PromptManagementService.approveTemplate`):
+  // - SYSTEM/library template (tenantId = SYSTEM) → GLOBAL_ADMIN-only privilege
+  //   (403; the shared library is globally visible, so existence is not hidden).
+  // - Tenant-owned template → a caller holding `manage:PromptTemplate` for that
+  //   tenant (or a global admin) may approve; cross-tenant ids stay 404 via
+  //   `assertOwnedByTenant` (404-over-403).
   //
   // Flips the template to `status = APPROVED` — the gate `prompt-resolution`
   // requires for clinical flows — pins a `PromptVersion` snapshot, and writes a
-  // WORM-style change row via the existing sys-event. GLOBAL_ADMIN only: the
-  // real 403 is raised in the service (`isSuperAdmin` privilege check), mirroring
-  // the `guardrail.*`/`@CanManage` precedent (privilege on a manageable resource,
-  // not an existence probe — cross-tenant is still 404 via `assertOwnedByTenant`).
+  // WORM-style change row via the existing sys-event.
   //
   // Optimistic concurrency (parity with `update`/`testTemplate`): the `If-Match`
   // header is REQUIRED and folds over any body-supplied `expectedVersion`; the
@@ -335,7 +338,9 @@ export class PromptManagementController {
     description:
       'Sets `status = APPROVED` (required by prompt resolution for clinical ' +
       'flows), pins a PromptVersion snapshot, and records a WORM-style audit ' +
-      'change row. GLOBAL_ADMIN-only privilege → 403 otherwise. Optimistic ' +
+      'change row. OD-3 split gate: SYSTEM/library templates are GLOBAL_ADMIN-' +
+      'only; tenant-owned templates require `manage:PromptTemplate` for that ' +
+      'tenant — 403 otherwise. Optimistic ' +
       'concurrency: `If-Match` REQUIRED (folds over body `expectedVersion`); ' +
       'missing header → 428, version drift → 412. Idempotent: approving an ' +
       'already-APPROVED template returns the current row.',
@@ -348,7 +353,10 @@ export class PromptManagementController {
   })
   @ApiParam({ name: 'id', description: 'Prompt template ID', type: String })
   @ApiResponse({ status: 200, description: 'Approved (or already-approved) template', type: PromptTemplateResponse })
-  @ApiResponse({ status: 403, description: 'Forbidden — prompt approval is a GLOBAL_ADMIN-only privilege.' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden — SYSTEM/library approval is GLOBAL_ADMIN-only; tenant templates require manage:PromptTemplate.',
+  })
   @ApiResponse({ status: 404, description: 'Template not found (or cross-tenant).' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })

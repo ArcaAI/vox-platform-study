@@ -2378,4 +2378,102 @@ describe('PromptManagementService', () => {
             expect(where).toMatchObject({ tenantId: 'tenant-1', scope: 'USER_PERSONAL', ownerUserId: 'target-user' });
         });
     });
+
+    // ─── approveTemplate scope (OD-3): SYSTEM = global-admin only,
+    //     tenant-owned = manage:PromptTemplate for that tenant ───
+    describe('approveTemplate authorization scope (OD-3)', () => {
+        const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
+        // Override the CLS user roles (isSuperAdmin reads user.roles) and the
+        // working tenant + ability for a single test.
+        const useContext = (opts: { roles?: string[]; tenantId?: string; canManage?: boolean }) => {
+            abilityCan.mockReturnValue(opts.canManage ?? true);
+            mockClsService.get.mockImplementation((key: string) => {
+                switch (key) {
+                    case 'user':
+                        return { ...defaultClsContext.user, roles: opts.roles ?? [] };
+                    case 'tenantId':
+                        return opts.tenantId ?? 'tenant-1';
+                    case 'userAbility':
+                        return { can: abilityCan };
+                    default:
+                        return null;
+                }
+            });
+        };
+
+        const wireApproveSuccess = (template: ReturnType<typeof createMockTemplateEntity>) => {
+            mockTemplateRepo.findById.mockResolvedValue(template);
+            mockVersionRepo.findMaxVersionNumber.mockResolvedValue(0);
+            mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
+            mockTemplateRepo.updateWithVersion.mockResolvedValue(template);
+        };
+
+        it('tenant admin approves own-tenant template → 200 (snapshots + CAS)', async () => {
+            useContext({ roles: [], tenantId: 'tenant-1', canManage: true });
+            const tpl = createMockTemplateEntity({ id: 'tpl-t', tenantId: 'tenant-1', scope: 'TENANT_DEFAULT', status: 'DRAFT', version: 3 });
+            wireApproveSuccess(tpl);
+
+            const result = await service.approveTemplate('tpl-t', { expectedVersion: 3 } as never);
+
+            expect(result).toBeDefined();
+            expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalledWith('tpl-t', tpl, 3, mockTxClient);
+        });
+
+        it('tenant admin on a SYSTEM/library template → 403 (no write)', async () => {
+            useContext({ roles: [], tenantId: 'tenant-1', canManage: true });
+            const tpl = createMockTemplateEntity({ id: 'tpl-sys', tenantId: SYSTEM_TENANT_ID, scope: 'TENANT_DEFAULT', status: 'DRAFT', version: 1 });
+            mockTemplateRepo.findById.mockResolvedValue(tpl);
+
+            await expect(service.approveTemplate('tpl-sys', { expectedVersion: 1 } as never)).rejects.toThrow(ForbiddenException);
+            expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
+        });
+
+        it('global admin approves a SYSTEM/library template → 200', async () => {
+            useContext({ roles: ['GLOBAL_ADMIN'], tenantId: 'tenant-1', canManage: false });
+            const tpl = createMockTemplateEntity({ id: 'tpl-sys', tenantId: SYSTEM_TENANT_ID, scope: 'TENANT_DEFAULT', status: 'DRAFT', version: 2 });
+            wireApproveSuccess(tpl);
+
+            const result = await service.approveTemplate('tpl-sys', { expectedVersion: 2 } as never);
+
+            expect(result).toBeDefined();
+            expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalled();
+        });
+
+        it('global admin approves a tenant-owned template → 200', async () => {
+            useContext({ roles: ['GLOBAL_ADMIN'], tenantId: 'tenant-1', canManage: false });
+            const tpl = createMockTemplateEntity({ id: 'tpl-t', tenantId: 'tenant-1', scope: 'DEPARTMENT_DEFAULT', status: 'DRAFT', version: 4 });
+            wireApproveSuccess(tpl);
+
+            const result = await service.approveTemplate('tpl-t', { expectedVersion: 4 } as never);
+
+            expect(result).toBeDefined();
+            expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalled();
+        });
+
+        it('cross-tenant template id → 404 (existence hidden, no write)', async () => {
+            useContext({ roles: [], tenantId: 'tenant-1', canManage: true });
+            const tpl = createMockTemplateEntity({ id: 'tpl-x', tenantId: 'tenant-OTHER', scope: 'TENANT_DEFAULT', status: 'DRAFT', version: 1 });
+            mockTemplateRepo.findById.mockResolvedValue(tpl);
+
+            await expect(service.approveTemplate('tpl-x', { expectedVersion: 1 } as never)).rejects.toThrow(NotFoundException);
+            expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
+        });
+
+        it('tenant caller lacking manage:PromptTemplate on own-tenant template → 403', async () => {
+            useContext({ roles: [], tenantId: 'tenant-1', canManage: false });
+            const tpl = createMockTemplateEntity({ id: 'tpl-t', tenantId: 'tenant-1', scope: 'TENANT_DEFAULT', status: 'DRAFT', version: 1 });
+            mockTemplateRepo.findById.mockResolvedValue(tpl);
+
+            await expect(service.approveTemplate('tpl-t', { expectedVersion: 1 } as never)).rejects.toThrow(ForbiddenException);
+            expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
+        });
+
+        it('missing template id → 404', async () => {
+            useContext({ roles: ['GLOBAL_ADMIN'], tenantId: 'tenant-1' });
+            mockTemplateRepo.findById.mockResolvedValue(null);
+
+            await expect(service.approveTemplate('nope', { expectedVersion: 1 } as never)).rejects.toThrow(NotFoundException);
+        });
+    });
 });

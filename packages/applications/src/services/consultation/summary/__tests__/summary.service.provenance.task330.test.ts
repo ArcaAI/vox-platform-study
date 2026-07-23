@@ -14,14 +14,14 @@ import { describe, it, expect, vi } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
 import { SummaryService } from '../summary.service';
 
-function buildService() {
+function buildService(opts: { contextItemRepository?: unknown; transcriptSegmentRepository?: unknown } = {}) {
   const summaryMetaRepository = { findByContextItem: vi.fn() };
   const configService = { get: vi.fn().mockReturnValue(undefined) };
   const eventEmitter = { emit: vi.fn() };
   const clsService = { get: vi.fn().mockReturnValue('tenant-1'), set: vi.fn() };
 
   const service = new SummaryService(
-    {} as never, // contextItemRepository
+    (opts.contextItemRepository ?? {}) as never, // contextItemRepository
     {} as never, // consultationRepository
     summaryMetaRepository as never,
     {} as never, // namedEntityRepository
@@ -31,6 +31,16 @@ function buildService() {
     clsService as never,
     {} as never, // contextItemVersionRepository
     {} as never, // promptAssemblyService
+    undefined, // secretsService
+    undefined, // userProfileRepository
+    undefined, // harnessAuditService
+    undefined, // harnessGatewayService
+    undefined, // harnessPolicyService
+    undefined, // configResolver
+    undefined, // entitlements
+    undefined, // trajectoryService
+    undefined, // aiTaskDefaultService
+    opts.transcriptSegmentRepository as never,
   );
 
   return { service, summaryMetaRepository };
@@ -66,6 +76,9 @@ describe('SummaryService.getSummaryProvenance (provenance over HTTP)', () => {
       sensorScores: { entityFaithfulness: 0.95, coverage: 0.9, schemaValid: 1 },
       citationsMap: { claims: [{ id: 'claim-1', text: 'lisinopril', status: 'verified' }] },
       generatedAt: '2026-06-06T00:00:00.000Z',
+      // No transcriptSegmentRepository wired in this fixture (TASK-552 Lane C
+      // is best-effort) — degrades to [] rather than blocking the read.
+      citedSegments: [],
     });
   });
 
@@ -124,6 +137,7 @@ describe('SummaryService.getSummaryProvenance (provenance over HTTP)', () => {
       sensorScores: null,
       citationsMap: null,
       generatedAt: null,
+      citedSegments: [],
     });
   });
 
@@ -132,5 +146,131 @@ describe('SummaryService.getSummaryProvenance (provenance over HTTP)', () => {
     summaryMetaRepository.findByContextItem.mockResolvedValue(null);
 
     await expect(service.getSummaryProvenance('missing-ctx')).rejects.toThrow(NotFoundException);
+  });
+
+  // TASK-552 Lane C — cited transcript segments, resolved against the
+  // consultation's persisted TranscriptSegment rows.
+  describe('citedSegments (TASK-552 Lane C)', () => {
+    function buildWithSegments(segments: unknown[]) {
+      const contextItemRepository = {
+        findById: vi.fn().mockResolvedValue({ id: 'ctx-sum-1', consultationId: 'consult-1', tenantId: 'tenant-1' }),
+        findTranscripts: vi.fn().mockResolvedValue([{ id: 'transcript-1' }]),
+      };
+      const transcriptSegmentRepository = { findByContextItem: vi.fn().mockResolvedValue(segments) };
+      return buildService({ contextItemRepository, transcriptSegmentRepository });
+    }
+
+    it('resolves cited segments (flat segmentCitedIds) against the persisted transcript', async () => {
+      const { service, summaryMetaRepository } = buildWithSegments([
+        { id: 'seg-1', idx: 0, t0Ms: 0, t1Ms: 1500, speaker: 'doctor', charStart: 0, charEnd: 20 },
+        { id: 'seg-2', idx: 1, t0Ms: 1500, t1Ms: 3000, speaker: 'patient', charStart: 20, charEnd: 40 },
+        { id: 'seg-not-cited', idx: 2, t0Ms: 3000, t1Ms: 4000, speaker: 'doctor', charStart: 40, charEnd: 60 },
+      ]);
+      summaryMetaRepository.findByContextItem.mockResolvedValue({
+        contextItemId: 'ctx-sum-1',
+        modelName: null,
+        entityFaithfulnessScore: null,
+        coverageScore: null,
+        ragTriadScore: null,
+        citationsMap: { segmentCitedIds: ['seg-1', 'seg-2'] },
+        guardrailDecisions: null,
+        generatedAt: null,
+      });
+
+      const result = await service.getSummaryProvenance('ctx-sum-1');
+
+      expect(result.citedSegments).toEqual([
+        { id: 'seg-1', idx: 0, t0Ms: 0, t1Ms: 1500, speaker: 'doctor', charStart: 0, charEnd: 20 },
+        { id: 'seg-2', idx: 1, t0Ms: 1500, t1Ms: 3000, speaker: 'patient', charStart: 20, charEnd: 40 },
+      ]);
+    });
+
+    it('resolves cited segments from claims[].evidence[].segmentId (NER-claims lane)', async () => {
+      const { service, summaryMetaRepository } = buildWithSegments([
+        { id: 'seg-3', idx: 0, t0Ms: 0, t1Ms: 1000, speaker: null, charStart: 0, charEnd: 10 },
+      ]);
+      summaryMetaRepository.findByContextItem.mockResolvedValue({
+        contextItemId: 'ctx-sum-1',
+        modelName: null,
+        entityFaithfulnessScore: null,
+        coverageScore: null,
+        ragTriadScore: null,
+        citationsMap: { claims: [{ id: 'c1', evidence: [{ startOffset: 0, segmentId: 'seg-3' }] }] },
+        guardrailDecisions: null,
+        generatedAt: null,
+      });
+
+      const result = await service.getSummaryProvenance('ctx-sum-1');
+
+      expect(result.citedSegments).toEqual([{ id: 'seg-3', idx: 0, t0Ms: 0, t1Ms: 1000, speaker: null, charStart: 0, charEnd: 10 }]);
+    });
+
+    it('degrades to [] (best-effort) when the consultation has more than one transcript', async () => {
+      const contextItemRepository = {
+        findById: vi.fn().mockResolvedValue({ id: 'ctx-sum-1', consultationId: 'consult-1', tenantId: 'tenant-1' }),
+        findTranscripts: vi.fn().mockResolvedValue([{ id: 'transcript-1' }, { id: 'transcript-2' }]),
+      };
+      const transcriptSegmentRepository = { findByContextItem: vi.fn() };
+      const { service, summaryMetaRepository } = buildService({ contextItemRepository, transcriptSegmentRepository });
+      summaryMetaRepository.findByContextItem.mockResolvedValue({
+        contextItemId: 'ctx-sum-1',
+        modelName: null,
+        entityFaithfulnessScore: null,
+        coverageScore: null,
+        ragTriadScore: null,
+        citationsMap: { segmentCitedIds: ['seg-1'] },
+        guardrailDecisions: null,
+        generatedAt: null,
+      });
+
+      const result = await service.getSummaryProvenance('ctx-sum-1');
+
+      expect(result.citedSegments).toEqual([]);
+      expect(transcriptSegmentRepository.findByContextItem).not.toHaveBeenCalled();
+    });
+
+    it('degrades to [] (best-effort, no throw) when the transcript-segment lookup fails', async () => {
+      const contextItemRepository = {
+        findById: vi.fn().mockResolvedValue({ id: 'ctx-sum-1', consultationId: 'consult-1', tenantId: 'tenant-1' }),
+        findTranscripts: vi.fn().mockResolvedValue([{ id: 'transcript-1' }]),
+      };
+      const transcriptSegmentRepository = { findByContextItem: vi.fn().mockRejectedValue(new Error('db down')) };
+      const { service, summaryMetaRepository } = buildService({ contextItemRepository, transcriptSegmentRepository });
+      summaryMetaRepository.findByContextItem.mockResolvedValue({
+        contextItemId: 'ctx-sum-1',
+        modelName: null,
+        entityFaithfulnessScore: null,
+        coverageScore: null,
+        ragTriadScore: null,
+        citationsMap: { segmentCitedIds: ['seg-1'] },
+        guardrailDecisions: null,
+        generatedAt: null,
+      });
+
+      const result = await service.getSummaryProvenance('ctx-sum-1');
+
+      expect(result.citedSegments).toEqual([]);
+    });
+
+    it('skips segment resolution entirely (no repo calls) when citationsMap cites nothing', async () => {
+      const contextItemRepository = { findById: vi.fn(), findTranscripts: vi.fn() };
+      const transcriptSegmentRepository = { findByContextItem: vi.fn() };
+      const { service, summaryMetaRepository } = buildService({ contextItemRepository, transcriptSegmentRepository });
+      summaryMetaRepository.findByContextItem.mockResolvedValue({
+        contextItemId: 'ctx-sum-1',
+        modelName: null,
+        entityFaithfulnessScore: null,
+        coverageScore: null,
+        ragTriadScore: null,
+        citationsMap: null,
+        guardrailDecisions: null,
+        generatedAt: null,
+      });
+
+      const result = await service.getSummaryProvenance('ctx-sum-1');
+
+      expect(result.citedSegments).toEqual([]);
+      expect(contextItemRepository.findById).not.toHaveBeenCalled();
+    });
   });
 });

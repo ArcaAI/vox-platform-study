@@ -22,6 +22,7 @@ const sdk = vi.hoisted(() => ({
     arcaSession: null as any,
     storeApi: null as any,
     userSettings: null as any,
+    liveSummary: null as any,
 }));
 /* eslint-enable @typescript-eslint/no-explicit-any -- end of the SDK-double block */
 
@@ -31,6 +32,7 @@ vi.mock('@arcaai/vox', () => ({
     useArcaSession: () => sdk.arcaSession,
     useStoreApi: () => sdk.storeApi,
     useUserSettings: () => sdk.userSettings,
+    useArcaLiveSummary: () => sdk.liveSummary,
 }));
 
 const CONSULTATIONS = [
@@ -108,6 +110,7 @@ beforeEach(() => {
     sdk.arcaSession = { close: vi.fn(), reopen: vi.fn() };
     sdk.storeApi = { getState: () => ({}) };
     sdk.userSettings = makeUserSettings();
+    sdk.liveSummary = { snapshot: null, status: 'idle', error: null, start: vi.fn(), stop: vi.fn() };
 });
 
 afterEach(() => {
@@ -139,7 +142,7 @@ describe('ConsultationDemoScreen (scribe workspace)', () => {
         expect(screen.getByText('P-702')).toBeTruthy();
 
         // Footer model selectors.
-        expect(screen.getByText('Transcription agent')).toBeTruthy();
+        expect(screen.getByText('Transcription Listener')).toBeTruthy();
         expect(screen.getByText('Note assistant')).toBeTruthy();
     });
 

@@ -1,0 +1,63 @@
+/**
+ * TASK-552 Lane C — LiveSessionColumn's transcript-review mode: once a
+ * persisted transcript is supplied (post-recording review) and capture is
+ * NOT active, the column renders it (with an optional highlighted +
+ * auto-scrolled cited span) instead of the SDK's live segment view.
+ */
+
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { LiveSessionColumn } from '../live-session-column';
+
+afterEach(cleanup);
+
+function baseProps(overrides: Partial<React.ComponentProps<typeof LiveSessionColumn>> = {}): React.ComponentProps<typeof LiveSessionColumn> {
+    return {
+        hasConsultation: true,
+        isRecording: false,
+        isCapturing: false,
+        captureBusy: false,
+        canRecord: true,
+        level: 0,
+        segments: [],
+        interim: '',
+        onStart: vi.fn(),
+        onStop: vi.fn(),
+        ...overrides,
+    };
+}
+
+describe('LiveSessionColumn', () => {
+    it('renders the live transcript view by default (no reviewTranscriptText)', () => {
+        render(<LiveSessionColumn {...baseProps()} />);
+        expect(screen.getByLabelText(/live consultation transcript/i)).toBeTruthy();
+        expect(screen.queryByLabelText(/persisted transcript/i)).toBeNull();
+    });
+
+    it('renders the persisted transcript in review mode once capture stops', () => {
+        render(<LiveSessionColumn {...baseProps({ reviewTranscriptText: 'Patient reports chest pain. History of hypertension.' })} />);
+        expect(screen.getByLabelText(/persisted transcript/i)).toBeTruthy();
+        expect(screen.getByText(/patient reports chest pain/i)).toBeTruthy();
+    });
+
+    it('highlights the cited span within the persisted transcript', () => {
+        const text = 'Patient reports chest pain. History of hypertension.';
+        render(<LiveSessionColumn {...baseProps({ reviewTranscriptText: text, reviewHighlight: { charStart: 0, charEnd: 27 } })} />);
+
+        const mark = document.querySelector('mark');
+        expect(mark?.textContent).toBe('Patient reports chest pain.');
+    });
+
+    it('keeps the live view while capture is active even if reviewTranscriptText is set', () => {
+        render(<LiveSessionColumn {...baseProps({ isCapturing: true, reviewTranscriptText: 'Some persisted transcript.' })} />);
+        expect(screen.getByLabelText(/live consultation transcript/i)).toBeTruthy();
+        expect(screen.queryByLabelText(/persisted transcript/i)).toBeNull();
+    });
+
+    it('renders the plain persisted transcript (no mark) when the highlight span is invalid', () => {
+        const text = 'Short text.';
+        render(<LiveSessionColumn {...baseProps({ reviewTranscriptText: text, reviewHighlight: { charStart: 5, charEnd: 999 } })} />);
+        expect(document.querySelector('mark')).toBeNull();
+        expect(screen.getByText(text)).toBeTruthy();
+    });
+});

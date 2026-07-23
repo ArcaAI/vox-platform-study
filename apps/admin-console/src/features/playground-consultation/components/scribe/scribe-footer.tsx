@@ -1,11 +1,15 @@
 'use client';
 
 /**
- * Scribe workspace footer (TASK-543): the transcription-agent (ASR
+ * Scribe workspace footer (TASK-543): the transcription-Listener (ASR
  * pipeline) and note-assistant model selectors, plus real per-session metric
  * cards. Metrics are REAL or an em-dash — throughput/latency come from the
  * live-summary SSE stats (`useLiveMetrics`); bandwidth stays em-dash until the
  * SDK uplink-bitrate signal lands (TASK-543 SDK follow-up), never fabricated.
+ *
+ * Naming (TASK-547 Family 2 clinician vocabulary): the ASR pipeline is the
+ * "Listener" capability — never labeled an "agent" on this clinician-facing
+ * surface.
  */
 
 import { ModelSelector, type ModelOption } from '@arcaai/ui/components/custom/model-selector';
@@ -55,7 +59,7 @@ export function ScribeFooter({
     return (
         <footer className="bg-card flex shrink-0 flex-wrap items-stretch gap-3 border-t p-3">
             <div className="bg-background min-w-52 flex-1 rounded-lg border p-2.5">
-                <ModelSelector label="Transcription agent" models={transcriptionModels} selectedModelId={selectedTranscriptionId} onChange={onTranscriptionChange} isLoading={transcriptionLoading} />
+                <ModelSelector label="Transcription Listener" models={transcriptionModels} selectedModelId={selectedTranscriptionId} onChange={onTranscriptionChange} isLoading={transcriptionLoading} />
             </div>
             <div className="bg-background min-w-52 flex-1 rounded-lg border p-2.5">
                 <ModelSelector label="Note assistant" models={noteModels} selectedModelId={selectedNoteId} onChange={onNoteChange} />

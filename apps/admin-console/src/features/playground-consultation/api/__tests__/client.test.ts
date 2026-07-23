@@ -16,6 +16,8 @@ import {
     getConsultationJob,
     getLatestSummary,
     getNamedEntities,
+    getSummaryProvenance,
+    getTranscriptions,
     harnessAssuranceStreamPath,
     harnessProgressStreamPath,
     listAudioPipelines,
@@ -59,6 +61,8 @@ describe('playgroundConsultationKeys', () => {
         expect(playgroundConsultationKeys.namedEntities('c-1')).not.toEqual(playgroundConsultationKeys.latestSummary('c-1'));
         expect(playgroundConsultationKeys.namedEntities('c-1', 'single')).not.toEqual(playgroundConsultationKeys.namedEntities('c-1', 'chain'));
         expect(playgroundConsultationKeys.job('j-1')).not.toEqual(playgroundConsultationKeys.job('j-2'));
+        expect(playgroundConsultationKeys.transcriptions('c-1')).not.toEqual(playgroundConsultationKeys.transcriptions('c-2'));
+        expect(playgroundConsultationKeys.provenance('c-1', 'ctx-1')).not.toEqual(playgroundConsultationKeys.provenance('c-1', 'ctx-2'));
     });
 
     it('roots every key under the feature namespace for coarse invalidation', () => {
@@ -188,6 +192,28 @@ describe('playground consultation client', () => {
         ]);
         expect(calls[0].body).toEqual({});
         expect(calls[1].body).toEqual({ overrideSafetyFlag: true });
+    });
+
+    it('reads persisted transcripts (TASK-552 Lane C evidence source)', async () => {
+        const calls = installFetchMock(() => Response.json([{ id: 'ctx-t1', type: 'TRANSCRIPT', content: 'Patient reports chest pain.' }]));
+        const transcripts = await getTranscriptions('c-1');
+        expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['GET /api/hope/consultations/c-1/context/transcriptions']);
+        expect(transcripts[0].content).toBe('Patient reports chest pain.');
+    });
+
+    it('reads summary provenance including cited segments (TASK-552 Lane C)', async () => {
+        const calls = installFetchMock(() =>
+            Response.json({
+                contextItemId: 'ctx-9',
+                modelName: 'hope-scribe-v2',
+                citationsMap: { segmentCitedIds: ['seg-1'] },
+                citedSegments: [{ id: 'seg-1', idx: 0, t0Ms: 0, t1Ms: 3000, speaker: 'patient', charStart: 0, charEnd: 27 }],
+            }),
+        );
+        const provenance = await getSummaryProvenance('c-1', 'ctx-9');
+        expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['GET /api/hope/consultations/c-1/summary/ctx-9/provenance']);
+        expect(provenance.citedSegments).toHaveLength(1);
+        expect(provenance.citedSegments[0].speaker).toBe('patient');
     });
 
     it('escapes path params', async () => {

@@ -296,15 +296,27 @@ class ApiClient:
                 raise ApiServiceError(f"apps/api {path} failed: {exc}") from exc
             return cast("dict[str, Any]", resp.json())
 
-    async def get_policy(self, tenant_id: str) -> dict[str, Any]:
+    async def get_policy(
+        self, tenant_id: str, consultation_id: str | None = None
+    ) -> dict[str, Any]:
         """Read the effective harness policy for ``tenant_id`` (worker fetch).
 
         Returns the raw camelCase ``HarnessPolicyResponse`` JSON; the ``fetch_policy``
         activity maps it onto :class:`~harness.temporal.models.HarnessPolicy`. Raises
         :class:`ApiServiceError` on any transport/HTTP error so the workflow can fall
         back to the code defaults.
+
+        TASK-550 — when ``consultation_id`` is supplied it is threaded onto the query
+        so the gateway overlays the consultation's department default
+        ``DepartmentAgent`` tenant-tier ``harnessOverrides`` (most specific wins). The
+        response SHAPE is unchanged (same keys, different values, plus an additive
+        ``overridesSource`` provenance field). Omitted ⇒ byte-identical pre-TASK-550
+        request, so other gateway callers are unaffected.
         """
-        return await self._get("/policy", {"tenantId": tenant_id})
+        params: dict[str, Any] = {"tenantId": tenant_id}
+        if consultation_id:
+            params["consultationId"] = consultation_id
+        return await self._get("/policy", params)
 
     async def resolve_mcp_token(self, auth_ref: str) -> str | None:
         """Resolve an MCP server credential by its registered ``authRef``.

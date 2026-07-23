@@ -67,4 +67,5 @@ export * from './UserSettingsEntity';
 export * from './UserVoiceProfileEntity';
 export * from './WebhookEntity';
 export * from './WebhookRunHistoryEntity';
+export * from './DepartmentAgentEntity';
 

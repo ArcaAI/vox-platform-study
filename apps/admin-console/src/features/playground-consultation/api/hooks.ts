@@ -12,6 +12,8 @@ import {
     getConsultationJob,
     getLatestSummary,
     getNamedEntities,
+    getSummaryProvenance,
+    getTranscriptions,
     harnessAssuranceStreamPath,
     harnessProgressStreamPath,
     listAudioPipelines,
@@ -50,6 +52,30 @@ export function useNamedEntities(consultationId: string | null, scope: 'single' 
         queryKey: playgroundConsultationKeys.namedEntities(consultationId ?? 'none', scope),
         queryFn: () => getNamedEntities(consultationId as string, scope),
         enabled: enabled && !!consultationId,
+    });
+}
+
+/**
+ * Persisted transcripts for the consultation (TASK-552 Lane C) — the
+ * evidence panel's snippet/highlight source. Distinct from the SDK's LIVE,
+ * in-browser transcript segments (`audio.transcriptSegments`): this is the
+ * decrypted, persisted TRANSCRIPT context item content, fetched once a draft
+ * exists for review/sign-off.
+ */
+export function useTranscriptions(consultationId: string | null, enabled = true) {
+    return useQuery({
+        queryKey: playgroundConsultationKeys.transcriptions(consultationId ?? 'none'),
+        queryFn: () => getTranscriptions(consultationId as string),
+        enabled: enabled && !!consultationId,
+    });
+}
+
+/** Citation + sensor provenance for a generated summary (TASK-552 Lane C evidence panel). */
+export function useSummaryProvenance(consultationId: string | null, contextItemId: string | null, enabled = true) {
+    return useQuery({
+        queryKey: playgroundConsultationKeys.provenance(consultationId ?? 'none', contextItemId ?? 'none'),
+        queryFn: () => getSummaryProvenance(consultationId as string, contextItemId as string),
+        enabled: enabled && !!consultationId && !!contextItemId,
     });
 }
 

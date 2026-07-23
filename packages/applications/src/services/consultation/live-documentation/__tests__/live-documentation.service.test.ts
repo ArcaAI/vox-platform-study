@@ -57,6 +57,11 @@ interface BuildDepsOpts {
   // Vault-Transit encryption service — undefined by default (matches every
   // other buildDeps fixture's soft-no-op posture in dev/test).
   secretsService?: any;
+  // TASK-552 Lane A — nlp.ner model-injection resolver deps. Both undefined by
+  // default (matches production's optional-DI absent-service posture): the
+  // resolver's own "not wired" guard short-circuits before touching `cls`.
+  aiTaskDefaultService?: any;
+  cls?: any;
 }
 
 function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
@@ -99,6 +104,8 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
   };
 
   const secretsService = opts.secretsService;
+  const aiTaskDefaultService = opts.aiTaskDefaultService;
+  const cls = opts.cls;
 
   const service = new LiveDocumentationService(
     httpMock as any,
@@ -109,6 +116,10 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
     contextItemRepository as any,
     harnessPolicyService as any,
     secretsService as any,
+    undefined, // trajectoryService
+    undefined, // effectiveSettings
+    aiTaskDefaultService as any,
+    cls as any,
   );
 
   return { service, cacheService, redisSubscriber, audioBridge, contextItemRepository, httpMock, harnessPolicyService, secretsService };
@@ -243,6 +254,55 @@ describe('LiveDocumentationService', () => {
     });
   });
 
+  // ------------------------------------------------------------------
+  // TASK-552 Lane A — nlp.ner AiTaskDefault model injection (fail-open)
+  // ------------------------------------------------------------------
+  describe('nlp.ner model injection (TASK-552 Lane A)', () => {
+    function makeCls() {
+      return { run: vi.fn((callback: () => unknown) => callback()), set: vi.fn(), get: vi.fn() };
+    }
+
+    it('injects the effective nlp.ner model_name when the AiTaskDefault service resolves one', async () => {
+      const aiTaskDefaultService = {
+        getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }),
+      };
+      const cls = makeCls();
+      const { service, httpMock } = buildDeps(buildHttpMock(), { aiTaskDefaultService, cls });
+      service.start({ consultationId: CID, tenantId: TENANT });
+      service.ingestSegment(CID, { text: 'hello', isFinal: true, segmentId: 's1' });
+      await service.flush(CID);
+
+      const nlpCall = httpMock.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/classify/tokens'))!;
+      expect((nlpCall[1] as { model_name?: string }).model_name).toBe('blaze999/Medical-NER');
+    });
+
+    it('posts without model_name (fail-open) when AiTaskDefault resolution fails', async () => {
+      const aiTaskDefaultService = {
+        getEffective: vi.fn().mockRejectedValue(new Error('registry unavailable')),
+      };
+      const cls = makeCls();
+      const { service, httpMock } = buildDeps(buildHttpMock(), { aiTaskDefaultService, cls });
+      service.start({ consultationId: CID, tenantId: TENANT });
+      service.ingestSegment(CID, { text: 'hello', isFinal: true, segmentId: 's1' });
+      const payload = await service.flush(CID);
+
+      // The flush still succeeds — a registry hiccup never blocks the live plane.
+      expect(payload).not.toBeNull();
+      const nlpCall = httpMock.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/classify/tokens'))!;
+      expect((nlpCall[1] as { model_name?: string }).model_name).toBeUndefined();
+    });
+
+    it('posts without model_name when CLS is not wired (legacy behavior preserved)', async () => {
+      const { service, httpMock } = buildDeps(); // no cls, no aiTaskDefaultService
+      service.start({ consultationId: CID, tenantId: TENANT });
+      service.ingestSegment(CID, { text: 'hello', isFinal: true, segmentId: 's1' });
+      await service.flush(CID);
+
+      const nlpCall = httpMock.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/classify/tokens'))!;
+      expect((nlpCall[1] as { model_name?: string }).model_name).toBeUndefined();
+    });
+  });
+
   describe('structured S/O/A/P sections (follow-up 1)', () => {
     const SOAP = [
       'Subjective: Patient reports chest pain since this morning.',
@@ -363,6 +423,20 @@ describe('LiveDocumentationService', () => {
         provider: 'vllm',
         model: 'live-medgemma',
       });
+    });
+
+    // TASK-552 Lane B — the live plane routes through the `smr.live`
+    // AiTaskDefault key (not `smr.finalize`); surface that provenance on the
+    // flush's stats so the console/TASK-543 stat cards can show WHICH tier
+    // (and therefore which admin-managed model) served this flush.
+    it('stamps metadata.stats.task_key as smr.live (TASK-552 Lane B provenance)', async () => {
+      const { service } = buildDeps(statsHttpMock(POPULATED_STATS));
+      service.start({ consultationId: CID, tenantId: TENANT });
+      service.ingestSegment(CID, { text: 'hello', isFinal: true, segmentId: 's1' });
+
+      const payload = await service.flush(CID);
+
+      expect(payload!.metadata?.stats?.task_key).toBe('smr.live');
     });
 
     it('publishes the stats to the live-summary channel', async () => {

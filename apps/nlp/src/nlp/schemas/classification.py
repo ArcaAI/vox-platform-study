@@ -40,9 +40,36 @@ class TokenClassificationRequest(BaseModel):
     model_path: str | None = Field(default=None, description="Optional local weights directory (gateway-injected AiModel.localPath)")
 
 
+class Vitals(BaseModel):
+    """Structured vital signs deterministically extracted from clinical text.
+
+    Every field is optional and null-safe: an un-parsed or out-of-range value
+    stays ``None`` (never fabricated). Blood pressure is reported as separate
+    systolic/diastolic integers.
+    """
+
+    systolic: int | None = Field(default=None, description="Systolic blood pressure (mmHg)")
+    diastolic: int | None = Field(default=None, description="Diastolic blood pressure (mmHg)")
+    heart_rate: int | None = Field(default=None, description="Heart rate (bpm)")
+    spo2: int | None = Field(default=None, description="Oxygen saturation (%)")
+    temperature_c: float | None = Field(default=None, description="Temperature (°C)")
+    weight_kg: float | None = Field(default=None, description="Weight (kg)")
+
+    def has_any(self) -> bool:
+        """True when at least one vital was extracted."""
+        return any(
+            value is not None
+            for value in (self.systolic, self.diastolic, self.heart_rate, self.spo2, self.temperature_c, self.weight_kg)
+        )
+
+
 class TokenClassificationResponse(BaseModel):
     entities: list[Entity] = Field(..., description="Extracted entities")
     model_version: str = Field(..., description="Token classification model version")
+    vitals: Vitals | None = Field(
+        default=None,
+        description="Deterministically extracted vital signs (BP/HR/SpO2/temp/weight); None when none were found.",
+    )
 
 
 # WebSocket

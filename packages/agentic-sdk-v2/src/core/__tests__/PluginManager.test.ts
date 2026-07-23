@@ -47,6 +47,19 @@ vi.mock('@arcaai/stt', () => ({
     })),
 }));
 
+// TASK-545: local (in-browser) transcription is disabled platform-wide by
+// default (`LOCAL_TRANSCRIPTION_ENABLED = false` in `../constants`). This
+// file exercises PluginManager lifecycle/state-tracking behavior with several
+// fixtures that configure `stt` with no backend transport — irrelevant to
+// what these tests actually assert — so force the flag back on rather than
+// threading an unrelated transport through every fixture. See
+// `TranscriptionPipeline.localTranscriptionDisabled.task545.test.ts` for the
+// shipped (flag OFF) default.
+vi.mock('../constants', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../constants')>();
+  return { ...actual, LOCAL_TRANSCRIPTION_ENABLED: true };
+});
+
 // Mock @arcaai/med-ner
 const mockMedNERProcessor = {
     init: vi.fn().mockResolvedValue(undefined),

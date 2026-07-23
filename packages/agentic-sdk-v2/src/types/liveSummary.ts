@@ -35,6 +35,16 @@ export interface LiveSummaryEntity {
   end?: number;
 }
 
+/** Structured vitals deterministically extracted by the NLP service; fields absent when unmatched. */
+export interface LiveSummaryVitals {
+  systolic?: number;
+  diastolic?: number;
+  heartRate?: number;
+  spo2?: number;
+  temperatureC?: number;
+  weightKg?: number;
+}
+
 /** Full-state live running-SOAP snapshot. */
 export interface LiveSummarySnapshot {
   consultationId: string;
@@ -43,6 +53,8 @@ export interface LiveSummarySnapshot {
   entities: LiveSummaryEntity[];
   /** Per-flush metadata envelope (`metadata.stats` = generation stats). */
   metadata?: { stats?: LiveSummaryStats | null } | null;
+  /** Structured vitals (accumulated across flushes); absent until one is seen. */
+  vitals?: LiveSummaryVitals;
   updatedAt: string;
   /** Terminal event — recording stopped; the stream closes after this. */
   closed?: boolean;

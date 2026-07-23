@@ -1473,4 +1473,107 @@ Chinese: 發燒 (fever)
             );
         });
     });
+
+    // ===========================================================================
+    // TASK-552 Lane A — nlp.ner AiTaskDefault model injection (fail-open)
+    // ===========================================================================
+
+    describe('nlp.ner model injection (TASK-552 Lane A)', () => {
+        it('injects the effective nlp.ner model_name when the AiTaskDefault service resolves one', async () => {
+            const aiTaskDefaultService = {
+                getEffective: vi.fn().mockResolvedValue({
+                    model: { sourceUri: 'blaze999/Medical-NER' },
+                }),
+            };
+            const processorWithResolver = new NerProcessor(
+                mockJobService as any,
+                mockContextItemRepository as any,
+                mockNamedEntityRepository as any,
+                mockHttpService as any,
+                mockConfigService as any,
+                mockEventEmitter as any,
+                mockClsService as any,
+                undefined,
+                aiTaskDefaultService as any,
+            );
+
+            mockContextItemRepository.findById.mockResolvedValue(
+                createMockContextItem({ content: 'Test content' }),
+            );
+            mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
+
+            await processorWithResolver.process(createMockJob({
+                jobId: 'job-model-inject',
+                contextItemId: 'ctx-item-123',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+            }));
+
+            expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+                'http://localhost:8864/api/v1/classify/tokens',
+                { text: 'Test content', model_name: 'blaze999/Medical-NER' },
+                { timeout: 60000 },
+            );
+        });
+
+        it('posts without model_name (fail-open) when AiTaskDefault resolution fails', async () => {
+            const aiTaskDefaultService = {
+                getEffective: vi.fn().mockRejectedValue(new Error('registry unavailable')),
+            };
+            const processorWithResolver = new NerProcessor(
+                mockJobService as any,
+                mockContextItemRepository as any,
+                mockNamedEntityRepository as any,
+                mockHttpService as any,
+                mockConfigService as any,
+                mockEventEmitter as any,
+                mockClsService as any,
+                undefined,
+                aiTaskDefaultService as any,
+            );
+
+            mockContextItemRepository.findById.mockResolvedValue(
+                createMockContextItem({ content: 'Test content' }),
+            );
+            mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
+
+            const result = await processorWithResolver.process(createMockJob({
+                jobId: 'job-model-fail-open',
+                contextItemId: 'ctx-item-123',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+            }));
+
+            // NER extraction succeeds — a registry hiccup never blocks clinical NER.
+            expect(result.contextItemId).toBe('ctx-item-123');
+            expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+                'http://localhost:8864/api/v1/classify/tokens',
+                { text: 'Test content' },
+                { timeout: 60000 },
+            );
+        });
+
+        it('posts without model_name when no AiTaskDefault service is wired (legacy behavior preserved)', async () => {
+            mockContextItemRepository.findById.mockResolvedValue(
+                createMockContextItem({ content: 'Test content' }),
+            );
+            mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
+
+            await processor.process(createMockJob({
+                jobId: 'job-no-resolver',
+                contextItemId: 'ctx-item-123',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+            }));
+
+            expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+                'http://localhost:8864/api/v1/classify/tokens',
+                { text: 'Test content' },
+                { timeout: 60000 },
+            );
+        });
+    });
 });

@@ -12,6 +12,7 @@ import { HarnessGatewayServiceModule } from '../harness/harness-gateway.service.
 import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
 import { EntitlementsServiceModule } from '../../entitlements/entitlements.service.module';
 import { AgentTrajectoryServiceModule } from '../../agent-trajectory/agent-trajectory.service.module';
+import { AiTaskDefaultServiceModule } from '../../ai-task-default/ai-task-default.service.module';
 
 @Module({
   // HarnessAuditServiceModule supplies the WORM audit trail
@@ -19,6 +20,8 @@ import { AgentTrajectoryServiceModule } from '../../agent-trajectory/agent-traje
   // HarnessGatewayServiceModule (Lane G) supplies the outbound sign-off signal.
   // HarnessPolicyServiceModule supplies the SMR-selection resolver.
   // EntitlementsServiceModule supplies the monthlySummaries meter.
+  // AiTaskDefaultServiceModule supplies the nlp.ner model-injection resolver
+  // for extractEntities (TASK-552 Lane A).
   imports: [
     CommonServiceModule,
     CoreDatabaseModule,
@@ -32,6 +35,7 @@ import { AgentTrajectoryServiceModule } from '../../agent-trajectory/agent-traje
     // §2C/§2D — resolves the @Optional IAgentTrajectoryService emitter
     // dep so a summary generation records its LLM_CALL trajectory step.
     AgentTrajectoryServiceModule,
+    AiTaskDefaultServiceModule,
   ],
   providers: [
     {
