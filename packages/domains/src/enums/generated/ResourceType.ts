@@ -56,4 +56,7 @@ export enum ResourceType {
   // resourceType.enum-parity.test.ts).
   GateEditExemplar = 'GateEditExemplar',
   DepartmentAgent = 'DepartmentAgent',
+  // Eval run (TASK-549): the eval-gated-promotion runner broadcasts
+  // ResourceCreated per persisted EvalRun. Parity with audit.prisma.
+  EvalRun = 'EvalRun',
 }

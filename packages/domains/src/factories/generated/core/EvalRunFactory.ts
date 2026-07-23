@@ -13,7 +13,9 @@ export interface CreateEvalRunProps extends BaseEntityFactoryCreateProps {
   modelVersion?: IEvalRunEntity['modelVersion'];
   promptTemplateId?: IEvalRunEntity['promptTemplateId'];
   promptVersion?: IEvalRunEntity['promptVersion'];
+  promptVersionNumber?: IEvalRunEntity['promptVersionNumber'];
   judgeModel?: IEvalRunEntity['judgeModel'];
+  triggerType?: IEvalRunEntity['triggerType'];
   status?: IEvalRunEntity['status'];
   startedAt?: IEvalRunEntity['startedAt'];
   completedAt?: IEvalRunEntity['completedAt'];
@@ -46,7 +48,9 @@ export class EvalRunFactory {
       modelVersion: props.modelVersion ?? null,
       promptTemplateId: props.promptTemplateId ?? null,
       promptVersion: props.promptVersion ?? null,
+      promptVersionNumber: props.promptVersionNumber ?? null,
       judgeModel: props.judgeModel ?? null,
+      triggerType: props.triggerType ?? null,
       status: props.status ?? null,
       startedAt: props.startedAt ?? null,
       completedAt: props.completedAt ?? null,

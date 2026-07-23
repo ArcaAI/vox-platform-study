@@ -13,7 +13,9 @@ export class EvalRun extends BaseTenantDataModel {
   public modelVersion: string | null;
   public promptTemplateId: string | null;
   public promptVersion: string | null;
+  public promptVersionNumber: number | null;
   public judgeModel: string | null;
+  public triggerType: string | null;
   public status: string | null;
   public startedAt: Date | null;
   public completedAt: Date | null;
@@ -39,7 +41,9 @@ export class EvalRun extends BaseTenantDataModel {
     this.modelVersion = data.modelVersion;
     this.promptTemplateId = data.promptTemplateId;
     this.promptVersion = data.promptVersion;
+    this.promptVersionNumber = data.promptVersionNumber;
     this.judgeModel = data.judgeModel;
+    this.triggerType = data.triggerType;
     this.status = data.status;
     this.startedAt = data.startedAt;
     this.completedAt = data.completedAt;

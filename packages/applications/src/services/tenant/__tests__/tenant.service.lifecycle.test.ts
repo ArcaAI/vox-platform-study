@@ -40,6 +40,8 @@ function buildService(): TenantService {
     mockClsService as never,
     stub, // aiModelRepository
     stub, // asrPipelineVersionRepository
+    stub, // departmentAgentRepository
+    stub, // promptVersionRepository
   );
 }
 

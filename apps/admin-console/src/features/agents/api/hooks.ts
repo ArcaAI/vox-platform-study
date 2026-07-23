@@ -23,24 +23,28 @@ import {
     getTemplate,
     getUsageAnalytics,
     getUsageStats,
+    listAgentEvalRuns,
     listDepartmentAgents,
     listDepartments,
+    listEvalGoldenSets,
     listTemplates,
     listUsageRecords,
     listVersions,
     pinDepartmentAgent,
+    runGoldenSetEval,
     setDefaultDepartmentAgent,
     testTemplate,
     updateDepartmentAgent,
     updateTemplate,
 } from './client';
-import { agentKeys, departmentAgentKeys } from './keys';
+import { agentEvalKeys, agentKeys, departmentAgentKeys } from './keys';
 import type {
     AssignDepartmentRequest,
     CreateDepartmentAgentRequest,
     CreateTemplateRequest,
     DepartmentAgent,
     ListDepartmentAgentsParams,
+    ListEvalGoldenSetsParams,
     ListTemplatesParams,
     ListUsageRecordsParams,
     TestTemplateRequest,
@@ -224,5 +228,38 @@ export function usePinDepartmentAgent() {
     return useMutation({
         mutationFn: ({ id, versionNumber }: { id: string; versionNumber: number | null }) => pinDepartmentAgent(id, versionNumber),
         onSuccess: invalidate,
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Eval-gated promotion (TASK-549) — golden-set picker + run-now for the
+// Governance tab's Eval panel. See client.ts for the rationale on why these
+// duplicate (rather than import) the harness-ops feature's own copies.
+// ---------------------------------------------------------------------------
+
+/** Golden sets for the Settings-tab picker and the Eval panel's name lookup. */
+export function useEvalGoldenSets(params?: ListEvalGoldenSetsParams) {
+    return useQuery({ queryKey: agentEvalKeys.goldenSets(params), queryFn: () => listEvalGoldenSets(params) });
+}
+
+/**
+ * Runs for ONE golden set (the Eval panel's "last runs" list) — disabled
+ * until an agent with an attached golden set is selected.
+ */
+export function useAgentEvalRuns(goldenSetId: string | null, limit = 5) {
+    const params = { goldenSetId: goldenSetId ?? undefined, limit };
+    return useQuery({
+        queryKey: agentEvalKeys.evalRuns(params),
+        queryFn: () => listAgentEvalRuns(params),
+        enabled: !!goldenSetId,
+    });
+}
+
+/** Synchronous manual run-now — invalidates the eval-gated-promotion root so the "last runs" list refetches. */
+export function useRunGoldenSetEval() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (goldenSetId: string) => runGoldenSetEval(goldenSetId),
+        onSuccess: () => void queryClient.invalidateQueries({ queryKey: agentEvalKeys.root }),
     });
 }

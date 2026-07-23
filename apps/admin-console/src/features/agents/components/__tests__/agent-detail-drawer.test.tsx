@@ -124,6 +124,11 @@ function defaultHandler(currentAgent: DepartmentAgent, call: RecordedCall): Resp
     if (call.method === 'GET' && path === `/api/hope/admin/prompt-templates/${currentAgent.promptTemplateId}/versions`) {
         return Response.json([version(5), version(4, { changedBy: 'minh.tran' }), version(3, { changedBy: 'dr.chen' })]);
     }
+    // Settings-tab golden-set picker (TASK-549) — the Eval panel's own suite
+    // covers real sets; here an empty page is enough to unblock the query.
+    if (call.method === 'GET' && path === '/api/hope/admin/harness/golden-sets') {
+        return Response.json({ items: [], total: 0 });
+    }
     return undefined;
 }
 
@@ -180,6 +185,74 @@ describe('DepartmentAgentDetailDrawer', () => {
         const patch = calls.find((call) => call.method === 'PATCH');
         expect(patch?.headers['if-match']).toBe('"2"');
         expect(await screen.findByText(/changed by another admin after you loaded it/i)).toBeDefined();
+    });
+
+    it('attaches a golden set (TASK-549 eval gate) via the Settings-tab picker', async () => {
+        const calls = stubFetch((call) => {
+            if (call.method === 'GET' && pathOf(call) === '/api/hope/admin/harness/golden-sets') {
+                return Response.json({
+                    items: [{ id: 'gs-1', name: 'GI consultations golden set', description: null, pinnedVersion: null }],
+                    total: 1,
+                });
+            }
+            if (call.method === 'PATCH' && pathOf(call) === '/api/hope/admin/department-agents/da-1') {
+                return Response.json(agent({ goldenSetId: 'gs-1', version: 3 }), { headers: { etag: '"3"' } });
+            }
+            return defaultHandler(agent(), call);
+        });
+        renderWithProviders(
+            <DepartmentAgentDetailDrawer
+                agentId="da-1"
+                creating={false}
+                departmentLabel="CARD"
+                onOpenChange={() => {}}
+                onCreated={() => {}}
+                onRequestDelete={() => {}}
+                onSetDefault={() => {}}
+            />,
+        );
+
+        await screen.findByRole('textbox', { name: 'Name' });
+        await chooseSelectOption('Golden set', 'GI consultations golden set');
+        fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+        await waitFor(() => expect(calls.some((call) => call.method === 'PATCH')).toBe(true));
+        const patch = calls.find((call) => call.method === 'PATCH');
+        expect((patch?.body as { goldenSetId?: string }).goldenSetId).toBe('gs-1');
+    });
+
+    it('detaches a golden set by sending goldenSetId: null', async () => {
+        const calls = stubFetch((call) => {
+            if (call.method === 'GET' && pathOf(call) === '/api/hope/admin/harness/golden-sets') {
+                return Response.json({
+                    items: [{ id: 'gs-1', name: 'GI consultations golden set', description: null, pinnedVersion: null }],
+                    total: 1,
+                });
+            }
+            if (call.method === 'PATCH' && pathOf(call) === '/api/hope/admin/department-agents/da-1') {
+                return Response.json(agent({ goldenSetId: undefined, version: 3 }), { headers: { etag: '"3"' } });
+            }
+            return defaultHandler(agent({ goldenSetId: 'gs-1' }), call);
+        });
+        renderWithProviders(
+            <DepartmentAgentDetailDrawer
+                agentId="da-1"
+                creating={false}
+                departmentLabel="CARD"
+                onOpenChange={() => {}}
+                onCreated={() => {}}
+                onRequestDelete={() => {}}
+                onSetDefault={() => {}}
+            />,
+        );
+
+        await screen.findByRole('textbox', { name: 'Name' });
+        await chooseSelectOption('Golden set', 'None — eval gate off');
+        fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+        await waitFor(() => expect(calls.some((call) => call.method === 'PATCH')).toBe(true));
+        const patch = calls.find((call) => call.method === 'PATCH');
+        expect((patch?.body as { goldenSetId?: string | null }).goldenSetId).toBeNull();
     });
 
     it('pins to a chosen version via POST :id/pin and shows the new pin state', async () => {

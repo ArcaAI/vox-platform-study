@@ -11,12 +11,17 @@
 import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, request, versionFromEtag } from '@/shared/api';
 import type { Paginated, WithEtag } from '@/shared/api';
 import type {
+    AgentEvalRunList,
     AssignDepartmentRequest,
     CreateDepartmentAgentRequest,
     CreateTemplateRequest,
     Department,
     DepartmentAgent,
+    EvalGoldenSetList,
+    EvalRunTrigger,
+    ListAgentEvalRunsParams,
     ListDepartmentAgentsParams,
+    ListEvalGoldenSetsParams,
     ListTemplatesParams,
     ListUsageRecordsParams,
     PromptTemplate,
@@ -183,4 +188,28 @@ export function setDefaultDepartmentAgent(id: string): Promise<DepartmentAgent> 
  */
 export function pinDepartmentAgent(id: string, versionNumber: number | null): Promise<DepartmentAgent> {
     return postJson(`${departmentAgentPath(id)}/pin`, { versionNumber });
+}
+
+// ---------------------------------------------------------------------------
+// Eval-gated promotion (TASK-549) — golden-set picker + scoped eval-run read
+// + run-now for the Governance tab's Eval panel. Golden-set CRUD and the full
+// eval-runs grid stay on `/harness/observability` (one authoritative editor
+// per resource, rule 13) — this is a read-mostly, agent-scoped view.
+// ---------------------------------------------------------------------------
+
+const HARNESS_BASE = 'admin/harness';
+
+/** NOTE: `page` is ONE-based on this endpoint (unlike the platform's 0-based lists). */
+export function listEvalGoldenSets(params?: ListEvalGoldenSetsParams): Promise<EvalGoldenSetList> {
+    return getJson(`${HARNESS_BASE}/golden-sets`, params);
+}
+
+/** NOTE: `page` is ONE-based on this endpoint (unlike the platform's 0-based lists). */
+export function listAgentEvalRuns(params?: ListAgentEvalRunsParams): Promise<AgentEvalRunList> {
+    return getJson(`${HARNESS_BASE}/eval-runs`, params);
+}
+
+/** Synchronous run-now — tenant admins run their own sets; a SYSTEM set is global-admin-only. */
+export function runGoldenSetEval(goldenSetId: string): Promise<EvalRunTrigger> {
+    return postJson(`${HARNESS_BASE}/golden-sets/${encodeURIComponent(goldenSetId)}/run`);
 }

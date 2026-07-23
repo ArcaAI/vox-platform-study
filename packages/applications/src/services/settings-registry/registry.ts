@@ -7,6 +7,7 @@
 // effective-config resolver.
 
 import { AGENTIC_CONTEXT_SETTINGS } from './descriptors/agentic-context.descriptors';
+import { AGENTIC_EVAL_SETTINGS } from './descriptors/agentic-eval.descriptors';
 import { ENTITLEMENT_SETTINGS } from './descriptors/entitlements.descriptors';
 import { MODEL_DEFAULT_SETTINGS } from './descriptors/model-defaults.descriptors';
 import { PIPELINE_SETTINGS } from './descriptors/pipeline.descriptors';
@@ -23,6 +24,8 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   ...MODEL_DEFAULT_SETTINGS,
   // agentic context-management strategy knobs.
   ...AGENTIC_CONTEXT_SETTINGS,
+  // agentic eval promotion-gate mode (block | warn | off).
+  ...AGENTIC_EVAL_SETTINGS,
   // The formerly orphaned platform-ops keys (rate limiting, audit
   // retention, agent-trajectory retention). Registered at their CURRENT runtime
   // defaults, so cataloging them changes no behaviour.

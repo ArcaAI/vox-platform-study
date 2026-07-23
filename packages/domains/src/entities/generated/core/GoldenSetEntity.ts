@@ -11,18 +11,21 @@ export interface IGoldenSetEntity extends IBaseTenantEntity {
   name: string;
   description?: string | null;
   pinnedVersion?: string | null;
+  departmentId?: string | null;
 }
 
 export class GoldenSetEntity extends BaseTenantEntity {
   private _name: IGoldenSetEntity['name'];
   private _description?: IGoldenSetEntity['description'];
   private _pinnedVersion?: IGoldenSetEntity['pinnedVersion'];
+  private _departmentId?: IGoldenSetEntity['departmentId'];
 
   constructor(init: IGoldenSetEntity) {
     super(init);
     this._name = init.name;
     this._description = init.description;
     this._pinnedVersion = init.pinnedVersion;
+    this._departmentId = init.departmentId;
   }
 
   get name(): IGoldenSetEntity['name'] {
@@ -47,6 +50,14 @@ export class GoldenSetEntity extends BaseTenantEntity {
 
   set pinnedVersion(value: IGoldenSetEntity['pinnedVersion']) {
     this.setProperty('pinnedVersion', value);
+  }
+
+  get departmentId(): IGoldenSetEntity['departmentId'] {
+    return this._departmentId;
+  }
+
+  set departmentId(value: IGoldenSetEntity['departmentId']) {
+    this.setProperty('departmentId', value);
   }
 
   public override validate(): void {

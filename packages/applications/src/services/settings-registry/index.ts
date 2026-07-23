@@ -10,5 +10,6 @@ export * from './descriptors/tts.descriptors';
 export * from './descriptors/entitlements.descriptors';
 export * from './descriptors/model-defaults.descriptors';
 export * from './descriptors/agentic-context.descriptors';
+export * from './descriptors/agentic-eval.descriptors';
 export * from './descriptors/platform-ops.descriptors';
 export * from './settings-registry-write.service';

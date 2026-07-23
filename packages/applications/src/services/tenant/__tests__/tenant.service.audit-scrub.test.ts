@@ -79,6 +79,9 @@ describe('TenantService — audit-log secret scrubbing (Phase 0 Item 4)', () => 
       { findAll: async () => [] } as never,
       // Pipeline-version clone repo (unused by this suite).
       { create: async () => ({}) } as never,
+      // DepartmentAgentRepository + PromptVersionRepository (unused by this suite).
+      { create: async () => ({}) } as never,
+      { create: async () => ({}) } as never,
     );
   });
 

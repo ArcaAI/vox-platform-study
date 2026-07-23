@@ -187,6 +187,9 @@ enum ResourceType {
   // prompt template at a pinned/tracked version. Emitted as audit
   // `resourceType` by DepartmentAgentService.broadcastSysEvent.
   DepartmentAgent
+  // Eval run (TASK-549): the eval-gated-promotion runner broadcasts
+  // ResourceCreated per persisted EvalRun.
+  EvalRun
 
   @@schema("core")
 }

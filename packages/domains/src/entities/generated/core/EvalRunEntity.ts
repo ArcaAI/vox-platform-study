@@ -13,7 +13,9 @@ export interface IEvalRunEntity extends IBaseTenantEntity {
   modelVersion?: string | null;
   promptTemplateId?: string | null;
   promptVersion?: string | null;
+  promptVersionNumber?: number | null;
   judgeModel?: string | null;
+  triggerType?: string | null;
   status?: string | null;
   startedAt?: Date | null;
   completedAt?: Date | null;
@@ -32,7 +34,9 @@ export class EvalRunEntity extends BaseTenantEntity {
   private _modelVersion?: IEvalRunEntity['modelVersion'];
   private _promptTemplateId?: IEvalRunEntity['promptTemplateId'];
   private _promptVersion?: IEvalRunEntity['promptVersion'];
+  private _promptVersionNumber?: IEvalRunEntity['promptVersionNumber'];
   private _judgeModel?: IEvalRunEntity['judgeModel'];
+  private _triggerType?: IEvalRunEntity['triggerType'];
   private _status?: IEvalRunEntity['status'];
   private _startedAt?: IEvalRunEntity['startedAt'];
   private _completedAt?: IEvalRunEntity['completedAt'];
@@ -48,7 +52,9 @@ export class EvalRunEntity extends BaseTenantEntity {
     this._modelVersion = init.modelVersion;
     this._promptTemplateId = init.promptTemplateId;
     this._promptVersion = init.promptVersion;
+    this._promptVersionNumber = init.promptVersionNumber;
     this._judgeModel = init.judgeModel;
+    this._triggerType = init.triggerType;
     this._status = init.status;
     this._startedAt = init.startedAt;
     this._completedAt = init.completedAt;
@@ -98,12 +104,28 @@ export class EvalRunEntity extends BaseTenantEntity {
     this.setProperty('promptVersion', value);
   }
 
+  get promptVersionNumber(): IEvalRunEntity['promptVersionNumber'] {
+    return this._promptVersionNumber;
+  }
+
+  set promptVersionNumber(value: IEvalRunEntity['promptVersionNumber']) {
+    this.setProperty('promptVersionNumber', value);
+  }
+
   get judgeModel(): IEvalRunEntity['judgeModel'] {
     return this._judgeModel;
   }
 
   set judgeModel(value: IEvalRunEntity['judgeModel']) {
     this.setProperty('judgeModel', value);
+  }
+
+  get triggerType(): IEvalRunEntity['triggerType'] {
+    return this._triggerType;
+  }
+
+  set triggerType(value: IEvalRunEntity['triggerType']) {
+    this.setProperty('triggerType', value);
   }
 
   get status(): IEvalRunEntity['status'] {

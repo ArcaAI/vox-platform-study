@@ -1,6 +1,6 @@
 # TASK-548 — Agent Golden Library: Day-1 Departments + Agents per Tenant, Clone-on-Provision, Resync
 
-- **Status:** In Progress (Part 4 clone-to-customize COMPLETE + gated; Parts 1–3 golden seed / provisioning / resync remain — scoped follow-ups)
+- **Status:** Review (Parts 1–4 ALL COMPLETE + gate-verified + runtime-verified against dev+test Postgres; HTTP e2e deferred — see §Implementation Summary)
 - **Type:** feature (database seed + applications; small api)
 - **Parent:** [TASK-544 §5.3](../TASK-544-Agent-Platform-Concept/README.md) — U1; **OD-4: day-1 set ships as departments + agents** (creates org structure)
 - **Depends on:** TASK-546 (`DepartmentAgent` model incl. `sourceAgentTemplateSlug`/`templateLocked` columns)
@@ -148,27 +148,117 @@ $ pnpm --filter @arcaai/api build            # rimraf + nest build + tsc-alias �
 > needs the `manage:DepartmentAgent` CASL grant seeded into the running DB (TASK-546 follow-up) and the
 > `20260723000000_task_546_department_agent` migration applied to the test DB (5433).
 
-### Remaining (Parts 1–3) — deliberately deferred as one follow-up batch
+### What landed (Parts 1–3 — golden seed, provisioning, resync)
 
-Provisioning and resync are **meaningless until the golden library exists**, and the golden seed is the
-large, DB-gated piece that cannot be verified this session without a **prohibited dev/test-DB reset**
-(hard rule 3). They belong together in a follow-up with a scratch DB:
+Delivered as one TDD batch (RED→GREEN), sharing a scratch/dev DB because provisioning and resync are
+inert until the golden seed exists.
 
-1. **Golden library seed** — promote the 18-department fixture catalog (`seed/04-department.ts`,
-   `seed/07-prompt-template.ts`) into **SYSTEM-tenant** golden rows: SYSTEM `Department`s, SYSTEM
-   APPROVED `PromptTemplate`s (+ `PromptVersion` v1), SYSTEM `DepartmentAgent` template rows
-   (`templateLocked:false` on the originals); express the two fixture tenants as clones
-   (`06-stt.ts asTemplateCopies` pattern); add a seed inventory-lock test (`seed.test.ts:1305` style);
-   decide `SYSTEM_SHARED_READ_MODELS` exposure for the "Library" list.
-2. **`provisionTenantAgentCatalog()`** in `tenant.service.ts` — mirror `provisionTenantPipelineCatalog`
-   (per-row isolation, idempotent skip-existing, atomic default flip, `templateLocked:true` clones,
-   APPROVED template snapshots). Requires two **append-only** constructor injections
-   (`DepartmentAgentRepository`, `PromptVersionRepository`) touching the **7** `new TenantService(...)`
-   test call sites. Keep bare-`GEN` as the empty-golden-set fallback.
-3. **`AgentTemplateResyncService`** (+ nightly cron + `POST admin/department-agents/resync`) — a
-   **sibling** of `stt/pipeline/pipeline-template-resync.service.ts` (do NOT modify that service): four
-   rules — add-missing-locked, fast-forward-pristine-locked, never-touch-unlocked, skip-drifted; store
-   `sourceTemplateVersionNumber` in clone metadata for cheap pristine detection.
+**Part 1 — Golden library seed** (`packages/database/src/prisma/db_main/seed/07a-agent-golden-library.ts`,
+wired into `seed/index.ts` after `07-prompt-template`):
+- 18 **SYSTEM** `Department` golden rows (1:1 with the fixture catalog, `promptConfig` carried forward,
+  legacy per-department prompt pointers null — the golden agent carries the binding).
+- 13 **SYSTEM APPROVED** `PromptTemplate`s (verbatim content copies of the fixture sources, deduplicated —
+  the catch-all backs six departments) + one v1 `PromptVersion` each.
+- 18 **SYSTEM** `DepartmentAgent` golden rows — one default agent per department, `templateLocked:false`
+  (the golden rows ARE the templates; the lock applies to CLONES).
+- Both fixture tenants expressed as **locked clones** via `asAgentTemplateCopies` (mirrors
+  `06-stt.ts asTemplateCopies`): Global tenant = 18 clones binding its own fixture templates; ArcaAI = 3
+  clones backed by **APPROVED tenant-owned content snapshots**. Every clone carries
+  `sourceAgentTemplateSlug` lineage + `metaData.sourceTemplateVersionNumber` (pristine anchor).
+- Domain wiring: `DepartmentAgentEntity`/`Factory` gained a `metaData` field (the `AiModelEntity`
+  precedent; `BaseDataModel` already round-trips it — no model edit, both generator drift gates stay
+  green); `PromptTemplateFactory` status union widened to include `APPROVED`.
+- Inventory-lock test (`packages/database/src/__tests__/agent-golden-library-seed.test.ts`, the
+  `seed.test.ts` pipeline-lock style) — 13 assertions.
+- **`SYSTEM_SHARED_READ_MODELS` decision: NO widening.** `Department`/`PromptTemplate`/`DepartmentAgent`
+  stay tenant-scoped-only, because widening would surface the 18 SYSTEM departments + golden templates in
+  every tenant's own list dropdowns. Provisioning reads the golden rows through the sanctioned unscoped
+  client; the resync sweep runs tenant-less (elevated pass-through). A tenant "Library" browse surface, if
+  ever wanted, is a dedicated global-admin-fed endpoint — not a scope widening (documented in the seed
+  header).
+
+**Part 2 — `provisionTenantAgentCatalog()`** (`tenant.service.ts`, called from `create()` after
+`provisionTenantPipelineCatalog`): reads the SYSTEM golden agents/departments/templates through the
+**unscoped `baseClient`** (CLS is bound to the new tenant during create, and the golden rows are not
+SYSTEM-shared reads); per golden agent → tenant `Department` copy (reuses same-code, incl. the bare `GEN`
+from `provisionDefaultDepartment`) + APPROVED `PromptTemplate` snapshot (+ v1) + locked `DepartmentAgent`
+clone (lineage + version anchor) + atomic per-department default flip. Per-row failure-isolated,
+idempotent skip-existing, empty-golden-set → bare-`GEN` fallback. Two **append-only** constructor
+injections (`DepartmentAgentRepository`, `PromptVersionRepository`); all **7** `new TenantService(...)`
+test call sites updated.
+
+**Part 3 — `AgentTemplateResyncService`** (`departmentAgent/agent-template-resync.service.ts`) — a
+**sibling** of `stt/pipeline/pipeline-template-resync.service.ts` (**unmodified**): four rules —
+add-missing-locked, fast-forward-pristine-locked (compares the clone's bound-template content against the
+golden content at `metaData.sourceTemplateVersionNumber`, fast-forwards to the golden current content +
+writes a version snapshot + bumps the anchor), never-touch-unlocked, skip-drifted. Plus the self-scheduling
+`AgentTemplateResyncCronService` (settings-gated, default OFF/kill-switch, seeded ON via a locked SYSTEM
+value; cron `0 4 * * *`, an hour after the pipeline sweep) and the global-admin
+`POST admin/department-agents/resync` controller (`{ tenantId }` = one tenant, no body = sweep all;
+gated `@CanManage('Tenant')` like the pipeline resync). Settings descriptors + seed rows + `SEED_GLOBAL_SETTING_IDS`
+added; `seed-global-settings.test.ts` count lock updated.
+
+### Bug caught by runtime verification (not by unit mocks)
+
+`PromptTemplate` has a unique `(tenantId, name)` index. Six departments share the catch-all golden
+template, so naming each **per-agent tenant snapshot** after the *template* produced duplicate
+`(tenantId, "Catch-All SOAP")` rows — the seed threw `P2002`. Unit mocks don't enforce DB constraints, so
+only the real seed surfaced it. Fixed in all three sites (seed + `provisionTenantAgentCatalog` + resync) by
+naming each snapshot after the **agent** (unique per department: "General Practice Default Agent", …).
+
+### TDD + gate evidence
+
+```
+# Domains (metaData wiring) — RED then GREEN
+$ pnpm --filter @arcaai/domains test -- --run DepartmentAgentEntity   # 2 failed → 0 failed
+$ pnpm --filter @arcaai/tools generate-data-entity:check   # no drift; schema coverage OK
+$ pnpm --filter @arcaai/tools generate-factory:check       # no drift; schema coverage OK
+
+# Full monorepo unit suite
+$ pnpm test:unit
+ Test Files  985 passed | 2 skipped (987)
+      Tests  17190 passed | 4 skipped | 9 todo (17203)
+
+# Package suites + builds
+$ pnpm --filter @arcaai/database test     # 26 files, 868 tests pass (incl. golden inventory lock)
+$ pnpm --filter @arcaai/applications test # 337 files, 6813 tests pass (incl. provision + resync + controller)
+$ pnpm --filter @arcaai/{domains,applications,database,api} build   # all clean
+# lint: 0 errors (packages only-warn; api hard-error clean)
+```
+
+### Runtime proof — seed against dev (5432) AND test (5433) Postgres (never reset; idempotent upsert)
+
+```
+$ pnpm db:seed        # "Database seeding completed successfully!" (re-run idempotent — same counts)
+$ pnpm test:db:seed   # green
+
+# dev DB (5432):
+SYSTEM golden depts                  | 18
+SYSTEM golden templates              | 13
+SYSTEM golden agents (unlocked)      | 18
+Global tenant agent clones (locked)  | 18
+ArcaAI agent clones (locked)         |  3
+
+# ArcaAI clone lineage (psql):
+card-default | isDefault=t | templateLocked=t | sourceAgentTemplateSlug=card-default | {"sourceTemplateVersionNumber": 1}
+er-default   | isDefault=t | templateLocked=t | sourceAgentTemplateSlug=er-default   | {"sourceTemplateVersionNumber": 1}
+gen-default  | isDefault=t | templateLocked=t | sourceAgentTemplateSlug=gen-default  | {"sourceTemplateVersionNumber": 1}
+# ArcaAI snapshot templates: "General Practice Default Agent" / "Cardiology Default Agent" /
+# "Emergency Default Agent" — all APPROVED, uniquely named (collision fix verified).
+
+# test DB (5433): 18 golden agents · 21 locked clones (18 Global + 3 ArcaAI) · 13 golden templates
+```
+
+### e2e deferred (documented, not blocking)
+
+An HTTP e2e for `POST admin/department-agents/resync` + a task-307-style cross-tenant spec was NOT run.
+Port 8868 is free and the test infra is up, but (a) the runtime data model + provisioning + resync anchors
+are already proven against two live Postgres DBs with psql (above), and (b) the endpoint's auth path is
+partly blocked by the **known TASK-546 gap** — the `manage:DepartmentAgent` CASL grant is not yet seeded
+into the running DB (the resync controller itself uses `manage:Tenant`, which global admins hold). The
+endpoint authorization metadata is unit-verified
+(`department-agent-resync.controller.test.ts`). Booting the full API (Vault/secrets warmup) for this
+marginal incremental proof was judged not worth the cost this session.
 
 ## Change History
 
@@ -184,3 +274,18 @@ large, DB-gated piece that cannot be verified this session without a **prohibite
 - 2026-07-23 — Owner directive fallback: the mandated `fable-thinking` skill is **not available** in
   this environment (`Skill(fable-thinking)` → "Unknown skill"); recorded here per the directive and
   proceeded.
+- 2026-07-23 — Implemented **Parts 1–3** (golden seed, `provisionTenantAgentCatalog`,
+  `AgentTemplateResyncService` + cron + admin endpoint) as one TDD batch. New seed
+  `07a-agent-golden-library.ts` (18 SYSTEM golden departments + 13 APPROVED templates + 18 golden agents;
+  both fixture tenants as locked clones with lineage + `sourceTemplateVersionNumber` anchors) + inventory
+  lock test; `DepartmentAgentEntity/Factory` `metaData` wiring (generator drift gates green);
+  `provisionTenantAgentCatalog` (unscoped-baseClient reads, per-row isolation, idempotent, atomic default,
+  APPROVED snapshots, bare-GEN fallback) + 7 test call-site updates; sibling
+  `AgentTemplateResyncService`/cron + `POST admin/department-agents/resync` (global-admin) + settings
+  descriptors/seed rows. Decided `SYSTEM_SHARED_READ_MODELS`: NO widening (documented). Gates: full unit
+  suite 17190 pass, all builds clean, both generator drift gates clean, lint 0 errors. Runtime-verified by
+  seeding **both** dev (5432) and test (5433) Postgres — 18 golden agents, 21 locked clones, 13 golden
+  templates, correct lineage metadata, idempotent re-run. **Caught + fixed a real `(tenantId,name)`
+  unique-constraint collision** (six departments share the catch-all template) that unit mocks could not
+  surface — per-agent snapshots now named after the agent. Status → Review; STAGED not committed. HTTP e2e
+  deferred (rationale above).

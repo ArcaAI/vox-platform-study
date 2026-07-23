@@ -10,7 +10,7 @@ export interface CreatePromptTemplateProps extends BaseEntityFactoryCreateProps 
   description?: string | null;
   content?: string | null;
   category?: string | null;
-  status?: 'DRAFT' | 'PUBLISHED' | null;
+  status?: 'DRAFT' | 'PUBLISHED' | 'APPROVED' | null;
   variables?: Record<string, unknown> | null;
   currentVersionNumber?: number | null;
   departmentId?: string | null;

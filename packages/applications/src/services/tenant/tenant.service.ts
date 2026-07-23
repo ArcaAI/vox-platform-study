@@ -14,7 +14,13 @@ import {
   CoreDatabaseService,
   DepartmentRepository,
   DepartmentFactory,
+  DepartmentEntity,
   PromptTemplateRepository,
+  PromptTemplateFactory,
+  PromptVersionRepository,
+  PromptVersionFactory,
+  DepartmentAgentRepository,
+  DepartmentAgentFactory,
   AsrPipelineRepository,
   AsrPipelineFactory,
   AsrPipelineVersionRepository,
@@ -86,6 +92,12 @@ export class TenantService extends BaseService implements ITenantService {
     // to clone the SYSTEM default ASR pipeline's current version into each new
     // tenant alongside the pipeline itself.
     private readonly asrPipelineVersionRepository: AsrPipelineVersionRepository,
+    // Appended last (append-only). Used by
+    // `provisionTenantAgentCatalog` to write the tenant's DepartmentAgent
+    // clones and their v1 PromptVersion snapshots when cloning the SYSTEM
+    // golden agent library into each new tenant.
+    private readonly departmentAgentRepository: DepartmentAgentRepository,
+    private readonly promptVersionRepository: PromptVersionRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.Tenant);
   }
@@ -192,6 +204,16 @@ export class TenantService extends BaseService implements ITenantService {
     } catch (error) {
       this.logger.warn({
         message: 'Failed to provision ASR pipeline catalog for new tenant',
+        tenantId: tenant.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    try {
+      await this.provisionTenantAgentCatalog(tenant.id);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to provision agent golden library for new tenant',
         tenantId: tenant.id,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -394,6 +416,229 @@ export class TenantService extends BaseService implements ITenantService {
     if (defaultCloneId) {
       await this.asrPipelineRepository.setDefaultForTenant(newTenantId, defaultCloneId, this.requestUser?.id);
     }
+  }
+
+  /**
+   * Clones the SYSTEM **agent golden library** (TASK-548) into the newly
+   * created tenant: every SYSTEM golden department gets a tenant-owned
+   * `Department` copy, and every SYSTEM golden `DepartmentAgent` gets a
+   * tenant-owned clone bound to an APPROVED PromptTemplate snapshot. This is
+   * the DepartmentAgent sibling of `provisionTenantPipelineCatalog` and mirrors
+   * its contracts exactly.
+   *
+   * The golden rows are owned by `SYSTEM_TENANT_ID` and are deliberately NOT
+   * SYSTEM-shared reads (a tenant must never see the 18 golden departments in
+   * its own list surfaces), so they are read through the UNSCOPED `baseClient` —
+   * the sanctioned direct-client access this service already relies on
+   * (`getUsageStats`, `updateTenantConfigs`). Writes go through the tenant-bound
+   * repositories.
+   *
+   * Behaviour (mirrors the pipeline catalog):
+   *  - Reads the SYSTEM golden agents (the templates to clone) plus the
+   *    departments and prompt templates they reference.
+   *  - For each golden department: reuses the tenant's same-code department when
+   *    it already exists (the bare `GEN` from `provisionDefaultDepartment`, or a
+   *    prior run) — else creates the copy. Idempotent / backfill-safe.
+   *  - For each golden agent: snapshots the golden PromptTemplate into a
+   *    tenant-owned **APPROVED** template (+ v1 `PromptVersion`), then creates
+   *    the tenant `DepartmentAgent` clone — `templateLocked: true`,
+   *    `sourceAgentTemplateSlug` lineage, and
+   *    `metaData.sourceTemplateVersionNumber` (the golden template version the
+   *    snapshot was taken from) so the resync sweep can prove it pristine.
+   *  - Marks the clone of a golden default agent as the tenant department
+   *    default atomically via `setDefaultForDepartment` (preserves
+   *    one-default-per-department).
+   *  - Per-row failure-isolated (one bad agent never aborts the others or tenant
+   *    creation); idempotent per (department, slug) via `isSlugUnique`.
+   *  - EMPTY golden set → safe no-op (logged): the bare `GEN` from
+   *    `provisionDefaultDepartment` remains the tenant's only department, which
+   *    is the pre-TASK-548 fallback behaviour.
+   */
+  private async provisionTenantAgentCatalog(newTenantId: string): Promise<void> {
+    const client = this.databaseService.baseClient;
+
+    // Golden agents are the provisioning driver — one default per golden
+    // department. Read through the unscoped client (they are SYSTEM-owned and
+    // not SYSTEM-shared reads).
+    const goldenAgents = await client.departmentAgent.findMany({
+      where: { tenantId: SYSTEM_TENANT_ID, resourceStatus: 'ENABLED' },
+    });
+
+    if (goldenAgents.length === 0) {
+      this.logger.warn({
+        message: 'No SYSTEM golden agents to clone for new tenant (bare-GEN fallback stands)',
+        newTenantId,
+        systemTenantId: SYSTEM_TENANT_ID,
+      });
+      return;
+    }
+
+    const goldenDeptIds = [...new Set(goldenAgents.map((a) => a.departmentId))];
+    const goldenTemplateIds = [...new Set(goldenAgents.map((a) => a.promptTemplateId))];
+
+    const [goldenDepartments, goldenTemplates] = await Promise.all([
+      client.department.findMany({ where: { id: { in: goldenDeptIds } } }),
+      client.promptTemplate.findMany({ where: { id: { in: goldenTemplateIds } } }),
+    ]);
+
+    const goldenDeptById = new Map(goldenDepartments.map((d) => [d.id, d]));
+    const goldenTemplateById = new Map(goldenTemplates.map((t) => [t.id, t]));
+
+    // Resolve/create the tenant department for each golden department code once,
+    // then bind agents to it. Keyed by golden department id → tenant department.
+    const tenantDeptByGoldenId = new Map<string, DepartmentEntity>();
+    for (const goldenDeptId of goldenDeptIds) {
+      const goldenDept = goldenDeptById.get(goldenDeptId);
+      if (!goldenDept?.code) continue;
+      try {
+        const tenantDept = await this.resolveOrCreateTenantDepartment(newTenantId, goldenDept);
+        tenantDeptByGoldenId.set(goldenDeptId, tenantDept);
+      } catch (error) {
+        this.logger.warn({
+          message: 'Failed to provision golden department for new tenant - continuing',
+          newTenantId,
+          goldenDepartmentCode: goldenDept.code,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    // Collect the per-department default flips and apply them AFTER the clone
+    // loop, so the atomic `setDefaultForDepartment` runs once the rows exist.
+    const defaultFlips: { departmentId: string; agentId: string }[] = [];
+
+    for (const goldenAgent of goldenAgents) {
+      try {
+        const tenantDept = tenantDeptByGoldenId.get(goldenAgent.departmentId);
+        if (!tenantDept) {
+          continue; // its department failed to provision — skip its agents.
+        }
+
+        // Idempotency: skip a (department, slug) the tenant already owns.
+        const isUnique = await this.departmentAgentRepository.isSlugUnique(newTenantId, tenantDept.id, goldenAgent.slug);
+        if (!isUnique) {
+          continue;
+        }
+
+        const goldenTemplate = goldenTemplateById.get(goldenAgent.promptTemplateId);
+        if (!goldenTemplate) {
+          continue; // orphaned binding — never clone an agent with no template.
+        }
+
+        // Snapshot the golden template into a tenant-owned APPROVED copy so the
+        // clone resolves for clinical generation immediately (the golden rows
+        // are already global-admin-approved).
+        const snapshot = PromptTemplateFactory.CreatePromptTemplate({
+          tenantId: newTenantId,
+          // Name after the AGENT (unique per department), NOT the shared golden
+          // template: the catch-all template backs several departments, so a
+          // per-agent snapshot named after the template would collide on the
+          // PromptTemplate `(tenantId, name)` unique index.
+          name: goldenAgent.name,
+          description: goldenTemplate.description ?? undefined,
+          content: goldenTemplate.content ?? undefined,
+          category: goldenTemplate.category ?? undefined,
+          status: 'APPROVED',
+          variables: (goldenTemplate.variables as Record<string, unknown> | null) ?? undefined,
+          departmentId: tenantDept.id,
+          currentVersionNumber: 1,
+          tags: goldenTemplate.tags ?? [],
+          createdBy: this.requestUser?.id,
+        });
+        const savedTemplate = await this.promptTemplateRepository.create(snapshot);
+
+        const v1 = PromptVersionFactory.CreatePromptVersion({
+          tenantId: newTenantId,
+          promptTemplateId: savedTemplate.id,
+          versionNumber: 1,
+          content: savedTemplate.content ?? undefined,
+          variables: (savedTemplate.variables as Record<string, unknown> | null) ?? undefined,
+          changeReason: 'Cloned from SYSTEM agent golden library on tenant provisioning (TASK-548)',
+          changedBy: this.requestUser?.id,
+          createdBy: this.requestUser?.id,
+        });
+        await this.promptVersionRepository.create(v1);
+
+        const clone = DepartmentAgentFactory.CreateDepartmentAgent({
+          tenantId: newTenantId,
+          departmentId: tenantDept.id,
+          name: goldenAgent.name,
+          slug: goldenAgent.slug,
+          description: goldenAgent.description ?? undefined,
+          promptTemplateId: savedTemplate.id,
+          pinnedVersionNumber: null,
+          // The clone IS a template copy: locked, with lineage back to the
+          // golden slug and the exact source version it was cloned from
+          // (pristine-detection anchor for `AgentTemplateResyncService`).
+          templateLocked: true,
+          sourceAgentTemplateSlug: goldenAgent.slug,
+          metaData: { sourceTemplateVersionNumber: goldenTemplate.currentVersionNumber ?? 1 },
+          tags: goldenAgent.tags ?? [],
+          createdBy: this.requestUser?.id,
+        });
+        const savedAgent = await this.departmentAgentRepository.create(clone);
+
+        if (goldenAgent.isDefault) {
+          defaultFlips.push({ departmentId: tenantDept.id, agentId: savedAgent.id });
+        }
+      } catch (error) {
+        this.logger.warn({
+          message: 'Failed to clone golden agent for new tenant - continuing',
+          newTenantId,
+          goldenAgentSlug: goldenAgent.slug,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    // Atomic per-department default flip (unsets any prior default first).
+    for (const flip of defaultFlips) {
+      try {
+        await this.departmentAgentRepository.setDefaultForDepartment(newTenantId, flip.departmentId, flip.agentId, this.requestUser?.id);
+      } catch (error) {
+        this.logger.warn({
+          message: 'Failed to set default golden agent for new tenant department - continuing',
+          newTenantId,
+          departmentId: flip.departmentId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+
+  /**
+   * Resolve the tenant's department for a golden department: reuse the
+   * same-code department when it already exists (the bare `GEN` from
+   * `provisionDefaultDepartment`, or a prior provisioning run), else clone the
+   * golden department's shape into a tenant-owned copy.
+   */
+  private async resolveOrCreateTenantDepartment(
+    newTenantId: string,
+    goldenDept: {
+      code: string | null;
+      name: string | null;
+      description: string | null;
+      defaultSummaryTemplate: string | null;
+      promptConfig: unknown;
+    },
+  ): Promise<DepartmentEntity> {
+    const existing = goldenDept.code ? await this.departmentRepository.findByCode(newTenantId, goldenDept.code) : null;
+    if (existing) {
+      return existing;
+    }
+
+    const department = DepartmentFactory.CreateDepartment({
+      tenantId: newTenantId,
+      code: goldenDept.code ?? undefined,
+      name: goldenDept.name ?? undefined,
+      description: goldenDept.description ?? undefined,
+      defaultSummaryTemplate: goldenDept.defaultSummaryTemplate ?? undefined,
+      // Legacy per-department prompt pointers stay null — the golden agent
+      // carries the binding.
+      promptConfig: (goldenDept.promptConfig as Record<string, unknown> | null) ?? undefined,
+      createdBy: this.requestUser?.id,
+    });
+    return this.departmentRepository.create(department);
   }
 
   /**

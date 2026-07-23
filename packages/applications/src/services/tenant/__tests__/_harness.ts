@@ -66,6 +66,9 @@ export async function buildTenantServiceTestHarness(): Promise<TenantServiceTest
     repoStub,
     // Appended AsrPipelineVersionRepository (pipeline clone).
     repoStub,
+    // Appended DepartmentAgentRepository + PromptVersionRepository (agent golden library clone).
+    repoStub,
+    repoStub,
   );
 
   return {
