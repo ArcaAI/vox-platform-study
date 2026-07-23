@@ -8,6 +8,7 @@ import { StatusFooter } from '@/shared/page/status-footer';
 import { TenantScopeBanner } from '@/shared/tenant-scope/tenant-scope-banner';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { ByoCredentialCard, CLOUD_PROVIDERS } from './byo-credential-card';
+import { EffectiveHarnessPolicyCard } from './effective-harness-policy-card';
 import { EffectiveModelsTable } from './effective-models-table';
 
 const TAB_VALUES = ['effective', 'credentials'] as const;
@@ -36,10 +37,13 @@ function CredentialsTab() {
  * Replaces the dead-end EmptyState that used to live at
  * `/ai-model-defaults`. Two tabs, two different postures:
  *
- *  - "Effective models" — READ-ONLY visibility over all 9 AI task keys.
- *    Model selection stays a GLOBAL_ADMIN-only write, so there are
- *    deliberately no pickers here; the tenant
- *    sees which model serves each task and which cascade tier decided it.
+ *  - "Effective models" — READ-ONLY visibility over all 9 AI task keys, PLUS
+ *    (TASK-547 requirement 4 / OD-2) the effective HarnessPolicy knobs with
+ *    a per-key "who controls this" label. Model selection stays a
+ *    GLOBAL_ADMIN-only write and HarnessPolicy's tenant-tier knobs are
+ *    edited from `/harness/policy` (the one authoritative editor, rule 13) —
+ *    there are deliberately no pickers or save controls here; the tenant
+ *    sees which model/value serves each task and which tier decided it.
  *  - "Cloud credentials" — the tenant's OWN write surface:
  *    BYO Azure/Bedrock endpoints + write-only keys. This tab mutates, so the
  *    "Acting on «Tenant»" banner is pinned for elevated callers (rule 13).
@@ -82,8 +86,9 @@ export function TenantAiConfigurationScreen() {
             />
           }
         >
-          <TabsContent value="effective">
+          <TabsContent value="effective" className="flex flex-col gap-6">
             <EffectiveModelsTable />
+            <EffectiveHarnessPolicyCard />
           </TabsContent>
           <TabsContent value="credentials">
             <CredentialsTab />

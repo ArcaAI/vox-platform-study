@@ -4,6 +4,7 @@ import {
   TenantFrontendConfigEntity,
   TenantFrontendConfigFactory,
   TenantFrontendConfigRepository,
+  TranscriptionMode,
 } from '@arcaai/domains';
 import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -52,7 +53,21 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
     if (!config) return null;
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, { resourceId: config.id });
-    return TenantFrontendConfigDtoMapper.toResponse(config, this.platformRawCaptureCapable());
+    return this.clampTranscriptionMode(TenantFrontendConfigDtoMapper.toResponse(config, this.platformRawCaptureCapable()));
+  }
+
+  /**
+   * TASK-545 — local (in-browser) transcription is disabled platform-wide.
+   * Clamps the SERVED value so callers (admin console, SDK tenant-config
+   * reads) always see `transcriptionMode: BACKEND` and
+   * `transcriptionModeLocked: true`, regardless of what the tenant row
+   * stores. The stored column is left untouched — reversible by removing this
+   * clamp (and the matching SDK kill switch,
+   * `packages/agentic-sdk-v2/src/core/constants.ts#LOCAL_TRANSCRIPTION_ENABLED`),
+   * not by migrating data.
+   */
+  private clampTranscriptionMode(response: TenantFrontendConfigResponse): TenantFrontendConfigResponse {
+    return { ...response, transcriptionMode: TranscriptionMode.BACKEND, transcriptionModeLocked: true };
   }
 
   /**
@@ -104,7 +119,7 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
       },
     });
 
-    return TenantFrontendConfigDtoMapper.toResponse(saved, this.platformRawCaptureCapable());
+    return this.clampTranscriptionMode(TenantFrontendConfigDtoMapper.toResponse(saved, this.platformRawCaptureCapable()));
   }
 
   private async createNew(tenantId: string, dto: UpsertTenantFrontendConfigRequest): Promise<TenantFrontendConfigEntity> {

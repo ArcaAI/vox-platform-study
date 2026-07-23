@@ -360,6 +360,15 @@ export class STTProcessor extends BaseProcessor {
   }
 
   /**
+   * Cumulative PCM bytes sent uplink since the streaming session started (0 for
+   * the local provider, which has no wire). Polled by the vox pipeline to derive
+   * a live uplink bitrate.
+   */
+  getUplinkBytesSent(): number {
+    return this.provider instanceof StreamingBackendSTTProvider ? this.provider.getBytesSent() : 0;
+  }
+
+  /**
    * Fully release warm local-provider resources.
    * This should be called when the owning hook/component unmounts.
    */

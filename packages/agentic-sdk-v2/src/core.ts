@@ -257,7 +257,7 @@ export type {
 
 export { CONSULTATION_STATUS_ORDER, isNewVisit, isRevisit, normalizeConsultationStatus } from './types';
 
-export type { LiveSummarySnapshot, LiveSummarySection, LiveSummaryEntity, LiveSummaryStats } from './types';
+export type { LiveSummarySnapshot, LiveSummarySection, LiveSummaryEntity, LiveSummaryStats, LiveSummaryVitals } from './types';
 
 // =============================================================================
 // Types - Context

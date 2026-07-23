@@ -19,6 +19,7 @@ import { ObservabilityModule } from '../../baseServices/observability/observabil
 import { HarnessGatewayServiceModule } from '../harness/harness-gateway.service.module';
 import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
 import { ConfigResolverModule } from '../../config-resolver';
+import { AiTaskDefaultServiceModule } from '../../ai-task-default/ai-task-default.service.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ConfigResolverModule } from '../../config-resolver';
     PromptResolutionServiceModule, // Required for prompt fallback chain
     HarnessGatewayServiceModule, // harnessEnabled routing in ConsultationEventHandler
     HarnessPolicyServiceModule, // SMR-selection resolver for the summary/pre-summary/comprehensive processors
+    AiTaskDefaultServiceModule, // nlp.ner model-injection resolver for NerProcessor (TASK-552 Lane A)
     ConfigResolverModule, // Realtime cascade + preferred-prompt threading (handler + summary processor)
     EventEmitterModule, // Required for @OnEvent handlers and EventEmitter2 injection
     RedisCacheModule.register(), // For job status storage and pub/sub

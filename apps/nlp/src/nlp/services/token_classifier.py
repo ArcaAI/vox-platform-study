@@ -12,6 +12,7 @@ from nlp.schemas.classification import TokenClassificationRequest, TokenClassifi
 from nlp.schemas.common import Entity, TextPosition
 from nlp.services.assertion import AssertionModel, NegExAssertionClassifier
 from nlp.services.ontology_linker import OntologyLinker
+from nlp.services.vitals_extractor import extract_vitals
 
 logger = get_logger(__name__)
 
@@ -128,6 +129,8 @@ class TransformerTokenClassifier(TokenClassifier):
                 # confidences=confidences,
                 entities=entities,
                 model_version=self.version,
+                # Deterministic vitals over the request text (null-safe; None when absent).
+                vitals=extract_vitals(request.text),
             )
 
         except Exception as e:

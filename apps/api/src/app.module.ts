@@ -53,6 +53,7 @@ import { GlobalSettingModule } from './modules/global-setting/global-setting.mod
 import { SettingsCatalogModule } from './modules/settings-catalog/settings-catalog.module';
 import { ConsultationModule } from './modules/consultation/consultation.module';
 import { DepartmentModule } from './modules/department/department.module';
+import { DepartmentAgentModule } from './modules/department-agent/department-agent.module';
 import { DnaWritingStyleModule } from './modules/dna-writing-style/dna-writing-style.module';
 import { EntitlementsApiModule } from './modules/entitlements/entitlements.module';
 // harness administration & observability console (/admin/harness/*).
@@ -274,6 +275,7 @@ const featureModules: any[] = [
   AuditLogModule,
   ConsultationModule,
   DepartmentModule,
+  DepartmentAgentModule,
   DnaWritingStyleModule,
   // /admin/entitlements/* (global-admin matrix/override/kill-switch/downgrade)
   // + /entitlements/me (tenant self-snapshot). All entitlements endpoints live here.

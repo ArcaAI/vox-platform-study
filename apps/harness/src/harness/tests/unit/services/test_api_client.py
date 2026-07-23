@@ -383,6 +383,38 @@ class TestGetPolicy:
         assert data["version"] == 7
 
     @pytest.mark.asyncio
+    async def test_get_policy_appends_consultation_id_when_present(self):
+        # TASK-550 — a consultation_id is threaded onto the query so the gateway
+        # overlays the department default agent's tenant-tier harnessOverrides.
+        seen: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["request"] = request
+            return httpx.Response(200, json=_POLICY_JSON)
+
+        client = _client(handler)
+        await client.get_policy("t-1", consultation_id="c-9")
+
+        params = seen["request"].url.params
+        assert params["tenantId"] == "t-1"
+        assert params["consultationId"] == "c-9"
+
+    @pytest.mark.asyncio
+    async def test_get_policy_omits_consultation_id_when_absent(self):
+        # No consultation ⇒ the query carries only tenantId (byte-identical
+        # pre-TASK-550 request; other gateway callers are unaffected).
+        seen: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["request"] = request
+            return httpx.Response(200, json=_POLICY_JSON)
+
+        client = _client(handler)
+        await client.get_policy("t-1")
+
+        assert "consultationId" not in seen["request"].url.params
+
+    @pytest.mark.asyncio
     async def test_get_policy_raises_on_upstream_error(self):
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(503, json={"error": "policy unavailable"})

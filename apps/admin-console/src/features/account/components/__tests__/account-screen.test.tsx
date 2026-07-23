@@ -7,7 +7,7 @@
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { toast } from 'sonner';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { UserDepartment, UserSetting } from '@/features/users/api/types';
 import type { SafeSession } from '@/shared/auth/hooks';
 import { renderWithProviders } from '@/test/render';
@@ -119,6 +119,13 @@ function happyHandler(overrides: { settings?: () => Response; session?: SafeSess
     };
 }
 
+// Radix Select scrolls the highlighted item into view on open; happy-dom has no layout engine.
+beforeAll(() => {
+    if (!Element.prototype.scrollIntoView) {
+        Element.prototype.scrollIntoView = () => {};
+    }
+});
+
 afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
@@ -192,6 +199,26 @@ describe('AccountScreen', () => {
         const patch = calls.find((call) => call.method === 'PATCH');
         expect(patch?.body).toEqual({ workflowMode: 'local', language: 'nb-NO' });
         await waitFor(() => expect(vi.mocked(toast.success)).toHaveBeenCalledWith('Preferences saved'));
+    });
+
+    /**
+     * TASK-545: local (in-browser) transcription is disabled platform-wide —
+     * the "Local" workflow-mode option is disabled (not removed, so an
+     * existing doctor's stored "local" selection still renders) and a hint
+     * explains why.
+     */
+    it('disables the Local workflow-mode option and shows a backend-only hint', async () => {
+        stubFetch(happyHandler());
+        renderWithProviders(<AccountScreen />);
+
+        const trigger = await screen.findByLabelText('Workflow mode');
+        fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+
+        const localOption = await screen.findByRole('option', { name: 'Local (on-device pipeline)' });
+        expect(localOption.getAttribute('aria-disabled')).toBe('true');
+        expect(screen.getByRole('option', { name: 'Remote (server pipeline)' }).getAttribute('aria-disabled')).not.toBe('true');
+
+        expect(screen.getByText('Local transcription is disabled platform-wide — backend transcription only.')).toBeDefined();
     });
 
     it('shows an empty state when the user has no settings yet', async () => {

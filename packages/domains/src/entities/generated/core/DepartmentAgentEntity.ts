@@ -1,0 +1,186 @@
+/* eslint-disable unused-imports/no-unused-imports */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { BusinessException } from '@arcaai/exceptions';
+import { BaseTaggedEntity, IBaseTaggedEntity } from '../../../common';
+import { DepartmentAgentDnaPolicy } from '../../../enums';
+
+// First-class agent entity (TASK-546): binds a tenant department to a
+// PromptTemplate at a PINNED or TRACKED version, plus a DNA-style gate, (later)
+// harness overrides and a golden set. Only STRUCTURAL invariants live here;
+// binding-visibility, pin-approval and harness-override key validation are
+// cross-aggregate rules and belong in the application service
+// (`DepartmentAgentService`).
+export interface IDepartmentAgentEntity extends IBaseTaggedEntity {
+  departmentId: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  promptTemplateId: string;
+  // null ⇒ track latest APPROVED version (movable-pointer pattern).
+  pinnedVersionNumber?: number | null;
+  dnaStylePolicy?: DepartmentAgentDnaPolicy;
+  harnessOverrides?: Record<string, unknown> | null;
+  goldenSetId?: string | null;
+  // Optional on the interface so the factory (create path) can omit it
+  // (DB default = false); the tenant default is flipped only via the
+  // repository transaction (`setDefaultForDepartment`).
+  isDefault?: boolean;
+  // Template lineage (consumed by TASK-548). Optional for the same reason as
+  // `isDefault` — DB defaults cover creates.
+  sourceAgentTemplateSlug?: string | null;
+  templateLocked?: boolean;
+}
+
+export class DepartmentAgentEntity extends BaseTaggedEntity {
+  private _departmentId: IDepartmentAgentEntity['departmentId'];
+  private _name: IDepartmentAgentEntity['name'];
+  private _slug: IDepartmentAgentEntity['slug'];
+  private _description?: IDepartmentAgentEntity['description'];
+  private _promptTemplateId: IDepartmentAgentEntity['promptTemplateId'];
+  private _pinnedVersionNumber?: IDepartmentAgentEntity['pinnedVersionNumber'];
+  private _dnaStylePolicy: DepartmentAgentDnaPolicy;
+  private _harnessOverrides?: IDepartmentAgentEntity['harnessOverrides'];
+  private _goldenSetId?: IDepartmentAgentEntity['goldenSetId'];
+  private _isDefault: boolean;
+  private _sourceAgentTemplateSlug?: IDepartmentAgentEntity['sourceAgentTemplateSlug'];
+  private _templateLocked: boolean;
+
+  constructor(init: IDepartmentAgentEntity) {
+    super(init);
+    this._departmentId = init.departmentId;
+    this._name = init.name;
+    this._slug = init.slug;
+    this._description = init.description;
+    this._promptTemplateId = init.promptTemplateId;
+    this._pinnedVersionNumber = init.pinnedVersionNumber ?? null;
+    this._dnaStylePolicy = init.dnaStylePolicy ?? DepartmentAgentDnaPolicy.INHERIT;
+    this._harnessOverrides = init.harnessOverrides ?? null;
+    this._goldenSetId = init.goldenSetId ?? null;
+    this._isDefault = init.isDefault ?? false;
+    this._sourceAgentTemplateSlug = init.sourceAgentTemplateSlug ?? null;
+    this._templateLocked = init.templateLocked ?? false;
+  }
+
+  get departmentId(): IDepartmentAgentEntity['departmentId'] {
+    return this._departmentId;
+  }
+
+  set departmentId(value: IDepartmentAgentEntity['departmentId']) {
+    this.setProperty('departmentId', value);
+  }
+
+  get name(): IDepartmentAgentEntity['name'] {
+    return this._name;
+  }
+
+  set name(value: IDepartmentAgentEntity['name']) {
+    this.setProperty('name', value);
+  }
+
+  get slug(): IDepartmentAgentEntity['slug'] {
+    return this._slug;
+  }
+
+  set slug(value: IDepartmentAgentEntity['slug']) {
+    this.setProperty('slug', value);
+  }
+
+  get description(): IDepartmentAgentEntity['description'] {
+    return this._description;
+  }
+
+  set description(value: IDepartmentAgentEntity['description']) {
+    this.setProperty('description', value);
+  }
+
+  get promptTemplateId(): IDepartmentAgentEntity['promptTemplateId'] {
+    return this._promptTemplateId;
+  }
+
+  set promptTemplateId(value: IDepartmentAgentEntity['promptTemplateId']) {
+    this.setProperty('promptTemplateId', value);
+  }
+
+  get pinnedVersionNumber(): IDepartmentAgentEntity['pinnedVersionNumber'] {
+    return this._pinnedVersionNumber;
+  }
+
+  set pinnedVersionNumber(value: IDepartmentAgentEntity['pinnedVersionNumber']) {
+    this.setProperty('pinnedVersionNumber', value);
+  }
+
+  get dnaStylePolicy(): DepartmentAgentDnaPolicy {
+    return this._dnaStylePolicy;
+  }
+
+  set dnaStylePolicy(value: DepartmentAgentDnaPolicy) {
+    this.setProperty('dnaStylePolicy', value);
+  }
+
+  get harnessOverrides(): IDepartmentAgentEntity['harnessOverrides'] {
+    return this._harnessOverrides;
+  }
+
+  set harnessOverrides(value: IDepartmentAgentEntity['harnessOverrides']) {
+    this.setProperty('harnessOverrides', value);
+  }
+
+  get goldenSetId(): IDepartmentAgentEntity['goldenSetId'] {
+    return this._goldenSetId;
+  }
+
+  set goldenSetId(value: IDepartmentAgentEntity['goldenSetId']) {
+    this.setProperty('goldenSetId', value);
+  }
+
+  get isDefault(): boolean {
+    return this._isDefault;
+  }
+
+  set isDefault(value: boolean) {
+    this.setProperty('isDefault', value);
+  }
+
+  get sourceAgentTemplateSlug(): IDepartmentAgentEntity['sourceAgentTemplateSlug'] {
+    return this._sourceAgentTemplateSlug;
+  }
+
+  set sourceAgentTemplateSlug(value: IDepartmentAgentEntity['sourceAgentTemplateSlug']) {
+    this.setProperty('sourceAgentTemplateSlug', value);
+  }
+
+  get templateLocked(): boolean {
+    return this._templateLocked;
+  }
+
+  set templateLocked(value: boolean) {
+    this.setProperty('templateLocked', value);
+  }
+
+  public override validate(): void {
+    super.validate();
+    if (!this._departmentId || this._departmentId.trim().length === 0) {
+      throw new BusinessException('Department agent requires a departmentId');
+    }
+    if (!this._name || this._name.trim().length === 0) {
+      throw new BusinessException('Department agent name is required');
+    }
+    if (!this._slug || this._slug.trim().length === 0) {
+      throw new BusinessException('Department agent slug is required');
+    }
+    if (!this._promptTemplateId || this._promptTemplateId.trim().length === 0) {
+      throw new BusinessException('Department agent requires a promptTemplateId');
+    }
+    // Slug format (lowercase, alphanumeric, hyphens only) — mirrors AsrPipeline.
+    if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(this._slug)) {
+      throw new BusinessException('Department agent slug must be lowercase alphanumeric with hyphens (e.g., "cardiology-soap")');
+    }
+    // A pinned version number, when set, must be a positive integer.
+    if (this._pinnedVersionNumber !== null && this._pinnedVersionNumber !== undefined) {
+      if (!Number.isInteger(this._pinnedVersionNumber) || this._pinnedVersionNumber < 1) {
+        throw new BusinessException('Department agent pinnedVersionNumber must be a positive integer');
+      }
+    }
+  }
+}

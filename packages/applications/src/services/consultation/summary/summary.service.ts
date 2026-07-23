@@ -24,6 +24,7 @@ import {
   AgentSessionKind,
   AgentStepStatus,
   AgentStepType,
+  TranscriptSegmentRepository,
 } from '@arcaai/domains';
 import { IAgentTrajectoryService } from '../../agent-trajectory/IAgentTrajectoryService';
 import type { CreateAgentTrajectoryStepInput } from '../../agent-trajectory/dto';
@@ -31,7 +32,7 @@ import { HarnessAuditService } from '../../harness-audit';
 import { ConfigResolver } from '../../config-resolver';
 import { diffContent } from './content-diff.util';
 import { ISummaryService } from './ISummaryService';
-import { GenerateSummaryRequest, GeneratePreSummaryRequest, UpdateSummaryRequest, SummaryResponse, SummaryProvenanceResponse } from './dto';
+import { GenerateSummaryRequest, GeneratePreSummaryRequest, UpdateSummaryRequest, SummaryResponse, SummaryProvenanceResponse, CitedSegmentResponse } from './dto';
 import { SummaryDtoMapper } from './summary.dto.mapper';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse, type LegacySmrSummaryResponse } from './smr-v2-generate';
 import { BaseService, assertParentInScope, encryptPhiFields } from '../../../common';
@@ -43,7 +44,10 @@ import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
 import { namedEntityPropsFromNlp, type NlpNamedEntity } from '../shared/namedEntityFromNlp';
+import { resolveNerModelInjection } from '../shared/resolveNerModelSelection';
+import { collectCitedSegmentIds } from '../lib/transcript-segments';
 import { generateJsonWithRepair, looksLikeJsonObject, parsesAsJsonObject, type JsonRepairCall } from '../shared/bounded-json-repair';
+import { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultService';
 
 /**
  * the AD-1 GenerationStats headline fields the summary
@@ -124,6 +128,15 @@ export class SummaryService extends BaseService implements ISummaryService {
     // production DI (SummaryServiceModule) supplies it. Fire-and-forget: a
     // trajectory failure never rolls back the (delivered) summary.
     @Optional() @Inject(IAgentTrajectoryService) private readonly trajectoryService?: IAgentTrajectoryService,
+    // Resolves the effective `nlp.ner` AiTaskDefault model for injection into
+    // the synchronous extractEntities NLP call (TASK-552 Lane A). Optional +
+    // trailing so existing positional test fixtures keep compiling; absent ⇒
+    // posts without `model_name`, i.e. today's behavior (fail-open).
+    @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
+    // Resolves the cited-segment evidence rows for getSummaryProvenance
+    // (TASK-552 Lane C). Optional + trailing so existing positional test
+    // fixtures keep compiling; absent ⇒ citedSegments: [] (best-effort).
+    @Optional() @Inject(TranscriptSegmentRepository) private readonly transcriptSegmentRepository?: TranscriptSegmentRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -849,7 +862,9 @@ export class SummaryService extends BaseService implements ISummaryService {
   /**
    * Read-only harness provenance for a generated summary.
    * Returns the `SummaryMeta` citationsMap + sensor scores + modelName that the
-   * harness wrote. Tenant isolation is enforced by the repository's tenant-scoped
+   * harness wrote, plus the cited transcript segments (TASK-552 Lane C) so a
+   * console evidence panel can render/scroll to the source without a second
+   * controller. Tenant isolation is enforced by the repository's tenant-scoped
    * client (the controller has already verified read access to the consultation).
    */
   async getSummaryProvenance(contextItemId: string): Promise<SummaryProvenanceResponse> {
@@ -857,7 +872,53 @@ export class SummaryService extends BaseService implements ISummaryService {
     if (!meta) {
       throw new NotFoundException(`No provenance found for summary ${contextItemId}`);
     }
-    return SummaryDtoMapper.toProvenanceResponse(meta);
+    const citedSegments = await this.resolveCitedSegments(contextItemId, meta.citationsMap as Record<string, unknown> | null | undefined);
+    return SummaryDtoMapper.toProvenanceResponse(meta, citedSegments);
+  }
+
+  /**
+   * TASK-552 Lane C — resolve the transcript segments cited as evidence for a
+   * summary's citationsMap, so the console evidence panel can render (speaker,
+   * t0–t1) and slice a snippet without a second controller. Best-effort +
+   * non-destructive, mirroring `enrichCitationsWithSegments`
+   * (harness-internal.service.ts): degrades to `[]` — never throws, never
+   * blocks the provenance read — when nothing was cited, the repository isn't
+   * wired, the summary's own ContextItem can't be loaded, or the consultation
+   * has no SINGLE resolvable transcript (offsets are per-transcript, so an
+   * unambiguous transcript is required to resolve segment ids by id lookup).
+   */
+  private async resolveCitedSegments(
+    summaryContextItemId: string,
+    citationsMap: Record<string, unknown> | null | undefined,
+  ): Promise<CitedSegmentResponse[]> {
+    const citedIds = collectCitedSegmentIds(citationsMap);
+    if (citedIds.length === 0 || !this.transcriptSegmentRepository) return [];
+    try {
+      const summaryContextItem = await this.contextItemRepository.findById(summaryContextItemId);
+      if (!summaryContextItem) return [];
+      const transcripts = await this.contextItemRepository.findTranscripts(summaryContextItem.consultationId);
+      if (transcripts.length !== 1) return [];
+      const segments = await this.transcriptSegmentRepository.findByContextItem(summaryContextItem.tenantId, transcripts[0].id);
+      const citedSet = new Set(citedIds);
+      return segments
+        .filter((segment) => citedSet.has(segment.id))
+        .map((segment) => ({
+          id: segment.id,
+          idx: segment.idx,
+          t0Ms: segment.t0Ms ?? null,
+          t1Ms: segment.t1Ms ?? null,
+          speaker: segment.speaker ?? null,
+          charStart: segment.charStart ?? null,
+          charEnd: segment.charEnd ?? null,
+        }));
+    } catch (error) {
+      this.logger.warn({
+        message: 'citedSegments resolution skipped (best-effort)',
+        contextItemId: summaryContextItemId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
   }
 
   /**
@@ -1148,7 +1209,12 @@ export class SummaryService extends BaseService implements ISummaryService {
     entities: Record<string, unknown>[];
   }> {
     try {
-      const response = await this.httpService.axiosRef.post(`${this.nlpServiceUrl}/api/v1/classify/tokens`, { text });
+      // TASK-552 Lane A: inject the effective `nlp.ner` AiTaskDefault model
+      // (mirrors AiInferenceController's playground mapping) so a global
+      // admin's re-point governs this synchronous clinical NER path too, not
+      // just the playground. Fail-open: {} on any resolution hiccup.
+      const modelSelection = await resolveNerModelInjection(this.aiTaskDefaultService, this.clsService, this.logger);
+      const response = await this.httpService.axiosRef.post(`${this.nlpServiceUrl}/api/v1/classify/tokens`, { text, ...modelSelection });
       return response.data;
     } catch (error) {
       throw new BadRequestException(`Failed to call NLP service: ${error}`);

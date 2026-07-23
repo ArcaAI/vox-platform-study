@@ -1,0 +1,464 @@
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ClsService } from 'nestjs-cls';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+  DepartmentAgentRepository,
+  DepartmentAgentFactory,
+  DepartmentAgentEntity,
+  DepartmentRepository,
+  PromptTemplateRepository,
+  PromptTemplateEntity,
+  PromptTemplateFactory,
+  PromptVersionRepository,
+  PromptVersionFactory,
+  ResourceType,
+  ResourceStatusType,
+  SysEventType,
+  SYSTEM_TENANT_ID,
+} from '@arcaai/domains';
+import { ArgumentInvalidException } from '@arcaai/exceptions';
+import { IDepartmentAgentService } from './IDepartmentAgentService';
+import {
+  CreateDepartmentAgentRequest,
+  UpdateDepartmentAgentRequest,
+  CloneDepartmentAgentRequest,
+  DepartmentAgentResponse,
+  PaginatedDepartmentAgentResponse,
+} from './dto';
+import { DepartmentAgentDtoMapper } from './departmentAgent.dto.mapper';
+import { disallowedHarnessOverrideKeys } from './constants';
+import { BaseService, PaginatedQuery, withFormattedPaginatedProps, withFormattedCountProps } from '../../common';
+import { IActiveUserContext } from '../../interfaces';
+
+/**
+ * Single source of the locked-template refusal text (mirrors
+ * `PipelineService.TEMPLATE_LOCKED_MESSAGE`). The console surfaces it verbatim,
+ * and the unit/e2e suites assert it, so it must not drift.
+ */
+export const AGENT_TEMPLATE_LOCKED_MESSAGE = 'Template copies are read-only — clone to customize';
+
+@Injectable()
+export class DepartmentAgentService extends BaseService implements IDepartmentAgentService {
+  constructor(
+    private readonly agentRepository: DepartmentAgentRepository,
+    protected override readonly eventEmitter: EventEmitter2,
+    protected override readonly clsService: ClsService<IActiveUserContext>,
+    private readonly departmentRepository: DepartmentRepository,
+    private readonly promptTemplateRepository: PromptTemplateRepository,
+    private readonly promptVersionRepository: PromptVersionRepository,
+  ) {
+    super(eventEmitter, clsService, ResourceType.DepartmentAgent);
+  }
+
+  // =========================================================================
+  // Reads
+  // =========================================================================
+
+  async list(query: PaginatedQuery, departmentId?: string): Promise<PaginatedDepartmentAgentResponse> {
+    const tenantId = this.requireTenant();
+
+    const where: Record<string, unknown> = { tenantId };
+    if (departmentId) where.departmentId = departmentId;
+
+    const rows = await this.agentRepository.findAll({
+      ...withFormattedPaginatedProps(query),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- DbFilters is a structural record; the where clause is a plain tenant/department filter that the repository accepts as-is.
+      where: where as any,
+    });
+    const count = await this.agentRepository.count({
+      ...withFormattedCountProps(query),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- same plain tenant/department filter as the paginated read above.
+      where: where as any,
+    });
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, { data: { count } });
+
+    const { limit, page } = query;
+    return new PaginatedDepartmentAgentResponse({
+      page: page ?? 0,
+      limit: limit ?? 0,
+      count,
+      data: rows.map(DepartmentAgentDtoMapper.toResponse),
+    });
+  }
+
+  async getById(id: string): Promise<DepartmentAgentResponse> {
+    const agent = await this.loadOwned(id);
+    this.broadcastSysEvent(SysEventType.ResourceViewed, { resourceId: agent.id });
+    return DepartmentAgentDtoMapper.toResponse(agent);
+  }
+
+  // =========================================================================
+  // Writes
+  // =========================================================================
+
+  async create(dto: CreateDepartmentAgentRequest): Promise<DepartmentAgentResponse> {
+    const tenantId = this.requireTenant();
+    const userId = this.requestUserId;
+
+    await this.assertDepartmentInTenant(dto.departmentId, tenantId);
+
+    const isUnique = await this.agentRepository.isSlugUnique(tenantId, dto.departmentId, dto.slug);
+    if (!isUnique) {
+      throw new BadRequestException(`Department agent with slug '${dto.slug}' already exists in this department`);
+    }
+
+    const template = await this.assertTemplateBindable(tenantId, dto.promptTemplateId, dto.departmentId);
+    this.validateHarnessOverrides(dto.harnessOverrides);
+    if (dto.pinnedVersionNumber !== undefined && dto.pinnedVersionNumber !== null) {
+      await this.assertPinnedVersionApproved(template, dto.pinnedVersionNumber);
+    }
+
+    const agent = DepartmentAgentFactory.CreateDepartmentAgent({
+      tenantId,
+      departmentId: dto.departmentId,
+      name: dto.name,
+      slug: dto.slug,
+      description: dto.description ?? null,
+      promptTemplateId: dto.promptTemplateId,
+      pinnedVersionNumber: dto.pinnedVersionNumber ?? null,
+      dnaStylePolicy: dto.dnaStylePolicy,
+      harnessOverrides: dto.harnessOverrides ?? null,
+      goldenSetId: dto.goldenSetId ?? null,
+      tags: dto.tags ?? [],
+      createdBy: userId ?? undefined,
+    });
+
+    const saved = await this.agentRepository.create(agent);
+
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: saved.id,
+      createdAt: saved.createdAt,
+      data: { slug: saved.slug, name: saved.name, departmentId: saved.departmentId },
+    });
+
+    return DepartmentAgentDtoMapper.toResponse(saved);
+  }
+
+  /**
+   * Update an agent's editable fields. OCC-guarded via `updateWithVersion`
+   * (drift → OptimisticConcurrencyException → 412). Locked template copies are
+   * read-only for content (403).
+   */
+  async update(id: string, dto: UpdateDepartmentAgentRequest): Promise<DepartmentAgentResponse> {
+    const tenantId = this.requireTenant();
+    const userId = this.requestUserId;
+
+    const agent = await this.loadOwned(id);
+    this.assertNotTemplateLocked(agent);
+
+    if (dto.slug && dto.slug !== agent.slug) {
+      const isUnique = await this.agentRepository.isSlugUnique(tenantId, agent.departmentId, dto.slug, id);
+      if (!isUnique) {
+        throw new BadRequestException(`Department agent with slug '${dto.slug}' already exists in this department`);
+      }
+    }
+
+    // Re-validate the binding when the bound template changes; a bound template
+    // must stay visible to the tenant and department-compatible.
+    if (dto.promptTemplateId && dto.promptTemplateId !== agent.promptTemplateId) {
+      await this.assertTemplateBindable(tenantId, dto.promptTemplateId, agent.departmentId);
+    }
+    this.validateHarnessOverrides(dto.harnessOverrides);
+
+    if (dto.name !== undefined) agent.name = dto.name;
+    if (dto.slug !== undefined) agent.slug = dto.slug;
+    if (dto.description !== undefined) agent.description = dto.description;
+    if (dto.promptTemplateId !== undefined) agent.promptTemplateId = dto.promptTemplateId;
+    if (dto.dnaStylePolicy !== undefined) agent.dnaStylePolicy = dto.dnaStylePolicy;
+    if (dto.harnessOverrides !== undefined) agent.harnessOverrides = dto.harnessOverrides;
+    if (dto.goldenSetId !== undefined) agent.goldenSetId = dto.goldenSetId;
+    if (dto.tags !== undefined) agent.tags = dto.tags;
+    // `resourceStatus` is entity-managed via lifecycle methods (setters are
+    // read-only on BaseEntity), mirroring PipelineService.toggle.
+    if (dto.resourceStatus === ResourceStatusType.DISABLED && agent.resourceStatus !== ResourceStatusType.DISABLED) {
+      agent.disable(userId ?? undefined);
+    } else if (dto.resourceStatus === ResourceStatusType.ENABLED && agent.resourceStatus !== ResourceStatusType.ENABLED) {
+      agent.enable(userId ?? undefined);
+    }
+    agent.updatedBy = userId ?? null;
+
+    if (!agent.hasChanges) {
+      throw new ArgumentInvalidException('No changes to write to.');
+    }
+
+    const previousVersion = agent.version;
+    const updated = await this.agentRepository.updateWithVersion(id, agent, dto.expectedVersion);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: updated.id,
+      data: { ...agent.changes, previousVersion, newVersion: updated.version },
+    });
+
+    return DepartmentAgentDtoMapper.toResponse(updated);
+  }
+
+  async deleteById(id: string): Promise<DepartmentAgentResponse> {
+    const agent = await this.loadOwned(id);
+    this.assertNotTemplateLocked(agent);
+
+    const deleted = await this.agentRepository.softDelete(id);
+
+    this.broadcastSysEvent(SysEventType.ResourceDeleted, {
+      resourceId: deleted.id,
+      data: deleted.toObject() as object,
+    });
+
+    return DepartmentAgentDtoMapper.toResponse(deleted);
+  }
+
+  /**
+   * Mark this agent as the department default. Atomic flip inside a single
+   * transaction (`setDefaultForDepartment`) so "exactly one default per
+   * department" is never observed half-applied. A scoped flag flip, not a
+   * content edit — deliberately NOT OCC/If-Match guarded (mirrors pipelines).
+   */
+  async setDefault(id: string): Promise<DepartmentAgentResponse> {
+    const tenantId = this.requireTenant();
+    const userId = this.requestUserId;
+
+    const agent = await this.loadOwned(id);
+
+    await this.agentRepository.setDefaultForDepartment(tenantId, agent.departmentId, id, userId ?? undefined);
+
+    const updated = (await this.agentRepository.findById(id)) ?? agent;
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: id,
+      data: { isDefault: true, slug: agent.slug, departmentId: agent.departmentId },
+    });
+
+    return DepartmentAgentDtoMapper.toResponse(updated);
+  }
+
+  /**
+   * Pin (or unpin) the agent to a specific PromptVersion number. A pin content-
+   * affecting change: `versionNumber` must reference an existing APPROVED-snapshot
+   * PromptVersion of the bound template (null clears the pin). Version-bumped via
+   * `updateWithVersion` so the ETag stays coherent, but not If-Match-gated.
+   * Locked template copies reject a pin (403).
+   */
+  async pin(id: string, versionNumber: number | null): Promise<DepartmentAgentResponse> {
+    const userId = this.requestUserId;
+
+    const agent = await this.loadOwned(id);
+    this.assertNotTemplateLocked(agent);
+
+    if (versionNumber !== null) {
+      const template = await this.promptTemplateRepository.findById(agent.promptTemplateId);
+      if (!template) {
+        throw new ArgumentInvalidException(`Bound prompt template ${agent.promptTemplateId} no longer exists`);
+      }
+      await this.assertPinnedVersionApproved(template, versionNumber);
+    }
+
+    agent.pinnedVersionNumber = versionNumber;
+    agent.updatedBy = userId ?? null;
+
+    if (!agent.hasChanges) {
+      // Re-pinning to the same version is a no-op — return the current row.
+      return DepartmentAgentDtoMapper.toResponse(agent);
+    }
+
+    const previousVersion = agent.version;
+    const updated = await this.agentRepository.updateWithVersion(id, agent, agent.version);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: updated.id,
+      data: { pinnedVersionNumber: versionNumber, previousVersion, newVersion: updated.version },
+    });
+
+    return DepartmentAgentDtoMapper.toResponse(updated);
+  }
+
+  /**
+   * Clone an agent into a new, EDITABLE copy ("clone to customize" — the
+   * sanctioned way to customize a LOCKED template copy). Mirrors
+   * `PipelineService.clone` (TASK-531):
+   *  - The bound PromptTemplate is DEEP-COPIED into a fresh tenant-owned
+   *    template in DRAFT status (a v1 PromptVersion snapshot is written so the
+   *    copy starts with an honest version history), carrying lineage in
+   *    metadata back to the source template.
+   *  - A new DepartmentAgent is created UNLOCKED (`templateLocked:false`), bound
+   *    to that new editable template, tracking latest (`pinnedVersionNumber`
+   *    null), NEVER the department default, and carrying `sourceAgentTemplateSlug`
+   *    verbatim so provenance survives clone chains.
+   *  - The source row (locked or not) is left completely untouched.
+   *
+   * The source is resolved through the tenant-ownership guard, so a cross-tenant
+   * id surfaces as 404 (never leaks a foreign agent). This is what the console's
+   * "clone to customize" (TASK-547) calls.
+   */
+  async clone(id: string, dto: CloneDepartmentAgentRequest): Promise<DepartmentAgentResponse> {
+    const tenantId = this.requireTenant();
+    const userId = this.requestUserId;
+
+    const source = await this.loadOwned(id);
+
+    // A clone is a NEW row: its slug must be unique within the department.
+    const isUnique = await this.agentRepository.isSlugUnique(tenantId, source.departmentId, dto.slug);
+    if (!isUnique) {
+      throw new BadRequestException(`Department agent with slug '${dto.slug}' already exists in this department`);
+    }
+
+    // Deep-copy the bound template into an editable tenant-owned DRAFT copy.
+    const sourceTemplate = await this.promptTemplateRepository.findById(source.promptTemplateId);
+    if (!sourceTemplate) {
+      throw new ArgumentInvalidException(`Bound prompt template ${source.promptTemplateId} no longer exists`);
+    }
+
+    const clonedTemplate = PromptTemplateFactory.CreatePromptTemplate({
+      tenantId,
+      name: `${sourceTemplate.name ?? source.name} (Copy)`,
+      description: sourceTemplate.description ?? undefined,
+      content: sourceTemplate.content ?? undefined,
+      category: sourceTemplate.category ?? undefined,
+      // Editable copies start as DRAFT — the tenant customizes, then a global
+      // admin approves before it resolves for clinical generation.
+      status: 'DRAFT',
+      variables: sourceTemplate.variables ?? undefined,
+      departmentId: source.departmentId,
+      scope: sourceTemplate.scope ?? undefined,
+      currentVersionNumber: 1,
+      tags: sourceTemplate.tags ?? [],
+      createdBy: userId ?? undefined,
+    });
+    const savedTemplate = await this.promptTemplateRepository.create(clonedTemplate);
+
+    const v1 = PromptVersionFactory.CreatePromptVersion({
+      tenantId,
+      promptTemplateId: savedTemplate.id,
+      versionNumber: 1,
+      content: savedTemplate.content ?? undefined,
+      variables: (savedTemplate.variables as Record<string, unknown> | null) ?? undefined,
+      changeReason: `Cloned from template '${sourceTemplate.name ?? sourceTemplate.id}' via agent clone`,
+      changedBy: userId ?? undefined,
+      createdBy: userId ?? undefined,
+    });
+    await this.promptVersionRepository.create(v1);
+
+    const agentClone = DepartmentAgentFactory.CreateDepartmentAgent({
+      tenantId,
+      departmentId: source.departmentId,
+      name: dto.name,
+      slug: dto.slug,
+      description: source.description ?? null,
+      promptTemplateId: savedTemplate.id,
+      // The copy tracks the latest of ITS OWN new template.
+      pinnedVersionNumber: null,
+      dnaStylePolicy: source.dnaStylePolicy,
+      harnessOverrides: source.harnessOverrides ?? null,
+      goldenSetId: source.goldenSetId ?? null,
+      // A clone is never the department default (the DB defaults `isDefault`
+      // false; it is flipped only via `setDefaultForDepartment`).
+      // The copy is the customizable one — never locked, whatever the source is;
+      // provenance is carried verbatim (a copy-of-a-copy still reports its origin).
+      templateLocked: false,
+      sourceAgentTemplateSlug: source.sourceAgentTemplateSlug ?? null,
+      tags: source.tags ?? [],
+      createdBy: userId ?? undefined,
+    });
+    const savedAgent = await this.agentRepository.create(agentClone);
+
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: savedAgent.id,
+      createdAt: savedAgent.createdAt,
+      data: {
+        slug: savedAgent.slug,
+        name: savedAgent.name,
+        clonedFrom: source.id,
+        promptTemplateId: savedAgent.promptTemplateId,
+        sourceAgentTemplateSlug: savedAgent.sourceAgentTemplateSlug ?? null,
+      },
+    });
+
+    return DepartmentAgentDtoMapper.toResponse(savedAgent);
+  }
+
+  // =========================================================================
+  // Guards & validation
+  // =========================================================================
+
+  private requireTenant(): string {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+    return tenantId;
+  }
+
+  /**
+   * Load an agent and prove the caller owns it. Cross-tenant / missing both
+   * surface as 404 (404-over-403 posture — never leak a foreign agent).
+   */
+  private async loadOwned(id: string): Promise<DepartmentAgentEntity> {
+    const tenantId = this.requireTenant();
+    const agent = await this.agentRepository.findById(id);
+    if (!agent || agent.tenantId !== tenantId) {
+      throw new NotFoundException(`Department agent ${id} not found`);
+    }
+    return agent;
+  }
+
+  /** The department must exist in the caller's tenant (else 404, no leak). */
+  private async assertDepartmentInTenant(departmentId: string, tenantId: string): Promise<void> {
+    const department = await this.departmentRepository.findById(departmentId);
+    if (!department || department.tenantId !== tenantId) {
+      throw new NotFoundException(`Department ${departmentId} not found`);
+    }
+  }
+
+  /**
+   * The bound template must be visible to the tenant (tenant-owned OR the
+   * SYSTEM shared catalog) and, when it declares a department, that department
+   * must match the agent's. Returns the template for downstream pin checks.
+   */
+  private async assertTemplateBindable(tenantId: string, promptTemplateId: string, departmentId: string): Promise<PromptTemplateEntity> {
+    const template = await this.promptTemplateRepository.findById(promptTemplateId);
+    // Generic 400 — do NOT confirm the existence of a cross-tenant template.
+    if (!template || (template.tenantId !== tenantId && template.tenantId !== SYSTEM_TENANT_ID)) {
+      throw new BadRequestException(`promptTemplateId '${promptTemplateId}' is not a valid template for this tenant`);
+    }
+    if (template.departmentId && template.departmentId !== departmentId) {
+      throw new BadRequestException(`promptTemplateId '${promptTemplateId}' belongs to a different department`);
+    }
+    return template;
+  }
+
+  /** `harnessOverrides` may carry only tenant-tier HarnessPolicy keys. */
+  private validateHarnessOverrides(overrides?: Record<string, unknown>): void {
+    if (!overrides) return;
+    const disallowed = disallowedHarnessOverrideKeys(overrides);
+    if (disallowed.length > 0) {
+      throw new BadRequestException(
+        `harnessOverrides may only carry tenant-tier keys; the following are global-admin-only: ${disallowed.join(', ')}`,
+      );
+    }
+  }
+
+  /**
+   * A pinnable version must exist for the bound template AND correspond to an
+   * APPROVED snapshot. `PromptVersion` carries no per-snapshot status column, so
+   * "APPROVED snapshot" is enforced as: the version row exists AND the template
+   * is currently APPROVED (the same governance gate the resolution path uses;
+   * approve() only pins snapshots while flipping to APPROVED).
+   */
+  private async assertPinnedVersionApproved(template: PromptTemplateEntity, versionNumber: number): Promise<void> {
+    const version = await this.promptVersionRepository.findByVersionNumber(template.id, versionNumber);
+    if (!version) {
+      throw new ArgumentInvalidException(`pinnedVersionNumber ${versionNumber} does not exist for the bound template`);
+    }
+    if (template.status !== 'APPROVED') {
+      throw new ArgumentInvalidException(
+        `pinnedVersionNumber ${versionNumber} is not an APPROVED snapshot — the bound template is ${template.status}`,
+      );
+    }
+  }
+
+  /** Reject content mutation of a locked template copy. Call AFTER ownership. */
+  private assertNotTemplateLocked(agent: { templateLocked?: boolean }): void {
+    if (agent.templateLocked) {
+      throw new ForbiddenException(AGENT_TEMPLATE_LOCKED_MESSAGE);
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import type { ListTemplatesParams, ListUsageRecordsParams } from './types';
+import type { ListDepartmentAgentsParams, ListTemplatesParams, ListUsageRecordsParams } from './types';
 
 /** Query-key factory — every key roots at ['agents'] for coarse invalidation. */
 export const agentKeys = {
@@ -12,4 +12,15 @@ export const agentKeys = {
     analytics: (promptTemplateId?: string) => [...agentKeys.root, 'analytics', promptTemplateId ?? null] as const,
     usageRecords: (params?: ListUsageRecordsParams) => [...agentKeys.root, 'usage-records', params ?? {}] as const,
     departments: () => [...agentKeys.root, 'departments'] as const,
+};
+
+/**
+ * `DepartmentAgent` query-key factory — rooted separately at
+ * ['department-agents'] so a mutation there never invalidates the unrelated
+ * PromptTemplate/`agentKeys` cache (and vice versa).
+ */
+export const departmentAgentKeys = {
+    root: ['department-agents'] as const,
+    list: (params?: ListDepartmentAgentsParams) => [...departmentAgentKeys.root, 'list', params ?? {}] as const,
+    detail: (id: string) => [...departmentAgentKeys.root, 'detail', id] as const,
 };

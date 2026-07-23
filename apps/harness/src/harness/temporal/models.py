@@ -17,6 +17,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from harness.guides.retrieval.retriever import RetrievedChunk
+from harness.redaction.engine import RedactionManifest, RedactionRule
 from harness.sensors.base import NEREntity, SensorResult
 from harness.sensors.config import SensorThresholds
 from harness.temporal.claim_check import ClaimCheckRef
@@ -197,6 +198,12 @@ class FetchPolicyInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tenant_id: str
+    # TASK-550 — ADDITIVE-OPTIONAL consultation id. When present the activity
+    # threads it onto the policy GET so the consultation's department default
+    # DepartmentAgent tenant-tier harnessOverrides overlay onto the effective
+    # policy. Default None ⇒ replay-safe (an old input deserializes it to None ⇒
+    # the pre-TASK-550 tenant-only fetch).
+    consultation_id: str | None = None
     # ADDITIVE-OPTIONAL trajectory context (workflow-owned seq
     # + session meta). Default None ⇒ command-neutral / replay-safe (an old input
     # deserializes it to None ⇒ no emission). Same on every activity input below.
@@ -943,3 +950,53 @@ class ReportProgressResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     reported: bool = False
+
+
+# ---------------------------------------------------------------------------
+# DNA redaction/rewrite (TASK-551) — a separate, auditable post-generation transform
+# ---------------------------------------------------------------------------
+
+
+class ApplyRedactionInput(BaseModel):
+    """Inputs for the ``apply_redaction`` activity.
+
+    ADDITIVE-OPTIONAL everywhere: an empty ``rules`` list (the default, and every
+    legacy history) makes the transform a no-op — byte-identical to the pre-TASK-551
+    behaviour — so the workflow insertion is safe behind its ``workflow.patched``
+    era. The note is threaded inline-or-ref (same claim-check contract as the other
+    text-carrying activities); the SMR fields drive the OPTIONAL semantic-rewrite pass.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    note_text: str
+    note_text_ref: ClaimCheckRef | None = None
+    rules: list[RedactionRule] = Field(default_factory=list)
+    # SMR context for the optional semantic-rewrite pass (rewrite rules with NO
+    # literal replacement). The PHI-egress guard + idempotency key mirror ``generate``.
+    response_format: dict[str, Any] | None = None
+    provider: str | None = None
+    model: str | None = None
+    phi_enabled: bool = True
+    phi_fail_closed: bool = True
+    # ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
+    trajectory: TrajectoryContext | None = None
+
+
+class ApplyRedactionResult(BaseModel):
+    """Output of ``apply_redaction``: the transformed note + its audit manifest.
+
+    ``failed_closed`` is True when the transform could NOT be confirmed (a
+    malformed rule reached the engine, or the required SMR rewrite pass failed).
+    The workflow turns ``failed_closed`` into a forced FLAG — a note the doctor
+    expected redacted must never slip through silently. The manifest carries spans
+    + counts only, NEVER removed PHI plaintext.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: str
+    text_ref: ClaimCheckRef | None = None
+    changed: bool = False
+    failed_closed: bool = False
+    manifest: RedactionManifest = Field(default_factory=RedactionManifest)

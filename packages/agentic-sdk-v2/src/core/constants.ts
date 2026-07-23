@@ -495,6 +495,33 @@ export const STORAGE_KEYS = {
 } as const;
 
 // =============================================================================
+// Feature Flags
+// =============================================================================
+
+/**
+ * Local (in-browser) transcription kill switch (TASK-545).
+ *
+ * The owner decided to disable on-device Whisper transcription
+ * platform-wide for now — backend-based transcription only. VAD and noise
+ * suppression are UNAFFECTED and keep running in the browser as preprocessing
+ * stages for the backend stream (they drive the level meter / speech-end
+ * events); this flag gates only the STT stage's local/offline path.
+ *
+ * `TranscriptionPipeline.resolveSTTRuntimeProvider()` reads this flag: when
+ * `false`, it never resolves the STT provider to `'local'` regardless of
+ * config (`transcriptionMode`, `provider`, `location`) — a backend transport
+ * (`stt.sttSocket` / `stt.streamingTransport`) resolves to `'remote'`; with no
+ * transport it throws `AgenticError('LOCAL_TRANSCRIPTION_DISABLED', ...)`
+ * instead of silently falling back to on-device transcription. The local
+ * Whisper processor is therefore never constructed while this flag is off (no
+ * model-download side effects).
+ *
+ * TO RE-ENABLE: flip this back to `true`. This is the single, findable
+ * switch — no other code path needs to change.
+ */
+export const LOCAL_TRANSCRIPTION_ENABLED = false;
+
+// =============================================================================
 // Additional Endpoint Constants
 // =============================================================================
 

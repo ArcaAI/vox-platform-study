@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   attachSegmentEvidence,
+  collectCitedSegmentIds,
   computeSegmentOffsets,
   extractAndStripSegmentCitationMarkers,
   resolveSegmentIdForOffset,
@@ -137,6 +138,40 @@ describe('transcript-segments (pure helpers)', () => {
 
     it('handles empty/null content without throwing', () => {
       expect(extractAndStripSegmentCitationMarkers('', new Set())).toEqual({ content: '', citedSegmentIds: [] });
+    });
+  });
+
+  // TASK-552 Lane C — the evidence-panel read side collects cited segment ids
+  // from BOTH shapes citationsMap can carry.
+  describe('collectCitedSegmentIds', () => {
+    it('collects ids from the flat segmentCitedIds array (StrictCitations / EARLY-draft lane)', () => {
+      const citationsMap = { segmentCitedIds: ['seg-1', 'seg-2'] };
+      expect(collectCitedSegmentIds(citationsMap)).toEqual(['seg-1', 'seg-2']);
+    });
+
+    it('collects ids from claims[].evidence[].segmentId (NER-claims lane)', () => {
+      const citationsMap = {
+        claims: [
+          { id: 'c1', evidence: [{ startOffset: 0, segmentId: 'seg-3' }] },
+          { id: 'c2', evidence: [{ startOffset: 10, segmentId: 'seg-4' }, { startOffset: 20 }] },
+        ],
+      };
+      expect(collectCitedSegmentIds(citationsMap)).toEqual(['seg-3', 'seg-4']);
+    });
+
+    it('merges both shapes, deduped, segmentCitedIds first then claim evidence in encounter order', () => {
+      const citationsMap = {
+        segmentCitedIds: ['seg-1', 'seg-2'],
+        claims: [{ id: 'c1', evidence: [{ startOffset: 0, segmentId: 'seg-2' }, { startOffset: 10, segmentId: 'seg-5' }] }],
+      };
+      expect(collectCitedSegmentIds(citationsMap)).toEqual(['seg-1', 'seg-2', 'seg-5']);
+    });
+
+    it('returns [] for a null/shapeless/empty map', () => {
+      expect(collectCitedSegmentIds(null)).toEqual([]);
+      expect(collectCitedSegmentIds(undefined)).toEqual([]);
+      expect(collectCitedSegmentIds({})).toEqual([]);
+      expect(collectCitedSegmentIds({ claims: 'not-an-array' })).toEqual([]);
     });
   });
 });

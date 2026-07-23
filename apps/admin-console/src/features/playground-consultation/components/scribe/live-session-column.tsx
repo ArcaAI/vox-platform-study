@@ -10,6 +10,15 @@
  * amplitude source of truth (no second `getUserMedia`). `audio.level` is now
  * live: the SDK samples an AnalyserNode on the capture graph (TASK-543), so the
  * bars track the mic input while recording.
+ *
+ * TASK-552 Lane C — click-to-source review mode: `audio.transcriptSegments`
+ * are the SDK's LIVE, in-browser STT segments (ephemeral, no relationship to
+ * the persisted transcript's character offsets a citation resolves to). Once
+ * a `reviewTranscriptText` prop is supplied (the persisted transcript,
+ * post-recording) and capture is NOT active, this column renders that text
+ * instead, highlighting + scrolling to `reviewHighlight` when the clinician
+ * clicks a citation in the case-note column's evidence panel. Absent
+ * `reviewTranscriptText`, behavior is unchanged (the live SDK view).
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -58,6 +67,46 @@ export function toLiveTranscriptSegments(segments: readonly SdkTranscriptSegment
     }));
 }
 
+/** A character span to highlight within `reviewTranscriptText` (TASK-552 Lane C). */
+export interface TranscriptReviewHighlight {
+    charStart: number;
+    charEnd: number;
+}
+
+/** Persisted-transcript review pane: plain text, with an optional highlighted + auto-scrolled span. */
+function TranscriptReview({ text, highlight }: { text: string; highlight: TranscriptReviewHighlight | null | undefined }) {
+    const markRef = useRef<HTMLElement | null>(null);
+
+    useEffect(() => {
+        if (highlight) markRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        // `highlight` is memoized by the caller (stable reference unless the
+        // cited span actually changes) — see consultation-demo-screen.tsx.
+    }, [highlight]);
+
+    const valid = !!highlight && highlight.charStart >= 0 && highlight.charEnd <= text.length && highlight.charStart < highlight.charEnd;
+    if (!valid) {
+        return (
+            <p className="text-sm leading-relaxed whitespace-pre-wrap" aria-label="Persisted transcript">
+                {text}
+            </p>
+        );
+    }
+
+    const before = text.slice(0, highlight.charStart);
+    const marked = text.slice(highlight.charStart, highlight.charEnd);
+    const after = text.slice(highlight.charEnd);
+
+    return (
+        <p className="text-sm leading-relaxed whitespace-pre-wrap" aria-label="Persisted transcript">
+            {before}
+            <mark ref={markRef} className="bg-primary/25 text-foreground rounded px-0.5">
+                {marked}
+            </mark>
+            {after}
+        </p>
+    );
+}
+
 export interface LiveSessionColumnProps {
     hasConsultation: boolean;
     isRecording: boolean;
@@ -72,9 +121,26 @@ export interface LiveSessionColumnProps {
     interim: string;
     onStart: () => void;
     onStop: () => void;
+    /** Persisted transcript text (TASK-552 Lane C) — renders in place of the live SDK view while not capturing. */
+    reviewTranscriptText?: string | null;
+    /** The cited span to highlight + scroll to within `reviewTranscriptText`. */
+    reviewHighlight?: TranscriptReviewHighlight | null;
 }
 
-export function LiveSessionColumn({ hasConsultation, isRecording, isCapturing, captureBusy, canRecord, level, segments, interim, onStart, onStop }: LiveSessionColumnProps) {
+export function LiveSessionColumn({
+    hasConsultation,
+    isRecording,
+    isCapturing,
+    captureBusy,
+    canRecord,
+    level,
+    segments,
+    interim,
+    onStart,
+    onStop,
+    reviewTranscriptText = null,
+    reviewHighlight = null,
+}: LiveSessionColumnProps) {
     // Rolling amplitude buffer + elapsed seconds. State is written ONLY inside
     // the interval callbacks (never synchronously in the effect body, and no
     // ref/clock reads during render); idle values are derived purely.
@@ -140,6 +206,8 @@ export function LiveSessionColumn({ hasConsultation, isRecording, isCapturing, c
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
                 {!hasConsultation ? (
                     <EmptyState icon={IconMicrophone} title="No consultation selected" description="Pick a consultation on the left — or open a new one — to start a live session." />
+                ) : reviewTranscriptText && !isCapturing ? (
+                    <TranscriptReview text={reviewTranscriptText} highlight={reviewHighlight} />
                 ) : (
                     <LiveTranscript segments={transcriptSegments} interim={interim || undefined} isListening={isCapturing} showSpeakers showTimestamps autoScroll height="100%" aria-label="Live consultation transcript" />
                 )}

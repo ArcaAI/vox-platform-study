@@ -50,6 +50,8 @@ interface HttpMockOptions {
   summary?: string;
   /** Entities the NLP `/classify/tokens` mock returns (default: a single MEDICATION). */
   classifyEntities?: unknown[];
+  /** Vitals (snake_case wire shape) the NLP `/classify/tokens` mock returns. */
+  classifyVitals?: unknown;
 }
 
 function buildHttpMock(opts: HttpMockOptions = {}) {
@@ -61,7 +63,7 @@ function buildHttpMock(opts: HttpMockOptions = {}) {
       post: vi.fn().mockImplementation((url: string, body: unknown) => {
         if (url.includes('/guardrail/ground')) return ground(body);
         if (url.includes('/classify/tokens')) {
-          return Promise.resolve({ data: { entities: classifyEntities } });
+          return Promise.resolve({ data: { entities: classifyEntities, ...(opts.classifyVitals ? { vitals: opts.classifyVitals } : {}) } });
         }
         if (url.includes('/generate')) return Promise.resolve({ data: { summary } });
         return Promise.resolve({ data: {} });
@@ -230,6 +232,30 @@ describe('LiveDocumentationService — output groundedness gate', () => {
 
     expect(payload!.entities).toHaveLength(1);
     expect(payload!.entities[0]).toMatchObject({ text: 'hypertension', type: 'DISEASE_DISORDER', icd10: 'I10' });
+  });
+
+  it('maps the NLP vitals (snake_case) onto the published payload (TASK-543)', async () => {
+    const httpMock = buildHttpMock({
+      classifyVitals: { systolic: 138, diastolic: 88, heart_rate: 78, spo2: 98, temperature_c: 36.8, weight_kg: 71 },
+    });
+    const { service } = buildDeps(httpMock, { config: ENABLED_CONFIG });
+    service.start({ consultationId: CID, tenantId: TENANT });
+    service.ingestSegment(CID, { text: 'Patient on amlodipine', isFinal: true, segmentId: 's1' });
+
+    const payload = await service.flush(CID);
+
+    expect(payload!.vitals).toEqual({ systolic: 138, diastolic: 88, heartRate: 78, spo2: 98, temperatureC: 36.8, weightKg: 71 });
+  });
+
+  it('omits vitals when the NLP service reports none', async () => {
+    const httpMock = buildHttpMock();
+    const { service } = buildDeps(httpMock, { config: ENABLED_CONFIG });
+    service.start({ consultationId: CID, tenantId: TENANT });
+    service.ingestSegment(CID, { text: 'Patient on amlodipine', isFinal: true, segmentId: 's1' });
+
+    const payload = await service.flush(CID);
+
+    expect(payload!.vitals).toBeUndefined();
   });
 
   // ------------------------------------------------------------------

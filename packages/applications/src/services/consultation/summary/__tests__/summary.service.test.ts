@@ -79,6 +79,10 @@ const createMockClsService = () => ({
         return null;
     }),
     set: vi.fn(),
+    // Bare passthrough — only exercised by resolveNerModelInjection's
+    // SYSTEM-pin nested scope (TASK-552 Lane A); every other codepath in this
+    // suite never calls `run`.
+    run: vi.fn((callback: () => unknown) => callback()),
 });
 
 const createMockEventEmitter = () => ({
@@ -264,6 +268,17 @@ describe('SummaryService', () => {
             const body = lastSmrBody();
             expect(body.provider).toBe('lm-studio');
             expect(body.model).toBe('resolved-medgemma');
+        });
+
+        // TASK-552 Lane B — generateSummary is a one-shot/finalize path: it must
+        // keep resolving the DEFAULT ('finalize') tier, never the live tier, so a
+        // global admin's `smr.live` re-point never leaks into final summaries.
+        it('resolves the default (finalize) tier — no task argument — unlike the live plane', async () => {
+            primeGenerateMocks();
+
+            await service.generateSummary('c-1', { dnaStyleId: 'style-1' } as any);
+
+            expect(mockHarnessPolicyService.resolveSmrSelection).toHaveBeenCalledWith();
         });
 
         it('lets a caller-supplied model win over the resolved default', async () => {
@@ -801,6 +816,107 @@ describe('SummaryService', () => {
                     text: 'hypertension',
                     className: 'CONDITION',
                 }),
+            );
+        });
+    });
+
+    // ===========================================================================
+    // TASK-552 Lane A — nlp.ner AiTaskDefault model injection (fail-open)
+    // ===========================================================================
+
+    describe('extractEntities — nlp.ner model injection (TASK-552 Lane A)', () => {
+        it('injects the effective nlp.ner model_name when the AiTaskDefault service resolves one', async () => {
+            const aiTaskDefaultService = {
+                getEffective: vi.fn().mockResolvedValue({
+                    model: { sourceUri: 'blaze999/Medical-NER' },
+                }),
+            };
+            const serviceWithResolver = new SummaryService(
+                mockContextItemRepository as any,
+                mockConsultationRepository as any,
+                mockSummaryMetaRepository as any,
+                mockNamedEntityRepository as any,
+                mockHttpService as any,
+                mockConfigService as any,
+                mockEventEmitter as any,
+                mockClsService as any,
+                mockContextItemVersionRepository as any,
+                mockPromptAssemblyService as any,
+                undefined, // secretsService
+                undefined, // userProfileRepository
+                undefined, // harnessAuditService
+                undefined, // harnessGatewayService
+                mockHarnessPolicyService as any,
+                undefined, // configResolver
+                undefined, // entitlements
+                undefined, // trajectoryService
+                aiTaskDefaultService as any,
+            );
+
+            mockContextItemRepository.findById.mockResolvedValue(
+                createMockContextItem({ content: 'Patient with Diabetes' }),
+            );
+            mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
+
+            await serviceWithResolver.extractEntities('ctx-item-123');
+
+            expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+                'http://localhost:8864/api/v1/classify/tokens',
+                { text: 'Patient with Diabetes', model_name: 'blaze999/Medical-NER' },
+            );
+        });
+
+        it('posts without model_name (fail-open) when AiTaskDefault resolution fails', async () => {
+            const aiTaskDefaultService = {
+                getEffective: vi.fn().mockRejectedValue(new Error('registry unavailable')),
+            };
+            const serviceWithResolver = new SummaryService(
+                mockContextItemRepository as any,
+                mockConsultationRepository as any,
+                mockSummaryMetaRepository as any,
+                mockNamedEntityRepository as any,
+                mockHttpService as any,
+                mockConfigService as any,
+                mockEventEmitter as any,
+                mockClsService as any,
+                mockContextItemVersionRepository as any,
+                mockPromptAssemblyService as any,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                mockHarnessPolicyService as any,
+                undefined,
+                undefined,
+                undefined,
+                aiTaskDefaultService as any,
+            );
+
+            mockContextItemRepository.findById.mockResolvedValue(
+                createMockContextItem({ content: 'Patient with Diabetes' }),
+            );
+            mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
+
+            await serviceWithResolver.extractEntities('ctx-item-123');
+
+            // extraction proceeds — a registry hiccup never blocks clinical NER.
+            expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+                'http://localhost:8864/api/v1/classify/tokens',
+                { text: 'Patient with Diabetes' },
+            );
+        });
+
+        it('posts without model_name when no AiTaskDefault service is wired (legacy behavior preserved)', async () => {
+            mockContextItemRepository.findById.mockResolvedValue(
+                createMockContextItem({ content: 'Patient with Diabetes' }),
+            );
+            mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
+
+            await service.extractEntities('ctx-item-123');
+
+            expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+                'http://localhost:8864/api/v1/classify/tokens',
+                { text: 'Patient with Diabetes' },
             );
         });
     });

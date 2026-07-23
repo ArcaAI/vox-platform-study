@@ -173,6 +173,11 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // soft-delete EXEMPT (no resourceStatus column) — see
   // MODELS_WITHOUT_SOFT_DELETE in client.ts.
   'GateEditExemplar',
+  // department-agent.prisma — first-class agent entity (TASK-546). A STANDARD
+  // tenant-scoped config model (tenantId + resourceStatus soft-delete +
+  // _version OCC + audit). NOT SYSTEM-shared: a tenant's department agents are
+  // never visible cross-tenant.
+  'DepartmentAgent',
 ]);
 
 /**

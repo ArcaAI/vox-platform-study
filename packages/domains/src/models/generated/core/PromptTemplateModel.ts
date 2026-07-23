@@ -37,6 +37,8 @@ export class PromptTemplate extends BaseTenantDataModel {
   public Owner: Models.User | undefined;
   @VirtualDbProperty()
   public Versions: Models.PromptVersion[] | undefined;
+  @VirtualDbProperty()
+  public DepartmentAgents: Models.DepartmentAgent[] | undefined;
 
   constructor(data: PromptTemplate & BaseTenantDataModel) {
     super(data);
@@ -61,5 +63,6 @@ export class PromptTemplate extends BaseTenantDataModel {
     this.Department = data.Department;
     this.Owner = data.Owner;
     this.Versions = data.Versions;
+    this.DepartmentAgents = data.DepartmentAgents;
   }
 }

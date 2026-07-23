@@ -80,7 +80,7 @@ function captureExtensionConfig(opts: {
 // ---------------------------------------------------------------------------
 
 describe('TENANT_SCOPED_MODELS allow-list', () => {
-  it('contains the 54 tenant-scoped models currently defined in db_main/*.prisma', () => {
+  it('contains the tenant-scoped models currently defined in db_main/*.prisma', () => {
     // The allow-list tracks SCHEMA TRUTH (every model here has a tenantId
     // scalar). The User* identity tables are intentionally excluded — `User`
     // is global by design; tenant membership lives in the UserRoleAssignment
@@ -89,7 +89,7 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // read pre-auth by the API-key authentication lookup, so it can never
     // carry a CLS tenant. (The drift guard below is the durable check; this
     // count stays as a quick human-readable tripwire.)
-    expect(TENANT_SCOPED_MODELS.size).toBe(56);
+    expect(TENANT_SCOPED_MODELS.size).toBe(57);
   });
 
   it('includes every PHI-bearing model', () => {

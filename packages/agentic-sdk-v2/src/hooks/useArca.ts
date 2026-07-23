@@ -122,6 +122,8 @@ export interface UseArcaAudio {
    * only on capture start/stop. Drive a degraded-connection banner off this.
    */
   audioLostThisSession: boolean;
+  /** Live outbound audio uplink bitrate (bits/sec) over the last ~1s window; 0 when not streaming. */
+  uplinkBitrate: number;
   start: (options?: AudioStartOptions) => Promise<void>;
   /**
    * Start capture from the user's persisted preferences

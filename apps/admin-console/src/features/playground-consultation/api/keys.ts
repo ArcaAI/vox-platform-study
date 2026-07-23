@@ -5,4 +5,7 @@ export const playgroundConsultationKeys = {
     namedEntities: (consultationId: string, scope: string = 'single') =>
         [...playgroundConsultationKeys.root, 'named-entities', consultationId, scope] as const,
     job: (jobId: string) => [...playgroundConsultationKeys.root, 'job', jobId] as const,
+    transcriptions: (consultationId: string) => [...playgroundConsultationKeys.root, 'transcriptions', consultationId] as const,
+    provenance: (consultationId: string, contextItemId: string) =>
+        [...playgroundConsultationKeys.root, 'provenance', consultationId, contextItemId] as const,
 };

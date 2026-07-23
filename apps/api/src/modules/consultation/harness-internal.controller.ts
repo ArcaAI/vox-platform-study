@@ -184,18 +184,31 @@ export class HarnessInternalController {
   @Get('policy')
   @ApiOperation({ summary: 'Effective harness policy for a tenant (worker fetch_policy activity)' })
   @ApiQuery({ name: 'tenantId', required: true, description: 'Tenant whose effective policy to resolve.' })
-  async getEffectivePolicy(@Query('tenantId') tenantId?: string): Promise<HarnessPolicyResponse> {
+  // TASK-550 — optional consultationId lets the worker request the effective
+  // policy WITH the consultation's department-default DepartmentAgent tenant-tier
+  // harnessOverrides layered on top. Omitted ⇒ byte-identical to the pre-TASK-550
+  // policy (other callers exist).
+  @ApiQuery({
+    name: 'consultationId',
+    required: false,
+    description: 'Optional — overlay the consultation department default agent tenant-tier harnessOverrides.',
+  })
+  async getEffectivePolicy(@Query('tenantId') tenantId?: string, @Query('consultationId') consultationId?: string): Promise<HarnessPolicyResponse> {
     if (!tenantId) {
       throw new BadRequestException('tenantId query parameter is required');
     }
 
     // These requests run outside the API-edge ClsModule middleware (like the
     // BullMQ workers + the POST callbacks above), so re-establish a CLS context
-    // pinned to the requested tenant. The tenant-scope extension then resolves
-    // the tenant row (and the SYSTEM-shared GLOBAL-DEFAULT fallback) correctly.
+    // pinned to the requested tenant BEFORE the read. The tenant-scope extension
+    // then resolves the tenant policy row, the SYSTEM-shared GLOBAL-DEFAULT
+    // fallback, AND the tenant-scoped consultation → department-agent overlay
+    // correctly (S-3 recurrence class: a service-token route has an empty CLS —
+    // set-before-read is mandatory; the effective-config controller F-026 fix is
+    // the precedent for getting this wrong first).
     return this.cls.run(async () => {
       this.cls.set('tenantId', tenantId);
-      return this.harnessPolicyService.getEffectivePolicy(tenantId);
+      return this.harnessPolicyService.getEffectivePolicy(tenantId, { consultationId });
     });
   }
 

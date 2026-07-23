@@ -61,6 +61,13 @@ import { IActiveUserContext } from '../../interfaces';
 const SCOPE_TENANT_DEFAULT = 'TENANT_DEFAULT';
 const SCOPE_USER_PERSONAL = 'USER_PERSONAL';
 
+// Reserved SYSTEM tenant that owns the platform-wide / library prompt templates.
+// Mirrors `SYSTEM_TENANT_ID` in `base.service.ts` / `tenant.service.ts`
+// (duplicated as a literal per the established convention). A template owned by
+// this tenant is the shared library and its approval stays global-admin-only
+// (OD-3); tenant-owned templates devolve to `manage:PromptTemplate`.
+const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
 // Word count at which a generated test output earns the full
 // quality score. The score is a deterministic, testable proxy for "did the
 // template produce a substantive response", not a semantic judgement.
@@ -406,7 +413,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
- * prompt governance approval (GLOBAL_ADMIN only).
+   * prompt governance approval (OD-3 split gate).
    *
    * Flips the template to `status = APPROVED` (the gate `prompt-resolution`
    * requires for clinical flows), PINS a `PromptVersion` snapshot of the
@@ -415,21 +422,26 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * transaction (mirrors `updatePromptTemplate`). Idempotent: approving an
    * already-APPROVED template is a no-op that returns the current row.
    *
-   * GLOBAL_ADMIN is a privilege rule → `ForbiddenException` (403), not the
-   * 404-over-403 cross-tenant posture (cross-tenant existence is still hidden by
-   * `assertOwnedByTenant`, which runs first for a global admin scoped to a tenant).
+   * Authorization is split by ownership (OD-3):
+   * - **SYSTEM/library** template (tenantId = SYSTEM) — the shared library is
+   *   globally visible, so approval is a GLOBAL_ADMIN-only PRIVILEGE (403, not
+   *   404: existence is not hidden for the shared library).
+   * - **Tenant-owned** template (tenantId ≠ SYSTEM) — a caller holding
+   *   `manage:PromptTemplate` for that tenant (or a global admin) may approve.
+   *   Cross-tenant ids are hidden behind `assertOwnedByTenant` (404-over-403).
    *
-   * @throws ForbiddenException — caller is not a global admin (403).
+   * Both are privilege rules → `ForbiddenException` (403). The cross-tenant 404
+   * posture applies to tenant-owned rows only.
+   *
+   * @throws ForbiddenException — caller lacks the required privilege (403).
+   * @throws NotFoundException — unknown, or cross-tenant, tenant-owned id (404).
    * @throws OptimisticConcurrencyException — version drift; HTTP 412.
    */
   async approveTemplate(id: string, dto: ApprovePromptTemplateRequest): Promise<PromptTemplateResponse> {
-    if (!isSuperAdmin(this.requestUser)) {
-      throw new ForbiddenException('Prompt-template approval is managed by global administrators only.');
-    }
-
     const template = await this.promptTemplateRepository.findById(id);
     if (!template) throw new NotFoundException(`Prompt template ${id} not found`);
-    this.assertOwnedByTenant(template, id);
+
+    this.assertCanApprove(template, id);
 
     // Idempotent — already approved: no version-pin, no audit noise.
     if (template.status === 'APPROVED') {
@@ -1043,6 +1055,26 @@ export class PromptManagementService extends BaseService implements IPromptManag
     const callerTenant = this.tenantId;
     if (callerTenant && template.tenantId !== callerTenant) {
       throw new NotFoundException(`Prompt template ${id} not found`);
+    }
+  }
+
+  /**
+   * OD-3 approval gate. SYSTEM/library templates (tenantId = SYSTEM) are
+   * globally visible and stay GLOBAL_ADMIN-only (privilege → 403, existence not
+   * hidden). Tenant-owned templates hide cross-tenant existence (404) and then
+   * require `manage:PromptTemplate` for that tenant (or a global admin).
+   */
+  private assertCanApprove(template: PromptTemplateEntity, id: string): void {
+    if (template.tenantId === SYSTEM_TENANT_ID) {
+      if (!isSuperAdmin(this.requestUser)) {
+        throw new ForbiddenException('Approval of SYSTEM/library prompt templates is restricted to global administrators.');
+      }
+      return;
+    }
+    // Tenant-owned: hide cross-tenant existence first (404), then privilege (403).
+    this.assertOwnedByTenant(template, id);
+    if (!isSuperAdmin(this.requestUser) && !this.callerCanManageTemplates()) {
+      throw new ForbiddenException('Caller cannot approve this prompt template.');
     }
   }
 

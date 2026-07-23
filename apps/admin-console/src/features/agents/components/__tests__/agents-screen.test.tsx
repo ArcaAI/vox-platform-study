@@ -137,6 +137,10 @@ function defaultHandler(call: RecordedCall): Response | undefined {
     const path = new URL(call.url, 'http://test.local').pathname;
     if (path === '/api/auth/session') return Response.json(session());
     if (path === '/api/hope/admin/departments') return Response.json(DEPARTMENTS);
+    // The Agents tab (TASK-547, default landing) — empty by default so the
+    // Agent Templates-tab tests below (which stay unaffected by this ticket)
+    // don't need to know about it.
+    if (path === '/api/hope/admin/department-agents') return Response.json({ data: [], count: 0, limit: 200, page: 0 });
     if (path === '/api/hope/admin/prompt-templates') {
         return Response.json({ data: TEMPLATES, count: TEMPLATES.length, limit: 10, page: 1 });
     }
@@ -212,9 +216,20 @@ describe('AgentsScreen', () => {
         expect(calls.every((call) => !call.url.includes('/admin/prompt-templates'))).toBe(true);
     });
 
-    it('renders the fill-height template grid with department, type, active version and usage columns', async () => {
+    it('lands on the Agents tab by default with the Agent Catalog page title (TASK-547 naming rollout)', async () => {
         stubAgents();
         renderWithProviders(<AgentsScreen />);
+
+        expect(await screen.findByRole('heading', { level: 1, name: 'Agent Catalog' })).toBeDefined();
+        expect(await screen.findByRole('tab', { name: 'Agents', selected: true })).toBeDefined();
+        // The Agent Templates grid (this test's default stub carries no
+        // department agents) is NOT mounted on the default tab.
+        expect(screen.queryByText('Cardiology Notes')).toBeNull();
+    });
+
+    it('renders the fill-height template grid with department, type, active version and usage columns', async () => {
+        stubAgents();
+        renderWithProviders(<AgentsScreen />, { searchParams: '?tab=templates' });
 
         expect(await screen.findByText('Cardiology Notes')).toBeDefined();
         expect(screen.getByText('Discharge Summary')).toBeDefined();
@@ -231,7 +246,7 @@ describe('AgentsScreen', () => {
 
     it('opens the detail slide-over on the clicked row (Overview tab seeds the edit form)', async () => {
         stubAgents();
-        renderWithProviders(<AgentsScreen />);
+        renderWithProviders(<AgentsScreen />, { searchParams: '?tab=templates' });
 
         await openRow('Discharge Summary');
         // Overview is the landing tab: the edit form seeds the name.
@@ -252,7 +267,7 @@ describe('AgentsScreen', () => {
 
     it('swaps the drawer content when a different row is selected (one detail surface)', async () => {
         stubAgents();
-        renderWithProviders(<AgentsScreen />);
+        renderWithProviders(<AgentsScreen />, { searchParams: '?tab=templates' });
 
         await openRow('Discharge Summary');
         expect(((await screen.findByRole('textbox', { name: 'Name' })) as HTMLInputElement).value).toBe('Discharge Summary');
@@ -319,7 +334,7 @@ describe('AgentsScreen', () => {
             }
             return undefined;
         });
-        renderWithProviders(<AgentsScreen />);
+        renderWithProviders(<AgentsScreen />, { searchParams: '?tab=templates' });
 
         fireEvent.click(await screen.findByRole('button', { name: 'New template' }));
         const dialog = await screen.findByRole('dialog');
@@ -340,7 +355,7 @@ describe('AgentsScreen', () => {
             }
             return undefined;
         });
-        renderWithProviders(<AgentsScreen />);
+        renderWithProviders(<AgentsScreen />, { searchParams: '?tab=templates' });
 
         expect(await screen.findByRole('alert')).toBeDefined();
         expect(screen.getByText(/service unavailable/i)).toBeDefined();
@@ -372,6 +387,7 @@ describe('AgentsScreen', () => {
             renderWithProviders(<AgentsScreen />);
 
             await screen.findByRole('tab', { name: 'Agents' });
+            expect(screen.getByRole('tab', { name: 'Agent Templates' })).toBeDefined();
             expect(screen.queryByRole('tab', { name: 'Governance' })).toBeNull();
         });
 

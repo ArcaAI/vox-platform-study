@@ -90,6 +90,11 @@ export interface AgenticState {
    * capture start/stop.
    */
   audioLostThisSession: boolean;
+  /**
+   * Live outbound audio uplink bitrate (bits/sec) over the last ~1s window,
+   * sampled from the streaming STT transport. 0 when not streaming.
+   */
+  audioUplinkBitrate: number;
 
   // Summary state
   summaries: SummaryResponse[];
@@ -190,6 +195,8 @@ export interface AgenticActions {
   incrementDroppedFrames: () => void;
   /** Latch `audioLostThisSession` true (session-sticky; survives reconnect). */
   markAudioLost: () => void;
+  /** Set the live uplink bitrate (bits/sec); 0 clears it (capture stopped / not streaming). */
+  setAudioUplinkBitrate: (bitrate: number) => void;
   /** Clear both the count and the latch — called on capture start/stop only. */
   resetAudioDropped: () => void;
 
@@ -317,6 +324,7 @@ const initialState: AgenticState = {
   // Audio-drop signal starts clean each session.
   audioDroppedFrameCount: 0,
   audioLostThisSession: false,
+  audioUplinkBitrate: 0,
 
   // Summary state
   summaries: [],
@@ -474,7 +482,8 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
   // clears both on start/stop (the latch deliberately survives reconnect).
   incrementDroppedFrames: () => set((state) => ({ audioDroppedFrameCount: state.audioDroppedFrameCount + 1 })),
   markAudioLost: () => set({ audioLostThisSession: true }),
-  resetAudioDropped: () => set({ audioDroppedFrameCount: 0, audioLostThisSession: false }),
+  resetAudioDropped: () => set({ audioDroppedFrameCount: 0, audioLostThisSession: false, audioUplinkBitrate: 0 }),
+  setAudioUplinkBitrate: (bitrate) => set({ audioUplinkBitrate: bitrate }),
 
   // Summary actions
   setSummaries: (summaries) => set({ summaries }),
@@ -535,6 +544,7 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
       // delegates here, so the security wipe is covered too.)
       audioDroppedFrameCount: 0,
       audioLostThisSession: false,
+      audioUplinkBitrate: 0,
       // TTS playback state resets on tenant switch (mirrors activeStream).
       ttsIsPlaying: false,
       ttsIsLoading: false,
@@ -614,6 +624,7 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
       // Logout ends the capture context; clear the audio-drop signal.
       audioDroppedFrameCount: 0,
       audioLostThisSession: false,
+      audioUplinkBitrate: 0,
       authUser: null,
       authIsAuthenticated: false,
       authImpersonatedUser: null,

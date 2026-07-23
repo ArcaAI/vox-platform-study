@@ -40,7 +40,6 @@ function baseProps(overrides: Partial<React.ComponentProps<typeof CaseNoteColumn
         hasConsultation: true,
         isRecording: false,
         live: null,
-        liveStatus: 'idle',
         draft: DRAFT,
         draftLoading: false,
         progress: null,
@@ -132,6 +131,7 @@ describe('CaseNoteColumn', () => {
                             { text: 'headache', type: 'SIGN_SYMPTOM' },
                             { text: 'hypertension', type: 'DISEASE_DISORDER', icd10: 'I10' },
                         ],
+                        vitals: { systolic: 138, diastolic: 88, heartRate: 78, spo2: 98 },
                         updatedAt: 'now',
                     },
                 })}
@@ -142,5 +142,45 @@ describe('CaseNoteColumn', () => {
         expect(screen.getByText('headache')).toBeTruthy();
         // ICD-10 code chip renders when the entity carries one (Phase C).
         expect(screen.getByText('I10')).toBeTruthy();
+        // Vitals grid renders present values (Phase D).
+        expect(screen.getByText('138/88')).toBeTruthy();
+        expect(screen.getByText('98%')).toBeTruthy();
+    });
+
+    // TASK-552 Lane C — click-to-source evidence panel at sign-off.
+    describe('citation evidence panel', () => {
+        const SEGMENTS = [{ id: 'seg-1', idx: 0, t0Ms: 0, t1Ms: 3000, speaker: 'patient', charStart: 0, charEnd: 27 }];
+
+        it('shows cited evidence for a persisted draft', () => {
+            render(<CaseNoteColumn {...baseProps({ citedSegments: SEGMENTS, transcriptText: 'Patient reports chest pain. More.' })} />);
+            expect(screen.getByText('Patient reports chest pain.')).toBeTruthy();
+        });
+
+        it('reports the clicked citation via onSelectCitation', () => {
+            const onSelectCitation = vi.fn();
+            render(<CaseNoteColumn {...baseProps({ citedSegments: SEGMENTS, transcriptText: 'Patient reports chest pain. More.', onSelectCitation })} />);
+            fireEvent.click(screen.getByText('Patient reports chest pain.'));
+            expect(onSelectCitation).toHaveBeenCalledWith(SEGMENTS[0]);
+        });
+
+        it('shows no evidence panel while only the live view is showing (no persisted draft yet)', () => {
+            render(
+                <CaseNoteColumn
+                    {...baseProps({
+                        draft: null,
+                        isRecording: true,
+                        citedSegments: SEGMENTS,
+                        transcriptText: 'Patient reports chest pain. More.',
+                        live: { consultationId: 'c-1', runningSummary: 'Running…', sections: [], entities: [], updatedAt: 'now' },
+                    })}
+                />,
+            );
+            expect(screen.queryByLabelText(/cited transcript evidence/i)).toBeNull();
+        });
+
+        it('renders no evidence panel when nothing was cited', () => {
+            render(<CaseNoteColumn {...baseProps()} />);
+            expect(screen.queryByLabelText(/cited transcript evidence/i)).toBeNull();
+        });
     });
 });

@@ -384,7 +384,16 @@ class HarnessDocWorkflow:
         try:
             policy = await workflow.execute_activity(
                 fetch_policy,
-                FetchPolicyInput(tenant_id=inp.tenant_id, trajectory=self._traj(inp)),
+                # TASK-550 — carry consultation_id so the activity can request the
+                # policy WITH the department default agent's tenant-tier
+                # harnessOverrides overlaid. Additive input field only (no new
+                # command / branch), so this is replay-safe — the replay suite is
+                # the gate. Default None on old inputs ⇒ tenant-only fetch.
+                FetchPolicyInput(
+                    tenant_id=inp.tenant_id,
+                    consultation_id=inp.consultation_id,
+                    trajectory=self._traj(inp),
+                ),
                 start_to_close_timeout=_ACTIVITY_TIMEOUT,
                 retry_policy=_API_RETRY,
             )

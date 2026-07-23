@@ -19,7 +19,9 @@ import type {
     PlaygroundConsultation,
     RecordingState,
     SummaryApproval,
+    SummaryProvenance,
     SummaryResult,
+    TranscriptContextItem,
 } from './types';
 
 const BASE = 'consultations';
@@ -83,6 +85,16 @@ export async function getLatestSummary(consultationId: string): Promise<SummaryR
 
 export function getNamedEntities(consultationId: string, scope?: 'single' | 'chain'): Promise<NamedEntitiesAggregate> {
     return getJson(consultationPath(consultationId, 'named-entities'), { scope });
+}
+
+/** Persisted transcripts for the consultation — the evidence panel's snippet/highlight source. */
+export function getTranscriptions(consultationId: string): Promise<TranscriptContextItem[]> {
+    return getJson(consultationPath(consultationId, 'context/transcriptions'));
+}
+
+/** Read-only citation/sensor provenance for a generated summary (TASK-552 Lane C evidence panel). */
+export function getSummaryProvenance(consultationId: string, contextItemId: string): Promise<SummaryProvenance> {
+    return getJson(consultationPath(consultationId, `summary/${encodeURIComponent(contextItemId)}/provenance`));
 }
 
 /** Approve & sign-off; `contextItemId` is the summary's `id`. */

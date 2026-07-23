@@ -1,6 +1,6 @@
 # TASK-543 — Consultation Scribe Playground (frame 50 redesign)
 
-- **Status:** In Progress — scope approved: **Phases A–D + new `useArcaLiveSummary` SDK hook**. Column-3 live preview is SDK-native (via the new hook).
+- **Status:** Review — **all of Phases A–D + the `useArcaLiveSummary` SDK hook are implemented, wired, and verified** (unit/type/lint across all touched packages). Runtime/browser verification against the live stack is the remaining gate. Work uncommitted on `fix/2605-review`.
 - **Type:** feature / refactor (UI rebuild + scoped SDK/backend extensions)
 - **Surface:** `apps/admin-console` route `/playground/consultation` (frame 50, tier 50–59)
 - **Design source:** Claude Design project `HOPE Design System` → `templates/consultation-playground/ConsultationPlayground.dc.html`
@@ -137,12 +137,26 @@ NLP already computes `Entity.icd_code` (deterministic `OntologyLinker`, curated 
 - `apps/admin-console` — `LiveSummaryEntity.icd10` added; case-note column renders an ICD-10 code chip when present (falls back to the entity type). Test added; admin-console tsc 0, feature tests green.
 - Vocabulary widening (real UMLS/MedCAT) remains out of scope — curated subset only, codes never fabricated (absent when unmatched).
 
-### Phases B, D, `useArcaLiveSummary` — pending (blocked on environment / cross-package)
-- **B — SDK audio signals** (`@arcaai/vox`): `uplinkBitrate` for the bandwidth card + wiring the dead `PluginManager.onAudioLevel` for a live waveform. The send/level path lives in the separate `@arcaai/stt`/`@arcaai/room` packages (feeding is via the transport interface, not `agentic-sdk-v2` directly), so surfacing is a multi-package push-chain; the isolated byte counter is unit-testable but the end-to-end signal is only validatable against a running capture.
-- **`useArcaLiveSummary`** (`@arcaai/vox`): the hook logic (SSEClient + parse `LiveSummaryEventDto`) is unit-testable, but its *value over the existing console SSE* depends on whether the SDK's `SSEClient` routes correctly through the admin-console BFF vs. direct-to-gateway — a runtime-only question. Until resolved, col-3 keeps the working console `useLiveSummaryStream`.
-- **D — NLP vitals** (`apps/nlp` + applications + console): net-new deterministic vitals parser (BP/HR/SpO₂/Temp/Weight). **Blocked here: conda `arcaenv` is unavailable in this environment**, so the Python parser and its pytest cannot be executed/verified. Writing it unverified would risk plausible-but-wrong extraction.
+### `useArcaLiveSummary` + SSE best-practice — ✅ (done, wired, verified)
+New `@arcaai/vox` hook `useArcaLiveSummary` (`src/hooks/useArcaLiveSummary.ts`): SSEClient subscription to `GET /consultations/:id/live-summary/stream`, ticket scope `consultation_live_summary:<id>`, full-state snapshot fold + close-on-terminal. Endpoint `CONSULTATION_ENDPOINTS.LIVE_SUMMARY_STREAM` + `liveSummaryScopeFor`; types `src/types/liveSummary.ts`; barrels wired. **Wired into col-3** (imperative `start`/`stop` from the record/select handlers), replacing the console `useLiveSummaryStream`.
+- **SSE routing done right (no workaround):** added `AgenticClient.getStreamBaseUrl()` — the stream TICKET is minted through the REST client (BFF auth/tenant injection applies) while the EventSource opens against the **gateway** (`wsUrl` → http + `/api/v1`) when a gateway base is configured, else the REST base. This keeps long-lived SSE off the REST BFF (the pattern the console itself uses) and is back-compatible for single-origin consumers. Tests: `useArcaLiveSummary.test.ts` (8), `AgenticClient.streamBaseUrl.test.ts` (3).
+
+### Phase B — SDK audio signals — ✅ (done)
+- **Live waveform amplitude**: `useArcaAudio` drives a real `store.audioLevel` via a guarded AnalyserNode on the capture graph (analysis-only, torn down on stop) — the pipeline never surfaced a level before.
+- **Bandwidth (`uplinkBitrate`)**: the full push chain, done properly — byte counter in `@arcaai/stt` `StreamingBackendSTTProvider.processAudio` (only counts frames actually sent) → `STTProcessor.getUplinkBytesSent` → `TranscriptionPipeline.getUplinkBytesSent` → a 1 s poll in `useArcaAudio` computing bits/sec from the delta → `store.audioUplinkBitrate` → `useArca().audio.uplinkBitrate` → the footer Bandwidth card. Tests: `StreamingBackendSTTProvider.test.ts` (+2 byte-accounting cases). Gates: **@arcaai/stt 418, @arcaai/vox 3561**.
+
+### Phase D — NLP vitals grid — ✅ (done, verified end-to-end)
+Deterministic, cue-gated, range-guarded vitals parser — a mis-parse fails SAFE to `None` (never a wrong vital in a note):
+- `apps/nlp` — `services/vitals_extractor.py` (`extract_vitals`) + `Vitals` schema on `TokenClassificationResponse`, wired into `token_classifier`. Test: `tests/test_vitals_extractor.py` (9). Gates: **pytest 9 pass · ruff · mypy clean** (run via `arcaenv`).
+- `packages/applications` — `LiveSummaryVitalsDto` on `LiveSummaryEventDto`; `callNlp` maps the snake_case `vitals` → camelCase and the flush merges them field-wise across flushes. Tests: `live-documentation.groundedness.test.ts` (+2). Gate: **applications build + 6733 tests**.
+- `apps/admin-console` — `LiveSummaryVitals` type + the Objective vitals grid in `case-note-column.tsx`. Test added.
+
+### SDK now ships type declarations (pre-existing bug fixed)
+`@arcaai/vox` had `tsup dts:false` while `exports.types` pointed at `dist/*.d.ts` that were never emitted — so consumers had no real SDK types (the admin console coped with a local `VoxProviderConfig` shim). The `build` script now chains `tsc --emitDeclarationOnly` (`build:dts`), so `pnpm build:sdk` emits correct declarations for every entry point. The app config now type-checks against the real `AgenticConfig`.
 
 ## Change History
 - 2026-07-22 — Plan authored (research: current screen + SDK map; personalized-SOAP-vs-harness; metrics/entity availability). Scope approved: A–D + `useArcaLiveSummary`.
 - 2026-07-23 — Phase A implemented & statically verified (lint/type/unit). SDK/backend extension phases (B–D + hooks) pending; work UNCOMMITTED on `fix/2605-review`.
-- 2026-07-23 — Phase C (ICD-10 plumb-through) implemented & verified (applications build + 6727 tests; admin-console tsc/tests). Phases B, D, `useArcaLiveSummary` blocked on environment (no conda `arcaenv` for Python) / runtime-only architecture (SSE-through-BFF, `@arcaai/stt`/`@arcaai/room` audio path). Still UNCOMMITTED.
+- 2026-07-23 — Phase C (ICD-10 plumb-through) implemented & verified (applications build + 6727 tests; admin-console tsc/tests).
+- 2026-07-23 — `useArcaLiveSummary` SDK hook added (8 tests) + Phase B live audio-level analyser in `useArcaAudio`. Bandwidth/vitals initially deferred (env/cross-package).
+- 2026-07-23 (cont.) — Completed the rest end-to-end: SSE best-practice `getStreamBaseUrl()` (gateway-direct streams, ticket via BFF) + col-3 wired to `useArcaLiveSummary`; Phase B bandwidth push-chain (`@arcaai/stt`→pipeline→`useArcaAudio`→footer); Phase D vitals (nlp parser + pytest, applications DTO + flush merge, console grid) — `arcaenv` was available after all; fixed the pre-existing `@arcaai/vox` dts-shipping bug (build now emits declarations). Gates green: **admin-console tsc 0 / lint clean / 1140 · @arcaai/vox 3561 · @arcaai/applications 6733 · @arcaai/stt 418 · nlp vitals 9 (ruff/mypy clean)**. Still UNCOMMITTED on `fix/2605-review`; runtime/browser verification pending the live stack.

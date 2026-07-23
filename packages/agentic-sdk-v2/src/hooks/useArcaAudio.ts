@@ -80,6 +80,9 @@ export function useArcaAudio() {
   // An AnalyserNode on the capture graph (analysis-only — never routed to the
   // destination, so it adds no playback) samples RMS into `store.setAudioLevel`.
   const levelMeterRef = useRef<{ analyser: AnalyserNode; source: MediaStreamAudioSourceNode; timer: ReturnType<typeof setInterval> } | null>(null);
+  // Live uplink-bitrate poller (TASK-543): samples the streaming STT transport's
+  // cumulative bytes-sent once a second and publishes the delta*8 as bits/sec.
+  const uplinkTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dualRecorderRef = useRef<DualStreamRecorder | null>(null);
   const onDualCaptureRef = useRef<((result: DualCaptureResult) => void) | undefined>(undefined);
 
@@ -306,6 +309,22 @@ export function useArcaAudio() {
         store.setAudioPlugins(pluginManager.getStates());
         store.setAudioError(null);
 
+        // Uplink-bitrate poll — the streaming STT stage exists after initialize().
+        // Sample cumulative bytes-sent each second; publish the delta as bits/sec.
+        {
+          let lastUplinkBytes = 0;
+          uplinkTimerRef.current = setInterval(() => {
+            try {
+              const bytes = pluginManager.getTranscriptionPipeline?.()?.getUplinkBytesSent?.() ?? 0;
+              const deltaBytes = Math.max(0, bytes - lastUplinkBytes);
+              lastUplinkBytes = bytes;
+              store.setAudioUplinkBitrate(deltaBytes * 8);
+            } catch {
+              // A diagnostics read must never break capture.
+            }
+          }, 1000);
+        }
+
         // Dual capture (RAW + PROCESSED) for the LOCAL
         // workflow. Record the pre-noise-filter input (getRawInputTrack) and the
         // post-filter pipeline output (getProcessedTrack) in parallel; the blobs
@@ -433,6 +452,12 @@ export function useArcaAudio() {
         // disconnect after context close can throw on some platforms — ignore.
       }
       levelMeterRef.current = null;
+    }
+
+    // Stop the uplink-bitrate poll (the store reset below zeroes the value).
+    if (uplinkTimerRef.current) {
+      clearInterval(uplinkTimerRef.current);
+      uplinkTimerRef.current = null;
     }
 
     // Tear down the 2-mic mixer (stops both source streams).
@@ -578,6 +603,8 @@ export function useArcaAudio() {
       // per-session count; `audioLostThisSession` is the session-sticky latch.
       droppedFrameCount: store.audioDroppedFrameCount,
       audioLostThisSession: store.audioLostThisSession,
+      // Live outbound uplink bitrate (bits/sec) over the last ~1s; 0 when not streaming.
+      uplinkBitrate: store.audioUplinkBitrate,
       start: startAudio,
       startFromPreferences,
       stop: stopAudio,
@@ -599,6 +626,7 @@ export function useArcaAudio() {
       store.audioError,
       store.audioDroppedFrameCount,
       store.audioLostThisSession,
+      store.audioUplinkBitrate,
       startAudio,
       startFromPreferences,
       stopAudio,

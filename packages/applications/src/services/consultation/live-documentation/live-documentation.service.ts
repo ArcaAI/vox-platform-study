@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, type MessageEvent, OnModuleDestroy, OnModul
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
+import { ClsService } from 'nestjs-cls';
 import { Observable, type Subscription, finalize, interval, map, merge, takeWhile } from 'rxjs';
 import { AgentSessionKind, AgentStepStatus, AgentStepType, ContextItemEntity, ContextItemFactory, ContextItemRepository } from '@arcaai/domains';
 import { IRedisCacheService } from '../../baseServices/redis';
@@ -9,10 +10,13 @@ import { IAgentTrajectoryService } from '../../agent-trajectory/IAgentTrajectory
 import type { CreateAgentTrajectoryStepInput } from '../../agent-trajectory/dto';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { encryptPhiFields } from '../../../common';
+import { IActiveUserContext } from '../../../interfaces';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
 import { StreamingAudioBridgeService } from '../../stt/streaming/streamingAudioBridge.service';
 import { mapSmrGenerateResponse } from '../summary/smr-v2-generate';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
+import { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultService';
+import { resolveNerModelInjection } from '../shared/resolveNerModelSelection';
 import { ConsultationPipelineEvent, type ContextAddedPayload, type ContextRemovedPayload } from '../events';
 import {
   LiveDocEngineConfigResponse,
@@ -21,6 +25,7 @@ import {
   LiveSummaryEntityDto,
   LiveSummaryEventDto,
   LiveSummaryGroundednessDto,
+  LiveSummaryVitalsDto,
   LiveSummaryGroundednessSegmentDto,
   LiveSummaryStatsDto,
 } from './dto';
@@ -338,6 +343,17 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // Optional + trailing so existing positional fixtures keep their arity; absent
     // ⇒ env/code-default resolution.
     @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
+    // Resolves the effective `nlp.ner` AiTaskDefault model for injection into
+    // the live-plane NLP call (TASK-552 Lane A). Optional + trailing so
+    // existing positional fixtures keep their arity; absent ⇒ posts without
+    // `model_name`, i.e. today's behavior (fail-open).
+    @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
+    // CLS accessor for the SYSTEM-pin the resolver needs (this service is not
+    // otherwise request-scoped). `ClsService` is provided by the globally-
+    // registered `ClsModule` (see the class doc above). Optional + trailing so
+    // existing positional fixtures keep their arity; absent ⇒ the resolver call
+    // is skipped defensively — see `callNlp`.
+    @Optional() private readonly cls?: ClsService<IActiveUserContext>,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -820,11 +836,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const nerSourceText = delta || transcript;
     const priorEntities = session.lastPayload?.entities ?? [];
     let extracted: LiveSummaryEntityDto[] = [];
+    let flushVitals: LiveSummaryVitalsDto | undefined;
     let nlpFailed = false;
     let nlpLatencyMs = 0;
     const nlpStartedAt = Date.now();
     try {
-      extracted = nerSourceText ? await this.callNlp(nerSourceText, signal) : [];
+      const nlpResult = nerSourceText ? await this.callNlp(nerSourceText, signal) : { entities: [] as LiveSummaryEntityDto[] };
+      extracted = nlpResult.entities;
+      flushVitals = nlpResult.vitals;
       nlpLatencyMs = Date.now() - nlpStartedAt;
     } catch (error) {
       if (isStale()) return this.dropStale(session);
@@ -854,6 +873,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // (NER only sees the new delta, but the note is cumulative — recall), and always re-grounding
     // against the current `runningSummary` keeps offsets valid even on the NLP-failure fallback.
     const entities = this.groundEntitiesToNote([...priorEntities, ...extracted], runningSummary);
+    // Vitals accumulate across flushes (NER only sees the new delta) — a later
+    // non-null value wins, prior values persist. Absent until one is seen.
+    const vitals = this.mergeVitals(session.lastPayload?.vitals, flushVitals);
 
     const payload: LiveSummaryEventDto = {
       consultationId,
@@ -866,6 +888,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // entirely on a stats-less flush (SMR failure / legacy cache hit) so the
       // feed degrades cleanly rather than publishing an empty metadata block.
       ...(smrStats ? { metadata: { stats: smrStats } } : {}),
+      ...(vitals ? { vitals } : {}),
       updatedAt: new Date().toISOString(),
     };
 
@@ -1551,7 +1574,17 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       headers: { 'Content-Type': 'application/json' },
       signal,
     });
-    return { text: mapSmrGenerateResponse(response.data).summary, stats: this.parseGenerationStats(response.data), structured: includeResponseFormat };
+    const stats = this.parseGenerationStats(response.data);
+    // TASK-552 Lane B — stamp WHICH AiTaskDefault routing key served this
+    // flush (`smr.live`, never `smr.finalize` — this method is the live tier
+    // exclusively, see the `resolveSmrSelection(tenantId, 'live')` call above).
+    // SMR itself has no notion of this key; it only echoes back the
+    // provider/model it actually ran, so the tier provenance is stamped here.
+    return {
+      text: mapSmrGenerateResponse(response.data).summary,
+      stats: stats ? { ...stats, task_key: 'smr.live' } : null,
+      structured: includeResponseFormat,
+    };
   }
 
   /**
@@ -1570,10 +1603,16 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     return rest as LiveSummaryStatsDto;
   }
 
-  private async callNlp(text: string, signal?: AbortSignal): Promise<LiveSummaryEntityDto[]> {
+  private async callNlp(text: string, signal?: AbortSignal): Promise<{ entities: LiveSummaryEntityDto[]; vitals?: LiveSummaryVitalsDto }> {
+    // TASK-552 Lane A: inject the effective `nlp.ner` AiTaskDefault model
+    // (mirrors AiInferenceController's playground mapping) so a global
+    // admin's re-point governs the live plane too, not just the playground.
+    // Fail-open: {} on any resolution hiccup, or when CLS isn't wired (this
+    // service isn't otherwise request-scoped — see the constructor).
+    const modelSelection = this.cls ? await resolveNerModelInjection(this.aiTaskDefaultService, this.cls, this.logger) : {};
     const response = await this.httpService.axiosRef.post(
       `${this.nlpServiceUrl}/api/v1/classify/tokens`,
-      { text },
+      { text, ...modelSelection },
       { timeout: 30000, signal },
     );
     // Canonical NLP wire shape (apps/nlp schemas/common.py Entity): text / entity_type /
@@ -1586,7 +1625,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       icd_code?: string | null;
       position?: { start?: number; end?: number };
     }>;
-    return raw.map((e) => ({
+    const entities = raw.map((e) => ({
       text: e.text ?? '',
       type: e.entity_type ?? 'UNKNOWN',
       confidence: e.confidence,
@@ -1594,6 +1633,41 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       start: e.position?.start,
       end: e.position?.end,
     }));
+    return { entities, vitals: this.mapVitals(response.data?.vitals) };
+  }
+
+  /**
+   * Map the NLP `Vitals` wire shape (snake_case, null-safe deterministic
+   * extraction) to `LiveSummaryVitalsDto`. Returns undefined when the NLP
+   * service reported no vitals — never fabricated.
+   */
+  private mapVitals(raw: unknown): LiveSummaryVitalsDto | undefined {
+    if (!raw || typeof raw !== 'object') return undefined;
+    const v = raw as {
+      systolic?: number | null;
+      diastolic?: number | null;
+      heart_rate?: number | null;
+      spo2?: number | null;
+      temperature_c?: number | null;
+      weight_kg?: number | null;
+    };
+    const mapped: LiveSummaryVitalsDto = {
+      ...(typeof v.systolic === 'number' ? { systolic: v.systolic } : {}),
+      ...(typeof v.diastolic === 'number' ? { diastolic: v.diastolic } : {}),
+      ...(typeof v.heart_rate === 'number' ? { heartRate: v.heart_rate } : {}),
+      ...(typeof v.spo2 === 'number' ? { spo2: v.spo2 } : {}),
+      ...(typeof v.temperature_c === 'number' ? { temperatureC: v.temperature_c } : {}),
+      ...(typeof v.weight_kg === 'number' ? { weightKg: v.weight_kg } : {}),
+    };
+    return Object.keys(mapped).length > 0 ? mapped : undefined;
+  }
+
+  /** Merge vitals field-wise across flushes — a later non-null value wins; prior values persist. */
+  private mergeVitals(prior: LiveSummaryVitalsDto | undefined, next: LiveSummaryVitalsDto | undefined): LiveSummaryVitalsDto | undefined {
+    if (!prior) return next;
+    if (!next) return prior;
+    const merged = { ...prior, ...next };
+    return Object.keys(merged).length > 0 ? merged : undefined;
   }
 
   /**

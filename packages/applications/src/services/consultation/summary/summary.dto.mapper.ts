@@ -1,5 +1,5 @@
 import { ContextItemEntity, SummaryMetaEntity } from '@arcaai/domains';
-import { SummaryResponse, SummaryProvenanceResponse } from './dto';
+import { SummaryResponse, SummaryProvenanceResponse, CitedSegmentResponse } from './dto';
 
 export class SummaryDtoMapper {
   static toResponse(entity: ContextItemEntity): SummaryResponse {
@@ -35,7 +35,7 @@ export class SummaryDtoMapper {
    * full sensor-score detail object in the `guardrailDecisions` column, so we
    * surface that as `sensorScores` for provenance consumers.
    */
-  static toProvenanceResponse(meta: SummaryMetaEntity): SummaryProvenanceResponse {
+  static toProvenanceResponse(meta: SummaryMetaEntity, citedSegments: CitedSegmentResponse[] = []): SummaryProvenanceResponse {
     return {
       contextItemId: meta.contextItemId,
       modelName: meta.modelName ?? null,
@@ -45,6 +45,9 @@ export class SummaryDtoMapper {
       sensorScores: (meta.guardrailDecisions ?? null) as Record<string, unknown> | null,
       citationsMap: meta.citationsMap ?? null,
       generatedAt: meta.generatedAt ? meta.generatedAt.toISOString() : null,
+      // TASK-552 Lane C — cited transcript segments, resolved by the service
+      // (best-effort; [] when unresolvable, never blocking this read).
+      citedSegments,
     };
   }
 }

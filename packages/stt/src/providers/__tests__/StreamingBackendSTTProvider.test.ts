@@ -182,6 +182,22 @@ describe('StreamingBackendSTTProvider', () => {
       await provider.processAudio(samples, 16000);
       expect(wsClient.sendAudioFrame).not.toHaveBeenCalled();
     });
+
+    it('accumulates sent bytes for the uplink-bitrate poll (TASK-543)', async () => {
+      expect(provider.getBytesSent()).toBe(0);
+      // 16 kHz input → 4 Int16 samples → 8 bytes.
+      await provider.processAudio(new Float32Array([0.0, 0.5, -0.5, 1.0]), 16000);
+      expect(provider.getBytesSent()).toBe(8);
+      await provider.processAudio(new Float32Array([0.0, 0.5]), 16000);
+      expect(provider.getBytesSent()).toBe(12);
+    });
+
+    it('does not count bytes for a dropped frame', async () => {
+      wsClient.sendAudioFrame.mockReturnValueOnce(false);
+      await provider.processAudio(new Float32Array([0.0, 0.5, -0.5, 1.0]), 16000);
+      expect(provider.getBytesSent()).toBe(0);
+      expect(provider.getDroppedFrameCount()).toBe(1);
+    });
   });
 
   // C6-01 — the client's bufferedAmount watermark silently drops outbound audio;

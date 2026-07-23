@@ -42,7 +42,8 @@
   },
   "sideEffects": false,
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && pnpm build:dts",
+    "build:dts": "tsc -p tsconfig.json --emitDeclarationOnly --declaration",
     "dev": "tsup --watch",
     "clean": "rimraf dist tsconfig.tsbuildinfo e2e/fixtures/dist",
     "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo e2e/fixtures/dist",

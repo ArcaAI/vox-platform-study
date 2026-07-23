@@ -328,10 +328,13 @@ class _FakeSmr:
 
 
 class _FakeApi:
-    async def get_policy(self, tenant_id: str) -> dict[str, Any]:
+    async def get_policy(
+        self, tenant_id: str, consultation_id: str | None = None
+    ) -> dict[str, Any]:
         # code-default policy (safety on, phi on, no custom SMR model) but
         # WITH the SYSTEM harness.judge selection, so the real inferential pass builds
         # the (stubbed) judge instead of failing closed on a missing selection.
+        # TASK-550 — accepts the consultation_id the workflow now threads through.
         return {"judgeProvider": "openai_compat", "judgeModel": "stub-judge"}
 
     async def persist_entities(self, consultation_id: str, **kw: Any) -> PersistEntitiesResponse:

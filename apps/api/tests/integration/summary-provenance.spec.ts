@@ -108,6 +108,9 @@ describe('summary provenance over HTTP (controller→service→mapper integratio
       sensorScores: { entityFaithfulness: 0.95, coverage: 0.9, citationPresence: 1 },
       citationsMap: { claims: [{ id: 'claim-1', text: 'lisinopril', section: 'P', status: 'verified' }] },
       generatedAt: '2026-06-06T00:00:00.000Z',
+      // No transcriptSegmentRepository wired in this fixture (TASK-552 Lane C
+      // is best-effort) — degrades to [] rather than blocking the read.
+      citedSegments: [],
     });
   });
 

@@ -401,4 +401,72 @@ describe('TenantFrontendConfigService', () => {
       });
     });
   });
+
+  // ===========================================================================
+  // TASK-545 — disable local (in-browser) transcription platform-wide.
+  // The SERVED value is clamped to BACKEND/locked regardless of what the
+  // tenant row stores; the stored column itself is untouched (reversible).
+  // ===========================================================================
+  describe('transcriptionMode clamp (TASK-545)', () => {
+    it('getByTenant serves BACKEND/locked=true even when the stored row says LOCAL/unlocked', async () => {
+      const { TenantFrontendConfigFactory, TranscriptionMode } = await import('@arcaai/domains');
+      const entity = TenantFrontendConfigFactory.CreateTenantFrontendConfig({
+        tenantId: 'tenant-1',
+        transcriptionMode: TranscriptionMode.LOCAL,
+        transcriptionModeLocked: false,
+      });
+      mockConfigRepository.findByTenant.mockResolvedValue(entity);
+
+      const result = await service.getByTenant();
+
+      expect(result!.transcriptionMode).toBe(TranscriptionMode.BACKEND);
+      expect(result!.transcriptionModeLocked).toBe(true);
+      // The stored column is untouched (reversibility).
+      expect(entity.transcriptionMode).toBe(TranscriptionMode.LOCAL);
+      expect(entity.transcriptionModeLocked).toBe(false);
+    });
+
+    it('upsert (create branch) serves BACKEND/locked=true even when the request asks for LOCAL/unlocked', async () => {
+      const { TranscriptionMode } = await import('@arcaai/domains');
+      mockConfigRepository.findByTenant.mockResolvedValue(null);
+      mockConfigRepository.create.mockImplementation(async (entity: any) => entity);
+
+      const result = await service.upsert({ transcriptionMode: TranscriptionMode.LOCAL, transcriptionModeLocked: false });
+
+      expect(result.transcriptionMode).toBe(TranscriptionMode.BACKEND);
+      expect(result.transcriptionModeLocked).toBe(true);
+      // The persisted entity (and its sys-event payload) still carries the
+      // stored value — only the SERVED response is clamped.
+      const created = mockConfigRepository.create.mock.calls[0][0];
+      expect(created.transcriptionMode).toBe(TranscriptionMode.LOCAL);
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        SysEventType.ResourceCreated,
+        expect.objectContaining({ data: expect.objectContaining({ transcriptionMode: TranscriptionMode.LOCAL }) }),
+      );
+    });
+
+    it('upsert (update branch) serves BACKEND/locked=true even when the stored row is updated to LOCAL/unlocked', async () => {
+      const { TenantFrontendConfigFactory, TranscriptionMode } = await import('@arcaai/domains');
+      const existing = TenantFrontendConfigFactory.CreateTenantFrontendConfig({ tenantId: 'tenant-1' });
+      mockConfigRepository.findByTenant.mockResolvedValue(existing);
+      mockConfigRepository.updateWithVersion.mockImplementation(async (_id: string, entity: any) => entity);
+
+      const result = await service.upsert({ transcriptionMode: TranscriptionMode.LOCAL, transcriptionModeLocked: false, expectedVersion: 1 });
+
+      expect(result.transcriptionMode).toBe(TranscriptionMode.BACKEND);
+      expect(result.transcriptionModeLocked).toBe(true);
+      expect(existing.transcriptionMode).toBe(TranscriptionMode.LOCAL);
+    });
+
+    it('serves BACKEND/locked=true unchanged when the stored row is already BACKEND (no-op clamp)', async () => {
+      const { TenantFrontendConfigFactory, TranscriptionMode } = await import('@arcaai/domains');
+      const entity = TenantFrontendConfigFactory.CreateTenantFrontendConfig({ tenantId: 'tenant-1' });
+      mockConfigRepository.findByTenant.mockResolvedValue(entity);
+
+      const result = await service.getByTenant();
+
+      expect(result!.transcriptionMode).toBe(TranscriptionMode.BACKEND);
+      expect(result!.transcriptionModeLocked).toBe(true);
+    });
+  });
 });
