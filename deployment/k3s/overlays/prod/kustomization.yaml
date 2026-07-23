@@ -87,8 +87,6 @@ patches:
 images:
   - name: hope-v2/api
     newTag: "0.0.0"
-  - name: hope-v2/ui-playground
-    newTag: "0.0.0"
   - name: hope-v2/admin-console
     newTag: "0.0.0"
   - name: hope-v2/smr

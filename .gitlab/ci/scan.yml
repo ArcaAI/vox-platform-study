@@ -51,18 +51,6 @@ scan-api:
       when: never
     - !reference [.rules-api, rules]
 
-scan-ui-playground:
-  extends: .trivy-scan
-  needs:
-    - job: build-ui-playground
-      artifacts: true
-  variables:
-    SCAN_IMAGE: $IMAGE
-  rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
-      when: never
-    - !reference [.rules-ui-playground, rules]
-
 scan-stt-v2:
   extends: .trivy-scan
   needs:

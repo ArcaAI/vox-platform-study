@@ -191,33 +191,6 @@ test-sdk:
         - packages/agentic-sdk-v2/**/*
         - packages/med-ner/**/*
 
-# ── App tests (ui-playground — Vitest / jsdom) ──────────────────────────────
-#
-# TASK-324 — apps/ui-playground (61 files / 687 Vitest specs) previously ran in
-# neither the root config nor CI. It now runs via the turbo fan-out so the local
-# `pnpm test` set matches CI. The SDK/UI workspace deps it imports are built by
-# turbo (the `test` task dependsOn `build`); no browser or external infra needed.
-
-test-apps:
-  stage: test
-  extends: .test-node-base
-  needs:
-    - job: install-node
-      optional: true
-    - job: lint-ts
-      optional: true
-      artifacts: false
-  variables:
-    <<: *test-env-vars
-  script:
-    - pnpm turbo test --filter=@arcaai/ui-playground
-  rules:
-    - if: $SKIP_TESTS == "true"
-      when: never
-    - if: $SKIP_TESTS_TS == "true"
-      when: never
-    - !reference [.rules-ui-playground, rules]
-
 # ── Admin Console (Next.js) unit tests ──────────────────────────────────────
 #
 # F-039 — the 1,100+ file Vitest unit suite (jsdom/happy-dom projects, fully

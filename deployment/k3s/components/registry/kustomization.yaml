@@ -4,8 +4,6 @@ kind: Component
 images:
   - name: hope-v2/api
     newName: registry.taphuynh.dev/arca/hope-v2/api
-  - name: hope-v2/ui-playground
-    newName: registry.taphuynh.dev/arca/hope-v2/ui-playground
   - name: hope-v2/admin-console
     newName: registry.taphuynh.dev/arca/hope-v2/admin-console
   - name: hope-v2/smr
