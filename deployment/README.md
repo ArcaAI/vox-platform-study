@@ -38,7 +38,6 @@ deployment/
     │   ├── stt-v2.yaml                # Deployment + Service (8861, GPU)
     │   ├── stt-v2-worker.yaml         # Deployment, no Service
     │   ├── tts-v2.yaml                # Deployment + Service (8865)
-    │   ├── ui.yaml                    # Deployment + Service + Ingress (3000) — ui-playground (deprecated)
     │   └── db-migrate.yaml            # Job, ArgoCD PreSync hook (runs Prisma migrations)
     ├── components/
     │   └── registry/
@@ -109,7 +108,6 @@ Either way the database itself must exist and accept connections before bootstra
 |---|---|---|---|
 | hope-api | Deployment | 8868 | Yes |
 | hope-admin-console | Deployment | 3000 | Yes (`admin[-dev].hope.local`) |
-| hope-ui (ui-playground, deprecated) | Deployment | 3000 | Yes |
 | hope-smr | Deployment | 8862 | No |
 | hope-guardrail | Deployment | 8863 | No |
 | hope-stt-v2 | Deployment (GPU) | 8861 | No |

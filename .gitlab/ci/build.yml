@@ -106,31 +106,6 @@ build-api:
       allow_failure: true
     - if: $CI_COMMIT_TAG =~ /^v\d+/
 
-# ── UI Playground ────────────────────────────────────────────────────────────
-
-build-ui-playground:
-  extends: .build-template
-  needs:
-    - job: warm-up-base-images
-      optional: true
-    - job: test-sdk
-      optional: true
-    - job: typecheck
-      optional: true
-  variables:
-    SERVICE_NAME: ui-playground
-    DOCKER_CONTEXT: "."
-    DOCKERFILE: apps/ui-playground/Dockerfile
-    BUILD_ARGS: "--build-arg VITE_API_URL=$VITE_API_URL"
-  rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
-      when: never
-    - if: $PIPELINE_TYPE == "release_playground"
-    - if: $PIPELINE_TYPE == "cicd" || $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "feature"
-      when: manual
-      allow_failure: true
-    - if: $CI_COMMIT_TAG =~ /^v\d+/
-
 # ── Admin Console ────────────────────────────────────────────────────────────
 
 build-admin-console:

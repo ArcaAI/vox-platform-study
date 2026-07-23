@@ -107,7 +107,6 @@ http_check required "stt (8861)" "http://localhost:${STT_PORT:-8861}/api/v1/heal
 http_check required "smr (8862)" "http://localhost:${SMR_PORT:-8862}/api/v1/health" "pnpm dev:smr-v2"
 http_check required "nlp (8864)" "http://localhost:${NLP_PORT:-8864}/api/v1/health" "pnpm dev:nlp"
 http_check required "harness (8866)" "http://localhost:${HARNESS_PORT:-8866}/api/v1/health" "pnpm dev:harness"
-http_check required "ui-playground (5175)" "http://localhost:${UI_PORT:-5175}/"
 # guardrail mounts its routers under /api (no version segment), unlike the rest
 http_check optional "guardrail (8863)" "http://localhost:${GUARDRAIL_PORT:-8863}/api/health"
 

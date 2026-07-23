@@ -37,7 +37,7 @@
 #      "baseBranch": "main",
 #      "updateInternalDependencies": "patch",
 #      "ignore": [
-#        "@arcaai/api", "@arcaai/ui-playground", "@arcaai/database",
+#        "@arcaai/api", "@arcaai/database",
 #        "@arcaai/domains", "@arcaai/applications", "@arcaai/exceptions",
 #        "@arcaai/logger", "@arcaai/tools", "@arcaai/config-eslint",
 #        "@arcaai/config-rollup", "@arcaai/config-tailwind", "@arcaai/config-ts",

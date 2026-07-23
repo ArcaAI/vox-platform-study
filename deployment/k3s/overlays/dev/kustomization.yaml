@@ -84,8 +84,6 @@ patches:
 images:
   - name: hope-v2/api
     newTag: dev
-  - name: hope-v2/ui-playground
-    newTag: dev
   - name: hope-v2/admin-console
     newTag: dev
   - name: hope-v2/smr

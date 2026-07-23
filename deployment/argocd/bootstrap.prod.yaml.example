@@ -173,11 +173,6 @@ spec:
           manifestTargets:
             kustomize:
               name: "hope-v2/api"
-        - alias: "ui"
-          imageName: "registry.taphuynh.dev/arca/hope-v2/ui-playground"
-          manifestTargets:
-            kustomize:
-              name: "hope-v2/ui-playground"
         - alias: "nlp"
           imageName: "registry.taphuynh.dev/arca/hope-v2/nlp"
           manifestTargets:
