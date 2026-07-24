@@ -1368,6 +1368,36 @@ class TestDegradation:
         assert recorder.persist_draft_inputs[0].gate_decision == "FLAG"
 
     @pytest.mark.asyncio
+    async def test_persist_entities_exhaustion_degrades_to_safe_and_completes(self):
+        """F-12: ``persist_entities`` is a priors-only write. Retry exhaustion must
+        NOT fail the whole workflow — the run completes normally without persisted
+        NER priors instead of permanently stranding the note."""
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"], persist_entities_fails=True)
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        # Workflow completes (does not raise WorkflowFailureError) despite the
+        # persist_entities activity being exhausted.
+        assert result.decision == "PASS"
+        assert recorder.calls["persist_entities"] == 1
+        assert recorder.calls["persist_draft"] == 1
+
+    @pytest.mark.asyncio
     async def test_smr_failure_fails_workflow_without_persisting_draft(self):
         recorder = StubRecorder()
         config = StubConfig(verdicts=["PASS"], generate_fails=True)

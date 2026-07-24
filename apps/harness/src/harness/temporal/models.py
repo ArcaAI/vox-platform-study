@@ -298,6 +298,12 @@ class HarnessPolicy(BaseModel):
     optimistic_delivery_enabled: bool | None = None
     atomic_fact_enabled: bool | None = None
     retrieval_enabled: bool | None = None
+    # F-26 — parsed for payload/replay compatibility only; intentionally UNREAD by
+    # the Python loop (grep-confirmed: no reference in workflows.py/activities.py).
+    # The warm-start switch lives entirely on the TS side (prompt-assembly's
+    # `resolveWarmStartEnabled` gate, TASK-533 A3) — do not wire a second, competing
+    # warm-start switch here; keep the field (removing it would break replay of any
+    # history that recorded a non-null value).
     warm_start_enabled: bool | None = None
     # Per-run token budget from `agentic.context.tokenBudget.perRun`,
     # served on the effective policy. None ⇒ not configured (the gate keeps its

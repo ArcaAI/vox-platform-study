@@ -1,6 +1,11 @@
-import { IsString, IsOptional, IsEnum, IsInt, Min } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsInt, Min, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { HighlightTargetKind } from '@arcaai/domains';
+
+// F-03: highlights fold verbatim into the harness prompt as `[highlight]`
+// lines (`harness-internal.service.ts` assemble) — caps bound the
+// prompt-injection / unbounded-payload surface (SOTA §5.1/§5.2).
+export const HIGHLIGHT_TEXT_MAX_LENGTH = 10_000;
 
 /**
  * Request to create a durable manual-doctor highlight on a persisted surface.
@@ -15,6 +20,7 @@ export class CreateHighlightRequest {
 
   @ApiProperty({ description: 'W3C TextQuoteSelector exact — the selected text span' })
   @IsString()
+  @MaxLength(HIGHLIGHT_TEXT_MAX_LENGTH)
   exact: string;
 
   @ApiProperty({ description: 'W3C TextPositionSelector start offset (>= 0)' })
@@ -55,5 +61,6 @@ export class CreateHighlightRequest {
   @ApiPropertyOptional({ description: 'Free-form note attached to the highlight' })
   @IsOptional()
   @IsString()
+  @MaxLength(HIGHLIGHT_TEXT_MAX_LENGTH)
   note?: string;
 }

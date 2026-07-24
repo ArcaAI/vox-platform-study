@@ -154,6 +154,17 @@ interface SessionInfo {
    * grace window after finalize.
    */
   finalizing?: boolean;
+  /**
+   * True for a session built by the fresh-connect path (no prior `SessionInfo`
+   * existed at handshake), false once a grace-window `rebindSession` genuinely
+   * CONTINUES a prior session. A `resume` handshake on a freshly-created session
+   * cannot be honored — the prior session (and its upstream STT-v2 session) is
+   * gone (grace expired) or was never here (cross-instance). Answering such a
+   * resume with a vacuous `resumed` (empty buffer passes the length guard) let
+   * the client believe it resumed while the mic captured into a dead session
+   * with no error anywhere. See `handleResume`.
+   */
+  freshlyCreated?: boolean;
 }
 
 @WebSocketGateway({ path: '/ws/stt-v2/stream' })
@@ -228,6 +239,9 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       session.finalizing = true;
       session.resultSubscription?.unsubscribe();
       this.bridgeService.unsubscribeFromResults(session.sessionId);
+      // Match finalizeSession: drop the tenant binding so no ticket can be
+      // minted against the session we're finalizing on shutdown (F-36).
+      void this.sessionBinding.clear(session.sessionId);
       removals.push(this.sessionService.removeSession(session.sessionId).catch(() => {}));
     }
     this.sessions.clear();
@@ -395,6 +409,9 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       droppedPartialResults: 0,
       droppedFinalResults: 0,
       pendingFinalResults: [],
+      // No prior SessionInfo existed → this is NOT a continuation; a later
+      // resume handshake on it must be rejected (F-06).
+      freshlyCreated: true,
     };
 
     this.sessions.set(client, session);
@@ -498,6 +515,10 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       session.graceTimer = undefined;
     }
     session.finalizing = false;
+    // A genuine grace-window continuation: the upstream STT-v2 session, resume
+    // buffer, and seq are all intact, so a subsequent resume handshake IS
+    // honorable (F-06).
+    session.freshlyCreated = false;
 
     // Drop the stale socket mapping (defensive — normally already removed on
     // disconnect) and bind the new one.
@@ -780,6 +801,14 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       reason,
     });
 
+    // Clear the sessionId→tenant binding so a stream ticket can NO longer be
+    // minted against this now-dead session (F-36). The binding's own 24h TTL
+    // would otherwise keep it mintable long after finalize, and a ticket minted
+    // against a finalized session is precisely what feeds the false-resume path
+    // (F-06). `clear()` is best-effort (swallows Redis errors internally); the
+    // TTL remains the backstop. The sibling meta key expires on its own TTL.
+    void this.sessionBinding.clear(session.sessionId);
+
     this.sessionService.removeSession(session.sessionId).catch((err) => {
       this.logger.warn({
         message: 'Session cleanup failed on finalize',
@@ -908,6 +937,31 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     const lastSeq = typeof msg.lastSeq === 'number' && Number.isFinite(msg.lastSeq) ? msg.lastSeq : null;
 
     if (!reqSessionId || reqSessionId !== session.sessionId || lastSeq === null) {
+      this.sendJson(client, { type: 'resume_failed', sessionId: session.sessionId, reason: 'unknown_session' });
+      return;
+    }
+
+    // A resume that references seqs this session never emitted, on a
+    // freshly-created (never-continued) session, is a FALSE resume: the prior
+    // session (and its upstream STT-v2 session) is gone — the grace window
+    // expired and finalize deleted it, or this is a cross-instance reconnect
+    // that never held the prior state. Such a session has an empty resume
+    // buffer, which would vacuously pass the length guard below and reply
+    // `resumed`, leaving the client streaming audio into a dead session with no
+    // error anywhere. `lastSeq > session.resultSeq` is the precise signal
+    // (the client claims to have seen more than this session ever produced) — it
+    // spares the legitimate cases: a genuine grace-window continuation is not
+    // freshly created (rebindSession clears the flag), and a first-ever resume
+    // with nothing seen (`lastSeq <= resultSeq`, e.g. both 0) still continues.
+    // Rejecting lets the SDK surface a terminal failure and establish a fresh
+    // session (F-06) instead of silently freezing.
+    if (session.freshlyCreated && lastSeq > session.resultSeq) {
+      this.logger.warn({
+        message: 'Resume rejected — session not resumable (freshly created after grace/cross-instance)',
+        sessionId: session.sessionId,
+        lastSeq,
+        resultSeq: session.resultSeq,
+      });
       this.sendJson(client, { type: 'resume_failed', sessionId: session.sessionId, reason: 'unknown_session' });
       return;
     }

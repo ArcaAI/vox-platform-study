@@ -112,6 +112,11 @@ class StubConfig:
     # workflow SKIPS the redundant ``persist_entities``. The note-NER calls
     # (reuse_priors=False) always return reused=False. Default False ⇒ the cold path.
     reuse_transcript_priors: bool = False
+    # F-12 — makes the ``persist_entities`` stub raise (non-retryable) so tests can
+    # assert the workflow degrades to safe (logs + continues without persisted NER
+    # priors) instead of failing the whole run when this priors-only write is
+    # exhausted.
+    persist_entities_fails: bool = False
     # Claim-check: make the ``generate`` + ``assemble_prompt`` stubs return
     # OFFLOADED results (inline emptied + a ClaimCheckRef) so the captured history carries
     # the ref-threaded (new-run) command sequence for the replay-compat fixture. The
@@ -350,6 +355,8 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
     async def persist_entities(payload: PersistEntitiesInput) -> PersistEntitiesResponse:
         recorder.calls["persist_entities"] += 1
         recorder.persist_entities_inputs.append(payload)
+        if config.persist_entities_fails:
+            raise ApplicationError("persist_entities unavailable", non_retryable=True)
         n = len(payload.entities)
         return PersistEntitiesResponse(saved_count=n, entity_ids=[f"e{i}" for i in range(n)])
 

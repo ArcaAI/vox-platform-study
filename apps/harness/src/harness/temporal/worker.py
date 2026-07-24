@@ -196,12 +196,18 @@ async def run_worker() -> None:
         graceful_shutdown_timeout=timedelta(
             seconds=settings.temporal.graceful_shutdown_timeout_s
         ),
+        # F-29 — admission cap coordinated with the LLM concurrency governor
+        # (HARNESS_LLM_MAX_CONCURRENCY, core/llm_concurrency.py): without this,
+        # Temporal admits unbounded concurrent activities, which just queue behind
+        # that single process-wide semaphore once they reach an inferential call.
+        max_concurrent_activities=settings.max_concurrent_activities,
     )
 
     logger.info(
         "harness.worker.started",
         task_queue=settings.temporal.task_queue,
         graceful_shutdown_timeout_s=settings.temporal.graceful_shutdown_timeout_s,
+        max_concurrent_activities=settings.max_concurrent_activities,
     )
     sweeper = asyncio.create_task(_sweep_model_caches_forever())
     try:

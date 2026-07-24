@@ -17,9 +17,12 @@ import {
 export interface ISttInternalService {
   /**
    * Create a transcript context item from completed transcription
-   * Called by STT-v2 after transcription is complete
+   * Called by STT-v2 after transcription is complete.
+   *
+   * `idempotencyKey` is the caller-supplied `Idempotency-Key` header
+   * (dedups a concurrent/retried streaming-transcript create — F-09).
    */
-  createTranscript(dto: CreateTranscriptRequest): Promise<{ contextItemId: string }>;
+  createTranscript(dto: CreateTranscriptRequest, idempotencyKey?: string): Promise<{ contextItemId: string }>;
 
   /**
    * Start processing a job

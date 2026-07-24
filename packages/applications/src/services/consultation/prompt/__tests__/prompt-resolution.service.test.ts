@@ -366,10 +366,15 @@ describe('PromptResolutionService', () => {
             expect(result.resolutionTrace.preferredPromptId).toBeNull();
         });
 
-        it('does not query the template repo when no preferred id is supplied', async () => {
+        it('performs no preferred-tier lookup when no preferred id is supplied (default tier still resolves governed content)', async () => {
             const result = await service.resolve({});
 
-            expect(mockPromptTemplateRepository.findById).not.toHaveBeenCalled();
+            // No preferred id ⇒ the preferred-tier lookup never runs. The default
+            // tier now resolves its governed CONTENT snapshot (F-01/F-02), so the
+            // ONLY template lookup is for the SYSTEM default prompt id — never a
+            // preferred id.
+            expect(mockPromptTemplateRepository.findById).toHaveBeenCalledTimes(1);
+            expect(mockPromptTemplateRepository.findById).toHaveBeenCalledWith(SYSTEM_DEFAULTS.promptId);
             expect(result.resolvedFrom).toBe('default');
             expect(result.resolutionTrace.preferredPromptId).toBeNull();
         });
@@ -526,9 +531,10 @@ describe('PromptResolutionService', () => {
             expect(mockPromptVersionRepository.findByVersionNumber).toHaveBeenCalledWith('agent-tpl', 3);
         });
 
-        it('serves the LATEST version content when the agent is unpinned (pin null)', async () => {
+        it('serves the LATEST version content when the agent is unpinned AND the template has no approval pin (legacy)', async () => {
             mockDepartmentRepository.findById.mockResolvedValue(createMockDepartment());
             mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(agent({ pinnedVersionNumber: null }));
+            // approvedVersionNumber absent (legacy) ⇒ falls through to latest.
             mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, status: 'APPROVED' }));
             mockPromptVersionRepository.findLatestVersion.mockResolvedValue({ versionNumber: 7, content: 'LATEST approved body' });
 
@@ -538,6 +544,24 @@ describe('PromptResolutionService', () => {
             expect(result.content).toBe('LATEST approved body');
             expect(result.resolvedVersionNumber).toBe(7);
             expect(mockPromptVersionRepository.findLatestVersion).toHaveBeenCalledWith('agent-tpl');
+        });
+
+        it('serves the approvedVersionNumber snapshot for an UNPINNED agent, NOT the newer unapproved latest (F-02)', async () => {
+            mockDepartmentRepository.findById.mockResolvedValue(createMockDepartment());
+            mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(agent({ pinnedVersionNumber: null }));
+            // Template approved at v4, then content-edited to v6 without re-approval.
+            mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, status: 'APPROVED', approvedVersionNumber: 4 }));
+            mockPromptVersionRepository.findByVersionNumber.mockResolvedValue({ versionNumber: 4, content: 'APPROVED v4 body' });
+            mockPromptVersionRepository.findLatestVersion.mockResolvedValue({ versionNumber: 6, content: 'UNAPPROVED latest v6' });
+
+            const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+
+            expect(result.resolvedFrom).toBe('agent');
+            // The eval-gated approved snapshot wins over the newer unapproved edit.
+            expect(result.content).toBe('APPROVED v4 body');
+            expect(result.resolvedVersionNumber).toBe(4);
+            expect(mockPromptVersionRepository.findByVersionNumber).toHaveBeenCalledWith('agent-tpl', 4);
+            expect(mockPromptVersionRepository.findLatestVersion).not.toHaveBeenCalled();
         });
 
         it('falls through to the legacy chain when the agent template is NOT APPROVED', async () => {
@@ -555,6 +579,85 @@ describe('PromptResolutionService', () => {
             expect(result.resolvedFrom).toBe('department');
             expect(result.promptId).toBe('dept-prompt');
             expect(result).not.toHaveProperty('content');
+        });
+    });
+
+    // =========================================================================
+    // Governed CONTENT snapshot for the NON-agent tiers (F-01/F-02)
+    //
+    // The resolver serves the APPROVED PromptVersion snapshot for the
+    // preferred / legacy-department / default tiers too — never the mutable
+    // PromptTemplate.content row — so a post-approval content edit is not served
+    // until the next (eval-gated) re-approval.
+    // =========================================================================
+    describe('resolve — governed content snapshot (non-agent tiers)', () => {
+        it('serves the department template APPROVED snapshot (approvedVersionNumber), not the mutable content column', async () => {
+            mockDepartmentRepository.findById.mockResolvedValue(
+                createMockDepartment({ newPatientPromptId: 'dept-tpl' }),
+            );
+            mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({
+                id,
+                status: 'APPROVED',
+                approvedVersionNumber: 4,
+                content: 'MUTABLE latest edit v6',
+                currentVersionNumber: 6,
+            }));
+            mockPromptVersionRepository.findByVersionNumber.mockResolvedValue({ versionNumber: 4, content: 'APPROVED v4 body' });
+
+            const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+
+            expect(result.resolvedFrom).toBe('department');
+            expect(result.promptId).toBe('dept-tpl');
+            expect(result.content).toBe('APPROVED v4 body');
+            expect(result.content).not.toBe('MUTABLE latest edit v6');
+            expect(result.resolvedVersionNumber).toBe(4);
+            expect(mockPromptVersionRepository.findByVersionNumber).toHaveBeenCalledWith('dept-tpl', 4);
+        });
+
+        it('falls back to template.content for a legacy APPROVED template with no approval pin', async () => {
+            mockDepartmentRepository.findById.mockResolvedValue(
+                createMockDepartment({ newPatientPromptId: 'legacy-tpl' }),
+            );
+            mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({
+                id,
+                status: 'APPROVED',
+                approvedVersionNumber: null,
+                content: 'LEGACY content column',
+                currentVersionNumber: 2,
+            }));
+
+            const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+
+            expect(result.content).toBe('LEGACY content column');
+            expect(result.resolvedVersionNumber).toBe(2);
+            // No pin ⇒ never dereferences a version snapshot.
+            expect(mockPromptVersionRepository.findByVersionNumber).not.toHaveBeenCalled();
+        });
+
+        it('serves the preferred template APPROVED snapshot for the preferred tier', async () => {
+            mockDepartmentRepository.findById.mockResolvedValue(
+                createMockDepartment({ newPatientPromptId: 'dept-tpl' }),
+            );
+            mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({
+                id,
+                status: 'APPROVED',
+                approvedVersionNumber: 9,
+                content: 'preferred mutable v12',
+                currentVersionNumber: 12,
+            }));
+            mockPromptVersionRepository.findByVersionNumber.mockResolvedValue({ versionNumber: 9, content: 'preferred APPROVED v9' });
+
+            const result = await service.resolve({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                preferredPromptTemplateId: 'preferred-tpl',
+            });
+
+            expect(result.resolvedFrom).toBe('preferred');
+            expect(result.promptId).toBe('preferred-tpl');
+            expect(result.content).toBe('preferred APPROVED v9');
+            expect(result.resolvedVersionNumber).toBe(9);
+            expect(mockPromptVersionRepository.findByVersionNumber).toHaveBeenCalledWith('preferred-tpl', 9);
         });
     });
 });

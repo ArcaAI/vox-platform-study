@@ -119,12 +119,15 @@ describe('LiveDocumentationService — agentic.context.* live lane', () => {
     expect(knobs.liveDeltaMaxChars).toBe(AGENTIC_CONTEXT_DEFAULTS['liveDelta.maxChars']);
     expect(knobs.segmentThreshold).toBe(AGENTIC_CONTEXT_DEFAULTS['liveFlush.segmentThreshold']);
     expect(knobs.idleMs).toBe(AGENTIC_CONTEXT_DEFAULTS['liveFlush.idleMs']);
-    expect(knobs.claimCheckMinBytes).toBe(AGENTIC_CONTEXT_DEFAULTS['claimCheck.minBytes']);
     expect(knobs.transcriptMode).toBe(AGENTIC_CONTEXT_DEFAULTS['transcript.mode']);
     expect(knobs.tokenBudgetPerRun).toBe(AGENTIC_CONTEXT_DEFAULTS['tokenBudget.perRun']);
   });
 
-  it('resolves ALL SIX knobs through the facade', async () => {
+  it('resolves ALL FIVE live knobs through the facade', async () => {
+    // claimCheck.minBytes was removed (F-21): the claim-check offload is a
+    // Temporal-history concern owned entirely by the harness
+    // (HARNESS_CLAIM_CHECK_MIN_BYTES); it never governed anything in the live
+    // SMR loop, so it is no longer resolved here.
     const { service, resolveEffective } = buildService();
 
     await service.resolveAgenticContext(TENANT);
@@ -132,7 +135,6 @@ describe('LiveDocumentationService — agentic.context.* live lane', () => {
     const keys = resolveEffective.mock.calls.map((c) => c[0]).sort();
     expect(keys).toEqual(
       [
-        'agentic.context.claimCheck.minBytes',
         'agentic.context.liveDelta.maxChars',
         'agentic.context.liveFlush.idleMs',
         'agentic.context.liveFlush.segmentThreshold',

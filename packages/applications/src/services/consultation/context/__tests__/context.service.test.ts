@@ -29,6 +29,20 @@ const mockEventEmitter = {
 const mockContextItemRepository = {
     findById: vi.fn(),
     findByConsultation: vi.fn(),
+    // F-15: getContextItemsPaginated pushes skip/take + count into the
+    // repository instead of fetching everything and slicing in memory;
+    // assertContextItemsInTenant batches its per-id tenant check into ONE
+    // `findAll({ filters: { id: { in } } })` call instead of a sequential
+    // `assertParentInScope` chain. Default implementation below echoes back
+    // an in-tenant ('tenant-1') entity per requested id — the harmless
+    // default every pre-existing `addRawSummary` test (which doesn't care
+    // about this guard) implicitly relies on; pagination tests and the
+    // dedicated cross-tenant tests override it explicitly per-call.
+    findAll: vi.fn(async (props?: { filters?: { id?: { in?: string[] } } }) => {
+        const ids = props?.filters?.id?.in;
+        return Array.isArray(ids) ? ids.map((id: string) => createMockContextItemEntity({ id, tenantId: 'tenant-1' })) : [];
+    }),
+    count: vi.fn(),
     findSharedContext: vi.fn(),
     findCaseNotesFromChain: vi.fn(),
     findTranscripts: vi.fn(),
@@ -45,6 +59,19 @@ const mockContextItemRepository = {
     update: vi.fn(),
     softDelete: vi.fn(),
 };
+
+// Test double for the F-15 pagination push-down: `findAll` respects
+// `page`/`limit` (mirroring `formatFindAllProps`'s 1-indexed skip/take), and
+// `count` reports the unsliced total — the same contract
+// `getContextItemsPaginated` now relies on.
+function wireContextItemPagination(items: Array<{ id: string }>): void {
+    mockContextItemRepository.findAll.mockImplementation(async (props: { page?: number; limit?: number } = {}) => {
+        const { page, limit } = props;
+        const skip = page != null && limit ? Math.max(0, (page - 1) * limit) : 0;
+        return limit != null ? items.slice(skip, skip + limit) : items.slice(skip);
+    });
+    mockContextItemRepository.count.mockResolvedValue(items.length);
+}
 
 // Mock ContextItemVersionRepository
 const mockContextItemVersionRepository = {
@@ -2432,7 +2459,7 @@ describe('ContextService', () => {
 
         it('should return paginated context items with count, page, limit', async () => {
             const items = createItems(10);
-            mockContextItemRepository.findByConsultation.mockResolvedValue(items);
+            wireContextItemPagination(items);
 
             const result = await service.getContextItemsPaginated('consultation-1', {
                 page: 1,
@@ -2447,7 +2474,7 @@ describe('ContextService', () => {
 
         it('should return correct slice for page 2', async () => {
             const items = createItems(10);
-            mockContextItemRepository.findByConsultation.mockResolvedValue(items);
+            wireContextItemPagination(items);
 
             const result = await service.getContextItemsPaginated('consultation-1', {
                 page: 2,
@@ -2464,7 +2491,7 @@ describe('ContextService', () => {
 
         it('should return partial page when at end of data', async () => {
             const items = createItems(7);
-            mockContextItemRepository.findByConsultation.mockResolvedValue(items);
+            wireContextItemPagination(items);
 
             const result = await service.getContextItemsPaginated('consultation-1', {
                 page: 2,
@@ -2477,7 +2504,7 @@ describe('ContextService', () => {
 
         it('should return empty data when page is beyond range', async () => {
             const items = createItems(5);
-            mockContextItemRepository.findByConsultation.mockResolvedValue(items);
+            wireContextItemPagination(items);
 
             const result = await service.getContextItemsPaginated('consultation-1', {
                 page: 10,
@@ -2490,7 +2517,7 @@ describe('ContextService', () => {
 
         it('should default to page=1 and limit=50 when filters omitted', async () => {
             const items = createItems(3);
-            mockContextItemRepository.findByConsultation.mockResolvedValue(items);
+            wireContextItemPagination(items);
 
             const result = await service.getContextItemsPaginated('consultation-1');
 
@@ -2502,7 +2529,7 @@ describe('ContextService', () => {
 
         it('should default to page=1 and limit=50 when filters has no page/limit', async () => {
             const items = createItems(3);
-            mockContextItemRepository.findByConsultation.mockResolvedValue(items);
+            wireContextItemPagination(items);
 
             const result = await service.getContextItemsPaginated('consultation-1', {
                 type: 'TRANSCRIPT',
@@ -2513,7 +2540,7 @@ describe('ContextService', () => {
         });
 
         it('should pass type and source filters to repository', async () => {
-            mockContextItemRepository.findByConsultation.mockResolvedValue([]);
+            wireContextItemPagination([]);
 
             await service.getContextItemsPaginated('consultation-1', {
                 type: 'TRANSCRIPT',
@@ -2522,14 +2549,22 @@ describe('ContextService', () => {
                 limit: 10,
             });
 
-            expect(mockContextItemRepository.findByConsultation).toHaveBeenCalledWith(
-                'consultation-1',
-                expect.objectContaining({ type: 'TRANSCRIPT', source: 'ai' }),
+            expect(mockContextItemRepository.findAll).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    filters: expect.objectContaining({ consultationId: 'consultation-1', type: 'TRANSCRIPT', source: 'ai' }),
+                    page: 1,
+                    limit: 10,
+                }),
+            );
+            expect(mockContextItemRepository.count).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    filters: expect.objectContaining({ consultationId: 'consultation-1', type: 'TRANSCRIPT', source: 'ai' }),
+                }),
             );
         });
 
         it('should handle zero items', async () => {
-            mockContextItemRepository.findByConsultation.mockResolvedValue([]);
+            wireContextItemPagination([]);
 
             const result = await service.getContextItemsPaginated('consultation-1', {
                 page: 1,
@@ -2543,7 +2578,7 @@ describe('ContextService', () => {
         });
 
         it('should broadcast SysEvent with pagination metadata', async () => {
-            mockContextItemRepository.findByConsultation.mockResolvedValue(createItems(15));
+            wireContextItemPagination(createItems(15));
 
             await service.getContextItemsPaginated('consultation-1', {
                 page: 2,
@@ -2591,7 +2626,7 @@ describe('ContextService', () => {
         it('enriches ATTACHMENT items on the returned page with url + mimeType + thumbnail', async () => {
             const attachment = createMockContextItemEntity({ id: 'ci-page-1', type: ContextItemType.ATTACHMENT });
             (attachment as any).mediaId = 'media-p1';
-            mockContextItemRepository.findByConsultation.mockResolvedValue([attachment]);
+            wireContextItemPagination([attachment]);
             mockMediaRepository.findAll.mockResolvedValue([
                 { id: 'media-p1', uri: 's3://bucket-x/path/img.png', mimeType: 'image/png' },
             ]);
@@ -2619,7 +2654,7 @@ describe('ContextService', () => {
             const offPage = createMockContextItemEntity({ id: 'ci-off-page', type: ContextItemType.ATTACHMENT });
             (offPage as any).mediaId = 'media-off-page';
             // page 2 / limit 1 → slice is [offPage→ actually items[1]]
-            mockContextItemRepository.findByConsultation.mockResolvedValue([onPage, offPage]);
+            wireContextItemPagination([onPage, offPage]);
             mockMediaRepository.findAll.mockResolvedValue([
                 { id: 'media-off-page', uri: 's3://bucket-x/path/b.pdf', mimeType: 'application/pdf' },
             ]);
@@ -2645,7 +2680,7 @@ describe('ContextService', () => {
         it('degrades to no url when storage deps are absent (legacy construction)', async () => {
             const attachment = createMockContextItemEntity({ id: 'ci-legacy', type: ContextItemType.ATTACHMENT });
             (attachment as any).mediaId = 'media-legacy';
-            mockContextItemRepository.findByConsultation.mockResolvedValue([attachment]);
+            wireContextItemPagination([attachment]);
 
             // `service` is the outer beforeEach instance with NO storage wired.
             const result = await service.getContextItemsPaginated('consultation-1', { page: 1, limit: 5 });
@@ -3703,10 +3738,12 @@ describe('ContextService', () => {
                     id: 'consultation-1',
                     tenantId: 'tenant-1',
                 });
-                // First case note in-tenant; second cross-tenant → reject.
-                mockContextItemRepository.findById
-                    .mockResolvedValueOnce(createMockContextItemEntity({ id: 'note-good', tenantId: 'tenant-1' }))
-                    .mockResolvedValueOnce(createMockContextItemEntity({ id: 'note-bad', tenantId: 'tenant-OTHER' }));
+                // First case note in-tenant; second cross-tenant → reject. F-15:
+                // assertContextItemsInTenant now batches into ONE findAll call.
+                mockContextItemRepository.findAll.mockResolvedValueOnce([
+                    createMockContextItemEntity({ id: 'note-good', tenantId: 'tenant-1' }),
+                    createMockContextItemEntity({ id: 'note-bad', tenantId: 'tenant-OTHER' }),
+                ]);
 
                 await expect(
                     service.addRawSummary('consultation-1', {
@@ -3722,9 +3759,10 @@ describe('ContextService', () => {
                     id: 'consultation-1',
                     tenantId: 'tenant-1',
                 });
-                mockContextItemRepository.findById.mockResolvedValueOnce(
+                // F-15: assertContextItemsInTenant now batches into ONE findAll call.
+                mockContextItemRepository.findAll.mockResolvedValueOnce([
                     createMockContextItemEntity({ id: 'prev-bad', tenantId: 'tenant-OTHER' }),
-                );
+                ]);
 
                 await expect(
                     service.addRawSummary('consultation-1', {

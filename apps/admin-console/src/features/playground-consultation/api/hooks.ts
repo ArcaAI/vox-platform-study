@@ -17,7 +17,6 @@ import {
     harnessAssuranceStreamPath,
     harnessProgressStreamPath,
     listAudioPipelines,
-    liveSummaryStreamPath,
     startRecording,
     stopRecording,
 } from './client';
@@ -28,7 +27,6 @@ import type {
     GenerateSummaryRequest,
     HarnessAssuranceSnapshot,
     HarnessProgressSnapshot,
-    LiveSummarySnapshot,
 } from './types';
 import { isTerminalConsultationJob } from './types';
 
@@ -186,16 +184,6 @@ function useSnapshotStream<T extends { closed?: boolean }>({ path, scope, enable
     }, [stream.close]);
 
     return { snapshot, status: stream.status, error: stream.error, close: stream.close, reopen: stream.reopen };
-}
-
-/** Running SOAP snapshot while recording — scope `consultation_live_summary:<id>`. */
-export function useLiveSummaryStream(consultationId: string | null, enabled = true): SnapshotStreamHandle<LiveSummarySnapshot> {
-    return useSnapshotStream<LiveSummarySnapshot>({
-        path: consultationId ? liveSummaryStreamPath(consultationId) : null,
-        scope: consultationId ? `consultation_live_summary:${consultationId}` : null,
-        enabled: enabled && !!consultationId,
-        accept: (parsed) => Array.isArray(parsed.sections),
-    });
 }
 
 /** Harness stage checklist — scope `consultation_harness_progress:<id>`. */

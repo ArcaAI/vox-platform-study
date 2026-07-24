@@ -64,6 +64,17 @@ STREAMING_INFERENCE_LATENCY = Histogram(
     buckets=[0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0],
 )
 
+# F-08 — steady-state utterances dropped when the per-session inference queue
+# stays full past the bounded enqueue wait. Captions degrade (a dropped
+# utterance is missing from the live transcript); the durable Redis audio
+# pipeline is unaffected (it keeps draining/XACK'ing independently of this
+# in-process queue).
+STREAMING_INFERENCE_QUEUE_DROPPED_TOTAL = Counter(
+    "stt_v2_streaming_inference_queue_dropped_total",
+    "Utterances dropped because the streaming inference queue stayed full "
+    "past the bounded enqueue wait",
+)
+
 # ---------------------------------------------------------------------------
 # Model loading metrics
 # ---------------------------------------------------------------------------
@@ -208,6 +219,11 @@ def streaming_session_started(active_count: int) -> None:
 def streaming_session_ended(active_count: int) -> None:
     """A streaming session was removed: sync the active gauge to the live count."""
     STREAMING_SESSIONS_ACTIVE.set(max(0, active_count))
+
+
+def streaming_inference_queue_dropped() -> None:
+    """F-08: one utterance was dropped because the inference queue stayed full."""
+    STREAMING_INFERENCE_QUEUE_DROPPED_TOTAL.inc()
 
 
 # ---------------------------------------------------------------------------

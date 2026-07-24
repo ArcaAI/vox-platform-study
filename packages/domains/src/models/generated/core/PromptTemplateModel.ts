@@ -24,6 +24,7 @@ export class PromptTemplate extends BaseTenantDataModel {
   public encryptedLastTestOutput: Uint8Array | null;
   public keyVersion: number | null;
   public currentVersionNumber: number;
+  public approvedVersionNumber: number | null;
   public departmentId: string | null;
   public scope: Enums.PromptTemplateScope;
   public ownerUserId: string | null;
@@ -53,6 +54,7 @@ export class PromptTemplate extends BaseTenantDataModel {
     this.encryptedLastTestOutput = data.encryptedLastTestOutput;
     this.keyVersion = data.keyVersion;
     this.currentVersionNumber = data.currentVersionNumber;
+    this.approvedVersionNumber = data.approvedVersionNumber;
     this.departmentId = data.departmentId;
     this.scope = data.scope;
     this.ownerUserId = data.ownerUserId;

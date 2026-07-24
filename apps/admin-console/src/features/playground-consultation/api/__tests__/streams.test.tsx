@@ -17,7 +17,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     useHarnessAssuranceStream,
     useHarnessProgressStream,
-    useLiveSummaryStream,
     useSummaryJobProgress,
 } from '../hooks';
 import type { ConsultationJobStatus } from '../types';
@@ -113,100 +112,6 @@ afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
     vi.useRealTimers();
-});
-
-describe('useLiveSummaryStream', () => {
-    it('mints a consultation_live_summary ticket, folds snapshots and closes on the terminal event', async () => {
-        const calls = stubNetwork();
-        const { Wrapper } = createWrapper();
-        const { result } = renderHook(() => useLiveSummaryStream('c-1', true), { wrapper: Wrapper });
-
-        await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
-        const mint = calls.find((call) => call.url === '/api/auth/stream-ticket');
-        expect(mint?.body).toEqual({ scope: 'consultation_live_summary:c-1' });
-        expect(FakeEventSource.instances[0].url).toContain('/api/v1/consultations/c-1/live-summary/stream?ticket=');
-
-        const source = FakeEventSource.instances[0];
-        act(() => {
-            source.open();
-            source.message({
-                consultationId: 'c-1',
-                runningSummary: 'S Dyspnea on exertion',
-                sections: [{ title: 'Subjective', content: 'Dyspnea on exertion x5 days' }],
-                entities: [{ text: 'dyspnea', type: 'CONDITION', confidence: 0.93 }],
-                updatedAt: '2026-07-06T14:03:00.000Z',
-            });
-        });
-        expect(result.current.snapshot?.sections[0].title).toBe('Subjective');
-        expect(result.current.status).toBe('open');
-
-        // Full-state events: the latest snapshot wins.
-        act(() =>
-            source.message({
-                consultationId: 'c-1',
-                runningSummary: 'updated',
-                sections: [{ title: 'Subjective', content: 'worse on exertion' }],
-                entities: [],
-                updatedAt: '2026-07-06T14:03:30.000Z',
-            }),
-        );
-        expect(result.current.snapshot?.runningSummary).toBe('updated');
-
-        // Heartbeats (no sections array) must not clobber the folded snapshot.
-        act(() => source.message({ type: 'heartbeat', ts: '2026-07-06T14:03:45.000Z' }));
-        expect(result.current.snapshot?.runningSummary).toBe('updated');
-
-        // Terminal event (recording stopped) — the hook closes the stream.
-        act(() =>
-            source.message({
-                consultationId: 'c-1',
-                runningSummary: 'final',
-                sections: [],
-                entities: [],
-                updatedAt: '2026-07-06T14:05:00.000Z',
-                closed: true,
-            }),
-        );
-        await waitFor(() => expect(source.closed).toBe(true));
-        expect(result.current.snapshot?.closed).toBe(true);
-    });
-
-    it('stays idle when disabled or without a consultation', () => {
-        const calls = stubNetwork();
-        const { Wrapper } = createWrapper();
-        const { result } = renderHook(() => useLiveSummaryStream(null, true), { wrapper: Wrapper });
-        expect(result.current.status).toBe('idle');
-        expect(result.current.snapshot).toBeNull();
-        expect(calls).toHaveLength(0);
-
-        const disabled = renderHook(() => useLiveSummaryStream('c-1', false), { wrapper: Wrapper });
-        expect(disabled.result.current.status).toBe('idle');
-        expect(calls).toHaveLength(0);
-    });
-
-    it('resets the folded snapshot when the consultation changes', async () => {
-        stubNetwork();
-        const { Wrapper } = createWrapper();
-        const { result, rerender } = renderHook(({ id }: { id: string | null }) => useLiveSummaryStream(id, true), {
-            wrapper: Wrapper,
-            initialProps: { id: 'c-1' as string | null },
-        });
-
-        await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
-        act(() =>
-            FakeEventSource.instances[0].message({
-                consultationId: 'c-1',
-                runningSummary: 'first',
-                sections: [],
-                entities: [],
-                updatedAt: 't',
-            }),
-        );
-        expect(result.current.snapshot?.runningSummary).toBe('first');
-
-        rerender({ id: 'c-2' });
-        expect(result.current.snapshot).toBeNull();
-    });
 });
 
 describe('useHarnessProgressStream', () => {

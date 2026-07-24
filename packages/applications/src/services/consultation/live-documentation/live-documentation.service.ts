@@ -3,7 +3,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { Observable, type Subscription, finalize, interval, map, merge, takeWhile } from 'rxjs';
+import { Observable, ReplaySubject, type Subscription, filter, interval, map, merge, takeWhile } from 'rxjs';
 import { AgentSessionKind, AgentStepStatus, AgentStepType, ContextItemEntity, ContextItemFactory, ContextItemRepository } from '@arcaai/domains';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { IAgentTrajectoryService } from '../../agent-trajectory/IAgentTrajectoryService';
@@ -208,7 +208,6 @@ export interface AgenticContextKnobs {
   liveDeltaMaxChars: number;
   segmentThreshold: number;
   idleMs: number;
-  claimCheckMinBytes: number;
   transcriptMode: AgenticTranscriptMode;
   tokenBudgetPerRun: number;
 }
@@ -293,7 +292,6 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private readonly envSegmentThreshold?: number;
   private readonly envDebounceMs?: number;
   private readonly envLiveDeltaMaxChars?: number;
-  private readonly envClaimCheckMinBytes?: number;
   private readonly envTranscriptMode?: AgenticTranscriptMode;
   private readonly envTokenBudgetPerRun?: number;
   /**
@@ -364,7 +362,6 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     this.envSegmentThreshold = readNumericEnv(this.configService, 'LIVE_DOC_SEGMENT_THRESHOLD');
     this.envDebounceMs = readNumericEnv(this.configService, 'LIVE_DOC_DEBOUNCE_MS');
     this.envLiveDeltaMaxChars = readNumericEnv(this.configService, 'AGENTIC_CONTEXT_LIVE_DELTA_MAX_CHARS');
-    this.envClaimCheckMinBytes = readNumericEnv(this.configService, 'AGENTIC_CONTEXT_CLAIM_CHECK_MIN_BYTES');
     this.envTokenBudgetPerRun = readNumericEnv(this.configService, 'AGENTIC_CONTEXT_TOKEN_BUDGET_PER_RUN');
     const rawMode = this.configService.get('AGENTIC_CONTEXT_TRANSCRIPT_MODE');
     this.envTranscriptMode = rawMode === undefined || rawMode === null ? undefined : toTranscriptMode(rawMode);
@@ -1079,60 +1076,117 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   // ------------------------------------------------------------------
 
   /**
-   * SSE source for `GET /consultations/:id/live-summary/stream`. Emits the last
-   * stored snapshot immediately (late-join), then relays the Redis channel,
-   * with a periodic heartbeat so idle streams survive proxies. Mirrors the
-   * job-updates SSE pattern (`subscribeToJobUpdates`).
+   * SSE source for `GET /consultations/:id/live-summary/stream`. Subscribes to
+   * the Redis channel FIRST (buffering through a ReplaySubject), then reads the
+   * stored snapshot (late-join) and relays the buffered + live channel events —
+   * de-duped against the snapshot by `updatedAt` — until the terminal
+   * `closed: true`, with a periodic heartbeat so idle streams survive proxies.
+   *
+   * Two hazards this closes (both documented + solved identically in the sibling
+   * `HarnessProgressService.subscribeToProgress`, ported here):
+   *
+   *   F-05 (snapshot-before-subscribe race): the old order read the snapshot
+   *   and THEN subscribed, so any `safePublish` (including the terminal
+   *   `closed`) that landed in the round-trip window was silently dropped for
+   *   that viewer. Subscribe-first + buffer closes the window.
+   *
+   *   F-04 (shared-Subject teardown): the old finalize called
+   *   `redisSubscriber.unsubscribeFromChannel(channel)` DIRECTLY, which
+   *   unconditionally completes the SHARED per-channel Subject and starves every
+   *   OTHER concurrent viewer of the same consultation (two tabs / a second
+   *   clinician / a reconnect racing teardown). Teardown now relies EXCLUSIVELY
+   *   on the refcounted finalize inside `subscribeToChannel` — releasing this
+   *   viewer's bridge subscription decrements the refcount and only the LAST
+   *   viewer out tears the Redis subscription down.
    */
   subscribeToLiveSummary(consultationId: string): Observable<MessageEvent> {
     const channel = this.channel(consultationId);
 
     return new Observable<MessageEvent>((subscriber) => {
       let inner: Subscription | null = null;
+      let bridgeSub: Subscription | null = null;
 
-      this.cacheService
-        .get(this.snapshotKey(consultationId))
-        .then(async (snapshot) => {
-          if (snapshot) {
-            subscriber.next({ data: snapshot } as MessageEvent);
-          }
+      (async () => {
+        const messages$ = await this.redisSubscriber.subscribeToChannel(channel);
+        // Buffer channel events while the snapshot read is in flight; replayed
+        // into the relay below so ordering stays snapshot-first.
+        const bridge = new ReplaySubject<string>();
+        bridgeSub = messages$.subscribe(bridge);
 
-          const messages$ = await this.redisSubscriber.subscribeToChannel(channel);
+        const snapshot = await this.cacheService.get(this.snapshotKey(consultationId));
+        const snapshotUpdatedAt = this.parseLiveSummaryUpdatedAt(snapshot);
+        if (snapshot) {
+          subscriber.next({ data: snapshot } as MessageEvent);
+        }
 
-          const relay$ = messages$.pipe(
-            map((raw: string): MessageEvent => ({ data: raw }) as MessageEvent),
-            takeWhile((event: MessageEvent) => {
-              try {
-                return JSON.parse(event.data as string).closed !== true;
-              } catch {
-                return true;
-              }
-            }, true), // include the terminal `closed` event
-            finalize(() => this.redisSubscriber.unsubscribeFromChannel(channel)),
-          );
+        const relay$ = bridge.pipe(
+          // De-dupe: safePublish stores the snapshot BEFORE publishing, so a
+          // buffered event can be the very state the snapshot already carried.
+          filter((raw: string) => !this.isDuplicateOfLiveSummarySnapshot(raw, snapshotUpdatedAt)),
+          map((raw: string): MessageEvent => ({ data: raw }) as MessageEvent),
+        );
 
-          const heartbeat$ = interval(this.heartbeatMs).pipe(
-            map((): MessageEvent => ({ data: JSON.stringify({ type: 'heartbeat', ts: new Date().toISOString() }) }) as MessageEvent),
-          );
+        const heartbeat$ = interval(this.heartbeatMs).pipe(
+          map((): MessageEvent => ({ data: JSON.stringify({ type: 'heartbeat', ts: new Date().toISOString() }) }) as MessageEvent),
+        );
 
-          inner = merge(relay$, heartbeat$).subscribe({
-            next: (event) => subscriber.next(event),
-            error: (err) => subscriber.error(err),
-            complete: () => subscriber.complete(),
-          });
-        })
-        .catch((error) => {
-          this.logger.error({
-            message: 'Failed to initialise live-summary SSE subscription',
-            consultationId,
-            error: error instanceof Error ? error.message : String(error),
-          });
-          subscriber.next({ data: JSON.stringify({ error: 'Failed to subscribe to live summary', consultationId }) } as MessageEvent);
-          subscriber.complete();
+        // takeWhile sits on the MERGED stream (not just the relay) so the
+        // terminal `closed` event completes the whole SSE stream — the infinite
+        // heartbeat interval would otherwise keep `merge` alive.
+        const stream$ = merge(relay$, heartbeat$).pipe(
+          takeWhile((event: MessageEvent) => {
+            try {
+              return JSON.parse(event.data as string).closed !== true;
+            } catch {
+              return true;
+            }
+          }, true), // include the terminal `closed` event
+        );
+
+        inner = stream$.subscribe({
+          next: (event) => subscriber.next(event),
+          error: (err) => subscriber.error(err),
+          complete: () => subscriber.complete(),
         });
+      })().catch((error) => {
+        this.logger.error({
+          message: 'Failed to initialise live-summary SSE subscription',
+          consultationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        subscriber.next({ data: JSON.stringify({ error: 'Failed to subscribe to live summary', consultationId }) } as MessageEvent);
+        subscriber.complete();
+      });
 
-      return () => inner?.unsubscribe();
+      return () => {
+        inner?.unsubscribe();
+        // Releasing the bridge drives the refcounted channel cleanup (last
+        // viewer out tears the Redis subscription down).
+        bridgeSub?.unsubscribe();
+      };
     });
+  }
+
+  /** The `updatedAt` of a serialized live-summary snapshot; null when absent/corrupt. */
+  private parseLiveSummaryUpdatedAt(snapshot: string | null | undefined): string | null {
+    if (!snapshot) return null;
+    try {
+      const updatedAt = (JSON.parse(snapshot) as Partial<LiveSummaryEventDto>).updatedAt;
+      return typeof updatedAt === 'string' ? updatedAt : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * True when a relayed channel event carries state the just-emitted snapshot
+   * already contained (same or older `updatedAt` — ISO strings compare
+   * lexicographically). Events without an `updatedAt` are relayed untouched.
+   */
+  private isDuplicateOfLiveSummarySnapshot(raw: string, snapshotUpdatedAt: string | null): boolean {
+    if (!snapshotUpdatedAt) return false;
+    const updatedAt = this.parseLiveSummaryUpdatedAt(raw);
+    return updatedAt != null && updatedAt <= snapshotUpdatedAt;
   }
 
   // ------------------------------------------------------------------
@@ -1492,11 +1546,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
     try {
       const ctx = { tenantId };
-      const [delta, threshold, idle, claimCheck, mode, budget] = await Promise.all([
+      const [delta, threshold, idle, mode, budget] = await Promise.all([
         this.effectiveSettings.resolveEffective(`${AGENTIC_CONTEXT_KEY_PREFIX}liveDelta.maxChars`, ctx),
         this.effectiveSettings.resolveEffective(`${AGENTIC_CONTEXT_KEY_PREFIX}liveFlush.segmentThreshold`, ctx),
         this.effectiveSettings.resolveEffective(`${AGENTIC_CONTEXT_KEY_PREFIX}liveFlush.idleMs`, ctx),
-        this.effectiveSettings.resolveEffective(`${AGENTIC_CONTEXT_KEY_PREFIX}claimCheck.minBytes`, ctx),
         this.effectiveSettings.resolveEffective(`${AGENTIC_CONTEXT_KEY_PREFIX}transcript.mode`, ctx),
         this.effectiveSettings.resolveEffective(`${AGENTIC_CONTEXT_KEY_PREFIX}tokenBudget.perRun`, ctx),
       ]);
@@ -1504,7 +1557,6 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         liveDeltaMaxChars: storedNumber(delta) ?? fallback.liveDeltaMaxChars,
         segmentThreshold: storedNumber(threshold) ?? fallback.segmentThreshold,
         idleMs: storedNumber(idle) ?? fallback.idleMs,
-        claimCheckMinBytes: storedNumber(claimCheck) ?? fallback.claimCheckMinBytes,
         transcriptMode: storedMode(mode) ?? fallback.transcriptMode,
         tokenBudgetPerRun: storedNumber(budget) ?? fallback.tokenBudgetPerRun,
       };
@@ -1526,7 +1578,6 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       liveDeltaMaxChars: this.envLiveDeltaMaxChars ?? AGENTIC_CONTEXT_DEFAULTS['liveDelta.maxChars'],
       segmentThreshold: this.envSegmentThreshold ?? AGENTIC_CONTEXT_DEFAULTS['liveFlush.segmentThreshold'],
       idleMs: this.envDebounceMs ?? AGENTIC_CONTEXT_DEFAULTS['liveFlush.idleMs'],
-      claimCheckMinBytes: this.envClaimCheckMinBytes ?? AGENTIC_CONTEXT_DEFAULTS['claimCheck.minBytes'],
       transcriptMode: this.envTranscriptMode ?? AGENTIC_CONTEXT_DEFAULTS['transcript.mode'],
       tokenBudgetPerRun: this.envTokenBudgetPerRun ?? AGENTIC_CONTEXT_DEFAULTS['tokenBudget.perRun'],
     };
@@ -2039,7 +2090,6 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         'liveDelta.maxChars': this.lastAgenticContext.liveDeltaMaxChars,
         'liveFlush.segmentThreshold': this.lastAgenticContext.segmentThreshold,
         'liveFlush.idleMs': this.lastAgenticContext.idleMs,
-        'claimCheck.minBytes': this.lastAgenticContext.claimCheckMinBytes,
         'transcript.mode': this.lastAgenticContext.transcriptMode,
         'tokenBudget.perRun': this.lastAgenticContext.tokenBudgetPerRun,
       },

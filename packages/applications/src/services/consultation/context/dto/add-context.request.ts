@@ -1,6 +1,13 @@
-import { IsString, IsOptional, IsObject, IsEnum, IsBoolean, IsNumber } from 'class-validator';
+import { IsString, IsOptional, IsObject, IsEnum, IsBoolean, IsNumber, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ContextItemType, ContextItemSource } from '@arcaai/domains';
+
+// F-03: caps tenant/doctor-authored content ingested verbatim into the
+// harness prompt (`harness-internal.service.ts` assemble, `[case note]` /
+// `[work note]` / attachment labels). 200k chars comfortably covers a long
+// clinical note/attachment while bounding the worst-case prompt-injection /
+// unbounded-payload surface (SOTA §5.1/§5.2, F-03).
+export const CONTEXT_CONTENT_MAX_LENGTH = 200_000;
 
 export class AddContextRequest {
   @ApiProperty({
@@ -13,6 +20,7 @@ export class AddContextRequest {
   @ApiPropertyOptional({ description: 'Content text (required for non-media types)' })
   @IsOptional()
   @IsString()
+  @MaxLength(CONTEXT_CONTENT_MAX_LENGTH)
   content?: string;
 
   @ApiPropertyOptional({ description: 'Media ID of an uploaded file (for ATTACHMENT type)' })

@@ -667,6 +667,40 @@ describe('PromptManagementService', () => {
             );
         });
 
+        it('flags a live content edit of an APPROVED template with wasApprovedLiveEdit (F-33)', async () => {
+            const existing = createMockTemplateEntity({ status: 'APPROVED', version: 9 });
+            mockTemplateRepo.findById.mockResolvedValue(existing);
+            mockVersionRepo.findMaxVersionNumber.mockResolvedValue(3);
+            mockVersionRepo.create.mockResolvedValue(createMockVersionEntity({ versionNumber: 4 }));
+            mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ status: 'APPROVED', version: 10 }));
+
+            await service.updatePromptTemplate('template-id-1', { content: 'Edited after approval', expectedVersion: 9 } as never);
+
+            // Downstream audit can distinguish a live edit of an APPROVED template
+            // from a routine DRAFT edit. The new version is NOT served until
+            // re-approval (resolution serves approvedVersionNumber).
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                SysEventType.ResourceUpdated,
+                expect.objectContaining({
+                    data: expect.objectContaining({ wasApprovedLiveEdit: true, status: 'APPROVED' }),
+                }),
+            );
+        });
+
+        it('does NOT flag a content edit of a DRAFT template as a live edit (F-33 control)', async () => {
+            const existing = createMockTemplateEntity({ status: 'DRAFT', version: 2 });
+            mockTemplateRepo.findById.mockResolvedValue(existing);
+            mockVersionRepo.findMaxVersionNumber.mockResolvedValue(1);
+            mockVersionRepo.create.mockResolvedValue(createMockVersionEntity({ versionNumber: 2 }));
+            mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ status: 'DRAFT', version: 3 }));
+
+            await service.updatePromptTemplate('template-id-1', { content: 'draft edit', expectedVersion: 2 } as never);
+
+            const call = mockEventEmitter.emit.mock.calls.find(([type]: unknown[]) => type === SysEventType.ResourceUpdated);
+            expect(call).toBeDefined();
+            expect((call![1] as { data: Record<string, unknown> }).data).not.toHaveProperty('wasApprovedLiveEdit');
+        });
+
         it('propagates OptimisticConcurrencyException from the repository CAS write (Stream D Phase)', async () => {
             // When the row drifted between read and write, the repository's
             // `updateWithVersion` predicate matches 0 rows and throws. The
@@ -2418,6 +2452,35 @@ describe('PromptManagementService', () => {
 
             expect(result).toBeDefined();
             expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalledWith('tpl-t', tpl, 3, mockTxClient);
+        });
+
+        it('pins approvedVersionNumber to the newly-created version snapshot (eval-gate integrity, F-02)', async () => {
+            useContext({ roles: [], tenantId: 'tenant-1', canManage: true });
+            const tpl = createMockTemplateEntity({ id: 'tpl-t', tenantId: 'tenant-1', scope: 'TENANT_DEFAULT', status: 'DRAFT', version: 3 });
+            mockTemplateRepo.findById.mockResolvedValue(tpl);
+            // History max = 5 → approval creates + PINS version 6.
+            mockVersionRepo.findMaxVersionNumber.mockResolvedValue(5);
+            mockVersionRepo.create.mockResolvedValue(createMockVersionEntity({ versionNumber: 6 }));
+            mockTemplateRepo.updateWithVersion.mockResolvedValue(tpl);
+
+            await service.approveTemplate('tpl-t', { expectedVersion: 3 } as never);
+
+            // The pinned snapshot IS version 6 …
+            expect(mockVersionRepo.create).toHaveBeenCalledWith(
+                expect.objectContaining({ versionNumber: 6 }),
+                mockTxClient,
+            );
+            // … approvedVersionNumber is set to 6 on the entity persisted via CAS,
+            // so resolution serves v6 (not a later unapproved edit).
+            expect(tpl.approvedVersionNumber).toBe(6);
+            expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalledWith('tpl-t', tpl, 3, mockTxClient);
+            // Audit sys-event records the pinned version.
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                SysEventType.ResourceUpdated,
+                expect.objectContaining({
+                    data: expect.objectContaining({ action: 'approve', status: 'APPROVED', approvedVersionNumber: 6 }),
+                }),
+            );
         });
 
         it('tenant admin on a SYSTEM/library template → 403 (no write)', async () => {

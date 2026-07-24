@@ -15,9 +15,13 @@ export class UpdatePromptTemplateRequest {
   @MaxLength(1000)
   description?: string;
 
-  @ApiPropertyOptional({ description: 'Prompt content text' })
+  // Upper bound on tenant/admin-authored prompt bodies (F-03) — matches
+  // CreatePromptTemplateRequest. The body is folded verbatim into the clinical
+  // LLM prompt, so it is both a cost and a prompt-injection surface.
+  @ApiPropertyOptional({ description: 'Prompt content text', maxLength: 50000 })
   @IsOptional()
   @IsString()
+  @MaxLength(50000)
   content?: string;
 
   // Publication status; a status change is a mutating edit.

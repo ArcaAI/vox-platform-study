@@ -1130,6 +1130,102 @@ describe('SttWsGateway', () => {
     });
 
     // =========================================================================
+    // F-06 / F-36: after the grace window EXPIRES the session is finalized and
+    // its upstream STT-v2 session is gone. A later reconnect on the same id
+    // builds a FRESH SessionInfo (empty resume buffer). The old code answered a
+    // resume on it with a vacuous `resumed` (empty buffer trivially passes the
+    // length guard) — the client believed it resumed while the mic captured into
+    // a dead session with no error. It must now reply `resume_failed`. finalize
+    // must also clear the sessionId→tenant binding so no ticket can be minted
+    // against the dead session (F-36).
+    // =========================================================================
+    describe('false-resume prevention after grace expiry (F-06) + binding cleanup (F-36)', () => {
+        it('replies resume_failed (not a vacuous resumed) when a freshly-created session is resumed after grace expiry', async () => {
+            vi.useFakeTimers();
+            try {
+                const resultSubject = new Subject();
+                mockBridgeService.subscribeToResults.mockReturnValue(resultSubject.asObservable());
+
+                const client1 = createMockSocket();
+                setValidTicketFor('sess-grace-resume');
+                await gateway.handleConnection(client1 as any, buildReq('sess-grace-resume') as any);
+                for (let i = 1; i <= 3; i++) {
+                    resultSubject.next({ type: 'transcript', text: `t${i}`, startTime: i, endTime: i + 1, isFinal: true });
+                }
+
+                // Transient drop → grace window, then let the window EXPIRE so the
+                // session is finalized and deleted (upstream gone).
+                gateway.handleDisconnect(client1 as any);
+                vi.advanceTimersByTime(WS_RESUME_GRACE_MS + 1);
+                expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-grace-resume');
+                // F-36: finalize dropped the tenant binding too.
+                expect(mockSessionBinding.clear).toHaveBeenCalledWith('sess-grace-resume');
+
+                // Reconnect same id → a FRESH SessionInfo (empty buffer, resultSeq 0).
+                const client2 = createMockSocket();
+                setValidTicketFor('sess-grace-resume');
+                await gateway.handleConnection(client2 as any, buildReq('sess-grace-resume') as any);
+
+                (client2.send as any).mockClear();
+                await gateway.handleMessage(
+                    client2 as any,
+                    Buffer.from(JSON.stringify({ type: 'resume', sessionId: 'sess-grace-resume', lastSeq: 3 })) as any,
+                    false,
+                );
+
+                const sent = (client2.send as any).mock.calls.map((c: any[]) => JSON.parse(c[0]));
+                expect(sent.some((m: any) => m.type === 'resumed')).toBe(false);
+                const failed = sent.find((m: any) => m.type === 'resume_failed');
+                expect(failed).toBeDefined();
+                expect(failed.reason).toBe('unknown_session');
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('still honors a resume on a genuine within-grace rebind (fresh flag cleared)', async () => {
+            const resultSubject = new Subject();
+            mockBridgeService.subscribeToResults.mockReturnValue(resultSubject.asObservable());
+
+            const client1 = createMockSocket();
+            setValidTicketFor('sess-rebind-ok');
+            await gateway.handleConnection(client1 as any, buildReq('sess-rebind-ok') as any);
+            for (let i = 1; i <= 2; i++) {
+                resultSubject.next({ type: 'transcript', text: `t${i}`, startTime: i, endTime: i + 1, isFinal: true });
+            }
+
+            // Within-grace drop (NOT expired) then reconnect → rebindSession
+            // continues the SAME session and clears the freshly-created flag.
+            gateway.handleDisconnect(client1 as any);
+            const client2 = createMockSocket();
+            setValidTicketFor('sess-rebind-ok');
+            await gateway.handleConnection(client2 as any, buildReq('sess-rebind-ok') as any);
+
+            (client2.send as any).mockClear();
+            await gateway.handleMessage(
+                client2 as any,
+                Buffer.from(JSON.stringify({ type: 'resume', sessionId: 'sess-rebind-ok', lastSeq: 2 })) as any,
+                false,
+            );
+
+            const sent = (client2.send as any).mock.calls.map((c: any[]) => JSON.parse(c[0]));
+            expect(sent.some((m: any) => m.type === 'resumed')).toBe(true);
+            expect(sent.some((m: any) => m.type === 'resume_failed')).toBe(false);
+        });
+
+        it('F-36: an explicit close finalize clears the sessionId→tenant binding', async () => {
+            const client = createMockSocket();
+            setValidTicketFor('sess-clear-bind');
+            await gateway.handleConnection(client as any, buildReq('sess-clear-bind') as any);
+
+            // Explicit close → real finalize (no grace window).
+            await gateway.handleMessage(client as any, JSON.stringify({ type: 'close' }));
+
+            expect(mockSessionBinding.clear).toHaveBeenCalledWith('sess-clear-bind');
+        });
+    });
+
+    // =========================================================================
     // Readiness ack. handleConnection registers the session
     // AFTER async auth/lookup awaits; a client that resumes/sends the instant
     // its socket opens would race registration → NO_SESSION → silent freeze.
@@ -1179,6 +1275,8 @@ describe('SttWsGateway', () => {
             await gateway.onModuleDestroy();
 
             expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-shutdown');
+            // F-36: shutdown finalize also clears the tenant binding.
+            expect(mockSessionBinding.clear).toHaveBeenCalledWith('sess-shutdown');
             expect(gateway.getActiveSessionCount()).toBe(0);
         });
 

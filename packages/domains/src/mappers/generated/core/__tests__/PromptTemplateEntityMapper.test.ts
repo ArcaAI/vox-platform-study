@@ -72,6 +72,18 @@ describe('PromptTemplateEntityMapper — test-field round-trip', () => {
     expect(persisted).not.toHaveProperty('version');
   });
 
+  it('carries approvedVersionNumber in both directions (writable — approveTemplate persists it via OCC)', () => {
+    const entity = mapper.toDomainEntity(sampleRow({ approvedVersionNumber: 4 }));
+    expect(entity.approvedVersionNumber).toBe(4);
+
+    // Re-approval bumps the pin; the CAS write must carry the new value.
+    entity.approvedVersionNumber = 5;
+    const persisted = mapper.toPersistenceChanges(entity) as unknown as Record<string, unknown>;
+    expect(persisted.approvedVersionNumber).toBe(5);
+    // Still stripped: the DB-owned OCC token.
+    expect(persisted).not.toHaveProperty('version');
+  });
+
   it('toPersistence (full insert path) writes the non-PHI test fields but not version or lastTestOutput', () => {
     const entity = mapper.toDomainEntity(sampleRow());
     entity.lastTestOutput = 'Generated output'; // transient PHI — must not persist

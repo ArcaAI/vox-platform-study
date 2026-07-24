@@ -20,14 +20,12 @@ import { ClsService } from 'nestjs-cls';
 import { BaseService, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { SecretsService } from '../../baseServices/_meta/secrets';
+import { IRedisCacheService } from '../../baseServices/redis';
 import { ConsultationPipelineEvent, TranscriptionCreatedPayload } from '../../consultation/events';
 import { TranscriptionJobResponse } from '../job/dto';
 import { TranscriptionJobDtoMapper } from '../job/transcriptionJob.dto.mapper';
 import { ISttInternalService } from './ISttInternalService';
-import {
-  computeSegmentOffsets,
-  type TranscriptSegmentInputShape,
-} from '../../consultation/lib/transcript-segments';
+import { computeSegmentOffsets, type TranscriptSegmentInputShape } from '../../consultation/lib/transcript-segments';
 import {
   AudioRecordResponse,
   CreateAudioRecordRequest,
@@ -58,12 +56,20 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     @Optional()
     @Inject(TranscriptSegmentRepository)
     private readonly transcriptSegmentRepository?: TranscriptSegmentRepository,
+    // Optional + trailing (same arity-preserving reason) so
+    // existing positional unit fixtures keep their arity. Backs the
+    // single-flight idempotency guard around `createStreamingTranscript`
+    // (see `withTranscriptIdempotency`). Absent (or a Redis hiccup) ⇒ falls
+    // through to the pre-existing `findTranscripts` existence check alone.
+    @Optional()
+    @Inject(IRedisCacheService)
+    private readonly redisCache?: IRedisCacheService,
   ) {
     super(eventEmitter, clsService, ResourceType.TranscriptionJob);
   }
 
   /**
- * persist the ordered transcript segments emitted by STT as
+   * persist the ordered transcript segments emitted by STT as
    * TranscriptSegment rows. `text` on each input is used ONLY to resolve the
    * [charStart, charEnd) offsets into the transcript content and is NOT stored
    * (the durable row keeps offsets + timings + speaker, never the PHI text).
@@ -72,10 +78,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
    * dropping metadata) embedded as `metadata.segments`. Best-effort: a failure
    * here must not fail the transcript ingest, so it is guarded + logged.
    */
-  private async persistTranscriptSegments(
-    contextItem: ContextItemEntity,
-    dto: CreateTranscriptRequest,
-  ): Promise<void> {
+  private async persistTranscriptSegments(contextItem: ContextItemEntity, dto: CreateTranscriptRequest): Promise<void> {
     if (!this.transcriptSegmentRepository) return;
 
     const metaSegments = (dto.metadata as { segments?: TranscriptSegmentInputShape[] } | undefined)?.segments;
@@ -107,8 +110,10 @@ export class SttInternalService extends BaseService implements ISttInternalServi
             `${unusable.length}/${resolved.length} segments unusable.`,
         );
       }
-      for (const seg of resolved) {
-        const entity = TranscriptSegmentFactory.CreateTranscriptSegment({
+      // Batch-insert in ONE createMany round trip (F-14) instead of one
+      // INSERT per segment — dozens to hundreds per consult.
+      const entities = resolved.map((seg) =>
+        TranscriptSegmentFactory.CreateTranscriptSegment({
           tenantId: contextItem.tenantId ?? dto.tenantId ?? '',
           contextItemId: contextItem.id,
           idx: seg.idx,
@@ -118,17 +123,24 @@ export class SttInternalService extends BaseService implements ISttInternalServi
           charStart: seg.charStart,
           charEnd: seg.charEnd,
           createdBy: contextItem.createdBy ?? undefined,
-        });
-        await this.transcriptSegmentRepository.create(entity);
-      }
-    } catch (error) {
-      this.logger.error(
-        `TranscriptSegment persist skipped for contextItem ${contextItem.id}: ${(error as Error).message}`,
+        }),
       );
+      await this.transcriptSegmentRepository.createMany(entities);
+    } catch (error) {
+      this.logger.error(`TranscriptSegment persist skipped for contextItem ${contextItem.id}: ${(error as Error).message}`);
     }
   }
 
   private readonly logger = new Logger(SttInternalService.name);
+
+  // Single-flight dedup namespace + TTL for the streaming-transcript create
+  // path (F-09). 24h mirrors the harness callback idempotency window
+  // (`HarnessInternalService.IDEMPOTENCY_TTL`) — long enough to outlive any
+  // realistic outbox re-drive/retry window for a single finalize.
+  private readonly TRANSCRIPT_IDEMPOTENCY_KEY_PREFIX = 'idempotency:stt-transcript:';
+  private readonly TRANSCRIPT_IDEMPOTENCY_TTL = 86400; // 24 hours
+  private readonly TRANSCRIPT_LOCK_WAIT_ATTEMPTS = 3;
+  private readonly TRANSCRIPT_LOCK_WAIT_MS = 50;
 
   /**
    * Encrypt PHI on write through the shared env-gated guard: a soft
@@ -140,14 +152,140 @@ export class SttInternalService extends BaseService implements ISttInternalServi
   }
 
   /**
-   * Create a transcript context item from completed transcription
+   * Derive a stable idempotency key for a streaming-transcript create when
+   * the caller sent no `Idempotency-Key` header. Mirrors the key shape
+   * STT-v2 already sends (`{consultationId}:{sessionId}`,
+   * `session_manager.py:_transcript_idempotency_key`), namespaced by tenant.
+   * `sessionId` best-effort read from `metadata` (untyped on the DTO); falls
+   * back to `tenantId:consultationId` alone when absent.
    */
-  async createTranscript(dto: CreateTranscriptRequest): Promise<{ contextItemId: string }> {
+  private deriveStreamingIdempotencyKey(dto: CreateTranscriptRequest): string {
+    const meta = dto.metadata as Record<string, unknown> | undefined;
+    const sessionId = typeof meta?.sessionId === 'string' ? meta.sessionId : '';
+    return `${dto.tenantId ?? ''}:${dto.consultationId ?? ''}:${sessionId}`;
+  }
+
+  private buildTranscriptIdempotencyKey(tenantId: string, idempotencyKey: string): string {
+    return `${this.TRANSCRIPT_IDEMPOTENCY_KEY_PREFIX}${tenantId}:${idempotencyKey}`;
+  }
+
+  /**
+   * Single-flight guard around `createStreamingTranscript` (F-09): two
+   * concurrent finalize calls for the same session (worker restart racing a
+   * slow-but-successful call, an outbox re-drive racing the inline attempt)
+   * must produce exactly one TRANSCRIPT ContextItem + one
+   * `TranscriptionCreated` event.
+   *
+   *   1. Replay: a prior COMPLETED call's response is cached — return it
+   *      without re-running `work`.
+   *   2. Lock: a Redis `SET NX` acquires exclusivity for this key. The
+   *      winner runs `work` and caches the result. A loser waits briefly for
+   *      the winner to finish (polling the cache), then falls through to
+   *      `work` regardless — `createStreamingTranscriptInner`'s own
+   *      `findTranscripts` existence check is the second layer that returns
+   *      the winner's row instead of creating a duplicate.
+   *
+   * Best-effort: no Redis (or a Redis throw) ⇒ fall through to `work()` —
+   * the pre-existing `findTranscripts` check is the sole guard, matching the
+   * pre-fix behavior exactly.
+   */
+  private async withTranscriptIdempotency<T>(tenantId: string, idempotencyKey: string, work: () => Promise<T>): Promise<T> {
+    if (!this.redisCache) {
+      return work();
+    }
+
+    const redisKey = this.buildTranscriptIdempotencyKey(tenantId, idempotencyKey);
+
+    const replay = await this.tryReplayTranscript<T>(redisKey);
+    if (replay.hit) {
+      return replay.result;
+    }
+
+    let acquired = true;
+    try {
+      const lockResult = await this.redisCache.eval(
+        "return redis.call('SET', KEYS[1], ARGV[1], 'NX', 'EX', ARGV[2])",
+        1,
+        redisKey,
+        'in-flight',
+        this.TRANSCRIPT_IDEMPOTENCY_TTL,
+      );
+      acquired = lockResult === 'OK';
+    } catch (error) {
+      this.logger.warn({
+        message: 'Streaming transcript idempotency lock failed — processing normally',
+        idempotencyKey,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    if (!acquired) {
+      // Someone else already holds (or just released) the lock. Give the
+      // winner a brief head start to finish + cache its response before
+      // falling through to `work()` (whose findTranscripts check is the
+      // authoritative second layer).
+      for (let attempt = 0; attempt < this.TRANSCRIPT_LOCK_WAIT_ATTEMPTS; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, this.TRANSCRIPT_LOCK_WAIT_MS));
+        const retry = await this.tryReplayTranscript<T>(redisKey);
+        if (retry.hit) {
+          return retry.result;
+        }
+      }
+      return work();
+    }
+
+    const result = await work();
+    try {
+      await this.redisCache.setex(redisKey, this.TRANSCRIPT_IDEMPOTENCY_TTL, JSON.stringify({ done: true, result }));
+    } catch (error) {
+      this.logger.warn({
+        message: 'Streaming transcript idempotency record failed — a race may double-create',
+        idempotencyKey,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return result;
+  }
+
+  /**
+   * Read back a completed `withTranscriptIdempotency` response, if any.
+   * The lock's `SET NX` sentinel value (`'in-flight'`) is not valid JSON for
+   * the `{done:true, result}` envelope, so a JSON parse failure is treated as
+   * "not yet complete" rather than an error.
+   */
+  private async tryReplayTranscript<T>(redisKey: string): Promise<{ hit: true; result: T } | { hit: false }> {
+    try {
+      const cached = await this.redisCache!.get(redisKey);
+      if (cached) {
+        const parsed = JSON.parse(cached) as { done?: boolean; result?: T };
+        if (parsed?.done) {
+          this.logger.log({ message: 'Streaming transcript idempotency hit — replaying prior response', redisKey });
+          return { hit: true, result: parsed.result as T };
+        }
+      }
+    } catch {
+      // Either a Redis hiccup or the in-flight sentinel (not JSON) — treat
+      // both as "no completed response yet".
+    }
+    return { hit: false };
+  }
+
+  /**
+   * Create a transcript context item from completed transcription.
+   *
+   * `idempotencyKey` is the caller-supplied `Idempotency-Key` header
+   * (`stt-internal.controller.ts`) — read through from the STT-v2 gateway
+   * (`gateway.py` sends `{consultationId}:{sessionId}`), forwarded ONLY to
+   * the no-job streaming path, which is the one with a real concurrent-finalize
+   * TOCTOU risk (see `createStreamingTranscript`). The batch/job path already
+   * has a unique job-scoped write target, so it does not need this guard.
+   */
+  async createTranscript(dto: CreateTranscriptRequest, idempotencyKey?: string): Promise<{ contextItemId: string }> {
     // Streaming finalize has no TranscriptionJob. When no
     // jobId is supplied, persist the transcript keyed directly to the
     // consultation (+ tenant) and skip the job lookup / setContextItem link-back.
     if (!dto.jobId) {
-      return this.createStreamingTranscript(dto);
+      return this.createStreamingTranscript(dto, idempotencyKey);
     }
 
     // Find the job (batch path)
@@ -176,9 +314,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     // persistence — the plaintext `content` column was dropped by the PHI
     // field-encryption migration, so an unencrypted create silently loses the
     // clinical text at rest (mirrors context.service.ts `encryptContent`).
-    await this.encryptBestEffort('ContextItem content', () =>
-      this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!),
-    );
+    await this.encryptBestEffort('ContextItem content', () => this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!));
 
     const savedContextItem = await this.contextItemRepository.create(contextItem);
 
@@ -216,22 +352,32 @@ export class SttInternalService extends BaseService implements ISttInternalServi
 
   /**
    * Persist a streaming-session transcript that has no
-   * TranscriptionJob. Keyed directly to the consultation (+ tenant) and
-   * idempotent so a finalize retry does not double-create the transcript or
-   * re-trigger the harness auto-draft pipeline.
+   * TranscriptionJob. Keyed directly to the consultation (+ tenant).
+   *
+   * TWO layers guard against a duplicate TRANSCRIPT ContextItem when two
+   * finalize calls for the same session race each other (server restart racing
+   * a slow-but-successful call, an outbox re-drive racing the inline attempt):
+   *   1. `withTranscriptIdempotency` — a Redis single-flight lock + replayed
+   *      response, keyed on the caller's `Idempotency-Key` (falls back to a
+   *      derived `tenantId:consultationId:sessionId` key when absent).
+   *   2. `findTranscripts` existence check (below) — the original check-then-act
+   *      guard, kept as a second layer for when Redis is unwired/unavailable or
+   *      the lock race still lets two callers through.
    */
-  private async createStreamingTranscript(
-    dto: CreateTranscriptRequest,
-  ): Promise<{ contextItemId: string }> {
+  private async createStreamingTranscript(dto: CreateTranscriptRequest, idempotencyKey?: string): Promise<{ contextItemId: string }> {
     const consultationId = dto.consultationId;
     if (!consultationId) {
-      throw new BadRequestException(
-        'consultationId is required to create a transcript without a jobId',
-      );
+      throw new BadRequestException('consultationId is required to create a transcript without a jobId');
     }
 
-    // Idempotency guard: if a transcript already exists for this consultation,
-    // return it without creating a duplicate or re-emitting the pipeline event.
+    const key = idempotencyKey || this.deriveStreamingIdempotencyKey(dto);
+    return this.withTranscriptIdempotency(dto.tenantId ?? consultationId, key, () => this.createStreamingTranscriptInner(dto, consultationId));
+  }
+
+  private async createStreamingTranscriptInner(dto: CreateTranscriptRequest, consultationId: string): Promise<{ contextItemId: string }> {
+    // Idempotency guard (second layer): if a transcript already exists for
+    // this consultation, return it without creating a duplicate or
+    // re-emitting the pipeline event.
     const existing = await this.contextItemRepository.findTranscripts(consultationId);
     if (existing.length > 0) {
       return { contextItemId: existing[0].id };
@@ -249,9 +395,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     // persistence — the plaintext `content` column was dropped by the PHI
     // field-encryption migration, so an unencrypted create silently loses the
     // clinical text at rest (mirrors context.service.ts `encryptContent`).
-    await this.encryptBestEffort('ContextItem content', () =>
-      this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!),
-    );
+    await this.encryptBestEffort('ContextItem content', () => this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!));
 
     const savedContextItem = await this.contextItemRepository.create(contextItem);
 
@@ -272,9 +416,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
       tenantId: dto.tenantId || '',
       timestamp: new Date().toISOString(),
       contextItemId: savedContextItem.id,
-      wordCount: dto.transcriptText
-        ? dto.transcriptText.split(/\s+/).filter(Boolean).length
-        : undefined,
+      wordCount: dto.transcriptText ? dto.transcriptText.split(/\s+/).filter(Boolean).length : undefined,
       transcriptionSource: dto.transcriptionSource ?? 'streaming',
     } satisfies TranscriptionCreatedPayload);
 
@@ -330,9 +472,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
 
     // Encrypt resultText/resultMetadata into the ciphertext
     // columns before the completing persist (dual-write; plaintext kept for soak).
-    await this.encryptBestEffort('TranscriptionJob', () =>
-      this.jobRepository.encryptFieldsIntoEntity(job, this.secretsService!),
-    );
+    await this.encryptBestEffort('TranscriptionJob', () => this.jobRepository.encryptFieldsIntoEntity(job, this.secretsService!));
 
     const updated = await this.jobRepository.update(jobId, job);
 

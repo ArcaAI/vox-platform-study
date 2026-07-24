@@ -340,6 +340,12 @@ export class PromptManagementService extends BaseService implements IPromptManag
     this.assertOwnedByTenant(template, id);
     this.assertCanMutate(template);
 
+    // Capture the pre-edit publication status BEFORE any dto.status change below,
+    // so we can flag a live content edit of an already-APPROVED template for
+    // audit (F-33). The new PromptVersion this edit creates is NOT served until
+    // re-approval (resolution serves `approvedVersionNumber`, not latest).
+    const wasApprovedLiveEdit = template.status === 'APPROVED' && dto.content !== undefined;
+
     const hasContentChanges =
       dto.name !== undefined || dto.description !== undefined || dto.content !== undefined || dto.variables !== undefined || dto.tags !== undefined;
 
@@ -411,6 +417,10 @@ export class PromptManagementService extends BaseService implements IPromptManag
         changeReason: dto.changeReason,
         previousVersion,
         newVersion: updated.version,
+        // Live content edit of an APPROVED template — downstream audit consumers
+        // can distinguish this from routine DRAFT edits. The edit is NOT served
+        // until re-approval (the eval gate re-runs then).
+        ...(wasApprovedLiveEdit ? { wasApprovedLiveEdit: true, status: updated.status } : {}),
       },
     });
 
@@ -481,22 +491,38 @@ export class PromptManagementService extends BaseService implements IPromptManag
 
     const updated = await this.databaseService.baseClient.$transaction(async (tx) => {
       const maxVersionNumber = await this.promptVersionRepository.findMaxVersionNumber(id, tx);
+      const approvedVersionNumber = maxVersionNumber + 1;
       const version = PromptVersionFactory.CreatePromptVersion({
         tenantId: template.tenantId,
         promptTemplateId: id,
-        versionNumber: maxVersionNumber + 1,
+        versionNumber: approvedVersionNumber,
         content: template.content,
         variables: template.variables,
         changeReason: dto.reason ?? 'Approved for clinical use',
         changedBy: userId ?? null,
       });
       await this.promptVersionRepository.create(version, tx);
+      // Eval-gate integrity (F-02): pin the version snapshot THIS approval
+      // blesses. Resolution serves `approvedVersionNumber` for unpinned agents
+      // and the preferred/legacy/default tiers, so a later plain content edit
+      // (updatePromptTemplate) accumulates un-served versions until the next
+      // (eval-gated) re-approval — the eval gate can no longer be bypassed by
+      // editing content on an already-APPROVED template. Set inside the tx so it
+      // commits or rolls back atomically with the version-pin + OCC CAS.
+      template.approvedVersionNumber = approvedVersionNumber;
       return this.promptTemplateRepository.updateWithVersion(id, template, dto.expectedVersion, tx);
     });
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: id,
-      data: { action: 'approve', status: 'APPROVED', previousVersion, newVersion: updated.version, reason: dto.reason ?? null },
+      data: {
+        action: 'approve',
+        status: 'APPROVED',
+        previousVersion,
+        newVersion: updated.version,
+        approvedVersionNumber: updated.approvedVersionNumber ?? null,
+        reason: dto.reason ?? null,
+      },
     });
 
     return PromptManagementDtoMapper.toTemplateResponse(updated);
