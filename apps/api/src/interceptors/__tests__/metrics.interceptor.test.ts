@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ExecutionContext, CallHandler } from '@nestjs/common';
 import { of, throwError, firstValueFrom } from 'rxjs';
+import { MetricsInterceptor } from '../metrics.interceptor';
 
 describe('MetricsInterceptor', () => {
     let interceptor: any;
@@ -34,15 +35,13 @@ describe('MetricsInterceptor', () => {
         return { handle: () => throwError(() => err) };
     }
 
-    beforeEach(async () => {
+    beforeEach(() => {
         vi.clearAllMocks();
-        vi.resetModules();
 
         mockMonitoringService = {
             recordHttpRequest: vi.fn().mockResolvedValue(undefined),
         };
 
-        const { MetricsInterceptor } = await import('../metrics.interceptor');
         interceptor = new MetricsInterceptor(mockMonitoringService);
     });
 
