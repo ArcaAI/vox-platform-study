@@ -167,6 +167,7 @@ function buildController(overrides: {
         {} as any,
         {} as any,
         {} as any,
+        {} as any,
     );
 
     return {

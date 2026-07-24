@@ -167,6 +167,7 @@ function buildController(overrides: {
     userDepartmentService?: any;
     eventEmitter?: any;
     consultationRepository?: any;
+    streamSessionTenantBinding?: any;
 } = {}) {
     return new AuthController(
         (overrides.userService ?? createMockUserService()) as any,
@@ -185,6 +186,7 @@ function buildController(overrides: {
         (overrides.userDepartmentService ?? createMockUserDepartmentService()) as any,
         (overrides.eventEmitter ?? { emit: vi.fn() }) as any,
         (overrides.consultationRepository ?? { findById: vi.fn() }) as any,
+        (overrides.streamSessionTenantBinding ?? { lookup: vi.fn().mockResolvedValue(null) }) as any,
     );
 }
 

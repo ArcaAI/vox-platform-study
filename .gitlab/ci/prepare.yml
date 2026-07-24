@@ -98,7 +98,7 @@ prepare-test-db:
     # MinIO service, so it seeds DB rows only and logs a warning rather than
     # failing. (DB errors still surface — only object-storage absence is guarded.)
     - echo "── Seeding media fixture (DB rows; MinIO objects best-effort)..."
-    - pnpm exec tsx packages/applications/scripts/media-seed.ts
+    - pnpm --filter @arcaai/database exec tsx ../../packages/applications/scripts/media-seed.ts
 
     - echo "══ Test database ready ══"
   rules:

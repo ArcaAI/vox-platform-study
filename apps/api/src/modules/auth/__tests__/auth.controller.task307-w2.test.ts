@@ -217,6 +217,7 @@ function buildController(opts: {
         { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
         { emit: vi.fn() } as any,
         {} as any,
+        { lookup: vi.fn().mockResolvedValue(null) } as any,
     );
 }
 
@@ -309,6 +310,7 @@ describe('auth.controller uses SecretsService only', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             await controller.impersonate(
@@ -420,6 +422,7 @@ describe('auth.controller — sign-path survives SecretsService TTL expiry (getS
             { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             { emit: vi.fn() } as any,
             {} as any,
+            { lookup: vi.fn().mockResolvedValue(null) } as any,
         );
 
         const res = await controller.impersonate(

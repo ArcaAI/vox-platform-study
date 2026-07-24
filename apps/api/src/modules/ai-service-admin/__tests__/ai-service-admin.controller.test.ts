@@ -28,7 +28,7 @@ describe('AiServiceAdminController — authorization metadata', () => {
   });
 
   it('exposes only the three read routes (no config mutation exists upstream)', () => {
-    const proto = AiServiceAdminController.prototype as Record<string, unknown>;
+    const proto = AiServiceAdminController.prototype as unknown as Record<string, unknown>;
     expect(typeof proto.guardrailStatus).toBe('function');
     expect(typeof proto.guardrailConfig).toBe('function');
     expect(typeof proto.nlpStatus).toBe('function');

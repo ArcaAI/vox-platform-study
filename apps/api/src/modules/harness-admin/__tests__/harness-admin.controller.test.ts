@@ -60,6 +60,9 @@ function makeController(ctx: Ctx) {
       candidates: [],
     }),
   };
+  const evalRunService = {
+    runGoldenSet: vi.fn().mockResolvedValue({ id: 'run-1' }),
+  };
   const controller = new HarnessAdminController(
     policyService as never,
     observabilityService as never,
@@ -68,8 +71,18 @@ function makeController(ctx: Ctx) {
     liveDocumentationService as never,
     evalService as never,
     gateEditMiningService as never,
+    evalRunService as never,
   );
-  return { controller, policyService, observabilityService, opsClient, liveDocumentationService, evalService, gateEditMiningService };
+  return {
+    controller,
+    policyService,
+    observabilityService,
+    opsClient,
+    liveDocumentationService,
+    evalService,
+    gateEditMiningService,
+    evalRunService,
+  };
 }
 
 describe('HarnessAdminController — policy', () => {

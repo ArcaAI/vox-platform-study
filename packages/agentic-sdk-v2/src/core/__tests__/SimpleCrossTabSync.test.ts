@@ -64,6 +64,21 @@ async function flushAsync(rounds = 4): Promise<void> {
   }
 }
 
+// Helper: poll for a delivery-dependent condition instead of assuming a
+// fixed tick count is always enough. `broadcastContext` signs every
+// envelope with a real (unmocked) `crypto.subtle.sign('HMAC', ...)` call,
+// whose thread-pool round trip has no fixed latency — under a CPU-starved
+// runner it can take longer than a handful of `setTimeout(r, 0)` ticks.
+// A blind `flushAsync()` is therefore not a reliable proxy for "delivery
+// has happened"; poll the actual receiver state up to a generous bound.
+async function waitForDelivery(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+  const start = Date.now();
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) return; // let the assertion below fail with a clear diff
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
+
 const baseConsultation = {
   patientId: 'patient-123',
   doctorId: 'doctor-456',
@@ -202,7 +217,7 @@ describe('SimpleCrossTabSync', () => {
       s2.onContextAdded((c) => b.push(c));
 
       await s1.broadcastContext(mkContext());
-      await flushAsync();
+      await waitForDelivery(() => a.length > 0 && b.length > 0);
 
       expect(a).toHaveLength(1);
       expect(b).toHaveLength(1);
@@ -217,7 +232,7 @@ describe('SimpleCrossTabSync', () => {
       const off = s2.onContextAdded((c) => received.push(c));
 
       await s1.broadcastContext(mkContext());
-      await flushAsync();
+      await waitForDelivery(() => received.length > 0);
       expect(received).toHaveLength(1);
 
       off();

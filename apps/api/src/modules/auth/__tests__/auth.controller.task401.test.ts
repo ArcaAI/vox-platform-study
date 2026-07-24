@@ -69,6 +69,7 @@ function buildController(user: ClsUserStub | null) {
         userDepartmentService as never,
         eventEmitter as never,
         {} as never,
+        { lookup: vi.fn().mockResolvedValue(null) } as never,
     );
 
     return { controller, eventEmitter, jwtRevocationService, userRepository };

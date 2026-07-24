@@ -37,7 +37,7 @@ function fakeCls() {
   };
 }
 
-function controllerWith(resolve = vi.fn(async () => SNAPSHOT)) {
+function controllerWith(resolve = vi.fn(async (_service: string) => SNAPSHOT)) {
   const service = { resolveForService: resolve } as unknown as IEffectiveConfigService;
   const cls = fakeCls();
   return {
